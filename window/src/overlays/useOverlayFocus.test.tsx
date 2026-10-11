@@ -9,8 +9,14 @@ import { QuickAsk } from "../shell/QuickAsk";
 import { Dialog as ThreadDialog, Popover as ThreadPopover } from "../thread/Dialog";
 import { Popover as ComposerPopover } from "../composer/Popover";
 import { PhotoDialog, PictureDialog } from "../composer/PhotoDialog";
+import { FilterSortPopover } from "../shell/FilterSort";
+import { DEFAULT_PREFS } from "../shell/list-model";
+import { Palette } from "../shell/Palette";
+import { ThreadColumn } from "../shell/ThreadColumn";
+import { PictureViewer } from "../thread/PictureViewer";
 import { useOverlayFocus } from "./useOverlayFocus";
 
+vi.mock("../face/Face", () => ({ Face: () => null }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
 afterEach(async () => {
@@ -24,6 +30,10 @@ async function render(node: ReactNode) {
 }
 async function key(key: string, shiftKey = false, target: EventTarget = document.activeElement!) {
   await act(async () => target.dispatchEvent(new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true })));
+}
+function type(input: HTMLInputElement, value: string) {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 function opener() {
   const button = document.body.appendChild(document.createElement("button"));
@@ -160,5 +170,124 @@ describe("shared overlay keyboard lifecycle", () => {
     await key("Escape", false, document.body);
     expect(latest).toHaveBeenCalledOnce();
     expect(first).not.toHaveBeenCalled();
+  });
+});
+
+describe("inner handlers and keyboard edge cases", () => {
+  it("lets Escape in Find a person clear the search before it closes Filter and sort", async () => {
+    opener();
+    const closed = vi.fn();
+    const facts = { trunks: [], people: { selfId: null, names: new Map([["ada", "Ada"], ["oak", "Oak"]]) }, owners: 0, folders: false, level: "advanced" as const, unreadTrunks: new Set<string>() };
+    function Example() {
+      const [open, setOpen] = useState(true);
+      return open ? <FilterSortPopover at={{ x: 0, y: 0 }} prefs={DEFAULT_PREFS} facts={facts} onChange={() => {}} onClose={() => (closed(), setOpen(false))} onSettings={() => {}} /> : null;
+    }
+    await render(<Example />);
+    const people = document.querySelector('[data-page="people"]') as HTMLElement;
+    await act(async () => people.click());
+    const search = document.querySelector('[aria-label="Find a person"]') as HTMLInputElement;
+    search.focus();
+    await act(async () => type(search, "Ad"));
+    expect(search.value).toBe("Ad");
+    await key("Escape", false, search);
+    expect(search.value).toBe("");
+    expect(closed).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-testid="filter-popover"]')).not.toBeNull();
+    await key("Escape", false, search);
+    expect(closed).toHaveBeenCalledOnce();
+  });
+
+  it("lets an inner React handler that prevents Escape keep the dialog open", async () => {
+    opener();
+    const close = vi.fn();
+    await render(<Dialog title="Edit" onClose={close}><input autoFocus aria-label="Name" onKeyDown={(e) => e.key === "Escape" && e.preventDefault()} /></Dialog>);
+    await key("Escape");
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it("keeps a window capture handler that stops Escape (the held scene preview) ahead of the overlay", async () => {
+    opener();
+    const close = vi.fn();
+    const held = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); } };
+    window.addEventListener("keydown", held, true);
+    await render(<Dialog title="Edit" onClose={close}><input autoFocus /></Dialog>);
+    await key("Escape");
+    window.removeEventListener("keydown", held, true);
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it("ignores Escape during IME composition, including Safari's keyCode 229 commit", async () => {
+    opener();
+    const close = vi.fn();
+    await render(<Dialog title="Edit" onClose={close}><input autoFocus /></Dialog>);
+    const target = document.activeElement!;
+    await act(async () => target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true, cancelable: true })));
+    await act(async () => target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", keyCode: 229, bubbles: true, cancelable: true })));
+    expect(close).not.toHaveBeenCalled();
+    await key("Escape");
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("does not trap Tab in a nonmodal popover", async () => {
+    opener();
+    await render(<Popover at={{ x: 0, y: 0 }} label="Person" onClose={() => {}}><button>One</button><button>Two</button></Popover>);
+    const two = [...document.querySelectorAll("button")].find((b) => b.textContent === "Two")!;
+    two.focus();
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    await act(async () => two.dispatchEvent(tab));
+    expect(tab.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(two);
+  });
+
+  it("still closes a popover on a click outside", async () => {
+    opener();
+    const close = vi.fn();
+    const outside = document.body.appendChild(document.createElement("p"));
+    await render(<Popover at={{ x: 0, y: 0 }} label="Person" onClose={close}><button>One</button></Popover>);
+    await act(async () => outside.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })));
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("cycles Tab through contenteditable fields in a modal", async () => {
+    opener();
+    await render(<Dialog title="Edit" onClose={() => {}}><div contentEditable suppressContentEditableWarning aria-label="Note">x</div></Dialog>);
+    const close = document.querySelector('[aria-label="Close"]') as HTMLElement;
+    const note = document.querySelector('[aria-label="Note"]') as HTMLElement;
+    close.focus();
+    await key("Tab", true);
+    expect(document.activeElement).toBe(note);
+    await key("Tab");
+    expect(document.activeElement).toBe(close);
+  });
+
+  it("closes How threads show with Escape or a click outside and returns to its button", async () => {
+    await render(<ThreadColumn name="Oak" generalKey="agent:oak:main" openKey={null} items={[]} onOpen={() => {}} />);
+    const button = document.querySelector('[aria-haspopup="menu"]') as HTMLButtonElement;
+    button.focus();
+    await act(async () => button.click());
+    const menu = document.querySelector('[aria-label="Threads show as"]')!;
+    expect(menu.contains(document.activeElement)).toBe(true);
+    await key("Escape");
+    expect(document.querySelector('[aria-label="Threads show as"]')).toBeNull();
+    expect(document.activeElement).toBe(button);
+    await act(async () => button.click());
+    await act(async () => document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })));
+    expect(document.querySelector('[aria-label="Threads show as"]')).toBeNull();
+  });
+
+  it.each(["palette", "picture-viewer"])("closes %s with Escape and restores its opener", async (kind) => {
+    const trigger = opener();
+    function Example() {
+      const [open, setOpen] = useState(true);
+      if (!open) return null;
+      return kind === "palette"
+        ? <Palette rows={[]} request={(async () => ({})) as never} rowName={() => ""} onOpenMessage={() => {}} onClose={() => setOpen(false)} />
+        : <PictureViewer items={[{ name: "cat.png", src: "data:image/png;base64,AA==" } as never]} start={0} onClose={() => setOpen(false)} />;
+    }
+    await render(<Example />);
+    expect(document.activeElement).not.toBe(trigger);
+    await key("Escape");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 });

@@ -208,8 +208,9 @@ export type PipTarget = { kind: "computer" | "browser"; id: string; name: string
 /** A conversation's computer and browser, full size beside the one main conversation and composer. */
 export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], running = false, card = null, onMode, onClose, onChooseComputer, onPip, initialComputer = null, initialControl = false }: Props) {
   const panel = useRef<HTMLElement>(null);
-  useOverlayFocus(panel, onClose);
   const [control, setControl] = useState(initialControl);
+  // While driving, Escape belongs to the remote machine (desktop-client forwards it through noVNC).
+  useOverlayFocus(panel, control ? undefined : onClose);
   const [retry, setRetry] = useState(0);
   const [tick, setTick] = useState(0);
   const [picked, setPicked] = useState<string | "grid" | null>(initialComputer);

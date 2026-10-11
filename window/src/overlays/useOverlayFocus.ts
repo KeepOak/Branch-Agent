@@ -2,15 +2,25 @@ import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 type Layer = { element: HTMLElement; returns: HTMLElement[] };
 const layers: Layer[] = [];
-const candidates = 'button, input:not([type="hidden"]), select, textarea, a[href], [tabindex], [contenteditable="true"]';
+const editable = '[contenteditable]:not([contenteditable="false"])';
+const candidates = `button, input:not([type="hidden"]), select, textarea, a[href], [tabindex], ${editable}`;
+// An editing host without its own tabindex is in the Tab order even where the DOM reports tabIndex -1.
+const tabbable = (item: HTMLElement) => item.tabIndex >= 0 || (item.matches(editable) && !item.hasAttribute("tabindex"));
 function controls(element: HTMLElement) {
   return [...element.querySelectorAll<HTMLElement>(candidates)].filter((item) =>
-    item.tabIndex >= 0 && !item.matches(":disabled") && !item.closest('[hidden], [inert], [aria-hidden="true"]') &&
+    tabbable(item) && !item.matches(":disabled") && !item.closest('[hidden], [inert], [aria-hidden="true"]') &&
     getComputedStyle(item).display !== "none" && getComputedStyle(item).visibility !== "hidden");
 }
+// Safari reports the Escape that commits an IME choice with keyCode 229 and isComposing false.
+const composing = (event: KeyboardEvent) => event.isComposing || event.keyCode === 229;
 
-/** Shared keyboard lifecycle for dialogs, menus and popovers. Only the top layer handles Escape. */
-export function useOverlayFocus(ref: RefObject<HTMLElement | null>, onClose: () => void, options: { modal?: boolean; trigger?: HTMLElement | null; initial?: string } = {}) {
+/**
+ * Shared keyboard lifecycle for dialogs, menus and popovers. Only the top layer handles Escape, and only after the
+ * event bubbles past React: an inner field that handles Escape itself (preventDefault or stopPropagation) wins.
+ * Without `onClose` the layer keeps focus and Tab handling but leaves Escape alone (the remote desktop while driving).
+ * Prior art: OpenClaw's ui/src/components/modal-dialog.ts (initial focus, return focus that skips inert or disabled targets).
+ */
+export function useOverlayFocus(ref: RefObject<HTMLElement | null>, onClose: (() => void) | undefined, options: { modal?: boolean; trigger?: HTMLElement | null; initial?: string } = {}) {
   const latest = useRef({ onClose, options });
   // Capture before React commits descendant autoFocus fields or removes a launching menu.
   const [returns] = useState(() => [options.trigger, document.activeElement, ...layers.slice().reverse().flatMap((layer) => layer.returns)]
@@ -28,11 +38,12 @@ export function useOverlayFocus(ref: RefObject<HTMLElement | null>, onClose: () 
     };
     if (!element.contains(document.activeElement)) focusFirst();
     const key = (event: KeyboardEvent) => {
-      if (!top() || event.isComposing) return;
-      if (event.key === "Escape") {
+      if (!top() || event.defaultPrevented || composing(event)) return;
+      const close = latest.current.onClose;
+      if (event.key === "Escape" && close) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        latest.current.onClose();
+        close();
       } else if (event.key === "Tab" && latest.current.options.modal) {
         const items = controls(element);
         const index = items.indexOf(document.activeElement as HTMLElement);
@@ -45,12 +56,13 @@ export function useOverlayFocus(ref: RefObject<HTMLElement | null>, onClose: () 
     const focus = (event: FocusEvent) => {
       if (top() && latest.current.options.modal && !element.contains(event.target as Node)) focusFirst();
     };
-    document.addEventListener("keydown", key, true);
+    // Bubble phase: React's root listener runs first, so inner handlers keep priority over closing the overlay.
+    document.addEventListener("keydown", key);
     document.addEventListener("focusin", focus);
     return () => {
       const wasTop = top();
       layers.splice(layers.indexOf(layer), 1);
-      document.removeEventListener("keydown", key, true);
+      document.removeEventListener("keydown", key);
       document.removeEventListener("focusin", focus);
       // Wait for removed parent menus to detach and replacement dialogs to autofocus.
       // StrictMode's effect replay keeps the same panel registered and must not restore out of it.
@@ -59,7 +71,7 @@ export function useOverlayFocus(ref: RefObject<HTMLElement | null>, onClose: () 
         const active = document.activeElement;
         if (!active || active === document.body || element.contains(active)) {
           for (const item of returns) {
-            if (!item.isConnected || element.contains(item) || item.matches(":disabled")) continue;
+            if (!item.isConnected || element.contains(item) || item.matches(":disabled") || item.closest("[inert]")) continue;
             item.focus({ preventScroll: true });
             if (document.activeElement === item) break;
           }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useOverlayFocus } from "../overlays/useOverlayFocus";
 import { Icon } from "./icons";
 import { filterPalette, GROUPS, moveSelection, paletteEmptyLine, type PaletteRow } from "./palette-model";
 import { readMessageHits, type MessageHit } from "./search-model";
@@ -66,6 +67,9 @@ export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Prop
   const [query, setQuery] = useState("");
   const [sel, setSel] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  // Escape, modal Tab and focus back to what opened Find anything come from the shared overlay lifecycle.
+  useOverlayFocus(panel, onClose, { modal: true });
   const messages = useMessageRows(request, query, rowName, onOpenMessage);
   const typing = query.trim() !== "";
   // Trunks and Messages show only while typing (§4.1.7 Parity adds); conversation commands too.
@@ -86,7 +90,7 @@ export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Prop
   const empty = paletteEmptyLine(shown.length, messages.searching);
   return (
     <div className="scrim palette-scrim in17" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="palette" role="dialog" aria-modal="true" aria-label="Find anything" data-testid="palette">
+      <div ref={panel} className="palette" role="dialog" aria-modal="true" aria-label="Find anything" data-testid="palette" tabIndex={-1}>
         <label className="pal-field">
           <Icon name="search" />
           <input
@@ -102,10 +106,6 @@ export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Prop
               } else if (e.key === "Enter") {
                 e.preventDefault();
                 run(shown[sel]);
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                e.stopPropagation();
-                onClose();
               }
             }}
           />
