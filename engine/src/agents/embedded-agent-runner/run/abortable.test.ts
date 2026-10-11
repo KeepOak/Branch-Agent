@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   abortable,
   joinWithRunLivenessDeadline,
+  RUN_LIVENESS_JOIN_TIMEOUT_ENV,
   RUN_LIVENESS_JOIN_TIMEOUT_MS,
+  resolveRunLivenessJoinTimeoutMs,
 } from "./abortable.js";
 
 describe("abortable", () => {
@@ -95,6 +97,60 @@ describe("joinWithRunLivenessDeadline", () => {
       expect(onTimeout).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  // Ported from browser-use tests/ci/test_action_timeout.py
+  // (test_act_rejects_invalid_action_timeout_override): nan, inf and <=0 must fall back to the
+  // default deadline instead of firing at once or disabling the bound.
+  it("rejects invalid timeout overrides and keeps the default deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 0, -5]) {
+        expect(resolveRunLivenessJoinTimeoutMs(bad, {})).toBe(RUN_LIVENESS_JOIN_TIMEOUT_MS);
+        const onTimeout = vi.fn();
+        const join = joinWithRunLivenessDeadline({
+          joinWork: () => new Promise<never>(() => {}),
+          timeoutMs: bad,
+          onTimeout,
+        });
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(onTimeout).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(RUN_LIVENESS_JOIN_TIMEOUT_MS);
+        await join;
+        expect(onTimeout).toHaveBeenCalledOnce();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses an explicit positive override in place of the default deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      expect(resolveRunLivenessJoinTimeoutMs(5_000, {})).toBe(5_000);
+      const onTimeout = vi.fn();
+      const join = joinWithRunLivenessDeadline({
+        joinWork: () => new Promise<never>(() => {}),
+        timeoutMs: 5_000,
+        onTimeout,
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      await join;
+      expect(onTimeout).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads the env override only when no explicit value is given", () => {
+    const env = { [RUN_LIVENESS_JOIN_TIMEOUT_ENV]: "3000" };
+    expect(resolveRunLivenessJoinTimeoutMs(undefined, env)).toBe(3_000);
+    expect(resolveRunLivenessJoinTimeoutMs(7_000, env)).toBe(7_000);
+    for (const bad of ["", "0", "-1", "abc"]) {
+      expect(
+        resolveRunLivenessJoinTimeoutMs(undefined, { [RUN_LIVENESS_JOIN_TIMEOUT_ENV]: bad }),
+      ).toBe(RUN_LIVENESS_JOIN_TIMEOUT_MS);
     }
   });
 });

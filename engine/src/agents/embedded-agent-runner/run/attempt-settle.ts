@@ -23,7 +23,7 @@ import {
 } from "../../sessions/session-manager-write-admission.js";
 import { log } from "../logger.js";
 import { clearActiveEmbeddedRun } from "../runs.js";
-import { joinWithRunLivenessDeadline, RUN_LIVENESS_JOIN_TIMEOUT_MS } from "./abortable.js";
+import { joinWithRunLivenessDeadline, resolveRunLivenessJoinTimeoutMs } from "./abortable.js";
 import type { EmbeddedAttemptExecutionPhaseInput } from "./attempt-execution-types.js";
 import { completeEmbeddedAttemptAfterTurn } from "./attempt-finalize.js";
 import {
@@ -162,7 +162,7 @@ export async function runEmbeddedAttemptSettledPhase(
     const runBudgetTimeoutTerminal = isFailureFreeRunBudgetTimeout();
     const warnPendingEventsUnsettled = () => {
       log.warn(
-        `pending subscription events did not settle within ${RUN_LIVENESS_JOIN_TIMEOUT_MS}ms; ` +
+        `pending subscription events did not settle within ${resolveRunLivenessJoinTimeoutMs()}ms; ` +
           `proceeding to stream settlement: runId=${attempt.runId}`,
       );
     };

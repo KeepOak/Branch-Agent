@@ -44,7 +44,7 @@ import {
   selectEmbeddedAgentStream,
 } from "../stream-resolution.js";
 import type { ProviderThinkLevel } from "../utils.js";
-import { joinWithRunLivenessDeadline, RUN_LIVENESS_JOIN_TIMEOUT_MS } from "./abortable.js";
+import { joinWithRunLivenessDeadline, resolveRunLivenessJoinTimeoutMs } from "./abortable.js";
 import {
   shouldWaitForCompletionRequiredAsyncTasks,
   waitForCompletionRequiredAsyncTasks,
@@ -197,7 +197,7 @@ export async function settleEmbeddedAttemptStream(input: {
         runAbortSignal: input.runAbortSignal,
         onTimeout: () => {
           log.warn(
-            `block-reply flush did not settle within ${RUN_LIVENESS_JOIN_TIMEOUT_MS}ms; ` +
+            `block-reply flush did not settle within ${resolveRunLivenessJoinTimeoutMs()}ms; ` +
               `proceeding with settlement: runId=${attempt.runId}`,
           );
         },

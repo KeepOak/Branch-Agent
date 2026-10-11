@@ -1,3 +1,7 @@
+import {
+  asPositiveFiniteNumber,
+  clampTimerTimeoutMs,
+} from "@branch/normalization-core/number-coercion";
 import { toErrorObject } from "../../../infra/errors.js";
 
 /** Marks AbortErrors produced by abortable() so provider aborts stay retryable. */
@@ -22,6 +26,28 @@ export function createAbortableError(signal: AbortSignal): Error {
 // matches the cloud llm-idle class: anything quiet longer is a stuck lane,
 // not legitimate delivery work.
 export const RUN_LIVENESS_JOIN_TIMEOUT_MS = 120_000;
+/** Env override for the post-turn join deadline, in milliseconds (strict positive integer). */
+export const RUN_LIVENESS_JOIN_TIMEOUT_ENV = "BRANCH_RUN_LIVENESS_JOIN_TIMEOUT_MS";
+
+/**
+ * Resolves the post-turn join deadline. An explicit per-call value wins, then the env
+ * override, then the 120s default. Non-finite, zero or negative values fall back to the
+ * next source, so NaN cannot fire the timer at once and Infinity cannot disable the bound.
+ */
+export function resolveRunLivenessJoinTimeoutMs(
+  explicitMs?: number,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const explicit = asPositiveFiniteNumber(explicitMs);
+  if (explicit !== undefined) {
+    return clampTimerTimeoutMs(explicit) ?? RUN_LIVENESS_JOIN_TIMEOUT_MS;
+  }
+  const fromEnv = asPositiveFiniteNumber(Number(env[RUN_LIVENESS_JOIN_TIMEOUT_ENV]));
+  if (fromEnv !== undefined) {
+    return clampTimerTimeoutMs(fromEnv) ?? RUN_LIVENESS_JOIN_TIMEOUT_MS;
+  }
+  return RUN_LIVENESS_JOIN_TIMEOUT_MS;
+}
 
 type RunLivenessJoinCompletion = { finish: (() => void) | undefined };
 
@@ -62,7 +88,7 @@ export function joinWithRunLivenessDeadline(input: {
     const onAbort = () => finish("abort");
     const timer = setTimeout(
       () => finish("timeout"),
-      input.timeoutMs ?? RUN_LIVENESS_JOIN_TIMEOUT_MS,
+      resolveRunLivenessJoinTimeoutMs(input.timeoutMs),
     );
     timer.unref?.();
     if (input.runAbortSignal?.aborted) {
