@@ -15,14 +15,20 @@ import {
   resolveCurrentChannelMessageToolDiscoveryAdapter,
   resolveMessageActionDiscoveryForPlugin,
 } from "../../channels/plugins/message-action-discovery.js";
+import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
+import { resolveSessionEntrySelection } from "../../config/sessions/session-accessor.js";
+import { readTranscriptEventId } from "../../config/sessions/session-accessor.sqlite-read.js";
+import { readActiveTranscriptEntryAnchor } from "../../config/sessions/session-accessor.sqlite-transcript-anchor.js";
+import { rewriteTranscriptMessageAtAnchor } from "../../config/sessions/session-accessor.sqlite-transcript-message-rewrite.js";
 import {
   setSessionReactionAsync,
   SessionReactionLimitError,
   SessionReactionMessageMissingError,
 } from "../../config/sessions/session-reaction-store.js";
-import { readActiveTranscriptEntryAnchor } from "../../config/sessions/session-accessor.sqlite-transcript-anchor.js";
-import { rewriteTranscriptMessageAtAnchor } from "../../config/sessions/session-accessor.sqlite-transcript-message-rewrite.js";
 import type { SessionReactionWrite } from "../../config/sessions/session-reaction-store.types.js";
+import { findTranscriptEvent } from "../../config/sessions/session-transcript-match.js";
+import { captureOwnedTranscriptWriteAssertion } from "../../config/sessions/transcript-write-context.js";
+import type { BranchConfig } from "../../config/types.branch.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { isConfiguredChannel } from "../../infra/outbound/channel-selection.js";
 import { resolveMessageActionOutcome } from "../../infra/outbound/message-action-contracts.js";
@@ -45,6 +51,92 @@ import { defineValidatedGatewayHandler } from "./validation.js";
 
 function reactionScope(target: SessionSharingTarget) {
   return { agentId: target.agentId, sessionKey: target.storeKey, storePath: target.storePath };
+}
+
+/** A built-in agent may react only inside its host-owned active transcript. */
+export async function setAgentSessionReaction(params: {
+  context: GatewayRequestContext;
+  cfg: BranchConfig;
+  agentId: string;
+  sessionKey: string;
+  sessionId: string;
+  messageId?: string;
+  sourceTurnId?: string;
+  emoji: string;
+  remove: boolean;
+  dryRun: boolean;
+  assertCurrent: () => void;
+}) {
+  if (!isReactionEmoji(params.emoji)) {
+    throw new Error("one emoji grapheme is required");
+  }
+  const scope = {
+    agentId: params.agentId,
+    sessionKey: params.sessionKey,
+    sessionId: params.sessionId,
+    storePath: resolveSessionStorePathCore(params.cfg.session?.store, { agentId: params.agentId }),
+  };
+  scope.sessionKey = resolveSessionEntrySelection(scope).normalizedKey;
+  const assertTranscript = captureOwnedTranscriptWriteAssertion(scope);
+  const assertCurrent = () => {
+    params.assertCurrent();
+    assertTranscript();
+  };
+  assertCurrent();
+  const source = params.sourceTurnId
+    ? await findTranscriptEvent(scope, { kind: "idempotency", key: params.sourceTurnId })
+    : undefined;
+  assertCurrent();
+  const messageId = params.sourceTurnId ? readTranscriptEventId(source?.event) : params.messageId;
+  if (!messageId) {
+    throw new Error("unknown message");
+  }
+  const message = asOptionalRecord(
+    (
+      await readSessionMessageByIdAsync(scope, messageId, {
+        currentOnly: true,
+        maxBytes: Number.MAX_SAFE_INTEGER,
+        allowResetArchiveFallback: false,
+      })
+    ).message,
+  );
+  assertCurrent();
+  if (!message || (message.role !== "user" && message.role !== "assistant")) {
+    throw new Error("unknown message");
+  }
+  if (params.dryRun) {
+    return { messageId, dryRun: true };
+  }
+  const actor = { type: "agent" as const, id: `agent:${params.agentId}`, label: params.agentId };
+  const write = await setSessionReactionAsync(scope, {
+    messageId,
+    emoji: params.emoji,
+    identityId: actor.id,
+    identityLabel: actor.label,
+    remove: params.remove,
+    expectedSessionId: params.sessionId,
+    assertCurrent,
+  });
+  if (write.changed) {
+    params.context.broadcast(
+      "session.reaction",
+      {
+        sessionKey: scope.sessionKey,
+        agentId: params.agentId,
+        sessionId: params.sessionId,
+        messageId,
+        emoji: params.emoji,
+        action: params.remove ? "removed" : "added",
+        actor,
+        reactions: write.reactions,
+      },
+      {
+        sessionKeys: [...new Set([params.sessionKey, scope.sessionKey])].toSorted(),
+        agentId: params.agentId,
+      },
+    );
+  }
+  return { messageId, reactions: write.reactions };
 }
 
 // Mirrors run in local commit order per message and channel reaction slot, so
@@ -259,7 +351,9 @@ export const sessionReactionHandlers: GatewayRequestHandlers = {
           }
           const changed = await rewriteTranscriptMessageAtAnchor(anchor, (value) => {
             const message = asOptionalRecord(value);
-            if (!message || (message.role !== "user" && message.role !== "assistant")) return undefined;
+            if (!message || (message.role !== "user" && message.role !== "assistant")) {
+              return undefined;
+            }
             const { excludeFromContext: _previous, ...rest } = message;
             return params.exclude ? { ...rest, excludeFromContext: true } : rest;
           });

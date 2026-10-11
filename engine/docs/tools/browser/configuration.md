@@ -36,6 +36,7 @@ Extension relay configuration still requires a Gateway restart.
     tabCleanup: {
       enabled: true, // default: true
     },
+    // idleTimeoutMinutes: 5, // default: 5; 0 keeps an unused headless Chrome until shutdown
     // snapshotDefaults: { mode: "efficient" }, // default snapshot mode when the caller omits one
     defaultProfile: "branch",
     headless: false,
@@ -63,6 +64,13 @@ Extension relay configuration still requires a Gateway restart.
   },
 }
 ```
+
+`browser.idleTimeoutMinutes` (default `5`) closes an engine-launched headless
+Chrome after that many quiet minutes with no browser work. The next browser
+task starts Chrome again. `0` keeps the process until Gateway shutdown.
+A task still in progress, a headed launch, or a browser the person opened
+themselves (attached rather than launched) is never closed. This is separate
+from `browser.tabCleanup`, which only sweeps session-owned tabs.
 
 `browser.snapshotDefaults.mode: "efficient"` changes the default `snapshot`
 extraction mode when a caller does not pass an explicit `snapshotFormat` or

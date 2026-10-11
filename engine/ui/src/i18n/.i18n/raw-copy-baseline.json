@@ -177,20 +177,6 @@
       "text": "/verbose"
     },
     {
-      "count": 2,
-      "kind": "html-text",
-      "name": "text",
-      "path": "ui/src/components/trellis-pet-scene-view.ts",
-      "text": "z"
-    },
-    {
-      "count": 1,
-      "kind": "html-text",
-      "name": "text",
-      "path": "ui/src/components/trellis-pet-scene-view.ts",
-      "text": "Z"
-    },
-    {
       "count": 1,
       "kind": "html-attribute",
       "name": "placeholder",
@@ -259,6 +245,20 @@
       "name": "label",
       "path": "ui/src/components/provider-icon.ts",
       "text": "Machine0"
+    },
+    {
+      "count": 2,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/components/trellis-pet-scene-view.ts",
+      "text": "z"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/components/trellis-pet-scene-view.ts",
+      "text": "Z"
     },
     {
       "count": 1,
@@ -427,6 +427,13 @@
       "name": "text",
       "path": "ui/src/pages/devices/view-exec-approvals.ts",
       "text": "exec host=gateway/node"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/devices/view-pairing.runtime.ts",
+      "text": "When prompted, paste this setup code:"
     },
     {
       "count": 1,

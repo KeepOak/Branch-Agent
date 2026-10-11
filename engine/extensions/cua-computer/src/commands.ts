@@ -32,6 +32,7 @@ import {
   type CuaLastFrame,
   type CuaScreenSize,
 } from "./frame.js";
+import { detectComputerInputBackends, mustUseFocusedInput } from "./input-routing.js";
 import { createCuaMcpDriver } from "./mcp-driver-client.js";
 import { closeRecordingExecution } from "./recording-actions.js";
 import { handleWindowAct } from "./window-actions.js";
@@ -85,6 +86,8 @@ type CuaComputerProviderOptions = {
   imageProcessor?: ImageProcessor;
   setInterval?: typeof setInterval;
   clearInterval?: typeof clearInterval;
+  /** Test seam for the available input backends. Production probes the host. */
+  inputBackends?: readonly string[];
 };
 
 function resolveMacOsMcpEndpoint(
@@ -412,6 +415,8 @@ export function createCuaComputerProvider(
   const clear = options.clearInterval ?? clearInterval;
   const isSupportedPlatform =
     platform === "linux" || platform === "win32" || macOsEndpoint !== undefined;
+  const inputBackends =
+    options.inputBackends ?? detectComputerInputBackends({ platform, env });
   // The app injects the endpoint only after the host-owned daemon socket is
   // accepting connections. Node-host manifests are one-shot, so the validated
   // endpoint is the synchronous macOS readiness lease; invocation still
@@ -433,7 +438,9 @@ export function createCuaComputerProvider(
       },
       actions: platformActions(platform),
       targets: ["screen", "window", "element", "browser"],
-      deliveryModes: ["background", "foreground"],
+      deliveryModes: mustUseFocusedInput(inputBackends)
+        ? (["foreground"] as const)
+        : (["background", "foreground"] as const),
       observations: ["image", "accessibility", "browser"],
       features: { recording: true, agentCursor: false, multiDisplay: false },
     }),
@@ -465,7 +472,7 @@ export function createCuaComputerProvider(
       }
       const executionDriver = options.driver ?? createDriver();
       const resources = createLazyCuaExecutionResources();
-      const executionState = { resources, recording: {} };
+      const executionState = { resources, recording: {}, inputBackends };
       const queue = new KeyedAsyncQueue();
       const frameState: CuaFrameState = { generation: executionDriver.generation };
       let closing = false;

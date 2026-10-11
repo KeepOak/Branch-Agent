@@ -23,6 +23,7 @@ import {
   hasCompletionMessageSessionSpawn,
 } from "./accepted-session-spawn.js";
 import { bindOperatorModelExecution, readRunOperatorAuthority } from "./admitted-run-context.js";
+import type { CliOutput } from "./cli-output-contracts.js";
 import { runCliBeforeAgentReply } from "./cli-runner/before-agent-reply.js";
 import { runCliCleanup } from "./cli-runner/cleanup.js";
 import { acceptsCliLiveSession } from "./cli-runner/cli-live-session-registry.js";
@@ -58,6 +59,12 @@ import {
   getCliMessagingDeliveryEvidence,
 } from "./cli-runner/delivery-evidence.js";
 import { createCliFailoverError } from "./cli-runner/exit-error.js";
+import {
+  CLI_ENDED_AFTER_TOOL_CALL_CODE,
+  CLI_ENDED_AFTER_TOOL_CALL_ERROR,
+  mergeFinalAfterToolCall,
+  prepareFinalAfterToolCallContext,
+} from "./cli-runner/final-after-tool-call.js";
 import { cliBackendLog } from "./cli-runner/log.js";
 import {
   runClaudeCliAgentTurnWithDiagnostics,
@@ -332,6 +339,63 @@ async function runPreparedCliAgentOwned(
 
   let deliveredMessagingSideEffect = false;
   let userTurnHandled = false;
+  // A turn whose last output was a tool call gets exactly one text-only
+  // continuation on the same CLI session. Nothing from the original turn is
+  // replayed; if the continuation still has no final message, the run fails.
+  const requestFinalAfterToolCall = async (
+    output: CliOutput,
+    attemptContext: PreparedCliRunContext,
+    fallbackCliSessionId: string | undefined,
+  ): Promise<CliOutput> => {
+    if (
+      output.terminalInterruption ||
+      output.yielded ||
+      output.toolMediaUrls?.length ||
+      resolveSourceReplyDelivery(output) !== "missing" ||
+      hasCompletionMessageSessionSpawn(output.acceptedSessionSpawns)
+    ) {
+      return output;
+    }
+    const endedAfterToolCall = (cause?: unknown) => {
+      const error = createCliFailoverError(
+        CLI_ENDED_AFTER_TOOL_CALL_ERROR,
+        "unknown",
+        cliFailoverContext,
+        { code: CLI_ENDED_AFTER_TOOL_CALL_CODE, ...(cause ? { cause } : {}) },
+      );
+      // The turn's tools already ran; a missing final message never authorizes replaying them.
+      recordModelFallbackStop(error);
+      return attachCliMessagingDeliveryEvidence(error, output);
+    };
+    const cliSessionId = sessionBindingDisabled
+      ? undefined
+      : (output.sessionId ?? fallbackCliSessionId);
+    if (!cliSessionId) {
+      throw endedAfterToolCall();
+    }
+    let final: CliOutput;
+    try {
+      const continuation = await prepareFinalAfterToolCallContext(attemptContext);
+      // No tool-less continuation can resume this turn; it ends plainly below.
+      final = continuation
+        ? await executePreparedCliRun(
+            continuation,
+            cliSessionId,
+            diagnosticLifecycle ? { onPhase: diagnosticLifecycle.setPhase } : undefined,
+          )
+        : output;
+    } catch (error) {
+      if (params.abortSignal?.aborted) {
+        throw error;
+      }
+      throw endedAfterToolCall(error);
+    }
+    params.assertCurrent?.();
+    if (final.endedAfterToolCall || !final.text.trim()) {
+      throw endedAfterToolCall();
+    }
+    return mergeFinalAfterToolCall(output, final);
+  };
   const executeCliAttempt = async (cliSessionIdToUse?: string, options?: CliRecoveryOptions) => {
     const timeoutMs = options?.timeoutMs ?? params.timeoutMs;
     const forkCliSessionOnResume =
@@ -366,12 +430,15 @@ async function runPreparedCliAgentOwned(
             },
           };
     diagnosticLifecycle?.setPhase("send");
-    const output = await executePreparedCliRun(
+    let output = await executePreparedCliRun(
       attemptContext,
       cliSessionIdToUse,
       diagnosticLifecycle ? { onPhase: diagnosticLifecycle.setPhase } : undefined,
     );
     params.assertCurrent?.();
+    if (output.endedAfterToolCall && !turnSideEffectsDisabled) {
+      output = await requestFinalAfterToolCall(output, attemptContext, cliSessionIdToUse);
+    }
     // Test facades and non-instrumented executors may not signal the boundary.
     diagnosticLifecycle?.setPhase("resolve");
     const sourceReplyMirror = resolveCliSourceReplyMirror({

@@ -12,14 +12,14 @@ title: "Fleet"
 
 Fleet is **experimental**. Command names, flags, output shapes, and the container profile can change between releases without a deprecation window.
 
-Fleet supports Docker and Podman. The default image is `ghcr.io/openclaw/openclaw:latest`.
+Fleet supports Docker and Podman. No Branch fleet image is published yet, so every `fleet create` needs `--image <ref>` pointing at an image you build or host yourself.
 
 Fleet is tested on Linux and macOS hosts. Windows hosts are currently untested.
 
 ## Quick start
 
 ```bash
-branch fleet create acme
+branch fleet create acme --image <your-image>
 branch fleet status acme
 branch fleet list
 ```
@@ -40,16 +40,17 @@ The ID becomes part of the container name: `branch-cell-<tenant>`.
 
 ## `fleet create`
 
-Create a cell and start it:
+Create a cell and start it. `--image` is required:
 
 ```bash
-branch fleet create acme
+branch fleet create acme --image <your-image>
 ```
 
 Create a Podman cell on a fixed port without starting it:
 
 ```bash
 branch fleet create acme \
+  --image <your-image> \
   --runtime podman \
   --port 19125 \
   --no-start
@@ -59,6 +60,7 @@ Pass tenant-specific environment variables by repeating `--env`:
 
 ```bash
 branch fleet create acme \
+  --image <your-image> \
   --env TZ=America/Los_Angeles \
   --env BRANCH_DISABLE_BONJOUR=1
 ```
@@ -71,7 +73,7 @@ Fleet defaults `XDG_CACHE_HOME` to `/home/node/.branch/cache` on the tenant stat
 
 | Option                    | Default                               | Description                                                                                    |
 | ------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `--image <ref>`           | `ghcr.io/openclaw/openclaw:latest`    | Container image for the cell.                                                                  |
+| `--image <ref>`           | Required                              | Container image for the cell. No Branch image is published yet, so pass your own.              |
 | `--runtime <runtime>`     | `docker`                              | Container CLI: `docker` or `podman`.                                                           |
 | `--port <number>`         | Automatically allocated from `19100`  | Loopback host port. An explicitly selected port must not belong to another registered cell.    |
 | `--memory <value>`        | `2g`                                  | Container memory limit in Docker/Podman syntax.                                                |

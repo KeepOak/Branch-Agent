@@ -74,7 +74,9 @@ function scopeProviderUsageCredentialKey(
 function mapProviderUsage(usage: Awaited<ReturnType<typeof loadProviderUsageSummary>>) {
   const usageByProvider = new Map<string, ProviderUsageStatus>();
   for (const snap of usage.providers) {
-    if (usageByProvider.has(snap.provider) && !snap.inUse) continue;
+    if (usageByProvider.has(snap.provider) && !snap.inUse) {
+      continue;
+    }
     usageByProvider.set(snap.provider, {
       windows: snap.windows,
       ...(snap.summary ? { summary: snap.summary } : {}),
@@ -86,7 +88,15 @@ function mapProviderUsage(usage: Awaited<ReturnType<typeof loadProviderUsageSumm
   return usageByProvider;
 }
 
-function retainLastGoodOnTimeout(
+/**
+ * Timeouts and provider rate limits say nothing new about an account, so its last
+ * reading stands, marked with when it was taken and why the latest check failed.
+ */
+function isPassingUsageError(error: string | undefined): boolean {
+  return error === "Timeout" || /^HTTP 429\b/.test(error ?? "");
+}
+
+function retainLastGoodReading(
   summary: UsageSummary,
   lastGood: UsageSummary | undefined,
 ): UsageSummary {
@@ -96,19 +106,29 @@ function retainLastGoodOnTimeout(
   const lastGoodByProvider = new Map(
     lastGood.providers
       .filter((provider) => provider.error === undefined)
-      .map((provider) => [`${provider.provider}:${provider.authProfileId ?? provider.accountEmail ?? ""}`, provider]),
-  );
-  const retainedLastGood = summary.providers.some(
-    (provider) => provider.error === "Timeout" && lastGoodByProvider.has(`${provider.provider}:${provider.authProfileId ?? provider.accountEmail ?? ""}`),
+      .map((provider) => [
+        `${provider.provider}:${provider.authProfileId ?? provider.accountEmail ?? ""}`,
+        provider,
+      ]),
   );
   return {
     ...summary,
-    updatedAt: retainedLastGood ? lastGood.updatedAt : summary.updatedAt,
-    providers: summary.providers.map((provider) =>
-      provider.error === "Timeout"
-        ? (lastGoodByProvider.get(`${provider.provider}:${provider.authProfileId ?? provider.accountEmail ?? ""}`) ?? provider)
-        : provider,
-    ),
+    providers: summary.providers.map((provider) => {
+      const kept = isPassingUsageError(provider.error)
+        ? lastGoodByProvider.get(
+            `${provider.provider}:${provider.authProfileId ?? provider.accountEmail ?? ""}`,
+          )
+        : undefined;
+      if (!kept) {
+        return provider;
+      }
+      // A reading kept across several failed checks keeps its first age.
+      return {
+        ...kept,
+        readingAt: kept.readingAt ?? lastGood.updatedAt,
+        staleReason: provider.error,
+      };
+    }),
   };
 }
 
@@ -141,7 +161,7 @@ function scheduleProviderUsageRefresh(
       includeClaudeCode: true,
     })
       .then((freshUsage) => {
-        const usage = retainLastGoodOnTimeout(freshUsage, params.lastGood);
+        const usage = retainLastGoodReading(freshUsage, params.lastGood);
         if (
           publishGeneration === cacheGeneration &&
           usageRefreshByAgentId.get(params.agentId) === refresh

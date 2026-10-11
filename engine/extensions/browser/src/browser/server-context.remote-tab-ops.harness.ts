@@ -51,6 +51,7 @@ export function makeState(
         maxTabsPerSession: 8,
         sweepMinutes: 5,
       },
+      idleTimeoutMinutes: 5,
       defaultProfile: profile,
       profiles: {
         remote: {

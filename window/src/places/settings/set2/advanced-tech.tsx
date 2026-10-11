@@ -237,8 +237,9 @@ function KeyRow({ t, k, onEdit }: { t: string; k: string; onEdit: () => void }) 
   const on = pins?.has(t) ?? false;
   return (
     <div className="ctl" data-row={t}>
-      <b>{t} <code className="s2advanced-key">{k}</code></b>
-      {pins ? <button type="button" className="pin-k" aria-pressed={on} aria-label={`${on ? "Unpin" : "Pin"} ${t}`} title={on ? "Unpin" : "Pin to the top of General"} onClick={() => pins.toggle(t)}><Icon name="pin" small /></button> : null}
+      <b>{t} <code className="s2advanced-key">{k}</code>
+        {pins ? <button type="button" className="pin-k" aria-pressed={on} aria-label={`${on ? "Unpin" : "Pin"} ${t}`} title={on ? "Unpin" : "Pin to the top of General"} onClick={() => pins.toggle(t)}><Icon name="pin" small /></button> : null}
+      </b>
       <span className="right"><Btn sm onClick={onEdit}>Edit</Btn></span>
     </div>
   );

@@ -1,0 +1,4 @@
+engine:src/agents/prepared-model-runtime.startup-replacement.test.ts
+engine:src/mcp/trunk-tools.test.ts
+engine:src/state/agent-database-startup.bounded-retry.test.ts
+window:src/thread/startup-preparation.test.tsx
