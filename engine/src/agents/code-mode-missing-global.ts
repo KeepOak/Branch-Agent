@@ -3,30 +3,9 @@
  * Code Mode does provide, so the model can fix the call instead of guessing.
  */
 
-const MISSING_GLOBAL = /^ReferenceError: ([A-Za-z_$][\w$]*) is not defined(?:\n|$)/u;
+import { CODE_MODE_GLOBAL_NAMES } from "./code-mode-global-names.js";
 
-/** Helper globals every Code Mode cell defines, in prompt order. */
-export const CODE_MODE_HELPER_GLOBALS = [
-  "API",
-  "catalog",
-  "skills",
-  "results",
-  "store",
-  "load",
-  "text",
-  "json",
-  "console",
-  "setTimeout",
-  "clearTimeout",
-  "yield_control",
-  "nodes",
-  "namespaces",
-  "TextEncoder",
-  "TextDecoder",
-  "atob",
-  "btoa",
-  "crypto",
-] as const;
+const MISSING_GLOBAL = /^ReferenceError: ([A-Za-z_$][\w$]*) is not defined(?:\n|$)/u;
 
 const MAX_LISTED_TOOL_GLOBALS = 40;
 
@@ -48,7 +27,8 @@ export function describeMissingCodeModeGlobal(
     error,
     `\`${name}\` is not a Code Mode global.`,
     `Tool globals: ${toolText}. Find other tools with catalog.search(query).`,
-    `Helpers: ${CODE_MODE_HELPER_GLOBALS.join(", ")}.`,
+    `Helpers: ${CODE_MODE_GLOBAL_NAMES.helpers.join(", ")}.`,
+    `Swarm helpers (when enabled): ${CODE_MODE_GLOBAL_NAMES.swarm.join(", ")}.`,
     "Node globals and modules (require, process, Buffer, fetch) are not available.",
   ].join("\n");
 }

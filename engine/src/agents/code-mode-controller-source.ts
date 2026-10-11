@@ -109,7 +109,12 @@ export const CODE_MODE_CONTROLLER_SOURCE = String.raw`
     const promise = new Promise((resolve, reject) => { callbacks = { resolve, reject }; });
     const admit = () => {
       callbacks.stack = callStack;
-      callbacks.location = hostRequest(methodName, argsJson, id, callStack);
+      const location = hostRequest(methodName, argsJson, id, callStack);
+      // Host callbacks never throw across the boundary (a host-realm error would
+      // expose the host Function). A refused request returns a non-string instead,
+      // and the guest throws its own error; the host records the real reason.
+      if (typeof location !== "string") throw new GuestError("code mode bridge request was refused by the host");
+      callbacks.location = location;
       pending.set(id, callbacks);
     };
     if (queue || pending.size >= maxPending) {

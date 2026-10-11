@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { createCodeModeCatalogBindings } from "./code-mode-catalog.js";
+import {
+  CODE_MODE_GLOBAL_NAMES,
+  CODE_MODE_RESERVED_GLOBAL_NAMES,
+} from "./code-mode-global-names.js";
 import { describeMissingCodeModeGlobal } from "./code-mode-missing-global.js";
+import { isShellLikeCodeModeSource } from "./code-mode-shell-source.js";
 
 describe("describeMissingCodeModeGlobal", () => {
   it("lists tool and helper globals for an undefined name", () => {
@@ -31,5 +37,40 @@ describe("describeMissingCodeModeGlobal", () => {
     ]) {
       expect(describeMissingCodeModeGlobal(error, ["exec"])).toBe(error);
     }
+  });
+
+  it("lists swarm helpers separately", () => {
+    expect(describeMissingCodeModeGlobal("ReferenceError: x is not defined", [])).toContain(
+      "Swarm helpers (when enabled): agents, phase, log.",
+    );
+  });
+});
+
+describe("Code Mode global names", () => {
+  it("reserves every helper, swarm and namespace global for catalog callables", () => {
+    const names = [
+      ...CODE_MODE_GLOBAL_NAMES.helpers,
+      ...CODE_MODE_GLOBAL_NAMES.swarm,
+      ...CODE_MODE_GLOBAL_NAMES.namespaces,
+    ];
+    const bindings = createCodeModeCatalogBindings(
+      names.map((name) => ({
+        id: "branch:" + name,
+        source: "branch" as const,
+        name,
+        description: name,
+      })),
+    );
+    expect(bindings).toHaveLength(names.length);
+    for (const binding of bindings) {
+      expect(CODE_MODE_RESERVED_GLOBAL_NAMES.has(binding.callableName)).toBe(false);
+      expect(binding.callableName).toMatch(/_[a-f0-9]{8,}$/u);
+    }
+  });
+
+  it("treats helper globals as JavaScript, not shell commands", () => {
+    expect(isShellLikeCodeModeSource("results.load(id)")).toBe(false);
+    expect(isShellLikeCodeModeSource("crypto.randomUUID()")).toBe(false);
+    expect(isShellLikeCodeModeSource("log show --last 1h")).toBe(true);
   });
 });

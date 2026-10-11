@@ -53,6 +53,8 @@ type NodeCell = {
   rejections: Map<Promise<unknown>, unknown>;
   outcome?: GuestOutcome;
   admissionError?: string;
+  /** First failure inside a host callback; the guest only ever saw a sentinel. */
+  hostFailure?: string;
   networkContentObserved?: true;
   deadline: number;
   progress: CodeModeNodeProgress;
@@ -86,6 +88,37 @@ function isBridgeMethod(method: string): method is PendingBridgeRequest["method"
   return bridgeMethods.has(method);
 }
 
+/**
+ * Wraps a function the guest can call. A host-realm Error thrown into the vm
+ * context would let guest code reach the host Function via
+ * `error.constructor.constructor`, so a callback never throws across the boundary:
+ * the failure is recorded for the worker loop and the guest receives `null`, which
+ * the controller turns into its own guest-realm error.
+ */
+function guardHostCallback<Args extends unknown[], Result>(
+  current: NodeCell,
+  callback: (...args: Args) => Result,
+): (...args: Args) => Result | null {
+  return (...args) => {
+    try {
+      return callback(...args);
+    } catch (error) {
+      current.hostFailure ??=
+        error instanceof Error ? error.message : "code mode host callback failed";
+      return null;
+    }
+  };
+}
+
+function isRandomByteCount(length: unknown): length is number {
+  return (
+    typeof length === "number" &&
+    Number.isInteger(length) &&
+    length >= 0 &&
+    length <= CODE_MODE_RANDOM_VALUES_MAX_BYTES
+  );
+}
+
 // Compile trusted control scripts once per worker; each cell still owns a fresh context.
 const initializeScript = new Script(
   String.raw`
@@ -96,23 +129,50 @@ const initializeScript = new Script(
       const Bytes = Uint8Array;
       delete globalThis.__branchNodeTextEncoder;
       delete globalThis.__branchNodeTextDecoder;
+      const GuestTypeError = TypeError;
+      const GuestRangeError = RangeError;
+      const GuestString = String;
+      const reflectApply = Reflect.apply;
+      const isPrototypeOf = Object.prototype.isPrototypeOf;
+      const guestObjectPrototype = Object.prototype;
+      // The native encoders are host objects, so their errors are host-realm errors,
+      // and a caught host error leads to the host Function through
+      // error.constructor.constructor. Guest values pass through unchanged; any other
+      // error is rethrown as a guest-realm copy.
+      const native = (run) => {
+        try {
+          return run();
+        } catch (error) {
+          if ((typeof error !== "object" && typeof error !== "function") || error === null ||
+              reflectApply(isPrototypeOf, guestObjectPrototype, [error])) {
+            throw error;
+          }
+          let name = "TypeError";
+          let message = "";
+          try {
+            name = GuestString(error.name);
+            message = GuestString(error.message);
+          } catch {}
+          throw new (name === "RangeError" ? GuestRangeError : GuestTypeError)(message);
+        }
+      };
       Object.defineProperties(globalThis, {
         TextEncoder: { value: class TextEncoder {
           #encoder = new Encoder();
           get encoding() { return this.#encoder.encoding; }
-          encode(input) { return new Bytes(this.#encoder.encode(input)); }
+          encode(input) { return native(() => new Bytes(this.#encoder.encode(input))); }
           encodeInto(input, destination) {
-            const { read, written } = this.#encoder.encodeInto(input, destination);
+            const { read, written } = native(() => this.#encoder.encodeInto(input, destination));
             return { read, written };
           }
         }, enumerable: true },
         TextDecoder: { value: class TextDecoder {
           #decoder;
-          constructor(label, options) { this.#decoder = new Decoder(label, options); }
+          constructor(label, options) { this.#decoder = native(() => new Decoder(label, options)); }
           get encoding() { return this.#decoder.encoding; }
           get fatal() { return this.#decoder.fatal; }
           get ignoreBOM() { return this.#decoder.ignoreBOM; }
-          decode(input, options) { return this.#decoder.decode(input, options); }
+          decode(input, options) { return native(() => this.#decoder.decode(input, options)); }
         }, enumerable: true },
       });
     })();
@@ -245,60 +305,53 @@ function createCell(
   cell = current;
   context["__branchNodeTextEncoder"] = TextEncoder;
   context["__branchNodeTextDecoder"] = TextDecoder;
-  context["__branchHostRequest"] = (
-    method: string,
-    argsJson: string,
-    id: string,
-    stack: string,
-  ) => {
-    if (current.pendingRequests.length >= current.config.maxPendingToolCalls) {
-      current.admissionError = "too many pending code mode tool calls";
-      throw new Error(current.admissionError);
-    }
-    // The controller supplies strings; only JSON data and diagnostic stacks cross this bridge.
-    if (!isBridgeMethod(method)) {
-      throw new Error("unsupported code mode bridge method");
-    }
-    const args: unknown = JSON.parse(argsJson);
-    if (!Array.isArray(args)) {
-      throw new Error("invalid code mode bridge arguments: expected an array");
-    }
-    if (!id.startsWith(`bridge:${method}:`) || !/^bridge:[A-Za-z]+:[1-9]\d*$/u.test(id)) {
-      throw new Error("invalid code mode bridge id");
-    }
-    if (current.pendingRequests.some((request) => request.id === id)) {
-      throw new Error("duplicate code mode bridge id");
-    }
-    current.pendingRequests.push({ id, method, args });
-    return sourceFrames(
-      typeof stack === "string" ? stack.slice(0, 8192) : "",
-      current.location,
-    ).join("\n");
-  };
-  context["__branchHostCancelRequest"] = (id: string) => {
+  context["__branchHostRequest"] = guardHostCallback(
+    current,
+    (method: string, argsJson: string, id: string, stack: string) => {
+      if (current.pendingRequests.length >= current.config.maxPendingToolCalls) {
+        current.admissionError = "too many pending code mode tool calls";
+        return null;
+      }
+      // The controller supplies strings; only JSON data and diagnostic stacks cross this bridge.
+      if (!isBridgeMethod(method)) {
+        throw new Error("unsupported code mode bridge method");
+      }
+      const args: unknown = JSON.parse(argsJson);
+      if (!Array.isArray(args)) {
+        throw new Error("invalid code mode bridge arguments: expected an array");
+      }
+      if (!id.startsWith(`bridge:${method}:`) || !/^bridge:[A-Za-z]+:[1-9]\d*$/u.test(id)) {
+        throw new Error("invalid code mode bridge id");
+      }
+      if (current.pendingRequests.some((request) => request.id === id)) {
+        throw new Error("duplicate code mode bridge id");
+      }
+      current.pendingRequests.push({ id, method, args });
+      return sourceFrames(
+        typeof stack === "string" ? stack.slice(0, 8192) : "",
+        current.location,
+      ).join("\n");
+    },
+  );
+  context["__branchHostCancelRequest"] = guardHostCallback(current, (id: string) => {
     const index = current.pendingRequests.findIndex((request) => request.id === id);
     if (index >= 0) {
       current.pendingRequests.splice(index, 1);
       current.canceledRequestIds.push(id);
     }
-  };
-  context["__branchHostObserveNetworkContent"] = () => {
+  });
+  context["__branchHostObserveNetworkContent"] = guardHostCallback(current, () => {
     current.networkContentObserved = true;
     current.progress.observeNetworkContent();
-  };
-  context["__branchHostOutput"] = (json: string) => current.progress.append(json);
-  context[CODE_MODE_HOST_RANDOM_HEX] = (length: unknown) => {
-    if (
-      typeof length !== "number" ||
-      !Number.isInteger(length) ||
-      length < 0 ||
-      length > CODE_MODE_RANDOM_VALUES_MAX_BYTES
-    ) {
-      throw new Error("invalid code mode random byte count");
-    }
-    // Only a hex string crosses back, never a host Buffer.
-    return randomBytes(length).toString("hex");
-  };
+  });
+  context["__branchHostOutput"] = guardHostCallback(current, (json: string) =>
+    current.progress.append(json),
+  );
+  // Only a hex string crosses back, never a host Buffer. A bad count gets the
+  // null sentinel; the guest then throws its own error.
+  context[CODE_MODE_HOST_RANDOM_HEX] = guardHostCallback(current, (length: unknown) =>
+    isRandomByteCount(length) ? randomBytes(length).toString("hex") : null,
+  );
   context["__branchNodeInit"] = JSON.stringify({
     __branchCatalog: input.catalog,
     __branchNamespaces: input.namespaces,
@@ -306,15 +359,27 @@ function createCell(
     __branchSwarmEnabled: input.swarmEnabled === true,
     __branchMaxPendingToolCalls: input.config.maxPendingToolCalls,
   });
-  context["__branchNodeFinish"] = (ok: boolean, json: string) => {
+  context["__branchNodeFinish"] = guardHostCallback(current, (ok: boolean, json: string) => {
     current.outcome = { ok, json };
-  };
+  });
   progress.deadline = performance.timeOrigin + deadline;
   consumed?.();
   evaluate(current, initializeScript);
   evaluate(current, new Script(program.source, { filename: USER_SOURCE_FILE }));
   evaluate(current, observeResultScript);
   return current;
+}
+
+function drainQueuedRequests(current: NodeCell): unknown {
+  try {
+    return evaluate(current, drainScript);
+  } catch (error) {
+    // A refused admission reaches the guest as its own error; report the host's reason.
+    if (current.admissionError !== undefined || current.hostFailure !== undefined) {
+      return current.admissionError;
+    }
+    throw error;
+  }
 }
 
 function settle(current: NodeCell, requests: SettledBridgeRequest[]): void {
@@ -409,12 +474,15 @@ async function run(input: NodeInput, channel?: WorkerTaskChannel): Promise<NodeR
     for (;;) {
       consumed?.();
       consumed = undefined;
-      const admissionError = current.admissionError ?? evaluate(current, drainScript);
+      const admissionError = current.admissionError ?? drainQueuedRequests(current);
       if (admissionError !== undefined && typeof admissionError !== "string") {
         throw new Error("invalid code mode admission error");
       }
       if (admissionError) {
         throw new ToolInputError(admissionError);
+      }
+      if (current.hostFailure !== undefined) {
+        throw new Error(current.hostFailure);
       }
       // Native rejection/handled notifications arrive at the end of the turn.
       await setImmediate();

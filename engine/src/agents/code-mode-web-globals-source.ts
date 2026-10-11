@@ -2,7 +2,8 @@
  * Standard web globals models expect in Code Mode: base64 (`atob`, `btoa`) and
  * `crypto` (`randomUUID`, `getRandomValues`). Base64 is pure guest code. The
  * random source is a host callback that returns only a hex string, so no host
- * object reaches the guest. When an executor supplies no random source,
+ * object reaches the guest. The callback never throws: it returns a non-string
+ * sentinel and the guest throws its own guest-realm error. When an executor supplies no random source,
  * `crypto` stays undefined instead of falling back to `Math.random`.
  */
 export const CODE_MODE_HOST_RANDOM_HEX = "__branchHostRandomHex";
@@ -69,18 +70,27 @@ export const CODE_MODE_WEB_GLOBALS_SOURCE = String.raw`
       return result;
     },
   };
-  const integerArrayNames = new Set([
-    "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array",
-    "Int32Array", "Uint32Array", "BigInt64Array", "BigUint64Array",
-  ]);
-  // The %TypedArray% tag getter returns undefined for anything that is not a typed array.
-  const typedArrayName = Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(Uint8Array.prototype),
-    Symbol.toStringTag,
-  ).get;
-  const callTypedArrayName = (value) => typedArrayName.call(value);
+  // Web Crypto fills integer typed arrays only; Uint8ClampedArray is rejected too.
+  const integerArrayNames = Object.freeze({
+    __proto__: null,
+    Int8Array: true, Uint8Array: true, Int16Array: true, Uint16Array: true,
+    Int32Array: true, Uint32Array: true, BigInt64Array: true, BigUint64Array: true,
+  });
+  // Captured before guest code runs, so later edits to Reflect, prototypes or
+  // own properties cannot change what these reads return. Each getter reads the
+  // real typed-array slot and never consults a guest-defined own "byteLength".
+  const reflectApply = Reflect.apply;
+  const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype);
+  const typedArrayGetter = (key) => Object.getOwnPropertyDescriptor(typedArrayPrototype, key).get;
+  // The tag getter returns undefined for anything that is not a typed array.
+  const typedArrayName = typedArrayGetter(Symbol.toStringTag);
+  const typedArrayBuffer = typedArrayGetter("buffer");
+  const typedArrayByteOffset = typedArrayGetter("byteOffset");
+  const typedArrayByteLength = typedArrayGetter("byteLength");
   const GuestUint8Array = Uint8Array;
   const parseHexByte = (hex, index) => parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  // Host callbacks never throw into the guest: on any refusal the host returns a
+  // non-string sentinel and this guest-realm error is thrown instead.
   const randomHex = (length) => {
     const hex = hostRandomHex(length);
     if (typeof hex !== "string" || hex.length !== length * 2 || !/^[0-9a-f]*$/.test(hex)) {
@@ -91,15 +101,23 @@ export const CODE_MODE_WEB_GLOBALS_SOURCE = String.raw`
   const webCrypto = typeof hostRandomHex === "function"
     ? Object.freeze({
         getRandomValues(array) {
-          if (!integerArrayNames.has(callTypedArrayName(array))) {
+          const name = reflectApply(typedArrayName, array, []);
+          if (typeof name !== "string" || integerArrayNames[name] !== true) {
             throw namedError("TypeMismatchError", "crypto.getRandomValues: the argument must be an integer TypedArray such as Uint8Array.");
           }
-          if (array.byteLength > ${CODE_MODE_RANDOM_VALUES_MAX_BYTES}) {
-            throw namedError("QuotaExceededError", "crypto.getRandomValues: the array's byte length (" + array.byteLength + ") exceeds ${CODE_MODE_RANDOM_VALUES_MAX_BYTES}.");
+          // Read the length exactly once and use that one value for the quota
+          // check, the host request and the fill.
+          const byteLength = reflectApply(typedArrayByteLength, array, []);
+          if (byteLength > ${CODE_MODE_RANDOM_VALUES_MAX_BYTES}) {
+            throw namedError("QuotaExceededError", "crypto.getRandomValues: the array's byte length (" + byteLength + ") exceeds ${CODE_MODE_RANDOM_VALUES_MAX_BYTES}.");
           }
-          const hex = randomHex(array.byteLength);
-          const bytes = new GuestUint8Array(array.buffer, array.byteOffset, array.byteLength);
-          for (let index = 0; index < bytes.length; index++) bytes[index] = parseHexByte(hex, index);
+          const hex = randomHex(byteLength);
+          const bytes = new GuestUint8Array(
+            reflectApply(typedArrayBuffer, array, []),
+            reflectApply(typedArrayByteOffset, array, []),
+            byteLength,
+          );
+          for (let index = 0; index < byteLength; index++) bytes[index] = parseHexByte(hex, index);
           return array;
         },
         randomUUID() {

@@ -1,9 +1,7 @@
 /** QuickJS worker for Code Mode guest execution and suspended VM snapshots. */
-import { randomBytes } from "node:crypto";
 import {
   CODE_MODE_CONTROLLER_SOURCE,
   CODE_MODE_HOST_RANDOM_HEX,
-  CODE_MODE_RANDOM_VALUES_MAX_BYTES,
   boundCodeModeError,
   captureCodeModeOutput,
   captureCodeModeValue,
@@ -35,6 +33,7 @@ import {
   type JSValueHandle,
   type Snapshot,
 } from "quickjs-wasi";
+import { createHostRandomHexHandler, guardHostCallback } from "./host-callbacks.js";
 import { readSourceLocation } from "./source-location.js";
 
 type CodeModeWorkerPayload = SharedWorkerPayload<Snapshot> & {
@@ -75,8 +74,19 @@ type BridgeState = {
   pendingRequests: PendingBridgeRequest[];
   canceledRequestIds: string[];
   admissionFailure?: CodeModeWorkerFailure;
+  /** First failure inside a host callback; the guest only ever saw a null sentinel. */
+  hostFailure?: Error;
   networkContentObserved?: true;
 };
+
+function throwRecordedHostFailure(bridge: BridgeState): void {
+  if (bridge.admissionFailure) {
+    throw bridge.admissionFailure;
+  }
+  if (bridge.hostFailure) {
+    throw bridge.hostFailure;
+  }
+}
 
 // QuickJS error stacks are backtrace frames only ("    at file:line:col"), with
 // no leading "Name: message" header like V8. Returning .stack alone therefore
@@ -137,7 +147,7 @@ function createHostRequestHandler(params: {
         "invalid_input",
         "too many pending code mode tool calls",
       );
-      throw params.bridge.admissionFailure;
+      return params.vm.null;
     }
     const method = methodHandle.toString();
     if (
@@ -183,24 +193,6 @@ function createHostRequestHandler(params: {
     // Return only diagnostic guest coordinates, not host frames or dispatch authority.
     const stack = callStackHandle?.isString ? callStackHandle.toString().slice(0, 8192) : "";
     return params.vm.newString(normalizeSourceStack(stack, readSourceLocation(params.vm)) ?? "");
-  };
-}
-
-/** Backs guest `crypto`; only a hex string of host random bytes crosses into the VM. */
-function createHostRandomHexHandler(
-  vm: QuickJS,
-): (this: JSValueHandle, length: JSValueHandle) => JSValueHandle {
-  return (lengthHandle) => {
-    const length: unknown = vm.dump(lengthHandle);
-    if (
-      typeof length !== "number" ||
-      !Number.isInteger(length) ||
-      length < 0 ||
-      length > CODE_MODE_RANDOM_VALUES_MAX_BYTES
-    ) {
-      throw new Error("invalid code mode random byte count");
-    }
-    return vm.newString(randomBytes(length).toString("hex"));
   };
 }
 
@@ -262,7 +254,10 @@ async function createVm(input: CodeModeWorkerPayload, bridge: BridgeState): Prom
       ],
       [CODE_MODE_HOST_RANDOM_HEX, createHostRandomHexHandler(vm)],
     ] as const;
-    for (const [name, callback] of callbacks) {
+    for (const [name, unguarded] of callbacks) {
+      const callback = guardHostCallback(vm, unguarded, (error) => {
+        bridge.hostFailure ??= error;
+      });
       if (input.kind === "resume") {
         // The snapshot owns the original function identities. Rebind callbacks
         // by name without recreating globals the controller deliberately hides.
@@ -472,9 +467,7 @@ async function runVmExecution(params: {
       consumed?.();
       consumed = undefined;
       params.vm.executePendingJobs();
-      if (params.bridge.admissionFailure) {
-        throw params.bridge.admissionFailure;
-      }
+      throwRecordedHostFailure(params.bridge);
       const admissionError = params.vm.global
         .getProp("__branchAdmissionError")
         .consume((read) =>
@@ -485,9 +478,15 @@ async function runVmExecution(params: {
       if (admissionError) {
         throw new CodeModeWorkerFailure("invalid_input", admissionError);
       }
-      params.vm.global
-        .getProp("__branchDrainQueuedRequests")
-        .consume((drain) => params.vm.callFunction(drain, params.vm.undefined).dispose());
+      try {
+        params.vm.global
+          .getProp("__branchDrainQueuedRequests")
+          .consume((drain) => params.vm.callFunction(drain, params.vm.undefined).dispose());
+      } catch (error) {
+        // A refused admission reaches the guest as its own error; report the host's reason.
+        throwRecordedHostFailure(params.bridge);
+        throw error;
+      }
       output = takeOutput(params.vm);
       const resultHandle = params.vm.global.getProp("__branchResult");
       try {
