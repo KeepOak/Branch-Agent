@@ -5,6 +5,8 @@ import type { Level } from "../../places-nav/settings-nav";
 import { resolveApproval } from "../../thread/actions";
 import { useApprovalDetails, useHelpers, type ApprovalDetails, type Helper } from "../../thread/useEngineData";
 import { needsYou } from "../../thread/Helpers";
+import { nativeHelpers } from "../../thread/native-helpers";
+import { NativeHelpers } from "../../thread/NativeHelpers";
 import { Face } from "../../face/Face";
 import { SIcon } from "../stage-icons";
 import { activityRecordedAt, activityState, money } from "./pane-model";
@@ -140,7 +142,8 @@ export function currentTask(blocks: readonly Block[], running: boolean): Block[]
 export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, onError }: { engine: WindowEngine; name: string; blocks: Block[]; running: boolean; level: Level; focusHelpers?: number; onError: (m: string) => void }) {
   const helperSection = useRef<HTMLElement>(null);
   const { helpers } = useHelpers(engine);
-  useEffect(() => { if (focusHelpers && helpers.length) helperSection.current?.scrollIntoView?.({ block: "start" }); }, [focusHelpers, helpers.length]);
+  const native = nativeHelpers(blocks);
+  useEffect(() => { if (focusHelpers && (helpers.length || native.length)) helperSection.current?.scrollIntoView?.({ block: "start" }); }, [focusHelpers, helpers.length, native.length]);
   const { details } = useApprovalDetails(engine);
   const card = useCanopyCard(engine);
   const facts = useHelperFacts(engine, helpers);
@@ -149,7 +152,13 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
   const helperWaiting = approvals.filter((a) => !a.decision && helpers.some((h) => h.key === a.sessionKey)).length;
   const state = activityState(running, mine + helperWaiting);
   const asOf = activityRecordedAt(blocks);
-  const steps = currentTask(blocks, running).filter((b): b is Extract<Block, { kind: "step" }> => b.kind === "step");
+  const stepByKey = new Map<string, Extract<Block, { kind: "step" }>>();
+  for (const block of currentTask(blocks, running)) {
+    if (block.kind !== "step") continue;
+    const previous = stepByKey.get(block.key);
+    if (!previous || (block.at ?? 0) >= (previous.at ?? 0)) stepByKey.set(block.key, block);
+  }
+  const steps = [...stepByKey.values()];
   const shown = steps.slice(-8);
   const first = steps.length - shown.length;
   const direct = helpers.filter((h) => h.parent === engine.sessionKey);
@@ -186,12 +195,12 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
       ) : (
         <p className="pane-empty">No steps yet. What {name} does shows here as it works.</p>
       )}
-      {helpers.length ? (
+      {helpers.length || native.length ? (
         <section ref={helperSection} className="hp-pn" aria-label="Helpers on this task">
           <div className="hph-pn">
             <h3>Helpers on this task</h3>
             <small>
-              {direct.length} started by {name}
+              {direct.length + native.length} started by {name}
               {helperWaiting ? ` · ${needsYou(helperWaiting)}` : ""}
             </small>
           </div>
@@ -211,6 +220,7 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
               />
             ))}
           </div>
+          {native.length ? <NativeHelpers helpers={native} /> : null}
           <p className="hint-st">Each helper runs on its own model and asks for its own approvals. Nothing a helper does skips your rules.</p>
         </section>
       ) : null}

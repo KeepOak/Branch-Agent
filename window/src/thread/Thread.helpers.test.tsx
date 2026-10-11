@@ -33,6 +33,21 @@ function backend() {
 }
 
 describe("actual thread compact helper entry", () => {
+  it("opens native worker assignments without creating or navigating to a sidebar session", async () => {
+    const fixture = backend();
+    fixture.request.mockImplementation(async (method: string) => method === "sessions.list" ? { sessions: [] } : method === "users.prefs.get" ? { status: "ok", entries: {} } : method === "users.self" ? { id: "observer" } : method === "session.reactions.list" ? { reactions: {} } : method === "usage.status" ? { providers: [] } : { items: [] });
+    const activity = vi.fn(), openSession = vi.fn();
+    const container = document.body.appendChild(document.createElement("div"));
+    root = createRoot(container);
+    await act(async () => root!.render(<Thread name="Owner" history={[{ kind: "step", key: "native", tool: "spawn_agent", title: "", detail: "", status: "ok", input: JSON.stringify({ task_name: "review", message: "Check the change" }) }]}
+      live={[]} pendingUser={null} running={false} engine={fixture.engine} onAnswer={() => {}} onOpenActivity={activity} onOpenSession={openSession} />));
+    const chip = container.querySelector<HTMLButtonElement>('[data-testid="helpers-chip"]');
+    expect(chip?.textContent).toContain("1 helper");
+    expect(chip?.textContent).not.toContain("done");
+    await act(async () => chip!.click());
+    expect(activity).toHaveBeenCalledOnce();
+    expect(openSession).not.toHaveBeenCalled();
+  });
   it("opens full Activity through the task-anchored chip without navigating or stopping the conversation", async () => {
     const fixture = backend();
     const activity = vi.fn(), openSession = vi.fn();

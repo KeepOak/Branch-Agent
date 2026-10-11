@@ -41,6 +41,25 @@ function backend(initialCost: unknown) {
 }
 
 describe("actual Activity helper measured facts", () => {
+  it("shows native subagents even when sessions.list has no child sessions", async () => {
+    const fixture = backend(0.1);
+    const original = fixture.engine.request;
+    fixture.engine.request = async (method, params) => method === "sessions.list" ? { sessions: [] } as never : original(method, params);
+    await render(fixture.engine, 1, [{ kind: "step", key: "native", tool: "spawn_agent", title: "", detail: "", status: "ok", input: JSON.stringify({ task_name: "review", message: "Check the changed files" }) }]);
+    expect(container.querySelector('[aria-label="Native subagents"]')?.textContent).toContain("review");
+    expect(container.querySelector('[aria-label="Native subagents"]')?.textContent).toContain("Status not reported");
+    expect(container.querySelector('[aria-label="Native subagents"]')?.textContent).toContain("Check the changed files");
+    expect(container.querySelector('[aria-label="Native subagents"] button')).toBeNull();
+    await render(fixture.engine, 0, [
+      { kind: "step", key: "same-call", tool: "spawn_agent", title: "", detail: "", status: "ok", at: 1_000, input: JSON.stringify({ task_name: "review", message: "Check the changed files" }) },
+      { kind: "step", key: "same-call", tool: "subagents", title: "started: /root/review", detail: "", status: "ok", at: 2_000 },
+    ]);
+    expect(container.querySelectorAll(".tl-pn li")).toHaveLength(1);
+    expect(container.querySelector('[aria-label="Native subagents"]')?.textContent).toContain("Check the changed files");
+    expect(container.querySelector('[aria-label="Native subagents"]')?.textContent).toContain("Working at last update");
+    await render(fixture.engine, 0, []);
+    expect(container.querySelector('[aria-label="Native subagents"]')).toBeNull();
+  });
   it("shows one helpers section with status marks instead of helper faces", async () => {
     await render(backend(0.1).engine);
     expect(container.querySelectorAll('section[aria-label="Helpers on this task"]')).toHaveLength(1);
