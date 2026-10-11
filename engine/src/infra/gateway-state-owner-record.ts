@@ -9,6 +9,10 @@ import {
   GatewayLockNamespaceError,
   parseGatewayLockPayload,
 } from "./gateway-lock-payload.js";
+import {
+  formatStateOfflineMaintenanceMessage,
+  formatStateOwnershipUnverifiedMessage,
+} from "./gateway-state-unavailable.js";
 import { isLockOwnerDefinitelyStale } from "./stale-lock-file.js";
 
 /** Admission and reclamation use the same namespace-qualified PID evidence. */
@@ -46,7 +50,7 @@ export function assertPersistedStateDatabaseAccessAllowed(params: {
   assertMaintenance: () => void;
 }): void {
   const { databasePath, ownerPath, assertMaintenance } = params;
-  const unavailable = `Branch Agent state ownership at ${databasePath} could not be verified; retry after maintenance finishes.`;
+  const unavailable = formatStateOwnershipUnverifiedMessage(databasePath);
   let raw: string;
   try {
     raw = fs.readFileSync(ownerPath, "utf8");
@@ -86,10 +90,8 @@ export function assertPersistedStateDatabaseAccessAllowed(params: {
   if (owner.stateOwnerKind === "schema" && owner.role === "sqlite-maintenance") {
     throw new StateDatabaseAdmissionPendingError(
       databasePath,
-      `Branch Agent state at ${databasePath} is undergoing offline maintenance; retry when it finishes.`,
+      formatStateOfflineMaintenanceMessage(databasePath),
     );
   }
-  throw new Error(
-    `Branch Agent state at ${databasePath} is undergoing offline maintenance; retry when it finishes.`,
-  );
+  throw new Error(formatStateOfflineMaintenanceMessage(databasePath));
 }

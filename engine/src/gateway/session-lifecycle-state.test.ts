@@ -149,6 +149,54 @@ describe("session lifecycle state", () => {
     );
   });
 
+  it.each([
+    { phase: "error", error: "Branch Agent state at /state/branch.sqlite is undergoing offline maintenance; retry when it finishes." },
+    {
+      phase: "end",
+      stopReason: "error",
+      error:
+        "Branch Agent state ownership at /state/branch.sqlite could not be verified; retry after maintenance finishes.",
+    },
+  ])(
+    "leaves the row running for the state's new owner when a run lost the shared state ($phase)",
+    async (terminal) => {
+      const entry: SessionEntry = {
+        sessionId: "handoff-session",
+        updatedAt: 1_000,
+        startedAt: 1_000,
+        status: "running",
+        lifecycleRunId: "handoff-run",
+      };
+      const stored = await persistLifecycle(entry, {
+        sessionId: "handoff-session",
+        runId: "handoff-run",
+        ts: 2_000,
+        data: { startedAt: 1_000, endedAt: 2_000, ...terminal },
+      });
+      expect(stored.status).toBe("running");
+      expect(stored.lifecycleRunId).toBe("handoff-run");
+      expect(stored.lastRunError).toBeUndefined();
+      expect(stored.abortedLastRun).not.toBe(true);
+    },
+  );
+
+  it("still records an ordinary run failure as failed", async () => {
+    const entry: SessionEntry = {
+      sessionId: "handoff-session",
+      updatedAt: 1_000,
+      startedAt: 1_000,
+      status: "running",
+      lifecycleRunId: "handoff-run",
+    };
+    const stored = await persistLifecycle(entry, {
+      sessionId: "handoff-session",
+      runId: "handoff-run",
+      ts: 2_000,
+      data: { phase: "error", startedAt: 1_000, endedAt: 2_000, error: "stream disconnected" },
+    });
+    expect(stored.status).toBe("failed");
+  });
+
   it("does not pause the goal for a stale run or session failure", async () => {
     for (const event of [
       { ...goalFailure, sessionId: "old-session" },

@@ -6,6 +6,7 @@ import { formatCliCommand } from "../cli/command-format.js";
 import { isAgentRunStaleLifecycleError } from "../infra/agent-lifecycle-error.js";
 import { copyErrorDiagnostic } from "../infra/error-diagnostics.js";
 import { collectErrorGraphCandidates, formatErrorMessage, readErrorName } from "../infra/errors.js";
+import { isGatewayStateUnavailableMessage } from "../infra/gateway-state-unavailable.js";
 import { failoverReasonFromClassification } from "./failover/classification-rules.js";
 import {
   classifyFailoverSignal,
@@ -324,7 +325,9 @@ function hasRuntimeCoordinationFailure(err: unknown): boolean {
   return collectErrorGraphCandidates(err, resolveNestedErrors).some(
     (candidate) =>
       RUNTIME_COORDINATION_ERROR_NAMES.has(readErrorName(candidate)) ||
-      resolveExecutionApprovalFailureMessage(readDirectErrorMessage(candidate)) !== undefined,
+      resolveExecutionApprovalFailureMessage(readDirectErrorMessage(candidate)) !== undefined ||
+      // The shared state moved to another owner (a handoff successor or maintenance): no model can write it.
+      isGatewayStateUnavailableMessage(readDirectErrorMessage(candidate) ?? ""),
   );
 }
 

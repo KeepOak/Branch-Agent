@@ -13,6 +13,7 @@ import { buildUpdatedSessionGoalStatus } from "../config/sessions/goals-transiti
 import { patchSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { withOwnedSessionTranscriptWrites } from "../config/sessions/transcript-write-context.js";
 import { getAgentEventLifecycleGeneration, type AgentEventPayload } from "../infra/agent-events.js";
+import { isGatewayStateUnavailableMessage } from "../infra/gateway-state-unavailable.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   readAgentRunProviderReview,
@@ -216,6 +217,21 @@ export function deriveGatewaySessionLifecycleSnapshot(params: {
   };
 }
 
+/**
+ * A run cut off because this engine lost the shared state (a handoff successor or maintenance took it) did not fail
+ * on its own, and this engine no longer owns its conversation.
+ */
+function isLostGatewayStateTerminal(event: LifecycleEventLike): boolean {
+  const terminal = resolveSettledLifecycleTerminalOutcome(event);
+  if (!terminal || classifyAgentRunTerminalOutcome(terminal) !== "failure") {
+    return false;
+  }
+  const error = terminal.error;
+  return isGatewayStateUnavailableMessage(
+    typeof error === "string" ? error : error instanceof Error ? error.message : "",
+  );
+}
+
 function derivePersistedSessionLifecyclePatch(params: {
   entry?: Partial<PersistedLifecycleSessionShape> | null;
   event: LifecycleEventLike;
@@ -223,6 +239,11 @@ function derivePersistedSessionLifecyclePatch(params: {
   const phase = resolveLifecyclePhase(params.event);
   // Queued request settlement cannot end the turn that owns this session.
   if ((phase === "end" || phase === "error") && params.event.data?.executionStarted === false) {
+    return {};
+  }
+  // Leave the row running: the state's new owner resumes it (handoff-lease or startup orphan recovery). Recording
+  // a failure here would end the conversation with nobody left to retry it.
+  if ((phase === "end" || phase === "error") && isLostGatewayStateTerminal(params.event)) {
     return {};
   }
   const snapshot = deriveGatewaySessionLifecycleSnapshot({

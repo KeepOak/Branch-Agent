@@ -36,6 +36,10 @@ import {
   isGatewayStateOwnerDefinitelyStale,
   StateDatabaseAdmissionPendingError,
 } from "./gateway-state-owner-record.js";
+import {
+  formatStateOfflineMaintenanceMessage,
+  formatStateOwnershipUnverifiedMessage,
+} from "./gateway-state-unavailable.js";
 import { normalizeSqliteNonNegativeInteger } from "./sqlite-busy-timeout.js";
 import { runWithSqliteCleanup } from "./sqlite-lifecycle-errors.js";
 
@@ -686,9 +690,7 @@ export function assertStateDatabaseReadAllowed(databasePath: string): void {
     !hasPhysicalOwnership(owner) ||
     (owner.getProjection && !owner.getProjection()?.verifyStillHeld())
   ) {
-    throw new Error(
-      `Branch Agent state ownership at ${databasePath} could not be verified; retry after maintenance finishes.`,
-    );
+    throw new Error(formatStateOwnershipUnverifiedMessage(databasePath));
   }
   readOwnerPaths.set(key, { pathname, owner, expiresAt: now + READ_OWNERSHIP_MAX_AGE_MS });
 }
@@ -709,15 +711,13 @@ export function assertStateDatabaseAccessAllowed(
     }
     const scope = captured ? captured.maintenanceScope : getBranchDatabaseMaintenanceScope();
     if (!scope) {
-      throw new Error(
-        `Branch Agent state at ${databasePath} is undergoing offline maintenance; retry when it finishes.`,
-      );
+      throw new Error(formatStateOfflineMaintenanceMessage(databasePath));
     }
     scope.assertDatabaseAccess(databasePath);
   };
   const pathname = resolveGatewayStateOwnerPath(databasePath);
   const local = owners.get(pathname);
-  const unavailable = `Branch Agent state ownership at ${databasePath} could not be verified; retry after maintenance finishes.`;
+  const unavailable = formatStateOwnershipUnverifiedMessage(databasePath);
   if (local) {
     if (!hasPhysicalOwnership(local)) {
       throw new Error(unavailable);
