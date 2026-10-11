@@ -9,7 +9,8 @@ import {
   claimNextQueueItem,
   closeQueueClaimForThread,
   listQueueItems,
-  MAX_CLAIM_FAILURES,
+  MAX_NOT_READY_ATTEMPTS,
+  releaseQueueItem,
   pickUpQueuedWork,
   reconcileTrunkQueue,
   UNAVAILABLE_RETRY_MS,
@@ -44,7 +45,8 @@ function rowById(id: string) {
 }
 
 // The live failure a queued brief met on a Trunk that was still getting ready (session run error text).
-const STARTUP_RACE = "prepared model runtime publication was superseded for /scratch/agents/builder";
+const STARTUP_RACE =
+  "prepared model runtime publication was superseded for /scratch/agents/builder";
 
 let dir = "";
 const savedStateDir = process.env.BRANCH_STATE_DIR;
@@ -95,11 +97,11 @@ describe("Trunk queue auto-claim after a Trunk that was not ready", () => {
     expect(briefedThreads(calls)).toEqual([row?.thread_key]);
   });
 
-  it("never blocks a card that only met Trunks that were not ready", async () => {
+  it("blocks a card after ten not-ready runs across Trunks until explicitly released", async () => {
     const card = addQueueItem({ title: "card", brief_text: "build it", priority: 1 });
     const { gateway } = idleGateway();
 
-    for (let attempt = 0; attempt <= MAX_CLAIM_FAILURES; attempt += 1) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
       const agentId = `builder-ready-${attempt}`;
       const claim = claimNextQueueItem(agentId);
       expect(claim?.id).toBe(card.id);
@@ -111,10 +113,31 @@ describe("Trunk queue auto-claim after a Trunk that was not ready", () => {
         error: `prepared reply dispatch runtime owner was not published for ${agentId}`,
         gateway,
       });
+      expect(rowById(card.id)?.not_ready_attempts).toBe(attempt + 1);
+      expect(rowById(card.id)?.status).toBe(attempt < 9 ? "released" : "blocked");
+      // Duplicate lifecycle events must not consume another retry.
+      expect(closeQueueClaimForThread(claim!.thread_key, "not_ready")).toBe(false);
     }
 
-    expect(rowById(card.id)?.status).toBe("released");
+    expect(MAX_NOT_READY_ATTEMPTS).toBe(10);
     expect(rowById(card.id)?.failures ?? 0).toBe(0);
+    expect(rowById(card.id)?.blocked_reason).toContain("10 not-ready attempts");
+    expect(rowById(card.id)?.blocked_reason).toContain("queue_release");
+    expect(claimNextQueueItem("builder-after-cap")).toBeUndefined();
+    await reconcileTrunkQueue({ gateway, agentIds: async () => ["builder-after-cap"] });
+    expect(rowById(card.id)?.status).toBe("blocked");
+
+    // The cap belongs to this card, not the entire queue.
+    const other = addQueueItem({ title: "other", brief_text: "build another" });
+    expect(claimNextQueueItem("builder-other")?.id).toBe(other.id);
+
+    releaseQueueItem(card.id);
+    expect(rowById(card.id)?.not_ready_attempts).toBe(0);
+    const retry = claimNextQueueItem("builder-repaired");
+    expect(retry?.id).toBe(card.id);
+    closeQueueClaimForThread(retry!.thread_key, "not_ready");
+    expect(rowById(card.id)?.status).toBe("released");
+    expect(rowById(card.id)?.not_ready_attempts).toBe(1);
   });
 
   it("leaves a Trunk that keeps failing as not ready out of pickup for longer each time", async () => {
@@ -156,13 +179,30 @@ describe("Trunk queue auto-claim after a Trunk that was not ready", () => {
     expect(rowById(card.id)?.failures).toBe(1);
   });
 
+  it("counts state contention as a failed attempt even when its text resembles a startup race", async () => {
+    const card = addQueueItem({ title: "card", brief_text: "build it" });
+    const claim = claimNextQueueItem("builder-contention");
+    const { gateway } = idleGateway();
+    await onTrunkRunLifecycle({
+      agentId: "builder-contention",
+      terminal: true,
+      threadKey: claim?.thread_key,
+      outcome: "failed",
+      error: STARTUP_RACE,
+      errorKind: "state_contention",
+      gateway,
+    });
+    expect(rowById(card.id)?.failures).toBe(1);
+    expect(rowById(card.id)?.not_ready_attempts ?? 0).toBe(0);
+  });
+
   it("recognises the not-ready failures and nothing else", () => {
     expect(isTrunkNotReadyRunFailure(STARTUP_RACE)).toBe(true);
-    expect(isTrunkNotReadyRunFailure("Agent run failed", "state_contention")).toBe(true);
+    expect(isTrunkNotReadyRunFailure("Agent run failed", "state_contention")).toBe(false);
     expect(isTrunkNotReadyRunFailure({ gatewayCode: "UNAVAILABLE", message: "busy" })).toBe(true);
     expect(
       isTrunkNotReadyRunFailure(
-        "Branch Agent state at C:\\state\\branch.sqlite is undergoing offline maintenance; retry when it finishes.",
+        "Branch Agent state at /scratch/branch.sqlite is undergoing offline maintenance; retry when it finishes.",
       ),
     ).toBe(true);
     expect(isTrunkNotReadyRunFailure("404 not_found_error: model: claude-opus-5-5")).toBe(true);

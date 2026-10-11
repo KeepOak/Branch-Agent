@@ -49,6 +49,8 @@ export const ORPHAN_CLAIM_GRACE_MS = 2 * 60_000;
 export const HARD_CLAIM_CAP_MS = 4 * 60 * 60_000;
 /** Stop attempts for a silent claim before it is marked as needing a person and not retried. */
 export const MAX_STOP_ATTEMPTS = 3;
+/** Not-ready run endings allowed per card before a person must repair the runtime and release it. */
+export const MAX_NOT_READY_ATTEMPTS = 10;
 const RUN_ERROR_REASON = "the run ended with an error";
 /** After a Trunk refuses work as not ready, it is not tried again until this much time has passed. */
 export const UNAVAILABLE_RETRY_MS = 60_000;
@@ -235,6 +237,7 @@ export function releaseQueueItem(
     if (!row.claimed_by && row.blocked_reason) {
       delete row.blocked_reason;
       row.failures = 0;
+      row.not_ready_attempts = 0;
       row.released_at = now;
       write(rows, now, env);
     }
@@ -268,7 +271,8 @@ export function touchQueueClaim(
 /**
  * The run in a claim's own thread ended. A clean end completes the job; an error counts a failed attempt and
  * puts it back. A run that failed because its Trunk was not ready (outcome "not_ready") puts the job back without
- * a failed attempt and leaves that Trunk out of pickup for UNAVAILABLE_RETRY_MS. Runs in other threads do not
+ * a failed attempt and leaves that Trunk out of pickup for UNAVAILABLE_RETRY_MS. After
+ * MAX_NOT_READY_ATTEMPTS such endings the card blocks until explicitly released. Runs in other threads do not
  * touch the claim. Returns whether a claim was closed.
  */
 export function closeQueueClaimForThread(
@@ -291,8 +295,20 @@ export function closeQueueClaimForThread(
       const strikes = (notReadyTrunks.get(claimant)?.strikes ?? 0) + 1;
       const hold = Math.min(UNAVAILABLE_RETRY_MS * 2 ** (strikes - 1), NOT_READY_MAX_HOLD_MS);
       notReadyTrunks.set(claimant, { until: now + hold, strikes });
+      row.not_ready_attempts = (row.not_ready_attempts ?? 0) + 1;
       release(row, now);
-      transition = { kind: "released", item: { ...row }, agentId: claimant, seq: nextSeq() };
+      const blocked = row.not_ready_attempts >= MAX_NOT_READY_ATTEMPTS;
+      if (blocked) {
+        row.blocked_reason =
+          `Stopped after ${MAX_NOT_READY_ATTEMPTS} not-ready attempts without starting the job. ` +
+          "Check the Trunk runtime and model availability, then queue_release this job to run it again.";
+      }
+      transition = {
+        kind: blocked ? "blocked" : "released",
+        item: { ...row },
+        agentId: claimant,
+        seq: nextSeq(),
+      };
     } else if (outcome === "completed") {
       notReadyTrunks.delete(row.claimed_by!);
       const firstCompletion = row.done_at === undefined;

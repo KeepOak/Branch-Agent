@@ -19,7 +19,7 @@ export function isTrunkUnavailableError(error: unknown): boolean {
   return (
     shape.gatewayCode === "UNAVAILABLE" ||
     shape.code === "UNAVAILABLE" ||
-    /has not completed startup inspection/.test(errorText(error))
+    errorText(error).includes("has not completed startup inspection")
   );
 }
 
@@ -29,14 +29,17 @@ const NOT_READY_RUN_FAILURES =
   /runtime owner was not published|is undergoing offline maintenance|has not completed startup inspection|preparation watchdog/i;
 
 /**
- * A claimed run that failed because its Trunk could not run anything yet: a startup race, a not-ready refusal, a busy
+ * A claimed run that failed because its Trunk could not run anything yet: a startup race, a not-ready refusal, an offline
  * state store, or a model the Trunk cannot reach right now. The brief never ran, so like an UNAVAILABLE refusal at
  * dispatch it is not a failed attempt of the job.
  */
 export function isTrunkNotReadyRunFailure(error: unknown, errorKind?: unknown): boolean {
+  // Contention may happen after execution; its text must never grant a free replay.
+  if (errorKind === "state_contention") {
+    return false;
+  }
   const text = errorText(error);
   return (
-    errorKind === "state_contention" ||
     isTrunkUnavailableError(error) ||
     isRuntimeRaceFailure(error) ||
     NOT_READY_RUN_FAILURES.test(text) ||
