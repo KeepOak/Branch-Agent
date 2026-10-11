@@ -56,14 +56,70 @@ export const UNAVAILABLE_RETRY_MS = 60_000;
 /** Claim ids whose brief is still being sent. A claim is never called orphaned while its dispatch is in flight. */
 const dispatchingClaimIds = new Set<string>();
 
-function failClaim(row: TrunkQueueItem, now: number, reason: string): void {
+/** A real change in a job's state. Refreshes and no-op calls produce none. */
+export type QueueTransition = {
+  kind: "claimed" | "done" | "released" | "blocked";
+  item: TrunkQueueItem;
+  agentId?: string;
+  /** Increases with every transition the queue decides, in decision order. Assigned inside the queue lock. */
+  seq: number;
+};
+let transitionSeq = 0;
+
+/** Called inside the queue lock, so the number follows the order in which the queue made each decision. */
+function nextSeq(): number {
+  transitionSeq += 1;
+  return transitionSeq;
+}
+type QueueTransitionListener = (transition: QueueTransition) => void;
+let transitionListener: QueueTransitionListener | undefined;
+
+/** The gateway sets one listener for progress lines. Clearing it (undefined) stops them. */
+export function setQueueTransitionListener(listener: QueueTransitionListener | undefined): void {
+  transitionListener = listener;
+}
+
+/** Called only after the queue lock is released, with a snapshot taken inside it. Never throws into the queue. */
+function announce(transition: QueueTransition): void {
+  try {
+    transitionListener?.(transition);
+  } catch {
+    // A progress line must never fail the queue operation that produced it.
+  }
+}
+
+/**
+ * Frees a claim the reaper found stale. The transition is decided inside the lock, with the claimant it released, and
+ * announced after the lock is released.
+ */
+function releaseClaimAnnounced(
+  env: NodeJS.ProcessEnv | undefined,
+  claim: ClaimRef,
+  now: number,
+): boolean {
+  let transition = undefined as QueueTransition | undefined;
+  const released = updateClaim(env, claim, now, (row) => {
+    const claimant = row.claimed_by;
+    release(row, now);
+    transition = { kind: "released", item: { ...row }, agentId: claimant, seq: nextSeq() };
+  });
+  if (transition) {
+    announce(transition);
+  }
+  return released;
+}
+
+/** Returns true when this failure blocked the job; the caller announces it after its lock is released. */
+function failClaim(row: TrunkQueueItem, now: number, reason: string): boolean {
   row.failures = (row.failures ?? 0) + 1;
   release(row, now);
   if (row.failures >= MAX_CLAIM_FAILURES) {
     row.blocked_reason =
       `Stopped after ${MAX_CLAIM_FAILURES} failed attempts (last: ${reason}). ` +
       "Check the Trunk, then queue_release this job to run it again.";
+    return true;
   }
+  return false;
 }
 
 export function queueItemStatus(row: TrunkQueueItem): TrunkQueueStatus {
@@ -113,16 +169,27 @@ export function markQueueItemDone(
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
 ): TrunkQueueItem | undefined {
-  return withQueueLock(env, () => {
+  const done = withQueueLock(env, () => {
     const rows = read(env);
     const row = rows.find((candidate) => candidate.id === id);
     if (!row) {
       return undefined;
     }
+    const firstCompletion = row.done_at === undefined;
     row.done_at ??= now;
     write(rows, now, env);
-    return row;
+    const transition: QueueTransition | undefined = firstCompletion
+      ? { kind: "done", item: { ...row }, seq: nextSeq() }
+      : undefined;
+    return { row, transition };
   });
+  if (!done) {
+    return undefined;
+  }
+  if (done.transition) {
+    announce(done.transition);
+  }
+  return done.row;
 }
 
 /**
@@ -136,7 +203,7 @@ export function releaseQueueItem(
   now = Date.now(),
   claimId?: string,
 ): TrunkQueueItem | undefined {
-  return withQueueLock(env, () => {
+  const outcome = withQueueLock(env, () => {
     const rows = read(env);
     const row = rows.find((candidate) => candidate.id === id);
     if (!row) {
@@ -144,16 +211,29 @@ export function releaseQueueItem(
     }
     const before = { ...row };
     if (isOpenClaim(row) && (claimId === undefined || row.claim_id === claimId)) {
+      const claimant = row.claimed_by;
       release(row, now);
       write(rows, now, env);
-    } else if (!row.claimed_by && row.blocked_reason) {
+      const transition: QueueTransition = {
+        kind: "released",
+        item: { ...row },
+        agentId: claimant,
+        seq: nextSeq(),
+      };
+      return { before, transition };
+    }
+    if (!row.claimed_by && row.blocked_reason) {
       delete row.blocked_reason;
       row.failures = 0;
       row.released_at = now;
       write(rows, now, env);
     }
-    return before;
+    return { before };
   });
+  if (outcome?.transition) {
+    announce(outcome.transition);
+  }
+  return outcome?.before;
 }
 
 /** Records run activity in the claim's own thread, so a working claim is not released as stale. */
@@ -185,22 +265,34 @@ export function closeQueueClaimForThread(
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
 ): boolean {
-  return withQueueLock(env, () => {
+  const closed = withQueueLock(env, () => {
     const rows = read(env);
     const row = rows.find(
       (candidate) => isOpenClaim(candidate) && candidate.thread_key === threadKey,
     );
     if (!row) {
-      return false;
+      return undefined;
     }
+    let transition: QueueTransition | undefined;
     if (outcome === "completed") {
+      const firstCompletion = row.done_at === undefined;
       row.done_at = now;
-    } else {
-      failClaim(row, now, RUN_ERROR_REASON);
+      if (firstCompletion) {
+        transition = { kind: "done", item: { ...row }, agentId: row.claimed_by, seq: nextSeq() };
+      }
+    } else if (failClaim(row, now, RUN_ERROR_REASON)) {
+      transition = { kind: "blocked", item: { ...row }, seq: nextSeq() };
     }
     write(rows, now, env);
-    return true;
+    return { transition };
   });
+  if (!closed) {
+    return false;
+  }
+  if (closed.transition) {
+    announce(closed.transition);
+  }
+  return true;
 }
 
 /**
@@ -232,15 +324,22 @@ function failQueueClaim(
   claimId: string,
   reason: string,
 ): void {
-  return withQueueLock(env, () => {
+  const blocked = withQueueLock(env, () => {
     const rows = read(env);
     const row = rows.find((candidate) => candidate.id === id);
     if (!row || !isOpenClaim(row) || row.claim_id !== claimId) {
-      return;
+      return undefined;
     }
-    failClaim(row, now, reason);
+    const isBlocked = failClaim(row, now, reason);
     write(rows, now, env);
+    const transition: QueueTransition | undefined = isBlocked
+      ? { kind: "blocked", item: { ...row }, seq: nextSeq() }
+      : undefined;
+    return transition;
   });
+  if (blocked) {
+    announce(blocked);
+  }
 }
 
 /** True while the job is still held by this claim attempt (not done, released or reclaimed since). */
@@ -265,7 +364,7 @@ export function claimNextQueueItem(
   now = Date.now(),
   epoch = GATEWAY_EPOCH,
 ): TrunkQueueClaim | undefined {
-  return withQueueLock(env, () => {
+  const claimed = withQueueLock(env, () => {
     const rows = read(env);
     const holds = rows.some((row) => isOpenClaim(row) && row.claimed_by === agentId);
     const next = holds ? undefined : rows.filter(isClaimable).toSorted(byPriority)[0];
@@ -282,8 +381,19 @@ export function claimNextQueueItem(
       gateway_epoch: epoch,
     });
     write(rows, now, env);
-    return claim;
+    const transition: QueueTransition = {
+      kind: "claimed",
+      item: { ...claim },
+      agentId,
+      seq: nextSeq(),
+    };
+    return { claim, transition };
   });
+  if (!claimed) {
+    return undefined;
+  }
+  announce(claimed.transition);
+  return claimed.claim;
 }
 
 type ReaperParams = {
@@ -310,7 +420,7 @@ async function reapSilentClaim(params: ReaperParams, claim: ClaimRef): Promise<v
   }
   const at = (params.now ?? Date.now)();
   if (outcome === "stopped") {
-    updateClaim(params.env, claim, at, (row) => release(row, at));
+    releaseClaimAnnounced(params.env, claim, at);
     params.log?.(
       `Stopped ${after.title} on ${claim.claimed_by} after 4 hours without finishing; it is back in the queue.`,
     );
@@ -350,7 +460,7 @@ async function reapAbandonedClaim(
     return;
   }
   const at = (params.now ?? Date.now)();
-  updateClaim(params.env, claim, at, (row) => release(row, at));
+  releaseClaimAnnounced(params.env, claim, at);
 }
 
 /** Each pass: finds claims past the stale window and handles each one, re-reading the queue after every await. */
@@ -576,7 +686,7 @@ export async function releaseOrphanQueueClaims(params: {
       continue;
     }
     const at = now();
-    updateClaim(params.env, claimRef(candidate), at, (row) => release(row, at));
+    releaseClaimAnnounced(params.env, claimRef(candidate), at);
   }
 }
 
