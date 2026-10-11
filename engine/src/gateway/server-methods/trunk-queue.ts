@@ -4,7 +4,7 @@ import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/i
 import { isQueueEligibleTrunk, isTrunkStartupPending } from "../../agents/trunk-queue-policy.js";
 import {
   addQueueItem,
-  closeQueueClaimForThread,
+  closeQueueClaimRun,
   listQueueItems,
   markQueueItemDone,
   pickUpQueuedWork,
@@ -37,22 +37,30 @@ const localGateway: TrunkQueueGateway = {
 const RUN_END_IDLE_WAIT_MS = 30_000;
 
 /**
- * Run start or end in a Trunk's thread: keep its claim fresh. A clean end completes the job and an error puts it
- * back; then an idle eligible Trunk takes the next job. A run in any other thread leaves the claim alone.
+ * Run start or end in a Trunk's thread: keep its claim fresh, and note a start. A clean end completes the job and an
+ * error puts it back; then an idle eligible Trunk takes the next job. A run that never started, or failed on a gateway
+ * restart, suspension or unfinished Trunk startup, goes back uncounted and is left to the sweep, which tries it again
+ * once the gateway and the Trunk are ready. A run in any other thread leaves the claim alone.
  */
 export async function onTrunkRunLifecycle(params: {
   agentId: string;
   terminal: boolean;
   threadKey?: string;
   outcome?: "completed" | "failed";
+  /** The run's lifecycle error text, when it ended in an error. */
+  error?: unknown;
   cfg?: BranchConfig;
   gateway?: TrunkQueueGateway;
 }): Promise<void> {
   if (params.threadKey) {
-    touchQueueClaim(params.threadKey);
+    touchQueueClaim(params.threadKey, undefined, undefined, !params.terminal);
   }
-  if (params.terminal && params.threadKey && params.outcome) {
-    closeQueueClaimForThread(params.threadKey, params.outcome);
+  const closed =
+    params.terminal && params.threadKey && params.outcome
+      ? closeQueueClaimRun(params.threadKey, params.outcome, undefined, undefined, params.error)
+      : undefined;
+  if (closed === "retry") {
+    return;
   }
   if (params.terminal && isQueueEligibleTrunk(params.agentId, params.cfg)) {
     await pickUpQueuedWork({
@@ -207,6 +215,8 @@ export const trunkQueueHandlers: GatewayRequestHandlers = {
     respond(true, {
       released: Boolean(before.claimed_by && !before.done_at),
       released_from: before.claimed_by ?? null,
+      // A blocked job holds no claim, so released stays false; unblocked says it is claimable again.
+      unblocked: Boolean(!before.claimed_by && before.blocked_reason && !before.done_at),
     });
     // A released job is claimable again, so an idle eligible Trunk may take it now.
     wakeEligibleTrunks(context.getRuntimeConfig(), (message) => context.logGateway.warn(message));

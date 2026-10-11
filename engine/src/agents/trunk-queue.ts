@@ -12,6 +12,7 @@ import {
 } from "./trunk-queue-run-fence.js";
 import {
   errorText,
+  isRetryableInfrastructureError,
   isTrunkUnavailableError,
   type TrunkAvailability,
 } from "./trunk-queue-status.js";
@@ -37,6 +38,7 @@ export type { TrunkQueueGateway, TrunkQueueItem, TrunkQueueStatus } from "./trun
 export { MAX_CLAIM_FAILURES, STALE_CLAIM_MS } from "./trunk-queue-store.js";
 export { GATEWAY_EPOCH, ownerEpochFor, queueRunId } from "./trunk-queue-run-fence.js";
 export {
+  isRetryableInfrastructureError,
   isTrunkUnavailableError,
   trunkAvailabilityLogger,
   type TrunkAvailability,
@@ -224,6 +226,7 @@ export function releaseQueueItem(
     }
     if (!row.claimed_by && row.blocked_reason) {
       delete row.blocked_reason;
+      delete row.retry_at;
       row.failures = 0;
       row.released_at = now;
       write(rows, now, env);
@@ -236,11 +239,15 @@ export function releaseQueueItem(
   return outcome?.before;
 }
 
-/** Records run activity in the claim's own thread, so a working claim is not released as stale. */
+/**
+ * Records run activity in the claim's own thread, so a working claim is not released as stale. With runStarted, a
+ * run in that thread reported its start, so its error may count against the job.
+ */
 export function touchQueueClaim(
   threadKey: string,
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
+  runStarted = false,
 ): void {
   return withQueueLock(env, () => {
     const rows = read(env);
@@ -251,20 +258,40 @@ export function touchQueueClaim(
       return;
     }
     row.active_at = now;
+    if (runStarted) {
+      row.run_started_at ??= now;
+    }
     write(rows, now, env);
   });
 }
 
+/** How a claim's run end closed it: done, a counted failure, blocked at the cap, or put back to retry uncounted. */
+export type QueueClaimClose = "done" | "failed" | "blocked" | "retry";
+
 /**
- * The run in a claim's own thread ended. A clean end completes the job; an error counts a failed attempt and
- * puts it back. Runs in other threads do not touch the claim. Returns whether a claim was closed.
+ * The run in a claim's own thread ended. A clean end completes the job. An error counts a failed attempt and puts
+ * the job back, but only for a run that started and did not fail on the gateway restarting or suspending or the
+ * Trunk's unfinished startup: those put the job back uncounted, to retry once things are ready. Runs in other
+ * threads do not touch the claim. Returns whether a claim was closed.
  */
 export function closeQueueClaimForThread(
   threadKey: string,
   outcome: "completed" | "failed",
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
+  error?: unknown,
 ): boolean {
+  return closeQueueClaimRun(threadKey, outcome, env, now, error) !== undefined;
+}
+
+/** closeQueueClaimForThread, saying how the claim closed; undefined when no claim was held in that thread. */
+export function closeQueueClaimRun(
+  threadKey: string,
+  outcome: "completed" | "failed",
+  env?: NodeJS.ProcessEnv,
+  now = Date.now(),
+  error?: unknown,
+): QueueClaimClose | undefined {
   const closed = withQueueLock(env, () => {
     const rows = read(env);
     const row = rows.find(
@@ -274,25 +301,36 @@ export function closeQueueClaimForThread(
       return undefined;
     }
     let transition: QueueTransition | undefined;
+    let how: QueueClaimClose;
+    const claimant = row.claimed_by;
     if (outcome === "completed") {
       const firstCompletion = row.done_at === undefined;
       row.done_at = now;
+      how = "done";
       if (firstCompletion) {
-        transition = { kind: "done", item: { ...row }, agentId: row.claimed_by, seq: nextSeq() };
+        transition = { kind: "done", item: { ...row }, agentId: claimant, seq: nextSeq() };
       }
+    } else if (row.run_started_at === undefined || isRetryableInfrastructureError(error)) {
+      release(row, now);
+      row.retry_at = now + UNAVAILABLE_RETRY_MS;
+      how = "retry";
+      transition = { kind: "released", item: { ...row }, agentId: claimant, seq: nextSeq() };
     } else if (failClaim(row, now, RUN_ERROR_REASON)) {
+      how = "blocked";
       transition = { kind: "blocked", item: { ...row }, seq: nextSeq() };
+    } else {
+      how = "failed";
     }
     write(rows, now, env);
-    return { transition };
+    return { transition, how };
   });
   if (!closed) {
-    return false;
+    return undefined;
   }
   if (closed.transition) {
     announce(closed.transition);
   }
-  return true;
+  return closed.how;
 }
 
 /**
@@ -367,10 +405,12 @@ export function claimNextQueueItem(
   const claimed = withQueueLock(env, () => {
     const rows = read(env);
     const holds = rows.some((row) => isOpenClaim(row) && row.claimed_by === agentId);
-    const next = holds ? undefined : rows.filter(isClaimable).toSorted(byPriority)[0];
+    const ready = (row: TrunkQueueItem) => isClaimable(row) && !(now < (row.retry_at ?? 0));
+    const next = holds ? undefined : rows.filter(ready).toSorted(byPriority)[0];
     if (!next) {
       return undefined;
     }
+    delete next.retry_at;
     const claimId = randomUUID();
     const claim = Object.assign(next, {
       claimed_by: agentId,

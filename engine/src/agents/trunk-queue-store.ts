@@ -20,10 +20,17 @@ export type TrunkQueueItem = {
   thread_key?: string;
   /** Last run activity seen for the claiming Trunk; with none for STALE_CLAIM_MS and no live run, it is released. */
   active_at?: number;
+  /** When a run in the claim's thread reported its start. A run that never started cannot fail the job. */
+  run_started_at?: number;
+  /** A run that failed on infrastructure put the job back uncounted; it is not claimed again before this time. */
+  retry_at?: number;
   done_at?: number;
   released_at?: number;
   released_from?: string;
-  /** Claim attempts that ended in an error or a failed dispatch. At MAX_CLAIM_FAILURES the job is blocked. */
+  /**
+   * Claim attempts whose started run ended in an error, or whose dispatch failed for a reason of the job's own. A
+   * gateway restart, suspension or unfinished Trunk startup never counts. At MAX_CLAIM_FAILURES the job is blocked.
+   */
   failures?: number;
   /** Plain reason a job stopped after MAX_CLAIM_FAILURES. Shown in the queue list; cleared by queue_release. */
   blocked_reason?: string;
@@ -112,6 +119,7 @@ export function release(row: TrunkQueueItem, now: number): void {
   delete row.claim_id;
   delete row.thread_key;
   delete row.active_at;
+  delete row.run_started_at;
   delete row.stop_attempts;
   delete row.attention_reason;
 }

@@ -20,6 +20,7 @@ import {
   reconcileTrunkQueue,
   releaseOrphanQueueClaims,
   releaseQueueItem,
+  touchQueueClaim,
   type TrunkQueueGateway,
 } from "./trunk-queue.js";
 
@@ -125,6 +126,8 @@ describe("Trunk queue claim closes at its own run end", () => {
 
     for (let attempt = 1; attempt <= MAX_CLAIM_FAILURES; attempt += 1) {
       expect(threadKey).toBeDefined();
+      // Only a run that started can fail the job.
+      await onTrunkRunLifecycle({ agentId: "builder-ash", terminal: false, threadKey, gateway });
       await onTrunkRunLifecycle({
         agentId: "builder-ash",
         terminal: true,
@@ -147,6 +150,7 @@ describe("Trunk queue claim closes at its own run end", () => {
     const job = addQueueItem({ title: "job", brief_text: "b", priority: 1 });
     for (let attempt = 0; attempt < MAX_CLAIM_FAILURES; attempt += 1) {
       const claim = claimNextQueueItem("builder-ash");
+      touchQueueClaim(claim!.thread_key, undefined, undefined, true);
       closeQueueClaimForThread(claim!.thread_key, "failed");
     }
     expect(rowById(job.id)?.status).toBe("blocked");

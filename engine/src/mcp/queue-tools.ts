@@ -59,11 +59,16 @@ export function registerQueueMcpTools(server: McpServer, gw: TrunkGateway): void
 
   server.tool(
     "queue_release",
-    "Put a stuck claim back in the queue so another Trunk can take the job.",
+    "Put a stuck claim back in the queue so another Trunk can take the job, or unblock a job stopped after failed attempts.",
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await gw.request<Record<string, unknown>>("trunks.queue.release", { id });
-      return ok("released", result);
+      const text = result.released
+        ? "released"
+        : result.unblocked
+          ? "unblocked; the job can be claimed again"
+          : "nothing to release: the job is not claimed or blocked";
+      return ok(text, result);
     },
   );
 }
