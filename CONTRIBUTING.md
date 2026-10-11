@@ -101,6 +101,8 @@ Every child process Branch starts on Windows (the engine, shells, probes, git, P
   gh pr merge <number> --merge --match-head-commit <reviewed-sha>
   ```
 
+  A Trunk that merges uses `node engine/scripts/merge-reviewed-pr.mjs <number> --head <reviewed-sha> --agent <its agent id> --apply`. It makes the same pinned merge commit after checking the verdict and both gates on that head, and ends the message with `Merged-by: agent:<id>`, so the merge record names the Trunk; a person's merge has no such line.
+
   The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase. Don't force-push to `main`.
 - **CI has a hard 15-minute cap.** Every check job sets `timeout-minutes: 15` or less; the merge-gate job allows up to 35 because it waits for the others. A change that makes CI slower than the cap gets split, sharded or cut, never given a longer timeout.
 

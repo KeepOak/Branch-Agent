@@ -45,6 +45,7 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 12. **Merging:** Branch PR Closer merges by hand with a merge commit (never squash or rebase), pinned to the reviewed head SHA so a new push blocks the merge:
     - `gh pr merge <number> --merge --match-head-commit <reviewed-sha>`
     - REST API: `PUT /repos/KeepOak/Branch-Agent/pulls/<number>/merge` with `{"merge_method": "merge", "sha": "<reviewed-sha>"}`
+    A Trunk that merges uses `node engine/scripts/merge-reviewed-pr.mjs <number> --head <reviewed-sha> --agent <its agent id> --apply`. It makes the same pinned merge commit after checking the verdict and both gates on that head, and ends the message with `Merged-by: agent:<id>`, so the merge record names the Trunk; a person's merge has no such line.
     The repository allows merge commits only and has auto-merge turned off. A workflow opens one tracking issue if anything lands on main as a squash or rebase.
     Only the PR reviewer (Branch PR Closer) adds the `gate-change-reviewed: <full head SHA>` marker, after reviewing the workflow and gate-file changes on that exact head. Fixers and authors never add it.
 
