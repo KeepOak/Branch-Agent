@@ -5,7 +5,7 @@ import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import * as mediaStore from "branch/plugin-sdk/media-store";
 import { MAX_TIMER_TIMEOUT_MS } from "branch/plugin-sdk/number-runtime";
 import { withSessionTranscriptWriteLock } from "branch/plugin-sdk/session-transcript-runtime";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readAttemptTerminal } from "./attempt-terminal.test-helper.js";
 import {
   expectSuccessfulAttempt,
@@ -40,6 +40,44 @@ import {
   attachSqliteSessionTarget,
   readTranscriptMessagesByIdentity,
 } from "./sqlite-session.test-helpers.js";
+
+// The named feature batch runs this file without test/setup.extensions.ts; give the run-attempt
+// hooks the same Codex attempt runtime that setup file provides for app-server tests.
+beforeEach(async (context) => {
+  if (context.codexAttemptRuntime) {
+    return;
+  }
+  const [workerCpu, mcp, clocks] = await Promise.all([
+    vi.importActual<typeof import("../../../../src/infra/worker-cpu.js")>(
+      "../../../../src/infra/worker-cpu.js",
+    ),
+    vi.importActual<typeof import("../../../../src/agents/agent-bundle-mcp-manager-api.js")>(
+      "../../../../src/agents/agent-bundle-mcp-manager-api.js",
+    ),
+    vi.importActual<typeof import("../../../../src/test-utils/gateway-scheduler-clock.js")>(
+      "../../../../src/test-utils/gateway-scheduler-clock.js",
+    ),
+  ]);
+  let stop: (() => Promise<void>) | undefined;
+  context.codexAttemptRuntime = {
+    readWorkerPools: workerCpu.getTrackedWorkerPoolSnapshot,
+    start: async () => {
+      const scheduler = clocks.createTestGatewayScheduler();
+      stop = async () => {
+        scheduler.beginClose();
+        try {
+          await mcp.disposeAllSessionMcpRuntimes();
+        } finally {
+          await scheduler.stop();
+        }
+      };
+      await mcp.setSessionMcpRuntimeScheduler(scheduler);
+    },
+    stop: async () => {
+      await stop?.();
+    },
+  };
+});
 
 setupRunAttemptTestHooks();
 
