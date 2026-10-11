@@ -11,6 +11,7 @@ import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { CallLine, CopyBtn, Kv, bytes, rec, str, useCall, useLive, when, type RecordValue } from "./common";
+import { rerunSetup } from "../../../setup/setup-model";
 import "./developer.css";
 
 export const DEFAULT_PORT = 18789;
@@ -409,7 +410,7 @@ export function Troubleshooting(ctx: Ctx) {
       <Greyed rows={TROUBLE_OFF.slice(0, 1)} />
       <Ctl title="Copy for support" sub={support.error ?? support.note ?? "Plain text with keys left out."}><Btn sm disabled={support.busy} onClick={copySupport}>Copy…</Btn></Ctl>
       <Greyed rows={TROUBLE_OFF.slice(2)} />
-      <div className="acts s2developer-acts"><Btn sm disabled title={APP}>Restart the app</Btn><Btn sm disabled title={APP}>Run setup again</Btn></div>
+      <div className="acts s2developer-acts"><Btn sm disabled title={APP}>Restart the app</Btn><Btn sm data-testid="run-setup-again" onClick={rerunSetup}>Run setup again</Btn></div>
       <div className="acts s2developer-acts"><Btn sm ghost onClick={openFile} disabled={open.busy}>Open the settings file</Btn>{APP_BTNS.slice(0, 2).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</div>
       <CallLine call={open} />
       <div className="acts s2developer-acts">{APP_BTNS.slice(2).map((b) => <Btn key={b} sm ghost disabled title={APP}>{b}</Btn>)}</div>
@@ -475,7 +476,7 @@ function NodeDialog({ engine, onClose }: { engine: SettingsPageProps["engine"]; 
 /* ───────────── Settings file editor ───────────── */
 
 const SECTION_NAMES: [string, string, string][] = [
-  ["session", "Conversations", "Branch itself"], ["logging", "Logs", "Advanced"], ["telemetry", "Feature counts", "Advanced"], ["memory", "Memory", "Advanced"],
+  ["session", "Conversations", "About Branch"], ["logging", "Logs", "Advanced"], ["telemetry", "Feature counts", "Advanced"], ["memory", "Memory", "Advanced"],
   ["agents", "Trunk defaults", "Advanced"], ["cron", "Schedules", "Advanced"], ["tools", "Tools", "Advanced"], ["skills", "Skills", "Advanced"], ["plugins", "Plugins", "Advanced"],
   ["proxy", "Network", "Advanced"], ["wizard", "Setup", "Advanced"], ["gateway", "Gateway", "Developer"], ["env", "Launch variables", "Developer"], ["commands", "Chat commands", "Developer"],
   ["diagnostics", "Diagnostics", "Developer"], ["discovery", "Finding Branch", "Developer"], ["mcp", "Connectors", "Developer"], ["worktreeRoot", "Working copies", "Developer"],
@@ -538,7 +539,7 @@ function FormView({ config }: { config: Config }) {
   const [q, setQ] = useState("");
   const keys = Object.keys(config.cfg).filter((k) => k !== "meta");
   const named = new Map(SECTION_NAMES.map(([k, l, g]) => [k, [l, g] as const]));
-  const groups = ["Branch itself", "Advanced", "Developer", "Everything else"];
+  const groups = ["About Branch", "Advanced", "Developer", "Everything else"];
   const all = keys.map((k) => ({ k, l: named.get(k)?.[0] ?? k, g: named.get(k)?.[1] ?? "Everything else" })).filter((s) => !q || `${s.k} ${s.l}`.toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => groups.indexOf(a.g) - groups.indexOf(b.g));
   const [sel, setSel] = useState("");

@@ -1,4 +1,5 @@
 import { buildAgentRunTerminalOutcome } from "../agents/agent-run-terminal-outcome.js";
+import { resolveSessionLane } from "../agents/embedded-agent-runner/lanes.js";
 import { hasSubagentSessionRecoveryOwner } from "../agents/subagents/registry/subagent-session-reconciliation.js";
 import { replaceSessionEntrySync } from "../config/sessions/session-accessor.js";
 import { readSessionEntryRow } from "../config/sessions/session-accessor.sqlite-entry-store.js";
@@ -15,6 +16,7 @@ import type { BranchConfig } from "../config/types.branch.js";
 import { readActiveGatewayLockIdentity } from "../infra/gateway-lock.js";
 import { readGatewayOwnerLease } from "../infra/gateway-owner-lease.js";
 import { hasActiveGatewayStateOwner } from "../infra/gateway-state-owner.js";
+import { isSessionLaneHeldByPredecessor } from "../process/session-handoff-lease-gate.js";
 import {
   isSubagentSessionKey,
   isIncognitoSessionKey,
@@ -62,6 +64,7 @@ async function reconcileStartupOrphans(
   database: BranchAgentDatabaseOptions,
   log: SessionStartupMigrationLogger,
   assertCurrent?: () => void,
+  sessionKeys?: ReadonlySet<string>,
 ) {
   const env = database.env ?? process.env;
   const statePath = resolveBranchStateSqlitePath(env);
@@ -105,6 +108,7 @@ async function reconcileStartupOrphans(
       let retained = 0;
       for (const { entry, sessionKey } of selected) {
         if (
+          (sessionKeys !== undefined && !sessionKeys.has(sessionKey)) ||
           !isSubagentSessionKey(sessionKey) ||
           isIncognitoSessionKey(sessionKey) ||
           !isUnsettledPredecessor(entry)
@@ -127,6 +131,7 @@ async function reconcileStartupOrphans(
           current.startedAt === entry.startedAt &&
           isUnsettledPredecessor(current);
         const hasOwner = () =>
+          isSessionLaneHeldByPredecessor(resolveSessionLane(sessionKey)) ||
           hasSubagentSessionRecoveryOwner(identity) ||
           isSessionWorkAdmissionActive(connection.path, [sessionKey, entry.sessionId]);
         const assertOwnerless = () => {
@@ -190,6 +195,7 @@ export async function runStartupSessionMigration(params: {
   cfg: BranchConfig;
   env?: NodeJS.ProcessEnv;
   agentIds?: ReadonlySet<string>;
+  sessionKeys?: ReadonlySet<string>;
   assertCurrent?: () => void;
   log: SessionStartupMigrationLogger;
   deps?: SessionMigrationDeps;
@@ -202,7 +208,12 @@ export async function runStartupSessionMigration(params: {
     ...params,
     handoffDatabase: async (database) => {
       try {
-        const result = await reconcileStartupOrphans(database, params.log, params.assertCurrent);
+        const result = await reconcileStartupOrphans(
+          database,
+          params.log,
+          params.assertCurrent,
+          params.sessionKeys,
+        );
         interruptedSubagents += result?.interrupted ?? 0;
         retainedSubagents += result?.retained ?? 0;
       } catch (error) {

@@ -14,7 +14,7 @@ export function createAutoApplyUpdate(options: {
   pendingVersion(): Promise<string | null>;
   enabled(): boolean;
   activity(): Promise<UpdateActivity>;
-  restart(version: string): Promise<void>;
+  restart(version: string, handoffOnly: boolean): Promise<void>;
   /** A flagged standby can take over while the predecessor finishes admitted work. */
   seamlessHandoff?(): boolean;
   onApplied?(version: string): void | Promise<void>;
@@ -31,6 +31,7 @@ export function createAutoApplyUpdate(options: {
   let appliedVersion: string | undefined;
   let retryAfter = 0;
   let failedVersion: string | undefined;
+  let notifiedVersion: string | undefined;
   let stopped = false;
   let lastDecision = "";
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -43,24 +44,31 @@ export function createAutoApplyUpdate(options: {
     checking = true;
     try {
       const version = await options.pendingVersion();
-      if (version !== heldVersion) { idleSince = undefined; retryAfter = 0; failedVersion = undefined; appliedVersion = undefined; heldVersion = version ?? undefined; }
+      if (version !== heldVersion) {
+        idleSince = undefined; retryAfter = 0; failedVersion = undefined; notifiedVersion = undefined;
+        appliedVersion = undefined; heldVersion = version ?? undefined;
+      }
       if (!version || !options.enabled() || appliedVersion === version) {
         idleSince = undefined;
         if (version) decision("off; awaiting Restart");
         return;
       }
       if (now() < retryAfter) return;
-      if (options.seamlessHandoff?.()) {
+      if (options.seamlessHandoff?.() && failedVersion !== version) {
         restarting = true;
         decision(`prepared handoff for ${version}`);
-        try { await options.restart(version); await options.onApplied?.(version); appliedVersion = version; restarting = false; }
-        catch (error) {
+        try {
+          await options.restart(version, true);
+          await options.onApplied?.(version);
+          appliedVersion = version;
           restarting = false;
-          retryAfter = now() + AUTO_APPLY_RETRY_MS;
-          if (failedVersion !== version) { failedVersion = version; options.onFailure?.(version); }
-          throw error;
+          return;
+        } catch {
+          // No standby (typical on a low-memory Mac): drain after idle, without a toast or back-off.
+          restarting = false;
+          failedVersion = version;
+          decision(`handoff unavailable; falling back to idle drain for ${version}`);
         }
-        return;
       }
       const activity = await options.activity();
       if (activity.activeRuns || activity.pendingApprovals || activity.streaming || activity.unsavedDraftFiles) {
@@ -82,11 +90,11 @@ export function createAutoApplyUpdate(options: {
       }
       restarting = true;
       decision(`restarting for ${version}`);
-      try { await options.restart(version); await options.onApplied?.(version); appliedVersion = version; restarting = false; }
+      try { await options.restart(version, false); await options.onApplied?.(version); appliedVersion = version; restarting = false; }
       catch (error) {
         restarting = false;
         retryAfter = now() + AUTO_APPLY_RETRY_MS;
-        if (failedVersion !== version) { failedVersion = version; options.onFailure?.(version); }
+        if (notifiedVersion !== version) { notifiedVersion = version; options.onFailure?.(version); }
         throw error;
       }
     } catch (error) {

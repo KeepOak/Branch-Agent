@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "problems": {
+    "chat:agent:builder:roadmap > Attach, mention a Trunk, skills, Temporary :: Builder": [
+      "dead"
+    ],
+    "chat:agent:builder:roadmap > Attach, mention a Trunk, skills, Temporary :: Run it in the background /bg": [
+      "error"
+    ],
+    "chat:agent:builder:roadmap > How threads show: Column :: Column": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes :: Back": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes :: Forward": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Attach, mention a Trunk, skills, Temporary :: Researcher": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Attach, mention a Trunk, skills, Temporary :: Run it in the background /bg": [
+      "error"
+    ],
+    "chat:agent:researcher:notes > Conversation menu :: Copy link": [
+      "toast-only"
+    ],
+    "chat:agent:researcher:notes > Conversation menu :: Open in its own window": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Conversation menu :: Pin": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Conversation menu :: Reload": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Conversation menu :: Search in this conversation Ctrl F": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Conversation menu :: Send to the board": [
+      "toast-only"
+    ],
+    "chat:agent:researcher:notes > Conversation menu :: Show Researcher’s window": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > How threads show: Column :: Column": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Model, access and usage: Local model · As set :: As set": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Model, access and usage: Local model · As set :: Local model Local": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Model, access and usage: Local model · As set :: Use Local model for Researcher from now on": [
+      "toast-only"
+    ],
+    "chat:agent:researcher:notes > This computer Online · you are here :: Connect to a Branch elsewhere…": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > This computer Online · you are here :: This computer On this computer": [
+      "dead"
+    ],
+    "place:automations :: Pause all": [
+      "toast-only"
+    ],
+    "place:automations :: Scheduled": [
+      "dead"
+    ],
+    "place:canopy :: Clear": [
+      "dead"
+    ],
+    "place:canopy :: Fold all": [
+      "dead"
+    ],
+    "place:canopy :: Now": [
+      "dead"
+    ],
+    "place:canopy :: Open all": [
+      "dead"
+    ],
+    "place:customize :: Trunks, 3": [
+      "dead"
+    ],
+    "place:inbox :: Needs you": [
+      "dead"
+    ],
+    "place:library :: Check now": [
+      "dead"
+    ],
+    "place:library :: Export everything": [
+      "error"
+    ],
+    "place:library :: Memory": [
+      "dead"
+    ],
+    "place:people :: Live now": [
+      "dead"
+    ],
+    "settings:accounts :: Check again": [
+      "dead"
+    ],
+    "settings:accounts :: Refresh": [
+      "dead"
+    ],
+    "settings:achievements :: All": [
+      "dead"
+    ],
+    "settings:advanced :: Add": [
+      "dead"
+    ],
+    "settings:advanced :: All": [
+      "dead"
+    ],
+    "settings:advanced :: Direct messages": [
+      "dead"
+    ],
+    "settings:advanced :: Record who ran each task": [
+      "dead"
+    ],
+    "settings:agents :: Let other agents work with Branch": [
+      "dead"
+    ],
+    "settings:appearance :: The theme’s own accent": [
+      "dead"
+    ],
+    "settings:computer :: Cloud computers": [
+      "dead"
+    ],
+    "settings:computer :: Refresh": [
+      "dead"
+    ],
+    "settings:computer :: Save": [
+      "dead"
+    ],
+    "settings:computer :: Turn it off": [
+      "toast-only"
+    ],
+    "settings:gateway :: Open in a browser": [
+      "dead"
+    ],
+    "settings:gateway :: Open in browser": [
+      "dead"
+    ],
+    "settings:general :: Folded": [
+      "dead"
+    ],
+    "settings:general :: On this computer": [
+      "unimplemented"
+    ],
+    "settings:general :: Technical": [
+      "dead"
+    ],
+    "settings:instructions :: Every Trunk": [
+      "dead"
+    ],
+    "settings:models :: Check again": [
+      "dead"
+    ],
+    "settings:models :: Check now": [
+      "dead"
+    ],
+    "settings:models :: Connections": [
+      "dead"
+    ],
+    "settings:notifications :: Every Trunk": [
+      "dead"
+    ],
+    "settings:permissions :: Every time": [
+      "dead"
+    ],
+    "settings:permissions :: Let skill programs run": [
+      "dead"
+    ],
+    "settings:permissions :: None": [
+      "dead"
+    ],
+    "settings:permissions :: Only listed ones": [
+      "dead"
+    ],
+    "settings:permissions :: Run it": [
+      "dead"
+    ],
+    "settings:permissions :: When it isn’t listed": [
+      "dead"
+    ],
+    "settings:seasons :: 1 AM": [
+      "dead"
+    ],
+    "settings:seasons :: 5 AM": [
+      "dead"
+    ],
+    "settings:seasons :: All": [
+      "dead"
+    ],
+    "settings:secrets :: Show where": [
+      "dead"
+    ],
+    "settings:self :: Export": [
+      "dead"
+    ],
+    "settings:updates :: Check again": [
+      "dead"
+    ],
+    "settings:usage :: Add": [
+      "error"
+    ],
+    "settings:usage :: Check now": [
+      "dead"
+    ],
+    "settings:usage :: Show me": [
+      "dead"
+    ],
+    "settings:voice :: Always": [
+      "dead"
+    ],
+    "settings:voice :: Engine default": [
+      "dead"
+    ],
+    "settings:voice :: Never": [
+      "dead"
+    ],
+    "sidebar :: Builder": [
+      "row-actions-inconsistent"
+    ],
+    "sidebar :: Researcher": [
+      "row-actions-inconsistent"
+    ]
+  }
+}

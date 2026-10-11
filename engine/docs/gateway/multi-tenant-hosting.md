@@ -53,10 +53,10 @@ No rung in this ladder changes the Branch Agent application trust model: one Gat
 
 ## Quick start
 
-Create a cell. The command prints a generated Gateway token once, so store it immediately:
+Create a cell. No Branch fleet image is published yet, so pass an image you build or host yourself. The command prints a generated Gateway token once, so store it immediately:
 
 ```bash
-branch fleet create acme
+branch fleet create acme --image <your-image>
 ```
 
 Open the reported `http://127.0.0.1:<port>` URL on the Fleet host, authenticate with that tenant's token, and configure provider credentials and channel accounts inside the cell.

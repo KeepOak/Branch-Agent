@@ -42,7 +42,7 @@ const EDITORS_MORE: OffRow[] = [
   ["Tidy each turn’s messages for the editor", "", ne("agent protocol message setting"), "sw"],
 ];
 const ASSISTANTS: OffRow[] = [
-  ["Branch as a connector", "Other assistants see your conversations, Trunks and folders as tools.", "Other assistants start it themselves with branch graft (Settings › Grafts).", "sw"],
+  ["Branch as a connector", "Other assistants see your conversations, Trunks and folders as tools.", "Other assistants start it themselves with branch graft (Settings › Connected agents).", "sw"],
   ["Share your skills as a connector", "Other assistants can find and add your skills.", ne("skills connector"), "sw"],
   ["Share Branch’s browser", "Other assistants get Branch’s browser tools, sign-ins and saved steps.", ne("browser connector"), "sw"],
   ["Share skills, plugins and connectors with any assistant", "One address gives them what you assign, with your Google and Microsoft sign-ins kept here.", ne("shared connector address"), "sw"],
@@ -303,7 +303,7 @@ function RunWithout({ config, base }: Ctx) {
       <h3 className="s2-h3">Kits</h3>
       <p className="hint">TypeScript, Python, Go, React, C and inside your own server: none of these kits is published yet. The gateway client is in Build on Branch, above.</p>
       <h3 className="s2-h3">Other agent programs on this computer</h3>
-      <p className="hint">Branch checks the usual places (programs, npm, pip, Homebrew) and can hand work to them as helpers.</p>
+      <p className="hint">Branch checks the usual places (programs, npm, pip, Homebrew) and can hand work to them as Trunks.</p>
       {shownWhy(ne("agent program finder")) ? <p className="hint s2developer-why">{shownWhy(ne("agent program finder"))}</p> : null}
     </Sec>
   );

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../connect/conversations";
 import type { Contact } from "./contacts-model";
-import { rowMenuItems } from "./row-menu";
+import { rowMenuItems, threadMenuItems } from "./row-menu";
 
 const row = (key: string, extra: Partial<Conversation> = {}): Conversation => ({
   key, title: "Oak", agentId: "oak", isMain: false, pinned: false, archived: false, unread: false,
@@ -111,5 +111,18 @@ describe("contact and topic row menus", () => {
     expect(m.run("menu-mute")).toMatchObject({ label: "Mute" });
     expect(m.toggleMute).toHaveBeenCalledWith(target);
     expect(thread.unread).toBe(true);
+  });
+});
+
+describe("thread right-click menu", () => {
+  it("offers Rename, Pin, Mark read and Archive, with the words the row menu uses", () => {
+    const actions = { pin: vi.fn(), setUnread: vi.fn(), archive: vi.fn(), restore: vi.fn() } as unknown as Parameters<typeof threadMenuItems>[1]["actions"];
+    const rename = vi.fn();
+    const items = threadMenuItems(row("t1", { unread: true }), { actions, rename });
+    expect(items.map((i) => ("label" in i ? i.label : "-"))).toEqual(["Rename", "Pin", "Mark as read", "Archive"]);
+    expect(threadMenuItems(row("t2", { pinned: true, archived: true }), { actions, rename }).map((i) => ("label" in i ? i.label : "-"))).toEqual(["Rename", "Unpin", "Mark as unread", "Restore"]);
+    const first = items[0];
+    if ("run" in first) first.run();
+    expect(rename).toHaveBeenCalledWith(expect.objectContaining({ key: "t1" }));
   });
 });
