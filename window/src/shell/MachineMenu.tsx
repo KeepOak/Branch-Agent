@@ -39,7 +39,7 @@ export function machineMenuItems(c: Ctx): MenuItem[] {
   return [
     { kind: "head", label: "Computers" },
     { kind: "info", label: current, sub: c.online ? "Online" : "Offline", checked: true },
-    ...home.map((row) => ({ label: row.label, sub: "Saved", run: () => c.onSwitch(row.url), testid: "machine-home" })),
+    ...home.map((row) => ({ label: row.label, sub: "On this computer", run: () => c.onSwitch(row.url), testid: "machine-home" })),
     ...saved.map((row) => ({ label: row.name, sub: "Saved", run: () => c.onSwitch(row.url), testid: "machine-saved" })),
     { kind: "sep" },
     {
