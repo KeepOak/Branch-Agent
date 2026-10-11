@@ -38,6 +38,7 @@ it("keeps literal underscores and asterisks that are part of words or spaced out
   expect(plainSnippet("set my_var_name first")).toBe("set my_var_name first");
   expect(plainSnippet("compute a * b * c")).toBe("compute a * b * c");
   expect(plainSnippet("run `my_var_name` now")).toBe("run my_var_name now");
-  expect(plainSnippet("snake_case and __dunder__ names")).toBe("snake_case and dunder names");
+  expect(plainSnippet("snake_case and __dunder__ names")).toBe("snake_case and __dunder__ names");
+  expect(plainSnippet("import __init__ from the package")).toBe("import __init__ from the package");
   expect(plainSnippet("an *emphasised* word and _this_ one")).toBe("an emphasised word and this one");
 });
