@@ -18,6 +18,27 @@ async function click(el: Element | null) { expect(el).toBeTruthy(); await act(as
 const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent === text) ?? null;
 const roster = readRoster({ defaultId: "tk", agents: [{ id: "tk", identity: { name: "TK" } }, { id: "ash", identity: { name: "Ash", avatar: "branch:bolt" } }] });
 
+it.each(["", "   ", "New Trunk", "New Trunk 2", "2", "Trunk 3", " ash "])("requires a unique non-default name before creating: %s", async (name) => {
+  const confirm = vi.fn();
+  await mount(<NewTrunkPreview roster={roster} onClose={() => {}} onConfirm={confirm} />);
+  const input = document.querySelector<HTMLInputElement>("input")!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, name);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(button("Create Trunk")!.disabled).toBe(true);
+  await click(button("Create Trunk"));
+  expect(confirm).not.toHaveBeenCalled();
+  expect(document.querySelector('[role="alert"]')?.textContent).toBeTruthy();
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "  Maple  ");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await click(button("Create Trunk"));
+  expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ name: "Maple" }));
+  expect(document.querySelector('[role="alert"]')).toBeNull();
+});
+
 it("previews an unused character and nature name, then Random name changes both before create", async () => {
   const confirm = vi.fn();
   await mount(<NewTrunkPreview roster={roster} onClose={() => {}} onConfirm={confirm} />);

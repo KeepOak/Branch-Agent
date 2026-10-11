@@ -25,7 +25,7 @@ import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.j
 import { resolveConfiguredAgentDatabaseTargets } from "../config/sessions/targets.js";
 import type { OptionalBootstrapFileName } from "../config/types.agent-defaults.js";
 import type { BranchConfig } from "../config/types.branch.js";
-import { FsSafeError, root } from "../infra/fs-safe.js";
+import { FsSafeError } from "../infra/fs-safe.js";
 import { normalizeAgentId, normalizeAgentIdStrict } from "../routing/session-key.js";
 import { runWithAgentCreationClaim } from "../state/agent-creation-claim.js";
 import { resolveAgentDeletionRecoveryHolds } from "../state/agent-deletion-journal-recovery.js";
@@ -41,6 +41,7 @@ import { withExistingBranchStateDatabaseCurrentReadOnly } from "../state/branch-
 import { runBranchStateWriteTransaction } from "../state/branch-state-db.js";
 import { isReservedSystemAgentId } from "../system-agent/agent-id.js";
 import { resolveUserPath } from "../utils.js";
+import { writeIdentityFile } from "./agent-create-identity.js";
 import { DuplicateAgentError } from "./agent-create-error.js";
 import { normalizeAgentDirRegistryPath } from "./agent-dir-registry.js";
 import { claimCompletedAgentDeletion } from "./agent-lifecycle-registry.js";
@@ -53,8 +54,6 @@ import {
   mergeIdentityMarkdownContent,
   sanitizeAgentIdentityLine,
 } from "./identity-file.js";
-import { createWorkspaceFileMutationGuard } from "./workspace-file-mutation-guard.js";
-import type { WorkspaceStateGuard } from "./workspace-state-store.worker-contract.js";
 import {
   DEFAULT_IDENTITY_FILENAME,
   ensureAgentWorkspace,
@@ -283,32 +282,6 @@ export async function checkAgentCreationGate(agentId: string): Promise<CreateErr
   );
 }
 
-async function writeIdentityFile(params: {
-  workspaceDir: string;
-  identity: NonNullable<ReturnType<typeof createAgentIdentityConfig>>;
-  guard?: WorkspaceStateGuard;
-}): Promise<void> {
-  const beforeFileMutation = createWorkspaceFileMutationGuard(params.guard);
-  const workspaceRoot = await root(params.workspaceDir);
-  let existing: string | undefined;
-  try {
-    const result = await workspaceRoot.read(DEFAULT_IDENTITY_FILENAME, {
-      hardlinks: "reject",
-    });
-    existing = result.buffer.toString("utf-8");
-  } catch (error) {
-    if (!(error instanceof FsSafeError && error.code === "not-found")) {
-      throw error;
-    }
-  }
-  const content = mergeIdentityMarkdownContent(existing, params.identity);
-  beforeFileMutation?.();
-  // Root.write rechecks after its own async preparation and before each mutation.
-  await workspaceRoot.write(DEFAULT_IDENTITY_FILENAME, content, {
-    encoding: "utf8",
-    assertBeforeMutation: beforeFileMutation,
-  });
-}
 
 export async function createAgent(params: CreateAgentParams): Promise<CreateAgentResult> {
   const expectedConfigHash = params.stagedConfig
@@ -346,6 +319,11 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
       shape: params.shape,
       eyes: params.eyes,
     }) ?? { name: safeName };
+  const displayNames = [safeName, ...(identity.name ? [sanitizeAgentIdentityLine(identity.name)] : [])];
+  if (displayNames.some((name) => !name || /^(?:new\s+trunk(?:\s+\d+)?|trunk\s+\d+|\d+)$/i.test(name))) {
+    return createError("invalid-name", "Choose a distinct Trunk name, not a default name or number.");
+  }
+  const normalizedNames = new Set(displayNames.map((name) => name.toLowerCase()));
   const requestedWorkspace = params.entry?.workspace ?? params.workspace;
   const explicitWorkspace = requestedWorkspace?.trim()
     ? resolveUserPath(requestedWorkspace.trim())
@@ -477,6 +455,16 @@ export async function createAgent(params: CreateAgentParams): Promise<CreateAgen
           const currentEntries = bootstrappingFirstAgent ? [] : listAgentEntries(currentConfig);
           const existingIndex = findAgentEntryIndex(currentEntries, agentId);
           const existingEntry = currentEntries[existingIndex];
+          // Check the current roster under the creation lock, including renamed agents
+          // whose stable id no longer matches their display name.
+          if (currentEntries.some((entry) =>
+            entry.id !== agentId &&
+            [entry.name ?? entry.id, entry.identity?.name].some((name) =>
+              Boolean(name && normalizedNames.has(name.trim().toLowerCase())),
+            ),
+          )) {
+            throw new DuplicateAgentError("A Trunk already uses that name. Choose a unique name.");
+          }
           if (!params.entry && !template && params.avatar === undefined && !params.bootstrapFirstAgent && !params.bootstrapMain && existingIndex < 0 && currentConfig.agents?.defaultId) {
             identity.avatar = `branch:${pickTrunkCharacter(currentEntries.map((entry) => entry.identity?.avatar))}`;
           }

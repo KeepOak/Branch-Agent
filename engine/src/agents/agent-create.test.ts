@@ -145,6 +145,27 @@ describe("createAgent", () => {
     );
   });
 
+  it.each(["New Trunk", " new trunk 2 ", "2", "3", "Trunk 12"])("requires a distinct name instead of default %s before creation", async (name) => {
+    await expect(createAgent({ name })).resolves.toMatchObject({ status: "error", reason: "invalid-name" });
+    expect(mocks.ensureAgentWorkspace).not.toHaveBeenCalled();
+    expect(mocks.transformConfigFileWithRetry).not.toHaveBeenCalled();
+  });
+
+  it("requires a unique display name even when the existing Trunk has another id", async () => {
+    mocks.config = { agents: { entries: { researcher: { name: "Ash", identity: { name: "Ash" } } } } };
+    await expect(createAgent({ name: " ash " })).resolves.toMatchObject({ status: "error", reason: "already-exists" });
+    expect(mocks.ensureAgentWorkspace).not.toHaveBeenCalled();
+    expect(mocks.persisted).toEqual({});
+  });
+
+  it("checks the displayed identity name supplied by an imported entry", async () => {
+    await expect(createAgent({ entry: { id: "researcher", name: "Researcher", identity: { name: "New Trunk" } } })).resolves.toMatchObject({ status: "error", reason: "invalid-name" });
+    expect(mocks.ensureAgentWorkspace).not.toHaveBeenCalled();
+    mocks.config = { agents: { entries: { ash: { name: "Ash" } } } };
+    await expect(createAgent({ entry: { id: "researcher", name: "Researcher", identity: { name: "Ash" } } })).resolves.toMatchObject({ status: "error", reason: "already-exists" });
+    expect(mocks.ensureAgentWorkspace).not.toHaveBeenCalled();
+  });
+
   it("returns validation errors before mutation", async () => {
     await expect(createAgent({ name: "  " })).resolves.toMatchObject({
       status: "error",
