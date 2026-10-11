@@ -1,11 +1,11 @@
 // The status bar's popovers (DESIGN-SPEC §4.9.3–§4.9.8): Gateway, What each connection has left, Room left,
 // Running in the background and the version menu. Each reads live engine facts.
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import type { Level } from "../places-nav/settings-nav";
 import { Icon, type IconName } from "./icons";
 import { Popover, type Above } from "./Popover";
-import { ageWords, comingUp, readLimits, readRoom, readRounds, sizeWords, uptimeWords, type LimitRow, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
+import { accountEmails, ageWords, comingUp, readLimits, readRoom, readRounds, sizeWords, uptimeWords, withAccountEmails, type LimitRow, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
 import { shownWhy } from "./shown-why";
@@ -102,41 +102,79 @@ function accountRow(row: LimitRow) {
   const weekUsed = week ? Math.max(0, 100 - week.left) : null;
   const left = fiveHour ? `${fiveHour.left}% left${fiveHour.reset ? ` · ${fiveHour.reset}` : ""}` : null;
   const label = row.email || row.name;
-  const detail = [label === row.name ? null : row.name, row.plan, weekUsed === null ? null : `this week ${weekUsed}% used`].filter(Boolean).join(" · ");
+  // The provider is already in the group heading, so the detail line keeps only the account number and plan.
+  const number = row.name.replace(/^.*·\s*/, "");
+  const detail = [label === row.name ? null : number, row.plan, weekUsed === null ? null : `this week ${weekUsed}% used`].filter(Boolean).join(" · ");
   return { fiveHour, used, left, label, detail };
 }
 
-/** Every account is one flat list: provider dot, account, left · reset, meter, name · plan · this week. */
-export function UsagePopover({ limits, request, onOpenUsage, ...base }: Base & { limits: Limits | null; request: Request; onOpenUsage: () => void }) {
+/** The provider's name as a person says it: "Claude", "ChatGPT". Used for the group heading and its one note. */
+function providerTitle(row: LimitRow): string {
+  if (row.provider === "anthropic") return "Claude";
+  if (row.provider === "openai-codex") return "ChatGPT";
+  return row.name.replace(/\s*·\s*Account \d+$/, "");
+}
+
+/** Accounts grouped under their provider, providers in alphabetical order, accounts in the engine's order. */
+export function groupByProvider(rows: LimitRow[]): { title: string; rows: LimitRow[] }[] {
+  const groups = new Map<string, { title: string; rows: LimitRow[] }>();
+  for (const row of rows) {
+    const title = providerTitle(row);
+    const group = groups.get(title) ?? { title, rows: [] };
+    group.rows.push(row);
+    groups.set(title, group);
+  }
+  return [...groups.values()].sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/**
+ * Every account, grouped by provider. Opening never fetches: it shows the reading Branch already has, and only
+ * "Check every account now" asks the providers again. Each provider says its "no reading" note once.
+ */
+export function UsagePopover({ limits, request, onOpenUsage, onSignIn, ...base }: Base & { limits: Limits | null; request: Request; onOpenUsage: () => void; onSignIn?: (provider: string) => void }) {
   const [checked, setChecked] = useState<Limits | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
   useEffect(() => setChecked(null), [limits]);
   const data = checked ?? limits;
   const rows = data?.rows ?? [];
-  const check = useCallback((refreshAuth = true) => {
+  const groups = useMemo(() => groupByProvider(rows), [rows]);
+  const check = useCallback(() => {
     setChecking(true);
     setCheckError(null);
-    (refreshAuth ? request("models.authStatus", { refresh: true }) : Promise.resolve())
-      .then(() => request("usage.status", { refresh: true }))
-      .then((result) => { setChecked(readLimits(result)); window.dispatchEvent(new Event("branch:usage-checked")); },
-        (error: unknown) => setCheckError(error instanceof Error ? error.message : String(error)))
+    request("models.authStatus", { refresh: true })
+      .then((auth) => request("usage.status", { refresh: true }).then((result) => ({ auth, result })))
+      .then(({ auth, result }) => {
+        setChecked(withAccountEmails(readLimits(result), accountEmails(auth)));
+        window.dispatchEvent(new Event("branch:usage-checked"));
+      })
+      .catch((error: unknown) => setCheckError(error instanceof Error ? error.message : String(error)))
       .finally(() => setChecking(false));
   }, [request]);
-  useEffect(() => { check(false); }, [check]);
   return (
     <Popover at={{ x: 0, y: 0 }} label="Every account" testid="pop-usage" className="sp sp-wide usePopT5" {...base}>
       <div className="lims">
         <div className="pt">Every account</div>
-        {rows.map((row) => {
-          const { fiveHour, used, left, label, detail } = accountRow(row);
-          return <div className={`acctT5${row.stale ? " staleT5" : ""}`} key={row.id} style={{ cursor: "default" }}>
-            <span className="aNameT5"><span className={`provT5 ${providerDot(row)}`} aria-hidden="true" /><span className="aLabelT5">{label}</span></span>
-            {row.inUse ? <span className="pill ok">used next</span> : null}
-            {left ? <span className="aLeftT5">{left}</span> : null}
-            {fiveHour ? <span className="meterT5"><i style={{ width: `${Math.max(used, 1)}%` }} /></span> : null}
-            {!fiveHour || row.stale ? <small className="aLineT5">{row.line}</small> : null}
-            {detail ? <small>{detail}</small> : null}
+        {groups.map((group) => {
+          let noted = false;
+          return <div className="grpT5" key={group.title}>
+            <div className="ph">{group.title}</div>
+            {group.rows.map((row) => {
+              const { fiveHour, used, left, label, detail } = accountRow(row);
+              // A provider with no reading says why once, on its first such account; the rest stay quiet.
+              const quiet = !fiveHour && !row.stale && !row.signInNeeded;
+              const note = row.stale || row.signInNeeded || (quiet && !noted);
+              if (quiet) noted = true;
+              return <div className={`acctT5${row.stale ? " staleT5" : ""}`} key={row.id} style={{ cursor: "default" }}>
+                <span className="aNameT5"><span className={`provT5 ${providerDot(row)}`} aria-hidden="true" /><span className="aLabelT5">{label}</span></span>
+                {row.inUse ? <span className="pill ok">used next</span> : null}
+                {left ? <span className="aLeftT5">{left}</span> : null}
+                {fiveHour ? <span className="meterT5"><i style={{ width: `${Math.max(used, 1)}%` }} /></span> : null}
+                {note ? <small className="aLineT5">{row.line}</small> : null}
+                {row.signInNeeded ? <button type="button" className="btn sm" data-testid="usage-signin" onClick={() => onSignIn?.(row.provider ?? "")}>Sign in again</button> : null}
+                {detail ? <small>{detail}</small> : null}
+              </div>;
+            })}
           </div>;
         })}
         {!limits ? <p className="sp-note">Asking each connection…</p> : null}
