@@ -47,12 +47,38 @@ const AgentCreatedViaSchema = Type.Union([
   Type.Literal("grove"),
 ]);
 
-const AgentColourSchema = Type.Union([Type.Literal("#2F8C86"), Type.Literal("#1785AF"), Type.Literal("#8A5AA8"), Type.Literal("#5E8C4A"), Type.Literal("#4F6FA8"), Type.Literal("#C9982E"), Type.Literal("#B84A6B"), Type.Literal("#56616B")]);
-const AgentShapeSchema = Type.Union([Type.Literal("Circle"), Type.Literal("Stone"), Type.Literal("Leaf"), Type.Literal("Acorn"), Type.Literal("Shield")]);
-const AgentEyesSchema = Type.Union([Type.Literal("Round"), Type.Literal("Wide"), Type.Literal("Sleepy")]);
+const AgentColourSchema = Type.Union([
+  Type.Literal("#2F8C86"),
+  Type.Literal("#1785AF"),
+  Type.Literal("#8A5AA8"),
+  Type.Literal("#5E8C4A"),
+  Type.Literal("#4F6FA8"),
+  Type.Literal("#C9982E"),
+  Type.Literal("#B84A6B"),
+  Type.Literal("#56616B"),
+]);
+const AgentShapeSchema = Type.Union([
+  Type.Literal("Circle"),
+  Type.Literal("Stone"),
+  Type.Literal("Leaf"),
+  Type.Literal("Acorn"),
+  Type.Literal("Shield"),
+]);
+const AgentEyesSchema = Type.Union([
+  Type.Literal("Round"),
+  Type.Literal("Wide"),
+  Type.Literal("Sleepy"),
+]);
 
 /** Condensed agent record returned by list APIs. */
 export const AgentSummarySchema = closedObject({
+  modelReadiness: Type.Optional(
+    closedObject({
+      model: NonEmptyString,
+      ready: Type.Boolean(),
+      message: Type.Optional(NonEmptyString),
+    }),
+  ),
   id: NonEmptyString,
   /** Effective explicit utility model; absent for automatic or disabled utility routing. */
   utilityModel: Type.Optional(NonEmptyString),

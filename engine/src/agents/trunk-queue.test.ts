@@ -70,6 +70,24 @@ afterEach(() => {
 });
 
 describe("Trunk job queue pickup", () => {
+  it("leaves jobs and attempts untouched until the configured model becomes available", async () => {
+    const job = addQueueItem({ title: "Model readiness", brief_text: "Do this job." }, env, 1_000);
+    const { gateway, calls } = fakeGateway();
+    const original = gateway.request.bind(gateway);
+    let ready = false;
+    gateway.request = async <T>(method: string, params: Record<string, unknown>): Promise<T> =>
+      method === "models.authStatus"
+        ? ({ modelReadiness: { ready } } as T)
+        : original<T>(method, params);
+    await pickUpQueuedWork({ agentId: "builder-birch", gateway, env });
+    expect(listQueueItems(env).find((item) => item.id === job.id)).toMatchObject({
+      status: "queued",
+    });
+    expect(calls.some((call) => call.method === "sessions.create")).toBe(false);
+    ready = true;
+    expect(await pickUpQueuedWork({ agentId: "builder-birch", gateway, env })).toBeDefined();
+  });
+
   it("hands an idle Trunk the higher-priority job in a new thread titled with the job", async () => {
     addQueueItem({ title: "Low job", brief_text: "Do the low job.", priority: 1 }, env, 1_000);
     const high = addQueueItem(
@@ -85,12 +103,13 @@ describe("Trunk job queue pickup", () => {
     expect(thread).toMatch(new RegExp(`^agent:builder-birch:queue-${high.id}-[0-9a-f]{8}$`));
     expect(calls.map((call) => call.method)).toEqual([
       "sessions.list",
+      "models.authStatus",
       "sessions.create",
       "chat.send",
     ]);
-    expect(calls[1]!.params).toMatchObject({ key: thread, agentId: "builder-birch" });
-    expect(String(calls[1]!.params.label)).toMatch(/^High job \([0-9a-f]{8}\)$/);
-    expect(calls[2]!.params).toMatchObject({
+    expect(calls[2]!.params).toMatchObject({ key: thread, agentId: "builder-birch" });
+    expect(String(calls[2]!.params.label)).toMatch(/^High job \([0-9a-f]{8}\)$/);
+    expect(calls[3]!.params).toMatchObject({
       sessionKey: thread,
       agentId: "builder-birch",
       message: "Do the high job.",
@@ -159,6 +178,7 @@ describe("Trunk job queue pickup", () => {
       "sessions.list",
       "sessions.list",
       "sessions.list",
+      "models.authStatus",
       "sessions.create",
       "chat.send",
     ]);
@@ -234,6 +254,7 @@ describe("Trunk job queue pickup", () => {
       // The stale claim is freed only after its run is confirmed ended in this gateway epoch.
       ["agent.wait", null],
       ["sessions.list", "birch"],
+      ["models.authStatus", "birch"],
       ["sessions.create", "birch"],
       ["chat.send", "birch"],
     ]);

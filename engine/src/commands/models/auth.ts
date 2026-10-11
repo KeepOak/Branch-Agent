@@ -1,10 +1,3 @@
-import {
-  cancel,
-  confirm as clackConfirm,
-  password as clackPassword,
-  select as clackSelect,
-  text as clackText,
-} from "@clack/prompts";
 import { readByteStreamWithLimit } from "@branch/media-core/read-byte-stream-with-limit";
 import { expectDefined } from "@branch/normalization-core";
 import { resolveExpiresAtMsFromDurationMs } from "@branch/normalization-core/number-coercion";
@@ -12,6 +5,13 @@ import {
   normalizeOptionalString,
   normalizeStringifiedOptionalString,
 } from "@branch/normalization-core/string-coerce";
+import {
+  cancel,
+  confirm as clackConfirm,
+  password as clackPassword,
+  select as clackSelect,
+  text as clackText,
+} from "@clack/prompts";
 import { styleSelectParams } from "../../../packages/terminal-core/src/prompt-select-styled-params.js";
 import { stylePromptMessage } from "../../../packages/terminal-core/src/prompt-style.js";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
@@ -44,6 +44,7 @@ import {
 import { applyAuthProfileConfig } from "../../plugins/provider-auth-helpers.js";
 import { runProviderPluginAuthMethodUnpersisted } from "../../plugins/provider-auth-method.js";
 import { persistProviderAuthProfilesAfterLogin } from "../../plugins/provider-auth-persistence.js";
+import { resolveAnthropicTokenIdentity } from "../../plugins/provider-auth-token.js";
 import type { ProviderAuthContext } from "../../plugins/provider-authentication.types.js";
 import { applyPrimaryModel } from "../../plugins/provider-model-primary.js";
 import { resolvePluginProvidersCore } from "../../plugins/providers.runtime.js";
@@ -66,7 +67,6 @@ import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
 import { createClackPrompter } from "../../wizard/clack-prompter.js";
 import type { WizardPrompter } from "../../wizard/prompts.js";
 import { validateAnthropicSetupToken } from "../auth-token.js";
-import { resolveAnthropicTokenIdentity } from "../../plugins/provider-auth-token.js";
 import { repairModelSelectionRuntimePlugins } from "../runtime-plugin-install.js";
 import { saveModelProviderApiKey } from "./auth-api-key.js";
 import { tryImportProviderCredential } from "./auth-credential-import.js";
@@ -249,14 +249,26 @@ async function resolveModelsAuthContext(params?: {
     ? normalizeManualAuthProvider(requestedProvider)
     : undefined;
   // Auth setup also runs inside the Gateway; discovery must not replace its live registry.
-  const providers = resolvePluginProvidersCore({
-    config,
-    workspaceDir,
-    mode: "setup",
-    includeUntrustedWorkspacePlugins: false,
-    ...(params?.ownerPluginId ? { onlyPluginIds: [params.ownerPluginId] } : {}),
-    ...(providerRef ? { providerRefs: [providerRef] } : {}),
-  });
+  const setupProviders = params?.ownerPluginId
+    ? preferSetupAuthProviders({
+        providers: [],
+        config,
+        workspaceDir,
+        requestedProvider: providerRef,
+        ownerPluginId: params.ownerPluginId,
+      })
+    : [];
+  const providers =
+    setupProviders.length > 0
+      ? setupProviders
+      : resolvePluginProvidersCore({
+          config,
+          workspaceDir,
+          mode: "setup",
+          includeUntrustedWorkspacePlugins: false,
+          ...(params?.ownerPluginId ? { onlyPluginIds: [params.ownerPluginId] } : {}),
+          ...(providerRef ? { providerRefs: [providerRef] } : {}),
+        });
   const authProviders = preferSetupAuthProviders({
     providers,
     config,
@@ -730,8 +742,10 @@ export async function modelsAuthPasteTokenCommand(
     provider === "anthropic"
       ? tokenInput.replaceAll(/\s+/g, "").trim()
       : (normalizeOptionalString(tokenInput) ?? "");
-  const identity = provider === "anthropic" ? await resolveAnthropicTokenIdentity(token) : undefined;
-  const profileId = requestedProfileId ?? identity?.profileId ?? resolveDefaultTokenProfileId(provider);
+  const identity =
+    provider === "anthropic" ? await resolveAnthropicTokenIdentity(token) : undefined;
+  const profileId =
+    requestedProfileId ?? identity?.profileId ?? resolveDefaultTokenProfileId(provider);
 
   const expires = resolveManualTokenExpiryMs(opts.expiresIn);
 
@@ -747,7 +761,14 @@ export async function modelsAuthPasteTokenCommand(
     agentDir,
   });
 
-  await updateConfig((cfg) => applyAuthProfileConfig(cfg, { profileId, provider, mode: "token", ...(identity?.email ? { email: identity.email } : {}) }));
+  await updateConfig((cfg) =>
+    applyAuthProfileConfig(cfg, {
+      profileId,
+      provider,
+      mode: "token",
+      ...(identity?.email ? { email: identity.email } : {}),
+    }),
+  );
 
   await refreshRunningGatewayAuthState(agentId, "login", runtime);
 

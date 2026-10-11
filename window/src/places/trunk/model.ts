@@ -19,6 +19,7 @@ export type TrunkRow = {
   shape: string;
   eyes: string;
   model: string;
+  modelWarning?: string;
   workspace: string;
   createdVia: string;
   creatorAgentId: string;
@@ -38,6 +39,7 @@ function readRow(a: Rec): TrunkRow {
     shape: str(identity.shape),
     eyes: str(identity.eyes),
     model: str(rec(a.model).primary),
+    modelWarning: str(rec(a.modelReadiness).message) || undefined,
     workspace: str(a.workspace),
     createdVia: str(a.createdVia),
     creatorAgentId: str(a.creatorAgentId),

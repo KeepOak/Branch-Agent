@@ -1,0 +1,7 @@
+engine:extensions/openai/setup-api.test.ts
+engine:src/agents/trunk-queue.test.ts
+engine:src/commands/models/auth.test.ts
+engine:src/gateway/server-methods/model-readiness.test.ts
+engine:src/gateway/server-methods/models-auth-login.test.ts
+window:src/places/settings/set1/accounts.test.tsx
+window:src/places/settings/use-wizard.test.tsx

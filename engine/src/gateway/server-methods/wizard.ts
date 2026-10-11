@@ -19,7 +19,11 @@ import {
   WizardSession,
   type WizardStep,
 } from "../../wizard/session.js";
-import { canAccessWizardSession } from "../server-wizard-sessions.js";
+import {
+  bindWizardLoginOwner,
+  canAccessWizardSession,
+  canCancelOwnedWizardSession,
+} from "../server-wizard-sessions.js";
 import { formatForLog } from "../ws-log.js";
 import {
   createAdmittedWizardSession,
@@ -108,7 +112,7 @@ function wizardSessionHandler<T extends { sessionId: string }>(
 }
 
 export const wizardHandlers: GatewayRequestHandlers = {
-  "wizard.start": async ({ params, respond, context }) => {
+  "wizard.start": async ({ params, respond, context, client }) => {
     if (!assertValidParams(params, validateWizardStartParams, "wizard.start", respond)) {
       return;
     }
@@ -150,6 +154,9 @@ export const wizardHandlers: GatewayRequestHandlers = {
     if (!session) {
       respondSetupAdmissionBusy(respond);
       return;
+    }
+    if (client) {
+      bindWizardLoginOwner(session, client);
     }
     context.wizardSessions.set(sessionId, session);
     const result = await session.next();
@@ -199,11 +206,52 @@ export const wizardHandlers: GatewayRequestHandlers = {
       respond(true, sanitizeWizardResultForClient(result), undefined);
     },
   ),
-  "wizard.cancel": wizardSessionHandler(
+  "wizard.cancel": defineValidatedGatewayHandler(
     "wizard.cancel",
     validateWizardCancelParams,
-    async ({ params, respond, context }, session) => {
+    async ({ params, respond, context, client }) => {
+      if ("all" in params) {
+        if (
+          !client ||
+          client.invalidated ||
+          client.connectionSignal?.aborted ||
+          !client.connect.scopes?.includes("operator.admin")
+        ) {
+          respond(
+            false,
+            undefined,
+            errorShape(
+              ErrorCodes.INVALID_REQUEST,
+              "Setup recovery requires an administrator connection.",
+            ),
+          );
+          return;
+        }
+        const sessions = [...context.wizardSessions].filter(([, session]) =>
+          canCancelOwnedWizardSession(session, client),
+        );
+        await Promise.all(
+          sessions.map(async ([id, session]) => {
+            session.close(new Error("Setup cancelled by its owner."));
+            await whenAdmittedWizardSessionSettled(session);
+            context.purgeWizardSession(id);
+          }),
+        );
+        respond(true, { status: "cancelled" }, undefined);
+        return;
+      }
       const { sessionId } = params;
+      const session = context.wizardSessions.get(sessionId);
+      if (!session || !canAccessWizardSession(session, client)) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "wizard not found", {
+            details: { code: GatewayErrorDetailCodes.WIZARD_NOT_FOUND },
+          }),
+        );
+        return;
+      }
       if (params.closeInput) {
         session.close(new Error("The setup window was closed."));
         await whenAdmittedWizardSessionSettled(session);

@@ -16,8 +16,9 @@ export function useWizard(engine: WindowEngine, start: WizardStart) {
   const [view, setView] = useState<WizardView>({ phase: "starting" });
   const [value, setValue] = useState<unknown>(undefined);
   const [busy, setBusy] = useState(true);
-  const session = useRef({ id: crypto.randomUUID(), notes: [] as string[], opened: new Set<string>(), answered: new Set<string>(), live: true, generation: 0 });
+  const session = useRef({ id: crypto.randomUUID(), notes: [] as string[], opened: new Set<string>(), answered: new Set<string>(), live: true, done: false, generation: 0 });
   const show = (step: WizardStep, waiting: boolean) => {
+    if (!session.current.live) return;
     const url = safeSignInUrl(step.externalUrl);
     if (url && !session.current.opened.has(url)) {
       session.current.opened.add(url);
@@ -27,6 +28,7 @@ export function useWizard(engine: WindowEngine, start: WizardStart) {
   };
   const apply = (result: WizardResult) => {
     if (!session.current.live) return;
+    session.current.done = result.done;
     const secret = start.secret;
     if (!result.done && result.step && secret && result.step.type === "text" && !session.current.answered.has(result.step.id) && secret.match(result.step)) {
       session.current.answered.add(result.step.id);
@@ -45,6 +47,7 @@ export function useWizard(engine: WindowEngine, start: WizardStart) {
   };
   const fail = (error: unknown) => { if (session.current.live) { setBusy(false); setView({ phase: "error", message: errorText(error) }); } };
   const next = (answer: WizardAnswer | undefined) => {
+    if (!session.current.live) return;
     session.current.generation += 1;
     setBusy(true);
     advance(engine.request.bind(engine), session.current.id, answer, (s) => show(s, true), session.current.notes).then(apply, fail);
@@ -52,18 +55,49 @@ export function useWizard(engine: WindowEngine, start: WizardStart) {
   useEffect(() => {
     const s = session.current;
     s.live = true;
-    engine.request(start.method, { ...start.params, sessionId: s.id }).then(() => next(undefined), fail);
-    return () => { s.live = false; };
+    const close = () => {
+      s.live = false;
+      s.generation += 1;
+      if (!s.done) void engine.request("wizard.cancel", { sessionId: s.id, closeInput: true }).catch(() => undefined);
+    };
+    engine.request(start.method, { ...start.params, sessionId: s.id }).then(() => {
+      // Closing can race admission: cancel again after start acknowledges the session.
+      if (!s.live) close();
+      else next(undefined);
+    }, fail);
+    window.addEventListener("pagehide", close);
+    return () => { window.removeEventListener("pagehide", close); close(); };
     // The session starts once per mount; the start request never changes while it runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const waitingForStart = view.phase === "starting" || (view.phase === "step" && view.step.type === "progress" && !view.step.externalUrl && !view.step.deviceCode);
+  useEffect(() => {
+    if (start.method !== "models.authLogin" || !waitingForStart) return;
+    const seconds = String(start.params.authChoice).includes("device-code") ? 5 : 30;
+    const timer = setTimeout(() => {
+      fail(new Error(`Sign-in did not start within ${seconds} seconds. Close this dialog and try again.`));
+      session.current.live = false;
+      void engine.request("wizard.cancel", { sessionId: session.current.id, closeInput: true }).catch(() => undefined);
+    }, seconds * 1000);
+    return () => clearTimeout(timer);
+    // The deadline covers admission and the first wizard step, not the user's sign-in time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waitingForStart]);
   usePastePolling(engine, view, busy, session, show, apply, fail, setView);
   const answer = (v?: unknown) => { if (view.phase === "step") next(v === undefined ? { stepId: view.step.id } : { stepId: view.step.id, value: v }); };
   const cancel = () => {
     session.current.live = false;
-    void engine.request("wizard.cancel", { sessionId: session.current.id }).catch(() => undefined);
+    void engine.request("wizard.cancel", { sessionId: session.current.id, closeInput: true }).catch(() => undefined);
   };
-  return { view, value, setValue, busy, answer, cancel };
+  const cancelAll = async () => {
+    setBusy(true);
+    try {
+      await engine.request("wizard.cancel", { all: true });
+      setView({ phase: "error", message: "Setup cancelled. Close this dialog and try signing in again." });
+    } catch (error) { setView({ phase: "error", message: errorText(error) }); }
+    finally { setBusy(false); }
+  };
+  return { view, value, setValue, busy, answer, cancel, cancelAll };
 }
 
 type Session = RefObject<{ id: string; notes: string[]; generation: number }>;

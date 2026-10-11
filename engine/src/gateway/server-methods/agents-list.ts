@@ -11,6 +11,7 @@ import {
   resolveOperatorRolePolicy,
 } from "../operator-role-policy.js";
 import { listAgentsForGateway } from "../session-utils.js";
+import { readAgentModelReadiness } from "./model-readiness.js";
 import {
   readPreparedServerMethodModelCatalog,
   readPreparedServerMethodModelCatalogs,
@@ -59,6 +60,13 @@ export const agentListHandler: GatewayRequestHandler = async ({
     allowedAgents && allowedAgents !== "*"
       ? result.agents.filter((agent) => allowedAgents.includes(agent.id))
       : result.agents;
+  const readyAgents = await Promise.all(
+    agents.map(async (agent) =>
+      Object.assign({}, agent, {
+        modelReadiness: await readAgentModelReadiness(context, agent.id),
+      }),
+    ),
+  );
   const policy = prepareOperatorModelPresentation({
     cfg: currentConfig,
     policyConfig: context.getCommittedRuntimeConfig?.() ?? currentConfig,
@@ -69,10 +77,10 @@ export const agentListHandler: GatewayRequestHandler = async ({
     {
       ...result,
       agents: policy
-        ? agents.map((agent) =>
+        ? readyAgents.map((agent) =>
             policy.forAgent(agent.id, modelCatalogByAgentId.get(agent.id)?.entries).agent(agent),
           )
-        : agents,
+        : readyAgents,
     },
     undefined,
   );

@@ -7,6 +7,10 @@ async function runOpenAIProviderAuthMethod(
   methodId: string,
   ctx: ProviderAuthContext,
 ): Promise<ProviderAuthResult> {
+  if (methodId === "oauth" || methodId === "device-code") {
+    const { buildOpenAIChatGPTAuthMethodRuns } = await import("./openai-chatgpt-provider.js");
+    return buildOpenAIChatGPTAuthMethodRuns()[methodId](ctx);
+  }
   const { buildOpenAIProvider } = await import("./openai-provider.js");
   const method = buildOpenAIProvider().auth.find((entry) => entry.id === methodId);
   if (!method) {

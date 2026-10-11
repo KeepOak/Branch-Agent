@@ -5,9 +5,17 @@ import type { GatewayClient } from "./server-methods/client-types.js";
 
 const loginOwners = new WeakMap<WizardSession, GatewayClient>();
 
-/** Only credential-login sessions are connection-bound; setup keeps its recovery contract. */
+/** A view-owned wizard closes input when its connection disappears. */
 export function bindWizardLoginOwner(session: WizardSession, client: GatewayClient): void {
   loginOwners.set(session, client);
+  const close = () => session.close(new Error("Setup connection closed."));
+  client.connectionSignal?.addEventListener("abort", close, { once: true });
+  if (client.invalidated || client.connectionSignal?.aborted) {
+    close();
+  }
+  void session
+    .whenSettled()
+    .finally(() => client.connectionSignal?.removeEventListener("abort", close));
 }
 
 export function canAccessWizardSession(
@@ -16,6 +24,39 @@ export function canAccessWizardSession(
 ): boolean {
   const owner = loginOwners.get(session);
   return !owner || (owner === client && !owner.invalidated && !owner.connectionSignal?.aborted);
+}
+
+/** Recovery exposes no prompts and is limited to the same authenticated owner. */
+export function canCancelOwnedWizardSession(
+  session: WizardSession,
+  client: GatewayClient | null,
+): boolean {
+  if (
+    !client ||
+    client.invalidated ||
+    client.connectionSignal?.aborted ||
+    !client.connect.scopes?.includes("operator.admin")
+  ) {
+    return false;
+  }
+  const owner = loginOwners.get(session);
+  if (!owner || owner === client) {
+    return true;
+  }
+  if (
+    client.internal?.operatorRoleActor?.kind === "system" &&
+    owner.internal?.operatorRoleActor?.kind === "system"
+  ) {
+    return true;
+  }
+  if (client.authenticatedUserId || owner.authenticatedUserId) {
+    return Boolean(
+      client.authenticatedUserId && client.authenticatedUserId === owner.authenticatedUserId,
+    );
+  }
+  return Boolean(
+    client.connect.device?.id && client.connect.device.id === owner.connect.device?.id,
+  );
 }
 
 const UNCOLLECTED_TERMINAL_RETENTION_MS = 5 * 60 * 1000;

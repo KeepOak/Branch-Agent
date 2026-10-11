@@ -47,3 +47,34 @@ describe("useWizard's pasted secret", () => {
     expect(phases.at(-1)).toBe("step:t1");
   });
 });
+
+describe("wizard lifetime", () => {
+  it("cancels an unmounted login and cancels again if admission finishes late", async () => {
+    let admitted!: () => void;
+    const request = vi.fn((method: string) => method === "models.authLogin" ? new Promise<void>((resolve) => { admitted = resolve; }) : Promise.resolve({}));
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe engine={{ request } as unknown as WindowEngine} start={{ method: "models.authLogin", params: {} }} seen={() => {}} />));
+    const id = (request.mock.calls[0] as unknown as [string, { sessionId: string }])[1].sessionId;
+    act(() => root.unmount());
+    expect(request).toHaveBeenLastCalledWith("wizard.cancel", { sessionId: id, closeInput: true });
+    await act(async () => admitted());
+    expect(request.mock.calls.filter(([method]) => method === "wizard.cancel")).toHaveLength(2);
+    expect(request.mock.calls.some(([method]) => method === "wizard.next")).toBe(false);
+  });
+
+  it.each([30, 5])("shows a plain timeout after %s seconds while the gateway never answers startup", async (seconds) => {
+    vi.useFakeTimers();
+    const phases: string[] = [];
+    const request = vi.fn((method: string) => method === "models.authLogin" ? new Promise(() => {}) : Promise.resolve({}));
+    const root = createRoot(document.createElement("div"));
+    try {
+      await act(async () => root.render(<Probe engine={{ request } as unknown as WindowEngine} start={{ method: "models.authLogin", params: seconds === 5 ? { authChoice: "openai/openai-device-code" } : {} }} seen={(phase) => phases.push(phase)} />));
+      await act(async () => vi.advanceTimersByTimeAsync(seconds * 1000));
+      expect(phases.at(-1)).toBe("error");
+      expect(request).toHaveBeenLastCalledWith("wizard.cancel", expect.objectContaining({ closeInput: true }));
+    } finally {
+      act(() => root.unmount());
+      vi.useRealTimers();
+    }
+  });
+});

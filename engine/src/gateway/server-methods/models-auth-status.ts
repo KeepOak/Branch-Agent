@@ -35,6 +35,7 @@ import { hasGatewayAdminScope } from "../operator-scopes.js";
 import { loadDeferredCatalog, readPreparedCatalog } from "../server-model-catalog-auth.js";
 import { formatForLog } from "../ws-log.js";
 import { resolveModelAuthAgentScope } from "./model-auth-agent-scope.js";
+import { readAgentModelReadiness } from "./model-readiness.js";
 import { modelsAuthRefreshHandlers } from "./models-auth-refresh.js";
 import { readModelAuthStatusFacts } from "./models-auth-status-facts.js";
 import { readProviderUsageStaleWhileRevalidate } from "./models-auth-status-usage-cache.js";
@@ -519,7 +520,12 @@ export const modelsAuthStatusHandlers: GatewayRequestHandlers = {
               : undefined,
         });
       }
-      const result: ModelAuthStatusResult = { ts: now, providers, providerCapabilities };
+      const result: ModelAuthStatusResult = {
+        ts: now,
+        providers,
+        providerCapabilities,
+        modelReadiness: await readAgentModelReadiness(context, agentId),
+      };
       respond(true, result, undefined);
     });
   },

@@ -42,6 +42,14 @@ async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
 }
 
 describe("Settings › Accounts", () => {
+  it("shows the configured-model account self-check before work starts", async () => {
+    const { engine } = engineOf({ "models.authStatus": { providers: PROVIDERS, modelReadiness: {
+      ready: false, message: "No available account can run openai/gpt-6.1-sol. Queue pickup is paused.",
+    } } });
+    await render(engine);
+    expect(host.textContent).toContain("No available account can run openai/gpt-6.1-sol. Queue pickup is paused.");
+  });
+
   it.each([false, true])("usage sign-in opens Claude and consumes the intent when Accounts is already mounted: %s", async (alreadyOpen) => {
     const { engine } = engineOf({
       "models.authStatus": { providers: PROVIDERS, providerCapabilities: [...CAPS, { provider: "anthropic", loginOptions: [{ id: "anthropic/claude-browser", kind: "oauth", label: "Sign in with Claude" }] }] },
