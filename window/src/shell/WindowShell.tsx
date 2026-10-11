@@ -471,7 +471,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   }, [topicContact?.id]);
   const [fullListFor, setFullListFor] = useState<string | null>(null);
   const topicAutoRail = route.kind === "chat" && Boolean(topicContact && activeTopics.length) && innerWidth > 760 && (topicLayout === "column" || topicLayout === "rail") && fullListFor !== topicContact?.id;
-  const rail = layout.rail || (topicAutoRail && !layout.hidden);
+  // Settings owns its navigation column; temporarily use the app icon rail without saving it.
+  const [settingsListExpanded, setSettingsListExpanded] = useState(false);
+  useEffect(() => { if (route.kind !== "settings") setSettingsListExpanded(false); }, [route.kind]);
+  const settingsAutoRail = route.kind === "settings" && !isNarrow && !settingsListExpanded;
+  const rail = layout.rail || ((topicAutoRail || settingsAutoRail) && !layout.hidden);
   useEffect(() => {
     setAllTopics((value) => value && (!topicContact || value.contactId !== topicContact.id || openKey !== topicContact.threadKey) ? null : value);
   }, [openKey, topicContact?.id]);
@@ -978,6 +982,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const compact = isNarrow || layout.focus;
   const toggleList = () => {
     if (narrow()) { setSlideOpen((o) => !o); return; }
+    if (settingsAutoRail) { setSettingsListExpanded(true); if (layout.hidden || layout.rail) setLayout({ hidden: false, rail: false }); return; }
+    if (route.kind === "settings" && !layout.hidden && !layout.rail) { setSettingsListExpanded(!settingsListExpanded); return; }
     if (topicAutoRail && !layout.rail) { setFullListFor(topicContact?.id ?? null); return; }
     setLayout(toggleListLayout(layout));
   };
@@ -1063,6 +1069,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     savePrefs(p);
   };
   const focusSearch = () => {
+    if (settingsAutoRail) setSettingsListExpanded(true);
     if (topicAutoRail) setFullListFor(topicContact?.id ?? null);
     if (rail || layout.hidden) {
       setLayout({ rail: false, hidden: false });
@@ -1598,7 +1605,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         }}
         onNew={(e) => showMenu(e, "new", [
           ...newMenuItems({ newWith: (id) => startNew(id), trunks: trunks.list, defaultId: trunks.defaultId, newTrunk: () => void newTrunk(), openPlace, makeTrunk: () => setOverlay({ kind: "studio" }), quickAsk: () => setOverlay({ kind: "ask" }) }),
-          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
+          ...(rail ? [{ kind: "sep" as const }, { label: "Settings", run: () => openSettings("general") }, { label: "Show the full list", hint: "Ctrl B", run: () => { if (settingsAutoRail) setSettingsListExpanded(true); if (topicAutoRail && !layout.rail) setFullListFor(topicContact?.id ?? null); else setLayout({ rail: false }); } }] : []),
         ], "New")}
         onMenu={rowMenu}
         onPin={(r) => { const contact = contacts.find((c) => c.threadKey === r.key); if (contact) toggleContactPin(contact); else void actions.pin(r); }}
@@ -1643,7 +1650,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           extras={rowExtras(rowCard.card.row)}
         />
       ) : null}
-      {layout.focus || layout.hidden ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
+      {layout.focus || layout.hidden || settingsAutoRail ? null : <SideResizer layout={layout} onLayout={setLayout} onLive={setLiveW} />}
       {slideOpen ? <div className="slide-scrim" onClick={() => setSlideOpen(false)} /> : null}
       <main className={mainClass} id="main">
         {lockdown.on ? <LockdownBanner onTurnOff={toggleLockdown} /> : null}
