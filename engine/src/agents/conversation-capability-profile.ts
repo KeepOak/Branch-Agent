@@ -12,7 +12,7 @@ import type { InputProvenance } from "../sessions/input-provenance.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel-constants.js";
 import { normalizeMessageChannel } from "../utils/message-channel-core.js";
 import { resolveEffectiveToolPolicy, resolveTrustedGroupId } from "./agent-tools.policy.js";
-import { DEFAULT_RUN_MODE, type RunMode } from "./plan-mode.js";
+import type { RunMode } from "./plan-mode.js";
 import { resolveRequesterToolPolicies } from "./requester-tool-policy.js";
 import { pickSandboxToolPolicy } from "./sandbox-tool-policy.js";
 import type { SandboxToolPolicy } from "./sandbox/types.js";
