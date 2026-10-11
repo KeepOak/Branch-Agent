@@ -226,10 +226,7 @@ function isLostGatewayStateTerminal(event: LifecycleEventLike): boolean {
   if (!terminal || classifyAgentRunTerminalOutcome(terminal) !== "failure") {
     return false;
   }
-  const error = terminal.error;
-  return isGatewayStateUnavailableMessage(
-    typeof error === "string" ? error : error instanceof Error ? error.message : "",
-  );
+  return isGatewayStateUnavailableMessage(terminal.error ?? "");
 }
 
 function derivePersistedSessionLifecyclePatch(params: {
