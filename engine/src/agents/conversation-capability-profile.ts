@@ -12,6 +12,7 @@ import type { InputProvenance } from "../sessions/input-provenance.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel-constants.js";
 import { normalizeMessageChannel } from "../utils/message-channel-core.js";
 import { resolveEffectiveToolPolicy, resolveTrustedGroupId } from "./agent-tools.policy.js";
+import { DEFAULT_RUN_MODE, type RunMode } from "./plan-mode.js";
 import { resolveRequesterToolPolicies } from "./requester-tool-policy.js";
 import { pickSandboxToolPolicy } from "./sandbox-tool-policy.js";
 import type { SandboxToolPolicy } from "./sandbox/types.js";
@@ -93,6 +94,8 @@ export type ConversationCapabilityProfileParams = {
   trustedInternalHandoff?: TrustedSubagentCompletionHandoff;
   /** Trusted server-stamped authority for an explicitly capped scheduled run. */
   scheduledToolPolicy?: ScheduledToolPolicyContext;
+  /** Trusted server-side run mode; `plan` restricts the run to read-only tools. */
+  runMode?: RunMode;
 };
 
 export function resolveConversationCapabilityProfile(params: ConversationCapabilityProfileParams) {
@@ -240,6 +243,7 @@ export function resolveConversationCapabilityProfile(params: ConversationCapabil
       explicitToolOverrideAllowlist: collectExplicitAllowlist(explicitOverridePolicies),
       explicitToolDenylist: collectExplicitDenylist(explicitToolAllowlistPolicies),
       runtimePluginToolGrant: params.runtimePluginToolGrant,
+      runMode: params.runMode ?? DEFAULT_RUN_MODE,
     },
   };
 }

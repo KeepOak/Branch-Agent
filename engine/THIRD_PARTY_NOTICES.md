@@ -40,6 +40,18 @@ SOFTWARE.
 
 The Control UI bundles the `issue-opened-16` and `git-pull-request-16` icon paths.
 
+## Jan
+
+`engine/src/agents/plan-mode.ts` and `engine/src/agents/plan-mode.test.ts` are
+ported from Jan's read-only plan mode.
+
+- Upstream: https://github.com/janhq/jan
+- Pinned commit: `e0c62f863a1b930ed625085979a3d62c947635d9`
+- Source: `src-tauri/src/core/agent/plan.rs`
+- License: Apache-2.0, Copyright 2025 Menlo Research. The upstream license
+  header is kept at the top of each ported file. Attribution is requested in
+  user-facing documentation.
+
 - Upstream: https://github.com/primer/octicons
 - License: MIT
 - Copyright: Copyright (c) 2026 GitHub Inc.

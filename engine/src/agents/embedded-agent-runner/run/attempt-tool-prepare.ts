@@ -217,6 +217,7 @@ export async function prepareEmbeddedAttemptToolBase(params: {
     runtimePluginToolGrant: attempt.runtimePluginToolGrant,
     inputProvenance: attempt.inputProvenance,
     trustedInternalHandoff: attempt.trustedInternalHandoff,
+    runMode: attempt.runMode,
     pluginMetadataSnapshot: attempt.preparedModelRuntime?.metadataSnapshot,
   });
   const computerTransport = resolveSessionPlacementComputer(

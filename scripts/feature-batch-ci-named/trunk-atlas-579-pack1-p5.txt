@@ -1,0 +1,2 @@
+engine:src/agents/plan-mode.behaviour.test.ts
+engine:src/agents/plan-mode.test.ts

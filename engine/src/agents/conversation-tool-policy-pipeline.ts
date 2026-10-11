@@ -1,5 +1,6 @@
 import { isFrozenGroveToolAllowPolicy } from "../groves/tool-policy-runtime.js";
 import type { ResolvedConversationCapabilityProfile } from "./conversation-capability-profile.js";
+import { DEFAULT_RUN_MODE, planModeToolPolicy, type RunMode } from "./plan-mode.js";
 import {
   applyToolPolicyPipeline,
   buildDefaultToolPolicyPipelineSteps,
@@ -131,6 +132,23 @@ export function buildConversationToolPolicyPipelineSteps(params: {
       source: { kind: "session" },
       label: "inherited tools",
       unavailableCoreToolReason: params.unavailableCoreToolReason,
+    },
+    ...buildPlanModeSteps(profile.runMode),
+  ];
+}
+
+/** Plan mode is the last layer so it can only narrow what every earlier layer allowed. */
+function buildPlanModeSteps(runMode: RunMode | undefined): ToolPolicyPipelineStep[] {
+  const policy = planModeToolPolicy(runMode ?? DEFAULT_RUN_MODE);
+  if (!policy) {
+    return [];
+  }
+  return [
+    {
+      policy,
+      source: { kind: "runtime" },
+      label: "plan mode tools.allow",
+      suppressUnavailableCoreToolWarning: true,
     },
   ];
 }

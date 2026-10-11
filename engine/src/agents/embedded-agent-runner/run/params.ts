@@ -48,6 +48,7 @@ import type { EmbeddedRunTrigger } from "../../run-trigger.js";
 import type { TrustedSubagentCompletionHandoff } from "../../subagents/announce/subagent-announce-handoff.js";
 import type { SilentReplyPromptMode, PromptMode } from "../../system-prompt.types.js";
 import type { EmbeddedAgentExecutionPhase } from "../execution-phase.js";
+import type { RunMode } from "../plan-mode.js";
 import type { BlockReplyFlushContext } from "../types.js";
 import type { AuthProfileFailurePolicy } from "./auth-profile-failure-policy.types.js";
 export type { ClientToolDefinition } from "../../command/shared-types.js";
@@ -195,6 +196,8 @@ export type RunEmbeddedAgentParams = {
   runtimePluginToolGrant?: RuntimePluginToolGrant;
   /** Consumed in-process subagent-completion capability; never derived from public input. */
   trustedInternalHandoff?: TrustedSubagentCompletionHandoff;
+  /** Run mode forwarded to the tool policy pipeline and the system prompt. */
+  runMode?: RunMode;
   /** Host-stamped exact-run capability for late Codex creator-authority capture. */
   cronCreatorAuthorityCapability?: CronCreatorAuthorityCapability;
   /** Ephemeral reason fresh local-operator cron authority cannot survive this queued turn. */

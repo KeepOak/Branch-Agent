@@ -1,6 +1,7 @@
 import type { BranchConfig } from "../../../config/types.branch.js";
 import { resolveSessionGitCoauthorPrompt } from "../../git-coauthor-prompt.js";
 import { appendIncognitoSystemPrompt } from "../../incognito-system-prompt.js";
+import { appendPlanModeSystemPrompt, DEFAULT_RUN_MODE, type RunMode } from "../../plan-mode.js";
 import { appendProgressCardSystemPrompt } from "../../progress-card-system-prompt.js";
 
 /** Prepares host-owned additions before either embedded or plugin harness dispatch. */
@@ -11,6 +12,7 @@ export async function prepareAttemptSystemPromptAdditions(params: {
   extraSystemPrompt?: string;
   modelId: string;
   provider: string;
+  runMode?: RunMode;
   sessionId: string;
   sessionKey?: string;
   storePath?: string;
@@ -18,7 +20,10 @@ export async function prepareAttemptSystemPromptAdditions(params: {
 }) {
   const extraSystemPrompt = await appendProgressCardSystemPrompt({
     ...params,
-    extraSystemPrompt: appendIncognitoSystemPrompt(params),
+    extraSystemPrompt: appendPlanModeSystemPrompt({
+      runMode: params.runMode ?? DEFAULT_RUN_MODE,
+      extraSystemPrompt: appendIncognitoSystemPrompt(params),
+    }),
   });
   const gitCoauthorPrompt = await resolveSessionGitCoauthorPrompt({
     config: params.config,

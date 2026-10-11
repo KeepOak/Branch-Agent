@@ -65,6 +65,7 @@ import {
 } from "../media-generation-activity.js";
 import { isCliProvider } from "../model-selection.js";
 import { resolveOpenAIRuntimeProvider } from "../openai-routing.js";
+import { assertPlanModeSupported } from "../plan-mode.js";
 import type { PreparedModelRuntimePluginGeneration } from "../prepared-model-runtime.types.js";
 import { hasVerifiedRequesterCompletionHandoff } from "../requester-tool-policy.js";
 import { buildAgentRuntimeAuthPlan } from "../runtime-plan/auth.js";
@@ -357,6 +358,10 @@ export function runAgentAttempt(
           agentId: params.sessionAgentId,
           sessionKey: params.sessionKey ?? params.sessionId,
         });
+  assertPlanModeSupported({
+    runMode: params.opts.runMode,
+    nativeRuntime: !isCliExecutionProvider && agentHarnessPolicy.runtime === "branch",
+  });
   const harnessAuthSelection = resolveHarnessAuthProfileSelection({
     config: params.cfg,
     agentDir: params.agentDir,
@@ -833,6 +838,7 @@ export function runAgentAttempt(
     trustedInternalHandoff: trustedSubagentCompletionHandoff
       ? params.opts.trustedInternalHandoff
       : undefined,
+    runMode: params.opts.runMode,
     cronCreatorAuthorityCapability: params.opts.cronCreatorAuthorityCapability,
     internalEvents: params.opts.internalEvents,
     runtimeContextFragments: params.opts.runtimeContextFragments,

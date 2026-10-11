@@ -1,5 +1,6 @@
 import type { FastMode } from "@branch/normalization-core/string-coerce";
 import type { AgentInternalEvent } from "../../agents/internal-events.js";
+import type { RunMode } from "../../agents/plan-mode.js";
 import type { SpawnedRunMetadata } from "../../agents/spawned-context.js";
 import type { PromptMode } from "../../agents/system-prompt.types.js";
 import type {
@@ -127,6 +128,8 @@ export type AgentCommandOpts = {
   runtimePluginToolGrant?: RuntimePluginToolGrant;
   /** Consumed in-process subagent-completion capability; never accepted from public RPC params. */
   trustedInternalHandoff?: TrustedSubagentCompletionHandoff;
+  /** Run mode; `plan` narrows the run to read-only tools and can never widen policy. */
+  runMode?: RunMode;
   /** Internal marker identifying a server-managed default cap. */
   toolsAllowIsDefault?: boolean;
   /** Trusted server-stamped authority for an explicitly capped scheduled run. */

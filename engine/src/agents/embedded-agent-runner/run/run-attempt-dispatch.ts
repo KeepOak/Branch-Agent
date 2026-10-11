@@ -320,6 +320,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     sessionKey: params.sessionKey,
     storePath: params.sessionTarget?.storePath,
     toolsAllow: params.toolsAllow,
+    runMode: params.runMode,
   });
   assertActiveRun();
   let skillsSnapshot = resolveSessionSkillResourceSnapshot(params.skillsSnapshot);
@@ -612,6 +613,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     taskSuggestionDeliveryMode: params.taskSuggestionDeliveryMode,
     inputProvenance: params.inputProvenance,
     trustedInternalHandoff: params.trustedInternalHandoff,
+    runMode: params.runMode,
     scheduledToolPolicy: params.scheduledToolPolicy,
     runtimePluginToolGrant: params.runtimePluginToolGrant,
     cronCreatorAuthorityCapability: params.cronCreatorAuthorityCapability,
