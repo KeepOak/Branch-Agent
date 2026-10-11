@@ -243,7 +243,7 @@ export function resolveConversationCapabilityProfile(params: ConversationCapabil
       explicitToolOverrideAllowlist: collectExplicitAllowlist(explicitOverridePolicies),
       explicitToolDenylist: collectExplicitDenylist(explicitToolAllowlistPolicies),
       runtimePluginToolGrant: params.runtimePluginToolGrant,
-      runMode: params.runMode ?? DEFAULT_RUN_MODE,
+      ...(params.runMode ? { runMode: params.runMode } : {}),
     },
   };
 }

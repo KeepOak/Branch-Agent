@@ -397,6 +397,33 @@ describe("createBranchCodingTools", () => {
     expect(tool.parameters).toEqual({ type: "object", properties: {} });
   });
 
+  it("limits plan runs to read-only core tools and withholds host ring-zero tools", () => {
+    const ringZeroTool = stubTool("system_agent");
+    const planProfile = resolveConversationCapabilityProfile({ runMode: "plan" });
+    const tools = runWithAgentRingZeroTools([ringZeroTool], () =>
+      createBranchCodingTools({ conversationCapabilityProfile: planProfile }),
+    );
+    const names = new Set(tools.map((tool) => tool.name));
+
+    expect(names.has("read")).toBe(true);
+    for (const blocked of ["write", "edit", "apply_patch", "exec", "message", "system_agent"]) {
+      expect(names.has(blocked)).toBe(false);
+    }
+  });
+
+  it("keeps write and exec for normal runs built the same way", () => {
+    const ringZeroTool = stubTool("system_agent");
+    const normalProfile = resolveConversationCapabilityProfile({ runMode: "normal" });
+    const tools = runWithAgentRingZeroTools([ringZeroTool], () =>
+      createBranchCodingTools({ conversationCapabilityProfile: normalProfile }),
+    );
+    const names = new Set(tools.map((tool) => tool.name));
+
+    expect(names.has("write")).toBe(true);
+    expect(names.has("exec")).toBe(true);
+    expect(names.has("system_agent")).toBe(true);
+  });
+
   it("keeps Tool Search controls available under restrictive tool allowlists", () => {
     const tools = createBranchCodingTools({
       includeToolSearchControls: true,

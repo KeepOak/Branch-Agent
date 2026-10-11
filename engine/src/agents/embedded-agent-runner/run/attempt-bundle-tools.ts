@@ -77,11 +77,13 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
   const tools = await withRuntimeToolSchemaQuarantine((record) =>
     normalizeTools(toolsEnabled ? toolsRaw : [], record),
   );
+  // Client functions run outside the policy pipeline, so plan runs are never offered them.
   const providedClientTools =
     toolsEnabled &&
     !params.attempt.disableTools &&
     !params.isRawModelRun &&
-    !params.attempt.forceRestartSafeTools
+    !params.attempt.forceRestartSafeTools &&
+    params.attempt.runMode !== "plan"
       ? params.attempt.clientTools
       : undefined;
   // Client functions share the attempt's authority; filter before their names

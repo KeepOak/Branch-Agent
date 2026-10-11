@@ -375,8 +375,11 @@ export function createBranchCodingToolsInternal(
     options?.clientCaps,
   );
   // Provider flushes must not regain setup tools outside their declared projection.
+  // Ring-zero tools skip the policy pipeline, so plan runs never receive them.
   const ringZeroTools =
-    includeBranchTools && !(isMemoryFlushRun && options?.memoryFlushTools)
+    includeBranchTools &&
+    !(isMemoryFlushRun && options?.memoryFlushTools) &&
+    capabilityProfile.policy.runMode !== "plan"
       ? getActiveAgentRingZeroTools()
       : [];
   const toolSearchTools =

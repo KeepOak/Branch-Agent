@@ -360,7 +360,10 @@ export function runAgentAttempt(
         });
   assertPlanModeSupported({
     runMode: params.opts.runMode,
-    nativeRuntime: !isCliExecutionProvider && agentHarnessPolicy.runtime === "branch",
+    nativeRuntime:
+      !isCliExecutionProvider &&
+      agentHarnessPolicy.runtime === "branch" &&
+      (pinnedHarnessId === undefined || pinnedHarnessId === "branch"),
   });
   const harnessAuthSelection = resolveHarnessAuthProfileSelection({
     config: params.cfg,
