@@ -163,9 +163,6 @@
     "settings:models :: Connections": [
       "dead"
     ],
-    "settings:notifications :: Every Trunk": [
-      "dead"
-    ],
     "settings:permissions :: Every time": [
       "dead"
     ],
