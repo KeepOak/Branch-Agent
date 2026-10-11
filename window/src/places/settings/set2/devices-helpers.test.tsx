@@ -40,7 +40,8 @@ describe("Settings › Helpers", () => {
     expect(request).not.toHaveBeenCalledWith("sessions.list", expect.anything());
     expect(host.querySelector("h1")?.textContent).toBe("Helpers");
     expect(host.textContent).toContain("Helpers a Trunk calls in for one job, then lets go.");
-    expect(host.textContent).toContain("No specialists yet.");
+    expect(host.textContent).toContain("No helpers yet.");
+    expect(host.textContent).toContain("Let helpers argue it out");
     expect(host.querySelector('[data-testid="fleet"]')?.textContent).toBe("2 Trunks on 1 computer");
     const patterns = [...host.querySelectorAll('[aria-label="How Trunks work together"] [role="radio"]')] as HTMLButtonElement[];
     expect(patterns).toHaveLength(6);

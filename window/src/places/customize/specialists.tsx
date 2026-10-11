@@ -28,7 +28,7 @@ const BUILT_IN: [string, string][] = [
 
 export function SpecialistsTab({ engine, level, trunks, running, openAgents }: { engine: PlaceProps["engine"]; level: Level; trunks: Trunk[]; running?: number; openAgents: () => void }) {
   return <div className="cz-page" data-testid="specialists">
-    <EmptyLine icon={<Glyph name="sparkle" size={22} />}>No specialists yet.</EmptyLine>
+    <EmptyLine icon={<Glyph name="sparkle" size={22} />}>No helpers yet.</EmptyLine>
     <p className="cz-hint cz-center" title={shownWhy(NO_DEFINITIONS)}>Helper conversations a Trunk starts stay in its conversation list.</p>
     <Fleet engine={engine} trunks={trunks} running={running} />
     <section className="cz-block"><h2 className="cz-h2">How Trunks work together</h2><p className="cz-hint">The pattern a group or a big job uses. Branch picks one; you can choose.</p>
@@ -40,8 +40,8 @@ export function SpecialistsTab({ engine, level, trunks, running, openAgents }: {
     {shows(level, "advanced") && <section className="cz-block"><h2 className="cz-h2">Built in</h2><p className="cz-hint">Helpers every Trunk can call. Off: Trunks won't offer that one.</p>
       {BUILT_IN.map(([name, line]) => <div key={name} className="cz-prow"><span className="cz-tile"><Glyph name="sparkle" size={16} /></span><span className="grow"><b>{name}</b><small>{line} · comes with Branch, can't be edited</small></span>
         <button type="button" role="switch" aria-checked={true} aria-label={`Offer ${name}`} className="switch" disabled title={shownWhy("Needs the engine's built-in helper switches.")} /></div>)}</section>}
-    <section className="cz-block"><h2 className="cz-h2">Let specialists argue it out</h2>
-      <div className="cz-prow"><span className="cz-tile"><Glyph name="people" size={16} /></span><span className="grow"><b>Two or three specialists take sides on a question</b><small>Each answers the others in turn, then you get both sides and where they agree.</small></span><Grey reason="Needs the engine's debate method.">Start</Grey></div></section>
+    <section className="cz-block"><h2 className="cz-h2">Let helpers argue it out</h2>
+      <div className="cz-prow"><span className="cz-tile"><Glyph name="people" size={16} /></span><span className="grow"><b>Two or three helpers take sides on a question</b><small>Each answers the others in turn, then you get both sides and where they agree.</small></span><Grey reason="Needs the engine's debate method.">Start</Grey></div></section>
   </div>;
 }
 
