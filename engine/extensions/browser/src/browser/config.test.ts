@@ -185,6 +185,12 @@ describe("browser config", () => {
       maxTabsPerSession: 8,
       sweepMinutes: 5,
     });
+    expect(resolved.idleTimeoutMinutes).toBe(5);
+  });
+
+  it("honors browser.idleTimeoutMinutes and treats 0 as disabled", () => {
+    expect(resolveBrowserConfig({ idleTimeoutMinutes: 12 }).idleTimeoutMinutes).toBe(12);
+    expect(resolveBrowserConfig({ idleTimeoutMinutes: 0 }).idleTimeoutMinutes).toBe(0);
   });
 
   it("provides a built-in chrome extension-relay profile with a derived loopback port", () => {
@@ -525,6 +531,21 @@ describe("browser config", () => {
           env: { ...noDisplayEnv, [BROWSER_HEADLESS_ENV_KEY]: headlessEnv },
         }),
       ).toEqual(expected);
+    });
+
+    it("defaults local managed Chrome to headless when Auto/unset, even with a Linux display", () => {
+      const resolved = resolveBrowserConfig({});
+      const profile = resolveProfile(resolved, "branch")!;
+      expect(
+        resolveManagedBrowserHeadlessMode(resolved, profile, {
+          platform: "linux",
+          env: {
+            DISPLAY: ":0",
+            WAYLAND_DISPLAY: "wayland-0",
+            [BROWSER_HEADLESS_ENV_KEY]: undefined,
+          },
+        }),
+      ).toEqual({ headless: true, source: "default" });
     });
 
     it("returns an actionable error only when headed mode is explicitly selected", () => {

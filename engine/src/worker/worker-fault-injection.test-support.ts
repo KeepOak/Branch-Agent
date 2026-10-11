@@ -168,6 +168,7 @@ type WorkerClientOptions = {
 
 export class ComposedGatewayHarness {
   readonly socketPath: string;
+  connectionEndpoint: WorkerLaunchDescriptor["connectionEndpoint"];
   readonly cfg: BranchConfig;
   readonly placementStore: placements.WorkerSessionPlacementStore;
   readonly requests: Array<{ method: string; params: unknown }> = [];
@@ -240,6 +241,7 @@ export class ComposedGatewayHarness {
   ) {
     // Leave room for Vitest temp nesting within Darwin's Unix socket pathname limit.
     this.socketPath = path.join(root, "s");
+    this.connectionEndpoint = { kind: "unix", socketPath: this.socketPath };
     this.cfg = {
       agents: { entries: { main: {} } },
       session: {
@@ -283,11 +285,25 @@ export class ComposedGatewayHarness {
     return expectDefined(this.store.get(ENVIRONMENT_ID), "fault environment missing").ownerEpoch;
   }
 
-  async start(): Promise<void> {
+  async start(options?: { loopback: true }): Promise<void> {
     // ws forwards bind errors first; wait there so failed binds reject setup.
     const listening = once(this.webSocketServer, "listening");
-    this.httpServer.listen(this.socketPath);
+    if (options?.loopback) {
+      this.httpServer.listen(0, "127.0.0.1");
+    } else {
+      this.httpServer.listen(this.socketPath);
+    }
     await listening;
+    if (options?.loopback) {
+      const address = this.httpServer.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Scratch worker gateway did not bind a loopback port");
+      }
+      this.connectionEndpoint = {
+        kind: "websocket",
+        url: `ws://127.0.0.1:${address.port}/__branch__/worker`,
+      };
+    }
   }
 
   addFault(rule: FaultRule): void {
@@ -331,7 +347,7 @@ export class ComposedGatewayHarness {
     }
     const descriptor: WorkerLaunchDescriptor = {
       version: 4,
-      connectionEndpoint: { kind: "unix", socketPath: this.socketPath },
+      connectionEndpoint: this.connectionEndpoint,
       admission: {
         environmentId: ENVIRONMENT_ID,
         credential,

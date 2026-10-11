@@ -1,0 +1,3 @@
+engine:src/agents/model-auth.profiles.test.ts
+window:src/places/trunk/AccountsTab.test.tsx
+window:src/thread/run-outcome.test.tsx

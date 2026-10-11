@@ -71,6 +71,7 @@ describe("cua-computer provider", () => {
     const descriptor = createCuaComputerProvider({
       platform: "linux",
       driver: session,
+      env: {},
     }).capabilities();
     expect(descriptor).toEqual({
       contractVersion: 2,

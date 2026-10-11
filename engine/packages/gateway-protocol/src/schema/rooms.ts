@@ -46,7 +46,7 @@ export const RoomsCreateParamsSchema = closedObject({
       role: Type.Optional(Type.Union([Type.Literal("lead"), Type.Literal("member")])),
       enabled: Type.Optional(Type.Boolean()),
     }),
-    { minItems: 1, maxItems: 128 },
+    { minItems: 1, maxItems: 500 },
   ),
   rule: Type.Optional(Rule),
   trunksTalk: Type.Optional(Type.Boolean()),

@@ -189,8 +189,7 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   const kept = keep && level >= 1 ? KEEP_LINE[keep] : null;
   return (
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>
-      <b>{icon}{title}</b>
-      {typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}
+      <b>{icon}{title}{typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}</b>
       {children ? <span className="right" inert={why ? true : undefined}>{children}</span> : null}
       {line || kept ? <small>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
       {shown && sub ? <small className="why-k">{shown}</small> : null}

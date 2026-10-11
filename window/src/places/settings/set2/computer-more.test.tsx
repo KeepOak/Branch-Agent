@@ -43,6 +43,7 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     await show(engine, "regular");
     const screen = row("See the screen and use the mouse")!.querySelector<HTMLInputElement>("input[role=switch]")!;
     expect(screen.checked).toBe(false);
+    expect(row("See the screen and use the mouse")!.textContent).toContain("Full access does not turn this on");
     await click(screen);
     expect(patches(request)).toContainEqual({ plugins: { entries: { "cua-computer": { enabled: true } } } });
   });

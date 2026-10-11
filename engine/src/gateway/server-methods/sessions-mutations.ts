@@ -14,6 +14,7 @@ import {
   validateSessionsResetParams,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { readAcpSessionMetaForEntries } from "../../acp/runtime/session-meta-readonly.js";
+import { authorizeAgentModelChange } from "../../agents/model-choice.js";
 import { updateSessionProfileInvolvementAsync } from "../../config/sessions/session-accessor.js";
 import { assignSessionOwnerInWorker } from "../../config/sessions/session-metadata-write.async.js";
 import { patchPluginSessionExtension } from "../../plugins/host-hook-state.js";
@@ -28,6 +29,7 @@ import {
   projectAssignableSessionOwner,
   projectSessionActor,
 } from "../session-identity-projection.js";
+import { readAgentModelPatchAccess } from "../session-model-patch-origin.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
 import { prepareSessionMutationFacts } from "../session-sharing-preparation.js";
 import {
@@ -40,6 +42,7 @@ import type { SessionActorProfileIdentity } from "../session-utils-contracts.js"
 import { projectSessionPatchResult } from "../session-utils-model.js";
 import { gatewayClientSessionCreator } from "./gateway-client-identity.js";
 import { isSyntheticGatewayCaller } from "./gateway-personal-caller.js";
+import { requestModelChoiceApproval } from "./model-choice-approval.js";
 import { emitSessionsChanged } from "./session-change-event.js";
 import { readGatewayRequestMutationAuthority } from "./session-mutation-guards.js";
 import type { SessionPatchTargetIdentity } from "./session-unread-ack.js";
@@ -120,6 +123,20 @@ function createSessionPatchHandler(
           sessionMutationAuthorization?.assertCurrent();
         }
       };
+      const agentModelAccess = patch.model !== undefined ? readAgentModelPatchAccess() : undefined;
+      if (agentModelAccess) {
+        const decision = await authorizeAgentModelChange({
+          cfg: context.getRuntimeConfig(),
+          fullAccess: agentModelAccess.fullAccess,
+          request: { model: patch.model ?? null },
+          requestApproval: (question) => requestModelChoiceApproval({ context, question }),
+        });
+        if (!decision.ok) {
+          respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, decision.reason));
+          return;
+        }
+        assertCurrent();
+      }
       if (patch.model !== undefined) {
         preparingOperator = captureGatewayOperatorRunAuthority({
           client,

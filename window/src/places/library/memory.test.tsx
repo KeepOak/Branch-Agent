@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
 import { LibraryPlace } from "./index";
+import { USER_TEMPLATE } from "./memory-about.test";
 import { configuredLimit, parseFacts, statedDefault, withoutFact } from "./memory-data";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -205,6 +206,26 @@ describe("Library › Memory", () => {
     expect(button("Clearing")!.title).not.toMatch(/canvases/);
     expect(host.textContent).toContain("Nothing remembered yet.");
     expect(host.textContent).toContain("Nothing written about you yet.");
+  });
+  it("shows Nothing written about you yet when USER.md is still the template", async () => {
+    const { engine } = engineOf(base((m, p) => m === "agents.files.get" && p.name === "USER.md"
+      ? { file: { name: "USER.md", content: USER_TEMPLATE, hash: "tmpl" } } : undefined));
+    await mount(engine);
+    const about = host.querySelector('[data-testid="about-you"]')!;
+    expect(about.textContent).toContain("Nothing written about you yet.");
+    expect(about.textContent).toContain("Let it interview you");
+    expect(about.textContent).not.toMatch(/Store stable user preferences|```|observed:|Save this file|Agent workspace|Prefer \.\.\./);
+  });
+  it("shows real USER.md facts without the template, fences, comments or docs links", async () => {
+    const content = `${USER_TEMPLATE}\n<!-- observed: 2026-09-12 | status: active -->\n\n- Prefers short replies while a task is running\n- Works from Lisbon most weekdays\n`;
+    const { engine } = engineOf(base((m, p) => m === "agents.files.get" && p.name === "USER.md"
+      ? { file: { name: "USER.md", content, hash: "facts" } } : undefined));
+    await mount(engine);
+    const about = host.querySelector('[data-testid="about-you"]')!;
+    expect(about.textContent).toContain("Prefers short replies while a task is running");
+    expect(about.textContent).toContain("Works from Lisbon most weekdays");
+    expect(about.textContent).not.toContain("Nothing written about you yet.");
+    expect(about.textContent).not.toMatch(/Store stable user preferences|```|observed:|Save this file|Agent workspace|Prefer \.\.\./);
   });
   it("shows a Trunk's read failure on that Trunk only", async () => {
     const { engine } = engineOf(base((m, p) => m === "agents.files.get" && p.agentId === "b" && p.name === "MEMORY.md" ? new Error("Disk busy") : undefined));

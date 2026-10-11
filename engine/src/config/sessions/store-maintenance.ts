@@ -21,7 +21,8 @@ import type { SessionEntry } from "./types.js";
 
 const log = createSubsystemLogger("sessions/store");
 
-const DEFAULT_SESSION_PRUNE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+// Unset pruneAfter keeps conversations (no age prune). Entry-count and disk-budget caps stay.
+const DEFAULT_SESSION_PRUNE_AFTER_MS = 0;
 const DEFAULT_DASHBOARD_ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_MODEL_RUN_PRUNE_AFTER_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_SESSION_MAX_ENTRIES = 5000;
