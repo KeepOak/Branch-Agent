@@ -11,6 +11,8 @@ export const gatewayPluginTestFiles = [
 
 // Native database consumers retain lifecycle cleanup within each forked process.
 export const gatewayDatabaseWorkerTestFiles = [
+  // Gateway startup replacement needs the real main thread: shared-state admission is refused off it.
+  "src/agents/prepared-model-runtime.startup-replacement.test.ts",
   "src/gateway/approval-fixture.test.ts",
   "src/gateway/auth-token-store-ref.test.ts",
   "src/gateway/board-http.test.ts",

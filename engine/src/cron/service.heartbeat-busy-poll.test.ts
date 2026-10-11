@@ -121,6 +121,9 @@ async function createPollFixture(options: { scratch?: string; isolated?: boolean
           heartbeat: {
             every: `${EVERY_MS}ms`,
             target: "telegram",
+            // Under the default prompt a scratch-less idle poll is skipped as no-signal
+            // before the busy guards; a custom prompt keeps the missing-scratch poll live.
+            prompt: "Check the service status.",
             ...(options.isolated ? { isolatedSession: true } : {}),
           },
         },

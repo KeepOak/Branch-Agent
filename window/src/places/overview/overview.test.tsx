@@ -130,8 +130,10 @@ describe("Overview screen", () => {
     const { host } = await render(request);
     const lockdownBtn = button(host, "Lockdown");
     expect(lockdownBtn?.disabled).toBe(false);
-    expect(lockdownBtn?.className).toContain("bad"); // Preview spec-v23 index.html:8759 button class when off
+    expect(lockdownBtn?.className).toBe("btn sm");
     await act(async () => lockdownBtn?.click());
+    expect(request.mock.calls.some(([m]) => m === "config.patch")).toBe(false);
+    await act(async () => button(host, "Turn Lockdown on")?.click());
     expect(request).toHaveBeenCalledWith("config.patch", { raw: '{"security":{"lockdown":true}}', baseHash: "h1" });
     const offBtn = button(host, "Turn Lockdown off");
     expect(offBtn).toBeTruthy();

@@ -33,7 +33,6 @@ type Props = {
   header: HeaderInfo | null;
   dark: boolean;
   listHidden: boolean;
-  onTheme: () => void;
   onToggleList: () => void;
   onBack?: () => void;
   onForward?: () => void;
@@ -179,7 +178,7 @@ export function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | 
 }
 
 /** The merged 52 px top bar (DESIGN-SPEC §3.2): the machine switcher over the sidebar, the conversation header, the global buttons. */
-export function TopBar({ compact, machine, header, dark, listHidden, onTheme, onToggleList, onBack, onForward, onCharacter, onGuide, conversationTools, ask, onSettings }: Props) {
+export function TopBar({ compact, machine, header, dark, listHidden, onToggleList, onBack, onForward, onCharacter, onGuide, conversationTools, ask, onSettings }: Props) {
   const live = header !== null && !header.room && ["think", "work", "search", "read", "wait"].includes(header.state);
   const tint = useHeaderTint(compact ? null : header);
   // The app's window buttons sit over this bar's top-right; keep their colours and height matched to it.
@@ -222,9 +221,6 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
               {ask.help ? "?" : <Icon name="ask" small />}
             </button>
           ) : null}
-          {!header ? <button type="button" className="ib" aria-label={dark ? "Light" : "Dark"} title="Switch light or dark" data-testid="theme" onClick={onTheme}>
-            <Icon name={dark ? "sun" : "moon"} small />
-          </button> : null}
           {!compact ? <button
             type="button"
             className="ib"

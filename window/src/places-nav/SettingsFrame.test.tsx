@@ -239,3 +239,37 @@ describe("settings page help", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 });
+
+
+describe("DA-73 settings destinations", () => {
+  it("keeps exactly five main destinations at every detail level", async () => {
+    await open("general");
+    const names = () => [...document.querySelectorAll(".set-nav .set-item")].map((item) => item.textContent);
+    expect(names()).toEqual(["General", "Trunks", "Safety", "Data", "About"]);
+    for (const level of ["advanced", "technical"]) {
+      await act(async () => document.querySelector<HTMLButtonElement>(`[data-level="${level}"]`)!.click());
+      expect(names()).toEqual(["General", "Trunks", "Safety", "Data", "About"]);
+    }
+  });
+
+  it.each(["models", "accounts", "local"])("keeps the %s deep link inside one Models & accounts section", async (page) => {
+    await open(page);
+    expect(document.querySelector(".set-nav [aria-current=true]")?.textContent).toBe("Trunks");
+    const sections = [...document.querySelectorAll(".set-sections .set-item")].map((item) => item.textContent);
+    expect(sections).toEqual(["Instructions & personality", "Models & accounts", "Voice", "Chat apps"]);
+    expect(document.querySelector(".set-sections [aria-current=true]")?.textContent).toBe("Models & accounts");
+    expect(document.querySelector("[role=tablist][aria-label=\"Models & accounts\"] [aria-selected=true]")?.textContent).toBe(page === "models" ? "Default" : page === "local" ? "Local" : "Accounts");
+    expect(document.querySelectorAll(".set-col h1")).toHaveLength(1);
+  });
+
+  it("keeps restricted About sections out of both navigation and search", async () => {
+    const plain = { ...engine, scopes: ["operator.read"] } as WindowEngine;
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="updates" backName="Sapling" engine={plain} onPage={vi.fn()} onBack={() => {}} />));
+    expect(document.querySelector(".set-sections [data-page=gateway]")).toBeNull();
+    expect(document.querySelector(".set-sections [data-page=self]")).toBeNull();
+    const input = document.querySelector<HTMLInputElement>("input[aria-label=\"Search settings\"]")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "gateway"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(document.querySelector(".set-hit [data-page=gateway]")).toBeNull();
+  });
+});
