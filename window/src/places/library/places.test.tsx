@@ -119,7 +119,7 @@ describe("preview topology and supported followup operations", () => {
   it("reads members only for a selected actually shared conversation", async () => {
     const request = vi.fn((method: string) => Promise.resolve(method === "users.list" ? { profiles: [] } : method === "system-presence" ? [] : method === "session.members.list" ? { members: [{ identityId: "ada" }], identities: [{ id: "ada", displayName: "Ada Person" }] } : { sessions: [{ key: "agent:main:private", visibility: "draft", label: "Private" }, { key: "agent:main:shared", visibility: "shared", label: "Shared work" }] }));
     await mount(<PeoplePlace engine={engine(request)} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} level="regular" />);
-    await click("Shared"); expect(host.textContent).toContain("Shared work"); expect(host.textContent).not.toContain("Private");
+    await click("Team admin"); await click("Shared"); expect(host.textContent).toContain("Shared work"); expect(host.textContent).not.toContain("Private");
     const button = host.querySelector('.kp-row button') as HTMLButtonElement;
     await act(async () => button.click());
     expect(request).toHaveBeenCalledWith("session.members.list", { sessionKey: "agent:main:shared" }); expect(host.textContent).toContain("Ada Person");
