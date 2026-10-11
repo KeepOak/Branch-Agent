@@ -53,6 +53,10 @@ import {
   resolveProviderSimpleCompletionHeaders,
   resolveProviderTransportTurnState,
 } from "./provider-transport-turn-state.js";
+import {
+  type RequestParams,
+  sendWithRequestParameterRepair,
+} from "./request-parameter-repair.js";
 import { resolveOpencodeSessionHeaders } from "./session-affinity.js";
 import {
   createWritableTransportEventStream,
@@ -320,26 +324,34 @@ export function streamOpenAICompletionsRequest(
           ? directEmitReasoning
           : shouldEmitOpenAICompletionsReasoning(model, options);
       firstEventAbort = createFirstStreamEventAbortController(options?.signal);
-      const requestOptions =
+      const abortSignal = firstEventAbort.signal;
+      const buildRequestOptions = async (requestParams: unknown) =>
         mode === "direct"
           ? {
-              ...(await encodeBody(params)),
-              signal: firstEventAbort.signal,
+              ...(await encodeBody(requestParams)),
+              signal: abortSignal,
               ...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
               maxRetries: 0,
             }
           : {
-              ...buildOpenAISdkRequestOptions(model, firstEventAbort.signal, {
+              ...buildOpenAISdkRequestOptions(model, abortSignal, {
                 timeoutMs: options?.timeoutMs,
               }),
-              ...(await encodeBody(params)),
+              ...(await encodeBody(requestParams)),
             };
-      const { data: responseStream, response } = await client.chat.completions
-        .create(
-          params as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
-          requestOptions,
-        )
-        .withResponse();
+      // A provider 400 naming a request parameter is repaired in place and re-sent before any
+      // stream event exists, so the caller still sees one request.
+      const { data: responseStream, response } = await sendWithRequestParameterRepair(
+        params as RequestParams,
+        async (requestParams) =>
+          await client.chat.completions
+            .create(
+              requestParams as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+              await buildRequestOptions(requestParams),
+            )
+            .withResponse(),
+        options?.signal,
+      );
       const hookedResponseStream = withProviderResponseHook({
         stream: responseStream,
         signal: firstEventAbort.signal,

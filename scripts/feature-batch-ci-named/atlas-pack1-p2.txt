@@ -1,0 +1,3 @@
+engine:packages/ai/src/transports/openai-completions-transport.parameter-repair.test.ts
+engine:packages/ai/src/transports/request-parameter-repair.test.ts
+engine:src/agents/sessions/tools/file-mutation-queue.resource-lock.test.ts
