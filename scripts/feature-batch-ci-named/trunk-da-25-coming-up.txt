@@ -1,0 +1,4 @@
+window:src/shell/control-tower-data.test.ts
+window:src/shell/running-popover.test.tsx
+window:src/shell/status-data.test.ts
+window:src/shell/status-redesign.test.tsx
