@@ -367,6 +367,28 @@ describe("usePlaceData refreshes", () => {
     expect(host.textContent).toBe("after answering");
     expect(state.notice).toBe("Answered");
   });
+  it("completes a mutation after its fresh read while later event refreshes continue", async () => {
+    vi.useFakeTimers();
+    const first = deferred<string>(), second = deferred<string>(), third = deferred<string>();
+    const load = vi.fn().mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise).mockImplementationOnce(() => third.promise);
+    const { engine, burst } = eventEngine(vi.fn() as WindowEngine["request"]);
+    let state!: ReturnType<typeof usePlaceData<string>>;
+    function MutatingProbe() { state = usePlaceData(engine, load); return <span>{state.data}</span>; }
+    const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
+    await act(async () => root!.render(<MutatingProbe />));
+    let completed = false, result!: Promise<boolean>;
+    await act(async () => { result = state.act(async () => ({ ok: true }), "Answered").then(accepted => { completed = true; return accepted; }); });
+    await act(async () => first.resolve("before answering"));
+    await burst();
+    expect(load).toHaveBeenCalledTimes(2);
+    await act(async () => second.resolve("after answering"));
+    try {
+      expect(load).toHaveBeenCalledTimes(3);
+      expect(completed).toBe(true);
+      expect(await result).toBe(true);
+      expect(host.textContent).toBe("after answering");
+    } finally { await act(async () => third.resolve("later event")); }
+  });
   it("does not publish or restart queued reads from an unmounted Inbox", async () => {
     vi.useFakeTimers();
     const first = deferred<string>();

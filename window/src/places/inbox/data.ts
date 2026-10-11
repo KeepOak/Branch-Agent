@@ -142,18 +142,28 @@ export const refreshesInbox = (event: string): boolean => /^(sessions\.|chat$|cr
 
 /** Share an active read; events during it need only one fresh read after it settles. */
 export function coalesceInboxReads(read: () => Promise<void>): () => Promise<void> {
-  let active = false, pending = false, running = Promise.resolve();
+  let active = false;
+  let pending: { promise: Promise<void>; resolve: () => void; reject: (error: unknown) => void } | undefined;
   return () => {
-    pending = true;
+    if (!pending) {
+      let resolve!: () => void, reject!: (error: unknown) => void;
+      const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+      pending = { promise, resolve, reject };
+    }
+    const completion = pending.promise;
     if (!active) {
       active = true;
-      running = (async () => {
-        try {
-          do { pending = false; await read(); } while (pending);
-        } finally { active = false; }
+      void (async () => {
+        while (pending) {
+          const current = pending;
+          pending = undefined;
+          try { await read(); current.resolve(); }
+          catch (e) { current.reject(e); }
+        }
+        active = false;
       })();
     }
-    return running;
+    return completion;
   };
 }
 
