@@ -26,7 +26,11 @@ async function withServer(
     });
     req.on("end", () => {
       const { status, payload } = respond(JSON.parse(raw) as Record<string, unknown>);
-      res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+      // Close each exchange so no keep-alive socket outlives the test worker on Windows.
+      res.writeHead(status, {
+        "content-type": "application/json; charset=utf-8",
+        connection: "close",
+      });
       res.end(JSON.stringify(payload));
     });
   });
@@ -40,6 +44,7 @@ async function withServer(
     }
     await run(`http://127.0.0.1:${address.port}/v1`);
   } finally {
+    server.closeAllConnections();
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
     });
