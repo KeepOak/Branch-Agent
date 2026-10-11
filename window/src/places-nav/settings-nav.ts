@@ -1,4 +1,4 @@
-// Five Settings destinations, with searchable sections and legacy deep links kept intact.
+// Five Settings destinations, with searchable sections and existing deep links kept intact.
 export type Level = "regular" | "advanced" | "technical";
 
 export type SettingsGroup = { name: string; pages: { id: string; name: string }[] };

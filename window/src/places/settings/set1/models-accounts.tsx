@@ -19,7 +19,7 @@ const modelTab = (section?: string) =>
       ? "media"
       : "defaults";
 
-/** Legacy account/model/local routes and search hits open the same section at the right view. */
+/** Existing account/model/local routes and search hits open the same section at the right view. */
 export function ModelsAccountsPage(props: SettingsPageProps) {
   const [selection, setSelection] = useState({
     page: props.page,
