@@ -585,30 +585,8 @@ export async function updateGitInstall(params: {
             }),
       },
     });
-  let stagedUpdateResult: UpdateRunResult | undefined;
   try {
-    const checkout = params.switchToGit
-      ? await ensureGitCheckout({
-          dir: updateRoot,
-          env: installEnv,
-          timeoutMs: effectiveTimeout,
-          progress: params.progress,
-          useStagedCheckout: async (stagingRoot, publish, targetRoot, storageRoot) => {
-            // Exposure must use the clone owner's pinned destination, not a
-            // caller alias that transport may have retargeted meanwhile.
-            updateRoot = targetRoot;
-            await createFreeBsdPkgOwnershipInspection(effectiveTimeout).assertUnowned(updateRoot);
-            stagedUpdateResult = await runUpdate(stagingRoot, publish, storageRoot);
-            if (stagedUpdateResult.root === stagingRoot) {
-              stagedUpdateResult = {
-                ...stagedUpdateResult,
-                root: params.root,
-                recovery: await verifyPackageUpdateRecovery(params.root),
-              };
-            }
-          },
-        })
-      : null;
+    const checkout = params.switchToGit ? await ensureGitCheckout({ dir: updateRoot }) : null;
     const cloneStep = checkout?.step ?? null;
     updateRoot = checkout?.checkoutDir ?? updateRoot;
 
@@ -626,7 +604,7 @@ export async function updateGitInstall(params: {
       };
     }
 
-    const updateResult = stagedUpdateResult ?? (await runUpdate(updateRoot));
+    const updateResult = await runUpdate(updateRoot);
     const before = previousPackage ?? updateResult.before;
     const steps = [
       ...(snapshotBeforeClone ? [snapshotBeforeClone] : []),

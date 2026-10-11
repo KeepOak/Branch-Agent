@@ -29,6 +29,7 @@ import {
   isPackageTargetAlreadyCurrent,
   resolveExpectedInstalledVersionFromSpec,
   resolveGlobalInstallTarget,
+  MAIN_CHANNEL_UNAVAILABLE_MESSAGE,
   resolveGlobalInstallSpec,
 } from "./update-global.js";
 import { resolvePnpmGlobalDirFromGlobalRoot } from "./update-native-package-owner.js";
@@ -107,9 +108,11 @@ describe("update global helpers", () => {
   });
 
   it("maps main and explicit package targets to install specs", () => {
-    expect(resolveGlobalInstallSpec({ packageName: "branch", tag: "main" })).toBe(
-      "github:openclaw/openclaw#main",
+    // The main channel never resolves to an install spec: it stops with a plain message, and never installs OpenClaw.
+    expect(() => resolveGlobalInstallSpec({ packageName: "branch", tag: "main" })).toThrow(
+      MAIN_CHANNEL_UNAVAILABLE_MESSAGE,
     );
+    expect(MAIN_CHANNEL_UNAVAILABLE_MESSAGE).not.toContain("openclaw");
     expect(
       resolveGlobalInstallSpec({
         packageName: "branch",
