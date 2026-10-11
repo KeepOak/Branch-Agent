@@ -1695,6 +1695,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             working: lists.rows.filter((r) => r.working).map((r) => ({ key: r.key, title: trunkName(r.agentId), line: r.isMain ? "Working" : r.title || "New conversation", runIds: r.activeRunIds })),
             openSettings,
             openAutomations: () => openPlace("automations"),
+            trunkName,
             openConversation,
             onWhatsNew: () => setGuide("news-ready"),
             onReminded: () => setReminded((n) => n + 1),
