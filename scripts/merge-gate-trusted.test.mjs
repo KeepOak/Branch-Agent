@@ -2154,9 +2154,9 @@ test('trusted coverage counts the real-engine handoff e2e from engine-handoff-ch
   assert.ok(!withHandoff.uncovered.includes('engine/test/gateway-desktop-handoff.e2e.test.ts'));
 });
 
-test('merge-gate recheck fires on every completed run, so no check can drift out of its filter', () => {
+test('merge-gate recheck lists its workflows explicitly and reacts to their completed runs', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
-  assert.doesNotMatch(yaml, /^\s+workflows:/m);
+  assert.match(yaml, /^\s+workflows:\n\s+- Button crawl\n/m);
   assert.match(yaml, /types: \[completed\]/);
 });
 

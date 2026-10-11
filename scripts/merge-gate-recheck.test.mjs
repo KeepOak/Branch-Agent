@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import { recheckPlan, runRecheck, summarizeRuns } from './merge-gate-recheck.mjs';
 
@@ -102,9 +102,44 @@ test('the newest gate run is the one that decides', () => {
   assert.equal(summarizeRuns([older, newer, content('success')]).gates['Merge gate'].id, 2);
 });
 
-test('the recheck workflow has no workflow filter, reacts to every completed run, and calls the script', () => {
+// The workflows that produce pull request checks, read from the files: the names a workflow_run trigger must list.
+function pullRequestWorkflowNames() {
+  const dir = new URL('../.github/workflows/', import.meta.url);
+  const names = [];
+  for (const file of readdirSync(dir).sort()) {
+    if (!file.endsWith('.yml') || file === 'merge-gate-recheck.yml') continue;
+    const text = readFileSync(new URL(file, dir), 'utf8');
+    const name = /^name:\s*(.+?)\s*$/m.exec(text)?.[1].replace(/^['"]|['"]$/g, '');
+    const onBlock = /^on:\s*\n((?:[ \t]+.*\n|\n)*)/m.exec(text)?.[1] ?? '';
+    const inline = /^on:\s*(.*)$/m.exec(text)?.[1] ?? '';
+    const triggersOnPr = /^\s{2}(pull_request|pull_request_target):/m.test(onBlock) || /pull_request/.test(inline);
+    if (triggersOnPr && name) names.push(name);
+  }
+  return names.sort();
+}
+
+function recheckWorkflowNames() {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
-  assert.doesNotMatch(yaml, /^\s+workflows:/m);
+  const list = /^\s+workflows:\n((?:\s+- .+\n)+)/m.exec(yaml)?.[1] ?? '';
+  return list.split('\n').map((line) => line.replace(/^\s+- /, '').trim()).filter(Boolean).sort();
+}
+
+// GitHub rejects a workflow_run trigger with no workflows list ("workflow file issue"), and the docs do not
+// promise glob patterns, so the list is explicit. This fails when a pull_request workflow is missing from it.
+test('the recheck lists every pull_request workflow by name, and nothing that does not trigger on one', () => {
+  const listed = recheckWorkflowNames();
+  const wanted = pullRequestWorkflowNames();
+  assert.ok(listed.length > 0, 'merge-gate-recheck.yml must list its workflows');
+  const missing = wanted.filter((name) => !listed.includes(name));
+  assert.deepEqual(missing, [], `pull_request workflows missing from the recheck trigger: ${missing.join(', ')}`);
+  const extra = listed.filter((name) => !wanted.includes(name) && name !== 'CodeQL');
+  assert.deepEqual(extra, [], `listed but not triggered on pull_requests: ${extra.join(', ')}`);
+  assert.equal(listed.includes('Merge gate recheck'), false, 'the recheck never rechecks itself');
+});
+
+test('the recheck workflow reacts to completed runs of its listed workflows, and calls the script', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /^\s+workflows:\n/m);
   assert.match(yaml, /types: \[completed\]/);
   assert.match(yaml, /node scripts\/merge-gate-recheck\.mjs/);
   assert.match(yaml, /cancel-in-progress: true/);
