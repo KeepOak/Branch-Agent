@@ -71,7 +71,8 @@ function buildReplyDispatchPublication(
       runtimes.push(createReplyDispatchRuntime(owner));
       continue;
     }
-    const kept = owner.input.agentId === undefined ? undefined : lastServed.get(owner.input.agentId);
+    const kept =
+      owner.input.agentId === undefined ? undefined : lastServed.get(owner.input.agentId);
     if (kept) {
       runtimes.push(kept);
       continue;
@@ -93,11 +94,16 @@ function logReplyDispatchChanges(
 ): void {
   for (const agentId of next.excluded) {
     if (!previousExcluded.has(agentId)) {
-      log.warn(`reply dispatch excluded ${agentId}: it has no published runtime yet; its own publication adds it back`);
+      log.warn(
+        `reply dispatch excluded ${agentId}: it has no published runtime yet; its own publication adds it back`,
+      );
     }
   }
   for (const agentId of previousExcluded) {
-    if (!next.excluded.has(agentId) && next.runtimes.some((runtime) => runtime.agentId === agentId)) {
+    if (
+      !next.excluded.has(agentId) &&
+      next.runtimes.some((runtime) => runtime.agentId === agentId)
+    ) {
       log.warn(`reply dispatch added back ${agentId}: its own publication committed`);
     }
   }
@@ -177,14 +183,24 @@ export class PreparedReplyDispatchPublicationOwner {
   readonly load = async ({
     agentId,
     abortSignal,
+    unpublishedWaitMs,
   }: {
     agentId: string;
     abortSignal?: AbortSignal;
+    /**
+     * How long to wait for a configured agent that is out of dispatch, such as one whose auth
+     * refresh or startup preparation failed and is waiting for its own next publication.
+     * Omitted refuses at once.
+     */
+    unpublishedWaitMs?: number;
   }): Promise<PreparedReplyDispatchRuntime | undefined> => {
     let supersededSince: number | undefined;
+    let unpublishedSince: number | undefined;
     const waitForSuccessor = async (error: PreparedModelRuntimePublicationSupersededError) => {
       supersededSince ??= Date.now();
-      if (Date.now() - supersededSince >= 120_000) { throw error; }
+      if (Date.now() - supersededSince >= 120_000) {
+        throw error;
+      }
       await racePromiseWithAbortSignal(delay(250), abortSignal);
     };
     for (;;) {
@@ -202,7 +218,9 @@ export class PreparedReplyDispatchPublicationOwner {
         try {
           await racePromiseWithAbortSignal(replacement, abortSignal);
         } catch (error) {
-          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)){ throw error; }
+          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) {
+            throw error;
+          }
           await waitForSuccessor(error);
         }
         continue;
@@ -213,7 +231,9 @@ export class PreparedReplyDispatchPublicationOwner {
         try {
           await racePromiseWithAbortSignal(pendingOwner.pending, abortSignal);
         } catch (error) {
-          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)){ throw error; }
+          if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) {
+            throw error;
+          }
           await waitForSuccessor(error);
         }
         continue;
@@ -224,6 +244,14 @@ export class PreparedReplyDispatchPublicationOwner {
           // A retired publication can settle before its replacement is queued.
           await racePromiseWithAbortSignal(delay(250), abortSignal);
           continue;
+        }
+        if (pendingOwner && unpublishedWaitMs) {
+          unpublishedSince ??= Date.now();
+          if (Date.now() - unpublishedSince < unpublishedWaitMs) {
+            assertPreparedModelRuntimeAdmissionCanWait(pendingOwner);
+            await racePromiseWithAbortSignal(delay(250), abortSignal);
+            continue;
+          }
         }
         throw new PreparedModelRuntimeOwnerNotPublishedError(
           `prepared reply dispatch runtime owner was not published for ${agentId}`,

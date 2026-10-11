@@ -65,6 +65,9 @@ import { isReplyProfilerEnabled } from "./reply-timing-tracker.js";
 import { resolveRoutedDeliveryThreadId } from "./routed-delivery-thread.js";
 import { stageRemoteInboundMediaIfNeeded } from "./stage-remote-inbound-media.js";
 
+// Restart recovery waits this long for the same unpublished-runtime refusal before giving up.
+const PREPARED_REPLY_DISPATCH_PUBLICATION_WAIT_MS = 120_000;
+
 export async function gatherDispatchRequest(
   params: DispatchFromConfigParams,
   messageAuditTerminal: InboundMessageAuditTerminalRecorder | undefined,
@@ -438,6 +441,9 @@ export async function gatherDispatchRequest(
         return await loadPublishedGatewayReplyDispatchRuntime({
           agentId: preparedReplyDispatchAgentId,
           abortSignal: params.replyOptions?.abortSignal,
+          // The message is already accepted, so a refusal here fails its run. Wait for a
+          // configured agent that is between publications instead of dropping the turn.
+          unpublishedWaitMs: PREPARED_REPLY_DISPATCH_PUBLICATION_WAIT_MS,
         });
       },
     );

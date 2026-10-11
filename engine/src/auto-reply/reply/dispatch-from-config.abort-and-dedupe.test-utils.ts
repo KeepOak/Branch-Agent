@@ -218,6 +218,7 @@ describe("dispatchReplyFromConfig", () => {
       expect(preparedLookup).toHaveBeenCalledWith({
         agentId: "main",
         abortSignal: abort.signal,
+        unpublishedWaitMs: 120_000,
       });
     } finally {
       preparedLoader.mockRestore();
@@ -237,11 +238,7 @@ describe("dispatchReplyFromConfig", () => {
       SessionKey: "agent:main:main",
     });
 
-    const replyResolver = async (
-      _ctx: MsgContext,
-      opts?: GetReplyOptions,
-      _cfg?: BranchConfig,
-    ) => {
+    const replyResolver = async (_ctx: MsgContext, opts?: GetReplyOptions, _cfg?: BranchConfig) => {
       await opts?.onPlanUpdate?.({
         phase: "update",
         explanation: "Inspect code.",
@@ -387,11 +384,7 @@ describe("dispatchReplyFromConfig", () => {
       ChatType: "direct",
     });
 
-    const replyResolver = async (
-      _ctx: MsgContext,
-      opts?: GetReplyOptions,
-      _cfg?: BranchConfig,
-    ) => {
+    const replyResolver = async (_ctx: MsgContext, opts?: GetReplyOptions, _cfg?: BranchConfig) => {
       await opts?.onToolResult?.({ mediaUrl: "https://example.com/tts-preview.opus" });
       return { text: "done" } satisfies ReplyPayload;
     };
@@ -1129,7 +1122,7 @@ describe("dispatchReplyFromConfig", () => {
     }
 
     expect(result.queuedFinal).toBe(true);
-    expect(preparedLookup).toHaveBeenCalledWith({ agentId: "main" });
+    expect(preparedLookup).toHaveBeenCalledWith({ agentId: "main", unpublishedWaitMs: 120_000 });
     expect(sessionBindingMocks.resolveByConversation).toHaveBeenCalledWith({
       channel: "discord",
       accountId: "default",

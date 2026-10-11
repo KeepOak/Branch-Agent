@@ -19,6 +19,11 @@ import { PluginRegistryInspectionResources } from "../plugins/registry-inspectio
 import { getPluginRuntimeGenerationRegistry } from "../plugins/runtime/generation-scope.js";
 import { createPluginRecord } from "../plugins/status.test-helpers.js";
 import type { ProviderPlugin } from "../plugins/types.js";
+import {
+  preparePendingAgentDatabase,
+  recordAgentDatabaseAdmissions,
+} from "../state/agent-database-admission.js";
+import { withAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 import type { DiscoverAuthStorageOptions } from "./agent-auth-discovery.js";
 import { withPreparedModelRuntimePluginGenerationScope } from "./prepared-model-runtime-generation-scope.js";
 import { prepareWorkspaceBuildGroup } from "./prepared-model-runtime.facts.js";
@@ -30,11 +35,6 @@ import {
   refreshPreparedModelRuntimeSnapshots,
 } from "./prepared-model-runtime.js";
 import { retainPreparedPluginGeneration } from "./prepared-model-runtime.plugin-lifetime.js";
-import {
-  preparePendingAgentDatabase,
-  recordAgentDatabaseAdmissions,
-} from "../state/agent-database-admission.js";
-import { withAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 
 const fixture = usePreparedModelRuntimeHarness({ label: "prepared-model-runtime" });
 const { mocks } = fixture;
@@ -430,6 +430,93 @@ describe("prepared reply dispatch runtime", () => {
     );
   });
 
+  it("serves an auth-stale agent once its own publication commits when the caller waits", async () => {
+    mocks.configuredAgentIds = ["default", "worker"];
+    await refreshPreparedModelRuntimeSnapshots(
+      {},
+      {
+        gatewayLifecycle: true,
+        catalogMode: "static",
+      },
+    );
+    const refreshFailed = createDeferred();
+    const unregister = registerPreparedModelRuntimePublicationListener((event) => {
+      if (event.phase === "failed") {
+        refreshFailed.resolve();
+      }
+    });
+    mocks.discoverAuthStorage.mockImplementationOnce(() => {
+      throw new Error("auth refresh rejected");
+    });
+    mocks.mutationListener?.({
+      agentDir: fixture.state.agentDir("worker"),
+      affectsInheritedStores: false,
+    });
+    await refreshFailed.promise;
+    unregister();
+
+    // An accepted message for worker arrives while worker is out of dispatch.
+    const waiting = loadPublishedGatewayReplyDispatchRuntime({
+      agentId: "worker",
+      unpublishedWaitMs: 120_000,
+    });
+    let settled: "resolved" | "rejected" | undefined;
+    void waiting.then(
+      () => {
+        settled = "resolved";
+      },
+      () => {
+        settled = "rejected";
+      },
+    );
+    await new Promise((resolve) => {
+      setTimeout(resolve, 600);
+    });
+    expect(settled).toBeUndefined();
+
+    await refreshPreparedModelRuntimeSnapshots(
+      {},
+      {
+        agentIds: new Set(["worker"]),
+        gatewayLifecycle: true,
+        catalogMode: "static",
+      },
+    );
+    await expect(waiting).resolves.toMatchObject({ agentId: "worker" });
+  });
+
+  it("refuses an auth-stale agent after the caller's publication wait runs out", async () => {
+    mocks.configuredAgentIds = ["default", "worker"];
+    await refreshPreparedModelRuntimeSnapshots(
+      {},
+      {
+        gatewayLifecycle: true,
+        catalogMode: "static",
+      },
+    );
+    const refreshFailed = createDeferred();
+    const unregister = registerPreparedModelRuntimePublicationListener((event) => {
+      if (event.phase === "failed") {
+        refreshFailed.resolve();
+      }
+    });
+    mocks.discoverAuthStorage.mockImplementationOnce(() => {
+      throw new Error("auth refresh rejected");
+    });
+    mocks.mutationListener?.({
+      agentDir: fixture.state.agentDir("worker"),
+      affectsInheritedStores: false,
+    });
+    await refreshFailed.promise;
+    unregister();
+
+    const startedAt = Date.now();
+    await expect(
+      loadPublishedGatewayReplyDispatchRuntime({ agentId: "worker", unpublishedWaitMs: 500 }),
+    ).rejects.toThrow("prepared reply dispatch runtime owner was not published for worker");
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(500);
+  });
+
   it("publishes a sibling's scoped refresh while an auth-stale owner is still preparing", async () => {
     mocks.configuredAgentIds = ["default", "worker"];
     await refreshPreparedModelRuntimeSnapshots(
@@ -507,31 +594,44 @@ describe("prepared reply dispatch runtime", () => {
       await withAgentDatabaseStartupAdmission(async (admission) => {
         const refusals = admission.defer({
           env,
-          inspections: [{ target: { agentId: "worker", path: workerPath }, result: Promise.resolve(clean) }],
+          inspections: [
+            { target: { agentId: "worker", path: workerPath }, result: Promise.resolve(clean) },
+          ],
           reason: "Inspection continues after the Gateway listener binds.",
         });
         recordAgentDatabaseAdmissions(refusals, { env, source: "startup" });
         stop = admission.adopt().stop;
 
         // Worker is refused, so its owner is never built: it has no runtime to serve.
-        await refreshPreparedModelRuntimeSnapshots({}, { gatewayLifecycle: true, catalogMode: "static" });
-        await expect(loadPublishedGatewayReplyDispatchRuntime({ agentId: "default" })).resolves.toMatchObject({ agentId: "default" });
-        await expect(loadPublishedGatewayReplyDispatchRuntime({ agentId: "worker" })).rejects.toThrow(
-          "prepared reply dispatch runtime owner was not published for worker",
+        await refreshPreparedModelRuntimeSnapshots(
+          {},
+          { gatewayLifecycle: true, catalogMode: "static" },
         );
+        await expect(
+          loadPublishedGatewayReplyDispatchRuntime({ agentId: "default" }),
+        ).resolves.toMatchObject({ agentId: "default" });
+        await expect(
+          loadPublishedGatewayReplyDispatchRuntime({ agentId: "worker" }),
+        ).rejects.toThrow("prepared reply dispatch runtime owner was not published for worker");
 
         // Worker's own preparation publishes it; only then does dispatch serve it.
         const workerRefusal = refusals.find((refusal) => refusal.agentId === "worker");
         if (!workerRefusal) {
           throw new Error("expected a worker refusal");
         }
-        await preparePendingAgentDatabase(workerRefusal, { env, assertCurrent: () => undefined }, async () => {
-          await refreshPreparedModelRuntimeSnapshots(
-            {},
-            { agentIds: new Set(["worker"]), gatewayLifecycle: true, catalogMode: "static" },
-          );
-        });
-        await expect(loadPublishedGatewayReplyDispatchRuntime({ agentId: "worker" })).resolves.toMatchObject({ agentId: "worker" });
+        await preparePendingAgentDatabase(
+          workerRefusal,
+          { env, assertCurrent: () => undefined },
+          async () => {
+            await refreshPreparedModelRuntimeSnapshots(
+              {},
+              { agentIds: new Set(["worker"]), gatewayLifecycle: true, catalogMode: "static" },
+            );
+          },
+        );
+        await expect(
+          loadPublishedGatewayReplyDispatchRuntime({ agentId: "worker" }),
+        ).resolves.toMatchObject({ agentId: "worker" });
       });
     } finally {
       await stop?.();
@@ -540,7 +640,10 @@ describe("prepared reply dispatch runtime", () => {
 
   it("keeps a stale published agent serving its last runtime through a sibling's publication", async () => {
     mocks.configuredAgentIds = ["default", "worker"];
-    await refreshPreparedModelRuntimeSnapshots({}, { gatewayLifecycle: true, catalogMode: "static" });
+    await refreshPreparedModelRuntimeSnapshots(
+      {},
+      { gatewayLifecycle: true, catalogMode: "static" },
+    );
     const workerRuntime = await loadPublishedGatewayReplyDispatchRuntime({ agentId: "worker" });
     const workspaceOf = (args: unknown[]) =>
       String((args[0] as { workspaceDir?: string } | undefined)?.workspaceDir ?? "");
@@ -553,17 +656,27 @@ describe("prepared reply dispatch runtime", () => {
     try {
       // Worker's rebuild fails: it is stale now, but its last runtime is still the one it served.
       await expect(
-        refreshPreparedModelRuntimeSnapshots({}, { agentIds: new Set(["worker"]), gatewayLifecycle: true, catalogMode: "static" }),
+        refreshPreparedModelRuntimeSnapshots(
+          {},
+          { agentIds: new Set(["worker"]), gatewayLifecycle: true, catalogMode: "static" },
+        ),
       ).rejects.toThrow("worker catalog failed");
 
       // The sibling's publication commits. Worker's own build still fails in it and reports that
       // error, not a rejected dispatch generation; worker keeps serving its last runtime.
       const defaultBefore = await loadPublishedGatewayReplyDispatchRuntime({ agentId: "default" });
       await expect(
-        refreshPreparedModelRuntimeSnapshots({}, { agentIds: new Set(["default"]), gatewayLifecycle: true, catalogMode: "static" }),
+        refreshPreparedModelRuntimeSnapshots(
+          {},
+          { agentIds: new Set(["default"]), gatewayLifecycle: true, catalogMode: "static" },
+        ),
       ).rejects.toThrow("worker catalog failed");
-      await expect(loadPublishedGatewayReplyDispatchRuntime({ agentId: "default" })).resolves.toBe(defaultBefore);
-      await expect(loadPublishedGatewayReplyDispatchRuntime({ agentId: "worker" })).resolves.toBe(workerRuntime);
+      await expect(loadPublishedGatewayReplyDispatchRuntime({ agentId: "default" })).resolves.toBe(
+        defaultBefore,
+      );
+      await expect(loadPublishedGatewayReplyDispatchRuntime({ agentId: "worker" })).resolves.toBe(
+        workerRuntime,
+      );
     } finally {
       mocks.prepareStaticCatalog.mockReset().mockResolvedValue({ entries: [] });
     }

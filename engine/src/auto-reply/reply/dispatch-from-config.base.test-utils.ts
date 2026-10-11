@@ -236,7 +236,10 @@ describe("dispatchReplyFromConfig", () => {
         replyResolver,
       });
       expect(preparedLookup).toHaveBeenCalledTimes(2);
-      expect(preparedLookup).toHaveBeenNthCalledWith(1, { agentId: "main" });
+      expect(preparedLookup).toHaveBeenNthCalledWith(1, {
+        agentId: "main",
+        unpublishedWaitMs: 120_000,
+      });
       expect(preparedLookup).toHaveBeenNthCalledWith(2, { agentId: "main" });
       expect(runtimePluginMocks.loadAgentRuntimePluginRegistryHandle).not.toHaveBeenCalled();
       expect(receivedPreparedRuntime).toBe(preparedRuntime);
