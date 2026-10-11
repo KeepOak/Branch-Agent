@@ -17,6 +17,7 @@ type Ctx = {
   shortcuts: () => void;
   setup: () => void;
   tour: () => void;
+  canDo?: () => void;
   quickAsk: () => void;
   openConversation: (key: string) => void;
   openPlace: (p: PlaceId) => void;
@@ -91,6 +92,7 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     { id: "a:tour", group: "Actions", label: "Take the walkthrough", hint: "2 min", run: c.tour },
     { id: "a:skins", group: "Actions", label: "Browse themes", hint: "", run: () => c.openSettings("appearance") },
     { id: "a:account", group: "Actions", label: "Add an account", hint: "Settings", run: () => c.openSettings("accounts") },
+    ...(c.canDo ? [{ id: "a:cando", group: "Actions", label: "What Branch can do", hint: "", run: c.canDo }] : []),
     ...conversationCommands(c),
   ];
   const conversations = c.conversations.map((r) => ({

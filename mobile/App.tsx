@@ -6,6 +6,8 @@ import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-c
 import { ApprovalAlerts, type AppStateSource, type Notifier, type NotificationPermission } from './src/approvals/approvalAlerts';
 import { ApprovalInbox, trunkOf } from './src/approvals/approvals';
 import { headline } from './src/approvals/approvalWords';
+import { testApprovalsOn } from './src/approvals/testApproval';
+import { useTestApproval } from './src/approvals/useTestApproval';
 import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
 import { Conversation } from './src/chat/conversation';
 import { ChatList, type ChatRow } from './src/chats/chatList';
@@ -97,6 +99,9 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
       live = false;
     };
   }, [state.step, notifier]);
+  const [testTools] = useState(testApprovalsOn);
+  const [refreshApprovals] = useState(() => () => inbox.refresh());
+  const testApproval = useTestApproval(session, refreshApprovals);
   const turnOnNotifications = () => {
     notifier.requestPermission().then(setPermission, () => setPermission('unavailable'));
   };
@@ -112,7 +117,7 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
     setRoute('welcome');
   }, [state.step, chats, inbox]);
 
-  // Android's back gesture leaves Your computer, a chat or Needs you for Chats, like the on-screen back button.
+  // Android's back gesture leaves Your computer, a chat or Approvals for Chats, like the on-screen back button.
   useEffect(() => {
     if (state.step !== 'paired' || pairedRoute.name === 'chats') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -182,6 +187,7 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
               if (row) setPairedRoute({ name: 'chat', row });
             }}
             focusId={pairedRoute.focus}
+            test={testTools ? { state: testApproval.state, onSend: testApproval.send, onCancel: testApproval.cancel } : undefined}
           />
         );
       } else {
