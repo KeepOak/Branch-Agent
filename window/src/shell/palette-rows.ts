@@ -37,8 +37,10 @@ function conversationCommands(c: Ctx): PaletteRow[] {
   const rows: PaletteRow[] = [];
   const seen = new Set<string>();
   const add = (id: string, label: string, run: () => void) => {
-    if (seen.has(label)) return;
+    // One row per command and per label: a Trunk listed under two names must not repeat its id.
+    if (seen.has(label) || seen.has(id)) return;
     seen.add(label);
+    seen.add(id);
     rows.push({ id, group: "Actions", label, hint: "", run, whenTyping: true });
   };
   const addTrunk = (id: string, name: string) => {
@@ -75,7 +77,7 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     { id: "a:skins", group: "Actions", label: "Browse themes", hint: "", run: () => c.openSettings("appearance") },
     ...conversationCommands(c),
   ];
-  const conversations = c.conversations.map((r) => ({
+  const conversations = uniqueBy(c.conversations, (r) => r.key).map((r) => ({
     id: `c:${r.key}`,
     group: "Conversations",
     label: r.isMain ? c.trunkName(r.agentId) : r.title || "New conversation",
@@ -86,6 +88,18 @@ export function paletteRows(c: Ctx): PaletteRow[] {
   const settings = settingsGroups("technical").flatMap((g) =>
     g.pages.map((p) => ({ id: `s:${p.id}`, group: "Settings", label: p.name, hint: "Settings", run: () => c.openSettings(p.id) })),
   );
-  const trunks = c.trunks.map((t) => ({ id: `t:${t.id}`, group: "Trunks", label: t.name, hint: "Trunk", run: () => c.openPlace("customize") }));
-  return [...actions, ...conversations, ...places, ...settings, ...trunks];
+  const trunks = uniqueBy(c.trunks, (t) => t.id).map((t) => ({ id: `t:${t.id}`, group: "Trunks", label: t.name, hint: "Trunk", run: () => c.openPlace("customize") }));
+  // Every row id is a React key in the list, so a repeated id would make rows vanish or repeat on update.
+  return uniqueBy([...actions, ...conversations, ...places, ...settings, ...trunks], (r) => r.id);
+}
+
+/** The first item for each key, in order. A contact and a session row can both carry one conversation key. */
+function uniqueBy<T>(items: readonly T[], key: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const k = key(item);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
