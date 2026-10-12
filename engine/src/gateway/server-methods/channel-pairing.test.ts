@@ -284,6 +284,36 @@ describe("channel DM pairing gateway handlers", () => {
     );
   });
 
+  it("G-1680: approving a sender without naming it as the owner never sets an owner", async () => {
+    mocks.approve.mockResolvedValue({
+      id: "+15551234567",
+      entry: {
+        id: "+15551234567",
+        code: "SECRET12",
+        createdAt: "2026-07-20T10:00:00.000Z",
+        lastSeenAt: "2026-07-20T10:00:00.000Z",
+      },
+    });
+
+    const respond = await invoke("channels.pairing.approve", {
+      channel: "whatsapp",
+      accountId: "personal",
+      requestId: "opaque-request-id",
+    });
+
+    expect(mocks.bootstrapOwner).not.toHaveBeenCalled();
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      {
+        requestId: "opaque-request-id",
+        senderId: "+15551234567",
+        notification: "not-requested",
+        commandOwnerBootstrap: "not-requested",
+      },
+      undefined,
+    );
+  });
+
   it("reports command-owner setup failure without rolling back DM approval", async () => {
     mocks.approve.mockResolvedValue({
       id: "+15551234567",
