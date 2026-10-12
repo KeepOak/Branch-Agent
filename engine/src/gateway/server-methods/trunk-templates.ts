@@ -1,9 +1,15 @@
 // Gateway RPCs for Trunk templates: export one Trunk, or create a Trunk from a template.
 // Both methods respond exactly once, including when something throws.
 import { existsSync } from "node:fs";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { ErrorCodes, errorShape, validateTrunkTemplateCreateParams, validateTrunkTemplateExportParams } from "../../../packages/gateway-protocol/src/index.js";
+import {
+  ErrorCodes,
+  errorShape,
+  validateTrunkTemplateCreateParams,
+  validateTrunkTemplateExportParams,
+  validateTrunkTemplateListParams,
+} from "../../../packages/gateway-protocol/src/index.js";
 import { mutateConfigFileWithRetry } from "../../config/config.js";
 import { redactSensitiveText } from "../../logging/redact.js";
 import { resolveBundledSkillsDir } from "../../skills/loading/bundled-dir.js";
@@ -123,7 +129,8 @@ async function applyTemplateSettings(agentId: string, template: TrunkTemplate, w
   const slugs = template.skills.map(skillSlugForId).filter((slug): slug is string => slug !== undefined);
   const installed = installedSkillSlugs(slugs, workspaceDir);
   const toolsets = { ...template.toolsets };
-  if (Object.keys(toolsets).length > 0 || slugs.length > 0) {
+  const denyTools = template.denyTools ?? [];
+  if (Object.keys(toolsets).length > 0 || slugs.length > 0 || denyTools.length > 0 || template.askFirst) {
     await mutateConfigFileWithRetry({
       afterWrite: { mode: "auto" },
       mutate: (draft) => {
@@ -132,6 +139,14 @@ async function applyTemplateSettings(agentId: string, template: TrunkTemplate, w
         const entry = (entries[agentId] ??= {});
         if (Object.keys(toolsets).length > 0) {
           entry.toolsets = toolsets;
+        }
+        if (denyTools.length > 0) {
+          const tools = (entry.tools ??= {});
+          tools.deny = [...new Set([...(tools.deny ?? []), ...denyTools])];
+        }
+        if (template.askFirst) {
+          const tools = (entry.tools ??= {});
+          tools.fs = { ...tools.fs, workspaceOnly: true };
         }
         const defaultSkills = agents.defaults?.skills;
         if (slugs.length > 0 && Array.isArray(defaultSkills)) {
@@ -187,7 +202,11 @@ async function createTrunkFromTemplate(
       respond(false, undefined, error);
     }
   };
-  await createHandler({ ...options, params: { name: params.name ?? parsed.template.name }, respond: capture });
+  const createParams = {
+    name: params.name ?? parsed.template.name,
+    ...(parsed.template.look ? { avatar: parsed.template.look } : {}),
+  };
+  await createHandler({ ...options, params: createParams, respond: capture });
   if (!outcome.agentId) {
     respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, CREATE_DID_NOT_RETURN));
     return;
@@ -204,7 +223,56 @@ async function createTrunkFromTemplate(
   respond(true, { ok: true, agentId: outcome.agentId, workspace, warnings: [...parsed.warnings, ...settingsWarnings, ...notAppliedWarnings(parsed.template)] }, undefined);
 }
 
+/** One bundled template as Seedbank > Agents and the first-run Trunk step list it. */
+type BundledTemplateSummary = {
+  id: string;
+  name: string;
+  description: string;
+  look?: string;
+  dayOne: boolean;
+  permissions: string[];
+};
+
+/** The templates that ship with this engine, sorted by name. Unreadable or invalid files are left out. */
+async function listBundledTemplates(): Promise<BundledTemplateSummary[]> {
+  const root = resolveBundledSkillsDir();
+  if (!root) {
+    return [];
+  }
+  const dir = path.join(root, "trunk-templates");
+  const files = await readdir(dir).catch(() => [] as string[]);
+  const summaries: BundledTemplateSummary[] = [];
+  for (const file of files.filter((name) => name.endsWith(TEMPLATE_SUFFIX)).toSorted()) {
+    const text = await readFile(path.join(dir, file), "utf8").catch(() => undefined);
+    const parsed = text === undefined ? undefined : parseTemplateText(text);
+    if (!parsed?.ok) {
+      continue;
+    }
+    const { template } = parsed;
+    summaries.push({
+      id: file.slice(0, -TEMPLATE_SUFFIX.length),
+      name: template.name,
+      description: template.description,
+      ...(template.look ? { look: template.look } : {}),
+      dayOne: template.dayOne === true,
+      permissions: template.permissions,
+    });
+  }
+  return summaries.toSorted((a, b) => a.name.localeCompare(b.name));
+}
+
 export const trunkTemplatesHandlers: GatewayRequestHandlers = {
+  "trunks.template.list": async (options) => {
+    const respond = onceRespond(options.respond);
+    if (!assertValidParams(options.params, validateTrunkTemplateListParams, "trunks.template.list", respond)) {
+      return;
+    }
+    try {
+      respond(true, { templates: await listBundledTemplates() }, undefined);
+    } catch (error) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, messageOf(error)));
+    }
+  },
   "trunks.template.export": async (options) => {
     const respond = onceRespond(options.respond);
     const { params } = options;

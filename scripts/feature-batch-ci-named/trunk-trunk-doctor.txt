@@ -1,0 +1,4 @@
+engine:src/gateway/server-methods-list.test.ts
+engine:src/gateway/server-methods/trunk-templates.test.ts
+engine:src/trunks/trunk-doctor.test.ts
+engine:src/trunks/trunk-template.test.ts

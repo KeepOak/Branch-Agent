@@ -7,6 +7,9 @@ export const TrunkTemplateExportParamsSchema = closedObject({
   agentId: NonEmptyString,
 });
 
+/** Lists the templates bundled with this engine (Seedbank > Agents and the first-run Trunk step). */
+export const TrunkTemplateListParamsSchema = closedObject({});
+
 /** Creates a Trunk from a bundled template id, or from a template file on the gateway host. */
 export const TrunkTemplateCreateParamsSchema = closedObject({
   templateId: Type.Optional(NonEmptyString),

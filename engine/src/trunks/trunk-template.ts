@@ -3,7 +3,7 @@
  * branch.trunk-template.json. Pure data and functions. The exporter reads a Trunk and
  * hands only the fields below to buildTrunkTemplate, so nothing else can leave.
  */
-import { ALWAYS_ON_TOOL_IDS, listToolsetIds } from "../agents/tool-toolsets.js";
+import { ALWAYS_ON_TOOL_IDS, listToolsetIds, TOOLSETS } from "../agents/tool-toolsets.js";
 
 export const TRUNK_TEMPLATE_FILE_NAME = "branch.trunk-template.json";
 export const TRUNK_TEMPLATE_FORMAT = "branch.trunk-template";
@@ -12,6 +12,8 @@ export const TRUNK_TEMPLATE_VERSION = 1;
 const SEEDBANK_SKILL_PREFIX = "seedbank:@branch-agent/";
 const SKILL_ID_PATTERN = /^seedbank:@branch-agent\/([a-z0-9][a-z0-9-]*)(?:@\S+)?$/;
 const MODEL_FAMILY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** A face from the built-in look set ("branch:<look>") or the classic pebble. Never a path or URL. */
+const LOOK_PATTERN = /^(?:classic|branch:[a-z][a-z0-9-]{0,31})$/;
 const PEM_BLOCK_PATTERN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g;
 const PEM_HEADER_PATTERN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/g;
 const WINDOWS_USER_PATH_PATTERN = /[A-Za-z]:[\\/]Users[\\/][^\\/\s"'`]+/g;
@@ -37,6 +39,17 @@ export type TrunkTemplate = {
   automations?: TrunkTemplateAutomation[];
   /** What the Trunk may reach, in plain words, as the exporter found it. */
   permissions: string[];
+  /** The face it starts with: "branch:<look>" from the built-in look set, or "classic". */
+  look?: string;
+  /** Built-in tools this Trunk never gets, on top of its toolset switches. */
+  denyTools?: string[];
+  /**
+   * Keeps the Trunk on Ask first even when Full access is on elsewhere: its file tools stay inside
+   * its own workspace, so every change it asks Branch to make waits for the owner.
+   */
+  askFirst?: true;
+  /** One of the day-one templates shown in Seedbank > Agents and in the first-run Trunk step. */
+  dayOne?: true;
 };
 
 /** The only fields the exporter may pass in. Anything else on a Trunk stays on it. */
@@ -50,6 +63,10 @@ export type TrunkTemplateSource = {
   modelFamily?: string;
   automations?: TrunkTemplateAutomation[];
   permissions?: string[];
+  look?: string;
+  denyTools?: string[];
+  askFirst?: boolean;
+  dayOne?: boolean;
 };
 
 export function skillIdForSlug(slug: string): string {
@@ -109,6 +126,10 @@ export function buildTrunkTemplate(source: TrunkTemplateSource): {
     ...(modelFamily ? { model: { family: modelFamily } } : {}),
     ...(source.automations?.length ? { automations: source.automations } : {}),
     permissions: source.permissions?.length ? source.permissions : [NO_RESTRICTIONS_PERMISSION],
+    ...(source.look ? { look: source.look } : {}),
+    ...(source.denyTools?.length ? { denyTools: [...new Set(source.denyTools)] } : {}),
+    ...(source.askFirst === true ? { askFirst: true as const } : {}),
+    ...(source.dayOne === true ? { dayOne: true as const } : {}),
   };
   return { template, warnings: skills.warnings };
 }
@@ -145,6 +166,36 @@ function isStringRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Every built-in tool id a template may name in denyTools. */
+function knownToolIds(): Set<string> {
+  return new Set([...ALWAYS_ON_TOOL_IDS, ...TOOLSETS.flatMap((toolset) => toolset.tools)]);
+}
+
+/** The optional look, deny list and flags. Anything malformed warns and is skipped. */
+function parseExtras(raw: Record<string, unknown>, warnings: string[]) {
+  let look: string | undefined;
+  if (raw.look !== undefined) {
+    if (typeof raw.look === "string" && LOOK_PATTERN.test(raw.look)) {
+      look = raw.look;
+    } else {
+      warnings.push("The look is not a face from the built-in look set and was skipped.");
+    }
+  }
+  const denyTools: string[] = [];
+  if (raw.denyTools !== undefined) {
+    const known = knownToolIds();
+    const entries = Array.isArray(raw.denyTools) ? (raw.denyTools as unknown[]) : [raw.denyTools];
+    for (const id of entries) {
+      if (typeof id === "string" && known.has(id)) {
+        denyTools.push(id);
+      } else {
+        warnings.push("One denied tool names no built-in tool and was skipped.");
+      }
+    }
+  }
+  return { look, denyTools, askFirst: raw.askFirst === true, dayOne: raw.dayOne === true };
+}
+
 /** Checks the shape of a template file. Bad toolsets and malformed skill ids warn; they do not fail. */
 export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
   if (!isStringRecord(raw) || raw.format !== TRUNK_TEMPLATE_FORMAT || raw.version !== TRUNK_TEMPLATE_VERSION) {
@@ -178,7 +229,9 @@ export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
   }
   const skills = validateSkillIds(raw.skills as string[]);
   warnings.push(...skills.warnings);
+  const extras = parseExtras(raw, warnings);
   const built = buildTrunkTemplate({
+    ...extras,
     name: raw.name,
     description: typeof raw.description === "string" ? raw.description : "",
     agentsMd: raw.persona.agentsMd,

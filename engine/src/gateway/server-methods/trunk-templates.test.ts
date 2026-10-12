@@ -22,7 +22,7 @@ function workspace(): string {
 }
 
 function call(
-  method: "trunks.template.create" | "trunks.template.export",
+  method: "trunks.template.create" | "trunks.template.export" | "trunks.template.list",
   params: Record<string, unknown>,
   cfg: BranchConfig = EMPTY_CONFIG,
 ) {
@@ -265,6 +265,79 @@ describe("trunks.template.create applies toolset switches and skills", () => {
     expect(error.message).toContain("EACCES");
     expect(error.message).not.toContain("/Users/taofikbishi");
     expect(error.message).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
+  });
+});
+
+describe("trunks.template.create from the Trunk Doctor day-one template", () => {
+  it("creates the Trunk with its face, its first-run persona and only the tools it needs", async () => {
+    const dir = workspace();
+    createAnswers(dir);
+    const { respond, done } = call("trunks.template.create", { templateId: "trunk-doctor" });
+    await done;
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+    expect(respond.mock.calls[0]?.[1]).toMatchObject({ ok: true, agentId: "newagent", warnings: [] });
+    expect(createMock.mock.calls[0]?.[0]?.params).toEqual({ name: "Trunk Doctor", avatar: "branch:tock" });
+    const agentsMd = readFileSync(path.join(dir, "AGENTS.md"), "utf8");
+    expect(agentsMd).toContain("# Trunk Doctor");
+    expect(agentsMd).toContain("## First run");
+    expect(readFileSync(path.join(dir, "SOUL.md"), "utf8")).toContain("never touches a Trunk without asking");
+    const entry = draft.current.agents.entries.newagent;
+    expect(entry.toolsets).toMatchObject({ sessions: true, automation: true, messaging: false, web: false, shell: false });
+    expect(entry.tools.deny).toEqual(["gateway", "message", "plugins", "sessions_spawn", "subagents"]);
+    expect(entry.tools.fs).toEqual({ workspaceOnly: true });
+  });
+
+  it("keeps tools the Trunk already denies when it adds the template's denied tools", async () => {
+    createAnswers(workspace());
+    draft.current.agents.entries.newagent = { tools: { deny: ["browser", "gateway"] } };
+    await call("trunks.template.create", { templateId: "trunk-doctor" }).done;
+    expect(draft.current.agents.entries.newagent.tools.deny).toEqual([
+      "browser",
+      "gateway",
+      "message",
+      "plugins",
+      "sessions_spawn",
+      "subagents",
+    ]);
+  });
+
+  it("skips a look that is not from the look set and a denied tool that does not exist, with warnings", async () => {
+    createAnswers(workspace());
+    const file = templateFile({ look: "https://example.com/face.png", denyTools: ["nope", "gateway"] });
+    const { respond, done } = call("trunks.template.create", { templatePath: file });
+    await done;
+    expect(createMock.mock.calls[0]?.[0]?.params).toEqual({ name: "Custom" });
+    expect(draft.current.agents.entries.newagent.tools.deny).toEqual(["gateway"]);
+    const payload = respond.mock.calls[0]?.[1] as { warnings: string[] };
+    expect(payload.warnings).toEqual([
+      expect.stringContaining("not a face from the built-in look set"),
+      expect.stringContaining("names no built-in tool"),
+    ]);
+  });
+});
+
+describe("trunks.template.list", () => {
+  it("lists the bundled templates with Trunk Doctor marked as a day-one template", async () => {
+    const { respond, done } = call("trunks.template.list", {});
+    await done;
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+    const { templates } = respond.mock.calls[0]?.[1] as { templates: Array<Record<string, unknown>> };
+    expect(templates.find((t) => t.id === "trunk-doctor")).toMatchObject({
+      name: "Trunk Doctor",
+      look: "branch:tock",
+      dayOne: true,
+    });
+    expect(templates.find((t) => t.id === "researcher")).toMatchObject({ dayOne: false });
+    expect(templates.map((t) => t.name)).toEqual(templates.map((t) => t.name).toSorted((a, b) => String(a).localeCompare(String(b))));
+  });
+
+  it("rejects unknown params with one error answer", async () => {
+    const { respond, done } = call("trunks.template.list", { kind: "agents" });
+    await done;
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond.mock.calls[0]?.[0]).toBe(false);
   });
 });
 

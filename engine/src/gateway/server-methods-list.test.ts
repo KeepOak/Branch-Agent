@@ -319,6 +319,7 @@ describe("listGatewayMethods", () => {
       "skills.uninstall",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.template.list",
       "trunks.team.propose",
       "trunks.team.approve",
     ];
@@ -445,6 +446,7 @@ describe("listGatewayMethods", () => {
       "skills.uninstall",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.template.list",
       "trunks.team.propose",
       "trunks.team.approve",
     ]);
@@ -705,6 +707,7 @@ describe("listGatewayMethods", () => {
       "skills.uninstall",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.template.list",
       "trunks.team.propose",
       "trunks.team.approve",
     ];
