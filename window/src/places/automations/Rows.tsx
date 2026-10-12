@@ -10,11 +10,11 @@ import { autoDisabledWords, failing, health, jobName, scheduleWords, when } from
 import type { Trunk } from "./Proposal";
 import { rec, str, type Row } from "./runtime";
 
-export type RowActions = { open: (job: Row) => void; toggle: (job: Row) => void; menu: (job: Row, at: MenuAnchor) => void };
+type RowActions = { open: (job: Row) => void; toggle: (job: Row) => void; menu: (job: Row, at: MenuAnchor) => void };
 type RowProps = { job: Row; trunk: string; runs: Row[]; total?: number; level: Level; canWrite: boolean; busy: boolean; actions: RowActions; checkReadout?: boolean };
 
 /** "Checked <n> times · last <time> · fired <time>" for a trigger with a check first (§4.6.3.3). */
-export function checkReadout(job: Row): string {
+function checkReadout(job: Row): string {
   const s = rec(job.state), n = Number(s.triggerEvalCount) || 0;
   if (!n) return "not checked yet";
   const last = typeof s.lastTriggerEvalAtMs === "number" ? new Date(s.lastTriggerEvalAtMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
