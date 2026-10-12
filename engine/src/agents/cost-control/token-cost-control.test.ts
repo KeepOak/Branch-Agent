@@ -9,6 +9,7 @@ import {
   COST_CONTROL_RESOURCE_ID_KEY,
   COST_CONTROL_THREAD_ID_KEY,
   TokenCostControl,
+  type CostMetricStore,
 } from "./token-cost-control.js";
 import {
   RequestContext,
@@ -458,7 +459,7 @@ describe("TokenCostControl", () => {
 
   describe("attach", () => {
     it("resolves observability storage for all scopes", () => {
-      const mockObsStorage = createMockObservabilityStorage();
+      const mockObsStorage = createMockCostMetricStore();
       const mockHost = createMockHost(mockObsStorage);
 
       for (const scope of ["run", "resource", "thread"] as const) {

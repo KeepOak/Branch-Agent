@@ -5,7 +5,7 @@
 // cases on Mastra's in-memory store. session-cost-store.test.ts covers Branch's store.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TokenCostControl } from "./token-cost-control.js";
+import { TokenCostControl, type CostMetricStore } from "./token-cost-control.js";
 import {
   RequestContext,
   TripWire,
