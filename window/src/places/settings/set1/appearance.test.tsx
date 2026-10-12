@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -172,6 +173,41 @@ describe("Settings › Appearance", () => {
     expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { "ui.window.look": { still: true } }, expectedEntries: { "ui.window.look": null } });
     expect(document.documentElement.classList.contains("still-k")).toBe(true);
     expect(report.saved).toHaveBeenCalled();
+  });
+
+  it("AP1 gives the accent description, swatches and save action separate full-width rows", async () => {
+    const style = document.head.appendChild(document.createElement("style"));
+    style.textContent = readFileSync("src/places/settings/kit.css", "utf8") + readFileSync("src/places/settings/set1/appearance.css", "utf8");
+    try {
+      host.className = "set-col";
+      await render(engineOf().engine);
+      const row = host.querySelector<HTMLElement>('[data-row="Accent colour"]')!;
+      const description = row.querySelector("small")!;
+      const controls = row.querySelector(".right")!;
+      const save = button("Save as a theme", row);
+      expect(description.contains(save)).toBe(false);
+      expect(getComputedStyle(row).gridTemplateColumns).toBe("minmax(0, 1fr)");
+      expect(getComputedStyle(row).rowGap).toBe("8px");
+      expect(getComputedStyle(description).gridRow).toBe("2");
+      expect(getComputedStyle(controls).gridRow).toBe("3");
+      expect(getComputedStyle(controls).gridColumn).toBe("1");
+      expect(getComputedStyle(save.parentElement!).gridRow).toBe("4");
+    } finally { style.remove(); }
+  });
+
+  it("AP1 saves the selected accent through Save as a theme", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Accent #E0A526"]')!.click());
+    await act(async () => button("Save as a theme").click());
+    await act(async () => button("Save theme", document).click());
+    expect(request).toHaveBeenCalledWith("themes.import", expect.objectContaining({
+      apply: true,
+      definition: expect.objectContaining({
+        light: expect.objectContaining({ accent: "#e0a526" }),
+        dark: expect.objectContaining({ accent: "#e0a526" }),
+      }),
+    }));
   });
 
   it("an accent goes to the engine's own ui.accent and onto the window", async () => {

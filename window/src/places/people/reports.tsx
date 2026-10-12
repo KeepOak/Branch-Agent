@@ -9,7 +9,7 @@ import { useOperation, useResource } from "../library/data";
 import { num, rec, recs, str } from "./data";
 import { Glyph, Section, Seg, Status } from "./ui";
 
-export const REPORTS_OFF = "Needs the engine's Team Reports plugin turned on, with its GitHub and Discord sources.";
+const REPORTS_OFF = "Needs the engine's Team Reports plugin turned on, with its GitHub and Discord sources.";
 const PERIODS = [{ id: "day", name: "Today" }, { id: "week", name: "Week to date" }, { id: "month", name: "Month to date" }];
 
 export function Reports({ engine, level }: { engine: WindowEngine; level: Level }) {

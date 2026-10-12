@@ -93,6 +93,9 @@ jobs:
           # One evaluation, no poll loop: a pending result fails the run, and merge-gate-recheck reruns it
           # when the checks it waits for finish.
           MERGE_GATE_WAIT_SECONDS: '0'
+          # Rate-limit waits for the job's API calls (separate from the zero poll budget above). A rate limit
+          # waits here, then fails closed when this budget runs out.
+          MERGE_GATE_API_WAIT_SECONDS: '600'
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
