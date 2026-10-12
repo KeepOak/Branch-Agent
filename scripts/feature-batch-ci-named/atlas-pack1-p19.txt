@@ -1,0 +1,2 @@
+engine:extensions/migrate-claude/rewrite.test.ts
+engine:packages/agent-core/src/agent-loop.parallel-order.behaviour.test.ts

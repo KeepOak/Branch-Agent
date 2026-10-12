@@ -13,6 +13,7 @@ import type { PlannedMigrationTargets } from "branch/plugin-sdk/migration-runtim
 import type { MigrationItem } from "branch/plugin-sdk/plugin-entry";
 import { truncateUtf16Safe } from "branch/plugin-sdk/text-utility-runtime";
 import { exists, sanitizeName } from "./helpers.js";
+import { CLAUDE_REWRITE_PROFILE, rewriteTerms } from "./rewrite.js";
 import type { ClaudeSource } from "./source.js";
 
 type PlannedSkill = {
@@ -140,8 +141,10 @@ function generatedCommandSkillContent(params: {
   sourceLabel: string;
   commandContent: string;
 }): string {
+  // Product and doc-file names are rewritten as Codex does; the import label stays as-is.
+  const commandContent = rewriteTerms(params.commandContent, CLAUDE_REWRITE_PROFILE);
   const description =
-    firstParagraph(params.commandContent) ?? `Imported Claude command ${params.skillName}`;
+    firstParagraph(commandContent) ?? `Imported Claude command ${params.skillName}`;
   return [
     "---",
     `name: ${params.skillName}`,
@@ -151,7 +154,7 @@ function generatedCommandSkillContent(params: {
     "",
     `<!-- Imported from Claude: ${params.sourceLabel} -->`,
     "",
-    params.commandContent.trimEnd(),
+    commandContent.trimEnd(),
     "",
   ].join("\n");
 }
