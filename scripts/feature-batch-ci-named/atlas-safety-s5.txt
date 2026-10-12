@@ -1,3 +1,5 @@
+engine:src/cli/pairing-cli.test.ts
+engine:src/config/lockdown.test.ts
 engine:src/safety/capability-grants.behaviour.test.ts
 engine:src/safety/chat-owner-authority.behaviour.test.ts
 engine:src/safety/content-authority.behaviour.test.ts
