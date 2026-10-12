@@ -1,8 +1,9 @@
 // Behaviour tests derived from zhayujie/CowAgent@986f44a19508b572d15d40dcb8bd5b2796559ec7:tests/test_agent_model_defaults.py (atlas MODELS-ACCOUNTS-0104)
 import { describe, expect, it } from "vitest";
-import type { SessionEntry } from "../config/sessions/types.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { resolveSessionModelRef } from "./session-model-ref.js";
+
+type SessionModelEntry = NonNullable<Parameters<typeof resolveSessionModelRef>[1]>;
 
 const GLOBAL = "openai/global-model";
 
@@ -15,7 +16,7 @@ function config(agentModel?: string): BranchConfig {
   } as BranchConfig;
 }
 
-function pinned(provider: string, model: string): Partial<SessionEntry> {
+function pinned(provider: string, model: string): SessionModelEntry {
   return { providerOverride: provider, modelOverride: model };
 }
 
@@ -44,9 +45,8 @@ describe("which model answers: the conversation's choice, the agent's, or the gl
 
   it("falls back to the agent, not the global one, when the conversation pin is cleared", () => {
     const cfg = config("anthropic/agent-model");
-    const cleared: Partial<SessionEntry> = {
-      providerOverride: undefined,
-      modelOverride: undefined,
+    // The pin is gone; only the previous run's identity remains on the entry.
+    const cleared: SessionModelEntry = {
       modelProvider: "deepseek",
       model: "pinned-model",
     };
