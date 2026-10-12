@@ -15,7 +15,7 @@ import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
 
 /** Wording and the open-settings label for This computer, from the real platform. Linux has no one settings app. */
-export function thisPcCopy(os = platformName()) {
+function thisPcCopy(os = platformName()) {
   if (os === "macOS") {
     return {
       hint: "macOS asks for very little. Branch asks before taking over.",
@@ -74,18 +74,18 @@ export function ThisPc() {
 }
 
 /** The engine's exec mode for each composer mode (session permissionMode → tools.exec.mode). */
-export const EXEC_OF: Record<EngineMode, string> = { workspace: "auto", guarded: "ask", "read-only": "deny", full: "full" };
+const EXEC_OF: Record<EngineMode, string> = { workspace: "auto", guarded: "ask", "read-only": "deny", full: "full" };
 const MODE_OF: Record<string, EngineMode> = { auto: "workspace", ask: "guarded", deny: "read-only", full: "full" };
 
 /** The default Trunk's mode as the engine resolves it (agents.list defaultPermissionMode). */
-export function defaultMode(agents: RecordValue | undefined): EngineMode | null {
+function defaultMode(agents: RecordValue | undefined): EngineMode | null {
   const rows = Array.isArray(agents?.agents) ? (agents.agents as RecordValue[]) : [];
   const def = rows.find((a) => a.id === agents?.defaultId) ?? rows[0];
   return isEngineMode(def?.defaultPermissionMode) ? def.defaultPermissionMode : null;
 }
 
 /** The exec mode in force: the configured tools.exec.mode, or what the engine resolves without one. */
-export function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
+function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
   const set = cfg.get("tools.exec.mode");
   if (typeof set === "string") return set;
   const m = defaultMode(agents);
@@ -93,7 +93,7 @@ export function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
 }
 
 /** Saves tools.exec.mode; the engine refuses mode beside the older security/ask keys, so those go. */
-export async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void>) {
+async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void>) {
   if (await cfg.set("tools.exec", { mode, security: null, ask: null })) await after();
 }
 
@@ -107,7 +107,6 @@ export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: Rec
     </Sec>
   );
 }
-export const modeLabel = (exec: string) => modeName(MODE_OF[exec]);
 
 /** The page's status box while locked (preview index.html:8494 statusBox markup, copy at :8540 and :30785). */
 export function LockdownStatus({ cfg }: { cfg: Cfg }) {
