@@ -29,8 +29,9 @@ const methods = ['exec.approval.list','exec.approval.resolve','plugin.approval.l
 const engine = {features:{methods,events:[]}, request:async(m)=>m==='config.get'?{config:{security:{lockdown:view==='chat'}},hash:'fixture',valid:true}:m==='agents.list'?{agents:[{id:'ledger',identity:{name:'Ledger'}},{id:'scout',identity:{name:'Scout'}}]}:m.endsWith('.list')?[]:{}, onEvent:(fn)=>{listeners.add(fn);return()=>listeners.delete(fn);}, sessionKey:'agent:main:main', scopes:['operator.admin']};
 const mail = readAsk('plugin', {id:'p0', request:{title:'Send this email to Dana Okafor?', description:'To: Dana Okafor\\nSubject: Thursday’s delivery\\nAttached: quote.pdf\\nHi Dana, the quote is attached. Thursday works for us.', allowedDecisions:['allow-once','allow-always','deny']}});
 const sent = readAsk('plugin', {id:'p9', request:{title:'Send the invoice to Oakfield?', description:'To: Oakfield', allowedDecisions:['allow-once','deny']}});
+document.body.style.background = 'linear-gradient(135deg, #f0c27b 0%, #d4775a 35%, #4b6cb7 70%, #182848 100%) fixed';
 createRoot(document.getElementById('root')).render(<CapabilityProvider engine={engine}><div className="r1-conversation" style={{position:'relative',height:'100vh',overflow:'hidden'}}>
-  <div style={{paddingTop:'calc(var(--hdr) + 56px)',display:'flex',flexDirection:'column',gap:12,alignItems:'center',paddingInline:16}}>
+  <div style={{paddingTop:'calc(var(--hdr) + 200px)',display:'flex',flexDirection:'column',gap:12,alignItems:'center',paddingInline:16}}>
     <AskCard state={{ask:mail,status:'waiting'}} name="Ledger" onAnswer={()=>undefined} scopes={['operator.admin']}/>
     <div style={{width:'min(100%,560px)'}}><AskCard state={{ask:sent,status:'settled',settled:'allow-once'}} name="Ledger" onAnswer={()=>undefined}/></div>
   </div>

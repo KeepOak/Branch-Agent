@@ -43,7 +43,7 @@ export function AskCard({ state, name, onAnswer, lockdown, scopes }: CardProps) 
   const decide = canDecideApprovals(undefined, scopes);
   const busy = state.status === "sending";
   return (
-    <div className="r1-ask g-chip" data-testid="r1-ask" data-state={state.status} data-kind={ask.kind} data-approval={ask.id}>
+    <div className="r1-ask" data-testid="r1-ask" data-state={state.status} data-kind={ask.kind} data-approval={ask.id}>
       <div className="r1-ask-head">
         <span className="r1-ask-q">{ask.title}</span>
         <span className="r1-ask-pill" data-tone={ask.warning ? "warn" : "wait"}><i />{ask.warning ? "Warning" : decide ? "Waiting for you" : "Waiting"}</span>
@@ -95,7 +95,7 @@ function QuestionForm({ ask, busy, onAnswer }: { ask: Ask; busy: boolean; onAnsw
     <>
       {ask.questions.map((q, i) => (
         <div className="r1-ask-question" key={q.questionId}>
-          {ask.questions.length > 1 || q.header ? <span className="r1-ask-qline">{q.header ? <span className="r1-ask-chip">{q.header}</span> : null}{i > 0 || ask.questions.length > 1 ? q.question : null}</span> : null}
+          {ask.questions.length > 1 || q.header ? <span className="r1-ask-qline">{q.header ? <span className="r1-ask-chip">{q.header}</span> : null}{i > 0 || ask.questions.length > 1 ? <span className="r1-ask-qtext">{q.question}</span> : null}</span> : null}
           {q.options.length ? (
             <div className="r1-ask-options" role={q.multi ? "group" : "radiogroup"} aria-label={q.question}>
               {q.options.map((o) => (

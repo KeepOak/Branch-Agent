@@ -39,8 +39,8 @@ export function AskDrop({ waiting, nameOf, onAnswer, onOpen, lockdown }: DropPro
   const open = ask.sessionKey && onOpen ? () => onOpen(ask.sessionKey!) : undefined;
   return createPortal(
     <div className="r1-drop-wrap" data-host={host === document.body ? "body" : "column"}>
-      <div className="r1-drop g-float" key={ask.id} role="region" aria-label={`${nameOf(ask.agentId)} needs you`} data-testid="r1-drop" data-away={leaving?.away || undefined} data-done={leaving ? (leaving.yes ? "yes" : "no") : undefined}>
-        <div className="r1-drop-top"><b>{nameOf(ask.agentId)} needs you</b>{more ? <span className="r1-drop-more" aria-label={`${more} more waiting`}>+{more}</span> : null}</div>
+      <div className="r1-drop" key={ask.id} role="region" aria-label={`${nameOf(ask.agentId)} needs you`} data-testid="r1-drop" data-away={leaving?.away || undefined} data-done={leaving ? (leaving.yes ? "yes" : "no") : undefined}>
+        <div className="r1-drop-top"><b className="r1-drop-who">{nameOf(ask.agentId)} needs you</b>{more ? <span className="r1-drop-more" aria-label={`${more} more waiting`}>+{more}</span> : null}</div>
         <span className="r1-drop-q">{ask.title}</span>
         <div className="r1-drop-acts">
           {leaving ? <span className="r1-drop-done">{leaving.yes ? "✓ Done" : "✕ Declined"}</span> : ask.kind === "question" ? (

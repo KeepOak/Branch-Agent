@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { callFor, listItems, readAsk, settledFromEvent, settledText } from "./model";
 
@@ -37,5 +38,27 @@ describe("approvals model", () => {
     expect(listItems({ questions: [3] })).toEqual([3]);
     expect(settledFromEvent("question", { id: "q", status: "expired" })).toBe("expired");
     expect(settledFromEvent("exec", { id: "e", decision: "allow-once" })).toBe("elsewhere");
+  });
+});
+
+describe("approvals glass model (README item 48)", () => {
+  const css = readFileSync("src/screens/approvals/approvals.css", "utf8");
+  const rgba = (s: string) => s.match(/rgba?\(([^)]+)\)/)![1].split(",").map(Number);
+  const lin = (v: number) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const lum = (c: number[]) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+  const over = (c: number[], base: number[]) => [0, 1, 2].map((k) => c[k] * (c[3] ?? 1) + base[k] * (1 - (c[3] ?? 1)));
+  const ratio = (a: number[], b: number[]) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const themes = [...css.matchAll(/--r1a-fill: (rgba\([^)]+\)); --r1a-edge: [^;]+; --r1a-on: [^;]+; --r1a-ink2: (rgb\([^)]+\))/g)].map((m) => [rgba(m[1]), rgba(m[2])]);
+
+  it("gives every pill ink at least 4.5:1 over white and over black, in light and dark", () => {
+    expect(themes.length).toBeGreaterThanOrEqual(2);
+    for (const [fill, ink] of themes) for (const wall of [[255, 255, 255], [0, 0, 0]]) expect(ratio(ink, over(fill, wall))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("keeps the card, drop and banners clear, outlines pills in 1px, and goes solid under Reduce transparency", () => {
+    for (const sel of [".r1-ask {", ".r1-drop {", ".r1-banner {"]) expect(css.slice(css.indexOf(sel), css.indexOf("}", css.indexOf(sel)))).toContain("background: transparent");
+    expect(css).toContain("box-shadow: inset 0 0 0 1px var(--r1a-edge)");
+    expect(css).toMatch(/html\[data-transparency="reduce"\][^{]+\{\s*background: var\(--raise\); -webkit-backdrop-filter: none; backdrop-filter: none;/);
+    expect(css).not.toMatch(/border-(top|bottom):\s*1px/);
   });
 });
