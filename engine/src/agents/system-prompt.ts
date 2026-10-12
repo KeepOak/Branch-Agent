@@ -690,6 +690,11 @@ export function buildAgentSystemPrompt(params: {
               : buildBranchToolFallbackText({
                   surface: promptSurface,
                 }),
+            ...(params.codeModeActive && visibleTools.has("exec")
+              ? [
+                  `Only the tools listed above are top-level calls. read, write, edit and every other tool named elsewhere in this prompt are async globals inside \`${resolveToolName("exec")}\` code; a direct call fails.`,
+                ]
+              : []),
             ...(toolSchemaDirectoryPrompt
               ? ["", "### Deferred Tool Schemas", toolSchemaDirectoryPrompt]
               : []),

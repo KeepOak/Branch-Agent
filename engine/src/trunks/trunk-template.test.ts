@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { BranchConfig } from "../config/types.branch.js";
-import { modelFamilyFromRef, exportTrunkTemplate } from "./trunk-template-export.js";
+import { automationsFromCronJobs, connectionsFor, modelFamilyFromRef, exportTrunkTemplate } from "./trunk-template-export.js";
+import { decodeTrunkTemplateLink, encodeTrunkTemplateLink } from "./trunk-template-link.js";
 import {
   buildTrunkTemplate,
   NO_RESTRICTIONS_PERMISSION,
@@ -305,5 +306,71 @@ describe("trunk templates", () => {
       throw new Error(result.error);
     }
     expect(result.template.permissions).toEqual([expect.stringContaining("has its own tool list")]);
+  });
+});
+
+describe("trunk template routines, connections and links", () => {
+  const base = { format: "branch.trunk-template", version: 1, name: "Night Shift", persona: { agentsMd: "# Night\n" }, skills: [], toolsets: {} };
+
+  it("keeps whole routines and channel ids from a file, and warns on the rest", () => {
+    const parsed = parseTrunkTemplate({
+      ...base,
+      automations: [{ name: "Digest", cron: "0 7 * * *", prompt: "Summarize." }, { name: "No prompt", cron: "0 8 * * *" }, "junk"],
+      connections: ["telegram", "Not A Channel", "telegram"],
+    });
+    if (!parsed.ok) {
+      throw new Error(parsed.error);
+    }
+    expect(parsed.template.automations).toEqual([{ name: "Digest", cron: "0 7 * * *", prompt: "Summarize." }]);
+    expect(parsed.template.connections).toEqual(["telegram"]);
+    expect(parsed.warnings).toEqual([
+      "One routine is missing its name, schedule or prompt and was skipped.",
+      "One routine is missing its name, schedule or prompt and was skipped.",
+      "One connection is not a plain channel id and was skipped.",
+    ]);
+  });
+
+  it("round-trips a template through a link", () => {
+    const parsed = parseTrunkTemplate({ ...base, automations: [{ name: "Digest", cron: "0 7 * * *", prompt: "Summarize." }] });
+    if (!parsed.ok) {
+      throw new Error(parsed.error);
+    }
+    const link = encodeTrunkTemplateLink(parsed.template);
+    expect(link.startsWith("branch-template:1:")).toBe(true);
+    expect(decodeTrunkTemplateLink(`  ${link}\n`)).toEqual({ ok: true, value: parsed.template });
+  });
+
+  it("refuses a link with the wrong prefix or damaged bytes", () => {
+    expect(decodeTrunkTemplateLink("https://example.com/x").ok).toBe(false);
+    expect(decodeTrunkTemplateLink("branch-template:1:not-deflate").ok).toBe(false);
+  });
+
+  it("exports scheduled prompts only, without paths or secrets", () => {
+    const result = automationsFromCronJobs(
+      [
+        { name: "Digest", schedule: { kind: "cron", expr: "0 7 * * *" }, payload: { kind: "agentTurn", message: "Read /home/someone/notes.md" } },
+        { name: "Watcher", schedule: { kind: "cron", expr: "*/5 * * * *" }, payload: { kind: "agentTurn", message: "Check." }, trigger: { script: "x" } },
+        { name: "Health", declarationKey: "system:health", schedule: { kind: "cron", expr: "0 * * * *" }, payload: { kind: "agentTurn", message: "Check." } },
+        { name: "Key", schedule: { kind: "cron", expr: "0 9 * * *" }, payload: { kind: "agentTurn", message: "Use sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789" } },
+      ],
+      {},
+    );
+    expect(result.automations).toEqual([{ name: "Digest", cron: "0 7 * * *", prompt: "Read ~/notes.md" }]);
+    expect(result.warnings).toEqual([
+      'Routine "Watcher" is not a scheduled prompt, so the template leaves it out.',
+      'Routine "Health" is managed by Branch or a plugin, so the template leaves it out.',
+      "One routine looks like it contains a secret (a token or key), so the template leaves it out.",
+    ]);
+  });
+
+  it("names the channels a Trunk is bound to, never the account", () => {
+    const cfg = {
+      bindings: [
+        { agentId: "night", match: { channel: "Telegram", accountId: "bot-1" } },
+        { agentId: "night", match: { channel: "telegram", accountId: "bot-2" } },
+        { agentId: "main", match: { channel: "slack" } },
+      ],
+    } as unknown as BranchConfig;
+    expect(connectionsFor(cfg, "night")).toEqual(["telegram"]);
   });
 });
