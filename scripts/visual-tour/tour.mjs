@@ -35,6 +35,9 @@ try {
     page.on('pageerror', (error) => consoleErrors.push(`${theme}/${width}: ${error.message}`));
     await page.addInitScript(([url, key, look]) => {
       window.branchDesktop = { gatewayUrl: url, gatewayToken: key };
+      // screens.json drives the Classic window until each R1 screen port lands; ?r1 opens the R1 frame.
+      if (new URLSearchParams(location.search).has('r1')) localStorage.removeItem('branch.classic');
+      else localStorage.setItem('branch.classic', '1');
       localStorage.setItem('branch.theme', look);
       localStorage.setItem('branch-proto-welcomed', '1');
       localStorage.setItem('branch-proto-seen13', '1');
@@ -58,6 +61,21 @@ try {
           if (!(await page.locator('.frame').evaluate((node) => node.classList.contains('slide-open')))) await list.click();
         }
         for (const step of screen.steps) await checkedStep(page, step, locate);
+        await page.screenshot({ path: resolve(out, `${stem}.png`) });
+        shots.push(`${stem}.png`);
+      } catch (error) {
+        failures.push(`${stem}: ${error.message}`);
+        await page.screenshot({ path: resolve(out, `${stem}-failed.png`) }).catch(() => {});
+      }
+    }
+    {
+      const stem = `${theme}-${width}-r1-frame`;
+      try {
+        await page.evaluate(() => localStorage.setItem('branch.route', JSON.stringify({ kind: 'chat', key: null })));
+        await page.goto(`${windowUrl}/?r1`, { waitUntil: 'domcontentloaded' });
+        await page.locator('.r1-frame .g-pill').waitFor({ timeout: 60000 });
+        await page.getByText('Reconnecting…', { exact: true }).waitFor({ state: 'detached', timeout: 60000 });
+        if (await page.locator('[data-connection]').count()) throw new Error('?r1 rendered the Classic window');
         await page.screenshot({ path: resolve(out, `${stem}.png`) });
         shots.push(`${stem}.png`);
       } catch (error) {
@@ -95,6 +113,6 @@ if (pairs.length) {
   const cells = pairs.map(({ app, preview }) => `<figure><img src="${app}"><img src="${preview}"><figcaption>${app.replace('.png', '')}</figcaption></figure>`).join('\n');
   await writeFile(resolve(out, 'pairs.html'), `<!doctype html><meta charset="utf-8"><title>Visual tour parity</title><style>body{font:14px system-ui;background:#111;color:white}figure{margin:28px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px}img{width:100%}figcaption{grid-column:1/-1}</style><h1>App / v23 preview</h1>${cells}`);
 }
-await writeFile(resolve(out, 'report.md'), `# Visual tour\n\n${shots.length}/${screens.length * 4} captures.\n\n## Dead controls\n${failures.map((x) => `- ${x}`).join('\n') || 'None'}\n\n## Console errors\n${consoleErrors.map((x) => `- ${x}`).join('\n') || 'None'}\n`);
-console.log(`${shots.length}/${screens.length * 4} captures; ${failures.length} dead controls; ${consoleErrors.length} console errors`);
+await writeFile(resolve(out, 'report.md'), `# Visual tour\n\n${shots.length}/${(screens.length + 1) * 4} captures.\n\n## Dead controls\n${failures.map((x) => `- ${x}`).join('\n') || 'None'}\n\n## Console errors\n${consoleErrors.map((x) => `- ${x}`).join('\n') || 'None'}\n`);
+console.log(`${shots.length}/${(screens.length + 1) * 4} captures; ${failures.length} dead controls; ${consoleErrors.length} console errors`);
 if (failures.length || consoleErrors.length) process.exitCode = 1;

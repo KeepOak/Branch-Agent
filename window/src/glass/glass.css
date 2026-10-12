@@ -12,9 +12,9 @@
 .g-capsule button:disabled { opacity: .35; cursor: default; }
 .g-capsule-badge { position: absolute; inset: -3px -3px auto auto; font-size: var(--fs-10); }
 .g-pill { display: flex; align-items: center; gap: 8px; border-radius: var(--r-pill); height: 36px; width: 100%; min-width: 0; padding: 0 14px 0 6px; font-size: var(--fs-14); font-weight: 600; }
-.g-pill-face { display: grid; place-items: center; width: 24px; height: 24px; flex: none; }
+.g-pill-face { display: grid; place-items: center; width: 24px; height: 24px; flex: none; transform: scale(.75); transform-origin: center; margin: -4px; }
 .g-pill-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.g-pill[data-tight] { padding: 0 8px; }
+.g-pill[data-tight] { padding: 0 6px; }
 .g-pill[data-tight] .g-pill-title { position: absolute; width: 1px; clip-path: inset(50%); }
 .g-pill:disabled { opacity: .55; cursor: not-allowed; }
 .g-popover { position: fixed; z-index: 100; display: block; overflow: auto; padding: 8px; border-radius: var(--r-menu); animation: g-pop-in var(--spring-pop); }

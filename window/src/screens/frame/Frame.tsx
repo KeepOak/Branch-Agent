@@ -2,6 +2,7 @@ import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import { useLayer } from "../../glass/Popover";
 import { useEdgeFade } from "../../glass/useEdgeFade";
 import { shortcutFor } from "../../shell/use-shortcuts";
+import { Icon } from "../../shell/icons";
 import { Header, type HeaderProps } from "./Header";
 import "../../glass/glass.css";
 import "./frame.css";
@@ -15,15 +16,17 @@ export type FrameProps = {
   sidebar: ReactNode; main: ReactNode; composer?: ReactNode; topics?: ReactNode; notice?: ReactNode;
   header: Omit<HeaderProps, "onToggleSidebar">; navigationKey?: string; onShortcut?: (action: "settings" | "nextConversation" | "palette" | "focusSearch") => void;
 };
+/** jsdom and some embedded webviews have no matchMedia; treat a missing query as a wide window. */
+function narrowQuery(): MediaQueryList | null { return typeof matchMedia === "function" ? matchMedia("(max-width: 760px)") : null; }
 function readWide() { try { return localStorage.getItem("branch.r1.sidebar") !== "rail"; } catch { return true; } }
 export function Frame({ sidebar, main, composer, topics, notice, header, navigationKey, onShortcut }: FrameProps) {
   const [wide, setWide] = useState(readWide), [drawer, setDrawer] = useState(false);
-  const [narrow, setNarrow] = useState(() => matchMedia("(max-width: 760px)").matches);
+  const [narrow, setNarrow] = useState(() => narrowQuery()?.matches ?? false);
   const scroll = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), side = useRef<HTMLElement>(null);
   const close = () => setDrawer(false);
   useLayer(drawer && narrow, close);
   useEdgeFade(scroll, content);
-  useEffect(() => { const media = matchMedia("(max-width: 760px)"); const update = () => { setNarrow(media.matches); if (!media.matches) setDrawer(false); }; media.addEventListener("change", update); return () => media.removeEventListener("change", update); }, []);
+  useEffect(() => { const media = narrowQuery(); if (!media) return; const update = () => { setNarrow(media.matches); if (!media.matches) setDrawer(false); }; media.addEventListener("change", update); return () => media.removeEventListener("change", update); }, []);
   useEffect(() => { setDrawer(false); if (scroll.current) scroll.current.scrollTop = 0; }, [navigationKey]);
   useEffect(() => {
     if (!drawer || !narrow) return;
@@ -63,7 +66,7 @@ export function Frame({ sidebar, main, composer, topics, notice, header, navigat
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }}>
-      <div className="r1-side-top"><button type="button" className="g-ctl" onClick={toggle} aria-label={narrow ? "Close sidebar" : wide ? "Use sidebar rail" : "Expand sidebar"}>☰</button></div>
+      <div className="r1-side-top"><button type="button" className="g-ctl" onClick={toggle} aria-label={narrow ? "Close sidebar" : wide ? "Use sidebar rail" : "Expand sidebar"}><Icon name="menu" /></button></div>
       <Region>{sidebar}</Region>
     </aside>
     {topics && <section className="r1-topics" aria-label="Topics"><Region>{topics}</Region></section>}
