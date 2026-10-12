@@ -61,7 +61,13 @@
     },
     {
       "why": "links to real outside sites (upstream docs, GitHub, npm, image registry): renaming them would break the link",
-      "re": "(?:https?|wss?|git\\+https?|git\\+ssh|ssh)://(?:[\\w-]+\\.)*(?:openclaw\\.(?:ai|org|com|dev|io)|github\\.com|githubusercontent\\.com|npmjs\\.(?:org|com)|ghcr\\.io|clawhub\\.ai|docker\\.io|docker\\.com)(?::\\d+)?[^\\s\"'`)<>\\]]*"
+      "re": "(?:https?|wss?|git\\+https?|git\\+ssh|ssh)://(?:[\\w-]+\\.)*(?:openclaw\\.(?:ai|org|com|dev|io)|github\\.com|githubusercontent\\.com|npmjs\\.(?:org|com)|ghcr\\.io|clawhub\\.ai|docker\\.io|docker\\.com)(?::\\d+)?[^\\s\"'`)<>\\]]*",
+      "in": "^(?!engine/src/infra/update-check\\.test\\.ts$)"
+    },
+    {
+      "why": "update registry fixtures follow Branch's installed package name; other outside links in this test stay protected",
+      "re": "(?!https://registry\\.npmjs\\.org/openclaw/)(?:https?|wss?|git\\+https?|git\\+ssh|ssh)://(?:[\\w-]+\\.)*(?:openclaw\\.(?:ai|org|com|dev|io)|github\\.com|githubusercontent\\.com|npmjs\\.(?:org|com)|ghcr\\.io|clawhub\\.ai|docker\\.io|docker\\.com)(?::\\d+)?[^\\s\"'`)<>\\]]*",
+      "in": "^engine/src/infra/update-check\\.test\\.ts$"
     },
     {
       "why": "the same outside sites written without a scheme",

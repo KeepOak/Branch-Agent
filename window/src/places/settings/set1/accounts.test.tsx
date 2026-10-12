@@ -82,7 +82,8 @@ describe("Settings › Accounts", () => {
       "branch.setup.detect": { manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] },
     });
     await render(engine);
-    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add an account")!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((b) => b.textContent?.includes("Claude"))!.click());
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Sign in with Claude");
     const fallback = document.querySelector<HTMLDetailsElement>(".dlg details")!;
     expect(fallback.open).toBe(false);
@@ -185,7 +186,8 @@ describe("Settings › Accounts", () => {
   ])("Claude sign-in sends the right models.authLogin params for name '$name'", async ({ name, profileLabel }) => {
     const { engine, request } = engineOf({ "branch.setup.detect": { manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] } });
     await render(engine);
-    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add an account")!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((b) => b.textContent?.includes("Claude"))!.click());
     const input = document.querySelector<HTMLInputElement>('.dlg input[aria-label="Call it"]')!;
     expect(input.placeholder).toBe("Saved by email if blank");
     if (name) await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, name); input.dispatchEvent(new Event("input", { bubbles: true })); });

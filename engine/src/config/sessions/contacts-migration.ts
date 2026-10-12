@@ -24,6 +24,7 @@ import {
 import type { BranchConfig } from "../types.branch.js";
 import { resolveCanonicalMainSessionKey } from "./main-session-key.js";
 import { resolveSessionStorePathCore } from "./paths.js";
+import { parseSqliteSessionEntryRecord } from "./session-entry-json.js";
 import { resolveSqliteTargetFromSessionStorePath } from "./session-sqlite-target.js";
 import type { SessionEntry } from "./types.js";
 
@@ -106,20 +107,27 @@ function updateNode(db: DatabaseSync, store: Store, key: string, entry: SessionE
 
 function sourceRows(db: DatabaseSync, store: Store): Array<{ key: string; entry: SessionEntry }> {
   return (
-    (
-      db
-        .prepare(
-          `SELECT session_key, entry_json, entry_valid FROM ${quote(store.alias)}.session_nodes`,
-        )
-        .all() as Array<{ session_key: string; entry_json: string; entry_valid: number }>
-    )
-      // Quarantined bytes belong to doctor, not contact archive or relocation.
-      .filter((row) => row.entry_valid !== -1 || row.entry_json === "{}")
-      .map((row) => ({
-        key: row.session_key,
-        entry: JSON.parse(row.entry_json) as SessionEntry,
-      }))
-  );
+    db
+      .prepare(
+        `SELECT session_key, current_session_id, updated_at, entry_json, entry_valid FROM ${quote(store.alias)}.session_nodes`,
+      )
+      .all() as Array<{
+      session_key: string;
+      current_session_id: string;
+      updated_at: number;
+      entry_json: string;
+      entry_valid: number;
+    }>
+  ).flatMap((row) => {
+    // Quarantined bytes belong to doctor, not contact archive or relocation.
+    if (row.entry_valid === -1 && row.entry_json !== "{}") {
+      return [];
+    }
+    // Canonical row repair owns malformed metadata. Do not let an unrelated
+    // contact migration prevent Doctor from reaching that repair owner.
+    const entry = parseSqliteSessionEntryRecord(row);
+    return entry ? [{ key: row.session_key, entry }] : [];
+  });
 }
 
 function hasMessages(db: DatabaseSync, store: Store, key: string, entry: SessionEntry): boolean {
@@ -379,7 +387,13 @@ export function migrateContacts(params: {
       const migrate = (db: DatabaseSync) => {
         const now = params.now ?? Date.now();
         const existingKeys = new Set(
-          destination ? sourceRows(db, destination).map((row) => row.key) : [],
+          destination
+            ? (
+                db
+                  .prepare(`SELECT session_key FROM ${quote(destination.alias)}.session_nodes`)
+                  .all() as Array<{ session_key: string }>
+              ).map((row) => row.session_key)
+            : [],
         );
         const candidates: Move[] = [];
         const empties: Array<{ store: Store; key: string; entry: SessionEntry }> = [];

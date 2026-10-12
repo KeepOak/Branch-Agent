@@ -101,7 +101,6 @@ type Props = {
   earlierError?: string;
   preparationError?: string | null;
   /** The Trunk got ready after this conversation stopped waiting for it: read the conversation again. */
-  onStartupReady?: () => void;
   advancedDiagnostics?: boolean;
   onLoadEarlier?: () => void;
 };
@@ -257,7 +256,7 @@ export function Thread(props: Props) {
   const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
     ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
   const preparationError = [props.preparationError, props.earlierError].find((error) => isPreparationPending(error) || isPreparationStalled(error));
-  const startup = useStartupPreparation(engine, Boolean(preparationError), isPreparationStalled(preparationError), props.onStartupReady);
+  const startup = useStartupPreparation(engine, Boolean(preparationError));
   const inRoom = Boolean(props.room);
   const ownAgentId = props.room?.ownAgentId;
   const anchors = useMemo(() => anchorQuestions(history, props.questions ?? []), [history, props.questions]);
@@ -383,7 +382,9 @@ export function Thread(props: Props) {
           {helperNextUserAt < 0 ? helperChip : null}
           {restSupplement}
           {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
-            {suggestions.map((text) => <button key={text} type="button" title={`Send “${text}” as your reply`} aria-label={`Reply: ${text}`} onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}><Icon d={ICONS.reply} size={12} className="sug-arrow" />{text}</button>)}
+            {/* NC-01: a visible lead and quoted text, so a chip reads as a line you send, never as "open the thing". */}
+            <span className="sug-lead" aria-hidden="true">Reply with</span>
+            {suggestions.map((text) => <button key={text} type="button" title={`Send “${text}” as your reply`} aria-label={`Reply: ${text}`} onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}><Icon d={ICONS.reply} size={12} className="sug-arrow" /><span className="sug-text">{`\u201c${text}\u201d`}</span></button>)}
           </div> : null}
           {props.recoveryFailure === RESTART_NOT_RESUMED ? (
             <div className="pass-line restart-stop" role="status" data-testid="restart-stopped">Stopped by restart{recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Resume</button> : null}</div>

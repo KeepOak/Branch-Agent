@@ -26,7 +26,7 @@ export function providersOf(value: unknown): Provider[] {
 export type Account = { p: Provider; a: Profile; n: number; first: boolean; last: boolean; ordered: boolean; next: boolean };
 
 /** An account that hit its rate or usage limit and isn't used until `limitedUntil`. */
-export const isLimited = (a: Pick<Profile, "limitedUntil">, now = Date.now()) => typeof a.limitedUntil === "number" && a.limitedUntil > now;
+const isLimited = (a: Pick<Profile, "limitedUntil">, now = Date.now()) => typeof a.limitedUntil === "number" && a.limitedUntil > now;
 
 /** "Sat 2:00 AM": when a limited account comes back. */
 export function limitedLabel(until: number): string {
@@ -107,6 +107,11 @@ export function AccountsPage(props: SettingsPageProps) {
     <Page title={props.title} lede="Manage model accounts and the order Branch uses them." help="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
       <AccountsStatus loading={status.loading} error={status.error} count={all.length} unavailable={record(status.data?.unavailable).message} />
       <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} />
+      {!status.loading && !status.error ? <div className="acts">
+        {caps.filter((c) => !providers.some((p) => p.provider === c.provider && p.profiles.length) && list(c.loginOptions).some((o) => o.featured)).map((c) => (
+          <Btn key={text(c.provider)} onClick={() => setAdd({ provider: text(c.provider) })}>Sign in to {serviceName(text(c.provider))}</Btn>
+        ))}
+      </div> : null}
       <CodingApps engine={props.engine} />
       <WhenOneRunsOut engine={props.engine} />
       <OwnAccounts engine={props.engine} />
@@ -158,7 +163,6 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
       {all.some((x) => !x.first) ? <Hint>When one account runs low, Branch moves to the next.</Hint> : null}
       <Acts>
         <Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn>
-        <Btn onClick={() => onAdd({ provider: "anthropic" })}>Add a Claude account</Btn>
         {brands.filter((p) => p.provider !== "anthropic").map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
       </Acts>
       {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={agent} reload={reload} setOrder={setOrder} onClose={() => setMenu(null)} /> : null}
@@ -166,8 +170,8 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
   );
 }
 
-export type MenuProps = { engine: SettingsPageProps["engine"]; acc: Account; all: Account[]; at: MenuAnchor; agent: { agentId?: string }; reload: () => Promise<void>; setOrder: (a: Account, ids: string[]) => Promise<boolean>; onClose: () => void };
-export function AccountMenu({ engine, acc, all, at, agent, reload, setOrder, onClose }: MenuProps) {
+type MenuProps = { engine: SettingsPageProps["engine"]; acc: Account; all: Account[]; at: MenuAnchor; agent: { agentId?: string }; reload: () => Promise<void>; setOrder: (a: Account, ids: string[]) => Promise<boolean>; onClose: () => void };
+function AccountMenu({ engine, acc, all, at, agent, reload, setOrder, onClose }: MenuProps) {
   const save = useSaveRunner();
   const provider = acc.p.authProvider ?? acc.p.provider;
   const ids = all.filter((x) => x.p === acc.p).map((x) => x.a.profileId);

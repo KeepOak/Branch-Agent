@@ -18,9 +18,9 @@ export type BannerNews = {
   icon?: "alert" | "chat";
   action?: { label: string; run: () => void };
 };
-export type Banner = BannerNews & { id: number; at: number; count: number };
+type Banner = BannerNews & { id: number; at: number; count: number };
 
-export const BANNER_MS = 9000;
+const BANNER_MS = 9000;
 let current: Banner | null = null;
 let nextId = 1;
 const listeners = new Set<() => void>();

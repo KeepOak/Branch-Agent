@@ -13,7 +13,7 @@ import { BUILTIN, DEFAULT_THEME, EF_KEYS, isHex, pairOfDefinition, SLATE, type E
 import { LEGACY_THEMES } from "./appearance-legacy";
 
 export type ThemeDesc = { id: string; name: string; description?: string; source: "builtin" | "plugin" | "user"; modes?: Mode[] };
-export type Current = { id: string; mode?: string; effectiveMode?: Mode; overrides?: { id?: string; mode?: string } };
+type Current = { id: string; mode?: string; effectiveMode?: Mode; overrides?: { id?: string; mode?: string } };
 export type Extra = Partial<Record<string, { light?: Partial<Ef>; dark?: Partial<Ef> }>>;
 export type Themes = { list: ThemeDesc[]; current: Current | null; pairOf: (id: string) => Pair | undefined; loading: boolean; error?: string; reload: () => Promise<void> };
 
