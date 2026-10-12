@@ -1,0 +1,4 @@
+engine:src/agents/continue-search-match.test.ts
+engine:src/agents/continue-search-matches.test.ts
+engine:src/agents/sessions/tools/edit-diff.loose-match.test.ts
+engine:src/agents/sessions/tools/edit-diff.test.ts

@@ -10,7 +10,7 @@ import { CharacterFace } from "../face/CharacterFace";
 import { Face } from "../face/Face";
 import { trunkAppearance } from "../face/appearance";
 import { Icon } from "../shell/icons";
-import { LEVEL_LINES, levelFor, pageAtLevel, pageName, searchSettings, settingsGroups, type Level, type SearchRow } from "./settings-nav";
+import { LEVEL_LINES, levelFor, pageAtLevel, pageName, searchSettings, settingsGroups, settingsSections, sectionId, type Level, type SearchRow } from "./settings-nav";
 import "./settings-frame.css";
 
 const LEVEL_KEY = "branch.level";
@@ -130,8 +130,8 @@ function ScopePicker({ engine, scope, onScope }: { engine: WindowEngine; scope: 
 }
 
 /** Search results in the nav: matching pages and, under each, its matching rows; a level tag where it's above yours. */
-function SearchResults({ query, level, shown, onGo }: { query: string; level: Level; shown: string; onGo: (page: string, row?: SearchRow) => void }) {
-  const groups = searchSettings(query, SETTINGS_ROWS);
+function SearchResults({ query, level, shown, onGo, hidden }: { query: string; level: Level; shown: string; hidden: string[]; onGo: (page: string, row?: SearchRow) => void }) {
+  const groups = searchSettings(query, SETTINGS_ROWS, hidden);
   if (!groups.length) return <p className="set-nomatch">No setting matches.</p>;
   const tag = (lv: number) => (lv > LV[level] ? <span className="set-lvtag">{lv === 2 ? "Technical" : "Advanced"}</span> : null);
   return (
@@ -207,6 +207,7 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
     }
   }, [level, chosen]);
   const [query, setQuery] = useState("");
+  const [searchRow, setSearchRow] = useState<SearchRow | undefined>();
   const [scope, setScope] = useState<string | null>(null);
   const [save, report] = useSaveState();
   const jump = useRowJump(page);
@@ -214,6 +215,8 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
   const maySetup = engine.scopes.length === 0 || engine.scopes.includes("operator.admin");
   const wanted = pageAtLevel(page, level);
   const shown = !maySetup && HIDDEN_PAGES.includes(wanted) ? "general" : wanted;
+  const groups = settingsGroups(level).map((g) => ({ ...g, pages: g.pages.filter((p) => maySetup || !HIDDEN_PAGES.includes(p.id)) }));
+  const category = groups.find((g) => g.pages.some((p) => p.id === shown)) ?? groups[0];
   const scrollRef = useRef<HTMLDivElement>(null);
   const levelScroll = useRef<{ page: string; top: number } | null>(null);
   useLayoutEffect(() => {
@@ -235,6 +238,7 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
   const go = useCallback((id: string, row?: SearchRow) => {
     const want = Math.max(LV[level], row?.lv ?? 0);
     if (want > LV[level]) { const l = LEVELS[want].id; setLevel(l); saveLevel(l); }
+    setSearchRow(row);
     onPage(id);
     if (row) jump(row.title);
   }, [level, onPage, jump]);
@@ -244,7 +248,7 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
   }, [report]);
   const goPin = useCallback((p: Pin) => go(p[0], { page: p[0], title: p[1], lv: p[2] }), [go]);
   const pins = usePins(engine, shown, LV[level], runSave, goPin);
-  const first = () => { const g = searchSettings(query, SETTINGS_ROWS)[0]?.hits[0]; if (g) go(g.page.id, g.rows[0]); };
+  const first = () => { const g = searchSettings(query, SETTINGS_ROWS, maySetup ? [] : HIDDEN_PAGES)[0]?.hits[0]; if (g) go(g.page.id, g.rows[0]); };
   return (
     <div className="settings" data-testid="settings">
       <nav className="set-nav" aria-label="Settings pages" onKeyDown={(e) => {
@@ -267,23 +271,23 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
             onKeyDown={(e) => { if (e.key === "Escape" && query) { e.preventDefault(); setQuery(""); } else if (e.key === "Enter") { e.preventDefault(); first(); } }} />
         </label>
         {LV[level] >= 1 ? <ScopePicker engine={engine} scope={scope} onScope={setScope} /> : null}
-        {query.trim() ? <SearchResults query={query} level={level} shown={shown} onGo={go} /> : settingsGroups(level).map((g) => ({ ...g, pages: g.pages.filter((p) => maySetup || !HIDDEN_PAGES.includes(p.id)) })).map((g) => (
-          <div key={g.name} className="set-group">
-            <div className="grp">{g.name}</div>
-            {g.pages.map((p) => (
-              <button key={p.id} type="button" className="set-item" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" data-page={p.id} aria-current={p.id === shown ? "true" : undefined} onClick={() => onPage(p.id)}>{p.name}</button>
-            ))}
-          </div>
-        ))}
+        {query.trim() ? <SearchResults query={query} level={level} shown={shown} onGo={go} hidden={maySetup ? [] : HIDDEN_PAGES} /> : <div className="set-destinations">{groups.map((g) => (
+          <button key={g.name} type="button" className="set-item" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" data-page={g.pages[0].id} aria-current={g === category ? "true" : undefined} onClick={() => go(g.pages[0].id)}>{g.name}</button>
+        ))}</div>}
         <SaveLine state={save} />
         <LevelControl level={level} onLevel={changeLevel} />
       </nav>
       <div className="set-scroll" ref={scrollRef}>
         <div className="set-col">
+          <nav className="set-sections" aria-label={`${category.name} sections`}>
+            {settingsSections(category).map((p) => (
+              <button key={p.id} type="button" className="set-item" data-page={p.id} aria-current={p.id === sectionId(shown) ? "true" : undefined} onClick={() => go(p.id)}>{p.name}</button>
+            ))}
+          </nav>
           <FileProblem engine={engine} />
           <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : null} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>
             <SetupLock locked={!maySetup && SETUP_PAGES.includes(shown)}>
-              <SettingsPage page={shown} title={pageName(shown)} level={level} engine={engine} openSettings={onPage} />
+              <SettingsPage page={shown} title={pageName(shown)} level={level} engine={engine} openSettings={go} searchSection={searchRow?.page === shown ? searchRow.sec : undefined} />
             </SetupLock>
           </KitProvider>
         </div>

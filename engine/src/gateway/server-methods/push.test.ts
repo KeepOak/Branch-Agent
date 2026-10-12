@@ -649,7 +649,7 @@ describe("bound Web Push handlers", () => {
   });
 
   it.each([undefined, true, false])(
-    "saves human mention preference %s, defaulting older client payloads to off",
+    "saves human mention preference %s, defaulting older client payloads to on",
     async (humanMentioned) => {
       const subscription = expectDefined(
         await findBoundWebPushSubscriptionByEndpoint({
@@ -687,7 +687,7 @@ describe("bound Web Push handlers", () => {
 
       const normalized = {
         ...preferences,
-        categories: { ...preferences.categories, humanMentioned: humanMentioned ?? false },
+        categories: { ...preferences.categories, humanMentioned: humanMentioned ?? true },
       };
       expect(setCanonicalUserPreferences).toHaveBeenCalledWith(
         "profile-owner",

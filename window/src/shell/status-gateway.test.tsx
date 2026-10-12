@@ -29,7 +29,7 @@ async function mountStatus(connection: ConnectionPhase, gateway: GatewayPhase) {
 }
 
 describe("independent gateway status", () => {
-  it("keeps the owner's connected wording and shows a glyph-only gateway", async () => {
+  it("says Online without a location, and labels the gateway so its icon is decodable", async () => {
     const gateway = await mountStatus("connected", "on");
     expect(document.querySelector("[data-testid=sb-connection] .status-label")?.textContent).toBe("Online · you are here");
     expect(gateway.querySelector(".status-label")).toBeNull();

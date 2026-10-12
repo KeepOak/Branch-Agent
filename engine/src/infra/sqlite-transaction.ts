@@ -216,9 +216,18 @@ function transactionDiagnosticLabels(
   };
 }
 
+/**
+ * elapsedMs (Date clock) runs from after BEGIN to the end of COMMIT or ROLLBACK. For DEFERRED
+ * transactions it includes any lock or busy wait, because the lock is taken by the first statement and
+ * that wait is not measured separately. For IMMEDIATE transactions the lock is taken by BEGIN, so
+ * lockWaitMs is that BEGIN wait (outside elapsedMs) and heldMs is the time the lock was held
+ * (performance clock).
+ */
 function logSlowTransactionHold(params: {
   db: DatabaseSync;
   elapsedMs: number;
+  heldMs?: number;
+  lockWaitMs?: number;
   mode: SqliteTransactionMode;
   options?: SqliteTransactionOptions;
 }): void {
@@ -230,7 +239,11 @@ function logSlowTransactionHold(params: {
   (params.options?.logger ?? transactionLog).warn("slow SQLite transaction hold", {
     async: false,
     ...transactionDiagnosticLabels(params.db, params.options),
+    elapsedIncludesLockWait: params.mode === "deferred",
     elapsedMs: params.elapsedMs,
+    ...(params.mode === "immediate"
+      ? { heldMs: params.heldMs, lockWaitMs: params.lockWaitMs }
+      : {}),
     isMainThread,
     mode: params.mode,
     pid: process.pid,
@@ -408,6 +421,7 @@ function runSqliteTransactionSync<T>(
     }
   }
 
+  // One start mark feeds both the main-thread work tally and the BEGIN lock wait.
   const transactionWorkStartedAt = performance.now();
   execTimedTransactionStep({
     db,
@@ -415,6 +429,11 @@ function runSqliteTransactionSync<T>(
     sql: mode === "immediate" ? "BEGIN IMMEDIATE" : "BEGIN",
     step: "begin",
   });
+  // IMMEDIATE takes its lock in BEGIN, so its wait is measured here, outside elapsedMs. DEFERRED takes
+  // its lock on the first statement, which is not timed here, so that wait stays inside elapsedMs.
+  // Includes the write-admission service time spent inside BEGIN as well as the busy wait.
+  const lockWaitMs = mode === "immediate" ? performance.now() - transactionWorkStartedAt : undefined;
+  const heldStartedAt = performance.now();
   const transactionStartedAt = Date.now();
   let commitStarted = false;
   try {
@@ -448,6 +467,8 @@ function runSqliteTransactionSync<T>(
       logSlowTransactionHold({
         db,
         elapsedMs: Date.now() - transactionStartedAt,
+        heldMs: performance.now() - heldStartedAt,
+        lockWaitMs,
         mode,
         options,
       });
