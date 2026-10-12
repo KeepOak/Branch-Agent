@@ -16,7 +16,7 @@ import { accentVars, BUILTIN, DEFAULT_THEME, isHex, pairOfDefinition, varsOf, ty
 export const LOOK_PREF = "ui.window.look";
 const ENGINE_PREFS = { accent: "ui.accent", fontUi: "ui.fontUi", fontChat: "ui.fontChat", themeExtra: "ui.window.themeExtra" } as const;
 type EngineKey = keyof typeof ENGINE_PREFS;
-const DEVICE_KEYS = ["size"] as const;
+export const DEVICE_KEYS = ["size"] as const;
 const LOCAL = "branch.look";
 const STYLE_ID = "branch-look";
 const SCENE_FILES: Record<string, string> = {
