@@ -1,7 +1,7 @@
 // Settings › Accounts (DESIGN-SPEC §4.7.8): the model accounts in the order Branch uses them, coding apps on this
 // computer, what happens when one runs out, your own accounts and keepoak.com. Saves at once through the engine:
 // order models.authOrderSet, sign-out models.authLogout, test models.probe, fallbacks config.patch.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
@@ -15,6 +15,7 @@ import { OwnAccounts } from "./own-accounts";
 import { GitHubSettings } from "../GitHubSettings";
 import { AccountsMore } from "./accounts-more";
 import { BulkBar, SelectBox, SelectLink } from "./accounts-select";
+import { accountEmails, readLimits, withAccountEmails } from "../../../shell/status-data";
 import "./set1.css";
 
 export type Profile = { profileId: string; type: string; status: string; displayName?: string; email?: string; lastUsedAt?: number; logoutSupported?: boolean; source?: string; reasonCode?: string; externallyManaged?: boolean; expiry?: { label?: string }; limitedUntil?: number };
@@ -81,6 +82,34 @@ export function movedUp(acc: Account, all: Account[]): string[] {
   return ids;
 }
 
+export const CHECK_FAILED = "Couldn’t check accounts right now. Branch will try again.";
+type CheckNow = { busy: boolean; error?: string; at?: number; check: () => Promise<void> };
+/**
+ * Check now: ask every service again what each account has left (models.authStatus and usage.status with
+ * refresh), reread the list, and hand the fresh reading to the status bar on branch:usage-checked.
+ */
+export function useCheckNow(engine: SettingsPageProps["engine"], agent: { agentId?: string }, reload: () => Promise<void>): CheckNow {
+  const running = useRef(false);
+  const [state, setState] = useState<{ busy: boolean; error?: string; at?: number }>({ busy: false });
+  const check = async () => {
+    if (running.current) return;
+    running.current = true;
+    setState({ busy: true });
+    try {
+      const auth = await engine.request("models.authStatus", { refresh: true, ...agent }).catch(() => ({}));
+      const result = await engine.request("usage.status", { refresh: true });
+      window.dispatchEvent(new CustomEvent("branch:usage-checked", { detail: withAccountEmails(readLimits(result), accountEmails(auth)) }));
+      await reload();
+      setState({ busy: false, at: Date.now() });
+    } catch {
+      setState({ busy: false, error: CHECK_FAILED });
+    } finally {
+      running.current = false;
+    }
+  };
+  return { ...state, check };
+}
+
 export function AccountsPage(props: SettingsPageProps) {
   const scope = useScope();
   // As in Models: with several Trunks the engine needs an owner, so the household view uses the default Trunk.
@@ -103,10 +132,11 @@ export function AccountsPage(props: SettingsPageProps) {
   const providers = providersOf(status.data?.providers);
   const caps = list(status.data?.providerCapabilities);
   const all = accountsOf(providers);
+  const checkNow = useCheckNow(props.engine, agent, status.reload);
   return (
     <Page title={props.title} lede="Manage model accounts and the order Branch uses them." help="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
       <AccountsStatus loading={status.loading} error={status.error} count={all.length} unavailable={record(status.data?.unavailable).message} />
-      <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} />
+      <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} checkNow={checkNow} />
       {!status.loading && !status.error ? <div className="acts">
         {caps.filter((c) => !providers.some((p) => p.provider === c.provider && p.profiles.length) && list(c.loginOptions).some((o) => o.featured)).map((c) => (
           <Btn key={text(c.provider)} onClick={() => setAdd({ provider: text(c.provider) })}>Sign in to {serviceName(text(c.provider))}</Btn>
@@ -131,8 +161,8 @@ function AccountsStatus({ loading, error, count, unavailable }: { loading: boole
   return <Status title={`${count} ${count === 1 ? "account" : "accounts"} signed in`}>Branch never sees your passwords. Each account is billed by its own site.</Status>;
 }
 
-type OrderProps = SettingsPageProps & { all: Account[]; reload: () => Promise<void>; onAdd: (s: AddStart) => void; agent: { agentId?: string } };
-function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
+type OrderProps = SettingsPageProps & { all: Account[]; reload: () => Promise<void>; onAdd: (s: AddStart) => void; agent: { agentId?: string }; checkNow: CheckNow };
+function OrderSection({ engine, all, reload, onAdd, agent, checkNow }: OrderProps) {
   const save = useSaveRunner();
   const lv = useLevel();
   const [menu, setMenu] = useState<{ at: MenuAnchor; acc: Account } | null>(null);
@@ -164,7 +194,9 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
       <Acts>
         <Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn>
         {brands.filter((p) => p.provider !== "anthropic").map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
+        {all.length ? <Btn disabled={checkNow.busy} title="Ask each service again what every account has left" onClick={() => void checkNow.check()}>{checkNow.busy ? "Checking…" : "Check now"}</Btn> : null}
       </Acts>
+      {checkNow.error ? <p role="alert" className="hint">{checkNow.error}</p> : checkNow.at ? <Hint>Checked at {new Date(checkNow.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.</Hint> : null}
       {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={agent} reload={reload} setOrder={setOrder} onClose={() => setMenu(null)} /> : null}
     </Sec>
   );

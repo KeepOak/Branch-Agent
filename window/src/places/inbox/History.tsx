@@ -27,7 +27,7 @@ async function readRuns(engine: WindowEngine): Promise<unknown> {
 }
 export async function loadHistory(engine: WindowEngine): Promise<HistoryData> {
   const [list, audit, users, self, trunks] = await Promise.allSettled([
-    paged(engine, "sessions.list", "sessions", { includeGlobal: true, includeUnknown: true, includeActivitySummary: true, archived: "all" }),
+    paged(engine, "sessions.list", "sessions", { includeGlobal: true, includeUnknown: true, includeDerivedTitles: true, includeActivitySummary: true, archived: "all" }),
     readRuns(engine), engine.request("users.list", {}), engine.request("users.self", {}), engine.request("agents.list", {}),
   ]);
   const errors = [list.status === "rejected" ? `Conversations: ${errorText(list.reason)}` : "", audit.status === "rejected" ? `Run record: ${errorText(audit.reason)}` : ""].filter(Boolean);

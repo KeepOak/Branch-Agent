@@ -54,10 +54,22 @@ function withoutUnrequestedRecaps(value: unknown): unknown {
     return rest;
   }) };
 }
+/** The engine only sends derivedTitle when the list asks for includeDerivedTitles. */
+function withoutUnrequestedTitles(value: unknown): unknown {
+  if (!value || typeof value !== "object" || !("sessions" in value) || !Array.isArray(value.sessions)) return value;
+  return { ...value, sessions: value.sessions.map(row => {
+    if (!row || typeof row !== "object" || !("derivedTitle" in row)) return row;
+    const { derivedTitle, ...rest } = row;
+    void derivedTitle;
+    return rest;
+  }) };
+}
 async function render({ level = "regular" as Level, scopes = ["operator.admin"], fx = FX, strictRecapProjection = false } = {}) {
   const request = vi.fn(async (method: string, params?: unknown) => {
     const requested = params !== null && typeof params === "object" && "includeActivitySummary" in params && params.includeActivitySummary === true;
-    const v = strictRecapProjection && method === "sessions.list" && !requested ? withoutUnrequestedRecaps(fx[method]) : fx[method];
+    const titled = params !== null && typeof params === "object" && "includeDerivedTitles" in params && params.includeDerivedTitles === true;
+    const listed = method === "sessions.list" && !titled ? withoutUnrequestedTitles(fx[method]) : fx[method];
+    const v = strictRecapProjection && method === "sessions.list" && !requested ? withoutUnrequestedRecaps(listed) : listed;
     if (v && typeof v === "object" && "__error" in v) throw new Error(String((v as { __error: string }).__error));
     return v ?? {};
   });
@@ -265,6 +277,17 @@ describe("Inbox › other tabs", () => {
     expect(request).toHaveBeenCalledWith("sessions.list", expect.objectContaining({ includeActivitySummary: true }));
     expect(host.textContent).toContain("All tidy.");
     expect(calls(request, "sessions.activitySummary.ensure")).toHaveLength(0);
+  });
+  it("asks History's list for derived titles, so an unnamed thread keeps its engine title instead of Chat with <Trunk>", async () => {
+    const fx = { ...FX, "sessions.list": { sessions: [
+      { key: "agent:main:titled", agentId: "main", derivedTitle: "Plan the Lisbon trip", status: "done", lastRunId: "r1", updatedAt: NOW - H },
+      { key: "agent:main:bare", agentId: "main", status: "done", lastRunId: "r2", updatedAt: NOW - 2 * H },
+    ] } };
+    const { host, request } = await render({ fx });
+    await click(btn(host, "History")[0]);
+    expect(request).toHaveBeenCalledWith("sessions.list", expect.objectContaining({ includeDerivedTitles: true, includeActivitySummary: true }));
+    expect(btn(host, "Plan the Lisbon trip")).toHaveLength(1);
+    expect(btn(host, "Chat with Rowan")).toHaveLength(1);
   });
   it("does not claim verified integrity or signed receipts from ordinary recorded activity", async () => {
     const { host, request } = await render();
