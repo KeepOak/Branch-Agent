@@ -71,8 +71,8 @@ export function Menu({ label, tiles = [], rows, onClose }: MenuProps) {
       aria-disabled={entry.off ? "true" : undefined} aria-haspopup={entry.submenu ? "menu" : undefined} aria-keyshortcuts={entry.letter} title={entry.off} onClick={() => choose(entry)}
       onKeyDown={event => { if (event.key === "ArrowRight" && entry.submenu) { event.preventDefault(); choose(entry); } }}>
       <span className="g-menu-ico" aria-hidden="true">{entry.icon}</span>
-      <span className="g-menu-label">{entry.label}{entry.off || entry.hint ? <small>{entry.off ?? entry.hint}</small> : null}</span>
-      <span className="g-menu-end">{entry.letter ? <kbd>{entry.letter}</kbd> : null}{entry.submenu ? <Chevron /> : null}</span>
+      <span className="g-menu-label">{entry.label}{entry.off ? <small>{entry.off}</small> : null}</span>
+      <span className="g-menu-end">{entry.hint && !entry.off ? <small>{entry.hint}</small> : null}{entry.letter ? <kbd>{entry.letter}</kbd> : null}{entry.submenu ? <Chevron /> : null}</span>
     </button>)}
   </div>;
 }

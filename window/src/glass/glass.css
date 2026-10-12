@@ -76,4 +76,5 @@
 .g-menu-label small { color: var(--ink-3); font-size: var(--fs-11-5); white-space: normal; }
 .g-menu-end { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); }
 .g-menu-end kbd { font: 11px var(--mono); color: var(--ink-3); background: none; border: 0; padding: 0; }
+.g-menu-end small { font-size: var(--fs-11-5); color: var(--ink-3); white-space: nowrap; }
 .g-menu-back .g-menu-label { font-weight: 600; }
