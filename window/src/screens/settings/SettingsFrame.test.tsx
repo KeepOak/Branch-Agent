@@ -6,6 +6,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
 import { SECTION_COMING, SettingsFrame } from "./SettingsFrame";
 import { NOTHING_MATCHES } from "./search";
+import { INVALID_CONFIG, NEEDS_ADMIN } from "./useRow";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -14,7 +15,7 @@ beforeEach(() => { host = document.body.appendChild(document.createElement("div"
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; });
 
 type Reply = unknown | ((params: Record<string, unknown>) => unknown);
-function engineOf(table: Record<string, Reply> = {}) {
+function engineOf(table: Record<string, Reply> = {}, scopes: string[] = ["operator.admin"]) {
   const request = vi.fn(async (method: string, params: Record<string, unknown> = {}) => {
     if (method in table) { const r = table[method]; const v = typeof r === "function" ? (r as (p: Record<string, unknown>) => unknown)(params) : r; if (v instanceof Error) throw v; return v; }
     if (method === "config.get") return { hash: "h1", valid: true, config: {} };
@@ -26,7 +27,7 @@ function engineOf(table: Record<string, Reply> = {}) {
     if (method === "themes.list") return { current: {} };
     throw new Error(`unknown method: ${method}`);
   });
-  return { engine: { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine, request };
+  return { engine: { request, onEvent: () => () => undefined, sessionKey: "s", scopes } as unknown as WindowEngine, request };
 }
 async function mount(engine: WindowEngine, page?: string) {
   await act(async () => root.render(<SettingsFrame engine={engine} page={page} />));
@@ -166,6 +167,47 @@ describe("SettingsFrame", () => {
     await act(async () => root.render(<SettingsFrame engine={engineOf().engine} page="who" rows={rows} />));
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     expect($$(".r1s-sec").map((s) => s.querySelector("h2")?.textContent)).not.toContain("People");
+  });
+
+  it("keeps rows disabled with the reason on a read-only connection", async () => {
+    const { engine, request } = engineOf({}, ["operator.read"]);
+    await mount(engine);
+    const row = $("[data-row='general.work.mode']");
+    expect(row.querySelector<HTMLButtonElement>("button")!.disabled).toBe(true);
+    expect(row.querySelector(".r1s-note")?.textContent).toBe(NEEDS_ADMIN);
+    expect(request).not.toHaveBeenCalledWith("config.patch", expect.anything());
+  });
+
+  it("shows what is wrong with an invalid settings file and sends no change", async () => {
+    const { engine, request } = engineOf({ "config.get": { hash: "h1", valid: false, config: {}, issues: [{ path: "agents.defaults.verboseDefault", message: "Invalid enum value" }] } });
+    await mount(engine);
+    const alert = $(".r1s-invalid");
+    expect(alert.textContent).toContain(INVALID_CONFIG);
+    expect([...alert.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["agents.defaults.verboseDefault: Invalid enum value"]);
+    const seg = $("[data-row='general.work.mode']");
+    expect(seg.querySelector<HTMLButtonElement>("button")!.disabled).toBe(true);
+    expect(request).not.toHaveBeenCalledWith("config.patch", expect.anything());
+  });
+
+  it("clears Changed somewhere else after Reload", async () => {
+    let refuse = true;
+    const { engine } = engineOf({ "config.patch": () => (refuse ? new Error("config changed since last load; re-run config.get") : { ok: true }) });
+    await mount(engine);
+    const seg = $("[data-row='general.work.mode']");
+    await click([...seg.querySelectorAll("button")].find((b) => b.textContent === "Verbose")!);
+    expect(seg.querySelector(".r1s-bad")?.textContent).toContain("Changed somewhere else");
+    refuse = false;
+    await click(seg.querySelector(".r1s-bad button")!);
+    expect(seg.querySelector(".r1s-bad")).toBeNull();
+  });
+
+  it("draws when this window's storage refuses to be read", async () => {
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new DOMException("The operation is insecure.", "SecurityError"); });
+    try {
+      await mount(engineOf().engine);
+      expect($(".r1s-head h1").textContent).toBe("General");
+      expect($(".r1set").dataset.level).toBe("regular");
+    } finally { getItem.mockRestore(); }
   });
 
   it("renders with a disconnected engine", async () => {

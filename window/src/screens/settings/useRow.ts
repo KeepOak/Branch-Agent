@@ -5,11 +5,13 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import type { WindowEngine } from "../../connect/engine";
 import { errorText, record, type RecordValue } from "../../places/settings/adapter";
 import { configStore, pathKeys } from "../../places/settings/config-store";
-import { DEVICE_KEYS, lookStore } from "../../places/settings/set1/appearance-store";
+import { isDeviceKey, lookHolder, lookStore } from "../../places/settings/set1/appearance-store";
+import { has } from "../../places/inbox/data";
 import type { Level } from "./nav";
 import { hintFor, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 
-export type RowState = "loading" | "ready" | "saving" | "error" | "coming";
+/** blocked: the value shows, but this connection or the settings file can't take a change now (the reason says why). */
+export type RowState = "loading" | "ready" | "saving" | "error" | "coming" | "blocked";
 export type RowView = {
   value: unknown;
   set: (value: unknown) => Promise<void>;
@@ -25,11 +27,17 @@ export type RowView = {
   /** The engine applies this key only after a restart (config.schema.lookup reloadKind). */
   restart: boolean;
   sensitive: boolean;
+  /** Reads the row's value again (after a failed load or a conflict); clears the row's error once it reads. */
+  retry: () => Promise<void>;
 };
 
 export const LOAD_FAILED = "Settings didn’t load. Try again.";
 export const CHANGED_ELSEWHERE = "Changed somewhere else · Reload";
 export const NO_PERSON = "Sign in as yourself on this Branch to keep your own choices.";
+/** config.patch needs operator.admin; users.prefs.set needs operator.write (engine gateway/method-scopes.ts). */
+export const NEEDS_ADMIN = "Changing how Branch is set up needs full access on this connection.";
+export const NEEDS_WRITE = "This connection can look but not change your choices.";
+export const INVALID_CONFIG = "The settings file has a problem. Fix it before changing settings here.";
 const CHANGED = /config changed since last load|base hash/i;
 
 type Listener = () => void;
@@ -89,9 +97,13 @@ class PrefStore extends Emitter {
   private unwatch: (() => void) | null = null;
   private engine: WindowEngine;
   constructor(engine: WindowEngine) { super(); this.engine = engine; }
+  /** Asks for a key. A key already asked for is read again only when the last read failed, so a row shown again (or
+   *  Try again) recovers after a passing failure. */
   want(key: string) {
-    if (this.keys.has(key)) return;
+    const failed = this.snap.status === "error";
+    if (this.keys.has(key) && !failed) return;
     this.keys.add(key);
+    if (failed) { this.snap = { ...this.snap, status: "loading", error: undefined }; this.emit(); }
     this.queued ??= Promise.resolve().then(() => { this.queued = null; return this.load(); });
   }
   async load(): Promise<void> {
@@ -137,10 +149,22 @@ export function useSchemaHints(engine: WindowEngine): { hints: UiHints; schema: 
   return { hints: snap?.hints ?? {}, schema: snap?.schema, error: snap?.error, loading: !snap };
 }
 
-const isDevice = (key: string) => (DEVICE_KEYS as readonly string[]).includes(key);
+type Status = { state: RowState; reason?: string };
+type Source = {
+  subscribe: (fn: Listener) => () => void;
+  snapshot: () => unknown;
+  start: () => () => void;
+  read: () => unknown;
+  status: () => Status;
+  /** Why a change can't be sent now (the connection's scopes, an invalid settings file), or undefined when it can. */
+  blocked: () => string | undefined;
+  save: (value: unknown) => Promise<void>;
+  /** Reads again; true when the read worked. */
+  retry: () => Promise<boolean>;
+};
 
 /** Where a row's value lives, behind one shape: subscribe, a snapshot, what it reads, how it saves. */
-function sourceOf(engine: WindowEngine, row: Row) {
+function sourceOf(engine: WindowEngine, row: Row): Source {
   const src = row.source;
   if (src.kind === "config") {
     const store = configStore(engine);
@@ -153,8 +177,10 @@ function sourceOf(engine: WindowEngine, row: Row) {
         return engine.onEvent((e) => { if (e.event === "config.changed") void store.load(); });
       },
       read: () => pathKeys(src.path).reduce<unknown>((v, k) => record(v)[k], store.snap?.config),
-      status: (): { state: RowState; reason?: string } => (store.snap ? { state: "ready" } : store.error ? { state: "error", reason: LOAD_FAILED } : { state: "loading" }),
+      status: (): Status => (store.snap ? { state: "ready" } : store.error ? { state: "error", reason: LOAD_FAILED } : { state: "loading" }),
+      blocked: () => (!has(engine, "operator.admin") ? NEEDS_ADMIN : store.snap?.valid === false ? INVALID_CONFIG : undefined),
       save: (value: unknown) => store.set(src.path, value),
+      retry: async () => { await store.load(); return !store.error; },
     };
   }
   if (src.kind === "pref") {
@@ -164,11 +190,13 @@ function sourceOf(engine: WindowEngine, row: Row) {
       snapshot: () => store.snap as unknown,
       start: () => { store.want(src.key); return () => undefined; },
       read: () => store.snap.entries[src.key],
-      status: (): { state: RowState; reason?: string } => {
+      status: (): Status => {
         const s = store.snap.status;
         return s === "ok" ? { state: "ready" } : s === "loading" ? { state: "loading" } : { state: "error", reason: s === "device" ? NO_PERSON : LOAD_FAILED };
       },
+      blocked: () => (has(engine, "operator.write") ? undefined : NEEDS_WRITE),
       save: (value: unknown) => store.set(src.key, value),
+      retry: async () => { await store.load(); return store.snap.status === "ok"; },
     };
   }
   if (src.kind === "look") {
@@ -177,9 +205,12 @@ function sourceOf(engine: WindowEngine, row: Row) {
       subscribe: (fn: Listener) => store.subscribe(fn),
       snapshot: () => store.snap as unknown,
       start: () => { if (store.snap.where === "loading") void store.load(); return () => undefined; },
-      read: () => (isDevice(src.key) ? store.snap.device : store.snap.look)[src.key],
-      status: (): { state: RowState; reason?: string } => (store.snap.where === "loading" && !isDevice(src.key) ? { state: "loading" } : { state: "ready" }),
+      read: () => lookHolder(store.snap, src.key)[src.key],
+      status: (): Status => (store.snap.where === "loading" && !isDeviceKey(src.key) ? { state: "loading" } : { state: "ready" }),
+      // A device key, or a look kept on this device (no person), never reaches the engine; the rest is users.prefs.set.
+      blocked: () => (isDeviceKey(src.key) || store.snap.where === "device" || has(engine, "operator.write") ? undefined : NEEDS_WRITE),
       save: (value: unknown) => store.set(src.key, value),
+      retry: async () => { await store.load(); return true; },
     };
   }
   return {
@@ -187,8 +218,10 @@ function sourceOf(engine: WindowEngine, row: Row) {
     snapshot: () => null,
     start: () => () => undefined,
     read: () => undefined,
-    status: (): { state: RowState; reason?: string } => ({ state: "coming", reason: src.reason }),
+    status: (): Status => ({ state: "coming", reason: src.reason }),
+    blocked: () => src.reason,
     save: () => Promise.reject(new Error(src.reason)),
+    retry: () => Promise.resolve(false),
   };
 }
 
@@ -214,7 +247,11 @@ export function useRow(engine: WindowEngine, row: Row): RowView {
   const value = row.codec ? row.codec.read(raw) : raw;
   const { codec } = row;
   const { save } = source;
+  const base = source.status();
+  const blocked = base.state === "ready" ? source.blocked() : undefined;
   const set = useCallback(async (next: unknown) => {
+    // Never send a change the engine would refuse (a scope this connection lacks, an invalid settings file).
+    if (blocked) throw new Error(blocked);
     setSaving(true);
     setFailed(undefined);
     try {
@@ -224,13 +261,15 @@ export function useRow(engine: WindowEngine, row: Row): RowView {
       setFailed(CHANGED.test(text) ? CHANGED_ELSEWHERE : text);
       throw e;
     } finally { setSaving(false); }
-  }, [save, codec]);
+  }, [save, codec, blocked]);
+  const retry = useCallback(async () => {
+    if (await source.retry()) setFailed(undefined);
+  }, [source]);
 
-  const base = source.status();
-  const state: RowState = base.state === "coming" ? "coming" : saving ? "saving" : failed ? "error" : base.state;
+  const state: RowState = base.state === "coming" ? "coming" : saving ? "saving" : failed ? "error" : blocked ? "blocked" : base.state;
   const hint = path ? hintFor(hints, path) : undefined;
   return {
-    value, set, state, reason: failed ?? base.reason,
+    value, set, retry, state, reason: failed ?? blocked ?? base.reason,
     need: row.source.kind === "coming" ? row.source.need : undefined,
     label: rowLabel(row, hints), help: rowHelp(row, hints), level: rowLevel(row, hints), restart, sensitive: hint?.sensitive === true,
   };
