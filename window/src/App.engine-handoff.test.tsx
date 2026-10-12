@@ -91,7 +91,8 @@ it("keeps the resident conversation while the old run finishes and sends the nex
   expect(host.querySelector('[data-testid="history"]')?.textContent).toContain("old run finished");
   expect(old.stopped).toBe(true);
   expect(host.querySelector('[data-testid="resident-window"]')).toBe(resident);
-});
+  // vi.resetModules makes this the cold import of the whole App graph; on Windows runners that alone can pass 5 s.
+}, 20_000);
 
 // PENDING (engine per-session write lease): the running test above verifies the mounted window's handoff
 // contract with controlled gateways. The cross-process case needs two real gateways sharing one profile:
