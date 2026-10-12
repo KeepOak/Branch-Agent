@@ -3,7 +3,6 @@
 // reason, and is listed by data-coming with the call it waits for (R1-10). Rules lines never separate rows.
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
-import { configStore } from "../../places/settings/config-store";
 import type { Level } from "./nav";
 import type { Row, RowOption } from "./rows";
 import { CHANGED_ELSEWHERE, LOAD_FAILED, NO_PERSON, useRow } from "./useRow";
@@ -83,8 +82,9 @@ function Field({ label, value, kind, unit, disabled, placeholder, onSave }: { la
 export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
   const r = useRow(engine, row);
   const coming = r.state === "coming";
-  // Disabled while there is nothing to change: Coming, still loading, or the settings (or the person) didn't load.
-  const off = coming || r.state === "loading" || (r.state === "error" && (r.reason === LOAD_FAILED || r.reason === NO_PERSON));
+  // Disabled while there is nothing to change: Coming, still loading, a change this connection or the settings file
+  // can't take, or the settings (or the person) didn't load.
+  const off = coming || r.state === "loading" || r.state === "blocked" || (r.state === "error" && (r.reason === LOAD_FAILED || r.reason === NO_PERSON));
   const save = (v: unknown) => { void r.set(v).catch(() => undefined); };
   const options = row.options ?? [];
   const control = (() => {
@@ -109,10 +109,13 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
       <b data-lv={tag}>{r.label}</b>
       {r.help ? <small>{r.help}</small> : null}
       <div className="r1s-ctl">{control}</div>
-      {coming ? <small className="r1s-note">{r.reason}</small>
+      {coming || r.state === "blocked" ? <small className="r1s-note">{r.reason}</small>
         : r.state === "error" && r.reason ? (
           <small className="r1s-note r1s-bad" role="status">
-            {r.reason === CHANGED_ELSEWHERE ? <>Changed somewhere else · <button type="button" className="r1s-link" onClick={() => void configStore(engine).load()}>Reload</button></> : r.reason}
+            {r.reason === CHANGED_ELSEWHERE ? <>Changed somewhere else · <button type="button" className="r1s-link" onClick={() => void r.retry()}>Reload</button></>
+              // A config load failure has the page's own Try again; a pref load failure is retried here.
+              : r.reason === LOAD_FAILED && row.source.kind !== "config" ? <>Settings didn’t load · <button type="button" className="r1s-link" onClick={() => void r.retry()}>Try again</button></>
+              : r.reason}
           </small>
         ) : r.restart ? <small className="r1s-note">{RESTART_NOTE}</small> : null}
     </div>
