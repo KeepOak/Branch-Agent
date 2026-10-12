@@ -1,7 +1,6 @@
-# atlas safety-layer s9 (KeepOak/Branch-Agent-Private#725)
-engine:src/safety/command-scan.test.ts
-engine:src/safety/command-prefix-hierarchy.test.ts
+engine:src/agents/code-mode.script-approval-gate.behaviour.test.ts
 engine:src/safety/action-risk.test.ts
+engine:src/safety/command-prefix-hierarchy.test.ts
+engine:src/safety/command-scan.test.ts
 engine:src/safety/command-timeout-policy.behaviour.test.ts
 engine:src/safety/read-before-write.test.ts
-engine:src/agents/code-mode.script-approval-gate.behaviour.test.ts
