@@ -82,6 +82,33 @@ function createTransport(outputStdin: TestStdin, replacementStdin = createStdin(
 describe("local meeting realtime audio transport", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("logs sustained zero-valued capture as silence without stopping input", async () => {
+    vi.useFakeTimers();
+    const stdout = new EventEmitter();
+    const output = createProcess({ stdin: createStdin(true) });
+    const input = createProcess({ stdout });
+    const spawn = vi.fn().mockReturnValueOnce(output).mockReturnValueOnce(input);
+    const logger = { debug: vi.fn(), warn: vi.fn() };
+    const transport = createTransportWith({ logger: logger as never, spawn: spawn as never });
+    const onAudio = vi.fn();
+    transport.startInput(onAudio);
+
+    for (let second = 0; second <= 13; second += 1) {
+      stdout.emit("data", Buffer.alloc(1920));
+      vi.advanceTimersByTime(1000);
+    }
+
+    expect(onAudio).toHaveBeenCalledTimes(14);
+    const warnings = logger.warn.mock.calls.map(([message]) => String(message));
+    expect(warnings).toContainEqual(
+      expect.stringContaining("[meeting] audio input audio chunks stayed zero-valued"),
+    );
+    expect(warnings.some((message) => message.includes("0 chunks"))).toBe(false);
+    vi.useRealTimers();
+    await transport.stop();
   });
 
   it.each([

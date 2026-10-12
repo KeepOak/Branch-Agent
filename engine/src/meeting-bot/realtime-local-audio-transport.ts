@@ -15,6 +15,7 @@ import { splitCommandArgv } from "./command-argv.js";
 import { createMeetingOutputLoopbackVerifier } from "./output-loopback-verifier.js";
 import type { MeetingRealtimeAudioFormat } from "./realtime-audio-format.js";
 import type { MeetingRealtimeAudioTransport } from "./realtime-audio-transport.js";
+import { createCaptureHealthMonitor } from "./system-audio-health-classifier.js";
 
 const LOCAL_BRIDGE_TERMINATION_GRACE_MS = 1_000;
 
@@ -121,6 +122,10 @@ export function createLocalMeetingRealtimeAudioTransport(params: {
   const outputLoopbackVerifier = createMeetingOutputLoopbackVerifier({
     audioFormat: params.audioFormat ?? "pcm16-24khz",
   });
+  const inputHealth = createCaptureHealthMonitor({
+    logger: params.logger,
+    logScope: `${params.logScope} audio input`,
+  });
 
   const signalFatal = () => {
     if (!fatalSignaled) {
@@ -174,6 +179,7 @@ export function createLocalMeetingRealtimeAudioTransport(params: {
   const stop = () => {
     stopPromise ??= (async () => {
       stopped = true;
+      inputHealth.stop();
       outputLoopbackVerifier.cancelOutput();
       releaseOutputWriteWaiters();
       await Promise.all([
@@ -221,9 +227,11 @@ export function createLocalMeetingRealtimeAudioTransport(params: {
         throw new Error("audio input transport already started");
       }
       inputStarted = true;
+      inputHealth.start();
       inputProcess.stdout?.on("data", (chunk) => {
         if (!stopped) {
           const audio = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          inputHealth.chunk(audio);
           outputLoopbackVerifier.recordInput(audio);
           onAudio(audio);
         }
