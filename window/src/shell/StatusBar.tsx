@@ -41,7 +41,7 @@ export function roomColour(used: number): string {
   return used >= 0.5 ? "var(--warn)" : "var(--ok)";
 }
 
-const WORDS: Record<ConnectionPhase, string> = { connected: "", connecting: "Connecting", offline: "Offline" };
+const WORDS: Record<ConnectionPhase, string> = { connected: "", connecting: "Reconnecting", offline: "Offline" };
 /** Preview GLYPH_T5.ringUse: 16px viewBox, r=6, stroke 2, arc 37.7. */
 export const USAGE_RING_ARC = 37.7;
 export function usageRingDash(left: number): string {

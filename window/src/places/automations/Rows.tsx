@@ -6,7 +6,7 @@ import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
 import { Segmented } from "../../shell/Popover";
 import { shows, type Level } from "../../places-nav/level";
 import { Glyph } from "./glyphs";
-import { autoDisabledWords, failing, health, jobName, scheduleWords, when } from "./model";
+import { autoDisabledWords, failing, failureDetails, health, jobName, scheduleWords, when } from "./model";
 import type { Trunk } from "./Proposal";
 import { rec, str, type Row } from "./runtime";
 
@@ -30,6 +30,7 @@ function Readout({ job, runs, total, trigger }: { job: Row; runs: Row[]; total?:
 
 export function JobRow({ job, trunk, runs, total, level, canWrite, busy, actions, checkReadout: trigger }: RowProps) {
   const auto = autoDisabledWords(job), name = jobName(job), model = str(rec(job.payload).model);
+  const failure = failureDetails(job, runs);
   const running = typeof rec(job.state).runningAtMs === "number";
   const onContext = (e: MouseEvent) => { e.preventDefault(); actions.menu(job, { x: e.clientX, y: e.clientY }); };
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -40,6 +41,7 @@ export function JobRow({ job, trunk, runs, total, level, canWrite, busy, actions
     <span className="au-grow">
       <b><button type="button" className="au-name" aria-haspopup="dialog" onClick={() => actions.open(job)}>{name}</button>{auto && <span className="au-pill warn" title="It stopped trying so it wouldn’t keep failing. Fix the cause, then switch it back on." tabIndex={0}><i />{auto}</span>}</b>
       <small>{scheduleWords(rec(job.schedule))} · {trunk}{shows(level, "advanced") && model ? ` · ${model}` : ""}</small>
+      {failure && <small className="au-bad">Failing since {when(failure.since)}{failure.error ? ` · ${failure.error}` : ""} · <button type="button" className="au-name" onClick={() => actions.open(job)}>See why</button></small>}
     </span>
     <Readout job={job} runs={runs} total={total} trigger={trigger} />
     <button type="button" role="switch" className="switch" aria-checked={job.enabled === true} aria-label={`${name} on or off`} title={canWrite ? undefined : "Needs an owner"} disabled={!canWrite || busy} onClick={() => actions.toggle(job)} />

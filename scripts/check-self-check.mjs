@@ -1,7 +1,7 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { liveContext, readLivePullRequest } from './live-pull-request.mjs';
+import { liveContext, readLivePullRequest, snapshotFromEnv } from './live-pull-request.mjs';
 
 export const SELF_CHECK_DOC = 'docs/SELF-CHECK.md';
 
@@ -119,6 +119,8 @@ export function formatSelfCheckSummary(result) {
 // The input to check: the live pull request when CI configures it (the payload can be stale), else the event file.
 // In CI (GITHUB_ACTIONS=true) the live context is required: a missing one fails closed instead of reading the payload.
 export function resolveSelfCheckInput({ env = process.env, read = readLivePullRequest } = {}) {
+  const snapshot = snapshotFromEnv(env);
+  if (snapshot) return { headRef: snapshot.headRef, body: snapshot.body, headSha: snapshot.headSha };
   const ctx = liveContext(env);
   if (ctx) {
     const pr = read(ctx);
