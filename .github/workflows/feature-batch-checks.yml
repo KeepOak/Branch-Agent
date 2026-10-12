@@ -2,6 +2,7 @@ name: Feature batch checks
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'engine/**'
       - 'window/**'
@@ -27,10 +28,11 @@ permissions:
 
 concurrency:
   group: feature-batch-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
 
 jobs:
   plan:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: Plan feature-batch shards
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -76,6 +78,7 @@ jobs:
   feature-batch:
     needs: plan
     name: Named feature tests on ${{ matrix.os }} (${{ matrix.label }})
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ matrix.os }}
     # The cap stays at 15 minutes. Shard counts are derived from the test weights in
     # scripts/feature-batch-ci-targets.mjs (shardCountFor), with the floors kept as minimums.

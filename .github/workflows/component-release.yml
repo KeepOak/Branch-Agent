@@ -9,6 +9,7 @@ on:
     # that landed inside the 25-minute window. Offset from the top of the hour.
     - cron: '7,37 * * * *'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'desktop/scripts/release-*'
       - 'desktop/scripts/make-component-release.mjs'
@@ -42,7 +43,7 @@ concurrency:
 
 jobs:
   readiness:
-    if: github.repository == 'KeepOak/Branch-Agent' && github.event_name != 'pull_request'
+    if: github.repository == 'KeepOak/Branch-Agent' && github.event_name != 'pull_request' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -140,7 +141,7 @@ jobs:
   # jobs.<id>.permissions only accepts read/write/none, not expressions, so PR
   # rehearsal cannot share the write job. It checks out PR code and only counts.
   readiness-rehearsal:
-    if: github.repository == 'KeepOak/Branch-Agent' && github.event_name == 'pull_request'
+    if: github.repository == 'KeepOak/Branch-Agent' && github.event_name == 'pull_request' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -164,7 +165,7 @@ jobs:
 
   identity:
     needs: [readiness, readiness-rehearsal]
-    if: always() && !cancelled() && ((needs.readiness.result == 'success' && needs.readiness.outputs.should_release == 'true') || (needs.readiness-rehearsal.result == 'success' && needs.readiness-rehearsal.outputs.should_release == 'true'))
+    if: always() && !cancelled() && ((needs.readiness.result == 'success' && needs.readiness.outputs.should_release == 'true') || (needs.readiness-rehearsal.result == 'success' && needs.readiness-rehearsal.outputs.should_release == 'true')) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -196,7 +197,7 @@ jobs:
           printf 'commit=%s\nversion=%s\n' "$commit" "$version" >> "$GITHUB_OUTPUT"
   window:
     needs: [readiness, readiness-rehearsal, identity]
-    if: always() && !cancelled() && needs.identity.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    if: always() && !cancelled() && needs.identity.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -223,7 +224,7 @@ jobs:
   # burns the 35-minute clock while window is still queued, and the 10-minute poll then fails.
   native:
     needs: [readiness, readiness-rehearsal, identity, window]
-    if: always() && !cancelled() && needs.identity.result == 'success' && needs.window.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    if: always() && !cancelled() && needs.identity.result == 'success' && needs.window.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
     permissions:
@@ -374,7 +375,7 @@ jobs:
           retention-days: 3
   report:
     needs: [readiness, identity]
-    if: always() && github.event_name != 'pull_request' && (needs.readiness.outputs.should_release != 'true' || (github.event_name == 'workflow_dispatch' && inputs.dry_run))
+    if: always() && github.event_name != 'pull_request' && (needs.readiness.outputs.should_release != 'true' || (github.event_name == 'workflow_dispatch' && inputs.dry_run)) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -393,7 +394,7 @@ jobs:
           echo "publish skipped"
   publish:
     needs: [readiness, readiness-rehearsal, identity, native]
-    if: always() && !cancelled() && needs.identity.result == 'success' && needs.native.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    if: always() && !cancelled() && needs.identity.result == 'success' && needs.native.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -430,7 +431,7 @@ jobs:
   # still Latest; a rolled-back release exits here without dispatching.
   catch-up:
     needs: [readiness, identity, publish]
-    if: always() && !cancelled() && github.event_name != 'pull_request' && github.repository == 'KeepOak/Branch-Agent' && (needs.publish.result == 'success' || needs.publish.result == 'failure' || needs.readiness.outputs.skip_reason == 'cooldown')
+    if: always() && !cancelled() && github.event_name != 'pull_request' && github.repository == 'KeepOak/Branch-Agent' && (needs.publish.result == 'success' || needs.publish.result == 'failure' || needs.readiness.outputs.skip_reason == 'cooldown') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:

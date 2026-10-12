@@ -1,6 +1,7 @@
 name: Seedbank plugin distribution
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'engine/scripts/seedbank-*'
       - 'engine/scripts/lib/seedbank-distribution.mjs'
@@ -29,6 +30,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   verify:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -70,7 +72,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' && github.repository == 'KeepOak/Branch-Agent' && vars.BRANCH_PLUGIN_PUBLICATION_ENABLED == 'true'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' && github.repository == 'KeepOak/Branch-Agent' && vars.BRANCH_PLUGIN_PUBLICATION_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     needs: verify
     environment: plugin-publication
     runs-on: ubuntu-latest

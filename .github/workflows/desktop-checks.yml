@@ -2,6 +2,7 @@ name: Desktop checks
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'desktop/**'
       - 'engine/scripts/lib/available-memory.*'
@@ -25,11 +26,12 @@ permissions:
 
 concurrency:
   group: desktop-checks-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
 
 jobs:
   desktop:
     name: Desktop on ${{ matrix.os }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -93,6 +95,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: node --test scripts/check-merge-command.test.mjs
   mac-applications:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: macOS Applications install
     runs-on: macos-latest
     timeout-minutes: 15

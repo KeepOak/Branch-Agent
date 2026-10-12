@@ -2047,10 +2047,12 @@ test('SELF-CHECK workflow wiring reruns edits and never interpolates body or bra
   }
 });
 
-test('merge-gate does not retrigger on ready_for_review and cancel its waiting run', () => {
+test('merge-gate restarts on ready_for_review and fails drafts before waiting', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
   assert.match(yaml, /^  pull_request:\s*$/m);
-  assert.doesNotMatch(yaml, /^\s+types:.*ready_for_review/m);
+  assert.match(yaml, /^\s+types:.*ready_for_review/m);
+  assert.match(yaml, /if: github\.event\.pull_request\.draft == false/);
+  assert.match(yaml, /Fail drafts without waiting/);
 });
 
 test('merge-gate edited trigger does not cancel an in-progress wait', () => {

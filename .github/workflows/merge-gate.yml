@@ -5,12 +5,13 @@ name: Merge gate
 # commit and fails if any of them failed. `main` requires only this check.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, edited]
 
 permissions:
   contents: read
   checks: read
   actions: read
+  pull-requests: read
 
 concurrency:
   # Body edits keep the same SHA; do not cancel the wait already running for this PR.
@@ -19,6 +20,7 @@ concurrency:
 
 jobs:
   changed-test-coverage:
+    if: github.event.pull_request.draft == false
     permissions:
       contents: read
       pull-requests: read
@@ -36,7 +38,7 @@ jobs:
           node-version: '24.19.0'
           package-manager-cache: false
       - name: Test the coverage check
-        run: node --test scripts/changed-test-coverage.test.mjs
+        run: node --test scripts/changed-test-coverage.test.mjs scripts/ci-trigger-policy.test.mjs scripts/check-draft-cycle.test.mjs
       - name: Test the trusted merge-gate helper
         run: node --test scripts/merge-gate-trusted.test.mjs
       - name: Test the event-driven gate recheck planner
@@ -81,6 +83,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      - name: Fail drafts without waiting
+        if: github.event.pull_request.draft == true
+        run: |
+          echo "Draft PR: checks run when it is marked ready for review"
+          exit 1
       - name: Require changed test coverage
         env:
           COVERAGE_RESULT: ${{ needs.changed-test-coverage.result }}
@@ -108,6 +115,7 @@ jobs:
               command gh "$@"
             fi
           }
+          node scripts/check-draft-cycle.mjs
           if [ "${MERGE_GATE_ACTION:-}" = edited ]; then
             if node scripts/merge-gate-rate-limit.mjs skip-edited; then
               echo "Skipping redundant edited merge-gate wait; another run for this SHA is in progress or succeeded."

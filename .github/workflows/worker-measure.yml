@@ -2,6 +2,7 @@ name: Local worker measurement
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'scripts/measure-worker*.mjs'
       - 'engine/src/worker/worker-measure-report.test.ts'
@@ -17,6 +18,7 @@ concurrency:
 
 jobs:
   measure:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: Worker RSS on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15

@@ -123,6 +123,16 @@ test('workflowDefaultsSetShell fails closed on complex-key defaults and still al
   ]);
 });
 
+test('desktop coverage accepts only the exact ready-PR draft policy, not extra conditions', () => {
+  const policy = "github.event_name != 'pull_request' || github.event.pull_request.draft == false";
+  const workflow = (condition) => `on:\n  pull_request:\njobs:\n  desktop:\n    if: ${condition}\n    steps:\n      - run: node --test scripts/new.test.mjs\n`;
+  assert.deepEqual([...allowlistedDesktopRunTargets(workflow(policy))], ['desktop/scripts/new.test.mjs']);
+  for (const condition of [`(${policy}) && false`, 'false', 'github.event.pull_request.draft == true',
+    `(${policy}) && github.event.action == 'opened'`]) {
+    assert.deepEqual([...allowlistedDesktopRunTargets(workflow(condition))], []);
+  }
+});
+
 test('workflowDefaultsSetShell detects run.shell after jobs: and in flow style', () => {
   const afterJobs = [
     'on:\n  pull_request:\n',

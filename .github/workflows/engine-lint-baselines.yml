@@ -6,6 +6,7 @@ name: Engine lint baselines
 # check that catches that drift before merge.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'engine/**'
       - '.github/workflows/engine-lint-baselines.yml'
@@ -21,11 +22,12 @@ permissions:
 
 concurrency:
   group: engine-lint-baselines-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
 
 jobs:
   lint-baselines:
     name: Control UI i18n baselines
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -56,7 +58,7 @@ jobs:
   # (bot/catalog-fallbacks-<sha12>). A Trunk opens the PR from that branch, so every check runs.
   generated-baseline:
     name: Control UI catalog fallbacks (after merge)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Write access is used only by the push step below, and only on main pushes.
