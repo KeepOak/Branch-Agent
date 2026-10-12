@@ -4,19 +4,52 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { build } from "esbuild";
 import { afterEach, describe, expect, it } from "vitest";
 import { requireNodeTool } from "../../../test/helpers/node-toolchain.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
-import {
-  resolveRuntimeWorkerArgv,
-  resolveRuntimeWorkerUrl,
-} from "../../infra/runtime-worker-url.js";
-import { processProbeEntrypoints } from "../process-probes-runtime.test-support.js";
+import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
 import { linuxSiginfoPidOffset } from "./linux-child-subreaper.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const runFile = promisify(execFile);
 const nativeLinux = process.platform === "linux" && ["x64", "arm64"].includes(process.arch);
+const sourceRoot = fileURLToPath(new URL("../../", import.meta.url));
+const engineRoot = path.resolve(sourceRoot, "..");
+const builtRoots: string[] = [];
+
+afterEach(() => {
+  for (const dir of builtRoots.splice(0)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The owner refuses source loaders, so every native case runs built output in
+ * a dist layout: runtime workers resolve beside the entry exactly as packaged,
+ * and packages resolve from engine/node_modules. Independent of the runner.
+ */
+async function buildDist(distPaths: string[]): Promise<string> {
+  const cacheRoot = path.join(engineRoot, "node_modules", ".cache");
+  fs.mkdirSync(cacheRoot, { recursive: true });
+  const root = fs.mkdtempSync(path.join(cacheRoot, "branch-linux-owner-"));
+  builtRoots.push(root);
+  await build({
+    entryPoints: Object.fromEntries(
+      distPaths.map((distPath) => [
+        distPath.replace(/\.js$/u, ""),
+        path.join(sourceRoot, distPath.replace(/\.js$/u, ".ts")),
+      ]),
+    ),
+    outdir: path.join(root, "dist"),
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    packages: "external",
+    logLevel: "silent",
+  });
+  return path.join(root, "dist", distPaths[0]!);
+}
 
 /** Simulates a kernel without CONFIG_PROC_CHILDREN for the owner process only. */
 function hideTaskChildren(): { preload: string; marker: string } {
@@ -44,16 +77,9 @@ function taskChildrenReads(marker: string): number {
   return fs.existsSync(marker) ? fs.readFileSync(marker, "utf8").trim().split("\n").length : 0;
 }
 
-/** Runs a built probe; the owner refuses source loaders, as in production. */
-async function runProbe(
-  entrypoint: (typeof processProbeEntrypoints)[keyof typeof processProbeEntrypoints],
-  args: string[],
-  preload?: string,
-) {
-  const fixture = resolveRuntimeWorkerUrl(entrypoint);
-  const node = requireNodeTool("node");
-  const { stdout } = await runFile(node, [...resolveRuntimeWorkerArgv(fixture, node), ...args], {
-    cwd: process.cwd(),
+async function runBuilt(entry: string, args: string[], preload?: string): Promise<unknown> {
+  const { stdout } = await runFile(requireNodeTool("node"), [entry, ...args], {
+    cwd: engineRoot,
     encoding: "utf8",
     timeout: 10_000,
     windowsHide: true,
@@ -62,8 +88,10 @@ async function runProbe(
       NODE_OPTIONS: preload ? `--import=${pathToFileURL(preload).href}` : "",
     },
   });
-  return JSON.parse(stdout) as unknown;
+  return JSON.parse(stdout);
 }
+
+const probe = "process/supervisor/linux-child-subreaper.probe.test-support.js";
 
 const expectedRetirements = [
   ...["A", "B"].map((label) => ({
@@ -104,9 +132,13 @@ it.skipIf(!nativeLinux)(
   "reaps native children without task children files or permission to signal process groups",
   async () => {
     const { preload, marker } = hideTaskChildren();
-    await expect(
-      runProbe(processProbeEntrypoints.serviceChildSubreaper, [], preload),
-    ).resolves.toEqual(expectedRetirements);
+    const fixture = await buildDist([
+      "process/supervisor/service-child-subreaper.test-support.js",
+      runtimeProcessEntrypoints.spawnBroker.distWorkerPath,
+      runtimeProcessEntrypoints.serviceChildRelay.distWorkerPath,
+      runtimeProcessEntrypoints.serviceChildGroupAnchor.distWorkerPath,
+    ]);
+    await expect(runBuilt(fixture, [], preload)).resolves.toEqual(expectedRetirements);
     expect(taskChildrenReads(marker)).toBeGreaterThan(0);
   },
 );
@@ -114,7 +146,7 @@ it.skipIf(!nativeLinux)(
 it.skipIf(!nativeLinux)("refuses an owner loaded through a source loader", async () => {
   const root = tempDirs.make("branch-proc-source-owner-");
   const entry = path.join(root, "owner-from-source.mts");
-  const ownerSource = fileURLToPath(new URL("./linux-child-subreaper.ts", import.meta.url));
+  const ownerSource = path.join(sourceRoot, "process/supervisor/linux-child-subreaper.ts");
   fs.writeFileSync(
     entry,
     `const { acquireLinuxChildSubreaper } = await import(${JSON.stringify(pathToFileURL(ownerSource).href)});` +
@@ -124,7 +156,7 @@ it.skipIf(!nativeLinux)("refuses an owner loaded through a source loader", async
   const { stdout } = await runFile(
     requireNodeTool("node"),
     ["--import", import.meta.resolve("tsx"), entry],
-    { cwd: process.cwd(), encoding: "utf8", timeout: 10_000, windowsHide: true },
+    { cwd: engineRoot, encoding: "utf8", timeout: 10_000, windowsHide: true },
   );
   expect(stdout).toBe(
     "Linux child ownership requires the built process owner, without a source loader",
@@ -139,9 +171,8 @@ describe.skipIf(!nativeLinux)("built Linux child owner", () => {
 
   it.each(censuses)("refuses admission with an existing child via $census", async ({ hidden }) => {
     const hiding = hidden ? hideTaskChildren() : undefined;
-    await expect(
-      runProbe(processProbeEntrypoints.linuxChildOwner, ["existing-child"], hiding?.preload),
-    ).resolves.toEqual({
+    const owner = await buildDist([probe]);
+    await expect(runBuilt(owner, ["existing-child"], hiding?.preload)).resolves.toEqual({
       outcome: "Linux child ownership requires a dedicated owner without existing children",
     });
     if (hiding) {
@@ -151,9 +182,12 @@ describe.skipIf(!nativeLinux)("built Linux child owner", () => {
 
   it.each(censuses)("signals and reaps an adopted orphan via $census", async ({ hidden }) => {
     const hiding = hidden ? hideTaskChildren() : undefined;
-    await expect(
-      runProbe(processProbeEntrypoints.linuxChildOwner, ["adopted-orphan"], hiding?.preload),
-    ).resolves.toEqual({ adopted: true, extinct: true, orphanAlive: false });
+    const owner = await buildDist([probe]);
+    await expect(runBuilt(owner, ["adopted-orphan"], hiding?.preload)).resolves.toEqual({
+      adopted: true,
+      extinct: true,
+      orphanAlive: false,
+    });
     if (hiding) {
       expect(taskChildrenReads(hiding.marker)).toBeGreaterThan(0);
     }
