@@ -2,7 +2,8 @@ import { useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { canAll, useCapabilityVersion } from "../../connect/capabilities";
 import { ChatLogo } from "../../places/settings/set1/chatapps-logo";
-import { appOf } from "../../places/settings/set1/chatapps-data";
+import { appOf, catalogue } from "../../places/settings/set1/chatapps-data";
+import { has } from "../../places/inbox/data";
 import { CHAT_APPS, GROUPS, type ChatApp } from "./catalogue";
 import { Pairing } from "./Pairing";
 import { ChatAppSettings } from "./Settings";
@@ -22,6 +23,10 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
   const live = useChatApps(engine);
   useCapabilityVersion();
   const q = query.trim().toLowerCase();
+  // Setup writes engine config: wizard.* and web.login.* are operator.admin in the gateway's method descriptors.
+  const admin = has(engine, "operator.admin");
+  // web.login.* is never advertised in the hello, so WhatsApp (your number) follows the engine listing its channel.
+  const listed = new Set(catalogue(live.status).map(c => c.id));
   const shown = CHAT_APPS.filter(a => `${a.name} ${a.id} ${a.group}`.toLowerCase().includes(q));
   return <section className="r1-chatapps" aria-label="Chat apps">
     <h1>Chat apps</h1><p className="r1-ca-lede">Telegram, WhatsApp, Slack and 71 more: who answers, who may message, and how replies arrive.</p>
@@ -38,11 +43,14 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
           const state = app.channel ? appOf(live.status, { id: app.channel, name: app.name, detail: "" }) : undefined;
           const connected = state?.on === true;
           const action = connected ? onManage : onSetup;
-          const needs = app.id === "whatsappweb" ? ["web.login.start", "web.login.wait"] : ["wizard.start", "wizard.next", "wizard.cancel"];
-          const enabled = Boolean(app.channel && action && canAll(engine, connected ? ["channels.status"] : needs));
-          const reason = `Setting up ${app.name} comes in a later update.`;
-          return <button key={app.id} type="button" className="r1-ca-card g-ctl" aria-disabled={!enabled} data-coming={!enabled ? reason : undefined} title={!enabled ? reason : undefined} data-need={needs.join(" ")} onClick={() => { if (enabled) action?.(app); }}>
-            <ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{connected ? state?.running ? "Connected" : state?.word : app.estimate ?? "Coming in a later update"}</small></span><span className="r1-ca-action">{!enabled ? "Coming" : connected ? "Manage" : "Set up"}</span>
+          const qr = app.id === "whatsappweb";
+          const needs = qr ? ["web.login.start", "web.login.wait"] : ["wizard.start", "wizard.next", "wizard.cancel"];
+          const offered = connected ? canAll(engine, ["channels.status"]) : qr ? listed.has("whatsapp") : canAll(engine, needs);
+          const locked = !connected && offered && !admin;
+          const enabled = Boolean(app.channel && action && offered && !locked);
+          const reason = locked ? `Setting up ${app.name} needs full access on this connection.` : `Setting up ${app.name} comes in a later update.`;
+          return <button key={app.id} type="button" className="r1-ca-card g-ctl" aria-disabled={!enabled} data-coming={!enabled && !locked ? reason : undefined} title={!enabled ? reason : undefined} data-need={needs.join(" ")} onClick={() => { if (enabled) action?.(app); }}>
+            <ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{connected ? state?.running ? "Connected" : state?.word : app.estimate ?? "Coming in a later update"}</small></span><span className="r1-ca-action">{locked ? "Needs full access" : !enabled ? "Coming" : connected ? "Manage" : "Set up"}</span>
           </button>;
         })}</div></section> : null;
       })}
