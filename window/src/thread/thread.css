@@ -85,6 +85,13 @@
   flex: none;
   opacity: 0.7;
 }
+/* NC-01: "Reply with" before the chips and curly quotes around each one say it is your message, not a button. */
+.thread .suggestion-row .sug-lead {
+  flex: none;
+  align-self: center;
+  color: var(--ink-3);
+  font-size: 12px;
+}
 
 /* Preview .fresh and #main .thread .sugT5: new messages rise, suggestion chips fade up. */
 @keyframes rise {
