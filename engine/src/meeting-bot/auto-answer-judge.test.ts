@@ -74,7 +74,7 @@ test("prompt: the already-answered ask appears only when provided, and AFTER the
       'Already answered for the USER moments ago: "your task is to recreate this game in React"',
     ),
   );
-  assert.ok(/RESTATES that ask/.test(withAnswered));
+  assert.ok(withAnswered.includes("RESTATES that ask"));
   // Position is load-bearing: measured 2026-08-25, with this rule in the
   // preamble the judge fired on five separate elaborations of the ask it
   // had just answered. It must sit after the candidate, with the rules.

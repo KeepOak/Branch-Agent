@@ -76,7 +76,7 @@ export const JUDGE_PROMPT_MAX_VARIABLE_CHARS =
 
 /** Keep the last `max` characters, marking the elision so the model knows. */
 function keepTail(text: string, max: number): string {
-  const t = String(text ?? "");
+  const t = text;
   return t.length <= max ? t : `…${t.slice(t.length - max)}`;
 }
 
@@ -132,10 +132,7 @@ export interface JudgeRequest {
  * hyphens only, so a résumé or account field can never inject prompt text.
  */
 export function judgeUserFirstName(raw: string | null | undefined): string | null {
-  const first =
-    String(raw ?? "")
-      .trim()
-      .split(/\s+/)[0] ?? "";
+  const first = (raw ?? "").trim().split(/\s+/)[0] ?? "";
   const clean = first.replace(/[^\p{L}\p{M}'’-]/gu, "").slice(0, 30);
   return /\p{L}.*\p{L}/u.test(clean) ? clean : null;
 }
@@ -218,7 +215,7 @@ export function userNameSlipsIn(texts: string[], name: string): string[] {
   const want = name.toLowerCase();
   const found = new Map<string, string>();
   for (const text of texts) {
-    for (const m of String(text ?? "").matchAll(/\p{Lu}[\p{L}\p{M}'’-]*/gu)) {
+    for (const m of text.matchAll(/\p{Lu}[\p{L}\p{M}'’-]*/gu)) {
       const word = m[0].replace(/['’-]+$/, "");
       const low = word.toLowerCase();
       if (low === want || low.length < 3 || NOT_A_NAME.has(low) || found.has(low)) {
@@ -313,7 +310,7 @@ export function addressedNamesIn(text: string): string[] {
   const out: string[] = [];
   const re =
     /(?:^|[.?!,;:]\s+|\b(?:thanks|thank you|okay|so|and|hi|hey|well|now|alright|right|great)\s+)(\p{Lu}[\p{L}\p{M}'’-]{2,})(?=\s*,)/giu;
-  for (const m of String(text ?? "").matchAll(re)) {
+  for (const m of text.matchAll(re)) {
     const word = m[1];
     if (!/^\p{Lu}/u.test(word) || NOT_A_VOCATIVE.has(word.toLowerCase()) || /ly$/i.test(word)) {
       continue;
@@ -577,7 +574,7 @@ export function parseJudgeVerdict(
   // `action` is authoritative when present. A reply that omits it (older
   // prompt, degraded model) still works: fall back to the old banding so the
   // parser never gets stricter than the model it is reading.
-  const rawAction = String(obj.action ?? "").toLowerCase();
+  const rawAction = typeof obj.action === "string" ? obj.action.toLowerCase() : "";
   const action: JudgeAction =
     rawAction === "answer" || rawAction === "offer"
       ? "answer" // 'offer' is retired: doubt answers
