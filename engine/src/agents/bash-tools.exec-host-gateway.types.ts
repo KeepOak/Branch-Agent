@@ -1,5 +1,5 @@
 import type { ExecAsk, ExecSecurity } from "../infra/exec-approvals.js";
-import type { ExecAutoReviewer } from "../infra/exec-auto-review.js";
+import type { ExecAutoReviewer, ExecAutoReviewTranscript } from "../infra/exec-auto-review.js";
 import type { SafeBinProfile } from "../infra/exec-safe-bin-policy.js";
 import type { SpawnInitiation } from "../process/spawn-initiation.js";
 import type { SecretEgressSentinelBinding } from "../secrets/egress-proxy/proxy-server.js";
@@ -32,6 +32,8 @@ export type ProcessGatewayAllowlistParams = {
   safeBins: Set<string>;
   safeBinProfiles: Readonly<Record<string, SafeBinProfile>>;
   strictInlineEval?: boolean;
+  /** The session transcript, read to find arguments that came from untrusted content (atlas SAFETY-0054). */
+  reviewTranscript?: () => ExecAutoReviewTranscript | undefined;
   commandHighlighting?: boolean;
   trigger?: string;
   agentId?: string;

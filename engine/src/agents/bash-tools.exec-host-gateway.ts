@@ -59,6 +59,7 @@ import {
   GatewayDrainingError,
   runWithGatewayIndependentRootWorkAdmission,
 } from "../process/gateway-work-admission.js";
+import { findUntrustedFlagsInTranscript } from "../safety/untrusted-context-tracker.js";
 import { markBackgrounded, tail } from "./bash-process-registry.js";
 import {
   buildExecAutoReviewDeniedToolResult,
@@ -639,6 +640,13 @@ export async function processGatewayAllowlist(
   const timedOutFallbackRequiresHeredocApproval =
     hasHeredocSegment && fallbackAllowlistAuthorizationSatisfied;
   const requiresInlineEvalApproval = inlineEvalHit !== null;
+  // Allowlisted commands whose flags or arguments came from untrusted outside content
+  // (web pages, tool results) get the same extra review as heredocs (atlas SAFETY-0054).
+  const untrustedFlags =
+    hostSecurity === "allowlist" && analysisOk && allowlistSatisfied
+      ? findUntrustedFlagsInTranscript(params.command, params.reviewTranscript?.())
+      : [];
+  const requiresUntrustedFlagApproval = untrustedFlags.length > 0;
   // Exact-command durable trust must bypass plan approval: allow-always here
   // persists an `=command:` grant for the raw command text, so unenforceability
   // is moot and re-prompting would make that grant permanently ineffective.
@@ -661,7 +669,8 @@ export async function processGatewayAllowlist(
     }) ||
     requiresAllowlistPlanApproval ||
     requiresHeredocApproval ||
-    requiresInlineEvalApproval;
+    requiresInlineEvalApproval ||
+    requiresUntrustedFlagApproval;
   const denyHeadlessApproval = (): ProcessGatewayAllowlistResult => {
     const text = params.approvalFollowupText
       ? `${params.approvalFollowupText}\nCommand: ${params.command}`
@@ -684,6 +693,11 @@ export async function processGatewayAllowlist(
   if (requiresHeredocApproval) {
     params.warnings.push(
       "Warning: heredoc execution requires reviewer or explicit approval in allowlist mode.",
+    );
+  }
+  if (requiresUntrustedFlagApproval) {
+    params.warnings.push(
+      `Warning: arguments from untrusted content (${untrustedFlags.join(" ")}) require reviewer or explicit approval in allowlist mode.`,
     );
   }
   if (requiresAllowlistPlanApproval) {
@@ -771,7 +785,8 @@ export async function processGatewayAllowlist(
     cronExecutionSource.agentId === params.agentId &&
     !mutableFileApprovalRequiresOneShot &&
     !requiresInlineEvalApproval &&
-    !requiresHeredocApproval;
+    !requiresHeredocApproval &&
+    !requiresUntrustedFlagApproval;
   if (cronStandingGrantEligible) {
     let consumeGrant: Awaited<ReturnType<typeof prepareCronStandingGrantConsumption>>;
     try {

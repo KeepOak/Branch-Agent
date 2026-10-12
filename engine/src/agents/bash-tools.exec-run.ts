@@ -529,6 +529,7 @@ export function createExecTool(
             safeBins,
             safeBinProfiles,
             strictInlineEval: defaults?.strictInlineEval,
+            reviewTranscript: defaults?.reviewTranscript,
             commandHighlighting: defaults?.commandHighlighting,
             trigger: defaults?.trigger,
             agentId,
