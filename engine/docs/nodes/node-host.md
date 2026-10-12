@@ -57,10 +57,18 @@ branch node run --host <gateway-host> --port 18789 --display-name "Build Node"
 ```
 
 For one-paste setup, create a **Node host** setup link from the Control UI
-Devices page, then run its copyable command on the node machine:
+Devices page. The command prompts for the code with hidden input:
 
 ```bash
-branch node run --pair "oc-pair://<setup-code>"
+branch node run --pair -
+# Setup code: [paste from UI, hidden input]
+```
+
+For non-interactive use, save the code to a file with mode `0600`:
+
+```bash
+chmod 600 /path/to/code.txt
+branch node run --pair-file /path/to/code.txt
 ```
 
 The link is single-use and expires after 10 minutes. It supplies the endpoint,
@@ -74,7 +82,7 @@ still apply. Local exec approvals default to `full` with `ask: "off"`; configure
 them before using the link if that access is too broad. See
 [Node pairing](/gateway/pairing#one-paste-node-pairing).
 
-`node run` also accepts `--pair`, `--context-path` (Gateway WS context path), `--tls`, `--tls-fingerprint <sha256>`, and `--node-id` (override the legacy client instance ID; this does not reset pairing). On macOS, pass `--share-installed-apps` to advertise `device.apps`; sharing is off by default. Use `--no-share-installed-apps` to disable a previously saved opt-in.
+`node run` also accepts `--pair -` (stdin), `--pair-file <path>`, `--context-path` (Gateway WS context path), `--tls`, `--tls-fingerprint <sha256>`, and `--node-id` (override the legacy client instance ID; this does not reset pairing). The deprecated `--pair <code>` form (passing the code as a command-line argument) is insecure and will be removed in a future version. On macOS, pass `--share-installed-apps` to advertise `device.apps`; sharing is off by default. Use `--no-share-installed-apps` to disable a previously saved opt-in.
 
 Pass `--session-host` to enable worker hosting for this foreground process without changing the saved preference. Automatic restarts preserve this choice.
 

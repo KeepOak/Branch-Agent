@@ -72,6 +72,8 @@ export async function spawnHandoffEngine(params: {
   const entrypoint = await params.instance.entrypoint();
   const env = handoffEngineEnv(params.instance, {
     BRANCH_GATEWAY_PORT: String(params.port),
+    // The instance port is the configured desktop port (19031 in installs; a free port in tests).
+    BRANCH_GATEWAY_PREFERRED_PORT: String(params.instance.port),
     ...(params.standby ? { BRANCH_GATEWAY_STANDBY: "1" } : {}),
     ...params.env,
   });

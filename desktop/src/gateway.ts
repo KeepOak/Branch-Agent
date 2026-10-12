@@ -1,6 +1,6 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { createWriteStream, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, createWriteStream, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
@@ -61,8 +61,12 @@ function testProfile(): Record<string, string> {
 export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort, macComputerEndpoint?: string): ChildProcess {
   // The profile check can refuse a standby; it runs before the log is opened so a refusal leaks nothing.
   const prepared = standby ? readPreparedNormalProfile(join(cfg.dataDir, "home")) : undefined;
-  const log = createWriteStream(join(cfg.dataDir, "gateway.log"), { flags: "a" });
-  const profile = prepared ?? prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => log.write(message + "\n"));
+  const logPath = join(cfg.dataDir, "gateway.log");
+  const log = createWriteStream(logPath, { flags: "a" });
+  const profile = prepared ?? prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => {
+    if (message === "Profile migration start") appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`);
+    else log.write(message + "\n");
+  }, join(engineDir, "docs", "reference", "templates"));
   if (profile.note) log.write(profile.note + "\n");
   const env = {
     ...process.env,
@@ -76,6 +80,9 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     // Candidate and smoke gateways opt out separately.
     BRANCH_SKIP_CHANNELS: undefined,
     BRANCH_GATEWAY_PORT: String(port),
+    // The configured port (desktop.json), even when this child is a standby on a spare.
+    // After a hand-over the successor also listens here once the old engine exits.
+    BRANCH_GATEWAY_PREFERRED_PORT: String(cfg.gatewayPort),
     BRANCH_GATEWAY_TOKEN: token,
     BRANCH_GATEWAY_STANDBY: standby ? "1" : undefined,
     // Only Electron's Mac host can give the Gateway this app-owned daemon lease.

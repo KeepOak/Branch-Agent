@@ -62,17 +62,29 @@ export const ToolCatalogGroupSchema = closedObject({
   tools: Type.Array(ToolCatalogEntrySchema),
 });
 
+/** Named toolset: a switchable group of built-in tools (agents.entries.<id>.toolsets). */
+export const ToolCatalogToolsetSchema = closedObject({
+  id: NonEmptyString,
+  label: NonEmptyString,
+  description: Type.String(),
+  tools: Type.Array(NonEmptyString),
+  /** Whether this Trunk's own tool list still offers any of the toolset's tools. */
+  offered: Type.Optional(Type.Boolean()),
+});
+
 /** Tool catalog result for agent configuration UI. */
 export const ToolsCatalogResultSchema = closedObject({
   agentId: NonEmptyString,
   profiles: Type.Array(ToolCatalogProfileSchema),
   groups: Type.Array(ToolCatalogGroupSchema),
+  toolsets: Type.Optional(Type.Array(ToolCatalogToolsetSchema)),
 });
 
 export type ToolsCatalogParams = Static<typeof ToolsCatalogParamsSchema>;
 export type ToolCatalogProfile = Static<typeof ToolCatalogProfileSchema>;
 export type ToolCatalogEntry = Static<typeof ToolCatalogEntrySchema>;
 export type ToolCatalogGroup = Static<typeof ToolCatalogGroupSchema>;
+export type ToolCatalogToolset = Static<typeof ToolCatalogToolsetSchema>;
 export type ToolsCatalogResult = Static<typeof ToolsCatalogResultSchema>;
 
 /** Reads the effective tool set for one session. */

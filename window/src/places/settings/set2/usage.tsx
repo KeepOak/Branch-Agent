@@ -11,9 +11,10 @@ import { Menu, type MenuAnchor } from "../../../shell/Menu";
 import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span, str, useCall, useLive, useResource, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import { Logo } from "../set1/service";
-import { readLimits, resetWords as sharedResetWords, type LimitRow } from "../../../shell/status-data";
+import { accountEmails, readLimits, resetWords as sharedResetWords, withAccountEmails, type LimitRow } from "../../../shell/status-data";
 import { ModelPrices } from "./usage-prices";
-import { CKPT_PREF, CKPT_SHOW, useCkptCanShow, useCkptOn } from "../../../shell/SaveProgress";
+import { ReportProblem } from "./report-problem";
+import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
 import { lookStore } from "../set1/appearance-store";
 import "./usage.css";
 import { DesktopCtl } from "../desktop-ctl";
@@ -83,7 +84,7 @@ export function UsagePage(props: SettingsPageProps) {
   return (
     <Page title={props.title} lede="What each account has left, what Branch spent, what it keeps.">
       <SpendCard spend={spend} days={days} setDays={setDays} onOpen={() => setReport(true)} />
-      <Allowances engine={props.engine} />
+      <Allowances engine={props.engine} openSettings={props.openSettings} />
       <TrunkSpend spend={spend} names={names} days={days} />
       <Keeping engine={props.engine} lv={lv} />
       <TestModel />
@@ -95,6 +96,7 @@ export function UsagePage(props: SettingsPageProps) {
       {lv >= 2 ? <EverySetting engine={props.engine} /> : null}
       <Flagged lv={lv} />
       <YourData engine={props.engine} />
+      <ReportProblem />
       {report ? <ReportDialog engine={props.engine} lv={lv} days={days} names={names} onClose={() => setReport(false)} /> : null}
     </Page>
   );
@@ -170,12 +172,15 @@ function Billing({ b }: { b: RecordValue }) {
   return <div className="s2usage-limw"><span>{label}</span><span>{amount(b.amount)}{str(b.period) ? ` · ${str(b.period)}` : ""}</span></div>;
 }
 
-function Provider({ p, limit, updatedAt }: { p: RecordValue; limit: LimitRow; updatedAt: unknown }) {
-  const name = limit.name;
+function Provider({ p, limit, updatedAt, openSettings }: { p: RecordValue; limit: LimitRow; updatedAt: unknown; openSettings?: (page: string) => void }) {
+  // The account is named by its email; the plan is in words. The raw HTTP error never reaches the page.
+  const name = limit.email || limit.name;
   const windows = limit.windows.map((window) => ({ label: window.name, left: window.left, words: window.reset }));
   const billing = list(p.billing);
   const told = windows.length > 0 || billing.some(billingMeasured);
-  const sub = [str(p.accountEmail), str(p.plan)].filter(Boolean).join(" · ");
+  const signIn = limit.signInNeeded === true;
+  const failed = signIn || Boolean(p.error);
+  const sub = [limit.email ? limit.name : "", limit.plan].filter(Boolean).join(" · ");
   return (
     <div className="s2usage-lim" data-provider={str(p.provider)}>
       <Logo id={str(p.provider)} name={name} />
@@ -183,29 +188,32 @@ function Provider({ p, limit, updatedAt }: { p: RecordValue; limit: LimitRow; up
         <div className="s2usage-limh">
           <b>{name}</b>
           {sub ? <span className="s2usage-muted">{sub}</span> : null}
-          <span className={`pill ${p.error ? "bad" : told ? "ok" : "idle"}`}>{p.error ? "Couldn’t check" : told ? "Measured" : "Not published"}</span>
+          <span className={`pill ${failed ? "bad" : told ? "ok" : "idle"}`}>{signIn ? "Sign in again" : failed ? "Couldn’t check" : told ? "Measured" : "Not published"}</span>
         </div>
         {windows.map((w, i) => <LimWindow key={i} {...w} />)}
         {billing.map((b, i) => <Billing key={`b${i}`} b={b} />)}
-        {p.error ? <small className="s2-err">{str(p.error)}</small>
+        {failed ? <small className="s2-err">{limit.line}</small>
           : told ? <small>{`as of ${ago(updatedAt)}, asked ${name}`}</small>
           : <small>{str(p.summary) || "This service does not say what it allows."}</small>}
+        {signIn && openSettings ? <Btn onClick={() => { sessionStorage.setItem("branch.openAddAccount", str(p.provider)); openSettings("accounts"); }}>Sign in again</Btn> : null}
       </div>
     </div>
   );
 }
 
-function Allowances({ engine }: { engine: WindowEngine }) {
+function Allowances({ engine, openSettings }: { engine: WindowEngine; openSettings?: (page: string) => void }) {
   const res = useLive<RecordValue>(engine, "usage.status", {}, []);
+  const auth = useLive<RecordValue>(engine, "models.authStatus", {}, []);
   const data = rec(res.data);
   const providers = list(data.providers);
-  const limits = readLimits(res.data);
+  // Saved accounts' emails, the same ones Settings › Accounts lists, name each row.
+  const limits = withAccountEmails(readLimits(res.data), accountEmails(auth.data));
   return (
     <Sec title="Account allowances" hint="What each account has left. Every figure comes from its service.">
       {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
       {res.loading && !res.data ? <Hint>Checking accounts…</Hint> : null}
       {res.data && !providers.length ? <Empty>No account reports an allowance yet.</Empty> : null}
-      {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} />)}</div> : null}
+      {providers.length ? <div className="s2usage-lims">{providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} openSettings={openSettings} />)}</div> : null}
       {data.refreshing === true ? <Hint>Checking accounts again…</Hint> : null}
       <AllowanceRows engine={engine} />
     </Sec>
@@ -789,12 +797,11 @@ const asNum = (v: string): number | undefined => (v.trim() === "" || !Number.isF
 /** The connection rows under the allowances: what the engine doesn't do yet is greyed with why. */
 function AllowanceRows({ engine }: { engine: WindowEngine }) {
   const ckptOn = useCkptOn(engine);
-  const ckptCanShow = useCkptCanShow();
   return (
     <>
-      <Ctl title="Offer to save progress at 95%" sub={<>It asks once per account window, never for an estimate. <button type="button" className="link-k" disabled={!ckptCanShow} onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
+      <Ctl title="Offer to save progress at 95%" sub={<>It asks once per account window, never for an estimate. <button type="button" className="link-k" onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
       <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
-      <DesktopCtl title="Show usage in the tray" sub="A small ring by the clock opens the same list." name="trayUsage" />
+      <DesktopCtl title="Also show usage in the system tray" sub="The usage ring is in the bottom bar. In the desktop app, you can also show it in the system tray." name="trayUsage" />
     </>
   );
 }
@@ -803,9 +810,11 @@ function Keeping({ engine, lv }: { engine: WindowEngine; lv: number }) {
   const config = useConfig(engine);
   const [manage, setManage] = useState(false);
   const maintenance = rec(config.get("session.maintenance"));
-  const pruneAfter = maintenance.pruneAfter ?? "30d";
-  const days = retentionDays(pruneAfter);
-  const keep = maintenance.mode === "warn" ? "forever" : days === 30 ? "30" : days === 365 ? "365" : "";
+  const pruneAfter = maintenance.pruneAfter;
+  const days = pruneAfter == null || pruneAfter === "" ? null : retentionDays(pruneAfter);
+  const keep = maintenance.mode === "warn" || pruneAfter == null || pruneAfter === "" || days === 0
+    ? "forever"
+    : days === 30 ? "30" : days === 365 ? "365" : "";
   const sub = `Older ones are deleted for good.${keep ? "" : ` Now: ${days === null ? str(pruneAfter) : `${days} day${days === 1 ? "" : "s"}`}.`}`;
   const setKeep = (v: string) => void config.set("session.maintenance", {
     ...maintenance,
@@ -870,7 +879,7 @@ function ManageDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =
 }
 
 const SUITES: [string, string][] = [
-  ["Right actions", "Picks the right tools, helpers and safety steps · Exact and judge graders · passes at 90%"],
+  ["Right actions", "Picks the right tools, Trunks and safety steps · Exact and judge graders · passes at 90%"],
   ["Memory recall", "Answers from what it remembers, and how fast · Judge model · passes at 90%"],
   ["Recall after tidying up", "What survives when a long conversation is tidied · Judge model · passes at 90%"],
   ["Does it follow the skill", "Steps a skill requires, checked in the tool calls · From each skill · Tool-call grader · passes at 90%"],
@@ -1282,7 +1291,7 @@ function BackupsGo({ data }: { data: RecordValue }) {
 
 export const ROWS: RowEntry[] = ([
   ["Offer to save progress at 95%", "Account allowances", 0],
-  ["Asking a service what is left", "Account allowances", 0], ["Show usage in the tray", "Account allowances", 0],
+  ["Asking a service what is left", "Account allowances", 0], ["Also show usage in the system tray", "Account allowances", 0],
   ["Keep conversations", "Keeping things", 0], ["Checkpoints", "Keeping things", 0], ["Conversations", "Keeping things", 1],
   ["Test set", "Test the model you use", 0],
   ...SUITES.map(([t]): [string, string, number] => [t, "Evals", 0]),

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, cp, rm, chmod, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, cp, rm, chmod, stat, symlink, lstat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { adoptSharedEngineDist } from "./release-build.mjs";
 import { gunzipSync } from "node:zlib";
 import test from "node:test";
-import { makeComponentRelease } from "./make-component-release.mjs";
+import { archive as componentArchive, makeComponentRelease } from "./make-component-release.mjs";
+import { assertSameEngineArchive } from "./release-build.mjs";
 import { fileDigest, verifyReleaseDirectory, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { publishRelease, verifyPublicLatest } from "./publish-component-release.mjs";
 
@@ -201,42 +201,65 @@ for (const [label, options, expected] of [
 test("public latest readback rejects stale aliases, inaccessible manifests and changed bytes", () => fixture(async ({ assets }) => {
   const proof = await verifyReleaseDirectory(assets, commit, version);
   const latest = () => JSON.stringify({ draft: false, prerelease: false, target_commitish: commit, tag_name: `v${version}` });
-  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest().replace(`v${version}`, "v0.1.0")), /not GitHub latest/);
-  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("", { status: 404 })), /not publicly downloadable/);
-  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("altered")), /Expected values|differs/);
+  const noRetry = { budgetMs: 0, sleep: async () => {} };
+  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest().replace(`v${version}`, "v0.1.0"), fetch, noRetry), /not GitHub latest/);
+  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("", { status: 404 }), noRetry), /not publicly downloadable/);
+  await assert.rejects(verifyPublicLatest(assets, commit, version, proof, async () => latest(), async () => new Response("altered"), noRetry), /Expected values|differs/);
 }));
 
-test("adoptSharedEngineDist copies a matching prebuilt dist and rejects a different commit", async () => {
-  const root = await mkdtemp(join(process.env.RUNNER_TEMP ?? process.env.BRANCH_RELEASE_TEST_TEMP ?? tmpdir(), "release-build-"));
+test("a dereferenced copy of a production deployment archives to the same engine bytes", async () => {
+  const root = await mkdtemp(join(process.env.BRANCH_RELEASE_TEST_TEMP ?? process.env.RUNNER_TEMP ?? tmpdir(), "release-split-engine-"));
   try {
-    const source = join(root, "shared");
-    const destination = join(root, "engine", "dist");
-    await mkdir(source, { recursive: true });
-    await writeFile(join(source, "build-info.json"), `${JSON.stringify({ commit: "a".repeat(40), version: "1.0.0" }, null, 2)}\n`);
-    await writeFile(join(source, "entry.js"), "export {}\n");
-    await adoptSharedEngineDist(source, destination, { commit: "a".repeat(40) });
-    assert.equal(JSON.parse(await readFile(join(destination, "build-info.json"), "utf8")).commit, "a".repeat(40));
-    assert.equal(await readFile(join(destination, "entry.js"), "utf8"), "export {}\n");
-    await writeFile(join(source, "build-info.json"), `${JSON.stringify({ commit: "b".repeat(40), version: "1.0.0" }, null, 2)}\n`);
-    await assert.rejects(() => adoptSharedEngineDist(source, destination, { commit: "a".repeat(40) }), /Shared engine build differs from source freeze/);
+    // The split engine job ships its deployment through `tar -h`, which turns in-root links into regular files.
+    const deployment = join(root, "deployment");
+    await mkdir(join(deployment, "dist"), { recursive: true });
+    await mkdir(join(deployment, "node_modules/tool/bin"), { recursive: true });
+    await mkdir(join(deployment, "node_modules/.bin"), { recursive: true });
+    await writeFile(join(deployment, "dist/build-info.json"), JSON.stringify({ commit }));
+    await writeFile(join(deployment, "node_modules/tool/bin/tool.js"), "#!/usr/bin/env node\n");
+    if (process.platform !== "win32") await chmod(join(deployment, "node_modules/tool/bin/tool.js"), 0o755);
+    let linked = false;
+    try { await symlink("../tool/bin/tool.js", join(deployment, "node_modules/.bin/tool")); linked = true; }
+    catch (error) { if (process.platform !== "win32" || error.code !== "EPERM") throw error; }
+    if (!linked) await writeFile(join(deployment, "node_modules/.bin/tool"), "#!/usr/bin/env node\n");
+    const copy = join(root, "copy");
+    await cp(deployment, copy, { recursive: true, dereference: true });
+    if (linked) assert.equal((await lstat(join(copy, "node_modules/.bin/tool"))).isSymbolicLink(), false);
+    const original = await componentArchive(deployment, join(root, "original.tar.gz"));
+    const split = await componentArchive(copy, join(root, "split.tar.gz"));
+    assert.deepEqual(split, original);
+    assert.equal(await readFile(join(root, "split.tar.gz"), "hex"), await readFile(join(root, "original.tar.gz"), "hex"));
+    assert.doesNotThrow(() => assertSameEngineArchive(split, original));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
+test("a split package job rejects an engine archive that differs from the engine job's", () => {
+  const expected = { sha256: "d".repeat(64), bytes: 10, expandedBytes: 20 };
+  assert.doesNotThrow(() => assertSameEngineArchive({ ...expected, url: "https://example.invalid/engine.tar.gz", platform: "darwin", arch: "arm64" }, expected));
+  assert.throws(() => assertSameEngineArchive({ ...expected, sha256: "e".repeat(64) }, expected), /Split engine archive differs/);
+  assert.throws(() => assertSameEngineArchive({ ...expected, expandedBytes: 21 }, expected), /Split engine archive differs/);
+  assert.throws(() => assertSameEngineArchive(expected, undefined), /Split engine archive differs/);
+});
+
 test("component-release splits macOS and Windows engine compile from package and sign", async () => {
-  const workflow = await readFile(resolve(import.meta.dirname, "../../.github/workflows/component-release.yml"), "utf8");
-  assert.match(workflow, /macos-engine:/);
-  assert.match(workflow, /macos-package:/);
-  assert.match(workflow, /windows-engine:/);
-  assert.match(workflow, /windows-package:/);
-  assert.match(workflow, /needs: \[identity, window, macos-engine\]/);
-  assert.match(workflow, /needs: \[identity, window, windows-engine\]/);
-  assert.match(workflow, /needs: \[identity, native, windows-package, macos-package\]/);
-  assert.match(workflow, /BRANCH_RELEASE_ENGINE_DEPLOYMENT/);
-  assert.match(workflow, /tar -C "\$\{\{ runner\.temp \}\}\/macos-engine" -h -czf "\$\{\{ runner\.temp \}\}\/macos-engine\.tar\.gz" \./);
-  assert.match(workflow, /tar --force-local -C windows-engine -h -czf windows-engine\.tar\.gz \./);
+  const workflow = (await readFile(resolve(import.meta.dirname, "../../.github/workflows/component-release.yml"), "utf8")).replace(/\r\n/g, "\n");
+  for (const name of ["native", "windows-engine", "windows-package", "macos-engine", "macos-package", "publish"]) assert.match(workflow, new RegExp(`\\n  ${name}:\\n`));
+  for (const os of ["windows", "macos"]) {
+    const engine = workflow.slice(workflow.indexOf(`\n  ${os}-engine:\n`), workflow.indexOf(`\n  ${os}-package:\n`));
+    assert.match(engine, /needs: \[readiness, readiness-rehearsal, identity\]/);
+    assert.match(engine, /release-build\.mjs engine/);
+    assert.match(engine, new RegExp(`${os}-engine\\.archive\\.json`));
+    assert.match(engine, /timeout-minutes: 15/);
+    assert.match(workflow, new RegExp(`needs: \\[readiness, readiness-rehearsal, identity, window, ${os}-engine\\]`));
+    assert.match(workflow, new RegExp(`needs\\.${os}-engine\\.result == 'success'`));
+  }
+  assert.equal((workflow.match(/BRANCH_RELEASE_ENGINE_DEPLOYMENT/g) || []).length, 2);
+  assert.match(workflow, /needs: \[readiness, readiness-rehearsal, identity, native, windows-package, macos-package\]/);
+  assert.match(workflow, /needs\.windows-package\.result == 'success' && needs\.macos-package\.result == 'success'/);
+  for (const minutes of workflow.matchAll(/timeout-minutes: (\d+)/g)) assert.ok(Number(minutes[1]) <= 15 || workflow.lastIndexOf("\n  catch-up:") < minutes.index, `job timeout ${minutes[1]} exceeds 15 minutes`);
   assert.doesNotMatch(workflow, /artifacts\/\$artifact\/zip/);
-  assert.doesNotMatch(workflow, /os: macos-15\n            target: darwin-arm64/);
-  assert.doesNotMatch(workflow, /os: windows-latest\n            target: win32-x64/);
+  assert.doesNotMatch(workflow, /os: macos-15\n\s+target: darwin-arm64/);
+  assert.doesNotMatch(workflow, /os: windows-latest\n\s+target: win32-x64/);
 });

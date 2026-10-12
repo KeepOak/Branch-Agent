@@ -4,6 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { UsagePage, daysFrom, gbFrom, matches, parseQuery, resetWords, tidyNote } from "./usage";
+import { SaveProgressOffer } from "../../../shell/SaveProgress";
+import type { Limits } from "../../../shell/status-data";
 
 type Answers = Record<string, unknown | ((params: Record<string, unknown>) => unknown)>;
 function engineWith(answers: Answers) {
@@ -62,6 +64,46 @@ const BASE: Answers = { "sessions.usage": USAGE, "usage.status": STATUS, "agents
 const CFG = (config: Record<string, unknown> = {}): Answers => ({ "config.get": { hash: "h", valid: true, config }, "config.patch": { ok: true, hash: "h2", config } });
 
 describe("Settings › Data & usage", () => {
+  it("locates the usage ring in the bottom bar and explains the optional desktop tray", async () => {
+    await show(engineWith(BASE).engine);
+    const tray = row("Also show usage in the system tray");
+    expect(tray?.textContent).toContain("The usage ring is in the bottom bar. In the desktop app, you can also show it in the system tray.");
+    expect(tray?.getAttribute("aria-disabled")).toBe("true");
+    expect(host.textContent).not.toContain("by the clock");
+  });
+
+  it("keeps the optional system tray switch connected to the desktop setting", async () => {
+    let state = { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true, startWithWindows: false, branchOnPath: false };
+    const set = vi.fn(async (_name: string, on: boolean) => (state = { ...state, trayUsage: on }));
+    Object.assign(window, { branchDesktop: { controls: { get: async () => state, set } } });
+    await show(engineWith(BASE).engine);
+    const toggle = row("Also show usage in the system tray")?.querySelector("input");
+    expect(toggle?.disabled).toBe(false);
+    await act(async () => toggle!.click());
+    await flush();
+    expect(set).toHaveBeenCalledWith("trayUsage", true);
+    expect(toggle?.checked).toBe(true);
+    await act(async () => toggle!.click());
+    await flush();
+    expect(set).toHaveBeenLastCalledWith("trayUsage", false);
+    expect(toggle?.checked).toBe(false);
+  });
+
+  it("Show me previews the save-progress offer without a measured limit", async () => {
+    const { engine } = engineWith(BASE);
+    await act(async () => root.render(<><UsagePage page="usage" title="Data & usage" level="regular" engine={engine} /><SaveProgressOffer engine={engine} limits={null} on runningKeys={[]} /></>));
+    await flush();
+    expect(button("Show me").disabled).toBe(false);
+    await click("Show me");
+    expect(document.querySelector('[role="alertdialog"][aria-label="Save progress?"]')?.textContent).toContain("Example");
+    expect(button("Save progress").disabled).toBe(true);
+    await click("Not now");
+    const limits: Limits = { updatedAt: 1, refreshing: false, rows: [{ id: "sample", name: "Sample plan", account: "", pill: "Measured", line: "", inUse: false, windows: [{ name: "5-hour", left: 100, reset: "", low: false }] }] };
+    await act(async () => root.render(<><UsagePage page="usage" title="Data & usage" level="regular" engine={engine} /><SaveProgressOffer engine={engine} limits={limits} on runningKeys={[]} /></>));
+    await click("Show me");
+    expect(document.querySelector('[role="alertdialog"][aria-label="Save progress?"]')?.textContent).toContain("Example: 95%");
+    expect(button("Save progress").disabled).toBe(true);
+  });
   it("draws the spend card from sessions.usage across every Trunk, in local days", async () => {
     const { engine, request } = engineWith(BASE);
     await show(engine);
@@ -86,7 +128,8 @@ describe("Settings › Data & usage", () => {
     expect(claude.textContent).toContain("58% left · resets");
     expect(claude.textContent).toContain("as of 4 min ago, asked Claude");
     expect(document.querySelector('[data-provider="google"]')!.textContent).toContain("Not published");
-    expect(document.querySelector('[data-provider="zai"]')!.textContent).toContain("Token expired");
+    expect(document.querySelector('[data-provider="zai"]')!.textContent).toContain("Z.ai needs you to sign in again to check usage.");
+    expect(document.querySelector('[data-provider="zai"]')!.textContent).not.toContain("Token expired");
   });
   it("draws spend per Trunk from the same period as the spend picker", async () => {
     const { engine, request } = engineWith(BASE);
@@ -179,10 +222,10 @@ describe("keeping things", () => {
     expect(patched(request)).toContainEqual({ session: { maintenance: { mode: "enforce", pruneAfter: "30d" } } });
   });
   it("Keep conversations saves Forever as warn mode", async () => {
-    const { engine, request } = engineWith({ ...BASE, ...CFG() });
+    const { engine, request } = engineWith({ ...BASE, ...CFG({ session: { maintenance: { mode: "enforce", pruneAfter: "30d" } } }) });
     await show(engine);
     await click("Forever", row("Keep conversations")!);
-    expect(patched(request)).toContainEqual({ session: { maintenance: { mode: "warn" } } });
+    expect(patched(request)).toContainEqual({ session: { maintenance: { mode: "warn", pruneAfter: "30d" } } });
   });
   it("Keep conversations selects 1 year from enforced 365-day config", async () => {
     const { engine } = engineWith({ ...BASE, ...CFG({ session: { maintenance: { mode: "enforce", pruneAfter: "365d" } } }) });

@@ -72,7 +72,7 @@ export function createCliRepositorySkillFixture(dir: string, taskDir: string, ma
 }
 
 export function wrappedPluginSystemContext(text: string) {
-  return `---\n\nBranch plugin-injected system context. This block is not workspace file content.\n\n${text}\n\n---`;
+  return `---\n\nBranch Agent plugin-injected system context. This block is not workspace file content.\n\n${text}\n\n---`;
 }
 
 export function captureModelCallDiagnostics(runId: string) {

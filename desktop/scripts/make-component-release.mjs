@@ -71,7 +71,7 @@ function portableGzipHeader() {
   } });
 }
 
-async function archive(root, destination, fileMode, preserveLinks = false) {
+export async function archive(root, destination, fileMode, preserveLinks = false) {
   const entries = await files(await realpath(root), await realpath(root), new Set(), preserveLinks);
   async function* bytes() {
     for (const entry of entries) {

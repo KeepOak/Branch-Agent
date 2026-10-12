@@ -99,7 +99,7 @@ describe("memory_search unavailable payloads", () => {
         query: "hello",
         corpus: "everything",
       }),
-    ).rejects.toThrow("corpus must be one of: memory, wiki, all, sessions");
+    ).rejects.toThrow("corpus must be one of: memory, wiki, all, sessions, team");
 
     expect(getMemorySearchManagerMockCalls()).toBe(0);
   });

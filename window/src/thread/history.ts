@@ -17,6 +17,8 @@ import {
   type MessageMeta,
   type StepStatus,
 } from "./model";
+import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
+import { displayToolInput, displayToolOutput, sanitizeBlocks } from "./tool-output-display";
 import { readOwner, readSender } from "../rooms/sender";
 
 /** One terminal approval from `approval.history`. */
@@ -35,7 +37,8 @@ type Builder = {
   /** Code Mode wrappers (an `exec` whose code called real tools): their nested calls are the steps, not them. */
   wrappers: Set<string>;
   runId: string | null;
-  runStart: number;
+  /** When the run's first message was written; null when that message carries no time. */
+  runStart: number | null;
   runFinished: boolean;
   /** The run was stopped (an aborted partial the engine kept: `branchAbort`). */
   runStopped: boolean;
@@ -137,7 +140,8 @@ export function readAttachment(part: unknown): Attachment | null {
   const src = data ? `data:${mimeType ?? "application/octet-stream"};base64,${data}` : url || undefined;
   return {
     kind,
-    name: str(p.name) || str(p.fileName) || str(p.filename) || kind,
+    name: str(p.name) || str(p.fileName) || str(p.filename) || str(p.alt) || kind,
+    ...(str(p.artifactId) ? { artifactId: str(p.artifactId) } : {}),
     ...(mimeType ? { mimeType } : {}),
     ...(src ? { src } : {}),
     ...(num(p.sizeBytes) ? { sizeBytes: num(p.sizeBytes) } : {}),
@@ -151,7 +155,9 @@ function attachmentsOf(content: unknown): Attachment[] {
 
 function closeRun(b: Builder, inFlightRunId: string | null): void {
   if (b.runId && b.runFinished && b.runId !== inFlightRunId) {
-    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, durationMs: Math.max(0, b.lastTs - b.runStart), ...(b.runStopped ? { stopped: true } : {}) });
+    // A run whose first message has no time has no length: subtracting an absent start (0) read as ~56 years.
+    const durationMs = b.runStart !== null && b.lastTs > b.runStart ? b.lastTs - b.runStart : undefined;
+    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, ...(durationMs ? { durationMs } : {}), ...(b.runStopped ? { stopped: true } : {}) });
   }
   b.runId = null;
   b.runFinished = false;
@@ -164,10 +170,19 @@ function writtenAt(m: Message): number {
   return num(rec(m.__branch).recordTimestampMs) || num(m.timestamp);
 }
 
+function pushAssistantText(b: Builder, key: string, text: string, m: Message): void {
+  const call = readTextToolCall(text);
+  if (call) {
+    b.blocks.push(stepFromTextToolCall(call, key, { outputKey: `${b.runId ?? key}:${key}`, at: num(m.timestamp) }));
+    return;
+  }
+  b.blocks.push({ kind: "text", key, text, streaming: false, meta: readMeta(m) });
+}
+
 function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): void {
   const p = rec(part);
   if (p.type === "text" && str(p.text).trim()) {
-    b.blocks.push({ kind: "text", key, text: str(p.text), streaming: false, meta: readMeta(m) });
+    pushAssistantText(b, key, str(p.text), m);
   } else if (p.type === "thinking" && str(p.thinking).trim()) {
     b.blocks.push({ kind: "thinking", key, text: str(p.thinking), live: false });
   } else if (p.type === "toolCall") {
@@ -176,7 +191,7 @@ function onAssistantPart(b: Builder, part: unknown, key: string, m: Message): vo
     b.blocks.push({ kind: "step", key: id, outputKey: `${b.runId ?? key}:${id}`, tool: str(p.name), title, detail: "", status: "ok", input: toolInput(p.arguments), changes: readFileChanges(p.arguments), ...recordedAt(m.timestamp), ...(isCodeModeCall(str(p.name), p.arguments) ? { codeMode: true } : {}) });
     b.steps.set(id, { at: b.blocks.length - 1, command: str(rec(p.arguments).command), ts: num(m.timestamp) });
   } else if (typeof part === "string" && part.trim()) {
-    b.blocks.push({ kind: "text", key, text: part, streaming: false, meta: readMeta(m) });
+    pushAssistantText(b, key, part, m);
   }
 }
 
@@ -229,7 +244,8 @@ function onToolResult(b: Builder, m: Message, records: readonly ApprovalRecord[]
     b.wrappers.delete(str(m.toolCallId));
   }
   const status: StepStatus = isDeniedResultText(text) ? "denied" : m.isError || codeFailed ? "failed" : "ok";
-  b.blocks[step.at] = { ...block, status, detail: text.slice(0, 400), output: b.wholeOutput ? text : keepOutput(block.outputKey ?? block.key, text), browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined, ...recordedAt(m.timestamp) };
+  const shown = displayToolOutput({ tool: block.tool, text, title: block.title });
+  b.blocks[step.at] = { ...block, status, detail: shown.slice(0, 400), output: b.wholeOutput ? shown : keepOutput(block.outputKey ?? block.key, shown), input: displayToolInput(block.tool, block.input), browser: status === "ok" ? readBrowserPresentation(m, block.tool, block.key) : undefined, ...recordedAt(m.timestamp) };
   const deniedId = /gateway id=([0-9a-f-]{8,})/i.exec(text)?.[1];
   const found = findApproval(records, sessionKey, step, num(m.timestamp));
   const id = deniedId ?? found?.id;
@@ -304,7 +320,8 @@ function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | n
   }
   closeRun(b, inFlightRunId);
   // A message sent while the turn before still ran starts its own turn when that one ended.
-  b.runStart = Math.max(num(m.timestamp), b.lastTs);
+  // An untimed message has no start: measuring from the previous run's end would count the idle gap as this run.
+  b.runStart = typeof m.timestamp === "number" ? Math.max(m.timestamp, b.lastTs) : null;
   if (isRestartResume(m)) {
     b.blocks.push({ kind: "notice", key: `h:${index}`, text: RESUMED_AFTER_RESTART });
     return;
@@ -330,7 +347,7 @@ export function historyToBlocks(
   inFlightRunId: string | null,
   options: { wholeOutput?: boolean } = {},
 ): Block[] {
-  const b: Builder = { blocks: [], steps: new Map(), wrappers: new Set(), runId: null, runStart: 0, runFinished: false, runStopped: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
+  const b: Builder = { blocks: [], steps: new Map(), wrappers: new Set(), runId: null, runStart: null, runFinished: false, runStopped: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
   for (const [index, raw] of messages.entries()) {
     const m = rec(raw);
     const runId = str(rec(m.__branch).runId) || null;
@@ -352,7 +369,7 @@ export function historyToBlocks(
     if ((m.role !== "custom" && m.role !== "system") || ["run-failed-before-reply", "branch.nested-tool.v1"].includes(str(m.customType))) b.lastTs = Math.max(b.lastTs, writtenAt(m));
   }
   closeRun(b, inFlightRunId);
-  return dropWrappers(b);
+  return sanitizeBlocks(dropWrappers(b), { wholeOutput: b.wholeOutput });
 }
 
 /**
