@@ -24,6 +24,10 @@
   --ok: #2f8f5b;
   --ok-tint: #e2f0e7;
   --warn: #a86e12;
+  /* Face status dots (preview .av.pAvP17 > i.st-*): one colour in light and dark, so not repeated below. */
+  --st-online: #34c759;
+  --st-away: #e0a13a;
+  --st-phone: #3b82f6;
   --warn-tint: #f6ebd5;
   --bad: #c2412d;
   --bad-tint: #f8e3df;
