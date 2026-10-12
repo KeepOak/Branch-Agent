@@ -8,13 +8,25 @@ import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
 import { PlaceView } from "../../places-nav/PlaceView";
 import { PLACES, loadRoute, parseRoute, saveRoute, windowTitle, type Route } from "../../places-nav/routes";
+import { SettingsFrame as ClassicSettingsFrame } from "../../places-nav/SettingsFrame";
 import { SettingsFrame } from "../settings";
 import { R1_PAGES } from "../settings/pages/plugged";
+import { ROWS } from "../settings/rows";
+import { mergeRows, type PageSlots } from "../settings/slots";
+import type { Row } from "../settings/rows";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Popover } from "../../glass/Popover";
 
 /** Places R1 Settings search can open (its Go to group). */
 const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }));
+
+/**
+ * R1 Settings draws a page only once it has rows or its own slot. Every other page keeps the Classic page, which still
+ * works, until its rows land: a working setting never turns into Coming (R1 README rule 6).
+ */
+export function r1SettingsPage(page: string, pages: PageSlots = R1_PAGES, rows: readonly Row[] = mergeRows(ROWS, pages)): boolean {
+  return Boolean((pages as Record<string, { component?: unknown } | undefined>)[page]?.component) || rows.some(row => row.page === page);
+}
 
 /**
  * The R1 frame is opt-in until the ship card (R1-11) flips the default; every install opens Classic.
@@ -94,7 +106,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     </nav>
     <div className="r1-sidebar-footer"><button type="button" className="g-ctl" aria-label="Settings" onClick={() => navigate({ kind: "settings", page: "appearance" })}><Icon name="gear" /></button></div>
   </>;
-  const main = route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : <Thread
+  const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : <Thread
     name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} running={Boolean(snapshot.liveRunId)} liveStartedAt={snapshot.liveStartedAt}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
   />;
