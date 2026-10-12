@@ -9,7 +9,13 @@ import { createGatewayMethodRegistry } from "./methods/registry.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import type { GatewayClient, GatewayRequestHandler } from "./server-methods/types.js";
 
-type Caller = "owner-token" | "owner-device" | "teammate" | "agent";
+type Caller =
+  | "owner-token"
+  | "owner-device"
+  | "owner-phone-key"
+  | "owner-remote"
+  | "teammate"
+  | "agent";
 
 function clientFor(caller: Caller): GatewayClient {
   const base = {
@@ -26,21 +32,34 @@ function clientFor(caller: Caller): GatewayClient {
   if (caller === "owner-token") {
     return {
       ...base,
-      internal: { authenticatedOperator: true, operatorRoleActor: { kind: "system" } },
+      internal: {
+        isLocalClient: true,
+        authenticatedOperator: true,
+        operatorRoleActor: { kind: "system" },
+      },
       authenticatedUserProfile: { profileId: GATEWAY_OWNER_PROFILE_ID },
     } as unknown as GatewayClient;
   }
   if (caller === "owner-device") {
     return {
       ...base,
-      internal: { authenticatedOperator: true },
+      internal: { isLocalClient: true, authenticatedOperator: true },
+      authenticatedUserProfile: { profileId: GATEWAY_OWNER_PROFILE_ID },
+    } as unknown as GatewayClient;
+  }
+  if (caller === "owner-phone-key" || caller === "owner-remote") {
+    return {
+      ...base,
+      ...(caller === "owner-phone-key" ? { isDeviceTokenAuth: true, pairedClientId: "phone-1" } : {}),
+      clientIp: "100.64.0.9",
+      internal: { authenticatedOperator: true, operatorRoleActor: { kind: "system" } },
       authenticatedUserProfile: { profileId: GATEWAY_OWNER_PROFILE_ID },
     } as unknown as GatewayClient;
   }
   if (caller === "teammate") {
     return {
       ...base,
-      internal: { authenticatedOperator: true },
+      internal: { isLocalClient: true, authenticatedOperator: true },
       authenticatedUserProfile: { profileId: "teammate-1" },
     } as unknown as GatewayClient;
   }
@@ -163,6 +182,15 @@ describe("Lockdown gateway admission", () => {
     expect(teammate.error?.message).toBe("Only the owner can switch Lockdown off.");
     expect((await request("config.patch", OFF, "agent")).ran).toBe(false);
     expect((await request("config.patch", ON, "teammate")).ran).toBe(true);
+  });
+
+  it("G-1614: the owner switches Lockdown off only from the window on this computer; on stays allowed", async () => {
+    for (const caller of ["owner-phone-key", "owner-remote"] as const) {
+      const refused = await request("config.patch", OFF, caller);
+      expect(refused.ran).toBe(false);
+      expect(refused.error?.message).toBe("Only the window on this computer can make this change.");
+      expect((await request("config.patch", ON, caller)).ran).toBe(true);
+    }
   });
 
   it("admits only a lockdown-only patch with no other parameters", async () => {
