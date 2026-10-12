@@ -56,6 +56,13 @@ const text = (selector: string) => [...document.querySelectorAll(selector)].map(
 const click = async (node: Element | null) => act(async () => { (node as HTMLElement).click(); });
 
 describe("R1 sidebar", () => {
+  it("says why when the conversation list couldn't load", async () => {
+    const { render } = setup(FULL, true, { error: "Couldn’t load conversations: gateway timeout" });
+    await render();
+    const alert = host.querySelector('nav[aria-label="Conversations"] [role="alert"]');
+    expect(alert?.textContent).toBe("Couldn’t load conversations: gateway timeout");
+  });
+
   it("renders an empty disconnected engine with no demo data", async () => {
     const { render } = setup({}, false);
     await render();

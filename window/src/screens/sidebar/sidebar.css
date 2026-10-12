@@ -52,6 +52,7 @@ button.r1sb-cap:hover { color: var(--ink); }
 .r1sb-sec:hover .r1sb-head :is(.r1sb-mar, .r1sb-head-go), .r1sb-head:focus-within :is(.r1sb-mar, .r1sb-head-go) { opacity: 1; }
 .r1sb-mar:hover, .r1sb-head-go:hover { color: var(--ink); background: var(--fill); }
 .r1sb-empty { margin: 12px 14px; font-size: 13px; color: var(--ink-3); }
+.r1sb-error { margin: 12px 14px; font-size: 13px; color: var(--bad); overflow-wrap: anywhere; }
 
 /* Pinned grid: 2 a row, 3 from 264 px of list, 4 from 354 px (max 4). */
 .r1sb-pins { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 2px 4px 6px; }

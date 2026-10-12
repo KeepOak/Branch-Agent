@@ -52,6 +52,8 @@ export type SidebarProps = {
   onOpen: (key: string) => void;
   onSettings: (page: string) => void;
   onPlace: (place: PlaceId) => void;
+  /** Why the conversation list couldn't load (useConversations().error); shown at the top of the list. */
+  error?: string | null;
 };
 
 const rec = (value: unknown): Record<string, unknown> => (value && typeof value === "object" ? value as Record<string, unknown> : {});
@@ -214,6 +216,7 @@ export function Sidebar(p: SidebarProps) {
         plusRef={plusRef} onPlus={() => setPlusOpen(open => !open)} plusDot={anyWaiting} />
     </div>
     <nav className="r1sb-list" aria-label="Conversations">
+      {p.error ? <p className="r1sb-error" role="alert">{p.error}</p> : null}
       {sections.pinned.length ? <section className="r1sb-sec" data-section="pinned"><SectionHead label="Pinned" /><PinnedGrid rows={sections.pinned} currentKey={p.currentKey} handlers={handlers} /></section> : null}
       {section("Trunks", sections.trunks, sections.trunks.some(row => row.unread) ? <button type="button" className="r1sb-mar" onClick={() => markAllRead(sections.trunks)}>Mark all read</button> : null)}
       {section("People", sections.people, <button type="button" className="r1sb-head-go" aria-label="People settings" title="People" onClick={() => p.onSettings("people")}>{icons.chevron}</button>)}
