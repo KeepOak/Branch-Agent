@@ -17,8 +17,18 @@ vi.mock("./tools/gateway.js", () => ({
   readGatewayCallOptions: vi.fn(() => ({})),
 }));
 
-// Harmless if it ever ran: no such program exists. It only has to match the mkfs floor rule.
-const FLOOR_COMMAND = "mkfs.branchfloortest /dev/sdz9";
+// A fixture named mkfs that only prints, put first on PATH, so the approval binding can resolve it.
+// The floor matches the command word; nothing destructive exists to run.
+const FLOOR_COMMAND = "mkfs /dev/sdz9";
+
+function installMkfsFixture(root: string): string {
+  const binDir = path.join(root, "bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(path.join(binDir, "mkfs"), "#!/bin/sh\nprintf 'mkfs-fixture %s\\n' \"$*\"\n", {
+    mode: 0o755,
+  });
+  return binDir;
+}
 
 const createExecTool = (
   defaults?: Parameters<typeof createExecToolImpl>[0],
@@ -43,9 +53,11 @@ function resultText(result: { content: unknown[] }): string {
   return (result.content[0] as { text?: string }).text ?? "";
 }
 
-describe("exec always-ask floor", () => {
+// POSIX fixture executable, like the other gateway approval tests.
+describe.runIf(process.platform !== "win32")("exec always-ask floor", () => {
   let envSnapshot: ReturnType<typeof captureEnv>;
   let tempRoot: string;
+  let binDir: string;
 
   beforeEach(() => {
     envSnapshot = captureEnv([
@@ -69,6 +81,7 @@ describe("exec always-ask floor", () => {
       deleteTestEnvValue("HOMEDRIVE");
       deleteTestEnvValue("HOMEPATH");
     }
+    binDir = installMkfsFixture(tempRoot);
     resetProcessRegistryForTests();
     vi.mocked(callGatewayTool).mockReset();
   });
@@ -81,10 +94,11 @@ describe("exec always-ask floor", () => {
 
   it("asks before a catastrophic command even in full mode", async () => {
     const calls = mockApprovalGateway("deny");
-    const tool = createExecTool({ host: "gateway", mode: "full" });
+    const tool = createExecTool({ host: "gateway", mode: "full", pathPrepend: [binDir] });
 
     const result = await tool.execute("call-floor-full", { command: FLOOR_COMMAND });
 
+    expect(resultText(result)).not.toContain("mkfs-fixture");
     expect(calls).toEqual(["exec.approval.request", "exec.approval.waitDecision"]);
     expect(result.details).toMatchObject({ status: "failed", timedOut: false });
     expect(resultText(result)).toContain("user-denied");
@@ -92,7 +106,12 @@ describe("exec always-ask floor", () => {
 
   it("asks even when host approval floors are bypassed for full access", async () => {
     const calls = mockApprovalGateway("deny");
-    const tool = createExecTool({ host: "gateway", mode: "full", bypassHostApprovalFloors: true });
+    const tool = createExecTool({
+      host: "gateway",
+      mode: "full",
+      bypassHostApprovalFloors: true,
+      pathPrepend: [binDir],
+    });
 
     const result = await tool.execute("call-floor-bypass", { command: FLOOR_COMMAND });
 
@@ -102,7 +121,7 @@ describe("exec always-ask floor", () => {
 
   it("requests the floor approval with ask always so no durable grant can skip it", async () => {
     mockApprovalGateway("deny");
-    const tool = createExecTool({ host: "gateway", mode: "full" });
+    const tool = createExecTool({ host: "gateway", mode: "full", pathPrepend: [binDir] });
 
     await tool.execute("call-floor-ask", { command: FLOOR_COMMAND });
 
@@ -114,7 +133,7 @@ describe("exec always-ask floor", () => {
 
   it("keeps quoted prose about catastrophic commands unprompted in full mode", async () => {
     mockApprovalGateway("deny");
-    const tool = createExecTool({ host: "gateway", mode: "full" });
+    const tool = createExecTool({ host: "gateway", mode: "full", pathPrepend: [binDir] });
 
     const result = await tool.execute("call-floor-prose", {
       command: 'echo "mkfs.ext4 wipes disks"',
