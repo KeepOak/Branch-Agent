@@ -111,7 +111,7 @@ export const CHATAPPS_ROWS: RowEntry[] = [
   { page: "chatapps", title: "Allow by code", sec: "Asking to message", group: "Asking to message", lv: 0 },
   { page: "chatapps", title: "Who answers", sec: "Who answers", group: "Who answers", lv: 0, words: "routing trunk per chat" },
   ...rowsOf("chatapps", [...ADVANCED, ...TECH_A, ...LATER].map((s) => ({ ...s, rows: s.rows.filter((r) => r.kind !== "custom" || !["cmdRows", "watchdog", "formatting", "queueByApp", "lists", "actions", "msgKeys", "delayMin", "delayMax", "apprWhere"].includes(r.id ?? "")) }))),
-  ...["/new and /stop", "/model", "/config", "/approve"].map((t) => ({ page: "chatapps", title: t, sec: "Commands in chat apps", group: "Commands", lv: 1 as Lv, words: "who may use command" })),
+  { page: "chatapps", title: "Chat commands", sec: "Commands in chat apps", group: "Commands", lv: 1 as Lv, words: "new stop model config approve who may use command slash" },
   ...DEPTH_TITLES.map((t) => ({ page: "chatapps", title: t, sec: DEPTH.title, group: DEPTH.group ?? DEPTH.title, lv: 1 as Lv })),
   ...MSG_KEY_TITLES.map((t) => ({ page: "chatapps", title: t, sec: "Messages, every setting", group: "Messages", lv: 2 as Lv })),
 ];

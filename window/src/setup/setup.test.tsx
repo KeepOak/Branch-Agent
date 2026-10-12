@@ -99,6 +99,63 @@ function engine(answers: Record<string, unknown>) {
 const params = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter((c) => c[0] === method).map((c) => c[1] as Record<string, unknown>);
 
 describe("setup flow", () => {
+  it.each([
+    { label: "completes shell Make Trunk on its saved receipt", repeat: false },
+    { label: "guards synchronous repeat shell Make Trunk confirmations before the receipt", repeat: true },
+  ])("$label", async ({ repeat }) => {
+    vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
+    const snapshot = {
+      status: { phase: "connected" }, sessionKey: null, mainKey: null, name: "Branch", history: [], live: [],
+      pendingUser: null, queued: [], liveRunId: null, liveStartedAt: null, doneAt: null,
+      lastActivityAt: null, error: null, steered: [],
+    };
+    let saved = false;
+    let resolveCreate!: (value: unknown) => void;
+    const receipt = new Promise((resolve) => { resolveCreate = resolve; });
+    const request = vi.fn(async (method: string) => {
+      if (method === "config.get") return { hash: "h", config: { wizard: { lastRunAt: "2026-10-06T00:00:00Z" } } };
+      if (method === "agents.list" && saved) throw new Error("Roster temporarily unavailable");
+      if (method === "agents.list") return { defaultId: "oak", agents: [{ id: "oak", kind: "agent", name: "Oak" }] };
+      if (method === "agents.create") return receipt;
+      if (method === "contacts.list") return { contacts: [] };
+      if (method === "rooms.list") return { rooms: [] };
+      if (method === "peers.list" || method === "a2a.peers.list") return { peers: [] };
+      if (method === "channels.status") return { channelOrder: [] };
+      return {};
+    });
+    const session = {
+      request, engine: { request, onEvent: () => () => {}, scopes: ["operator.admin"], agentId: "oak" },
+      gatewayUrl: "ws://127.0.0.1:19661", getSnapshot: () => snapshot, subscribe: () => () => {},
+      onGatewayEvent: () => () => {}, open: vi.fn(async () => {}), reload: vi.fn(),
+    } as unknown as SaplingSession;
+    const host = await show(<WindowShell session={session} url="ws://127.0.0.1:19661" />);
+    await act(async () => new Promise((r) => setTimeout(r, 750)));
+    await act(async () => tid(host, "new").click());
+    await act(async () => tid(host, "new-trunk").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const make = byText(document.body, "Create Trunk");
+    expect(make).toBeTruthy();
+    await act(async () => {
+      make.click();
+      // Same render, before either the receipt or a disabled-button rerender.
+      // Removing makingTrunkRef must allow two requests and fail this assertion.
+      if (repeat) make.click();
+    });
+    expect(params(request, "agents.create")).toHaveLength(1);
+    expect(document.querySelector('[data-testid="new-trunk-preview"]')).not.toBeNull();
+    await act(async () => {
+      saved = true;
+      resolveCreate({ ok: true, agentId: "fern" });
+    });
+    expect(params(request, "agents.create")).toHaveLength(1);
+    expect(document.querySelector('[data-testid="new-trunk-preview"]')).toBeNull();
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.body.textContent).toContain("is made.");
+  });
+
   it("shows the shared reserved-name wording from WindowShell New Trunk", async () => {
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
     HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -132,7 +189,7 @@ describe("setup flow", () => {
     const input = document.querySelector<HTMLInputElement>('[data-testid="new-trunk-preview"] input')!;
     expect(input).toBeTruthy();
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Branch"); input.dispatchEvent(new Event("input", { bubbles: true })); });
-    await act(async () => byText(document.body, "Make Trunk").click());
+    await act(async () => byText(document.body, "Create Trunk").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     expect(request).toHaveBeenCalledWith("agents.create", expect.objectContaining({ name: "Branch" }));
     expect(document.body.textContent).toContain("That name is kept for Branch. Choose another Trunk name.");
