@@ -140,6 +140,45 @@ it("reports a committed create even when its background admission warm-up fails"
   );
 });
 
+it.each(["failed", "restart-pending", "superseded", "stopped", "unclaimed"] as const)(
+  "returns the committed agent receipt when runtime application is %s",
+  async (status) => {
+    mocks.createAgent.mockImplementation(
+      async (params: { runtimeApplication: RuntimeConfigWriteApplication }) => {
+        if (status !== "unclaimed") {
+          params.runtimeApplication.claim()!.settle(status);
+        }
+        return {
+          status: "created",
+          agentId: "committed-agent",
+          name: "Committed Agent",
+          workspace: "/workspace/committed-agent",
+        };
+      },
+    );
+    const respond = vi.fn();
+    await agentsHandlers["agents.create"]!({
+      params: { name: "Committed Agent" },
+      respond,
+      context: { getRuntimeConfig: () => ({}), logGateway: { warn: vi.fn() } },
+      client: null,
+      req: { type: "req", id: "committed-create", method: "agents.create" },
+      isWebchatConnect: () => false,
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        details: {
+          committed: true,
+          agentId: "committed-agent",
+          applicationStatus: status,
+        },
+      }),
+    );
+  },
+);
+
 it("warms every configured Trunk after readiness without blocking startup", async () => {
   const seen: string[] = [];
   mocks.warmAdmission.mockImplementation(async (input: { sessionKey: string }) => {

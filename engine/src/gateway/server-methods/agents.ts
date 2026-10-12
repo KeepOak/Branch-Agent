@@ -461,6 +461,7 @@ export const agentsHandlers: GatewayRequestHandlers = {
           errorShape(
             ErrorCodes.UNAVAILABLE,
             `agent config was saved but is not active (${applicationStatus})`,
+            { details: { committed: true, agentId: result.agentId, applicationStatus } },
           ),
         );
         return;
