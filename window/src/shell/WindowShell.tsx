@@ -122,7 +122,6 @@ import { TALK_EVENT, useVoiceCatalog } from "../composer/VoiceParts";
 import { DockQuestion } from "../thread/QuestionCard";
 import { CHECK_STATUS_EVENT } from "../thread/blocks";
 import { WhereChips } from "../thread/WhereChips";
-import { FIND_EVENT } from "../thread/FindBar";
 import { useQuestions } from "../thread/questions";
 import { Walkthrough } from "./Walkthrough";
 import { installedRows, WhatsNew } from "./WhatsNew";
@@ -1230,7 +1229,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     onShowCharacter: () => setCharacterVisible(true),
     talkOff: voiceReady.live ? null : VOICE_OFF,
     onTalk: () => window.dispatchEvent(new Event(TALK_EVENT)),
-    onSearch: () => window.dispatchEvent(new Event(FIND_EVENT)),
     onSidePanel: () => setPane((value) => value ? null : "Activity"),
     onTower: () => setTowerOn((on) => { try { localStorage.setItem("branch.controlTower", on ? "hidden" : "shown"); } catch { /* current window only */ } return !on; }),
     towerVisible: towerOn,

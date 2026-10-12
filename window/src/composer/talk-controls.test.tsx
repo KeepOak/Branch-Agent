@@ -68,9 +68,9 @@ describe("DA-16 composer voice buttons", () => {
 
 const run = new Proxy({}, { get: () => () => undefined }) as ConversationMenuRun;
 function ctx(talkOff: string | null): ConversationMenuContext {
-  return { row: null, isMain: true, trunkName: "Oak", ownTrunk: false, canRemoveTrunk: false, online: true, now: 0, hasReply: true, talkOff, run };
+  return { row: null, isMain: true, trunkName: "Oak", ownTrunk: false, canRemoveTrunk: false, mac: false, now: 0, hasReply: true, talkOff, run };
 }
-const talkRows = (items: MenuItem[]) => items.filter((i) => (i.kind === undefined || i.kind === "item") && i.label === "Talk live");
+const talkRows = (items: MenuItem[]): MenuItem[] => items.flatMap((i) => i.kind === "sub" ? talkRows(i.items) : (i.kind === undefined || i.kind === "item") && i.label === "Talk live" ? [i] : []);
 
 describe("DA-16 conversation menu Talk live", () => {
   it("leaves Talk live out while no live voice service is ready", () => {

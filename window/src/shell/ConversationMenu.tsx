@@ -25,7 +25,7 @@ import { ShareDialog } from "./ShareDialog";
 import { whoItKnowsItems } from "./who-it-knows-menu";
 import { roomMenuItems } from "../rooms/room-menu";
 import "./conversation-menu.css";
-import { conversationLink, openConversationWindow, ownWindowUnavailable } from "./own-window";
+import { openConversationWindow, ownWindowUnavailable } from "./own-window";
 import type { TopicLayout } from "./topic-layout";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
@@ -50,7 +50,6 @@ export type ConversationMenuProps = {
   openPlace: (place: PlaceId) => void;
   talkOff: string | null;
   onTalk: () => void;
-  onSearch?: () => void;
   onSidePanel?: () => void;
   onTower?: () => void;
   towerVisible?: boolean;
@@ -132,13 +131,15 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
   const computers = useComputers(p, key);
   const run = useRun(p, { key, setOpen });
   const lastReply = [...p.history].reverse().find((b) => b.kind === "text");
+  const ticks = useMemo(() => railTicks(p.history), [p.history]);
+  const bookmarks = bookmarkRow(ticks, key, close);
   const items = conversationMenuItems({
     row: p.row,
     isMain: p.isMain,
     trunkName: p.trunk.name,
     ownTrunk: Boolean(p.trunk.id && p.trunk.id !== p.trunks.defaultId),
     canRemoveTrunk: p.trunks.list.length > 1,
-    online: p.ready,
+    mac: /Mac|iPhone|iPad/.test(navigator.platform),
     now: p.now,
     hasReply: Boolean(lastReply),
     talkOff: p.talkOff,
@@ -153,20 +154,8 @@ export function useConversationMenu(p: ConversationMenuProps): { open: (e: Mouse
     towerVisible: p.towerVisible,
     room: p.room ? [...roomMenuItems({ ruleWords: p.room.ruleWords, canLeave: Boolean(p.row && !p.isMain), run: { rename: run.rename, rules: () => setOpen({ kind: "rules", at: menuAnchor() }), leave: run.archive, remove: run.remove } }),
       ...(p.room.members?.length ? [{ kind: "sub" as const, label: `Members · ${p.room.members.length}`, items: [{ kind: "head" as const, label: "Members" }, ...p.room.members.map((member) => ({ kind: "custom" as const, node: <div className="mi">{member}</div> }))] }] : [])] : null,
+    bookmarks,
     run,
-  });
-  let bookmarked: string[] = [];
-  try { if (key) bookmarked = JSON.parse(localStorage.getItem(`branch:turn-bookmarks:${key}`) ?? "[]") as string[]; } catch { /* storage unavailable */ }
-  const ticks = useMemo(() => railTicks(p.history), [p.history]);
-  const bookmarkedTicks = ticks.filter((tick) => bookmarked.includes(tick.key));
-  if (bookmarkedTicks.length && key) items.unshift({
-    kind: "sub", label: "Bookmarks", items: [
-      { kind: "head", label: "Bookmarks" },
-      ...bookmarkedTicks.map((tick): MenuItem => ({ label: tick.title.slice(0, 48), run: () => {
-        close();
-        window.dispatchEvent(new CustomEvent("branch:turn-jump", { detail: { sessionKey: key, blockKey: tick.key } }));
-      } })),
-    ],
   });
   const show = (e: MouseEvent<HTMLElement>) => {
     e.preventDefault();
@@ -189,7 +178,6 @@ type RunCtx = { key: string | null; setOpen: (o: Open) => void };
 function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
   const { key, setOpen } = c;
   const row = p.row;
-  const copy = (text: string) => void copyText(text, notify);
   const req = (method: string, params: unknown) => p.session.request(method, params);
   const menuAt = menuAnchor;
   return {
@@ -199,12 +187,10 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     replay: () => setOpen({ kind: "replay" }),
     share: () => setOpen({ kind: "share" }),
     whoItKnows: () => void whoItKnows(p, setOpen),
-    reload: () => void p.session.reload(),
     toBoard: () => key && void req("canopy.cards.captureSession", { sessionKey: key, title: p.title, ...(p.trunk.id ? { agentId: p.trunk.id } : {}) }).then(() => notify(`Sent “${p.title}” to the board.`), bad),
     archive: () => row && void p.actions.archive(row),
     restore: () => row && void p.actions.restore(row),
     snooze: (until) => row && void p.actions.snooze(row, until),
-    copyLink: () => key && copy(conversationLink(key)),
     ownWindow: () => key && void openConversationWindow(key).catch(bad),
     pin: () => row && void p.actions.pin(row),
     rename: p.onRename,
@@ -219,7 +205,6 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     exportWebPage: () => setOpen({ kind: "export", format: "html" }),
     remove: () => row && p.onDelete(row),
     removeTrunk: () => setOpen({ kind: "removeTrunk" }),
-    search: () => p.onSearch?.(),
     sidePanel: () => p.onSidePanel?.(),
     tower: () => p.onTower?.(),
     list: () => p.onList?.(),
@@ -228,6 +213,23 @@ function useRun(p: ConversationMenuProps, c: RunCtx): ConversationMenuRun {
     guide: () => p.onGuide?.(),
     backToContact: () => p.onBackToContact?.(),
     conversations: () => p.onConversations?.(),
+  };
+}
+
+/** Bookmarks in More: the replies bookmarked in this conversation; each one jumps to its turn. */
+function bookmarkRow(ticks: ReturnType<typeof railTicks>, key: string | null, close: () => void): MenuItem | null {
+  let bookmarked: string[] = [];
+  try { if (key) bookmarked = JSON.parse(localStorage.getItem(`branch:turn-bookmarks:${key}`) ?? "[]") as string[]; } catch { /* storage unavailable */ }
+  const marked = ticks.filter((tick) => bookmarked.includes(tick.key));
+  if (!marked.length || !key) return null;
+  return {
+    kind: "sub", label: "Bookmarks", items: [
+      { kind: "head", label: "Bookmarks" },
+      ...marked.map((tick): MenuItem => ({ label: tick.title.slice(0, 48), run: () => {
+        close();
+        window.dispatchEvent(new CustomEvent("branch:turn-jump", { detail: { sessionKey: key, blockKey: tick.key } }));
+      } })),
+    ],
   };
 }
 

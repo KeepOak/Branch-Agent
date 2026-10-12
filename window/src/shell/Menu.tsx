@@ -16,7 +16,8 @@ export type MenuItem =
 export type MenuAnchor = { x: number; y: number };
 
 /** `upward`: `at` is the top of what opened it (a status-bar item); the menu opens above that point. */
-type Props = { at: MenuAnchor; items: MenuItem[]; onClose: () => void; label: string; testid?: string; upward?: boolean };
+/** onDone: closes the whole menu chain after a row runs. A flyout gets its root's close, so a row two flyouts deep closes all of them. */
+type Props = { at: MenuAnchor; items: MenuItem[]; onClose: () => void; label: string; testid?: string; upward?: boolean; onDone?: () => void };
 
 const focusables = (el: HTMLElement | null) => Array.from(el?.querySelectorAll<HTMLButtonElement>(":scope > button.mi:not([disabled])") ?? []);
 
@@ -40,7 +41,7 @@ function moveFocus(el: HTMLElement | null, step: number) {
   list[(i + step + list.length) % list.length]?.focus();
 }
 
-export function Menu({ at, items, onClose, label, testid, upward }: Props) {
+export function Menu({ at, items, onClose, label, testid, upward, onDone }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<{ index: number; at: MenuAnchor } | null>(null);
   const pos = useFitInWindow(ref, at, upward);
@@ -95,7 +96,7 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
       <div ref={ref} className="pop menu in17" role="menu" aria-label={label} data-testid={testid} style={{ left: pos.x, top: pos.y }} onKeyDown={onKey}>
         {items.map((it, i) => renderItem(it, i, onClose, openSub, sub?.index === i))}
       </div>
-      {sub ? <SubMenu parent={items[sub.index]} at={sub.at} onClose={() => setSub(null)} onDone={onClose} /> : null}
+      {sub ? <SubMenu parent={items[sub.index]} at={sub.at} onClose={() => setSub(null)} onDone={onDone ?? onClose} /> : null}
     </>
   );
 }
@@ -105,7 +106,7 @@ function SubMenu({ parent, at, onClose, onDone }: { parent: MenuItem; at: MenuAn
     return null;
   }
   const wrap = parent.items.map((it): MenuItem => (it.kind === undefined || it.kind === "item" ? { ...it, run: () => (it.run(), onDone()) } : it));
-  return <Menu at={at} items={wrap} onClose={onClose} label={parent.label} />;
+  return <Menu at={at} items={wrap} onClose={onClose} label={parent.label} onDone={onDone} />;
 }
 
 function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: number, el: HTMLElement) => void, subOpen: boolean): ReactNode {
