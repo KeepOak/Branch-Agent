@@ -624,44 +624,113 @@ export function shardOf(value = process.env.FEATURE_SHARD) {
   return { index: n - 1, total };
 }
 
-// Test-body seconds measured from ubuntu-latest named-feature logs on 2026-10-08.
-// Round-robin on the sorted list put several of these on one shard (about 7 minutes of
-// tests on pull-request shard 1/10, about 22 minutes on the old main shard 2/3). Unlisted
-// files are a few seconds of vitest startup. The numbers only balance shards.
+// Seconds per named engine file on ubuntu-latest: the median over 130 named-feature jobs (14 workflow runs,
+// 2026-10-12) of the time from the previous file's last result line to this file's last result line, so
+// import, setup and tests all count (files run one at a time). Every named file at 10 s or more is listed;
+// the other named files averaged under 3 s and count unlistedFeatureTestSeconds. The 2026-10-08 table
+// weighted 32 files, so 68 files of 10 to 190 s counted 5 s each and piled onto the same shards (PR #1234
+// shards 7, 8 and 10 hit the 15-minute cap). Refresh this table from CI logs when shard times drift.
 const featureTestWeights = {
-  'src/gateway/server.auth.control-ui.test.ts': 287,
-  // Measured 2026-10-09: 255 s on ubuntu-latest, 394 s on macos-latest (PR #878 runs).
-  'src/agents/cli-runner/prepare.test.ts': 255,
-  'src/commands/startup-config-preflight.recovery.test.ts': 176,
-  'src/gateway/server-kernel.phases.test.ts': 175,
-  'src/gateway/server-methods/sessions-reactions.test.ts': 157,
-  'src/infra/device-bootstrap.test.ts': 147,
-  'src/gateway/server-methods/sessions-create-category.test.ts': 138,
-  'src/cli/gateway-cli/pre-bootstrap.process.test.ts': 112,
-  'src/cron/store/receipt-authority-owner.test.ts': 105,
-  'src/infra/heartbeat-runner.exact-session-busy.test.ts': 94,
-  'src/gateway/watch-node-http.test.ts': 81,
-  'src/gateway/server/ws-connection.startup.test.ts': 77,
-  'src/commands/doctor/shared/default-agent-role-materialization.write.test.ts': 69,
-  'src/agents/main-session-recovery/main-session-restart-recovery.parallel-startup.test.ts': 57,
-  'src/commands/config-preflight-snapshot.test.ts': 56,
-  'src/gateway/server.lockdown-owner.test.ts': 46,
-  'src/gateway/server-agent-database-startup.multi-agent.test.ts': 41,
+  'src/agents/cli-runner/prepare.test.ts': 354,
+  'src/gateway/server-methods/sessions-reactions.test.ts': 237,
+  'src/gateway/server.auth.control-ui.test.ts': 233,
+  'src/skills/workshop/experience-review.apply.test.ts': 190,
+  'src/commands/startup-config-preflight.recovery.test.ts': 172,
+  'src/cron/session-registry-maintenance.test.ts': 172,
+  'src/gateway/server-kernel.phases.test.ts': 163,
+  'src/infra/device-bootstrap.test.ts': 151,
+  'src/cron/service.heartbeat-busy-poll.test.ts': 140,
+  'src/cli/gateway-cli/pre-bootstrap.process.test.ts': 120,
+  'src/gateway/server-methods/sessions-create-category.test.ts': 118,
+  'src/cron/store/receipt-authority-owner.test.ts': 99,
+  'src/infra/heartbeat-runner.exact-session-busy.test.ts': 96,
+  'src/agents/embedded-agent-runner/run/attempt-prompt-submit.test.ts': 82,
+  'src/gateway/watch-node-http.test.ts': 82,
+  'src/gateway/server/ws-connection.startup.test.ts': 79,
+  'src/fleet/service-upgrade.runtime.test.ts': 75,
+  'src/fleet/service-removal.runtime.test.ts': 72,
+  'src/agents/command/attempt-execution.cli.test.ts': 70,
+  'src/commands/doctor/shared/default-agent-role-materialization.write.test.ts': 70,
+  'src/infra/heartbeat-runner.no-scratch-idle-gate.test.ts': 69,
+  'src/infra/telemetry.test.ts': 69,
+  'src/gateway/server-methods/update-report-run.test.ts': 67,
+  'src/gateway/server.trunk-queue.test.ts': 64,
+  'src/agents/main-session-recovery/main-session-restart-recovery.parallel-startup.test.ts': 56,
+  'src/agents/tools/sessions-send-tool.admission.test.ts': 55,
+  'src/cron/service.wake-now-real-heartbeat.test.ts': 54,
+  'src/agents/branch-tools.session-status.gateway-model.test.ts': 50,
+  'src/infra/heartbeat-runner.idle-trunk-gate.test.ts': 50,
+  'src/infra/heartbeat-inbox-fallback.idle-trunk.test.ts': 49,
+  'src/commands/config-preflight-snapshot.test.ts': 48,
+  'src/gateway/server-worker-placement-startup-maintenance.test.ts': 45,
+  'src/gateway/server.lockdown-owner.test.ts': 45,
+  'extensions/codex/src/app-server/shared-client.test.ts': 43,
+  'src/skills/workshop/store.test.ts': 42,
+  'src/agents/prepared-model-runtime.startup-replacement.test.ts': 41,
+  'src/cron/trigger-script.test.ts': 41,
+  'src/gateway/event-web-push.test.ts': 40,
+  'src/infra/heartbeat-inbox-fallback.test.ts': 37,
   'src/gateway/server.sessions.create.contact-anchor.test.ts': 36,
-  'src/agents/trunk-characters.test.ts': 34,
-  'src/gateway/session-handoff-lease-orphan-recovery.test.ts': 32,
-  'src/gateway/server-startup-node-capabilities.test.ts': 31,
-  'test/scripts/tsdown-config.test.ts': 29,
-  'src/agents/tools/message-tool-execution.test.ts': 27,
-  'test/scripts/control-ui-i18n.test.ts': 22,
-  'src/cron/trigger-script.test.ts': 22,
-  'src/gateway/session-startup-handoff-recovery.test.ts': 21,
-  'src/gateway/server-methods/session-change-event.test.ts': 21,
-  'src/gateway/sessions-patch.done.test.ts': 20,
+  'src/gateway/session-handoff-lease-orphan-recovery.test.ts': 35,
+  'src/gateway/sessions-patch.test.ts': 35,
+  'src/agents/main-session-recovery/main-session-handoff-retry.test.ts': 34,
+  'extensions/codex/src/app-server/run-attempt.model-choice.test.ts': 33,
+  'src/agents/tools/message-tool-execution.test.ts': 33,
+  'src/agents/trunk-characters.test.ts': 33,
+  'src/agents/tools/sessions-send-operation-key.test.ts': 32,
+  'src/gateway/server-agent-database-startup.multi-agent.test.ts': 32,
+  'test/scripts/tsdown-config.test.ts': 31,
+  'src/agents/first-run-greeting.test.ts': 27,
+  'extensions/memory-core/src/memory/manager-search-upgrade.test.ts': 26,
+  'src/gateway/server-startup-node-capabilities.test.ts': 25,
+  'src/gateway/sessions-patch.done.test.ts': 25,
+  'src/agents/cli-runner.model-choice.test.ts': 24,
+  'src/agents/run-journal.test.ts': 24,
+  'src/gateway/session-startup-handoff-recovery.test.ts': 24,
+  'extensions/memory-core/src/memory/manager-search-keyword-fallback.test.ts': 23,
+  'src/gateway/server-methods/chat-history.segments.test.ts': 23,
+  'src/gateway/server-methods/session-change-event.test.ts': 23,
+  'src/cron/isolated-agent/run.session-read.test.ts': 22,
+  'extensions/browser/src/browser-tool.test.ts': 21,
+  'src/agents/embedded-agent-runner/provider-capacity-failover.test.ts': 21,
+  'src/commands/doctor-session-row-repair.test.ts': 21,
+  'src/agents/tools/sessions-tool.model-approval.test.ts': 20,
+  'src/commands/models/auth.test.ts': 20,
   'src/gateway/server-methods/backup-settings.test.ts': 20,
-  'src/gateway/server-methods/chat-history.segments.test.ts': 18,
-  'src/cron/isolated-agent/run.session-read.test.ts': 17,
-  'src/infra/device-bootstrap-single-use.test.ts': 15,
+  'extensions/anthropic/index.test.ts': 19,
+  'src/gateway/control-ui-assistant-media-cors.http.test.ts': 19,
+  'src/agents/agent-tools.policy.test.ts': 18,
+  'src/auto-reply/reply/reply-turn-admission.first-message.test.ts': 17,
+  'src/gateway/server-reload-managed-context.test.ts': 17,
+  'src/state/agent-database-startup.bounded-retry.test.ts': 17,
+  'extensions/codex/src/app-server/auth-profile-usage.test.ts': 16,
+  'src/agents/tools/message-tool.app-reaction.test.ts': 16,
+  'src/cron/service/restart-recovery.behaviour.test.ts': 16,
+  'src/infra/device-bootstrap-single-use.test.ts': 16,
+  'src/process/session-handoff-leases.test.ts': 16,
+  'test/scripts/control-ui-i18n.test.ts': 16,
+  'extensions/codex/src/app-server/event-projector.failure-reason.test.ts': 15,
+  'src/agents/main-session-recovery/main-session-restart-recovery.pending-admission.test.ts': 15,
+  'src/commands/backup-no-secrets.test.ts': 15,
+  'extensions/browser/src/browser/pw-page-markdown.test.ts': 14,
+  'src/agents/sessions/session-manager-context-fence-concurrency.test.ts': 14,
+  'src/flows/doctor-health.update.test.ts': 14,
+  'extensions/codex/src/app-server/native-process-authority.test.ts': 13,
+  'extensions/memory-core/src/rings-consolidation.test.ts': 13,
+  'src/commands/doctor-session-sqlite.failure-reports.test.ts': 13,
+  'src/fleet/service.runtime.test.ts': 13,
+  'extensions/codex/src/app-server/event-projector.command-output.test.ts': 12,
+  'src/agents/tools/skill-workshop-tool.args.test.ts': 12,
+  'src/gateway/dev-agent-startup.test.ts': 12,
+  'src/gateway/server-methods/models-auth-status.test.ts': 12,
+  'src/mcp/ui-tools.test.ts': 12,
+  'src/agents/embedded-agent-runner/run-orchestrator.superseded-setup.test.ts': 11,
+  'src/cron/service/timer.lockdown.test.ts': 11,
+  'src/gateway/control-ui-assistant-media-filename.http.test.ts': 11,
+  'extensions/codex/src/app-server/event-projector-tool-items.test.ts': 10,
+  'src/cron/service.heartbeat-payload.test.ts': 10,
+  'src/gateway/server-methods/chat-history-phase-timing.handler.test.ts': 10,
+  'src/infra/gateway-state-owner.heartbeat.test.ts': 10,
 };
 export const unlistedFeatureTestSeconds = 5;
 // Linux shard 1 also runs the strict typecheck and the native protocol check (~1 minute).
@@ -704,29 +773,46 @@ export function shardTests(tests, shard, weights) {
   return planShards(tests, shard.total, weights).files[shard.index];
 }
 
-// Pull requests stay at ten Linux shards. Main and nightly use seven Linux, eleven
-// Windows and ten macOS shards (25 to 28 jobs). Each extra job adds setup cost and queue
-// time, while max-parallel stays six. These counts keep each shard's expected job,
-// including setup and the Linux shard-1 typecheck, at most 12 minutes even after a PR adds
-// 60 unweighted engine tests (see the shard test "a PR adding 60 unweighted engine tests").
-// Windows and macOS scales are the median job-time / linux-test-weight
-// ratio from main-push successes on 2026-10-08 (1.50 and 1.35). Ubuntu weights are
-// already hot measurements, so that scale stays 1.
+// The shard counts below are floors. The matrix grows past them by the weight-derived count (shardCountFor).
+// The budget is the whole job: runner setup (checkout, frozen install, build artifacts), the engine and window
+// tests, and the Linux shard-1 checks. A 12-minute test-only budget left out about 80 s of Linux setup (150 s
+// on Windows), and with the stale weights the PR shards ran 11 to 15 minutes against the 15-minute cap. Ten
+// minutes of planned job time keeps a third of the cap for slow runners and for named tests a PR adds
+// without a weight. Max-parallel stays six, so more shards cost setup minutes, not a longer cap.
+// Setup is the 90th percentile of job start to the first named test file on 2026-10-12, rounded up (Linux
+// 97 s plus the job tail, Windows 164 s, macOS 152 s). Windows and macOS scales are each runner's engine seconds over Linux seconds for the
+// same files on the 2026-10-12 main pushes (1.64 and 1.27); macOS keeps its earlier, higher 1.35.
 export const pullRequestLinuxShardCount = 10;
 export const mainPushShardCounts = { ubuntu: 7, windows: 11, macos: 10 };
-export const shardBudgetSeconds = 12 * 60;
+export const shardBudgetSeconds = 10 * 60;
 export const windowShardFileSeconds = 2;
-export const runnerTestScale = { ubuntu: 1, windows: 1.5, macos: 1.35 };
+export const runnerTestScale = { ubuntu: 1, windows: 1.65, macos: 1.35 };
+export const runnerSetupSeconds = { ubuntu: 100, windows: 165, macos: 155 };
 
-// The slowest planned shard for a total, at the runner's scale. Shard 0 carries the reserve.
+// The slowest planned job for a total, at the runner's scale, setup included. Shard 0 carries the reserve.
 export function plannedSlowestSeconds(os, total, { extraTests = [] } = {}) {
-  const loads = expectedShardSeconds(total, { typecheck: os === 'ubuntu', scale: runnerTestScale[os], extraTests });
-  return Math.max(...loads);
+  return Math.max(...plannedJobSeconds(os, total, { extraTests }));
+}
+
+export function plannedJobSeconds(os, total, { extraTests = [] } = {}) {
+  return expectedShardSeconds(total, { typecheck: os === 'ubuntu', scale: runnerTestScale[os], extraTests })
+    .map(seconds => seconds + runnerSetupSeconds[os]);
 }
 
 // Headroom: Windows and macOS keep ten percent under the budget (the Linux shard 1 keeps the full budget).
 export function shardBudgetFor(os) {
   return os === 'ubuntu' ? shardBudgetSeconds : shardBudgetSeconds * 0.9;
+}
+
+// Shards over budget that more shards could still split. A file never splits, so a shard holding one engine
+// file is as fast as it can be: on Windows and macOS cli-runner/prepare.test.ts alone is near ten minutes,
+// and its shard then holds only that file.
+export function overBudgetShards(os, total, { extraTests = [] } = {}) {
+  const budget = shardBudgetFor(os);
+  const files = planShards([...namedTests('engine'), ...extraTests], total).files;
+  return plannedJobSeconds(os, total, { extraTests })
+    .map((seconds, index) => ({ shard: index + 1, seconds, files: files[index].length }))
+    .filter(shard => shard.seconds > budget && shard.files > 1);
 }
 
 const MAX_SHARD_COUNT = 64;
@@ -737,9 +823,10 @@ export function shardCountFor(os, { extraTests = [] } = {}) {
   const budget = shardBudgetFor(os);
   const weight = [...namedTests('engine'), ...extraTests]
     .reduce((sum, file) => sum + featureTestWeight(file), 0) * runnerTestScale[os];
-  let total = Math.max(1, Math.ceil(weight / budget));
-  while (total < MAX_SHARD_COUNT && plannedSlowestSeconds(os, total, { extraTests }) > budget) total += 1;
-  if (plannedSlowestSeconds(os, total, { extraTests }) > budget) {
+  const fits = total => overBudgetShards(os, total, { extraTests }).length === 0;
+  let total = Math.max(1, Math.ceil(weight / (budget - runnerSetupSeconds[os])));
+  while (total < MAX_SHARD_COUNT && !fits(total)) total += 1;
+  if (!fits(total)) {
     throw new Error(`${os} cannot fit the named tests into ${MAX_SHARD_COUNT} shards within the ${budget}s budget`);
   }
   return total;

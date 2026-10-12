@@ -32,6 +32,7 @@ afterEach(async () => {
   root = undefined;
   document.body.replaceChildren();
   delete (window as { branchDesktop?: unknown }).branchDesktop;
+  localStorage.removeItem("branch.classic");
   fake.handoff.mockClear();
 });
 
@@ -48,6 +49,8 @@ it("keeps the draft and active voice recorder mounted through a gateway target s
     start(): void {}
     stop(): void { fake.recorderStops++; this.onstop?.(); }
   });
+  // This covers the Classic window (mocked above); the R1 frame has its own tests.
+  localStorage.setItem("branch.classic", "1");
   const { App } = await import("./App");
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);

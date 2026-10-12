@@ -28,7 +28,9 @@ export function assertGatewayCliMessageContext(method: string, params?: unknown)
     throw new Error(
       `Gateway ${method} from agent exec would lose inter-session attribution. ` +
         "Use the attributed session-messaging tool available to this run, or return the result " +
-        "through normal subagent completion. Do not retry through another CLI route or remove the exec marker.",
+        "through normal subagent completion. Do not retry through another CLI route or remove the exec marker. " +
+        "If you tell the user, say in plain words that the message was not sent from a shell command; " +
+        "do not quote this error.",
     );
   }
 }

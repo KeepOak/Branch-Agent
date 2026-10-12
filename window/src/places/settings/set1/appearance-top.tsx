@@ -137,6 +137,7 @@ export function useTrunk(engine: WindowEngine) {
 
 /** A saved off choice is distinct from following the computer. */
 function TransparencyRow({ look }: { look: Look }) {
+  const row = rowOf("reduceTransparency");
   const save = useSaveRunner();
   const [system, setSystem] = useState(() => typeof matchMedia === "function" && matchMedia("(prefers-reduced-transparency: reduce)").matches);
   useEffect(() => {
@@ -146,7 +147,7 @@ function TransparencyRow({ look }: { look: Look }) {
     media.addEventListener("change", change);
     return () => media.removeEventListener("change", change);
   }, []);
-  return <Ctl title="Reduce transparency" sub="Solid tinted surfaces instead of glass and blur." keep="everywhere">
-    <Switch label="Reduce transparency" checked={look.val("reduceTransparency", system) === true} onChange={(on) => void save(() => look.store.set("reduceTransparency", on))} />
+  return <Ctl title={row.title} sub={row.sub} keep={row.keep}>
+    <Switch label={row.title} checked={look.val("reduceTransparency", system) === true} onChange={(on) => void save(() => look.store.set("reduceTransparency", on))} />
   </Ctl>;
 }
