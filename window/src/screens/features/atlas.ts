@@ -1,6 +1,7 @@
 // Settings › Branch › All features (R1-10 part B, preview `PAGES.featuresP17`): every feature Branch has, half has,
-// or plans, from the feature atlas. The atlas is static and ships with the app (atlas.json, loaded on first open);
-// it needs no engine call. Rows: {id, a: area, f: name, w: what it does, s: status, p: pack}.
+// or plans, from the feature atlas. The atlas is static and ships with the app; it needs no engine call. It's stored as
+// atlas/NN.json shards of packed rows [id, area, name, what it does, status, pack], each under 100 KB so GitHub still
+// returns a reviewable patch, and loaded together on first open. Rows: {id, a: area, f: name, w: what it does, s: status, p: pack}.
 
 export type AtlasStatus = "in Branch" | "partly built" | "planned";
 export type AtlasRow = { id: string; a: string; f: string; w: string; s: AtlasStatus; p: string };
@@ -128,12 +129,18 @@ export function countLine(flat: Flat, total: number): string {
   return `${fmt(flat.shown)} of ${fmt(total)} features${flat.hidden ? ` · ${fmt(flat.hidden)} more at the Technical level` : ""}`;
 }
 
+type PackedRow = readonly [id: string, a: string, f: string, w: string, s: AtlasStatus, p: string];
+const shards = import.meta.glob<readonly PackedRow[]>("./atlas/*.json", { import: "default" });
+
 let atlas: Promise<AtlasRow[]> | null = null;
-/** The atlas, loaded once on first use (a separate chunk, so the window doesn't carry it at start). */
+/** The atlas, loaded once on first use (separate chunks, so the window doesn't carry it at start), in shard order. */
 export function loadAtlas(): Promise<AtlasRow[]> {
-  atlas ??= import("./atlas.json").then((m) => m.default, (error: unknown) => {
-    atlas = null;
-    throw error;
-  });
+  atlas ??= Promise.all(Object.keys(shards).sort().map((key) => shards[key]!())).then(
+    (parts) => parts.flat().map(([id, a, f, w, s, p]) => ({ id, a, f, w, s, p })),
+    (error: unknown) => {
+      atlas = null;
+      throw error;
+    },
+  );
   return atlas;
 }

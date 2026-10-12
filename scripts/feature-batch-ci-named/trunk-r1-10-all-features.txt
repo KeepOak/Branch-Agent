@@ -1,2 +1,1 @@
 window:src/screens/features/FeaturesPage.test.tsx
-window:src/screens/features/atlas.test.ts

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AREA, HOME, KINDS, TECHNICAL_AREAS, countLine, countsOf, flatten, loadAtlas, visibleRange, type AtlasRow } from "./atlas";
@@ -20,9 +20,22 @@ describe("the shipped atlas", () => {
     for (const r of await loadAtlas()) expect(areas.has(r.a), r.id).toBe(true);
   });
 
+  const dir = join(process.cwd(), "src/screens/features/atlas");
+  const shards = readdirSync(dir).filter((name) => name.endsWith(".json")).sort();
+
   it("names no upstream product, so the shipped copy passes the wording check", () => {
-    const text = readFileSync(join(process.cwd(), "src/screens/features/atlas.json"), "utf8");
-    expect(text).not.toMatch(/\bopen[\s_-]?claw\b|openclaw\.ai/i);
+    for (const name of shards) expect(readFileSync(join(dir, name), "utf8"), name).not.toMatch(/\bopen[\s_-]?claw\b|openclaw\.ai/i);
+  });
+
+  it("keeps every shard under 95,000 bytes, so GitHub returns a patch the personal-info gate can read", () => {
+    expect(shards.length).toBeGreaterThan(1);
+    for (const name of shards) expect(statSync(join(dir, name)).size, name).toBeLessThan(95_000);
+  });
+
+  it("loads the shards in order as whole rows", async () => {
+    const rows = await loadAtlas();
+    expect(rows[0]).toEqual({ id: "AGENT-LOOP-0001", a: "agent-loop", f: "Agent turn loop (model, tools, model)", w: expect.stringContaining("Runs each user turn as a loop"), s: "in Branch", p: "pack1" });
+    for (const row of rows) expect([row.id, row.a, row.f, row.w, row.s, row.p].every((v) => typeof v === "string" && v.length > 0), row.id).toBe(true);
   });
 
   it("only links to areas that exist", () => {
