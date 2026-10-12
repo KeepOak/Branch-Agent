@@ -19,7 +19,12 @@ export type HeartbeatWakeSource =
   | "cli-watchdog"
   | "restart-sentinel"
   | "retry"
+  | "signal"
   | "other";
+
+/** Typed reasons for PR signal wakes sent to a Trunk that authored the PR. */
+export const SIGNAL_WAKE_REASONS = ["ci-red", "fix-verdict"] as const;
+export type SignalWakeReason = (typeof SIGNAL_WAKE_REASONS)[number];
 
 type HeartbeatWakeOverride = {
   target?: string;

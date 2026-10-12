@@ -71,6 +71,7 @@ import { PENDING_CHAT_SEND_DEDUPE_PREFIX, type DedupeEntry } from "./server-shar
 import { setBroadcastHealthUpdate } from "./server/health-state.js";
 import { startSessionColdStorageMaintenance } from "./session-cold-storage-maintenance.js";
 import { tryResolveSessionCompatibilityOwnerAgentId } from "./session-request-agent.js";
+import { startSignalWakePollerForGateway } from "./signal-wake-poller-start.js";
 import { checkGatewayInstallationReplacement } from "./stale-install.js";
 import { startWorktreeMaintenance } from "./worktree-maintenance.js";
 
@@ -255,6 +256,11 @@ export function startGatewayMaintenanceTimers(params: {
         .catch((err: unknown) => params.logHealth.error(`refresh failed: ${formatError(err)}`)),
     true,
   );
+
+  const signalWakePoller = startSignalWakePollerForGateway({
+    getRuntimeConfig: params.getRuntimeConfig,
+    onError: (message) => params.logHealth.error(`signal wake poll failed: ${message}`),
+  });
 
   const worktreeMaintenance = startWorktreeMaintenance({
     scheduler: params.scheduler,
@@ -566,6 +572,7 @@ export function startGatewayMaintenanceTimers(params: {
       periodicTasksStopPromise = Promise.allSettled([
         scheduler.stop(),
         worktreeMaintenance.stop(),
+        signalWakePoller.stop(),
         sessionColdStorageMaintenance.stop(),
         stopMediaCleanup(),
       ]).then((results) => {

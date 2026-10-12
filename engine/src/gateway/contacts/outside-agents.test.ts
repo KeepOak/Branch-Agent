@@ -31,7 +31,9 @@ function scratchEnv(): NodeJS.ProcessEnv {
   return { ...process.env, BRANCH_STATE_DIR: dir };
 }
 afterEach(() => {
-  for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 describe("outside agents over branch mcp serve", () => {
@@ -149,7 +151,7 @@ describe("outside agents over branch mcp serve", () => {
     );
   });
 
-  it("Settings › Grafts: on by default, off turns every agent away, disconnect turns one away", () => {
+  it("Connected agents: refusals point to the plain settings name", () => {
     const env = scratchEnv();
     const claude = { id: "claude-code-a1b2c3", name: "Claude Code" };
     expect(readOutsideAgentSettings(env)).toEqual({
@@ -160,7 +162,7 @@ describe("outside agents over branch mcp serve", () => {
     expect(outsideAgentRefusal(claude, readOutsideAgentSettings(env))).toBeUndefined();
     updateOutsideAgentSettings({ id: claude.id, revoked: true }, env);
     expect(outsideAgentRefusal(claude, readOutsideAgentSettings(env))).toMatch(
-      /Claude Code was disconnected/,
+      /Claude Code was disconnected in Settings › Connected agents/,
     );
     expect(
       outsideAgentRefusal({ id: "hermes-1", name: "Hermes" }, readOutsideAgentSettings(env)),
@@ -170,7 +172,7 @@ describe("outside agents over branch mcp serve", () => {
     const off = readOutsideAgentSettings(env);
     expect(off).toEqual({ enabled: false, revoked: [], mayDriveWindow: [claude.id] });
     expect(outsideAgentRefusal({ id: "hermes-1", name: "Hermes" }, off)).toMatch(
-      /Other agents are off/,
+      /Other agents are off in Settings › Connected agents/,
     );
   });
 

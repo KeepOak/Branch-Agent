@@ -148,6 +148,13 @@ export function StatusLeftExtras(p: Props) {
   );
 }
 
+/** Memory above 90% is tight: the readout turns warm and its tip says what to do, not just the numbers. */
+export function gfxTip(v: Vitals | null, level: string): string {
+  const base = vitalsTip(v, level);
+  if (!v || v.memUsed / v.memTotal <= 0.9) return base;
+  return `${base}. Memory is nearly full (${gb(v.memUsed)} of ${gb(v.memTotal)} GB used): close apps you aren't using to free some.`;
+}
+
 /** The graphics and memory readout, after the spacer (§4.9.10). Click opens its popover in place. */
 export function StatusGfx(p: Props & { onMemory: (e: MouseEvent<HTMLElement>) => void }) {
   const v = useVitals(p.session, p.ready && p.gfx);
@@ -155,8 +162,9 @@ export function StatusGfx(p: Props & { onMemory: (e: MouseEvent<HTMLElement>) =>
   if (!p.gfx) return null;
   const tone = v ? memoryTone(v.memUsed, v.memTotal) : "ok";
   const words = v ? `memory ${gb(v.memUsed)}/${gb(v.memTotal)} GB` : "—";
+  const tip = gfxTip(v, level);
   return (
-    <button type="button" className="sb hide-sm hw" data-hide="gfx" title={vitalsTip(v, level)} aria-label={vitalsTip(v, level)} aria-haspopup="dialog" data-testid="sb-gfx" onClick={p.onMemory}>
+    <button type="button" className="sb hide-sm hw" data-hide="gfx" title={tip} aria-label={tip} aria-haspopup="dialog" data-testid="sb-gfx" onClick={p.onMemory}>
       <Icon name="monitor" small />
       <span>{tone === "ok" ? words : <b className="warn-hw">{words}</b>}</span>
     </button>

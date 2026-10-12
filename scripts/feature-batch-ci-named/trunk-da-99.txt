@@ -1,0 +1,1 @@
+window:src/shell/usage-popover-anchor.test.tsx

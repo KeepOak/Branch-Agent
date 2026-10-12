@@ -67,17 +67,24 @@ describe("P54 conversation header menu", () => {
   it("keeps all active view actions wired and greys unavailable ones with reasons", () => {
     calls.length = 0;
     const items = conversationMenuItems(ctx("regular", true));
-    for (const label of ["Search in this conversation", "Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Switch light or dark", "Why each thing is here"]) {
+    for (const label of ["Search in this conversation", "Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Why each thing is here"]) {
       const found = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === label) as Extract<MenuItem, { run: () => void }>;
       expect(found.disabled).toBeUndefined();
       found.run();
     }
-    expect(calls).toEqual(["search", "sidePanel", "list", "ownWindow", "computer", "browser", "theme", "guide"]);
+    expect(calls).toEqual(["search", "sidePanel", "list", "ownWindow", "computer", "browser", "guide"]);
     const tower = items.find((i) => i.kind !== "sub" && i.kind !== "sep" && i.kind !== "head" && i.kind !== "custom" && i.label === "Show the Control tower") as Extract<MenuItem, { run: () => void }>;
     expect(tower.disabled).toBeUndefined();
     tower.run();
     expect(calls.at(-1)).toBe("tower");
     expect(shape(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).toContain("Hide the Control tower");
+  });
+
+  it("leaves light or dark to the profile menu's Look row and Settings, not the header menu (DA-09)", () => {
+    for (const own of [true, false]) {
+      const labels = shape(conversationMenuItems(ctx("regular", own)));
+      expect(labels.filter((label) => /light|dark|theme/i.test(label))).toEqual([]);
+    }
   });
 
   it("keeps this contact's thread layout behind a click-only View row above Side panel", () => {
