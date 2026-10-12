@@ -31,6 +31,10 @@ export {
 } from "../agents/code-mode-source-location.js";
 export type { SourceLocation } from "../agents/code-mode-source-location.js";
 export { prepareSource } from "../agents/code-mode-source.js";
+export {
+  CODE_MODE_HOST_RANDOM_HEX,
+  CODE_MODE_RANDOM_VALUES_MAX_BYTES,
+} from "../agents/code-mode-web-globals-source.js";
 export { CODE_MODE_WORKER_WATCHDOG_GRACE_MS } from "../agents/code-mode-worker-types.js";
 export type {
   CodeModeConfig,
