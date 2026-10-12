@@ -8,8 +8,8 @@
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { resolveAgentConfig, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { resolveAgentEntry } from "../agents/agent-scope-config.js";
+import { resolveAgentConfig, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { listRouteBindings } from "../config/bindings.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { redactSensitiveText } from "../logging/redact.js";
@@ -86,10 +86,13 @@ function permissionsFor(cfg: BranchConfig, agentId: string): string[] {
 }
 
 function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
-function looksSecret(text: string): boolean {
+/** True for a private key header or anything the log redactor would mask. Import uses the same check. */
+export function looksSecret(text: string): boolean {
   return PRIVATE_KEY_HEADER.test(text) || redactSensitiveText(text) !== text;
 }
 
@@ -113,18 +116,28 @@ export function automationsFromCronJobs(
       continue;
     }
     if (typeof job.declarationKey === "string" && job.declarationKey) {
-      warnings.push(`Routine "${name}" is managed by Branch or a plugin, so the template leaves it out.`);
+      warnings.push(
+        `Routine "${name}" is managed by Branch or a plugin, so the template leaves it out.`,
+      );
       continue;
     }
     const cron = typeof schedule.expr === "string" ? schedule.expr.trim() : "";
     const message = typeof payload.message === "string" ? payload.message : "";
-    if (schedule.kind !== "cron" || !cron || payload.kind !== "agentTurn" || !message.trim() || job.trigger) {
+    if (
+      schedule.kind !== "cron" ||
+      !cron ||
+      payload.kind !== "agentTurn" ||
+      !message.trim() ||
+      job.trigger
+    ) {
       warnings.push(`Routine "${name}" is not a scheduled prompt, so the template leaves it out.`);
       continue;
     }
     const prompt = redactPersonaText(message, paths);
     if (looksSecret(prompt) || looksSecret(name)) {
-      warnings.push("One routine looks like it contains a secret (a token or key), so the template leaves it out.");
+      warnings.push(
+        "One routine looks like it contains a secret (a token or key), so the template leaves it out.",
+      );
       continue;
     }
     automations.push({ name, cron, prompt });
