@@ -10,6 +10,7 @@ import { isPathInside } from "../../infra/path-guards.js";
 import { expandTildePath } from "../../shared/tilde-path.js";
 import { CONFIG_DIR_NAME } from "../package-metadata.js";
 import { parsePromptFrontmatter } from "../utils/frontmatter.js";
+import { replaceSpecialVars } from "./prompt-special-variables.js";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.js";
 
 export interface PromptTemplate {
@@ -164,6 +165,8 @@ export function loadPromptTemplates({
 /**
  * Expand a prompt template if it matches a template name.
  * Returns the expanded content or the original text if not a template.
+ * Special variables ({{current_date}} and the rest) in the template are filled before the
+ * arguments are inserted, so text typed as an argument is never treated as a variable.
  */
 export function expandPromptTemplate(text: string, templates: PromptTemplate[]): string {
   const match = text.match(/^\/([^\s]+)(?:\s+([\s\S]*))?$/);
@@ -177,7 +180,7 @@ export function expandPromptTemplate(text: string, templates: PromptTemplate[]):
   const template = templates.find((t) => t.name === templateName);
   if (template) {
     const args = parseCommandArgs(argsString);
-    return substituteArgs(template.content, args);
+    return substituteArgs(replaceSpecialVars({ text: template.content }), args);
   }
 
   return text;
