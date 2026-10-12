@@ -248,7 +248,14 @@ export async function certifySessionCanonicalValidationPending(
     if (quarantinedRows > 0) {
       log.warn(
         "Quarantined invalid persisted session rows; startup continues and branch doctor --fix can repair them",
-        { path: pathname, rows: quarantinedRows },
+        {
+          path: pathname,
+          rows: quarantinedRows,
+          sessionKeys: listBranchSessionRowQuarantineKeys({ env, databasePath }).slice(
+            0,
+            MAX_STARTUP_QUARANTINED_SESSION_ROWS,
+          ),
+        },
       );
     }
   } finally {

@@ -1,11 +1,13 @@
 import fs from "node:fs";
 import { expect, it, vi } from "vitest";
+import { hasBoardSession } from "../../boards/sqlite-board-store.kernel.js";
 import { noteSessionTranscriptHealth } from "../../commands/doctor-session-transcripts.js";
 import { openBranchAgentDatabase } from "../../state/branch-agent-db.js";
 import { resolveBranchAgentSqlitePath } from "../../state/branch-agent-db.paths.js";
 import { listBranchSessionRowQuarantines } from "../../state/branch-session-row-quarantine.js";
 import { resolveQuarantineStorePath } from "../../state/branch-state-db.paths.js";
 import { withBranchTestState } from "../../test-utils/branch-test-state.js";
+import type { BranchConfig } from "../types.branch.js";
 import {
   listSessionChildEntriesReadOnly,
   listSessionEntriesReadOnly,
@@ -23,13 +25,25 @@ import {
 import { MAX_STARTUP_QUARANTINED_SESSION_ROWS } from "./session-canonical-validation-readiness.js";
 import { runSessionStartupMigration } from "./startup-migration.js";
 
+const { quarantineWarn } = vi.hoisted(() => ({ quarantineWarn: vi.fn() }));
+vi.mock("../../logging/subsystem.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../logging/subsystem.js")>();
+  return {
+    ...actual,
+    createSubsystemLogger: (...args: Parameters<typeof actual.createSubsystemLogger>) => ({
+      ...actual.createSubsystemLogger(...args),
+      warn: quarantineWarn,
+    }),
+  };
+});
+
 const cfg = { agents: { ownership: "explicit" as const, entries: { main: {} } } };
 const REPAIR = "invalid persisted session row requires repair";
 
-function startup(env: NodeJS.ProcessEnv) {
+function startup(env: NodeJS.ProcessEnv, config: BranchConfig = cfg) {
   const handoffDatabase = vi.fn(async () => {});
   const run = runSessionStartupMigration({
-    cfg,
+    cfg: config,
     env,
     log: { info: vi.fn(), warn: vi.fn() },
     handoffDatabase,
@@ -70,115 +84,223 @@ function isPending(db: Db, sessionKey: string) {
   );
 }
 
-it("quarantines one invalid persisted session row and lets startup continue", async () => {
-  await withBranchTestState({ scenario: "empty" }, async ({ env, writeConfig }) => {
-    await writeConfig(cfg);
-    const brokenKey = "agent:main:broken";
-    const healthyKey = "agent:main:healthy";
-    const db = seed(env, [brokenKey, healthyKey]);
-    // A child that names the quarantined row as its parent is itself valid.
-    const childKey = "agent:main:child";
-    replaceSessionEntrySync(
-      { cfg, env, agentId: "main", sessionKey: childKey },
-      { sessionId: "child-id", updatedAt: 100, parentSessionKey: brokenKey },
-    );
-    damage(db, brokenKey);
-    expect(entryValid(db, brokenKey)).toEqual({ entry_valid: 0 });
+it.each(["archive", "move"] as const)(
+  "quarantines one invalid persisted session row without contact %s on restart",
+  async (migration) => {
+    await withBranchTestState({ scenario: "empty" }, async ({ env, writeConfig }) => {
+      await writeConfig(cfg);
+      const brokenKey = "agent:main:broken";
+      const healthyKey = "agent:main:healthy";
+      const db = seed(env, [brokenKey, healthyKey]);
+      // A child that names the quarantined row as its parent is itself valid.
+      const childKey = "agent:main:child";
+      replaceSessionEntrySync(
+        { cfg, env, agentId: "main", sessionKey: childKey },
+        { sessionId: "child-id", updatedAt: 100, parentSessionKey: brokenKey },
+      );
+      replaceSessionEntrySync(
+        { cfg, env, agentId: "main", sessionKey: brokenKey },
+        {
+          sessionId: `${brokenKey}-id`,
+          updatedAt: 100,
+          createdVia: "operator",
+          ...(migration === "move" ? { label: "Branch" } : {}),
+        },
+      );
+      damage(db, brokenKey);
+      expect(entryValid(db, brokenKey)).toEqual({ entry_valid: 0 });
 
-    const first = startup(env);
-    await expect(first.run).resolves.toBeUndefined();
-    expect(first.handoffDatabase).toHaveBeenCalledTimes(1);
+      const first = startup(env);
+      await expect(first.run).resolves.toBeUndefined();
+      expect(first.handoffDatabase).toHaveBeenCalledTimes(1);
 
-    const records = listBranchSessionRowQuarantines(env);
-    expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({
-      agentId: "main",
-      sessionKey: brokenKey,
-      databasePath: resolveBranchAgentSqlitePath({ agentId: "main", env }),
-    });
-    expect(records[0]?.reason).toContain(`${REPAIR} for ${brokenKey}`);
-    expect(JSON.parse(records[0]?.rowJson ?? "{}")).toMatchObject({
-      session_key: brokenKey,
-      entry_valid: 0,
-    });
-    // The row stays in place for branch doctor --fix, settled invalid and out of pending.
-    expect(entryValid(db, brokenKey)).toEqual({ entry_valid: -1 });
-    expect(isPending(db, brokenKey)).toBe(false);
+      const records = listBranchSessionRowQuarantines(env);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        agentId: "main",
+        sessionKey: brokenKey,
+        databasePath: resolveBranchAgentSqlitePath({ agentId: "main", env }),
+      });
+      expect(records[0]?.reason).toContain(`${REPAIR} for ${brokenKey}`);
+      expect(JSON.parse(records[0]?.rowJson ?? "{}")).toMatchObject({
+        session_key: brokenKey,
+        entry_valid: 0,
+      });
+      // The row stays in place for branch doctor --fix, settled invalid and out of pending.
+      expect(entryValid(db, brokenKey)).toEqual({ entry_valid: -1 });
+      expect(isPending(db, brokenKey)).toBe(false);
 
-    // Every reader refuses or skips the quarantined key; other sessions stay readable.
-    for (const projection of ["full", "list"] as const) {
-      expect(() =>
-        loadSessionEntryReadOnly({ agentId: "main", env, sessionKey: brokenKey, projection }),
-      ).toThrow(REPAIR);
+      // Every reader refuses or skips the quarantined key; other sessions stay readable.
+      for (const projection of ["full", "list"] as const) {
+        expect(() =>
+          loadSessionEntryReadOnly({ agentId: "main", env, sessionKey: brokenKey, projection }),
+        ).toThrow(REPAIR);
+        expect(
+          loadSessionEntryReadOnly({ agentId: "main", env, sessionKey: healthyKey, projection })
+            ?.sessionId,
+        ).toBe(`${healthyKey}-id`);
+      }
       expect(
-        loadSessionEntryReadOnly({ agentId: "main", env, sessionKey: healthyKey, projection })
-          ?.sessionId,
-      ).toBe(`${healthyKey}-id`);
-    }
-    expect(
-      loadSessionEntryReadOnly({ agentId: "main", env, sessionKey: childKey })?.parentSessionKey,
-    ).toBe(brokenKey);
-    expect(
-      listSessionChildEntriesReadOnly({ agentId: "main", env, sessionKey: brokenKey }).map(
-        ({ sessionKey }) => sessionKey,
-      ),
-    ).toEqual([childKey]);
-    expect(
-      listSessionEntriesReadOnly({ agentId: "main", env })
-        .map(({ sessionKey }) => sessionKey)
-        .toSorted(),
-    ).toEqual([childKey, healthyKey]);
+        loadSessionEntryReadOnly({ agentId: "main", env, sessionKey: childKey })?.parentSessionKey,
+      ).toBe(brokenKey);
+      expect(
+        listSessionChildEntriesReadOnly({ agentId: "main", env, sessionKey: brokenKey }).map(
+          ({ sessionKey }) => sessionKey,
+        ),
+      ).toEqual([childKey]);
+      expect(
+        listSessionEntriesReadOnly({ agentId: "main", env })
+          .map(({ sessionKey }) => sessionKey)
+          .toSorted(),
+      ).toEqual([childKey, healthyKey]);
 
-    // The delivery projection refuses the quarantined key like the exact read.
-    const [delivery] = loadExactSessionEntryCandidatesReadOnlyBatch([
-      { agentId: "main", env, sessionKeys: [brokenKey], projection: "delivery" },
-    ]);
-    expect(delivery?.ok).toBe(false);
-    expect(delivery?.ok === false ? String(delivery.error) : "").toContain(REPAIR);
+      // The delivery projection refuses the quarantined key like the exact read.
+      const [delivery] = loadExactSessionEntryCandidatesReadOnlyBatch([
+        { agentId: "main", env, sessionKeys: [brokenKey], projection: "delivery" },
+      ]);
+      expect(delivery?.ok).toBe(false);
+      expect(delivery?.ok === false ? String(delivery.error) : "").toContain(REPAIR);
 
-    // Raw readers skip it too: the lifecycle/maintenance store, inventory counts and keys,
-    // identity evidence, and the instance check that gates owner and collaboration writes.
-    const database = openBranchAgentDatabase({ agentId: "main", env });
-    expect(Object.keys(readSessionEntryStore(database)).toSorted()).toEqual([childKey, healthyKey]);
-    expect(readSessionEntryStore(database, { sessionKeys: [brokenKey] })).toEqual({});
-    expect(readSessionEntryCount(database)).toBe(2);
-    expect([...iterateSessionEntryKeys(database)].toSorted()).toEqual([childKey, healthyKey]);
-    expect(
-      readSessionIdentityEvidenceInDatabase(database, [
-        { sessionId: brokenKey + "-id", sessionKey: brokenKey },
-        { sessionId: brokenKey + "-id" },
-        { sessionId: healthyKey + "-id", sessionKey: healthyKey },
-      ]),
-    ).toEqual([
-      { status: "unknown", reason: "row-invalid" },
-      { status: "unknown", reason: "row-invalid" },
-      { status: "current", sessionKey: healthyKey },
-    ]);
-    expect(readSessionEntryInstanceId(database, brokenKey)).toBeUndefined();
-    expect(readSessionEntryInstanceId(database, healthyKey)).toBe(healthyKey + "-id");
+      // Raw readers skip it too: the lifecycle/maintenance store, inventory counts and keys,
+      // identity evidence, and the instance check that gates owner and collaboration writes.
+      const database = openBranchAgentDatabase({ agentId: "main", env });
+      expect(Object.keys(readSessionEntryStore(database)).toSorted()).toEqual([
+        childKey,
+        healthyKey,
+      ]);
+      expect(readSessionEntryStore(database, { sessionKeys: [brokenKey] })).toEqual({});
+      expect(readSessionEntryCount(database)).toBe(2);
+      expect([...iterateSessionEntryKeys(database)].toSorted()).toEqual([childKey, healthyKey]);
+      expect(
+        readSessionIdentityEvidenceInDatabase(database, [
+          { sessionId: brokenKey + "-id", sessionKey: brokenKey },
+          { sessionId: brokenKey + "-id" },
+          { sessionId: healthyKey + "-id", sessionKey: healthyKey },
+        ]),
+      ).toEqual([
+        { status: "unknown", reason: "row-invalid" },
+        { status: "unknown", reason: "row-invalid" },
+        { status: "current", sessionKey: healthyKey },
+      ]);
+      expect.soft(hasBoardSession(database, brokenKey)).toBe(false);
+      expect(hasBoardSession(database, healthyKey)).toBe(true);
+      expect(readSessionEntryInstanceId(database, brokenKey)).toBeUndefined();
+      expect(readSessionEntryInstanceId(database, healthyKey)).toBe(healthyKey + "-id");
 
-    // A second start records the same row once and keeps it unreadable.
-    await expect(startup(env).run).resolves.toBeUndefined();
-    expect(listBranchSessionRowQuarantines(env)).toHaveLength(1);
-    expect(() => loadSessionEntryReadOnly({ agentId: "main", env, sessionKey: brokenKey })).toThrow(
-      REPAIR,
-    );
+      // Selecting a default on restart must not archive the empty operator row or
+      // move its quarantined bytes out of the now-implicit main agent database.
+      const beforeRestart = db
+        .prepare("SELECT * FROM session_nodes WHERE session_key = ?")
+        .get(brokenKey);
+      const restartCfg: BranchConfig = {
+        agents: { ownership: "explicit", defaultId: "builder-a", entries: { "builder-a": {} } },
+      };
+      await writeConfig(restartCfg);
+      await expect(startup(env, restartCfg).run).resolves.toBeUndefined();
+      expect(
+        db.prepare("SELECT * FROM session_nodes WHERE session_key = ?").get(brokenKey),
+      ).toEqual(beforeRestart);
+      const destination = openBranchAgentDatabase({ agentId: "builder-a", env });
+      expect(
+        destination.db
+          .prepare("SELECT session_key FROM session_nodes WHERE entry_json LIKE ?")
+          .all('%"createdVia":"operator"%'),
+      ).toEqual([]);
+      await writeConfig(cfg);
+      expect(listBranchSessionRowQuarantines(env)).toHaveLength(1);
+      expect(() =>
+        loadSessionEntryReadOnly({ agentId: "main", env, sessionKey: brokenKey }),
+      ).toThrow(REPAIR);
 
-    // Doctor stays available and its repair retires the record on the next start.
-    await noteSessionTranscriptHealth({
-      cfg,
-      env,
-      shouldRepair: true,
-      postSessionPluginMigrationPlanBound: true,
-      onWarnings: () => {},
+      // Doctor stays available and its repair retires the record on the next start.
+      await noteSessionTranscriptHealth({
+        cfg,
+        env,
+        shouldRepair: true,
+        postSessionPluginMigrationPlanBound: true,
+        onWarnings: () => {},
+      });
+      await expect(startup(env).run).resolves.toBeUndefined();
+      expect(listBranchSessionRowQuarantines(env)).toEqual([]);
+      expect(
+        loadSessionEntryReadOnly({ agentId: "main", env, sessionKey: brokenKey })?.sessionId,
+      ).toBe(`${brokenKey}-id`);
     });
-    await expect(startup(env).run).resolves.toBeUndefined();
-    expect(listBranchSessionRowQuarantines(env)).toEqual([]);
-    expect(
-      loadSessionEntryReadOnly({ agentId: "main", env, sessionKey: brokenKey })?.sessionId,
-    ).toBe(`${brokenKey}-id`);
-  });
-});
+  },
+);
+
+it.each(["raw-write", "lineage"] as const)(
+  "quarantines a non-main Trunk mailbox with %s damage until doctor repairs it",
+  async (kind) => {
+    await withBranchTestState({ scenario: "empty" }, async ({ env, writeConfig }) => {
+      const trunkCfg: BranchConfig = {
+        agents: { ownership: "explicit", entries: { "builder-a": {}, "builder-b": {} } },
+      };
+      await writeConfig(trunkCfg);
+      const agentId = "builder-a";
+      const sessionKey = "agent:builder-a:trunk:builder-b";
+      const healthyKey = "agent:builder-a:main";
+      const target = { cfg: trunkCfg, env, agentId, sessionKey };
+      for (const key of [sessionKey, healthyKey]) {
+        replaceSessionEntrySync(
+          { ...target, sessionKey: key },
+          { sessionId: `${key}-id`, updatedAt: 100 },
+        );
+      }
+      const { db } = openBranchAgentDatabase({ agentId, env });
+      if (kind === "raw-write") {
+        damage(db, sessionKey);
+      } else {
+        db.prepare(
+          "UPDATE session_nodes SET spawned_by = ?, parent_session_key = ? WHERE session_key = ?",
+        ).run("agent:builder-b:main", "agent:builder-b:main", sessionKey);
+        db.prepare("UPDATE session_nodes SET entry_valid = 1 WHERE session_key = ?").run(
+          sessionKey,
+        );
+        db.prepare(
+          "INSERT OR IGNORE INTO session_canonical_validation_pending (session_key) VALUES (?)",
+        ).run(sessionKey);
+      }
+      quarantineWarn.mockClear();
+      const first = startup(env, trunkCfg);
+      await expect(first.run).resolves.toBeUndefined();
+      expect(first.handoffDatabase).toHaveBeenCalled();
+      const records = listBranchSessionRowQuarantines(env);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        agentId,
+        sessionKey,
+        databasePath: resolveBranchAgentSqlitePath({ agentId, env }),
+      });
+      expect(quarantineWarn).toHaveBeenCalledWith(
+        "Quarantined invalid persisted session rows; startup continues and branch doctor --fix can repair them",
+        {
+          path: resolveBranchAgentSqlitePath({ agentId, env }),
+          rows: 1,
+          sessionKeys: [sessionKey],
+        },
+      );
+      expect(() => loadSessionEntryReadOnly(target)).toThrow(REPAIR);
+      expect(listSessionEntriesReadOnly({ agentId, env }).map((row) => row.sessionKey)).toEqual([
+        healthyKey,
+      ]);
+      expect(() =>
+        replaceSessionEntrySync(target, { sessionId: "replacement-id", updatedAt: 200 }),
+      ).toThrow(REPAIR);
+      expect(entryValid(db, sessionKey)).toEqual({ entry_valid: -1 });
+      await noteSessionTranscriptHealth({
+        cfg: trunkCfg,
+        env,
+        shouldRepair: true,
+        postSessionPluginMigrationPlanBound: true,
+        onWarnings: () => {},
+      });
+      await expect(startup(env, trunkCfg).run).resolves.toBeUndefined();
+      expect(listBranchSessionRowQuarantines(env)).toEqual([]);
+      expect(loadSessionEntryReadOnly(target)?.sessionId).toBe(`${sessionKey}-id`);
+    });
+  },
+);
 
 it('never quarantines a "{}" row, so it stays row-invalid instead of absent', async () => {
   await withBranchTestState({ scenario: "empty" }, async ({ env, writeConfig }) => {

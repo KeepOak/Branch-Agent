@@ -77,7 +77,9 @@ function rows(
   column: string,
   value: SQLInputValue,
 ): Row[] {
-  if (!tableExists(db, alias, table)) return [];
+  if (!tableExists(db, alias, table)) {
+    return [];
+  }
   return db
     .prepare(`SELECT * FROM ${quote(alias)}.${quote(table)} WHERE ${quote(column)}=?`)
     .all(value) as Row[];
@@ -104,13 +106,20 @@ function updateNode(db: DatabaseSync, store: Store, key: string, entry: SessionE
 
 function sourceRows(db: DatabaseSync, store: Store): Array<{ key: string; entry: SessionEntry }> {
   return (
-    db
-      .prepare(`SELECT session_key, entry_json FROM ${quote(store.alias)}.session_nodes`)
-      .all() as Array<{ session_key: string; entry_json: string }>
-  ).map((row) => ({
-    key: row.session_key,
-    entry: JSON.parse(row.entry_json) as SessionEntry,
-  }));
+    (
+      db
+        .prepare(
+          `SELECT session_key, entry_json, entry_valid FROM ${quote(store.alias)}.session_nodes`,
+        )
+        .all() as Array<{ session_key: string; entry_json: string; entry_valid: number }>
+    )
+      // Quarantined bytes belong to doctor, not contact archive or relocation.
+      .filter((row) => row.entry_valid !== -1 || row.entry_json === "{}")
+      .map((row) => ({
+        key: row.session_key,
+        entry: JSON.parse(row.entry_json) as SessionEntry,
+      }))
+  );
 }
 
 function hasMessages(db: DatabaseSync, store: Store, key: string, entry: SessionEntry): boolean {
@@ -121,31 +130,41 @@ function hasMessages(db: DatabaseSync, store: Store, key: string, entry: Session
     ),
   ]);
   for (const id of ids) {
-    if (!id) continue;
+    if (!id) {
+      continue;
+    }
     const events = rows(db, store.alias, "transcript_events", "session_id", id);
     // An encoded event is not evidence of emptiness. Only archive when every
     // recorded event can be inspected and none is a message.
     for (const event of events) {
-      if (typeof event.event_json !== "string") return true;
+      if (typeof event.event_json !== "string") {
+        return true;
+      }
       try {
         const parsed = JSON.parse(event.event_json) as { type?: string; role?: string };
-        if (parsed.type === "message" || parsed.role === "user" || parsed.role === "assistant")
+        if (parsed.type === "message" || parsed.role === "user" || parsed.role === "assistant") {
           return true;
+        }
       } catch {
         return true;
       }
     }
-    if (rows(db, store.alias, "session_transcript_cold_archives", "session_id", id).length)
+    if (rows(db, store.alias, "session_transcript_cold_archives", "session_id", id).length) {
       return true;
+    }
   }
   return false;
 }
 
 function copyConversation(db: DatabaseSync, from: Store, to: Store, id: string): void {
-  if (db.prepare(`SELECT 1 FROM ${quote(to.alias)}.conversations WHERE conversation_id=?`).get(id))
+  if (
+    db.prepare(`SELECT 1 FROM ${quote(to.alias)}.conversations WHERE conversation_id=?`).get(id)
+  ) {
     return;
-  for (const row of rows(db, from.alias, "conversations", "conversation_id", id))
+  }
+  for (const row of rows(db, from.alias, "conversations", "conversation_id", id)) {
     insert(db, to.alias, "conversations", row);
+  }
 }
 
 function copyMove(
@@ -157,9 +176,13 @@ function copyMove(
 ): void {
   const { source, key, targetKey, entry } = move;
   const existing = rows(db, destination.alias, "session_nodes", "session_key", targetKey);
-  if (existing.length) throw new Error(`Contact migration target already exists: ${targetKey}`);
+  if (existing.length) {
+    throw new Error(`Contact migration target already exists: ${targetKey}`);
+  }
   const sourceNode = rows(db, source.alias, "session_nodes", "session_key", key)[0];
-  if (!sourceNode) throw new Error(`Contact migration source disappeared: ${key}`);
+  if (!sourceNode) {
+    throw new Error(`Contact migration source disappeared: ${key}`);
+  }
   const windows = rows(db, source.alias, "session_windows", "session_key", key);
   const ids = new Set([entry.sessionId, ...windows.map((window) => window.session_id as string)]);
   const idMap = new Map(
@@ -205,8 +228,9 @@ function copyMove(
     ["snapshot_revision"],
   );
   for (const window of windows) {
-    if (typeof window.primary_conversation_id === "string")
+    if (typeof window.primary_conversation_id === "string") {
       copyConversation(db, source, destination, window.primary_conversation_id);
+    }
     insert(db, destination.alias, "session_windows", {
       ...window,
       session_id: idMap.get(window.session_id as string)!,
@@ -226,11 +250,14 @@ function copyMove(
     });
   }
   for (const id of ids) {
-    if (!id) continue;
+    if (!id) {
+      continue;
+    }
     for (const table of SESSION_ID_TABLES) {
       const copied = rows(db, source.alias, table, "session_id", id);
-      if (copied.length && !tableExists(db, destination.alias, table))
+      if (copied.length && !tableExists(db, destination.alias, table)) {
         throw new Error(`Missing contact migration target table: ${table}`);
+      }
       for (const row of copied) {
         if (table === "session_conversations" && typeof row.conversation_id === "string") {
           copyConversation(db, source, destination, row.conversation_id);
@@ -248,8 +275,9 @@ function copyMove(
   }
   for (const table of SESSION_KEY_TABLES) {
     const copied = rows(db, source.alias, table, "session_key", key);
-    if (copied.length && !tableExists(db, destination.alias, table))
+    if (copied.length && !tableExists(db, destination.alias, table)) {
       throw new Error(`Missing contact migration target table: ${table}`);
+    }
     for (const row of copied) {
       insert(
         db,
@@ -292,7 +320,9 @@ export function migrateContacts(params: {
   const env = params.env ?? process.env;
   const selectedDefault =
     tryResolveContactDefaultAgentId(params.cfg) ?? tryResolveDefaultAgentId(params.cfg);
-  if (!selectedDefault) return { moved: 0, archivedEmpty: 0 };
+  if (!selectedDefault) {
+    return { moved: 0, archivedEmpty: 0 };
+  }
   const defaultAgentId = normalizeAgentId(selectedDefault);
   const destinationStorePath = resolveSessionStorePathCore(params.cfg.session?.store, {
     agentId: defaultAgentId,
@@ -309,9 +339,15 @@ export function migrateContacts(params: {
     { agentId: "main", defaultAgentId, env },
   ).path;
   const paths = new Map<string, string>();
-  for (const target of targets) paths.set(target.sqlitePath, target.agentId);
-  if (fs.existsSync(legacyPath)) paths.set(legacyPath, "main");
-  if (paths.size === 0) return { moved: 0, archivedEmpty: 0 };
+  for (const target of targets) {
+    paths.set(target.sqlitePath, target.agentId);
+  }
+  if (fs.existsSync(legacyPath)) {
+    paths.set(legacyPath, "main");
+  }
+  if (paths.size === 0) {
+    return { moved: 0, archivedEmpty: 0 };
+  }
   if (params.apply) {
     openBranchAgentDatabase({ agentId: defaultAgentId, path: destinationPath, env });
     paths.set(destinationPath, defaultAgentId);
@@ -326,9 +362,12 @@ export function migrateContacts(params: {
   // Leave one slot free for SQLite's implicit databases, even with a large agent roster.
   const sources = allStores.filter((store) => store !== destination);
   const batches: Store[][] = [];
-  for (let index = 0; index < sources.length; index += 8)
+  for (let index = 0; index < sources.length; index += 8) {
     batches.push([...(destination ? [destination] : []), ...sources.slice(index, index + 8)]);
-  if (batches.length === 0 && destination) batches.push([destination]);
+  }
+  if (batches.length === 0 && destination) {
+    batches.push([destination]);
+  }
   const totals = { moved: 0, archivedEmpty: 0 };
   for (const stores of batches) {
     const attached: Store[] = [];
@@ -347,9 +386,13 @@ export function migrateContacts(params: {
         const mainIsImplicit = !listAgentIds(params.cfg).map(normalizeAgentId).includes("main");
         for (const store of stores) {
           for (const { key, entry } of sourceRows(db, store)) {
-            if (entry.movedToSessionKey) continue;
+            if (entry.movedToSessionKey) {
+              continue;
+            }
             const parsed = parseAgentSessionKey(key);
-            if (!parsed) continue;
+            if (!parsed) {
+              continue;
+            }
             const isCanonicalMain =
               key ===
               resolveCanonicalMainSessionKey({
@@ -377,7 +420,9 @@ export function migrateContacts(params: {
               [entry.label, entry.displayName, entry.subject].some(
                 (value) => value?.trim() === "Branch",
               );
-            if (!legacy && !brand) continue;
+            if (!legacy && !brand) {
+              continue;
+            }
             const natural = `agent:${defaultAgentId}:${parsed.rest}`;
             const suffix = createHash("sha256")
               .update(`${store.path}\0${key}`)
@@ -387,15 +432,19 @@ export function migrateContacts(params: {
               legacy && !existingKeys.has(natural)
                 ? natural
                 : `agent:${defaultAgentId}:legacy-${suffix}`;
-            if (existingKeys.has(targetKey))
+            if (existingKeys.has(targetKey)) {
               throw new Error(`Contact migration target collision: ${targetKey}`);
+            }
             existingKeys.add(targetKey);
             candidates.push({ source: store, key, targetKey, entry });
           }
         }
-        if (!params.apply) return { moved: candidates.length, archivedEmpty: empties.length };
-        if (candidates.length && !destination)
+        if (!params.apply) {
+          return { moved: candidates.length, archivedEmpty: empties.length };
+        }
+        if (candidates.length && !destination) {
           throw new Error("Contact migration destination is missing");
+        }
         const remap = new Map(candidates.map((move) => [move.key, move.targetKey]));
         const threadKey = resolveCanonicalMainSessionKey({
           agentId: defaultAgentId,
@@ -451,12 +500,13 @@ export function migrateContacts(params: {
             }),
           );
         }
-        for (const empty of empties)
+        for (const empty of empties) {
           updateNode(db, empty.store, empty.key, {
             ...empty.entry,
             archivedAt: now,
             archiveReason: "empty",
           });
+        }
         params.beforeCommit?.();
         return { moved: candidates.length, archivedEmpty: empties.length };
       };
@@ -470,8 +520,9 @@ export function migrateContacts(params: {
       totals.moved += result.moved;
       totals.archivedEmpty += result.archivedEmpty;
     } finally {
-      for (const store of attached.toReversed())
+      for (const store of attached.toReversed()) {
         state.db.exec(`DETACH DATABASE ${quote(store.alias)}`);
+      }
     }
   }
   return totals;
