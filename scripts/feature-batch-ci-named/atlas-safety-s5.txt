@@ -1,0 +1,11 @@
+engine:src/safety/capability-grants.behaviour.test.ts
+engine:src/safety/chat-owner-authority.behaviour.test.ts
+engine:src/safety/content-authority.behaviour.test.ts
+engine:src/safety/conversation-key-binding.behaviour.test.ts
+engine:src/safety/elevation-grants.behaviour.test.ts
+engine:src/safety/email-sender-identity.behaviour.test.ts
+engine:src/safety/engine-proof.behaviour.test.ts
+engine:src/safety/local-only-control.behaviour.test.ts
+engine:src/safety/outside-work-cap.behaviour.test.ts
+engine:src/safety/owner-binding.behaviour.test.ts
+engine:src/safety/persona-authority.behaviour.test.ts

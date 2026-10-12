@@ -82,6 +82,8 @@ export function buildDefaultToolPolicyPipelineSteps(params: {
   agentProviderPolicy?: ToolPolicyLike;
   groupPolicy?: ToolPolicyLike;
   senderPolicy?: ToolPolicyLike;
+  /** Outside-started work cap (safety/outside-work-cap.ts); always the last, narrowest layer. */
+  outsideStartedStep?: ToolPolicyPipelineStep;
   agentId?: string;
   sources?: ConfiguredToolPolicySources;
   unavailableCoreToolReason?: string;
@@ -136,6 +138,7 @@ export function buildDefaultToolPolicyPipelineSteps(params: {
       source: { kind: "session" },
       label: "tools.toolsBySender",
     },
+    ...(params.outsideStartedStep ? [{ ...params.outsideStartedStep }] : []),
   ];
   for (const step of steps) {
     step.stripPluginOnlyAllowlist = true;

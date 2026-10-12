@@ -1,10 +1,14 @@
 import { asOptionalRecord } from "@branch/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
+import { decideLocalOnlyControl } from "../config/lockdown-policy.js";
+import { getRuntimeConfigSourceSnapshot } from "../config/runtime-snapshot.js";
 import {
   isAdminOnlyNodeInvokeCommand,
   isBrowserProxyNodeInvokeCommand,
 } from "../infra/node-commands.js";
 import { getPluginRegistryForContext } from "../plugins/runtime/gateway-request-scope.js";
+import type { GatewayCaller } from "../safety/caller-identity.js";
+import { isLocalWindowCaller } from "../safety/local-only-control.js";
 import { resolveReservedGatewayMethodScope } from "../shared/gateway-method-policy.js";
 import { operatorScopeSatisfied, roleScopesAllow } from "../shared/operator-scope-compat.js";
 import {
@@ -310,4 +314,23 @@ export function authorizeOperatorScopesForRequiredScope(
 /** Returns true when a method has any core, node, dynamic, reserved, or plugin scope policy. */
 export function isGatewayMethodClassified(method: string): boolean {
   return isCoreGatewayMethodClassified(method) || resolveScopedMethod(method) !== undefined;
+}
+
+/**
+ * G-1614 gate: a local-only control method (config/lockdown-policy.ts decides which) is refused for any caller
+ * that is not the local window, even one holding operator.admin.
+ */
+export function authorizeLocalOnlyControlForMethod(
+  method: string,
+  params: unknown,
+  caller: GatewayCaller,
+  currentConfig: unknown = getRuntimeConfigSourceSnapshot(),
+): { allowed: true } | { allowed: false; control: string } {
+  const decision = decideLocalOnlyControl({
+    method,
+    params,
+    currentConfig,
+    isLocalWindow: () => isLocalWindowCaller(caller),
+  });
+  return decision.admitted ? { allowed: true } : { allowed: false, control: decision.control };
 }

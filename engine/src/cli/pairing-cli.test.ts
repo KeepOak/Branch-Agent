@@ -308,7 +308,7 @@ describe("pairing cli", () => {
 
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      await runPairing(["pairing", "approve", "telegram", "ABCDEFGH"]);
+      await runPairing(["pairing", "approve", "telegram", "ABCDEFGH", "--me"]);
 
       expect(approveChannelPairingCode).toHaveBeenCalledWith({
         channel: "telegram",
@@ -349,9 +349,42 @@ describe("pairing cli", () => {
     });
     mockApprovedPairing();
 
-    await runPairing(["pairing", "approve", "telegram", "ABCDEFGH"]);
+    await runPairing(["pairing", "approve", "telegram", "ABCDEFGH", "--me"]);
 
     expect(replaceConfigFile).not.toHaveBeenCalled();
+  });
+
+  it("G-1680: pairing alone never grants owner commands", async () => {
+    mockApprovedPairing();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await runPairing(["pairing", "approve", "telegram", "ABCDEFGH"]);
+
+      expect(approveChannelPairingCode).toHaveBeenCalled();
+      expect(readConfigFileSnapshotForWrite).not.toHaveBeenCalled();
+      expect(replaceConfigFile).not.toHaveBeenCalled();
+      expect(log.mock.calls).toEqual([
+        [`${theme.success("Approved")} ${theme.muted("telegram")} sender ${theme.command("123")}.`],
+      ]);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("G-1680: owner approving from the CLI marks self in one step", async () => {
+    mockApprovedPairing();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await runPairing(["pairing", "approve", "--me", "telegram", "ABCDEFGH"]);
+
+      const replaceCall = expectDefined<unknown[]>(
+        replaceConfigFile.mock.calls.at(0),
+        "config replace",
+      )[0] as { sourceConfig?: { commands?: { ownerAllowFrom?: string[] } } } | undefined;
+      expect(replaceCall?.sourceConfig?.commands?.ownerAllowFrom).toEqual(["telegram:123"]);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("forwards --account for approve", async () => {

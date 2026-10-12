@@ -1,5 +1,7 @@
 // Which gateway calls stay available while Lockdown is on. Reads pass; everything that sends, changes or
 // spends is refused, except stopping work, narrowing access, and the switch itself.
+// Also the local-only control rule (atlas SAFETY-0194, G-1614), whatever the Lockdown state.
+import { classifyLocalOnlyControl, type LocalOnlyControl } from "../safety/local-only-control.js";
 
 type Params = Record<string, unknown>;
 
@@ -93,14 +95,18 @@ const STOP_OR_NARROW = new Map<string, Check>([
 
 export type LockdownAdmission =
   | { admitted: true }
-  | { admitted: false; reason: "locked" | "owner-only" };
+  | { admitted: false; reason: "locked" | "owner-only" | "local-only" };
 
-/** Decides one gateway request while Lockdown is on. `isOwner` is consulted only to switch it off. */
+/**
+ * Decides one gateway request while Lockdown is on. `isOwner` and `isLocalWindow` are consulted only to switch
+ * it off: the owner, from the window on this computer (G-1614).
+ */
 export function decideLockdownAdmission(request: {
   method: string;
   params: unknown;
   scope: string | undefined;
   isOwner: () => boolean;
+  isLocalWindow: () => boolean;
 }): LockdownAdmission {
   if (request.method === "config.patch") {
     const next = readLockdownSwitchPatch(request.params);
@@ -108,7 +114,10 @@ export function decideLockdownAdmission(request: {
       return { admitted: true };
     }
     if (next === false) {
-      return request.isOwner() ? { admitted: true } : { admitted: false, reason: "owner-only" };
+      if (!request.isOwner()) {
+        return { admitted: false, reason: "owner-only" };
+      }
+      return request.isLocalWindow() ? { admitted: true } : { admitted: false, reason: "local-only" };
     }
     return { admitted: false, reason: "locked" };
   }
@@ -120,4 +129,23 @@ export function decideLockdownAdmission(request: {
   return STOP_OR_NARROW.get(request.method)?.(asParams(request.params))
     ? { admitted: true }
     : { admitted: false, reason: "locked" };
+}
+
+export type LocalOnlyAdmission = { admitted: true } | { admitted: false; control: LocalOnlyControl };
+
+/**
+ * G-1614, whatever the Lockdown state: switching Lockdown off, and creating webhooks, triggers, chat setups,
+ * sign-in codes or people, only from the local window. Switching Lockdown on is never refused here.
+ */
+export function decideLocalOnlyControl(request: {
+  method: string;
+  params: unknown;
+  currentConfig: unknown;
+  isLocalWindow: () => boolean;
+}): LocalOnlyAdmission {
+  const control = classifyLocalOnlyControl(request.method, request.params, request.currentConfig);
+  if (!control || request.isLocalWindow()) {
+    return { admitted: true };
+  }
+  return { admitted: false, control };
 }

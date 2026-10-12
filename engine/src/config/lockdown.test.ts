@@ -48,6 +48,7 @@ describe("Lockdown switch patch", () => {
           params: {},
           scope: "operator.admin",
           isOwner: () => true,
+          isLocalWindow: () => true,
         }).admitted,
       ).toBe(false);
     }

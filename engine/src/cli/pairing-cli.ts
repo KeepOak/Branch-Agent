@@ -148,6 +148,7 @@ export function registerPairingCli(program: Command) {
     .argument("<codeOrChannel>", "Pairing code (or channel when using 2 args)")
     .argument("[code]", "Pairing code (when channel is passed as the 1st arg)")
     .option("--notify", "Notify the requester on the same channel", false)
+    .option("--me", "This sender is me: name it as my owner account if none is named yet", false)
     .action(async (codeOrChannel, code, opts) => {
       const defaultChannel = channels.length === 1 ? channels[0] : "";
       const usingExplicitChannel = Boolean(opts.channel);
@@ -193,11 +194,12 @@ export function registerPairingCli(program: Command) {
       defaultRuntime.log(
         `${theme.success("Approved")} ${theme.muted(channel)} sender ${theme.command(approved.entry.meta?.senderId ?? approved.id)}.`,
       );
-      const ownerBootstrap = await bootstrapCommandOwnerFromPairing({
-        channel,
-        id: approved.id,
-      });
-      if (ownerBootstrap.status === "configured" && ownerBootstrap.ownerEntry) {
+      // Pairing grants access only. The sender becomes the owner account only when the owner says it is them
+      // in this same step (atlas SAFETY-0200, G-1680).
+      const ownerBootstrap = opts.me
+        ? await bootstrapCommandOwnerFromPairing({ channel, id: approved.id })
+        : undefined;
+      if (ownerBootstrap?.status === "configured" && ownerBootstrap.ownerEntry) {
         defaultRuntime.log(
           `${theme.success("Command owner configured")} ${theme.command(ownerBootstrap.ownerEntry)} ${theme.muted("(commands.ownerAllowFrom was empty).")}`,
         );

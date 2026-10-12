@@ -4,6 +4,8 @@ import {
   missingScopeErrorShape,
   type ErrorShape,
 } from "../../../packages/gateway-protocol/src/index.js";
+import { resolveGatewayCaller } from "../../safety/caller-identity.js";
+import { LOCAL_ONLY_CONTROL_MESSAGE } from "../../safety/local-only-control.js";
 import {
   resolveSessionMethodScope,
   type SessionOperatorScope,
@@ -12,6 +14,7 @@ import { holdsCronManagementGrant } from "../cron-creator-authority-grant.js";
 import { isInProcessSessionRun } from "../in-process-session-run.js";
 import {
   ADMIN_SCOPE,
+  authorizeLocalOnlyControlForMethod,
   authorizeOperatorScopesForMethod,
   authorizeOperatorScopesForRequiredScope,
   resolveLeastPrivilegeOperatorScopesForMethod,
@@ -60,6 +63,14 @@ export function authorizeGatewayMethod(
     if (roleError) {
       return { error: roleError };
     }
+  }
+  const localOnly = authorizeLocalOnlyControlForMethod(method, params, resolveGatewayCaller(client));
+  if (!localOnly.allowed) {
+    return {
+      error: errorShape(ErrorCodes.FORBIDDEN, LOCAL_ONLY_CONTROL_MESSAGE, {
+        details: { control: localOnly.control },
+      }),
+    };
   }
   if (method === "device.scopes.requestUpgrade" || method === "device.scopes.waitUpgrade") {
     // Scope recovery must remain reachable from a paired operator whose grant is empty;

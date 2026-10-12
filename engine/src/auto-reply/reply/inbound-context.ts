@@ -9,6 +9,7 @@ import {
   stripLegacyMediaContextFields,
   type LegacyMediaContextKey,
 } from "../../media/media-facts.js";
+import { isForwardedContent } from "../../safety/content-authority.js";
 import { createCommandTurnContext, resolveCommandTurnContext } from "../command-turn-context.js";
 import { normalizeInternalTurnContext } from "../internal-turn-source.js";
 import type {
@@ -131,6 +132,9 @@ function finalizeInboundContextImpl<T extends Record<string, unknown>>(
   normalizeInternalTurnContext(normalized);
   foldDeprecatedPromptContextFields(normalized);
   applySupplementalContext(normalized);
+  if (isForwardedContent(normalized)) {
+    normalized.CommandInterpretationSuppressed = true;
+  }
 
   normalized.Body = normalizeTextField(normalized.Body) ?? "";
   normalized.RawBody = normalizeTextField(normalized.RawBody);
