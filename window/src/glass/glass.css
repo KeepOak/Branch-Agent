@@ -30,19 +30,19 @@
 .g-av > :first-child { max-width: 100%; max-height: 100%; }
 .g-av-wait { position: absolute; z-index: 2; border-radius: 50%; background: var(--accent); }
 .g-av-status { position: absolute; right: -1px; bottom: -1px; z-index: 2; box-sizing: border-box; border: 2px solid var(--bg); border-radius: 50%; background: var(--ink-3); }
-.g-av-status[data-status="online"] { background: #34C759; }
-.g-av-status[data-status="away"] { background: #E0A13A; }
-.g-av-status[data-status="phone"] { background: #3B82F6; }
-.g-av-leaf { position: absolute; right: -2%; bottom: -2%; z-index: 3; display: grid; place-items: center; border-radius: 50%; background: var(--leaf, #4A7040); box-shadow: 0 0 0 1.5px #fff, 0 1px 3px rgba(0,0,0,.25); cursor: help; }
+.g-av-status[data-status="online"] { background: var(--ok); }
+.g-av-status[data-status="away"] { background: var(--warn); }
+.g-av-status[data-status="phone"] { background: var(--accent); }
+.g-av-leaf { position: absolute; right: -2%; bottom: -2%; z-index: 3; display: grid; place-items: center; border-radius: 50%; background: var(--leaf); box-shadow: 0 0 0 1.5px var(--on-accent), var(--gc-sh-sm); cursor: help; }
 .g-av-leaf svg { display: block; width: 72%; height: 72%; }
-.g-av-initials { display: grid; place-items: center; width: 100%; height: 100%; box-sizing: border-box; border-radius: 50%; background: var(--c); color: #fff; font-size: calc(var(--s, 40px) * .275); font-weight: 650; letter-spacing: .02em; line-height: 1; }
+.g-av-initials { display: grid; place-items: center; width: 100%; height: 100%; box-sizing: border-box; border-radius: 50%; background: var(--c); color: var(--on-accent); font-size: calc(var(--s, 40px) * .275); font-weight: 650; letter-spacing: .02em; line-height: 1; }
 .g-av-initials[data-kind="computer"] { border-radius: 28%; background: color-mix(in srgb, var(--c) 22%, var(--bg)); color: var(--c); }
 .g-av-initials[data-kind="computer"] svg { width: 56%; height: 56%; }
 .g-av-initials[data-kind="grafted"] { background: var(--fill); color: var(--ink-2); border: .5px solid var(--line-2); outline: 1.5px dashed var(--ink-3); outline-offset: 1px; font: 600 calc(var(--s, 40px) * .325)/1 var(--mono); }
 
 /* GroupCluster (HANDOFF §2 #10): 58% faces with a 2 px ring; a +N glass disc for the rest. */
 .g-cluster { position: relative; display: inline-block; flex: none; container-type: size; }
-.g-cluster-face { position: absolute; width: 58%; height: 58%; overflow: hidden; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, #8a93a0 26%, var(--raise, var(--bg))); box-shadow: 0 0 0 2px var(--ring, var(--bg)); }
+.g-cluster-face { position: absolute; width: 58%; height: 58%; overflow: hidden; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--ink-3) 26%, var(--raise, var(--bg))); box-shadow: 0 0 0 2px var(--ring, var(--bg)); }
 .g-cluster-face > * { transform: scale(1.32); transform-origin: 50% 42%; }
 .g-cluster-face[data-single] { width: 100%; height: 100%; box-shadow: none; }
 .g-cluster-face[data-single] > * { transform: none; }

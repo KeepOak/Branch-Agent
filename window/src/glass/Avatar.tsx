@@ -32,8 +32,8 @@ export const statusSize = (size: number) => round(Math.max(7, size * 0.28));
 
 export function LeafGlyph() {
   return <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M12 2.6c4.9 3.1 6.7 7.5 5 12.2-1.2 3.3-3.6 5.4-5 6.6-1.4-1.2-3.8-3.3-5-6.6C5.3 10.1 7.1 5.7 12 2.6z" fill="#fff" />
-    <path d="M12 7.5v12.6M12 12.2l-2.6-2.3M12 15.4l2.8-2.5" stroke="var(--leaf, #4A7040)" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+    <path d="M12 2.6c4.9 3.1 6.7 7.5 5 12.2-1.2 3.3-3.6 5.4-5 6.6-1.4-1.2-3.8-3.3-5-6.6C5.3 10.1 7.1 5.7 12 2.6z" style={{ fill: "var(--on-accent)" }} />
+    <path d="M12 7.5v12.6M12 12.2l-2.6-2.3M12 15.4l2.8-2.5" style={{ stroke: "var(--leaf)" }} strokeWidth="1.5" strokeLinecap="round" fill="none" />
   </svg>;
 }
 
