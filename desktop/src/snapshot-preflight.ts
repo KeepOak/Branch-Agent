@@ -3,7 +3,7 @@
 // session validation, while the serving engine keeps running untouched. A copy that would refuse gets Doctor's
 // repair on the copy; only a repair proven there is applied to the live state, in the swap's maintenance window.
 // Prior art: the engine's `branch update` candidate canary (engine/docs/cli/update/how-updates-run.md, from
-// OpenClaw's updater): "boots a test Gateway with copied configuration and verified SQLite snapshots".
+// the upstream updater): "boots a test Gateway with copied configuration and verified SQLite snapshots".
 import { spawn } from "node:child_process";
 
 /** The JSON line `branch update rehearse` prints (engine update-command-rehearse.ts). */

@@ -16,7 +16,7 @@ const ACP_META = {
 
 /**
  * Fixture host: real-shaped agent data where exactly one persisted session row is invalid. "repairable" is a
- * row Doctor rewrites (duplicate embedded ACP metadata); "unrepairable" is truncated JSON Doctor cannot rebuild.
+ * row Doctor rewrites (duplicate embedded ACP metadata); "unrepairable" uses a pre-July room field that this Doctor explicitly refuses to migrate.
  */
 async function withOneInvalidSessionRow(
   kind: "repairable" | "unrepairable",
@@ -46,7 +46,7 @@ async function withOneInvalidSessionRow(
     const raw =
       kind === "repairable"
         ? `${JSON.stringify(entry).slice(0, -1)},"acp":null,"acp":${JSON.stringify(ACP_META)}}`
-        : "{";
+        : JSON.stringify({ ...entry, room: "legacy-room" });
     const { db } = openBranchAgentDatabase({ agentId: "main", env });
     db.prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = ?").run(
       raw,
@@ -66,7 +66,7 @@ async function repairWithDoctor(cfg: object, env: NodeJS.ProcessEnv) {
     shouldRepair: true,
     postSessionPluginMigrationPlanBound: true,
     onWarnings: () => undefined,
-  }).catch(() => undefined);
+  });
 }
 
 it("refuses the candidate on one invalid session row, and passes once Doctor repaired the copy", async () => {
@@ -86,7 +86,11 @@ it("keeps refusing when Doctor cannot repair the row, so the host stays on the s
     await expect(runUpdateCanarySessionValidation({ cfg, env, log })).rejects.toThrow(
       `invalid persisted session row requires repair for ${sessionKey}`,
     );
-    await repairWithDoctor(cfg, env);
+    await expect(repairWithDoctor(cfg, env)).rejects.toThrow(/predates July 2026/);
+    const { db } = openBranchAgentDatabase({ agentId: "main", env });
+    expect(
+      db.prepare("SELECT entry_valid FROM session_nodes WHERE session_key = ?").get(sessionKey),
+    ).toEqual({ entry_valid: 0 });
     await expect(runUpdateCanarySessionValidation({ cfg, env, log })).rejects.toThrow(
       "requires repair",
     );

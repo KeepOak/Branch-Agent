@@ -1,3 +1,4 @@
+import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { defaultRuntime } from "../../runtime.js";
 import { summarizeUpdateRehearsal, updateRehearseCommand } from "./update-command-rehearse.js";
@@ -84,7 +85,7 @@ it("rehearses against the serving state dir with the requested policy and prints
   expect(validate).toHaveBeenCalledWith(
     expect.objectContaining({
       root: "/candidate",
-      stateDir: "/live/state",
+      stateDir: path.resolve("/live/state"),
       migrationPolicy: "rehearse",
     }),
   );
