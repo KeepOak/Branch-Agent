@@ -152,3 +152,49 @@ describe("preview topic row in the shell", () => {
     expect(host.querySelector('[aria-label="General"] .tpWhoT5')?.textContent).not.toBe("You:");
   });
 });
+
+
+describe("Settings sidebar rail", () => {
+  it("uses the icon rail on desktop and restores the saved full width after leaving Settings", async () => {
+    localStorage.setItem("branch.layout", JSON.stringify({ sideW: 340, rail: false, hidden: false }));
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
+    const host = await show("agent:oak:main", [], [], false);
+    const frame = host.querySelector<HTMLElement>(".frame")!;
+    expect(frame.classList.contains("rail")).toBe(true);
+    expect(frame.style.getPropertyValue("--side-w")).toBe("68px");
+    expect(host.querySelector("[data-testid=side-resizer]")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("branch.layout")!)).toEqual({ sideW: 340, rail: false, hidden: false });
+    await act(async () => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "overview" } })));
+    expect(frame.classList.contains("rail")).toBe(false);
+    expect(frame.style.getPropertyValue("--side-w")).toBe("340px");
+  });
+
+  it("allows Search to expand the list, then collapses it on the next Settings visit", async () => {
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
+    const host = await show("agent:oak:main", [], [], false);
+    const frame = host.querySelector<HTMLElement>(".frame")!;
+    await act(async () => host.querySelector<HTMLButtonElement>(".rail-search")!.click());
+    await vi.waitFor(() => expect(document.activeElement).toBe(host.querySelector("[data-testid=search] input")));
+    expect(frame.classList.contains("rail")).toBe(false);
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=list-toggle]")!.click());
+    expect(frame.classList.contains("rail")).toBe(true);
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=list-toggle]")!.click());
+    expect(frame.classList.contains("rail")).toBe(false);
+    await act(async () => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "overview" } })));
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=gear]")!.click());
+    expect(frame.classList.contains("rail")).toBe(true);
+  });
+
+  it("keeps the full slide-out list on a narrow Settings window", async () => {
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
+    const host = await show("agent:oak:main", [], []);
+    expect(host.querySelector(".frame")?.classList.contains("rail")).toBe(false);
+  });
+
+  it("keeps an explicitly hidden sidebar hidden in Settings", async () => {
+    localStorage.setItem("branch.layout", JSON.stringify({ sideW: 340, rail: false, hidden: true }));
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
+    const host = await show("agent:oak:main", [], [], false);
+    expect(host.querySelector<HTMLElement>(".frame")!.style.getPropertyValue("--side-w")).toBe("0px");
+  });
+});
