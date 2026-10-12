@@ -50,13 +50,14 @@ function schedules(): ScheduleBlock[] {
   return JSON.parse(block?.[1] ?? "[]") as ScheduleBlock[];
 }
 
-/** Tools that reach outside Branch: sends, posts, spending, signing, installs and config writes. */
+/** Tools that send, steer sessions, spend, sign, install or change configuration. */
 const OUTBOUND_TOOLS = [
   "message",
   "conversations_send",
   "conversations_turn",
   "room_post",
   "trunk_message",
+  "sessions",
   "sessions_send",
   "sessions_spawn",
   "subagents",
@@ -169,7 +170,7 @@ describe("Trunk Doctor scheduled runs", () => {
 });
 
 describe("Trunk Doctor holds every outbound action for the owner", () => {
-  it("gets no tool that sends, posts, spends, signs or installs", () => {
+  it("gets no tool that sends, steers sessions, spends, signs or installs", () => {
     const { template } = doctor();
     const removed = new Set([
       ...resolveDisabledToolsetTools(template.toolsets),

@@ -68,6 +68,25 @@ describe("trunk templates", () => {
     ]);
   });
 
+  it.each(["askFirst", "dayOne"] as const)("warns and skips malformed %s flags", (flag) => {
+    for (const value of ["true", "false", 1, null, [], {}]) {
+      const parsed = parseTrunkTemplate({
+        format: "branch.trunk-template",
+        version: 1,
+        name: "Scout",
+        persona: { agentsMd: "" },
+        skills: [],
+        toolsets: {},
+        [flag]: value,
+      });
+      if (!parsed.ok) {
+        throw new Error(parsed.error);
+      }
+      expect(parsed.warnings).toContain(`The ${flag} flag is not a boolean and was skipped.`);
+      expect(parsed.template[flag]).toBeUndefined();
+    }
+  });
+
   it("names skills this engine has not installed as plain warnings", () => {
     const parsed = parseTrunkTemplate({
       format: "branch.trunk-template",

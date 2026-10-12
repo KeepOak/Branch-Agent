@@ -193,6 +193,11 @@ function parseExtras(raw: Record<string, unknown>, warnings: string[]) {
       }
     }
   }
+  for (const flag of ["askFirst", "dayOne"] as const) {
+    if (raw[flag] !== undefined && typeof raw[flag] !== "boolean") {
+      warnings.push(`The ${flag} flag is not a boolean and was skipped.`);
+    }
+  }
   return { look, denyTools, askFirst: raw.askFirst === true, dayOne: raw.dayOne === true };
 }
 

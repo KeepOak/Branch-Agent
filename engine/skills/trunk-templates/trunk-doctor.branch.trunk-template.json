@@ -30,6 +30,7 @@
     "gateway",
     "message",
     "plugins",
+    "sessions",
     "sessions_spawn",
     "subagents"
   ],
