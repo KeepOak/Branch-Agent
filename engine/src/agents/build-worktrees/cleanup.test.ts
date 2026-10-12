@@ -44,12 +44,21 @@ function addWorktree(name: string, options: { push?: boolean; under?: string } =
   if (options.push !== false) {
     git(target, "push", "-u", "origin", name);
   }
-  return fs.realpathSync(target);
+  return fs.realpathSync.native(target);
+}
+
+/** Native realpath expands Windows 8.3 short names (RUNNER~1) the way Git and the cleanup see them. */
+function canonical(target: string): string {
+  try {
+    return fs.realpathSync.native(target);
+  } catch {
+    return path.resolve(target);
+  }
 }
 
 function listedWorktrees(): string[] {
   return parseWorktreeList(git(repo, "worktree", "list", "--porcelain")).map((w) =>
-    fs.realpathSync.native(w.path),
+    canonical(w.path),
   );
 }
 
@@ -69,7 +78,7 @@ async function run(d: BuildWorktreeCleanupDeps, roots = [root]) {
 }
 
 beforeEach(() => {
-  temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "build-worktrees-")));
+  temp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "build-worktrees-")));
   root = path.join(temp, "builds");
   fs.mkdirSync(root);
   statePath = path.join(temp, "state", "build-worktree-cleanup.json");
@@ -139,6 +148,23 @@ describe("build worktree cleanup", () => {
     const later = await run(deps({ now: () => Date.now() + 49 * HOUR }));
     expect(fs.existsSync(idle)).toBe(false);
     expect(later.report.removed).toBe(1);
+  });
+
+  it("removes a merged worktree when its parent repo lives outside the build roots", async () => {
+    const outsideRoot = path.join(temp, "parents");
+    fs.mkdirSync(outsideRoot);
+    const parent = path.join(outsideRoot, "Product");
+    fs.renameSync(repo, parent);
+    repo = parent;
+    git(repo, "worktree", "repair");
+    const merged = addWorktree("card-alone");
+
+    const { report } = await run(deps({}, ["card-alone"]));
+
+    expect(report.removed).toBe(1);
+    expect(fs.existsSync(merged)).toBe(false);
+    expect(listedWorktrees()).not.toContain(merged);
+    expect(fs.existsSync(repo)).toBe(true);
   });
 
   it("keeps a worktree a process is working in", async () => {

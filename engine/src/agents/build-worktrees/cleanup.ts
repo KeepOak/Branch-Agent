@@ -266,7 +266,13 @@ class BuildWorktreeCleanup {
     for (const [commonDir, cwd] of byCommonDir) {
       const listed = await this.git(cwd, ["worktree", "list", "--porcelain"]);
       if (listed.code === 0) {
-        repositories.push({ commonDir, cwd, worktrees: parseWorktreeList(listed.stdout) });
+        // Repository-wide commands run in the Git dir itself: the folder that led here may be a worktree
+        // this run removes, and git worktree prune from inside a removed folder would fail.
+        repositories.push({
+          commonDir,
+          cwd: commonDir,
+          worktrees: parseWorktreeList(listed.stdout),
+        });
       }
     }
     return repositories;
