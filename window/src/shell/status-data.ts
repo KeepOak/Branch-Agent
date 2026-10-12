@@ -10,7 +10,7 @@ const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v)
 const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.map(rec) : []);
 
 /** Under this share left, the ring, bars and label turn amber (§4.9.4 rule 4). */
-export const LOW_LEFT = 15;
+const LOW_LEFT = 15;
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -57,8 +57,8 @@ export function ageWords(at: number, now: number): string {
   return min < 60 ? `${min} min ago` : `${Math.floor(min / 60)} h ago`;
 }
 
-export type LimitWindow = { name: string; left: number; reset: string; low: boolean };
-export type LimitPill = "Measured" | "Not published";
+type LimitWindow = { name: string; left: number; reset: string; low: boolean };
+type LimitPill = "Measured" | "Not published";
 export type LimitRow = { id: string; name: string; provider?: string; email?: string; profileId?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean; stale?: boolean; signInNeeded?: boolean };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
 
@@ -70,7 +70,7 @@ export function usagePollResult(event: Event): Limits | null {
 }
 
 /** Usage endpoints return diagnostic text; the status bar only shows human-facing status words. */
-export function usageStatusWords(error: unknown, provider: string): string {
+function usageStatusWords(error: unknown, provider: string): string {
   const raw = str(error);
   if (!raw) return `${provider} hasn't shared a limit with Branch.`;
   if (/\b429\b|rate.?limit/i.test(raw)) return `${provider} didn't share what's left right now. Branch checks again in 5 min.`;
@@ -82,7 +82,7 @@ export function usageStatusWords(error: unknown, provider: string): string {
 export const SIGN_IN_AGAIN_WORDS = "Sign in again to show usage.";
 
 /** A reading the engine kept because the latest check was rate limited or timed out: say how old it is and why. */
-export function staleReadingWords(reason: unknown, age: string): string {
+function staleReadingWords(reason: unknown, age: string): string {
   return /\b429\b|rate.?limit/i.test(str(reason)) ? `Rate limited · last reading ${age}. Branch checks again in 5 min.` : `No answer · last reading ${age}. Branch will try again.`;
 }
 
@@ -187,28 +187,6 @@ export function ringReading(limits: Limits | null): RingReading | null {
   return measured ? readingFrom(measured) : null;
 }
 
-/** usage.cost params for this calendar month on this computer's clock. */
-export function monthParams(now = new Date()): Record<string, unknown> {
-  const day = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const offset = -now.getTimezoneOffset();
-  const abs = Math.abs(offset);
-  const utcOffset = `UTC${offset >= 0 ? "+" : "-"}${Math.floor(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, "0")}` : ""}`;
-  return {
-    startDate: day(new Date(now.getFullYear(), now.getMonth(), 1)),
-    endDate: day(now),
-    mode: "specific",
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    utcOffset,
-    agentScope: "all",
-  };
-}
-
-/** usage.cost: "$14.20", or null when the engine reports no cost. */
-export function readMonthSpend(result: unknown): string | null {
-  const totals = rec(rec(result).totals);
-  return typeof totals.totalCost === "number" ? `$${totals.totalCost.toFixed(2)}` : null;
-}
-
 /** "256K", "32K", "1.2M": the size of a model's window, in the words the spec uses for tokens. */
 export function sizeWords(tokens: number): string {
   if (tokens >= 1_000_000) {
@@ -219,7 +197,7 @@ export function sizeWords(tokens: number): string {
 
 const CHARS_PER_TOKEN = 4; // the Control UI's usage/metrics.ts charsToTokens
 
-export type RoomPart = { name: string; share: number; entries: { name: string; share: number }[] };
+type RoomPart = { name: string; share: number; entries: { name: string; share: number }[] };
 export type Room = { free: number; size: number; parts: RoomPart[] };
 
 type Weight = Record<string, unknown>;

@@ -5,7 +5,7 @@ export type PaletteRow = { id: string; group: string; label: string; hint: strin
 export const GROUPS = ["Actions", "Conversations", "Places", "Settings", "Messages", "Trunks"];
 
 /** The empty list copy (preview palRender). Hidden while a message search is still pending. */
-export const PALETTE_NONE = "Nothing matches. Try a Trunk’s name or a setting.";
+const PALETTE_NONE = "Nothing matches. Try a Trunk’s name or a setting.";
 
 /** Rows that match the text on their label or hint (substring, any case); groups keep their order. */
 export function filterPalette(rows: PaletteRow[], query: string): PaletteRow[] {

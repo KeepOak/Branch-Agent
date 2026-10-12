@@ -35,7 +35,7 @@ export function readableTitle(name: string): string {
 }
 
 /** Six hex characters that identify a key, so two threads with the same readable name can be told apart. */
-export function keyTag(key: string): string {
+function keyTag(key: string): string {
   let hash = 0x811c9dc5;
   for (const char of key) hash = Math.imul(hash ^ (char.codePointAt(0) ?? 0), 0x01000193) >>> 0;
   return hash.toString(16).padStart(8, "0").slice(0, 6);

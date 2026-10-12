@@ -23,7 +23,7 @@ async function latestBranchRelease(signal: AbortSignal): Promise<string> {
   return version;
 }
 
-export type Health = { ok: boolean; durationMs: number | null; checkedAt: number };
+type Health = { ok: boolean; durationMs: number | null; checkedAt: number };
 export type GatewayFacts = { health: Health | null; error: string | null; uptimeMs: number | null; connectedAt: number };
 
 function readHealth(result: unknown): Health {

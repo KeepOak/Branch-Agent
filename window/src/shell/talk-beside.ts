@@ -36,7 +36,7 @@ export function workContextFor(page: string, selection: string): WorkContext | u
 const LABELS: Record<string, string> = { page: "Page", title: "Title", selection: "Selected text", file: "File", workspace: "Folder" };
 
 /** What a user message says it was sent with, as label and value pairs (engine readMessageWorkContext). */
-export function contextOf(message: unknown): [string, string][] | undefined {
+function contextOf(message: unknown): [string, string][] | undefined {
   const snapshot = rec(rec(rec(rec(message).__branch).workContext).snapshot);
   if (typeof snapshot.page !== "string" || !snapshot.page) {
     return undefined;

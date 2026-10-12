@@ -8,7 +8,7 @@ export type SortBy = "created" | "activity" | "person";
 export type GroupBy = "projects" | "folder" | "person" | "trunk" | "none";
 export type HideEmpty = "filtering" | "always" | "never";
 /** "everyone", "me" (Involving me) or "p:<person id>" (one person's). */
-export type PeopleFilter = string;
+type PeopleFilter = string;
 
 export type ListPrefs = {
   status: StatusFilter;
@@ -83,7 +83,7 @@ function passesStatus(c: Conversation, status: StatusFilter, now: number, openKe
 }
 
 /** Involving me: mine, or one I'm in, unless I hid it from this list (§4.1.1 People filter). */
-export function involvesMe(c: Conversation, selfId: string | null): boolean {
+function involvesMe(c: Conversation, selfId: string | null): boolean {
   if (!selfId || c.hiddenFromMe) return false;
   return c.ownerId === selfId || (c.participantIds ?? []).includes(selfId);
 }
@@ -127,7 +127,7 @@ export function shownChildren(kids: Conversation[], all: boolean, waiting: (c: C
   return [...new Set([...kids.slice(0, 4), ...must])];
 }
 
-export function sortRows(rows: Conversation[], sortBy: SortBy, people: ListPeople = NO_PEOPLE): Conversation[] {
+function sortRows(rows: Conversation[], sortBy: SortBy, people: ListPeople = NO_PEOPLE): Conversation[] {
   if (sortBy === "person") {
     const name = (c: Conversation) => (c.ownerId ? people.names.get(c.ownerId) ?? c.ownerName ?? c.ownerId : "\uffff");
     return [...rows].sort((a, b) => name(a).localeCompare(name(b)) || b.createdAt - a.createdAt);

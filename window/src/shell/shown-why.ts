@@ -1,8 +1,5 @@
 // Why a greyed control is greyed, as the person sees it.
 
-/** The three original families of developer notes kept on controls that aren't live yet. */
-export const DEV_NOTES = ["Needs the engine", "Needs a newer Branch app", "Branch has no setting for this yet"];
-
 /** Developer wording: a note that names what the engine or the desktop app still lacks (a method, a setting, a switch). */
 const DEV_WORDING: RegExp[] = [
   /\bNeeds the engine/i,

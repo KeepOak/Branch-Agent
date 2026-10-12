@@ -7,7 +7,7 @@ import { Icon, type IconName } from "./icons";
 import type { MenuItem } from "./Menu";
 
 /** The engine's colour names, the hue each is drawn with, and the name the picker shows (the preview's where it has one). */
-export const ROW_COLOURS: { id: string; hue: string; name: string }[] = [
+const ROW_COLOURS: { id: string; hue: string; name: string }[] = [
   { id: "cyan", hue: "#2F8C86", name: "Teal" },
   { id: "blue", hue: "#1785AF", name: "Sky" },
   { id: "purple", hue: "#8A5AA8", name: "Plum" },
@@ -21,7 +21,7 @@ export const ROW_COLOURS: { id: string; hue: string; name: string }[] = [
 export const colourHue = (id: string | undefined): string | null => ROW_COLOURS.find((c) => c.id === id)?.hue ?? null;
 
 /** The engine's glyph ids (SESSION_ICON_GLYPH_IDS) in the preview's order, with the line icon and the name each shows. */
-export const ROW_GLYPHS: { id: string; icon: IconName; name: string }[] = [
+const ROW_GLYPHS: { id: string; icon: IconName; name: string }[] = [
   { id: "braces", icon: "code", name: "Code" },
   { id: "book", icon: "bookOpen", name: "Book" },
   { id: "monitor", icon: "monitor", name: "Screen" },
@@ -60,7 +60,7 @@ export function customIcon(text: string): { value: string } | { error: string } 
 type PickerProps = { row: Conversation; onSet: (patch: { icon?: string | null; color?: string | null }) => Promise<string | null> };
 
 /** The Icon and colour grids, drawn inside a menu: Colour, Icon, a custom icon field, Reset to default. */
-export function IconColourPicker({ row, onSet }: PickerProps) {
+function IconColourPicker({ row, onSet }: PickerProps) {
   const [colour, setColour] = useState(row.color ?? null);
   const [icon, setIcon] = useState(row.icon ?? null);
   const [custom, setCustom] = useState("");

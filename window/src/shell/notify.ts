@@ -2,8 +2,8 @@
 // the old, except outcomes that must not be lost (`keep`), which wait their turn. A toast stays 6 s, pauses
 // while the pointer or keyboard focus is on it, and its × closes it. It is never the only effect of a control.
 import { clearBanner } from "./Banner";
-export type ToastAction = { label: string; run: () => void };
-export type ToastTone = "plain" | "bad";
+type ToastAction = { label: string; run: () => void };
+type ToastTone = "plain" | "bad";
 export type Toast = { id: number; text: string; line?: string; action?: ToastAction; tone: ToastTone; keep: boolean };
 /** `keep`: an outcome that must not be lost waits its turn instead of being replaced (§5.11). */
 export type NotifyOptions = { line?: string; action?: ToastAction; tone?: ToastTone; keep?: boolean };
@@ -38,7 +38,7 @@ export function contactAlertTarget(contact: { threadKey: string; preview: { kind
 }
 
 /** One desktop notice per waiting item: `{who} is waiting for you`. */
-export function waitingNotice(who: string): { title: string; body: string } {
+function waitingNotice(who: string): { title: string; body: string } {
   return { title: who.trim() || "A Trunk", body: "is waiting for you" };
 }
 

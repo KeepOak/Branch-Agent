@@ -13,10 +13,10 @@ export type GroupRoom = { roomId: string; name: string; lead?: string; rule?: "l
 export type GroupContact = GatewayContact & { roomId?: string; offline?: boolean; roomPicks?: RoomPick[] };
 export type GroupDrop = { kind: "new" | "add" | "pick"; source: string; target?: string; roomId?: string; anchor: DOMRect };
 
-export const memberOf = (contact: GroupContact): GroupMember | null => contact.kind === "trunk"
+const memberOf = (contact: GroupContact): GroupMember | null => contact.kind === "trunk"
   ? { kind: "trunk", id: contact.id.slice(6) }
   : contact.kind === "outside" ? { kind: "a2a", id: contact.id.slice(4) } : null;
-export const hasMember = (room: GroupRoom, contact: GroupContact) => {
+const hasMember = (room: GroupRoom, contact: GroupContact) => {
   const member = memberOf(contact);
   return Boolean(member && room.members.some((row) => row.kind === member.kind && row.id === member.id));
 };

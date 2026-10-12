@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 export type Layout = { sideW: number; rail: boolean; hidden: boolean; focus: boolean };
 
 export const SIDE_DEFAULT = 292;
-export const SIDE_MIN = 220;
-export const SIDE_MAX = 640;
+const SIDE_MIN = 220;
+const SIDE_MAX = 640;
 const KEY = "branch.layout";
 // The thread column sits beside a full contact list on a 1280 desktop. The face
 // rail is only the default in the mid-width band; people who saved rail keep it.
