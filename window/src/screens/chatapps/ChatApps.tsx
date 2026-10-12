@@ -48,7 +48,7 @@ export function ChatApps({ engine, onSetup, onManage }: ChatAppsProps) {
           const locked = !connected && offered && !admin;
           const enabled = Boolean(app.channel && action && offered && !locked);
           const reason = locked ? `Setting up ${app.name} needs full access on this connection.` : `Setting up ${app.name} comes in a later update.`;
-          return <button key={app.id} type="button" className="r1-ca-card g-ctl" aria-disabled={!enabled} data-coming={!enabled && !locked ? reason : undefined} title={!enabled ? reason : undefined} data-need={needs.join(" ")} onClick={() => { if (enabled) action?.(app); }}>
+          return <button key={app.id} type="button" className="r1-ca-card g-chip" aria-disabled={!enabled} data-coming={!enabled && !locked ? reason : undefined} title={!enabled ? reason : undefined} data-need={needs.join(" ")} onClick={() => { if (enabled) action?.(app); }}>
             <ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{connected ? state?.running ? "Connected" : state?.word : app.estimate ?? "Coming in a later update"}</small></span><span className="r1-ca-action">{locked ? "Needs full access" : !enabled ? "Coming" : connected ? "Manage" : "Set up"}</span>
           </button>;
         })}</div></section> : null;
