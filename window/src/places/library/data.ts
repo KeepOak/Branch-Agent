@@ -5,7 +5,6 @@ import type { WindowEngine } from "../../connect/engine";
 export type Trunk = { id: string; name?: string; identity?: { name?: string; emoji?: string; theme?: string; avatar?: string; avatarUrl?: string }; createdVia?: string; workspace?: string; model?: { primary?: string } };
 export type Trunks = { agents: Trunk[]; defaultId: string; mainKey: string };
 export type FileEntry = { name: string; path: string; kind?: "file" | "directory"; size?: number; missing?: boolean; hash?: string; content?: string; encoding?: string; mimeType?: string };
-type Workspace = { path: string; parentPath?: string; entries: FileEntry[]; totalEntries: number; offset: number };
 export function trunkName(t: Trunk) { return t.identity?.name || t.name || t.id; }
 export function errorText(error: unknown) { return error instanceof Error ? error.message : String(error); }
 /** A generation belongs to one screen/selection. Late results never replace a new selection. */
