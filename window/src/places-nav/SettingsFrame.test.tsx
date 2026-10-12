@@ -26,6 +26,24 @@ async function open(page: string, onPage = vi.fn()) {
 }
 
 describe("settings frame level", () => {
+  it("keeps the Helpers working count live across Settings and detail levels", async () => {
+    const connection: WindowEngine = {
+      ...engine,
+      request: vi.fn(async (method: string) => method === "agents.list"
+        ? { agents: [{ id: "main", name: "Sapling" }] }
+        : method === "node.list" ? { nodes: [] } : {}) as WindowEngine["request"],
+    };
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    for (const running of [3, 1, 0]) {
+      await act(async () => root?.render(<SettingsFrame page="helpers" backName="Sapling" engine={connection} running={running} onPage={() => {}} onBack={() => {}} />));
+      for (const level of ["regular", "advanced", "technical"]) {
+        await act(async () => document.querySelector<HTMLButtonElement>(`[data-level="${level}"]`)!.click());
+        expect(document.querySelector('[data-testid="fleet"] small')?.textContent).toBe(`${running} working now`);
+      }
+    }
+    expect(connection.request).not.toHaveBeenCalledWith("sessions.list", expect.anything());
+  });
+
   it("keeps Settings headings and labels in sentence case", () => {
     const root = join(process.cwd(), "src/places/settings");
     const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((item) => {
@@ -256,7 +274,7 @@ describe("DA-73 settings destinations", () => {
     await open(page);
     expect(document.querySelector(".set-nav [aria-current=true]")?.textContent).toBe("Trunks");
     const sections = [...document.querySelectorAll(".set-sections .set-item")].map((item) => item.textContent);
-    expect(sections).toEqual(["Instructions & personality", "Models & accounts", "Voice", "Chat apps"]);
+    expect(sections).toEqual(["Instructions & personality", "Models & accounts", "Voice", "Chat apps", "Helpers"]);
     expect(document.querySelector(".set-sections [aria-current=true]")?.textContent).toBe("Models & accounts");
     expect(document.querySelector("[role=tablist][aria-label=\"Models & accounts\"] [aria-selected=true]")?.textContent).toBe(page === "models" ? "Default" : page === "local" ? "Local" : "Accounts");
     expect(document.querySelectorAll(".set-col h1")).toHaveLength(1);
