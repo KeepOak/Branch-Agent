@@ -116,7 +116,7 @@ function providerTitle(row: LimitRow): string {
 }
 
 /** Accounts grouped under their provider, providers in alphabetical order, accounts in the engine's order. */
-export function groupByProvider(rows: LimitRow[]): { title: string; rows: LimitRow[] }[] {
+function groupByProvider(rows: LimitRow[]): { title: string; rows: LimitRow[] }[] {
   const groups = new Map<string, { title: string; rows: LimitRow[] }>();
   for (const row of rows) {
     const title = providerTitle(row);
