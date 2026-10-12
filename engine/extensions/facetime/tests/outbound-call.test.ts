@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:extensions/facetime/tests/outbound-call.test.ts (atlas VOICE-0115). Changed for Branch: Retained newer upstream tests and Branch adapters; never regress the atlas pin.
 import { describe, expect, it } from "vitest";
 import type { FaceTimeCallStatusEvent } from "../src/call-events.js";
 import {

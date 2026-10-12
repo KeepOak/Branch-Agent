@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:extensions/google-meet/node-host.test.ts (atlas VOICE-0105). Changed for Branch: Retained newer upstream tests and Branch adapters; never regress the atlas pin.
 // Google Meet tests cover node host plugin behavior.
 import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";

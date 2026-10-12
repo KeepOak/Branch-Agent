@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:ui/src/pages/chat/talk/session.test.ts (atlas VOICE-0096). Changed for Branch: Retained newer upstream tests and Branch adapters; never regress the atlas pin.
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";

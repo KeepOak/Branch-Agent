@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:extensions/google-meet/index.test.ts (atlas VOICE-0105). Changed for Branch: Retained newer upstream assertions and Branch gateway adapters; separate virtual debounce from real database admission and assert no fallback warning.
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -18,7 +19,7 @@ import type {
   RealtimeVoiceProviderPlugin,
 } from "branch/plugin-sdk/realtime-voice";
 import { isRecord } from "branch/plugin-sdk/string-coerce-runtime";
-import { createRequireRecord, useMeetingTestState } from "branch/plugin-sdk/test-fixtures";
+import { createRequireRecord, useMeetingTestState, withinTest } from "branch/plugin-sdk/test-fixtures";
 import { createBranchTestState } from "branch/plugin-sdk/test-state";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "./index.js";
@@ -2249,25 +2250,27 @@ describe("google-meet plugin", () => {
   });
 
   it("blocks realtime speech while the Meet microphone remains muted", async () => {
-    mockLocalMeetBrowserRequest(meetBrowserState({ micMuted: true }));
-    const { methods } = setup({
-      realtime: { introMessage: "" },
-      chrome: {
-        audioBridgeCommand: ["bridge", "start"],
-        waitForInCallMs: 1,
-      },
+    await withPlatform("darwin", async () => {
+      mockLocalMeetBrowserRequest(meetBrowserState({ micMuted: true }));
+      const { methods } = setup({
+        realtime: { introMessage: "" },
+        chrome: {
+          audioBridgeCommand: ["bridge", "start"],
+          waitForInCallMs: 1,
+        },
+      });
+      const payload = requireRecord(
+        await invokeGoogleMeetGatewayMethodForTest(methods, "googlemeet.join", { url: MEET_URL }),
+        "join response",
+      );
+      const session = requireRecord(payload.session, "join session");
+      const chrome = requireRecord(session.chrome, "join chrome");
+      const health = requireRecord(chrome.health, "join health");
+      expect(payload.spoken).toBe(false);
+      expect(health.micMuted).toBe(true);
+      expect(health.speechReady).toBe(false);
+      expect(health.speechBlockedReason).toBe("meet-microphone-muted");
     });
-    const payload = requireRecord(
-      await invokeGoogleMeetGatewayMethodForTest(methods, "googlemeet.join", { url: MEET_URL }),
-      "join response",
-    );
-    const session = requireRecord(payload.session, "join session");
-    const chrome = requireRecord(session.chrome, "join chrome");
-    const health = requireRecord(chrome.health, "join health");
-    expect(payload.spoken).toBe(false);
-    expect(health.micMuted).toBe(true);
-    expect(health.speechReady).toBe(false);
-    expect(health.speechBlockedReason).toBe("meet-microphone-muted");
   });
 
   it("opens an English replacement without touching an ambiguous matching tab", async () => {
@@ -2532,47 +2535,49 @@ describe("google-meet plugin", () => {
   });
 
   it("refreshes realtime browser state in status after a delayed Meet join", async () => {
-    let browserState: Record<string, unknown> = {
-      inCall: false,
-      title: "Meet",
-      url: MEET_URL,
-    };
-    mockLocalMeetBrowserRequest(() => browserState, {
-      trackOpenedTab: true,
-      permissionResult: { ok: true },
+    await withPlatform("darwin", async () => {
+      let browserState: Record<string, unknown> = {
+        inCall: false,
+        title: "Meet",
+        url: MEET_URL,
+      };
+      mockLocalMeetBrowserRequest(() => browserState, {
+        trackOpenedTab: true,
+        permissionResult: { ok: true },
+      });
+      const { methods } = setup({
+        chrome: {
+          audioBridgeCommand: ["bridge", "start"],
+          waitForInCallMs: 1,
+        },
+        realtime: { introMessage: "" },
+      });
+      const joinPayload = requireRecord(
+        await invokeGoogleMeetGatewayMethodForTest(methods, "googlemeet.join", { url: MEET_URL }),
+        "join response payload",
+      );
+      const joinSession = requireRecord(joinPayload.session, "join session");
+      const joinChrome = requireRecord(joinSession.chrome, "join chrome session");
+      expect(requireRecord(joinChrome.health, "join chrome health").inCall).toBe(false);
+      browserState = {
+        inCall: true,
+        micMuted: false,
+        title: "Meet",
+        url: MEET_URL,
+      };
+      const statusPayload = requireRecord(
+        await invokeGoogleMeetGatewayMethodForTest(methods, "googlemeet.status", {}),
+        "status response payload",
+      );
+      const sessions = statusPayload.sessions as unknown[];
+      expect(sessions).toHaveLength(1);
+      const statusSession = requireRecord(sessions[0], "status session");
+      const statusChrome = requireRecord(statusSession.chrome, "status chrome session");
+      const statusHealth = requireRecord(statusChrome.health, "status chrome health");
+      expect(statusHealth.inCall).toBe(true);
+      expect(statusHealth.speechReady).toBe(false);
+      expect(statusHealth.speechBlockedReason).toBe("audio-bridge-unavailable");
     });
-    const { methods } = setup({
-      chrome: {
-        audioBridgeCommand: ["bridge", "start"],
-        waitForInCallMs: 1,
-      },
-      realtime: { introMessage: "" },
-    });
-    const joinPayload = requireRecord(
-      await invokeGoogleMeetGatewayMethodForTest(methods, "googlemeet.join", { url: MEET_URL }),
-      "join response payload",
-    );
-    const joinSession = requireRecord(joinPayload.session, "join session");
-    const joinChrome = requireRecord(joinSession.chrome, "join chrome session");
-    expect(requireRecord(joinChrome.health, "join chrome health").inCall).toBe(false);
-    browserState = {
-      inCall: true,
-      micMuted: false,
-      title: "Meet",
-      url: MEET_URL,
-    };
-    const statusPayload = requireRecord(
-      await invokeGoogleMeetGatewayMethodForTest(methods, "googlemeet.status", {}),
-      "status response payload",
-    );
-    const sessions = statusPayload.sessions as unknown[];
-    expect(sessions).toHaveLength(1);
-    const statusSession = requireRecord(sessions[0], "status session");
-    const statusChrome = requireRecord(statusSession.chrome, "status chrome session");
-    const statusHealth = requireRecord(statusChrome.health, "status chrome health");
-    expect(statusHealth.inCall).toBe(true);
-    expect(statusHealth.speechReady).toBe(false);
-    expect(statusHealth.speechBlockedReason).toBe("audio-bridge-unavailable");
   });
 
   it.each([
@@ -3203,10 +3208,12 @@ describe("google-meet plugin", () => {
     ).toThrow("Unsupported telephony TTS output format");
   });
 
-  it("defaults Chrome command-pair realtime to agent-driven talk-back", async () => {
+  it("defaults Chrome command-pair realtime to agent-driven talk-back", async ({ signal }) => {
     vi.useFakeTimers();
     try {
-      const sendUserMessage = vi.fn();
+      const agentCalled = createDeferred<void>();
+      const replySent = createDeferred<void>();
+      const sendUserMessage = vi.fn(() => replySent.resolve());
       const { provider, requireRequest } = createTestMeetVoiceProvider({
         defaultModel: "gpt-realtime-2",
         sendUserMessage,
@@ -3233,10 +3240,13 @@ describe("google-meet plugin", () => {
           resolveAgentWorkspaceDir: vi.fn(() => "/tmp/workspace"),
           ensureAgentWorkspace: vi.fn(async () => {}),
           session: createMockSessionRuntime(sessionStore),
-          runEmbeddedAgent: vi.fn(async (_request: unknown) => ({
-            payloads: [{ text: "The launch is still on track." }],
-            meta: {},
-          })),
+          runEmbeddedAgent: vi.fn(async (_request: unknown) => {
+            agentCalled.resolve();
+            return {
+              payloads: [{ text: "The launch is still on track." }],
+              meta: {},
+            };
+          }),
           resolveAgentTimeoutMs: vi.fn(() => 1000),
         },
       };
@@ -3272,9 +3282,10 @@ describe("google-meet plugin", () => {
       callbacks.onTranscript?.("user", "Please include launch blockers.", true);
 
       await vi.advanceTimersByTimeAsync(TEST_TALKBACK_DEBOUNCE_MS);
-      await vi.waitFor(() => {
-        expect(runtime.agent.runEmbeddedAgent).toHaveBeenCalledTimes(1);
-      });
+      // Only the transcript debounce is virtual; session admission and forking use real IO.
+      vi.useRealTimers();
+      await withinTest(agentCalled.promise, signal);
+      expect(runtime.agent.runEmbeddedAgent).toHaveBeenCalledTimes(1);
       const consultArgs = requireRecord(
         (runtime.agent.runEmbeddedAgent.mock.calls as unknown[][])[0]?.[0],
         "default talk-back agent request",
@@ -3287,6 +3298,8 @@ describe("google-meet plugin", () => {
       expect(JSON.stringify(consultArgs)).toContain(
         "Are we still on track?\\nPlease include launch blockers.",
       );
+      await withinTest(replySent.promise, signal);
+      expect(noopLogger.warn).not.toHaveBeenCalled();
       expect(sendUserMessage).toHaveBeenCalledTimes(1);
       const sentUserMessage: unknown = sendUserMessage.mock.calls[0]?.[0];
       expect(typeof sentUserMessage).toBe("string");

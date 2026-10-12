@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/talk/forced-consult-coordinator.test.ts (atlas VOICE-0090). Changed for Branch: Retained Branch rename (DECISIONS.md item 127) and existing assertions.
 import { MAX_TIMER_TIMEOUT_MS } from "@branch/normalization-core/number-coercion";
 // Forced consult coordinator tests cover forced handoff to agent consultation.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

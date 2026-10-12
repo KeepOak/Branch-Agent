@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/voice-call/src/manager.lifecycle.test.ts (atlas VOICE-0112). Changed for Branch: Retained Branch rename (DECISIONS.md item 127) and existing assertions.
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { resetPluginStateStoreForTests } from "branch/plugin-sdk/plugin-state-test-runtime";
 import { describe, expect, it } from "vitest";

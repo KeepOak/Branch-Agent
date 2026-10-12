@@ -1,3 +1,4 @@
+// From openclaw/openclaw@3e932a5937b529ae45b89c57a1b5db2078aa1407:src/talk/fast-context-runtime.test.ts (atlas VOICE-0090). Changed for Branch: Retained newer upstream tests and Branch adapters; never regress the atlas pin.
 // Fast context runtime tests cover timeout and fast context generation behavior.
 import { MAX_TIMER_TIMEOUT_MS } from "@branch/normalization-core/number-coercion";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/voice-call/src/manager.inbound-allowlist.test.ts (atlas VOICE-0112). Changed for Branch: Retained Branch rename (DECISIONS.md item 127) and existing assertions.
 // Voice Call tests cover manager.inbound allowlist plugin behavior.
 import { describe, expect, it } from "vitest";
 import { FakeProvider, createManagerHarness } from "./manager.test-harness.js";

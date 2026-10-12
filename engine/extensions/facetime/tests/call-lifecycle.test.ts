@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/facetime/tests/call-lifecycle.test.ts (atlas VOICE-0115). Changed for Branch: Retained Branch rename (DECISIONS.md item 127) and existing assertions.
 import { describe, expect, it, vi } from "vitest";
 import { FaceTimeCallInstance, FaceTimeCallRegistry } from "../src/call-lifecycle.js";
 

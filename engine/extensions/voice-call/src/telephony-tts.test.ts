@@ -1,3 +1,4 @@
+// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/voice-call/src/telephony-tts.test.ts (atlas VOICE-0113). Changed for Branch: Retained Branch rename (DECISIONS.md item 127) and existing assertions.
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 // Voice Call tests cover telephony tts plugin behavior.
 import { MAX_TIMER_TIMEOUT_MS } from "branch/plugin-sdk/number-runtime";
