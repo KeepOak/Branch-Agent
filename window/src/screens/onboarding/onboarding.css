@@ -1,7 +1,7 @@
 /* R1 onboarding (preview item 37 CSS, HANDOFF R1-07). Glass from the R1 tokens: --gk-* chips, --gf-edge/--gf-hi edges. No divider lines. */
 .r1-ob { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 16px; overflow: auto; background: color-mix(in srgb, var(--bg) 42%, transparent); backdrop-filter: blur(26px) saturate(170%); -webkit-backdrop-filter: blur(26px) saturate(170%); color: var(--ink); }
 .r1-ob-card { width: min(560px, 100%); max-height: calc(100dvh - 32px); box-sizing: border-box; padding: 26px 30px 18px; border-radius: 28px; display: grid; gap: 16px; overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto auto;
-  background: color-mix(in srgb, var(--gk-on) 92%, transparent); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi), 0 30px 80px rgba(0,0,0,.18);
+  background: color-mix(in srgb, var(--gk-on) 92%, transparent); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi), 0 30px 80px color-mix(in srgb, var(--mask-opaque) 18%, transparent);
   backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%); animation: r1-ob-in .42s cubic-bezier(.2,.9,.25,1.15); }
 @keyframes r1-ob-in { from { opacity: 0; transform: translateY(10px) scale(.98); } }
 .r1-ob-dots { display: flex; justify-content: center; gap: 6px; }
@@ -10,11 +10,11 @@
 .r1-ob-dots i.done { background: var(--ink-3); }
 /* only the body scrolls, with soft fades at its edges, so Back, Continue and Set up later stay in view (QA-1-011) */
 .r1-ob-body { display: grid; gap: 12px; min-width: 0; min-height: 0; align-content: start; overflow-y: auto; margin: -6px -30px; padding: 6px 30px; scrollbar-width: thin;
-  mask-image: linear-gradient(transparent, var(--mask-opaque) 10px, var(--mask-opaque) calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(transparent, #000 10px, #000 calc(100% - 14px), transparent); }
+  mask-image: linear-gradient(transparent, var(--mask-opaque) 10px, var(--mask-opaque) calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(transparent, var(--mask-opaque) 10px, var(--mask-opaque) calc(100% - 14px), transparent); }
 .r1-ob-body h1 { margin: 0; font-size: 28px; line-height: 1.5; font-weight: 700; letter-spacing: -.025em; text-align: center; }
 .r1-ob-lede { margin: 0; text-align: center; color: var(--ink-2); font-size: 15px; line-height: 1.45; }
 .r1-ob-hero { display: grid; place-items: center; padding-top: 4px; }
-.r1-ob-mark { width: 88px; height: 88px; border-radius: 22.5%; display: grid; place-items: center; background: #fff; box-shadow: 0 14px 36px rgba(21,58,40,.28), inset 0 0 0 .5px rgba(255,255,255,.18); }
+.r1-ob-mark { width: 88px; height: 88px; border-radius: 22.5%; display: grid; place-items: center; background: var(--raise); box-shadow: 0 14px 36px color-mix(in srgb, var(--leaf) 45%, transparent), inset 0 0 0 .5px var(--gf-edge); }
 .r1-ob-mark-colour { width: 64px; height: 64px; }
 .r1-ob-mark-ink { display: none; color: var(--ink); }
 .r1-ob-promise { margin: 4px auto 0; display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 16px; max-width: 420px; font-size: 14px; background: var(--gk-chip); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi); }
@@ -38,7 +38,7 @@
 .r1-ob-btn:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--gk-on); }
 .r1-ob-btn:disabled { opacity: .45; cursor: default; }
 .r1-ob-quiet { color: var(--ink-2); }
-.r1-ob-pri { background: var(--btn); border: 1px solid var(--btn); color: var(--on-btn); box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 4px 14px rgba(0,0,0,.14); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.r1-ob-pri { background: var(--btn); border: 1px solid var(--btn); color: var(--on-btn); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--on-accent) 22%, transparent), 0 4px 14px color-mix(in srgb, var(--mask-opaque) 14%, transparent); backdrop-filter: none; -webkit-backdrop-filter: none; }
 .r1-ob-pri:hover:not([aria-disabled="true"]) { background: var(--btn); opacity: .88; }
 .r1-ob-go { min-width: 160px; height: 44px; font-size: 15px; font-weight: 600; }
 .r1-ob-go[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
@@ -58,7 +58,7 @@
 .r1-ob-mode b { font-size: 14.5px; }
 .r1-ob-mode em { font-style: normal; font-size: 11px; font-weight: 600; margin-left: 6px; padding: 2px 7px; border-radius: 6px; background: var(--ink); color: var(--bg); vertical-align: 1px; }
 .r1-ob-mode small { color: var(--ink-3); font-size: 12.5px; line-height: 1.4; }
-.r1-ob-mode[aria-checked="true"] { background: var(--gk-on); box-shadow: inset 0 0 0 1.5px var(--ink), inset 0 1px 0 var(--gf-hi), 0 6px 18px rgba(0,0,0,.08); }
+.r1-ob-mode[aria-checked="true"] { background: var(--gk-on); box-shadow: inset 0 0 0 1.5px var(--ink), inset 0 1px 0 var(--gf-hi), 0 6px 18px color-mix(in srgb, var(--mask-opaque) 8%, transparent); }
 .r1-ob-mode[aria-checked="true"] > svg { color: var(--ink); }
 .r1-ob-mode:active:not([aria-disabled="true"]) { transform: scale(.98); }
 .r1-ob-mode:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
@@ -73,12 +73,12 @@
 .r1-ob-sheet h2 { margin: 0; font-size: 17px; font-weight: 700; }
 .r1-ob-sheet .r1-ob-hint { text-align: left; }
 .r1-ob-sheet-foot { display: flex; justify-content: flex-end; }
-:root[data-theme="dark"] .r1-ob-mark { background: color-mix(in srgb, var(--ink) 8%, var(--bg)); box-shadow: 0 14px 36px rgba(0,0,0,.4), inset 0 0 0 .5px var(--gf-edge); }
+:root[data-theme="dark"] .r1-ob-mark { background: color-mix(in srgb, var(--ink) 8%, var(--bg)); box-shadow: 0 14px 36px color-mix(in srgb, var(--mask-opaque) 40%, transparent), inset 0 0 0 .5px var(--gf-edge); }
 :root[data-theme="dark"] .r1-ob-mark-colour { display: none; }
 :root[data-theme="dark"] .r1-ob-mark-ink { display: grid; }
 :root[data-theme="dark"] .r1-ob-row small, :root[data-theme="dark"] .r1-ob small { color: var(--ink-2); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .r1-ob-mark { background: color-mix(in srgb, var(--ink) 8%, var(--bg)); box-shadow: 0 14px 36px rgba(0,0,0,.4), inset 0 0 0 .5px var(--gf-edge); }
+  :root:not([data-theme="light"]) .r1-ob-mark { background: color-mix(in srgb, var(--ink) 8%, var(--bg)); box-shadow: 0 14px 36px color-mix(in srgb, var(--mask-opaque) 40%, transparent), inset 0 0 0 .5px var(--gf-edge); }
   :root:not([data-theme="light"]) .r1-ob-mark-colour { display: none; }
   :root:not([data-theme="light"]) .r1-ob-mark-ink { display: grid; }
   :root:not([data-theme="light"]) .r1-ob small { color: var(--ink-2); }

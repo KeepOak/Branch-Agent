@@ -1,1 +1,8 @@
+window:src/connect/capabilities.test.ts
+window:src/connect/hello-features.test.ts
+window:src/glass/coming.test.tsx
+window:src/glass/tokens.test.ts
+window:src/places/settings/set1/appearance.test.tsx
+window:src/screens/frame/Frame.test.tsx
+window:src/screens/frame/R1Window.test.tsx
 window:src/screens/onboarding/Onboarding.test.tsx
