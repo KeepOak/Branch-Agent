@@ -9,6 +9,7 @@ import {
   classifyLocalOnlyControl,
   isLocalWindowCaller,
   patchAddsEntries,
+  type LocalOnlyControl,
 } from "./local-only-control.js";
 
 const caller = (kind: GatewayCaller["kind"]): GatewayCaller => ({ kind, owner: true, local: kind !== "remote" });
@@ -46,6 +47,9 @@ describe("caller identity", () => {
     ).toMatchObject({ kind: "paired-door", deviceId: "phone-1" });
     expect(resolveGatewayCaller(client({ internal: { authenticatedOperator: true } })).kind).toBe("remote");
     expect(resolveGatewayCaller(client({ internal: { syntheticClient: true } })).kind).toBe("in-process");
+    expect(
+      resolveGatewayCaller(client({ internal: { agentToolCaller: { agentId: "main", sessionKey: "agent:main:x" } } })),
+    ).toMatchObject({ kind: "agent", turnSourceLocal: false, ownerAutomationGrant: false });
     expect(resolveGatewayCaller(null).kind).toBe("in-process");
   });
 });
@@ -59,7 +63,7 @@ describe("G-1614 local-only control changes", () => {
           params: patch({ security: { lockdown: false } }),
           scope: "operator.admin",
           isOwner: () => true,
-          isLocalWindow: () => isLocalWindowCaller(caller(kind)),
+          isLocalWindow: (control?: LocalOnlyControl) => isLocalWindowCaller(caller(kind), control ?? "lockdown-off"),
         }),
       ).toEqual({ admitted: false, reason: "local-only" });
     }
@@ -82,7 +86,7 @@ describe("G-1614 local-only control changes", () => {
           params: patch({ security: { lockdown: true } }),
           scope: "operator.admin",
           isOwner: () => false,
-          isLocalWindow: () => isLocalWindowCaller(caller(kind)),
+          isLocalWindow: (control?: LocalOnlyControl) => isLocalWindowCaller(caller(kind), control ?? "lockdown-off"),
         }),
       ).toEqual({ admitted: true });
       expect(
@@ -90,7 +94,7 @@ describe("G-1614 local-only control changes", () => {
           method: "config.patch",
           params: patch({ security: { lockdown: true } }),
           currentConfig: {},
-          isLocalWindow: () => isLocalWindowCaller(caller(kind)),
+          isLocalWindow: (control?: LocalOnlyControl) => isLocalWindowCaller(caller(kind), control ?? "lockdown-off"),
         }),
       ).toEqual({ admitted: true });
     }
@@ -168,5 +172,62 @@ describe("G-1614 local-only control changes", () => {
     for (const method of ["cron.add", "config.apply", "device.pair.setupCode", "users.setRole"]) {
       expect(authorizeLocalOnlyControlForMethod(method, {}, owner, {})).toEqual({ allowed: true });
     }
+  });
+
+  const agent = (facts: { turnSourceLocal?: boolean; ownerAutomationGrant?: boolean }): GatewayCaller => ({
+    kind: "agent",
+    owner: false,
+    local: false,
+    ...facts,
+  });
+
+  it("G-1614: a Trunk run started from outside cannot add people, triggers, webhooks or chat setups", () => {
+    const outside = agent({});
+    for (const [method, params] of [
+      ["config.patch", patch({ commands: { ownerAllowFrom: ["telegram:9"] } })],
+      ["users.setRole", { profileId: "p", role: "admin" }],
+      ["cron.add", { name: "nightly" }],
+      ["config.patch", patch({ hooks: { mappings: [{ match: { path: "x" } }] } })],
+      ["config.patch", patch({ channels: { telegram: { botToken: "t" } } })],
+      ["config.apply", { raw: JSON.stringify({ tools: {} }) }],
+    ] as const) {
+      expect(authorizeLocalOnlyControlForMethod(method, params, outside, {}).allowed).toBe(false);
+    }
+  });
+
+  it("G-1614: a Trunk on the owner's window turn may create triggers, webhooks and chat setups, never people", () => {
+    const windowTurn = agent({ turnSourceLocal: true });
+    expect(authorizeLocalOnlyControlForMethod("cron.add", {}, windowTurn, {})).toEqual({ allowed: true });
+    expect(
+      authorizeLocalOnlyControlForMethod("config.patch", patch({ channels: { telegram: { botToken: "t" } } }), windowTurn, {}),
+    ).toEqual({ allowed: true });
+    expect(authorizeLocalOnlyControlForMethod("config.apply", { raw: JSON.stringify({ tools: {} }) }, windowTurn, {})).toEqual({
+      allowed: true,
+    });
+    for (const [method, params] of [
+      ["config.patch", patch({ commands: { ownerAllowFrom: ["telegram:9"] } })],
+      ["config.apply", { raw: JSON.stringify({ commands: { ownerAllowFrom: ["telegram:9"] } }) }],
+      ["users.linkChannelIdentity", { channel: "telegram", senderId: "1" }],
+      ["device.pair.setupCode", {}],
+    ] as const) {
+      expect(authorizeLocalOnlyControlForMethod(method, params, windowTurn, {}).allowed).toBe(false);
+    }
+    expect(isLocalWindowCaller(windowTurn, "lockdown-off")).toBe(false);
+  });
+
+  it("G-1614: the owner-bound cron management grant keeps letting a Trunk create a trigger, and nothing else", () => {
+    const granted = agent({ ownerAutomationGrant: true });
+    expect(authorizeLocalOnlyControlForMethod("cron.add", {}, granted, {})).toEqual({ allowed: true });
+    expect(
+      authorizeLocalOnlyControlForMethod("config.patch", patch({ hooks: { mappings: [{ match: { path: "x" } }] } }), granted, {}).allowed,
+    ).toBe(false);
+  });
+
+  it("G-1614: a whole-config replacement keeping the same owners is not a person change", () => {
+    const current = { commands: { ownerAllowFrom: ["telegram:1"] } };
+    expect(classifyLocalOnlyControl("config.apply", { raw: JSON.stringify(current) }, current)).toBe("whole-config");
+    expect(
+      classifyLocalOnlyControl("config.apply", { raw: JSON.stringify({ commands: { ownerAllowFrom: ["telegram:1", "x:2"] } }) }, current),
+    ).toBe("person");
   });
 });

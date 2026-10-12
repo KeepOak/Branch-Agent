@@ -1,10 +1,13 @@
 // Branch-original shared safety piece (atlas SAFETY-0194): who is asking, resolved once per request.
 import { GATEWAY_OWNER_PROFILE_ID } from "../../packages/gateway-protocol/src/schema/users.js";
+import { getGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
 import { resolveGatewayOperatorRoleActor } from "../gateway/operator-role-policy.js";
 import type { GatewayClient } from "../gateway/server-methods/client-types.js";
 
 /**
- * in-process: a server-built client (Trunk tools, schedules); its own tool policy applies.
+ * in-process: a server-built client with no Trunk behind it (engine work such as setup and maintenance).
+ * agent: a Trunk acting through a tool or its runtime identity. `turnSourceLocal` says the turn came from the
+ *   owner's window on this computer; `ownerAutomationGrant` is the existing owner-bound cron management grant.
  * owner-window: the owner on this computer holding the gateway's own secret (the window, the local CLI).
  * local-operator: another authenticated caller on this computer that is not the owner.
  * paired-door: a caller off this computer that signed in with a paired device key (phones, paired doors).
@@ -14,6 +17,7 @@ import type { GatewayClient } from "../gateway/server-methods/client-types.js";
  */
 export type GatewayCallerKind =
   | "in-process"
+  | "agent"
   | "owner-window"
   | "local-operator"
   | "paired-door"
@@ -25,6 +29,8 @@ export type GatewayCaller = Readonly<{
   local: boolean;
   deviceId?: string;
   profileId?: string;
+  turnSourceLocal?: boolean;
+  ownerAutomationGrant?: boolean;
 }>;
 
 /**
@@ -54,11 +60,20 @@ export function isGatewayOwnerClient(client: GatewayClient | null | undefined): 
 
 const IN_PROCESS: GatewayCaller = Object.freeze({ kind: "in-process", owner: false, local: true });
 
-function isInProcessClient(client: GatewayClient): boolean {
+function resolveAgentCaller(client: GatewayClient): GatewayCaller | undefined {
   const internal = client.internal;
-  return Boolean(
-    internal?.syntheticClient || internal?.agentToolCaller || internal?.agentRuntimeIdentity,
-  );
+  const ambient = internal?.syntheticClient ? getGatewayToolCallerIdentity() : undefined;
+  const runtime = internal?.agentRuntimeIdentity;
+  if (!internal?.agentToolCaller && !runtime && !ambient) {
+    return undefined;
+  }
+  return Object.freeze({
+    kind: "agent",
+    owner: false,
+    local: false,
+    turnSourceLocal: runtime ? runtime.turnSourceLocal === true : ambient?.turnSourceLocal === true,
+    ownerAutomationGrant: Boolean(runtime?.cronManagementGrant ?? ambient?.cronManagementGrant),
+  });
 }
 
 function resolveKind(client: GatewayClient, owner: boolean, local: boolean): GatewayCallerKind {
@@ -70,7 +85,14 @@ function resolveKind(client: GatewayClient, owner: boolean, local: boolean): Gat
 
 /** Resolve the caller from handshake-owned facts only; wire params never reach this. */
 export function resolveGatewayCaller(client: GatewayClient | null | undefined): GatewayCaller {
-  if (!client || isInProcessClient(client)) {
+  if (!client) {
+    return IN_PROCESS;
+  }
+  const agent = resolveAgentCaller(client);
+  if (agent) {
+    return agent;
+  }
+  if (client.internal?.syntheticClient) {
     return IN_PROCESS;
   }
   const local = client.internal?.isLocalClient === true;

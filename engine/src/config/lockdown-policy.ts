@@ -141,10 +141,10 @@ export function decideLocalOnlyControl(request: {
   method: string;
   params: unknown;
   currentConfig: unknown;
-  isLocalWindow: () => boolean;
+  isLocalWindow: (control: LocalOnlyControl) => boolean;
 }): LocalOnlyAdmission {
   const control = classifyLocalOnlyControl(request.method, request.params, request.currentConfig);
-  if (!control || request.isLocalWindow()) {
+  if (!control || request.isLocalWindow(control)) {
     return { admitted: true };
   }
   return { admitted: false, control };

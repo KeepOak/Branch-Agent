@@ -330,7 +330,7 @@ export function authorizeLocalOnlyControlForMethod(
     method,
     params,
     currentConfig,
-    isLocalWindow: () => isLocalWindowCaller(caller),
+    isLocalWindow: (control) => isLocalWindowCaller(caller, control),
   });
   return decision.admitted ? { allowed: true } : { allowed: false, control: decision.control };
 }

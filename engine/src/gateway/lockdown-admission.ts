@@ -33,7 +33,7 @@ export function lockdownAdmissionError(request: {
     params: request.params,
     scope: request.scope,
     isOwner: () => isLockdownOwnerClient(request.client),
-    isLocalWindow: () => isLocalWindowCaller(resolveGatewayCaller(request.client)),
+    isLocalWindow: () => isLocalWindowCaller(resolveGatewayCaller(request.client), "lockdown-off"),
   });
   if (decision.admitted) {
     return undefined;

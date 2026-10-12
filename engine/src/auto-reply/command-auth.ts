@@ -20,11 +20,7 @@ import {
 } from "../gateway/channel-operator-authority.js";
 import { normalizeAccountId } from "../routing/account-id.js";
 import { resolveChannelAccountEntry } from "../routing/account-lookup.js";
-import {
-  isNamedOwnerAccount,
-  isOwnerChatShape,
-  type ChatSender,
-} from "../safety/chat-owner-authority.js";
+import { isOwnerChatShape } from "../safety/chat-owner-authority.js";
 import type { BranchStateDatabaseOptions } from "../state/branch-state-db-contract.js";
 import type { CommandOwnerReference } from "../state/user-channel-identities.js";
 import { prepareConfiguredCommandOwnerAuthority } from "../state/user-channel-identity-operations.js";
@@ -678,42 +674,4 @@ export function isResetAuthorizedForContext(params: CommandAuthorizationParams):
     return true;
   }
   return scopes.includes("operator.admin");
-}
-
-export type ChatCommandKind = "lockdown-on" | "lockdown-off" | "control" | "reset";
-
-export type ChatCommandDecision =
-  | { kind: "run"; preserveConversation: boolean }
-  | { kind: "content" }
-  | { kind: "local-only" };
-
-/**
- * G-1681: owner commands and per-chat controls from chat need the named owner in a live direct chat.
- * Replayed (caught-up) commands are ignored. Under Lockdown or App lock only Lockdown-on runs, and Lockdown-off
- * is local only. Anyone else's command is ordinary content and the reply reveals nothing about it.
- */
-export function decideChatOwnerCommand(params: {
-  sender: ChatSender;
-  namedOwners: readonly ChatSender[];
-  chatType: "direct" | "group" | "channel";
-  replayed: boolean;
-  command: ChatCommandKind;
-  lockdownOn: boolean;
-  appLocked: boolean;
-  conversationHasActiveTasks: boolean;
-}): ChatCommandDecision {
-  const owner = isNamedOwnerAccount(params.sender, params.namedOwners);
-  if (!owner || params.chatType !== "direct" || params.replayed) {
-    return { kind: "content" };
-  }
-  if (params.command === "lockdown-off") {
-    return { kind: "local-only" };
-  }
-  if ((params.lockdownOn || params.appLocked) && params.command !== "lockdown-on") {
-    return { kind: "content" };
-  }
-  return {
-    kind: "run",
-    preserveConversation: params.command === "reset" && params.conversationHasActiveTasks,
-  };
 }

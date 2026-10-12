@@ -24,9 +24,10 @@ const LOCAL_ONLY_METHODS = new Map<string, LocalOnlyControl>([
   ["users.linkChannelIdentity", "person"],
   ["users.linkEmail", "person"],
   ["users.setRole", "person"],
-  ["config.apply", "whole-config"],
-  ["config.set", "whole-config"],
 ]);
+
+/** Whole-config writes: a replacement that adds an owner account is a person change. */
+const WHOLE_CONFIG_METHODS: ReadonlySet<string> = new Set(["config.apply", "config.set"]);
 
 /** Config subtrees where a patch that adds an entry creates a webhook, trigger, chat setup or owner account. */
 const LOCAL_ONLY_CONFIG_PATHS: ReadonlyArray<readonly [readonly string[], LocalOnlyControl]> = [
@@ -90,6 +91,15 @@ function classifyConfigPatch(params: unknown, currentConfig: unknown): LocalOnly
   return undefined;
 }
 
+function classifyWholeConfig(params: unknown, currentConfig: unknown): LocalOnlyControl {
+  const raw = asRecord(params)?.raw;
+  const parsed = typeof raw === "string" ? parseConfigJson5(raw) : undefined;
+  const owners = parsed?.ok ? pick(parsed.parsed, ["commands", "ownerAllowFrom"]) : undefined;
+  return owners !== undefined && patchAddsEntries(owners, pick(currentConfig, ["commands", "ownerAllowFrom"]))
+    ? "person"
+    : "whole-config";
+}
+
 /** Which local-only control a request makes, or undefined. Switching Lockdown on is never one. */
 export function classifyLocalOnlyControl(
   method: string,
@@ -99,6 +109,9 @@ export function classifyLocalOnlyControl(
   if (method === "config.patch") {
     return classifyConfigPatch(params, currentConfig);
   }
+  if (WHOLE_CONFIG_METHODS.has(method)) {
+    return classifyWholeConfig(params, currentConfig);
+  }
   // G-1680: approving a sender is allowed from a paired door; naming that sender as the owner is not.
   if (method === "channels.pairing.approve") {
     return asRecord(params)?.bootstrapCommandOwner === true ? "person" : undefined;
@@ -106,10 +119,34 @@ export function classifyLocalOnlyControl(
   return LOCAL_ONLY_METHODS.get(method);
 }
 
+/** Controls a Trunk may make when its turn came from the owner's window on this computer. */
+const AGENT_LOCAL_TURN_CONTROLS: ReadonlySet<LocalOnlyControl> = new Set([
+  "trigger",
+  "webhook",
+  "chat-setup",
+  "whole-config",
+]);
+
 /**
- * The local window: callers on this computer that did not sign in with a paired device key, and in-process
- * callers (they carry their own tool policy). Paired doors, phone keys and callers off this computer are not.
+ * The local window for one control. The window and other callers on this computer that did not sign in with a
+ * paired device key qualify, and so does engine work with no Trunk behind it. Paired doors, phone keys and
+ * callers off this computer never do.
+ *
+ * A Trunk (G-1614, G-1687) never adds people or sign-in codes and never switches Lockdown off; the owner does
+ * those in the window. It may create triggers, webhooks, chat setups or whole-config changes only on a turn that
+ * came from the owner's window, so the owner can still ask for them there. One exception keeps an existing
+ * feature: a trigger made under the owner-bound cron management grant (gateway/cron-creator-authority-grant.ts).
+ * Runs started from outside, such as chat apps, schedules or paired senders, get none of these.
  */
-export function isLocalWindowCaller(caller: GatewayCaller): boolean {
-  return caller.kind === "owner-window" || caller.kind === "local-operator" || caller.kind === "in-process";
+export function isLocalWindowCaller(caller: GatewayCaller, control: LocalOnlyControl): boolean {
+  if (caller.kind === "owner-window" || caller.kind === "local-operator" || caller.kind === "in-process") {
+    return true;
+  }
+  if (caller.kind !== "agent") {
+    return false;
+  }
+  if (control === "trigger" && caller.ownerAutomationGrant) {
+    return true;
+  }
+  return caller.turnSourceLocal === true && AGENT_LOCAL_TURN_CONTROLS.has(control);
 }

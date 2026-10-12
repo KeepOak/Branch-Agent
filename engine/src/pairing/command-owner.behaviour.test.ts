@@ -1,5 +1,5 @@
 // Behaviour tests for atlas SAFETY-0200 / SAFETY-0118 (G-1680): naming the owner's chat account is explicit, and
-// an owner already named (including one set by the earlier first-approval bootstrap) is never re-checked or removed.
+// an owner already named (including one set by the earlier first-approval bootstrap) is never re-checked or replaced.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const config = vi.hoisted(() => ({
@@ -15,7 +15,7 @@ vi.mock("../config/config.js", () => ({
   replaceConfigFile: config.replaceConfigFile,
 }));
 
-import { addCommandOwnerAccount, bootstrapCommandOwnerFromPairing } from "./command-owner.js";
+import { bootstrapCommandOwnerFromPairing } from "./command-owner.js";
 
 function written(): string[] | undefined {
   const call = config.replaceConfigFile.mock.calls.at(0) as unknown as
@@ -44,13 +44,4 @@ describe("G-1680 command owner naming", () => {
     expect(written()).toEqual(["telegram:123"]);
   });
 
-  it("G-1680: linking another owner account adds it and never removes an existing one", async () => {
-    config.source = { commands: { ownerAllowFrom: ["telegram:100"] } };
-    expect((await addCommandOwnerAccount({ channel: "discord", id: "999" })).status).toBe("configured");
-    expect(written()).toEqual(["telegram:100", "discord:999"]);
-    config.replaceConfigFile.mockClear();
-    config.source = { commands: { ownerAllowFrom: ["telegram:100"] } };
-    expect((await addCommandOwnerAccount({ channel: "telegram", id: "100" })).status).toBe("already-configured");
-    expect(config.replaceConfigFile).not.toHaveBeenCalled();
-  });
 });
