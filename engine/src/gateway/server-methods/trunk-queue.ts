@@ -2,6 +2,7 @@
 // agent-event subscription calls onTrunkRunLifecycle so an idle Trunk picks up the next job when its run ends.
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import { isQueueEligibleTrunk, isTrunkStartupPending } from "../../agents/trunk-queue-policy.js";
+import { isTrunkNotReadyRunFailure } from "../../agents/trunk-queue-status.js";
 import {
   addQueueItem,
   closeQueueClaimForThread,
@@ -13,7 +14,9 @@ import {
   releaseQueueItem,
   releaseStaleQueueClaims,
   touchQueueClaim,
+  trunkAvailabilityLogger,
   wakeIdleTrunks,
+  type TrunkAvailability,
   type TrunkQueueGateway,
 } from "../../agents/trunk-queue.js";
 import type { BranchConfig } from "../../config/types.branch.js";
@@ -36,13 +39,17 @@ const RUN_END_IDLE_WAIT_MS = 30_000;
 
 /**
  * Run start or end in a Trunk's thread: keep its claim fresh. A clean end completes the job and an error puts it
- * back; then an idle eligible Trunk takes the next job. A run in any other thread leaves the claim alone.
+ * back; an error from a Trunk that was not ready puts it back without a failed attempt. Then an idle eligible Trunk
+ * takes the next job. A run in any other thread leaves the claim alone.
  */
 export async function onTrunkRunLifecycle(params: {
   agentId: string;
   terminal: boolean;
   threadKey?: string;
   outcome?: "completed" | "failed";
+  /** The terminal lifecycle error and its kind, when the run failed. */
+  error?: unknown;
+  errorKind?: unknown;
   cfg?: BranchConfig;
   gateway?: TrunkQueueGateway;
 }): Promise<void> {
@@ -50,7 +57,9 @@ export async function onTrunkRunLifecycle(params: {
     touchQueueClaim(params.threadKey);
   }
   if (params.terminal && params.threadKey && params.outcome) {
-    closeQueueClaimForThread(params.threadKey, params.outcome);
+    const notReady =
+      params.outcome === "failed" && isTrunkNotReadyRunFailure(params.error, params.errorKind);
+    closeQueueClaimForThread(params.threadKey, notReady ? "not_ready" : params.outcome);
   }
   if (params.terminal && isQueueEligibleTrunk(params.agentId, params.cfg)) {
     await pickUpQueuedWork({
@@ -107,6 +116,11 @@ export function startTrunkQueueSweep(params: {
     return false;
   }
   const gateway = params.gateway ?? localGateway;
+  // Kept across passes: a Trunk that is not ready is named once in the log, and left alone until its retry time.
+  const availability: TrunkAvailability = {
+    unavailable: new Map(),
+    report: trunkAvailabilityLogger(params.log),
+  };
   let passRunning = false;
   const timer = setInterval(() => {
     if (passRunning) {
@@ -116,6 +130,8 @@ export function startTrunkQueueSweep(params: {
     void reconcileTrunkQueue({
       gateway,
       agentIds: () => readyEligibleAgentIds(gateway, params.getConfig()),
+      availability,
+      log: params.log,
     })
       .catch((error: unknown) => params.log(`trunk queue sweep failed: ${String(error)}`))
       .finally(() => {
