@@ -19,6 +19,6 @@ export function GroupCluster({ members, size, photo, label, ring = "bg" }: { mem
   const single = members.length === 1;
   return <span className="g-cluster" data-count={members.length} style={style} role={label ? "img" : undefined} aria-label={label}>
     {slots.map((slot, index) => <span key={slot} className="g-cluster-face" data-slot={slot} data-single={single || undefined}>{members[index]}</span>)}
-    {more > 0 ? <span className="g-cluster-face g-cluster-more" data-slot="br" style={{ fontSize: Math.round(size * 0.58 * 0.36) }}>+{more}</span> : null}
+    {more > 0 ? <span className="g-cluster-face g-cluster-more" data-slot="br">+{more}</span> : null}
   </span>;
 }
