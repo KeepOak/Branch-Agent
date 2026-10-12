@@ -482,6 +482,7 @@ export async function prepareGatewayLifecycle(params: {
   });
   const {
     deactivate,
+    resolveDeactivationDeadline,
     commitStateRelease,
     restoreFailedStateRelease,
     rollbackDeactivation,
@@ -685,6 +686,7 @@ export async function prepareGatewayLifecycle(params: {
     startChannel,
     stopChannel,
     deactivate,
+    resolveDeactivationDeadline,
     commitStateRelease,
     restoreFailedStateRelease,
     rollbackDeactivation,

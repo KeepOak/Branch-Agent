@@ -25,6 +25,13 @@ import { createLazyRuntimeMethodBinder, createLazyRuntimeModule } from "../share
 import { getAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 import { createGatewayControlUiRootLifecycle } from "./server-control-ui-root.js";
 import { startGatewayCoreRuntime } from "./server-core-runtime.js";
+import {
+  describeGatewayHandoffOverrun,
+  HANDOFF_RESTORE_BUDGET_MS,
+  resolveGatewayHandoffHardLimit,
+  runBeforeHandoffDeadline,
+  runBeforeHardHandoffDeadline,
+} from "./server-handoff-deadline.js";
 import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import { prepareGatewayKernelRequestRuntime } from "./server-kernel-request-runtime.js";
 import { prepareGatewayLifecycle } from "./server-lifecycle.js";
@@ -186,37 +193,21 @@ export async function prepareGatewayKernel(
         ...kernel,
         deactivate: () =>
           (deactivation ??= (async () => {
-            const deadline = Date.now() + 18_000;
-            const beforeDeadline = async <T>(work: Promise<T>): Promise<T> => {
-              const remaining = deadline - Date.now();
-              if (remaining <= 0) {
-                throw new GatewayHandoffFatalError(
-                  "Gateway handoff deactivation exceeded 18 seconds",
-                );
-              }
-              let timer: ReturnType<typeof setTimeout> | undefined;
-              try {
-                return await Promise.race([
-                  work,
-                  new Promise<never>((_, reject) => {
-                    timer = setTimeout(
-                      () =>
-                        reject(
-                          new GatewayHandoffFatalError(
-                            "Gateway handoff deactivation exceeded 18 seconds",
-                          ),
-                        ),
-                      remaining,
-                    );
-                  }),
-                ]);
-              } finally {
-                clearTimeout(timer);
-              }
-            };
-            await beforeDeadline(sdkResourceHost.run(() => kernel.deactivate(deadline)));
+            const deadline = kernel.resolveDeactivationDeadline();
+            // The step-down guards each of its own steps against this deadline and
+            // aborts non-fatally on an overrun that settles. This outer guard only
+            // catches a step-down stuck outside those guards.
+            const hardLimit = resolveGatewayHandoffHardLimit(deadline);
+            await runBeforeHardHandoffDeadline(
+              sdkResourceHost.run(() => kernel.deactivate(deadline)),
+              hardLimit,
+              describeGatewayHandoffOverrun(deadline),
+            );
             try {
-              await beforeDeadline(Promise.resolve(stateLease?.release?.()));
+              // A lease release that completes late has still transferred ownership.
+              await runBeforeHandoffDeadline(Promise.resolve(stateLease?.release?.()), deadline, {
+                lateSuccess: "accept",
+              });
             } catch (error) {
               if (error instanceof GatewayHandoffFatalError) {
                 throw error;
@@ -229,7 +220,11 @@ export async function prepareGatewayKernel(
                     await import("../state/branch-state-db.paths.js")
                   ).resolveBranchStateSqlitePath(),
                 );
-                await beforeDeadline(sdkResourceHost.run(() => kernel.restoreFailedStateRelease()));
+                await runBeforeHardHandoffDeadline(
+                  sdkResourceHost.run(() => kernel.restoreFailedStateRelease()),
+                  Date.now() + HANDOFF_RESTORE_BUDGET_MS,
+                  "Gateway handoff restoration did not finish in time",
+                );
               } catch (restoreError) {
                 if (restoreError instanceof GatewayHandoffFatalError) {
                   throw restoreError;

@@ -2,6 +2,7 @@ import { resolveEmbeddedSessionLane } from "../agents/embedded-agent-runner/lane
 import { beginRetryWaitHandoff } from "../agents/embedded-agent-runner/retry-handoff.js";
 import { listLoadedChannelPluginsForRegistry } from "../channels/plugins/registry-loaded.js";
 import { getRuntimeConfig } from "../config/io.js";
+import { WRITER_QUEUES } from "../config/sessions/store-writer-state.js";
 import { startCronMaintenance } from "../cron/maintenance.js";
 import {
   beginCronReceiptAuthorityClose,
@@ -19,33 +20,27 @@ import {
   isSessionLaneBusy,
   listBusySessionLanes,
 } from "../process/session-handoff-lease-holder.js";
+import { SQLITE_SESSION_WRITER_QUEUES } from "../state/branch-agent-write-admission.js";
 import type { GatewayCronState } from "./server-cron.js";
+import {
+  type GatewayHandoffDeadline,
+  HANDOFF_RESTORE_BUDGET_MS,
+  resolveGatewayHandoffDeadline,
+  runBeforeHandoffDeadline as beforeHandoffDeadline,
+  runBeforeHardHandoffDeadline,
+} from "./server-handoff-deadline.js";
 import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import type { prepareGatewayKernelState } from "./server-runtime-state-prepare.js";
 import type { GatewayShutdownRuntime } from "./server-shutdown.runtime.js";
 
-async function beforeHandoffDeadline<T>(work: Promise<T>, deadline: number): Promise<T> {
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) {
-    throw new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds");
+function countQueuedSessionWrites(): number {
+  let queued = 0;
+  for (const queues of [WRITER_QUEUES, SQLITE_SESSION_WRITER_QUEUES]) {
+    for (const queue of queues.values()) {
+      queued += queue.pending.length;
+    }
   }
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () =>
-            reject(
-              new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds"),
-            ),
-          remaining,
-        );
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
+  return queued;
 }
 
 /** Owns deactivation, retained session leases, and quiet-run retirement as one transaction. */
@@ -67,7 +62,13 @@ export function createGatewayRunHandoff(params: {
     startCronMaintenance(runtime.scheduler);
     await startChannels();
   };
-  const deactivate = (deadline = Date.now() + 18_000) =>
+  /** Sizes the step-down budget from the work this engine must park right now. */
+  const resolveDeactivationDeadline = () =>
+    resolveGatewayHandoffDeadline({
+      activeRuns: Math.max(chatAbortControllers.size, getActiveGatewayRootWorkCount()),
+      queuedWrites: countQueuedSessionWrites(),
+    });
+  const deactivate = (deadline: GatewayHandoffDeadline = resolveDeactivationDeadline()) =>
     (deactivation ??= (async () => {
       // Close new roots, while admitted runs retain their dispatch context and
       // may start required follow-up work through their existing root custody.
@@ -137,8 +138,10 @@ export function createGatewayRunHandoff(params: {
       retryWaitHandoff?.stop();
       retryWaitHandoff = undefined;
       if (error instanceof GatewayHandoffFatalError) {
-        // Timed-out work may still settle. Keep admission and leases fenced;
-        // the run loop must stop this owner instead of racing a rollback.
+        // A step that overran and never settled may still settle. Keep admission
+        // and leases fenced; the run loop must stop this owner instead of racing
+        // a rollback. A step that overran but settled is a GatewayHandoffDeadlineError
+        // and takes the restore path below, so this engine keeps serving.
         throw error;
       }
       handoffLeases?.releaseAll();
@@ -152,7 +155,12 @@ export function createGatewayRunHandoff(params: {
       try {
         // This engine still owns state on a failed handoff. Restore every
         // producer before reopening admission to new work.
-        await beforeHandoffDeadline(restoreHandoffProducers(), deadline);
+        // An overrun step already used the step-down budget: restoring gets its own.
+        await runBeforeHardHandoffDeadline(
+          restoreHandoffProducers(),
+          Math.max(deadline.deadline, Date.now() + HANDOFF_RESTORE_BUDGET_MS),
+          "Gateway handoff restoration did not finish in time",
+        );
         restored = true;
       } catch (restoreError) {
         if (restoreError instanceof GatewayHandoffFatalError) {
@@ -218,6 +226,7 @@ export function createGatewayRunHandoff(params: {
   };
   return {
     deactivate,
+    resolveDeactivationDeadline,
     commitStateRelease: () => {
       // Preparing producers is reversible while this kernel still owns state.
       // Retire quiet runs only after the state lease has actually transferred.

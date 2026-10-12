@@ -20,6 +20,7 @@ import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import { getFreePort } from "../test-utils/ports.js";
 import { prepareGatewayKernel } from "./server-kernel.js";
 import * as lazyCron from "./server-cron-lazy.js";
+import { HANDOFF_OVERRUN_SETTLE_MS } from "./server-handoff-deadline.js";
 import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import * as runShutdown from "./server-run-shutdown.js";
 import * as stateRuntime from "./server-runtime-state-prepare.js";
@@ -219,7 +220,45 @@ describe("Gateway startup phases", () => {
     });
   });
 
-  it("fails a stuck receipt drain within the whole deactivation deadline", async () => {
+  it("aborts a slow receipt drain that overruns the deadline and keeps serving", async () => {
+    await withPhaseState("gateway-phase-deactivate-overrun", async (port) => {
+      const release = vi.fn(async () => {});
+      const server = await startGatewayServerCore(port, {
+        ...options("gateway-phase-deactivate-overrun-token"),
+        gatewayStateOwner: { assertDatabaseAccess: () => {}, release },
+      });
+      try {
+        await server.startupSettled;
+        vi.useFakeTimers();
+        // A loaded host: the drain needs 25 s, past the 18 s budget, but it finishes.
+        vi.spyOn(cronAuthority, "drainCronReceiptAuthority").mockImplementationOnce(
+          () => new Promise<void>((resolve) => setTimeout(resolve, 25_000)),
+        );
+        const deactivation = server.deactivate().then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        await vi.advanceTimersByTimeAsync(25_000);
+        const error = await deactivation;
+        expect(error).toBeInstanceOf(Error);
+        expect(error).not.toBeInstanceOf(GatewayHandoffFatalError);
+        expect(String(error)).toContain("Gateway handoff deactivation exceeded 18 seconds");
+        expect(String(error)).toContain("this engine keeps serving");
+        // The state never moved and new work is admitted again: the old engine keeps serving.
+        expect(release).not.toHaveBeenCalled();
+        expect(isGatewayWorkAdmissionClosed()).toBe(false);
+        vi.useRealTimers();
+        // The next update attempt can still hand off.
+        await expect(server.deactivate()).resolves.toBeUndefined();
+        expect(release).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+        await server.close({ reason: "deactivation overrun test cleanup" });
+      }
+    });
+  });
+
+  it("fails a stuck receipt drain once the overrun settle window also passes", async () => {
     await withPhaseState("gateway-phase-deactivate-deadline", async (port) => {
       const release = vi.fn(async () => {});
       const server = await startGatewayServerCore(port, {
@@ -236,8 +275,9 @@ describe("Gateway startup phases", () => {
         const rejection = expect(deactivation).rejects.toThrow(
           "Gateway handoff deactivation exceeded 18 seconds",
         );
-        await vi.advanceTimersByTimeAsync(18_000);
+        await vi.advanceTimersByTimeAsync(18_000 + HANDOFF_OVERRUN_SETTLE_MS);
         await rejection;
+        await expect(deactivation).rejects.toBeInstanceOf(GatewayHandoffFatalError);
         expect(release).not.toHaveBeenCalled();
         expect(isGatewayWorkAdmissionClosed()).toBe(true);
       } finally {
@@ -260,7 +300,7 @@ describe("Gateway startup phases", () => {
         vi.useFakeTimers();
         const deactivation = server.deactivate();
         const rejection = expect(deactivation).rejects.toThrow(
-          "Gateway handoff deactivation exceeded 18 seconds",
+          "Gateway handoff restoration did not finish in time",
         );
         await vi.advanceTimersByTimeAsync(18_000);
         await rejection;
