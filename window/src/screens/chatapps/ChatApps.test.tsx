@@ -45,3 +45,10 @@ it("uses live account health and opens Manage for a configured app", async () =>
   await act(async () => card.click());
   expect(manage).toHaveBeenCalledWith(expect.objectContaining({ id: "telegram" }));
 });
+
+it("keeps code approval Coming because its engine protocol requires a local-state owner", async () => {
+  const {host,request} = await render();
+  expect(host.querySelector<HTMLInputElement>('input[aria-label="Pairing code"]')!.disabled).toBe(true);
+  expect(host.textContent).toContain("Approval by code comes in a later update.");
+  expect(request.mock.calls.some(([method]) => method === "channels.pairing.approve")).toBe(false);
+});
