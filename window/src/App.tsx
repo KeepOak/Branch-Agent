@@ -4,6 +4,7 @@ import { SaplingSession } from "./connect/session";
 import { installUiEventLog } from "./diagnostics/ui-log";
 import { loadRoute } from "./places-nav/routes";
 import { WindowShell } from "./shell/WindowShell";
+import { classicWindow, R1Window } from "./screens/frame/R1Window";
 import { PreConnect, type PreConnectState } from "./setup/PreConnect";
 import { LOCAL_ADDRESS, readTarget, saveTarget } from "./setup/pre-connect-state";
 import { Connecting } from "./setup/Connecting";
@@ -117,7 +118,7 @@ function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
   }, [s.status.phase, activeUrl]);
   // Once connected, the frame stays up through reconnects; the status bar says "Offline" or "Connecting" (§3.5).
   if (everConnected || s.status.phase === "connected") {
-    return <WindowShell session={session} url={activeUrl} />;
+    return classicWindow() ? <WindowShell session={session} url={activeUrl} /> : <R1Window session={session} />;
   }
   const status = s.status;
   if (status.phase === "pairing" || status.phase === "failed") {
