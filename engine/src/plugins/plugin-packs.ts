@@ -268,7 +268,10 @@ export function parsePack(text: string, source = "<pack>"): PluginPack {
     throw new PackError(`Pack ${source} must declare a non-empty 'plugins' list.`);
   }
   const plugins = pluginsRaw.map((item, index) => parsePackEntry(item, entryLabel(item, index)));
-  const textField = (value: unknown) => (value ? String(value) : "");
+  const textField = (value: unknown) =>
+    typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+      ? String(value || "")
+      : "";
   return {
     name: name.trim(),
     description: textField(meta.description),

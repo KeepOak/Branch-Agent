@@ -61,11 +61,11 @@ describe("safeNumeric", () => {
     const cases: Array<[unknown, number, "int" | "float", number | undefined, number]> = [
       [10, 5, "int", undefined, 10],
       ["20", 5, "int", undefined, 20],
-      ["3.5", 1.0, "float", undefined, 3.5],
+      ["3.5", 1, "float", undefined, 3.5],
       [null, 7, "int", undefined, 7],
       ["abc", 42, "int", undefined, 42],
-      [Number.POSITIVE_INFINITY, 3.0, "float", undefined, 3.0],
-      [Number.NaN, 4.0, "float", undefined, 4.0],
+      [Number.POSITIVE_INFINITY, 3, "float", undefined, 3],
+      [Number.NaN, 4, "float", undefined, 4],
       [-5, 10, "int", 1, 1],
       [0, 10, "int", 0, 0],
     ];
@@ -91,7 +91,7 @@ describe("McpSamplingHandler init", () => {
       returning(makeLlmResponse()),
     );
     expect(handler.maxRpm).toBe(20);
-    expect(handler.timeout).toBe(60.0);
+    expect(handler.timeout).toBe(60);
     expect(handler.maxTokensCap).toBe(2048);
     expect(handler.maxToolRounds).toBe(3);
     expect(handler.modelOverride).toBe("gpt-4o");
@@ -253,7 +253,9 @@ describe("sampling errors", () => {
 
   it("test_timeout_error", async () => {
     const slowCall: SamplingLlmCall = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 150);
+      });
       return makeLlmResponse();
     };
     const handler = new McpSamplingHandler("to", {}, slowCall);
