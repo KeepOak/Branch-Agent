@@ -51,6 +51,10 @@ vi.mock("./model-catalog.runtime.js", () => ({
   loadProviderScopedThinkingCatalog: runtime.thinkingCatalog,
 }));
 vi.mock("../status/status-text.js", () => ({ buildStatusText: async () => "Session status" }));
+// A sandboxed Trunk has no Full access, so its change asks first; the person allows it here.
+vi.mock("../gateway/server-methods/model-choice-approval.js", () => ({
+  requestModelChoiceApproval: async () => "allow",
+}));
 
 const catalog: ModelCatalogEntry[] = [
   { provider: "fixture", id: "default", name: "Default", reasoning: false },
@@ -86,6 +90,11 @@ function modelConfig(
   >,
 ): BranchConfig {
   return {
+    // These cases cover status model selection itself, so the Trunk may switch with Full access.
+    tools: {
+      exec: { security: "full", ask: "off", host: "gateway" },
+      modelChoice: { enabled: true },
+    },
     agents: {
       entries: { main: {}, support: {} },
       defaults: {

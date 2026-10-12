@@ -118,3 +118,13 @@ export function checkCombo(combo: string, id: ActionId, actions: KeyAction[], ke
 export function shown(combo: string, mac: boolean): string[] {
   return combo.split(" ").map((k) => (mac && k === "Ctrl" ? "⌘" : mac && k === "Alt" ? "⌥" : k));
 }
+
+/** Keys inside a sentence, matching the shortcuts dialog: "⌘K" or "⌘⇧K" on a Mac, "Ctrl K" elsewhere. */
+export function shownInline(combo: string, mac: boolean): string {
+  return mac ? shown(combo, true).map((k) => (k === "Shift" ? "⇧" : k)).join("") : combo;
+}
+
+/** True on a Mac (and iPhone or iPad), where Ctrl reads ⌘. */
+export function onMac(): boolean {
+  return typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+}

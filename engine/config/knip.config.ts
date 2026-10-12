@@ -15,6 +15,20 @@ function bundledPluginFile(pluginId: string, relativePath: string, suffix = ""):
   return `${BUNDLED_PLUGIN_ROOT_DIR}/${pluginId}/${relativePath}${suffix}`;
 }
 
+// Feature-slice CI runs these node:test files by exact path from the monorepo's
+// scripts/feature-slice-ci-targets.mjs; no import edge reaches them.
+function featureSliceNodeTests(listPath = "../scripts/feature-slice-ci-targets.mjs"): string[] {
+  if (!fs.existsSync(listPath)) {
+    return [];
+  }
+  const source = fs.readFileSync(listPath, "utf8");
+  return [
+    ...new Set(
+      [...source.matchAll(/'((?:src|extensions)\/[^']+\.node-test\.ts)'/gu)].map((m) => m[1]!),
+    ),
+  ];
+}
+
 // Package scripts, workflows, Docker scenarios, and documented maintainer commands invoke these
 // files by path. They are executable roots rather than importable library modules.
 const repositoryScriptEntries = [
@@ -711,6 +725,7 @@ const config = {
     "src/worker/repro-worker-connection-closing-window.ts",
     "src/shared/text/assistant-visible-text.ts",
     bundledPluginFile("telegram", "src/draft-chunking.ts"),
+    ...featureSliceNodeTests(),
   ],
   // Knip's `ignoreFiles` only suppresses unused-file findings. Test helpers
   // belong in `ignore` so they do not inflate unused-export/type findings.
@@ -784,16 +799,7 @@ const config = {
         ...rootBundledPluginRuntimeDependencies,
       ],
       // Platform tools, installed CLIs, and shell builtins used by scripts and boundary tests.
-      ignoreBinaries: [
-        "lsattr",
-        "mint",
-        "ngrok",
-        "open",
-        "branch",
-        "sleep",
-        "swiftlint",
-        "xcrun",
-      ],
+      ignoreBinaries: ["lsattr", "mint", "ngrok", "open", "branch", "sleep", "swiftlint", "xcrun"],
       // The stylelint config lives under config/, not a root default path.
       stylelint: { config: ["config/stylelint.config.mjs"] },
       project: [

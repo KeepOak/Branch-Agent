@@ -21,6 +21,7 @@ import {
 // listedGateFiles() is called after both modules load, so this cycle stays safe.
 import { listedGateFiles } from './check-gate-files-fresh.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
+import { checkSelfCheck, formatSelfCheckSummary } from './check-self-check.mjs';
 import {
   DEFAULT_WAIT_BUDGET_SECONDS,
   GH_API_MAX_BUFFER,
@@ -34,11 +35,15 @@ import {
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const TRUSTED_JOB = 'merge-gate-trusted';
+// The recheck workflow's own check run is not content: a running or failed recheck must not hold the gates red.
+export const RECHECK_CHECK = 'recheck';
+export const RECHECK_WORKFLOW_PATH = '.github/workflows/merge-gate-recheck.yml';
 export const TRUSTED_WORKFLOW_PATH = '.github/workflows/merge-gate-trusted.yml';
 export const HANDOFF_WORKFLOW_PATH = '.github/workflows/engine-handoff-checks.yml';
 export const TRUSTED_CHECKOUT_REF = '${{ github.event.repository.default_branch }}';
 export const REQUIRED_JOBS = ['merge-gate', 'Analyze (actions)'];
 export const PASS_CONCLUSIONS = new Set(['success', 'skipped', 'neutral']);
+export const PATH_FILTER_NO_CHECK_RUN = 'path filter matched, no check run';
 export const COMMENT_JOB_NAME = 'comment';
 export const VISUAL_TOUR_WORKFLOW_PATH = '.github/workflows/visual-tour.yml';
 export const TIMEOUT_RERUN_LINE = 're-run merge-gate, do not merge main';
@@ -53,12 +58,19 @@ export const GATE_SCRIPTS = [
   'scripts/check-commit-emails.test.mjs',
   'scripts/check-ui-proof.mjs',
   'scripts/check-ui-proof.test.mjs',
+  'scripts/check-self-check.mjs',
+  'scripts/check-self-check.test.mjs',
   'scripts/feature-batch-ci-targets.mjs',
+  'scripts/feature-batch-ci-matrix.mjs',
+  'scripts/feature-batch-ci.mjs',
   'scripts/feature-slice-ci-targets.mjs',
   'scripts/priority-capabilities-ci-targets.mjs',
   'scripts/merge-gate-rate-limit.mjs',
   'scripts/merge-gate-rate-limit.test.mjs',
+  'scripts/merge-gate-recheck.mjs',
 ];
+// Workflows whose jobs must actually run on a PR they apply to. A skipped job is missing here, not a pass.
+export const MUST_RUN_WORKFLOWS = new Set(['.github/workflows/feature-batch-checks.yml']);
 export const PACKAGE_JSON_FILES = [
   'package.json',
   'engine/package.json',
@@ -106,19 +118,64 @@ function suiteNumber(run) {
   return Number(run?.check_suite?.id);
 }
 
+function isCompletedPass(run) {
+  return run.status === 'completed' && PASS_CONCLUSIONS.has(run.conclusion);
+}
+
+function suiteCompletedPass(runs) {
+  return runs.length > 0 && runs.every(isCompletedPass);
+}
+
+function suiteOnlyCancelledNonPasses(runs) {
+  return runs.every((run) =>
+    run.status !== 'completed'
+    || PASS_CONCLUSIONS.has(run.conclusion)
+    || run.conclusion === 'cancelled');
+}
+
 function newestSuiteSupersedes(runs) {
-  // A still-running suite waits. Only success replaces an earlier non-pass.
+  // A still-running suite waits. Only success replaces an earlier hard
+  // non-pass (failure, timed_out, action_required, startup_failure).
   return runs.every((run) => run.status !== 'completed' || run.conclusion === 'success');
 }
 
 function keepNewestSuite(runs) {
+  const bySuite = new Map();
+  for (const run of runs) {
+    const suite = suiteNumber(run);
+    const group = bySuite.get(suite);
+    if (group) group.push(run);
+    else bySuite.set(suite, [run]);
+  }
   let newestSuite = suiteNumber(runs[0]);
   for (const run of runs) {
     const suite = suiteNumber(run);
     if (suite > newestSuite) newestSuite = suite;
   }
-  const inNewest = runs.filter((run) => suiteNumber(run) === newestSuite);
-  return newestSuiteSupersedes(inNewest) ? inNewest : runs;
+  const inNewest = bySuite.get(newestSuite) ?? [];
+  if (newestSuiteSupersedes(inNewest)) return inNewest;
+
+  // A completed success/skipped/neutral suite supersedes cancelled-only
+  // suites of the same identity. Concurrency can cancel a later-numbered
+  // duplicate, so a cancelled suite with a higher ID does not hide a pass.
+  // A skipped or neutral suite must not hide failure, timed_out,
+  // action_required, or startup_failure.
+  let passSuiteId = Number.NEGATIVE_INFINITY;
+  let passSuite = null;
+  for (const [suite, suiteRuns] of bySuite) {
+    if (suiteCompletedPass(suiteRuns) && suite > passSuiteId) {
+      passSuiteId = suite;
+      passSuite = suiteRuns;
+    }
+  }
+  if (passSuite) {
+    const others = [];
+    for (const [suite, suiteRuns] of bySuite) {
+      if (suite !== passSuiteId) others.push(...suiteRuns);
+    }
+    if (suiteOnlyCancelledNonPasses(others)) return passSuite;
+  }
+  return runs;
 }
 
 export function newestChecksByIdentity(checkRuns, workflowsByCheckId = {}, { sha, prNumber, baseRef } = {}) {
@@ -161,6 +218,9 @@ export function isSkippableVisualTourComment(run, workflow) {
 export function evaluateOtherChecks(checkRuns, workflowsByCheckId = {}, ignoreName = TRUSTED_JOB, context = {}) {
   const others = newestChecksByIdentity(checkRuns, workflowsByCheckId, context).filter((run) => {
     if (run.name === ignoreName) return false;
+    // Only the recheck workflow's own `recheck` job is skipped, and only when attribution proves its path.
+    if (run.name === RECHECK_CHECK
+      && lookupWorkflow(workflowsByCheckId, run.id)?.path === RECHECK_WORKFLOW_PATH) return false;
     return !isSkippableVisualTourComment(run, lookupWorkflow(workflowsByCheckId, run.id));
   });
   const pending = others.filter((run) => run.status !== 'completed');
@@ -188,6 +248,7 @@ export function findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
   return checkRuns.filter((run) => run.name === jobName).filter((run) => {
     const urlRunId = actionsRunIdFromCheckRun(run);
     const workflow = lookupWorkflow(workflowsByCheckId, run.id);
+    if (isLookupFailure(workflow)) return false;
     if (currentId != null && Number.isFinite(currentId) && urlRunId === currentId) {
       // API outages are pending, never self-attributed or accepted as genuine.
       if (!workflow) return false;
@@ -352,7 +413,11 @@ export function missingCoreWorkflows({
       continue;
     }
     const runs = checkRuns.filter((run) => lookupWorkflow(workflowsByCheckId, run.id)?.path === workflow.path);
-    if (!runs.length) missing.push(`${workflow.path} (path filter matched, no check run)`);
+    if (!runs.length) missing.push(`${workflow.path} (${PATH_FILTER_NO_CHECK_RUN})`);
+    else if (MUST_RUN_WORKFLOWS.has(workflow.path)) {
+      const notRun = runs.filter((run) => run.conclusion === 'skipped' || run.conclusion === 'neutral');
+      if (notRun.length) missing.push(`${workflow.path} (${notRun.length} job(s) skipped; these jobs must run, not pass by skipping: ${notRun.map((run) => run.name).join(', ')})`);
+    }
     else if (workflow.path === HANDOFF_WORKFLOW_PATH && !runs.some(isPassingHandoffE2e)) {
       missing.push(`${workflow.path} (hand-over paths changed, no passing real-engine handoff run)`);
     }
@@ -378,6 +443,8 @@ export function evaluateTrustedGate({
     && actionsRunIdFromCheckRun(run) === Number(currentRunId)
     && !lookupWorkflow(workflowsByCheckId, run.id));
   const missingAnalyze = !others.some((run) => run.name === 'Analyze (actions)');
+  const lookupFailed = checkRuns.filter((run) => run.name === TRUSTED_JOB
+    && isLookupFailure(lookupWorkflow(workflowsByCheckId, run.id)));
   const foreignTrusted = findForeignTrustedChecks(checkRuns, workflowsByCheckId, {
     allowedRunId: currentRunId,
     sha,
@@ -410,17 +477,25 @@ export function evaluateTrustedGate({
     errors.push(`Missing or failed core workflows: ${missingCore.join(', ')}`);
   }
 
+  const unregisteredCore = unregisteredPathFilterMisses(missingCore);
   return {
     others,
     pending,
     failed,
     foreignTrusted,
     missingCore,
+    unregisteredCore,
     unresolvedCurrent,
-    ready: pending.length === 0 && unresolvedCurrent.length === 0 && !missingAnalyze,
-    ok: errors.length === 0 && pending.length === 0 && unresolvedCurrent.length === 0 && !missingAnalyze,
+    lookupFailed,
+    ready: pending.length === 0 && unresolvedCurrent.length === 0 && lookupFailed.length === 0 && !missingAnalyze
+      && unregisteredCore.length === 0,
+    ok: errors.length === 0 && pending.length === 0 && unresolvedCurrent.length === 0 && lookupFailed.length === 0 && !missingAnalyze,
     errors,
   };
+}
+
+export function unregisteredPathFilterMisses(missingCore) {
+  return (missingCore ?? []).filter((item) => String(item).includes(`(${PATH_FILTER_NO_CHECK_RUN})`));
 }
 
 export function summarizeGateFileChanges(changedFiles) {
@@ -445,7 +520,58 @@ export function formatGateChangeSummary(changedFiles) {
 
 export const GATE_CHANGE_REVIEW_REQUIRED =
   'The gate change needs a separate review before the marker can be added for this head.';
+export const BUTTON_CRAWL_BASELINE = 'scripts/button-crawl/baseline.json';
 const GATE_CHANGE_REVIEWED_LINE = /^gate-change-reviewed: ([0-9a-f]{40})$/;
+
+/** Problem entries in the button-crawl baseline. Unparseable text is not a usable set. */
+export function buttonCrawlBaselineEntries(text) {
+  if (text == null || String(text).trim() === '') return { ok: true, entries: new Set() };
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, entries: new Set() };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ok: false, entries: new Set() };
+  const problems = parsed.problems;
+  if (problems == null) return { ok: true, entries: new Set() };
+  if (typeof problems !== 'object' || Array.isArray(problems)) return { ok: false, entries: new Set() };
+  const entries = new Set();
+  for (const [key, list] of Object.entries(problems)) {
+    if (!Array.isArray(list)) return { ok: false, entries: new Set() };
+    for (const problem of list) {
+      if (typeof problem !== 'string' || problem.trim() === '') return { ok: false, entries: new Set() };
+      entries.add(`${key}\0${problem}`);
+    }
+  }
+  return { ok: true, entries };
+}
+
+/** True when the pull request baseline has a problem entry main does not. Order and formatting do not count. */
+export function buttonCrawlBaselineGrew(baseText, headText) {
+  const base = buttonCrawlBaselineEntries(baseText);
+  const head = buttonCrawlBaselineEntries(headText);
+  if (!head.ok) return true;
+  const known = base.ok ? base.entries : new Set();
+  for (const entry of head.entries) {
+    if (!known.has(entry)) return true;
+  }
+  return false;
+}
+
+export function pullRequestTouchesPath(files, filePath) {
+  return (files ?? []).some((file) => {
+    const name = typeof file === 'string' ? file : file?.filename;
+    const previous = typeof file === 'string' ? '' : file?.previous_filename;
+    return name === filePath || previous === filePath;
+  });
+}
+
+/** Growth only counts when this pull request changes the baseline file. */
+export function buttonCrawlBaselineGrowth({ files, baseText, headText }) {
+  if (!pullRequestTouchesPath(files, BUTTON_CRAWL_BASELINE)) return false;
+  return buttonCrawlBaselineGrew(baseText, headText);
+}
 const GATE_RUNNER_WORKFLOWS = [
   '.github/workflows/merge-gate.yml',
   TRUSTED_WORKFLOW_PATH,
@@ -536,12 +662,19 @@ export function formatGateChangeReviewFailure(protectedFiles, headSha, body) {
   } else {
     lines.push(`The gate-change-reviewed marker does not match the current head ${headSha}.`);
   }
+  if (protectedFiles.includes(BUTTON_CRAWL_BASELINE)) {
+    lines.push('The button-crawl baseline has an entry that main does not. A shrink or a reorder does not need this review.');
+  }
   return lines.join('\n');
 }
 
-export function evaluateGateChangeReview({ changedFiles, body, headSha, protectedPaths }) {
+export function evaluateGateChangeReview({ changedFiles, body, headSha, protectedPaths, baselineGrew = false }) {
   const paths = protectedPaths ?? loadProtectedGatePaths();
   const protectedFiles = touchedProtectedFiles(changedFiles, paths);
+  if (baselineGrew && !protectedFiles.includes(BUTTON_CRAWL_BASELINE)) {
+    protectedFiles.push(BUTTON_CRAWL_BASELINE);
+    protectedFiles.sort();
+  }
   const markerMatched = gateChangeMarkerMatches(body, headSha);
   const touched = protectedFiles.length > 0;
   return {
@@ -584,9 +717,17 @@ export function parseNamedTestList(text, source = 'scripts/feature-batch-ci-name
   return files;
 }
 
-export function coverageFromPrFiles(files, desktopWorkflow, extraNamed = [], handoffWorkflow = '', handoffConfig = '', extraDesktop = []) {
+export function coverageFromPrFiles(
+  files,
+  desktopWorkflow,
+  extraNamed = [],
+  handoffWorkflow = '',
+  handoffConfig = '',
+  extraDesktop = [],
+  lintBaselinesWorkflow = '',
+) {
   const changed = changedTestPaths(nameStatusFromPrFiles(files));
-  const covered = coverageTargets(desktopWorkflow, handoffWorkflow, handoffConfig);
+  const covered = coverageTargets(desktopWorkflow, handoffWorkflow, handoffConfig, lintBaselinesWorkflow);
   for (const entry of extraNamed) covered.add(`${entry.lane}/${entry.file}`);
   for (const file of extraDesktop) covered.add(file);
   const uncovered = uncoveredTests(changed, covered);
@@ -599,8 +740,19 @@ export function isRateLimitError(error) {
   return /rate limit exceeded/i.test(text);
 }
 
+// Shared rate-limit budget for one process. When budgetSeconds is set (gate-files-fresh), every call draws
+// from one deadline and retries until it runs out, so the job cannot wait longer than its budget. Unset keeps
+// each call's own default budget.
+export const gateApiBudget = { budgetSeconds: undefined, startedAt: undefined };
+
 export function ghApi(repo, token, requestPath, { paginate = false, retries = 6 } = {}) {
-  return ghApiWithRetry(repo, token, requestPath, { paginate, retries });
+  const bounded = gateApiBudget.budgetSeconds != null;
+  return ghApiWithRetry(repo, token, requestPath, {
+    paginate,
+    retries: bounded ? Number.POSITIVE_INFINITY : retries,
+    budgetSeconds: gateApiBudget.budgetSeconds,
+    startedAt: gateApiBudget.startedAt,
+  });
   const args = ['api', `repos/${repo}/${requestPath}`, '-H', 'Accept: application/vnd.github+json'];
   if (paginate) args.splice(1, 0, '--paginate');
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -696,16 +848,27 @@ export function fetchCheckRuns(repo, sha, token, api = ghApi) {
   }
 }
 
-export function formatTimeoutMessage(pending, { missingAnalyze = false } = {}) {
+export function formatTimeoutMessage(pending, { missingAnalyze = false, unregisteredCore = [] } = {}) {
   const names = [...new Set((pending ?? []).map((run) => run.name).filter(Boolean))];
   if (missingAnalyze && !names.includes('Analyze (actions)')) names.push('Analyze (actions)');
+  for (const item of unregisteredCore) {
+    const workflowPath = String(item).replace(` (${PATH_FILTER_NO_CHECK_RUN})`, '');
+    if (workflowPath && !names.includes(workflowPath)) names.push(workflowPath);
+  }
   names.sort();
   const waitingOn = names.length ? names.join(', ') : '(no named pending check)';
   return `Timed out waiting for: ${waitingOn}\n${TIMEOUT_RERUN_LINE}`;
 }
 
-export function fetchPrFiles(repo, prNumber, token) {
-  const payload = ghApi(repo, token, `pulls/${prNumber}/files?per_page=100`, { paginate: true });
+// The file list waits out installation rate limits inside its own 10-minute cap (AGENTS rule 13).
+// The job keeps its 35-minute limit: the poll budget below counts from job start, so this wait is not extra time.
+export const PR_FILES_WAIT_SECONDS = 600;
+
+export function fetchPrFiles(repo, prNumber, token, {
+  request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options),
+  budgetSeconds = PR_FILES_WAIT_SECONDS,
+} = {}) {
+  const payload = request(`pulls/${prNumber}/files?per_page=100`, { paginate: true, budgetSeconds });
   return Array.isArray(payload) ? payload : [];
 }
 
@@ -721,14 +884,40 @@ export function runUiProofFromPr(files, prBody) {
   return result.exitCode === 0;
 }
 
-export function fetchFileText(repo, sha, token, filePath) {
+export function runSelfCheckFromPr(headRef, body) {
+  const result = checkSelfCheck({ headRef, body });
+  writeSummary(formatSelfCheckSummary(result));
+  for (const sentence of result.problems) console.error(sentence);
+  if (result.ok) console.log(formatSelfCheckSummary(result).split('\n')[1]);
+  return result.ok;
+}
+
+// Only a 404 means "no such file at this ref". Any other failure (rate limit, 5xx, network) must
+// propagate: a null here reads as an empty file, which would hide lines main added (fail open).
+// The contents API returns empty content for files over 1 MB; then the blob (same sha) carries the bytes.
+export function fetchFileText(repo, sha, token, filePath, api = ghApi) {
+  let payload;
   try {
-    const payload = ghApi(repo, token, `contents/${filePath}?ref=${sha}`);
-    if (!payload?.content) return null;
-    return Buffer.from(payload.content, payload.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
-  } catch {
-    return null;
+    payload = api(repo, token, `contents/${filePath}?ref=${sha}`);
+  } catch (error) {
+    if (isNotFoundError(error)) return null;
+    throw error;
   }
+  if (payload?.content) {
+    return Buffer.from(payload.content, payload.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+  }
+  if (!payload?.sha) {
+    throw new Error(`contents/${filePath}?ref=${sha} returned no content and no blob sha`);
+  }
+  const blob = api(repo, token, `git/blobs/${payload.sha}`);
+  if (!blob?.content) {
+    throw new Error(`git/blobs/${payload.sha} for ${filePath} returned no content`);
+  }
+  return Buffer.from(blob.content, blob.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8');
+}
+
+export function isNotFoundError(error) {
+  return error?.httpStatus === 404 || /HTTP 404\b/.test(String(error?.message ?? ''));
 }
 
 export function workflowFromActionsRun(run) {
@@ -755,28 +944,74 @@ export function resolveWorkflowForCheckRun(repo, token, checkRun) {
   return workflowFromActionsRun(payload?.workflow_runs?.[0]);
 }
 
+// The Actions run a check run belongs to, from its details URL.
+export function runIdFromCheckRun(checkRun) {
+  return /\/actions\/runs\/(\d+)/.exec(String(checkRun?.details_url ?? checkRun?.html_url ?? ''))?.[1] ?? null;
+}
+
+// Attribution from one listing of the head's runs. A check run is bound to a run only when the run's check suite
+// is the check run's own suite, so the listing can never attribute a check to another workflow's run.
+export function attributeFromRunList(checkRun, runsById) {
+  const run = runsById.get(String(runIdFromCheckRun(checkRun)));
+  const suite = checkRun?.check_suite?.id;
+  if (!run || suite == null || Number(run.check_suite_id) !== Number(suite)) return null;
+  return workflowFromActionsRun(run);
+}
+
+// One call per evaluation, not one per check run. More than 100 runs on a head falls back to per-check lookups.
+export function fetchRunsByIdForHead(repo, token, sha, { api = ghApi } = {}) {
+  if (!sha) return new Map();
+  const payload = api(repo, token, `actions/runs?head_sha=${sha}&per_page=100`);
+  if (!payload || !Array.isArray(payload.workflow_runs) || payload.total_count > payload.workflow_runs.length) {
+    return new Map();
+  }
+  return new Map(payload.workflow_runs.map((run) => [String(run.id), run]));
+}
+
 export function resolveWorkflowsForCheckRuns(repo, token, checkRuns, {
   attributionCache = new Map(),
   resolveWorkflow = resolveWorkflowForCheckRun,
+  runsById,
+  fetchRuns = fetchRunsByIdForHead,
 } = {}) {
   const workflowsByCheckId = {};
+  const unresolved = checkRuns.filter((run) => !attributionCache.has(run.id));
+  // The one listing is guarded like the per-check lookups. An outage falls back to per-check lookups, and a
+  // lookup that still fails stays pending (below), so an outage never crashes the gate or counts as forged.
+  let byId = null;
+  try {
+    byId = runsById ?? (unresolved.length ? fetchRuns(repo, token, checkRuns[0]?.head_sha) : new Map());
+  } catch {
+    byId = null;
+  }
   for (const run of checkRuns) {
     if (attributionCache.has(run.id)) {
       workflowsByCheckId[run.id] = attributionCache.get(run.id);
       continue;
     }
     try {
-      const workflow = resolveWorkflow(repo, token, run);
+      const fromList = byId ? attributeFromRunList(run, byId) : null;
+      const workflow = fromList ?? resolveWorkflow(repo, token, run);
       if (workflow) {
         workflowsByCheckId[run.id] = workflow;
         // Attribution is immutable for a check ID; status/conclusion still come from each poll.
         attributionCache.set(run.id, workflow);
       }
-    } catch {
-      // Fail closed later if a trusted-job name cannot be attributed.
+    } catch (error) {
+      // A failed lookup is not a forged check. It is retried on the next poll (never cached) and the
+      // gate fails closed with an "attribution lookup failed" message if it is still unresolved at the budget.
+      workflowsByCheckId[run.id] = { lookupFailed: true, error: firstLine(error) };
     }
   }
   return workflowsByCheckId;
+}
+
+export function isLookupFailure(workflow) {
+  return Boolean(workflow?.lookupFailed);
+}
+
+function firstLine(error) {
+  return String(error?.message ?? error).split('\n')[0];
 }
 
 function sleepSeconds(seconds) {
@@ -843,7 +1078,17 @@ function runCoverage(files, extraNamed, repo, sha, token) {
   }
   const handoffWorkflow = readFileSync(path.join(root, HANDOFF_WORKFLOW_PATH), 'utf8');
   const handoffConfig = readFileSync(path.join(root, 'engine/test/vitest/vitest.desktop-handoff.config.ts'), 'utf8');
-  const { changed, uncovered } = coverageFromPrFiles(files, workflow, extraNamed, handoffWorkflow, handoffConfig);
+  // The base checkout's copy (trusted), like the handoff workflow above: a PR cannot edit which runs count.
+  const lintBaselinesWorkflow = readFileSync(path.join(root, '.github/workflows/engine-lint-baselines.yml'), 'utf8');
+  const { changed, uncovered } = coverageFromPrFiles(
+    files,
+    workflow,
+    extraNamed,
+    handoffWorkflow,
+    handoffConfig,
+    [],
+    lintBaselinesWorkflow,
+  );
   if (uncovered.length) {
     for (const file of uncovered) {
       console.error(`Uncovered changed test: ${file}\n  Add: ${additionFor(file)}`);
@@ -998,7 +1243,8 @@ export function pollTrustedGateWithBudget({
   const start = startedAt ?? now();
   const remaining = () => waitBudgetSeconds - (now() - start) / 1000;
   for (let attempt = 1; attempt <= maxAttempts; ) {
-    if (remaining() < 1) break;
+    // The first evaluation always runs; a zero budget means one pass with no polling.
+    if (attempt > 1 && remaining() < 1) break;
     let checkRuns;
     try {
       checkRuns = fetchChecks(repo, sha, token);
@@ -1032,14 +1278,21 @@ export function pollTrustedGateWithBudget({
       log(`All ${result.others.length} other checks passed.`);
       return 0;
     }
-    log(`Waiting for checks (running: ${result.pending.length}, unresolved current claims: ${result.unresolvedCurrent.length}, including required Analyze)…`);
+    log(`Waiting for checks (running: ${result.pending.length}, unresolved current claims: ${result.unresolvedCurrent.length}, unregistered path-filtered: ${result.unregisteredCore.length}, including required Analyze)…`);
     if (attempt >= maxAttempts || remaining() < 1) break;
     sleep(Math.min(pollSeconds ?? pollIntervalSeconds(attempt - 1), remaining()));
     attempt += 1;
   }
 
   const analyze = (last.others ?? []).find((run) => run.name === 'Analyze (actions)');
-  error(formatTimeoutMessage(last.pending, { missingAnalyze: !analyze }));
+  if (last.lookupFailed?.length) {
+    error(`Attribution lookup failed for ${TRUSTED_JOB} check(s) ${last.lookupFailed.map((run) => run.id).join(', ')}. `
+      + 'Not counted as forged; re-run merge-gate once the GitHub API is available.');
+  }
+  error(formatTimeoutMessage(last.pending, {
+    missingAnalyze: !analyze,
+    unregisteredCore: last.unregisteredCore ?? unregisteredPathFilterMisses(last.missingCore),
+  }));
   return 1;
 }
 
@@ -1054,15 +1307,25 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const waitBudgetSeconds = Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS);
   const initialWait = Number(process.env.MERGE_GATE_INITIAL_WAIT ?? 30);
 
-  if (!repo || !sha || !token || !prNumber || !baseRef) {
-    console.error('Missing required environment variables: REPO, SHA, GH_TOKEN, PR_NUMBER, BASE_REF');
+  if (!repo || !sha || !token || !prNumber || !baseRef || !process.env.HEAD_BRANCH) {
+    console.error('Missing required environment variables: REPO, SHA, GH_TOKEN, PR_NUMBER, BASE_REF, HEAD_BRANCH');
     process.exit(1);
   }
 
+  const jobStartedAt = Date.now();
   const files = fetchPrFiles(repo, prNumber, token);
   const changedFiles = changedFilesFromPrFiles(files);
   const body = fetchPrBody(repo, prNumber, token);
-  const review = evaluateGateChangeReview({ changedFiles, body, headSha: sha });
+  const baselineGrew = buttonCrawlBaselineGrowth({
+    files,
+    baseText: pullRequestTouchesPath(files, BUTTON_CRAWL_BASELINE)
+      ? fetchFileText(repo, baseRef, token, BUTTON_CRAWL_BASELINE)
+      : null,
+    headText: pullRequestTouchesPath(files, BUTTON_CRAWL_BASELINE)
+      ? fetchFileText(repo, sha, token, BUTTON_CRAWL_BASELINE)
+      : null,
+  });
+  const review = evaluateGateChangeReview({ changedFiles, body, headSha: sha, baselineGrew });
   writeSummary(formatGateChangeSummary(changedFiles));
   writeSummary(formatGateChangeReviewSummary(review));
   if (!review.ok) {
@@ -1078,6 +1341,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
   console.log('Merge-command check passed.');
   if (!runUiProofFromPr(files, body)) process.exit(1);
+  if (!runSelfCheckFromPr(process.env.HEAD_BRANCH, body)) process.exit(1);
 
   if (initialWait > 0) sleepSeconds(initialWait);
 
@@ -1085,6 +1349,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   process.exit(pollTrustedGate({
     repo, sha, token, changedFiles, coreWorkflows,
     currentRunId: process.env.GITHUB_RUN_ID, prNumber, baseRef, maxAttempts, pollSeconds,
-    waitBudgetSeconds,
+    waitBudgetSeconds, startedAt: jobStartedAt,
   }));
 }
