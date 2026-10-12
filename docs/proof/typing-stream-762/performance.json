@@ -1,0 +1,13 @@
+{
+  "result": {
+    "characters": 12442,
+    "frames": 1122,
+    "medianMs": 33.29999999999927,
+    "p95Ms": 83.30000000000291,
+    "over34ms": 304
+  },
+  "scroll": {
+    "top": 200,
+    "height": 9308
+  }
+}
