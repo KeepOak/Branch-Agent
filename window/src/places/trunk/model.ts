@@ -52,9 +52,6 @@ export function readRoster(result: unknown): Roster {
   return { defaultId: str(r.defaultId), mainKey: str(r.mainKey) || "main", ownership: str(r.ownership), agents };
 }
 
-/** The conversation key of a Trunk's main conversation (agent:<id>:<mainKey>). */
-export const mainKeyOf = (roster: Roster, id: string) => `agent:${id}:${roster.mainKey}`;
-
 /* ---------- looks: only those with real art (face/appearance.tsx), plus the classic pebble ---------- */
 const LOOK_NAMES: Record<string, string> = {
   ember: "Ember", tock: "Tock", kite: "Kite", morel: "Morel", pebble: "Cobble", wisp: "Wisp", lumen: "Lumen",
@@ -94,7 +91,7 @@ export const entryOf = (snap: ConfigSnapshot, id: string): Rec => rec(rec(rec(sn
 export const agentDefaults = (snap: ConfigSnapshot): Rec => rec(rec(snap.config.agents).defaults);
 
 /** Builds { a: { b: value } } from "a.b" paths, as config.patch's merge patch takes it. */
-export function mergePatch(changes: Record<string, unknown>): Rec {
+function mergePatch(changes: Record<string, unknown>): Rec {
   const patch: Rec = {};
   for (const [path, value] of Object.entries(changes)) {
     const keys = path.split(".");
