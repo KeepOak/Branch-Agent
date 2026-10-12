@@ -18,6 +18,8 @@ export type MenuEntry = {
   off?: string;
   /** A 6 px spacer before this row (the spec's divider). */
   gap?: boolean;
+  /** An on/off row: drawn as a checkbox item, runs onSelect and keeps the menu open. */
+  toggle?: boolean;
 };
 
 export type MenuProps = { label: string; tiles?: MenuEntry[]; rows: MenuEntry[]; onClose: () => void };
@@ -42,6 +44,7 @@ export function Menu({ label, tiles = [], rows, onClose }: MenuProps) {
   const choose = (entry: MenuEntry) => {
     if (entry.off) return;
     if (entry.submenu) { setTrail(current => [...current, entry]); return; }
+    if (entry.toggle !== undefined) { entry.onSelect?.(); return; }
     onClose();
     entry.onSelect?.();
   };
@@ -67,12 +70,12 @@ export function Menu({ label, tiles = [], rows, onClose }: MenuProps) {
         {entry.off ? <small>{entry.off}</small> : null}
       </button>)}
     </div> : null}
-    {shownRows.map(entry => <button key={entry.label} type="button" role="menuitem" className="g-menu-row" data-menu-item data-gap={entry.gap ? "" : undefined} data-danger={entry.danger ? "" : undefined} data-sub={entry.submenu ? "" : undefined}
+    {shownRows.map(entry => <button key={entry.label} type="button" role={entry.toggle === undefined ? "menuitem" : "menuitemcheckbox"} aria-checked={entry.toggle} className="g-menu-row" data-menu-item data-gap={entry.gap ? "" : undefined} data-danger={entry.danger ? "" : undefined} data-sub={entry.submenu ? "" : undefined}
       aria-disabled={entry.off ? "true" : undefined} aria-haspopup={entry.submenu ? "menu" : undefined} aria-keyshortcuts={entry.letter} title={entry.off} onClick={() => choose(entry)}
       onKeyDown={event => { if (event.key === "ArrowRight" && entry.submenu) { event.preventDefault(); choose(entry); } }}>
       <span className="g-menu-ico" aria-hidden="true">{entry.icon}</span>
       <span className="g-menu-label">{entry.label}{entry.off ? <small>{entry.off}</small> : null}</span>
-      <span className="g-menu-end">{entry.hint && !entry.off ? <small>{entry.hint}</small> : null}{entry.letter ? <kbd>{entry.letter}</kbd> : null}{entry.submenu ? <Chevron /> : null}</span>
+      <span className="g-menu-end">{entry.hint && !entry.off ? <small>{entry.hint}</small> : null}{entry.letter ? <kbd>{entry.letter}</kbd> : null}{entry.toggle !== undefined ? <i className="g-menu-switch" data-on={entry.toggle || undefined} aria-hidden="true" /> : null}{entry.submenu ? <Chevron /> : null}</span>
     </button>)}
   </div>;
 }

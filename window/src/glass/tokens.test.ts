@@ -19,3 +19,10 @@ it("keeps JS spring durations and easing aligned with CSS", () => {
     expect(css).toContain(`--${token}:${String(value.ms / 1000).replace(/^0/, "")}s${value.ease};`);
   }
 });
+it("draws the face status dots in the preview's colours (pAvP17 st-online, st-away, st-phone)", () => {
+  expect(css).toContain("--st-online:#34c759;");
+  expect(css).toContain("--st-away:#e0a13a;");
+  expect(css).toContain("--st-phone:#3b82f6;");
+  const glassCss = readFileSync("src/glass/glass.css", "utf8").replace(/\s/g, "");
+  for (const status of ["online", "away", "phone"]) expect(glassCss).toContain(`.g-av-status[data-status="${status}"]{background:var(--st-${status});}`);
+});

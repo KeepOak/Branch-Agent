@@ -56,6 +56,11 @@ describe("GroupCluster", () => {
     expect([...host.querySelectorAll<HTMLElement>(".g-cluster-face")].map(face => face.dataset.slot)).toEqual(["tl", "tr", "bl", "br"]);
     expect(host.querySelector(".g-cluster-more")?.textContent).toBe("+2");
   });
+  it("draws the +N disc from the box size, not a measured font", async () => {
+    const host = await render(<GroupCluster size={40} members={["a", "b", "c", "d"].map(name => <i key={name}>{name}</i>)} />);
+    expect(host.querySelector<HTMLElement>(".g-cluster-more")?.style.fontSize).toBe("");
+    expect(host.querySelector(".g-cluster-more")?.getAttribute("data-slot")).toBe("br");
+  });
   it("lets a group photo replace the cluster", async () => {
     const host = await render(<GroupCluster size={40} members={[<i key="a" />]} photo="/p.png" />);
     expect(host.querySelector("img")?.getAttribute("src")).toBe("/p.png");
@@ -103,6 +108,17 @@ describe("Menu", () => {
     expect(document.activeElement?.textContent).toBe("Unread");
     await key(menu, "d");
     expect(spy).toHaveBeenCalledWith("delete");
+  });
+  it("flips a toggle row in place and keeps the menu open", async () => {
+    const flip = vi.fn(), onClose = vi.fn();
+    const host = await render(<Menu label="Conversation" rows={[{ label: "Mute", toggle: true, onSelect: flip }]} onClose={onClose} />);
+    const row = host.querySelector<HTMLButtonElement>(".g-menu-row")!;
+    expect(row.getAttribute("role")).toBe("menuitemcheckbox");
+    expect(row.getAttribute("aria-checked")).toBe("true");
+    expect(row.querySelector(".g-menu-switch[data-on]")).not.toBeNull();
+    await act(async () => row.click());
+    expect(flip).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
   });
   it("opens a submenu in place with a back row", async () => {
     const spy = vi.fn();
