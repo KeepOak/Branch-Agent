@@ -33,6 +33,7 @@ import {
   updateClaim,
   write,
 } from "./trunk-queue-store.js";
+import { formatTrunkQueueThreadKey } from "./trunk-queue-thread-key.js";
 export type { TrunkQueueGateway, TrunkQueueItem, TrunkQueueStatus } from "./trunk-queue-store.js";
 export { MAX_CLAIM_FAILURES, STALE_CLAIM_MS } from "./trunk-queue-store.js";
 export { GATEWAY_EPOCH, ownerEpochFor, queueRunId } from "./trunk-queue-run-fence.js";
@@ -412,7 +413,7 @@ export function claimNextQueueItem(
       claimed_by: agentId,
       claimed_at: now,
       claim_id: claimId,
-      thread_key: `agent:${agentId}:queue-${next.id}-${claimId.slice(0, 8)}`,
+      thread_key: formatTrunkQueueThreadKey(agentId, next.id, claimId),
       active_at: now,
       gateway_epoch: epoch,
     });
