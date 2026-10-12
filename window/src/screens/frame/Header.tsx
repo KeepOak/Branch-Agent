@@ -28,9 +28,10 @@ export function Header({ title, face, onOpen, onToggleSidebar, canBack, canForwa
       const x = Math.max(min, Math.min(box.width / 2 - width / 2, max - width));
       setGeometry(old => old.left === x && old.width === width && old.tight === tight ? old : { left: x, width, tight });
     };
-    const observer = new ResizeObserver(measure); observer.observe(column); observer.observe(start); observer.observe(finish);
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    observer?.observe(column); observer?.observe(start); observer?.observe(finish);
     column.closest(".r1-frame")?.addEventListener("transitionend", measure); measure();
-    return () => { observer.disconnect(); column.closest(".r1-frame")?.removeEventListener("transitionend", measure); };
+    return () => { observer?.disconnect(); column.closest(".r1-frame")?.removeEventListener("transitionend", measure); };
   }, [title, button, hidden]);
   return <header className="r1-header" ref={row}>
     <div className="r1-header-left" ref={left}>

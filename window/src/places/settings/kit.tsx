@@ -41,8 +41,8 @@ export function SetupLock({ locked, children }: { locked: boolean; children: Rea
   return <LockContext.Provider value={locked}>{children}</LockContext.Provider>;
 }
 
-/** Runs a save and reports it: "Saved" for 2 s, or the engine's error on the frame line. Resolves false on failure. */
-export function useSaveRunner(): (save: () => Promise<unknown>) => Promise<boolean> {
+/** An action may supply a plain failure message while keeping technical details in the console. */
+export function useSaveRunner(failureMessage?: string): (save: () => Promise<unknown>) => Promise<boolean> {
   const report = useSaved();
   return useCallback(async (save: () => Promise<unknown>) => {
     report.saving();
@@ -51,10 +51,11 @@ export function useSaveRunner(): (save: () => Promise<unknown>) => Promise<boole
       report.saved();
       return true;
     } catch (error) {
-      report.failed(errorText(error));
+      console.warn("Settings save failed:", error);
+      report.failed(failureMessage ?? errorText(error));
       return false;
     }
-  }, [report]);
+  }, [report, failureMessage]);
 }
 
 /** The engine config for rows: get(path) reads it; set(path, value) saves that one path at once (null = back to default).

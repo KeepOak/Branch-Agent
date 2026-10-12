@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
-import { errorText, record, visible } from "../adapter";
+import { errorText, record } from "../adapter";
 import { Btn, Seg, useSaved } from "../kit";
 
 /** One editable document as the engine last gave it: its text, its revision (null while missing). */
@@ -47,16 +47,20 @@ export function useDraft(initial: Doc, io: Io, onSaved: () => void) {
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const fail = (e: unknown) => { setError(visible(errorText(e))); report.failed(errorText(e)); };
+  const fail = (e: unknown, message: string) => {
+    console.warn("Instruction file action failed:", e);
+    setError(message);
+    report.failed(message);
+  };
   const write = async (on: Doc) => {
     setBusy(true); setError("");
     try { await io.save(text, on); report.saved(); onSaved(); }
-    catch (e) { if (isConflict(e)) setConflict(true); else fail(e); }
+    catch (e) { if (isConflict(e)) setConflict(true); else fail(e, "Could not save your instructions. Your edits are still here. Try again, or reopen the file before saving."); }
     finally { setBusy(false); }
   };
   const fresh = async () => { const d = await io.load(); setBase(d); setConflict(false); return d; };
-  const reload = async () => { try { const d = await fresh(); setText(d.content); } catch (e) { fail(e); } };
-  const overwrite = async () => { try { await write(await fresh()); } catch (e) { fail(e); } };
+  const reload = async () => { try { const d = await fresh(); setText(d.content); } catch (e) { fail(e, "Could not reload your instructions. Your edits are still here. Try again."); } };
+  const overwrite = async () => { try { await write(await fresh()); } catch (e) { fail(e, "Could not reload your instructions before saving. Your edits are still here. Try again."); } };
   return { base, text, setText, ask, setAsk, conflict, busy, error, dirty: text !== base.content, save: () => write(base), reload, overwrite };
 }
 export type Draft = ReturnType<typeof useDraft>;
