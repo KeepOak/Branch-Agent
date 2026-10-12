@@ -1,0 +1,4 @@
+engine:src/agents/embedded-agent-runner/tool-result-compression.behaviour.test.ts
+engine:src/agents/tool-output-compression/detect.test.ts
+engine:src/agents/tool-output-compression/diff.test.ts
+engine:src/agents/tool-output-compression/log.test.ts
