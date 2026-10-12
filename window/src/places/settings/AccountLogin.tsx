@@ -8,7 +8,7 @@ import "./set1/set1.css";
 
 type View = WizardView;
 
-export function StepBody({ step, value, onValue, onAnswer, busy }: { step: WizardStep; value: unknown; onValue: (v: unknown) => void; onAnswer: (v?: unknown) => void; busy: boolean }) {
+function StepBody({ step, value, onValue, onAnswer, busy }: { step: WizardStep; value: unknown; onValue: (v: unknown) => void; onAnswer: (v?: unknown) => void; busy: boolean }) {
   const url = safeSignInUrl(step.externalUrl);
   const picked = Array.isArray(value) ? value : [];
   return (

@@ -56,7 +56,7 @@ export function freshChoices(look: Look): SetupChoices {
 }
 
 export type Candidate = { key: string; kind: string; modelRef: string; label: string; detail: string; recommended: boolean; signedOut: boolean; confirmed: boolean };
-export type AuthOption = { id: string; label: string; hint: string; brand?: string };
+type AuthOption = { id: string; label: string; hint: string; brand?: string };
 export type Detected = { candidates: Candidate[]; configuredModel: string | null; setupComplete: boolean; unavailable: { label: string; reason: string }[]; authOptions: AuthOption[]; secretLogins: AuthOption[] };
 
 /** branch.setup.detect: the connections Branch really found (§4.8.1.3 rule 1). */
@@ -96,7 +96,7 @@ export function firstOn(detected: Detected, off: string[]): Candidate | null {
     ?? on.find((c) => isLocalModel(c.modelRef)) ?? on[0] ?? null;
 }
 
-export function isLocalModel(ref: string): boolean {
+function isLocalModel(ref: string): boolean {
   return /^(?:llama-cpp|ollama|lmstudio|vllm|localai|jan)\//i.test(ref);
 }
 
@@ -131,11 +131,6 @@ export function setupDone(config: unknown): boolean {
 /** A fresh bootstrap owner is not yet the person's chosen contact. Existing setups stay intact. */
 export function needsFirstContact(config: unknown): boolean {
   return !setupDone(config) && !str(rec(rec(rec(config).config).agents).defaultId);
-}
-
-/** The Trunk id agents.create gets for a picked job: lower case, dashes. */
-export function jobId(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 export type Check = { name: string; state: "checking" | "ok" | "bad"; line: string; fix?: number };

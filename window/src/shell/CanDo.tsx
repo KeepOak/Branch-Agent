@@ -9,7 +9,7 @@ export type CanDoGo =
   | { kind: "settings"; page: "computer" | "voice" }
   | { kind: "pair" };
 
-export const CAN_DO: [string, string, CanDoGo][] = [
+const CAN_DO: [string, string, CanDoGo][] = [
   ["Sort a messy folder", "Tidy Downloads without deleting anything", { kind: "ask", text: "Tidy my Downloads folder. Don't delete anything." }],
   ["Read and answer mail", "Drafts in your voice; asks before sending", { kind: "ask", text: "Read my new mail and draft replies in my voice. Ask before sending anything." }],
   ["Research with sources", "A one-page brief with numbered sources", { kind: "ask", text: "Research this and write a one-page brief with numbered sources: " }],
