@@ -388,6 +388,7 @@ async function createTrunkFromTemplate(
     {
       ok: true,
       agentId: outcome.agentId,
+      name: params.name ?? parsed.template.name,
       workspace,
       ...(saved.id ? { templateId: saved.id } : {}),
       routines: added.routines,

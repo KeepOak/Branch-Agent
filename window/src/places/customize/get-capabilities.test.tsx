@@ -29,7 +29,7 @@ const FIXTURE: Record<string, unknown> = {
     { id: "researcher", source: "bundled", name: "Researcher", description: "Finds sources", skills: 0, routines: 0, connections: [] },
     { id: "imported:night-shift", source: "imported", name: "Night Shift", description: "Works overnight", skills: 1, routines: 2, connections: ["telegram"] },
   ] },
-  "trunks.template.create": { ok: true, agentId: "night-shift", routines: [{ id: "j1", name: "Morning digest" }, { id: "j2", name: "Weekly review" }], connections: [{ id: "telegram", ready: false }, { id: "slack", ready: true }], warnings: [] },
+  "trunks.template.create": { ok: true, agentId: "night-shift", name: "Night Shift", routines: [{ id: "j1", name: "Morning digest" }, { id: "j2", name: "Weekly review" }], connections: [{ id: "telegram", ready: false }, { id: "slack", ready: true }], warnings: [] },
 };
 
 let root: Root | null = null;
@@ -163,7 +163,7 @@ describe("Get capabilities › Trunk templates", () => {
     await type(host.querySelector<HTMLInputElement>('input[aria-label="Template link"]')!, "  branch-template:1:abc  ");
     await click(button(host.querySelector('[data-testid="template-import"]')!, "Import"));
     expect(request).toHaveBeenCalledWith("trunks.template.create", { link: "branch-template:1:abc" });
-    expect(document.querySelector('[data-testid="template-result"]')).toBeTruthy();
+    expect(document.querySelector('[data-testid="template-result"]')?.getAttribute("aria-label")).toBe("Night Shift is ready");
   });
 
   it("explains pasted text that is neither a link nor a template, and sends nothing", async () => {

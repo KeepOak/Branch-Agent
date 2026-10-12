@@ -22,7 +22,8 @@ const LINK_PREFIX = "branch-template:";
 export function readTemplates(result: unknown): TemplateRow[] {
   return list(rec(result).templates).map((t): TemplateRow => ({
     id: str(t.id), source: t.source === "imported" ? "imported" : "bundled", name: str(t.name) || str(t.id), description: str(t.description),
-    skills: Number(t.skills) || 0, routines: Number(t.routines) || 0, connections: list(t.connections).map(String),
+    skills: Number(t.skills) || 0, routines: Number(t.routines) || 0,
+    connections: Array.isArray(t.connections) ? t.connections.filter((c): c is string => typeof c === "string") : [],
   })).filter(t => t.id);
 }
 
@@ -31,7 +32,7 @@ export function readOutcome(name: string, result: unknown): CreateOutcome {
   const r = rec(result);
   const connections = list(r.connections);
   return {
-    name, agentId: str(r.agentId),
+    name: str(r.name) || name, agentId: str(r.agentId),
     routines: list(r.routines).map(x => str(x.name)).filter(Boolean),
     needs: connections.filter(c => c.ready !== true).map(c => str(c.id)),
     ready: connections.filter(c => c.ready === true).map(c => str(c.id)),

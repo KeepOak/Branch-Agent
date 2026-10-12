@@ -373,6 +373,7 @@ describe("trunks.template export then import on another computer", () => {
     expect(cronAddMock).toHaveBeenCalledTimes(1);
     expect(cronAddMock.mock.calls[0]?.[0].params).toMatchObject({ name: "Morning digest", enabled: false, agentId: "newagent" });
     expect(imported.respond.mock.calls[0]?.[1]).toMatchObject({
+      name: "Night Shift",
       templateId: "imported:night-shift",
       routines: [{ id: "job-1", name: "Morning digest" }],
       connections: [{ id: "telegram", ready: false }],
