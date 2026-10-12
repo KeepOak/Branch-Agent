@@ -35,7 +35,6 @@ async function render(entries: Record<string, unknown> = {}, scope: string | nul
   });
   const engine = { request, onEvent: () => () => undefined, sessionKey: "s", scopes: [] } as unknown as WindowEngine;
   await act(async () => root.render(<KitProvider level={level} report={report} scope={scope}><ModelsPage page="models" title="Models" level="regular" engine={engine} /></KitProvider>));
-  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Defaults")!.click());
   return request;
 }
 const notes = () => [...host.querySelectorAll<HTMLUListElement>('ul[aria-label="Trunks with their own model"]')];

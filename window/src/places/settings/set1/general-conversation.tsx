@@ -6,6 +6,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { askBeforeDelete } from "../../../shell/ConfirmDelete";
+import { onMac, shownInline } from "../../../shell/keymap";
 import { Ctl, LinkBtn, Sec, Seg, Switch, useConfig, useSaveRunner, useSaved } from "../kit";
 
 /** The person's own conversation choices in users.prefs (the composer and thread read these keys). */
@@ -20,7 +21,6 @@ const P = GENERAL_PREFS;
 const DEFAULTS: RecordValue = { [P.vimKeys]: false, [P.messageTimes]: "hover", [P.sendWith]: "enter", [P.taskProgress]: true, [P.taskProgressStarts]: "open" };
 const NO_PERSON = "Sign in as yourself on this Branch to keep your own choices.";
 const ASK_KEY = "branch.askBeforeDelete";
-const MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 /** users.prefs for this page's keys: the stored value (or the default), a save that puts it back if refused. */
 export function usePrefs(engine: WindowEngine) {
@@ -50,7 +50,7 @@ function Own({ text, device, reset }: { text: string; device?: boolean; reset?: 
 }
 
 const TIMES = [{ id: "hover", label: "On hover" }, { id: "always", label: "Always" }, { id: "never", label: "Never" }];
-const SEND = [{ id: "enter", label: "Enter" }, { id: "ctrl", label: MAC ? "⌘ Enter" : "Ctrl Enter" }];
+const send = () => [{ id: "enter", label: "Enter" }, { id: "ctrl", label: shownInline("Ctrl Enter", onMac()) }];
 const FOLD = [{ id: "open", label: "Open" }, { id: "folded", label: "Folded" }];
 
 export function Conversation({ engine }: { engine: WindowEngine }) {
@@ -68,7 +68,7 @@ export function Conversation({ engine }: { engine: WindowEngine }) {
       </Ctl>
       <QueueMode engine={engine} />
       <Ctl title="Send with" sub={<Own text="Enter sends and Shift Enter adds a line, or the other way round." reset={back(P.sendWith)} />} off={off}>
-        <Seg label="Send with" value={String(get(P.sendWith))} options={SEND} disabled={loading} onChange={(v) => set(P.sendWith, v)} />
+        <Seg label="Send with" value={String(get(P.sendWith))} options={send()} disabled={loading} onChange={(v) => set(P.sendWith, v)} />
       </Ctl>
       <Ctl title="Task progress above the message box" sub={<Own text="The task’s plan and ticked steps while it runs. Hiding it doesn’t stop anything." reset={back(P.taskProgress)} />} off={off}>
         <Switch checked={progress} label="Task progress above the message box" disabled={loading} onChange={(v) => set(P.taskProgress, v)} />
