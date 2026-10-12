@@ -120,6 +120,7 @@ type RuntimeReadHost = {
   resolveRuntimeAuthProfileAgentDir: (agentDir?: string) => string | undefined;
   resolveRuntimeAuthProfileLoadOptions: (
     options?: LoadAuthProfileStoreOptions,
+    agentDir?: string,
   ) => LoadAuthProfileStoreOptions | undefined;
   loadAuthProfileStoreForAgent: (
     agentDir?: string,
@@ -225,7 +226,7 @@ export function createAuthProfileStoreRuntimeReader({
     const selectedAgentPath = effectiveAgentDir
       ? resolveAgentAuthPath(effectiveAgentDir)
       : undefined;
-    const scopedOptions = resolveRuntimeAuthProfileLoadOptions(options);
+    const scopedOptions = resolveRuntimeAuthProfileLoadOptions(options, selectedDir);
     const inheritedDir = scopedOptions?.inheritedAuthDir;
     const inheritedAuthDir = inheritedDir
       ? path.dirname(resolveAgentAuthPath(inheritedDir))
@@ -471,7 +472,7 @@ export function createAuthProfileStoreRuntimeReader({
       const resolvedDir = inCapturedScope(() => resolveRuntimeAuthProfileAgentDir(ownerAgentDir));
       const directory = resolvedDir ? path.dirname(resolveAgentAuthPath(resolvedDir)) : undefined;
       const scopedRequest = inCapturedScope(() =>
-        resolveRuntimeAuthProfileLoadOptions(requestOptions),
+        resolveRuntimeAuthProfileLoadOptions(requestOptions, resolvedDir),
       );
       const requestedOptions = captureReadOptions(scopedRequest);
       let databasePath: string;
