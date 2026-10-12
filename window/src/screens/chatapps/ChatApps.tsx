@@ -23,11 +23,12 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
   useCapabilityVersion();
   const q = query.trim().toLowerCase();
   const shown = CHAT_APPS.filter(a => `${a.name} ${a.id} ${a.group}`.toLowerCase().includes(q));
+  const connected = CHAT_APPS.filter(a => a.channel && appOf(live.status, { id: a.channel, name: a.name, detail: "" }).on);
   return <section className="r1-chatapps" aria-label="Chat apps">
     <h1>Chat apps</h1><p className="r1-ca-lede">Telegram, WhatsApp, Slack and 71 more: who answers, who may message, and how replies arrive.</p>
     {live.error && <p role="alert">{live.error} <button type="button" className="g-ctl" onClick={() => void live.reload()} data-need="channels.status">Try again</button></p>}
     <div className="r1-ca-surface"><section aria-labelledby="r1-ca-your"><h2 id="r1-ca-your">Your chat apps</h2>
-      <p role="status">{live.loading ? "Checking your chat apps…" : !live.status ? "Chat app status is unavailable." : CHAT_APPS.some(a => a.channel && appOf(live.status, { id: a.channel, name: a.name, detail: "" }).on) ? "Manage your connected apps below." : "No chat apps connected yet. Choose an app below to get started."}</p>
+      <p role="status">{live.loading ? "Checking your chat apps…" : !live.status ? "Chat app status is unavailable." : connected.length ? "Manage your connected apps below." : "No chat apps connected yet. Choose an app below to get started."}</p>
       <Pairing engine={engine} snapshot={live.pairing} reload={live.reload} />
     </section>
     <section aria-labelledby="r1-ca-all"><h2 id="r1-ca-all">Every chat app</h2>
@@ -48,6 +49,6 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
       })}
       {!shown.length && <p>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}
     </section>
-    </div>{renderAccess && <section aria-label="Who answers and who may message"><h2>Who answers</h2>{CHAT_APPS.filter(a => a.channel && appOf(live.status, { id: a.channel, name: a.name, detail: "" }).on).map(a => <div key={a.id}>{renderAccess(a)}</div>)}</section>}<ChatAppSettings engine={engine} />
+    </div>{renderAccess && <section aria-label="Who answers and who may message"><h2>Who answers</h2>{connected.length ? connected.map(a => <div key={a.id}>{renderAccess(a)}</div>) : <p className="r1-ca-hint">{live.loading ? "Checking your chat apps…" : "Connect a chat app above to choose who answers in it and who may message it."}</p>}</section>}<ChatAppSettings engine={engine} />
   </section>;
 }
