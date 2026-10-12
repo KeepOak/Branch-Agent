@@ -1,6 +1,0 @@
-engine:src/gateway/methods/core-method-policy.early-startup.test.ts
-engine:src/gateway/server-startup-node-capabilities.test.ts
-engine:src/gateway/server/ws-connection.startup.test.ts
-window:src/composer/Composer.startup.test.tsx
-window:src/connect/engine-starting.test.ts
-window:src/connect/preparation-status.test.ts

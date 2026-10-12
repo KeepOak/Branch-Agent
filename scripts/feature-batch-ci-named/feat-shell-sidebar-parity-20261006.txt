@@ -1,2 +1,0 @@
-window:src/places/settings/set1/appearance.test.tsx
-window:src/shell/status-gateway.test.tsx

@@ -1,2 +1,0 @@
-window:src/places-nav/PlaceView.test.tsx
-window:src/theme/motion-pass.test.ts

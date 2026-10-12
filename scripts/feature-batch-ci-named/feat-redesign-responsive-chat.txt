@@ -1,2 +1,0 @@
-window:src/stage/ComputerStage.test.tsx
-window:src/thread/Rail.test.tsx

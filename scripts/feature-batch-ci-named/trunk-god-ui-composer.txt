@@ -1,1 +1,0 @@
-window:src/composer/plus-menu-redesign.test.tsx

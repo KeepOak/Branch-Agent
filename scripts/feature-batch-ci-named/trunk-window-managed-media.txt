@@ -1,1 +1,0 @@
-window:src/thread/managed-attachments.test.tsx

@@ -1,4 +1,0 @@
-engine:extensions/cua-computer/src/commands.desktop.test.ts
-engine:extensions/cua-computer/src/commands.test.ts
-engine:extensions/cua-computer/src/driver-client.test.ts
-engine:extensions/cua-computer/src/mac-broker-client.test.ts

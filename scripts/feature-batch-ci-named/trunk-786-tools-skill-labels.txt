@@ -1,2 +1,0 @@
-window:src/composer/composer-logic.test.ts
-window:src/composer/skill-labels.test.ts

@@ -1,1 +1,0 @@
-window:src/composer/plug-menu-redesign.test.tsx

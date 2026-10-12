@@ -1,1 +1,0 @@
-window:src/face/roster-look.test.tsx

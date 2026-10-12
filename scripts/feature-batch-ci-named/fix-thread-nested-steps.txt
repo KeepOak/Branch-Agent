@@ -1,3 +1,0 @@
-window:src/thread/nested-steps.test.ts
-window:src/thread/live-activity.test.tsx
-window:src/thread/history.test.ts

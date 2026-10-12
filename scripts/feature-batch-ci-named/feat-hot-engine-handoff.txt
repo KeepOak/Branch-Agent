@@ -1,2 +1,0 @@
-window:src/App.handoff.test.tsx
-window:src/connect/session-handoff.test.ts

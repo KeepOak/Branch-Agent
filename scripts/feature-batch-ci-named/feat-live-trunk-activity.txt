@@ -1,4 +1,0 @@
-engine:extensions/codex/src/app-server/event-projector-live-output.test.ts
-window:src/shell/conversation-menu.test.ts
-window:src/thread/clipboard.test.tsx
-window:src/thread/live-activity.test.tsx

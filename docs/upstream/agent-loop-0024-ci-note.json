@@ -1,8 +1,0 @@
-{
-  "id": "AGENT-LOOP-0024",
-  "state": "partial",
-  "covered_files": "2/3",
-  "excluded_test": "engine/extensions/agentsapi/agentsapi-attempt.harvest.test.ts",
-  "reason": "The pinned upstream Agents API attempt suite cannot pass the loaded Ubuntu Harvest shard with its fixed prompt deadline: two cases return a runtime prompt timeout after about 10-15 seconds instead of their asserted completed/failed outcome. The other two Agents API files remain registered. This suite is retained for a test-aware deadline investigation, not counted as done.",
-  "evidence": "PR #336, Harvest engine 1/5 in actions run 37498587202, job 112389609242 (2 failed, 8 passed in agentsapi-attempt.harvest.test.ts)"
-}

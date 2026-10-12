@@ -1,6 +1,0 @@
-engine:src/agents/model-auth.profiles.test.ts
-engine:src/agents/model-auth.test.ts
-window:src/connect/preparation-status.test.ts
-window:src/connect/session-error-refresh.test.ts
-window:src/places/settings/config-store.test.ts
-window:src/setup/setup.test.tsx

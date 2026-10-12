@@ -1,2 +1,0 @@
-window:src/places/customize/place-tab.test.tsx
-window:src/shell/palette-find.test.tsx

@@ -1,3 +1,0 @@
-window:src/rooms/room-thread.test.tsx
-window:src/rooms/rooms.test.ts
-window:src/shell/group-drop.test.tsx

@@ -1,3 +1,0 @@
-[workspace]
-members = ["branch-gateway-client", "branch-node-host"]
-resolver = "2"

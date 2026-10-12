@@ -1,2 +1,0 @@
-# One file per PR or feature: window:<window-relative test file>.
-window:src/places-nav/settings-nav.test.ts

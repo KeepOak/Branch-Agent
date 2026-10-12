@@ -1,2 +1,0 @@
-engine:src/agents/first-run-greeting.test.ts
-engine:src/gateway/server-methods/agents-create-greeting.test.ts

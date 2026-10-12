@@ -1,2 +1,0 @@
-# v23 layout contacts column coverage for trusted merge-gate after cancelled coverage.
-window:src/shell/contacts-layout.test.tsx

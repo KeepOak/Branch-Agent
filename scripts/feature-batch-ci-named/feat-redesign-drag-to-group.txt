@@ -1,8 +1,0 @@
-engine:src/gateway/rooms/methods.test.ts
-engine:src/gateway/rooms/mentions-rule.test.ts
-engine:src/gateway/server-methods/sessions-create-category.test.ts
-engine:src/shared/session-method-scopes.test.ts
-window:src/connect/room-events.test.ts
-window:src/rooms/new-group-chat.test.tsx
-window:src/shell/contacts-layout.test.tsx
-window:src/shell/group-drop.test.tsx

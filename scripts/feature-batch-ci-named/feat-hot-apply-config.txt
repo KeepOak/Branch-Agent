@@ -1,2 +1,0 @@
-engine:src/agents/prepared-model-runtime.hot-apply-inflight.test.ts
-engine:src/gateway/config-reload.hot-apply-kinds.test.ts

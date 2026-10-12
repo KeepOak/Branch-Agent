@@ -1,2 +1,0 @@
-window:src/composer/talk-controls.test.tsx
-window:src/shell/talk-entry.test.ts

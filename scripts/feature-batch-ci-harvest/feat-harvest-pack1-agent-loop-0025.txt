@@ -1,6 +1,0 @@
-engine:packages/ai/src/aisdk/generate-to-stream.test.ts
-engine:packages/ai/src/aisdk/model.loop.harvest.test.ts
-engine:packages/ai/src/aisdk/runtime.test.ts
-engine:packages/ai/src/providers/openai-chatgpt-responses.cache.test.ts
-engine:packages/ai/src/providers/request-compression.harvest.test.ts
-engine:packages/ai/src/transports/openai-responses-websocket.test.ts

@@ -1,2 +1,0 @@
-window:src/places/trunk/TeamApprovalCard.test.tsx
-window:scripts/visual-routes.test.mjs

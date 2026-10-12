@@ -1,5 +1,0 @@
-[
-  { "path": "packages/ai", "name": "@branch/ai", "dependency": "@branch/ai" },
-  { "path": "packages/gateway-protocol", "name": "@branch/gateway-protocol" },
-  { "path": "packages/gateway-client", "name": "@branch/gateway-client" }
-]

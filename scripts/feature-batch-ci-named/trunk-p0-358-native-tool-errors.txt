@@ -1,2 +1,0 @@
-engine:extensions/codex/src/app-server/event-projector-tool-items.test.ts
-engine:extensions/codex/src/app-server/event-projector.command-output.test.ts

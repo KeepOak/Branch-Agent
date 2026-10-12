@@ -1,2 +1,0 @@
-window:src/places/trunk/create-success.test.tsx
-window:src/setup/setup.test.tsx

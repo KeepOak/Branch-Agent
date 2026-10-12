@@ -1,8 +1,0 @@
-{
-  "$comment": "P45 desktop handoff deadlines in ms. The engine test checks the retire deadline against its actual lease constants.",
-  "stepDownTimeoutMs": 60000,
-  "takeOverTimeoutMs": 30000,
-  "standbyReadyTimeoutMs": 120000,
-  "rollbackTimeoutMs": 30000,
-  "retireKillAfterMs": 345000
-}

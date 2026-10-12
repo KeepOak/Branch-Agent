@@ -1,1 +1,0 @@
-window:src/shell/copy-conversation.test.tsx

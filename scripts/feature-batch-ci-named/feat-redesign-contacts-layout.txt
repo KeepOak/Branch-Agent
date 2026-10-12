@@ -1,4 +1,0 @@
-window:src/shell/contact-row-routing.test.tsx
-window:src/shell/contacts-layout.test.tsx
-window:src/shell/row-menu.test.ts
-window:src/shell/row-menu.test.tsx

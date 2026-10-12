@@ -1,3 +1,0 @@
-window:src/connect/branch-version.test.tsx
-window:src/connect/desktop-component-updates.test.tsx
-window:src/shell/status-redesign.test.tsx

@@ -1,7 +1,0 @@
-packages:
-  - .
-minimumReleaseAge: 10080
-minimumReleaseAgeStrict: true
-nodeLinker: isolated
-packageImportMethod: clone-or-copy
-verifyDepsBeforeRun: false

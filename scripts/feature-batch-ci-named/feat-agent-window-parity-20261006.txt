@@ -1,3 +1,0 @@
-window:src/face/CharacterPanel.test.tsx
-window:src/places/trunk/LookTab.new.test.tsx
-window:src/shell/TopBar.announcement.test.tsx

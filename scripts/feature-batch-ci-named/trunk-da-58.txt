@@ -1,3 +1,0 @@
-window:src/places/trunk/trunk-characters.test.tsx
-window:src/places/trunk/trunk.test.tsx
-window:src/setup/setup.test.tsx
