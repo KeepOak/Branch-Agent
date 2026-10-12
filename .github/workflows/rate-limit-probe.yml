@@ -1,0 +1,15 @@
+name: rate-limit-probe
+on:
+  pull_request:
+    paths: [".github/workflows/rate-limit-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: |
+          for i in $(seq 1 45); do echo "$(date -u +%H:%M:%S) $(gh api rate_limit --jq ".resources | {core: .core, graphql: .graphql} | tostring")"; sleep 20; done
+        env:
+          GH_TOKEN: ${{ github.token }}
