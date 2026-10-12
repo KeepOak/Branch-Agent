@@ -11,6 +11,7 @@ import { PlaceView } from "../../places-nav/PlaceView";
 import { loadRoute, parseRoute, saveRoute, windowTitle, type Route } from "../../places-nav/routes";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Popover } from "../../glass/Popover";
+import { CustomizeWithCommunity } from "../seedbank";
 
 /** Support-only escape hatch, retained for one release. */
 export function classicWindow(search = location.search): boolean {
@@ -81,7 +82,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
     </nav>
     <div className="r1-sidebar-footer"><button type="button" className="g-ctl" aria-label="Settings" onClick={() => navigate({ kind: "settings", page: "appearance" })}><Icon name="gear" /></button></div>
   </>;
-  const main = route.kind === "settings" ? <SettingsFrame page={route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : <Thread
+  // Customize gets its Personal | Community switch (R1-08); every other place mounts as it is.
+  const withCommunity = (place: string, view: React.ReactNode) => (place === "customize" ? <CustomizeWithCommunity engine={engine} personal={view} /> : view);
+  const main = route.kind === "settings" ? <SettingsFrame page={route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "place" ? withCommunity(route.place, <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} />) : <Thread
     name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} running={Boolean(snapshot.liveRunId)} liveStartedAt={snapshot.liveStartedAt}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
   />;
