@@ -9,8 +9,8 @@
 .r1-ca-group h3 { margin: 0 0 8px; font: 600 12.5px/1.4 var(--sans, system-ui); color: var(--ink-3); }
 .r1-ca-group h3 span { margin-left: 5px; font-weight: 400; }
 .r1-ca-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 8px; }
-.r1-ca-card { box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; border-radius: 12px; padding: 9px 10px; text-align: left; color: var(--ink); font: inherit; min-width: 0; }
-.r1-ca-card:hover:not([aria-disabled="true"]) { background: var(--fill); }
+.r1-ca-card { box-sizing: border-box; border: 1px solid var(--line); background: var(--raise); cursor: pointer; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; border-radius: 12px; padding: 9px 10px; text-align: left; color: var(--ink); font: inherit; min-width: 0; }
+.r1-ca-card:hover:not([aria-disabled="true"]) { border-color: var(--line-2); background: var(--fill); }
 .r1-ca-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .r1-ca-card[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
 .r1-ca-text { display: grid; min-width: 0; }
