@@ -1,6 +1,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { isPlace } from "../../places-nav/routes";
+import { navPage } from "../settings/nav";
 import { AREA, HOME, KINDS, TECHNICAL_AREAS, countLine, countsOf, flatten, loadAtlas, visibleRange, type AtlasRow } from "./atlas";
 
 const row = (id: string, a: string, s: AtlasRow["s"], f = id, w = ""): AtlasRow => ({ id, a, f, w, s, p: "pack1" });
@@ -40,6 +42,15 @@ describe("the shipped atlas", () => {
 
   it("only links to areas that exist", () => {
     for (const area of Object.keys(HOME)) expect(AREA[area], area).toBeDefined();
+  });
+
+  it("only opens Settings pages and places that exist, so a host can route every Open", () => {
+    for (const [area, home] of Object.entries(HOME)) {
+      if (home.kind === "settings") expect(navPage(home.page), `${area} → ${home.page}`).toBeDefined();
+      if (home.kind === "place") expect(isPlace(home.place), `${area} → ${home.place}`).toBe(true);
+    }
+    expect(HOME["multi-agent"]).toEqual({ kind: "settings", page: "trunks" });
+    expect(HOME.sessions).toEqual({ kind: "chat" });
   });
 });
 
