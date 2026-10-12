@@ -41,10 +41,20 @@ describe("missing tool result", () => {
     expect(text).toBe("Tool write not found. Available tools: exec, wait.");
   });
 
-  it("says so when the turn has no tools", async () => {
+  it("keeps the upstream message when the turn has no tools", async () => {
     const { text } = await runMissingCall([], "read");
 
-    expect(text).toBe("Tool read not found. No tools are available in this turn.");
+    expect(text).toBe("Tool read not found");
+  });
+
+  it("lists every available tool without truncating", async () => {
+    const tools = Array.from({ length: 45 }, (_, index) => makeTool(`tool_${index}`));
+
+    const { text } = await runMissingCall(tools, "write");
+
+    expect(text).toBe(
+      `Tool write not found. Available tools: ${tools.map((tool) => tool.name).join(", ")}.`,
+    );
   });
 
   it("appends runtime guidance for reaching the tool through the available ones", async () => {

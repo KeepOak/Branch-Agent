@@ -1401,22 +1401,17 @@ function createToolExecutionErrorResult(error: unknown): AgentToolResult<unknown
     : result;
 }
 
-const MISSING_TOOL_LIST_LIMIT = 40;
-
 /**
  * Names the tools the model can call right now so a call to a tool the prompt
  * mentions but the turn does not expose can be retried with a real one.
+ * Wording follows the Vercel AI SDK NoSuchToolError ("Available tools: a, b.").
+ * With no tools in the turn the upstream "Tool <name> not found" text is kept.
  */
 function formatMissingToolMessage(batch: ToolBatchContext, toolCall: AgentToolCall): string {
   const names = [
     ...new Set((batch.currentContext.tools ?? []).map((candidate) => candidate.name)),
   ].filter((name) => name.length > 0);
-  const shown = names.slice(0, MISSING_TOOL_LIST_LIMIT);
-  const more = names.length - shown.length;
-  const available =
-    names.length === 0
-      ? "No tools are available in this turn."
-      : `Available tools: ${shown.join(", ")}${more > 0 ? ` (and ${more} more)` : ""}.`;
+  const available = names.length > 0 ? `Available tools: ${names.join(", ")}.` : undefined;
   let guidance: string | undefined;
   try {
     guidance = batch.config
@@ -1429,7 +1424,8 @@ function formatMissingToolMessage(batch: ToolBatchContext, toolCall: AgentToolCa
   } catch {
     guidance = undefined;
   }
-  return [`Tool ${toolCall.name} not found.`, available, guidance].filter(Boolean).join(" ");
+  const detail = [available, guidance].filter(Boolean).join(" ");
+  return detail ? `Tool ${toolCall.name} not found. ${detail}` : `Tool ${toolCall.name} not found`;
 }
 
 function immediateToolCallError(message: string): ImmediateToolCallOutcome {
