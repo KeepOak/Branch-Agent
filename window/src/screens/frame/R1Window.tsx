@@ -5,12 +5,13 @@ import { Frame } from "./Frame";
 import { Thread } from "../../thread/Thread";
 import { Composer } from "../../composer/Composer";
 import { Face } from "../../face/Face";
-import { Icon } from "../../shell/icons";
 import { SettingsFrame } from "../../places-nav/SettingsFrame";
 import { PlaceView } from "../../places-nav/PlaceView";
 import { loadRoute, parseRoute, saveRoute, windowTitle, type Route } from "../../places-nav/routes";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Popover } from "../../glass/Popover";
+import { Sidebar } from "../sidebar/Sidebar";
+import { Toasts } from "../../shell/Toasts";
 
 /** Support-only escape hatch, retained for one release. */
 export function classicWindow(search = location.search): boolean {
@@ -22,12 +23,12 @@ export function classicWindow(search = location.search): boolean {
 export function R1Window({ session }: { session: SaplingSession }) {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const ready = snapshot.status.phase === "connected", engine = session.engine;
-  const [conversations] = useConversations(session, ready, snapshot.mainKey);
+  const [conversations, list] = useConversations(session, ready, snapshot.mainKey);
   const waiting = usePendingApprovals(session, ready);
   const [route, setRoute] = useState<Route>(loadRoute);
   const [history, setHistory] = useState({ index: 0, count: 1 });
   const entries = useRef<Route[]>([route]);
-  const [query, setQuery] = useState(""), search = useRef<HTMLInputElement>(null);
+  const search = useRef<HTMLInputElement>(null);
   const pill = useRef<HTMLButtonElement>(null);
   const [agentOpen, setAgentOpen] = useState(false), [identity, setIdentity] = useState<{ name?: string; emoji?: string } | null>(null);
   const [identityError, setIdentityError] = useState<string | null>(null);
@@ -71,16 +72,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
     return () => { active = false; };
   }, [agentOpen, ready, engine]);
   const openConversation = (key: string) => navigate({ kind: "chat", key });
-  const rows = conversations.rows.filter(row => !row.system && !row.archived && !row.helper && row.title.toLowerCase().includes(query.toLowerCase()));
-  const sidebar = <>
-    <input className="r1-sidebar-search" ref={search} aria-label="Search conversations" placeholder="Search" value={query} onChange={event => setQuery(event.target.value)} />
-    <nav className="r1-sidebar-list" aria-label="Conversations">
-      {rows.map(row => <button type="button" key={row.key} aria-current={row.key === snapshot.sessionKey && route.kind === "chat"} title={row.title} onClick={() => openConversation(row.key)}><Face size={24} label={row.title} /><span className="r1-sidebar-label">{row.title}</span></button>)}
-      {conversations.loaded && !rows.length && <p className="r1-sidebar-label r1-notice">{query ? "No matching conversations" : "No conversations yet"}</p>}
-      {conversations.error && <p className="r1-notice" role="alert">{conversations.error}</p>}
-    </nav>
-    <div className="r1-sidebar-footer"><button type="button" className="g-ctl" aria-label="Settings" onClick={() => navigate({ kind: "settings", page: "appearance" })}><Icon name="gear" /></button></div>
-  </>;
+  const rows = conversations.rows.filter(row => !row.system && !row.archived && !row.helper);
+  const sidebar = <Sidebar session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
+    currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
+    onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} />;
   const main = route.kind === "settings" ? <SettingsFrame page={route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : <Thread
     name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} running={Boolean(snapshot.liveRunId)} liveStartedAt={snapshot.liveStartedAt}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
@@ -101,6 +96,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       else if (document.activeElement === search.current) setNotice("Coming · Find anything is not connected yet.");
       else { search.current?.focus(); }
     }} />
+    <Toasts />
     {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details">
       <strong>{identity?.name ?? snapshot.name}</strong><p>{identityError ?? (identity ? identity.emoji ?? "" : "Loading agent details…")}</p>
       <button type="button" onClick={closeAgent}>Close</button>

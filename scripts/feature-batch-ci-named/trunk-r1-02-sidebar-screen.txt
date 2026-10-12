@@ -1,0 +1,4 @@
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/sidebar/Sidebar.test.tsx
+window:src/screens/sidebar/model.test.ts
+window:src/screens/sidebar/row-menu.test.ts
