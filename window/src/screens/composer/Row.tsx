@@ -1,7 +1,7 @@
 // The quiet row under the pill (HANDOFF R1-04, preview rowP17): permission and "to …" on the left, model and reasoning
 // on the right, each opening its menu above the composer. The menus' contents are the Classic composer's own
 // (composer/ModeMenu, composer/ModelMenu), so every choice stays the sessions.patch it was.
-import { useRef, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { WindowEngine } from "../../composer/engine";
 import { modeName, type EngineMode } from "../../composer/mode";
 import { capitalize, thinkingChoices, type ModelChoice } from "../../composer/model";
@@ -55,8 +55,21 @@ export function Row(p: Props) {
   const level = levels.find((l) => l.id === p.thinking);
   const permission = p.lockdown ? "Lockdown" : modeName(p.mode ?? p.asSet) || "As set";
   const toggle = (menu: RowMenu) => p.setMenu(p.menu === menu ? null : menu);
+  // Narrow docks scroll the row; the right-edge mask shows only while something is out of view (size only, never DOM writes).
+  const strip = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  useLayoutEffect(() => {
+    const node = strip.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const measure = () => setOverflow(node.scrollWidth > node.clientWidth + 1);
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    measure();
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => { const node = strip.current; if (node) setOverflow(node.scrollWidth > node.clientWidth + 1); });
   const open = (target: OpenTarget) => { p.close(); p.onOpen(target); };
-  return <div className="r1c-row">
+  return <div ref={strip} className="r1c-row" data-overflow={overflow || undefined}>
     <button ref={perm} type="button" className="r1c-quiet" data-local="" data-tone={p.lockdown || (p.mode ?? p.asSet) === "full" ? "bad" : undefined} aria-haspopup="menu" aria-expanded={p.menu === "perm"} title="How much it may do here (Shift+Tab)" onClick={() => toggle("perm")}>{permission}<Chevron /></button>
     {p.topics.length ? <button ref={to} type="button" className="r1c-quiet r1c-to" data-local="" aria-haspopup="menu" aria-expanded={p.menu === "target"} title="Which topic gets this message" onClick={() => toggle("target")}>to {p.target?.title ?? "Main chat"}<Chevron /></button> : null}
     <span className="r1c-grow" />

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from "rea
 import { Icon, type IconName } from "../../composer/icons";
 import type { OpenTarget } from "../../composer/nav";
 import { Popover } from "../../glass/Popover";
-import { Later } from "./Composer";
+import { IMPROVE_COMING, Later } from "./Composer";
 
 type Props = {
   anchor: RefObject<HTMLElement | null>;
@@ -20,6 +20,10 @@ type Props = {
   onBackground: () => void;
   onOpen: (target: OpenTarget) => void;
   onCall: () => void;
+  /** Dictate, folded in from the pill when the dock is 300 px or narrower. */
+  onDictate?: () => void;
+  /** The dock is 300 px or narrower, so Improve folds in here too (and, being Coming, is listed but not drawn). */
+  tight?: boolean;
   /** Records a voice note; absent where the browser can't record. */
   onVoiceNote?: () => void;
 };
@@ -71,6 +75,8 @@ export function PlusMenu(p: Props) {
           <Tile icon="folder" label="Folder ›" onClick={() => setView("folder")} />
         </div>
         <div className="r1c-group">
+          {p.onDictate ? <Item icon="mic" label="Dictate into the box" onClick={run(p.onDictate)} /> : null}
+          {p.tight ? <Later hidden reason={IMPROVE_COMING} where="+ menu › Improve my draft" /> : null}
           <Later hidden reason={PLUS_COMING.teach} where="+ menu › Teach a task" />
           {p.hasModel ? <Item icon="image" label="Make a picture" onClick={run(p.onPicture)} /> : null}
           <Later hidden reason={PLUS_COMING.office} where="+ menu › Write a doc, sheet or slides" />

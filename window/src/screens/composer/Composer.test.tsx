@@ -22,7 +22,7 @@ const LIMITS: Limits = { updatedAt: 0, refreshing: false, rows: [
   { id: "a", name: "ChatGPT · Account 2", provider: "openai-codex", email: "work@example.com", account: "", pill: "Measured", line: "", windows: [{ name: "5-hour", left: 61, reset: "", low: false }, { name: "Week", left: 30, reset: "", low: false }] },
 ] };
 
-async function mount(opts: { models?: boolean; working?: boolean; offline?: boolean } = {}) {
+async function mount(opts: { models?: boolean; working?: boolean; offline?: boolean; dictation?: boolean } = {}) {
   let row: Record<string, unknown> = { model: "openai/test", permissionMode: "guarded", thinkingLevel: "medium" };
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "agents.list") return { defaultId: "scout", agents: [{ id: "scout", name: "Scout" }] };
@@ -30,6 +30,7 @@ async function mount(opts: { models?: boolean; working?: boolean; offline?: bool
     if (method === "sessions.list") return { defaults: { model: "openai/test" }, sessions: [] };
     if (method === "models.list") return { models: opts.models === false ? [] : [{ id: "test", provider: "openai", name: "Test Model", available: true, thinkingLevels: [{ id: "low", label: "low" }, { id: "medium", label: "medium" }, { id: "high", label: "high" }] }] };
     if (method === "models.authStatus") return { providers: [] };
+    if (method === "talk.catalog") return { transcription: { ready: Boolean(opts.dictation) }, realtime: { ready: false } };
     if (method === "sessions.patch") { row = { ...row, ...params }; return {}; }
     return {};
   });
@@ -122,6 +123,24 @@ describe("R1-04 composer", () => {
     await type(host, "Hi");
     expect(button("Send")?.disabled).toBe(true);
     expect(button("Send")?.title).toBe("Offline: Branch is reconnecting.");
+  });
+
+  it("folds Dictate into the + menu when the dock is 300 px or narrower", async () => {
+    vi.stubGlobal("ResizeObserver", class { fire: () => void; constructor(fire: () => void) { this.fire = fire; } observe() { this.fire(); } disconnect() {} });
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return this.classList.contains("r1c") ? 280 : 0; });
+    try {
+      const { host } = await mount({ dictation: true });
+      expect(button("Dictate into the box")).toBeUndefined();
+      await act(async () => host.querySelector<HTMLButtonElement>(".r1c-pill [aria-label^='Attach']")!.click());
+      expect([...document.querySelectorAll(".r1c-plus .r1c-mi-t")].map((t) => t.textContent)).toContain("Dictate into the box");
+      expect(comingControls().some((c) => c.where === "+ menu › Improve my draft" && c.hidden)).toBe(true);
+    } finally { width.mockRestore(); }
+  });
+
+  it("keeps Dictate in the pill on a wide dock and masks the row only while it scrolls", async () => {
+    const { host } = await mount({ dictation: true });
+    expect(button("Dictate into the box")?.closest(".r1c-pill")).not.toBeNull();
+    expect(host.querySelector(".r1c-row")?.hasAttribute("data-overflow")).toBe(false);
   });
 
   it("registers nothing as Coming that it draws as live", async () => {

@@ -29,14 +29,13 @@
 .r1c-pill .c-drawer { left: -1px; right: -1px; }
 
 /* The row underneath: quiet 12.5 px text buttons, 24 tall, no background until hover */
-.r1c-row { display: flex; align-items: center; gap: 2px; min-height: 26px; margin: 4px 14px 0; overflow-x: auto; scrollbar-width: none;
-  mask-image: linear-gradient(to right, var(--mask-opaque) calc(100% - 16px), transparent); }
+/* Inset 6 so each label's text lines up 14 px in from the pill, as in the preview; the right-edge mask only while it scrolls. */
+.r1c-row { display: flex; align-items: center; gap: 2px; min-height: 26px; margin: 4px 6px 0; overflow-x: auto; scrollbar-width: none; }
+.r1c-row[data-overflow] { mask-image: linear-gradient(to right, var(--mask-opaque) calc(100% - 16px), transparent); }
 .r1c-row::-webkit-scrollbar { display: none; }
 .r1c-grow { flex: 1; min-width: 8px; }
 .r1c-quiet { display: flex; align-items: center; gap: 3px; flex: none; height: 24px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-3);
   font-size: var(--fs-12-5); line-height: 1; white-space: nowrap; cursor: pointer; transition: background .15s, color .15s; }
-.r1c-quiet:first-child { margin-left: -8px; }
-.r1c-quiet:last-child { margin-right: -8px; }
 .r1c-quiet:hover, .r1c-quiet[aria-expanded="true"] { background: var(--fill); color: var(--ink); }
 .r1c-quiet.r1c-to { color: var(--ink-2); }
 .r1c-quiet[data-tone="bad"] { color: var(--bad); }
@@ -102,6 +101,17 @@ button.r1c-run:hover { background: var(--wash17); }
 .r1c-bar i { display: block; height: 100%; border-radius: 4px; background: var(--ink-2); }
 .r1c-more { margin: 4px -12px 0; }
 .r1c-more .bars { padding: 0 10px 8px; }
-.r1c-ringpop .lims { padding: 0; }
+/* Every account is the status bar's protected list; only its frame is restyled here, to the popover's own rows. */
+.r1c-ringpop .lims { width: auto; padding: 0; grid-template-columns: minmax(0, 1fr); }
+.r1c-ringpop .lims > .pt { padding: 8px 10px 2px; color: var(--ink-3); font-size: var(--fs-12-5); font-weight: 600; letter-spacing: 0; }
+.r1c-ringpop .lims .ph { padding: 4px 10px 0; color: var(--ink-3); font-size: 12px; }
+.r1c-ringpop .acctT5 { margin: 0; width: 100%; padding: 6px 10px; }
 .r1c-ringpop .lims hr { height: 6px; margin: 0; border: 0; }
-@media (max-width: 480px) { .r1c-row { margin-inline: 12px; } }
+.r1c-ringpop .mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 6px 10px; border: 0; border-radius: var(--r-menu-row); background: transparent;
+  color: var(--ink); font-size: var(--fs-13-5); text-align: left; cursor: pointer; }
+.r1c-ringpop .mi:hover:not(:disabled), .r1c-ringpop .mi:focus-visible { background: var(--wash17); outline: 0; }
+.r1c-ringpop .mi:disabled { opacity: .45; cursor: default; }
+.r1c-ringpop .mi > .mi-label { flex: 1; }
+.r1c-ringpop .mi > svg { color: var(--ink-2); flex: none; }
+.r1c-ringpop .sp-note { margin: 0; padding: 4px 10px; color: var(--ink-3); font-size: 12px; }
+

@@ -1,7 +1,7 @@
 // R1-04 Composer (HANDOFF R1-04, preview composeP17): the floating glass pill (+, field, Improve, mic, ring, voice → send),
 // the quiet row under it and their menus. The logic is the Classic composer's (composer/*.ts hooks, imported, not
 // rewritten); this file only draws it the approved way and joins the parts. Every control is wired or shows Coming.
-import { cloneElement, useCallback, useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
+import { cloneElement, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
 import type { Conversation as ListRow } from "../../connect/conversations";
 import { isPreparationPending, preparationLabel } from "../../connect/preparation-status";
 import { PASTED_TEXT_CHIP_CHARS } from "../../composer/attachments";
@@ -103,6 +103,16 @@ export function Composer(props: Props) {
   const box = useRef<HTMLTextAreaElement>(null), fileInput = useRef<HTMLInputElement>(null), folderInput = useRef<HTMLInputElement>(null);
   const plus = useRef<HTMLButtonElement>(null), ring = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setMenu(null), []);
+  // HANDOFF R1-04: at a dock 300 px wide or less, Dictate and Improve fold into the + menu (size only, read from a ref).
+  const dock = useRef<HTMLDivElement>(null);
+  const [tight, setTight] = useState(false);
+  useLayoutEffect(() => {
+    const node = dock.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setTight(node.clientWidth > 0 && node.clientWidth <= 300));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   const voice = useVoiceCatalog(engine);
   const typed = useRef(draft.text);
@@ -318,7 +328,7 @@ export function Composer(props: Props) {
   const placeholder = noModel ? "Connect a model to start" : `Message ${name}`;
   const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n));
 
-  return <div className="r1c" onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
+  return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
     {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
     {notes.map((n, i) => <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : shortReason(n)}</p>)}
     {draft.note ? <p className="r1c-note">{draft.note}</p> : null}
@@ -340,8 +350,8 @@ export function Composer(props: Props) {
       )}
       {prefs.vimKeys && vim.mode === "normal" ? <span className="r1c-flag" data-testid="vim-normal">Normal</span> : null}
       {row.incognito === true ? <span className="r1c-flag">Temporary</span> : null}
-      {hasText ? <Later reason={IMPROVE_COMING} where="Improve my draft"><button type="button" className="r1c-btn" aria-label="Improve my draft"><Icon name="spark" /></button></Later> : null}
-      {dict.on ? null : voice.dictation
+      {hasText && !tight ? <Later reason={IMPROVE_COMING} where="Improve my draft"><button type="button" className="r1c-btn" aria-label="Improve my draft"><Icon name="spark" /></button></Later> : null}
+      {dict.on || tight ? null : voice.dictation
         ? <button type="button" className="r1c-btn" data-need="talk.catalog" aria-label="Dictate into the box" title="Dictate into the box" onClick={() => void dict.start()}><Icon name="mic" /></button>
         : <Later reason={VOICE_OFF} where="Dictate into the box"><button type="button" className="r1c-btn" aria-label="Dictate into the box"><Icon name="mic" /></button></Later>}
       <Ring ref={ring} usage={usage?.percent ?? null} context={context?.percent ?? null} running={runningCount} label={summary} open={menu === "ring"} onOpen={() => setMenu(menu === "ring" ? null : "ring")} />
@@ -368,6 +378,7 @@ export function Composer(props: Props) {
     {menu === "plus" ? <PlusMenu anchor={plus} onClose={close} hasModel={!noModel} voiceLive={voice.live}
       onFiles={() => fileInput.current?.click()} onPhoto={() => setPhoto(true)} onFolder={() => folderInput.current?.click()} onPicture={() => setPicture(true)}
       onInsert={insert} onBackground={() => void runBackground(draft.text)} onOpen={onOpen} onCall={() => setTalking(true)}
+      tight={tight} onDictate={tight && voice.dictation && !dict.on ? () => void dict.start() : undefined}
       onVoiceNote={typeof MediaRecorder !== "undefined" && navigator.mediaDevices ? () => void note.start() : undefined} /> : null}
     {menu === "ring" ? <RingPopover anchor={ring} onClose={close} engine={engine} sessionKey={sessionKey} name={trunkName} working={working} offline={offline}
       context={context} row={props.row} running={props.running} limits={props.limits} onOpen={onOpen} onOpenConversation={(key) => { setMenu(null); props.onOpenConversation(key); }} /> : null}
