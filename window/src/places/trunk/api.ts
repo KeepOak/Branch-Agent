@@ -27,7 +27,7 @@ export function updateParams(id: string, was: Draft, now: Draft): Record<string,
 }
 
 /** The config.patch paths for the rest of the editor: what it's for, a cleared emoji, what it may do, its computers. */
-export function configChanges(snap: ConfigSnapshot, id: string, was: Draft, now: Draft): Record<string, unknown> {
+function configChanges(snap: ConfigSnapshot, id: string, was: Draft, now: Draft): Record<string, unknown> {
   const out = mayChanges(snap, id, was.may, now.may, now.model);
   if (now.theme.trim() !== was.theme) out[`agents.entries.${id}.identity.theme`] = now.theme.trim() || null;
   if (!now.emoji && was.emoji) out[`agents.entries.${id}.identity.emoji`] = null;
@@ -106,4 +106,3 @@ export async function makeDefault(engine: WindowEngine, roster: Roster, id: stri
 export async function loadRoster(engine: WindowEngine): Promise<Roster> {
   return readRoster(await engine.request("agents.list", {}));
 }
-export const rowOf = (roster: Roster | null, id: string): TrunkRow | undefined => roster?.agents.find((a) => a.id === id);
