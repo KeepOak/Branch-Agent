@@ -1,0 +1,49 @@
+name: Window dead code
+
+# Knip over window/ with window/knip.jsonc. Fails on any unused file, export, exported type,
+# duplicate export or dependency that the config does not allowlist with a reason.
+on:
+  pull_request:
+    paths:
+      - 'window/**'
+      - 'scripts/window-deadcode*.mjs'
+      - 'scripts/feature-batch-ci-runtime.mjs'
+      - 'scripts/feature-batch-ci-window-tooling/**'
+      - '.github/workflows/window-deadcode.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'window/**'
+      - 'scripts/window-deadcode*.mjs'
+      - 'scripts/feature-batch-ci-runtime.mjs'
+      - 'scripts/feature-batch-ci-window-tooling/**'
+      - '.github/workflows/window-deadcode.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: window-deadcode-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  knip:
+    name: window-deadcode
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Test the dead-code gate
+        run: node --test scripts/window-deadcode.test.mjs
+      - name: Fail on window dead code
+        run: node scripts/window-deadcode.mjs --ci

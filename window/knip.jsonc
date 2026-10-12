@@ -1,0 +1,37 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  // Run from window/: pnpm dlx --package knip@6.32.2 knip (see .github/workflows/window-deadcode.yml).
+  // Vite's plugin already adds index.html and src/main.tsx; these are the other roots.
+  "entry": [
+    // Loaded by the scripts/*-harness.html fixture pages that scripts/button-crawl, scripts/frame-qa and
+    // playwright-visual-routes.mjs open. Knip does not follow <script src> in extra HTML pages.
+    "scripts/button-crawl-harness.tsx",
+    "scripts/visual-harness.tsx",
+    // Run by path: node scripts/playwright-visual-routes.mjs <route> <outDir>.
+    "scripts/playwright-visual-routes.mjs",
+    // Component visual regression, run by path against test-integration/preview-state-render.html.
+    "test-integration/preview-state-headless.mjs",
+    "test-integration/preview-state-render.tsx",
+    // Regenerates the office asset bundle; the command is in src/places/office/pixel/README.md.
+    "src/places/office/pixel/scripts/build-assets.ts",
+    // Served as-is from public/ and linked by <link rel="stylesheet"> in index.html and the fixture pages.
+    "public/fonts/preview-fonts.css"
+  ],
+  "ignoreFiles": [
+    // The pixel pet reaction: art, poses and the reactPet event. Unmounted when PetReactionArt was removed in
+    // 94dd4d1d0; kept as a capability to remount, not deleted to satisfy this check.
+    "src/shell/PixelReaction.tsx",
+    "src/shell/pet-reaction.css"
+  ],
+  "ignoreIssues": {
+    // Same pet reaction: reactPet, its timing and scale table wait for a caller that mounts the art again.
+    "src/shell/pet-reaction.ts": ["exports"],
+    // Copied from pixel-agents-hq/pixel-agents at 3537e14 (see src/places/office/pixel/README.md).
+    // Upstream's module surface is kept as-is so the copy can be diffed and re-synced.
+    "src/places/office/pixel/core/src/**": ["exports", "types"],
+    "src/places/office/pixel/webview-ui/src/{office,components,hooks,transport}/**": ["exports", "types"],
+    "src/places/office/pixel/webview-ui/src/*.ts": ["exports", "types"],
+    // Written by src/places/office/pixel/scripts/build-assets.ts; edit the generator, not this file.
+    "src/places/office/pixel/webview-ui/src/branch/generated/**": ["exports", "types"]
+  }
+}
