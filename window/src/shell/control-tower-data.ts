@@ -48,7 +48,7 @@ export type TowerAccount = {
 };
 
 /** Preview's "5-hour" / "Week" from status-data's "This 5-hour window" / "This week". */
-export function shortWindow(name: string): string {
+function shortWindow(name: string): string {
   const hours = /(\d+)-hour/i.exec(name);
   if (hours) return `${hours[1]}-hour`;
   if (/week/i.test(name)) return "Week";
@@ -177,7 +177,7 @@ export function towerFinished(rows: Conversation[], audit: unknown, now = Date.n
   return out;
 }
 
-export type TowerNeedKind = "approval" | "question" | "waiting";
+type TowerNeedKind = "approval" | "question" | "waiting";
 
 export type TowerNeed = {
   id: string;

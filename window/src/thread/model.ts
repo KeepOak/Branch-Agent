@@ -4,7 +4,7 @@ import { readBrowserPresentation, type BrowserPresentation } from "./browser-pre
 import type { RunEvent } from "../connect/stream-order";
 import type { Sender } from "../rooms/sender";
 
-export type ApprovalState = "pending" | "allowed" | "denied";
+type ApprovalState = "pending" | "allowed" | "denied";
 export type StepStatus = "running" | "ok" | "failed" | "denied";
 export type ApprovalDecision = "allow-once" | "allow-always" | "deny";
 
@@ -149,7 +149,7 @@ export function wrapperFailed(isError: unknown, text: string, details?: unknown)
  * (`details`, and the text) says `"status":"failed"` (engine code-mode-execution.ts, tool-search-runtime.ts). When
  * the code read web content the text is wrapped in external-content markers, so the JSON is found inside it.
  */
-export function codeModeStatus(text: string, details?: unknown): string | null {
+function codeModeStatus(text: string, details?: unknown): string | null {
   const fromDetails = record(details).status;
   if (typeof fromDetails === "string") return fromDetails;
   try {
