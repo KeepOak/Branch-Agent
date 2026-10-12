@@ -61,6 +61,14 @@ export function messagePaletteRows(hits: MessageHit[], query: string, rowName: (
   return hits.map((hit, i) => ({ id: `msg:${i}`, group: "Messages", label: hit.snippet, hint: rowName(hit.key), run: () => open(hit.key, query) }));
 }
 
+/** Message rows take their GROUPS slot, just before Trunks. Rows already listed keep their order; message rows only insert. */
+export function paletteShown(base: PaletteRow[], messageRows: PaletteRow[]): PaletteRow[] {
+  if (messageRows.length === 0) return base;
+  const messagesRank = GROUPS.indexOf("Messages");
+  const at = base.findIndex((r) => GROUPS.indexOf(r.group) > messagesRank);
+  return at < 0 ? [...base, ...messageRows] : [...base.slice(0, at), ...messageRows, ...base.slice(at)];
+}
+
 /** Find anything (DESIGN-SPEC §4.1.7): the field, the grouped list, Up/Down/Enter/Escape, and the footer. */
 export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Props) {
   const [query, setQuery] = useState("");
@@ -71,7 +79,7 @@ export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Prop
   // Trunks and Messages show only while typing (§4.1.7 Parity adds); conversation commands too.
   const listed = typing ? rows : rows.filter((r) => r.group !== "Trunks" && !r.whenTyping);
   const base = filterPalette(listed, query);
-  const shown = [...base, ...(typing ? messages.rows : [])].sort((a, b) => GROUPS.indexOf(a.group) - GROUPS.indexOf(b.group));
+  const shown = paletteShown(base, typing ? messages.rows : []);
   useEffect(() => setSel(0), [query]);
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${sel}"]`)?.scrollIntoView({ block: "nearest" });
