@@ -28,6 +28,7 @@ on:
       - Merge gate trusted
       - Non-merge-commit landing
       - OpenClaw wording
+      - Personal info PR scan
       - Priority capability checks
       - Seedbank plugin distribution
       - Visual tour

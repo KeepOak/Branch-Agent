@@ -297,12 +297,15 @@ function Load({ node }: { node: Node }) {
   if (!s.cpuCount) return null;
   const load = Array.isArray(s.loadAverage) ? Number(s.loadAverage[0]).toFixed(1) : "";
   const total = Number(s.memoryTotalBytes) || 0;
-  const used = total - (Number(s.memoryFreeBytes) || 0);
+  const used = Math.max(0, total - (Number(s.memoryFreeBytes) || 0));
+  // "1.7 GB of 15.6 GB memory used", never "1.7 GB/15.6 GB": a slash read as "17 GB/15.6 GB" (CB3).
+  const mem = total ? `${bytes(used)} of ${bytes(total)} memory used` : "";
+  const disk = s.diskAvailableBytes !== undefined ? `${bytes(s.diskAvailableBytes)} disk free` : "";
   return (
-    <span className="s2-busy">
+    <span className="s2-busy s2-load">
       {load ? <span title={`Load average (1 min) on ${str(s.cpuCount)} cores`}>load {load}</span> : null}
-      {total ? <span>{load ? " · " : ""}{bytes(used)}/{bytes(total)} memory</span> : null}
-      {s.diskAvailableBytes !== undefined ? <span> · {bytes(s.diskAvailableBytes)} free</span> : null}
+      {mem ? <span>{load ? " · " : ""}{mem}</span> : null}
+      {disk ? <span>{load || mem ? " · " : ""}{disk}</span> : null}
     </span>
   );
 }
