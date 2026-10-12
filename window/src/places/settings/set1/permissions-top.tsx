@@ -22,6 +22,7 @@ export function thisPcCopy(os = platformName()) {
       open: "Open System Settings",
       install: "macOS asks for an administrator yes each time. Branch asks you first.",
       why: "System Settings › Privacy & Security opens from the Branch app on your computer.",
+      locationHelp: "Lets a Trunk ask where this computer is when a tool needs it. On macOS it asks the first time a Trunk needs it.",
     };
   }
   if (os === "Linux") {
@@ -30,6 +31,7 @@ export function thisPcCopy(os = platformName()) {
       open: null,
       install: "Linux asks for an administrator yes each time. Branch asks you first.",
       why: "Microphone and camera use PipeWire or the desktop portal. Notifications use this desktop. They open from the Branch app on your computer.",
+      locationHelp: "Lets a Trunk ask where this computer is when a tool needs it. On Linux it asks the first time a Trunk needs it.",
     };
   }
   return {
@@ -37,6 +39,7 @@ export function thisPcCopy(os = platformName()) {
     open: "Open Windows Settings",
     install: "Windows asks for an administrator yes each time. Branch asks you first.",
     why: WHY.os,
+    locationHelp: "Lets a Trunk ask where this computer is when a tool needs it. On Windows it asks the first time a Trunk needs it.",
   };
 }
 
@@ -60,7 +63,7 @@ export function ThisPc() {
     <Sec title="This computer" hint={copy.hint}>
       <Plist>
         {THIS_PC_ROWS.map(([t, icon, sub, open]) => (
-          <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : sub}>
+          <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : t === "Location" ? copy.locationHelp : sub}>
             {open && copy.open ? <Btn sm disabled title={copy.why}>{copy.open}</Btn> : null}
           </Prow>
         ))}
@@ -128,6 +131,7 @@ export function Lockdown({ engine }: { engine: WindowEngine }) {
       <div><b>Lockdown</b><p>One switch that stops every Trunk from sending, changing or spending anything.</p></div>
       {/* Preview spec-v23 index.html:8553: danger-filled only while off; "Turn Lockdown off" is the plain button. */}
       <Btn className={lockdown.on ? undefined : "bad"} disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Turn Lockdown on"}</Btn>
+      {lockdown.confirmation}
     </div>
   );
 }

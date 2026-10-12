@@ -6,9 +6,12 @@ import { agentDefaults, entryOf, rec, str, strs, type ConfigSnapshot } from "./m
 
 export type May = {
   read: boolean;
+  /** Browser on: the browser toolset is on and no deny or rule for every Trunk turns it off. */
   browse: boolean;
   /** Why the browser switch can't change here (a rule for every Trunk, or its own tool list). */
   browseLock: string;
+  /** Toolset switches the entry sets explicitly. A missing name is on. Browser is read through `browse`. */
+  toolsets: Record<string, boolean>;
   decide: string;
   fallbacks: string[];
   startOn: string;
@@ -16,6 +19,9 @@ export type May = {
 
 const BROWSER = ["browser", "group:ui"];
 const blocks = (list: string[]) => list.some((t) => BROWSER.includes(t));
+/** The entry's explicit true/false toolset switches; anything else is left to the default (on). */
+const switchesOf = (value: unknown): Record<string, boolean> =>
+  Object.fromEntries(Object.entries(rec(value)).filter((pair): pair is [string, boolean] => typeof pair[1] === "boolean"));
 
 /** The current values, so every switch starts where the engine is. */
 export function readMay(snap: ConfigSnapshot, id: string): May {
@@ -27,12 +33,14 @@ export function readMay(snap: ConfigSnapshot, id: string): May {
     : allow.length && !allow.includes("*") && !blocks(allow)
       ? "Its own tool list leaves the browser out. Change it in the engine’s tool settings."
       : "";
+  const toolsets = switchesOf(entry.toolsets);
   const exec = rec(tools.exec);
   const groupLock = strs(tools.deny).includes("group:ui") ? "Its own tool list turns off the screen tools, the browser with them. Change it in the engine’s tool settings." : "";
   return {
     read: workspaceOnly !== true,
-    browse: !browseLock && !groupLock && !blocks(strs(tools.deny)),
+    browse: !browseLock && !groupLock && !blocks(strs(tools.deny)) && toolsets.browser !== false,
     browseLock: browseLock || groupLock,
+    toolsets,
     decide: entry.decisionModel === undefined ? "same" : str(entry.decisionModel) || "none",
     fallbacks: strs(rec(entry.model).fallbacks),
     startOn: str(exec.host) === "node" && str(exec.node) ? str(exec.node) : "this",
@@ -45,8 +53,14 @@ export function mayChanges(snap: ConfigSnapshot, id: string, was: May, now: May,
   const everyTrunk = rec(rec(snap.config.tools).fs).workspaceOnly === true;
   if (was.read !== now.read) out[`${base}.tools.fs.workspaceOnly`] = now.read ? (everyTrunk ? false : null) : true;
   if (was.browse !== now.browse) {
-    const deny = strs(tools.deny).filter((t) => t !== "browser");
-    out[`${base}.tools.deny`] = now.browse ? (deny.length ? deny : null) : [...deny, "browser"];
+    out[`${base}.toolsets.browser`] = now.browse ? null : false;
+    const deny = strs(tools.deny);
+    const cleaned = deny.filter((t) => t !== "browser");
+    if (now.browse && cleaned.length !== deny.length) out[`${base}.tools.deny`] = cleaned.length ? cleaned : null;
+  }
+  for (const id of new Set([...Object.keys(was.toolsets), ...Object.keys(now.toolsets)])) {
+    if (id === "browser" || (was.toolsets[id] !== false) === (now.toolsets[id] !== false)) continue;
+    out[`${base}.toolsets.${id}`] = now.toolsets[id] === false ? false : null;
   }
   if (was.decide !== now.decide) out[`${base}.decisionModel`] = now.decide === "same" ? null : now.decide === "none" ? "" : now.decide;
   if (was.fallbacks.join("\n") !== now.fallbacks.join("\n")) out[`${base}.model`] = { primary: model || null, fallbacks: now.fallbacks.length ? now.fallbacks : null };

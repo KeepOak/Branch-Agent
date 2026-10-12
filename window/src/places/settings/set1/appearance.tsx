@@ -42,7 +42,7 @@ export function AppearancePage(props: SettingsPageProps) {
       <AgentsSec look={look} />
       <BackgroundSec look={look} />
       <ReadingSec look={look} />
-      <PetSec look={look} openSettings={props.openSettings} />
+      <PetSec look={look} />
       <ShownSec look={look} />
       <LanguageSec />
       <TraySec />

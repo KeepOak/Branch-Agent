@@ -11,6 +11,7 @@
 .stage7 .tb-grow {flex:1;}
 .stage7.computer-stage {background:var(--title);}
 .stage7 .st7-top .ib {color:var(--ink-2);border-radius:10px;}
+.st7-mode {display:flex;justify-content:flex-start;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--bg);flex:none;}
 .st7-sw {display:inline-flex;padding:2px;border-radius:999px;background:var(--fill);gap:2px;}
 .st7-sw button {display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:0;border-radius:999px;background:transparent;font:inherit;font-size:12.5px;color:var(--ink-2);}
 .st7-sw button[aria-pressed="true"] {background:var(--raise);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}

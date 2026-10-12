@@ -87,7 +87,10 @@ function resolvePreparedAgentSnapshot(
     ...(agentId ? { agentId } : {}),
     agentDir: resolvedAgentDir,
     config: cfg ?? {},
-    inheritedAuthDir: resolveLegacyInheritedAuthDir(cfg ?? {}),
+    inheritedAuthDir: resolveLegacyInheritedAuthDir(cfg ?? {}, undefined, undefined, {
+      agentId,
+      agentDir: resolvedAgentDir,
+    }),
   };
   const published = getPreparedModelRuntimeSnapshot({
     ...base,
@@ -149,7 +152,10 @@ export async function resolveModelAsync(
           ...(options?.agentId ? { agentId: options.agentId } : {}),
           agentDir: resolvedAgentDir,
           config: cfg ?? {},
-          inheritedAuthDir: resolveLegacyInheritedAuthDir(cfg ?? {}),
+          inheritedAuthDir: resolveLegacyInheritedAuthDir(cfg ?? {}, undefined, undefined, {
+            agentId: options?.agentId,
+            agentDir: resolvedAgentDir,
+          }),
           ...(derivedWorkspaceDir ? { workspaceDir: derivedWorkspaceDir } : {}),
         })
       : undefined);
