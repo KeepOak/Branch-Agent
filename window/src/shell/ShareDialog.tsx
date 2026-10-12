@@ -15,7 +15,7 @@ type Identity = { id: string; name: string };
 type Sharing = { visibility: Visibility | null; allowed: Visibility[]; owner: Identity | null; members: Set<string>; people: Identity[]; publicToken: string | null; canChange: boolean };
 
 /** The words for each level, for everyone else on this Branch (draft is its own switch). */
-export const VISIBILITY_WORDS: [Visibility, string][] = [["read-only", "May read it"], ["suggest", "May suggest"], ["shared", "May write in it"]];
+const VISIBILITY_WORDS: [Visibility, string][] = [["read-only", "May read it"], ["suggest", "May suggest"], ["shared", "May write in it"]];
 
 const identity = (v: unknown): Identity => ({ id: str(rec(v).id), name: str(rec(v).displayName) || str(rec(v).name) || str(rec(v).label) || str(rec(v).id) });
 

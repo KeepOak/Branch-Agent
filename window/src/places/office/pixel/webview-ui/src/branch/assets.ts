@@ -33,7 +33,7 @@ export interface DecodedPng {
   data: Uint8ClampedArray;
 }
 
-export interface PetFramesRaw {
+interface PetFramesRaw {
   walkDown: string[][][];
   idleDown: string[][][];
   walkUp: string[][][];
@@ -70,7 +70,7 @@ async function decodeB64(b64: string): Promise<DecodedPng> {
 }
 
 /** Same as upstream browserMock.readSprite: a w×h window of the PNG as hex SpriteData. */
-export function readSprite(png: DecodedPng, w: number, h: number, ox = 0, oy = 0): string[][] {
+function readSprite(png: DecodedPng, w: number, h: number, ox = 0, oy = 0): string[][] {
   const sprite: string[][] = [];
   for (let y = 0; y < h; y++) {
     const row: string[] = [];

@@ -10,7 +10,7 @@ export type Why = "you" | "card" | "access" | "room" | "failed";
 export const BLOCK: Record<Why, [string, string]> = { you: ["wait", "Waiting for you"], card: ["idle", "Waiting on another card"], access: ["warn", "Missing access"], room: ["warn", "Out of room or budget"], failed: ["bad", "It failed"] };
 export const WAYOUT: Record<Why, string> = { you: "Answer", card: "See the card", access: "Sign in", room: "Answer", failed: "Try again" };
 
-export type Trunk = { id: string; name: string };
+type Trunk = { id: string; name: string };
 export type Person = { id: string; name: string };
 /** `counted` is false when no engine record ties runs to this computer, so no run count is drawn for it. */
 export type Computer = { id: string; name: string; state: "ok" | "sleep" | "off"; lastSeen?: number; counted?: false };
