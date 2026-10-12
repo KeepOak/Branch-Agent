@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -109,5 +111,35 @@ describe("All features", () => {
     const t = await render({ rows: undefined });
     await act(async () => { await loadAtlas(); });
     expect(t.host.querySelector(".feat-count")!.textContent).toMatch(/^4,\d{3} of 4,973 features · \d[\d,]* more at the Technical level$/);
+  });
+});
+
+describe("the page's glass (HANDOFF 1.2)", () => {
+  const css = readFileSync(join(process.cwd(), "src/screens/features/features.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const rule = (selector: string): string => {
+    const at = css.indexOf(`${selector} {`);
+    expect(at, selector).toBeGreaterThanOrEqual(0);
+    return css.slice(at, css.indexOf("}", at));
+  };
+  const background = (selector: string): string => /background:\s*([^;]+);/.exec(rule(selector))?.[1]?.trim() ?? "";
+
+  it("uses chip glass for row hover, the focused row and the status chips, never a solid fill", () => {
+    expect(background(".feat-r:hover")).toBe("var(--gk-chip)");
+    expect(background(".feat-r.focus")).toBe("var(--gk-on)");
+    expect(background(".feat-chip")).toBe("var(--gk-chip)");
+    for (const sel of [".feat-r:hover", ".feat-r.focus", ".feat-chip"]) expect(rule(sel), sel).toContain("inset 0 0 0 .5px var(--gf-edge)");
+    expect(css).not.toMatch(/var\(--(ok|warn)-tint\)/);
+    expect(rule(".feat-chip.in")).toContain("color: var(--ok)");
+    expect(rule(".feat-chip.part")).toContain("color: var(--warn)");
+  });
+
+  it("uses control glass with the 0.5px glass edge for the search box and Open, not a drawn line", () => {
+    for (const sel of [".feat-search", ".feat-go"]) {
+      expect(background(sel), sel).toBe("var(--gc-fill)");
+      expect(rule(sel), sel).toContain("border: .5px solid var(--gc-edge)");
+      expect(rule(sel), sel).toContain("backdrop-filter: var(--gc-blur)");
+    }
+    expect(css).not.toMatch(/background:\s*var\(--fill\)/);
+    expect(css).not.toMatch(/var\(--line\)/);
   });
 });
