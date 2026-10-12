@@ -8,7 +8,7 @@ import { KitProvider, type SaveReport } from "../kit";
 import { AppearancePage, APPEARANCE_ROWS } from "./appearance";
 import { BUILTIN, contrast, fromPalette, SLATE, toPalette } from "./appearance-look";
 import { LEGACY_THEMES } from "./appearance-legacy";
-import { forgetLookStore, lookStore } from "./appearance-store";
+import { applyLook, forgetLookStore, lookStore } from "./appearance-store";
 import { readThemeCode, themeCode } from "./appearance-themes";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -27,7 +27,7 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; });
 
-function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; current?: string; conflicts?: number; themes?: typeof THEMES; themesResponse?: Promise<unknown> } = {}) {
+function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; current?: string; conflicts?: number; themes?: typeof THEMES; themesResponse?: Promise<unknown>; importError?: Error } = {}) {
   const prefs: Record<string, unknown> = { ...opts.prefs };
   let conflicts = opts.conflicts ?? 0;
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
@@ -36,6 +36,7 @@ function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; cu
     if (method === "themes.list") return opts.themesResponse ?? { current: { id: opts.current ?? "grove", mode: "system", scope: "profile", overrides: {} }, theme: THEMES[0], themes: opts.themes ?? THEMES };
     if (method === "agents.list") return { defaultId: "main", agents: [{ id: "main", name: "Birch" }] };
     if (method === "config.get") return { hash: "h1", valid: true, config: {} };
+    if (method === "themes.import" && opts.importError) throw opts.importError;
     if (method === "models.list") return { models: [] };
     return { status: "ok" };
   });
@@ -52,6 +53,25 @@ const sw = (label: string) => host.querySelector<HTMLInputElement>(`input[aria-l
 const rows = () => [...host.querySelectorAll(".ctl > b")].map((b) => b.textContent);
 
 describe("Settings › Appearance", () => {
+  it("follows system transparency until a saved choice overrides it", () => {
+    const saved = { look: {}, device: {}, prefs: {}, palette: null };
+    applyLook(saved);
+    expect(document.documentElement.dataset.transparency).toBeUndefined();
+    applyLook({ ...saved, look: { reduceTransparency: true } });
+    expect(document.documentElement.dataset.transparency).toBe("reduce");
+    applyLook({ ...saved, look: { reduceTransparency: false } });
+    expect(document.documentElement.dataset.transparency).toBe("full");
+  });
+  it("saves Reduce transparency through the profile and restores glass when switched off", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    expect(sw("Reduce transparency").closest(".ctl")?.querySelector("small")?.textContent).toBe("Swaps the glass for solid tinted surfaces. Easier to read, and lighter on older computers.");
+    await act(async () => sw("Reduce transparency").click());
+    expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { "ui.window.look": { reduceTransparency: true } }, expectedEntries: { "ui.window.look": null } });
+    expect(document.documentElement.dataset.transparency).toBe("reduce");
+    await act(async () => sw("Reduce transparency").click());
+    expect(document.documentElement.dataset.transparency).toBe("full");
+  });
   it.each([1, 2] as const)("NA-02 omits unavailable character and pet controls from level %i and search", async (level) => {
     const { engine } = engineOf();
     await render(engine, level);
@@ -255,6 +275,32 @@ describe("Settings › Appearance", () => {
     await act(async () => button("Daylight", document).click());
     expect(BUILTIN.dracula.light.bg).toBe("#f1eff6");
     expect(BUILTIN.dracula.dark.bg).toBe("#282a36");
+  });
+
+  it.each([false, true])("pastes a theme with a plain failure and retained code when refused (%s)", async (fail) => {
+    const detail = new Error("themes.import: INVALID_REQUEST /private/themes");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { engine, request } = engineOf({ ...(fail ? { importError: detail } : {}) });
+    try {
+      await render(engine);
+      await act(async () => button("Browse all 3 themes").click());
+      await act(async () => button("Paste a theme code", document).click());
+      const textarea = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Theme code"]')!;
+      const code = themeCode("Test theme", SLATE);
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, code);
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => button("Add theme", document).click());
+      expect(request).toHaveBeenCalledWith("themes.import", expect.objectContaining({ definition: expect.objectContaining({ name: "Test theme" }) }));
+      if (fail) {
+        expect(document.querySelector('[role="alert"]')?.textContent).toContain("Could not add the theme");
+        expect(document.body.textContent).not.toMatch(/themes.import|INVALID_REQUEST|private/);
+        expect(textarea.value).toBe(code);
+        expect(report.failed).toHaveBeenLastCalledWith("Could not save the theme change. Try again.");
+        expect(warn).toHaveBeenCalledWith(expect.any(String), detail);
+      } else expect(document.querySelector('textarea[aria-label="Theme code"]')).toBeNull();
+    } finally { warn.mockRestore(); }
   });
 
   it("Make your own imports the colours as the person's theme", async () => {

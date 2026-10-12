@@ -25,6 +25,24 @@ const responses: Record<string, unknown> = {
 };
 
 describe("New group chat", () => {
+  it.each(["agents.list", "sessions.create", "session.members.add"])("keeps %s failure details out of the dialog", async (method) => {
+    const detail = new Error(`${method}: INTERNAL_ERROR /private/runtime`);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const request = vi.fn(async (m: string) => { if (m === method) throw detail; return responses[m]; });
+    const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+    const onOpen = vi.fn();
+    try {
+      await act(async () => root!.render(<NewGroupChat engine={{ request } as unknown as WindowEngine} onClose={() => {}} onOpen={onOpen} prefill={{ people: ["p-2"] }} />));
+      if (method !== "agents.list") await act(async () => [...document.querySelectorAll("button")].find(b => b.textContent === "Start the group chat")!.click());
+      const alert = document.querySelector('[role="alert"]')!.textContent;
+      expect(alert).toContain(method === "agents.list" ? "Could not load the Trunks" : method === "sessions.create" ? "Could not start the group chat" : "some people couldn’t be added");
+      expect(document.body.textContent).not.toMatch(/engine|INTERNAL_ERROR|private|one to six/);
+      expect([...document.querySelectorAll("[title]")].map(el => el.getAttribute("title")).join(" ")).not.toMatch(/engine|INTERNAL_ERROR/);
+      expect(onOpen).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.any(String), detail);
+    } finally { warn.mockRestore(); }
+  });
+
   it("renders a brand-new group before its lead session exists", async () => {
     let shell: ShellRoom | undefined;
     function Harness() {
