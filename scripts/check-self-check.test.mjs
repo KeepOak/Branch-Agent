@@ -277,3 +277,26 @@ test('the merge gate job that runs the SELF-CHECK and UI-proof steps declares pu
   const job = yaml.slice(yaml.indexOf('  changed-test-coverage:'), yaml.indexOf('  merge-gate:'));
   assert.match(job, /permissions:\n\s+contents: read\n\s+pull-requests: read/);
 });
+
+test('the PR snapshot file is the body the check reads, with no live read', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'self-check-snapshot-'));
+  try {
+    const file = path.join(dir, 'pr-snapshot.json');
+    writeFileSync(file, JSON.stringify({ body: selfCheckBody(HEAD), headRef: 'trunk/snap', headSha: HEAD }));
+    const input = resolveSelfCheckInput({
+      env: { PR_SNAPSHOT_FILE: file, REPO: 'o/r', PR_NUMBER: '1', GH_TOKEN: 'x', GITHUB_ACTIONS: 'true' },
+      read: () => { throw new Error('the live API must not be read when a snapshot is given'); },
+    });
+    assert.deepEqual(input, { headRef: 'trunk/snap', body: selfCheckBody(HEAD), headSha: HEAD });
+    assert.equal(checkSelfCheck(input).ok, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a missing PR snapshot fails closed: no fallback to the payload or the API', () => {
+  assert.throws(() => resolveSelfCheckInput({
+    env: { PR_SNAPSHOT_FILE: '/nonexistent/pr-snapshot.json', REPO: 'o/r', PR_NUMBER: '1', GH_TOKEN: 'x', GITHUB_ACTIONS: 'true' },
+    read: () => { throw new Error('must not be called'); },
+  }), /ENOENT/);
+});
