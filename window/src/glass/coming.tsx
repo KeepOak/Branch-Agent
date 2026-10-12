@@ -3,7 +3,7 @@
 //   <Coming need="channels.add" reason="Setting up Slack comes in a later update."><button …>Add</button></Coming>
 // A control that needs no engine call (open a menu, go back) says so with data-local. In dev builds every Coming
 // control registers itself (coming-registry.ts), and window.__branchComing() lists them.
-import { cloneElement, useEffect, useId, type KeyboardEvent, type MouseEvent, type ReactElement } from "react";
+import { cloneElement, useEffect, useId, type KeyboardEvent, type SyntheticEvent, type ReactElement } from "react";
 import { availability, useCapabilityEngine, useCapabilityVersion } from "../connect/capabilities";
 import type { WindowEngine } from "../connect/engine";
 import { COMING_REASON, registerComing, type ComingEntry } from "./coming-registry";
@@ -19,18 +19,20 @@ export type ComingProps = {
   hidden?: boolean;
   /** Checks against this engine instead of the CapabilityProvider's. */
   engine?: Pick<WindowEngine, "features"> | null;
-  /** One element that passes DOM props through (aria-disabled, title, style, the click handlers). */
+  /** One element that forwards DOM props, including aria-disabled, readOnly and event guards.
+   * Components that drop these props stay live and are reported by the dev check as undeclared. */
   children: ReactElement;
 };
 
 type ChildProps = { "aria-label"?: unknown; title?: unknown; children?: unknown; style?: Record<string, unknown> };
 
-const swallow = (event: MouseEvent | KeyboardEvent) => {
+const swallow = (event: SyntheticEvent) => {
   event.preventDefault();
   event.stopPropagation();
 };
 const swallowKeys = (event: KeyboardEvent) => {
-  if (event.key === "Enter" || event.key === " ") swallow(event);
+  // Preserve Tab navigation, but block typing, select navigation and custom key actions.
+  if (event.key !== "Tab") swallow(event);
 };
 
 function labelOf(child: ReactElement): string {
@@ -62,7 +64,18 @@ export function Coming({ need, reason, where, hidden = false, engine, children }
     title: why,
     onClick: swallow,
     onClickCapture: swallow,
+    onPointerDownCapture: swallow,
+    onMouseDownCapture: swallow,
+    onChange: swallow,
+    onChangeCapture: swallow,
+    onInput: swallow,
+    onInputCapture: swallow,
+    onBeforeInputCapture: swallow,
+    onAuxClick: swallow,
+    onAuxClickCapture: swallow,
     onKeyDownCapture: swallowKeys,
+    onKeyUpCapture: swallowKeys,
+    ...((children.type === "input" || children.type === "textarea" || typeof children.type !== "string") ? { readOnly: true } : {}),
     style: { ...props.style, opacity: 0.55, cursor: "not-allowed" },
   } as Record<string, unknown>);
 }

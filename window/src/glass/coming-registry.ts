@@ -25,7 +25,8 @@ const CONTROLS = "button, a[href], input, select, textarea, summary, [role='butt
 export function undeclaredControls(root: ParentNode = document): Element[] {
   return [...root.querySelectorAll(CONTROLS)].filter((element) => {
     if (element.closest("[data-local], [data-coming], [data-need]")) return false;
-    if (element.getAttribute("aria-disabled") === "true" || (element as HTMLButtonElement).disabled) return false;
+    if ((element as HTMLButtonElement).disabled) return false;
+    if (element.getAttribute("aria-disabled") === "true" && element.getAttribute("title")?.trim()) return false;
     return !(element instanceof HTMLInputElement && element.type === "hidden");
   });
 }
