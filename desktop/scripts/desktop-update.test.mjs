@@ -232,3 +232,19 @@ test("a swap that cannot move the running copy stays staged without a relaunch l
   const helper = join(dist, "desktop-update-helper.js");
   assert.equal(await desktopUpdate.handOffDesktopUpdate(cfg, install, helper, [], false), false, "a normal start does not hand off again");
 }));
+
+test("desktop confirmation retains exactly the current and previous update folders", () => fixture(async ({ cfg }) => {
+  const retained = [];
+  for (const version of ["0.4.1", "0.4.2", "0.4.3"]) {
+    const folder = join(cfg.dataDir, "updates", `desktop-${version}-abc123`);
+    await mkdir(join(folder, "payload"), { recursive: true });
+    const journal = { version, kind: "asar", phase: "staged", staged: join(folder, "payload", "app.asar.staged"), target: join(cfg.dataDir, "app.asar") };
+    await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify(journal));
+    assert.equal(await desktopUpdate.confirmDesktopUpdate(cfg), null, "staging is not confirmation");
+    await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({ ...journal, phase: "applied" }));
+    assert.equal(await desktopUpdate.confirmDesktopUpdate(cfg), version);
+    retained.unshift(folder);
+    assert.deepEqual(JSON.parse(await readFile(join(cfg.dataDir, "desktop-update-retained.json"), "utf8")), retained.slice(0, 2));
+    assert.equal(await desktopUpdate.confirmDesktopUpdate(cfg), null, "confirmation is idempotent");
+  }
+}));

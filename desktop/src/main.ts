@@ -12,7 +12,7 @@ import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident } from "./resident-window";
-import { canUndoComponentUpdate, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -1013,7 +1013,8 @@ async function start(): Promise<void> {
   if (quitting) return;
   watchUpdates(win);
   componentsReady = true;
-  runConfirmedReleasePrune();
+  if (pendingReleasePrune) runConfirmedReleasePrune();
+  else void pruneStartupUpdates(cfg, log);
   autoApply.start();
   stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, underSwapGuard, log,
     onWithdrawal: version => {
@@ -1087,7 +1088,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   // A handoff's standby that is ready owns the state, channels and cron: a failed confirmation never rolls it back.
   if (confirmUpdate) {
     try {
-      pendingReleasePrune = await confirmComponentUpdate(cfg, error => log(`Confirmed update cleanup: ${String(error)}`), true);
+      pendingReleasePrune = await confirmComponentUpdate(cfg, error => log(`Confirmed update cleanup: ${String(error)}`), true, log);
     } catch (error) {
       if (!options.keepOnConfirmFailure) throw error;
       log(`the new engine serves but its update could not be confirmed (${String(error)}); keeping it`);
