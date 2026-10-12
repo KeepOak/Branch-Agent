@@ -7,8 +7,10 @@ import type { GatewayClient } from "../gateway/server-methods/client-types.js";
  * in-process: a server-built client (Trunk tools, schedules); its own tool policy applies.
  * owner-window: the owner on this computer holding the gateway's own secret (the window, the local CLI).
  * local-operator: another authenticated caller on this computer that is not the owner.
- * paired-door: any caller that signed in with a paired device key (phones, paired doors), wherever it is.
- * remote: an authenticated caller that is not on this computer.
+ * paired-door: a caller off this computer that signed in with a paired device key (phones, paired doors).
+ * remote: any other authenticated caller that is not on this computer.
+ * The window reconnects on its own stored device key over this computer's direct transport; that is still the
+ * window, so a device key only makes a paired door when the connection is not local.
  */
 export type GatewayCallerKind =
   | "in-process"
@@ -60,11 +62,8 @@ function isInProcessClient(client: GatewayClient): boolean {
 }
 
 function resolveKind(client: GatewayClient, owner: boolean, local: boolean): GatewayCallerKind {
-  if (client.isDeviceTokenAuth) {
-    return "paired-door";
-  }
   if (!local) {
-    return "remote";
+    return client.isDeviceTokenAuth ? "paired-door" : "remote";
   }
   return owner ? "owner-window" : "local-operator";
 }

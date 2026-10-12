@@ -41,7 +41,7 @@ describe("caller identity", () => {
     expect(Object.isFrozen(window)).toBe(true);
     expect(
       resolveGatewayCaller(
-        client({ isDeviceTokenAuth: true, pairedClientId: "phone-1", internal: { isLocalClient: true } }),
+        client({ isDeviceTokenAuth: true, pairedClientId: "phone-1", internal: { authenticatedOperator: true } }),
       ),
     ).toMatchObject({ kind: "paired-door", deviceId: "phone-1" });
     expect(resolveGatewayCaller(client({ internal: { authenticatedOperator: true } })).kind).toBe("remote");
@@ -138,11 +138,24 @@ describe("G-1614 local-only control changes", () => {
     expect(patchAddsEntries({ enabled: true }, { token: "x" })).toBe(false);
   });
 
+  it("G-1614: the window reconnecting on its stored device key on this computer is still the local window", () => {
+    const window = client({
+      isDeviceTokenAuth: true,
+      pairedClientId: "window-1",
+      internal: { isLocalClient: true, authenticatedOperator: true },
+      authenticatedUserProfile: { profileId: GATEWAY_OWNER_PROFILE_ID, displayName: null, hasAvatar: false, updatedAt: 0 },
+    });
+    expect(resolveGatewayCaller(window).kind).toBe("owner-window");
+    expect(authorizeLocalOnlyControlForMethod("cron.add", {}, resolveGatewayCaller(window), {})).toEqual({
+      allowed: true,
+    });
+  });
+
   it("G-1614: the method gate holds even for a paired door with operator.admin", () => {
     const phone = client({
       isDeviceTokenAuth: true,
       pairedClientId: "phone-1",
-      internal: { isLocalClient: true, authenticatedOperator: true },
+      internal: { authenticatedOperator: true },
     });
     expect(authorizeLocalOnlyControlForMethod("cron.add", {}, resolveGatewayCaller(phone), {})).toEqual({
       allowed: false,
