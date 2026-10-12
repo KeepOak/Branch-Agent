@@ -207,6 +207,13 @@ describe("fetchClaudeUsage", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it("flags a token without the usage scope so Branch asks for a fresh sign-in instead of retrying", async () => {
+    const fetch = createProviderUsageFetch(async () => scopeResponse());
+    const result = await fetchClaudeUsage("token", 5000, fetch);
+    expect(result).toMatchObject({ provider: "anthropic", error: scopeError, signInNeeded: true });
+    expect(result.windows).toEqual([]);
+  });
+
   it.each([
     ["org request failed", 500, "boom", 200, {}],
     ["malformed org id", 200, [{ uuid: 123 }], 200, {}],

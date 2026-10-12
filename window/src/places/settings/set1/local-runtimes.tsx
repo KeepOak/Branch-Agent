@@ -16,11 +16,11 @@ type Runtime = { id: string; name: string; mark: string; note: string; off?: str
 const NO_PROBE = "Branch can’t look for this runtime yet. Add it in Accounts as your own service.";
 export const RUNTIMES: Runtime[] = [
   { id: "ollama", mark: "OL", name: "Ollama", note: "Runs on this computer, so nothing leaves it and nothing is charged. Install Ollama and run `ollama serve`. No key needed." },
-  { id: "lmstudio", mark: "LS", name: "LM Studio", note: "Runs on this computer. Load a model in LM Studio and start its server. Any placeholder key works." },
-  { id: "vllm", mark: "VL", name: "vLLM", note: "Runs on this computer. Start vLLM with its OpenAI-compatible server. Any placeholder key works." },
-  { id: "llama-cpp", mark: "LC", name: "llama.cpp", note: "Runs on this computer. Start llama-server from llama.cpp. Any placeholder key works." },
-  { id: "localai", mark: "LO", name: "LocalAI", note: "Runs on this computer and can also make speech and pictures. Any placeholder key works.", off: NO_PROBE },
-  { id: "jan", mark: "JA", name: "Jan", note: "Runs on this computer. Turn on Jan’s local server. Any placeholder key works.", off: NO_PROBE },
+  { id: "lmstudio", mark: "LS", name: "LM Studio", note: "Runs on this computer. Load a model in LM Studio and start its server. Any non-empty key works." },
+  { id: "vllm", mark: "VL", name: "vLLM", note: "Runs on this computer. Start vLLM with its OpenAI-compatible server. Any non-empty key works." },
+  { id: "llama-cpp", mark: "LC", name: "llama.cpp", note: "Runs on this computer. Start llama-server from llama.cpp. Any non-empty key works." },
+  { id: "localai", mark: "LO", name: "LocalAI", note: "Runs on this computer and can also make speech and pictures. Any non-empty key works.", off: NO_PROBE },
+  { id: "jan", mark: "JA", name: "Jan", note: "Runs on this computer. Turn on Jan’s local server. Any non-empty key works.", off: NO_PROBE },
   { id: "litellm", mark: "LI", name: "LiteLLM proxy", note: "A proxy you run yourself that speaks OpenAI’s shape and forwards to whichever service you configured behind it. Point this at wherever you run it." },
 ];
 const NOT_FOUND = "Not found on this computer. Branch can use it as soon as it runs.";

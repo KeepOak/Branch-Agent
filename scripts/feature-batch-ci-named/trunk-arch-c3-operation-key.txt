@@ -1,0 +1,6 @@
+engine:src/agents/tools/sessions-send-followup.test.ts
+engine:src/agents/tools/sessions-send-operation-key.test.ts
+engine:src/agents/tools/sessions-send-owner-continuation.test.ts
+engine:src/agents/tools/sessions-send-tool.a2a.test.ts
+engine:src/agents/tools/sessions-send-tool.admission.test.ts
+engine:src/agents/tools/sessions-send-tool.graft.test.ts

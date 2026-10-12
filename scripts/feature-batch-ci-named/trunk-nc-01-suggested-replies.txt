@@ -1,0 +1,2 @@
+window:src/thread/run-outcome.test.tsx
+window:src/thread/suggestions-redesign.test.tsx

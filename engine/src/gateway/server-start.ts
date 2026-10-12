@@ -1,3 +1,4 @@
+import { flushCompileCache } from "node:module";
 import { formatErrorMessage } from "../infra/errors.js";
 import { LegacyPluginSdkResourceHost } from "../plugins/legacy-sdk-resource-host.js";
 import { hasRetainedPluginRuntimeCloseError } from "../plugins/runtime-close-error.js";
@@ -31,7 +32,9 @@ async function startGatewayServerWithSdkHost(
   sdkResourceHost: LegacyPluginSdkResourceHost,
 ): Promise<GatewayServer> {
   const { promise: postReadyWorkBarrier, resolve: releasePostReadyWork } = createDeferredCore();
-  if (!opts.startupConfigSnapshotRead && !opts.updateCanary) await assignTrunkCharactersAtStartup();
+  if (!opts.startupConfigSnapshotRead && !opts.updateCanary) {
+    await assignTrunkCharactersAtStartup();
+  }
   const preparedKernel = await prepareGatewayKernel(port, opts, {
     deferEarlyRuntime: true,
     sdkResourceHost,
@@ -102,6 +105,10 @@ async function startGatewayServerWithSdkHost(
       if (gatewayKernel.lifecycle.closePreludeStarted) {
         return;
       }
+      // Node otherwise writes the entire cold-start cache inside process.exit(),
+      // after the clean-close log and outside the desktop's asynchronous drain.
+      // Publish it before deferred background work, not during a later quit.
+      flushCompileCache();
       // Deferred sidecars must finish before the I/O window for background work begins.
       gatewayKernel.scheduler.schedule({
         id: "startup:post-ready-work",
