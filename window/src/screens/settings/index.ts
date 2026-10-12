@@ -2,3 +2,4 @@
 export { SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
 export { useRow, useSchemaHints, type RowState, type RowView } from "./useRow";
 export type { Row, RowSource } from "./rows";
+export { mergeRows, type PageSlot, type PageSlots } from "./slots";

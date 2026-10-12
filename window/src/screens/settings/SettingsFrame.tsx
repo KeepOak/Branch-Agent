@@ -1,6 +1,7 @@
 // R1 Settings frame, ported from the approved preview (item 36): the nav column with search and "How much to show" at
 // the top and the pages in their groups, a sticky page title with Learn more, and one glass card per section. Rows come
-// from the row table (rows.ts) and draw through RowView; a section with no rows in the table yet is Coming (R1-10).
+// from the row table (rows.ts) and draw through RowView; a section with no rows in the table yet is Coming (R1-10). A
+// page can instead draw its own component (slots.ts, such as Chat apps); nav, search and the level stay the frame's.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { configStore } from "../../places/settings/config-store";
@@ -8,6 +9,7 @@ import { lookStore } from "../../places/settings/set1/appearance-store";
 import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, type Level, type NavPage, type PageId } from "./nav";
 import { ROWS, cardRows, pageFirstLevel, rowLevel, type Row, type UiHints } from "./rows";
 import { RowView, Segmented } from "./RowView";
+import { mergeRows, type PageSlots } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
 import { useSchemaHints } from "./useRow";
 import "./settings.css";
@@ -18,6 +20,7 @@ export const SECTION_COMING = (card: string) => `${card} comes to this page in a
 export const ASK_COMING = "Asking a Trunk from Settings comes in a later update.";
 const MAKE_DEFAULT_COMING = "Making a Trunk the default from Settings comes in a later update.";
 const FINE = "Fine-tune each part";
+const NO_SLOTS: PageSlots = {};
 
 /** The person's level: their look's "level" (users.prefs ui.window.look, or this device without a profile). */
 export function useLevel(engine: WindowEngine): [Level, (level: Level) => void] {
@@ -48,6 +51,8 @@ export type SettingsFrameProps = {
   /** Starts a conversation with a Trunk about this page; without it, Ask a Trunk is Coming. */
   onAsk?: (text: string) => void;
   rows?: Row[];
+  /** Pages that draw their own component and may add rows to the table, merged by id (a clash throws). */
+  pages?: PageSlots;
 };
 
 function NavButton({ page, current, onOpen, sub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string }) {
@@ -107,7 +112,8 @@ function CardRows({ engine, rows, hints }: { engine: WindowEngine; rows: Row[]; 
 
 export function SettingsFrame(props: SettingsFrameProps) {
   const { engine } = props;
-  const rows = props.rows ?? ROWS;
+  const slots = props.pages ?? NO_SLOTS;
+  const rows = useMemo(() => mergeRows(props.rows ?? ROWS, slots), [props.rows, slots]);
   const [level, setLevel] = useLevel(engine);
   const { hints } = useSchemaHints(engine);
   const [page, setPage] = useState<PageId>(() => pageFor(props.page));
@@ -161,6 +167,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
   const first = pageFirstLevel(shownPage, hints, rows);
   const loadFailed = typeof config === "string";
   const levelLine = LEVELS[level].line;
+  const Custom = slots[shownPage]?.component;
 
   return (
     <div className="r1set" data-level={LEVEL_WORD[level]}>
@@ -191,6 +198,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </nav>
       </aside>
       <div className="r1s-page" ref={scroller}>
+        {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} /></div> : <>
         <header className="r1s-head">
           <h1>{spec.title}</h1>
           <p className="r1s-lede">{spec.lede} <button type="button" className="r1s-learn" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>
@@ -222,6 +230,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
             </div>
           )}
         </div>
+        </>}
       </div>
     </div>
   );

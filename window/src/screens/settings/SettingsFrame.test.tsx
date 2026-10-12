@@ -4,7 +4,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
-import { SECTION_COMING, SettingsFrame } from "./SettingsFrame";
+import type { Row } from "./rows";
+import { SECTION_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
+import type { PageSlots } from "./slots";
 import { NOTHING_MATCHES } from "./search";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -173,5 +175,58 @@ describe("SettingsFrame", () => {
     await mount(engine);
     expect($(".r1s-head h1").textContent).toBe("General");
     expect($("[role=alert]")).not.toBeNull();
+  });
+});
+
+describe("SettingsFrame custom pages", () => {
+  const extra = (id: string, label: string, level: 0 | 1 | 2 = 0): Row => ({ id, page: "chatapps", card: "Commands", label, level, ownerLevel: true, control: "toggle", source: { kind: "coming", need: "x", reason: "x" } });
+  async function mountSlots(engine: WindowEngine, pages: PageSlots, extras: Partial<SettingsFrameProps> = {}) {
+    await act(async () => root.render(<SettingsFrame engine={engine} pages={pages} {...extras} />));
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  }
+  const key = async (input: HTMLInputElement, name: string) => { await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true })); await new Promise((r) => setTimeout(r, 0)); }); };
+
+  it("draws a page's own component with the frame's live engine, and keeps the nav, search and level around it", async () => {
+    const { engine } = engineOf();
+    const Page = vi.fn(({ engine: given }: { engine: WindowEngine }) => <p data-testid="chat-slot">{given === engine ? "same engine" : "other engine"}</p>);
+    await mountSlots(engine, { chatapps: { component: Page } }, { page: "chatapps" });
+    expect($("[data-slot=chatapps] [data-testid=chat-slot]").textContent).toBe("same engine");
+    expect(Page.mock.calls.every(([props]) => props.engine === engine)).toBe(true);
+    expect($(".r1s-nav[aria-current=page]").textContent).toBe("Chat apps");
+    expect($(".r1s-search input")).not.toBeNull();
+    expect($$(".r1s-level button").map((b) => b.textContent)).toEqual(["Regular", "Advanced", "Technical"]);
+    expect($$(".r1s-sec")).toHaveLength(0);
+    await click($("[data-page=general]"));
+    expect($("[data-testid=chat-slot]")).toBeNull();
+    expect($$(".r1s-sec").length).toBeGreaterThan(0);
+    await click($("[data-page=chatapps]"));
+    expect($("[data-testid=chat-slot]")).not.toBeNull();
+  });
+
+  it("finds rows a custom page adds, clears with Esc, opens the page with Enter and raises the level", async () => {
+    const onPage = vi.fn();
+    await mountSlots(engineOf().engine, { chatapps: { component: () => <p data-testid="chat-slot">Chat apps page</p>, rows: [extra("chatapps.test.bridge", "Bridge relay", 2)] } }, { onPage });
+    let input = await type("bridge relay");
+    expect($("[data-hit='chatapps.test.bridge']").textContent).toContain("Bridge relay");
+    expect($("[data-hit='chatapps.test.bridge']").textContent).toContain("Chat apps › Commands");
+    await key(input, "Escape");
+    expect(input.value).toBe("");
+    expect($("[data-hit='chatapps.test.bridge']")).toBeNull();
+    input = await type("bridge relay");
+    await key(input, "Enter");
+    expect(onPage).toHaveBeenLastCalledWith("chatapps");
+    expect($("[data-testid=chat-slot]")).not.toBeNull();
+    expect($(".r1set").dataset.level).toBe("technical");
+  });
+
+  it("fails to draw when a page adds a row whose id is already in the table", async () => {
+    const errors: unknown[] = [];
+    const el = document.body.appendChild(document.createElement("div"));
+    const other = createRoot(el, { onUncaughtError: (error) => errors.push(error) });
+    const clash = <SettingsFrame engine={engineOf().engine} pages={{ chatapps: { rows: [extra("general.work.show", "Clash")] } }} rows={[{ ...extra("general.work.show", "Show"), page: "general", card: "Pinned" }]} />;
+    try { await act(async () => other.render(clash)); } catch (error) { errors.push(error); }
+    expect(String(errors[0])).toContain('Settings row id "general.work.show" is used twice');
+    expect(el.querySelector(".r1set")).toBeNull();
+    await act(async () => other.unmount());
   });
 });

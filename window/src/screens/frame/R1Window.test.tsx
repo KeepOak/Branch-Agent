@@ -6,7 +6,15 @@ import type { SaplingSession } from "../../connect/session";
 import { classicWindow, R1Window } from "./R1Window";
 vi.mock("../../thread/Thread", () => ({ Thread: ({ name }: { name: string }) => <p>{name}</p> }));
 vi.mock("../../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
-vi.mock("../../places-nav/SettingsFrame", () => ({ SettingsFrame: () => <p>Settings content</p> }));
+vi.mock("../../places-nav/SettingsFrame", () => ({ SettingsFrame: () => <p>Classic settings</p> }));
+vi.mock("../settings/pages/plugged", () => ({ R1_PAGES: { chatapps: { component: () => null } } }));
+vi.mock("../settings", () => ({
+  SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (
+    <div data-testid="r1-settings" data-page={page} data-engine={engine.id} data-pages={Object.keys(pages ?? {}).join(",")}>
+      Settings content<button type="button" onClick={() => onPage?.("chatapps")}>Chat apps</button>
+    </div>
+  ),
+}));
 vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: () => <p>Place content</p> }));
 vi.mock("../../face/Face", () => ({ Face: () => <span /> }));
 vi.mock("../../places/settings/set1/appearance-store", () => ({ lookStore: () => ({ load: async () => undefined }) }));
@@ -42,4 +50,17 @@ it("opens settings using an in-window history entry", async () => {
   expect(window.history.state.r1Index).toBe(1); expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "appearance" });
   expect(host.querySelector<HTMLButtonElement>('[aria-label="Back"]')?.disabled).toBe(false);
   expect(host.textContent).toContain("Settings content");
+});
+it("mounts R1 Settings with the live engine and the Chat apps page, not Classic settings", async () => {
+  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
+  await act(async () => root.render(<R1Window session={session} />));
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!.click());
+  const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
+  expect(settings.dataset.engine).toBe("live-engine");
+  expect(settings.dataset.pages).toBe("chatapps");
+  expect(host.textContent).not.toContain("Classic settings");
+  await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
+  expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
+  expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!.dataset.page).toBe("chatapps");
 });
