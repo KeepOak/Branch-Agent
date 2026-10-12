@@ -119,7 +119,7 @@ describe("heartbeat payload execution", () => {
         await expect(runPromise).resolves.toMatchObject({ ok: true, ran: true });
         expect(events.findLast((event) => event.action === "finished")).toMatchObject({
           status: "skipped",
-          completionStatus: "failed",
+          completionStatus: "unknown",
           error: "heartbeat skipped: disabled",
         });
         expect(cron.getJob(job.id)?.state).toMatchObject({

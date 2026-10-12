@@ -24,6 +24,19 @@ const kind = () => host.querySelector('[data-kind][aria-current="true"]')?.getAt
 const send = (place: string, tab: string) => act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place, tab } })); });
 
 describe("branch:place-tab", () => {
+  it("opens Get capabilities from search and reopens it after closing", async () => {
+    await mount();
+    await send("customize", "Get capabilities");
+    expect(selectedTab()).toBe("Tools");
+    expect(kind()).toBe("Skills");
+    const dialog = () => host.querySelector('[data-testid="get-capabilities"]');
+    expect(dialog()).not.toBeNull();
+    const close = [...dialog()!.querySelectorAll("button")].find(b => b.textContent === "Close")!;
+    await act(async () => close.click());
+    expect(dialog()).toBeNull();
+    await send("customize", "Get capabilities");
+    expect(dialog()).not.toBeNull();
+  });
   it("opens the named Customize tab, and Tools at a named kind", async () => {
     await mount();
     expect(selectedTab()).toBe("Trunks");

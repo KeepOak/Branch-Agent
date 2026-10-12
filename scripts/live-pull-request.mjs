@@ -1,6 +1,9 @@
 // The pull request as it is now, read from the API. The event payload is a snapshot from when the event fired:
 // a body edited after a push (the SELF-CHECK handover) is missing from it. CI checks read the live body instead.
 import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const LIVE_READ_ATTEMPTS = 4;
 export const LIVE_READ_DELAYS_SECONDS = [5, 10, 20];
@@ -42,4 +45,27 @@ export function readLivePullRequest(ctx, { request = defaultRequest, sleep = def
 
 function defaultSleep(seconds) {
   execFileSync('sleep', [String(seconds)], { windowsHide: true });
+}
+
+// The job's one live read, written by a step and shared by check-ui-proof and check-self-check through
+// PR_SNAPSHOT_FILE. A missing or unreadable file throws, so the caller fails closed instead of reading the API again.
+export function snapshotFromEnv(env = process.env, { read = readFileSync } = {}) {
+  const file = env.PR_SNAPSHOT_FILE;
+  if (!file) return null;
+  const pr = JSON.parse(read(file, 'utf8'));
+  return {
+    body: typeof pr?.body === 'string' ? pr.body : '',
+    headRef: typeof pr?.headRef === 'string' ? pr.headRef : '',
+    headSha: typeof pr?.headSha === 'string' ? pr.headSha : '',
+  };
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const ctx = liveContext();
+  const outFile = process.argv[2];
+  if (!ctx || !outFile) {
+    console.error('Usage: REPO, PR_NUMBER and GH_TOKEN set; node scripts/live-pull-request.mjs <out.json>');
+    process.exit(1);
+  }
+  writeFileSync(outFile, JSON.stringify(readLivePullRequest(ctx)));
 }
