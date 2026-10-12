@@ -13,6 +13,7 @@ import { Menu, type MenuItem } from "../../../shell/Menu";
 import { bytes, CallLine, CopyBtn, Kv, lvOf, rec, str, Tile, useCall, useLive, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import { ComputerMore, NewCloud, ROWS as MORE_ROWS } from "./computer-more";
+import { BuildCleanup } from "./computer-cleanup";
 import { Icon } from "../../../shell/icons";
 import { DesktopCtl } from "../desktop-ctl";
 import { useDesktopControls } from "../../../connect/desktop-controls";
@@ -77,6 +78,7 @@ export function ComputerPage(props: SettingsPageProps) {
       <Waiting {...props} lv={lv} />
       <Computers {...props} lv={lv} nodes={nodes} agents={rec(agents.data)} />
       <WhichTrunk {...props} nodes={list(rec(nodes.data).nodes)} agents={list(rec(agents.data).agents)} defaultId={rec(agents.data).defaultId} />
+      <BuildCleanup engine={props.engine} />
       <ComputerMore {...props} />
     </Page>
   );
