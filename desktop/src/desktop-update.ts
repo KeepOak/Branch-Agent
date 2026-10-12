@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import type * as NodeFs from "node:fs";
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { downloadComponent, replaceFile } from "./component-update-files";
@@ -143,6 +143,7 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
   await mkdir(updates, { recursive: true });
   const directory = await mkdtemp(join(updates, `desktop-${release.version}-`));
   try {
+    await writeFile(join(directory, ".update-staging"), "");
     const archive = join(directory, "desktop.tar.gz");
     const payload = join(directory, "payload");
     await downloadComponent(choice.asset, archive, request);
@@ -158,6 +159,8 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
       : [basename(install.executable), `resources/app${STAGED_ASAR}`]) await assertFile(join(staged, file));
     const journal: DesktopJournal = { version: release.version, sha256: choice.asset.sha256, kind: choice.kind, staged, target, phase: "staged" };
     await replaceFile(journalFile(cfg), JSON.stringify(journal));
+    await writeFile(join(directory, ".desktop-complete"), "");
+    await rm(join(directory, ".update-staging"), { force: true });
     return true;
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
 }
@@ -219,6 +222,12 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
 export async function confirmDesktopUpdate(cfg: DesktopConfig): Promise<string | null> {
   const journal = await readDesktopJournal(cfg);
   if (!journal || journal.phase === "staged") return null;
+  const updates = join(cfg.dataDir, "updates");
+  const folder = join(updates, relative(updates, journal.staged).split(/[\\/]/)[0]!);
+  const receipt = join(cfg.dataDir, "desktop-update-retained.json");
+  const raw = await readOrEmpty(receipt);
+  const retained: string[] = raw ? JSON.parse(raw) : [];
+  await replaceFile(receipt, JSON.stringify([folder, ...retained.filter(path => path !== folder)].slice(0, 2)));
   await replaceFile(versionFile(cfg), `${journal.version}\n`);
   if (journal.kind === "runtime" && process.platform === "win32") await replaceFile(iconFile(cfg), ICON_REVISION);
   await rm(journalFile(cfg), { force: true });
