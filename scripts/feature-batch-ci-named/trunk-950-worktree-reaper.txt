@@ -1,6 +1,6 @@
 engine:src/agents/build-worktrees/cleanup.test.ts
+engine:src/config/schema.hints.test.ts
 engine:src/gateway/build-worktree-cleanup.test.ts
 engine:src/gateway/server-methods-list.test.ts
-engine:src/config/schema.hints.test.ts
 window:src/places/settings/set2/computer-cleanup.test.tsx
 window:src/places/settings/set2/computer.test.tsx
