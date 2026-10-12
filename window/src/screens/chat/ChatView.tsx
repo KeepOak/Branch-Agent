@@ -183,6 +183,8 @@ export function ChatView(props: ChatViewProps) {
 
   const view: View = { all, name, running, live, actionsFor, reactions, apply, details, answer, grouped, times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast };
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
+  // The run's token count (the engine's usage block), as Classic's live-run header shows it; once something visible arrives.
+  const usage = running ? live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage") : undefined;
   const liveShows = live.some((b) => b.kind === "text" || b.kind === "step" || b.kind === "plan" || b.kind === "preamble" || (b.kind === "approval") || (b.kind === "thinking" && work.mode !== "normal"));
   return <CapabilityProvider engine={capabilities}><ThreadContext.Provider value={ctx}>
     <div className="r1c" ref={root} data-mode={work.mode} data-times={prefs.messageTimes} dir={prefs.dir}>
@@ -198,6 +200,7 @@ export function ChatView(props: ChatViewProps) {
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="delivered" />
         {running ? liveEntries.map((entry) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live />) : null}
         {running && !liveShows && !waitingTwo.length ? <TypingLine name={name} /> : null}
+        {running && liveShows && usage?.total ? <NoticeLine text={usage.total.toLocaleString() + " tokens so far"} testid="live-usage" /> : null}
         {running ? (props.steered ?? []).map((note) => <NoticeLine key={note.runId} text={"You steered " + name + ": “" + note.text + "”. It takes this at its next step."} testid="steered-note" />) : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
         {extras.filter((a) => !grouped.has(a.id)).map((a) => <ApprovalCard key={a.id} approval={a} details={details.get(a.id)} name={name} onAnswer={answer} />)}

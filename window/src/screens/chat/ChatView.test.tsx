@@ -82,6 +82,17 @@ it("shows the typing line until the reply streams in word by word", async () => 
   expect(host.querySelector('[data-testid="streaming"] .r1c-tok')).toBe(first);
 });
 
+it("shows the live run's token count from the engine's usage block, as Classic did", async () => {
+  const text: Block = { kind: "text", key: "r2:text:1", text: "Looking in Outlook now", streaming: true };
+  const usage: Block = { kind: "usage", key: "r2:usage", input: 1000, output: 234, total: 1234 };
+  await show({ history: history.slice(0, 1), running: true, live: [text, usage] });
+  expect(host.querySelector('[data-testid="live-usage"]')!.textContent).toContain((1234).toLocaleString() + " tokens so far");
+  await show({ history: history.slice(0, 1), running: true, live: [usage] });
+  expect(host.querySelector('[data-testid="live-usage"]')).toBeNull();
+  await show({ history: history.slice(0, 1), running: false, live: [text, usage] });
+  expect(host.querySelector('[data-testid="live-usage"]')).toBeNull();
+});
+
 it("puts a run error in a thin notice with its details, never in the reply's prose", async () => {
   await show({ history: [...history.slice(0, 1), { kind: "error", key: "r1:error", runId: "r1", message: "Model quota exceeded. Retry after 2 minutes. stack: x" }] });
   const notice = host.querySelector('[data-testid="run-error"]')!;
