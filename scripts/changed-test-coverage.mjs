@@ -402,6 +402,9 @@ function collectWorkflowJobs(workflow) {
       }
     }
 
+    // This exact policy is unconditional for a ready PR. Keep every other
+    // condition disqualified; arbitrary expressions can suppress coverage.
+    if (line === "    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false") continue;
     if (/^    if:/.test(line)) {
       current.hasIf = true;
       continue;
