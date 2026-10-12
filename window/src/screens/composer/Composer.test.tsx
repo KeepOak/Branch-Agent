@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -146,5 +148,71 @@ describe("R1-04 composer", () => {
   it("registers nothing as Coming that it draws as live", async () => {
     await mount();
     expect(comingControls().every((c) => c.reason.length > 0)).toBe(true);
+  });
+});
+
+// The owner's final glass model (Private docs/design/r1 README item 48) as it lands in the composer: the composer, its row and its
+// menus sit on clear glass, and every piece of text is on a small frosted pill whose ink passes 4.5:1 composited over pure white
+// and pure black (so it holds over any wallpaper, even where the blur doesn't render).
+const css = readFileSync(resolve("src/screens/composer/composer.css"), "utf8");
+const tokens = readFileSync(resolve("src/theme/tokens.css"), "utf8");
+
+type Rgba = [number, number, number, number];
+const parse = (value: string): Rgba => {
+  const v = value.trim();
+  const hex = v.match(/^#([0-9a-f]{6})$/i);
+  if (hex) return [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16)).concat(1) as Rgba;
+  const fn = v.match(/^rgba?\(([^)]+)\)$/);
+  if (!fn) throw new Error(`not a colour: ${v}`);
+  const p = fn[1].split(/[,\s/]+/).filter(Boolean).map(Number);
+  return [p[0], p[1], p[2], p[3] ?? 1];
+};
+const lin = (c: number) => { const v = c / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const lum = (c: number[]) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+const over = (c: Rgba, base: number[]) => [0, 1, 2].map((k) => c[k] * c[3] + base[k] * (1 - c[3]));
+const ratio = (a: number[], b: number[]) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+/** The worst contrast of an ink on a pill, over white and over black, with or without the chosen-row lift. */
+const worst = (ink: string, fill: string, lift: string) => {
+  const f = parse(fill), on = parse(lift);
+  return Math.min(...[[255, 255, 255], [0, 0, 0]].flatMap((base) => {
+    const plain = over(f, base);
+    return [ratio(parse(ink), plain), ratio(parse(ink), over(on, plain))];
+  }));
+};
+const block = (source: string, selector: string) => {
+  const at = source.indexOf(selector);
+  expect(at, selector).toBeGreaterThanOrEqual(0);
+  return source.slice(at, source.indexOf("}", at));
+};
+const cssValue = (body: string, name: string) => body.match(new RegExp(`${name}:\\s*([^;]+);`))![1];
+
+const light = block(css, ":root {"), dark = block(css, ':root[data-theme="dark"] {');
+const lightInk = cssValue(block(tokens, ":root {"), "--ink"), darkInk = cssValue(block(tokens, ':root[data-theme="dark"] {'), "--ink");
+
+describe("composer glass model (item 48)", () => {
+  for (const [scheme, body, ink] of [["light", light, lightInk], ["dark", dark, darkInk]] as const) {
+    it(`keeps every pill ink at 4.5:1 or better in ${scheme}`, () => {
+      const fill = cssValue(body, "--r1c-p-fill"), lift = cssValue(body, "--r1c-p-on");
+      for (const name of ["--r1c-p-ink2", "--r1c-p-bad"]) expect(worst(cssValue(body, name), fill, lift), name).toBeGreaterThanOrEqual(4.5);
+      expect(worst(ink, fill, lift), "--ink").toBeGreaterThanOrEqual(4.5);
+    });
+  }
+
+  it("makes the + menu, the row menus and the ring popover clear glass", () => {
+    const clear = block(css, ".g-popover:has(> .r1c-menu), .g-popover:has(> .r1c-plus) {");
+    expect(clear).toContain("background: transparent");
+    expect(clear).toContain("backdrop-filter: none");
+  });
+
+  it("puts the pill, the row's buttons and every menu row on a frosted pill with a 1 px outline", () => {
+    const pill = block(css, ".r1c-pill, .r1c-note, .r1c-quiet");
+    for (const piece of [".r1c-quiet", ".r1c-tile", ".r1c-mi", ".c-mi", ".r1c-line", ".mi"]) expect(pill).toContain(piece);
+    expect(pill).toContain("background: var(--r1c-p-fill)");
+    expect(pill).toContain("inset 0 0 0 1px var(--r1c-p-edge)");
+  });
+
+  it("gives solid surfaces under Reduce transparency", () => {
+    expect(block(css, ':root[data-transparency="reduce"] {')).toContain("--r1c-p-fill: var(--raise)");
+    expect(css).toMatch(/@media \(prefers-reduced-transparency: reduce\) \{ :root:not\(\[data-transparency\]\) \{ --r1c-p-fill: var\(--raise\)/);
   });
 });
