@@ -74,8 +74,8 @@ export function roomContact(room: GroupRoom, contacts: readonly GatewayContact[]
   };
 }
 
-/** What the room's log adds to its lead conversation: notices, and the Trunks' posts and replies that live only there. */
-const LOGGED = new Set(["created", "member.added", "message", "turn.replied"]);
+/** What the room's log adds to its lead conversation: notices (merge-feed sentences among them), and the Trunks' posts and replies that live only there. */
+const LOGGED = new Set(["created", "member.added", "message", "turn.replied", "merge", "merge.follow"]);
 
 export function useRoomNotices(session: SaplingSession, key: string | null, contacts: readonly GroupContact[]): Block[] {
   const [, lead, roomId] = /^agent:([^:]+):room:([^:]+)$/.exec(key ?? "") ?? [];
@@ -125,6 +125,8 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
       const shown = members.length > 2 ? members.slice(0, 2) : members;
       return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `You started a group with ${shown.map(named).join(" and ")}`, at: event.createdAt }];
     }
+    // The merge feed: one plain sentence per merge ("That's 107 merged: #1088 …."), and the line that says the room follows a repository.
+    if ((event.kind === "merge" || event.kind === "merge.follow") && data.text?.trim()) return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: data.text.trim(), at: event.createdAt }];
     if (event.kind === "member.added" && data.kind && data.id) return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `${event.actorId?.startsWith("a2a:") ? (data.from ?? event.actorId.slice(4)) : "You"} added ${named({ kind: data.kind, id: data.id })}`, at: event.createdAt }];
     return [];
   });

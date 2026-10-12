@@ -14,8 +14,8 @@ const NO_LEDGER = "Branch doesn’t count most achievements yet.";
 
 export const ROWS: RowEntry[] = [{ page: "achievements", title: "Keep achievements quiet", sec: "Settings", group: "Settings", lv: 0 }];
 
-export const TIERS = ["Bronze", "Silver", "Gold", "Diamond", "Godly", "SSS+"] as const;
-export type Tier = (typeof TIERS)[number];
+const TIERS = ["Bronze", "Silver", "Gold", "Diamond", "Godly", "SSS+"] as const;
+type Tier = (typeof TIERS)[number];
 const TIER_COL: Record<Tier, string> = { Bronze: "#A86A3D", Silver: "#8C959E", Gold: "#C9982E", Diamond: "#4F8FB8", Godly: "#8A5AA8", "SSS+": "#C2412D" };
 export type Badge = { cat: string; tier: Tier; name: string; desc: string };
 const badges = (cat: string, tier: Tier, list: [string, string][]): Badge[] => list.map(([name, desc]) => ({ cat, tier, name, desc }));
@@ -189,7 +189,7 @@ function Medal() {
 }
 
 /** The badges the window can see for itself: the Settings level reached. */
-export function unlockedAt(level: Lv): Set<string> {
+function unlockedAt(level: Lv): Set<string> {
   const got = new Set<string>();
   if (level >= 1) got.add("Advanced");
   if (level >= 2) got.add("Technical");

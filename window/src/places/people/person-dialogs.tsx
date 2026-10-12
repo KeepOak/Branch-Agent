@@ -8,9 +8,9 @@ import { useOperation } from "../library/data";
 import { firstName, nameOf, num, rec, str, type Profile } from "./data";
 import { Seg, Tabs, copyText } from "./ui";
 
-export const ROLES_OFF = "Needs roles set up in the engine first.";
-export const ADD_HERE_OFF = "Needs the engine's add-a-person method.";
-export const KEEPOAK_OFF = "Needs your keepoak.com team. Connect it above.";
+const ROLES_OFF = "Needs roles set up in the engine first.";
+const ADD_HERE_OFF = "Needs the engine's add-a-person method.";
+const KEEPOAK_OFF = "Needs your keepoak.com team. Connect it above.";
 const NO_ROLE = "__none";
 
 /** The person's role, chosen from the roles the engine defines (users.setRole); none defined greys it. */
