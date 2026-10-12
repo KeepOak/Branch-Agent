@@ -44,6 +44,13 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<{ index: number; at: MenuAnchor } | null>(null);
   const pos = useFitInWindow(ref, at, upward);
+  // The parent passes a new onClose on every render. Read it through a ref so the effect below runs once per opening:
+  // re-running it on each re-render pulled focus back to the first row and took whatever was focused then (a submenu
+  // row) as the opener, so the next press on the + closed the menu and its click opened it again (N1).
+  const closeRef = useRef(onClose);
+  useLayoutEffect(() => {
+    closeRef.current = onClose;
+  });
   useEffect(() => {
     const back = document.activeElement as HTMLElement | null;
     const trigger = back && back !== document.body ? back : null;
@@ -51,7 +58,7 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
     const away = (e: PointerEvent) => {
       // The button that opened the menu toggles it on its own click (§5.4 behaviour 1).
       if (!(e.target as Element).closest?.(".pop") && !trigger?.contains(e.target as Node)) {
-        onClose();
+        closeRef.current();
       }
     };
     document.addEventListener("pointerdown", away, true);
@@ -63,7 +70,7 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
         back?.focus?.();
       }
     };
-  }, [onClose]);
+  }, []);
 
   const openSub = (index: number, button: HTMLElement) => {
     const r = button.getBoundingClientRect();
