@@ -15,7 +15,7 @@ import { EmptyIcon, Grey, IcoTile, LibIcon, plural, Row } from "./parts";
 import { FileDialog } from "./reader";
 import { shownWhy } from "../../shell/shown-why";
 
-export const TIDY_REASON = "Needs the engine’s memory tidy-up method.";
+const TIDY_REASON = "Needs the engine’s memory tidy-up method.";
 
 export type MemoryProps = {
   engine: WindowEngine; level: Level; trunks: Trunk[]; files: MemoryFile[] | null; reloadFiles: () => void;
@@ -93,7 +93,7 @@ function MemoryCard({ engine, level, files, scope, status, check }: CardProps) {
   </div>;
 }
 
-export function engineName(provider: string | undefined) {
+function engineName(provider: string | undefined) {
   if (!provider || /^(builtin|built-in|sqlite|local|memory-core)$/i.test(provider)) return "Built-in memory";
   return provider.charAt(0).toUpperCase() + provider.slice(1);
 }

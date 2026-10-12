@@ -9,7 +9,7 @@ export type TeamApprovalMember = {
   machine: string;
   model: string;
 };
-export type TeamApprovalState = "asking" | "applied" | "declined" | "unavailable";
+type TeamApprovalState = "asking" | "applied" | "declined" | "unavailable";
 export type TeamApprovalProps = {
   goal: string;
   members: readonly TeamApprovalMember[];
