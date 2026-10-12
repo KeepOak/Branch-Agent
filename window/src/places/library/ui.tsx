@@ -18,10 +18,6 @@ export function Tabs({ values, value, onChange, label }: { values: string[]; val
 export function Status({ loading, error, reload }: { loading: boolean; error: string | null; reload: () => void }) {
   return loading ? <p role="status" className="kp-hint">Loading…</p> : error ? <div role="alert" className="kp-error"><p>{error}</p><button onClick={reload}>Try again</button></div> : null;
 }
-export function Unavailable({ children }: { children: ReactNode }) { return <div className="kp-empty"><span className="kp-empty-icon"><Icon name="book" /></span><p>{children}</p></div>; }
-export function TrunkPicker({ trunks, value, change }: { trunks: Trunk[]; value: string; change: (v: string) => void }) {
-  return <label className="kp-picker">Trunk <select aria-label="Trunk" value={value} onChange={e => change(e.target.value)}>{trunks.map(t => <option key={t.id} value={t.id}>{trunkName(t)}</option>)}</select></label>;
-}
 /** Hash-checked edits follow the upstream file editor, retaining the draft on conflict. */
 export function FileEditor({ engine, agentId, name, label = name }: { engine: WindowEngine; agentId: string; name: string; label?: string }) {
   const resource = useResource<{ file: FileEntry }>(engine, "agents.files.get", { agentId, name });

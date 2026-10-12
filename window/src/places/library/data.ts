@@ -5,7 +5,7 @@ import type { WindowEngine } from "../../connect/engine";
 export type Trunk = { id: string; name?: string; identity?: { name?: string; emoji?: string; theme?: string; avatar?: string; avatarUrl?: string }; createdVia?: string; workspace?: string; model?: { primary?: string } };
 export type Trunks = { agents: Trunk[]; defaultId: string; mainKey: string };
 export type FileEntry = { name: string; path: string; kind?: "file" | "directory"; size?: number; missing?: boolean; hash?: string; content?: string; encoding?: string; mimeType?: string };
-export type Workspace = { path: string; parentPath?: string; entries: FileEntry[]; totalEntries: number; offset: number };
+type Workspace = { path: string; parentPath?: string; entries: FileEntry[]; totalEntries: number; offset: number };
 export function trunkName(t: Trunk) { return t.identity?.name || t.name || t.id; }
 export function errorText(error: unknown) { return error instanceof Error ? error.message : String(error); }
 /** A generation belongs to one screen/selection. Late results never replace a new selection. */
@@ -61,7 +61,7 @@ export function useOperation(engine: WindowEngine) {
 /** Defensive readers for engine results: a missing or mistyped field reads as empty, never a crash. */
 export type Rec = Record<string, unknown>;
 export const rec = (v: unknown): Rec => (v && typeof v === "object" && !Array.isArray(v) ? v as Rec : {});
-export const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 export const recs = (v: unknown): Rec[] => arr(v).filter(x => x && typeof x === "object" && !Array.isArray(x)) as Rec[];
 export const str = (v: unknown): string => (typeof v === "string" ? v : "");
 export const optStr = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
