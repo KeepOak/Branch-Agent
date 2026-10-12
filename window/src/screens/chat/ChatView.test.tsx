@@ -100,7 +100,28 @@ it("says when the conversation couldn't load and reads it again on Try again", a
 });
 
 it("every control is wired to the engine or shows Coming, even with no methods at all", async () => {
-  await show({ history, onReply: () => undefined, onStart: () => undefined }, []);
-  expect(undeclaredControls(host).map((el) => el.getAttribute("aria-label") ?? el.textContent)).toEqual([]);
+  const left: Block[] = history.map((b) => (b.key === "u1" && b.kind === "user" ? { ...b, meta: { ...b.meta, excluded: true } } : b));
+  await show({ history: left, onReply: () => undefined, onStart: () => undefined, loadError: "chat.history failed", onReload: () => undefined }, []);
+  const undeclared = () => undeclaredControls(document).map((el) => el.getAttribute("aria-label") ?? el.textContent);
+  expect(undeclared()).toEqual([]);
   expect(host.querySelector<HTMLButtonElement>('[aria-label="React"]')!.getAttribute("aria-disabled")).toBe("true");
+  const coming = (el: Element | undefined) => [el?.getAttribute("aria-disabled"), Boolean((el as HTMLElement | undefined)?.dataset.coming), el?.hasAttribute("data-local")];
+  const putBack = [...host.querySelectorAll(".r1c-out-line button")].find((b) => b.textContent === "Put back");
+  expect(coming(putBack)).toEqual(["true", true, false]);
+  const again = [...host.querySelectorAll('[data-testid="load-error"] button')].find((b) => b.textContent === "Try again");
+  expect(coming(again)).toEqual(["true", true, false]);
+  // The reply's ••• menu: rows that call the engine are Coming, only Copy and Look inside stay local.
+  const bars = host.querySelectorAll('[data-testid="hover-bar"]');
+  await act(async () => bars[bars.length - 1].querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+  const rows = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')];
+  const row = (label: string) => rows.find((b) => b.textContent === label);
+  for (const label of ["Try again", "Read aloud", "Leave out of context"]) expect(coming(row(label)), label).toEqual(["true", true, false]);
+  expect(rows.filter((b) => !b.dataset.coming).map((b) => b.textContent)).toEqual(["Copy›", "Look inside"]);
+  expect(undeclared()).toEqual([]);
+  // Your own message: Edit, Branch from here and Put back in context are Coming too.
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await act(async () => bars[0].querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+  const mine = [...document.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Message"] [role="menuitem"]')];
+  for (const label of ["Edit", "Branch from here", "Put back in context"]) expect(coming(mine.find((b) => b.textContent === label)), label).toEqual(["true", true, false]);
+  expect(undeclared()).toEqual([]);
 });

@@ -5,6 +5,7 @@
 // the plan card, helpers, the waiting line, find and the turn rail) are imported, not copied, so nothing that works
 // today is lost.
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CapabilityProvider, useCapabilityEngine } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import type { QueuedMessage, RunEnd, SteeredNote } from "../../connect/session";
 import { currentModelRef } from "../../composer/model";
@@ -144,6 +145,8 @@ export function ChatView(props: ChatViewProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const ctx: ThreadContextValue = useMemo(() => ({ engine, sessionKey: props.sessionKey, name, toast, running, prefs }), [engine, props.sessionKey, name, toast, running, prefKey]);
   const ownLine = useOwnWaitingLine(props.sessionKey ?? engine?.sessionKey);
+  // Every Coming control in the conversation checks this engine's methods; a frame that already mounts one wins.
+  const capabilities = useCapabilityEngine() ?? engine ?? null;
   const { details } = useApprovalDetails(engine);
   const { reactions, apply } = useReactions(engine, history.length);
   const { helpers } = useHelpers(engine);
@@ -181,11 +184,11 @@ export function ChatView(props: ChatViewProps) {
   const view: View = { all, name, running, live, actionsFor, reactions, apply, details, answer, grouped, times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast };
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
   const liveShows = live.some((b) => b.kind === "text" || b.kind === "step" || b.kind === "plan" || b.kind === "preamble" || (b.kind === "approval") || (b.kind === "thinking" && work.mode !== "normal"));
-  return <ThreadContext.Provider value={ctx}>
+  return <CapabilityProvider engine={capabilities}><ThreadContext.Provider value={ctx}>
     <div className="r1c" ref={root} data-mode={work.mode} data-times={prefs.messageTimes} dir={prefs.dir}>
       {finding ? <FindBar root={root} name={name} signature={signature} onClose={() => setFinding(false)} /> : null}
       <div className="r1c-thread">
-        {props.loadError ? <NoticeLine tone="bad" text="Couldn’t load this conversation" details={props.loadError} links={props.onReload ? [{ label: "Try again", onClick: props.onReload, need: "chat.history" }] : []} testid="load-error" /> : null}
+        {props.loadError ? <NoticeLine tone="bad" text="Couldn’t load this conversation" details={props.loadError} links={props.onReload ? [{ label: "Try again", onClick: props.onReload, need: "chat.history", reason: "This engine can’t read conversations." }] : []} testid="load-error" /> : null}
         {empty ? <EmptyChat name={name} engine={engine} onStart={props.onStart} /> : !historyReady && !history.length && !props.loadError ? <NoticeLine text="Opening this conversation…" testid="opening" /> : null}
         {entries.map((entry, i) => <Fragment key={entry.type === "item" ? entry.item.block.key : entry.key}>
           {dividers.has(i) && times[i] ? <TimeDivider at={times[i]!} /> : null}
@@ -207,7 +210,7 @@ export function ChatView(props: ChatViewProps) {
       <Rail scroller={scroller} blocks={all} sessionKey={props.sessionKey} />
     </div>
     {dialog}
-  </ThreadContext.Provider>;
+  </ThreadContext.Provider></CapabilityProvider>;
 }
 
 type View = {
@@ -223,6 +226,9 @@ type View = {
   onOpenSession?: (key: string) => void;
   toast: (text: string) => void;
 };
+
+/** "Put back" under a message left out of context calls the same method as the menu row. */
+const PUT_BACK = { need: "session.context.set", reason: "This engine can’t put a message back in context." };
 
 function faceFor(view: View, live: boolean): ReactNode {
   return <Face size={28} label={view.name} state={live && view.running ? "think" : "idle"} priority={live ? 300 : 100} />;
@@ -251,7 +257,7 @@ function EntryView({ entry, view, live }: { entry: Entry; view: View; live: bool
       const isReply = block.kind === "text";
       const bar = actions ? <HoverBar text={block.text} isReply={isReply} actions={actions} meta={block.meta} /> : null;
       const after = <>
-        {block.meta?.excluded && actions?.context ? <div className="r1c-out-line">Left out of context · <button type="button" className="r1c-link" data-need="session.context.set" aria-disabled={actions.context.disabled ? "true" : undefined} title={actions.context.disabled ?? undefined} onClick={() => { if (!actions.context?.disabled) actions.context?.run(); }}>Put back</button></div> : null}
+        {block.meta?.excluded && actions?.context ? <div className="r1c-out-line">Left out of context · <Coming need={PUT_BACK.need} reason={PUT_BACK.reason} where="Put back"><button type="button" className="r1c-link" aria-disabled={actions.context.disabled ? "true" : undefined} title={actions.context.disabled ?? undefined} onClick={() => { if (!actions.context?.disabled) actions.context?.run(); }}>Put back</button></Coming></div> : null}
         {live ? null : <TimeLine at={block.meta?.timestamp} model={isReply ? block.meta?.model : undefined} mine={!isReply} mode={view.times} />}
         <ReactionChips list={chips} onToggle={(emoji, remove) => { if (actions && !actions.reactDisabled) actions.react(emoji, remove); }} />
       </>;

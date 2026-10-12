@@ -26,7 +26,7 @@ const actions = (): HoverActions => ({
   context: { run: vi.fn(), disabled: null, excluded: false },
   read: { run: vi.fn(), disabled: null, reading: false },
 });
-const methods = ["session.reactions.set", "chat.send", "sessions.fork", "sessions.rewind", "session.context.set"];
+const methods = ["session.reactions.set", "chat.send", "sessions.fork", "sessions.rewind", "session.context.set", "talk.speak"];
 const engine = { features: { methods, events: [] } };
 const menuRows = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] [role="menuitem"]')];
 
@@ -55,6 +55,45 @@ it("••• opens the message menu with its time and model, and every row runs
   await act(async () => row("Try again").click());
   expect(a.retry!.run).toHaveBeenCalledOnce();
   expect(document.querySelector('[role="menu"]')).toBeNull();
+});
+
+it("every engine-calling row declares its method: with all of them each row runs and only Copy and Look inside are local", async () => {
+  await act(async () => root.render(<CapabilityProvider engine={engine}><HoverBar text="Hi" isReply actions={actions()} /></CapabilityProvider>));
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+  const row = (label: string) => menuRows().find((b) => b.textContent === label)!;
+  expect(row("Try again").dataset.need).toBe("sessions.rewind chat.send");
+  expect(row("Read aloud").dataset.need).toBe("talk.speak");
+  expect(row("Branch from here").dataset.need).toBe("sessions.fork");
+  expect(row("Leave out of context").dataset.need).toBe("session.context.set");
+  expect(menuRows().filter((b) => b.hasAttribute("data-local")).map((b) => b.textContent)).toEqual(["Copy›", "Look inside"]);
+});
+
+it("on an engine without those methods, Try again, Edit, Read aloud, Branch from here and Leave out of context turn Coming and run nothing", async () => {
+  const none = { features: { methods: [], events: [] } };
+  const a = actions();
+  await act(async () => root.render(<CapabilityProvider engine={none}><HoverBar text="Hi" isReply actions={{ ...a, branch: { run: vi.fn(), disabled: null } }} /></CapabilityProvider>));
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+  const row = (label: string) => menuRows().find((b) => b.textContent === label)!;
+  for (const label of ["Try again", "Read aloud", "Branch from here", "Leave out of context"]) {
+    expect(row(label).getAttribute("aria-disabled"), label).toBe("true");
+    expect(row(label).dataset.coming, label).toBeTruthy();
+    expect(row(label).title, label).toBe(row(label).dataset.coming);
+    expect(row(label).hasAttribute("data-local"), label).toBe(false);
+  }
+  await act(async () => row("Try again").click());
+  expect(a.retry!.run).not.toHaveBeenCalled();
+  await act(async () => row("Leave out of context").click());
+  expect(a.context!.run).not.toHaveBeenCalled();
+  for (const label of ["Copy›", "Look inside"]) expect(row(label).getAttribute("aria-disabled"), label).toBeNull();
+  const reply = host.querySelector<HTMLButtonElement>('[aria-label="Reply"]')!;
+  expect(reply.getAttribute("aria-disabled")).toBe("true");
+  expect(reply.title).not.toMatch(/later update/);
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await act(async () => root.render(<CapabilityProvider engine={none}><HoverBar text="Hi" isReply={false} actions={{ ...actions(), edit: { run: vi.fn(), disabled: null } }} /></CapabilityProvider>));
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+  expect(row("Edit").getAttribute("aria-disabled")).toBe("true");
+  expect(row("Edit").dataset.coming).toBeTruthy();
 });
 
 it("Copy › offers text, Markdown and a Coming link", async () => {

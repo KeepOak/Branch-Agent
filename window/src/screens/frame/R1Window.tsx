@@ -13,6 +13,7 @@ import { PlaceView } from "../../places-nav/PlaceView";
 import { loadRoute, parseRoute, saveRoute, windowTitle, type Route } from "../../places-nav/routes";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Popover } from "../../glass/Popover";
+import { Coming } from "../../glass/coming";
 
 /** Support-only escape hatch, retained for one release. */
 export function classicWindow(search = location.search): boolean {
@@ -119,8 +120,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
     }} />
     {convMenu && <Popover anchor={convAnchor} label="Conversation" align="end" width={260} onClose={() => setConvMenu(false)}><div className="r1c-menu" role="menu" aria-label="Show agents’ work as">
       <div className="r1c-menu-meta">Show agents’ work as</div>
-      {[{ id: null, label: `Like Settings (${WORK_MODES.find(m => m.id === work.global)?.label})` }, ...WORK_MODES].map(m => <button key={m.id ?? "default"} type="button" role="menuitemradio" className="r1c-mi" data-need="users.prefs.set" aria-checked={work.override === m.id}
-        onClick={() => { void work.setOverride(m.id).catch((e: unknown) => setNotice(e instanceof Error ? e.message : String(e))); setConvMenu(false); }}><span className="r1c-mi-t">{m.label}</span>{work.override === m.id ? <Icon name="check" size={15} /> : null}</button>)}
+      {[{ id: null, label: `Like Settings (${WORK_MODES.find(m => m.id === work.global)?.label})` }, ...WORK_MODES].map(m => <Coming key={m.id ?? "default"} engine={engine} need="users.prefs.set" reason="This engine can’t save how agents’ work shows here." where={m.label}><button type="button" role="menuitemradio" className="r1c-mi" aria-checked={work.override === m.id}
+        onClick={() => { void work.setOverride(m.id).catch((e: unknown) => setNotice(e instanceof Error ? e.message : String(e))); setConvMenu(false); }}><span className="r1c-mi-t">{m.label}</span>{work.override === m.id ? <Icon name="check" size={15} /> : null}</button></Coming>)}
     </div></Popover>}
     {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details">
       <strong>{identity?.name ?? snapshot.name}</strong><p>{identityError ?? (identity ? identity.emoji ?? "" : "Loading agent details…")}</p>
