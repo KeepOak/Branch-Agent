@@ -570,14 +570,17 @@ export function Composer(props: Props) {
             {str(row.activeModel) && str(row.activeModel) !== str(row.model) ? <i className="c-tune-attention" aria-hidden="true" /> : null}
           </button>
         ) : null}
-        {dict.on ? null : (
-          <button type="button" className="c-btn" aria-label="Dictate into the box" title={voice.dictation ? "Dictate into the box" : VOICE_OFF} disabled={!voice.dictation} data-testid="dictate" onClick={() => void dict.start()}>
+        {/* DA-16: a voice button shows only when its service is ready; a greyed microphone could never explain itself. */}
+        {dict.on || !voice.dictation ? null : (
+          <button type="button" className="c-btn" aria-label="Dictate into the box" title="Dictate into the box" data-testid="dictate" onClick={() => void dict.start()}>
             <Icon name="mic" />
           </button>
         )}
-        <button type="button" className="c-btn c-talk" aria-label="Talk live with voice" title={voice.live ? "Talk live with voice" : VOICE_OFF} disabled={!voice.live} data-testid="talk-live" onClick={() => setTalking(true)}>
-          <Icon name="wave" />
-        </button>
+        {voice.live ? (
+          <button type="button" className="c-btn c-talk" aria-label="Talk live with voice" title="Talk live with voice" data-testid="talk-live" onClick={() => setTalking(true)}>
+            <Icon name="wave" />
+          </button>
+        ) : null}
         <button
           type="submit"
           className={stopMode ? "send stop" : ready ? "send ready" : "send"}

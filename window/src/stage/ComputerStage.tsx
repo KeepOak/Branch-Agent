@@ -333,14 +333,6 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
             <SIcon name="edit" />
           </button>
         ) : null}
-        <span className="st7-sw" role="group" aria-label="Show">
-          {(["Computer", "Browser"] as const).map((m) => (
-            <button type="button" key={m} aria-pressed={mode === m} onClick={() => { setControl(false); onMode(m); }}>
-              <SIcon name={m === "Computer" ? "monitor" : "globe"} small />
-              {m}
-            </button>
-          ))}
-        </span>
         <button type="button" className="ib" aria-label="Shrink to a small window" title={native ? "This screen is shown in the Computer panel." : "Picture in picture"} disabled={native || !onPip || (!browser && !viewing)} onClick={() => (browser ? onPip?.({ kind: "browser", id: "browser", name: "browser" }) : viewing && onPip?.({ kind: "computer", id: viewing, name: viewed?.name ?? view.title ?? viewing }))}>
           <SIcon name="pip" />
         </button>
@@ -350,6 +342,16 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
         <button type="button" className="ib" aria-haspopup="menu" aria-label="More for this view" title="More" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); moreMenu({ x: r.right - 220, y: r.bottom + 6 }); }}>
           <SIcon name="more" />
         </button>
+      </div>
+      <div className="st7-mode">
+        <span className="st7-sw" role="group" aria-label="Show">
+          {(["Computer", "Browser"] as const).map((m) => (
+            <button type="button" key={m} aria-pressed={mode === m} onClick={() => { setControl(false); onMode(m); }}>
+              <SIcon name={m === "Computer" ? "monitor" : "globe"} small />
+              {m}
+            </button>
+          ))}
+        </span>
       </div>
       {stopError ? <p className="stage-error-st" role="alert">{stopError}</p> : null}
       {!browser && where.error && viewing ? <p className="stage-error-st" role="alert">{where.error} <button type="button" className="btn sm" onClick={() => setTick((value) => value + 1)}>Try again</button></p> : null}

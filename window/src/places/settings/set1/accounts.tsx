@@ -1,7 +1,7 @@
 // Settings › Accounts (DESIGN-SPEC §4.7.8): the model accounts in the order Branch uses them, coding apps on this
 // computer, what happens when one runs out, your own accounts and keepoak.com. Saves at once through the engine:
 // order models.authOrderSet, sign-out models.authLogout, test models.probe, fallbacks config.patch.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
@@ -87,11 +87,19 @@ export function AccountsPage(props: SettingsPageProps) {
   const owner = scope || props.engine.agentId;
   const agent = owner ? { agentId: owner } : {};
   const status = useResource<RecordValue>(props.engine, "models.authStatus", agent);
-  const [add, setAdd] = useState<AddStart | null>(() => {
-    if (sessionStorage.getItem("branch.openAddAccount") !== "1") return null;
-    sessionStorage.removeItem("branch.openAddAccount");
-    return {};
-  });
+  const [add, setAdd] = useState<AddStart | null>(null);
+  useEffect(() => {
+    const consume = () => {
+      const asked = sessionStorage.getItem("branch.openAddAccount");
+      if (!asked) return;
+      sessionStorage.removeItem("branch.openAddAccount");
+      // "1" opens the picker; a provider id opens that provider's sign-in.
+      setAdd(asked === "1" ? {} : { provider: asked });
+    };
+    window.addEventListener("branch:open-add-account", consume);
+    consume();
+    return () => window.removeEventListener("branch:open-add-account", consume);
+  }, []);
   const providers = providersOf(status.data?.providers);
   const caps = list(status.data?.providerCapabilities);
   const all = accountsOf(providers);
@@ -99,6 +107,11 @@ export function AccountsPage(props: SettingsPageProps) {
     <Page title={props.title} lede="Manage model accounts and the order Branch uses them." help="Your model accounts, the order Branch uses them in, which Trunks use each, and your keepoak.com account.">
       <AccountsStatus loading={status.loading} error={status.error} count={all.length} unavailable={record(status.data?.unavailable).message} />
       <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} />
+      {!status.loading && !status.error ? <div className="acts">
+        {caps.filter((c) => !providers.some((p) => p.provider === c.provider && p.profiles.length) && list(c.loginOptions).some((o) => o.featured)).map((c) => (
+          <Btn key={text(c.provider)} onClick={() => setAdd({ provider: text(c.provider) })}>Sign in to {serviceName(text(c.provider))}</Btn>
+        ))}
+      </div> : null}
       <CodingApps engine={props.engine} />
       <WhenOneRunsOut engine={props.engine} />
       <OwnAccounts engine={props.engine} />
@@ -150,7 +163,6 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
       {all.some((x) => !x.first) ? <Hint>When one account runs low, Branch moves to the next.</Hint> : null}
       <Acts>
         <Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn>
-        <Btn onClick={() => onAdd({ provider: "anthropic" })}>Add a Claude account</Btn>
         {brands.filter((p) => p.provider !== "anthropic").map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
       </Acts>
       {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={agent} reload={reload} setOrder={setOrder} onClose={() => setMenu(null)} /> : null}
