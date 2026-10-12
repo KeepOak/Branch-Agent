@@ -121,6 +121,7 @@ function PlugSections({ catalog, overrides, query, write, reason, isAdmin, onLib
   const webOn = catalog.webBase ? isOn(true, overrides.webSearch) : false;
   const staleOn = !catalog.webBase && overrides.webSearch === true;
   const nothing = connectors.length === 0 && skills.length === 0 && !webShown;
+  const { chosen, problems } = libraryLists(catalog.skills, overrides);
   return (
     <>
       {webShown ? (
@@ -144,7 +145,8 @@ function PlugSections({ catalog, overrides, query, write, reason, isAdmin, onLib
       {!query.trim() && catalog.skills.length > 0 ? (
         <button type="button" className="c-tool c-libadd" onClick={onLibrary}>
           <span className="c-tile"><Icon name="doc" size={15} /></span>
-          <span className="c-tool-t"><b>Choose skills…</b></span>
+          <span className="c-tool-t"><b>Choose skills…</b><small>{chosen.length} on</small></span>
+          {problems.length > 0 ? <span className="c-pill warn">{problems.length === 1 ? "1 needs setup" : `${problems.length} need setup`}</span> : null}
           <Icon name="chevRight" size={15} />
         </button>
       ) : null}
@@ -260,11 +262,12 @@ function AddRow({ onOpen, onClose }: { onOpen?: (t: OpenTarget) => void; onClose
   );
 }
 
-/** The library split: skills on in this conversation, and the ones that could be added (skills with a problem are left out). */
-export function libraryLists(skills: SkillRow[], overrides: ToolOverrides): { chosen: SkillRow[]; rest: SkillRow[] } {
+/** The library split: skills on in this conversation, the ones that could be added, and the ones that can't run
+ *  until they are set up (a missing key or requirement), which are listed apart so the warning stays visible. */
+export function libraryLists(skills: SkillRow[], overrides: ToolOverrides): { chosen: SkillRow[]; rest: SkillRow[]; problems: SkillRow[] } {
   const usable = skills.filter((s) => !s.problem);
   const on = (s: SkillRow) => isOn(s.baseEnabled, overrides.skills?.[s.key]);
-  return { chosen: usable.filter(on), rest: usable.filter((s) => !on(s)) };
+  return { chosen: usable.filter(on), rest: usable.filter((s) => !on(s)), problems: skills.filter((s) => s.problem) };
 }
 
 /** Skills for this conversation (the preview's libPK18): the skills chosen here and the rest of your library, each
@@ -274,7 +277,7 @@ function LibraryView({ skills, overrides, changed, isAdmin, reason, onBack, writ
   write: (next: ToolOverrides) => Promise<string | null>;
 }) {
   const set = (s: SkillRow, value: boolean) => void write(toggle(overrides, "skills", s.key, value, s.baseEnabled));
-  const { chosen, rest } = libraryLists(skills, overrides);
+  const { chosen, rest, problems } = libraryLists(skills, overrides);
   const row = (s: SkillRow, button: React.ReactNode) => (
     <div key={s.key} className="c-librow">
       <span className="c-tool-t"><b>{s.name}</b><small>{s.line}</small></span>
@@ -291,6 +294,12 @@ function LibraryView({ skills, overrides, changed, isAdmin, reason, onBack, writ
       {chosen.length ? chosen.map((s) => row(s, <button type="button" className="btn ghost sm" disabled={!isAdmin} title={shownWhy(reason)} onClick={() => set(s, false)}>Remove</button>)) : <p className="c-pp">No matching skills are on.</p>}
       <div className="c-ph"><span>Add from your libraries</span></div>
       {rest.length ? rest.map((s) => row(s, <button type="button" className="btn sm" disabled={!isAdmin} title={shownWhy(reason)} onClick={() => set(s, true)}>Add</button>)) : <p className="c-pp">No matching skills to add.</p>}
+      {problems.length ? (
+        <>
+          <div className="c-ph"><span>Needs setup</span></div>
+          {problems.map((s) => row(s, <span className={`c-pill ${s.problem === "Needs a key" ? "warn" : "no"}`}>{s.problem}</span>))}
+        </>
+      ) : null}
       <p className="c-pp c-libhint">{changed ? "Skill changes apply from the next step. A step already running keeps its version." : "New conversations start with your default skills. This one keeps the ones chosen here."}</p>
     </div>
   );
