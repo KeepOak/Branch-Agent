@@ -299,6 +299,7 @@ export async function ensureLlamaCppModel(params: {
         expectedSha256: artifact.expectedSha256,
         expectedSize: artifact.expectedSize,
         requireServerDigest: !artifact.expectedSha256,
+        resumable: true,
         signal: params.signal,
         onProgress: params.onProgress,
       });

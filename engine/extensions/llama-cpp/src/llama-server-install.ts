@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import fs, { type BigIntStats } from "node:fs";
-import fsp from "node:fs/promises";
+import fsp, { type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { sha256File as hashFile } from "@openclaw/fs-safe/durability";
 import { toErrorObject } from "branch/plugin-sdk/error-runtime";
@@ -22,6 +22,19 @@ import {
   extractLlamaServerDependencyArchive,
 } from "./llama-server-extract.js";
 import { extractWindowsVcRuntime } from "./llama-server-vc-runtime.js";
+import {
+  discardStagedPartial,
+  hashStagedPrefix,
+  isStagedFreshRetry,
+  isStagedPartialKept,
+  keepStagedPartial,
+  openStagedPartial,
+  resolveResumeOffset,
+  resumableStartByte,
+  retryStagedFresh,
+  stagingMetaPath,
+  stagingPartPath,
+} from "./resumable-download.js";
 
 const DOWNLOAD_TIMEOUT_MS = 30 * 60_000;
 const VERSION_TIMEOUT_MS = 15_000;
@@ -136,7 +149,7 @@ function readResponseSha256(response: Response): string | undefined {
   return encoded ? Buffer.from(encoded, "base64").toString("hex") : undefined;
 }
 
-export async function downloadVerifiedFile(params: {
+type DownloadParams = {
   url: string;
   destination: string;
   expectedSha256?: string;
@@ -144,89 +157,275 @@ export async function downloadVerifiedFile(params: {
   requireServerDigest?: boolean;
   signal?: AbortSignal;
   onProgress?: LlamaDownloadProgress;
-}): Promise<void> {
-  const partialPath = `${params.destination}.partial-${randomUUID()}`;
+  /**
+   * Stage to a deterministic `<destination>.part` so an interrupted or cancelled
+   * download resumes on the next call. Needs `expectedSha256`; callers whose
+   * destination name changes per attempt leave it off.
+   */
+  resumable?: boolean;
+};
+
+type StagedTarget = {
+  partialPath: string;
+  /** Byte offset already staged on disk; the request asks for the rest with Range. */
+  startByte: number;
+  /** Set for resumable downloads: the digest recorded in the partial's sidecar. */
+  sidecarSha256?: string;
+};
+
+export async function downloadVerifiedFile(params: DownloadParams): Promise<void> {
   await fsp.mkdir(path.dirname(params.destination), { recursive: true });
+  const expectedSha256 = params.expectedSha256?.toLowerCase();
+  if (params.resumable && expectedSha256) {
+    await downloadResumable({ ...params, expectedSha256 });
+    return;
+  }
+  const partialPath = `${params.destination}.partial-${randomUUID()}`;
+  try {
+    await transferToPartial(params, { partialPath, startByte: 0 });
+  } finally {
+    await fsp.rm(partialPath, { force: true }).catch(() => undefined);
+  }
+}
+
+// A download with a known digest stages to a deterministic .part file, so an
+// interrupted or cancelled transfer resumes on the next attempt (atlas MODELS-ACCOUNTS-0141).
+async function downloadResumable(params: DownloadParams & { expectedSha256: string }) {
+  const partialPath = stagingPartPath(params.destination);
+  let startByte = await resumableStartByte(partialPath, params.expectedSha256);
+  if (startByte > 0 && params.expectedSize !== undefined && startByte >= params.expectedSize) {
+    if (await promoteCompletePartial(params, partialPath, startByte)) {
+      return;
+    }
+    startByte = 0;
+  }
+  for (;;) {
+    const target = { partialPath, startByte, sidecarSha256: params.expectedSha256 };
+    try {
+      await transferToPartial(params, target);
+      await fsp.rm(stagingMetaPath(partialPath), { force: true }).catch(() => undefined);
+      return;
+    } catch (error) {
+      if (isStagedPartialKept(error)) {
+        throw error;
+      }
+      await discardStagedPartial(partialPath);
+      // A resumed transfer that fails verification or is refused restarts once from byte 0.
+      if (startByte === 0 || !isStagedFreshRetry(error)) {
+        throw error;
+      }
+      startByte = 0;
+    }
+  }
+}
+
+/** Commits a staged partial that already holds every expected byte, without another request. */
+async function promoteCompletePartial(
+  params: DownloadParams & { expectedSha256: string },
+  partialPath: string,
+  size: number,
+): Promise<boolean> {
+  if (size !== params.expectedSize) {
+    await discardStagedPartial(partialPath);
+    return false;
+  }
+  const handle = await fsp.open(partialPath, "r");
+  try {
+    const { digest } = await hashFile(handle, { signal: params.signal });
+    if (digest !== params.expectedSha256) {
+      await discardStagedPartial(partialPath);
+      return false;
+    }
+    await publishVerifiedPartial(params, handle, partialPath, digest);
+  } finally {
+    await handle.close();
+  }
+  await fsp.rm(stagingMetaPath(partialPath), { force: true }).catch(() => undefined);
+  return true;
+}
+
+async function transferToPartial(params: DownloadParams, target: StagedTarget): Promise<void> {
   // Setup/doctor closure must not cold-load the SSRF barrel (DNS, proxy state,
   // logging); defer it to actual download time per the closure guard contract.
   const { fetchWithSsrFGuard, ssrfPolicyFromHttpBaseUrlAllowedOrigin } =
     await import("branch/plugin-sdk/ssrf-runtime");
+  const { response, release } = await fetchWithSsrFGuard({
+    url: params.url,
+    signal: params.signal,
+    timeoutMs: DOWNLOAD_TIMEOUT_MS,
+    policy: ssrfPolicyFromHttpBaseUrlAllowedOrigin(params.url),
+    requireHttps: true,
+    auditContext: "llama-cpp-download",
+    ...(target.startByte > 0 ? { init: { headers: { range: `bytes=${target.startByte}-` } } } : {}),
+  }).catch((error: unknown) => {
+    throw keepStagedPartial(error);
+  });
   try {
-    const { response, release } = await fetchWithSsrFGuard({
-      url: params.url,
+    const startByte = resolveResponseStart(response, target.startByte);
+    const expectedSha256 = params.expectedSha256 ?? readResponseSha256(response);
+    if (!expectedSha256 && params.requireServerDigest) {
+      throw new Error(
+        "the download server did not provide a SHA-256 digest; download the GGUF manually and configure its local path",
+      );
+    }
+    await writeVerifiedBody(params, response, { ...target, startByte }, expectedSha256);
+  } finally {
+    await release();
+  }
+}
+
+function resolveResponseStart(response: Response, requestedStart: number): number {
+  if (requestedStart > 0 && response.status === 416) {
+    throw retryStagedFresh(new Error("download resume was refused: HTTP 416"));
+  }
+  if (!response.ok || !response.body) {
+    throw keepStagedPartial(
+      new Error(`download failed: HTTP ${response.status} ${response.statusText}`),
+    );
+  }
+  const startByte = resolveResumeOffset(requestedStart, response.status, {
+    "content-range": response.headers.get("content-range") ?? undefined,
+  });
+  if (startByte === null) {
+    throw retryStagedFresh(new Error("download resume returned a different byte range"));
+  }
+  return startByte;
+}
+
+async function openTargetPartial(target: StagedTarget) {
+  if (!target.sidecarSha256) {
+    return await fsp.open(target.partialPath, "wx", 0o600);
+  }
+  return await openStagedPartial({
+    stagingPath: target.partialPath,
+    startByte: target.startByte,
+    expectedSha256: target.sidecarSha256,
+  });
+}
+
+async function writeVerifiedBody(
+  params: DownloadParams,
+  response: Response,
+  target: StagedTarget,
+  expectedSha256: string | undefined,
+): Promise<void> {
+  const contentLength = Number(response.headers.get("content-length"));
+  const totalSize =
+    params.expectedSize ??
+    (Number.isFinite(contentLength) && contentLength > 0 ? target.startByte + contentLength : 0);
+  const hash = createHash("sha256");
+  if (target.startByte > 0) {
+    await hashStagedPrefix({
+      stagingPath: target.partialPath,
+      length: target.startByte,
+      hash,
       signal: params.signal,
-      timeoutMs: DOWNLOAD_TIMEOUT_MS,
-      policy: ssrfPolicyFromHttpBaseUrlAllowedOrigin(params.url),
-      requireHttps: true,
-      auditContext: "llama-cpp-download",
+    }).catch((error: unknown) => {
+      throw keepStagedPartial(error);
     });
-    try {
-      if (!response.ok || !response.body) {
-        throw new Error(`download failed: HTTP ${response.status} ${response.statusText}`);
+  }
+  const handle = await openTargetPartial(target);
+  try {
+    const body = response.body as ReadableStream<Uint8Array>;
+    const downloadedSize = await streamBodyToHandle({
+      params,
+      body,
+      handle,
+      hash,
+      totalSize,
+      target,
+    });
+    const actualSha256 = verifyDownloadedBytes(params, downloadedSize, hash, expectedSha256);
+    await publishVerifiedPartial(params, handle, target.partialPath, actualSha256);
+  } finally {
+    await handle.close();
+  }
+}
+
+async function streamBodyToHandle(input: {
+  params: DownloadParams;
+  body: ReadableStream<Uint8Array>;
+  handle: FileHandle;
+  hash: ReturnType<typeof createHash>;
+  totalSize: number;
+  target: StagedTarget;
+}): Promise<number> {
+  const { params, handle, hash, totalSize } = input;
+  let downloadedSize = input.target.startByte;
+  let previousSize = downloadedSize;
+  let previousAt = Date.now();
+  let rollingBytesPerSecond = 0;
+  // Unlock on every exit; the guard owns aborting an unfinished download.
+  const chunks = input.body.values({ preventCancel: true });
+  try {
+    for (;;) {
+      // A failed read is an interruption: staged bytes stay for the next attempt.
+      const next = await chunks.next().catch((error: unknown) => {
+        throw keepStagedPartial(error);
+      });
+      if (next.done) {
+        return downloadedSize;
       }
-      const expectedSha256 = params.expectedSha256 ?? readResponseSha256(response);
-      if (!expectedSha256 && params.requireServerDigest) {
-        throw new Error(
-          "the download server did not provide a SHA-256 digest; download the GGUF manually and configure its local path",
-        );
+      const chunk = Buffer.from(next.value);
+      await handle.writeFile(chunk);
+      hash.update(chunk);
+      downloadedSize += chunk.byteLength;
+      const now = Date.now();
+      if (now > previousAt) {
+        const currentRate = ((downloadedSize - previousSize) * 1000) / (now - previousAt);
+        rollingBytesPerSecond =
+          rollingBytesPerSecond === 0
+            ? currentRate
+            : rollingBytesPerSecond * 0.75 + currentRate * 0.25;
+        previousSize = downloadedSize;
+        previousAt = now;
       }
-      const contentLength = Number(response.headers.get("content-length"));
-      const totalSize =
-        params.expectedSize ??
-        (Number.isFinite(contentLength) && contentLength > 0 ? contentLength : 0);
-      const handle = await fsp.open(partialPath, "wx", 0o600);
-      const hash = createHash("sha256");
-      let downloadedSize = 0;
-      let previousSize = 0;
-      let previousAt = Date.now();
-      let rollingBytesPerSecond = 0;
-      try {
-        // Unlock on every exit; the guard owns aborting an unfinished download.
-        for await (const value of response.body.values({ preventCancel: true })) {
-          const chunk = Buffer.from(value);
-          await handle.writeFile(chunk);
-          hash.update(chunk);
-          downloadedSize += chunk.byteLength;
-          const now = Date.now();
-          if (now > previousAt) {
-            const currentRate = ((downloadedSize - previousSize) * 1000) / (now - previousAt);
-            rollingBytesPerSecond =
-              rollingBytesPerSecond === 0
-                ? currentRate
-                : rollingBytesPerSecond * 0.75 + currentRate * 0.25;
-            previousSize = downloadedSize;
-            previousAt = now;
-          }
-          params.onProgress?.({ downloadedSize, totalSize, bytesPerSecond: rollingBytesPerSecond });
-        }
-        if (params.expectedSize && downloadedSize !== params.expectedSize) {
-          throw new Error(
-            `download size mismatch: expected ${params.expectedSize}, got ${downloadedSize}`,
-          );
-        }
-        const actualSha256 = hash.digest("hex");
-        if (expectedSha256 && actualSha256 !== expectedSha256.toLowerCase()) {
-          throw new Error(
-            `download SHA-256 mismatch: expected ${expectedSha256}, got ${actualSha256}`,
-          );
-        }
-        const completed = await handle.stat({ bigint: true });
-        params.signal?.throwIfAborted();
-        await fsp.rename(partialPath, params.destination);
-        const published = await handle.stat({ bigint: true });
-        // Rename can change ctime. Retain the verified open file's publication identity so
-        // setup and cold chat preparation do not rescan a multi-GB download in this process.
-        if (completed.size === published.size && completed.mtimeNs === published.mtimeNs) {
-          rememberVerifiedFile(params.destination, published, actualSha256);
-        }
-      } finally {
-        await handle.close();
-      }
-    } finally {
-      await release();
+      params.onProgress?.({ downloadedSize, totalSize, bytesPerSecond: rollingBytesPerSecond });
     }
   } finally {
-    await fsp.rm(partialPath, { force: true }).catch(() => undefined);
+    await chunks.return?.();
+  }
+}
+
+function verifyDownloadedBytes(
+  params: DownloadParams,
+  downloadedSize: number,
+  hash: ReturnType<typeof createHash>,
+  expectedSha256: string | undefined,
+): string {
+  if (params.expectedSize && downloadedSize !== params.expectedSize) {
+    throw retryStagedFresh(
+      new Error(`download size mismatch: expected ${params.expectedSize}, got ${downloadedSize}`),
+    );
+  }
+  const actualSha256 = hash.digest("hex");
+  if (expectedSha256 && actualSha256 !== expectedSha256.toLowerCase()) {
+    throw retryStagedFresh(
+      new Error(`download SHA-256 mismatch: expected ${expectedSha256}, got ${actualSha256}`),
+    );
+  }
+  return actualSha256;
+}
+
+async function publishVerifiedPartial(
+  params: DownloadParams,
+  handle: FileHandle,
+  partialPath: string,
+  sha256: string,
+): Promise<void> {
+  const completed = await handle.stat({ bigint: true });
+  // A cancel after verification keeps the complete partial for the next attempt to commit.
+  try {
+    params.signal?.throwIfAborted();
+  } catch (error) {
+    throw keepStagedPartial(error);
+  }
+  await fsp.rename(partialPath, params.destination);
+  const published = await handle.stat({ bigint: true });
+  // Rename can change ctime. Retain the verified open file's publication identity so
+  // setup and cold chat preparation do not rescan a multi-GB download in this process.
+  if (completed.size === published.size && completed.mtimeNs === published.mtimeNs) {
+    rememberVerifiedFile(params.destination, published, sha256);
   }
 }
 
