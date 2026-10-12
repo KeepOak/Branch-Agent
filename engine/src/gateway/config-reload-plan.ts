@@ -296,6 +296,7 @@ const DEFAULT_RELOAD_POLICIES: ReloadPolicy[] = [
       "security.audit.suppressions",
       "security.lockdown",
       "security.installPolicy",
+      "security.contentFilters",
       "diagnostics.cacheTrace.enabled",
       "acp",
       "attachments.ttlHours",

@@ -219,6 +219,24 @@ export const CORE_FIELD_HELP: Record<string, string> = {
     "Optional HTTP response security headers applied by the gateway process itself. Prefer setting these at your reverse proxy when TLS terminates there.",
   "gateway.http.securityHeaders.strictTransportSecurity":
     "Value for the Strict-Transport-Security response header. Set only on HTTPS origins that you fully control; use false to explicitly disable.",
+  "security.contentFilters":
+    "Personal data filters. Off unless configured. When set, the arguments of every tool call a Trunk proposes are scanned before the tool runs, and findings are blocked, redacted or only recorded, with a raw-free audit record.",
+  "security.contentFilters.toolArguments.pii":
+    "Personal data rule for tool arguments (the tool name and every text value in its arguments). Omit to leave tool calls unscanned.",
+  "security.contentFilters.toolArguments.pii.action":
+    'What happens on a match: "block" (default) refuses the tool call, "redact" replaces each match with a placeholder before the tool runs, "audit" lets the call run and only records the finding.',
+  "security.contentFilters.toolArguments.pii.fields":
+    'Which parts to scan: "name" (the tool name) and/or "arguments" (text values in the arguments). Omit to scan both.',
+  "security.contentFilters.toolArguments.pii.starterPatterns":
+    'Built-in detectors to use: "sk_prefix", "bearer_header", "api_key_header", "email", "api_key", "national_id", "credit_card", "phone". Omit to use all of them; an empty list turns them off.',
+  "security.contentFilters.toolArguments.pii.customPatterns":
+    "Extra detectors, each with an id, a label, a regex and an optional category. Regexes with nested or ambiguous repetition are rejected.",
+  "security.contentFilters.toolArguments.pii.maxCharacters":
+    "Most characters one tool call may contain for redaction (default 65536, maximum 262144). Larger calls are refused instead of partly redacted.",
+  "security.contentFilters.toolArguments.pii.maxMatches":
+    "Most matches one tool call may redact (default 256, maximum 4096). More matches refuse the call.",
+  "security.contentFilters.tokenSecret":
+    "Optional secret (at least 16 characters) that turns redaction into pseudonymisation: each value is replaced by a stable keyed placeholder instead of a numbered one. Store via secret/env substitution.",
   "gateway.remote.url": "Remote Gateway WebSocket URL (ws:// or wss://).",
   "gateway.remote.token":
     "Shared secret sent in the token field to authenticate this client to a remote gateway. The server's gateway.auth.mode selects its configured secret; either client token or password field is accepted. Store via secret/env substitution and rotate alongside remote gateway auth changes.",

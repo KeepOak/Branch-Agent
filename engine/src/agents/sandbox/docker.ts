@@ -33,6 +33,13 @@ import {
   sandboxMountPlanMatchesContainer,
   type SandboxMountPlan,
 } from "./mount-plan.js";
+import { resolveSandboxNetworkPolicy } from "./network-proxy/network-config.js";
+import {
+  ensureSandboxNetworkProxyRunning,
+  isRestrictedSandboxNetwork,
+  prepareSandboxNetworkProxy,
+  removeSandboxNetworkProxyResources,
+} from "./network-proxy/network-proxy-sidecar.js";
 import {
   assertPodmanSandboxTarget,
   bindPodmanSandboxEngine,
@@ -94,6 +101,26 @@ export async function execDockerRaw(
 const log = createSubsystemLogger("docker");
 
 const HOT_CONTAINER_WINDOW_MS = 5 * 60 * 1000;
+const SANDBOX_NETWORK_MODE_LABEL = "branch.networkMode";
+
+/**
+ * Best-effort removal of the proxy sidecar and networks owned by a Docker sandbox
+ * container that was just removed. Containers created in open mode own none, and
+ * absent resources are not an error.
+ */
+export async function removeSandboxNetworkProxyAfterRemoval(
+  engine: SandboxContainerEngine,
+  containerName: string,
+): Promise<void> {
+  if (engine.id !== "docker") {
+    return;
+  }
+  try {
+    await removeSandboxNetworkProxyResources(engine, containerName);
+  } catch (error) {
+    log.warn(`Sandbox network proxy cleanup failed for ${containerName}: ${String(error)}`);
+  }
+}
 
 export async function execDocker(args: string[], opts?: ExecContainerRawOptions) {
   return await execContainer(DOCKER_SANDBOX_ENGINE, args, opts);
@@ -349,12 +376,19 @@ async function createSandboxContainer(params: {
       : undefined;
   const createCfg = podmanPolicy?.cfg ?? cfg;
   await ensureContainerImage(engine, cfg.image);
+  const networkPolicy = resolveSandboxNetworkPolicy(cfg.networkPolicy);
+  // Restricted modes attach the sandbox only to an internal network whose sole
+  // route out is the policy proxy sidecar.
+  const networkProxy = isRestrictedSandboxNetwork(networkPolicy)
+    ? await prepareSandboxNetworkProxy({ engine, containerName: name, policy: networkPolicy })
+    : undefined;
 
   const { argv: args, env } = buildSandboxCreateArgs({
     name,
-    cfg: createCfg,
+    cfg: networkProxy ? { ...createCfg, network: networkProxy.network } : createCfg,
     scopeKey,
     configHash: params.configHash,
+    labels: networkProxy ? { [SANDBOX_NETWORK_MODE_LABEL]: networkPolicy.mode } : undefined,
     includeBinds: false,
     bindSourceRoots: [workspaceDir, params.agentWorkspaceDir],
   });
@@ -368,7 +402,7 @@ async function createSandboxContainer(params: {
     );
   }
   appendCustomBinds(args, params.mountPlan.binds);
-  const created = await withContainerEnvFile(env, async (envFile) => {
+  const created = await withContainerEnvFile({ ...env, ...networkProxy?.env }, async (envFile) => {
     args.push("--env-file", envFile, cfg.image, "sleep", "infinity");
     params.assertCurrent?.();
     return await execContainer(engine, args);
@@ -575,6 +609,7 @@ async function ensureSandboxContainerLifecycle(
           throw new Error(`Sandbox replacement failed; custody retained: ${removed.stderr.trim()}`);
         }
         releaseSandboxContainerSource(engine, containerName, containerId);
+        await removeSandboxNetworkProxyAfterRemoval(engine, containerName);
         hasContainer = false;
         running = false;
       }
@@ -634,7 +669,13 @@ async function ensureSandboxContainerLifecycle(
       params.assertCurrent?.();
       return { containerName, containerId };
     } catch (creationError) {
+      const restricted = isRestrictedSandboxNetwork(
+        resolveSandboxNetworkPolicy(params.cfg.docker.networkPolicy),
+      );
       if (!allocated) {
+        if (restricted) {
+          await removeSandboxNetworkProxyAfterRemoval(engine, containerName);
+        }
         throw creationError;
       }
       if (params.operatorAuthority?.signal?.aborted) {
@@ -651,10 +692,19 @@ async function ensureSandboxContainerLifecycle(
         containerId,
         creationError,
         onRemoved: () => releaseSandboxContainerSource(engine, containerName, containerId),
+      }).catch(async (error: unknown) => {
+        if (restricted) {
+          await removeSandboxNetworkProxyAfterRemoval(engine, containerName);
+        }
+        throw error;
       });
     }
   } else {
     params.assertCurrent?.();
+    const networkPolicy = resolveSandboxNetworkPolicy(params.cfg.docker.networkPolicy);
+    if (isRestrictedSandboxNetwork(networkPolicy)) {
+      await ensureSandboxNetworkProxyRunning({ engine, containerName, policy: networkPolicy });
+    }
     if (
       await admitSandboxContainerSource({
         engine,

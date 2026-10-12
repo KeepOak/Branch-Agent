@@ -42,6 +42,7 @@ export const standaloneRuntimeProcessBuildEntries = createRuntimeProcessBuildEnt
   runtimeProcessEntrypoints.gatewayStateOwnerHeartbeat,
   runtimeProcessEntrypoints.serviceChildRelay,
   runtimeProcessEntrypoints.serviceChildGroupAnchor,
+  runtimeProcessEntrypoints.sandboxNetworkProxy,
 ]);
 
 export function shouldBundleRuntimeSqliteDependency(id: string): boolean {

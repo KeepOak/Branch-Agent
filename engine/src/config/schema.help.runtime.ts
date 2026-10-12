@@ -210,6 +210,30 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
     'Optional Docker GPU passthrough value passed to --gpus, for example "all" or "device=GPU-uuid". Requires a compatible host runtime such as NVIDIA Container Toolkit.',
   "agents.entries.*.sandbox.docker.gpus":
     "Per-agent Docker GPU passthrough override for sandbox containers.",
+  "agents.defaults.sandbox.docker.networkPolicy":
+    "Outbound network policy for Docker sandboxes. Restricted modes put the sandbox on an internal-only network whose only route out is an HTTP(S) policy proxy sidecar; they require Docker Engine 28 or newer.",
+  "agents.defaults.sandbox.docker.networkPolicy.mode":
+    'Sandbox egress mode: "open" (default) keeps the configured Docker network, "isolated" denies all egress, and "allowlist" permits allowDomains plus approved destinations through the proxy.',
+  "agents.defaults.sandbox.docker.networkPolicy.allowDomains":
+    "Exact domains or leading-wildcard domains (for example *.pythonhosted.org) allowed in allowlist mode. IP literals, ports, schemes, and bare wildcards are rejected.",
+  "agents.defaults.sandbox.docker.networkPolicy.approval":
+    'Whether a blocked public HTTP(S) destination asks the user: "prompt" (default) offers a temporary or sandbox-lifetime grant; "deny" blocks without asking.',
+  "agents.defaults.sandbox.docker.networkPolicy.temporaryGrantTtl":
+    "Lifetime in seconds of an Allow once network approval (30-3600, default 300).",
+  "agents.defaults.sandbox.docker.networkPolicy.proxyImage":
+    "Node runtime image for the trusted network-policy sidecar (default node:24-alpine).",
+  "agents.entries.*.sandbox.docker.networkPolicy":
+    "Per-agent outbound network policy override for Docker sandboxes.",
+  "agents.entries.*.sandbox.docker.networkPolicy.mode":
+    'Per-agent sandbox egress mode: "open", "isolated", or "allowlist".',
+  "agents.entries.*.sandbox.docker.networkPolicy.allowDomains":
+    "Per-agent exact or leading-wildcard domains allowed in allowlist mode.",
+  "agents.entries.*.sandbox.docker.networkPolicy.approval":
+    'Per-agent approval behavior for blocked destinations: "prompt" or "deny".',
+  "agents.entries.*.sandbox.docker.networkPolicy.temporaryGrantTtl":
+    "Per-agent lifetime in seconds of an Allow once network approval.",
+  "agents.entries.*.sandbox.docker.networkPolicy.proxyImage":
+    "Per-agent Node runtime image for the network-policy sidecar.",
   "agents.defaults.sandbox.browser.cdpSourceRange":
     "Optional CIDR allowlist for container-edge CDP ingress (for example 172.21.0.1/32).",
   "agents.entries.*.sandbox.browser.cdpSourceRange":

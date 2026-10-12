@@ -38,6 +38,7 @@ import { relativePathInsideSandboxRoot, resolvePathFromInput } from "./path-poli
 import { wrapToolsWithProjectInstructions } from "./project-instructions.js";
 import type { SandboxContext } from "./sandbox.js";
 import { buildSandboxFsMounts } from "./sandbox/fs-paths.js";
+import { withSandboxNetworkApproval } from "./sandbox/network-proxy/network-approval.js";
 import { resolveReadOnlyWorkspaceSkillMounts } from "./sandbox/workspace-mounts.js";
 import { createLsTool, type LsOperations } from "./sessions/tools/ls.js";
 import { createReadTool } from "./sessions/tools/read.js";
@@ -435,29 +436,35 @@ export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgent
   }
   if (options.shellTools === "full") {
     shell.push(
-      createLazyExecTool({
-        ...options.execDefaults,
-        ...(sandbox?.required ? { sandboxRequired: true } : {}),
-        cwd: options.codingRoot,
-        sandbox: sandbox
-          ? {
-              containerName: sandbox.containerName,
-              workspaceDir: sandbox.workspaceDir,
-              containerWorkdir: sandbox.containerWorkdir,
-              workdirValidation: sandbox.backend?.workdirValidation,
-              validateWorkdir: sandbox.backend?.validateWorkdir?.bind(sandbox.backend),
-              discardPreparedWorkdir: sandbox.backend?.discardPreparedWorkdir?.bind(
-                sandbox.backend,
-              ),
-              workdirRoots: sandbox.backend?.workdirRoots,
-              readOnlyWorkspaceSkillMounts,
-              env: sandbox.backend?.env ?? sandbox.docker.env,
-              prepareProcessCleanup: sandbox.backend?.prepareProcessCleanup?.bind(sandbox.backend),
-              buildExecSpec: sandbox.backend?.buildExecSpec.bind(sandbox.backend),
-              finalizeExec: sandbox.backend?.finalizeExec?.bind(sandbox.backend),
-            }
-          : undefined,
-      }),
+      withSandboxNetworkApproval(
+        createLazyExecTool({
+          ...options.execDefaults,
+          ...(sandbox?.required ? { sandboxRequired: true } : {}),
+          cwd: options.codingRoot,
+          sandbox: sandbox
+            ? {
+                containerName: sandbox.containerName,
+                workspaceDir: sandbox.workspaceDir,
+                containerWorkdir: sandbox.containerWorkdir,
+                workdirValidation: sandbox.backend?.workdirValidation,
+                validateWorkdir: sandbox.backend?.validateWorkdir?.bind(sandbox.backend),
+                discardPreparedWorkdir: sandbox.backend?.discardPreparedWorkdir?.bind(
+                  sandbox.backend,
+                ),
+                workdirRoots: sandbox.backend?.workdirRoots,
+                readOnlyWorkspaceSkillMounts,
+                env: sandbox.backend?.env ?? sandbox.docker.env,
+                prepareProcessCleanup: sandbox.backend?.prepareProcessCleanup?.bind(
+                  sandbox.backend,
+                ),
+                buildExecSpec: sandbox.backend?.buildExecSpec.bind(sandbox.backend),
+                finalizeExec: sandbox.backend?.finalizeExec?.bind(sandbox.backend),
+              }
+            : undefined,
+        }),
+        sandbox?.backend?.networkApproval,
+        options.execDefaults,
+      ),
       createLazyProcessTool(options.processDefaults),
     );
   }

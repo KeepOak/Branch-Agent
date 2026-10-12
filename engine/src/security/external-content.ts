@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import { escapeRegExp } from "../shared/regexp.js";
+import { neutralizeUntrustedTags } from "./untrusted-tags.js";
 export {
   resolveHookExternalContentSource,
   type HookExternalContentSource,
@@ -303,7 +304,8 @@ export function truncateSanitizedExternalContent(
 }
 
 function sanitizeExternalContentText(content: string): string {
-  return sanitizeModelSpecialTokens(replaceMarkers(content));
+  // Forged framework tags (e.g. <system>) in outside text are escaped so they read as data.
+  return sanitizeModelSpecialTokens(neutralizeUntrustedTags(replaceMarkers(content)));
 }
 
 type WrapExternalContentOptions = {

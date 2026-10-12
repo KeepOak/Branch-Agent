@@ -1,4 +1,5 @@
 import { isLockdownOn, LOCKDOWN_MESSAGE } from "../config/lockdown.js";
+import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 /**
  * Wrapped before_tool_call execution boundary.
  * Owns tool preparation/finalization, adjusted-param replay state, terminal
@@ -15,6 +16,10 @@ import {
 } from "../infra/diagnostic-trace-context.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
 import { getPluginToolMeta } from "../plugins/tool-metadata.js";
+import {
+  applyToolArgumentPiiPolicy,
+  type ToolArgumentPiiDecision,
+} from "../security/pii/adapters/tool-arguments.js";
 import { recordRunSkillUsage } from "../skills/runtime/run-usage.js";
 import { copyBeforeToolCallWrapperMetadata } from "./agent-tool-metadata.js";
 import {
@@ -79,6 +84,7 @@ import { getChannelAgentToolMeta } from "./channel-tool-metadata.js";
 import {
   CODE_MODE_WAIT_TOOL_NAME,
   isCodeModeControlTool,
+  isCodeModeExecToolKind,
   getCodeModeExecBeforeHookMetadata,
   normalizeCodeModeExecBeforeHookParams,
   reconcileCodeModeExecBeforeHookParams,
@@ -99,6 +105,28 @@ import {
 import type { AnyAgentTool } from "./tools/common.js";
 
 type ForwardedToolExecution = (...args: unknown[]) => ReturnType<AnyAgentTool["execute"]>;
+
+/**
+ * Personal-data filter (security.contentFilters) over the final execution
+ * arguments. Code-mode exec scripts are skipped: their nested catalog calls
+ * pass through this wrapper individually.
+ */
+function resolveToolArgumentPiiDecision(params: {
+  ctx?: HookContext;
+  toolKind?: unknown;
+  toolName: string;
+  executeParams: unknown;
+}): ToolArgumentPiiDecision {
+  if (isCodeModeExecToolKind(params.toolKind)) {
+    return { kind: "allow", params: params.executeParams };
+  }
+  const config = getRuntimeConfigSnapshot() ?? params.ctx?.config;
+  return applyToolArgumentPiiPolicy({
+    filters: config?.security?.contentFilters,
+    toolName: params.toolName,
+    params: params.executeParams,
+  });
+}
 const MAX_TRACKED_ADJUSTED_PARAMS = 1024;
 const INTERNAL_DISPOSED_RESULT = {
   content: [],
@@ -448,6 +476,7 @@ export function wrapToolWithBeforeToolCallHook(
         });
       }
       let executeParams: unknown;
+      let piiDecision: ToolArgumentPiiDecision | undefined;
       try {
         // Stop cancellation-ignoring hooks before the synchronous mutation boundary.
         signal?.throwIfAborted();
@@ -458,18 +487,34 @@ export function wrapToolWithBeforeToolCallHook(
           adjustedParams: outcome.params,
           finalizerMode: "wrapped",
         });
-        // Hooks can repair or rewrite arguments; only the final execution
-        // shape is safe to validate, after vetoes but before side effects.
-        await validateToolExecutionParams(toolCallId, executeParams);
-        await reconcileLoopCallExecutionParams({
+        piiDecision = resolveToolArgumentPiiDecision({
           ctx,
+          toolKind: hookMetadata?.toolKind,
           toolName: normalizedToolName,
-          toolParams: executeParams,
-          toolCallId,
+          executeParams,
         });
+        if (piiDecision.kind === "allow") {
+          executeParams = piiDecision.params;
+          // Hooks can repair or rewrite arguments; only the final execution
+          // shape is safe to validate, after vetoes but before side effects.
+          await validateToolExecutionParams(toolCallId, executeParams);
+          await reconcileLoopCallExecutionParams({
+            ctx,
+            toolName: normalizedToolName,
+            toolParams: executeParams,
+            toolCallId,
+          });
+        }
       } catch (error) {
         recordPreExecutionError(error, outcome.params ?? hookParams, "tool_preparation");
         throw tagBeforeToolCallFailure(error, signal, "tool_preparation");
+      }
+      if (piiDecision?.kind === "block") {
+        return await blockToolCall({
+          reason: piiDecision.reason,
+          deniedReason: "pii-filter",
+          toolParams: executeParams,
+        });
       }
       let onImplementationStart: (() => void) | undefined;
       if (prepareControl) {

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { splitSandboxBindSpec } from "../agents/sandbox/bind-spec.js";
 import { isSandboxHostPathAbsolute } from "../agents/sandbox/host-paths.js";
 import { getBlockedNetworkModeReason } from "../agents/sandbox/network-mode.js";
+import { SandboxNetworkPolicySchema } from "../agents/sandbox/network-proxy/network-config.js";
 
 function validateSandboxBindEntries(
   binds: readonly string[] | undefined,
@@ -43,6 +44,7 @@ export const SandboxDockerSchema = z
     readOnlyRoot: z.boolean().optional(),
     tmpfs: z.array(z.string()).optional(),
     network: z.string().optional(),
+    networkPolicy: SandboxNetworkPolicySchema.optional(),
     user: z.string().optional(),
     capDrop: z.array(z.string()).optional(),
     env: z.record(z.string(), z.string()).optional(),

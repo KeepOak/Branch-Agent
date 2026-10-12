@@ -102,7 +102,8 @@ export type HookBlockedReason =
   | "plugin-approval"
   | "plugin-approval-unavailable"
   | "tool-loop"
-  | "lockdown";
+  | "lockdown"
+  | "pii-filter";
 
 type HookBlockedOutcome = {
   blocked: true;

@@ -23,12 +23,16 @@ import {
   execContainer,
   execContainerRaw,
   PODMAN_SANDBOX_ENGINE,
+  removeSandboxNetworkProxyAfterRemoval,
   resolvePodmanSandboxRuntimeInfo,
   type SandboxContainerEngine,
   type SandboxContainerEngineTarget,
   validateSandboxContainerEngineTarget,
 } from "./docker.js";
 import { resolveSandboxContainerOnlyMounts } from "./mount-plan.js";
+import type { SandboxNetworkApprovalHandle } from "./network-proxy/network-approval.js";
+import { resolveSandboxNetworkPolicy } from "./network-proxy/network-config.js";
+import { createSandboxNetworkPolicyClient } from "./network-proxy/network-proxy-sidecar.js";
 import { createSandboxProcessCleanup } from "./process-cleanup.js";
 import type { SandboxRegistryEntry } from "./registry.js";
 
@@ -145,7 +149,28 @@ async function createContainerSandboxBackend(
     githubIdentity,
   });
   handle.createFsBridge = ({ sandbox }) => createSandboxFsBridge({ sandbox, containerOnlyMounts });
+  const networkApproval = resolveSandboxNetworkApprovalHandle(boundEngine, containerName, params);
+  if (networkApproval) {
+    handle.networkApproval = networkApproval;
+  }
   return handle;
+}
+
+/** Only allowlist sandboxes with prompt approval record denials that can become approvals. */
+function resolveSandboxNetworkApprovalHandle(
+  engine: SandboxContainerEngine,
+  containerName: string,
+  params: CreateSandboxBackendParams,
+): SandboxNetworkApprovalHandle | undefined {
+  const policy = resolveSandboxNetworkPolicy(params.cfg.docker.networkPolicy);
+  if (engine.id !== "docker" || policy.mode !== "allowlist" || policy.approval !== "prompt") {
+    return undefined;
+  }
+  const { temporaryGrantTtl } = policy;
+  return {
+    client: createSandboxNetworkPolicyClient({ engine, containerName, temporaryGrantTtl }),
+    temporaryGrantTtl,
+  };
 }
 
 export async function createDockerSandboxBackend(
@@ -433,6 +458,7 @@ function createContainerSandboxBackendManager(
       await validateSandboxContainerEngineTarget(engine, podmanTarget);
       const runtimeEngine = podmanTarget ? bindPodmanSandboxEngine(podmanTarget) : engine;
       await removeSandboxContainerRuntime(runtimeEngine, entry.containerName);
+      await removeSandboxNetworkProxyAfterRemoval(runtimeEngine, entry.containerName);
     },
   };
 }

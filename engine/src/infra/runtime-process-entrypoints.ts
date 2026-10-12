@@ -13,6 +13,8 @@ export const SQLITE_READONLY_CHILD_ARG = "--branch-sqlite-readonly-child";
 
 export const runtimeProcessEntrypoints = {
   secretEgressProxy: runtimeProcessEntrypoint("secrets/egress-proxy/proxy.worker"),
+  // Not a Gateway launcher: restricted Docker sandboxes copy this standalone proxy into their sidecar.
+  sandboxNetworkProxy: runtimeProcessEntrypoint("agents/sandbox/network-proxy/network-proxy"),
   codeModeNode: runtimeProcessEntrypoint("agents/code-mode-node.worker"),
   cronReadOnly: runtimeProcessEntrypoint("cron/store/read-only.worker"),
   stateRead: runtimeProcessEntrypoint("state/branch-state-read.worker"),

@@ -1,6 +1,7 @@
 import { normalizeLowercaseStringOrEmpty } from "@branch/normalization-core/string-coerce";
 import { z } from "zod";
 import { ALL_THINKING_LEVELS } from "../auto-reply/thinking.shared.js";
+import { filtersConfigSchema } from "../security/pii/filters.js";
 import { findEdgeAuthIssue } from "../shared/gateway-edge-auth-headers.js";
 import { McpServerSchema } from "./zod-schema.mcp-server.js";
 import { MemorySearchSchema } from "./zod-schema.memory-search.js";
@@ -41,6 +42,8 @@ export const SecuritySchema = z
   .strictObject({
     /** Global, fail-closed pause of agent execution and outbound actions. */
     lockdown: z.boolean().optional(),
+    /** Personal-data filters for model-proposed tool arguments; off unless configured. */
+    contentFilters: filtersConfigSchema.optional(),
     audit: z
       .strictObject({
         suppressions: z

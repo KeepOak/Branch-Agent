@@ -1,4 +1,5 @@
 import type { SandboxFsBridge } from "./fs-bridge.types.js";
+import type { SandboxNetworkApprovalHandle } from "./network-proxy/network-approval.js";
 
 export type SandboxBackendId = string;
 
@@ -93,5 +94,7 @@ export type SandboxBackendHandle = {
     interrupt: (timeoutMs: number) => Promise<boolean>;
   };
   runShellCommand(params: SandboxBackendCommandParams): Promise<SandboxBackendCommandResult>;
+  /** Allowlist network policy client; denied destinations become approval requests after exec. */
+  networkApproval?: SandboxNetworkApprovalHandle;
   createFsBridge?: (params: { sandbox: SandboxFsBridgeContext }) => SandboxFsBridge;
 };
