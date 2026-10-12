@@ -79,6 +79,43 @@ describe("SettingsFrame", () => {
     expect(request).toHaveBeenCalledWith("users.prefs.set", expect.objectContaining({ entries: { "ui.window.look": expect.objectContaining({ level: "technical" }) } }));
   });
 
+  it("puts a card's finer rows in a Fine-tune each part group under its regular rows", async () => {
+    await mount(engineOf().engine);
+    expect($(".r1s-fine")).toBeNull();
+    await click(level("Advanced"));
+    const work = $$(".r1s-sec").find((s) => s.querySelector("h2")?.textContent === "Show agents’ work")!;
+    const fine = work.querySelector<HTMLElement>(".r1s-fine")!;
+    expect(fine.getAttribute("aria-label")).toBe("Fine-tune each part");
+    expect(fine.querySelector("h3")?.textContent).toBe("Fine-tune each part");
+    expect(fine.querySelector("[data-row='general.work.thinking']")).not.toBeNull();
+    expect(fine.querySelector("[data-row='general.work.chat-steps-shown']")?.getAttribute("data-coming")).toBeTruthy();
+    expect(fine.querySelector("[data-row='general.work.mode']")).toBeNull();
+    expect(work.querySelector(":scope > [data-row='general.work.mode']")).not.toBeNull();
+  });
+
+  it("makes a Trunk the default from search with its own button, and shows it as Coming without a handler", async () => {
+    const onTrunk = vi.fn();
+    const trunks = [{ id: "t1", name: "Juniper" }, { id: "t2", name: "Juno", isDefault: true }];
+    await act(async () => root.render(<SettingsFrame engine={engineOf().engine} trunks={trunks} onTrunk={onTrunk} />));
+    await type("Jun");
+    const make = $$(".r1s-mkdef");
+    expect(make.length).toBe(1);
+    expect(make[0].closest(".r1s-res")).toBeNull();
+    await click(make[0]);
+    expect(onTrunk).toHaveBeenCalledWith("t1", "makeDefault");
+    expect(onTrunk).not.toHaveBeenCalledWith("t1", "open");
+    expect($<HTMLInputElement>(".r1s-search input").value).toBe("");
+    await type("Jun");
+    await click($("[data-hit='t1']"));
+    expect(onTrunk).toHaveBeenCalledWith("t1", "open");
+
+    await act(async () => root.render(<SettingsFrame engine={engineOf().engine} trunks={trunks} />));
+    await type("Juniper");
+    const off = $(".r1s-mkdef");
+    expect(off.getAttribute("aria-disabled")).toBe("true");
+    expect(off.getAttribute("data-coming")).toBeTruthy();
+  });
+
   it("saves Show agents’ work as the two engine defaults in one patch", async () => {
     const { engine, request } = engineOf({ "config.get": { hash: "h1", valid: true, config: { agents: { defaults: { reasoningDefault: "on", model: "x" } } } } });
     await mount(engine);

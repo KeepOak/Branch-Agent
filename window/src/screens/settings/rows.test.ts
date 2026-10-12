@@ -68,6 +68,11 @@ describe("settings row table", () => {
     const work = "Show agents’ work";
     expect(cardRows("general", work, 0, {}).map((r) => r.id)).toEqual(["general.work.mode"]);
     expect(cardRows("general", work, 1, {}).map((r) => r.id)).toContain("general.work.steps");
+    // Moved here from Chat apps (preview item 36): shown at Advanced, Coming until one key covers every chat app.
+    const moved = cardRows("general", work, 1, {}).filter((r) => ["general.work.chat-steps", "general.work.chat-steps-shown", "general.work.chat-thinking"].includes(r.id));
+    expect(moved.map((r) => r.id)).toEqual(["general.work.chat-steps", "general.work.chat-steps-shown", "general.work.chat-thinking"]);
+    for (const row of moved) expect(row.source.kind, row.id).toBe("coming");
+    expect(moved[1].options?.map((o) => o.label)).toEqual(["Off", "New kinds", "All", "Every detail"]);
     expect(cardRows("general", "Waiting line", 1, {})).toEqual([]);
     expect(cardRows("general", "Waiting line", 2, {}).length).toBe(2);
     expect(pageFirstLevel("general", {})).toBe(0);

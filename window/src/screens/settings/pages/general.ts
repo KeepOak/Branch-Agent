@@ -33,6 +33,15 @@ export const GENERAL_ROWS: Row[] = [
   { id: "general.work.progress", page: "general", card: WORK, label: "Task progress above the message box", level: 1, control: "toggle", source: { kind: "pref", key: "conversation.taskProgress" }, fallback: true },
   { id: "general.work.progress-starts", page: "general", card: WORK, label: "Task progress starts", level: 1, control: "segmented",
     options: [{ v: "open", label: "Open" }, { v: "folded", label: "Folded" }], source: { kind: "pref", key: "conversation.taskProgressStarts" }, fallback: "open" },
+  // Moved here from Chat apps › In every chat (preview item 36). Today each app keeps its own key
+  // (channels.<app>.streaming.progress.toolProgress); one switch for every chat app doesn't exist yet.
+  { id: "general.work.chat-steps", page: "general", card: WORK, label: "Show steps in chats", help: "One quiet message lists what the Trunk does, edited as it goes. The answer is its own message.", level: 1, control: "toggle",
+    source: { kind: "coming", need: "config: one steps switch for every chat app (today channels.<app>.streaming.progress.toolProgress)", reason: "Each chat app sets this on its own page until one switch covers them all." } },
+  { id: "general.work.chat-steps-shown", page: "general", card: WORK, label: "Steps shown", help: "/verbose in a chat changes it there. Texts (SMS) never get steps.", level: 1, control: "segmented",
+    options: [{ v: "off", label: "Off" }, { v: "new", label: "New kinds" }, { v: "all", label: "All" }, { v: "full", label: "Every detail" }],
+    source: { kind: "coming", need: "config: a steps level for every chat app", reason: "How many steps chats show comes in a later update." } },
+  { id: "general.work.chat-thinking", page: "general", card: WORK, label: "Show thinking in chats", help: "Off until you choose: it posts the model’s reasoning.", level: 1, control: "toggle",
+    source: { kind: "coming", need: "config: a thinking switch for every chat app", reason: "Showing the thinking in chat apps comes in a later update." } },
 
   { id: "general.conversation.vim", page: "general", card: CONVO, label: "Vim keys in the message box", help: "Normal and insert modes, for people who type that way.", level: 1, control: "toggle", source: { kind: "pref", key: "conversation.vimKeys" }, fallback: false },
   { id: "general.conversation.times", page: "general", card: CONVO, label: "Message times", help: "When a message was sent, and when a task started and ended.", level: 1, control: "segmented",
