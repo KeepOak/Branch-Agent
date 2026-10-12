@@ -16,7 +16,7 @@ async function render(fail = false) {
     if (method === "channels.logout" && fail) throw new Error("Unlink failed");
     return {};
   });
-  const engine = { request, sessionKey: null, scopes: [], onEvent: () => () => {}, features: { methods: ["channels.status", "channels.start", "channels.stop", "channels.logout"], events: [] } } as WindowEngine;
+  const engine = { request, sessionKey: null, scopes: ["operator.admin"], onEvent: () => () => {}, features: { methods: ["channels.status", "channels.start", "channels.stop", "channels.logout"], events: [] } } as WindowEngine;
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root.render(<Manage engine={engine} app={CHAT_APPS.find(a => a.id === "telegram")!} onClose={() => {}} onSetup={() => {}} />));
   return { host, request };

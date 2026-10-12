@@ -11,7 +11,7 @@ import { ROWS, cardRows, pageFirstLevel, rowLevel, type Row, type UiHints } from
 import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
-import { useSchemaHints } from "./useRow";
+import { INVALID_CONFIG, useSchemaHints } from "./useRow";
 import "./settings.css";
 
 const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
@@ -22,12 +22,29 @@ const MAKE_DEFAULT_COMING = "Making a Trunk the default from Settings comes in a
 const FINE = "Fine-tune each part";
 const NO_SLOTS: PageSlots = {};
 
+/** The level kept in this window's storage, or null when there is none or storage is blocked (it must never throw
+ *  while Settings draws). */
+function savedLevel(): string | null {
+  try { return typeof localStorage === "undefined" ? null : localStorage.getItem(LEVEL_KEY); } catch { return null; }
+}
+
+/** What config.get says is wrong with an invalid settings file, one line each. */
+function configIssues(issues: unknown): string[] {
+  return (Array.isArray(issues) ? issues : []).map((issue) => {
+    if (typeof issue === "string") return issue;
+    const { path, message } = (issue ?? {}) as { path?: unknown; message?: unknown };
+    const where = typeof path === "string" && path ? path : Array.isArray(path) ? path.join(".") : "";
+    const what = typeof message === "string" ? message : JSON.stringify(issue);
+    return where ? `${where}: ${what}` : what;
+  });
+}
+
 /** The person's level: their look's "level" (users.prefs ui.window.look, or this device without a profile). */
 export function useLevel(engine: WindowEngine): [Level, (level: Level) => void] {
   const store = lookStore(engine);
   const snap = useSyncExternalStore((fn) => store.subscribe(fn), () => store.snap, () => store.snap);
   useEffect(() => { if (store.snap.where === "loading") void store.load(); }, [store]);
-  const word = snap.look.level ?? (typeof localStorage === "undefined" ? null : localStorage.getItem(LEVEL_KEY));
+  const word = snap.look.level ?? savedLevel();
   const level = Math.max(0, LEVEL_WORD.indexOf(word as (typeof LEVEL_WORD)[number])) as Level;
   const set = (next: Level) => {
     try { localStorage.setItem(LEVEL_KEY, LEVEL_WORD[next]); } catch { /* storage off: the look store still keeps it */ }
@@ -166,6 +183,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
   });
   const first = pageFirstLevel(shownPage, hints, rows);
   const loadFailed = typeof config === "string";
+  const invalid = config && typeof config === "object" && config.valid === false ? configIssues(config.issues) : null;
   const levelLine = LEVELS[level].line;
   const Custom = slots[shownPage]?.component;
 
@@ -213,6 +231,12 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </header>
         <div className="r1s-col">
           {loadFailed ? <div className="r1s-notice" role="alert">Settings didn’t load · <button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></div> : null}
+          {invalid ? (
+            <div className="r1s-notice r1s-invalid" role="alert">
+              {INVALID_CONFIG}
+              {invalid.length ? <ul>{invalid.map((line, i) => <li key={i}>{line}</li>)}</ul> : null}
+            </div>
+          ) : null}
           {sections.length ? sections.map(({ card, visible }) => (
             <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec" aria-label={card || spec.title}>
               {card ? <h2>{card}</h2> : null}

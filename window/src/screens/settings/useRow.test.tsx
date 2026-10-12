@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
 import type { Row } from "./rows";
-import { CHANGED_ELSEWHERE, LOAD_FAILED, NO_PERSON, schemaDefault, useRow, type RowView } from "./useRow";
+import { CHANGED_ELSEWHERE, INVALID_CONFIG, LOAD_FAILED, NEEDS_ADMIN, NEEDS_WRITE, NO_PERSON, schemaDefault, useRow, type RowView } from "./useRow";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -14,7 +14,7 @@ beforeEach(() => { host = document.body.appendChild(document.createElement("div"
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; });
 
 type Reply = unknown | ((params: Record<string, unknown>) => unknown);
-function engineOf(table: Record<string, Reply> = {}) {
+function engineOf(table: Record<string, Reply> = {}, scopes: string[] = ["operator.admin"]) {
   const listeners = new Set<(e: { event: string; payload?: unknown }) => void>();
   const request = vi.fn(async (method: string, params: Record<string, unknown> = {}) => {
     if (method in table) { const r = table[method]; const v = typeof r === "function" ? (r as (p: Record<string, unknown>) => unknown)(params) : r; if (v instanceof Error) throw v; return v; }
@@ -27,7 +27,7 @@ function engineOf(table: Record<string, Reply> = {}) {
     if (method === "themes.list") return { current: {} };
     throw new Error(`unknown method: ${method}`);
   });
-  const engine = { request, onEvent: (fn: (e: { event: string }) => void) => { listeners.add(fn); return () => listeners.delete(fn); }, sessionKey: "s", scopes: [] } as unknown as WindowEngine;
+  const engine = { request, onEvent: (fn: (e: { event: string }) => void) => { listeners.add(fn); return () => listeners.delete(fn); }, sessionKey: "s", scopes } as unknown as WindowEngine;
   return { engine, request, fire: (event: string) => listeners.forEach((fn) => fn({ event })) };
 }
 
@@ -133,6 +133,62 @@ describe("useRow", () => {
     expect(view.state).toBe("coming");
     expect(request).not.toHaveBeenCalledWith("config.patch", expect.anything());
     expect(request).not.toHaveBeenCalledWith("users.prefs.set", expect.anything());
+  });
+
+  it("blocks a change this connection's scopes can't make, says why, and never sends it", async () => {
+    const pref: Row = { id: "general.conversation.send", page: "general", card: "The conversation", level: 1, control: "segmented", source: { kind: "pref", key: "conversation.sendWith" }, fallback: "enter" };
+    const read = engineOf({ "config.get": { hash: "h1", valid: true, config: { security: { lockdown: true } } } }, ["operator.read"]);
+    await mount(read.engine, toggle);
+    expect(view).toMatchObject({ value: true, state: "blocked", reason: NEEDS_ADMIN });
+    await act(async () => { await expect(view.set(false)).rejects.toThrow(NEEDS_ADMIN); });
+    await mount(read.engine, pref);
+    expect(view).toMatchObject({ value: "enter", state: "blocked", reason: NEEDS_WRITE });
+    await act(async () => { await expect(view.set("ctrl")).rejects.toThrow(NEEDS_WRITE); });
+    expect(read.request).not.toHaveBeenCalledWith("config.patch", expect.anything());
+    expect(read.request).not.toHaveBeenCalledWith("users.prefs.set", expect.anything());
+
+    const write = engineOf({}, ["operator.read", "operator.write"]);
+    await mount(write.engine, pref);
+    expect(view.state).toBe("ready");
+    await mount(write.engine, toggle);
+    expect(view).toMatchObject({ state: "blocked", reason: NEEDS_ADMIN });
+  });
+
+  it("blocks config changes while the settings file is invalid, and never sends them", async () => {
+    const { engine, request } = engineOf({ "config.get": { hash: "h1", valid: false, config: { security: { lockdown: true } }, issues: [{ path: "x", message: "bad" }] } });
+    await mount(engine, toggle);
+    expect(view).toMatchObject({ value: true, state: "blocked", reason: INVALID_CONFIG });
+    await act(async () => { await expect(view.set(false)).rejects.toThrow(INVALID_CONFIG); });
+    expect(request).not.toHaveBeenCalledWith("config.patch", expect.anything());
+  });
+
+  it("reads a pref again after a failed load, when the row shows again or on Try again", async () => {
+    const row: Row = { id: "general.conversation.send", page: "general", card: "The conversation", level: 1, control: "segmented", source: { kind: "pref", key: "conversation.sendWith" }, fallback: "enter" };
+    const flaky = () => { let calls = 0; return () => (++calls === 1 ? new Error("socket closed") : { status: "ok", entries: { "conversation.sendWith": "ctrl" } }); };
+    const first = engineOf({ "users.prefs.get": flaky() });
+    await mount(first.engine, row);
+    expect(view).toMatchObject({ state: "error", reason: LOAD_FAILED });
+    await act(async () => root.render(null));
+    await mount(first.engine, row);
+    expect(view).toMatchObject({ state: "ready", value: "ctrl" });
+
+    const second = engineOf({ "users.prefs.get": flaky() });
+    await mount(second.engine, row);
+    expect(view.state).toBe("error");
+    await act(async () => { await view.retry(); });
+    expect(view).toMatchObject({ state: "ready", value: "ctrl" });
+  });
+
+  it("clears Changed somewhere else once Reload reads the settings again", async () => {
+    let refuse = true;
+    const { engine } = engineOf({ "config.patch": () => (refuse ? new Error("config changed since last load; re-run config.get") : { ok: true }) });
+    await mount(engine, toggle);
+    await act(async () => { await view.set(true).catch(() => undefined); });
+    expect(view).toMatchObject({ state: "error", reason: CHANGED_ELSEWHERE });
+    refuse = false;
+    await act(async () => { await view.retry(); });
+    expect(view.state).toBe("ready");
+    expect(view.reason).toBeUndefined();
   });
 
   it("keeps a device key such as text size on this device", async () => {
