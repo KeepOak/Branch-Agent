@@ -1,4 +1,11 @@
+window:src/connect/capabilities.test.ts
+window:src/connect/hello-features.test.ts
+window:src/glass/coming.test.tsx
+window:src/glass/tokens.test.ts
+window:src/places/settings/set1/appearance.test.tsx
 window:src/screens/chat/ChatView.test.tsx
 window:src/screens/chat/HoverBar.test.tsx
 window:src/screens/chat/Steps.test.tsx
 window:src/screens/chat/chat-logic.test.ts
+window:src/screens/frame/Frame.test.tsx
+window:src/screens/frame/R1Window.test.tsx
