@@ -40,7 +40,7 @@ it("renders an empty disconnected engine without demo conversations", async () =
 it("mounts in a host without matchMedia or ResizeObserver, as App-level tests do", async () => {
   vi.stubGlobal("matchMedia", undefined); vi.stubGlobal("ResizeObserver", undefined);
   const snapshot = { status: { phase: "connected" }, name: "Main", sessionKey: "agent:main:main", mainKey: "agent:main:main", history: [], live: [], queued: [] };
-  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request: vi.fn(async () => ({})) } } as unknown as SaplingSession;
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request: vi.fn(async () => ({})), onEvent: () => () => undefined } } as unknown as SaplingSession;
   await act(async () => root.render(<R1Window session={session} />));
   expect(host.querySelector('.r1-frame')?.getAttribute("data-wide")).toBe("true");
   expect(host.querySelector('[aria-label="Message"]')).not.toBeNull();
