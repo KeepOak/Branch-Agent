@@ -49,7 +49,12 @@ describe("exec always-ask floor", () => {
 
   beforeEach(() => {
     envSnapshot = captureEnv([
-      "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "BRANCH_HOME", "BRANCH_STATE_DIR",
+      "HOME",
+      "USERPROFILE",
+      "HOMEDRIVE",
+      "HOMEPATH",
+      "BRANCH_HOME",
+      "BRANCH_STATE_DIR",
     ]);
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "branch-exec-hardline-floor-"));
     setTestEnvValue("HOME", tempRoot);

@@ -43,14 +43,15 @@ export function scanBacktickEnd(command: string, start: number): number | null {
   // Backticks have no quote awareness: only a backslash escapes the next char.
   const body = /(?:\\.|[^`\\])*`/suy;
   body.lastIndex = start + 1;
-  return body.exec(command) ? body.lastIndex : null;
+  return body.test(command) ? body.lastIndex : null;
 }
 
 export function scanDollarParenEnd(command: string, start: number): number | null {
   let depth = 1;
   for (const step of scanShell(command, { start: start + 2 })) {
     if (step.kind === "char" && !step.quote) {
-      depth += (command.startsWith("$(", step.i) ? 1 : 0) - (command.charAt(step.i) === ")" ? 1 : 0);
+      depth +=
+        (command.startsWith("$(", step.i) ? 1 : 0) - (command.charAt(step.i) === ")" ? 1 : 0);
       if (depth === 0) {
         return step.i + 1;
       }

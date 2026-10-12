@@ -19,11 +19,33 @@ const PARAM_DEFAULT_RE = /\$\{[^}:}\s]+:-(?<default>[^}]*)\}/gu;
 const SIMPLE_SHELL_LITERAL_RE = /^[A-Za-z0-9_./:@%+=,-]+$/u;
 const ENV_ASSIGNMENT_RE = /^[A-Za-z_][A-Za-z0-9_]*=.*$/u;
 const COMMAND_WRAPPER_WORDS = new Set([
-  "sudo", "env", "exec", "nohup", "setsid", "time", "command", "builtin",
-  "nice", "timeout", "stdbuf", "ionice", "chrt", "taskset", "chroot",
+  "sudo",
+  "env",
+  "exec",
+  "nohup",
+  "setsid",
+  "time",
+  "command",
+  "builtin",
+  "nice",
+  "timeout",
+  "stdbuf",
+  "ionice",
+  "chrt",
+  "taskset",
+  "chroot",
 ]);
 const SUDO_OPTIONS_WITH_ARG = [
-  "-c", "--close-from", "-g", "--group", "-h", "--host", "-p", "--prompt", "-u", "--user",
+  "-c",
+  "--close-from",
+  "-g",
+  "--group",
+  "-h",
+  "--host",
+  "-p",
+  "--prompt",
+  "-u",
+  "--user",
 ];
 // Option operands are data, not executable positions; option spelling remains case-sensitive.
 const COMMAND_WRAPPER_OPTIONS_WITH_ARG: Record<string, ReadonlySet<string>> = {
@@ -49,7 +71,16 @@ const COMMAND_WRAPPER_POSITIONAL_ARGS: Record<string, number> = {
   taskset: 1,
   timeout: 1,
 };
-const SHELL_COMMAND_TRANSITIONS = new Set(["if", "then", "else", "elif", "do", "while", "until", "!"]);
+const SHELL_COMMAND_TRANSITIONS = new Set([
+  "if",
+  "then",
+  "else",
+  "elif",
+  "do",
+  "while",
+  "until",
+  "!",
+]);
 
 function literalCommandSubstitutionOutput(script: string): string | null {
   const tokens = shlexSplit(script) ?? [];
@@ -163,8 +194,9 @@ export function iterShellCommandStarts(command: string): number[] {
   collectCommandStarts(command, 0, command.length, starts);
   const seen = new Set<number>();
   const out: number[] = [];
-  for (let index = 0; index < starts.length; index += 1) {
-    const start = skipShellWhitespace(command, starts[index] ?? command.length);
+  // starts grows while iterating; the array iterator visits appended entries too.
+  for (const candidate of starts) {
+    const start = skipShellWhitespace(command, candidate);
     if (start >= command.length || seen.has(start) || isShellCommentStart(command, start)) {
       continue;
     }
@@ -184,7 +216,10 @@ export function markCommandStarts(command: string, marker = "\n"): string {
     .filter((offset) => offset > 0)
     .toSorted((a, b) => a - b);
   return offsets.length > 0
-    ? spliceShell(command, offsets.map((offset) => [offset, offset, marker] as const))
+    ? spliceShell(
+        command,
+        offsets.map((offset) => [offset, offset, marker] as const),
+      )
     : command;
 }
 
@@ -235,9 +270,7 @@ function wrapperOptionStops(walk: WordWalk, deobfuscated: string): boolean | "sk
   }
   const queries = COMMAND_WRAPPER_NON_EXECUTING_OPTIONS[wrapper] ?? new Set<string>();
   const commandQuery =
-    wrapper === "command" &&
-    !option.startsWith("--") &&
-    [...option.slice(1)].some((char) => char === "v" || char === "V");
+    wrapper === "command" && !option.startsWith("--") && /[vV]/u.test(option.slice(1));
   if (queries.has(option) || commandQuery) {
     return true;
   }
@@ -272,7 +305,7 @@ function commandWordsFrom(command: string, start: number, out: ShellWordSpan[]):
   let pos = start;
   while (pos < command.length) {
     redirection.lastIndex = skipShellWhitespace(command, pos);
-    if (redirection.exec(command)) {
+    if (redirection.test(command)) {
       pos = readShellWord(command, redirection.lastIndex)[1];
       continue;
     }

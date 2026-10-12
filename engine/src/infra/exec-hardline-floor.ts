@@ -22,7 +22,9 @@ const BT = "\u0060";
 // Start-of-command position: start of string, newline, subshell opener ($( or backtick),
 // optionally consuming sudo/env/exec/nohup/setsid/time wrappers.
 const CMDPOS =
-  String.raw`(?:^|[\n` + BT + String.raw`]|\$\()\s*` +
+  String.raw`(?:^|[\n` +
+  BT +
+  String.raw`]|\$\()\s*` +
   String.raw`(?:sudo\s+(?:-[^\s]+\s+)*)?(?:env\s+(?:\w+=\S*\s+)*)?` +
   String.raw`(?:(?:exec|nohup|setsid|time)\s+)*\s*`;
 const RM_PATH_TAIL = String.raw`(?:\s|$|[)` + BT + String.raw`;|&])`;
@@ -59,10 +61,7 @@ const HARDLINE_PATTERNS: ReadonlyArray<readonly [string, string]> = [
   [CMDPOS + String.raw`kill\s+(-[^\s]+\s+)*-1\b`, "kill all processes"],
   [CMDPOS + String.raw`(shutdown|reboot|halt|poweroff)\b`, "system shutdown/reboot"],
   [CMDPOS + String.raw`init\s+[06]\b`, "init 0/6 (shutdown/reboot)"],
-  [
-    CMDPOS + String.raw`systemctl\s+(poweroff|reboot|halt|kexec)\b`,
-    "systemctl poweroff/reboot",
-  ],
+  [CMDPOS + String.raw`systemctl\s+(poweroff|reboot|halt|kexec)\b`, "systemctl poweroff/reboot"],
   [CMDPOS + String.raw`telinit\s+[06]\b`, "telinit 0/6 (shutdown/reboot)"],
 ];
 const QUOTE_MASKED_HARDLINE_DESCRIPTIONS = new Set(["redirect to raw block device", "fork bomb"]);
@@ -99,7 +98,7 @@ function homePrefixFoldRegex(path: string): RegExp | null {
 
 function resolvedUserHomes(): string[] {
   const home = os.homedir();
-  let real = "";
+  let real: string;
   try {
     real = fs.realpathSync.native(home);
   } catch {
@@ -141,7 +140,7 @@ function commandParserLimitExceeded(command: string): boolean {
   if (command.length > MAX_DETECTION_COMMAND_CHARS) {
     return true;
   }
-  const separators = [...command].filter((char) => ";&|\n".includes(char)).length;
+  const separators = command.match(/[;&|\n]/g)?.length ?? 0;
   if (command.length > MAX_SEPARATOR_FREE_COMMAND_CHARS && separators === 0) {
     return true;
   }
@@ -149,8 +148,8 @@ function commandParserLimitExceeded(command: string): boolean {
 }
 
 function containsShellCarrier(command: string): boolean {
-  return iterShellCommandWordSpans(command).some(([, , word]) =>
-    SHELL_CARRIER_NAMES.has(shellBasename(deobfuscateShellWordForDetection(word)).toLowerCase()),
+  return iterShellCommandWordSpans(command).some((span) =>
+    SHELL_CARRIER_NAMES.has(shellBasename(deobfuscateShellWordForDetection(span[2])).toLowerCase()),
   );
 }
 
@@ -175,7 +174,9 @@ function* executionPayloadVariants(normalized: string, fresh: Fresh): Generator<
 function* deobfuscatedWordVariants(normalized: string, fresh: Fresh): Generator<string> {
   let pending: ShellEdit[] = iterShellCommandWordSpans(normalized)
     .map(([start, end, word]) => [start, end, deobfuscateShellWordForDetection(word)] as const)
-    .filter(([start, end, deobfuscated]) => deobfuscated && deobfuscated !== normalized.slice(start, end))
+    .filter(
+      ([start, end, deobfuscated]) => deobfuscated && deobfuscated !== normalized.slice(start, end),
+    )
     .toSorted((a, b) => a[0] - b[0] || a[1] - b[1]);
   while (pending.length > 0) {
     const applied: ShellEdit[] = [];
@@ -223,7 +224,9 @@ function* commandDetectionVariants(command: string): Generator<string> {
     yield marked;
   }
   // Mark starts on the raw command so escaped quotes cannot flip quote parity.
-  const faithful = normalizeCommandForDetection(markCommandStarts(maskQuotedNewlines(command), " \n"));
+  const faithful = normalizeCommandForDetection(
+    markCommandStarts(maskQuotedNewlines(command), " \n"),
+  );
   if (fresh(faithful)) {
     yield faithful;
   }

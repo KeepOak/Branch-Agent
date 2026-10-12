@@ -15,10 +15,6 @@ import {
 } from "../infra/exec-approvals.js";
 import type { ExecAutoReviewer } from "../infra/exec-auto-review.js";
 import {
-  detectExecHardlineFloor,
-  formatExecHardlineFloorWarning,
-} from "../infra/exec-hardline-floor.js";
-import {
   rejectUnsafeExecControlShellCommand,
   rejectUnsafeExecLiveStateSqliteShellCommand,
 } from "../infra/exec-control-command-guard.js";
@@ -32,6 +28,7 @@ import { captureBranchStateReadWorkerContext } from "../state/branch-state-worke
 import { captureAgentToolSourceExecutionGuard } from "./agent-tool-source-execution-guard.js";
 import { markBackgrounded } from "./bash-process-registry.js";
 import { describeExecTool } from "./bash-tools.descriptions.js";
+import { resolveExecApprovalBypass } from "./bash-tools.exec-approval-bypass.js";
 import { processGatewayAllowlist } from "./bash-tools.exec-host-gateway.js";
 import { executeNodeHostCommand } from "./bash-tools.exec-host-node.js";
 import { ExecProcessPreflightError } from "./bash-tools.exec-launch.js";
@@ -341,31 +338,19 @@ export function createExecTool(
       ) {
         throw new Error(`exec denied: host=${host} security=deny`);
       }
-      const hostPolicyAllowsFullBypass =
-        (approvalPolicy?.security ?? "full") === "full" && (approvalPolicy?.ask ?? "off") === "off";
-      const modePolicyAllowsFullBypass = modePolicy.security === "full" && modePolicy.ask === "off";
-      // Explicit full-session authority is the sole exception to host approval floors.
       const requestedAsk = normalizeExecAsk(params.ask);
       const hostAsk = maxAsk(modePolicy.ask, approvalPolicy?.ask ?? modePolicy.ask);
       const trustedAsk = defaults?.messageProvider && hostAsk === "off" ? undefined : requestedAsk;
-      let ask = maxAsk(hostAsk, trustedAsk ?? hostAsk);
-      // Catastrophic commands always ask on the host, even in full access (atlas SAFETY-0020).
-      // Sandboxed runs cannot damage the host, so they skip the floor like upstream containers.
-      const hardlineFloor = host === "sandbox" ? null : detectExecHardlineFloor(params.command);
-      const bypassApprovals =
-        hardlineFloor === null &&
-        ((defaults?.bypassHostApprovalFloors === true && modePolicy.ask === "off") ||
-          (elevatedRequested &&
-            elevatedMode === "full" &&
-            modePolicyAllowsFullBypass &&
-            hostPolicyAllowsFullBypass));
-      if (bypassApprovals) {
-        ask = "off";
-      }
-      if (hardlineFloor) {
-        ask = "always";
-        warnings.push(formatExecHardlineFloorWarning(hardlineFloor));
-      }
+      const { ask, bypassApprovals } = resolveExecApprovalBypass({
+        command: params.command,
+        host,
+        ask: maxAsk(hostAsk, trustedAsk ?? hostAsk),
+        warnings,
+        bypassHostApprovalFloors: defaults?.bypassHostApprovalFloors === true,
+        elevatedMode,
+        modePolicy,
+        approvalPolicy,
+      });
       const autoReview = modePolicy.autoReview && ask === modePolicy.ask && !bypassApprovals;
 
       const sandbox = host === "sandbox" ? defaults?.sandbox : undefined;

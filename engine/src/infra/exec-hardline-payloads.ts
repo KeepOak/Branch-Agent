@@ -18,9 +18,20 @@ type SpanToken = { value: string; start: number; end: number; inert: boolean };
 
 const SHELL_NAMES = new Set(["bash", "sh", "zsh", "ksh", "dash"]);
 const GREP_OPTIONS_WITH_ARG = new Set([
-  "--after-context", "--before-context", "--binary-files", "--context", "--directories",
-  "--devices", "--exclude", "--exclude-dir", "--exclude-from", "--include", "--label",
-  "--max-count", "--regexp", "--file",
+  "--after-context",
+  "--before-context",
+  "--binary-files",
+  "--context",
+  "--directories",
+  "--devices",
+  "--exclude",
+  "--exclude-dir",
+  "--exclude-from",
+  "--include",
+  "--label",
+  "--max-count",
+  "--regexp",
+  "--file",
 ]);
 const GREP_SHORT_OPTIONS_WITH_ARG = new Set(["A", "B", "C", "D", "d", "e", "f", "m"]);
 const BASH_OPTIONS_WITH_ARG = new Set(["-O", "+O", "-o", "+o", "--init-file", "--rcfile"]);
@@ -34,27 +45,83 @@ const READ_TOOL_EXEC_FLAGS: Record<string, ReadonlySet<string>> = {
 // Required-argument options are ownership boundaries (ripgrep 14, GNU sort, man-db, ag 2.2).
 const READ_TOOL_LONG_OPTIONS_WITH_ARG: Record<string, ReadonlySet<string>> = {
   rg: new Set([
-    "--after-context", "--before-context", "--color", "--colors", "--context",
-    "--context-separator", "--dfa-size-limit", "--encoding", "--engine",
-    "--field-context-separator", "--field-match-separator", "--file", "--generate", "--glob",
-    "--hostname-bin", "--hyperlink-format", "--iglob", "--ignore-file", "--max-columns",
-    "--max-count", "--max-depth", "--max-filesize", "--path-separator", "--pre", "--pre-glob",
-    "--regex-size-limit", "--regexp", "--replace", "--sort", "--sortr", "--threads", "--type",
-    "--type-add", "--type-clear", "--type-not",
+    "--after-context",
+    "--before-context",
+    "--color",
+    "--colors",
+    "--context",
+    "--context-separator",
+    "--dfa-size-limit",
+    "--encoding",
+    "--engine",
+    "--field-context-separator",
+    "--field-match-separator",
+    "--file",
+    "--generate",
+    "--glob",
+    "--hostname-bin",
+    "--hyperlink-format",
+    "--iglob",
+    "--ignore-file",
+    "--max-columns",
+    "--max-count",
+    "--max-depth",
+    "--max-filesize",
+    "--path-separator",
+    "--pre",
+    "--pre-glob",
+    "--regex-size-limit",
+    "--regexp",
+    "--replace",
+    "--sort",
+    "--sortr",
+    "--threads",
+    "--type",
+    "--type-add",
+    "--type-clear",
+    "--type-not",
   ]),
   sort: new Set([
-    "--batch-size", "--buffer-size", "--compress-program", "--field-separator",
-    "--files0-from", "--key", "--output", "--parallel", "--random-source", "--sort",
+    "--batch-size",
+    "--buffer-size",
+    "--compress-program",
+    "--field-separator",
+    "--files0-from",
+    "--key",
+    "--output",
+    "--parallel",
+    "--random-source",
+    "--sort",
     "--temporary-directory",
   ]),
   man: new Set([
-    "--config-file", "--encoding", "--extension", "--locale", "--manpath", "--pager",
-    "--preprocessor", "--prompt", "--recode", "--sections", "--systems",
+    "--config-file",
+    "--encoding",
+    "--extension",
+    "--locale",
+    "--manpath",
+    "--pager",
+    "--preprocessor",
+    "--prompt",
+    "--recode",
+    "--sections",
+    "--systems",
   ]),
   ag: new Set([
-    "--ackmate-dir-filter", "--color-line-number", "--color-match", "--color-path", "--depth",
-    "--filename-pattern", "--file-search-regex", "--ignore", "--ignore-dir", "--max-count",
-    "--pager", "--path-to-ignore", "--width", "--workers",
+    "--ackmate-dir-filter",
+    "--color-line-number",
+    "--color-match",
+    "--color-path",
+    "--depth",
+    "--filename-pattern",
+    "--file-search-regex",
+    "--ignore",
+    "--ignore-dir",
+    "--max-count",
+    "--pager",
+    "--path-to-ignore",
+    "--width",
+    "--workers",
   ]),
 };
 const READ_TOOL_SHORT_OPTIONS_WITH_ARG: Record<string, ReadonlySet<string>> = {
@@ -85,7 +152,8 @@ function flushSpanToken(segment: string, state: LexState, end: number): void {
   const start = state.tokenStart ?? end;
   const raw = segment.slice(start, end);
   // Only a wholly single-quoted operand is inert shell data.
-  const inert = (raw.startsWith("'") && raw.endsWith("'")) || (raw.includes("='") && raw.endsWith("'"));
+  const inert =
+    (raw.startsWith("'") && raw.endsWith("'")) || (raw.includes("='") && raw.endsWith("'"));
   state.tokens.push({ value: state.value.join(""), start, end, inert });
   state.value = [];
   state.tokenStart = null;
@@ -118,7 +186,12 @@ function trackUnquotedChar(segment: string, i: number, state: LexState): "end" |
 /** Shell words with source spans, or null on malformed quoting. Stops at the simple command's end. */
 export function shellTokensWithSpans(segment: string, start: number): SpanToken[] | null {
   const state: LexState = {
-    tokens: [], value: [], tokenStart: null, quote: null, depth: 0, inBacktick: false,
+    tokens: [],
+    value: [],
+    tokenStart: null,
+    quote: null,
+    depth: 0,
+    inBacktick: false,
   };
   let endAt = segment.length;
   for (const { kind, i } of scanShell(segment, { start })) {
@@ -288,7 +361,7 @@ export function bashExecPayload(args: string[]): { found: boolean; payload: stri
       index += 2;
       continue;
     }
-    const chars = [...token.slice(1)];
+    const chars = token.slice(1).split("");
     if (token.startsWith("--") || !chars.every((char) => BASH_SHORT_OPTION_LETTERS.has(char))) {
       index += 1;
       continue;
@@ -334,7 +407,10 @@ export function readToolExecFlag(tool: string, args: string[]): [string, string]
       index += 2;
     } else if (token.startsWith("-") && !token.startsWith("--") && token.length > 1) {
       const shorts = READ_TOOL_SHORT_OPTIONS_WITH_ARG[tool] ?? new Set<string>();
-      const owner = [...token.slice(1)].findIndex((char) => shorts.has(char));
+      const owner = token
+        .slice(1)
+        .split("")
+        .findIndex((char) => shorts.has(char));
       index += owner >= 0 && owner + 1 === token.length - 1 ? 2 : 1;
     } else {
       index += 1;

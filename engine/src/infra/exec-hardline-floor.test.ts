@@ -311,13 +311,19 @@ describe("hardline blocklist", () => {
     },
   );
 
-  it.each(QUOTED_PROSE_ALLOW_93392)("test_quoted_prose_mentions_are_not_hardline: %j", (command) => {
-    expect(detectHardlineCommand(command)).toBeNull();
-  });
+  it.each(QUOTED_PROSE_ALLOW_93392)(
+    "test_quoted_prose_mentions_are_not_hardline: %j",
+    (command) => {
+      expect(detectHardlineCommand(command)).toBeNull();
+    },
+  );
 
-  it.each(TRUE_POSITIVES_93392)("test_true_positive_shapes_stay_hardline_blocked: %j", (command) => {
-    expect(detectHardlineCommand(command)?.description).toBeTruthy();
-  });
+  it.each(TRUE_POSITIVES_93392)(
+    "test_true_positive_shapes_stay_hardline_blocked: %j",
+    (command) => {
+      expect(detectHardlineCommand(command)?.description).toBeTruthy();
+    },
+  );
 
   it.each(HARDLINE_LINE_CONTINUATION)(
     "test_hardline_blocks_line_continuation: %j",
@@ -357,7 +363,12 @@ describe("hardline blocklist", () => {
   });
 
   it("test_recoverable_dangerous_commands_still_pass_yolo", () => {
-    for (const command of ["rm -rf /tmp/x", "chmod -R 777 .", "git reset --hard", "git push --force"]) {
+    for (const command of [
+      "rm -rf /tmp/x",
+      "chmod -R 777 .",
+      "git reset --hard",
+      "git push --force",
+    ]) {
       expect(detectHardlineCommand(command), command).toBeNull();
     }
   });
@@ -384,14 +395,14 @@ describe("hardline escaped quote state", () => {
   });
 
   it.each([
-    [String.raw`cat "f\"n.txt"; rm -rf --no-preserve-root /`, "recursive delete of root filesystem"],
+    [
+      String.raw`cat "f\"n.txt"; rm -rf --no-preserve-root /`,
+      "recursive delete of root filesystem",
+    ],
     [String.raw`echo "a\"b"; reboot`, "system shutdown/reboot"],
     [String.raw`echo "a\"b" && rm -rf ~`, "recursive delete of home directory"],
     [String.raw`echo "a\"b"; rm` + "${IFS}-rf${IFS}/", "recursive delete of root filesystem"],
-    [
-      String.raw`grep -n "prefix \"quoted\" suffix" input.txt; reboot`,
-      "system shutdown/reboot",
-    ],
+    [String.raw`grep -n "prefix \"quoted\" suffix" input.txt; reboot`, "system shutdown/reboot"],
     ["printf \\\\\nreboot", "system shutdown/reboot"],
     ["grep 'unterminated", MALFORMED_EXEC_DESCRIPTION],
   ])(
