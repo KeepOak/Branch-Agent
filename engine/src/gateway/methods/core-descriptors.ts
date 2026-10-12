@@ -694,6 +694,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["trunks.queue.done", "trunk-queue", "operator.write", "2026.10"],
   ["trunks.queue.release", "trunk-queue", "operator.write", "2026.10"],
   ["agents.retryStartup", "agents", "operator.write", "2026.10"],
+  ["skills.uninstall", "skills", "operator.admin", "2026.9"],
   ["trunks.template.export", "trunk-templates", "operator.read", "2026.10"],
   ["trunks.template.create", "trunk-templates", "operator.admin", "2026.10"],
   ["trunks.team.propose", "trunk-team", "operator.read", "2026.10"],
