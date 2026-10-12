@@ -15,8 +15,13 @@ const o = (pairs: [string, string][], off: Record<string, string> = {}): Opt[] =
 /** The page has two "Reading" sections; the second one's rows are kept under this name. */
 export const READING_MORE = "Reading ";
 
+<<<<<<< HEAD
 export const ROWS: RowSpec[] = [
   { sec: "Theme", title: "Reduce transparency", key: "reduceTransparency", kind: "sw", def: false, sub: "Solid tinted surfaces instead of glass and blur.", keep: "everywhere" },
+=======
+const ROWS: RowSpec[] = [
+  { sec: "Theme", title: "Reduce transparency", key: "reduceTransparency", kind: "sw", def: false, sub: "Swaps the glass for solid tinted surfaces. Easier to read, and lighter on older computers.", keep: "everywhere" },
+>>>>>>> origin/trunk/r1-frame-shell
   { sec: "Theme", title: "More contrast", key: "contrast", kind: "sw", def: false, sub: "Stronger lines and text, from each theme’s own high-contrast colours.", keep: "everywhere" },
   { sec: "Agents", title: "Size", key: "agentSize", kind: "seg", def: "m", sub: "Small keeps it out of the way.", opts: o([["s", "Small"], ["m", "Medium"], ["l", "Large"]]) },
   { sec: "Background", title: "Behind the glass", key: "bg", kind: "seg", def: "none", keep: "everywhere", sub: "The grove and the oak wear the theme’s colours. A scrim in the theme’s own colour keeps text readable.",

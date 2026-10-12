@@ -12,6 +12,7 @@ export const TRUNK_TEMPLATE_VERSION = 1;
 const SEEDBANK_SKILL_PREFIX = "seedbank:@branch-agent/";
 const SKILL_ID_PATTERN = /^seedbank:@branch-agent\/([a-z0-9][a-z0-9-]*)(?:@\S+)?$/;
 const MODEL_FAMILY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const CONNECTION_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PEM_BLOCK_PATTERN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g;
 const PEM_HEADER_PATTERN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/g;
 const WINDOWS_USER_PATH_PATTERN = /[A-Za-z]:[\\/]Users[\\/][^\\/\s"'`]+/g;
@@ -34,7 +35,10 @@ export type TrunkTemplate = {
   toolsets: Record<string, boolean>;
   /** A model family such as "gpt-5.5". Never an account, key or auth profile. */
   model?: { family: string };
+  /** Routines. Import adds each one turned off, so nothing runs until the owner approves it. */
   automations?: TrunkTemplateAutomation[];
+  /** Channel ids the Trunk was bound to, such as "telegram". Never an account id or a token. */
+  connections?: string[];
   /** What the Trunk may reach, in plain words, as the exporter found it. */
   permissions: string[];
 };
@@ -49,6 +53,7 @@ export type TrunkTemplateSource = {
   toolsets?: Record<string, boolean>;
   modelFamily?: string;
   automations?: TrunkTemplateAutomation[];
+  connections?: string[];
   permissions?: string[];
 };
 
@@ -95,6 +100,11 @@ export function buildTrunkTemplate(source: TrunkTemplateSource): {
   if (source.modelFamily && !modelFamily) {
     skills.warnings.push("The model family was not a plain model name and was skipped.");
   }
+  const connections = [...new Set(source.connections ?? [])];
+  const keptConnections = connections.filter((id) => CONNECTION_ID_PATTERN.test(id));
+  if (keptConnections.length < connections.length) {
+    skills.warnings.push("One connection is not a plain channel id and was skipped.");
+  }
   const template: TrunkTemplate = {
     format: TRUNK_TEMPLATE_FORMAT,
     version: TRUNK_TEMPLATE_VERSION,
@@ -108,6 +118,7 @@ export function buildTrunkTemplate(source: TrunkTemplateSource): {
     toolsets: toolsetSwitches(source.toolsets),
     ...(modelFamily ? { model: { family: modelFamily } } : {}),
     ...(source.automations?.length ? { automations: source.automations } : {}),
+    ...(keptConnections.length ? { connections: keptConnections } : {}),
     permissions: source.permissions?.length ? source.permissions : [NO_RESTRICTIONS_PERMISSION],
   };
   return { template, warnings: skills.warnings };
@@ -143,6 +154,24 @@ export type TrunkTemplateParse =
 
 function isStringRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function filledString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/** Keeps routines that have a name, a cron line and a prompt. Each other entry is named in a warning. */
+function parseAutomations(value: unknown, warnings: string[]): TrunkTemplateAutomation[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.flatMap((item: unknown) => {
+    if (isStringRecord(item) && filledString(item.name) && filledString(item.cron) && filledString(item.prompt)) {
+      return [{ name: item.name.trim(), cron: item.cron.trim(), prompt: item.prompt }];
+    }
+    warnings.push("One routine is missing its name, schedule or prompt and was skipped.");
+    return [];
+  });
 }
 
 /** Checks the shape of a template file. Bad toolsets and malformed skill ids warn; they do not fail. */
@@ -186,7 +215,10 @@ export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
     skillSlugs: skills.ids.map((id) => skillSlugForId(id) ?? ""),
     toolsets,
     modelFamily: isStringRecord(raw.model) && typeof raw.model.family === "string" ? raw.model.family : undefined,
-    automations: Array.isArray(raw.automations) ? (raw.automations as TrunkTemplateAutomation[]) : undefined,
+    automations: parseAutomations(raw.automations, warnings),
+    connections: Array.isArray(raw.connections)
+      ? raw.connections.filter((id): id is string => typeof id === "string")
+      : undefined,
     permissions: Array.isArray(raw.permissions) && raw.permissions.every((line) => typeof line === "string")
       ? (raw.permissions as string[])
       : undefined,

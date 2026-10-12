@@ -114,7 +114,7 @@ function mirrorShell(look: RecordValue) {
   }
 }
 
-function applyLook(s: Saved) {
+export function applyLook(s: Saved) {
   const root = document.documentElement;
   let style = document.getElementById(STYLE_ID);
   if (!style) {

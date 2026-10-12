@@ -464,6 +464,7 @@ export const validateHooksStatusParams = compile(S.HooksStatusParamsSchema);
 export const validateToolsCatalogParams = compile(S.ToolsCatalogParamsSchema);
 export const validateTrunkTemplateExportParams = compile(S.TrunkTemplateExportParamsSchema);
 export const validateTrunkTemplateCreateParams = compile(S.TrunkTemplateCreateParamsSchema);
+export const validateTrunkTemplateListParams = compile(S.TrunkTemplateListParamsSchema);
 export const validateToolsGitHubStatusParams = compile(S.ToolsGitHubStatusParamsSchema);
 export const validateToolsGitHubStatusResult = compile(S.ToolsGitHubStatusResultSchema);
 export const validateToolsGitHubConfigureParams = compile(S.ToolsGitHubConfigureParamsSchema);
