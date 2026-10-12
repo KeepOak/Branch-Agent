@@ -122,7 +122,7 @@ export function TrunksBody({ jobs, onJob, propose, proposeOff, engine, defaultAg
 export type ChatApp = { id: string; label: string; connected: boolean };
 
 /** How many chat apps Reach shows; the rest are in Settings › Chat apps (the preview's "popular ones"). */
-export const REACH_SHOWN = 9;
+const REACH_SHOWN = 9;
 
 /** Reach (§4.8.1.6): the chat apps this Branch knows, connected ones first. A connected one is marked; any other opens
  *  the engine's own channel setup (wizard.start flow "channels"), and Your phone opens the pairing code

@@ -214,3 +214,38 @@ export function reconcileCodeModeExecBeforeHookParams(params: {
   }
   return { ...params.adjustedParams, code: adjustedCommand };
 }
+
+const CODE_MODE_TOOL_NAME_RE = /^[A-Za-z0-9_.-]{1,64}$/u;
+const CODE_MODE_FILE_TOOL_EXAMPLES: Record<string, string> = {
+  read: "read({ path })",
+  write: "write({ path, content })",
+  edit: "edit({ path, edits: [{ oldText, newText }] })",
+  apply_patch: "apply_patch({ input })",
+};
+
+/**
+ * Guidance for a direct call to a tool Code Mode keeps behind exec. The prompt
+ * names catalog tools such as read, write and edit, but the model reaches them
+ * only as async globals inside exec code.
+ */
+export function describeCodeModeMissingTool(name: string, cataloged: boolean): string {
+  const exec = CODE_MODE_EXEC_TOOL_NAME;
+  if (!cataloged || !CODE_MODE_TOOL_NAME_RE.test(name)) {
+    return (
+      "Other tools are async globals inside " +
+      exec +
+      ' code; find one there with catalog.search("<task>").'
+    );
+  }
+  const example = CODE_MODE_FILE_TOOL_EXAMPLES[name] ?? name + "({ ... })";
+  return (
+    name +
+    " is not a top-level tool in this run. Call it as an async global inside " +
+    exec +
+    " code, for example: " +
+    exec +
+    '({ title: "...", code: "return await ' +
+    example +
+    '" }).'
+  );
+}

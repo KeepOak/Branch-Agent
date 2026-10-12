@@ -8,7 +8,7 @@ import type { Block } from "../thread/model";
 import { otherSender, type ThreadRoom } from "./thread-room";
 import "./rooms.css";
 
-export function roomWriters(history: readonly Block[], room: ThreadRoom, ownName: string): string[] {
+function roomWriters(history: readonly Block[], room: ThreadRoom, ownName: string): string[] {
   const names: string[] = [];
   for (const b of history) {
     if (b.kind === "user" && otherSender(b, room)) return [];

@@ -14,9 +14,9 @@ import { errorText, record, type RecordValue } from "../adapter";
 import { accentVars, BUILTIN, DEFAULT_THEME, isHex, pairOfDefinition, varsOf, type Mode, type Pair } from "./appearance-look";
 
 export const LOOK_PREF = "ui.window.look";
-export const ENGINE_PREFS = { accent: "ui.accent", fontUi: "ui.fontUi", fontChat: "ui.fontChat", themeExtra: "ui.window.themeExtra" } as const;
-export type EngineKey = keyof typeof ENGINE_PREFS;
-export const DEVICE_KEYS = ["size"] as const;
+const ENGINE_PREFS = { accent: "ui.accent", fontUi: "ui.fontUi", fontChat: "ui.fontChat", themeExtra: "ui.window.themeExtra" } as const;
+type EngineKey = keyof typeof ENGINE_PREFS;
+const DEVICE_KEYS = ["size"] as const;
 const LOCAL = "branch.look";
 const STYLE_ID = "branch-look";
 const SCENE_FILES: Record<string, string> = {
@@ -36,7 +36,7 @@ export function sceneFile(look: RecordValue): string | null {
   return SCENE_FILES[selected === "auto" ? seasonal : selected] ?? SCENE_FILES[seasonal];
 }
 
-export type Where = "loading" | "profile" | "device";
+type Where = "loading" | "profile" | "device";
 export type LookSnap = { look: RecordValue; device: RecordValue; prefs: Partial<Record<EngineKey, unknown>>; palette: Pair | null; where: Where; error?: string };
 type Saved = Pick<LookSnap, "look" | "device" | "prefs" | "palette">;
 
@@ -77,7 +77,7 @@ const block = (sel: string, vars: Record<string, string>) => `${sel}{${Object.en
 const DARK_SELS = ['@media (prefers-color-scheme: dark){:root:root:not([data-theme="light"])', ':root:root[data-theme="dark"]'];
 
 /** The window's <style> for a look: the theme in both modes, the accent, fonts, text sizes and stillness. */
-export function lookCss(s: Saved): string {
+function lookCss(s: Saved): string {
   const out: string[] = [];
   const scene = sceneFile(s.look);
   if (scene) {
@@ -125,6 +125,8 @@ export function applyLook(s: Saved) {
   const size = String(s.device.size ?? "Regular");
   if (size === "Regular") root.removeAttribute("data-size"); else root.setAttribute("data-size", size);
   root.classList.toggle("contrast17", s.look.contrast === true);
+  if (typeof s.look.reduceTransparency === "boolean") root.dataset.transparency = s.look.reduceTransparency ? "reduce" : "full";
+  else root.removeAttribute("data-transparency");
   root.classList.toggle("still-k", s.look.still === true);
   root.toggleAttribute("data-still", s.look.still === true);
   root.toggleAttribute("data-scene", sceneFile(s.look) !== null);
