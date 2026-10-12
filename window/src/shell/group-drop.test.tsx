@@ -99,6 +99,26 @@ describe("drag to group", () => {
     expect(mergeRoomNotices(history, notices).map((block) => block.key)).toEqual(["room:r1:1", "first", "reply", "room:r1:2", "second"]);
     expect(notices[1]).toMatchObject({ text: "You added Hermes", at: 300 });
   });
+  it("shows the merge feed: the follow line and one sentence per merge, from the log and live", async () => {
+    const request = vi.fn(async () => ({ events: [
+      { seq: 1, kind: "merge.follow", actorId: "merge-feed", payload: { repo: "KeepOak/Branch-Agent", base: "main", text: "Following merges to KeepOak/Branch-Agent main" }, createdAt: 100 },
+      { seq: 2, kind: "merge", actorId: "merge-feed", payload: { count: 1, number: 1088, text: "That's 1 merged: #1088 fix(ci): list the workflows." }, createdAt: 200 },
+    ] }));
+    let emit: ((event: string, payload: unknown) => void) | undefined;
+    const session = { request, onGatewayEvent: (handler: typeof emit) => { emit = handler; return () => {}; } } as unknown as SaplingSession;
+    const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+    let notices: Block[] = [];
+    function Probe() { notices = useRoomNotices(session, contacts[3]!.threadKey, contacts); return null; }
+    await act(async () => root!.render(<Probe />));
+    expect(notices).toEqual([
+      { kind: "notice", key: "room:r1:1", text: "Following merges to KeepOak/Branch-Agent main", at: 100 },
+      { kind: "notice", key: "room:r1:2", text: "That's 1 merged: #1088 fix(ci): list the workflows.", at: 200 },
+    ]);
+    await act(async () => emit?.("rooms.event", { roomId: "r1", seq: 3, kind: "merge", actorId: "merge-feed", payload: { count: 2, number: 1107, text: "That's 2 merged: #1107 feat(rooms): merge feed." }, createdAt: 300 }));
+    expect(notices.at(-1)).toEqual({ kind: "notice", key: "room:r1:3", text: "That's 2 merged: #1107 feat(rooms): merge feed.", at: 300 });
+    await act(async () => emit?.("rooms.event", { roomId: "other", seq: 4, kind: "merge", payload: { text: "That's 9 merged: #1 elsewhere." }, createdAt: 400 }));
+    expect(notices).toHaveLength(3);
+  });
   it("adds the room's Trunk posts and other Trunks' replies from its log as their reports, nothing already in the conversation", async () => {
     const piper = contact("piper", "Piper", "trunk");
     const request = vi.fn(async () => ({ events: [

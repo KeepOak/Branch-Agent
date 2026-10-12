@@ -22,7 +22,7 @@ import "./stage.css";
 import "./pane/pane.css";
 
 /** Preview §4.5.8 / paneTabsPC18 order, then Conversations only when that tab is open. */
-export const PANE_TABS = ["Activity", "Dashboard", "Preview", "Timeline", "Branches", "Plan", "Files", "Memory", "Terminal", "Side chat", "Changes", "Conversations"] as const;
+const PANE_TABS = ["Activity", "Dashboard", "Preview", "Timeline", "Branches", "Plan", "Files", "Memory", "Terminal", "Side chat", "Changes", "Conversations"] as const;
 export type PaneTab = (typeof PANE_TABS)[number];
 /** Preview S.paneW, --pane-w and double-click reset (design/spec-v23). */
 export const DEFAULT_PANE_WIDTH = 352;
