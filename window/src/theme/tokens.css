@@ -241,7 +241,7 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --r-composer: 22px; --r-card: 16px; --r-menu: 14px; --r-menu-row: 10px; --r-seg: 10px; --r-thumb: 8px;
   --fs-11-5: 11.5px; --fs-12-5: 12.5px; --fs-13-5: 13.5px; --fs-14-5: 14.5px; --fs-22: 22px;
-  --mute17c: #5F6B75;
+  --mute17c: #5F6B75; --leaf: #4A7040; --mask-opaque: #000;
   /* control glass: header pill, capsules, Seedbank pill, hover bar */
   --gc-fill: rgba(255,255,255,.6); --gc-edge: rgba(0,0,0,.08); --gc-hi: rgba(255,255,255,.7);
   --gc-blur: blur(20px) saturate(180%); --gc-sh: 0 6px 18px rgba(0,0,0,.12); --gc-sh-sm: 0 4px 12px rgba(0,0,0,.10);

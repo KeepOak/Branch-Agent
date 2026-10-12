@@ -1,8 +1,14 @@
 import { readFileSync } from "node:fs";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { color, glass, spring } from "./tokens";
+// Vitest stubs CSS imports; supply the canonical source for the raw module.
+vi.mock("../theme/tokens.css?raw", async () => ({ default: (await import("node:fs")).readFileSync("src/theme/tokens.css", "utf8") }));
 const css = readFileSync("src/theme/tokens.css", "utf8").toLowerCase().replace(/\s/g, "");
 it.each(["light", "dark"] as const)("keeps the %s Slate and glass JS tokens in the CSS module", mode => {
+  expect(color.light.bg).toBe("#f6f8f9");
+  expect(color.dark.bg).toBe("#0f1418");
+  expect(glass.light.control.fill).toBe("rgba(255,255,255,.6)");
+  expect(glass.dark.control.fill).toBe("rgba(30,30,32,.55)");
   const aliases: Record<string, string> = { ink2: "ink-2", ink3: "ink-3", line2: "line-2", fill2: "fill-2", accentInk: "accent-ink", accentTint: "accent-tint", onBtn: "on-btn", mute: "mute17c" };
   for (const [key, value] of Object.entries(color[mode])) if (key !== "leaf") expect(css).toContain(`--${aliases[key] ?? key}:${value};`.toLowerCase());
   for (const [tier, prefix] of [["control", "gc"], ["floating", "gf"]] as const) for (const [key, token] of [["fill", "fill"], ["edge", "edge"], ["hi", "hi"], ["blur", "blur"], ["shadow", "sh"]] as const) expect(css).toContain(`--${prefix}-${token}:${glass[mode][tier][key]};`.replace(/\s/g, ""));
