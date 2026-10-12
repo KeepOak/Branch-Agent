@@ -89,6 +89,6 @@ describe("Settings repeated and interrupted flows", () => {
     const request = vi.fn().mockRejectedValue(new Error("Engine offline"));
     const connection = engine(request);
     const ids = ["general", "people", "appearance", "notifications", "instructions", "models", "local", "accounts", "voice", "chatapps", "permissions", "computer", "secrets", "usage", "backups", "gateway", "self", "seasons", "updates", "achievements", "advanced", "developer"];
-    for (const page of ids) { await act(async () => root.render(<SettingsPage page={page} title={page} level="regular" engine={connection} />)); expect(host.querySelector("h1")?.textContent).toBe(page); expect(host.querySelector(".bs-success")).toBeNull(); }
+    for (const page of ids) { await act(async () => root.render(<SettingsPage page={page} title={page} level="regular" engine={connection} />)); expect(host.querySelector("h1")?.textContent).toBe(["accounts", "models", "local"].includes(page) ? "Models & accounts" : page); expect(host.querySelector(".bs-success")).toBeNull(); }
   });
 });
