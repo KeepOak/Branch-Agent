@@ -3,7 +3,7 @@ import type { WindowEngine } from "../connect/engine";
 import { historyToBlocks } from "../thread/history";
 import type { Block } from "../thread/model";
 
-export const TRANSCRIPT_HISTORY_PAGE_SIZE = 100;
+const TRANSCRIPT_HISTORY_PAGE_SIZE = 100;
 type HistoryPage = {
   messages: unknown[];
   sessionId?: string;

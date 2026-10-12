@@ -38,7 +38,7 @@ export async function saveCheckins(engine: WindowEngine, snapshot: CheckinSnapsh
   return patchHeartbeat(engine, snapshot, target, { every: fields.every.trim() || null, prompt: fields.prompt.trim() || null });
 }
 /** How often / Which hours: one heartbeat field at a time (every, or activeHours; null = the source default). */
-export const saveHeartbeatField = (engine: WindowEngine, snapshot: CheckinSnapshot, target: string, field: Row) => patchHeartbeat(engine, snapshot, target, field);
+const saveHeartbeatField = (engine: WindowEngine, snapshot: CheckinSnapshot, target: string, field: Row) => patchHeartbeat(engine, snapshot, target, field);
 
 const EVERY = [["15m", "Every 15 min"], ["30m", "Every 30 min"], ["1h", "Every hour"], ["other", "Other…"], ["0m", "Off"]] as const;
 const HOURS = [["day", "8 AM – 8 PM", "08:00", "20:00"], ["always", "Always", "", ""], ["work", "Work hours", "09:00", "17:00"], ["other", "Other…", "", ""]] as const;

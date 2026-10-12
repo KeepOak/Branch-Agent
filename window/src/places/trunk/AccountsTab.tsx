@@ -8,7 +8,7 @@ import { entryOf, errorText, patchConfig, readConfig } from "./model";
 type AuthStatus = { providers?: unknown };
 
 /** Settings › Accounts, where model accounts are signed in. */
-export function openAccountsSettings(): void {
+function openAccountsSettings(): void {
   window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page: "accounts" } }));
 }
 

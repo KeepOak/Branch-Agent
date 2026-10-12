@@ -69,7 +69,7 @@ export function mayChanges(snap: ConfigSnapshot, id: string, was: May, now: May,
 }
 
 /* ---------- Defaults for every Trunk (Technical): agents.defaults ---------- */
-export const DEFAULT_KEYS = ["cwd", "workspace", "bootstrapMaxChars", "bootstrapTotalMaxChars", "userTimezone", "imageMaxDimensionPx"] as const;
+const DEFAULT_KEYS = ["cwd", "workspace", "bootstrapMaxChars", "bootstrapTotalMaxChars", "userTimezone", "imageMaxDimensionPx"] as const;
 export type DefaultKey = (typeof DEFAULT_KEYS)[number];
 export const NUMBER_KEYS: DefaultKey[] = ["bootstrapMaxChars", "bootstrapTotalMaxChars", "imageMaxDimensionPx"];
 /** The engine's own values when nothing is set (engine/src/agents/embedded-agent-helpers/bootstrap.ts, image-sanitization.ts). */
