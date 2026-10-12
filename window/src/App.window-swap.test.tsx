@@ -34,6 +34,8 @@ beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   sessionStorage.clear();
   localStorage.clear();
+  // This covers the Classic window (mocked above); the R1 frame has its own tests.
+  localStorage.setItem("branch.classic", "1");
   (window as { branchDesktop?: unknown }).branchDesktop = { gatewayUrl: url, gatewayToken: "test-token" };
 });
 afterEach(async () => {
