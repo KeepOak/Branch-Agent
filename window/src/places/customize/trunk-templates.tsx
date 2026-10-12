@@ -20,7 +20,7 @@ export type CreateOutcome = { name: string; agentId: string; routines: string[];
 const LINK_PREFIX = "branch-template:";
 
 export function readTemplates(result: unknown): TemplateRow[] {
-  return list(rec(result).templates).map(t => ({
+  return list(rec(result).templates).map((t): TemplateRow => ({
     id: str(t.id), source: t.source === "imported" ? "imported" : "bundled", name: str(t.name) || str(t.id), description: str(t.description),
     skills: Number(t.skills) || 0, routines: Number(t.routines) || 0, connections: list(t.connections).map(String),
   })).filter(t => t.id);
