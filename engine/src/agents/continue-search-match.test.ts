@@ -1,15 +1,7 @@
-// Source assertions unchanged; native Node runner replaces Vitest.
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-function expect(actual: unknown) {
-  return {
-    toEqual: (expected: unknown) => assert.deepStrictEqual(actual, expected),
-    toBe: (expected: unknown) => assert.strictEqual(actual, expected),
-    toBeNull: () => assert.strictEqual(actual, null),
-    toHaveLength: (expected: number) => assert.strictEqual((actual as { length: number }).length, expected),
-  };
-}
-import { findSearchMatch } from "./continue-search-match.ts";
+// Adapted from continuedev/continue@5522c6f44ca0ac3528b37244818fbfa39b5af470
+// core/edit/searchAndReplace test suites; source assertions unchanged.
+import { describe, expect, it } from "vitest";
+import { findSearchMatch } from "./continue-search-match.js";
 
 describe("findSearchMatch", () => {
   describe("Empty search content", () => {
@@ -167,10 +159,7 @@ describe("findSearchMatch", () => {
 
   describe("Case insensitive match strategy fallback", () => {
     it("should match when case differs", () => {
-      const result = findSearchMatch(
-        "const myVariable = 42;",
-        "const MYVARIABLE = 42;",
-      );
+      const result = findSearchMatch("const myVariable = 42;", "const MYVARIABLE = 42;");
       expect(result).toEqual({
         startIndex: 0,
         endIndex: 22,
@@ -179,10 +168,7 @@ describe("findSearchMatch", () => {
     });
 
     it("should match mixed case in middle of file", () => {
-      const result = findSearchMatch(
-        "function HandleClick() {",
-        "function handleclick() {",
-      );
+      const result = findSearchMatch("function HandleClick() {", "function handleclick() {");
       expect(result).toEqual({
         startIndex: 0,
         endIndex: 24,
@@ -340,7 +326,7 @@ export default MyComponent;`;
     });
 
     it("should handle regex-like patterns with escaped characters", () => {
-      const fileContent = `const pattern = /\\d+\\.\\d+/g;\nconst test = \"123.456\";\nif (pattern.test(test)) {\n  console.log(\"Match found\");\n}`;
+      const fileContent = `const pattern = /\\d+\\.\\d+/g;\nconst test = "123.456";\nif (pattern.test(test)) {\n  console.log("Match found");\n}`;
       const searchContent = `consttest="123.456";if(pattern.test(test)){console.log("Matchfound");}`;
       const result = findSearchMatch(fileContent, searchContent);
 
@@ -376,8 +362,8 @@ export default MyComponent;`;
     });
 
     it("should match content with Windows-style CRLF line endings", () => {
-      const fileContent = `@echo off\r\nset PATH=%PATH%;C:\\tools\r\nif \"%1\"==\"\" (\r\n    echo Usage: script.bat filename\r\n    exit /b 1\r\n)\r\necho Processing %1...\r\necho Done.`;
-      const searchContent = `if\"%1\"==\"\"(echo Usage: script.bat filename exit/b 1)`;
+      const fileContent = `@echo off\r\nset PATH=%PATH%;C:\\tools\r\nif "%1"=="" (\r\n    echo Usage: script.bat filename\r\n    exit /b 1\r\n)\r\necho Processing %1...\r\necho Done.`;
+      const searchContent = `if"%1"==""(echo Usage: script.bat filename exit/b 1)`;
       const result = findSearchMatch(fileContent, searchContent);
 
       expect(result).toEqual({
@@ -388,8 +374,8 @@ export default MyComponent;`;
     });
 
     it("should handle deeply nested JSON with mixed formatting", () => {
-      const fileContent = `{\n  \"config\": {\n    \"database\": {\n      \"host\": \"localhost\",\n      \"port\": 5432,\n      \"credentials\": {\n        \"username\": \"admin\",\n        \"password\": \"secret\"\n      },\n      \"options\": {\n        \"ssl\": true,\n        \"timeout\": 30000\n      }\n    }\n  }\n}`;
-      const searchContent = `\"credentials\":{\"username\":\"admin\",\"password\":\"secret\"},\"options\":{\"ssl\":true,\"timeout\":30000}`;
+      const fileContent = `{\n  "config": {\n    "database": {\n      "host": "localhost",\n      "port": 5432,\n      "credentials": {\n        "username": "admin",\n        "password": "secret"\n      },\n      "options": {\n        "ssl": true,\n        "timeout": 30000\n      }\n    }\n  }\n}`;
+      const searchContent = `"credentials":{"username":"admin","password":"secret"},"options":{"ssl":true,"timeout":30000}`;
       const result = findSearchMatch(fileContent, searchContent);
 
       expect(result).toEqual({
@@ -400,8 +386,8 @@ export default MyComponent;`;
     });
 
     it("should match XML content with attribute spacing differences", () => {
-      const fileContent = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<root>\n  <item id = \"1\"   type= \"primary\" >\n    <name>Test Item</name>\n    <value   unit=\"px\" >100</value>\n  </item>\n</root>`;
-      const searchContent = `<itemid=\"1\"type=\"primary\"><name>TestItem</name><valueunit=\"px\">100</value></item>`;
+      const fileContent = `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <item id = "1"   type= "primary" >\n    <name>Test Item</name>\n    <value   unit="px" >100</value>\n  </item>\n</root>`;
+      const searchContent = `<itemid="1"type="primary"><name>TestItem</name><valueunit="px">100</value></item>`;
       const result = findSearchMatch(fileContent, searchContent);
 
       expect(result).toEqual({

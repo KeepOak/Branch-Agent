@@ -49,9 +49,21 @@ export const ORPHAN_CLAIM_GRACE_MS = 2 * 60_000;
 export const HARD_CLAIM_CAP_MS = 4 * 60 * 60_000;
 /** Stop attempts for a silent claim before it is marked as needing a person and not retried. */
 export const MAX_STOP_ATTEMPTS = 3;
+/** Not-ready run endings allowed per card before a person must repair the runtime and release it. */
+export const MAX_NOT_READY_ATTEMPTS = 10;
 const RUN_ERROR_REASON = "the run ended with an error";
 /** After a Trunk refuses work as not ready, it is not tried again until this much time has passed. */
 export const UNAVAILABLE_RETRY_MS = 60_000;
+
+/** The longest a Trunk that keeps failing as not ready is left out of pickup between tries. */
+export const NOT_READY_MAX_HOLD_MS = 30 * 60_000;
+
+/**
+ * Trunks whose claimed runs failed because they were not ready: when each may take a job again, and how many such
+ * failures came in a row. The wait starts at UNAVAILABLE_RETRY_MS and doubles up to NOT_READY_MAX_HOLD_MS, so a Trunk
+ * that stays broken does not keep taking jobs. Until then its jobs go to other idle Trunks. A clean run end clears it.
+ */
+const notReadyTrunks = new Map<string, { until: number; strikes: number }>();
 
 /** Claim ids whose brief is still being sent. A claim is never called orphaned while its dispatch is in flight. */
 const dispatchingClaimIds = new Set<string>();
@@ -225,6 +237,7 @@ export function releaseQueueItem(
     if (!row.claimed_by && row.blocked_reason) {
       delete row.blocked_reason;
       row.failures = 0;
+      row.not_ready_attempts = 0;
       row.released_at = now;
       write(rows, now, env);
     }
@@ -257,11 +270,14 @@ export function touchQueueClaim(
 
 /**
  * The run in a claim's own thread ended. A clean end completes the job; an error counts a failed attempt and
- * puts it back. Runs in other threads do not touch the claim. Returns whether a claim was closed.
+ * puts it back. A run that failed because its Trunk was not ready (outcome "not_ready") puts the job back without
+ * a failed attempt and leaves that Trunk out of pickup for UNAVAILABLE_RETRY_MS. After
+ * MAX_NOT_READY_ATTEMPTS such endings the card blocks until explicitly released. Runs in other threads do not
+ * touch the claim. Returns whether a claim was closed.
  */
 export function closeQueueClaimForThread(
   threadKey: string,
-  outcome: "completed" | "failed",
+  outcome: "completed" | "failed" | "not_ready",
   env?: NodeJS.ProcessEnv,
   now = Date.now(),
 ): boolean {
@@ -274,7 +290,27 @@ export function closeQueueClaimForThread(
       return undefined;
     }
     let transition: QueueTransition | undefined;
-    if (outcome === "completed") {
+    if (outcome === "not_ready") {
+      const claimant = row.claimed_by!;
+      const strikes = (notReadyTrunks.get(claimant)?.strikes ?? 0) + 1;
+      const hold = Math.min(UNAVAILABLE_RETRY_MS * 2 ** (strikes - 1), NOT_READY_MAX_HOLD_MS);
+      notReadyTrunks.set(claimant, { until: now + hold, strikes });
+      row.not_ready_attempts = (row.not_ready_attempts ?? 0) + 1;
+      release(row, now);
+      const blocked = row.not_ready_attempts >= MAX_NOT_READY_ATTEMPTS;
+      if (blocked) {
+        row.blocked_reason =
+          `Stopped after ${MAX_NOT_READY_ATTEMPTS} not-ready attempts without starting the job. ` +
+          "Check the Trunk runtime and model availability, then queue_release this job to run it again.";
+      }
+      transition = {
+        kind: blocked ? "blocked" : "released",
+        item: { ...row },
+        agentId: claimant,
+        seq: nextSeq(),
+      };
+    } else if (outcome === "completed") {
+      notReadyTrunks.delete(row.claimed_by!);
       const firstCompletion = row.done_at === undefined;
       row.done_at = now;
       if (firstCompletion) {
@@ -525,6 +561,9 @@ async function claimAndDispatch(
   params: PickupParams,
 ): Promise<{ item: TrunkQueueItem; threadKey: string } | undefined> {
   const now = params.now ?? Date.now;
+  if (now() < (notReadyTrunks.get(params.agentId)?.until ?? 0)) {
+    return undefined;
+  }
   // Abandoned claims go back first, so a queue holding only those still recovers.
   await releaseStaleQueueClaims(params);
   // Empty queue: no thread, no message.
