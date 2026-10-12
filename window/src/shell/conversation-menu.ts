@@ -171,7 +171,7 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     ] } : null,
     item("Side panel", "panel", c.run.sidePanel, { hint: "Ctrl Shift K" }),
     c.hasContactConversations ? item("Conversations", "chat", c.run.conversations) : null,
-    item(c.towerVisible ? "Hide the Control tower" : "Show the Control tower", "panel", c.run.tower, { hint: "Ctrl Shift T" }),
+    item(c.towerVisible ? "Hide Right now" : "Show Right now", "panel", c.run.tower, { hint: "Ctrl Shift T" }),
     item("Hide or show the list", "list", c.run.list, { hint: "Ctrl B" }),
     item(c.besideOpen ? "Change the conversation beside" : "Open another conversation beside", "cols", c.run.beside),
     item("Split right", "cols", () => c.run.split("right")),

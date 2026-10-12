@@ -65,3 +65,9 @@ button.v23-tower-row:hover { background: var(--fill); }
 .v23-acct small { grid-column: 1 / -1; color: var(--ink-3); font-size: 10px; }
 @media (max-width: 1100px) { .v23-tower { display: none; } }
 @media (max-width: 600px) { .v23-threads { display: none; } }
+
+/* Right now: placeholder rows while the panel reads, so loading never looks like an empty result. */
+.v23-skel { display: grid; gap: 8px; padding: 6px 0; }
+.v23-skel-row { display: block; height: 34px; border-radius: 8px; background: var(--skel, color-mix(in srgb, currentColor 8%, transparent)); animation: v23-skel-pulse 1.4s ease-in-out infinite; }
+@keyframes v23-skel-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .v23-skel-row { animation: none; } }

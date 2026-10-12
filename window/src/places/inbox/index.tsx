@@ -1,5 +1,5 @@
 // Inbox (DESIGN-SPEC §4.6.2; preview renderInbox + 40-places + 41-placesap p20-inbox / p25-history): Needs you,
-// Finished, History and Later, with the recommendation bar above and Messages below.
+// Finished, History and Later.
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { NoticesBell } from "./Bell";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
@@ -8,7 +8,7 @@ import { has, loadNeeds, loadNeedsCount, markRead, refreshesInbox, usePlaceData 
 import { takeInboxHandoff, type InboxTab } from "./handoff";
 import { History, loadHistory, type HistoryData } from "./History";
 import { NeedsYou, needsCount } from "./NeedsYou";
-import { Finished, Later, Messages, finishedRows } from "./Tabs";
+import { Finished, Later, finishedRows } from "./Tabs";
 import "../overview/overview.css";
 import "./inbox.css";
 
@@ -86,6 +86,5 @@ export function InboxPlace({ engine, level, openConversation, openPlace, openSet
       {history.data ? <History engine={engine} data={history.data} level={level} people={handoff?.people} open={openConversation} /> : null}
     </> : null}
     {tab === "later" ? <Later /> : null}
-    <Messages />
   </PlaceFrame>;
 }

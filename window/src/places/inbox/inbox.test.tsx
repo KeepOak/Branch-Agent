@@ -7,10 +7,8 @@ import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
 import { loadNeeds, markRead, refreshesInbox } from "./data";
 import { openInboxWith } from "./handoff";
-import { REPLAY_GAP, VERIFY_GAP, RECEIPTS_GAP } from "./History";
 import { InboxPlace, useNeedsCount } from "./index";
 import { FULL_ACCESS_GAP } from "./NeedsYou";
-import { MESSAGES_GAP } from "./Tabs";
 import { session } from "../overview/engine";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -56,10 +54,22 @@ function withoutUnrequestedRecaps(value: unknown): unknown {
     return rest;
   }) };
 }
+/** The engine only sends derivedTitle when the list asks for includeDerivedTitles. */
+function withoutUnrequestedTitles(value: unknown): unknown {
+  if (!value || typeof value !== "object" || !("sessions" in value) || !Array.isArray(value.sessions)) return value;
+  return { ...value, sessions: value.sessions.map(row => {
+    if (!row || typeof row !== "object" || !("derivedTitle" in row)) return row;
+    const { derivedTitle, ...rest } = row;
+    void derivedTitle;
+    return rest;
+  }) };
+}
 async function render({ level = "regular" as Level, scopes = ["operator.admin"], fx = FX, strictRecapProjection = false } = {}) {
   const request = vi.fn(async (method: string, params?: unknown) => {
     const requested = params !== null && typeof params === "object" && "includeActivitySummary" in params && params.includeActivitySummary === true;
-    const v = strictRecapProjection && method === "sessions.list" && !requested ? withoutUnrequestedRecaps(fx[method]) : fx[method];
+    const titled = params !== null && typeof params === "object" && "includeDerivedTitles" in params && params.includeDerivedTitles === true;
+    const listed = method === "sessions.list" && !titled ? withoutUnrequestedTitles(fx[method]) : fx[method];
+    const v = strictRecapProjection && method === "sessions.list" && !requested ? withoutUnrequestedRecaps(listed) : listed;
     if (v && typeof v === "object" && "__error" in v) throw new Error(String((v as { __error: string }).__error));
     return v ?? {};
   });
@@ -268,15 +278,23 @@ describe("Inbox › other tabs", () => {
     expect(host.textContent).toContain("All tidy.");
     expect(calls(request, "sessions.activitySummary.ensure")).toHaveLength(0);
   });
+  it("asks History's list for derived titles, so an unnamed thread keeps its engine title instead of Chat with <Trunk>", async () => {
+    const fx = { ...FX, "sessions.list": { sessions: [
+      { key: "agent:main:titled", agentId: "main", derivedTitle: "Plan the Lisbon trip", status: "done", lastRunId: "r1", updatedAt: NOW - H },
+      { key: "agent:main:bare", agentId: "main", status: "done", lastRunId: "r2", updatedAt: NOW - 2 * H },
+    ] } };
+    const { host, request } = await render({ fx });
+    await click(btn(host, "History")[0]);
+    expect(request).toHaveBeenCalledWith("sessions.list", expect.objectContaining({ includeDerivedTitles: true, includeActivitySummary: true }));
+    expect(btn(host, "Plan the Lisbon trip")).toHaveLength(1);
+    expect(btn(host, "Chat with Rowan")).toHaveLength(1);
+  });
   it("does not claim verified integrity or signed receipts from ordinary recorded activity", async () => {
     const { host, request } = await render();
     await click(btn(host, "History")[0]);
     expect(host.textContent).not.toMatch(/Record intact|Every tool call leaves a signed receipt|nothing can be cut or rewritten quietly/i);
-    expect(host.textContent).toContain("Recorded activity");
-    const verification = host.querySelector<HTMLButtonElement>(".ib-rec");
-    expect(verification).toMatchObject({ disabled: true, title: VERIFY_GAP });
-    expect(verification?.textContent).toContain("Unverified");
-    expect(btn(host, "See the chain")[0]).toMatchObject({ disabled: true, title: RECEIPTS_GAP });
+    expect(host.querySelector(".ib-rec")).toBeNull();
+    expect(btn(host, "See the chain")).toHaveLength(0);
     expect(calls(request, "audit.run.inspect")).toHaveLength(0);
     expect(calls(request, "sessions.activitySummary.ensure")).toHaveLength(0);
   });
@@ -297,20 +315,20 @@ describe("Inbox › other tabs", () => {
     await send("inbox", "history");
     expect(host.querySelector("[role=tab][aria-selected=true]")?.textContent).toBe("History");
   });
-  it("Later shows the preview's empty wording; Messages is greyed with its reason", async () => {
+  it("Later shows its empty wording and no greyed Messages stub", async () => {
     const { host } = await render();
     await click(btn(host, "Later")[0]);
     expect(host.textContent).toContain("Nothing is waiting to finish later.");
-    expect(host.querySelector<HTMLInputElement>("input[placeholder='Search messages']")).toMatchObject({ disabled: true, title: "" });
-    expect(host.textContent).not.toContain(MESSAGES_GAP); expect(visibleDevNotes(host)).toEqual([]);
+    expect(host.querySelector("input[placeholder='Search messages']")).toBeNull();
+    expect(visibleDevNotes(host)).toEqual([]);
   });
   it("History groups by day with run lengths; Every conversation only from Advanced; the run menu only at Technical", async () => {
     const regular = await render();
     await click(btn(regular.host, "History")[0]);
     expect(regular.host.textContent).toContain("1m 12s");
     expect(regular.host.textContent).toContain("Today");
-    expect(btn(regular.host, "Watch again")[0]).toMatchObject({ disabled: true, title: "" });
-    expect(REPLAY_GAP).toMatch(/^Needs the engine/); expect(visibleDevNotes(regular.host)).toEqual([]);
+    expect(btn(regular.host, "Watch again")).toHaveLength(0);
+    expect(visibleDevNotes(regular.host)).toEqual([]);
     expect(regular.host.textContent).not.toContain("Every conversation");
     expect(regular.host.querySelector(".ib-hrow .ib-ib")).toBeNull();
     await act(async () => root?.unmount()); root = undefined;

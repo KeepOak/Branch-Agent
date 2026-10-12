@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
-import { AccountsPage, accountName, accountsOf, movedUp, type Provider } from "./accounts";
+import { AccountsPage, CHECK_FAILED, accountName, accountsOf, movedUp, type Provider } from "./accounts";
 import { servicesOf } from "./add-account";
 import { StatusPopover, type StatusContext } from "../../../shell/StatusLayer";
 import { readLimits } from "../../../shell/status-data";
@@ -211,5 +211,49 @@ describe("Settings › Accounts on a partial engine reply", () => {
       await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
       expect(document.querySelector("h1")?.textContent).toBe("Accounts");
     }
+  });
+});
+
+describe("Settings › Accounts › Check now (moved from Right now)", () => {
+  const byText = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === label);
+  it("asks every service again with refresh, rereads the list, and hands the reading to the status bar", async () => {
+    const usage = { updatedAt: 5, providers: [{ provider: "openai-codex", displayName: "ChatGPT plan", windows: [{ label: "5h", usedPercent: 20 }] }] };
+    const { engine, request } = engineOf({ "usage.status": usage });
+    const heard: Event[] = [];
+    const listen = (event: Event) => heard.push(event);
+    window.addEventListener("branch:usage-checked", listen);
+    try {
+      await render(engine);
+      const before = request.mock.calls.filter(([m]) => m === "models.authStatus").length;
+      const check = byText("Check now");
+      expect(check).toBeTruthy();
+      expect(check!.disabled).toBe(false);
+      await act(async () => check!.click());
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+      expect(request).toHaveBeenCalledWith("models.authStatus", { refresh: true });
+      expect(request).toHaveBeenCalledWith("usage.status", { refresh: true });
+      // the refresh call plus the reread of the list
+      expect(request.mock.calls.filter(([m]) => m === "models.authStatus").length).toBe(before + 2);
+      expect(heard).toHaveLength(1);
+      expect((heard[0] as CustomEvent).detail).toMatchObject({ updatedAt: 5, rows: [expect.objectContaining({ provider: "openai-codex" })] });
+      expect(host.textContent).toMatch(/Checked at /);
+      expect(byText("Check now")?.disabled).toBe(false);
+    } finally {
+      window.removeEventListener("branch:usage-checked", listen);
+    }
+  });
+  it("says so when the services can't be asked, and the button works again", async () => {
+    const { engine } = engineOf();
+    (engine.request as ReturnType<typeof vi.fn>).mockImplementation(async (method: string) => {
+      if (method === "usage.status") throw new Error("gateway closed");
+      if (method === "models.authStatus") return { ts: 1, providers: PROVIDERS, providerCapabilities: CAPS };
+      if (method === "config.get") return { hash: "h1", valid: true, config: {} };
+      return {};
+    });
+    await render(engine);
+    await act(async () => byText("Check now")!.click());
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe(CHECK_FAILED);
+    expect(byText("Check now")?.disabled).toBe(false);
   });
 });
