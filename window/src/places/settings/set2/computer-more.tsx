@@ -20,9 +20,9 @@ import { Ico } from "./icons";
 import "./computer-more.css";
 import { shownWhy } from "../../../shell/shown-why";
 
-export type Lv = 0 | 1 | 2;
+type Lv = 0 | 1 | 2;
 export type Ctx = { engine: WindowEngine; lv: Lv; props: SettingsPageProps };
-export type Opt = { v: unknown; l: string; off?: string };
+type Opt = { v: unknown; l: string; off?: string };
 /** One row. k: sw switch, seg, pick, num, text, list (chips), cmd (node command policy), arg (browser launch flag),
  *  code (copyable text), btn, val (a fixed value), info (no control), hint (a paragraph), custom (render). */
 export type Spec = {
@@ -241,7 +241,7 @@ function subOf(s: Spec): ReactNode {
 }
 
 /** Draws one table row: greyed with its reason, or wired to its config path. */
-export function Row({ s, c }: { s: Spec; c: Ctx }) {
+function Row({ s, c }: { s: Spec; c: Ctx }) {
   if (s.k === "hint") return <Hint>{s.sub}</Hint>;
   if (s.k === "custom") return <>{s.render?.(c)}</>;
   if (s.off) return null; // greyed stubs are not drawn; their specs stay as the engine-lane backlog (TODO(engine-lane))

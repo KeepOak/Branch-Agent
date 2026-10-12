@@ -23,7 +23,7 @@ const NO_PERSON = "Sign in as yourself on this Branch to keep your own choices."
 const ASK_KEY = "branch.askBeforeDelete";
 
 /** users.prefs for this page's keys: the stored value (or the default), a save that puts it back if refused. */
-export function usePrefs(engine: WindowEngine) {
+function usePrefs(engine: WindowEngine) {
   const res = useResource<RecordValue>(engine, "users.prefs.get", { keys: Object.values(P) });
   const { reload } = res;
   const [mine, setMine] = useState<RecordValue>({});
