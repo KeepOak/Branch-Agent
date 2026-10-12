@@ -46,7 +46,7 @@ export const isHex = (v: unknown): v is string => typeof v === "string" && /^#[0
 const rgb = (h: string): number[] => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const hex2 = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, "0");
 /** a blended toward b by t (0 to 1). */
-export function mix(a: string, b: string, t: number): string {
+function mix(a: string, b: string, t: number): string {
   if (!isHex(a) || !isHex(b)) return isHex(a) ? a : b;
   const x = rgb(a), y = rgb(b);
   return `#${x.map((v, i) => hex2(v + (y[i] - v) * t)).join("")}`;

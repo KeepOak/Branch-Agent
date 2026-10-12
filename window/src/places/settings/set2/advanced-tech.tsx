@@ -196,7 +196,7 @@ export function fieldsOf(schema: unknown, hints: RecordValue, p = "", out: Field
   return out;
 }
 /** The schema's fields, read once per window (config.schema). */
-export function useFields(engine: WindowEngine) {
+function useFields(engine: WindowEngine) {
   const res = useLive<RecordValue>(engine, "config.schema", {}, []);
   const fields = useMemo(() => (res.data ? fieldsOf(rec(res.data).schema, rec(rec(res.data).uiHints)) : []), [res.data]);
   return { fields, error: res.error, loading: res.loading && !res.data };
