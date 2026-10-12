@@ -220,7 +220,7 @@ export function Sidebar(p: SidebarProps) {
       {section("Groups", sections.groups)}
       {section("Grafted", sections.grafted)}
       {ready && contactsLoaded && nothing ? <p className="r1sb-empty">{query ? "No matches." : folder !== "all" ? "Nothing in this folder." : "No Trunks yet."}</p> : null}
-      {!ready ? <p className="r1sb-empty" role="status">Reconnecting…</p> : null}
+      {!ready ? <p className="r1sb-empty">Your conversations show here once Branch connects.</p> : null}
       <div className="r1sb-bins">
         <button type="button" className="r1sb-bin" aria-expanded={binsOpen} onClick={() => setArchivedOpen(open => !open)} disabled={narrow}>
           <span className="r1sb-bin-chev">{icons.chevron}</span><span>Archived</span>{sections.archived.length ? <i>{sections.archived.length}</i> : null}

@@ -59,7 +59,9 @@ describe("R1 sidebar", () => {
   it("renders an empty disconnected engine with no demo data", async () => {
     const { render } = setup({}, false);
     await render();
-    expect(host.textContent).toContain("Reconnecting…");
+    // The frame's notice says "Reconnecting…"; the sidebar doesn't repeat it (one status line, and the tour waits on it).
+    expect(host.textContent).toContain("Your conversations show here once Branch connects.");
+    expect(host.textContent).not.toContain("Reconnecting");
     expect(host.querySelectorAll(".r1sb-row, .r1sb-pin")).toHaveLength(0);
     expect(text(".r1sb-caps > *").length).toBe(4);
     expect(host.querySelector(".r1sb-upd")).toBeNull();
