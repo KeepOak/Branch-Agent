@@ -111,7 +111,8 @@ export function ThemeSec({ look, pair, themes, current, mode, onBrowse, onMake }
           </Acts>
         </span>
       </div>
-      <Ctl title="Accent colour" sub={<>Only for what wants you: the working ring, the waiting dot, the yes button. <LinkBtn disabled={themes.loading} onClick={() => onMake(true)}>Save as a theme</LinkBtn></>}>
+      <Ctl title="Accent colour" sub="Only for what wants you: the working ring, the waiting dot, the yes button."
+        after={<Acts><LinkBtn disabled={themes.loading} onClick={() => onMake(true)}>Save as a theme</LinkBtn></Acts>}>
         <span className="accs">
           <button type="button" className="acc theme-acc" aria-pressed={!isHex(accent)} aria-label="The theme’s own accent" onClick={() => setAccent(null)}>A</button>
           {ACCENTS.map((a) => <button key={a} type="button" className="acc" style={{ ["--c" as string]: a }} aria-pressed={accent === a} aria-label={`Accent ${a.toUpperCase()}`} onClick={() => setAccent(a)} />)}

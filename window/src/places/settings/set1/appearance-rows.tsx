@@ -12,7 +12,6 @@ const SHOWN = "Right-click it anywhere to hide it too.";
 /** Things only the Branch desktop app or the computer itself can do. */
 export const DESKTOP = "Needs the Branch desktop app.";
 const o = (pairs: [string, string][], off: Record<string, string> = {}): Opt[] => pairs.map(([id, label]) => ({ id, label, ...(off[id] ? { off: off[id] } : {}) }));
-
 /** The page has two "Reading" sections; the second one's rows are kept under this name. */
 export const READING_MORE = "Reading ";
 
@@ -23,10 +22,11 @@ export const ROWS: RowSpec[] = [
     opts: o([["none", "None"], ["painted", "Painted grove"], ["grove", "The grove"], ["oak3d", "The oak in 3D"], ["rings", "Growth rings"]], {}) },
   { sec: "Background", title: "Season", key: "season", kind: "seg", def: "auto", keep: "everywhere", sub: "Fireflies in summer, petals in spring, leaves in autumn, snow in winter.", opts: o([["auto", "By the date"], ["spring", "Spring"], ["summer", "Summer"], ["autumn", "Autumn"], ["winter", "Winter"]]) },
   { sec: "Reading", title: "Text size", key: "size", kind: "seg", def: "Regular", keep: "device", sub: "Changes every screen.", opts: o([["small", "Small"], ["Regular", "Regular"], ["large", "Large"], ["larger", "Larger"], ["largest", "Largest"]]) },
+  { sec: "The pet", title: "Let it roam", key: "roam", kind: "sw", def: false, keep: "everywhere", sub: "The pet walks along the chat, and the Trunk card steps aside. Off keeps the card as the one pet." },
   { sec: "The pet", title: "Pet sounds", key: "petSounds", kind: "sw", def: false, keep: "everywhere", sub: "A tiny sound when you pat it.", help: "Off until you turn it on." },
   { sec: "What’s shown", title: "The usage ring", key: "show.usage", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
   { sec: "What’s shown", title: "The gateway in the status bar", key: "show.gateway", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
-  { sec: "What’s shown", title: "The pet", key: "show.pet", kind: "sw", def: true, keep: "everywhere" },
+  { sec: "What’s shown", title: "Graphics and memory", key: "show.gfx", kind: "sw", def: false, keep: "everywhere", sub: "Shows this computer’s graphics card and memory.", help: "Off until you choose: it keeps checking this computer’s graphics card and memory." },
   { sec: "What’s shown", title: "Projects in the list", key: "show.projects", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
   { sec: "What’s shown", title: "What a working Trunk is doing, in the list", key: "show.live", kind: "sw", def: true, keep: "everywhere", sub: "The row’s preview shows its latest step while it works." },
   { sec: "What’s shown", title: "The whole status bar", key: "show.statusbar", kind: "sw", def: true, keep: "everywhere", sub: "Lockdown’s banner and Stop while a task runs can never be hidden." },
@@ -54,6 +54,7 @@ const OTHER: [string, string, Lv][] = [
   ["Light or dark", "Match this computer", 0], ["Theme", "Theme", 0], ["Theme", "Accent colour", 0], ["Agents", "Show the agent beside the conversation", 0],
   ["Background", "Painted scenes", 0], ["Background", "How much the theme covers it", 0], ["Background", "See-through panels", 0], ["Background", "Preview", 0],
   ["Reading", "Interface font", 1], ["Reading", "Conversation font", 1], ["The pet", "Pet", 0], ["The pet", "Name", 0], ["The pet", "Pets you’ve had", 0],
+  ["Pictures around Branch", "Pictures around Branch", 1],
 ];
 
 /** The page a section's rows belong to: Pet and Layout split off Look. */

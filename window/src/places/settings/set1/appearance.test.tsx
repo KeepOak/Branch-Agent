@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -53,6 +54,45 @@ const sw = (label: string) => host.querySelector<HTMLInputElement>(`input[aria-l
 const rows = () => [...host.querySelectorAll(".ctl > b")].map((b) => b.textContent);
 
 describe("Settings › Appearance", () => {
+  it.each([1, 2] as const)("NA-02 omits unavailable character and pet controls from level %i and search", async (level) => {
+    const { engine } = engineOf();
+    await render(engine, level);
+    const unavailable = [
+      "Faces show feelings", "Mouth follows the voice", "Eyes follow the pointer", "Bobs to music",
+      "Light from the screen", "Float it beside the chat", "Copy my moves from the camera",
+      "Leaves follow the pointer", "A creature that moves with real work", "Drive a VTube Studio avatar",
+      "Bring in a character", "Pose by hand", "Describe a pet", "How faces are drawn",
+    ];
+    for (const title of unavailable) {
+      expect(host.querySelector(`[data-row="${title}"]`), title).toBeNull();
+      expect(APPEARANCE_ROWS.some((row) => row.title === title), `${title} in search`).toBe(false);
+    }
+    expect(host.querySelector('[data-sec="Characters"] [disabled]')).toBeNull();
+    expect(host.querySelector('select[aria-label="Birch: look"]')).toBeNull();
+  });
+
+  it("NA-02 retains working character switches and persists each choice", async () => {
+    const { engine, prefs } = engineOf();
+    await render(engine, 1);
+    for (const [label, key] of [
+      ["Acts out what it is doing", "ch.act"], ["Moves while it speaks", "ch.move"],
+      ["Reacts when you touch it", "ch.touch"], ["Captions under it", "ch.cap"],
+    ]) {
+      expect(sw(label).disabled).toBe(false);
+      expect(sw(label).checked).toBe(true);
+      await act(async () => sw(label).click());
+      expect(prefs["ui.window.look"]).toMatchObject({ [key]: false });
+      expect(sw(label).checked).toBe(false);
+    }
+    await act(async () => root.unmount());
+    forgetLookStore();
+    root = createRoot(host);
+    await render(engine, 1);
+    for (const label of ["Acts out what it is doing", "Moves while it speaks", "Reacts when you touch it", "Captions under it"]) {
+      expect(sw(label).checked).toBe(false);
+    }
+  });
+
   it("keeps pet-sound rationale in help without hiding the row description", async () => {
     const { engine } = engineOf();
     await render(engine, 0, "pet");
@@ -145,6 +185,41 @@ describe("Settings › Appearance", () => {
     expect(report.saved).toHaveBeenCalled();
   });
 
+  it("AP1 gives the accent description, swatches and save action separate full-width rows", async () => {
+    const style = document.head.appendChild(document.createElement("style"));
+    style.textContent = readFileSync("src/places/settings/kit.css", "utf8") + readFileSync("src/places/settings/set1/appearance.css", "utf8");
+    try {
+      host.className = "set-col";
+      await render(engineOf().engine);
+      const row = host.querySelector<HTMLElement>('[data-row="Accent colour"]')!;
+      const description = row.querySelector("small")!;
+      const controls = row.querySelector(".right")!;
+      const save = button("Save as a theme", row);
+      expect(description.contains(save)).toBe(false);
+      expect(getComputedStyle(row).gridTemplateColumns).toBe("minmax(0, 1fr)");
+      expect(getComputedStyle(row).rowGap).toBe("8px");
+      expect(getComputedStyle(description).gridRow).toBe("2");
+      expect(getComputedStyle(controls).gridRow).toBe("3");
+      expect(getComputedStyle(controls).gridColumn).toBe("1");
+      expect(getComputedStyle(save.parentElement!).gridRow).toBe("4");
+    } finally { style.remove(); }
+  });
+
+  it("AP1 saves the selected accent through Save as a theme", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Accent #E0A526"]')!.click());
+    await act(async () => button("Save as a theme").click());
+    await act(async () => button("Save theme", document).click());
+    expect(request).toHaveBeenCalledWith("themes.import", expect.objectContaining({
+      apply: true,
+      definition: expect.objectContaining({
+        light: expect.objectContaining({ accent: "#e0a526" }),
+        dark: expect.objectContaining({ accent: "#e0a526" }),
+      }),
+    }));
+  });
+
   it("an accent goes to the engine's own ui.accent and onto the window", async () => {
     const { engine, request } = engineOf();
     await render(engine);
@@ -212,8 +287,9 @@ describe("Settings › Appearance", () => {
     await act(async () => root.unmount());
     root = createRoot(host);
     await render(engine, 2);
-    expect(rows()).toEqual(expect.arrayContaining(["Interface font"]));
+    expect(rows()).toEqual(expect.arrayContaining(["Interface font", "Acts out what it is doing"]));
     expect(rows()).not.toContain("How faces are drawn");
+    expect(host.querySelector('[data-row="Pictures around Branch"]')).not.toBeNull();
   });
 
   it("with no signed-in profile the look is kept on this computer", async () => {
@@ -250,7 +326,33 @@ describe("Settings › Appearance", () => {
     const { engine } = engineOf({ prefs: { "ui.window.look": { "show.usage": false } } });
     await render(engine, 0, "layout");
     expect(sw("The usage ring").checked).toBe(false);
-    expect(sw("The pet").checked).toBe(true);
+    await render(engine, 0, "pet");
+    expect(sw("Let it roam").checked).toBe(false);
+  });
+
+  it("PR985 keeps Pictures around Branch on the Look page at Advanced and in search", async () => {
+    const { engine } = engineOf();
+    await render(engine, 0);
+    expect(host.querySelector('[data-row="Pictures around Branch"]')).toBeNull();
+    await render(engine, 1);
+    const art = host.querySelector('[data-row="Pictures around Branch"]')!;
+    expect([...art.querySelectorAll("figcaption")].map((c) => c.textContent)).toEqual(["A cloud computer at work", "A phone call in progress", "Joining a meeting", "Learning an app", "A timeline replaying"]);
+    expect(art.querySelector("img")?.getAttribute("src")).toBe("/assets/art17/feature/cloud.webp");
+    expect(APPEARANCE_ROWS.find((r) => r.title === "Pictures around Branch")).toMatchObject({ page: "appearance", lv: 1 });
+  });
+
+  it("PR985 keeps each Trunk's own Background and Model on the Look page and saves the background", async () => {
+    const { engine, prefs } = engineOf({ prefs: { "ui.window.look": { "stage:main": "rings" } } });
+    await render(engine, 1);
+    const bg = host.querySelector<HTMLSelectElement>('select[aria-label="Birch: background"]')!;
+    expect(bg).not.toBeNull();
+    expect([...bg.options].map((o) => o.textContent)).toEqual(["None", "Growth rings", "Oak"]);
+    expect(bg.value).toBe("rings");
+    expect(host.querySelector('select[aria-label="Birch: model"]')).not.toBeNull();
+    await act(async () => { bg.value = "oak"; bg.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(prefs["ui.window.look"]).toMatchObject({ "stage:main": "oak" });
+    await act(async () => { bg.value = "none"; bg.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(prefs["ui.window.look"] ?? {}).not.toHaveProperty("stage:main");
   });
 
   it("theme codes and engine palettes keep every colour", () => {

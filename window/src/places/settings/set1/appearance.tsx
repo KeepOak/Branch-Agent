@@ -9,7 +9,7 @@ import { Page, Status, useSaveRunner } from "../kit";
 import { setThemeChoice } from "../../../theme/theme";
 import { ThemeEditor, type EditStart } from "./appearance-editor";
 import { DEFAULT_THEME, SLATE, toPalette, type Pair } from "./appearance-look";
-import { CharactersSec, ListMore } from "./appearance-more";
+import { CharactersSec, ListMore, PicturesSec } from "./appearance-more";
 import { PetSec } from "./appearance-pet";
 import { AgentsSec, BackgroundSec, ReadingSec, ShownSec, WindowSec, type Look } from "./appearance-sections";
 import { useLook } from "./appearance-store";
@@ -26,7 +26,7 @@ export function PetPage(props: SettingsPageProps) {
   const look = useLook(props.engine);
   return (
     <Page title={props.title} lede="The little companion on the list. Pick one, name it, or hide it.">
-      <PetSec look={look} openSettings={props.openSettings} />
+      <PetSec look={look} />
     </Page>
   );
 }
@@ -62,9 +62,10 @@ export function AppearancePage(props: SettingsPageProps) {
       <LightDarkSec engine={props.engine} pair={pair} trunk={trunk.name} profile={profile} />
       <ThemeSec look={look} pair={pair} themes={themes} current={current} mode={mode} onBrowse={() => setOpen({ kind: "gallery" })} onMake={make} />
       <AgentsSec look={look} />
-      <CharactersSec look={look} />
+      <CharactersSec engine={props.engine} look={look} trunk={trunk} />
       <BackgroundSec look={look} />
       <ReadingSec look={look} />
+      <PicturesSec />
       {open?.kind === "gallery" ? (
         <ThemesDialog themes={themes} currentId={currentId} mode={mode} contrast={look.val("contrast", false) === true}
           onContrast={(on) => void look.store.set("contrast", on ? true : null)} onPick={acts.pick} onMake={() => make(false)} onImport={acts.add} onDelete={acts.remove}
