@@ -11,6 +11,7 @@
 .thread-wrap .scroll {
   flex: 1;
   overflow: auto;
+  overflow-anchor: none;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
@@ -636,38 +637,24 @@
   }
 }
 
-/* Typing (§4.2.2 Typing): the preview's three glowing orange orbs, like the sprite's branch tips (owner decision 6,
-   2026-10-06, over the spec's grey --ink-3 dots). */
-.thread .typing {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 2px;
-  min-width: 0;
-}
-
-.thread .typing i {
-  flex: 0 0 8px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #ffe6a8 0, #f39a3c 60%, #d9722b 100%);
-  box-shadow: 0 0 8px rgba(243, 154, 60, 0.55);
-  animation: typing-dot 1s ease-in-out infinite;
-}
-
-.thread .typing i:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.thread .typing i:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-@keyframes typing-dot {
-  50% {
-    opacity: 0.35;
-  }
+/* Sender-aware activity stays monochrome and shares the message gutter. */
+.thread .typing-caption { display: flex; align-items: center; gap: 8px; min-height: 32px; min-width: 0; color: var(--ink-3); font-size: 13px; }
+.thread .typing-words { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thread .typing-avatar { position: relative; display: inline-flex; }
+.thread .typing-status { position: absolute; right: -1px; bottom: 0; width: 7px; height: 7px; border-radius: 50%; background: var(--ink-2); border: 2px solid var(--bg); }
+.thread .typing { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.thread .typing i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: typing-dot 1.2s ease-in-out infinite; }
+.thread .typing i:nth-child(2) { animation-delay: .15s; }
+.thread .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes typing-dot { 50% { opacity: .3; transform: translateY(-2px); } }
+.thread .stream-bubble { transition: height 100ms ease-out; overflow: clip; }
+.thread .stream-content { display: flow-root; contain: layout style; }
+.thread .stream-content > * { contain: layout style; }
+.thread .stream-bubble[data-streaming] .stream-chunk { animation: stream-in 180ms ease-out; }
+@keyframes stream-in { from { opacity: .25; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .thread .typing i, .thread .stream-chunk { animation: none !important; }
+  .thread .stream-bubble { transition: none; }
 }
 
 /* Cards and approvals (§4.2.3, §5.6) */

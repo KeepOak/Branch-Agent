@@ -2,7 +2,7 @@
 // lists, quotes, tables, code blocks, links, bold, italic and inline code. The text is parsed into React
 // elements, so raw HTML in a reply is shown as text and never run. Streaming text re-renders block by
 // block with stable keys, so what is already shown is not redrawn (rule 8).
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { CodeBlock } from "./CodeBlock";
 import { useThread } from "./context";
 import { INLINE_MATH, MathTex, readInlineMath } from "./math";
@@ -195,7 +195,7 @@ function link(href: string, label: ReactNode, key: number): ReactNode {
 /** Inline formatting inside one block. */
 export function inline(text: string, math = false): ReactNode[] {
   return text.split(math ? INLINE : INLINE_BASE).map((part, i) => {
-    if (i % 2 === 0) return part;
+    if (i % 2 === 0) return part.split(/(\s+)/).map((word, n) => /^\s*$/.test(word) ? word : <span className="stream-chunk" key={`${i}:${n}`}>{word}</span>);
     const tex = math ? readInlineMath(part) : null;
     if (tex !== null) return <MathTex key={i} tex={tex} display={false} raw={part} />;
     if (part.startsWith("`")) return <code key={i}>{part.slice(1, -1)}</code>;
@@ -211,8 +211,7 @@ export function inline(text: string, math = false): ReactNode[] {
   });
 }
 
-function Lines({ text }: { text: string }) {
-  const math = useThread().prefs?.math ?? true;
+const Lines = memo(function Lines({ text, math }: { text: string; math: boolean }) {
   const lines = text.split("\n");
   return (
     <>
@@ -224,13 +223,13 @@ function Lines({ text }: { text: string }) {
       ))}
     </>
   );
-}
+});
 
-function ListView({ block }: { block: Extract<MdBlock, { type: "list" }> }) {
+function ListView({ block, math }: { block: Extract<MdBlock, { type: "list" }>; math: boolean }) {
   const items = block.items.map((item, i) => (
     <li key={i} className={item.task ? "md-task" : undefined}>
       {item.task ? <span className={item.done ? "md-box done" : "md-box"} aria-label={item.done ? "Done" : "To do"} /> : null}
-      <Lines text={item.text} />
+      <Lines text={item.text} math={math} />
     </li>
   ));
   return block.ordered ? <ol start={block.start !== 1 ? block.start : undefined}>{items}</ol> : <ul>{items}</ul>;
@@ -255,21 +254,21 @@ function TableView({ block }: { block: Extract<MdBlock, { type: "table" }> }) {
 
 function MathBlock({ block }: { block: Extract<MdBlock, { type: "math" }> }) {
   const math = useThread().prefs?.math ?? true;
-  return math ? <MathTex tex={block.tex} display raw={block.raw} /> : <p><Lines text={block.raw} /></p>;
+  return math ? <MathTex tex={block.tex} display raw={block.raw} /> : <p><Lines text={block.raw} math={math} /></p>;
 }
 
-function BlockView({ block }: { block: MdBlock }) {
+const BlockView = memo(function BlockView({ block, math }: { block: MdBlock; math: boolean }) {
   switch (block.type) {
     case "p":
-      return <p><Lines text={block.text} /></p>;
+      return <p><Lines text={block.text} math={math} /></p>;
     case "h":
       return <p className={`md-h md-h${Math.min(block.level, 3)}`} role="heading" aria-level={block.level}>{inline(block.text)}</p>;
     case "code":
       return <CodeBlock lang={block.lang} text={block.text} />;
     case "list":
-      return <ListView block={block} />;
+      return <ListView block={block} math={math} />;
     case "quote":
-      return <blockquote><Lines text={block.text} /></blockquote>;
+      return <blockquote><Lines text={block.text} math={math} /></blockquote>;
     case "table":
       return <TableView block={block} />;
     case "hr":
@@ -279,14 +278,15 @@ function BlockView({ block }: { block: MdBlock }) {
     case "image":
       return <MdImage src={block.src} alt={block.alt} />;
   }
-}
+}, (before, after) => before.math === after.math && JSON.stringify(before.block) === JSON.stringify(after.block));
 
 /** A Trunk's reply text, formatted. */
 export function Markdown({ text }: { text: string }) {
+  const math = useThread().prefs?.math ?? true;
   const shown = text.length > MAX_REPLY_CHARS ? text.slice(0, MAX_REPLY_CHARS) : text;
   return (
     <>
-      {parseMarkdown(shown).map((block, i) => <BlockView key={i} block={block} />)}
+      {parseMarkdown(shown).map((block, i) => <BlockView key={i} block={block} math={math} />)}
       {shown !== text ? (
         <p className="md-cut">
           … cut short ({text.length.toLocaleString()} characters, showing the first {MAX_REPLY_CHARS.toLocaleString()}).

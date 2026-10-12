@@ -1,3 +1,4 @@
+import { usePublishTyping } from "../thread/typing-presence";
 // The composer (DESIGN-SPEC §4.3): the message box, +, the plug, the model and mode chips, voice and Send/Stop,
 // the dock row above it and the menus, all wired to the engine through the shared handle (connect/engine.ts).
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
@@ -106,6 +107,7 @@ type SendParts = { files?: DraftFile[]; people?: Person[]; queue?: string; reply
 /** The composer (DESIGN-SPEC §4.3.1): the message box and Send, which becomes Stop while the Trunk works. */
 export function Composer(props: Props) {
   const { name, working, disabled, onSend, onStop, engine, onToast, onOpen } = props;
+  const publishTyping = usePublishTyping(props.draftAgentId ? undefined : engine);
   const conv = useConversation(engine, props.draftAgentId);
   const draft = useDraft(props.draftAgentId ? null : engine?.sessionKey ?? null, engine?.attachmentPolicy);
   const [menu, setMenu] = useState<Menu>(null);
@@ -174,6 +176,7 @@ export function Composer(props: Props) {
     return onSend(text, buildExtras(text, parts.files ?? [], parts.people ?? [], parts.queue, parts.replyTo), parts.id);
   };
   /** The draft as it goes out: trimmed, with its picks kept in step with the text. */
+  useEffect(() => { if (!draft.text) publishTyping(false); }, [draft.text, publishTyping]);
   const draftMessage = (): Message => trimMessage({ text: draft.text, picks });
   const line = useWaitingLine(engine?.sessionKey ?? null, working, Boolean(props.offline), (item, steer) => {
     sendMessage({ text: item.text, picks: item.picks ?? [] }, { files: item.files, queue: steer ? "steer" : undefined, id: item.id });
@@ -202,6 +205,7 @@ export function Composer(props: Props) {
     const err = await bg.start(text.trim());
     setProblem(err);
     if (!err) {
+      publishTyping(false);
       draft.clear();
       toast("Running in the background. Keep talking here.");
     }
@@ -226,6 +230,7 @@ export function Composer(props: Props) {
     }
     if (plan.kind === "stop") {
       onStop();
+      publishTyping(false);
       draft.clear();
       return;
     }
@@ -545,6 +550,7 @@ export function Composer(props: Props) {
           aria-label={`Message ${name}`}
           onChange={(e) => {
             draft.setText(e.target.value);
+            publishTyping(Boolean(e.target.value.trim()));
             setCaret(e.target.selectionStart);
             setSel(0);
             if (e.target.value.includes("@")) drawer.loadPeople();
@@ -552,7 +558,7 @@ export function Composer(props: Props) {
           onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={onKey}
           onPaste={onPaste}
-          onBlur={() => setDismissed(draft.text)}
+          onBlur={() => { setDismissed(draft.text); publishTyping(false); }}
           onFocus={() => setDismissed(null)}
         />
         )}

@@ -1,0 +1,4 @@
+window:src/thread/follow-scroll.test.tsx
+window:src/thread/streaming.test.tsx
+window:src/thread/typing-indicator.test.tsx
+window:src/thread/typing-presence.test.tsx

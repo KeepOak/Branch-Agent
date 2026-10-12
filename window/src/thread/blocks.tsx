@@ -22,7 +22,7 @@ import {
   stepsSummary,
 } from "./format";
 import { Icon, ICONS, StepKindIcon } from "./icons";
-import { Markdown } from "./markdown";
+import { StreamedMarkdown } from "./streaming";
 import { computerStepDetail, isComputerToolName, isScreenToolName } from "./computer-action-label";
 import { fullOutput, type Block, type FileChange } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
@@ -107,7 +107,7 @@ export function Reply({ block, face, from, working, children }: { block: Of<"tex
             <StepRow step={step} />
           </ol>
         ) : block.text ? (
-          <Markdown text={block.text} />
+          <StreamedMarkdown text={block.text} streaming={Boolean(block.streaming)} />
         ) : null}
         {block.attachments?.length ? <Attachments items={block.attachments} /> : null}
       </div>
@@ -444,17 +444,17 @@ export function Notice({ block }: { block: Of<"notice"> }) {
   );
 }
 
-/** While a turn runs, the face and dots alone indicate typing (#31). */
-export function Typing({ name }: { name: string }) {
+/** Name every active sender so group activity remains attributable. */
+export function Typing({ name, face, working = false }: { name: string; face?: ReactNode; working?: boolean }) {
+  const label = `${name} is ${working ? "working" : "typing"}`;
   return (
-    <div className="msg reply" aria-label="Typing" data-testid="typing">
-      <span className="gutter">
-        <Face size={28} label={name} state="think" priority={300} />
-      </span>
-      <div className="typing">
-        <i />
-        <i />
-        <i />
+    <div className="msg reply" aria-label={label} data-testid="typing">
+      <span className="gutter"><span className="typing-avatar">
+        {face ?? <Face size={28} label={name} state="think" priority={300} />}
+        <span className="typing-status" aria-hidden="true" />
+      </span></span>
+      <div className="typing-caption"><span className="typing-words">{label}</span>
+        <span className="typing" aria-hidden="true"><i /><i /><i /></span>
       </div>
     </div>
   );

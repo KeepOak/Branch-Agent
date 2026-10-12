@@ -13,7 +13,11 @@ Object.defineProperty(window, "matchMedia", {
   configurable: true,
   value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }),
 });
-vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+const resizeCallbacks: (() => void)[] = [];
+vi.stubGlobal("ResizeObserver", class {
+  constructor(callback: () => void) { resizeCallbacks.push(callback); }
+  observe() {} unobserve() {} disconnect() {}
+});
 function stubScrollIntoView() {
   const intoView = vi.fn();
   Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: intoView });
@@ -170,7 +174,7 @@ describe("thread follow scroll", () => {
     expect(intoView).not.toHaveBeenCalled();
   });
 
-  it("does not move the scroll position for a new live token when scrolled up", async () => {
+  it.each([200, 1570])("keeps scroll at %i through streamed tokens and animated bubble growth", async (top) => {
     const intoView = stubScrollIntoView();
     function Harness({ text }: { text: string }) {
       return (
@@ -191,12 +195,15 @@ describe("thread follow scroll", () => {
     await act(async () => root!.render(<Harness text="The" />));
     await act(async () => {});
     const scroller = container.querySelector<HTMLElement>('[data-testid="thread-scroll"]')!;
-    const box = mockScroller(scroller, { height: 2000, client: 400, top: 200 });
+    const box = mockScroller(scroller, { height: 2000, client: 400, top });
     await fireScroll(scroller);
     intoView.mockClear();
     await act(async () => root!.render(<Harness text="The invoice is ready." />));
     await flushFollow();
-    expect(box.top).toBe(200);
+    box.height = 2400;
+    await act(async () => resizeCallbacks.forEach((callback) => callback()));
+    await flushFollow();
+    expect(box.top).toBe(top);
     expect(intoView).not.toHaveBeenCalled();
   });
 

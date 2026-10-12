@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { copyText, useThread } from "./context";
 import { highlight } from "./highlight";
 import { Icon, ICONS } from "./icons";
@@ -53,7 +53,7 @@ export function CodeBlock({ lang, text }: { lang: string; text: string }) {
   );
 }
 
-function Code({ text, lang }: { text: string; lang: string }) {
+const Code = memo(function Code({ text, lang }: { text: string; lang: string }) {
   const html = highlight(text, lang);
   return html === null ? <code>{text}</code> : <code className="hljs" dangerouslySetInnerHTML={{ __html: html }} />;
-}
+});

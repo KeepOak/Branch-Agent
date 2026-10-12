@@ -1,3 +1,4 @@
+import { PeerTyping } from "./typing-presence";
 import { Children, cloneElement, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Face } from "../face/Face";
@@ -129,7 +130,7 @@ function dropComputerCard(node: ReactNode): ReactNode {
 /** The lastRunError the engine's restart recovery records when it could not carry a run on
  * (engine main-session-restart-recovery-store.ts tombstoneMainRestartRecoveryWithNotice). */
 const RESTART_NOT_RESUMED = "Interrupted by a restart. Continue?";
-const NEAR_END_PX = 80;
+const NEAR_END_PX = 2;
 const LATEST_PX = 450;
 
 /** `sent` lists what you just sent (your message over the turn, a steer, the newest waiting one). When one of them
@@ -139,6 +140,7 @@ function useFollow(signature: string, sent: readonly (string | null | undefined)
   const scroller = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const distance = useRef(0);
+  const lastWritten = useRef<number | null>(null);
   const [showLatest, setShowLatest] = useState(false);
   const atEnd = useRef(true);
   useScrollMemory(scroller, { atEnd });
@@ -154,15 +156,26 @@ function useFollow(signature: string, sent: readonly (string | null | undefined)
     if (!atEnd.current) return;
     const id = requestAnimationFrame(() => {
       const el = scroller.current;
-      if (atEnd.current && el) el.scrollTop = el.scrollHeight;
+      if (atEnd.current && el) { el.scrollTop = el.scrollHeight; lastWritten.current = el.scrollTop; }
     });
     return () => cancelAnimationFrame(id);
   }, [signature, sentKey]);
+  useEffect(() => {
+    const content = scroller.current?.firstElementChild;
+    if (!content || typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(() => {
+      const el = scroller.current;
+      if (el && atEnd.current) { el.scrollTop = el.scrollHeight; lastWritten.current = el.scrollTop; }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
     const d = el.scrollHeight - el.scrollTop - el.clientHeight;
-    atEnd.current = d < NEAR_END_PX;
+    // A delayed event from a follow write must not disable following during growth.
+    if (el.scrollTop !== lastWritten.current) atEnd.current = d < NEAR_END_PX;
     distance.current = d;
     const latest = d > LATEST_PX;
     setShowLatest((open) => (open === latest ? open : latest));
@@ -373,6 +386,7 @@ export function Thread(props: Props) {
             )
           ) : null}
           <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="delivered" />
+          <PeerTyping engine={engine} />
           {running ? <LiveRun view={view} offset={history.length} /> : null}
           {running ? (props.steered ?? []).map((note) => <SteeredNote key={note.runId} name={name} text={note.text} />) : null}
           <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
@@ -489,6 +503,15 @@ function LiveRun({ view, offset }: { view: View; offset: number }) {
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
   }, [startedAt]);
+  const senders = new Map<string, string>();
+  for (const block of live) {
+    if (block.kind !== "text" || !block.streaming) continue;
+    const sender = block.meta?.sender;
+    if (sender?.kind === "trunk") senders.set(sender.agentId, view.room?.trunkName(sender.agentId) ?? sender.name ?? name);
+    else if (sender) senders.set(sender.id, sender.name);
+    else senders.set("own", name);
+  }
+  if (!senders.size) senders.set("own", name);
   const usage = live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage");
   const waiting = live.some((b) => b.kind === "approval" && b.approval.state === "pending");
   const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || (b.kind === "step" && !isInternalStep(b)) || b.kind === "preamble" || b.kind === "plan");
@@ -497,7 +520,7 @@ function LiveRun({ view, offset }: { view: View; offset: number }) {
       {/* While only the dots show, nothing sits above them (P47); the clock comes with the first real activity. */}
       {typing ? null : <header className="live-run-head">Working{elapsed >= 1000 ? ` · ${formatDuration(elapsed)}` : ""}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>}
       {layout(live.filter((b) => b.kind !== "status"), offset).map((item) => <ItemView key={keyOf(item)} item={item} view={view} live />)}
-      {typing ? <Typing name={name} /> : null}
+      {!waiting ? [...senders].map(([id, sender]) => <Typing key={id} name={sender} working={!typing} />) : null}
     </div>
   );
 }

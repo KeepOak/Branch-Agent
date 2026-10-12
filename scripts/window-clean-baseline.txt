@@ -1461,18 +1461,14 @@ theme	window/src/thread/highlight.css	ours="solarized"] pre { background: #fdf6e
 theme	window/src/thread/plan.css	color: #fff;
 theme	window/src/thread/thread.css	10px 12px; box-shadow: 0 12px 32px rgba(0,0,0,.22); font-size: 12.5px; line-
 theme	window/src/thread/thread.css	> summary > svg { color: var(--bad, #c0392b); }
-theme	window/src/thread/thread.css	at 40% 35%, #ffe6a8 0, #f39a3c 60%, #d9722b 100%);
 theme	window/src/thread/thread.css	background-color: #ff9f43;
 theme	window/src/thread/thread.css	background-color: #ffe58a;
 theme	window/src/thread/thread.css	background: rgba(0, 0, 0, 0.82);
-theme	window/src/thread/thread.css	box-shadow: 0 0 8px rgba(243, 154, 60, 0.55);
 theme	window/src/thread/thread.css	box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
 theme	window/src/thread/thread.css	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--line
 theme	window/src/thread/thread.css	color: #1b1f23;
 theme	window/src/thread/thread.css	color: #1b1f23;
-theme	window/src/thread/thread.css	dient(circle at 40% 35%, #ffe6a8 0, #f39a3c 60%, #d9722b 100%);
 theme	window/src/thread/thread.css	k-image: linear-gradient(to bottom, #000 70%, transparent);
-theme	window/src/thread/thread.css	radial-gradient(circle at 40% 35%, #ffe6a8 0, #f39a3c 60%, #d9722b 100%);
 theme	window/src/transcript-export/render.ts	.assistant { border-left: 4px solid #9c8cf4; }
 theme	window/src/transcript-export/render.ts	.error { border-left: 4px solid #f87171; }
 theme	window/src/transcript-export/render.ts	.model { margin: 8px 0 32px; color: #9ca3af; }
