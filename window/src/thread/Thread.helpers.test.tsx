@@ -3,7 +3,14 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
+import type { Block } from "./model";
 import { Thread } from "./Thread";
+
+const nativeCalls = vi.hoisted(() => ({ count: 0 }));
+vi.mock("./native-helpers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./native-helpers")>();
+  return { ...actual, nativeHelpers: (blocks: readonly Block[]) => { nativeCalls.count += 1; return actual.nativeHelpers(blocks); } };
+});
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }) });
@@ -47,6 +54,20 @@ describe("actual thread compact helper entry", () => {
     await act(async () => chip!.click());
     expect(activity).toHaveBeenCalledOnce();
     expect(openSession).not.toHaveBeenCalled();
+  });
+  it("reads native helpers only when history or live blocks change, not on every streamed render", async () => {
+    const fixture = backend();
+    const history: Block[] = [{ kind: "step", key: "native", tool: "spawn_agent", title: "", detail: "", status: "ok", input: JSON.stringify({ task_name: "review", message: "Check the change" }) }];
+    const live: Block[] = [];
+    const container = document.body.appendChild(document.createElement("div"));
+    root = createRoot(container);
+    const draw = (h: Block[], l: Block[], name: string) => act(async () => root!.render(<Thread name={name} history={h} live={l} pendingUser={null} running engine={fixture.engine} onAnswer={() => {}} />));
+    await draw(history, live, "Owner");
+    const before = nativeCalls.count;
+    await draw(history, live, "Owner ");
+    expect(nativeCalls.count).toBe(before);
+    await draw(history, [{ kind: "text", key: "t", text: "streaming", streaming: true }], "Owner");
+    expect(nativeCalls.count).toBe(before + 1);
   });
   it("opens full Activity through the task-anchored chip without navigating or stopping the conversation", async () => {
     const fixture = backend();

@@ -6,6 +6,12 @@ import type { WindowEngine } from "../../connect/engine";
 import type { Block } from "../../thread/model";
 import { ActivityTab } from "./ActivityTab";
 
+const nativeCalls = vi.hoisted(() => ({ count: 0 }));
+vi.mock("../../thread/native-helpers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../thread/native-helpers")>();
+  return { ...actual, nativeHelpers: (blocks: readonly Block[]) => { nativeCalls.count += 1; return actual.nativeHelpers(blocks); } };
+});
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
 let container: HTMLDivElement;
@@ -59,6 +65,17 @@ describe("actual Activity helper measured facts", () => {
     expect(container.querySelector('[aria-label="Native subagents"]')?.textContent).toContain("Working at last update");
     await render(fixture.engine, 0, []);
     expect(container.querySelector('[aria-label="Native subagents"]')).toBeNull();
+  });
+  it("reads native helpers once per blocks change, not on every render", async () => {
+    const blocks: Block[] = [{ kind: "step", key: "native", tool: "spawn_agent", title: "", detail: "", status: "ok", input: JSON.stringify({ task_name: "review", message: "Check" }) }];
+    const fixture = backend(0.1);
+    await render(fixture.engine, 0, blocks);
+    const before = nativeCalls.count;
+    await render(fixture.engine, 1, blocks);
+    await render(fixture.engine, 2, blocks);
+    expect(nativeCalls.count).toBe(before);
+    await render(fixture.engine, 2, [...blocks]);
+    expect(nativeCalls.count).toBe(before + 1);
   });
   it("shows one helpers section with status marks instead of helper faces", async () => {
     await render(backend(0.1).engine);

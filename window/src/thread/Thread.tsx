@@ -212,7 +212,7 @@ export function Thread(props: Props) {
   const { details } = useApprovalDetails(engine);
   const { reactions, apply } = useReactions(engine, history.length);
   const { helpers } = useHelpers(engine);
-  const native = nativeHelpers([...history, ...live]);
+  const native = useMemo(() => nativeHelpers([...history, ...live]), [history, live]);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const [usedSuggestion, setUsedSuggestion] = useState<string | null>(null);
   const all = useMemo(() => [...history, ...(running ? live : [])], [history, live, running]);

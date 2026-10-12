@@ -38,8 +38,9 @@ export function nativeHelpers(blocks: readonly Block[]): NativeHelper[] {
   // establishes the worker's latest assignment. Preserve the recorded observation order.
   for (const block of [...steps.values()].sort((a, b) => time(a) - time(b))) {
     const tool = (block.originalTool ?? block.tool).split(".").at(-1);
-    const args = input(block.input);
     const spawn = tool === "spawn_agent";
+    // Only assignment calls carry helper arguments; other steps (bash, file writes) can hold large payloads.
+    const args = spawn || tool === "followup_task" ? input(block.input) : {};
     const observation = block.tool.split(".").at(-1) === "subagents" ? /^(started|completed|interrupted): (\/root\/\S+)$/.exec(block.title) : null;
     if (spawn && ((block.status !== "failed" && block.status !== "denied") || observation)) {
       const name = str(args.task_name);

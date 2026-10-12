@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { projectRun, type Block } from "./model";
 import { historyToBlocks } from "./history";
 import { nativeHelpers } from "./native-helpers";
@@ -55,6 +55,15 @@ describe("recorded native helpers", () => {
   it("recognizes activity without a captured spawn and never interprets a wait completion as worker completion", () => {
     const blocks = [step("subagents", {}, "started: /root/research"), step("subagents", {}, "completed: wait"), step("subagents", {}, "message sent: /root/research")];
     expect(nativeHelpers(blocks)).toEqual([{ key: "/root/research", name: "research", status: "running", at: 1_000 }]);
+  });
+  it("parses step input only for spawn and follow-up calls", () => {
+    const parse = vi.spyOn(JSON, "parse");
+    try {
+      expect(nativeHelpers([step("bash", { command: "x".repeat(100_000) }), step("write", { content: "y".repeat(100_000) }), step("subagents", {}, "started: /root/review")])).toHaveLength(1);
+      expect(parse).not.toHaveBeenCalled();
+      nativeHelpers([step("spawn_agent", { task_name: "review", message: "Go" }), step("followup_task", { target: "review", message: "Again" })]);
+      expect(parse).toHaveBeenCalledTimes(2);
+    } finally { parse.mockRestore(); }
   });
   it("ignores unrelated, malformed and failed calls, and supports raw argument envelopes", () => {
     expect(nativeHelpers([step("bash", { task_name: "wrong", message: "not a helper" }), step("spawn_agent", { task_name: "failed" })].map(b => b.kind === "step" ? { ...b, status: "failed" } : b))).toEqual([]);

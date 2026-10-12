@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import type { Block } from "../../thread/model";
 import type { Level } from "../../places-nav/settings-nav";
@@ -142,7 +142,7 @@ export function currentTask(blocks: readonly Block[], running: boolean): Block[]
 export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, onError }: { engine: WindowEngine; name: string; blocks: Block[]; running: boolean; level: Level; focusHelpers?: number; onError: (m: string) => void }) {
   const helperSection = useRef<HTMLElement>(null);
   const { helpers } = useHelpers(engine);
-  const native = nativeHelpers(blocks);
+  const native = useMemo(() => nativeHelpers(blocks), [blocks]);
   useEffect(() => { if (focusHelpers && (helpers.length || native.length)) helperSection.current?.scrollIntoView?.({ block: "start" }); }, [focusHelpers, helpers.length, native.length]);
   const { details } = useApprovalDetails(engine);
   const card = useCanopyCard(engine);
