@@ -1,2 +1,4 @@
 engine:src/gateway/rooms/merge-feed.test.ts
+engine:src/gateway/rooms/merge-watch.test.ts
 engine:src/gateway/server-methods-list.test.ts
+window:src/shell/group-drop.test.tsx

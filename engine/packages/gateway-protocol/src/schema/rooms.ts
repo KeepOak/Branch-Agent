@@ -79,11 +79,21 @@ export const RoomsRuleSetParamsSchema = closedObject({
   trunksTalk: Type.Optional(Type.Boolean()),
 });
 export const RoomsArchiveParamsSchema = closedObject({ roomId: Id });
+const MergeRepo = Type.String({
+  minLength: 3,
+  maxLength: 100,
+  pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+});
 export const RoomsMergeRecordParamsSchema = closedObject({
   roomId: Id,
-  repo: Type.String({ minLength: 3, maxLength: 100, pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" }),
+  repo: MergeRepo,
   number: Type.Integer({ minimum: 1 }),
   title: Type.String({ minLength: 1, maxLength: 500 }),
+});
+export const RoomsMergeFollowParamsSchema = closedObject({
+  roomId: Id,
+  repo: MergeRepo,
+  base: Type.Optional(Type.String({ minLength: 1, maxLength: 100, pattern: "^[A-Za-z0-9_./-]+$" })),
 });
 export const RoomsRoomResultSchema = closedObject({ room: RoomSchema });
 export const RoomsListResultSchema = closedObject({ rooms: Type.Array(RoomSchema) });
