@@ -9,7 +9,7 @@ import { Icon, type IconName } from "./icons";
 import type { UpdateInfo } from "./status-data";
 import "./whats-new.css";
 
-export type NewRow = { icon: IconName; title: string; line: string; run: () => void };
+type NewRow = { icon: IconName; title: string; line: string; run: () => void };
 export type NewGroups = { New: NewRow[]; Better: NewRow[]; Fixed: NewRow[] };
 
 type Props = {

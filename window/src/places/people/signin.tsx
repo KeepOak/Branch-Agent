@@ -13,11 +13,11 @@ import { PIN_OFF } from "./person";
 import { Ctl, Section, Seg, Status, Sw } from "./ui";
 import { shownWhy } from "../../shell/shown-why";
 
-export const OWN_DEVICE_OFF = "Needs the engine's own-device sign-in setting.";
-export const PROVE_OFF = "Needs the engine's sign-in methods for people.";
-export const STAY_OFF = "Needs the engine's sign-in lifetime setting.";
-export const DEFAULT_ROLE_OFF = "Needs the engine's default role for new people.";
-export const ADMIN_OFF = "Needs an Admin's sign-in.";
+const OWN_DEVICE_OFF = "Needs the engine's own-device sign-in setting.";
+const PROVE_OFF = "Needs the engine's sign-in methods for people.";
+const STAY_OFF = "Needs the engine's sign-in lifetime setting.";
+const DEFAULT_ROLE_OFF = "Needs the engine's default role for new people.";
+const ADMIN_OFF = "Needs an Admin's sign-in.";
 const CIDR = /^(\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?|[0-9a-f:]+(\/\d{1,3})?)$/i;
 const ORIGIN = /^https:\/\/[^/\s?#]+$|^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 

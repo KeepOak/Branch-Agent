@@ -15,7 +15,7 @@ const APPS: App[] = [
 ];
 type Found = { state: "ready" | "signin" | "missing"; reason?: string };
 
-export function foundState(app: App, detect: RecordValue | undefined): Found {
+function foundState(app: App, detect: RecordValue | undefined): Found {
   const hit = list(detect?.candidates).find((c) => c.kind === app.kind);
   if (hit) return { state: hit.credentials === false ? "signin" : "ready" };
   const gone = list(detect?.unavailableCandidates).find((c) => text(c.id).includes(app.kind) || text(c.id).includes(app.kind.replace("-cli", "")));
