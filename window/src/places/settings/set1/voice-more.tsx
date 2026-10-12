@@ -1,6 +1,6 @@
-// Settings › Voice at Advanced and Technical, in the preview's order: hearing, listening, talking, calls and
-// meetings, live voice, speaking back, what Trunks may use, (Technical) live voice and voice raw rows, listening
-// services, a spoken turn, calls and meetings more, (Technical) more live-voice services.
+// Settings › Voice at Advanced and Technical, in the preview's order: listening, talking, calls and meetings, live
+// voice, speaking back, (Technical) live voice and voice raw rows, listening services, (Technical) more live-voice
+// services. talk.catalog is fetched once by the page and shared.
 import type { SettingsPageProps } from "../index";
 import type { RecordValue } from "../adapter";
 import { useConfig, useLevel } from "../kit";
@@ -11,15 +11,14 @@ import { LiveMore, LiveServices, LiveTechnical } from "./voice-live";
 import { ListeningServices, SpeakingMore } from "./voice-speak";
 import { VoiceTechnical } from "./voice-tech";
 
-export type MoreProps = SettingsPageProps & { tts: Kept<RecordValue>; voices: Kept<RecordValue>; wake: Kept<RecordValue>; word: string };
+export type MoreProps = SettingsPageProps & { tts: Kept<RecordValue>; voices: Kept<RecordValue>; wake: Kept<RecordValue>; catalog: Kept<RecordValue>; word: string };
 export type Cfg = ReturnType<typeof useConfig>;
 
 export function VoiceAdvanced(props: MoreProps) {
   const lv = useLevel();
   const cfg = useConfig(props.engine);
-  const catalog = useKept<RecordValue>(props.engine, "talk.catalog", {});
   const agents = useKept<RecordValue>(props.engine, "agents.list", {});
-  const shared = { ...props, cfg, catalog };
+  const shared = { ...props, cfg };
   return (
     <>
       <ListeningMore {...shared} />

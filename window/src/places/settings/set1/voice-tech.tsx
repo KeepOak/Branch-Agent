@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { errorText, text } from "../adapter";
 import { Btn, Ctl, Sec, Switch } from "../kit";
-import { CodeRow } from "./voice-kit";
+import { CodeRow, Greyed } from "./voice-kit";
 import type { Cfg, Shared } from "./voice-more";
 
 export function VoiceTechnical({ cfg }: Shared) {
@@ -11,6 +11,7 @@ export function VoiceTechnical({ cfg }: Shared) {
     <Sec title="Voice, technical" showHeading={false} group="Voice engine">
       <CodeRow t="Speak into a file" code={'branch infer tts convert --text "Your build is done" --output done.mp3'} sub="Uses the speaking engine above." />
       <CodeRow t="Speaking status" code="branch infer tts status" sub="Show the current voice engine and reading-aloud setting." help="Which engine, voice and named voice are in use, and whether it reads replies aloud. Turning reading aloud on and off is the “Voice” row’s Off and “Answer aloud”." />
+      <Greyed why="Set it in a voice service’s own settings for now." rows={[{ t: "Audio format", sub: "The file format spoken replies are made in.", c: { pick: ["Engine default"] } }]} />
       <CodeRow t="Check the call setup" code="branch voicecall setup" />
       <CodeRow t="Call and speak" code={'branch voicecall start --to <number> --message "Hello"'} />
       <CodeRow t="During a call" code="branch voicecall speak|dtmf|end --call-id <id>" />

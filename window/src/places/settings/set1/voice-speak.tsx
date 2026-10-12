@@ -1,12 +1,13 @@
-// Voice › Speaking back, more; What Trunks may use; Listening, services; A spoken turn (Advanced). The speaking
-// engine is tts.providers / tts.setProvider, Preview plays tts.speak's clip, named voices are tts.status personas;
+// Voice › Speaking back, more; Listening, services (Advanced). The speaking engine is tts.providers /
+// tts.setProvider, Preview plays tts.speak's clip, named voices are tts.status personas, a reply's own voice change is
+// tts.modelOverrides.enabled, and the read-out length and summary are /tts limit and /tts summary (greyed with why);
 // listening engines come from talk.catalog (transcription) and save to the voice-call streaming provider; audio
 // files on tools.media.audio.enabled; your own program on tts.providers.tts-local-cli.command.
 import { useState } from "react";
 import { errorText, list, text, visible } from "../adapter";
 import { Btn, Ctl, Field, Pick, Plist, Prow, Sec, Switch, useSaveRunner } from "../kit";
 import { Dialog } from "../../../shell/Dialog";
-import { group, providersOf, type Provider } from "./voice-kit";
+import { Greyed, group, providersOf, type Provider } from "./voice-kit";
 import type { Shared } from "./voice-more";
 import { Logo } from "./service";
 
@@ -26,6 +27,11 @@ export function SpeakingMore(props: Shared) {
       <Ctl title="Voice services" sub={ready.length ? `On because ${ready.join(" and ")} ${ready.length > 1 ? "are" : "is"} connected.` : "Turns on when a voice service is connected."}
         after={<KeyList providers={providers} openSettings={props.openSettings} />} />
       <NamedVoices {...props} />
+      <Ctl title="Trunks may change their voice in a reply" sub="A reply can ask for another voice for a line." help="A reply can ask for another voice or voice settings for one line. Off: replies are always read in the voice chosen here.">
+        <Switch checked={props.cfg.get("tts.modelOverrides.enabled") !== false} label="Trunks may change their voice in a reply" disabled={props.cfg.loading} onChange={(on) => void props.cfg.set("tts.modelOverrides.enabled", on)} />
+      </Ctl>
+      <Greyed why="Change it with /tts limit in a conversation for now." rows={[{ t: "Read in full up to", sub: "Longer replies are shortened before they are read. /tts limit changes it for one conversation.", c: { field: "", ph: "1500", unit: "characters" } }]} />
+      <Greyed why="Change it with /tts summary in a conversation for now." rows={[{ t: "Shorten longer replies first", sub: "A longer reply is summarised before it is read out. /tts summary changes it for one conversation.", c: { sw: true } }]} />
     </Sec>
   );
 }
@@ -68,7 +74,7 @@ function PreviewRow({ engine }: Shared) {
 function NamedVoices({ tts }: Shared) {
   const [open, setOpen] = useState(false);
   const personas = list(tts.data?.personas);
-  if (!personas.length) return null;
+  if (!personas.length) return <Greyed why="Branch can’t add a named voice from here yet." rows={[{ t: "Named voices", sub: "A name for a voice that keeps sounding the same, whichever engine speaks.", c: { btn: "Manage" } }]} />;
   return (
     <Ctl title="Named voices" sub="Save one voice name across speech engines." help="A name for a voice that keeps sounding the same, whichever engine speaks.">
       <Btn sm onClick={() => setOpen(true)}>See {personas.length}</Btn>

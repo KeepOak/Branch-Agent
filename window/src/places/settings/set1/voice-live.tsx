@@ -133,6 +133,7 @@ export function LiveServices({ cfg, catalog }: Shared) {
           ))}
         </Plist>
       ) : <Hint>{catalog.loading ? "Looking for live-voice services…" : "No live-voice service is installed."}</Hint>}
+      <Ctl title="Live voice with a ChatGPT account" sub="With no OpenAI key, OpenAI live voice uses your ChatGPT sign-in." help="With no OpenAI key saved, OpenAI live voice signs in with your ChatGPT account instead. There is nothing to turn on here." />
     </Sec>
   );
 }

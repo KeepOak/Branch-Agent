@@ -12,7 +12,7 @@ import { toValue } from "./voice-tech";
 
 const STATUS = { enabled: true, auto: "always", provider: "openai", persona: "oak", personas: [{ id: "oak", label: "Oak" }, { id: "birch", label: "Birch" }] };
 const CATALOG = {
-  speech: { providers: [] }, transcription: { activeProvider: "openai", providers: [{ id: "openai", label: "OpenAI", configured: true }] },
+  speech: { providers: [] }, transcription: { activeProvider: "openai", ready: true, providers: [{ id: "openai", label: "OpenAI", configured: true }] },
   realtime: { activeProvider: "openai", providers: [{ id: "openai", label: "OpenAI", configured: true, models: ["gpt-realtime"], voices: ["alloy"], transports: ["webrtc", "gateway-relay"] }, { id: "google", label: "Google", configured: false }] },
 };
 
@@ -77,14 +77,50 @@ describe("Settings › Voice", () => {
     expect(request).toHaveBeenCalledWith("tts.enable", {});
   });
 
-  it("Regular shows Speaking back only, with one plain note about microphone talk; no greyed rows", async () => {
+  it("Regular shows Talking with the working dictation row and Speaking back; no greyed rows", async () => {
     const { engine } = engineOf();
     await render(engine);
-    expect([...host.querySelectorAll(".sec > h2")].map((h) => h.textContent)).toEqual(["Speaking back"]);
-    expect(host.textContent).toContain("Talking by microphone, push to talk and dictation aren’t in this version of Branch yet.");
+    expect([...host.querySelectorAll(".sec > h2")].map((h) => h.textContent)).toEqual(["Talking", "Speaking back"]);
+    const dictation = row("Dictation in the message box");
+    expect(dictation.textContent).toContain("Ready");
+    expect(dictation.textContent).toContain("turns what you say into text, using OpenAI.");
+    expect(dictation.getAttribute("aria-disabled")).toBeNull();
+    expect(host.textContent).toContain("Push to talk, listening for a wake word on this computer and choosing a microphone aren’t in this version of Branch yet.");
+    expect(host.textContent).not.toContain("dictation aren’t in this version");
     expect(host.querySelector('[data-row="Microphone"]')).toBeNull();
     expect(host.querySelector('[aria-disabled="true"]')).toBeNull();
     expect(host.querySelector('[data-row="Wake words"]')).toBeNull();
+  });
+
+  it("Dictation in the message box says Not set up until talk.catalog has a ready listening service", async () => {
+    const { engine } = engineOf({ "talk.catalog": { ...CATALOG, transcription: { providers: [] } } });
+    await render(engine);
+    const dictation = row("Dictation in the message box");
+    expect(dictation.textContent).toContain("Not set up");
+    expect(dictation.textContent).toContain("once a listening service is connected");
+  });
+
+  it("Trunks may change their voice in a reply saves tts.modelOverrides.enabled", async () => {
+    const { engine, request } = engineOf();
+    await render(engine, 1);
+    const sw = row("Trunks may change their voice in a reply").querySelector<HTMLInputElement>("input")!;
+    expect(sw.checked).toBe(true);
+    await act(async () => sw.click());
+    expect(patches(request)).toEqual(expect.arrayContaining([{ tts: { modelOverrides: { enabled: false } } }]));
+  });
+
+  it("rows the engine backs but the page can't change stay, greyed with why; dead placeholder rows are gone", async () => {
+    const { engine } = engineOf({ "tts.status": { ...STATUS, personas: [], persona: null } });
+    await render(engine, 2);
+    for (const t of ["Read in full up to", "Shorten longer replies first", "Named voices", "Calls", "Start notes by itself in", "Audio format"]) {
+      expect(row(t).getAttribute("aria-disabled"), t).toBe("true");
+    }
+    expect(row("Live voice with a ChatGPT account").getAttribute("aria-disabled")).toBeNull();
+    expect(host.textContent).not.toContain("This runs in the Branch app on your computer.");
+    for (const t of ["Microphone", "Push-to-talk key", "Speech model", "Keep voice ready", "Recognise who is speaking", "Voice nicknames"]) {
+      expect(host.querySelector(`[data-row="${t}"]`), t).toBeNull();
+      expect(VOICE_ROWS.some((r) => r.title === t), t).toBe(false);
+    }
   });
 
   it("wake words save through voicewake.set when the box loses focus, within the engine's limits", async () => {

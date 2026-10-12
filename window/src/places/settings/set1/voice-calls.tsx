@@ -1,8 +1,10 @@
 // Voice › Calls and meetings (Advanced). Phone calls are the voice-call plugin (plugins.entries.voice-call: enabled,
 // config.fromNumber; a test call is voicecall.initiate); meeting notes are the meeting plugins plus transcripts.*
-// (enabled, autoStart). Everything the engine has no setting for is greyed with why.
-import { text } from "../adapter";
+// (enabled, autoStart). Call history (the voice-call log) and the autoStart places are greyed with why: the engine
+// keeps them, this page can't list or add them yet.
+import { list, text, visible } from "../adapter";
 import { Btn, Ctl, Field, Sec, Switch, useSaveRunner } from "../kit";
+import { Greyed } from "./voice-kit";
 import type { Shared } from "./voice-more";
 
 const CALL = "plugins.entries.voice-call";
@@ -20,6 +22,7 @@ export function CallsAndMeetings(props: Shared) {
         <Field label="Calling from" value={text(cfg.get(`${CALL}.config.fromNumber`) ?? "")} placeholder="Your number" disabled={cfg.loading} onCommit={(v) => void cfg.set(`${CALL}.config.fromNumber`, v.trim() || null)} />
       </Ctl>
       <TestCall {...props} on={calls} />
+      <Greyed why="Branch lists only calls in progress yet." rows={[{ t: "Calls", sub: "Every call: who, when, how long and how it ended.", c: { btn: "See" } }]} />
       <Meetings {...props} />
     </Sec>
   );
@@ -38,6 +41,7 @@ function TestCall({ engine, on }: Shared & { on: boolean }) {
 function Meetings({ cfg }: Shared) {
   const keep = cfg.get("transcripts.enabled") !== false;
   const notes = MEETINGS.every((id) => cfg.get(`plugins.entries.${id}.enabled`) !== false);
+  const places = list(cfg.get("transcripts.autoStart"));
   const setNotes = (on: boolean) => void cfg.set("plugins.entries", Object.fromEntries(MEETINGS.map((id) => [id, { enabled: on }])));
   return (
     <>
@@ -47,6 +51,10 @@ function Meetings({ cfg }: Shared) {
       <Ctl title="Meeting notes" sub="A Trunk joins meetings as a guest and brings back notes." help="A Trunk joins Meet, Teams or Zoom as a guest and brings the notes back.">
         <Switch checked={notes} label="Meeting notes" disabled={cfg.loading} onChange={setNotes} />
       </Ctl>
+      <Greyed why="Branch can’t add a place from here yet." rows={[{
+        t: "Start notes by itself in", c: { btn: "Add a place" },
+        sub: places.length ? places.map((p) => visible(p.title ?? p.channelId ?? p.providerId)).join(" · ") : "Empty until you add a place. A Trunk then keeps notes there by itself.",
+      }]} />
     </>
   );
 }
