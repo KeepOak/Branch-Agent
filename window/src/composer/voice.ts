@@ -281,7 +281,8 @@ export class VoiceCall {
       const run = rec(await this.engine.request("talk.client.toolCall", { sessionKey: this.engine.sessionKey, callId, name: CONSULT, args, relaySessionId: this.relay }));
       await submit({ result: await this.waitFor(str(run.runId)) });
     } catch (e) {
-      await submit({ error: voiceError(e) });
+      // VOICE-0126: a spoken turn always ends with speech; the voice says this line instead of going quiet.
+      await submit({ result: spokenEnding(e) });
     }
   }
 
@@ -302,6 +303,14 @@ export class VoiceCall {
       };
     });
   }
+}
+
+/** The short line a call says when the Trunk's turn fails, is stopped or runs out of time (atlas VOICE-0126). */
+export function spokenEnding(e: unknown): string {
+  const why = e instanceof Error ? e.message : String(e);
+  if (/too long|timed? ?out|budget/i.test(why)) return "That took longer than I'm allowed, so I stopped. Ask me again if you still need it.";
+  if (/stopped|aborted|cancel/i.test(why)) return "I stopped that one. Tell me if you want me to try again.";
+  return "Something went wrong and I couldn't finish that. You can ask me again.";
 }
 
 function messageText(message: unknown): string {
