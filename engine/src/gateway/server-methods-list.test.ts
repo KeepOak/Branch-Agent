@@ -318,6 +318,7 @@ describe("listGatewayMethods", () => {
       "agents.retryStartup",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.template.list",
       "trunks.team.propose",
       "trunks.team.approve",
     ];
@@ -443,6 +444,7 @@ describe("listGatewayMethods", () => {
       "agents.retryStartup",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.template.list",
       "trunks.team.propose",
       "trunks.team.approve",
     ]);
@@ -702,6 +704,7 @@ describe("listGatewayMethods", () => {
       "agents.retryStartup",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.template.list",
       "trunks.team.propose",
       "trunks.team.approve",
     ];

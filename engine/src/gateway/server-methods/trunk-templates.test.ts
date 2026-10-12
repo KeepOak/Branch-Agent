@@ -6,12 +6,15 @@ import type { BranchConfig } from "../../config/types.branch.js";
 import type { GatewayRequestHandlerOptions } from "./shared-types.js";
 import { trunkTemplatesHandlers } from "./trunk-templates.js";
 
-const { createMock, mutateMock, draft } = vi.hoisted(() => ({
+const { createMock, mutateMock, cronAddMock, cronListMock, draft } = vi.hoisted(() => ({
   createMock: vi.fn(),
   mutateMock: vi.fn(),
+  cronAddMock: vi.fn(),
+  cronListMock: vi.fn(),
   draft: { current: {} as Record<string, any> },
 }));
 vi.mock("./agents.js", () => ({ agentsHandlers: { "agents.create": createMock } }));
+vi.mock("./cron.js", () => ({ cronHandlers: { "cron.add": cronAddMock, "cron.list": cronListMock } }));
 vi.mock("../../config/config.js", () => ({ mutateConfigFileWithRetry: mutateMock }));
 
 const BUNDLED_SKILLS = path.resolve(import.meta.dirname, "../../../skills");
@@ -22,7 +25,7 @@ function workspace(): string {
 }
 
 function call(
-  method: "trunks.template.create" | "trunks.template.export",
+  method: "trunks.template.create" | "trunks.template.export" | "trunks.template.list",
   params: Record<string, unknown>,
   cfg: BranchConfig = EMPTY_CONFIG,
 ) {
@@ -64,9 +67,31 @@ beforeAll(() => {
   process.env.BRANCH_BUNDLED_SKILLS_DIR = BUNDLED_SKILLS;
 });
 
+type Respond = (ok: boolean, payload?: unknown, error?: unknown) => void;
+
+/** cron.add answers as the real handler does for an imperative add: the job read view with its id. */
+function cronAddAnswers() {
+  let next = 0;
+  cronAddMock.mockImplementation(async (options: { params: Record<string, unknown>; respond: Respond }) => {
+    next += 1;
+    options.respond(true, { id: `job-${next}`, ...options.params });
+  });
+}
+
+function cronListAnswers(jobs: unknown[]) {
+  cronListMock.mockImplementation(async (options: { respond: Respond }) => {
+    options.respond(true, { jobs, total: jobs.length, offset: 0, limit: 200, hasMore: false, nextOffset: null });
+  });
+}
+
 beforeEach(() => {
+  process.env.BRANCH_STATE_DIR = workspace();
   createMock.mockReset();
   mutateMock.mockReset();
+  cronAddMock.mockReset();
+  cronListMock.mockReset();
+  cronAddAnswers();
+  cronListAnswers([]);
   mutateMock.mockImplementation(async (params: { mutate: (d: Record<string, any>) => void }) => {
     params.mutate(draft.current);
     return {};
@@ -168,7 +193,7 @@ describe("trunks.template.create", () => {
     expect(String(respond.mock.calls[0]?.[2]?.message ?? "")).toContain("could not be applied");
   });
 
-  it("reports skills, a model family and automations from a template as warnings, not failures", async () => {
+  it("reports missing skills and a model family as warnings, not failures, and adds the routines", async () => {
     const dir = workspace();
     createAnswers(dir);
     const file = templateFile({
@@ -184,8 +209,174 @@ describe("trunks.template.create", () => {
     expect(payload.warnings).toEqual([
       expect.stringContaining("is not installed here"),
       expect.stringContaining("Model family"),
-      expect.stringContaining("Automations in this template were not created"),
     ]);
+    expect(cronAddMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("trunks.template.create adds routines turned off", () => {
+  it("adds each routine through cron.add for the new Trunk, turned off, and reports them", async () => {
+    createAnswers(workspace());
+    const file = templateFile({
+      automations: [
+        { name: "Morning digest", cron: "0 8 * * 1-5", prompt: "Summarize my inbox." },
+        { name: "Weekly review", cron: "0 9 * * 1", prompt: "Review the week." },
+      ],
+    });
+    const { respond, done } = call("trunks.template.create", { templatePath: file });
+    await done;
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(cronAddMock).toHaveBeenCalledTimes(2);
+    expect(cronAddMock.mock.calls[0]?.[0].params).toEqual({
+      name: "Morning digest",
+      agentId: "newagent",
+      enabled: false,
+      schedule: { kind: "cron", expr: "0 8 * * 1-5" },
+      sessionTarget: "isolated",
+      wakeMode: "now",
+      payload: { kind: "agentTurn", message: "Summarize my inbox." },
+    });
+    const payload = respond.mock.calls[0]?.[1] as { routines: unknown[]; warnings: string[] };
+    expect(payload.routines).toEqual([
+      { id: "job-1", name: "Morning digest" },
+      { id: "job-2", name: "Weekly review" },
+    ]);
+    expect(payload.warnings).toEqual([]);
+  });
+
+  it("keeps the Trunk and names a routine cron.add refuses in a warning", async () => {
+    createAnswers(workspace());
+    cronAddMock.mockImplementation(async (options: { respond: Respond }) => {
+      options.respond(false, undefined, { code: "INVALID_REQUEST", message: "invalid cron expression" });
+    });
+    const file = templateFile({ automations: [{ name: "Broken", cron: "not a cron", prompt: "Hi." }] });
+    const { respond, done } = call("trunks.template.create", { templatePath: file });
+    await done;
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+    const payload = respond.mock.calls[0]?.[1] as { routines: unknown[]; warnings: string[] };
+    expect(payload.routines).toEqual([]);
+    expect(payload.warnings).toEqual(['Routine "Broken" could not be added: invalid cron expression']);
+  });
+
+  it("says which of the template's channels this computer has set up", async () => {
+    createAnswers(workspace());
+    const cfg = { agents: { entries: {} }, channels: { telegram: { enabled: true }, slack: { enabled: false } } } as unknown as BranchConfig;
+    const file = templateFile({ connections: ["telegram", "slack", "discord"] });
+    const { respond, done } = call("trunks.template.create", { templatePath: file }, cfg);
+    await done;
+    const payload = respond.mock.calls[0]?.[1] as { connections: unknown };
+    expect(payload.connections).toEqual([
+      { id: "telegram", ready: true },
+      { id: "slack", ready: false },
+      { id: "discord", ready: false },
+    ]);
+  });
+});
+
+describe("trunks.template catalog", () => {
+  it("lists the three bundled templates", async () => {
+    const { respond, done } = call("trunks.template.list", {});
+    await done;
+    const payload = respond.mock.calls[0]?.[1] as { templates: Array<{ id: string; source: string }> };
+    expect(payload.templates.map((t) => [t.id, t.source])).toEqual([
+      ["builder", "bundled"],
+      ["inbox-helper", "bundled"],
+      ["researcher", "bundled"],
+    ]);
+  });
+
+  it("keeps a pasted template in the catalog, lists it as imported, and creates from its catalog id", async () => {
+    createAnswers(workspace());
+    const template = JSON.parse(readFileSync(templateFile({ name: "Night Shift", automations: [{ name: "Prep", cron: "0 6 * * *", prompt: "Prep my morning." }] }), "utf8"));
+    const first = call("trunks.template.create", { template });
+    await first.done;
+    const created = first.respond.mock.calls[0]?.[1] as { templateId: string };
+    expect(created.templateId).toBe("imported:night-shift");
+    const list = call("trunks.template.list", {});
+    await list.done;
+    const templates = (list.respond.mock.calls[0]?.[1] as { templates: Array<Record<string, unknown>> }).templates;
+    expect(templates.at(-1)).toEqual({
+      id: "imported:night-shift",
+      source: "imported",
+      name: "Night Shift",
+      description: "",
+      skills: 0,
+      routines: 1,
+      connections: [],
+    });
+    createAnswers(workspace());
+    const again = call("trunks.template.create", { templateId: "imported:night-shift" });
+    await again.done;
+    expect(again.respond.mock.calls[0]?.[0]).toBe(true);
+    expect((again.respond.mock.calls[0]?.[1] as Record<string, unknown>).templateId).toBeUndefined();
+  });
+
+  it("refuses an imported id that tries to leave the catalog folder", async () => {
+    const { respond, done } = call("trunks.template.create", { templateId: "imported:../secrets" });
+    await done;
+    expect(respond.mock.calls[0]?.[0]).toBe(false);
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("answers a damaged link with one plain error and creates nothing", async () => {
+    const { respond, done } = call("trunks.template.create", { link: "branch-template:1:%%%" });
+    await done;
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond.mock.calls[0]?.[0]).toBe(false);
+    expect(createMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("trunks.template export then import on another computer", () => {
+  it("recreates the Trunk: persona, skills, routines turned off and the channel to set up, with no secrets or paths", async () => {
+    const home = workspace();
+    writeFileSync(path.join(home, "AGENTS.md"), `# Night Shift\n\nWork overnight. Notes live in ${home}.\n\n## Anti-jobs\n- Never send email.\n`);
+    writeFileSync(path.join(home, "SOUL.md"), "Calm.\n");
+    const cfg = {
+      agents: { entries: { night: { name: "Night Shift", workspace: home, skills: ["apple-notes"] } } },
+      bindings: [{ agentId: "night", match: { channel: "telegram", accountId: "personal-bot" } }],
+    } as unknown as BranchConfig;
+    cronListAnswers([
+      { id: "a", name: "Morning digest", effectiveAgentId: "night", schedule: { kind: "cron", expr: "0 7 * * *", tz: "Europe/Paris" }, payload: { kind: "agentTurn", message: `Read ${home}/inbox.md and summarize.` }, delivery: { mode: "announce", to: "12345" } },
+      { id: "b", name: "Leaky", effectiveAgentId: "night", schedule: { kind: "cron", expr: "0 9 * * *" }, payload: { kind: "agentTurn", message: "Use token ghp_abcdefghijklmnopqrstuvwxyz0123456789 to post." } },
+      { id: "c", name: "Ping", effectiveAgentId: "night", schedule: { kind: "every", everyMs: 60000 }, payload: { kind: "agentTurn", message: "Ping." } },
+      { id: "d", name: "Other Trunk", effectiveAgentId: "main", schedule: { kind: "cron", expr: "0 9 * * *" }, payload: { kind: "agentTurn", message: "Not mine." } },
+    ]);
+    const exported = call("trunks.template.export", { agentId: "night" }, cfg);
+    await exported.done;
+    expect(exported.respond.mock.calls[0]?.[0]).toBe(true);
+    expect(cronListMock.mock.calls[0]?.[0].params).toMatchObject({ agentId: "night", includeDisabled: true });
+    const shared = exported.respond.mock.calls[0]?.[1] as { link: string; template: Record<string, unknown>; warnings: string[] };
+    const text = JSON.stringify(shared);
+    expect(text).not.toContain(home);
+    expect(text).not.toContain("ghp_");
+    expect(text).not.toContain("personal-bot");
+    expect(text).not.toContain("12345");
+    expect(shared.template.automations).toEqual([{ name: "Morning digest", cron: "0 7 * * *", prompt: "Read <workspace>/inbox.md and summarize." }]);
+    expect(shared.template.connections).toEqual(["telegram"]);
+    expect(shared.warnings).toEqual([
+      expect.stringContaining("looks like it contains a secret"),
+      'Routine "Ping" is not a scheduled prompt, so the template leaves it out.',
+    ]);
+
+    // Another computer: a fresh state folder and workspace, no channels set up.
+    process.env.BRANCH_STATE_DIR = workspace();
+    const target = workspace();
+    createAnswers(target);
+    cronAddMock.mockClear();
+    const imported = call("trunks.template.create", { link: shared.link });
+    await imported.done;
+    expect(imported.respond.mock.calls[0]?.[0]).toBe(true);
+    expect(readFileSync(path.join(target, "AGENTS.md"), "utf8")).toContain("- Never send email.");
+    expect(readFileSync(path.join(target, "SOUL.md"), "utf8")).toBe("Calm.\n");
+    expect(cronAddMock).toHaveBeenCalledTimes(1);
+    expect(cronAddMock.mock.calls[0]?.[0].params).toMatchObject({ name: "Morning digest", enabled: false, agentId: "newagent" });
+    expect(imported.respond.mock.calls[0]?.[1]).toMatchObject({
+      templateId: "imported:night-shift",
+      routines: [{ id: "job-1", name: "Morning digest" }],
+      connections: [{ id: "telegram", ready: false }],
+    });
   });
 });
 

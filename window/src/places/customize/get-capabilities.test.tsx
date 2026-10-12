@@ -23,6 +23,13 @@ const FIXTURE: Record<string, unknown> = {
     { id: "irc", catalog: { name: "IRC", summary: "Chat over IRC", permissions: { ...NONE, network: true, files: "workspace" } }, local: { installed: false, action: "install", install: { source: "clawhub", packageName: "irc-plugin" } } },
   ] },
   "skills.search": { results: [{ slug: "calendar-sync", displayName: "Calendar sync", summary: "Sync events", permissions: NONE }] },
+  "trunks.template.list": { templates: [
+    { id: "builder", source: "bundled", name: "Builder", description: "Edits a project's files", skills: 0, routines: 0, connections: [] },
+    { id: "inbox-helper", source: "bundled", name: "Inbox Helper", description: "Sorts mail", skills: 0, routines: 0, connections: [] },
+    { id: "researcher", source: "bundled", name: "Researcher", description: "Finds sources", skills: 0, routines: 0, connections: [] },
+    { id: "imported:night-shift", source: "imported", name: "Night Shift", description: "Works overnight", skills: 1, routines: 2, connections: ["telegram"] },
+  ] },
+  "trunks.template.create": { ok: true, agentId: "night-shift", routines: [{ id: "j1", name: "Morning digest" }, { id: "j2", name: "Weekly review" }], connections: [{ id: "telegram", ready: false }, { id: "slack", ready: true }], warnings: [] },
 };
 
 let root: Root | null = null;
@@ -69,7 +76,7 @@ describe("Get capabilities", () => {
 
   it("shows the coming-later state on the tabs that are not built", async () => {
     await open();
-    for (const name of ["Connectors", "Trunk templates", "Automations"]) {
+    for (const name of ["Connectors", "Automations"]) {
       await tab(name);
       expect(rows()).toHaveLength(0);
       expect(host.textContent).toContain("Coming in a later update.");
@@ -123,6 +130,62 @@ describe("Get capabilities", () => {
     await tab("Plugins");
     expect(rowNamed("Slack")?.dataset.tag).toBe("Installed");
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("offline");
+  });
+});
+
+describe("Get capabilities › Trunk templates", () => {
+  const templateRows = () => [...host.querySelectorAll<HTMLElement>('[data-testid="template-row"]')];
+
+  it("lists the bundled templates and the imported ones", async () => {
+    await open();
+    await tab("Trunk templates");
+    expect(templateRows().map(r => [r.querySelector("b")?.textContent, r.dataset.source])).toEqual([
+      ["Builder", "bundled"], ["Inbox Helper", "bundled"], ["Researcher", "bundled"], ["Night Shift", "imported"],
+    ]);
+    expect(templateRows()[3]?.textContent).toContain("2 routines · talks on telegram");
+    expect(visibleDevNotes(host)).toEqual([]);
+  });
+
+  it("creates a Trunk from a catalog template and says its routines are off until approved", async () => {
+    const request = await open();
+    await tab("Trunk templates");
+    await click(button(templateRows()[3]!, "Create Trunk"));
+    expect(request).toHaveBeenCalledWith("trunks.template.create", { templateId: "imported:night-shift" });
+    const result = document.querySelector('[data-testid="template-result"]');
+    expect(result?.textContent).toContain("Its 2 routines are turned off until you approve them. Turn each on in Automations.");
+    expect(result?.querySelector('[data-testid="template-connections"]')?.textContent).toContain("It talks on telegram, which is not set up on this computer yet.");
+    expect(result?.textContent).toContain("Already set up here: slack.");
+  });
+
+  it("imports a pasted link with one tap", async () => {
+    const request = await open();
+    await tab("Trunk templates");
+    await type(host.querySelector<HTMLInputElement>('input[aria-label="Template link"]')!, "  branch-template:1:abc  ");
+    await click(button(host.querySelector('[data-testid="template-import"]')!, "Import"));
+    expect(request).toHaveBeenCalledWith("trunks.template.create", { link: "branch-template:1:abc" });
+    expect(document.querySelector('[data-testid="template-result"]')).toBeTruthy();
+  });
+
+  it("explains pasted text that is neither a link nor a template, and sends nothing", async () => {
+    const request = await open();
+    await tab("Trunk templates");
+    await type(host.querySelector<HTMLInputElement>('input[aria-label="Template link"]')!, "hello");
+    await click(button(host.querySelector('[data-testid="template-import"]')!, "Import"));
+    expect(request).not.toHaveBeenCalledWith("trunks.template.create", expect.anything());
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Paste a template link");
+  });
+
+  it("imports a picked template file as the template itself", async () => {
+    const request = await open();
+    await tab("Trunk templates");
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="Import a template file"]')!;
+    const template = { format: "branch.trunk-template", version: 1, name: "Night Shift", persona: { agentsMd: "# Night" }, skills: [], toolsets: {}, permissions: [] };
+    const file = new File([JSON.stringify(template)], "night-shift.branch.trunk-template.json", { type: "application/json" });
+    Object.defineProperty(input, "files", { value: [file] });
+    await act(async () => { input.dispatchEvent(new Event("change", { bubbles: true })); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(request).toHaveBeenCalledWith("trunks.template.create", { template });
+    expect(document.querySelector('[data-testid="template-result"]')?.getAttribute("aria-label")).toBe("Night Shift is ready");
   });
 });
 
