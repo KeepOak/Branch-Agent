@@ -69,7 +69,7 @@ function createBenchmarkRun(overrides: Partial<BenchmarkRun> = {}): BenchmarkRun
         ),
       ),
     ),
-    turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0 },
+    turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [] },
     providerRequests: testing.summarizeProviderRequests([], 0, 0),
     turnAccounting: { launched: 8, terminalOk: 8, verified: 8 },
     agentWarmup: {
@@ -79,7 +79,7 @@ function createBenchmarkRun(overrides: Partial<BenchmarkRun> = {}): BenchmarkRun
       verified: 0,
       beforeOrdinal: 0,
       afterOrdinal: 0,
-      turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0 },
+      turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [] },
     },
     probeWarmup: { durationMs: 2, samples: [] },
     pluginMetadataScans: { count: 0, durationMs: null, totalDurationMs: 0 },
@@ -666,7 +666,7 @@ describe("gateway concurrency benchmark script", () => {
       if (delayed) {
         emitToolEvents();
       }
-      expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1 });
+      expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1, firstTokenMs: [] });
       expect(() =>
         evidence.onEvent({
           event: "session.tool",
@@ -738,8 +738,8 @@ describe("gateway concurrency benchmark script", () => {
         warmup,
       });
     }
-    expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1 });
-    expect(evidence.finish("warmup")).toEqual({ toolTurns: 1, observerModelDigestTurns: 1 });
+    expect(evidence.finish()).toEqual({ toolTurns: 1, observerModelDigestTurns: 1, firstTokenMs: [] });
+    expect(evidence.finish("warmup")).toEqual({ toolTurns: 1, observerModelDigestTurns: 1, firstTokenMs: [] });
     evidence.onEvent(toolResult(runs[0]!));
     expect(() => evidence.finish()).toThrow("duplicated");
     expect(() => evidence.finish("warmup")).toThrow("duplicated");
@@ -1005,6 +1005,113 @@ describe("gateway concurrency benchmark script", () => {
       unclassifiedLoadInference: 3,
     });
   });
+  it("records send-to-first-text latency once per turn and only for measured turns", () => {
+    const now = vi.spyOn(performance, "now");
+    try {
+      const evidence = testing.createTurnEvidence(false);
+      now.mockReturnValueOnce(1_000);
+      evidence.register("run-a", "agent:main:a");
+      now.mockReturnValueOnce(1_000);
+      evidence.register("run-w", "agent:main:w", "warmup");
+      now.mockReturnValueOnce(1_000);
+      evidence.register("run-b", "agent:main:b");
+      const text = (runId: string, delta: string) => ({
+        event: "agent",
+        payload: { runId, stream: "assistant", data: { delta } },
+      });
+      // An empty delta is not text and must not start the clock.
+      evidence.onEvent(text("run-a", ""));
+      now.mockReturnValueOnce(1_120);
+      evidence.onEvent(text("run-a", "first"));
+      // Later deltas for the same turn do not reset its first-token latency.
+      evidence.onEvent(text("run-a", "second"));
+      now.mockReturnValueOnce(1_300);
+      evidence.onEvent(text("run-b", "reply"));
+      now.mockReturnValueOnce(1_500);
+      evidence.onEvent(text("run-w", "warm"));
+
+      expect(evidence.finish()).toEqual({
+        toolTurns: 0,
+        observerModelDigestTurns: 0,
+        firstTokenMs: [120, 300],
+      });
+      expect(evidence.finish("warmup")).toEqual({
+        toolTurns: 0,
+        observerModelDigestTurns: 0,
+        firstTokenMs: [500],
+      });
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("tracks steer probe activity at accept and when each steer reaches its terminal state", async () => {
+    const now = vi.spyOn(performance, "now");
+    try {
+      const evidence = testing.createSteerProbeEvidence();
+      evidence.registerProbe("probe-a");
+      evidence.registerProbe("probe-b");
+      evidence.registerSteer("steer-a");
+      evidence.registerSteer("steer-b");
+      evidence.registerSteer("steer-c");
+      // probe-b finishes before its steer is accepted, so that probe is inactive.
+      evidence.onEvent({ event: "chat", payload: { runId: "probe-b", state: "final" } });
+      expect(evidence.probeFinished("probe-a")).toBe(false);
+      expect(evidence.probeFinished("probe-b")).toBe(true);
+      // A streamed delta is not a terminal event.
+      evidence.onEvent({ event: "chat", payload: { runId: "probe-a", state: "delta", text: "x" } });
+      expect(evidence.probeFinished("probe-a")).toBe(false);
+      now.mockReturnValueOnce(2_000);
+      evidence.onEvent({ event: "chat", payload: { runId: "steer-a", state: "final" } });
+      expect(evidence.steerTerminal("steer-a")).toEqual({ state: "final", terminalAt: 2_000 });
+      // An aborted steer records its state but is never applied.
+      now.mockReturnValueOnce(3_000);
+      evidence.onEvent({ event: "chat", payload: { runId: "steer-b", state: "aborted" } });
+      await expect(evidence.waitForSteer("steer-b", 10)).resolves.toBe("aborted");
+      expect(evidence.steerTerminal("steer-b")).toEqual({ state: "aborted", terminalAt: 3_000 });
+      // A steer that never reaches a terminal state resolves undefined at the timeout.
+      await expect(evidence.waitForSteer("steer-c", 5)).resolves.toBeUndefined();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("summarizes steer accept and applied latency for active probes with nearest-rank percentiles", () => {
+    const withSteers = createBenchmarkRun({
+      turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [10, 20, 30, 40] },
+      steers: [
+        { active: true, appliedMs: 500, terminal: "final", error: null, latencyMs: 300, ok: true },
+        { active: true, appliedMs: 100, terminal: "final", error: null, latencyMs: 100, ok: true },
+        // Inactive probes are kept out of every steer summary.
+        { active: false, appliedMs: null, terminal: null, error: null, latencyMs: 90, ok: true },
+        { active: false, appliedMs: null, terminal: null, error: "steer refused", latencyMs: 50, ok: false },
+      ],
+    });
+    const more = createBenchmarkRun({
+      turnEvidence: { toolTurns: 0, observerModelDigestTurns: 0, firstTokenMs: [50] },
+    });
+
+    const single = testing.summarizeRuns([withSteers]);
+    expect(single.firstTokenMs).toEqual({ count: 4, max: 40, p50: 20, p95: 40, p99: 40 });
+    expect(single.steerAcceptMs).toEqual({ count: 2, max: 300, p50: 100, p95: 300, p99: 300 });
+    expect(single.steerAppliedMs).toEqual({ count: 2, max: 500, p50: 100, p95: 500, p99: 500 });
+    expect(single.steerInactiveProbes).toBe(1);
+    expect(single.steerFailedRuns).toBe(1);
+
+    const combined = testing.summarizeRuns([withSteers, more]);
+    expect(combined.firstTokenMs).toEqual({ count: 5, max: 50, p50: 30, p95: 50, p99: 50 });
+    expect(combined.steerAcceptMs).toEqual({ count: 2, max: 300, p50: 100, p95: 300, p99: 300 });
+    expect(combined.steerAppliedMs).toEqual({ count: 2, max: 500, p50: 100, p95: 500, p99: 500 });
+    expect(combined.steerInactiveProbes).toBe(1);
+    expect(combined.steerFailedRuns).toBe(1);
+
+    const noSteers = testing.summarizeRuns([more]);
+    expect(noSteers.steerAcceptMs).toBeNull();
+    expect(noSteers.steerAppliedMs).toBeNull();
+    expect(noSteers.steerInactiveProbes).toBe(0);
+    expect(noSteers.steerFailedRuns).toBe(0);
+  });
+
   it("aggregates measured CPU, memory, ingress, and plugin scans without conflating their units", () => {
     const scans = (durations: number[]) => ({
       count: durations.length,

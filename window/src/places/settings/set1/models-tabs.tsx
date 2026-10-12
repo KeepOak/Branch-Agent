@@ -1,47 +1,10 @@
-// Settings › Models tabs On this computer, Second opinion and Media (§4.7.6), with their own Advanced/Technical rows.
+// Second opinion and Media inside the shared Models & accounts section.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { visible } from "../adapter";
-import { Btn, Ctl, Plist, Prow, Sec, Status, Switch } from "../kit";
+import { Btn, Ctl, Sec, Switch } from "../kit";
 import { refOf, type ModelsCtx } from "./models-data";
 
 const NONE = "Branch has no setting for this yet.";
-const contextSize = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}K-token context` : `${n}-token context`);
-
-export function LocalTab({ m, openSettings }: { m: ModelsCtx; openSettings?: (page: string) => void }) {
-  const local = m.models.filter((x) => x.local);
-  const primary = refOf(m.ownOrShared("model"));
-  const ready = local.find((x) => x.ref === primary) ?? local[0];
-  const raw = m.catalog.data?.models as { id?: string; provider?: string; contextWindow?: number }[] | undefined;
-  const ctx = ready ? raw?.find((x) => `${x.provider}/${x.id}` === ready.ref)?.contextWindow : undefined;
-  return (
-    <>
-      {ready
-        ? <Status title={`${ready.name} is ready on this computer`}>Loaded when first asked{ctx ? ` · ${contextSize(ctx)}` : ""} · nothing leaves this computer.</Status>
-        : <Status tone="idle" title="No model on this computer yet">A model here is free and private. Branch checks what fits before it offers one.</Status>}
-      {local.length ? (
-        <Sec title="">
-          <Plist>
-            {local.map((x) => (
-              <Prow key={x.ref} title={x.name} sub={[visible(x.provider), x.ref === primary ? "in use" : x.available ? "ready" : "not running"].join(" · ")}>
-                <Btn sm disabled={x.ref === primary} onClick={() => void m.cfg.set(m.own("model", "primary"), x.ref)}>Use this</Btn>
-              </Prow>
-            ))}
-          </Plist>
-        </Sec>
-      ) : null}
-      <div className="acts">{openSettings ? <Btn onClick={() => openSettings("local")}>Get another model</Btn> : null}</div>
-    </>
-  );
-}
-
-export function LocalMore({ openSettings }: { openSettings?: (page: string) => void }) {
-  return (
-    <Sec title="Will it fit on this computer?" hint="Checks models against memory, graphics memory and disk space." help="Each model is checked against this computer’s graphics memory, memory and free space.">
-      <Ctl title="Models that fit here" sub="The full list, with a fit for each, is in Settings › On this computer.">{openSettings ? <Btn sm onClick={() => openSettings("local")}>See what fits</Btn> : null}</Ctl>
-    </Sec>
-  );
-}
-
 export function SecondTab() {
   return (
     <Sec title="">

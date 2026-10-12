@@ -1,4 +1,4 @@
-// The Settings page list (DESIGN-SPEC §4.7.0 "Nav per level"), in its exact order.
+// Five Settings destinations, with searchable sections and existing deep links kept intact.
 export type Level = "regular" | "advanced" | "technical";
 
 export type SettingsGroup = { name: string; pages: { id: string; name: string }[] };
@@ -15,7 +15,7 @@ const BASE: SettingsGroup[] = [
     ],
   },
   {
-    name: "Your Trunks",
+    name: "Trunks",
     pages: [
       { id: "instructions", name: "Instructions & personality" },
       { id: "models", name: "Models" },
@@ -36,14 +36,19 @@ const BASE: SettingsGroup[] = [
     ],
   },
   {
-    name: "Data and safety",
+    name: "Data",
     pages: [
       { id: "usage", name: "Data & usage" },
       { id: "backups", name: "Backups" },
+      { id: "seasons", name: "Memory cleanup" },
+    ],
+  },
+  {
+    name: "About",
+    pages: [
+      { id: "updates", name: "Updates" },
+      { id: "self", name: "Version & self-check" },
       { id: "gateway", name: "Gateway" },
-      { id: "self", name: "About Branch" },
-      { id: "seasons", name: "Seasons" },
-      { id: "updates", name: "Updates & about" },
     ],
   },
 ];
@@ -54,13 +59,23 @@ export const LEVEL_LINES: Record<Level, string> = {
   technical: "File paths, raw keys, launch variables, config and logs.",
 };
 
-/** The groups shown at a level: "More" exists only at Advanced (Advanced) and Technical (Advanced, Developer). */
+/** Detail levels add sections inside About, never another top-level destination. */
 export function settingsGroups(level: Level): SettingsGroup[] {
   if (level === "regular") {
     return BASE;
   }
   const more = [{ id: "advanced", name: "Advanced" }, ...(level === "technical" ? [{ id: "developer", name: "Developer" }] : [])];
-  return [...BASE, { name: "More", pages: more }];
+  return BASE.map((g) => g.name === "About" ? { ...g, pages: [...g.pages, ...more] } : g);
+}
+
+/** Models, Accounts and local setup are one section rather than three competing destinations. */
+export function sectionId(page: string): string {
+  return page === "models" || page === "local" ? "accounts" : page;
+}
+
+export function settingsSections(group: SettingsGroup): { id: string; name: string }[] {
+  return group.pages.filter((p) => p.id !== "models" && p.id !== "local")
+    .map((p) => p.id === "accounts" ? { ...p, name: "Models & accounts" } : p);
 }
 
 export function pageName(id: string): string {
@@ -125,7 +140,7 @@ export type SearchGroup = { name: string; hits: SearchHit[] };
 
 /** Pages whose name or keywords match, and rows whose title, section or words match, by group (§4.7.0 Searching).
  *  Every level is searched; a result above the current level says which level shows it. At most 8 rows a page. */
-export function searchSettings(query: string, rows: SearchRow[]): SearchGroup[] {
+export function searchSettings(query: string, rows: SearchRow[], hiddenPages: readonly string[] = []): SearchGroup[] {
   const q = query.trim().toLowerCase();
   if (!q) {
     return [];
@@ -134,6 +149,7 @@ export function searchSettings(query: string, rows: SearchRow[]): SearchGroup[] 
     .map((g) => ({
       name: g.name,
       hits: g.pages
+        .filter((p) => !hiddenPages.includes(p.id))
         .map((p) => {
           const lv = ORDER.indexOf(pageLevel(p.id)) as 0 | 1 | 2;
           const hit = rows.filter((r) => r.page === p.id && `${r.title} ${r.sec ?? ""} ${r.words ?? ""}`.toLowerCase().includes(q)).slice(0, 8);

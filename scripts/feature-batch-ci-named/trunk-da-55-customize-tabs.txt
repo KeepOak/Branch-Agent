@@ -1,3 +1,4 @@
+window:src/places-nav/SettingsFrame.test.tsx
 window:src/places-nav/settings-nav.test.ts
 window:src/places/customize/customize.test.tsx
 window:src/places/library/places.test.tsx

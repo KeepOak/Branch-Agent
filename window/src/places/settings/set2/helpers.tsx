@@ -12,6 +12,6 @@ const LEDE = "Helpers a Trunk calls in for one job, then lets go.";
 export function HelpersPage(props: SettingsPageProps) {
   const trunks = useResource<Trunks>(props.engine, "agents.list");
   return <Page title={props.title} lede={LEDE}>
-    <div className="cz"><SpecialistsTab engine={props.engine} level={props.level} trunks={trunks.data?.agents ?? []} openAgents={() => props.openSettings?.("agents")} /></div>
+    <div className="cz"><SpecialistsTab running={props.running} engine={props.engine} level={props.level} trunks={trunks.data?.agents ?? []} openAgents={() => props.openSettings?.("agents")} /></div>
   </Page>;
 }
