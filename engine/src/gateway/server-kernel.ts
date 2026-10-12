@@ -25,6 +25,10 @@ import { createLazyRuntimeMethodBinder, createLazyRuntimeModule } from "../share
 import { getAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 import { createGatewayControlUiRootLifecycle } from "./server-control-ui-root.js";
 import { startGatewayCoreRuntime } from "./server-core-runtime.js";
+import {
+  formatHandoffSeconds,
+  resolveHandoffDeactivationBudget,
+} from "./server-handoff-deadline.js";
 import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import { prepareGatewayKernelRequestRuntime } from "./server-kernel-request-runtime.js";
 import { prepareGatewayLifecycle } from "./server-lifecycle.js";
@@ -40,6 +44,8 @@ const loadGatewayModelCatalogModule = createLazyRuntimeModule(
 const bindGatewayModelCatalog = createLazyRuntimeMethodBinder(loadGatewayModelCatalogModule);
 
 const log = createSubsystemLogger("gateway");
+/** The least time the state-lease release (and a failed release's restore) gets after the step-down. */
+const STATE_RELEASE_MIN_MS = 5_000;
 const logDiscovery = log.child("discovery");
 const logTailscale = log.child("tailscale");
 const logChannels = log.child("channels");
@@ -186,12 +192,27 @@ export async function prepareGatewayKernel(
         ...kernel,
         deactivate: () =>
           (deactivation ??= (async () => {
-            const deadline = Date.now() + 18_000;
+            // The step-down deadline scales with the load it must fence (#481), and the log says why.
+            const [{ getActiveGatewayRootWorkCount }, { getTotalQueueSize }] = await Promise.all([
+              import("../process/gateway-work-admission.js"),
+              import("../process/command-queue.js"),
+            ]);
+            const budget = resolveHandoffDeactivationBudget({
+              activeRuns: getActiveGatewayRootWorkCount(),
+              queuedCommands: getTotalQueueSize(),
+              env: process.env,
+            });
+            log.info(
+              `gateway handoff step-down deadline ${formatHandoffSeconds(budget.ms)} (${budget.reason})`,
+            );
+            const deadline = Date.now() + budget.ms;
+            // Releasing the state lease is quick, but must not inherit a step-down that used its whole budget.
+            let releaseDeadline = deadline;
             const beforeDeadline = async <T>(work: Promise<T>): Promise<T> => {
-              const remaining = deadline - Date.now();
+              const remaining = releaseDeadline - Date.now();
               if (remaining <= 0) {
                 throw new GatewayHandoffFatalError(
-                  "Gateway handoff deactivation exceeded 18 seconds",
+                  "Gateway handoff state release exceeded its deadline",
                 );
               }
               let timer: ReturnType<typeof setTimeout> | undefined;
@@ -203,7 +224,7 @@ export async function prepareGatewayKernel(
                       () =>
                         reject(
                           new GatewayHandoffFatalError(
-                            "Gateway handoff deactivation exceeded 18 seconds",
+                            "Gateway handoff state release exceeded its deadline",
                           ),
                         ),
                       remaining,
@@ -214,7 +235,9 @@ export async function prepareGatewayKernel(
                 clearTimeout(timer);
               }
             };
-            await beforeDeadline(sdkResourceHost.run(() => kernel.deactivate(deadline)));
+            // Every step-down step is bounded inside; an overrun rejects without fencing this engine for good.
+            await sdkResourceHost.run(() => kernel.deactivate(deadline, budget.ms));
+            releaseDeadline = Math.max(deadline, Date.now() + STATE_RELEASE_MIN_MS);
             try {
               await beforeDeadline(Promise.resolve(stateLease?.release?.()));
             } catch (error) {

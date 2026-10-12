@@ -1,5 +1,6 @@
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { waitForPredecessorAgentLeases } from "../process/session-handoff-lease-gate.js";
 import type { AgentDatabaseAdmissionRefusal } from "./agent-database-admission.js";
 
 const log = createSubsystemLogger("state/agent-admission");
@@ -138,5 +139,43 @@ export async function waitForStage<T>(params: {
       });
       params.onExpired();
     }
+  }
+}
+
+/**
+ * #951: after a handoff the previous engine may still be finishing a kept session of this agent. Its database work
+ * must end before this engine reads the agent's deletion journal or opens its databases, so this waits on that
+ * release itself (no stage clock runs meanwhile) rather than timing out against a held lock. False when startup
+ * stopped during the wait.
+ */
+export async function waitForPreviousEngineRelease(params: {
+  agentId: string;
+  refusal: AgentDatabaseAdmissionRefusal;
+  statusReason: string;
+  signal: AbortSignal;
+}): Promise<boolean> {
+  const { agentId, refusal, statusReason, signal } = params;
+  let waited = false;
+  try {
+    const { waitedMs } = await waitForPredecessorAgentLeases(agentId, {
+      signal,
+      onWaiting: (lanes) => {
+        waited = true;
+        recordStage(refusal, statusReason, "waiting for the previous engine to release it");
+        log.info("agent database preparation waits for the previous engine's session leases", {
+          agentId,
+          lanes,
+        });
+      },
+    });
+    if (waited) {
+      log.info("previous engine released the agent's sessions; preparing", { agentId, waitedMs });
+    }
+    return true;
+  } catch (error) {
+    if (signal.aborted) {
+      return false;
+    }
+    throw error;
   }
 }

@@ -28,6 +28,7 @@ import {
   openingExpiry,
   recordStage,
   StageTimeoutError,
+  waitForPreviousEngineRelease,
   waitForStage,
 } from "./agent-database-startup.stages.js";
 import { readAgentDeletionJournalStatusInWorker } from "./agent-deletion-journal.read.js";
@@ -368,6 +369,17 @@ class AgentDatabaseStartupAdmission {
           onExpired: () => recordStage(refusal, statusReason, "gateway activation"),
         });
         if (!activation || this.stopped) {
+          return;
+        }
+        // #951: no deletion-journal read or open while the previous engine still holds this agent's sessions.
+        if (
+          !(await waitForPreviousEngineRelease({
+            agentId,
+            refusal,
+            statusReason,
+            signal: this.signal,
+          }))
+        ) {
           return;
         }
         const prepare = async () => {
