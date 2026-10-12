@@ -1,0 +1,13 @@
+name: rate-limit-probe
+on:
+  pull_request:
+    paths: [".github/workflows/rate-limit-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh api rate_limit --jq ".resources.core"
+        env:
+          GH_TOKEN: ${{ github.token }}
