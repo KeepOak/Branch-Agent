@@ -161,11 +161,12 @@ function messageAttachments(m: Message): Attachment[] {
   if (!Array.isArray(facts)) return attachments;
   for (const raw of facts) {
     const fact = rec(raw);
-    const src = str(fact.path) || str(fact.url);
+    const path = str(fact.path);
+    const src = path || str(fact.url);
     const mimeType = str(fact.contentType);
     const kind = KIND_BY_TYPE[str(fact.kind)] ?? KIND_BY_TYPE[mimeType.split("/")[0]] ?? "file";
     if (!src || attachments.some((item) => item.src === src)) continue;
-    attachments.push({ kind, name: str(fact.fileName) || kind, src, kept: true,
+    attachments.push({ kind, name: str(fact.fileName) || kind, src, kept: true, ...(path ? { local: true } : {}),
       ...(mimeType ? { mimeType } : {}), ...(num(fact.sizeBytes) ? { sizeBytes: num(fact.sizeBytes) } : {}) });
   }
   return attachments;

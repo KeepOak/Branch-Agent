@@ -53,6 +53,9 @@ export type Attachment = {
   sizeBytes?: number;
   /** False when the engine left the bytes out of the history ("Not kept in the history"). */
   kept: boolean;
+  /** True when `src` is a gateway-host file path from the canonical `__branch.media` envelope. Only such
+   *  paths go through the authenticated media-ticket flow; other single-slash srcs render as before. */
+  local?: boolean;
 };
 
 export type FileChange = { path: string; added: number; removed: number; diff?: string };

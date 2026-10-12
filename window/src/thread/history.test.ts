@@ -82,6 +82,18 @@ describe("historyToBlocks: errors, notes, meta and attachments", () => {
     } }], [], "k", null);
     expect(blocks[0]).toMatchObject({ kind: "steer", attachments: [{ kind: "image", src: "media://inbound/screenshot.png" }] });
   });
+  it("marks only canonical media path facts as local, not url facts or content attachments", () => {
+    const blocks = historyToBlocks([{ role: "user", content: [{ type: "image", url: "/api/chat/media/plain.png" }], __branch: { media: [
+      { path: "/home/me/.branch/media/inbound/shot.png", contentType: "image/png" },
+      { url: "/files/other.png", contentType: "image/png" },
+    ] } }], [], "k", null);
+    const attachments = (blocks[0] as { attachments?: { src?: string; local?: boolean }[] }).attachments ?? [];
+    expect(attachments.map((a) => [a.src, a.local === true])).toEqual([
+      ["/api/chat/media/plain.png", false],
+      ["/home/me/.branch/media/inbound/shot.png", true],
+      ["/files/other.png", false],
+    ]);
+  });
   it("shows a run that failed before replying as the error block, and the engine's notes", () => {
     const blocks = historyToBlocks(
       [

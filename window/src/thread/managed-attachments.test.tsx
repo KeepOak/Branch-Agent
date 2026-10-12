@@ -58,6 +58,31 @@ describe("managed attachments", () => {
     expect(host.querySelector("img")).toBeNull();
     expect(host.textContent).toContain("Attachment unavailable");
   });
+
+  it.each([
+    "/api/chat/media/outgoing/k/plain/full",
+    "/__branch__/assistant-media?mediaTicket=existing",
+    "/files/screenshot.png",
+    "https://example.com/screenshot.png",
+    "data:image/png;base64,iVBORw0KGgo=",
+    "blob:http://127.0.0.1:19700/0b1c",
+  ])("renders an unmanaged non-local src %s directly, as before", async (src) => {
+    const engine = makeEngine();
+    engine.mediaPicture = vi.fn(async () => ({ src: "http://127.0.0.1:19700/__branch__/assistant-media?mediaTicket=wrong" }));
+    await render(engine, [{ kind: "image", name: "screenshot.png", src, kept: true }]);
+    expect(engine.mediaPicture).not.toHaveBeenCalled();
+    expect(host.querySelector(".picture img")?.getAttribute("src")).toBe(src);
+  });
+
+  it.each(["/home/me/.branch/media/inbound/shot.png", "~/.branch/media/inbound/shot.png", "C:\\Users\\me\\shot.png", "file:///home/me/shot.png"])(
+    "resolves a canonical local upload path %s through the media ticket", async (src) => {
+      const engine = makeEngine();
+      engine.mediaPicture = vi.fn(async () => ({ src: "http://127.0.0.1:19700/__branch__/assistant-media?mediaTicket=local" }));
+      await render(engine, [{ kind: "image", name: "shot.png", src, kept: true, local: true }]);
+      expect(engine.mediaPicture).toHaveBeenCalledWith(src);
+      expect(host.querySelector(".picture img")?.getAttribute("src")).toContain("mediaTicket=local");
+    });
+
   it("authorizes a persisted generated image and uses the gateway origin rather than the window origin", async () => {
     const request = vi.fn(async () => ticket());
     await render(makeEngine(request));

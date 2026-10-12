@@ -3,7 +3,11 @@ import type { WindowEngine } from "../connect/engine";
 import type { Attachment } from "./model";
 
 export const isManagedAttachment = (item: Attachment): boolean => /^artifact_managed_(?:image|media)_/.test(item.artifactId ?? "");
-export const needsAttachmentSource = (item: Attachment): boolean => isManagedAttachment(item) || /^(media:\/\/inbound\/|\/(?!\/)|~[\\/]|[A-Za-z]:[\\/]|file:)/.test(item.src ?? "");
+/** Managed artifacts, inbound media URIs, and canonical local upload paths need a ticket. Any other src
+ * (gateway-relative /api or /__branch__ URLs, http(s), data:, blob:) renders directly, as before. */
+export const needsAttachmentSource = (item: Attachment): boolean => isManagedAttachment(item)
+  || /^media:\/\/inbound\//.test(item.src ?? "")
+  || (item.local === true && /^(\/(?!\/)|~[\\/]|[A-Za-z]:[\\/]|file:)/.test(item.src ?? ""));
 export const attachmentSourceKey = (item: Attachment): string => item.artifactId ?? item.src ?? "";
 
 /** Same artifacts.download flow as engine/ui/src/api/artifact-download.ts. The RPC authorizes one artifact;
