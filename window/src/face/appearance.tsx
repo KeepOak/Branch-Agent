@@ -69,7 +69,13 @@ export function rosterPebbleLooks(
   const unique = [...new Map(trunks.map((t) => [t.name, t])).values()];
   const seen = { colour: new Map<string, number>(), shape: new Map<string, number>(), eyes: new Map<string, number>() };
   const faces = new Set<string>();
-  const hue = (colour: string) => resolve(colour).trim().toUpperCase();
+  // Each token is resolved once per roster: resolving reads the computed style, and the loops below ask again and again.
+  const resolved = new Map<string, string>();
+  const hue = (colour: string) => {
+    let value = resolved.get(colour);
+    if (value === undefined) resolved.set(colour, (value = resolve(colour).trim().toUpperCase()));
+    return value;
+  };
   const face = (l: Required<PebbleLook>) => `${hue(l.colour)}|${l.shape}|${l.eyes}`;
   const bump = (field: keyof typeof seen, value: string) => seen[field].set(value, (seen[field].get(value) ?? 0) + 1);
   // The least-used option, looking from the name's own pick, so ties keep the name's choice.

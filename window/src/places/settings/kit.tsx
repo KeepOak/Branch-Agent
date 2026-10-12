@@ -1,7 +1,7 @@
 // The Settings row kit (DESIGN-SPEC §4.7, §5.3): the preview's designed rows (.sec, .ctl, .sw, segments, .prow lists,
 // status boxes) and the save-as-you-change plumbing every page shares. Copied from the App Preview's 00-core,
 // 50-settings and 51-set1p styles; each change saves at once and reports to the frame's "Saved" line.
-import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { errorText, record, type RecordValue } from "./adapter";
@@ -16,13 +16,17 @@ export type Lv = 0 | 1 | 2;
 export type SaveReport = { saving: () => void; saved: () => void; failed: (message: string) => void };
 /** ask: starts a conversation with the default Trunk ("Learn more"); absent while no model is set up. */
 /** pins: each row's pin and General's Pinned list (absent outside the Settings frame). */
-type Kit = { level: Lv; report: SaveReport; scope: string | null; ask?: (text: string) => void; askName?: string; pins?: Pins };
+type Kit = { level: Lv; report: SaveReport; scope: string | null; ask?: (text: string) => void; askName?: string };
 const NOOP: SaveReport = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
 const KitContext = createContext<Kit>({ level: 0, report: NOOP, scope: null });
+/** The pins live in their own context: pinning a row redraws the pins, not every row on the page. */
+const PinsContext = createContext<Pins | undefined>(undefined);
 
-/** The frame provides the level, the save reporter and the "Settings for" Trunk (null = every Trunk / the default). */
-export function KitProvider({ children, ...kit }: Kit & { children: ReactNode }) {
-  return <KitContext.Provider value={kit}>{children}</KitContext.Provider>;
+/** The frame provides the level, the save reporter and the "Settings for" Trunk (null = every Trunk / the default).
+ *  The value only changes when one of those does, so a save or a frame redraw leaves the rows alone. */
+export function KitProvider({ children, level, report, scope, ask, askName, pins }: Kit & { pins?: Pins; children: ReactNode }) {
+  const kit = useMemo<Kit>(() => ({ level, report, scope, ask, askName }), [level, report, scope, ask, askName]);
+  return <KitContext.Provider value={kit}><PinsContext.Provider value={pins}>{children}</PinsContext.Provider></KitContext.Provider>;
 }
 export const useLevel = (): Lv => useContext(KitContext).level;
 export const useSaved = (): SaveReport => useContext(KitContext).report;
@@ -31,7 +35,7 @@ export const useAsk = (): ((text: string) => void) | undefined => useContext(Kit
 /** The Trunk chosen in "Settings for" (Advanced), or null for the default Trunk. */
 export const useScope = (): string | null => useContext(KitContext).scope;
 /** The pinned rows, for General's Pinned list. */
-export const usePinsKit = (): Pins | undefined => useContext(KitContext).pins;
+export const usePinsKit = (): Pins | undefined => useContext(PinsContext);
 
 /** The not-allowed state (§4.7.0): a person who may not change how Branch is set up sees these rows greyed. */
 export const NOSETUP = "Only someone who may change how Branch is set up can change this.";
@@ -163,7 +167,7 @@ const KEEP_LINE: Record<Keep, string> = { device: "This device only.", everywher
 
 /** A row's pin (UI-DESKTOP-0369): shows on hover or focus, and stays lit while the row is pinned. */
 function PinBtn({ title }: { title: string }) {
-  const pins = useContext(KitContext).pins;
+  const pins = useContext(PinsContext);
   if (!pins || title.length > PIN_MAX) return null;
   const on = pins.has(title);
   return (

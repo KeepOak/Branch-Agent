@@ -33,6 +33,14 @@ describe("a Trunk roster gets a distinct face per Trunk (DA-04)", () => {
     expect(new Set(Object.values(looks).map(face)).size).toBe(20);
   });
 
+  it("reads each colour token's theme value once per roster, not once per comparison (board #747)", () => {
+    const asked = new Map<string, number>();
+    const resolve = (colour: string) => { asked.set(colour, (asked.get(colour) ?? 0) + 1); return colour; };
+    const roster = Array.from({ length: 12 }, (_, i) => ({ name: `Trunk ${i}` }));
+    expect(rosterPebbleLooks(roster, resolve)).toEqual(rosterPebbleLooks(roster));
+    expect(Math.max(...asked.values())).toBe(1);
+  });
+
   it("draws the same faces whatever order the roster arrives in", () => {
     const names = ["Builder", "Planner", "Researcher", "Juniper"].map((name) => ({ name }));
     expect(rosterPebbleLooks(names)).toEqual(rosterPebbleLooks(names.toReversed()));

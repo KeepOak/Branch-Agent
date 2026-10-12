@@ -1,0 +1,5 @@
+window:src/face/roster-look.test.tsx
+window:src/places-nav/SettingsFrame.render-budget.test.tsx
+window:src/places-nav/SettingsFrame.test.tsx
+window:src/places/settings/config-store.test.ts
+window:src/places/settings/pins.test.tsx

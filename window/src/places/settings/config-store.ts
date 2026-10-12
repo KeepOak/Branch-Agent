@@ -38,6 +38,17 @@ export function modelSafePatch(config: unknown, path: ConfigPath, value: unknown
   return patchFor(parentPath, value === null ? parent : { primary: parent, fallbacks: value });
 }
 
+/** True when a fresh read says what the shown snapshot says in every field the rows read (the revision, whether the
+ *  file is valid, the config, its issues and write error), so the rows need not redraw. */
+export function sameSnapshot(a: ConfigSnapshot | null, b: ConfigSnapshot): boolean {
+  if (!a || a.hash !== b.hash || a.valid !== b.valid) return false;
+  try {
+    return JSON.stringify([a.config, a.issues, a.writeError]) === JSON.stringify([b.config, b.issues, b.writeError]);
+  } catch {
+    return false;
+  }
+}
+
 export class ConfigStore {
   snap: ConfigSnapshot | null = null;
   error: string | undefined;
@@ -61,7 +72,7 @@ export class ConfigStore {
   load(): Promise<void> {
     const revision = this.revision;
     this.loading ??= this.engine.request<ConfigSnapshot>("config.get", {}).then(
-      (snap) => { if (revision === this.revision) { this.snap = snap; this.error = undefined; } },
+      (snap) => { if (revision === this.revision) { if (!sameSnapshot(this.snap, snap)) this.snap = snap; this.error = undefined; } },
       (e: unknown) => { if (revision === this.revision) this.error = errorText(e); },
     ).finally(() => { this.loading = null; this.emit(); });
     return this.loading;

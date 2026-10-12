@@ -98,6 +98,20 @@ describe("ConfigStore", () => {
     expect(store.snap?.config?.agents).toEqual({ defaults: { model: "openai/gpt-6.1-sol" } });
   });
 
+  it("keeps the shown snapshot when a re-read says the same thing, so the rows do not redraw", async () => {
+    let config: Record<string, unknown> = { a: 1 };
+    const { engine } = engineWith(() => ({ hash: "h", valid: true, config, raw: String(Math.random()) }));
+    const store = new ConfigStore(engine);
+    await store.load();
+    const first = store.snap;
+    await store.load();
+    expect(store.snap).toBe(first);
+    config = { a: 2 };
+    await store.load();
+    expect(store.snap).not.toBe(first);
+    expect(store.snap?.config).toEqual({ a: 2 });
+  });
+
   it("refuses to save over a settings file with a problem", async () => {
     const { engine } = engineWith(() => ({ hash: "h", config: {}, valid: false }));
     await expect(new ConfigStore(engine).set("x", 1)).rejects.toThrow(/settings file has a problem/);

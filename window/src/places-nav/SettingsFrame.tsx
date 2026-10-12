@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { SettingsPage, SETTINGS_ROWS } from "../places/settings";
 import { KitProvider, SetupLock, type Lv, type SaveReport } from "../places/settings/kit";
@@ -14,6 +14,8 @@ import { LEVEL_LINES, levelFor, pageAtLevel, pageName, searchSettings, settingsG
 import "./settings-frame.css";
 
 const LEVEL_KEY = "branch.level";
+/** The page only redraws when its own props change, not when the frame does (search typing, a save, the shell). */
+const Page = memo(SettingsPage);
 const LEVELS: { id: Level; name: string }[] = [
   { id: "regular", name: "Regular" },
   { id: "advanced", name: "Advanced" },
@@ -81,20 +83,35 @@ function LevelControl({ level, onLevel }: { level: Level; onLevel: (l: Level) =>
 }
 
 type SaveState = { kind: "saving" } | { kind: "saved" } | { kind: "failed"; message: string } | null;
-/** The save-state line (§4.7.0): "Saving…", then "Saved" with a check for 2 s, or what went wrong until the next change. */
-function useSaveState(): [SaveState, SaveReport] {
-  const [state, setState] = useState<SaveState>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const report = useMemo<SaveReport>(() => ({
-    saving: () => { clearTimeout(timer.current); setState({ kind: "saving" }); },
-    saved: () => { clearTimeout(timer.current); setState({ kind: "saved" }); timer.current = setTimeout(() => setState(null), 2000); },
-    failed: (message) => { clearTimeout(timer.current); setState({ kind: "failed", message }); },
-  }), []);
-  return [state, report];
+type SaveLineStore = { report: SaveReport; get: () => SaveState; subscribe: (fn: () => void) => () => void; stop: () => void };
+
+/** The save-state line's own store (§4.7.0): "Saving…", then "Saved" with a check for 2 s, or what went wrong until
+ *  the next change. Only the line subscribes, so a save does not redraw the whole frame and page around it. */
+function saveLineStore(): SaveLineStore {
+  let state: SaveState = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const listeners = new Set<() => void>();
+  const put = (next: SaveState) => { state = next; listeners.forEach((fn) => fn()); };
+  return {
+    report: {
+      saving: () => { clearTimeout(timer); put({ kind: "saving" }); },
+      saved: () => { clearTimeout(timer); put({ kind: "saved" }); timer = setTimeout(() => put(null), 2000); },
+      failed: (message) => { clearTimeout(timer); put({ kind: "failed", message }); },
+    },
+    get: () => state,
+    subscribe: (fn) => { listeners.add(fn); return () => { listeners.delete(fn); }; },
+    stop: () => clearTimeout(timer),
+  };
 }
 
-function SaveLine({ state }: { state: SaveState }) {
+function useSaveState(): SaveLineStore {
+  const [store] = useState(saveLineStore);
+  useEffect(() => () => store.stop(), [store]);
+  return store;
+}
+
+function SaveLine({ store }: { store: SaveLineStore }) {
+  const state = useSyncExternalStore(store.subscribe, store.get, store.get);
   return (
     <p className={`set-save${state?.kind === "failed" ? " bad" : ""}`} role="status" aria-live="polite" hidden={!state}>
       {state?.kind === "saved" ? <><Icon name="check" small />Saved</> : state?.kind === "saving" ? "Saving…" : state?.kind === "failed" ? `Not saved: ${visible(state.message)}` : null}
@@ -209,7 +226,8 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
   const [query, setQuery] = useState("");
   const [searchRow, setSearchRow] = useState<SearchRow | undefined>();
   const [scope, setScope] = useState<string | null>(null);
-  const [save, report] = useSaveState();
+  const save = useSaveState();
+  const report = save.report;
   const jump = useRowJump(page);
   // Before the engine says hello the scopes aren't known yet: nothing is greyed until they are.
   const maySetup = engine.scopes.length === 0 || engine.scopes.includes("operator.admin");
@@ -248,6 +266,10 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
   }, [report]);
   const goPin = useCallback((p: Pin) => go(p[0], { page: p[0], title: p[1], lv: p[2] }), [go]);
   const pins = usePins(engine, shown, LV[level], runSave, goPin);
+  // The shell passes a new onAsk on each of its redraws; the rows get one stable function that calls the latest.
+  const askRef = useRef(onAsk);
+  useLayoutEffect(() => { askRef.current = onAsk; }, [onAsk]);
+  const askLatest = useCallback((text: string) => askRef.current?.(text), []);
   const first = () => { const g = searchSettings(query, SETTINGS_ROWS, maySetup ? [] : HIDDEN_PAGES)[0]?.hits[0]; if (g) go(g.page.id, g.rows[0]); };
   return (
     <div className="settings" data-testid="settings">
@@ -274,7 +296,7 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
         {query.trim() ? <SearchResults query={query} level={level} shown={shown} onGo={go} hidden={maySetup ? [] : HIDDEN_PAGES} /> : <div className="set-destinations">{groups.map((g) => (
           <button key={g.name} type="button" className="set-item" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End" data-page={g.pages[0].id} aria-current={g === category ? "true" : undefined} onClick={() => go(g.pages[0].id)}>{g.name}</button>
         ))}</div>}
-        <SaveLine state={save} />
+        <SaveLine store={save} />
         <LevelControl level={level} onLevel={changeLevel} />
       </nav>
       <div className="set-scroll" ref={scrollRef}>
@@ -285,9 +307,9 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
             ))}
           </nav>
           <FileProblem engine={engine} />
-          <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : null} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>
+          <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : null} ask={hasModel && onAsk ? askLatest : undefined} askName={askName} pins={pins}>
             <SetupLock locked={!maySetup && SETUP_PAGES.includes(shown)}>
-              <SettingsPage page={shown} title={pageName(shown)} level={level} engine={engine} openSettings={go} searchSection={searchRow?.page === shown ? searchRow.sec : undefined} />
+              <Page page={shown} title={pageName(shown)} level={level} engine={engine} openSettings={go} searchSection={searchRow?.page === shown ? searchRow.sec : undefined} />
             </SetupLock>
           </KitProvider>
         </div>

@@ -36,7 +36,7 @@ export function usePins(engine: WindowEngine, page: string, level: Lv, save: (ru
   const has = useCallback((title: string) => list.some((p) => p[0] === page && p[1] === title), [list, page]);
   const unpin = useCallback((pin: Pin) => put(list.filter((p) => !(p[0] === pin[0] && p[1] === pin[1]))), [list, put]);
   const toggle = useCallback((title: string) => (has(title) ? unpin([page, title, level]) : put([...list, [page, title, level]])), [has, unpin, put, list, page, level]);
-  return { page, list, has, toggle, go, unpin };
+  return useMemo(() => ({ page, list, has, toggle, go, unpin }), [page, list, has, toggle, go, unpin]);
 }
 
 /** General's Pinned section: each pinned row with the page it lives on. */
