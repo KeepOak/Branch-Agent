@@ -68,7 +68,9 @@ const findVerifiedGatewayListenerPidsOnPortSync = vi.fn((_port: number) => [] as
 const formatGatewayPidList = vi.fn((pids: number[]) => pids.join(", "));
 const isTerminalInteractive = vi.fn(() => true);
 const offerInvalidConfigRecovery = vi.fn(
-  async (_options: { retry: () => Promise<void> }): Promise<{ status: "declined" | "recovered" }> => ({
+  async (_options: {
+    retry: () => Promise<void>;
+  }): Promise<{ status: "declined" | "recovered" }> => ({
     status: "declined",
   }),
 );
@@ -1569,10 +1571,7 @@ describe("gateway run option collisions", () => {
       }
     });
     startGatewayServer.mockRejectedValueOnce(
-      new BranchStateDatabaseSchemaMigrationRequiredError(
-        "audit-events-v2",
-        "/tmp/branch.sqlite",
-      ),
+      new BranchStateDatabaseSchemaMigrationRequiredError("audit-events-v2", "/tmp/branch.sqlite"),
     );
     parkCurrentLaunchAgentForMaintenance.mockResolvedValueOnce(true);
 
