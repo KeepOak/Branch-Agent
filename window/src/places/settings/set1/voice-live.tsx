@@ -11,7 +11,7 @@ import { Logo } from "./service";
 
 type Live = { providers: Provider[]; active?: Provider; chosen: string };
 /** The realtime services, the one live voice really uses (catalog's active one) and the one chosen in settings. */
-export function liveOf(catalog: RecordValue | undefined, cfg: Cfg): Live {
+function liveOf(catalog: RecordValue | undefined, cfg: Cfg): Live {
   const rt = group(catalog, "realtime");
   const providers = providersOf(rt.providers);
   const chosen = text(cfg.get("talk.realtime.provider") ?? "");
@@ -20,7 +20,7 @@ export function liveOf(catalog: RecordValue | undefined, cfg: Cfg): Live {
 }
 
 /** Choose a live-voice service; the engine needs it listed in talk.realtime.providers when that map has entries. */
-export function chooseLive(cfg: Cfg, id: string) {
+function chooseLive(cfg: Cfg, id: string) {
   const map = record(cfg.get("talk.realtime.providers"));
   const listed = !id || !Object.keys(map).length || id in map;
   return cfg.set("talk.realtime", { provider: id || null, model: null, speakerVoice: null, ...(listed ? {} : { providers: { [id]: {} } }) });
@@ -84,7 +84,7 @@ function GatewayRow({ cfg, live }: { cfg: Cfg; live: Live }) {
 }
 
 /** A stacked text area that saves when it loses focus (blank removes the key). */
-export function TextRow({ cfg, path, title, sub, help, ph }: { cfg: Cfg; path: string; title: string; sub: string; help?: string; ph: string }) {
+function TextRow({ cfg, path, title, sub, help, ph }: { cfg: Cfg; path: string; title: string; sub: string; help?: string; ph: string }) {
   const saved = text(cfg.get(path) ?? "");
   const [draft, setDraft] = useState(saved);
   useEffect(() => setDraft(saved), [saved]);

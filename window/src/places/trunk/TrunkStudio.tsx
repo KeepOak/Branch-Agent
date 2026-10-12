@@ -12,7 +12,7 @@ import "./trunk.css";
 type Turn = { who: "you" | "branch"; text: string };
 type Reply = { text: string; options: { label: string; reply: string }[]; approval: boolean; openAgent: string };
 
-export function readReply(result: unknown): Reply {
+function readReply(result: unknown): Reply {
   const r = rec(result), q = rec(r.question);
   const options = (Array.isArray(q.options) ? q.options : []).map(rec).map((o) => ({ label: str(o.label), reply: str(o.reply) || str(o.label) })).filter((o) => o.label);
   return {

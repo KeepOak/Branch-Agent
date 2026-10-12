@@ -23,7 +23,7 @@ export type Kept<T> = ReturnType<typeof useKept<T>>;
 export const isMac = (): boolean => typeof navigator !== "undefined" && /Mac/i.test(navigator.platform || navigator.userAgent);
 
 /** One greyed control, drawn the way the preview draws it. */
-export type GreyCtl =
+type GreyCtl =
   | { sw: boolean } | { btn: string; ghost?: boolean } | { seg: string[]; v?: string } | { pick: string[]; extra?: string }
   | { field: string; unit?: string; ph?: string } | { area: string } | { pill: string };
 export type GreyRow = { t: string; sub?: string; c?: GreyCtl; why?: string; stack?: boolean };

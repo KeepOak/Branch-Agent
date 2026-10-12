@@ -16,7 +16,7 @@ import { PILL_WORDS, type App, type CatalogueApp } from "./chatapps-data";
 type Session = { id: string; notes: string[]; opened: Set<string>; live: boolean; done: boolean };
 
 /** One channel-setup session, in the same shape as useWizard so WizardBody and Footer draw it. */
-export function useChannelWizard(engine: WindowEngine, channel: string | null) {
+function useChannelWizard(engine: WindowEngine, channel: string | null) {
   const [view, setView] = useState<WizardView>({ phase: "starting" });
   const [value, setValue] = useState<unknown>(undefined);
   const [busy, setBusy] = useState(true);

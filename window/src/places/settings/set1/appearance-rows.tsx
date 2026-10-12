@@ -4,7 +4,7 @@
 // TODO(engine-lane): TODO(desktop-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Keep, Lv, Opt, RowEntry } from "../kit";
 
-export type Kind = "sw" | "seg" | "pick";
+type Kind = "sw" | "seg" | "pick";
 export type RowSpec = { sec: string; group?: string; title: string; key: string; kind: Kind; def: string | boolean; sub?: string; help?: string; opts?: Opt[]; lv?: Lv; keep?: Keep; off?: string };
 
 /** Only on parts the window draws with a right-click Hide this (shell/shown.ts HIDEABLE). */
@@ -50,7 +50,6 @@ export const ROWS: RowSpec[] = [
 
 export const rowsOf = (sec: string) => ROWS.filter((r) => r.sec === sec);
 export const rowOf = (key: string): RowSpec => ROWS.find((r) => r.key === key) as RowSpec;
-export const DEFAULTS: Record<string, unknown> = Object.fromEntries(ROWS.map((r) => [r.key, r.def]));
 
 /** Rows the page draws by hand (galleries, buttons), for the search. */
 const OTHER: [string, string, Lv][] = [
