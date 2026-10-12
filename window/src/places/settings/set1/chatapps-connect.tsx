@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
 import { errorText, record, text, visible } from "../adapter";
-import { advance, safeSignInUrl, type WizardResult, type WizardStep } from "../account-login";
+import { advance, safeSignInUrl, type WizardAnswer, type WizardResult, type WizardStep } from "../account-login";
 import { Footer, WizardBody } from "../AccountLogin";
 import { Empty } from "../kit";
 import type { WizardView } from "../use-wizard";
@@ -16,7 +16,7 @@ import { PILL_WORDS, type App, type CatalogueApp } from "./chatapps-data";
 type Session = { id: string; notes: string[]; opened: Set<string>; live: boolean; done: boolean };
 
 /** One channel-setup session, in the same shape as useWizard so WizardBody and Footer draw it. */
-function useChannelWizard(engine: WindowEngine, channel: string | null) {
+export function useChannelWizard(engine: WindowEngine, channel: string | null) {
   const [view, setView] = useState<WizardView>({ phase: "starting" });
   const [value, setValue] = useState<unknown>(undefined);
   const [busy, setBusy] = useState(true);
@@ -32,11 +32,21 @@ function useChannelWizard(engine: WindowEngine, channel: string | null) {
     setBusy(false);
     if (!r.done && r.step) { setValue(r.step.initialValue ?? (r.step.type === "multiselect" ? [] : "")); show(r.step, false); return; }
     s.current.done = true;
+    setValue(undefined);
     setChannels(r.channels ?? []);
     setView(r.status === "done" || (r.done && !r.error && r.status !== "cancelled" && r.status !== "error") ? { phase: "done" } : { phase: "error", message: [r.error || (r.status === "cancelled" ? "Setup was cancelled." : "Setup did not finish."), ...s.current.notes].join("\n\n") });
   };
   const fail = (e: unknown) => { if (s.current.live) { setBusy(false); setView({ phase: "error", message: errorText(e) }); } };
-  const next = (answer?: { stepId: string; value?: unknown }) => { setBusy(true); advance(engine.request.bind(engine), s.current.id, answer, (st) => show(st, true), s.current.notes).then(apply, fail); };
+  const next = (answer?: WizardAnswer) => {
+    const current = s.current;
+    if (!current.live) return;
+    setBusy(true);
+    const request: WindowEngine["request"] = (method, params) => {
+      if (!current.live || s.current !== current) return Promise.reject(new Error("Setup was closed."));
+      return engine.request(method, params);
+    };
+    advance(request, current.id, answer, st => { if (current.live && s.current === current) show(st, true); }, current.notes).then(r => { if (s.current === current) apply(r); }, e => { if (s.current === current) fail(e); });
+  };
   /** The first step comes back with wizard.start: notes and engine-run steps move on as advance() does. */
   const first = (r: WizardResult) => {
     const st = r.step;
@@ -46,20 +56,23 @@ function useChannelWizard(engine: WindowEngine, channel: string | null) {
     apply(r);
   };
   useEffect(() => {
-    const cur = s.current;
-    cur.live = true;
+    const cur: Session = { id: "", notes: [], opened: new Set(), live: true, done: false };
+    s.current = cur;
     engine.request<Record<string, unknown>>("wizard.start", { flow: "channels", ...(channel ? { channel } : {}) }).then((r) => {
       cur.id = text(r.sessionId);
-      if (cur.live) first(r as unknown as WizardResult);
+      if (cur.live && s.current === cur) {
+        if (!cur.id && r.done !== true) return fail(new Error("The engine did not return a setup session."));
+        first(r as unknown as WizardResult);
+      }
       else if (r.done !== true) void engine.request("wizard.cancel", { sessionId: cur.id }).catch(() => undefined);
-    }, fail);
+    }, e => { if (s.current === cur) fail(e); });
     return () => { cur.live = false; if (cur.id && !cur.done) void engine.request("wizard.cancel", { sessionId: cur.id }).catch(() => undefined); };
     // One session per mount; the channel never changes while it runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const answer = (v?: unknown) => { if (view.phase === "step") next(v === undefined ? { stepId: view.step.id } : { stepId: view.step.id, value: v }); };
   const cancel = () => { s.current.live = false; if (s.current.id && !s.current.done) void engine.request("wizard.cancel", { sessionId: s.current.id }).catch(() => undefined); };
-  return { view, value, setValue, busy, answer, cancel, channels };
+  return { view, value, setValue, busy, answer, cancel, channels, retry: () => next(undefined) };
 }
 
 /** Connect <app> (or any app, with no channel): the engine's setup steps, then WhatsApp's QR link when it set one up. */
