@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
@@ -71,4 +72,13 @@ it("does not offer setup on a connection without full access", async () => {
   await act(async () => telegram.click());
   expect(setup).not.toHaveBeenCalled();
   expect(host.querySelectorAll('.r1-ca-card[aria-disabled="true"]')).toHaveLength(74);
+});
+
+it("draws each chat app card on a raised surface with the preview's line, darker on hover", () => {
+  const css = readFileSync("src/screens/chatapps/chatapps.css", "utf8").replace(/\s+/g, " ");
+  const rule = (selector: string) => css.match(new RegExp(`(?:^|} )${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+  const card = rule(".r1-ca-card");
+  expect(card).toContain("border: 1px solid var(--line);");
+  expect(card).toContain("background: var(--raise);");
+  expect(rule('.r1-ca-card:hover:not([aria-disabled="true"])')).toContain("border-color: var(--line-2);");
 });
