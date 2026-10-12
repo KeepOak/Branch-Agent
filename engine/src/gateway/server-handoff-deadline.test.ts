@@ -16,7 +16,9 @@ afterEach(() => vi.useRealTimers());
 
 describe("Gateway handoff deactivation budget", () => {
   it("keeps the 18 s budget for a quiet engine", () => {
-    expect(resolveGatewayHandoffDeadline({ activeRuns: 0, queuedWrites: 0 }, { now: 1, env: {} })).toEqual({
+    expect(
+      resolveGatewayHandoffDeadline({ activeRuns: 0, queuedWrites: 0 }, { now: 1, env: {} }),
+    ).toEqual({
       deadline: 18_001,
       budgetMs: 18_000,
       reason: "0 active run(s), 0 queued session write(s)",
@@ -51,7 +53,10 @@ describe("Gateway handoff deactivation budget", () => {
     ).toMatchObject({ budgetMs: HANDOFF_DEACTIVATION_MAX_MS });
     // Not a positive number: fall back to the load-scaled budget.
     expect(
-      resolveGatewayHandoffDeadline(load, { now: 0, env: { [HANDOFF_DEACTIVATION_BUDGET_ENV]: "soon" } }),
+      resolveGatewayHandoffDeadline(load, {
+        now: 0,
+        env: { [HANDOFF_DEACTIVATION_BUDGET_ENV]: "soon" },
+      }),
     ).toMatchObject({ budgetMs: 28_000 });
   });
 
@@ -77,8 +82,12 @@ describe("Gateway handoff step deadline", () => {
 
   it("aborts non-fatally once an overrunning step settles", async () => {
     vi.useFakeTimers();
-    const work = new Promise<number>((resolve) => setTimeout(() => resolve(7), 1_500));
-    const outcome = runBeforeHandoffDeadline(work, deadlineIn(1_000)).catch((error: unknown) => error);
+    const work = new Promise<number>((resolve) => {
+      setTimeout(() => resolve(7), 1_500);
+    });
+    const outcome = runBeforeHandoffDeadline(work, deadlineIn(1_000)).catch(
+      (error: unknown) => error,
+    );
     await vi.advanceTimersByTimeAsync(1_500);
     const error = await outcome;
     expect(error).toBeInstanceOf(GatewayHandoffDeadlineError);
@@ -88,7 +97,9 @@ describe("Gateway handoff step deadline", () => {
 
   it("accepts a late success when asked to", async () => {
     vi.useFakeTimers();
-    const work = new Promise<number>((resolve) => setTimeout(() => resolve(7), 1_500));
+    const work = new Promise<number>((resolve) => {
+      setTimeout(() => resolve(7), 1_500);
+    });
     const outcome = runBeforeHandoffDeadline(work, deadlineIn(1_000), { lateSuccess: "accept" });
     await vi.advanceTimersByTimeAsync(1_500);
     await expect(outcome).resolves.toBe(7);

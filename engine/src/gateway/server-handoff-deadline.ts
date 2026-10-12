@@ -90,7 +90,9 @@ export function describeGatewayHandoffOverrun(deadline: GatewayHandoffDeadline):
   return `Gateway handoff deactivation exceeded ${seconds(deadline.budgetMs)} (budget ${deadline.budgetMs} ms: ${deadline.reason})`;
 }
 
-type Settled<T> = { settled: true; ok: true; value: T } | { settled: true; ok: false; reason: unknown };
+type Settled<T> =
+  | { settled: true; ok: true; value: T }
+  | { settled: true; ok: false; reason: unknown };
 
 async function settleWithin<T>(
   work: Promise<T>,

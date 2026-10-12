@@ -18,10 +18,10 @@ import {
 import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import { getFreePort } from "../test-utils/ports.js";
-import { prepareGatewayKernel } from "./server-kernel.js";
 import * as lazyCron from "./server-cron-lazy.js";
 import { HANDOFF_OVERRUN_SETTLE_MS } from "./server-handoff-deadline.js";
 import { GatewayHandoffFatalError } from "./server-handoff-error.js";
+import { prepareGatewayKernel } from "./server-kernel.js";
 import * as runShutdown from "./server-run-shutdown.js";
 import * as stateRuntime from "./server-runtime-state-prepare.js";
 import { startGatewayServerCore } from "./server-start.js";
@@ -232,7 +232,10 @@ describe("Gateway startup phases", () => {
         vi.useFakeTimers();
         // A loaded host: the drain needs 25 s, past the 18 s budget, but it finishes.
         vi.spyOn(cronAuthority, "drainCronReceiptAuthority").mockImplementationOnce(
-          () => new Promise<void>((resolve) => setTimeout(resolve, 25_000)),
+          () =>
+            new Promise<void>((resolve) => {
+              setTimeout(resolve, 25_000);
+            }),
         );
         const deactivation = server.deactivate().then(
           () => undefined,
@@ -289,14 +292,19 @@ describe("Gateway startup phases", () => {
 
   it("does not reopen admission when failed handoff restoration exceeds the deadline", async () => {
     await withPhaseState("gateway-phase-restore-deadline", async (port) => {
-      const server = await startGatewayServerCore(port, options("gateway-phase-restore-deadline-token"));
+      const server = await startGatewayServerCore(
+        port,
+        options("gateway-phase-restore-deadline-token"),
+      );
       try {
         await server.startupSettled;
         vi.spyOn(cronAuthority, "drainCronReceiptAuthority").mockRejectedValueOnce(
           new Error("receipt drain failed"),
         );
-        vi.spyOn(cronAuthority, "resumeCronReceiptAuthorityHostAfterFailedHandoff")
-          .mockImplementationOnce(() => new Promise(() => {}));
+        vi.spyOn(
+          cronAuthority,
+          "resumeCronReceiptAuthorityHostAfterFailedHandoff",
+        ).mockImplementationOnce(() => new Promise(() => {}));
         vi.useFakeTimers();
         const deactivation = server.deactivate();
         const rejection = expect(deactivation).rejects.toThrow(
@@ -314,14 +322,19 @@ describe("Gateway startup phases", () => {
 
   it("keeps admission fenced when handoff restoration fails", async () => {
     await withPhaseState("gateway-phase-restore-fails", async (port) => {
-      const server = await startGatewayServerCore(port, options("gateway-phase-restore-fails-token"));
+      const server = await startGatewayServerCore(
+        port,
+        options("gateway-phase-restore-fails-token"),
+      );
       try {
         await server.startupSettled;
         vi.spyOn(cronAuthority, "drainCronReceiptAuthority").mockRejectedValueOnce(
           new Error("receipt drain failed"),
         );
-        vi.spyOn(cronAuthority, "resumeCronReceiptAuthorityHostAfterFailedHandoff")
-          .mockRejectedValueOnce(new Error("receipt restore failed"));
+        vi.spyOn(
+          cronAuthority,
+          "resumeCronReceiptAuthorityHostAfterFailedHandoff",
+        ).mockRejectedValueOnce(new Error("receipt restore failed"));
         await expect(server.deactivate()).rejects.toBeInstanceOf(GatewayHandoffFatalError);
         expect(isGatewayWorkAdmissionClosed()).toBe(true);
       } finally {

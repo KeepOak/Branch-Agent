@@ -136,7 +136,10 @@ describe("Gateway handoff deactivation overrun", () => {
     const cron = {
       start: vi.fn(),
       stopAndDrainForHandoff: vi.fn(
-        () => new Promise<void>((resolve) => setTimeout(resolve, 25_000)),
+        () =>
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, 25_000);
+          }),
       ),
     };
     const { handoff, channelManager } = createHandoffFixture(cron);
@@ -199,7 +202,10 @@ describe("Gateway handoff deactivation overrun", () => {
     const cron = {
       start: vi.fn(),
       stopAndDrainForHandoff: vi.fn(
-        () => new Promise<void>((resolve) => setTimeout(resolve, 22_000)),
+        () =>
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, 22_000);
+          }),
       ),
     };
     const runs = new Map(
