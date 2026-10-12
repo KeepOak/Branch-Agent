@@ -13,11 +13,12 @@ export function useEdgeFade(ref: RefObject<HTMLElement | null>, content: RefObje
     node.style.setProperty("--edge-top", `${top}px`);
     node.style.setProperty("--edge-bottom", `${bottom}px`);
     const update = () => updateEdges(node);
-    const observer = new ResizeObserver(update);
-    observer.observe(node);
-    if (content.current) observer.observe(content.current);
+    // Without ResizeObserver (jsdom, older webviews) scroll events still drive the fades.
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(update) : null;
+    observer?.observe(node);
+    if (content.current) observer?.observe(content.current);
     node.addEventListener("scroll", update, { passive: true });
     update();
-    return () => { observer.disconnect(); node.removeEventListener("scroll", update); };
+    return () => { observer?.disconnect(); node.removeEventListener("scroll", update); };
   }, [ref, content, top, bottom]);
 }
