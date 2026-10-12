@@ -1,0 +1,2 @@
+engine:src/agents/mcp-client-sampling.test.ts
+engine:src/plugins/plugin-packs.test.ts
