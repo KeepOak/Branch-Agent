@@ -1,6 +1,6 @@
+import { Buffer } from "node:buffer";
 // From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover process-leader PPIDs and waitid candidates when optional procfs task children files are absent; admission (built owner only, no existing children) is unchanged.
 import type { ChildProcess } from "node:child_process";
-import { Buffer } from "node:buffer";
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { hasErrnoCode } from "../../infra/errno.js";
@@ -32,7 +32,10 @@ function parentPidFromStat(stat: string): number | null {
   if (close < 0) {
     return null;
   }
-  const fields = stat.slice(close + 1).trim().split(/\s+/u);
+  const fields = stat
+    .slice(close + 1)
+    .trim()
+    .split(/\s+/u);
   // fields[0] is state; fields[1] is PPID.
   if (fields.length < 2) {
     return null;
@@ -99,7 +102,11 @@ function childPidsFromParentIdentity(): number[] {
   return children;
 }
 
-function childPidsFromTaskFiles(): { pids: number[]; readableThreads: number; absentThreads: number } {
+function childPidsFromTaskFiles(): {
+  pids: number[];
+  readableThreads: number;
+  absentThreads: number;
+} {
   const children = new Set<number>();
   let readableThreads = 0;
   let absentThreads = 0;
@@ -249,7 +256,7 @@ export function acquireLinuxChildSubreaper() {
     if (observed.errno === ECHILD) {
       return false;
     }
-    fail("child wait", observed.errno);
+    return fail("child wait", observed.errno);
   };
   /** When task children files and /proc PPID scans miss a descendant, waitid still names one. */
   const childPidsFromWaitOwnership = (): number[] => {
@@ -260,7 +267,7 @@ export function acquireLinuxChildSubreaper() {
     if (observed.errno === ECHILD) {
       return [];
     }
-    fail("child wait", observed.errno);
+    return fail("child wait", observed.errno);
   };
   return {
     retainLibuvChild,

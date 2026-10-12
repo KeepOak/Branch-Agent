@@ -2,12 +2,18 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { acquireLinuxChildSubreaper } from "./linux-child-subreaper.js";
 
 function parentPid(pid: number): number | null {
   try {
     const stat = readFileSync("/proc/" + pid + "/stat", "utf8");
-    return Number(stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/u)[1]);
+    return Number(
+      stat
+        .slice(stat.lastIndexOf(")") + 1)
+        .trim()
+        .split(/\s+/u)[1],
+    );
   } catch {
     return null;
   }
@@ -62,12 +68,12 @@ if (mode === "existing-child") {
   const orphan = Number(printed);
   const deadline = Date.now() + 5_000;
   while (parentPid(orphan) !== process.pid && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await delay(10);
   }
   const adopted = parentPid(orphan) === process.pid;
   let extinct = owner.drain("SIGTERM");
   while (!extinct && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await delay(20);
     extinct = owner.drain("SIGTERM");
   }
   const orphanAlive = alive(orphan);
