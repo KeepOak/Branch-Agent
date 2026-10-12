@@ -1,0 +1,6 @@
+.g-ctl   { background: var(--gc-fill); backdrop-filter: var(--gc-blur); -webkit-backdrop-filter: var(--gc-blur);
+           border: .5px solid var(--gc-edge); box-shadow: inset 0 1px 0 var(--gc-hi), var(--gc-sh); }
+.g-float { background: var(--gf-fill); backdrop-filter: var(--gf-blur); -webkit-backdrop-filter: var(--gf-blur);
+           border: .5px solid var(--gf-edge); box-shadow: inset 0 1px 0 var(--gf-hi), var(--gf-sh); }
+.g-chip  { background: var(--gk-chip); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi); }
+.g-chip[aria-selected="true"], .g-chip[aria-current="true"] { background: var(--gk-on); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi), var(--gk-sh-sel); }
