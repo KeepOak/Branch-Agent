@@ -79,8 +79,21 @@ export async function certifySessionCanonicalValidationPending(
       ...(isGatewayExternallySupervised(sourceEnv) ? { BRANCH_SUPERVISOR_MODE: "external" } : {}),
     };
     const databasePath = readBranchAgentDatabaseIdentity(database).filename;
+    // Retained records still consume the database's allowance on every restart.
+    // Keep newly quarantined rows separate so the warning describes this drain only.
+    let previouslyQuarantinedRows = 0;
     if (policy.quarantineInvalidRows) {
       retireAbsentSessionRowQuarantines(database.db, { env, databasePath });
+      try {
+        previouslyQuarantinedRows = listBranchSessionRowQuarantineKeys({
+          env,
+          databasePath,
+        }).length;
+      } catch {
+        // An unreadable store cannot establish an allowance. Admit no new quarantines,
+        // preserving the worker's original requires-repair refusal for an invalid row.
+        previouslyQuarantinedRows = MAX_STARTUP_QUARANTINED_SESSION_ROWS;
+      }
     }
     const readiness = runSqliteReadOperationSync(
       database.db,
@@ -145,7 +158,9 @@ export async function certifySessionCanonicalValidationPending(
                             ? {
                                 quarantineInvalidRows: Math.max(
                                   0,
-                                  MAX_STARTUP_QUARANTINED_SESSION_ROWS - quarantinedRows,
+                                  MAX_STARTUP_QUARANTINED_SESSION_ROWS -
+                                    previouslyQuarantinedRows -
+                                    quarantinedRows,
                                 ),
                               }
                             : {}),

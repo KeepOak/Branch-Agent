@@ -393,22 +393,24 @@ it("refuses with the original error when the quarantine record cannot be written
     }
     fs.mkdirSync(storePath, { recursive: true });
 
-    const refused = startup(env);
-    await expect(refused.run).rejects.toThrow(`${REPAIR} for ${brokenKey}`);
-    expect(refused.handoffDatabase).not.toHaveBeenCalled();
-    expect(entryValid(db, brokenKey)).toEqual({ entry_valid: 0 });
-    expect(isPending(db, brokenKey)).toBe(true);
-
-    fs.rmSync(storePath, { recursive: true });
-    if (hadStore) {
-      fs.renameSync(savedStorePath, storePath);
+    try {
+      const refused = startup(env);
+      await expect(refused.run).rejects.toThrow(`${REPAIR} for ${brokenKey}`);
+      expect(refused.handoffDatabase).not.toHaveBeenCalled();
+      expect(entryValid(db, brokenKey)).toEqual({ entry_valid: 0 });
+      expect(isPending(db, brokenKey)).toBe(true);
+    } finally {
+      fs.rmSync(storePath, { recursive: true });
+      if (hadStore) {
+        fs.renameSync(savedStorePath, storePath);
+      }
     }
     await expect(startup(env).run).resolves.toBeUndefined();
     expect(listBranchSessionRowQuarantines(env)).toHaveLength(1);
   });
 });
 
-it("counts invalid rows across batches against one startup cap", async () => {
+it("counts retained invalid rows across batches and restarts against one database cap", async () => {
   await withBranchTestState({ scenario: "empty" }, async ({ env, writeConfig }) => {
     await writeConfig(cfg);
     // 140 pending keys need two 128-row batches; keys sort by their padded index.
@@ -441,7 +443,21 @@ it("counts invalid rows across batches against one startup cap", async () => {
       expect(isPending(db, key)).toBe(true);
     }
 
-    // Doctor repairs one second-batch row; the remaining three fit the next start's cap.
+    // A restart must still count the five retained quarantines, not admit four more.
+    const restarted = startup(env);
+    await expect(restarted.run).rejects.toThrow(REPAIR);
+    expect(restarted.handoffDatabase).not.toHaveBeenCalled();
+    expect(
+      listBranchSessionRowQuarantines(env)
+        .map(({ sessionKey }) => sessionKey)
+        .toSorted(),
+    ).toEqual(firstBatch);
+    for (const key of secondBatch) {
+      expect(entryValid(db, key)).toEqual({ entry_valid: 0 });
+      expect(isPending(db, key)).toBe(true);
+    }
+
+    // Doctor repairs one second-batch row; five retained plus three new rows fit the cap.
     db.prepare("UPDATE session_nodes SET entry_json = rtrim(entry_json) WHERE session_key = ?").run(
       secondBatch[0]!,
     );
