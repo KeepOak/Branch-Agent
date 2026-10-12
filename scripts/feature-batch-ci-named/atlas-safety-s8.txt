@@ -1,0 +1,7 @@
+engine:src/safety/approval-categories.behaviour.test.ts
+engine:src/safety/approval-outcomes.behaviour.test.ts
+engine:src/safety/authority-revision.behaviour.test.ts
+engine:src/safety/home-control-guard.behaviour.test.ts
+engine:src/safety/permission-narrowing.behaviour.test.ts
+engine:src/safety/tool-contract-dry-run.behaviour.test.ts
+engine:src/safety/trunk-permission-defaults.behaviour.test.ts
