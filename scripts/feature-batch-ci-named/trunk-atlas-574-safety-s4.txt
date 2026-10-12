@@ -1,0 +1,6 @@
+engine:src/agents/bash-tools.exec-host-gateway.test.ts
+engine:src/safety/send-consent.test.ts
+engine:src/safety/untrusted-context-tracker.test.ts
+engine:src/secrets/store/secret-store-encryption.test.ts
+engine:src/secrets/store/secret-store-keychain-process.test.ts
+engine:src/secrets/store/secret-store-master-key.behaviour.test.ts
