@@ -340,7 +340,11 @@ function readQuarantineSchemaVersion(database: DatabaseSync, storePath: string):
   return userVersion;
 }
 
-function withQuarantineWriter<T>(env: NodeJS.ProcessEnv, operation: (db: DatabaseSync) => T): T {
+/** Open the private-mode quarantine store for one write; shared by row-level quarantines. */
+export function withQuarantineWriter<T>(
+  env: NodeJS.ProcessEnv,
+  operation: (db: DatabaseSync) => T,
+): T {
   const storePath = resolveQuarantineStorePath(env);
   const existed = existsSync(storePath);
   ensureQuarantineStoreDirectory(storePath);
