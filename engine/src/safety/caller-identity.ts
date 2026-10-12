@@ -12,8 +12,10 @@ import type { GatewayClient } from "../gateway/server-methods/client-types.js";
  * local-operator: another authenticated caller on this computer that is not the owner.
  * paired-door: a caller off this computer that signed in with a paired device key (phones, paired doors).
  * remote: any other authenticated caller that is not on this computer.
- * The window reconnects on its own stored device key over this computer's direct transport; that is still the
- * window, so a device key only makes a paired door when the connection is not local.
+ * The window reconnects on its own stored device key over this computer's direct transport. That is still the
+ * window only when the handshake attested the key as the window's own (`internal.localWindowDevice`: paired by
+ * same-host local approval). Any other device key is a paired door, even over loopback, because a phone or door
+ * can reach loopback through a tunnel or forwarder.
  */
 export type GatewayCallerKind =
   | "in-process"
@@ -77,8 +79,11 @@ function resolveAgentCaller(client: GatewayClient): GatewayCaller | undefined {
 }
 
 function resolveKind(client: GatewayClient, owner: boolean, local: boolean): GatewayCallerKind {
+  if (client.isDeviceTokenAuth && !(local && client.internal?.localWindowDevice === true)) {
+    return "paired-door";
+  }
   if (!local) {
-    return client.isDeviceTokenAuth ? "paired-door" : "remote";
+    return "remote";
   }
   return owner ? "owner-window" : "local-operator";
 }

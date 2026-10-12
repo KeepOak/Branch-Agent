@@ -14,6 +14,7 @@ type Caller =
   | "owner-device"
   | "owner-phone-key"
   | "owner-remote"
+  | "owner-phone-loopback"
   | "teammate"
   | "agent";
 
@@ -44,6 +45,15 @@ function clientFor(caller: Caller): GatewayClient {
     return {
       ...base,
       internal: { isLocalClient: true, authenticatedOperator: true },
+      authenticatedUserProfile: { profileId: GATEWAY_OWNER_PROFILE_ID },
+    } as unknown as GatewayClient;
+  }
+  if (caller === "owner-phone-loopback") {
+    return {
+      ...base,
+      isDeviceTokenAuth: true,
+      pairedClientId: "phone-1",
+      internal: { isLocalClient: true, authenticatedOperator: true, operatorRoleActor: { kind: "system" } },
       authenticatedUserProfile: { profileId: GATEWAY_OWNER_PROFILE_ID },
     } as unknown as GatewayClient;
   }
@@ -185,7 +195,7 @@ describe("Lockdown gateway admission", () => {
   });
 
   it("G-1614: the owner switches Lockdown off only from the window on this computer; on stays allowed", async () => {
-    for (const caller of ["owner-phone-key", "owner-remote"] as const) {
+    for (const caller of ["owner-phone-key", "owner-remote", "owner-phone-loopback"] as const) {
       const refused = await request("config.patch", OFF, caller);
       expect(refused.ran).toBe(false);
       expect(refused.error?.message).toBe("Only the window on this computer can make this change.");

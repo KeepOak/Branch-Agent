@@ -8,6 +8,7 @@ import { ConnectErrorDetailCodes } from "../../../../packages/gateway-protocol/s
 import { ErrorCodes, PROTOCOL_VERSION } from "../../../../packages/gateway-protocol/src/index.js";
 import { getRuntimeConfig } from "../../../config/io.js";
 import { captureAuthenticatedNodePairingState } from "../../../infra/device-pairing-node-state.js";
+import { getPairedDevice } from "../../../infra/device-pairing.js";
 import { compareBranchReleaseVersions } from "../../../infra/npm-registry-spec.js";
 import { upsertPresence } from "../../../infra/system-presence.js";
 import { loadVoiceWakeRoutingConfig } from "../../../infra/voicewake-routing.js";
@@ -191,6 +192,13 @@ export async function attachAuthenticatedGatewayConnect(
     assertCurrent: profileLifecycle.assertCurrent,
   });
   const rolesConfigured = Boolean(context.configSnapshot.gateway?.roles);
+  // atlas SAFETY-0194 (G-1614): a device key on loopback is the window only when its pairing was the
+  // same-host local approval. A paired phone or door reaching loopback through a tunnel stays a paired door.
+  const localWindowDevice =
+    authMethod === "device-token" &&
+    isLocalClient &&
+    Boolean(device?.id) &&
+    (await getPairedDevice(device!.id))?.approvedVia === "silent";
   const sharedSecretOperatorOwner =
     role === "operator" && (authMethod === "token" || authMethod === "password");
   // Synthetic callers bypass WS admission; ephemeral control-plane clients stay unprofiled.
@@ -359,6 +367,7 @@ export async function attachAuthenticatedGatewayConnect(
   const controlUiAdmin = authenticatedControlUi && scopes.includes(ADMIN_SCOPE);
   const internal = {
     ...(isLocalClient ? { isLocalClient: true as const } : {}),
+    ...(localWindowDevice ? { localWindowDevice: true as const } : {}),
     ...(authenticatedOperator ? { authenticatedOperator: true as const } : {}),
     ...(authenticatedControlUi ? { authenticatedControlUi: true as const } : {}),
     ...(controlUiAdmin ? { controlUiAdmin: true as const } : {}),

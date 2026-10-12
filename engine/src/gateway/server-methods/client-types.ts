@@ -72,6 +72,11 @@ export type GatewayClient = {
   internal?: {
     /** Handshake-attested direct-local transport; never accepted from wire params. */
     isLocalClient?: true;
+    /**
+     * Device-key sign-in over the direct-local transport whose pairing was the same-host local ("silent")
+     * approval: the window's own device. A phone or door key tunnelled through loopback never carries it.
+     */
+    localWindowDevice?: true;
     /** Authenticated operator transport ingress; never accepted from wire params. */
     authenticatedOperator?: true;
     /** Authenticated Control UI operator ingress; never accepted from wire params. */

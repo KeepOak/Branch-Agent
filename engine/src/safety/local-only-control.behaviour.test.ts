@@ -146,13 +146,34 @@ describe("G-1614 local-only control changes", () => {
     const window = client({
       isDeviceTokenAuth: true,
       pairedClientId: "window-1",
-      internal: { isLocalClient: true, authenticatedOperator: true },
+      internal: { isLocalClient: true, localWindowDevice: true, authenticatedOperator: true },
       authenticatedUserProfile: { profileId: GATEWAY_OWNER_PROFILE_ID, displayName: null, hasAvatar: false, updatedAt: 0 },
     });
     expect(resolveGatewayCaller(window).kind).toBe("owner-window");
     expect(authorizeLocalOnlyControlForMethod("cron.add", {}, resolveGatewayCaller(window), {})).toEqual({
       allowed: true,
     });
+  });
+
+  it("G-1614: a paired phone's key arriving over a local proxy or tunnel is a paired door and cannot switch Lockdown off", () => {
+    const tunnelledPhone = client({
+      isDeviceTokenAuth: true,
+      pairedClientId: "phone-1",
+      internal: { isLocalClient: true, authenticatedOperator: true },
+      authenticatedUserProfile: { profileId: GATEWAY_OWNER_PROFILE_ID, displayName: null, hasAvatar: false, updatedAt: 0 },
+    });
+    const callerFacts = resolveGatewayCaller(tunnelledPhone);
+    expect(callerFacts.kind).toBe("paired-door");
+    expect(
+      decideLockdownAdmission({
+        method: "config.patch",
+        params: patch({ security: { lockdown: false } }),
+        scope: "operator.admin",
+        isOwner: () => true,
+        isLocalWindow: () => isLocalWindowCaller(callerFacts, "lockdown-off"),
+      }),
+    ).toEqual({ admitted: false, reason: "local-only" });
+    expect(authorizeLocalOnlyControlForMethod("cron.add", {}, callerFacts, {}).allowed).toBe(false);
   });
 
   it("G-1614: the method gate holds even for a paired door with operator.admin", () => {

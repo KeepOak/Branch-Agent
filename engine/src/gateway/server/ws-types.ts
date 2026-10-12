@@ -69,6 +69,8 @@ export type GatewayWsClient = PluginNodeCapabilityClient & {
   internal?: {
     /** Handshake-attested direct-local transport; never accepted from wire params. */
     isLocalClient?: true;
+    /** Device-key sign-in on the direct-local transport by a same-host ("silent") paired device. */
+    localWindowDevice?: true;
     /** Authenticated Control UI operator ingress; never accepted from wire params. */
     authenticatedControlUi?: true;
     /** Authenticated Control UI admin admission; never accepted from wire params. */
