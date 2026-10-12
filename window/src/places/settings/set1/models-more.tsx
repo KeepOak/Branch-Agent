@@ -10,7 +10,7 @@ import { FallbackLists, HowTrunksWork, NewConversations, Nicknames } from "./mod
 import { MediaMore, SecondMore } from "./models-tabs";
 import { Attachments, ConnectionsTechnical, DecisionTechnical, EachModel, HelpersTechnical, HowTurnsRun, PerConnection, PerConnectionMore, Retries } from "./models-tech";
 
-export const NONE = "Branch has no setting for this yet.";
+const NONE = "Branch has no setting for this yet.";
 const MODEL_CHOICE_ENABLED = ["tools", "modelChoice", "enabled"];
 const MODEL_CHOICE_PER_TASK = ["tools", "modelChoice", "perTask"];
 

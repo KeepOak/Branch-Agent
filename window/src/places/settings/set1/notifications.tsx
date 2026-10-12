@@ -12,7 +12,7 @@ import "./notifications.css";
 type Prefs = ReturnType<typeof useNotifyPrefs>;
 type Tell = TellRow & { sub: string; key: CategoryKey };
 
-export const TELL: Tell[] = [
+const TELL: Tell[] = [
   { title: "A Trunk needs a yes", sub: "Shows on this computer and your phone.", key: "approvalRequested" },
   { title: "A Trunk asks you something", sub: "A question it can’t go on without.", key: "agentQuestion" },
   { title: "A long task finishes", sub: "When a Trunk finishes its work.", key: "agentFinished" },
@@ -22,7 +22,7 @@ export const TELL: Tell[] = [
 
 const HOURS = ["6 PM", "7 PM", "8 PM", "9 PM", "10 PM", "11 PM", "12 AM", "1 AM", "5 AM", "6 AM", "7 AM", "8 AM", "9 AM"];
 const toMinute = (h: string) => { const [n, ap] = h.split(" "); return ((Number(n) % 12) + (ap === "PM" ? 12 : 0)) * 60; };
-export function hourLabel(minute: number): string {
+function hourLabel(minute: number): string {
   const h = Math.floor(minute / 60), m = minute % 60, h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "AM" : "PM"}`;
 }

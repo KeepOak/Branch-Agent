@@ -10,7 +10,7 @@ const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is st
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
 export type Profile = { id: string; name: string; emails: string[]; role?: string; hasAvatar: boolean; owner: boolean };
-export function profileOf(p: RecordValue): Profile {
+function profileOf(p: RecordValue): Profile {
   const id = str(p.id);
   const name = str(p.displayName) || str(record(p.githubIdentity).login) || strs(p.emails)[0] || (id === OWNER_ID ? "Owner" : id);
   return { id, name, emails: strs(p.emails), role: str(p.role) || undefined, hasAvatar: p.hasAvatar === true, owner: id === OWNER_ID };
@@ -99,10 +99,10 @@ export function revokePlan(personDevices: string[], skip: Set<string>, paired: u
     list(d.tokens).filter((t) => t.revokedAtMs === undefined && str(t.role)).map((t) => ({ deviceId: str(d.deviceId).trim(), role: str(t.role) })));
 }
 
-export const PIC_TYPES = ["image/png", "image/jpeg", "image/webp"];
-export const PIC_MAX_FILE = 10 * 1048576;
+const PIC_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const PIC_MAX_FILE = 10 * 1048576;
 /** users.setAvatar's avatarBase64 limit (schema/users.ts). */
-export const PIC_MAX_BASE64 = 700_000;
+const PIC_MAX_BASE64 = 700_000;
 export const PIC_ERRORS = { read: "That picture couldn’t be read.", size: "Pick a picture of 10 MB or less.", big: "That picture is still too big after shrinking." };
 /** The checks made before a picture is read: its type and size. */
 export function pictureFileError(file: { type: string; size: number }): string | null {

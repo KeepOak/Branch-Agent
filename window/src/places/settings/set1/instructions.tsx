@@ -17,7 +17,7 @@ import "./instructions.css";
 import { shownWhy } from "../../../shell/shown-why";
 
 /** The preview's eight files, in its order. */
-export const FILES: [string, string][] = [
+const FILES: [string, string][] = [
   ["SOUL.md", "Who your assistant is: tone and boundaries"],
   ["IDENTITY.md", "Its name and how it introduces itself"],
   ["USER.md", "Who you are and what you prefer"],
@@ -29,7 +29,7 @@ export const FILES: [string, string][] = [
 ];
 const BOOTSTRAP: [string, string] = ["BOOTSTRAP.md", "Steps a new Trunk follows once, on its first run"];
 /** The files agents.files.get / set accept (the engine's workspace bootstrap files). */
-export const EDITABLE = new Set(["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "BOOTSTRAP.md", "MEMORY.md"]);
+const EDITABLE = new Set(["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "BOOTSTRAP.md", "MEMORY.md"]);
 
 type Trunk = { id: string; name: string };
 

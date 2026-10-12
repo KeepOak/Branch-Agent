@@ -16,7 +16,7 @@ import "./local.css";
 import { shownWhy } from "../../../shell/shown-why";
 
 const GIB = 1024 ** 3;
-export const NO_GPU = "Branch can’t read the graphics card yet.";
+const NO_GPU = "Branch can’t read the graphics card yet.";
 const NO_CATALOGUE = "Branch can’t list recommended models with their sizes yet. Each setup above picks one that fits this computer.";
 
 /** This computer, from system.info. Graphics memory isn't reported by the engine. */
@@ -35,7 +35,6 @@ export function hwOf(info: RecordValue | undefined): Hw {
 }
 
 export type Fit = "great" | "ok" | "no";
-export const FIT_WORDS: Record<Fit, string> = { great: "Runs great on your graphics card", ok: "Runs, a little slower (uses memory)", no: "Too big for this computer" };
 /** Rule 1: within graphics memory runs great; up to 90% of usable memory runs slower; above that it's too big.
  *  Usable memory: all of it on Apple silicon; with a graphics card the larger of its memory and half the memory; else half. */
 export function fitOf(bytes: number, hw: { ramGb: number; vramGb?: number; mac: boolean }): Fit {
@@ -88,7 +87,7 @@ const SVG = (d: string) => <svg viewBox="0 0 24 24" width="16" height="16" fill=
 const CPU = SVG("M7 7h10v10H7zM10 10h4v4h-4zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4");
 const LAYERS = SVG("M12 3l9 5-9 5-9-5zM3 13l9 5 9-5");
 const TERM = SVG("M4 5h16v14H4zM7 9l3 3-3 3M12 15h5");
-export const DOWNLOAD = SVG("M12 4v11M7 10l5 5 5-5M5 20h14");
+const DOWNLOAD = SVG("M12 4v11M7 10l5 5 5-5M5 20h14");
 
 type HwProps = { loading: boolean; error?: string; hw: Hw; runtimes?: string[] };
 function Hardware({ loading, error, hw, runtimes }: HwProps) {

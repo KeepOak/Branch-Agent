@@ -17,7 +17,7 @@ export function separate(roles: Roles): boolean {
 }
 
 /** Opens the People place at a tab (WindowShell's branch:navigate-place). Settings › People stays in Settings; this is the obvious way out. */
-export function openPeople(tab?: string) {
+function openPeople(tab?: string) {
   window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "people", ...(tab ? { tab } : {}) } }));
 }
 

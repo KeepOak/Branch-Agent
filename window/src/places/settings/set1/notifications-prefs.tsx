@@ -22,7 +22,7 @@ export const DEFAULT_PREFS: NotifyPrefs = {
   agentIds: [],
 };
 
-export function validZone(zone: string): boolean {
+function validZone(zone: string): boolean {
   try { new Intl.DateTimeFormat("en-US", { timeZone: zone }).format(0); return true; } catch { return false; }
 }
 const minute = (v: unknown) => Number.isInteger(v) && Number(v) >= 0 && Number(v) <= 1439;

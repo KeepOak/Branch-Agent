@@ -27,7 +27,7 @@ async function current(): Promise<{ reg: ServiceWorkerRegistration | null; sub: 
   return { reg, sub };
 }
 
-export function normalizeDevice(value: unknown): DevicePrefs {
+function normalizeDevice(value: unknown): DevicePrefs {
   const src = record(value);
   const cats = record(src.categories);
   const categories = Object.fromEntries(CATEGORY_KEYS.filter((k) => typeof cats[k] === "boolean").map((k) => [k, cats[k]]));

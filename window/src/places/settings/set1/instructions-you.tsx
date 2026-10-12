@@ -9,7 +9,7 @@ import { useResource } from "../hooks";
 import { Btn, Hint, Plist, Sec } from "../kit";
 import { AskFoot, closer, ConflictBox, lineCount, linesText, saveKeys, useDraft, useFocusText, type Doc } from "./instructions-editor";
 
-export const YOU_MAX = 4000;
+const YOU_MAX = 4000;
 
 function docOf(r: unknown): Doc {
   const v = record(r);

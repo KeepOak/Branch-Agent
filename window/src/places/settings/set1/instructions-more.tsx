@@ -9,7 +9,7 @@ import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, Hint, Pick, Sec, Seg, Switch, Val, useAsk, useLevel } from "../kit";
 
-export const NO_KEY = "Branch has no setting for this yet.";
+const NO_KEY = "Branch has no setting for this yet.";
 const none = () => undefined;
 
 export function InstructionsMore({ engine }: { engine: WindowEngine }) {

@@ -20,7 +20,7 @@ export function lineCount(t: string): number {
 export const linesText = (n: number) => `${n} ${n === 1 ? "line" : "lines"}`;
 
 /** The engine refused the save because the file changed after it was read. */
-export function isConflict(error: unknown): boolean {
+function isConflict(error: unknown): boolean {
   const type = record(record(error).details).type;
   return type === "agent_file_conflict" || type === "personal_file_conflict" || /changed since it was read/i.test(errorText(error));
 }
@@ -31,7 +31,7 @@ export async function readFile(engine: WindowEngine, agentId: string, name: stri
   return { name, path: str(f.path), content: str(f.content) ?? "", hash: str(f.hash) ?? null, missing: f.missing === true };
 }
 
-export function writeFile(engine: WindowEngine, agentId: string, name: string, content: string, on: Doc) {
+function writeFile(engine: WindowEngine, agentId: string, name: string, content: string, on: Doc) {
   if (!on.missing && !on.hash) throw new Error("The engine did not give this file’s revision. Reload before saving.");
   return engine.request("agents.files.set", { agentId, name, content, ...(on.missing ? { expectedMissing: true } : { expectedHash: on.hash }) });
 }
@@ -142,7 +142,7 @@ function Versions() {
 const Spark = () => <svg className="i s" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 3v5M12 16v5M3 12h5M16 12h5M6 6l3 3M15 15l3 3M6 18l3-3M15 9l3-3" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>;
 
 /** A small Markdown reader for the preview: headings, lists, paragraphs, `code`, **bold** and *italic*. */
-export function Markdown({ text }: { text: string }) {
+function Markdown({ text }: { text: string }) {
   const out: ReactNode[] = [];
   let items: string[] = [];
   const flush = () => { if (items.length) out.push(<ul key={out.length}>{items.map((x, i) => <li key={i}>{inline(x)}</li>)}</ul>); items = []; };
