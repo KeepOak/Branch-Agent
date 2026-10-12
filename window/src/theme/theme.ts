@@ -13,7 +13,7 @@ export function readThemeChoice(): ThemeChoice {
   }
 }
 
-export function applyTheme(choice: ThemeChoice): void {
+function applyTheme(choice: ThemeChoice): void {
   const root = document.documentElement;
   if (choice === "system") {
     root.removeAttribute("data-theme");

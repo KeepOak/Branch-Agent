@@ -59,9 +59,3 @@ export function GatewaySettings({ engine, level }: SettingsPageProps) {
     <div className="bs-actions"><button disabled={health.loading || status.loading} onClick={() => { void health.reload(); void status.reload(); }}>Check gateway</button></div><small>Recovery history and restart controls require the desktop supervisor adapter. No example events are shown as real activity.</small></Section>
   </>;
 }
-
-export function LocalModelSettings({ engine, openSettings }: SettingsPageProps) {
-  const models = useResource<RecordValue>(engine, "models.list", {includeDetails:true,preparedOnly:true});
-  const local = list(models.data?.models).filter(model => model.local === true);
-  return <Section title="On this computer"><State {...models} />{models.data && !local.length && <p>No local models were reported by the engine. Connect a local runtime before choosing a model to run here.</p>}{local.map(model => <Row key={`${text(model.provider)}/${text(model.id)}`} title={visible(model.name ?? model.id)} note={`${visible(model.provider)}${typeof model.contextWindow === "number" ? ` · ${count(model.contextWindow)} context tokens` : ""}`}><Badge good={model.available === true}>{model.available === false ? "Unavailable" : model.available === true ? "Available" : "Availability not reported"}</Badge></Row>)}<div className="bs-actions"><button disabled={models.loading} onClick={() => void models.reload()}>Refresh local models</button>{openSettings && <button onClick={() => openSettings("accounts")}>Open Accounts</button>}</div><small>Installing or downloading a runtime uses its provider setup flow. This page reads the engine's prepared local model catalog.</small></Section>;
-}
