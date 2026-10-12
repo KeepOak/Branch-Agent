@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../../connect/session";
-import { classicWindow, R1Window } from "./R1Window";
+import { r1Window, R1Window } from "./R1Window";
 vi.mock("../../thread/Thread", () => ({ Thread: ({ name }: { name: string }) => <p>{name}</p> }));
 vi.mock("../../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../places-nav/SettingsFrame", () => ({ SettingsFrame: () => <p>Settings content</p> }));
@@ -20,11 +20,14 @@ beforeEach(() => {
   host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
-it("uses the exact hidden Classic flag and query override", () => {
-  expect(classicWindow("")).toBe(false);
-  expect(classicWindow("?classic")).toBe(true);
-  localStorage.setItem("branch.classic", "1"); expect(classicWindow("")).toBe(true);
-  localStorage.setItem("branch.classic", "0"); expect(classicWindow("")).toBe(false);
+it("keeps Classic by default and opens R1 only behind the exact opt-in", () => {
+  expect(r1Window("")).toBe(false);
+  expect(r1Window("?r1")).toBe(true);
+  expect(r1Window("?r1&classic")).toBe(false);
+  localStorage.setItem("branch.r1", "true"); expect(r1Window("")).toBe(false);
+  localStorage.setItem("branch.r1", "1"); expect(r1Window("")).toBe(true);
+  expect(r1Window("?classic")).toBe(false);
+  localStorage.setItem("branch.classic", "1"); expect(r1Window("")).toBe(false); expect(r1Window("?r1")).toBe(false);
 });
 it("renders an empty disconnected engine without demo conversations", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };

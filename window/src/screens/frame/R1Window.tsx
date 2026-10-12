@@ -12,10 +12,19 @@ import { loadRoute, parseRoute, saveRoute, windowTitle, type Route } from "../..
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Popover } from "../../glass/Popover";
 
-/** Support-only escape hatch, retained for one release. */
-export function classicWindow(search = location.search): boolean {
-  if (new URLSearchParams(search).has("classic")) return true;
-  try { return localStorage.getItem("branch.classic") === "1"; } catch { return false; }
+/**
+ * The R1 frame is opt-in until the ship card (R1-11) flips the default; every install opens Classic.
+ * Opt in with `?r1` or the hidden `branch.r1` flag; `?classic` and `branch.classic` always win.
+ */
+export function r1Window(search = location.search): boolean {
+  const params = new URLSearchParams(search);
+  if (params.has("classic")) return false;
+  try {
+    if (localStorage.getItem("branch.classic") === "1") return false;
+    return params.has("r1") || localStorage.getItem("branch.r1") === "1";
+  } catch {
+    return params.has("r1");
+  }
 }
 
 /** Live connection adapter. Screen ports replace these slots without changing Frame. */
