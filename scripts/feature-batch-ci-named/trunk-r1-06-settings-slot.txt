@@ -5,7 +5,6 @@ window:src/glass/tokens.test.ts
 window:src/places/settings/set1/appearance.test.tsx
 window:src/screens/chatapps/ChatApps.test.tsx
 window:src/screens/chatapps/Manage.test.tsx
-window:src/screens/chatapps/Pairing.test.tsx
 window:src/screens/chatapps/SetupWizard.test.tsx
 window:src/screens/frame/Frame.test.tsx
 window:src/screens/frame/R1Window.test.tsx
