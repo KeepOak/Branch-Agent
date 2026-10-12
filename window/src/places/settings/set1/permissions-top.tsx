@@ -8,7 +8,7 @@ import { Dialog } from "../../../shell/Dialog";
 import { Icon } from "../../../shell/icons";
 import { useLockdown } from "../../../shell/use-lockdown";
 import { notify } from "../../../shell/notify";
-import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } from "../../../composer/mode";
+import { MODE_ROWS, blockedReason, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { platformName } from "../../../setup/steps-later";
 import { record, text, visible, type RecordValue } from "../adapter";
 import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
@@ -75,7 +75,6 @@ export function ThisPc() {
 
 /** The engine's exec mode for each composer mode (session permissionMode → tools.exec.mode). */
 const EXEC_OF: Record<EngineMode, string> = { workspace: "auto", guarded: "ask", "read-only": "deny", full: "full" };
-const MODE_OF: Record<string, EngineMode> = { auto: "workspace", ask: "guarded", deny: "read-only", full: "full" };
 
 /** The default Trunk's mode as the engine resolves it (agents.list defaultPermissionMode). */
 function defaultMode(agents: RecordValue | undefined): EngineMode | null {
