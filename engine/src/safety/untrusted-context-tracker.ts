@@ -229,12 +229,11 @@ function parseCommandTokens(command: string): string[] {
 }
 
 function checkFlagToken(
-  rawTokens: string[],
-  i: number,
+  token: string,
+  nextToken: string | undefined,
   untrustedContext: UntrustedContextData,
   detected: Set<string>,
 ): void {
-  const token = rawTokens[i];
   const lowerToken = token.toLowerCase();
   let flagToCheck = lowerToken;
   let valToCheck: string | undefined;
@@ -255,7 +254,6 @@ function checkFlagToken(
     return;
   }
   // Check if the next token is an argument for this flag and exists in untrusted tokens
-  const nextToken = rawTokens[i + 1];
   if (nextToken && !nextToken.startsWith("-") && tokens.has(nextToken.toLowerCase())) {
     detected.add(token);
     detected.add(nextToken);
@@ -326,14 +324,14 @@ export function findUntrustedFlags(
   }
   const detected = new Set<string>();
   const rawTokens = parseCommandTokens(command);
-  for (let i = 0; i < rawTokens.length; i++) {
+  rawTokens.forEach((token, i) => {
     // Check 1: Flags (starting with '-' or '--'); check 2: other arguments
-    if (rawTokens[i].startsWith("-")) {
-      checkFlagToken(rawTokens, i, untrustedContext, detected);
+    if (token.startsWith("-")) {
+      checkFlagToken(token, rawTokens[i + 1], untrustedContext, detected);
     } else {
-      checkArgumentToken(rawTokens[i], untrustedContext, detected);
+      checkArgumentToken(token, untrustedContext, detected);
     }
-  }
+  });
   return Array.from(detected);
 }
 
@@ -398,15 +396,10 @@ export function isBuildOrTestCommand(command: string): boolean {
     // Ignore and fallback
   }
   // Fallback if parsing fails or returns empty roots
-  const parts = command.trim().split(/\s+/);
-  let rootIndex = 0;
-  while (
-    rootIndex < parts.length &&
-    (parts[rootIndex].includes("=") || COMMAND_PREFIXES.has(parts[rootIndex].toLowerCase()))
-  ) {
-    rootIndex++;
-  }
-  const root = parts[rootIndex];
+  const root = command
+    .trim()
+    .split(/\s+/)
+    .find((part) => !part.includes("=") && !COMMAND_PREFIXES.has(part.toLowerCase()));
   return root ? isBuildOrTestRoot(root) : false;
 }
 
