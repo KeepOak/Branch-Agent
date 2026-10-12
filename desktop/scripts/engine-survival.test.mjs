@@ -58,8 +58,14 @@ function runUi(port, detachedEngine, logPath) {
   });
 }
 
-for (const detachedEngine of [true, false]) {
-  test(`engine ${detachedEngine ? 'with' : 'without'} detachedEngine survives the UI exit exactly as the platform requires`, async () => {
+// Each title states the result its case asserts.
+const cases = [
+  { detachedEngine: true, title: 'with detachedEngine the engine keeps serving after the UI exits' },
+  { detachedEngine: false, title: 'without detachedEngine it follows the platform rule (Windows: dies with the UI; elsewhere: keeps serving)' },
+];
+
+for (const { detachedEngine, title } of cases) {
+  test(title, async () => {
     const dir = mkdtempSync(join(tmpdir(), 'branch-engine-survival-'));
     const port = await freePort();
     let pid;
