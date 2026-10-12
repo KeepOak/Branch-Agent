@@ -23,7 +23,7 @@ export const KIND_LIST: { id: Kind; glyph: GlyphName; line: string; add?: string
   { id: "Toolsets", glyph: "grid", line: "Groups of tools a Trunk gets together" },
 ];
 
-export type Res<T> = { data: T | null; loading: boolean; error: string | null; reload: () => void };
+type Res<T> = { data: T | null; loading: boolean; error: string | null; reload: () => void };
 /** What every kind's panes read: the engine, the Trunks, whose tools are shown, and the shared reads. */
 export type ToolsCtx = {
   engine: WindowEngine;

@@ -23,7 +23,7 @@ const groupOf = (id: string): Group => (POPULAR.includes(id) ? "popular" : WORK.
 type Account = { accountId: string; name: string; configured: boolean; running: boolean; connected: boolean; lastError: string };
 export type App = { id: string; name: string; group: Group; pluginId: string; installed: boolean; enabled: boolean; install: Record<string, unknown> | null; accounts: Account[] };
 
-export function readApps(plugins: unknown, status: unknown): App[] {
+function readApps(plugins: unknown, status: unknown): App[] {
   const s = rec(status), labels = rec(s.channelLabels), accounts = rec(s.channelAccounts);
   const apps = new Map<string, App>();
   const add = (id: string, fields: Partial<App>) => {

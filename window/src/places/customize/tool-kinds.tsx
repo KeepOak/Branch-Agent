@@ -16,7 +16,7 @@ import type { ToolsCtx } from "./tools";
 
 // ---- Command-line tools ----
 type Bin = { name: string; present: boolean; skills: string[] };
-export function readBins(result: unknown): Bin[] {
+function readBins(result: unknown): Bin[] {
   const bins = new Map<string, Bin>();
   for (const s of list(rec(result).skills)) {
     const req = rec(s.requirements), miss = rec(s.missing);

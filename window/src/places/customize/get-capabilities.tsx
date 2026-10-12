@@ -17,7 +17,7 @@ import { Glyph } from "./glyphs";
 import { readPlugins, type Plugin } from "./plugins";
 import { readSkillRows, type Skill } from "./skills";
 
-export type Tag = "Bundled" | "Installed" | "Available";
+type Tag = "Bundled" | "Installed" | "Available";
 type Action = { method: string; params: Rec };
 export type GetRow = { id: string; kind: "Plugin" | "Skill"; name: string; summary: string; tag: Tag; permissions: string | null; install: Action | null; installReason: string; remove: Action | null; removeReason: string };
 
@@ -93,7 +93,7 @@ function permissionsByRow(catalog: unknown, found: unknown): Map<string, unknown
 }
 
 /** The rows for every source, Installed first, then Bundled, then Available. A source with no data contributes nothing. */
-export function buildGetRows(input: { plugins: unknown; catalog: unknown; skills: unknown; found: unknown; scope: Rec }): GetRow[] {
+function buildGetRows(input: { plugins: unknown; catalog: unknown; skills: unknown; found: unknown; scope: Rec }): GetRow[] {
   const local = readPlugins(input.plugins);
   const have = new Set(local.map(p => p.id));
   const skills = readSkillRows(input.skills);

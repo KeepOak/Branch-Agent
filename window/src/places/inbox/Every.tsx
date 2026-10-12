@@ -16,7 +16,7 @@ const START: Filters = { arch: "active", q: "", trunk: "", mins: "", max: "50", 
 const kindWord = (s: Session) => s.kind === "global" ? "Branch-wide" : s.kind === "unknown" ? "Unmatched" : s.kind === "group" || s.kind === "channel" ? "Group chat" : "Conversation";
 const when = (ms?: number) => ms === undefined ? "" : dayWord(new Date(ms)) === "Today" ? clock(new Date(ms)) : dayWord(new Date(ms));
 
-export function everyRows(list: Session[], f: Filters, level: Level, names: (id: string) => string, now = Date.now()): Session[] {
+function everyRows(list: Session[], f: Filters, level: Level, names: (id: string) => string, now = Date.now()): Session[] {
   const q = f.q.trim().toLowerCase(), max = Math.max(0, parseInt(f.max, 10) || 0), mins = parseInt(f.mins, 10);
   const out = list.filter(s => (f.arch === "archived" ? s.archived : !s.archived)
     && (s.kind !== "global" || (f.glob && shows(level, "technical"))) && (s.kind !== "unknown" || (f.unk && shows(level, "technical")))

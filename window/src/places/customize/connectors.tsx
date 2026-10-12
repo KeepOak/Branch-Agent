@@ -17,7 +17,7 @@ import type { ToolsCtx } from "./tools";
 
 type Server = { name: string; enabled: boolean; local: boolean; line: string; exclude: string[]; parallel: boolean; sslVerify: boolean };
 
-export function readServers(live: Rec, file: Rec): Server[] {
+function readServers(live: Rec, file: Rec): Server[] {
   const servers = rec(rec(live.mcp).servers);
   const written = rec(rec(file.mcp).servers);
   return Object.entries(servers).map(([name, value]) => {
@@ -61,9 +61,9 @@ export function connectorCount(ctx: ToolsCtx): number | null {
 }
 
 /** Person-facing reasons for the greyed Test it / Check for updates controls (shownWhy keeps developer notes out of sight). */
-export const NO_SERVER_WHY = "Add a server first";
-export const TEST_WHY = "This connector cannot be tested yet.";
-export const UPDATE_WHY = "This connector cannot be checked for updates yet.";
+const NO_SERVER_WHY = "Add a server first";
+const TEST_WHY = "This connector cannot be tested yet.";
+const UPDATE_WHY = "This connector cannot be checked for updates yet.";
 
 function ConnectorActs({ server, onRemove }: { server?: Server; onRemove?: () => void }) {
   const testWhy = server ? TEST_WHY : NO_SERVER_WHY;

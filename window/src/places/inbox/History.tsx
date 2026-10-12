@@ -48,7 +48,7 @@ type Win = "24h" | "7d" | "30d" | "all";
 const WINDOWS: Record<Win, [string, number]> = { "24h": ["Last 24 hours", 864e5], "7d": ["Last 7 days", 7 * 864e5], "30d": ["Last 30 days", 30 * 864e5], all: ["All time", Infinity] };
 export type Item = { s: Session; at: Date; run?: Run; who: string };
 
-export function items(data: HistoryData): Item[] {
+function items(data: HistoryData): Item[] {
   return data.sessions.filter(s => !s.helper).map(s => {
     const run = data.runs.find(r => r.sessionKey === s.key);
     const at = run?.startedAt ?? run?.finishedAt ?? s.updatedAt ?? 0;

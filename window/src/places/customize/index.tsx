@@ -13,7 +13,7 @@ import "./customize.css";
 const TABS = ["Trunks", "Tools", "Specialists", "Chat apps", "Everywhere"];
 const KINDS: string[] = KIND_LIST.map(k => k.id);
 /** "branch:place-tab" ({ place, tab }) opens a Customize tab, or Tools at one kind, from elsewhere in the window. */
-export function usePlaceTab(open: (tab: string, kind?: string) => void) {
+function usePlaceTab(open: (tab: string, kind?: string) => void) {
   const latest = useRef(open);
   latest.current = open;
   useEffect(() => {

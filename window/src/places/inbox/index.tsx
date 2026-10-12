@@ -48,7 +48,7 @@ export function useNeedsCount(engine: WindowEngine, ready = true): number {
 }
 
 /** The tab another place asks for with the window event "branch:place-tab" ({ place: "inbox", tab }). */
-export function tabFromName(name: unknown): InboxTab | null {
+function tabFromName(name: unknown): InboxTab | null {
   const n = typeof name === "string" ? name.trim().toLowerCase() : "";
   return TABS.find(t => t.id === n || t.name.toLowerCase() === n)?.id ?? null;
 }

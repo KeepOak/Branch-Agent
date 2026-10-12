@@ -20,7 +20,7 @@ const strs = (v: unknown): string[] => Array.isArray(v) ? v.filter((x): x is str
 const label = (p: Row) => str(p.displayLabel) || str(p.principalRef);
 
 /** The eleven facts, each with what was recorded and whether it was. */
-export function facts(context: Row): [string, string, string][] {
+function facts(context: Row): [string, string, string][] {
   const fact = (name: string, part: Row, value: string): [string, string, string] => [name, value, STATE[str(part.state)] ?? "Not recorded"];
   const invoker = rec(context.invoker), ingress = rec(context.ingress), rep = rec(context.representedSubject), sponsor = rec(context.sponsor);
   const def = rec(context.agentDefinition), runtime = rec(context.runtimeInstance), grants = rows(context.applicableGrants), proof = rows(context.assurance);

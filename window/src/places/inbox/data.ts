@@ -140,7 +140,7 @@ export async function loadNeedsCount(engine: WindowEngine): Promise<number> {
 /** Gateway events that refresh the Inbox. */
 export const refreshesInbox = (event: string): boolean => /^(sessions\.|chat$|cron$|.*approval\.|mentions\.changed$|question\.|device\.pair\.|node\.pair\.|plugin\.canopy\.)/.test(event);
 
-export class ActionGate {
+class ActionGate {
   private busy = false;
   async run<T>(action: () => Promise<T>): Promise<{ accepted: false } | { accepted: true; value: T }> {
     if (this.busy) return { accepted: false };
@@ -189,4 +189,3 @@ export function usePlaceData<T>(engine: WindowEngine, load: ((engine: WindowEngi
   };
   return { data, loading, error, busy, notice, refresh, act };
 }
-export type PlaceData<T> = ReturnType<typeof usePlaceData<T>>;

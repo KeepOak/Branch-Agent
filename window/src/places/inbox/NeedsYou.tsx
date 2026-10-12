@@ -91,7 +91,7 @@ function failureContext(title: string, name: string): string {
 }
 
 /** Puts a drafted message into a conversation's composer (window event "branch:compose"), then opens it. */
-export function draftTo(sessionKey: string, text: string, open: (key: string) => void): void {
+function draftTo(sessionKey: string, text: string, open: (key: string) => void): void {
   window.dispatchEvent(new CustomEvent("branch:compose", { detail: { sessionKey, text } }));
   open(sessionKey);
 }
@@ -100,7 +100,7 @@ export function draftTo(sessionKey: string, text: string, open: (key: string) =>
 export function needsCount(data: Needs | null): number {
   return data ? data.approvals.length + data.proposals.length + data.pairing.length + data.devices.length + data.nodes.length + data.questions.length : 0;
 }
-export const approvalTitle = (item: Row) => { const r = rec(item.request); return str(r.title) || str(r.commandPreview) || str(r.command) || str(r.description) || "A Trunk needs your answer"; };
+const approvalTitle = (item: Row) => { const r = rec(item.request); return str(r.title) || str(r.commandPreview) || str(r.command) || str(r.description) || "A Trunk needs your answer"; };
 
 function Cards({ data, engine, busy, act, openConversation, openPlace, openSettings }: NeedsProps) {
   const [gone, setGone] = useState<string[]>(savedDismissals);

@@ -18,7 +18,7 @@ export type ConfigState = {
   hash?: string;
 };
 
-export function readConfig(result: unknown): ConfigState {
+function readConfig(result: unknown): ConfigState {
   const r = rec(result);
   const file = rec(r.sourceConfig ?? r.parsed ?? r.config);
   return { file, live: rec(r.runtimeConfig ?? r.config ?? file), hash: str(r.hash) || undefined };
@@ -115,7 +115,7 @@ export function WhoChips({ trunks, may, toggle, reason }: { trunks: Trunk[]; may
 
 export type Perm = "allowed" | "ask" | "never";
 const PERMS: { id: Perm; name: string }[] = [{ id: "allowed", name: "Allowed" }, { id: "ask", name: "Ask first" }, { id: "never", name: "Never" }];
-export const ASK_REASON = "Needs a per-tool ask setting in the engine.";
+const ASK_REASON = "Needs a per-tool ask setting in the engine.";
 /** One tool's row: its name and Allowed / Ask first / Never. Ask first is greyed: the engine has no per-tool ask. */
 export function PermRow({ name, value, change, disabled }: { name: string; value: Perm; change: (v: Perm) => void; disabled?: boolean }) {
   return <div className="cz-perm"><code>{name}</code>
@@ -142,7 +142,7 @@ export function ago(ms: number, now = Date.now()): string {
 }
 
 /** Two-letter initials for a logo tile. */
-export function initials(name: string): string {
+function initials(name: string): string {
   const words = name.replace(/[^\p{L}\p{N} ]/gu, " ").trim().split(/\s+/).filter(Boolean);
   return (words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? "?").slice(0, 2)).toUpperCase();
 }
