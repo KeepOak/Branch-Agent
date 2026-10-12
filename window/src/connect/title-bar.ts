@@ -9,7 +9,7 @@ type TitleBarBridge = { set(overlay: TitleBarOverlay): void };
 /** The header's height when no top bar is on screen (setup, connecting): the 52 px bar less its bottom line. */
 const DEFAULT_HEIGHT = 51;
 
-export function desktopTitleBar(): TitleBarBridge | undefined {
+function desktopTitleBar(): TitleBarBridge | undefined {
   return (window as unknown as { branchDesktop?: { titleBar?: TitleBarBridge } }).branchDesktop?.titleBar;
 }
 

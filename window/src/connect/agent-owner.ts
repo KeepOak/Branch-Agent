@@ -27,7 +27,7 @@ const OWNED = new Set([
   "memory.status",
 ]);
 
-export function needsOwner(method: string): boolean {
+function needsOwner(method: string): boolean {
   return OWNED.has(method) || method.startsWith("skills.proposals.") || method.startsWith("doctor.memory.");
 }
 

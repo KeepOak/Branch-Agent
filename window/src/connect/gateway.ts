@@ -44,9 +44,9 @@ function errorCodeOf(error: unknown): string {
   return typeof code === "string" ? code : "error";
 }
 
-export const OPERATOR_ROLE = "operator";
+const OPERATOR_ROLE = "operator";
 /** The same scopes OpenClaw's own browser UI asks for (ui/src/api/gateway-connect-plan.ts, CONTROL_UI_OPERATOR_SCOPES). */
-export const OPERATOR_SCOPES = [
+const OPERATOR_SCOPES = [
   "operator.admin",
   "operator.read",
   "operator.write",
@@ -55,7 +55,7 @@ export const OPERATOR_SCOPES = [
   "operator.pairing",
 ] as const;
 /** Only what the window implements: live tool steps and exec approval cards. */
-export const CLIENT_CAPS = [GATEWAY_CLIENT_CAPS.TOOL_EVENTS, GATEWAY_CLIENT_CAPS.EXEC_APPROVALS];
+const CLIENT_CAPS = [GATEWAY_CLIENT_CAPS.TOOL_EVENTS, GATEWAY_CLIENT_CAPS.EXEC_APPROVALS];
 const CONNECT_FAILED_CLOSE_CODE = 4008;
 const PAIRING_RETRY_MS = 2000;
 /** The engine turns connects away while it starts; it says so with this reason. */

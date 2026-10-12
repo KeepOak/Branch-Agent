@@ -5,10 +5,10 @@
 import type { HelloOk } from "@branch/gateway-client/browser";
 
 /** The level everyone else on this Branch gets on a new conversation. */
-export const SAFE_VISIBILITY = "read-only" as const;
+const SAFE_VISIBILITY = "read-only" as const;
 
 /** True when the engine allows the safe level (hello.policy.allowedSessionVisibilities). */
-export function safeVisibilityAllowed(allowed: readonly string[] | undefined): boolean {
+function safeVisibilityAllowed(allowed: readonly string[] | undefined): boolean {
   return Array.isArray(allowed) && allowed.includes(SAFE_VISIBILITY);
 }
 

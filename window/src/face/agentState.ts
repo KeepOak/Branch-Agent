@@ -23,7 +23,7 @@ export const ARRIVAL_STATES: readonly AgentState[] = ["yay", "oops", "wait"];
 
 export const DONE_MS = 7000;
 export const TALK_MS = 4500;
-export const IDLE_SLEEP_MS = 120_000;
+const IDLE_SLEEP_MS = 120_000;
 
 /** A tool's kind of work: search or browse tools search, read tools read, any other tool works. */
 export function toolState(tool: string): "search" | "read" | "work" {

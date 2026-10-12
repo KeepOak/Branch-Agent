@@ -1096,20 +1096,18 @@ export async function loadMediaPicture(
 
 /** Whether the history holds your message of this run: the engine keys it "<runId>:user" (readMeta `runKey`); a
  *  history without keys counts it kept when its last message from you has the same words. */
-export function keptInHistory(history: readonly Block[], runId: string, text: string): boolean {
+function keptInHistory(history: readonly Block[], runId: string, text: string): boolean {
   const mine = history.filter((b): b is Extract<Block, { kind: "user" }> => b.kind === "user");
   if (mine.some((b) => b.meta?.runKey === runId)) return true;
   const last = mine.at(-1);
   return Boolean(last && !last.meta?.runKey && last.text.trim() === text.trim());
 }
 
-export { refusedOrUnsent, requestWithRetry } from "./send-errors";
-export { heldRuns } from "./unconfirmed";
 
 /** An approval the engine raised for the live run (`exec.approval.requested`) can arrive before the run's own
  *  "waiting-approval" event (one with no run named counts as the live run's). Until that comes, the card joins the
  *  live run at its end, so the header, the agent window and the thread all say "Waiting for you" while the card is up. */
-export function withWaitingApprovals(live: Block[], approvals: ReadonlyMap<string, Approval>, runId: string): Block[] {
+function withWaitingApprovals(live: Block[], approvals: ReadonlyMap<string, Approval>, runId: string): Block[] {
   const shown = new Set(live.filter((b) => b.kind === "approval").map((b) => (b as Extract<Block, { kind: "approval" }>).approval.id));
   const waiting = [...approvals.values()].filter((a) => a.state === "pending" && (a.runId === runId || !a.runId) && !shown.has(a.id));
   return waiting.length ? [...live, ...waiting.map((approval): Block => ({ kind: "approval", key: `approval:${approval.id}`, approval }))] : live;
@@ -1121,7 +1119,7 @@ export function withWaitingApprovals(live: Block[], approvals: ReadonlyMap<strin
  * signed out: the engine aborts that provider's runs with stopReason "auth-revoked"). A plain Stop may carry
  * no stopReason at all, so only the reasons that are not a stop are named; null when the run wasn't aborted.
  */
-export function readAbort(data: Record<string, unknown>): "stopped" | "superseded" | { failure: string } | null {
+function readAbort(data: Record<string, unknown>): "stopped" | "superseded" | { failure: string } | null {
   if (data.aborted !== true && data.status !== "cancelled") return null;
   const reason = str(data.stopReason);
   if (reason === "timeout") return { failure: "It ran out of time." };

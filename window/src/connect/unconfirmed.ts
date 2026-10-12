@@ -24,14 +24,14 @@ const FIRST_PAGE = 50;
 const PAGE = 200;
 const MAX_PAGES = 8;
 /** How soon a lost send is checked, then how long between checks while any stay unconfirmed. */
-export const LOST_CHECK_MS = 2_000;
+const LOST_CHECK_MS = 2_000;
 const BACKOFF_MS = [5_000, 15_000, 60_000, 300_000];
 
 const UNKNOWN = "Branch couldn't tell whether it arrived. Check the conversation before sending it again.";
 const GONE = "Its conversation was deleted.";
 
 /** This window, for the records it sends: only it keeps their files. */
-export const WINDOW_ID = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Math.random());
+const WINDOW_ID = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : String(Math.random());
 const lockName = (owner: string) => `branch.window.${owner}`;
 try {
   // Held for this window's life, so another window can tell whether the sender of a record is still open.
@@ -111,7 +111,7 @@ export function heldRuns(history: readonly Block[], pendingInputs: unknown, inFl
 type Verdict = "held" | "lacks" | "gone" | "unknown";
 
 /** What the window does around a re-send of a message in the open conversation (draw it, then settle the drawing). */
-export type ResendView = { before(sessionKey: string, item: QueueItem): () => void; after(sessionKey: string): void };
+type ResendView = { before(sessionKey: string, item: QueueItem): () => void; after(sessionKey: string): void };
 
 type Host = {
   request(method: string, params: Record<string, unknown>): Promise<unknown>;

@@ -43,7 +43,7 @@ const ACTIVATABLE = 'button, [role="button"], [role="menuitem"], [role="menuitem
 const PRIVATE = '[data-diag-private], [data-testid="conversation-row"], [data-testid="message"]';
 const SURFACES = '[role="dialog"], [role="alert"]';
 
-export function accessibleName(element: Element): string {
+function accessibleName(element: Element): string {
   return (element.getAttribute("aria-label") || element.getAttribute("title") || element.textContent || "")
     .replace(/\s+/g, " ")
     .trim()

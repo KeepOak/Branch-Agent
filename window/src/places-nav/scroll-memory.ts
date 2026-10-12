@@ -26,7 +26,7 @@ function branchState(state: unknown): BranchHistoryState {
 }
 
 /** One history entry: the shell's `branchIndex` plus the route it pushed. */
-export function historyEntryKey(state: unknown = history.state): string {
+function historyEntryKey(state: unknown = history.state): string {
   const entry = branchState(state);
   return `${Number(entry.branchIndex) || 0}:${JSON.stringify(entry.branchRoute ?? null)}`;
 }

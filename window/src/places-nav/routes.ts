@@ -22,7 +22,7 @@ export const PLACES: { id: PlaceId; name: string; icon: IconName }[] = [
 
 const KEY = "branch.route";
 
-export function isPlace(id: string): id is PlaceId {
+function isPlace(id: string): id is PlaceId {
   return id === "office" || PLACES.some((p) => p.id === id);
 }
 

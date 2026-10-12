@@ -8,7 +8,7 @@ import { SHEETS, inkColour, loadLayers, paintFrame, paintableColour, type Layers
 
 let nextId = 1;
 
-export function motionAllowed(): boolean {
+function motionAllowed(): boolean {
   const reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   return !reduced && !document.documentElement.hasAttribute("data-still");
 }

@@ -131,7 +131,7 @@ export function pageLevel(id: string): Level {
 
 /** A row a page lists for search: its exact title, its section and the level that shows it (0, 1, 2). */
 export type SearchRow = { page: string; title: string; sec?: string; group?: string; lv: 0 | 1 | 2; words?: string };
-export type SearchHit = { page: { id: string; name: string; lv: 0 | 1 | 2 }; rows: SearchRow[] };
+type SearchHit = { page: { id: string; name: string; lv: 0 | 1 | 2 }; rows: SearchRow[] };
 export type SearchGroup = { name: string; hits: SearchHit[] };
 
 /** Pages whose name or keywords match, and rows whose title, section or words match, by group (§4.7.0 Searching).

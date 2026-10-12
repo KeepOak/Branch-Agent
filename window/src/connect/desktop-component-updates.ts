@@ -7,7 +7,7 @@ export type ComponentUpdateStatus = {
   currentVersion: string | null; latestVersion: string | null; pendingVersion: string | null;
   checkedAt: number | null; error: string | null;
 };
-export type ComponentUpdates = {
+type ComponentUpdates = {
   status(): Promise<ComponentUpdateStatus>;
   check(): Promise<ComponentUpdateStatus>;
   stage(): Promise<ComponentUpdateStatus>;
@@ -15,11 +15,11 @@ export type ComponentUpdates = {
   install?: () => void;
 };
 /** The desktop update bar's states, published by the preload as this window event (same wording as the bar). */
-export type EngineUpdateState = "ready" | "auto-wait" | "preparing" | "restarting" | "updating" | "updated" | "kept" | "failed";
+type EngineUpdateState = "ready" | "auto-wait" | "preparing" | "restarting" | "updating" | "updated" | "kept" | "failed";
 export type EngineUpdateEvent = { state: EngineUpdateState; message?: string };
 export const ENGINE_UPDATE_EVENT = "branch:update-state";
 export type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt: number };
-export type UpdateNoticeEvent = "shown" | "dismissed" | "expired" | "undo";
+type UpdateNoticeEvent = "shown" | "dismissed" | "expired" | "undo";
 /** Preview T0 (`updT5` in design/spec-v23/index.html): a normal toast after an in-place update. */
 export const UPDATED_IN_PLACE = "Updated in place. Nothing restarted.";
 /** Preview T0 (`updT5`): wait this long and try again while setup (`.ob-main, .ob9`) is on screen. */

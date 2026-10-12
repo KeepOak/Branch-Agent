@@ -3,7 +3,7 @@
 // left (`gateway closed`, a local timeout), when the engine may or may not have it.
 
 /** The message never left this window. */
-export const isNotConnected = (error: unknown): boolean => error instanceof Error && error.message === "gateway not connected";
+const isNotConnected = (error: unknown): boolean => error instanceof Error && error.message === "gateway not connected";
 
 /** The engine answered the request (a refusal carries its gateway code), or the message never left this window.
  *  A connection that closed after the request left is neither. */

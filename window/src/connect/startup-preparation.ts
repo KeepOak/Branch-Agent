@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "./engine";
 
-export type StartupPreparationState = "preparing" | "retrying" | "needs-attention";
+type StartupPreparationState = "preparing" | "retrying" | "needs-attention";
 
 export type StartupPreparation = {
   state: StartupPreparationState;
@@ -16,19 +16,19 @@ export type StartupPreparation = {
 const POLL_MS = 3_000;
 
 /** agents.retryStartup answered `retrying: false`: the engine had no preparation of this Trunk to start again. */
-export const RETRY_NOT_PREPARING = "the engine isn't getting this Trunk ready any more";
+const RETRY_NOT_PREPARING = "the engine isn't getting this Trunk ready any more";
 
 const rec = (value: unknown): Record<string, unknown> => (value && typeof value === "object" ? value as Record<string, unknown> : {});
 
 /** The Trunk a conversation belongs to: the engine handle's own, else the session key's `agent:<id>:…`. */
-export function startupAgentId(engine: WindowEngine | undefined): string | null {
+function startupAgentId(engine: WindowEngine | undefined): string | null {
   if (engine?.agentId) return engine.agentId;
   const match = /^agent:([^:]+):/.exec(engine?.sessionKey ?? "");
   return match ? match[1] : null;
 }
 
 /** Reads one Trunk's startup state from an agents.list result; null once nothing holds it back. */
-export function readStartupPreparation(list: unknown, agentId: string): StartupPreparationState | null {
+function readStartupPreparation(list: unknown, agentId: string): StartupPreparationState | null {
   const agents = Array.isArray(rec(list).agents) ? rec(list).agents as unknown[] : [];
   const refusal = rec(rec(agents.find((agent) => rec(agent).id === agentId)).admissionRefusal);
   if (refusal.code !== "agent-database-inspection-pending") return null;
