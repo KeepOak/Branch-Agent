@@ -1,0 +1,3 @@
+window:src/screens/composer/Composer.test.tsx
+window:src/screens/composer/usage.test.ts
+window:src/screens/frame/R1Window.test.tsx
