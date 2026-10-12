@@ -81,17 +81,17 @@ function setup() {
     marker: `branch-report:${"b".repeat(64)}`,
     browserFallback: {
       status: "available" as const,
-      url: "https://github.com/openclaw/openclaw/issues/new",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/new",
     },
     savedReportPath: `${stateDir}/report.md`,
     title: "Update failed: restart-unhealthy",
-    url: "https://github.com/openclaw/openclaw/issues/new",
+    url: "https://github.com/KeepOak/Branch-Agent/issues/new",
   };
   mocks.prepare.mockResolvedValue(prepared);
   mocks.submit.mockResolvedValue({
     savedReportPath: prepared.savedReportPath,
     status: "created",
-    url: "https://github.com/openclaw/openclaw/issues/123",
+    url: "https://github.com/KeepOak/Branch-Agent/issues/123",
   });
   const opts = { run: { runId, env } };
   const target = { env };

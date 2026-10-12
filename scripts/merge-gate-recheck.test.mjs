@@ -207,3 +207,35 @@ test('the current recheck run is excluded by its id even when its name differs',
   assert.equal(code, 0);
   assert.deepEqual(reruns, [50]);
 });
+
+test('a content check that did not succeed lists nothing and reruns nothing (no API call spent)', () => {
+  const listed = [];
+  const reruns = [];
+  const logged = [];
+  const code = runRecheck({
+    repo: 'o/r', sha: 'abc', trigger: { kind: 'content', conclusion: 'failure', name: 'Desktop checks' },
+    currentRunId: 1, list: (...args) => { listed.push(args); return []; }, rerun: (...args) => reruns.push(args),
+    log: (line) => logged.push(line), error: () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(listed.length, 0);
+  assert.equal(reruns.length, 0);
+  assert.deepEqual(logged, [
+    'Merge gate: skip (the triggering check did not succeed)',
+    'Merge gate trusted: skip (the triggering check did not succeed)',
+  ]);
+});
+
+test('a successful content check lists the runs once, then reruns only what the plan says', () => {
+  let listCalls = 0;
+  const reruns = [];
+  const code = runRecheck({
+    repo: 'o/r', sha: 'abc', trigger: { kind: 'content', conclusion: 'success', name: 'Desktop checks' },
+    currentRunId: 1,
+    list: () => { listCalls += 1; return [gate('cancelled'), trusted('failure'), content('success')]; },
+    rerun: (repo, id) => reruns.push(id), log: () => {}, error: () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(listCalls, 1);
+  assert.deepEqual(reruns, [50]);
+});
