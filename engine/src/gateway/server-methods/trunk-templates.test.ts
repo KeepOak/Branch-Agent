@@ -323,7 +323,8 @@ describe("trunks.template.list", () => {
     await done;
     expect(respond).toHaveBeenCalledTimes(1);
     expect(respond.mock.calls[0]?.[0]).toBe(true);
-    const { templates } = respond.mock.calls[0]?.[1] as { templates: Array<Record<string, unknown>> };
+    const payload = respond.mock.calls[0]?.[1] as { templates: Array<Record<string, unknown>> };
+    const templates = payload.templates;
     expect(templates.find((t) => t.id === "trunk-doctor")).toMatchObject({
       name: "Trunk Doctor",
       look: "branch:tock",

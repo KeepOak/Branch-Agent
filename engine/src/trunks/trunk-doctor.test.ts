@@ -2,10 +2,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { validateCronAddParams } from "../../packages/gateway-protocol/src/index.js";
-import { resolveAgentFullAccess } from "../agents/tools/agent-full-access.js";
-import { createBranchDelegateToolsForRun } from "../agents/tools/branch-delegate-tool.js";
 import { resolveEffectiveToolFsWorkspaceOnly } from "../agents/tool-fs-policy.js";
 import { resolveDisabledToolsetTools } from "../agents/tool-toolsets.js";
+import { resolveAgentFullAccess } from "../agents/tools/agent-full-access.js";
+import { createBranchDelegateToolsForRun } from "../agents/tools/branch-delegate-tool.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { normalizeSilentReplyText } from "../cron/isolated-agent/delivery-dispatch-policy.js";
 import { normalizeCronJobCreate } from "../cron/normalize.js";
@@ -35,10 +35,17 @@ function section(markdown: string, heading: string): string {
   return end === -1 ? rest : rest.slice(0, end);
 }
 
-type ScheduleBlock = { name: string; schedule: CronSchedule; sessionTarget: string; payload: { kind: string; message: string } };
+type ScheduleBlock = {
+  name: string;
+  schedule: CronSchedule;
+  sessionTarget: string;
+  payload: { kind: string; message: string };
+};
 
 function schedules(): ScheduleBlock[] {
-  const block = /```json\n([\s\S]*?)\n```/.exec(section(doctor().template.persona.agentsMd, "Schedules"));
+  const block = /```json\n([\s\S]*?)\n```/.exec(
+    section(doctor().template.persona.agentsMd, "Schedules"),
+  );
   expect(block).not.toBeNull();
   return JSON.parse(block?.[1] ?? "[]") as ScheduleBlock[];
 }
@@ -107,7 +114,9 @@ describe("Trunk Doctor template", () => {
 
   it("states the anti-jobs from the card", () => {
     const never = section(doctor().template.persona.agentsMd, "Never");
-    expect(never).toContain("Never create, change, rename, pause or delete a Trunk without the owner's clear yes");
+    expect(never).toContain(
+      "Never create, change, rename, pause or delete a Trunk without the owner's clear yes",
+    );
     expect(never).toContain("Never publish a seed");
     expect(never).toContain("Never send, post, buy, sign or install anything");
   });
@@ -137,7 +146,10 @@ describe("Trunk Doctor scheduled runs", () => {
   it("runs the next friction scan on Monday evening and the waste audit on Monday morning", () => {
     const [scan, audit] = schedules();
     const nextRun = (job: ScheduleBlock | undefined) =>
-      computeNextRunAtMs({ ...job?.schedule, tz: timeZone, staggerMs: 0 } as CronSchedule, fridayEvening);
+      computeNextRunAtMs(
+        { ...job?.schedule, tz: timeZone, staggerMs: 0 } as CronSchedule,
+        fridayEvening,
+      );
     const nextScan = nextRun(scan);
     const nextAudit = nextRun(audit);
     // Monday 2026-10-19: 17:30 and 09:00 in New York (EDT, UTC-4).
@@ -150,7 +162,8 @@ describe("Trunk Doctor scheduled runs", () => {
       expect(job.payload.message).toContain("reply with exactly NO_REPLY");
     }
     expect(normalizeSilentReplyText("NO_REPLY").text).toBeUndefined();
-    const finding = "1. Scout retried the same search 6 times on Oct 14. Fix: switch off its web toolset.";
+    const finding =
+      "1. Scout retried the same search 6 times on Oct 14. Fix: switch off its web toolset.";
     expect(normalizeSilentReplyText(finding).text).toBe(finding);
   });
 });
@@ -158,7 +171,10 @@ describe("Trunk Doctor scheduled runs", () => {
 describe("Trunk Doctor holds every outbound action for the owner", () => {
   it("gets no tool that sends, posts, spends, signs or installs", () => {
     const { template } = doctor();
-    const removed = new Set([...resolveDisabledToolsetTools(template.toolsets), ...(template.denyTools ?? [])]);
+    const removed = new Set([
+      ...resolveDisabledToolsetTools(template.toolsets),
+      ...(template.denyTools ?? []),
+    ]);
     expect(OUTBOUND_TOOLS.filter((tool) => !removed.has(tool))).toEqual([]);
     expect(removed.has("branch")).toBe(false);
     expect(removed.has("sessions_history")).toBe(false);
@@ -184,7 +200,12 @@ describe("Trunk Doctor holds every outbound action for the owner", () => {
       config,
       sessionAgentId: "trunk-doctor",
       agentSessionKey: "agent:trunk-doctor:main",
-      fsPolicy: { workspaceOnly: resolveEffectiveToolFsWorkspaceOnly({ cfg: config, agentId: "trunk-doctor" }) },
+      fsPolicy: {
+        workspaceOnly: resolveEffectiveToolFsWorkspaceOnly({
+          cfg: config,
+          agentId: "trunk-doctor",
+        }),
+      },
     });
     expect(tool?.name).toBe("branch");
     expect(tool?.description).toContain("Changes wait for the user to approve");
