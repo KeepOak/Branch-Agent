@@ -143,24 +143,73 @@ export function desktopCoverageProblems({ files, desktopWorkflow }) {
 }
 
 // A fix, perf or refactor PR must say what it checked before it changed code: upstream, peer agents or the old code.
-const PRIOR_ART_TITLE = /^(fix|perf|refactor)(\([^)]*\))?!?:/;
-const PRIOR_ART_LINE = /^\s*(?:[-*]\s*)?Prior art:(.*)$/im;
-const PRIOR_ART_SOURCE = /\b(upstream|upstream|peer|old code|replaces|hermes|codex|agent-refs)\b/i;
-const PRIOR_ART_FIX = 'add a line "Prior art: <what you checked>" naming upstream project, peer agents or the old code it replaces, or "Prior art: none found: <what you checked>"';
+// The title match ignores case, so "Fix(settings): ..." is held to the rule too.
+const PRIOR_ART_TITLE = /^(fix|perf|refactor)(\([^)]*\))?!?:/i;
+// "Prior art: x", "- Prior art: x", "**Prior art:** x" or "**Prior art**: x".
+const PRIOR_ART_LABEL = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?prior art(?:\*\*|__)?\s*:(?:\*\*|__)?(.*)$/i;
+// A "## Prior art" heading; its section is the lines up to the next heading.
+const PRIOR_ART_HEADING = /^\s{0,3}#{1,6}\s+(?:\*\*|__)?prior art(?:\*\*|__)?\s*:?\s*#*\s*$/i;
+const HEADING = /^\s{0,3}#{1,6}\s/;
+// An unfilled template slot such as "<what you checked>". Autolinks like <https://...> are real sources.
+const PLACEHOLDER = /<(?![a-z][a-z0-9+.-]*:\/\/)[^<>\n]*>/i;
+const EMPTY_ANSWER = /^(?:n\/?a|none|nothing|-+|tbd|todo)[.!]?$/i;
+const PRIOR_ART_FIX = 'add "Prior art: <what you checked>" (a line, a bold label, or a "## Prior art" section) naming the upstream project, peer agents or old code you checked, or "Prior art: none found: <what you checked>"';
+
+// The text a body gives for prior art: the label's own text, or the lines under it or under the heading when that is empty.
+function priorArtCandidates(body) {
+  const lines = body.replace(/<!--[\s\S]*?-->/g, '').split('\n');
+  const candidates = [];
+  lines.forEach((line, index) => {
+    const label = PRIOR_ART_LABEL.exec(line);
+    if (label && label[1].trim()) {
+      candidates.push(label[1]);
+      return;
+    }
+    if (!label && !PRIOR_ART_HEADING.test(line)) return;
+    const following = [];
+    for (const next of lines.slice(index + 1)) {
+      if (HEADING.test(next)) break;
+      // A bare label's source sits on the lines right after it; a blank line after them ends it.
+      if (label && !next.trim() && following.length) break;
+      following.push(next);
+    }
+    candidates.push(following.join('\n'));
+  });
+  return candidates;
+}
+
+function cleanPriorArt(text) {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '').replace(/\*\*|__/g, '').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+// Why a candidate is not an answer, or null when it is one.
+function priorArtGap(candidate) {
+  const text = cleanPriorArt(candidate);
+  if (!text) return 'is empty';
+  if (PLACEHOLDER.test(text)) return 'still has the template placeholder';
+  const answer = text.replace(/^prior art\s*:\s*/i, '');
+  if (EMPTY_ANSWER.test(answer)) return 'says only "' + answer + '" and names nothing checked';
+  if (/^none found\b/i.test(answer) && !/^none found\s*:\s*\S/i.test(answer)) return 'says "none found" without what was checked';
+  return null;
+}
 
 export function priorArtProblems({ title, body }) {
-  if (!PRIOR_ART_TITLE.test(title ?? '')) {
+  if (!PRIOR_ART_TITLE.test((title ?? '').trim())) {
     return [];
   }
-  const line = PRIOR_ART_LINE.exec(body ?? '');
-  if (!line) {
-    return [problem('prior-art', `title "${title}" needs a "Prior art:" line in the body and has none`, PRIOR_ART_FIX)];
+  const candidates = priorArtCandidates(body ?? '');
+  if (!candidates.length) {
+    return [problem('prior-art', 'title "' + title + '" needs a "Prior art:" line or section in the body and has none', PRIOR_ART_FIX)];
   }
-  const text = line[1].trim();
-  if (/^none found:\s*\S/i.test(text) || PRIOR_ART_SOURCE.test(text)) {
+  const gaps = candidates.map(priorArtGap);
+  if (gaps.some((gap) => gap === null)) {
     return [];
   }
-  return [problem('prior-art', 'the "Prior art:" line names no source checked', PRIOR_ART_FIX)];
+  return [problem('prior-art', 'the Prior art entry ' + gaps[0], PRIOR_ART_FIX)];
 }
 
 export function personalInfoProblems(addedLines) {

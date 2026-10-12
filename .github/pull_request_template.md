@@ -27,7 +27,8 @@ Trailer and emails: ok
 ## Prior art
 
 <!-- Required for fix, perf and refactor PRs. Name what you checked: upstream project, peer agents, or the old code this replaces.
-     Use one line that starts with "Prior art:". If nothing matched, write "Prior art: none found: <what you checked>". -->
+     Replace the placeholder below (on the line, or as bullets under this heading). If nothing matched, write
+     "Prior art: none found: <what you checked>". Empty, "n/a", bare "none" and an unfilled placeholder fail preflight. -->
 
 Prior art: <what you checked>
 
