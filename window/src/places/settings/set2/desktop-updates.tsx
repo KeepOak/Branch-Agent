@@ -7,7 +7,7 @@ import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, MANUAL_UP
 
 /** The desktop drains running work for up to 330 s, then restarts; a silent desktop gets this long plus a 60 s margin. */
 export const INSTALL_NO_ANSWER_MS = 390_000;
-export const NO_ANSWER_MESSAGE = "Branch didn’t confirm the update. It may still finish: check the version in a few minutes, or restart Branch.";
+const NO_ANSWER_MESSAGE = "Branch didn’t confirm the update. It may still finish: check the version in a few minutes, or restart Branch.";
 import { rec, str, useLive, type RecordValue } from "./common";
 import { isNewerBranchVersion, runningBranchVersion, useBranchVersion, useShippedWindowVersion, versionParts } from "../../../connect/branch-version";
 
