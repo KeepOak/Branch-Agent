@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { canAll, useCapabilityVersion } from "../../connect/capabilities";
 import { ChatLogo } from "../../places/settings/set1/chatapps-logo";
@@ -15,8 +15,9 @@ export type ChatAppsProps = {
   /** Screen host supplies setup and account management; absent actions remain Coming. */
   onSetup?: (app: ChatApp) => void;
   onManage?: (app: ChatApp) => void;
+  renderAccess?: (app: ChatApp) => ReactNode;
 };
-export function ChatApps({ engine, onSetup, onManage }: ChatAppsProps) {
+export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsProps) {
   const [query, setQuery] = useState("");
   const live = useChatApps(engine);
   useCapabilityVersion();
@@ -47,6 +48,6 @@ export function ChatApps({ engine, onSetup, onManage }: ChatAppsProps) {
       })}
       {!shown.length && <p>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}
     </section>
-    </div><ChatAppSettings engine={engine} />
+    </div>{renderAccess && <section aria-label="Who answers and who may message"><h2>Who answers</h2>{CHAT_APPS.filter(a => a.channel && appOf(live.status, { id: a.channel, name: a.name, detail: "" }).on).map(a => <div key={a.id}>{renderAccess(a)}</div>)}</section>}<ChatAppSettings engine={engine} />
   </section>;
 }
