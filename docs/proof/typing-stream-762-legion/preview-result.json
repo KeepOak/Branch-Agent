@@ -1,0 +1,9 @@
+{
+  "chat": "(17) Morning brief · 07:00 — Branch Agent",
+  "frames": 389,
+  "medianMs": 6.1,
+  "p95Ms": 6.2,
+  "p99Ms": 18.3,
+  "maxMs": 121.1,
+  "errors": []
+}

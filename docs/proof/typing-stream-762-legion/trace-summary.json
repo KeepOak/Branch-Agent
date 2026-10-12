@@ -1,0 +1,40 @@
+{
+  "windowMs": 7954,
+  "mainThreadTasks": 25922,
+  "taskMs": {
+    "median": 0.01,
+    "p95": 2.89,
+    "p99": 4.09,
+    "max": 5.87
+  },
+  "longTasksOver50": [],
+  "frameReporterStates": {
+    "STATE_PRESENTED_ALL": 1294,
+    "STATE_PRESENTED_PARTIAL": 1309
+  },
+  "animationFrames": {
+    "count": 1299,
+    "intervalMs": {
+      "median": 6.06,
+      "p95": 7.89,
+      "p99": 9.57,
+      "max": 10.97
+    },
+    "workMs": {
+      "median": 5,
+      "p95": 6,
+      "p99": 7,
+      "max": 9
+    },
+    "blockingFramesOver0": 0
+  },
+  "drawIntervals": {
+    "name": "viz draw",
+    "count": 1312,
+    "median": 6.06,
+    "p95": 6.13,
+    "p99": 6.26,
+    "max": 7.05
+  },
+  "screenshotsInWindow": 439
+}
