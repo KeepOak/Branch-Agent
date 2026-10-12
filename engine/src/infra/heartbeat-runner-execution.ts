@@ -193,6 +193,8 @@ export async function resolveHeartbeatWakeStage(opts: HeartbeatRunOptions) {
   if (preflight?.skipReason) {
     return skippedHeartbeatStage(preflight.skipReason, startedAt);
   }
+  // Runs before routing, so it also covers routeless app-alert polls: an idle Trunk tick
+  // has nothing to alert about. Ticks with an event or task still publish to the app.
   if (
     preflight &&
     isIdleQueueTrunkWake({
