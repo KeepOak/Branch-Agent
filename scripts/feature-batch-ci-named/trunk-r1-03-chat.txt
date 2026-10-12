@@ -1,0 +1,4 @@
+window:src/screens/chat/ChatView.test.tsx
+window:src/screens/chat/HoverBar.test.tsx
+window:src/screens/chat/Steps.test.tsx
+window:src/screens/chat/chat-logic.test.ts

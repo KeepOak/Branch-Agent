@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../../connect/session";
 import { classicWindow, R1Window } from "./R1Window";
-vi.mock("../../thread/Thread", () => ({ Thread: ({ name }: { name: string }) => <p>{name}</p> }));
+vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <p>{name}</p> }));
 vi.mock("../../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../places-nav/SettingsFrame", () => ({ SettingsFrame: () => <p>Settings content</p> }));
 vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: () => <p>Place content</p> }));
