@@ -14,9 +14,15 @@ import { errorText, record, type RecordValue } from "../adapter";
 import { accentVars, BUILTIN, DEFAULT_THEME, isHex, pairOfDefinition, varsOf, type Mode, type Pair } from "./appearance-look";
 
 export const LOOK_PREF = "ui.window.look";
-export const ENGINE_PREFS = { accent: "ui.accent", fontUi: "ui.fontUi", fontChat: "ui.fontChat", themeExtra: "ui.window.themeExtra" } as const;
-export type EngineKey = keyof typeof ENGINE_PREFS;
-export const DEVICE_KEYS = ["size"] as const;
+const ENGINE_PREFS = { accent: "ui.accent", fontUi: "ui.fontUi", fontChat: "ui.fontChat", themeExtra: "ui.window.themeExtra" } as const;
+type EngineKey = keyof typeof ENGINE_PREFS;
+const DEVICE_KEYS = ["size"] as const;
+/** A look key kept on this device only (text size), never sent to the engine. */
+export const isDeviceKey = (key: string): boolean => (DEVICE_KEYS as readonly string[]).includes(key);
+/** Where a look key's value is kept in the snapshot: this device, its own engine pref (accent, fonts), or the look. */
+export function lookHolder(snap: Pick<LookSnap, "look" | "device" | "prefs">, key: string): RecordValue {
+  return isDeviceKey(key) ? snap.device : key in ENGINE_PREFS ? (snap.prefs as RecordValue) : snap.look;
+}
 const LOCAL = "branch.look";
 const STYLE_ID = "branch-look";
 const SCENE_FILES: Record<string, string> = {
@@ -36,7 +42,7 @@ export function sceneFile(look: RecordValue): string | null {
   return SCENE_FILES[selected === "auto" ? seasonal : selected] ?? SCENE_FILES[seasonal];
 }
 
-export type Where = "loading" | "profile" | "device";
+type Where = "loading" | "profile" | "device";
 export type LookSnap = { look: RecordValue; device: RecordValue; prefs: Partial<Record<EngineKey, unknown>>; palette: Pair | null; where: Where; error?: string };
 type Saved = Pick<LookSnap, "look" | "device" | "prefs" | "palette">;
 
@@ -77,7 +83,7 @@ const block = (sel: string, vars: Record<string, string>) => `${sel}{${Object.en
 const DARK_SELS = ['@media (prefers-color-scheme: dark){:root:root:not([data-theme="light"])', ':root:root[data-theme="dark"]'];
 
 /** The window's <style> for a look: the theme in both modes, the accent, fonts, text sizes and stillness. */
-export function lookCss(s: Saved): string {
+function lookCss(s: Saved): string {
   const out: string[] = [];
   const scene = sceneFile(s.look);
   if (scene) {
@@ -227,7 +233,7 @@ export class LookStore {
 
   /** Saves one row: a device row stays here, an engine key goes to its own pref, the rest to the person's look. */
   set(key: string, value: unknown): Promise<void> {
-    if ((DEVICE_KEYS as readonly string[]).includes(key)) {
+    if (isDeviceKey(key)) {
       this.emit({ device: { ...this.snap.device, [key]: value } });
       return Promise.resolve();
     }
@@ -271,8 +277,7 @@ export function useLook(engine: WindowEngine) {
   const snap = useSyncExternalStore((fn) => store.subscribe(fn), () => store.snap, () => store.snap);
   useEffect(() => { if (snap.where === "loading") void store.load(); }, [store, snap.where]);
   const val = (key: string, fallback: unknown): unknown => {
-    const from: RecordValue = (DEVICE_KEYS as readonly string[]).includes(key) ? snap.device : key in ENGINE_PREFS ? snap.prefs : snap.look;
-    return from[key] ?? fallback;
+    return lookHolder(snap, key)[key] ?? fallback;
   };
   return { snap, store, val };
 }

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { registerTrunksCli, templateSourceFromArg } from "./trunks-cli.js";
+import { createFollowUps, registerTrunksCli, templateSourceFromArg } from "./trunks-cli.js";
 
 const callGatewayFromCli = vi.hoisted(() => vi.fn());
 vi.mock("./gateway-rpc.js", () => ({ callGatewayFromCli }));
@@ -26,6 +26,14 @@ const cli = (...args: string[]) => ["node", "branch", "trunks", ...args];
 describe("templateSourceFromArg", () => {
   it("treats a bare name as a bundled template id", () => {
     expect(templateSourceFromArg("researcher", "/work")).toEqual({ templateId: "researcher" });
+  });
+
+  it("passes a template link through as a link", () => {
+    expect(templateSourceFromArg(" branch-template:1:abc ", "/work")).toEqual({ link: "branch-template:1:abc" });
+  });
+
+  it("keeps an imported catalog id as an id", () => {
+    expect(templateSourceFromArg("imported:night-shift", "/work")).toEqual({ templateId: "imported:night-shift" });
   });
 
   it("resolves a path or a .json file against the working directory", () => {
@@ -121,5 +129,33 @@ describe("branch trunks create", () => {
     const { output, program } = createProgram(answer);
     await program.parseAsync(cli("create", "--from-template", "builder", "--json"));
     expect(output).toHaveBeenCalledWith(`${JSON.stringify(answer, null, 2)}\n`);
+  });
+});
+
+describe("branch trunks share and import", () => {
+  it("prints the template link with export --link and writes no file", async () => {
+    const { output, program } = createProgram({ link: "branch-template:1:abc", template: {}, warnings: [] });
+    await program.parseAsync(cli("export", "scout", "--link"));
+    expect(output).toHaveBeenCalledWith("branch-template:1:abc\n");
+  });
+
+  it("says which routines are off and which channels need setting up after a create", () => {
+    expect(
+      createFollowUps({
+        agentId: "night",
+        routines: [{ id: "j1", name: "Digest" }],
+        connections: [{ id: "telegram", ready: false }, { id: "slack", ready: true }],
+      }),
+    ).toEqual([
+      'Routine "Digest" was added turned off. Turn it on in Automations once you approve it.',
+      "This Trunk talks on telegram, which is not set up here. Set it up in Channels.",
+    ]);
+  });
+
+  it("lists the catalog with the read scope", async () => {
+    const { output, program } = createProgram({ templates: [{ id: "imported:night-shift", source: "imported", name: "Night Shift", description: "Overnight", routines: 2 }] });
+    await program.parseAsync(cli("templates"));
+    expect(callGatewayFromCli).toHaveBeenCalledWith("trunks.template.list", expect.any(Object), {}, { scopes: ["operator.read"] });
+    expect(output).toHaveBeenCalledWith("imported:night-shift\tNight Shift (imported · 2 routines) - Overnight\n");
   });
 });

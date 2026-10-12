@@ -64,6 +64,7 @@ describe("Settings › Appearance", () => {
   it("saves Reduce transparency through the profile and restores glass when switched off", async () => {
     const { engine, request } = engineOf();
     await render(engine);
+    expect(sw("Reduce transparency").closest(".ctl")?.querySelector("small")?.textContent).toBe("Swaps the glass for solid tinted surfaces. Easier to read, and lighter on older computers.");
     await act(async () => sw("Reduce transparency").click());
     expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { "ui.window.look": { reduceTransparency: true } }, expectedEntries: { "ui.window.look": null } });
     expect(document.documentElement.dataset.transparency).toBe("reduce");
