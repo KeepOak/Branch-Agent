@@ -173,7 +173,7 @@ export function readSessionIdentityEvidenceInDatabase(
   }
   return items.map((item): SessionIdentityEvidenceResult => {
     const exactRow = item.sessionKey ? rowsByKey.get(item.sessionKey) : undefined;
-    if (exactRow && exactRow.entry_valid !== -1 && !readableKeys.has(exactRow.session_key)) {
+    if (exactRow && !isRetainedPlaceholder(exactRow) && !readableKeys.has(exactRow.session_key)) {
       return { status: "unknown", reason: "row-invalid" };
     }
     if (
@@ -193,10 +193,15 @@ export function readSessionIdentityEvidenceInDatabase(
     if (fallbackRow?.entry_valid === 1 && readableKeys.has(fallbackRow.session_key)) {
       return { status: "current", sessionKey: fallbackRow.session_key };
     }
-    return fallbackRow?.entry_valid === -1
+    return fallbackRow && isRetainedPlaceholder(fallbackRow)
       ? { status: "absent" }
       : { status: "unknown", reason: "row-invalid" };
   });
+}
+
+// A quarantined row is also -1 but keeps its bytes; it is invalid, not absent.
+function isRetainedPlaceholder(row: SessionIdentityEvidenceRow): boolean {
+  return row.entry_valid === -1 && row.entry_json === "{}";
 }
 
 /** Reads indexed identity evidence once per physical store and in SQLite-sized chunks. */

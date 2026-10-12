@@ -1,4 +1,4 @@
-// Accounts › Order (Advanced): "Select several", then move the ticked accounts to the top (models.authOrderSet per
+// Accounts › Order (Advanced): "Select accounts", then move the ticked accounts to the top (models.authOrderSet per
 // service, since each service keeps its own order) or sign out of them (models.authLogout per service).
 import type { WindowEngine } from "../../../connect/engine";
 import { Btn, useSaveRunner } from "../kit";
@@ -9,7 +9,7 @@ const PAUSE_OFF = "Branch can’t pause an account yet.";
 const key = (acc: Account) => `${acc.p.provider}/${acc.a.profileId}`;
 
 export function SelectLink({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return <button type="button" className="link-acc" onClick={onToggle}>{on ? "Done" : "Select several"}</button>;
+  return <Btn sm aria-pressed={on} onClick={onToggle}>{on ? "Done selecting" : "Select accounts"}</Btn>;
 }
 
 export function SelectBox({ acc, name, picked, onPick }: { acc: Account; name: string; picked: string[]; onPick: (next: string[]) => void }) {

@@ -345,7 +345,10 @@ export async function runSessionStartupMigration(params: {
       if (
         !(await runUnlessDeleted(() =>
           withSqliteCanonicalValidationWorker((withWorker) =>
-            certifySessionCanonicalValidationPending(options, withWorker, params.assertCurrent),
+            // Startup sets one damaged row aside instead of refusing every session.
+            certifySessionCanonicalValidationPending(options, withWorker, params.assertCurrent, {
+              quarantineInvalidRows: true,
+            }),
           ),
         ))
       ) {

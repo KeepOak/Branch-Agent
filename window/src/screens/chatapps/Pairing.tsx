@@ -4,12 +4,16 @@ import { canAll, requestOrComing } from "../../connect/capabilities";
 import { errorText } from "../../places/settings/adapter";
 import type { Pairing as Snapshot, PairRequest } from "../../places/settings/set1/chatapps-asking";
 
+const APPROVE_LATER = "Approving requests here comes in a later update.";
+const DISMISS_LATER = "Dismissing requests here comes in a later update.";
+
 export function Pairing({ engine, snapshot, reload }: { engine: WindowEngine; snapshot?: Snapshot; reload: () => Promise<void> }) {
   const [pending, setPending] = useState<PairRequest>();
   const [dismiss, setDismiss] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const canApprove = canAll(engine, ["channels.pairing.approve"]);
+  const canDismiss = canAll(engine, ["channels.pairing.dismiss"]);
   const run = async (params: unknown, method = "channels.pairing.approve") => {
     if (busy || !canAll(engine, [method])) return;
     setBusy(true); setError("");
@@ -18,7 +22,8 @@ export function Pairing({ engine, snapshot, reload }: { engine: WindowEngine; sn
     finally { setBusy(false); }
   };
   return <section className="r1-ca-pairing" aria-label="Asking to message"><h3>Asking to message</h3>
-    {snapshot ? snapshot.requests.length ? snapshot.requests.map(r => <div className="r1-ca-request" key={r.requestId}><span><b>{r.senderLabel}</b><small>{r.channelLabel} · {r.accountLabel ?? r.accountId}</small></span><button className="g-ctl" type="button" disabled={busy || !canApprove} data-need="channels.pairing.approve" onClick={() => { setPending(r); setDismiss(false); }}>{canApprove ? "Approve" : "Coming"}</button><button type="button" disabled={busy || !canAll(engine, ["channels.pairing.dismiss"])} data-need="channels.pairing.dismiss" onClick={() => { setPending(r); setDismiss(true); }}>{canAll(engine, ["channels.pairing.dismiss"]) ? "Dismiss" : "Coming"}</button></div>) : <p>No one is waiting.</p> : <p>Pairing requests are unavailable.</p>}
+    {snapshot ? snapshot.requests.length ? snapshot.requests.map(r => <div className="r1-ca-request" key={r.requestId}><span><b>{r.senderLabel}</b><small>{r.channelLabel} · {r.accountLabel ?? r.accountId}</small></span><button className="g-ctl" type="button" disabled={busy || !canApprove} data-need="channels.pairing.approve" data-coming={canApprove ? undefined : APPROVE_LATER} title={canApprove ? undefined : APPROVE_LATER} onClick={() => { setPending(r); setDismiss(false); }}>{canApprove ? "Approve" : "Coming"}</button><button type="button" disabled={busy || !canDismiss} data-need="channels.pairing.dismiss" data-coming={canDismiss ? undefined : DISMISS_LATER} title={canDismiss ? undefined : DISMISS_LATER} onClick={() => { setPending(r); setDismiss(true); }}>{canDismiss ? "Dismiss" : "Coming"}</button></div>) : <p>No one is waiting.</p> : <p>Pairing requests are unavailable.</p>}
+    {!!snapshot?.requests.length && (!canApprove || !canDismiss) && <small className="r1-ca-hint">{!canApprove ? APPROVE_LATER : DISMISS_LATER}</small>}
     {pending && <div className="g-ctl r1-ca-confirm" role="group" aria-label="Confirm approval"><p>{dismiss ? "Dismiss the request from" : "Let"} {pending.senderLabel}{dismiss ? "?" : ` message Branch through ${pending.channelLabel}?`}</p><button type="button" data-local="cancel" disabled={busy} onClick={() => setPending(undefined)}>Cancel</button><button type="button" disabled={busy} data-need="channels.pairing.approve" onClick={() => void run({ channel: pending.channel, accountId: pending.accountId, requestId: pending.requestId }, dismiss ? "channels.pairing.dismiss" : "channels.pairing.approve")}>{dismiss ? "Dismiss request" : "Approve request"}</button></div>}
     <div className="r1-ca-code" data-coming="Approval by code needs a window-safe engine flow.">
       <label>Approve by code<input aria-label="Pairing code" placeholder="Code from the app" disabled /></label>

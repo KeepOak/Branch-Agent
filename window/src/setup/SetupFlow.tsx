@@ -256,7 +256,7 @@ type Ctx = {
 
 const SECRET = "secret";
 
-function SetupAddAccountDialog({ engine, agentId, onClose }: { engine: WindowEngine; agentId: string; onClose: (added: boolean) => void }) {
+export function SetupAddAccountDialog({ engine, agentId, onClose }: { engine: WindowEngine; agentId: string; onClose: (added: boolean) => void }) {
   const status = useResource<RecordValue>(engine, "models.authStatus", { agentId });
   return <AddAccountDialog engine={engine} start={{}} caps={list(status.data?.providerCapabilities)} providers={providersOf(status.data?.providers)} agent={{ agentId }} onClose={onClose} />;
 }

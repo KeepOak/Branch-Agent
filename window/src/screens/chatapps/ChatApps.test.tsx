@@ -74,13 +74,28 @@ it("does not offer setup on a connection without full access", async () => {
   expect(host.querySelectorAll('.r1-ca-card[aria-disabled="true"]')).toHaveLength(74);
 });
 
-it("draws each chat app card on a raised surface with the preview's line, darker on hover", () => {
+it("draws each chat app card in chip glass with the 0.5px glass edge", async () => {
   const css = readFileSync("src/screens/chatapps/chatapps.css", "utf8").replace(/\s+/g, " ");
   const rule = (selector: string) => css.match(new RegExp(`(?:^|} )${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
   const card = rule(".r1-ca-card");
-  expect(card).toContain("border: 1px solid var(--line);");
-  expect(card).toContain("background: var(--raise);");
-  expect(rule('.r1-ca-card:hover:not([aria-disabled="true"])')).toContain("border-color: var(--line-2);");
+  expect(card).toContain("background: var(--gk-chip);");
+  expect(card).toContain("inset 0 0 0 .5px var(--gf-edge)");
+  expect(card).toContain("var(--gk-sh-card)");
+  expect(card).not.toMatch(/var\(--raise\)|solid var\(--line\)/);
+  expect(rule('.r1-ca-card:hover:not([aria-disabled="true"])')).toContain("background: var(--gk-on);");
+  const { host } = await render();
+  expect(host.querySelector(".r1-ca-card")!.classList.contains("g-chip")).toBe(true);
+});
+it("gives the pairing buttons a Coming reason when the engine can't approve or dismiss", async () => {
+  const request = vi.fn(async (method: string) => method === "channels.status" ? {} : { accounts: [], requests: [{ requestId: "r1", channel: "telegram", channelLabel: "Telegram", accountId: "default", senderLabel: "Ada" }], limits: { ttlMs: 3600000, pendingPerAccount: 3 } });
+  const engine = { request, onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"], features: { methods: ["channels.status", "channels.pairing.list"], events: [] } } as WindowEngine;
+  const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root.render(<ChatApps engine={engine} />));
+  const coming = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-request button")];
+  expect(coming.map(b => b.textContent)).toEqual(["Coming", "Coming"]);
+  expect(coming[0].title).toBe("Approving requests here comes in a later update.");
+  expect(coming[1].title).toBe("Dismissing requests here comes in a later update.");
+  expect(host.querySelector(".r1-ca-pairing")!.textContent).toContain("Approving requests here comes in a later update.");
 });
 
 it("explains Who answers instead of leaving an empty card when no app is connected", async () => {
