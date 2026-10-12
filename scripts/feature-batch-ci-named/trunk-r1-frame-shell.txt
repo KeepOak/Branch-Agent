@@ -1,0 +1,4 @@
+window:src/glass/tokens.test.ts
+window:src/places/settings/set1/appearance.test.tsx
+window:src/screens/frame/Frame.test.tsx
+window:src/screens/frame/R1Window.test.tsx

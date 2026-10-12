@@ -8,7 +8,7 @@ import { KitProvider, type SaveReport } from "../kit";
 import { AppearancePage, APPEARANCE_ROWS } from "./appearance";
 import { BUILTIN, contrast, fromPalette, SLATE, toPalette } from "./appearance-look";
 import { LEGACY_THEMES } from "./appearance-legacy";
-import { forgetLookStore, lookStore } from "./appearance-store";
+import { applyLook, forgetLookStore, lookStore } from "./appearance-store";
 import { readThemeCode, themeCode } from "./appearance-themes";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -52,6 +52,24 @@ const sw = (label: string) => host.querySelector<HTMLInputElement>(`input[aria-l
 const rows = () => [...host.querySelectorAll(".ctl > b")].map((b) => b.textContent);
 
 describe("Settings › Appearance", () => {
+  it("follows system transparency until a saved choice overrides it", () => {
+    const saved = { look: {}, device: {}, prefs: {}, palette: null };
+    applyLook(saved);
+    expect(document.documentElement.dataset.transparency).toBeUndefined();
+    applyLook({ ...saved, look: { reduceTransparency: true } });
+    expect(document.documentElement.dataset.transparency).toBe("reduce");
+    applyLook({ ...saved, look: { reduceTransparency: false } });
+    expect(document.documentElement.dataset.transparency).toBe("full");
+  });
+  it("saves Reduce transparency through the profile and restores glass when switched off", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    await act(async () => sw("Reduce transparency").click());
+    expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { "ui.window.look": { reduceTransparency: true } }, expectedEntries: { "ui.window.look": null } });
+    expect(document.documentElement.dataset.transparency).toBe("reduce");
+    await act(async () => sw("Reduce transparency").click());
+    expect(document.documentElement.dataset.transparency).toBe("full");
+  });
   it.each([1, 2] as const)("NA-02 omits unavailable character and pet controls from level %i and search", async (level) => {
     const { engine } = engineOf();
     await render(engine, level);

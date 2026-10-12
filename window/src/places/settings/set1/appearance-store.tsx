@@ -16,7 +16,7 @@ import { accentVars, BUILTIN, DEFAULT_THEME, isHex, pairOfDefinition, varsOf, ty
 export const LOOK_PREF = "ui.window.look";
 const ENGINE_PREFS = { accent: "ui.accent", fontUi: "ui.fontUi", fontChat: "ui.fontChat", themeExtra: "ui.window.themeExtra" } as const;
 type EngineKey = keyof typeof ENGINE_PREFS;
-const DEVICE_KEYS = ["size"] as const;
+export const DEVICE_KEYS = ["size"] as const;
 const LOCAL = "branch.look";
 const STYLE_ID = "branch-look";
 const SCENE_FILES: Record<string, string> = {
@@ -114,7 +114,7 @@ function mirrorShell(look: RecordValue) {
   }
 }
 
-function applyLook(s: Saved) {
+export function applyLook(s: Saved) {
   const root = document.documentElement;
   let style = document.getElementById(STYLE_ID);
   if (!style) {
@@ -125,6 +125,8 @@ function applyLook(s: Saved) {
   const size = String(s.device.size ?? "Regular");
   if (size === "Regular") root.removeAttribute("data-size"); else root.setAttribute("data-size", size);
   root.classList.toggle("contrast17", s.look.contrast === true);
+  if (typeof s.look.reduceTransparency === "boolean") root.dataset.transparency = s.look.reduceTransparency ? "reduce" : "full";
+  else root.removeAttribute("data-transparency");
   root.classList.toggle("still-k", s.look.still === true);
   root.toggleAttribute("data-still", s.look.still === true);
   root.toggleAttribute("data-scene", sceneFile(s.look) !== null);

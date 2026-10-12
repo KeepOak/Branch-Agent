@@ -6,7 +6,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { effectiveDark, readThemeChoice, setThemeChoice, type ThemeChoice } from "../../../theme/theme";
 import { errorText, list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
-import { Acts, Btn, Ctl, LinkBtn, Sec, useSaveRunner } from "../kit";
+import { Acts, Btn, Ctl, LinkBtn, Sec, Switch, useSaveRunner } from "../kit";
 import { ACCENTS } from "./appearance-editor";
 import { isHex, SLATE, type Mode, type Pair } from "./appearance-look";
 import { rowOf } from "./appearance-rows";
@@ -120,6 +120,7 @@ export function ThemeSec({ look, pair, themes, current, mode, onBrowse, onMake }
         </span>
       </Ctl>
       <SpecRow r={rowOf("contrast")} look={look} />
+      <TransparencyRow look={look} />
     </Sec>
   );
 }
@@ -132,4 +133,20 @@ export function useTrunk(engine: WindowEngine) {
   const a = agents.find((x) => x.id === id) ?? agents[0];
   const nameOf = (x: RecordValue) => visible(x.name ?? record(x.identity).name ?? x.id);
   return { name: a ? nameOf(a) : "", agents, nameOf, defaultId: id, reload: res.reload };
+}
+
+/** A saved off choice is distinct from following the computer. */
+function TransparencyRow({ look }: { look: Look }) {
+  const save = useSaveRunner();
+  const [system, setSystem] = useState(() => typeof matchMedia === "function" && matchMedia("(prefers-reduced-transparency: reduce)").matches);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const media = matchMedia("(prefers-reduced-transparency: reduce)");
+    const change = () => setSystem(media.matches);
+    media.addEventListener("change", change);
+    return () => media.removeEventListener("change", change);
+  }, []);
+  return <Ctl title="Reduce transparency" sub="Solid tinted surfaces instead of glass and blur." keep="everywhere">
+    <Switch label="Reduce transparency" checked={look.val("reduceTransparency", system) === true} onChange={(on) => void save(() => look.store.set("reduceTransparency", on))} />
+  </Ctl>;
 }
