@@ -9,21 +9,21 @@ export type DayOneTemplate = {
   id: string;
   name: string;
   description: string;
-  /** The face colour from the approved preview. */
+  /** The theme token for this template’s face colour. */
   colour: string;
   /** Other ids the engine may ship it under. */
   aliases?: readonly string[];
 };
 
 export const DAY_ONE_TEMPLATES: readonly DayOneTemplate[] = [
-  { id: "trunk-doctor", name: "Trunk Doctor", description: "Builds new Trunks from a short interview, then gives your team a weekly checkup", colour: "#56616B" },
-  { id: "mentions-watch", name: "Mentions Watch", description: "Watches the web for mentions of you or your brand and sends a quiet weekday digest. Never posts", colour: "#B07A2A", aliases: ["mention-monitor"] },
-  { id: "home-desk", name: "Home Desk", description: "Family and home admin on your email and calendar, with a printable morning page. Never sends without you", colour: "#8A6A4A" },
-  { id: "project-lead", name: "Project Lead", description: "Runs projects as topics in a group and hands each task to the right Trunk", colour: "#4F6FA8" },
-  { id: "prospect-finder", name: "Prospect Finder", description: "Researches prospects that fit and drafts first messages for you to approve", colour: "#C9A227" },
-  { id: "search-brief-desk", name: "Search Brief Desk", description: "Turns keywords into content ideas and writer-ready briefs for Google and AI answers", colour: "#2F5E9E" },
-  { id: "spend-saver", name: "Spend Saver", description: "Finds subscription savings in your bills and drafts the counteroffers", colour: "#2F8C86" },
-  { id: "hiring-desk", name: "Hiring Desk", description: "Schedules interview loops, preps interviewers and chases feedback", colour: "#8A5AA8" },
+  { id: "trunk-doctor", name: "Trunk Doctor", description: "Builds new Trunks from a short interview, then gives your team a weekly checkup", colour: "var(--ink-3)" },
+  { id: "mentions-watch", name: "Mentions Watch", description: "Watches the web for mentions of you or your brand and sends a quiet weekday digest. Never posts", colour: "var(--warn)", aliases: ["mention-monitor"] },
+  { id: "home-desk", name: "Home Desk", description: "Family and home admin on your email and calendar, with a printable morning page. Never sends without you", colour: "var(--ink-2)" },
+  { id: "project-lead", name: "Project Lead", description: "Runs projects as topics in a group and hands each task to the right Trunk", colour: "var(--trunk-5)" },
+  { id: "prospect-finder", name: "Prospect Finder", description: "Researches prospects that fit and drafts first messages for you to approve", colour: "var(--trunk-6)" },
+  { id: "search-brief-desk", name: "Search Brief Desk", description: "Turns keywords into content ideas and writer-ready briefs for Google and AI answers", colour: "var(--trunk-2)" },
+  { id: "spend-saver", name: "Spend Saver", description: "Finds subscription savings in your bills and drafts the counteroffers", colour: "var(--trunk-1)" },
+  { id: "hiring-desk", name: "Hiring Desk", description: "Schedules interview loops, preps interviewers and chases feedback", colour: "var(--trunk-3)" },
 ];
 
 /** One template as trunks.template.list returns it. */
