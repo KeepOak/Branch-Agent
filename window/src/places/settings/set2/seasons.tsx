@@ -1,4 +1,5 @@
-// Settings › Seasons (DESIGN-SPEC §4.7.16.1): Rings on the memory engine's config
+// Settings › Seasons (DESIGN-SPEC §4.7.16.1): Rings (shown as "Overnight memory cleanup"; never the internal name or
+// the diary's file name, DA-89) on the memory engine's config
 // (plugins.entries.memory-core.config.rings.*) and its doctor.memory.* readouts and actions, Budding on the skill
 // workshop (skills.workshop.autonomous.mode, skills.proposals.list), the season's changes, and session backfill.
 // The Gardener's skill resting is retired in the engine, so its rows say so.
@@ -24,13 +25,13 @@ export const ROWS: RowEntry[] = [
   ["Learn what a Trunk can’t do yet", "Skill learning", 0], ["Highest step it may take", "Skill learning", 0],
   ["Keep a change only if it does better by", "Keeping a change", 0], ["Use paid models at night", "Keeping a change", 0],
   ["Rest a skill after", "Seasons, more", 1], ["Set it aside after", "Seasons, more", 1], ["What each night costs", "Seasons, more", 1],
-  ["Clear replayed notes", "Seasons, more", 1], ["What Rings is weighing", "Seasons, more", 1], ["Time zone for the night window", "Seasons, more", 1],
-  ["Model that writes the diary", "Seasons, more", 1], ["Where Rings writes what it keeps", "Seasons, more", 1], ["Keep reports out of memory", "Seasons, more", 1],
-  ["Keep notes for good now", "Rings, by hand", 1], ["Try a night without keeping anything", "Rings, by hand", 1], ["Fill in from past conversations", "Rings, by hand", 1],
-  ["Exact schedule", "Rings, in depth", 2], ["Log each pass in detail", "Rings, in depth", 2],
-  ["Fill the diary from past notes", "Rings, maintenance", 2], ["Remove filled-in entries", "Rings, maintenance", 2],
-  ["Remove repeated diary entries", "Rings, maintenance", 2], ["Repair Rings’ files", "Rings, maintenance", 2],
-].map(([title, sec, lv]) => ({ page: "seasons", title: String(title), sec: String(sec), group: ({ "Rings, by hand": "Overnight memory cleanup", "Rings, in depth": "Overnight memory cleanup", "Rings, maintenance": "Overnight memory cleanup", "Seasons, more": "Seasons" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
+  ["Clear replayed notes", "Seasons, more", 1], ["Notes it is weighing", "Seasons, more", 1], ["Time zone for the night window", "Seasons, more", 1],
+  ["Model that writes the diary", "Seasons, more", 1], ["Where kept notes are written", "Seasons, more", 1], ["Keep reports out of memory", "Seasons, more", 1],
+  ["Keep notes for good now", "Cleanup, by hand", 1], ["Try a night without keeping anything", "Cleanup, by hand", 1], ["Fill in from past conversations", "Cleanup, by hand", 1],
+  ["Exact schedule", "Cleanup, in depth", 2], ["Log each pass in detail", "Cleanup, in depth", 2],
+  ["Fill the diary from past notes", "Cleanup, maintenance", 2], ["Remove filled-in entries", "Cleanup, maintenance", 2],
+  ["Remove repeated diary entries", "Cleanup, maintenance", 2], ["Repair the cleanup’s files", "Cleanup, maintenance", 2],
+].map(([title, sec, lv]) => ({ page: "seasons", title: String(title), sec: String(sec), group: ({ "Cleanup, by hand": "Overnight memory cleanup", "Cleanup, in depth": "Overnight memory cleanup", "Cleanup, maintenance": "Overnight memory cleanup", "Seasons, more": "Seasons" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
 type Config = ReturnType<typeof useConfig>;
 type Ctx = SettingsPageProps & { config: Config; agent: string; status: RecordValue; reload: () => void };
@@ -88,7 +89,7 @@ function RingsSec({ engine, config, agent }: Ctx) {
       </Ctl>
       <Ctl title="Night window" sub={night === "custom" ? `Custom: ${cron}. Cleanup starts when the window opens and runs until it is done.` : "Cleanup starts when the window opens and runs until it is done."}>
         <Seg label="Night window" value={night} disabled={config.loading || !enabled} onChange={(h) => void config.set(`${RINGS}.frequency`, `0 ${h} * * *`)}
-          options={[{ id: "1", label: "1 AM" }, { id: "3", label: "3 AM" }, { id: "5", label: "5 AM" }, ...(night === "custom" ? [{ id: "custom", label: "Custom", off: "Set in Rings, in depth." }] : [])]} />
+          options={[{ id: "1", label: "1 AM" }, { id: "3", label: "3 AM" }, { id: "5", label: "5 AM" }, ...(night === "custom" ? [{ id: "custom", label: "Custom", off: "Set in Cleanup, in depth." }] : [])]} />
       </Ctl>
       <Ctl title="What it changed" sub="Every merge and every fact let go, night by night."><Btn sm onClick={() => setDiary(true)}>See what it changed</Btn></Ctl>
       {diary ? <DiaryDialog engine={engine} agent={agent} onClose={() => setDiary(false)} /> : null}
@@ -105,7 +106,6 @@ function DiaryDialog({ engine, agent, onClose }: Pick<SettingsPageProps, "engine
       {diary.loading && !diary.data ? <p>Loading…</p> : null}
       {diary.data && d.found !== true ? <p className="hint">Nothing yet. It writes down what it changed after its first night.</p> : null}
       {d.found === true ? <pre className="s2-pre s2-diary">{str(d.content)}</pre> : null}
-      {d.path ? <p className="hint">{str(d.path)}</p> : null}
     </Dialog>
   );
 }
@@ -127,7 +127,7 @@ function Budding({ config }: Ctx) {
 
 type Change = { id: string; who: "rings" | "budding"; text: string; at: number; note?: string };
 function changes(rings: RecordValue, proposals: RecordValue[]): Change[] {
-  const kept = list(rings.promotedEntries).map((e, i): Change => ({ id: `r${i}`, who: "rings", text: `Kept “${str(e.snippet) || str(e.key)}” for good`, at: Date.parse(str(e.promotedAt) || str(e.lastRecalledAt)) || 0, note: str(e.path) }));
+  const kept = list(rings.promotedEntries).map((e, i): Change => ({ id: `r${i}`, who: "rings", text: `Kept “${str(e.snippet) || str(e.key)}” for good`, at: Date.parse(str(e.promotedAt) || str(e.lastRecalledAt)) || 0 }));
   const learned = proposals.map((p): Change => ({ id: str(p.id), who: "budding", text: p.status === "applied" ? `Learned “${str(p.title)}”, as a skill` : `Suggested “${str(p.title)}” (${str(p.status)})`, at: Date.parse(str(p.updatedAt)) || 0, note: str(p.skillName) }));
   return [...kept, ...learned].sort((a, b) => b.at - a.at);
 }
@@ -138,12 +138,12 @@ function ThisSeason({ rings, proposals }: { rings: RecordValue; proposals: Recor
   const shown = all.filter((c) => filter === "all" || c.who === filter);
   return (
     <Sec title="This season">
-      <div className="acts s2-filter">{[["all", "All"], ["rings", "Rings"], ["gardener", "Gardener"], ["budding", "Budding"]].map(([id, label]) => <button key={id} type="button" className="chip6" aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>)}</div>
+      <div className="acts s2-filter">{[["all", "All"], ["rings", "Memory cleanup"], ["gardener", "Skill maintenance"], ["budding", "Skill learning"]].map(([id, label]) => <button key={id} type="button" className="chip6" aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>)}</div>
       {shown.length ? (
         <ol className="s2-tl s2-season">
           {shown.map((c) => (
             <li key={c.id} className="ok">
-              <span>{c.text}<small>{c.who === "rings" ? "Rings" : "Budding"} · {when(c.at)}</small>{c.note ? <code className="s2-rec">{c.note}</code> : null}</span>
+              <span>{c.text}<small>{c.who === "rings" ? "Memory cleanup" : "Skill learning"} · {when(c.at)}</small>{c.note ? <code className="s2-rec">{c.note}</code> : null}</span>
               <span className="acts"><Btn sm ghost disabled title={NO_UNDO}>Undo</Btn></span>
             </li>
           ))}
@@ -167,20 +167,20 @@ function More({ engine, config, agent, status, reload }: Ctx) {
       <Ctl title="Rest a skill after" sub="Unused this long, a skill rests: it stays installed but isn’t offered." off={NO_GARDENER}><Num label="Rest a skill after" value={14} unit="days" onCommit={() => undefined} /></Ctl>
       <Ctl title="Set it aside after" sub="Set-aside skills move to Customize › Tools › Skills › Set aside." off={NO_GARDENER}><Num label="Set it aside after" value={30} unit="days" onCommit={() => undefined} /></Ctl>
       <Ctl title="What each night costs" sub="Shows what each night’s model use costs." help="Each night’s model use: free on this computer, or the plan it used when paid models are allowed." off="Needs the engine to record each night’s model use."><Btn sm>See the nights</Btn></Ctl>
-      <Ctl title="Clear replayed notes" sub={clear.note ?? clear.error ?? "Removes the notes Rings pulled back from older daily logs and is still weighing. Nothing already kept is touched."}>
+      <Ctl title="Clear replayed notes" sub={clear.note ?? clear.error ?? "Removes the notes the cleanup pulled back from older daily logs and is still weighing. Nothing already kept is touched."}>
         <Btn sm disabled={clear.busy} onClick={() => void clear.run(() => engine.request<RecordValue>("doctor.memory.resetGroundedShortTerm", agent ? { agentId: agent } : {}), (r) => { reload(); return `Cleared ${str(rec(r).removedShortTermEntries) || "0"} notes.`; })}>Clear</Btn>
       </Ctl>
-      <Ctl title="What Rings is weighing" sub="Notes waiting to be kept for good, and where each came from."><Btn sm onClick={() => setWeigh(true)}>Review</Btn></Ctl>
+      <Ctl title="Notes it is weighing" sub="Notes waiting to be kept for good, and where each came from."><Btn sm onClick={() => setWeigh(true)}>Review</Btn></Ctl>
       <Ctl title="Time zone for the night window" sub="The night window is read in this time zone.">
         <Pick label="Time zone for the night window" value={zone} disabled={config.loading} onChange={(v) => void config.set(`${RINGS}.timezone`, v || null)} options={[{ id: "", label: `This computer’s (${here.replace(/_/g, " ")})` }, ...ZONES.map((z) => ({ id: z, label: z.replace(/_/g, " ") }))]} />
       </Ctl>
-      <Ctl title="Model that writes the diary" sub="Writes the Rings diary’s sentences.">
+      <Ctl title="Model that writes the diary" sub="Writes the sentences in What it changed.">
         <Pick label="Model that writes the diary" value={model} disabled={config.loading} onChange={(v) => void config.set(`${RINGS}.model`, v || null)} options={[{ id: "", label: "Each Trunk’s own model" }, ...opts]} />
       </Ctl>
-      <Ctl title="Where Rings writes what it keeps" sub="Choose where kept notes and nightly reports are written." help="In memory writes into the memory file; its own file keeps a separate report. Where kept notes and nightly reports are written.">
-        <Seg label="Where Rings writes what it keeps" value={storage} disabled={config.loading} onChange={(v) => void config.set(`${RINGS}.storage.mode`, v)} options={[{ id: "inline", label: "In memory" }, { id: "separate", label: "Its own file" }, { id: "both", label: "Both" }]} />
+      <Ctl title="Where kept notes are written" sub="Choose where kept notes and nightly reports are written." help="In memory writes into the memory file; its own file keeps a separate report. Where kept notes and nightly reports are written.">
+        <Seg label="Where kept notes are written" value={storage} disabled={config.loading} onChange={(v) => void config.set(`${RINGS}.storage.mode`, v)} options={[{ id: "inline", label: "In memory" }, { id: "separate", label: "Its own file" }, { id: "both", label: "Both" }]} />
       </Ctl>
-      <Ctl title="Keep reports out of memory" sub="Rings’ nightly reports stay out of the main memory file.">
+      <Ctl title="Keep reports out of memory" sub="The cleanup’s nightly reports stay out of the main memory file.">
         <Switch label="Keep reports out of memory" checked={config.get(`${RINGS}.storage.separateReports`) === true} disabled={config.loading} onChange={(on) => void config.set(`${RINGS}.storage.separateReports`, on)} />
       </Ctl>
       {weigh ? <WeighDialog status={status} onClose={() => setWeigh(false)} /> : null}
@@ -191,7 +191,7 @@ function More({ engine, config, agent, status, reload }: Ctx) {
 function WeighDialog({ status, onClose }: { status: RecordValue; onClose: () => void }) {
   const entries = list(status.shortTermEntries);
   return (
-    <Dialog title="What Rings is weighing" wide onClose={onClose}>
+    <Dialog title="Notes it is weighing" wide onClose={onClose}>
       <p className="hint">{entries.length} {entries.length === 1 ? "note" : "notes"} waiting to be kept for good.</p>
       {entries.length ? <div className="rows">{entries.map((e, i) => <Prow key={i} title={str(e.snippet) || str(e.key)} sub={[`${str(e.path)}:${str(e.startLine)}`, typeof e.recallCount === "number" ? `recalled ${e.recallCount} times` : "", typeof e.totalSignalCount === "number" ? `${e.totalSignalCount} signals` : ""].filter(Boolean).join(" · ")} />)}</div> : null}
     </Dialog>
@@ -202,7 +202,7 @@ function WeighDialog({ status, onClose }: { status: RecordValue; onClose: () => 
 function ByHand({ engine, agent, lv }: Ctx & { lv: number }) {
   const [fill, setFill] = useState(false);
   return (
-    <Sec title="Rings, by hand" showHeading={false} group="Rings">
+    <Sec title="Cleanup, by hand" showHeading={false} group="Overnight memory cleanup">
       <Ctl title="Keep notes for good now" sub="The notes the deep pass would keep, with why." off={lv >= 2 ? "Runs from a terminal: Keep notes now, below." : TERMINAL}><Btn sm>Preview</Btn></Ctl>
       <Ctl title="Try a night without keeping anything" sub="Shows what the pattern and deep passes would find. It writes nothing." off={lv >= 2 ? "Runs from a terminal: A night that keeps nothing, below." : TERMINAL}><Btn sm>Try it</Btn></Ctl>
       <Ctl title="Fill in from past conversations" sub="Writes diary entries from conversations you choose." help="Writes diary entries from conversations you pick; you can remove them all."><Btn sm disabled={!agent} onClick={() => setFill(true)}>Choose…</Btn></Ctl>
@@ -248,7 +248,7 @@ function InDepth({ config, status }: Ctx) {
   const cron = str(config.get(`${RINGS}.frequency`));
   const phases = rec(status.phases);
   return (
-    <Sec title="Rings, in depth" showHeading={false} group="Rings" hint="Fine tuning for each of Rings’ three passes.">
+    <Sec title="Cleanup, in depth" showHeading={false} group="Overnight memory cleanup" hint="Fine tuning for each of the cleanup’s three passes.">
       <Ctl title="Exact schedule" sub="Five-field cron." help="Five-field cron. Setting it makes Night window read “Custom”; empty uses the night window. Overrides the night window.">
         <input className="inp s2-mono" aria-label="Exact schedule" defaultValue={cron} placeholder="0 3 * * *" onBlur={(e) => { const v = e.target.value.trim(); if (v !== cron) void config.set(`${RINGS}.frequency`, v || null); }} />
       </Ctl>
@@ -277,11 +277,11 @@ function Maintenance({ engine, agent, status, reload }: Ctx) {
   const params = agent ? { agentId: agent } : {};
   const act = (method: string, note: (r: RecordValue) => string) => void call.run(() => engine.request<RecordValue>(method, params), (r) => { reload(); return note(rec(r)); });
   return (
-    <Sec title="Rings, maintenance" showHeading={false} group="Rings" hint={`${str(status.shortTermCount) || "0"} notes waiting · ${str(status.promotedToday) || "0"} kept today · ${str(status.promotedTotal) || "0"} kept in all`}>
+    <Sec title="Cleanup, maintenance" showHeading={false} group="Overnight memory cleanup" hint={`${str(status.shortTermCount) || "0"} notes waiting · ${str(status.promotedToday) || "0"} kept today · ${str(status.promotedTotal) || "0"} kept in all`}>
       <Ctl title="Fill the diary from past notes"><Btn sm disabled={call.busy} onClick={() => act("doctor.memory.backfillDreamDiary", (r) => `Wrote ${str(r.written) || "0"} entries from ${str(r.scannedFiles) || "0"} notes.`)}>Fill in</Btn></Ctl>
       <Ctl title="Remove filled-in entries"><Btn sm disabled={call.busy} onClick={() => act("doctor.memory.resetDreamDiary", (r) => `Removed ${str(r.removedEntries) || "0"} entries.`)}>Remove</Btn></Ctl>
       <Ctl title="Remove repeated diary entries" sub="Only exact repeats."><Btn sm disabled={call.busy} onClick={() => act("doctor.memory.dedupeDreamDiary", (r) => `Removed ${str(r.removedEntries) || str(r.removed) || "0"} repeats.`)}>Remove repeats</Btn></Ctl>
-      <Ctl title="Repair Rings’ files"><Btn sm disabled={call.busy} onClick={() => act("doctor.memory.repairRingsArtifacts", (r) => (r.changed === true ? `Repaired. The old files are in ${str(r.archiveDir)}.` : "Nothing needed repair."))}>Repair</Btn></Ctl>
+      <Ctl title="Repair the cleanup’s files"><Btn sm disabled={call.busy} onClick={() => act("doctor.memory.repairRingsArtifacts", (r) => (r.changed === true ? `Repaired. The old files are in ${str(r.archiveDir)}.` : "Nothing needed repair."))}>Repair</Btn></Ctl>
       <CallLine call={call} />
       {status.storeError ? <p className="hint s2-err">{str(status.storeError)}</p> : null}
     </Sec>
