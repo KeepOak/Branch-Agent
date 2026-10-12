@@ -85,6 +85,17 @@ describe("Library › Made for you", () => {
       expect(links).toEqual(["https://example.test/sheet.xlsx"]);
     } finally { spy.mockRestore(); }
   });
+  it("Show in folder asks the engine to open the conversation's work folder and shows its reason when it can't", async () => {
+    const { engine, request } = engineOf(base((m, p) => m === "sessions.files.reveal" ? (p.key === "agent:a:one" ? { ok: false, path: "/w", error: "Cannot reveal this workspace because its files live on a remote host." } : { ok: true, path: "/w" }) : undefined));
+    await mount(engine);
+    const rows = [...host.querySelector('[data-testid="made-files"]')!.querySelectorAll(".lib-row")];
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(button("Show in folder", row)!.title).toBe("Opens the folder where Birch worked on this file.");
+    await act(async () => { button("Show in folder", rows[1])!.click(); }); await settle();
+    expect(request).toHaveBeenCalledWith("sessions.files.reveal", { key: "agent:a:one", agentId: "a" });
+    expect(host.querySelector('[role="alert"]')!.textContent).toBe("Cannot reveal this workspace because its files live on a remote host.");
+    expect(request.mock.calls.filter(([m]) => m === "artifacts.download")).toHaveLength(0);
+  });
   it("shows four images a conversation made, older ones on request, and a still for ones too large", async () => {
     const { engine, request } = engineOf(base());
     await mount(engine);

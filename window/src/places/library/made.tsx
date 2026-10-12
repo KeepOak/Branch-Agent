@@ -139,6 +139,7 @@ function MadeFiles({ engine, trunks, openConversation }: Props) {
     {made.groups && !files.length && !withImages.length && <EmptyLine icon={<EmptyIcon name="file" />}>Nothing made yet. Files your Trunks make show up here.</EmptyLine>}
     {!!files.length && <div className="lib-rows lib-made-files" data-testid="made-files">{files.map(({ f, g }) => <Row key={g.row.key + f.id} badge={<TypeBadge name={f.title} />} title={f.title} line={[g.trunk, kindWord(f), when(g.row.updatedAt)].filter(Boolean).join(" · ")}>
       <button type="button" className="btn sm" disabled={op.busy || f.download.mode === "unsupported"} title={f.download.mode === "unsupported" ? "The engine does not provide a download for this file." : undefined} onClick={() => openArtifact(op, g.row, f)}>Open</button>
+      <button type="button" className="btn ghost sm" disabled={op.busy} title={`Opens the folder where ${g.trunk} worked on this file.`} onClick={() => showInFolder(op, g.row)}>Show in folder</button>
     </Row>)}</div>}
     {!!withImages.length && <Section title="Images" testid="images">{withImages.map(g => <ImageGroup key={g.row.key} engine={engine} group={g} open={() => openConversation(g.row.key)} />)}</Section>}
     {made.more && <button type="button" className="btn ghost sm" onClick={made.loadMore}>Load more</button>}
@@ -148,6 +149,11 @@ function MadeFiles({ engine, trunks, openConversation }: Props) {
 function kindWord(f: Artifact) {
   const m = f.mimeType ?? "";
   return /word/.test(m) ? "Word" : /sheet|excel/.test(m) ? "spreadsheet" : /presentation|powerpoint/.test(m) ? "slides" : /svg/.test(m) ? "chart" : "";
+}
+
+/** Show in folder (atlas MEMORY-0155, R-0267): the engine opens the conversation's work folder on this computer; its reason shows when it can't. */
+function showInFolder(op: ReturnType<typeof useOperation>, row: SessionRow) {
+  void op.run<unknown>("sessions.files.reveal", { key: row.key, ...(agentOf(row) ? { agentId: agentOf(row) } : {}) }, () => undefined);
 }
 
 function openArtifact(op: ReturnType<typeof useOperation>, row: SessionRow, a: Artifact) {
