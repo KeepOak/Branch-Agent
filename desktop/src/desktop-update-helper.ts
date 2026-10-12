@@ -68,6 +68,16 @@ function refreshWindowsIcon(plan: HelperPlan, log: (line: string) => void): void
   if (errors.length) log(`desktop icon refresh failed (${errors.join("; ")})`);
 }
 
+/** Launch Services learns the swapped bundle. Tests skip this; a failure must not stop the relaunch. */
+function registerLaunchedMacApp(target: string, log: (line: string) => void): void {
+  if (process.platform !== "darwin" || process.env.BRANCH_DESKTOP_TEST_DIST || !target.endsWith(".app")) return;
+  try {
+    execFileSync("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", ["-f", target], { windowsHide: true, stdio: "ignore" });
+  } catch (error) {
+    log(`Launch Services registration failed (${String(error)})`);
+  }
+}
+
 /** Stops the relaunched app and its own child processes, by its PID only. */
 async function stop(pid: number): Promise<void> {
   try {
@@ -127,6 +137,7 @@ export async function runHelper(plan: HelperPlan): Promise<"applied" | "kept" | 
   const previous = `${journal.target}.previous`;
   if (!await swap(plan, journal, previous, log)) { launch(plan); return "kept"; }
   log(`desktop update ${journal.version}: ${journal.kind} swapped in; relaunching`);
+  registerLaunchedMacApp(journal.target, log);
   const pid = launch(plan);
   for (const end = Date.now() + plan.confirmTimeoutMs; Date.now() < end; await sleep(250)) {
     if (!existsSync(plan.journal)) {
@@ -136,6 +147,7 @@ export async function runHelper(plan: HelperPlan): Promise<"applied" | "kept" | 
   }
   log(`desktop update ${journal.version}: the new app did not confirm its start; restoring the previous copy`);
   await rollback(plan, journal, previous, pid);
+  registerLaunchedMacApp(journal.target, log);
   launch(plan);
   return "rolled-back";
 }

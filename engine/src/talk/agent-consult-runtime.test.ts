@@ -799,11 +799,44 @@ describe("realtime voice agent consult runtime", () => {
       userLabel: "Participant",
     });
 
-    expect(sessionForkMocks.forkSessionEntryFromParent).not.toHaveBeenCalled();
+    expect(sessionForkMocks.forkSessionEntryFromParent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parentSessionKey: "agent:main:main",
+        sessionKey: "agent:main:subagent:google-meet:meet-1",
+      }),
+    );
+    expect(await sessionForkMocks.forkSessionEntryFromParent.mock.results[0]?.value).toEqual({
+      status: "missing-parent",
+    });
     expect(runtime.session.patchSessionEntry).toHaveBeenCalled();
     const call = requireEmbeddedAgentCall(runEmbeddedAgent);
     expectNonEmptyString(call.sessionId);
     expect(call.spawnedBy).toBe("agent:main:main");
+  });
+
+  it("propagates requester fork errors without starting an isolated consult", async () => {
+    const { runtime, runEmbeddedAgent, sessionStore } = createAgentRuntime();
+    sessionStore["agent:main:main"] = { sessionId: "parent-session", updatedAt: 1 };
+    const forkError = new Error("Requester fork failed");
+    sessionForkMocks.forkSessionEntryFromParent.mockRejectedValueOnce(forkError);
+
+    await expect(
+      runConsult({
+        agentRuntime: runtime as never,
+        agentId: "main",
+        sessionKey: "agent:main:subagent:google-meet:meet-1",
+        spawnedBy: "agent:main:main",
+        contextMode: "fork",
+        messageProvider: "google-meet",
+        lane: "google-meet",
+        runIdPrefix: "google-meet:meet-1",
+        args: { question: "What should I say?" },
+        surface: "a private Google Meet",
+        userLabel: "Participant",
+      }),
+    ).rejects.toBe(forkError);
+    expect(runtime.session.patchSessionEntry).not.toHaveBeenCalled();
+    expect(runEmbeddedAgent).not.toHaveBeenCalled();
   });
 
   it("falls back to a fresh isolated consult session when requester context is too large", async () => {

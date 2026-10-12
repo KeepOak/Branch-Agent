@@ -2,6 +2,10 @@
 // from the live connection; `sessionKey` is the open conversation.
 import type { MediaPicture } from "./session";
 export type WindowEngine = {
+  /** The same socket connection state used by the status bar. */
+  connected?: boolean;
+  /** Retry the same gateway connection immediately, without resetting the conversation. */
+  reconnect?: () => void;
   /** Actual connection address, used to distinguish the owned desktop gateway from Connect elsewhere. */
   gatewayUrl?: string;
   request<T = unknown>(method: string, params?: unknown): Promise<T>;
@@ -17,7 +21,16 @@ export type WindowEngine = {
   rewound?: (entryId: string) => void;
   scopes: string[];
   attachmentPolicy?: { maxBytes?: number; maxImageBytes?: number };
+  /** Ask an owner for this device's full operator scopes; the connection stores the rotated key. */
+  requestScopeUpgrade?: (options?: { onPending?: (requestId: string) => void }) => Promise<ScopeUpgradeOutcome>;
+  /** Withdraw or forget a live full-access wait. */
+  cancelScopeUpgrade?: () => void;
 };
+
+/** What `device.scopes.waitUpgrade` settles as, after this window asked for more access. */
+export type ScopeUpgradeOutcome =
+  | { status: "approved"; requestId: string; scopes: string[] }
+  | { status: "rejected" | "expired"; requestId: string };
 
 /** The extras a composer can send with a message; they are spread into chat.send's params. */
 export type SendExtras = {

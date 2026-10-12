@@ -19,7 +19,7 @@ import type {
   RealtimeVoiceProviderPlugin,
 } from "branch/plugin-sdk/realtime-voice";
 import { isRecord } from "branch/plugin-sdk/string-coerce-runtime";
-import { createRequireRecord, useMeetingTestState } from "branch/plugin-sdk/test-fixtures";
+import { createRequireRecord, useMeetingTestState, withinTest } from "branch/plugin-sdk/test-fixtures";
 import { createBranchTestState } from "branch/plugin-sdk/test-state";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "./index.js";
@@ -3208,10 +3208,12 @@ describe("google-meet plugin", () => {
     ).toThrow("Unsupported telephony TTS output format");
   });
 
-  it("defaults Chrome command-pair realtime to agent-driven talk-back", async () => {
+  it("defaults Chrome command-pair realtime to agent-driven talk-back", async ({ signal }) => {
     vi.useFakeTimers();
     try {
-      const sendUserMessage = vi.fn();
+      const agentCalled = createDeferred<void>();
+      const replySent = createDeferred<void>();
+      const sendUserMessage = vi.fn(() => replySent.resolve());
       const { provider, requireRequest } = createTestMeetVoiceProvider({
         defaultModel: "gpt-realtime-2",
         sendUserMessage,
@@ -3238,10 +3240,13 @@ describe("google-meet plugin", () => {
           resolveAgentWorkspaceDir: vi.fn(() => "/tmp/workspace"),
           ensureAgentWorkspace: vi.fn(async () => {}),
           session: createMockSessionRuntime(sessionStore),
-          runEmbeddedAgent: vi.fn(async (_request: unknown) => ({
-            payloads: [{ text: "The launch is still on track." }],
-            meta: {},
-          })),
+          runEmbeddedAgent: vi.fn(async (_request: unknown) => {
+            agentCalled.resolve();
+            return {
+              payloads: [{ text: "The launch is still on track." }],
+              meta: {},
+            };
+          }),
           resolveAgentTimeoutMs: vi.fn(() => 1000),
         },
       };
@@ -3277,9 +3282,10 @@ describe("google-meet plugin", () => {
       callbacks.onTranscript?.("user", "Please include launch blockers.", true);
 
       await vi.advanceTimersByTimeAsync(TEST_TALKBACK_DEBOUNCE_MS);
-      await vi.waitFor(() => {
-        expect(runtime.agent.runEmbeddedAgent).toHaveBeenCalledTimes(1);
-      });
+      // Only the transcript debounce is virtual; session admission and forking use real IO.
+      vi.useRealTimers();
+      await withinTest(agentCalled.promise, signal);
+      expect(runtime.agent.runEmbeddedAgent).toHaveBeenCalledTimes(1);
       const consultArgs = requireRecord(
         (runtime.agent.runEmbeddedAgent.mock.calls as unknown[][])[0]?.[0],
         "default talk-back agent request",
@@ -3292,8 +3298,9 @@ describe("google-meet plugin", () => {
       expect(JSON.stringify(consultArgs)).toContain(
         "Are we still on track?\\nPlease include launch blockers.",
       );
+      await withinTest(replySent.promise, signal);
       expect(noopLogger.warn).not.toHaveBeenCalled();
-      await vi.waitFor(() => expect(sendUserMessage).toHaveBeenCalledTimes(1));
+      expect(sendUserMessage).toHaveBeenCalledTimes(1);
       const sentUserMessage: unknown = sendUserMessage.mock.calls[0]?.[0];
       expect(typeof sentUserMessage).toBe("string");
       expect(sentUserMessage).toContain(JSON.stringify("The launch is still on track."));

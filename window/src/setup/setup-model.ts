@@ -1,38 +1,44 @@
 // The 11-step setup (DESIGN-SPEC §4.8.1): its steps, choices, and the readers for what the engine detects.
 // Engine: branch.setup.detect / verify / activate (gateway-protocol schema/branch.ts), config wizard.* for the record.
 
+import { JOBS as STARTING_JOBS } from "../places/customize/jobs-data";
+
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const list = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.map(rec) : []);
 
-/** The 11 steps, in order, with the spec's names (§4.8.1 rule 1). */
+/** The 11 steps, in order, with the preview's names (OB_STEPS plus Make it yours and Two more things). */
 export const STEPS = [
   "Welcome",
   "Where Branch runs",
   "Models",
   "Make it yours",
   "Your first Trunks",
-  "Tools",
   "Reach it anywhere",
+  "Tools",
   "Keep it running",
   "People",
-  "A few extras",
+  "Two more things",
   "Health check",
 ] as const;
 export const LAST = STEPS.length - 1;
 
+/** Settings › Developer › Run setup again, and Guide › Set up Branch, reopen at Welcome. */
+export const RUN_SETUP_AGAIN = "branch:run-setup-again";
+export function rerunSetup(): void {
+  window.dispatchEvent(new CustomEvent(RUN_SETUP_AGAIN));
+}
+
+/** A rail step ticks only after the person has passed it (preview: `j < i`). */
+export function railTicked(current: number, i: number): boolean {
+  return i < current;
+}
+
 export type Where = "this" | "remote" | "keepoak" | "later";
 export type Look = "system" | "light" | "dark";
 
-/** The six starting jobs (§4.8.1.5, the job list in §4.6.6). */
-export const JOBS = [
-  { name: "Inbox Manager", line: "Clears your inbox and drafts replies in your voice", colour: "#4F6FA8" },
-  { name: "Expense Manager", line: "Files receipts and builds monthly reports", colour: "#1785AF" },
-  { name: "Researcher", line: "Reads the web and writes short briefs with sources", colour: "#2F8C86" },
-  { name: "Chief of Staff", line: "Plans your week and chases loose ends", colour: "#56616B" },
-  { name: "Bug Reproduction", line: "Turns a bug report into exact steps", colour: "#B84A6B" },
-  { name: "Trip Planner", line: "Finds and books refundable travel", colour: "#8A5AA8" },
-] as const;
+/** The six starting jobs (§4.8.1.5, the job list in §4.6.6). Colours live on the shared job tiles. */
+export const JOBS = STARTING_JOBS.map((job) => ({ name: job.name, line: job.description, colour: job.color }));
 
 export type SetupChoices = {
   promise: boolean;
@@ -164,13 +170,14 @@ export function knownSetup(config: unknown, detected: Detected | null, trunkName
 }
 
 /** The steps an already set-up Branch has done: Welcome (promise), Where (this window is connected), Models (a
- *  default model), Your first Trunks (a job Trunk exists), Reach (a chat app is connected). */
+ *  default model), Your first Trunks (a job Trunk exists), Reach (a chat app is connected). Used to skip ahead,
+ *  not to tick the rail (the rail only ticks steps the person has passed). */
 export function doneSteps(known: Known, chatConnected: boolean): Set<number> {
   const done = new Set<number>();
-  if (known.promise) done.add(0);
-  if (known.where) done.add(1);
-  if (known.model) done.add(2);
-  if (known.jobs.length) done.add(4);
-  if (chatConnected) done.add(6);
+  if (known.promise) done.add(STEPS.indexOf("Welcome"));
+  if (known.where) done.add(STEPS.indexOf("Where Branch runs"));
+  if (known.model) done.add(STEPS.indexOf("Models"));
+  if (known.jobs.length) done.add(STEPS.indexOf("Your first Trunks"));
+  if (chatConnected) done.add(STEPS.indexOf("Reach it anywhere"));
   return done;
 }

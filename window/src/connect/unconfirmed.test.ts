@@ -2,7 +2,7 @@
 // "Not confirmed yet" messages are checked on their own engine only, with a backoff while a read keeps failing.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadLine, saveLine, type QueueItem } from "../composer/queue";
-import { engineKeyOf, sameEngine, UnconfirmedSends } from "./unconfirmed";
+import { engineKeyOf, FirstSendEcho, sameEngine, UnconfirmedSends } from "./unconfirmed";
 
 const KEY = "agent:main:main";
 const record = (engine: string): QueueItem => ({ id: "lost", text: "Hello", files: [], state: "checking", sentTo: { engine, at: 1, existed: true, owner: "w" } });
@@ -56,6 +56,17 @@ describe("checking messages sent but not confirmed", () => {
     expect(sameEngine(undefined, engineKeyOf("ws://127.0.0.1:19700", null))).toBe(false);
     expect(sameEngine(engineKeyOf("wss://vm.example:443", null), engineKeyOf("wss://vm.example:444", null))).toBe(false);
     expect(sameEngine(engineKeyOf("wss://vm.example:443", hello("/a")), engineKeyOf("wss://vm.example:444", hello("/a")))).toBe(true);
+  });
+
+  it("holds one first-send echo for its conversation until it is cleared", () => {
+    const echo = new FirstSendEcho();
+    echo.set(KEY, "What is 2+3?", "run-1");
+    expect(echo.peek(KEY)).toEqual({ text: "What is 2+3?", runId: "run-1" });
+    expect(echo.peek("agent:other:main")).toBeNull();
+    echo.clear("other-run");
+    expect(echo.peek(KEY)?.text).toBe("What is 2+3?");
+    echo.clear("run-1");
+    expect(echo.peek(KEY)).toBeNull();
   });
 
   it("keeps asking for receipts after a refusal without them proves the read itself was denied", async () => {
