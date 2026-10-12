@@ -248,10 +248,10 @@ export function Sidebar(p: SidebarProps) {
       {update?.latest ? <button type="button" className="r1sb-upd" data-busy={busy || undefined} aria-label={busy ? `Installing ${short}` : `Update to ${short}`} title={update.waiting ?? `Update to ${short}`} disabled={busy} onClick={install}>{icons.cloud}</button> : null}
     </div>
 
-    {menu && menuItems ? <Popover anchor={menuAnchor} label={`${menu.name} menu`} width={300} onClose={() => setMenu(null)}><Menu label={menu.name} tiles={menuItems.tiles} rows={menuItems.rows} onClose={() => setMenu(null)} /></Popover> : null}
-    {plusOpen ? <Popover anchor={plusRef} label="New, places and more" width={270} align="end" onClose={() => setPlusOpen(false)}><Menu label="New, places and more" rows={plusRows} onClose={() => setPlusOpen(false)} /></Popover> : null}
+    {menu && menuItems ? <Popover anchor={menuAnchor} label={`${menu.name} menu`} width={300} onClose={() => setMenu(null)}><div className="r1sb-pop"><Menu label={menu.name} tiles={menuItems.tiles} rows={menuItems.rows} onClose={() => setMenu(null)} /></div></Popover> : null}
+    {plusOpen ? <Popover anchor={plusRef} label="New, places and more" width={270} align="end" onClose={() => setPlusOpen(false)}><div className="r1sb-pop"><Menu label="New, places and more" rows={plusRows} onClose={() => setPlusOpen(false)} /></div></Popover> : null}
     {personOpen ? <Popover anchor={meRef} label="Who is using Branch" width={280} placement="above" onClose={() => setPersonOpen(false)}>
-      <div className="r1sb-person">
+      <div className="r1sb-person r1sb-pop">
         {update?.latest ? <div className="r1sb-upd-ban"><span>Update to {short}</span><button type="button" disabled={busy} onClick={() => { setPersonOpen(false); install(); }}>{busy ? "Installing…" : "Install"}</button></div> : null}
         <div className="r1sb-ph">Who is using Branch</div>
         <div className="r1sb-people">

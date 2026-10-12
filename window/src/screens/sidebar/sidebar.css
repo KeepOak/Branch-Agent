@@ -185,3 +185,23 @@ button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
 }
 @media (prefers-reduced-motion: reduce) { .r1sb-caps, .r1sb-caps > *, .r1sb-chip, .r1sb-search, .r1sb-fold, .r1sb-upd { transition-duration: .01s !important; animation: none !important; } }
 :root[data-transparency="reduce"] :is(.r1sb-head, .r1sb-seed, .r1sb-fold[data-open]) { background: var(--raise, var(--bg)); }
+
+/* ===== Item 48, the glass model (owner, final): the sidebar itself stays the one tinted, frosted surface (the frame's
+   .r1-sidebar), but the menus it opens float over the clear conversation, so they are clear too. Each row, tile and line of
+   text in them sits on its own frosted pill with a 1px outline (--gp-* tokens, 4.5:1 ink); Reduce transparency makes them
+   solid. ===== */
+.g-popover:has(> .r1sb-pop) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.r1sb-pop .g-menu { gap: 4px; }
+.r1sb-pop .g-menu-tiles { padding: 0 0 4px; margin-bottom: 0; }
+.r1sb-pop :is(.g-menu-row, .g-menu-tile, .r1sb-ph, .r1sb-people, .r1sb-look, .r1sb-upd-ban) {
+  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
+  box-shadow: inset 0 0 0 1px var(--gp-edge); border-color: transparent; --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); --mute17c: var(--gp-ink-2); }
+.r1sb-pop :is(.g-menu-row, .r1sb-look) { border-radius: 999px; }
+.r1sb-pop :is(.r1sb-people, .r1sb-upd-ban) { border-radius: 14px; }
+.r1sb-pop .r1sb-ph { width: fit-content; padding: 2px 9px; border-radius: 999px; }
+.r1sb-pop .g-menu-row[data-gap] { margin-top: 4px; }
+.r1sb-pop .g-menu-row[aria-disabled="true"], .r1sb-pop .g-menu-tile[data-off] { opacity: .7; }
+.r1sb-pop :is(.g-menu-row, .g-menu-tile):is(:hover, :focus-visible):not([aria-disabled="true"]):not([data-off]) {
+  background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
+.r1sb-pop.r1sb-person { gap: 4px; }
+.r1sb-pop .r1sb-upd-ban { margin-bottom: 0; }

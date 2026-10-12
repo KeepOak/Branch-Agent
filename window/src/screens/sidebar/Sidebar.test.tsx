@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -167,5 +168,18 @@ describe("R1 sidebar", () => {
     expect(menu.firstElementChild?.textContent).toContain("Update to 0.5.0");
     expect(menu.textContent).toContain("Who is using Branch");
     expect(text(".r1sb-person .g-menu-row .g-menu-label")).toEqual(["Keyboard shortcuts", "Get the apps", "Guide", "About Branch", "Lock Branch"]);
+  });
+
+  it("opens its menus as clear glass with frosted pills (item 48): the + and person menus sit in .r1sb-pop", async () => {
+    const { render } = setup(FULL);
+    await render();
+    await click(host.querySelector('[aria-label="New, places and more"]'));
+    expect(document.querySelector(".g-popover > .r1sb-pop .g-menu")).not.toBeNull();
+    await click(host.querySelector(".r1sb-me"));
+    expect(document.querySelector(".g-popover > .r1sb-pop.r1sb-person")).not.toBeNull();
+    const css = readFileSync("src/screens/sidebar/sidebar.css", "utf8").replace(/\s+/g, " ");
+    expect(css).toContain(".g-popover:has(> .r1sb-pop) { background: transparent; backdrop-filter: none;");
+    expect(css).toMatch(/\.r1sb-pop :is\(\.g-menu-row, \.g-menu-tile[^{]*\{ background: var\(--gp-fill\); backdrop-filter: var\(--gp-blur\);[^}]*box-shadow: inset 0 0 0 1px var\(--gp-edge\);/);
+    expect(readFileSync("src/theme/tokens.css", "utf8")).toContain("--gp-fill: rgba(255,255,255,.76); --gp-edge: rgba(0,0,0,.11);");
   });
 });
