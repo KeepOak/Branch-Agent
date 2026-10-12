@@ -4,7 +4,7 @@
 // TODO(engine-lane): TODO(desktop-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Keep, Lv, Opt, RowEntry } from "../kit";
 
-export type Kind = "sw" | "seg" | "pick";
+type Kind = "sw" | "seg" | "pick";
 export type RowSpec = { sec: string; group?: string; title: string; key: string; kind: Kind; def: string | boolean; sub?: string; help?: string; opts?: Opt[]; lv?: Lv; keep?: Keep; off?: string };
 
 /** Only on parts the window draws with a right-click Hide this (shell/shown.ts HIDEABLE). */
@@ -15,7 +15,7 @@ const o = (pairs: [string, string][], off: Record<string, string> = {}): Opt[] =
 /** The page has two "Reading" sections; the second one's rows are kept under this name. */
 export const READING_MORE = "Reading ";
 
-export const ROWS: RowSpec[] = [
+const ROWS: RowSpec[] = [
   { sec: "Theme", title: "More contrast", key: "contrast", kind: "sw", def: false, sub: "Stronger lines and text, from each theme’s own high-contrast colours.", keep: "everywhere" },
   { sec: "Agents", title: "Size", key: "agentSize", kind: "seg", def: "m", sub: "Small keeps it out of the way.", opts: o([["s", "Small"], ["m", "Medium"], ["l", "Large"]]) },
   { sec: "Background", title: "Behind the glass", key: "bg", kind: "seg", def: "none", keep: "everywhere", sub: "The grove and the oak wear the theme’s colours. A scrim in the theme’s own colour keeps text readable.",
@@ -49,7 +49,6 @@ export const ROWS: RowSpec[] = [
 
 export const rowsOf = (sec: string) => ROWS.filter((r) => r.sec === sec);
 export const rowOf = (key: string): RowSpec => ROWS.find((r) => r.key === key) as RowSpec;
-export const DEFAULTS: Record<string, unknown> = Object.fromEntries(ROWS.map((r) => [r.key, r.def]));
 
 /** Rows the page draws by hand (galleries, buttons), for the search. */
 const OTHER: [string, string, Lv][] = [
