@@ -50,7 +50,7 @@ test('duration weighting keeps named engine shards within one heavy file', () =>
 
 test('the workflow takes its matrix from the planner, and every planned shard fits its budget', () => {
   const yaml = readFileSync(new URL('../.github/workflows/feature-batch-checks.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /timeout-minutes: 15/);
+  assert.match(yaml, /timeout-minutes: \$\{\{ matrix\.scope == 'touched' && 25 \|\| 15 \}\}/);
   assert.doesNotMatch(yaml, /timeout-minutes: 20/);
   assert.match(yaml, /matrix: \$\{\{ fromJSON\(needs\.plan\.outputs\.matrix\) \}\}/);
   assert.doesNotMatch(yaml, /fromJSON\(github\.event_name/);
