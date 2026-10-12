@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
@@ -11,12 +11,12 @@ let root: Root;
 afterEach(async () => { if (root) await act(async () => root.unmount()); document.body.innerHTML = ""; });
 // The gateway never advertises web.login.*, so the fixture doesn't either.
 const methods = ["channels.status", "channels.pairing.list", "channels.pairing.approve", "wizard.start", "wizard.next", "wizard.cancel"];
-async function render(status = {}, available = methods, scopes = ["operator.admin"]) {
+async function render(status = {}, available = methods, scopes = ["operator.admin"], renderAccess?: (app: { id: string }) => ReactNode) {
   const request = vi.fn(async (method: string) => method === "channels.status" ? status : { accounts: [], requests: [], limits: { ttlMs: 3600000, pendingPerAccount: 3 } });
   const engine = { request, onEvent: () => () => {}, sessionKey: null, scopes, features: { methods: available, events: [] } } as WindowEngine;
   const setup = vi.fn(), manage = vi.fn();
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root.render(<ChatApps engine={engine} onSetup={setup} onManage={manage} />));
+  await act(async () => root.render(<ChatApps engine={engine} onSetup={setup} onManage={manage} renderAccess={renderAccess} />));
   return { host, request, setup, manage };
 }
 it("keeps all 74 real catalogue entries visible and only wires the R1 four", async () => {
@@ -96,4 +96,15 @@ it("gives the pairing buttons a Coming reason when the engine can't approve or d
   expect(coming[0].title).toBe("Approving requests here comes in a later update.");
   expect(coming[1].title).toBe("Dismissing requests here comes in a later update.");
   expect(host.querySelector(".r1-ca-pairing")!.textContent).toContain("Approving requests here comes in a later update.");
+});
+it("explains Who answers instead of leaving an empty card when no app is connected", async () => {
+  const access = vi.fn((app: { id: string }) => <p>Access for {app.id}</p>);
+  const empty = await render({}, methods, ["operator.admin"], access);
+  const section = empty.host.querySelector('[aria-label="Who answers and who may message"]')!;
+  expect(section.textContent).toContain("Connect a chat app above to choose who answers in it");
+  expect(access).not.toHaveBeenCalled();
+  await act(async () => root.unmount()); document.body.innerHTML = "";
+  const linked = await render({ channelAccounts: { telegram: [{ accountId: "default", configured: true, running: true }] } }, methods, ["operator.admin"], access);
+  expect(linked.host.querySelector('[aria-label="Who answers and who may message"]')!.textContent).toContain("Access for telegram");
+  expect(linked.host.textContent).not.toContain("Connect a chat app above");
 });
