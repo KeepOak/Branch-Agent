@@ -60,6 +60,16 @@ createRoot(document.getElementById('root')!).render(<Frame sidebar={<div classNa
       await page.evaluate(()=>{document.documentElement.dataset.transparency='reduce';});
       assert.equal(await page.locator('.g-pill').evaluate(node=>getComputedStyle(node).backdropFilter),'none');
       assert(!(await page.locator('.g-pill').evaluate(node=>getComputedStyle(node).backgroundColor)).startsWith('rgba'));
+      if(width===1440) {
+        const tones=await page.evaluate(()=>{
+          const fill=node=>{ for(let at=node; at; at=at.parentElement){ const color=getComputedStyle(at).backgroundColor; if(color!=='rgba(0, 0, 0, 0)' && color!=='transparent') return color; } return 'none'; };
+          const side=document.querySelector('.r1-sidebar'), style=getComputedStyle(side);
+          return {side:style.backgroundColor, blur:style.backdropFilter, conversation:fill(document.querySelector('.r1-conversation'))};
+        });
+        assert(!tones.side.startsWith('rgba') && !tones.side.includes('/'),`sidebar is translucent in Reduce transparency (${theme}: ${tones.side})`);
+        assert.equal(tones.blur,'none',`sidebar keeps its blur in Reduce transparency (${theme})`);
+        assert.notEqual(tones.side,tones.conversation,`sidebar merges into the conversation in Reduce transparency (${theme})`);
+      }
       await page.screenshot({path:resolve(output,`${width}-${theme}-solid.png`)});
       await page.evaluate(()=>{document.documentElement.removeAttribute('data-transparency');});
       if(width===390) {

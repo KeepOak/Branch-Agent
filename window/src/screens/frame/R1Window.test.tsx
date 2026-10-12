@@ -36,6 +36,14 @@ it("renders an empty disconnected engine without demo conversations", async () =
   expect(host.querySelectorAll('.r1-sidebar-list button')).toHaveLength(0);
   expect(host.querySelector<HTMLButtonElement>('[aria-label="Back"]')?.disabled).toBe(true);
 });
+it("mounts in a host without matchMedia or ResizeObserver, as App-level tests do", async () => {
+  vi.stubGlobal("matchMedia", undefined); vi.stubGlobal("ResizeObserver", undefined);
+  const snapshot = { status: { phase: "connected" }, name: "Main", sessionKey: "agent:main:main", mainKey: "agent:main:main", history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request: vi.fn(async () => ({})) } } as unknown as SaplingSession;
+  await act(async () => root.render(<R1Window session={session} />));
+  expect(host.querySelector('.r1-frame')?.getAttribute("data-wide")).toBe("true");
+  expect(host.querySelector('[aria-label="Message"]')).not.toBeNull();
+});
 it("opens settings using an in-window history entry", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request: vi.fn() } } as unknown as SaplingSession;
