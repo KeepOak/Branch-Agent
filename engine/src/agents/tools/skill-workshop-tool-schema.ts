@@ -62,7 +62,7 @@ export function buildSkillWorkshopToolSchema(proposalRevision = false) {
       name: Type.Optional(
         Type.String({
           description:
-            "Skill/proposal name. Required for create; for inspect/revise when proposal_id is unknown, resolves a pending proposal or returns candidates.",
+            "Skill/proposal name. Required for create; for inspect/revise when proposal_id is unknown, resolves a pending proposal or returns candidates. Not for read/prepare_patch/patch/update: those take skill_name.",
         }),
       ),
       query: Type.Optional(Type.String({ description: "Optional query for action=list." })),

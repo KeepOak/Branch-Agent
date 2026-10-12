@@ -80,6 +80,9 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     // Candidate and smoke gateways opt out separately.
     BRANCH_SKIP_CHANNELS: undefined,
     BRANCH_GATEWAY_PORT: String(port),
+    // The configured port (desktop.json), even when this child is a standby on a spare.
+    // After a hand-over the successor also listens here once the old engine exits.
+    BRANCH_GATEWAY_PREFERRED_PORT: String(cfg.gatewayPort),
     BRANCH_GATEWAY_TOKEN: token,
     BRANCH_GATEWAY_STANDBY: standby ? "1" : undefined,
     // Only Electron's Mac host can give the Gateway this app-owned daemon lease.

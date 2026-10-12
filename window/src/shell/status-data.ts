@@ -59,16 +59,75 @@ export function ageWords(at: number, now: number): string {
 
 export type LimitWindow = { name: string; left: number; reset: string; low: boolean };
 export type LimitPill = "Measured" | "Not published";
-export type LimitRow = { id: string; name: string; provider?: string; email?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean };
+export type LimitRow = { id: string; name: string; provider?: string; email?: string; profileId?: string; plan?: string; account: string; pill: LimitPill; windows: LimitWindow[]; line: string; inUse?: boolean; stale?: boolean; signInNeeded?: boolean };
 export type Limits = { rows: LimitRow[]; updatedAt: number; refreshing: boolean };
+
+/** Limits carried on branch:usage-checked when the status-bar poll got a result. */
+export function usagePollResult(event: Event): Limits | null {
+  const detail = (event as CustomEvent).detail;
+  if (!detail || typeof detail !== "object" || !Array.isArray((detail as Limits).rows)) return null;
+  return detail as Limits;
+}
 
 /** Usage endpoints return diagnostic text; the status bar only shows human-facing status words. */
 export function usageStatusWords(error: unknown, provider: string): string {
   const raw = str(error);
   if (!raw) return `${provider} hasn't shared a limit with Branch.`;
   if (/\b429\b|rate.?limit/i.test(raw)) return `${provider} didn't share what's left right now. Branch checks again in 5 min.`;
-  if (/\b401\b|\b403\b|unauthori[sz]ed|forbidden/i.test(raw)) return `${provider} needs you to sign in again to check usage.`;
+  if (/token expired|\b401\b|\b403\b|unauthori[sz]ed|forbidden/i.test(raw)) return `${provider} needs you to sign in again to check usage.`;
   return `${provider} couldn't share usage right now. Branch will try again.`;
+}
+
+/** A token without the usage scope: only a fresh sign-in with the account reads its usage. Never the raw HTTP error. */
+export const SIGN_IN_AGAIN_WORDS = "Sign in again to show usage.";
+
+/** A reading the engine kept because the latest check was rate limited or timed out: say how old it is and why. */
+export function staleReadingWords(reason: unknown, age: string): string {
+  return /\b429\b|rate.?limit/i.test(str(reason)) ? `Rate limited · last reading ${age}. Branch checks again in 5 min.` : `No answer · last reading ${age}. Branch will try again.`;
+}
+
+const OPENAI_PLANS: Record<string, string> = {
+  free: "ChatGPT Free",
+  go: "ChatGPT Go",
+  plus: "ChatGPT Plus",
+  prolite: "ChatGPT Pro Lite",
+  pro: "ChatGPT Pro",
+  team: "ChatGPT Team",
+  business: "ChatGPT Business",
+  enterprise: "ChatGPT Enterprise",
+  edu: "ChatGPT Edu",
+};
+
+const capitalise = (word: string): string => word.charAt(0).toUpperCase() + word.slice(1);
+
+/** The plan a person knows ("ChatGPT Pro", "Claude Max (20x)"). The engine's raw ids ("prolite") never reach the screen. */
+export function planWords(provider: string, raw: string): string {
+  const plan = raw.trim();
+  if (!plan) return "";
+  if (provider === "openai-codex") return OPENAI_PLANS[plan.toLowerCase()] ?? `ChatGPT ${capitalise(plan.toLowerCase())}`;
+  if (provider === "anthropic") return /^claude\b/i.test(plan) ? plan : `Claude ${capitalise(plan)}`;
+  return plan;
+}
+
+/** models.authStatus: each saved account's email by its profile id, the same emails Settings › Accounts shows. */
+export function accountEmails(result: unknown): Map<string, string> {
+  const emails = new Map<string, string>();
+  for (const provider of list(rec(result).providers)) {
+    for (const profile of list(provider.profiles)) {
+      const id = str(profile.profileId), email = str(profile.email);
+      if (id && email) emails.set(id, email);
+    }
+  }
+  return emails;
+}
+
+/** Fills in an account's email from its profile when the usage reading didn't carry one. */
+export function withAccountEmails(limits: Limits, emails: Map<string, string>): Limits {
+  if (!emails.size) return limits;
+  return { ...limits, rows: limits.rows.map((row) => {
+    const email = row.email || (row.profileId ? emails.get(row.profileId) : undefined);
+    return email ? { ...row, email } : row;
+  }) };
 }
 
 function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, accountNumber: number): LimitRow {
@@ -82,9 +141,14 @@ function limitRow(p: Record<string, unknown>, updatedAt: number, now: number, ac
   const measured = windows.length > 0;
   const provider = str(p.provider);
   const service = str(p.displayName) || provider;
-  const name = provider === "openai-codex" || /^ChatGPT plan$/i.test(service) ? `ChatGPT · Account ${accountNumber}` : service.replace(/\s+plan$/i, "");
-  const line = p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, name) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, name);
-  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail), plan: str(p.plan), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true };
+  const name = provider === "openai-codex" || /^ChatGPT plan$/i.test(service) ? `ChatGPT · Account ${accountNumber}` : provider === "anthropic" ? `Claude · Account ${accountNumber}` : service.replace(/\s+plan$/i, "");
+  const readingAt = num(p.readingAt);
+  const stale = measured && readingAt > 0;
+  // The "no reading" note names the provider, so each provider can say it once.
+  const word = provider === "anthropic" ? "Claude" : provider === "openai-codex" ? "ChatGPT" : name.replace(/\s*·\s*Account \d+$/, "");
+  const signInNeeded = p.signInNeeded === true;
+  const line = stale ? staleReadingWords(p.staleReason, ageWords(readingAt, now)) : signInNeeded ? SIGN_IN_AGAIN_WORDS : p.error === "Usage not reported" ? "Usage not reported" : p.error ? usageStatusWords(p.error, word) : measured ? `as of ${ageWords(updatedAt, now)}` : str(p.summary) === "Usage not reported" ? "Usage not reported" : usageStatusWords(undefined, word);
+  return { id: `${str(p.provider)}:${str(p.authProfileId) || str(p.accountEmail) || account}`, name, provider: str(p.provider), email: str(p.accountEmail) || undefined, profileId: str(p.authProfileId) || undefined, plan: planWords(provider, str(p.plan)), account, pill: measured ? "Measured" : "Not published", windows, line, inUse: p.inUse === true, ...(stale ? { stale } : {}), ...(signInNeeded ? { signInNeeded } : {}) };
 }
 
 /** usage.status: one row per connection and account, never added together (§4.9.4 rule 1). */
@@ -101,18 +165,26 @@ export function readLimits(result: unknown, now = Date.now()): Limits {
   return { rows, updatedAt, refreshing: r.refreshing === true };
 }
 
-export type RingReading = { name: string; left: number; reset: string; low: boolean };
+export type RingReading = { name: string; email?: string; left: number | null; reset: string; low: boolean };
 
-/** The bar shows the first measured account's 5-hour reading (FINAL-PASS C1). */
+/** The account's 5-hour window, or the first window it has. Left is null when the account reports nothing yet. */
+function readingFrom(row: LimitRow): RingReading {
+  const w = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
+  return { name: row.name, ...(row.email ? { email: row.email } : {}), left: w ? w.left : null, reset: w?.reset ?? "", low: w?.low ?? false };
+}
+
+/**
+ * The account used next, with its own reading or "usage unknown". It never borrows another account's number.
+ * Only when no account is marked used next does the first measured account show.
+ */
 export function ringReading(limits: Limits | null): RingReading | null {
   const rows = limits?.rows ?? [];
-  for (const row of rows) {
-    const w = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
-    if (w) {
-      return { name: row.name, left: w.left, reset: w.reset, low: w.low };
-    }
+  const usedNext = rows.find((row) => row.inUse);
+  if (usedNext) {
+    return readingFrom(usedNext);
   }
-  return null;
+  const measured = rows.find((row) => row.windows.length > 0);
+  return measured ? readingFrom(measured) : null;
 }
 
 /** usage.cost params for this calendar month on this computer's clock. */
@@ -202,14 +274,34 @@ export function dueWords(at: number, now: number): string {
   return hours < 24 ? `in ${hours} h` : `in ${Math.round(hours / 24)} days`;
 }
 
+/** Names of the engine's own memory-cleanup job, current and before the doctor migrates it (engine/src/memory-host-sdk/rings.ts). */
+const MEMORY_CLEANUP_NAMES = new Set(["Memory Rings Promotion", "Memory Light Rings", "Memory REM Rings"]);
+
+/**
+ * An automation's name in plain words (DA-25). The engine names its heartbeat monitors `Heartbeat (<agent id>)`
+ * (engine/src/cron/heartbeat-monitor.ts), which shows an internal id, and its memory job "Memory Rings Promotion",
+ * which is internal jargon. They read "Check-in" (the Automations word for a heartbeat) and "Overnight memory cleanup".
+ * With `trunkName`, a check-in also says whose it is. Every other job keeps the name it was given.
+ */
+export function plainJobName(job: Record<string, unknown>, trunkName?: (id?: string) => string): string {
+  if (rec(job.payload).kind === "heartbeat") {
+    const id = str(job.agentId);
+    return trunkName && id ? `Check-in · ${trunkName(id)}` : "Check-in";
+  }
+  if (MEMORY_CLEANUP_NAMES.has(str(job.name)) || /\[managed-by=memory-core\./.test(`${str(job.description)} ${str(job.tags)}`)) {
+    return "Overnight memory cleanup";
+  }
+  return str(job.displayName) || str(job.name) || str(job.id);
+}
+
 /** cron.list jobs: enabled ones with a next run, soonest first, at most 8 (§4.9.6 Coming up). */
-export function comingUp(jobs: unknown[], now = Date.now()): { name: string; when: string }[] {
+export function comingUp(jobs: unknown[], now = Date.now(), trunkName?: (id?: string) => string): { name: string; when: string }[] {
   return jobs
     .map(rec)
     .filter((j) => j.enabled !== false && num(rec(j.state).nextRunAtMs) > 0)
     .sort((a, b) => num(rec(a.state).nextRunAtMs) - num(rec(b.state).nextRunAtMs))
     .slice(0, 8)
-    .map((j) => ({ name: str(j.displayName) || str(j.name) || str(j.id), when: dueWords(num(rec(j.state).nextRunAtMs), now) }));
+    .map((j) => ({ name: plainJobName(j, trunkName), when: dueWords(num(rec(j.state).nextRunAtMs), now) }));
 }
 
 export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; statusMessage?: string };

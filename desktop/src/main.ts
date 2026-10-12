@@ -22,13 +22,19 @@ import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate } from "./auto-apply-update";
+import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
+import { RotatingLog, uiEventLine } from "./diagnostics-log";
+import { readTail, recentLines, reportReadme } from "./diagnostics-report";
+import { zipStored } from "./diagnostics-zip";
+
+/** How much of each log the report reads from the end. The time window then keeps only recent lines. */
+const REPORT_TAIL_BYTES = 4 * 1024 * 1024;
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
 import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
 import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
-import { freemem } from "node:os";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
-import { MacComputerDriver, macScreenControlEnabled } from "./mac-computer-driver";
+import { MacComputerDriver, describeDriverError, macScreenControlEnabled } from "./mac-computer-driver";
 
 const HIDDEN = process.env.BRANCH_DESKTOP_HIDDEN === "1";
 /** Scratch test copies: never grouped with, or mistaken for, the owner's app (they also start hidden). */
@@ -38,9 +44,9 @@ const QUIET = process.platform === "win32" && process.argv.includes(START_IN_TRA
 const ICON = process.platform === "win32"
   ? join(__dirname, "..", "assets", "branch.ico")
   : join(__dirname, "..", "assets", "brand", "linux", "branch-48.png");
-// Electron loads branch-16@2x.png automatically for Retina menu bars.
+// Menu bar template: black leaf on a transparent background. Electron loads branchTemplate@2x.png for Retina.
 const TRAY_ICON = process.platform === "darwin"
-  ? join(__dirname, "..", "assets", "brand", "linux", "branch-16.png")
+  ? join(__dirname, "..", "assets", "brand", "linux", "branchTemplate.png")
   : ICON;
 /** A positive whole number of milliseconds from the environment, else `fallback` (a typo never means "0 ms"). */
 function envMs(value: string | undefined, fallback: number): number {
@@ -61,8 +67,7 @@ const PRIOR_READY_CHECK_MS = 10_000;
 const STANDBY_WARM_TIMEOUT_MS = 120_000;
 /** Failed standbys per update before the guarded stop/start swap takes over, so an update never becomes impossible. */
 const STANDBY_ATTEMPTS = 2;
-/** Free memory a candidate check needs (6 GB, the shared load rule); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
-const CANDIDATE_MIN_FREE_BYTES = Number(process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB ?? 6144) * 2 ** 20;
+/** Free memory a candidate check needs (6 GB, or a quarter of RAM); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
 const cfg: DesktopConfig = loadConfig();
 /** The packaged app this process runs from; development runs (`electron .`) never update themselves. */
 const install: DesktopInstall | undefined = app.isPackaged ? {
@@ -223,7 +228,7 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
 });
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
 let tray: Tray | undefined;
-const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, ICON), onChange: settings => {
+const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, TRAY_ICON), onChange: settings => {
   if (engineUpdateReady) sendToBranchWindows("branch-desktop:engine-update", settings.autoApplyUpdates ? "auto-wait" : "ready");
   void autoApply.tick();
 } });
@@ -533,7 +538,7 @@ async function prepareUpdateStandby(label: string, explicit: boolean): Promise<v
   // A warmed child cannot be given a fresh Electron-owned driver lease on promotion.
   // Preserve computer control by using the guarded stop/start path for this case.
   if (macComputerDriver && screenControlEnabled()) return;
-  if (freemem() < CANDIDATE_MIN_FREE_BYTES || !standbyProfileReady()) return;
+  if (availableMemory().bytes < candidateMinFreeBytes() || !standbyProfileReady()) return;
   const failures = standbyFailures.get(label) ?? 0;
   // Automatic updates never wait for a click that may not be offered: one failed standby is enough to fall back.
   if (failures >= STANDBY_ATTEMPTS || (!explicit && failures > 0)) {
@@ -600,7 +605,8 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
   const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   if (!version || candidateCheckedFor === version) return true;
   // The machine-load rule: a second engine only when there is room for it; otherwise the plain swap with its rollback.
-  if (freemem() < CANDIDATE_MIN_FREE_BYTES) { log(`update ${label}: candidate check skipped; ${Math.round(freemem() / 2 ** 20)} MB free`); return true; }
+  const { bytes: available, measure } = availableMemory();
+  if (available < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(available, measure)}`); return true; }
   const candidate = resolveEngineDir(cfg);
   if (explicit) sendToBranchWindows("branch-desktop:engine-update", "preparing");
   const started = Date.now();
@@ -832,6 +838,44 @@ async function start(): Promise<void> {
     if (served) windowPort = gatewayPort;
     e.returnValue = served ? { gatewayUrl: gatewayUrl(), gatewayToken: token } : null;
   });
+  // Diagnostics: the window's UI events go to ui-events.log, and a report bundles the recent logs.
+  const uiLog = new RotatingLog(join(cfg.dataDir, "ui-events.log"));
+  const fromServedWindow = (e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    return Boolean(owner && branchWindows().includes(owner) && e.senderFrame === e.sender.mainFrame && e.sender.getURL().startsWith(windowUrl()));
+  };
+  ipcMain.on("branch-desktop:ui-event", (e, raw: unknown) => {
+    if (!fromServedWindow(e)) return;
+    try {
+      const line = uiEventLine(raw, new Date().toISOString());
+      if (line) uiLog.append(line);
+    } catch {
+      // Diagnostics must never stop the app.
+    }
+  });
+  ipcMain.handle("branch-desktop:report-problem", async (e, minutes: unknown) => {
+    if (!fromServedWindow(e)) return { saved: false };
+    const span = typeof minutes === "number" && Number.isFinite(minutes) ? Math.min(240, Math.max(1, Math.round(minutes))) : 30;
+    const now = new Date();
+    const cutoff = now.getTime() - span * 60_000;
+    const ui = uiLog.paths().reverse().map((file) => readTail(file, REPORT_TAIL_BYTES)).join("\n");
+    const entries = [
+      { name: "desktop.log", text: readTail(join(cfg.dataDir, "desktop.log"), REPORT_TAIL_BYTES) },
+      { name: "gateway.log", text: readTail(join(cfg.dataDir, "gateway.log"), REPORT_TAIL_BYTES) },
+      { name: "ui-events.log", text: ui },
+    ].map((source) => ({ name: source.name, data: Buffer.from(`${recentLines(source.text, cutoff).join("\n")}\n`, "utf8") }));
+    entries.push({ name: "README.txt", data: Buffer.from(reportReadme(span, now.toISOString()), "utf8") });
+    const archive = zipStored(entries, now);
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const options = {
+      defaultPath: `branch-problem-report-${now.toISOString().slice(0, 16).replace(/[:T]/g, "-")}.zip`,
+      filters: [{ name: "Zip archive", extensions: ["zip"] }],
+    };
+    const picked = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+    if (picked.canceled || !picked.filePath) return { saved: false };
+    writeFileSync(picked.filePath, archive);
+    return { saved: true, bytes: archive.length };
+  });
   ipcMain.handle("branch-desktop:open-conversation", (e, key: unknown) => {
     const owner = BrowserWindow.fromWebContents(e.sender);
     if (!owner || (owner !== win && ![...conversationWindows.values()].includes(owner)) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
@@ -916,6 +960,15 @@ async function start(): Promise<void> {
   ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void restartEngine(); });
   ipcMain.on("branch-desktop:dismiss-update-notice", e => {
     if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) updateNotice = undefined;
+  });
+  ipcMain.on("branch-desktop:update-notice", (e, event: unknown, notice: unknown) => {
+    if (!isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) return;
+    if (event !== "shown" && event !== "dismissed" && event !== "expired" && event !== "undo") return;
+    const rec = notice && typeof notice === "object" ? notice as { version?: unknown; canUndo?: unknown } : {};
+    const version = typeof rec.version === "string" ? rec.version : "";
+    if (event === "shown") log(`update notice shown version=${version} canUndo=${rec.canUndo === true}`);
+    else log(`update notice ${event}`);
+    if (event === "dismissed" || event === "expired") updateNotice = undefined;
   });
   ipcMain.on("branch-desktop:undo-update", e => {
     if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void undoLastUpdate();
@@ -1012,7 +1065,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   const started = Date.now();
   if (macComputerDriver && !screenControlEnabled()) await macComputerDriver.stop();
   const macComputerEndpoint = await (!prepared && screenControlEnabled() ? macComputerDriver?.start(engineDir) : undefined)?.catch(error => {
-    log(`Mac computer driver unavailable: ${String(error)}`);
+    log(`Mac computer driver unavailable: ${describeDriverError(error)}`);
     return undefined;
   });
   const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);

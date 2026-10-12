@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { once } from "node:events";
+import { EventEmitter, once } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -9,7 +9,11 @@ import { describe, expect, it, vi } from "vitest";
 import { terminateCodexAppServerOrphan } from "./transport-process-containment.js";
 import * as processSnapshot from "./transport-process-snapshot.js";
 import type { PosixProcess } from "./transport-process-snapshot.js";
-import { closeCodexAppServerTransportAndWait } from "./transport.js";
+import {
+  closeCodexAppServerTransport,
+  closeCodexAppServerTransportAndWait,
+  terminateWindowsCodexAppServerTree,
+} from "./transport.js";
 
 type FixtureEvent = {
   role: "root" | "separate-leader" | "separate-descendant" | "shared-leader" | "shared-descendant";
@@ -438,5 +442,99 @@ process.stdin.on("end", () => process.exit(0));
       await removeTaskOwnedFixtureProcesses(tempDir);
       await fs.rm(tempDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("Codex app-server Windows tree termination", () => {
+  it("ends a transport root's whole tree with taskkill /T, so no native child survives its launcher", () => {
+    const run = vi.fn();
+
+    terminateWindowsCodexAppServerTree(4321, run);
+
+    expect(run).toHaveBeenCalledWith(
+      "taskkill.exe",
+      ["/PID", "4321", "/T", "/F"],
+      expect.objectContaining({ stdio: "ignore", windowsHide: true }),
+    );
+  });
+});
+
+describe("Codex app-server Windows close ordering", () => {
+  function createWindowsChild(events: string[]) {
+    const child = Object.assign(new EventEmitter(), {
+      pid: 4242,
+      exitCode: null as number | null,
+      signalCode: null as string | null,
+      stdin: {
+        end: () => events.push("eof"),
+        destroy: () => undefined,
+      },
+      stdout: Object.assign(new EventEmitter(), { destroy: () => undefined, unref: () => undefined }),
+      stderr: Object.assign(new EventEmitter(), { destroy: () => undefined, unref: () => undefined }),
+      kill: () => {
+        events.push("kill");
+        return true;
+      },
+      unref: () => undefined,
+    });
+    return child;
+  }
+
+  async function withWindowsPlatform(run: () => void | Promise<void>): Promise<void> {
+    const original = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      await run();
+    } finally {
+      if (original) {
+        Object.defineProperty(process, "platform", original);
+      }
+    }
+  }
+
+  it("sends EOF first, waits out the grace window, and ends the tree only if the root is still alive", async () => {
+    await withWindowsPlatform(async () => {
+      vi.useFakeTimers();
+      try {
+        const events: string[] = [];
+        const child = createWindowsChild(events);
+
+        closeCodexAppServerTransport(child as never, {
+          forceKillDelayMs: 1_000,
+          windowsTreeKill: (pid) => events.push(`tree:${pid}`),
+        });
+
+        expect(events).toEqual(["eof"]);
+        vi.advanceTimersByTime(999);
+        expect(events).toEqual(["eof"]);
+        vi.advanceTimersByTime(1);
+        expect(events).toEqual(["eof", "tree:4242", "kill"]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it("leaves the tree alone when the root exits gracefully inside the grace window", async () => {
+    await withWindowsPlatform(async () => {
+      vi.useFakeTimers();
+      try {
+        const events: string[] = [];
+        const child = createWindowsChild(events);
+
+        closeCodexAppServerTransport(child as never, {
+          forceKillDelayMs: 1_000,
+          windowsTreeKill: (pid) => events.push(`tree:${pid}`),
+        });
+        vi.advanceTimersByTime(500);
+        child.exitCode = 0;
+        child.emit("exit");
+        vi.advanceTimersByTime(1_000);
+
+        expect(events).toEqual(["eof"]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

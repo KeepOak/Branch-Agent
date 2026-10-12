@@ -152,6 +152,21 @@ test('rewrapping upstream OpenClaw attribution in contributor docs passes', () =
   assert.equal(ui.length, 1);
 });
 
+test('the window cleanliness check may name OpenClaw so it can catch leftovers', () => {
+  assert.deepEqual(checkAddedDiff(added(
+    'scripts/check-window-clean.mjs',
+    4,
+    'OpenClaw and openclaw in window copy',
+  )), []);
+  assert.deepEqual(checkAddedDiff(added(
+    'scripts/window-clean-baseline.txt',
+    2,
+    'product-name\twindow/src/a.tsx\tWelcome to OpenClaw',
+  )), []);
+  const leaked = checkAddedDiff(added('window/src/a.tsx', 2, 'Welcome to OpenClaw'));
+  assert.equal(leaked.length, 1);
+});
+
 test('allowlist is explicit: every rule has an id and a why', () => {
   assert.ok(ALLOWLIST.length >= 8);
   for (const rule of ALLOWLIST) {
@@ -161,6 +176,15 @@ test('allowlist is explicit: every rule has an id and a why', () => {
     assert.ok(rule.why.length > 0);
     assert.ok(rule.file || rule.line || rule.re, rule.id);
   }
+});
+
+test('the recheck workflow name line is allowlisted; the same words anywhere else still fail', () => {
+  const workflow = '.github/workflows/merge-gate-recheck.yml';
+  assert.deepEqual(checkAddedDiff(added(workflow, 30, '      - OpenClaw wording')), []);
+  // The allowance covers the name line only, not other text in the same workflow...
+  assert.equal(checkAddedDiff(added(workflow, 31, 'echo "Welcome to OpenClaw"')).length, 1);
+  // ...and not the same name line in any other file.
+  assert.equal(checkAddedDiff(added('.github/workflows/other.yml', 30, '      - OpenClaw wording')).length, 1);
 });
 
 test('failure message tells the agent what to write instead', () => {

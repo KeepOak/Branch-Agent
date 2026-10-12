@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
@@ -129,6 +129,33 @@ describe("settings frame level", () => {
     expect(document.querySelector('.set-item[data-page="gateway"]')).toBeNull();
     expect(document.querySelector('.set-item[data-page="general"]')?.getAttribute("aria-current")).toBe("true");
   });
+
+  it("People in the Settings nav stays inside Settings", async () => {
+    const left: unknown[] = [];
+    const onLeave = (event: Event) => left.push((event as CustomEvent).detail);
+    window.addEventListener("branch:navigate-place", onLeave);
+    const onPage = vi.fn();
+    function Host() {
+      const [page, setPage] = useState("general");
+      return <SettingsFrame page={page} backName="Sapling" engine={engine} onPage={(id) => { onPage(id); setPage(id); }} onBack={() => {}} />;
+    }
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    try {
+      await act(async () => root?.render(<Host />));
+      await act(async () => document.querySelector<HTMLButtonElement>('.set-item[data-page="people"]')!.click());
+      expect(onPage).toHaveBeenCalledWith("people");
+      expect(left).toEqual([]);
+      expect(document.querySelector('[data-testid="settings"]')).not.toBeNull();
+      expect(document.querySelector('.set-item[data-page="people"]')?.getAttribute("aria-current")).toBe("true");
+      expect(document.querySelector('.set-item[data-page="general"]')).not.toBeNull();
+      expect(document.querySelector('[data-page-title="People"]')?.querySelector("h1")?.textContent).toBe("People");
+      expect(document.querySelector('[data-row="Open People"]')).not.toBeNull();
+      expect(document.querySelector(".ppl")).toBeNull();
+      expect(document.body.textContent).not.toContain("Live now");
+    } finally {
+      window.removeEventListener("branch:navigate-place", onLeave);
+    }
+  });
 });
 
 
@@ -210,5 +237,39 @@ describe("settings page help", () => {
     await act(async () => document.querySelector<HTMLButtonElement>(".kit-help-ask")!.click());
     expect(ask).toHaveBeenCalledWith("Tell me about Settings › General.");
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+});
+
+
+describe("DA-73 settings destinations", () => {
+  it("keeps exactly five main destinations at every detail level", async () => {
+    await open("general");
+    const names = () => [...document.querySelectorAll(".set-nav .set-item")].map((item) => item.textContent);
+    expect(names()).toEqual(["General", "Trunks", "Safety", "Data", "About"]);
+    for (const level of ["advanced", "technical"]) {
+      await act(async () => document.querySelector<HTMLButtonElement>(`[data-level="${level}"]`)!.click());
+      expect(names()).toEqual(["General", "Trunks", "Safety", "Data", "About"]);
+    }
+  });
+
+  it.each(["models", "accounts", "local"])("keeps the %s deep link inside one Models & accounts section", async (page) => {
+    await open(page);
+    expect(document.querySelector(".set-nav [aria-current=true]")?.textContent).toBe("Trunks");
+    const sections = [...document.querySelectorAll(".set-sections .set-item")].map((item) => item.textContent);
+    expect(sections).toEqual(["Instructions & personality", "Models & accounts", "Voice", "Chat apps"]);
+    expect(document.querySelector(".set-sections [aria-current=true]")?.textContent).toBe("Models & accounts");
+    expect(document.querySelector("[role=tablist][aria-label=\"Models & accounts\"] [aria-selected=true]")?.textContent).toBe(page === "models" ? "Default" : page === "local" ? "Local" : "Accounts");
+    expect(document.querySelectorAll(".set-col h1")).toHaveLength(1);
+  });
+
+  it("keeps restricted About sections out of both navigation and search", async () => {
+    const plain = { ...engine, scopes: ["operator.read"] } as WindowEngine;
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="updates" backName="Sapling" engine={plain} onPage={vi.fn()} onBack={() => {}} />));
+    expect(document.querySelector(".set-sections [data-page=gateway]")).toBeNull();
+    expect(document.querySelector(".set-sections [data-page=self]")).toBeNull();
+    const input = document.querySelector<HTMLInputElement>("input[aria-label=\"Search settings\"]")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "gateway"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(document.querySelector(".set-hit [data-page=gateway]")).toBeNull();
   });
 });

@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: openclaw-wording-${{ github.event.pull_request.head.sha || github.ref }}
-  cancel-in-progress: ${{ github.event.action == 'converted_to_draft' }}
+  group: openclaw-wording-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   wording:

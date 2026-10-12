@@ -64,6 +64,7 @@ async function reconcileStartupOrphans(
   database: BranchAgentDatabaseOptions,
   log: SessionStartupMigrationLogger,
   assertCurrent?: () => void,
+  sessionKeys?: ReadonlySet<string>,
 ) {
   const env = database.env ?? process.env;
   const statePath = resolveBranchStateSqlitePath(env);
@@ -107,6 +108,7 @@ async function reconcileStartupOrphans(
       let retained = 0;
       for (const { entry, sessionKey } of selected) {
         if (
+          (sessionKeys !== undefined && !sessionKeys.has(sessionKey)) ||
           !isSubagentSessionKey(sessionKey) ||
           isIncognitoSessionKey(sessionKey) ||
           !isUnsettledPredecessor(entry)
@@ -193,6 +195,7 @@ export async function runStartupSessionMigration(params: {
   cfg: BranchConfig;
   env?: NodeJS.ProcessEnv;
   agentIds?: ReadonlySet<string>;
+  sessionKeys?: ReadonlySet<string>;
   assertCurrent?: () => void;
   log: SessionStartupMigrationLogger;
   deps?: SessionMigrationDeps;
@@ -205,7 +208,12 @@ export async function runStartupSessionMigration(params: {
     ...params,
     handoffDatabase: async (database) => {
       try {
-        const result = await reconcileStartupOrphans(database, params.log, params.assertCurrent);
+        const result = await reconcileStartupOrphans(
+          database,
+          params.log,
+          params.assertCurrent,
+          params.sessionKeys,
+        );
         interruptedSubagents += result?.interrupted ?? 0;
         retainedSubagents += result?.retained ?? 0;
       } catch (error) {

@@ -19,8 +19,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: non-merge-commit-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'push' || github.event.action == 'converted_to_draft' }}
+  group: non-merge-commit-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
 
 jobs:
   test:

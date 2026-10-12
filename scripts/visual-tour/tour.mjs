@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { readScreens } from './manifest.mjs';
 import { checkedStep } from './dead-click.mjs';
 import { gatewayPort } from './gateway-port.mjs';
-import { previewState } from './preview.mjs';
+import { drivePreview } from './preview.mjs';
 
 const require = createRequire(new URL('../../engine/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
@@ -72,23 +72,17 @@ try {
       for (const screen of screens) {
         const stem = `${theme}-${width}-${screen.id}`;
         try {
-          await preview.evaluate((state) => {
-            closePop(); closeDlg();
-            if (state.kind === 'grove') { openGroveT5(); return; }
-            if (state.kind === 'settings') { S.view = 'settings'; S.setPage = state.page; render(); return; }
-            S.view = state.view;
-            if (state.chat) S.chat = state.chat;
-            if (state.tabs) Object.assign(S.tabs, state.tabs);
-            if (state.tools9) S.tools9 = { ...S.tools9, ...state.tools9 };
-            if (state.stage) S.stage = state.stage;
-            if ('pane' in state) S.pane = state.pane;
-            render();
-          }, previewState(screen.id));
+          await drivePreview(preview, screen.id);
           if (screen.id === 'add-claude-account') await preview.getByText('Add a Claude account', { exact: true }).first().click().catch(() => {});
           if (screen.id === 'row-menu') await preview.locator('.row[data-id]').first().click({ button: 'right' }).catch(() => {});
           await preview.screenshot({ path: resolve(out, `${stem}-preview.png`) });
           pairs.push({ app: `${stem}.png`, preview: `${stem}-preview.png` });
-        } catch (error) { failures.push(`${stem} preview: ${error.message}`); }
+        } catch (error) {
+          const message = error.message.includes(`preview for ${screen.id}`)
+            ? error.message
+            : `Cannot drive preview for ${screen.id}: ${error.message}`;
+          failures.push(`${stem} preview: ${message}`);
+        }
       }
       await preview.close();
     }

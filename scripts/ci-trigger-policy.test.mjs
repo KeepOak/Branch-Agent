@@ -100,23 +100,19 @@ test("component-release concurrency never cancels pushes", () => {
   assert.doesNotMatch(concurrency, /github\.event_name\s*==\s*'push'/);
 });
 
-test('PR check workflows key concurrency by head SHA and do not cancel synchronize', () => {
+test('PR check workflows cancel superseded commits using a stable PR ref', () => {
   for (const name of checkWorkflows()) {
-    if (name === 'component-release.yml' || name === 'gate-files-fresh.yml') continue;
     const concurrency = blockAt(readWorkflow(name), 'concurrency', 0);
-    assert.ok(
-      concurrency.includes('github.event.pull_request.head.sha'),
-      `${name} concurrency group must include the PR head SHA`,
-    );
-    assert.doesNotMatch(
-      concurrency,
-      /cancel-in-progress:\s*true\s*$/m,
-      `${name} must not cancel every in-progress PR run`,
-    );
-    assert.doesNotMatch(
-      concurrency,
-      /cancel-in-progress:\s*\$\{\{\s*github\.event_name\s*==\s*'pull_request'\s*\}\}/,
-      `${name} must not cancel all pull_request events`,
-    );
+    assert.ok(concurrency.includes('github.ref'), `${name} must key PR runs by ref`);
+    assert.ok((concurrency.includes("github.event_name == 'pull_request'") || /cancel-in-progress:\s*true/.test(concurrency)), `${name} must cancel superseded PR runs`);
+    assert.ok(!concurrency.includes('head.sha'), `${name} must share a group across commits`);
   }
+});
+
+test('merge-gate restarts both draft transitions and runs the lifecycle guard', () => {
+  const content = readWorkflow('merge-gate.yml');
+  for (const type of requiredPullRequestTypes) assert.ok(pullRequestTypes(content).includes(type));
+  assert.ok(content.includes('node scripts/check-draft-cycle.mjs'));
+  assert.ok(content.indexOf('node scripts/check-draft-cycle.mjs') < content.indexOf('skip-edited'),
+    'body edits must not bypass lifecycle validation using an older successful gate');
 });

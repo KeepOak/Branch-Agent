@@ -31,6 +31,8 @@ export type ModelAuthStatusProfile = {
   displayName?: string;
   email?: string;
   lastUsedAt?: number;
+  /** The account hit a rate or usage limit and isn't used until this time (ms since epoch). */
+  limitedUntil?: number;
 };
 
 export type ModelAuthStatusProvider = {
