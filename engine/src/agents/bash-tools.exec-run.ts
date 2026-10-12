@@ -15,6 +15,10 @@ import {
 } from "../infra/exec-approvals.js";
 import type { ExecAutoReviewer } from "../infra/exec-auto-review.js";
 import {
+  detectExecHardlineFloor,
+  formatExecHardlineFloorWarning,
+} from "../infra/exec-hardline-floor.js";
+import {
   rejectUnsafeExecControlShellCommand,
   rejectUnsafeExecLiveStateSqliteShellCommand,
 } from "../infra/exec-control-command-guard.js";
@@ -345,14 +349,22 @@ export function createExecTool(
       const hostAsk = maxAsk(modePolicy.ask, approvalPolicy?.ask ?? modePolicy.ask);
       const trustedAsk = defaults?.messageProvider && hostAsk === "off" ? undefined : requestedAsk;
       let ask = maxAsk(hostAsk, trustedAsk ?? hostAsk);
+      // Catastrophic commands always ask on the host, even in full access (atlas SAFETY-0020).
+      // Sandboxed runs cannot damage the host, so they skip the floor like upstream containers.
+      const hardlineFloor = host === "sandbox" ? null : detectExecHardlineFloor(params.command);
       const bypassApprovals =
-        (defaults?.bypassHostApprovalFloors === true && modePolicy.ask === "off") ||
-        (elevatedRequested &&
-          elevatedMode === "full" &&
-          modePolicyAllowsFullBypass &&
-          hostPolicyAllowsFullBypass);
+        hardlineFloor === null &&
+        ((defaults?.bypassHostApprovalFloors === true && modePolicy.ask === "off") ||
+          (elevatedRequested &&
+            elevatedMode === "full" &&
+            modePolicyAllowsFullBypass &&
+            hostPolicyAllowsFullBypass));
       if (bypassApprovals) {
         ask = "off";
+      }
+      if (hardlineFloor) {
+        ask = "always";
+        warnings.push(formatExecHardlineFloorWarning(hardlineFloor));
       }
       const autoReview = modePolicy.autoReview && ask === modePolicy.ask && !bypassApprovals;
 
