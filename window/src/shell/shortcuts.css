@@ -1,0 +1,111 @@
+/* §4.8.8 Keyboard shortcuts (preview .keys15 .k-row15 .k-set15 .shortcuts, 61-journeysp .k-anyPF18 .kqPF18 .k-groupPF18) */
+.k-hint {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.k-anyPF18 .ctl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 16px;
+  align-items: center;
+  padding: 6px 0 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.k-anyPF18 .ctl > b {
+  font-weight: 500;
+}
+.k-anyPF18 .ctl > small {
+  grid-column: 1;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+.keys15 {
+  display: grid;
+  gap: 2px;
+}
+.k-row15 {
+  display: grid;
+  grid-template-columns: 1fr auto 28px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.k-set15 {
+  min-width: 120px;
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 3px;
+  padding: 4px 6px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+}
+.k-set15:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--fill);
+}
+.k-set15:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.k-set15.listen15 {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.k-set15 em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--accent-ink);
+}
+.kqPF18 > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+.kq-tPF18 {
+  display: grid;
+}
+.kq-tPF18 small,
+.k-notePF18 {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.k-groupPF18 {
+  margin-top: 14px;
+}
+.k-groupPF18 h3 {
+  margin: 0 0 6px;
+  font: 500 10.5px/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.shortcuts {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 20px;
+  font-size: 13.5px;
+}
+.shortcuts.k-fixed15 {
+  margin-top: 14px;
+}
+.shortcuts kbd + kbd {
+  margin-left: 3px;
+}
+.keys15 kbd,
+.shortcuts kbd {
+  font: 500 10.5px var(--mono);
+  color: var(--ink-3);
+  background: var(--wash17);
+  border-radius: 6px;
+  padding: 2px 6px;
+  border: 0;
+}

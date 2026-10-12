@@ -1,0 +1,357 @@
+{
+  "about": "Branch's rename map (DECISIONS.md item 127). Read by scripts/rebrand.mjs. Every word is matched case-insensitively, also inside longer names (OpenClawConfig, OPENCLAW_HOME, skillCurator), and replaced in the matched text's case: all capitals, a leading capital, or lower case. Before the words, each phrase rule renames the product name where it stands as a word in text (DECISIONS.md item 133: \"Branch Agent\"). Protected spans and skipped files are never changed. docs/foundation/REBRAND.md explains every entry.",
+  "words": [
+    [
+      "openclaw",
+      "branch"
+    ],
+    [
+      "workboard",
+      "canopy"
+    ],
+    [
+      "dreaming",
+      "rings"
+    ],
+    [
+      "curator",
+      "gardener"
+    ],
+    [
+      "lobsterdex",
+      "trellisIndex"
+    ],
+    [
+      "lobster",
+      "trellis"
+    ],
+    [
+      "molty",
+      "sprig"
+    ],
+    [
+      "molting",
+      "shedding"
+    ],
+    [
+      "molted",
+      "shed"
+    ],
+    [
+      "molt(?!ing|ed|o|e\\b|i\\b|bot|book|iverse|y)",
+      "shed"
+    ],
+    [
+      "claw(?!hub|router|pack|d|sweeper)",
+      "grove"
+    ]
+  ],
+  "protect": [
+    {
+      "why": "pinned upstream citations, with their upstream path",
+      "re": "openclaw/openclaw@[0-9a-f]{7,40}(?::[^\\s\"'`)>,|\\]]*)?"
+    },
+    {
+      "why": "the local clone of the upstream",
+      "re": "openclaw__openclaw"
+    },
+    {
+      "why": "references to the upstream's own issues and pull requests (openclaw#123)",
+      "re": "(?<![\\w.-])openclaw(?:/openclaw)?#\\d+"
+    },
+    {
+      "why": "links to real outside sites (upstream docs, GitHub, npm, image registry): renaming them would break the link",
+      "re": "(?:https?|wss?|git\\+https?|git\\+ssh|ssh)://(?:[\\w-]+\\.)*(?:openclaw\\.(?:ai|org|com|dev|io)|github\\.com|githubusercontent\\.com|npmjs\\.(?:org|com)|ghcr\\.io|clawhub\\.ai|docker\\.io|docker\\.com)(?::\\d+)?[^\\s\"'`)<>\\]]*"
+    },
+    {
+      "why": "the same outside sites written without a scheme",
+      "re": "(?<![\\w.@/-])(?:[\\w-]+\\.)*openclaw\\.(?:ai|org|com|dev|io)(?![\\w-])[^\\s\"'`)<>\\],]*"
+    },
+    {
+      "why": "GitHub, image-registry and repo names of the upstream project",
+      "re": "(?:github\\.com[/:]|ghcr\\.io/|docker\\.io/)openclaw/[\\w.-]+|(?<![\\w.@/~-])openclaw/openclaw(?![\\w-])"
+    },
+    {
+      "why": "npm packages published by the upstream that the engine installs from the registry (also as pnpm writes them in file names): their names cannot change",
+      "re": "@openclaw(?:/|__|\\+)(?:crabline|fs-safe[\\w-]*|libterminal|proxyline|uirouter)(?![\\w-])"
+    },
+    {
+      "why": "names exported or read by those outside packages (fs-safe, crabline, tokenjuice), and their own subpaths such as tokenjuice/openclaw",
+      "re": "OPENCLAW_(?:CRABLINE|FS_SAFE)_[A-Z0-9_]+|OPENCLAW_PINNED_(?:WRITE_)?PYTHON\\b|\\w*[Oo]pen[Cc]law[Cc]rabline\\w*|\\w*[Tt]okenjuice[Oo]pen[Cc]law\\w*|\\bOpenClawPi\\w*|(?<![\\w/.-])tokenjuice/openclaw\\b"
+    },
+    {
+      "why": "the upstream's native app kit (apps/ is not part of Branch); one data file of it is kept at its upstream path",
+      "re": "OpenClawKit"
+    },
+    {
+      "why": "copyright and licence notices stay as the upstream wrote them (MIT)",
+      "re": "^.*(?:Copyright|©|SPDX-License-Identifier|Licensed under).*$",
+      "flags": "mi"
+    },
+    {
+      "why": "the notice file name that the upstream's patch adds to a third-party package (patches/ is skipped)",
+      "re": "OPENCLAW_PATCH_NOTICE"
+    },
+    {
+      "why": "an option name of the outside package @openclaw/crabline, used where the engine calls it",
+      "re": "\\bopenclawConfig\\b",
+      "in": "^engine/extensions/qa-lab/src/crabline-"
+    },
+    {
+      "why": "the outside package @clawdbot/lobster, its import path, its workflow file extension and the variables it reads (only the bare .lobster extension; CSS classes such as .lobster-pet are renamed)",
+      "re": "@clawdbot/[\\w./-]+|\\[\"@clawdbot\", \"lobster\", \"core\"\\]|\\.lobster(?![\\w-])|\\bLOBSTER_[A-Z0-9_]+"
+    },
+    {
+      "why": "legacy names kept in code only so old configs still load (item 135)",
+      "re": "\\b[Cc]lawd(?:bot)?\\w*|\\bCLAWDBOT\\w*|\\bMOLTBOT\\w*|\\b[Mm]oltbot\\w*"
+    },
+    {
+      "why": "the outside npm package clawpdf (the PDF library): its name cannot change",
+      "re": "\\bclawpdf\\b"
+    }
+  ],
+  "skip": [
+    {
+      "why": "the MIT licence and third-party notices stay unchanged",
+      "re": "^engine/(?:LICENSE|THIRD_PARTY_NOTICES\\.md)$"
+    },
+    {
+      "why": "Branch's own notes, already in Branch's words and citing the upstream pin",
+      "re": "^engine/(?:AGENTS|CLAUDE)\\.md$"
+    },
+    {
+      "why": "the upstream's release history: it records what OpenClaw shipped, with its contributors' names",
+      "re": "^engine/(?:CHANGELOG(?:\\.md|/.*)|docs/releases/.*)$"
+    },
+    {
+      "why": "the upstream's release feeds (its macOS app's release notes)",
+      "re": "^engine/appcast[\\w-]*\\.xml$"
+    },
+    {
+      "why": "patches to third-party packages: their bytes are hash-locked in the lockfile and patches/README.md, and their notices record the upstream's own changes",
+      "re": "^engine/patches/"
+    },
+    {
+      "why": "the rename tools and their record",
+      "re": "^(?:scripts/rebrand(?:\\.mjs|-map\\.json)|docs/foundation/REBRAND\\.md)$"
+    }
+  ],
+  "binaryExtensions": [
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".ico",
+    ".icns",
+    ".bmp",
+    ".tiff",
+    ".svgz",
+    ".webm",
+    ".mp4",
+    ".mov",
+    ".mp3",
+    ".wav",
+    ".ogg",
+    ".m4a",
+    ".flac",
+    ".opus",
+    ".pcm",
+    ".zip",
+    ".tgz",
+    ".gz",
+    ".tar",
+    ".bz2",
+    ".xz",
+    ".7z",
+    ".jar",
+    ".wasm",
+    ".node",
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".pdf",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+    ".eot",
+    ".sqlite",
+    ".db",
+    ".bin",
+    ".pb",
+    ".onnx",
+    ".blend",
+    ".car",
+    ".pfx",
+    ".p12",
+    ".der"
+  ],
+  "fixups": [
+    {
+      "why": "\"an OpenClaw\" becomes \"a Branch\", not \"an Branch\"",
+      "re": "\\b([Aa])n (?=(?:Branch|BRANCH|branch|Canopy|canopy|Rings|rings|Gardener|gardener)\\b)",
+      "to": "$1 "
+    }
+  ],
+  "phrases": [
+    {
+      "why": "the product's name in text is \"Branch Agent\" (DECISIONS.md item 133); inside names, paths, flags and identifiers the word stays \"Branch\"",
+      "re": "(?<![\\w./@:$#%&=+-])OpenClaw(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]]|[.:](?:\\s|$)|$))",
+      "to": "Branch Agent",
+      "notIn": "^engine/(?:packages/sdk/src/|src/gateway/server\\.app-sdk-composed-resources\\.test\\.ts$)",
+      "notInWhy": "the SDK's class is named OpenClaw in code; there it becomes the class Branch, like every other name",
+      "key": "openclaw"
+    },
+    {
+      "why": "an outside service or tool keeps its own ids in code; only the name people read changes (item 135) Also before a closing quote or backtick and before an ellipsis (\"ClawHub.\" and \"ClawHub…\" inside strings).",
+      "re": "(?<![\\w./@:$#%&=+-])ClawHub(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]…]|[.:](?:[\\s\"'`]|$)|$))",
+      "to": "Seedbank",
+      "key": "clawhub"
+    },
+    {
+      "why": "an outside service or tool keeps its own ids in code; only the name people read changes (item 135)",
+      "re": "(?<![\\w./@:$#%&=+-])Crabbox(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]]|[.:](?:\\s|$)|$))",
+      "to": "Cuttings",
+      "key": "crabbox"
+    },
+    {
+      "why": "an outside service or tool keeps its own ids in code; only the name people read changes (item 135)",
+      "re": "(?<![\\w./@:$#%&=+-])Crabline(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]]|[.:](?:\\s|$)|$))",
+      "to": "Tendril",
+      "key": "crabline"
+    },
+    {
+      "why": "an outside service or tool keeps its own ids in code; only the name people read changes (item 135)",
+      "re": "(?<![\\w./@:$#%&=+-])ClawRouter(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]]|[.:](?:\\s|$)|$))",
+      "to": "Rootway",
+      "key": "clawrouter"
+    },
+    {
+      "why": "an outside service or tool keeps its own ids in code; only the name people read changes (item 135)",
+      "re": "(?<![\\w./@:$#%&=+-])ClawSweeper(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]]|[.:](?:\\s|$)|$))",
+      "to": "Rake",
+      "key": "clawsweeper"
+    },
+    {
+      "why": "an outside service or tool keeps its own ids in code; only the name people read changes (item 135)",
+      "re": "(?<![\\w./@:$#%&=+-])Clawpacks?(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]]|[.:](?:\\s|$)|$))",
+      "to": "Seedpod",
+      "key": "clawpack"
+    },
+    {
+      "why": "the Trellis index (item 135)",
+      "re": "(?<![\\w./@:$#%&=+-])Lobsterdex(?=(?:'s)?(?:[\\s,;!?)\"'`<>*\\]]|[.:](?:\\s|$)|$))",
+      "to": "Trellis index",
+      "key": "lobsterdex"
+    },
+    {
+      "why": "the lobster emoji becomes a leaf (item 135)",
+      "re": "🦞",
+      "to": "🌿",
+      "key": "🦞"
+    },
+    {
+      "why": "the pet's crab visitor is a beetle (no crustacean names in the app); only inside the pet's own files",
+      "re": "the crab was a lobster all along",
+      "to": "the acorn was an oak all along",
+      "notIn": "^(?!engine/ui/src/(?:components/trellis-pet|styles/trellis-pet|e2e/trellis-pet))",
+      "key": "crab-fortune"
+    },
+    {
+      "why": "the pet's crab visitor is a beetle (no crustacean names in the app); only inside the pet's own files",
+      "re": "crab: \"definitely a lobster\"",
+      "to": "beetle: \"definitely a pinecone\"",
+      "notIn": "^(?!engine/ui/src/(?:components/trellis-pet|styles/trellis-pet|e2e/trellis-pet))",
+      "key": "crab-title"
+    },
+    {
+      "why": "the pet's crab visitor is a beetle (no crustacean names in the app); only inside the pet's own files",
+      "re": "The crab walks sideways by definition",
+      "to": "The beetle scuttles across in a hurry",
+      "notIn": "^(?!engine/ui/src/(?:components/trellis-pet|styles/trellis-pet|e2e/trellis-pet))",
+      "key": "crab-comment"
+    },
+    {
+      "why": "the pet's crab visitor is a beetle (no crustacean names in the app); only inside the pet's own files",
+      "re": "CRAB(?=_SPRITE)",
+      "to": "BEETLE",
+      "notIn": "^(?!engine/ui/src/(?:components/trellis-pet|styles/trellis-pet|e2e/trellis-pet))",
+      "key": "CRAB"
+    },
+    {
+      "why": "the pet's crab visitor is a beetle (no crustacean names in the app); only inside the pet's own files",
+      "re": "(?<![A-Za-z])crab(?!, allegedly)(?![a-z])",
+      "to": "beetle",
+      "notIn": "^(?!engine/ui/src/(?:components/trellis-pet|styles/trellis-pet|e2e/trellis-pet))",
+      "key": "crab"
+    },
+    {
+      "why": "the MCP server people connect coding agents to is called Graft (owner, 2026-10-05): upstream's `mcp serve` description becomes Graft's, and `branch graft` is its primary name (Branch code in engine/src/cli/mcp-cli.ts registerGraftCli)",
+      "re": "Expose (?:OpenClaw|Branch Agent) channels over MCP stdio",
+      "to": "Graft: work with Branch (Trunks, group chats, the window and channels over MCP stdio)",
+      "key": "channels over MCP stdio"
+    }
+  ],
+  "proposed": {
+    "why": "DECISIONS.md item 135: no user-visible name may be crustacean or sound like another product; every visible name fits Branch's tree theme. These names were found after the rename. Picked 2026-10-02; applied on 2026-10-02 as the phrases and words above; outside services keep their ids in code (see keep).",
+    "names": [
+      {
+        "old": "ClawHub / clawhub",
+        "what": "the skill and plugin hub (an outside service; its URLs stay protected)",
+        "to": "Seedbank / seedbank"
+      },
+      {
+        "old": "Crabbox / crabbox",
+        "what": "the sandbox box provider",
+        "to": "Cuttings / cuttings (the outside CLI binary keeps its file name)"
+      },
+      {
+        "old": "crabline / Crabline",
+        "what": "the QA channel transport (also an outside npm package, @openclaw/crabline)",
+        "to": "Tendril / tendril (the outside npm package name stays in imports)"
+      },
+      {
+        "old": "Lobster / lobster, Lobsterdex",
+        "what": "the workflow shell and its index, and the lobster emoji",
+        "to": "Trellis / trellis, Trellis index; lobster emoji becomes 🌿"
+      },
+      {
+        "old": "Claw / claws / CLAW.md",
+        "what": "claw projects (src/claws/)",
+        "to": "Grove / groves / GROVE.md"
+      },
+      {
+        "old": "Clawd / clawd, Clawdbot (ClawdbotConfig)",
+        "what": "legacy names kept for old configs",
+        "to": "keep in code only to read old configs; never in visible text"
+      },
+      {
+        "old": "ClawRouter / clawrouter",
+        "what": "a model router provider",
+        "to": "Rootway / rootway"
+      },
+      {
+        "old": "ClawSweeper",
+        "what": "the issue sweeper",
+        "to": "Rake"
+      },
+      {
+        "old": "clawpack (PersistedClawPackageRef, digestClawValue)",
+        "what": "the claw package format",
+        "to": "Seedpod / seedpod"
+      },
+      {
+        "old": "molt / Molty",
+        "what": "any molt-themed name still left",
+        "to": "shed / Sprig"
+      }
+    ]
+  },
+  "keep": {
+    "why": "Names kept on purpose in code (ids, config keys, CLI names, binaries and outside packages' own names); the name people read changed through a phrase rule. `left` lists them as kept.",
+    "re": "clawhub|crabbox|crabline|clawrouter|clawsweeper|clawpack|clawd|moltbot|moltbook|\\bcrab\\b|clawpdf",
+    "flags": "i"
+  }
+}

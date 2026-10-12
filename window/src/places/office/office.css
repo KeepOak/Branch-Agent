@@ -1,0 +1,6 @@
+.pixel-office-view { display:flex; flex-direction:column; min-height:0; height:100%; width:100%; overflow:hidden; color:var(--ink); background:var(--base); }
+.pixel-office-head { display:flex; align-items:baseline; gap:12px; padding:16px 20px 12px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+.pixel-office-head b { font-size:18px; }
+.pixel-office-head span { color:var(--ink-3); font-size:13px; }
+.pixel-office-view > p { padding:0 20px; font-size:13px; }
+.pixel-office-stage { flex:1; min-height:0; position:relative; }

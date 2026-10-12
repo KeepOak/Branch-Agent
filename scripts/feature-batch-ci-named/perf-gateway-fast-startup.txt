@@ -1,0 +1,3 @@
+engine:src/entry.compile-cache.test.ts
+engine:src/commands/config-preflight-snapshot.test.ts
+engine:src/commands/startup-config-preflight.recovery.test.ts

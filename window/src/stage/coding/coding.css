@@ -1,0 +1,35 @@
+/* The Changes tab and the pull request box (App Preview §4.5.8 Changes, patches 92-codingp and 96 CdR218). */
+.changes-cd {display:grid;gap:10px;}
+.chg-h-cd {display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.chg-h-cd .btn {display:inline-flex;align-items:center;gap:4px;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chg-h-cd small {font-size:12px;color:var(--ink-3);}
+.chg-h-cd .tb-grow {flex:1;}
+.file-cd {border:1px solid var(--line);border-radius:12px;background:var(--raise);overflow:hidden;}
+.file-h-cd {display:flex;align-items:center;gap:8px;padding:6px 8px;}
+.file-h-cd small {font:11.5px var(--mono);color:var(--ink-3);white-space:nowrap;}
+.tog-cd {display:flex;align-items:center;gap:6px;flex:1;min-width:0;border:0;background:transparent;font:inherit;color:var(--ink);text-align:left;padding:2px;}
+.tog-cd b {font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.chev-cd {flex:none;transition:rotate .15s;}
+.tog-cd[aria-expanded="true"] .chev-cd {rotate:90deg;}
+.file-cd .pill.done {background:var(--ok-tint);color:var(--ok);}
+.file-cd .pill.warn {background:var(--warn-tint);color:var(--warn);}
+.file-cd .pill.no {background:var(--bad-tint);color:var(--bad);}
+.hunk-cd {margin:0;padding:4px 0;border-top:1px solid var(--line);font:11.5px/1.55 var(--mono);overflow-x:auto;background:var(--bg);}
+.ln-cd {display:block;padding:0 10px;white-space:pre;}
+.ln-cd.wrap {white-space:pre-wrap;overflow-wrap:anywhere;}
+.ln-cd em {display:inline-block;width:14px;font-style:normal;color:var(--ink-3);user-select:none;}
+.ln-cd.add {background:color-mix(in srgb,var(--ok) 13%,transparent);}
+.ln-cd.del {background:color-mix(in srgb,var(--bad) 13%,transparent);}
+.hunk-split-cd {border-top:1px solid var(--line);background:var(--bg);overflow-x:auto;}
+.row-cd {display:grid;grid-template-columns:1fr 1fr;}
+.row-cd pre {margin:0;font:11.5px/1.55 var(--mono);min-width:0;}
+.row-cd pre + pre {border-left:1px solid var(--line);}
+.gap-cd {padding:3px 10px;font-size:11.5px;color:var(--ink-3);background:var(--fill);border-top:1px solid var(--line);}
+.cmd-cd {margin:0;padding:10px;border-radius:8px;background:var(--fill);font:12px var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;}
+.pr-box-cd {display:grid;gap:8px;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--raise);}
+.pr-box-cd h3 {margin:0;font-size:13.5px;font-weight:600;}
+.pr-body-cd {min-height:72px;resize:vertical;font:inherit;}
+.pr-confirm-cd {display:grid;gap:6px;justify-items:start;}
+.pr-card-cd {display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--ok-tint);font-size:13px;}
+.pr-card-cd .grow {flex:1;min-width:0;display:grid;gap:1px;}
+.pr-card-cd small {font-size:11.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}

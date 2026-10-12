@@ -1,0 +1,85 @@
+import {
+  describeRunningBranchBuild,
+  SqliteSchemaVersionError,
+} from "../infra/sqlite-user-version.js";
+import type {
+  DeferredStateSchemaPublication,
+  IncompatibleBranchDatabase,
+  IndeterminateBranchDatabase,
+  BranchDatabaseSchemaPreflightOperation,
+} from "./branch-database-preflight.types.js";
+import { BRANCH_DATABASE_SCHEMA_DOCS_URL } from "./branch-state-db-contract.js";
+import type { StateSchemaPublicationBlocker } from "./branch-state-schema-publication.js";
+
+/** Fatal refusal when persisted schemas were written by a newer build. */
+export class BranchDatabaseSchemaPreflightError extends SqliteSchemaVersionError {
+  constructor(
+    readonly incompatibleDatabases: readonly IncompatibleBranchDatabase[],
+    options: { operation?: BranchDatabaseSchemaPreflightOperation } = {},
+  ) {
+    const operation = options.operation ?? "gateway-startup";
+    super(formatIncompatibleDatabaseSchemas(incompatibleDatabases, operation));
+    this.name = "BranchDatabaseSchemaPreflightError";
+  }
+}
+
+function formatIncompatibleDatabase(database: IncompatibleBranchDatabase): string {
+  const agent = database.agentId ? ` for agent ${database.agentId}` : "";
+  return `${database.kind} database${agent} ${database.path} uses schema ${database.foundVersion}; this build supports ${database.supportedVersion}; writer build ${database.writerAppVersion ?? "unknown"}.`;
+}
+
+function formatIncompatibleDatabaseSchemas(
+  incompatibleDatabases: readonly IncompatibleBranchDatabase[],
+  operation: BranchDatabaseSchemaPreflightOperation,
+): string {
+  const prefix =
+    operation === "doctor"
+      ? "Doctor refused to continue"
+      : operation === "gateway-restart"
+        ? "Gateway refused restart"
+        : "Gateway refused startup";
+  return (
+    `${prefix} because ${incompatibleDatabases.length} Branch Agent database schema(s) are newer than this build. ` +
+    `${incompatibleDatabases.map(formatIncompatibleDatabase).join(" ")} ` +
+    `Refused by ${describeRunningBranchBuild()}. ` +
+    "Run a build at least as new as the writer that supports these schemas, or stop the service and restore your pre-upgrade backup created with branch backup create. " +
+    `See ${BRANCH_DATABASE_SCHEMA_DOCS_URL}.`
+  );
+}
+
+export function formatIndeterminateDatabaseReadiness(
+  indeterminate: readonly IndeterminateBranchDatabase[],
+  operation: BranchDatabaseSchemaPreflightOperation,
+): string {
+  const shown = indeterminate
+    .toSorted((left, right) => left.path.localeCompare(right.path))
+    .map(
+      (database) =>
+        `${database.kind}${database.agentId ? ` ${database.agentId}` : ""} ${database.path}: ${database.reason}`,
+    );
+  const action =
+    operation === "doctor"
+      ? "Doctor could not complete repair"
+      : operation === "gateway-startup"
+        ? "Gateway refused startup"
+        : "Gateway refused restart";
+  return `${action} because persisted database readiness could not be verified:\n${shown.join("\n")}\n${operation === "doctor" ? "Stop Branch Agent processes, then restore the affected database from a verified backup." : "Stop the Gateway and other Branch Agent processes, run branch doctor --fix, then retry."}`;
+}
+
+export function describeDeferredStateSchemaPublication(
+  blocker: StateSchemaPublicationBlocker | undefined,
+  databasePath: string,
+  foundVersion: number,
+  contentVersion: number,
+): DeferredStateSchemaPublication {
+  return {
+    kind: "state",
+    path: databasePath,
+    foundVersion,
+    contentVersion,
+    ...(blocker ? { runId: blocker.runId, publishAfterMs: blocker.publishAfterMs } : {}),
+    message: blocker
+      ? `Schema content applied; version publication deferred until update run ${blocker.runId} finishes and its five-minute grace expires (or the running driver is abandoned for 30 minutes).`
+      : "Schema content applied; version publication will complete on the next writable database open.",
+  };
+}

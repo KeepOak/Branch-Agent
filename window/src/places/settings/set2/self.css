@@ -1,0 +1,3 @@
+/* Branch itself: the small headings inside Learning and the second line of a storage figure. */
+.set-col .hint.self-subhead { margin: 12px 0 4px; }
+.set-col .s2-kv small.self-kvsub { display: block; color: var(--ink-3); font-size: 12px; }

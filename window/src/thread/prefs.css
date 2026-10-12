@@ -1,0 +1,39 @@
+/* The person's reading choices on the thread (Settings › General › The conversation, Settings › Appearance) */
+/* Full width: your messages read like a document, as the preview's "r618-doc" */
+.thread-wrap[data-look="full"] .thread .user-msg {
+  align-items: stretch;
+}
+.thread-wrap[data-look="full"] .thread .bubble {
+  align-self: flex-start;
+  margin-right: auto;
+  max-width: none;
+  margin-left: 0;
+  background: none;
+  border-left: 2px solid var(--line-2);
+  border-radius: 0;
+  padding: 2px 0 2px 12px;
+}
+/* Scroll bars: always shown, or only while scrolling (the default, in thread.css) */
+.thread-wrap[data-scrollbars="always"] .scroll,
+.thread-wrap[data-scrollbars="always"] .scroll:hover {
+  scrollbar-color: color-mix(in srgb, var(--ink) 34%, transparent) transparent;
+}
+/* Message times: never shows none; always shows them under each message */
+.thread-wrap[data-times="never"] .thread .hb-time {
+  display: none;
+}
+.thread .msg-time {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  margin-top: -10px;
+}
+.thread .msg-time.mine {
+  text-align: end;
+}
+.thread .msg-time.theirs {
+  margin-left: 38px;
+}
+.thread-wrap[data-look="full"] .thread .msg-time.mine {
+  text-align: start;
+}

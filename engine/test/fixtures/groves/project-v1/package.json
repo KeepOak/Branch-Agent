@@ -1,0 +1,8 @@
+{
+  "name": "golden-grove",
+  "version": "1.0.0",
+  "type": "module",
+  "branch": {
+    "grove": "GROVE.md"
+  }
+}

@@ -1,0 +1,75 @@
+/* §4.8.3 What's new (preview .rn17d .wn-gF18 .new13 .new-row13) */
+.seg.wn-seg {
+  grid-template-columns: 1fr 1fr !important;
+  width: max-content;
+  max-width: 100%;
+}
+.seg.wn-seg::before {
+  width: calc((100% - 6px) / 2);
+}
+.wn-seg button {
+  padding: 0 10px;
+  white-space: nowrap;
+}
+.wn-hint {
+  margin: 10px 0 4px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.wn-g {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+}
+.wn-g h3 {
+  margin: 0 0 4px;
+  font: 500 10.5px/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.new13 {
+  display: grid;
+  gap: 4px;
+}
+.new-row13 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  font: inherit;
+  color: var(--ink);
+}
+.new-row13:hover,
+.new-row13:focus-visible {
+  background: var(--fill);
+  outline: none;
+}
+.new-row13 .ico-tile {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--wash17);
+  color: var(--ink-2);
+  flex: none;
+}
+.new-row13 .grow {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.new-row13 b {
+  font-size: 14px;
+}
+.new-row13 small {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}

@@ -1,0 +1,266 @@
+// Branch Agent MCP tools tests cover core tool server startup and registration.
+import path from "node:path";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
+import type { SessionEntry } from "../config/sessions/types.js";
+import { hashSystemAgentOperation } from "../system-agent/operator-approval.js";
+import { useSessionStoreTempDirs } from "../test-utils/session-state-cleanup.js";
+import { resolveToolsMcpAgentId } from "./agent-session-env.js";
+import {
+  buildSystemAgentToolsMcpServerConfig,
+  BRANCH_TOOLS_MCP_SYSTEM_AGENT_APPROVAL_ARMED_ENV,
+  BRANCH_TOOLS_MCP_SYSTEM_AGENT_PROPOSAL_ENV,
+  BRANCH_TOOLS_MCP_SYSTEM_AGENT_SURFACE_ENV,
+  BRANCH_TOOLS_MCP_TOOLS_ENV,
+  resolveBranchToolsMcpSystemAgentSurface,
+  resolveBranchToolsMcpToolSelection,
+} from "./branch-tools-serve-config.js";
+import {
+  BRANCH_TOOLS_MCP_AGENT_SESSION_KEY_ENV,
+  resolveBranchToolsForMcp,
+  resolveBranchToolsMcpAgentSessionKey,
+} from "./branch-tools-serve.js";
+import { createPluginToolsMcpHandlers } from "./plugin-tools-handlers.js";
+
+const sessionDirs = useSessionStoreTempDirs(afterAll, "branch-mcp-subagent-policy-");
+
+vi.mock("../system-agent/overview.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../system-agent/overview.js")>();
+  const config = {
+    agents: {
+      ownership: "explicit" as const,
+      entries: {
+        work: { model: "openai/gpt-5.6-luna" },
+        other: { model: "example/other" },
+      },
+    },
+    gateway: { port: 1 },
+  };
+  return {
+    ...actual,
+    loadSystemAgentOverview: (options?: Parameters<typeof actual.loadSystemAgentOverview>[0]) =>
+      actual.loadSystemAgentOverview({
+        ...options,
+        deps: {
+          readConfigFileSnapshot: async () => ({
+            path: "/tmp/branch-mcp-owner.json",
+            exists: true,
+            valid: true,
+            raw: null,
+            parsed: config,
+            sourceConfig: config,
+            resolved: config,
+            runtimeConfig: config,
+            config,
+            issues: [],
+            warnings: [],
+            legacyIssues: [],
+          }),
+          probeLocalCommand: async (command) => ({ command, found: false }),
+          probeGatewayUrl: async (url) => ({ url, reachable: false }),
+        },
+      }),
+  };
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe("Branch Agent tools MCP server", () => {
+  it("does not expose cron to a persisted sub-agent ACP session", async () => {
+    const tempDir = sessionDirs.make();
+    const storePath = path.join(tempDir, "sessions.json");
+    const sessionKey = "agent:main:acp:resumed-child";
+    await replaceSessionEntry({ storePath, sessionKey }, {
+      sessionId: `${sessionKey}-session`,
+      updatedAt: Date.now(),
+      spawnedBy: "agent:main:subagent:parent",
+      spawnDepth: 2,
+      subagentRole: "leaf",
+      subagentControlScope: "none",
+    } as SessionEntry);
+    const handlers = createPluginToolsMcpHandlers(
+      resolveBranchToolsForMcp({
+        agentSessionKey: sessionKey,
+        config: { session: { store: storePath } },
+      }),
+    );
+
+    const listed = await handlers.listTools();
+    expect(listed.tools.map((tool) => tool.name)).not.toContain("automations");
+    for (const name of ["automations", "cron"]) {
+      await expect(handlers.callTool({ name, arguments: { action: "status" } })).resolves.toEqual({
+        content: [{ type: "text", text: `Unknown tool: ${name}` }],
+        isError: true,
+      });
+    }
+  });
+
+  it("gates cron trigger surfaces by the host config", () => {
+    const jobKeys = (config: unknown) => {
+      const [tool] = resolveBranchToolsForMcp({
+        agentSessionKey: "agent:worker:main",
+        config: config as never,
+      });
+      if (!tool) {
+        throw new Error("expected the automations tool to be resolved");
+      }
+      const parameters = tool.parameters as unknown as {
+        properties: { job: { properties: Record<string, unknown> } };
+      };
+      return Object.keys(parameters.properties.job.properties);
+    };
+
+    expect(jobKeys({ cron: { triggers: { enabled: false } } })).not.toContain("trigger");
+    // Absent config means enabled; only an explicit false narrows the surface.
+    expect(jobKeys({ cron: {} })).toContain("trigger");
+    expect(jobKeys({ cron: { triggers: { enabled: true } } })).toContain("trigger");
+  });
+
+  it("requires the managed bridge to pass a real agent session key", () => {
+    expect(() => resolveBranchToolsForMcp({ agentSessionKey: "" })).toThrow(
+      BRANCH_TOOLS_MCP_AGENT_SESSION_KEY_ENV,
+    );
+  });
+
+  it("reads the managed bridge agent session key from env", () => {
+    expect(
+      resolveBranchToolsMcpAgentSessionKey({
+        [BRANCH_TOOLS_MCP_AGENT_SESSION_KEY_ENV]: " agent:worker:main ",
+      }),
+    ).toBe("agent:worker:main");
+  });
+
+  it("keeps the generated helper owner through MCP diagnostic actions", async () => {
+    const config = buildSystemAgentToolsMcpServerConfig({ surface: "gateway", agentId: "work" });
+    const server = config.mcpServers.branch as { args: string[] };
+    const handlers = createPluginToolsMcpHandlers(
+      resolveBranchToolsForMcp({
+        tools: ["branch"],
+        systemAgentSurface: "gateway",
+        agentId: resolveToolsMcpAgentId(server.args),
+      }),
+    );
+
+    const result = await handlers.callTool({ name: "branch", arguments: { action: "models" } });
+
+    expect(JSON.stringify(result)).toContain("Default model: openai/gpt-5.6-luna");
+    expect(result.isError).not.toBe(true);
+  });
+
+  it("returns approved CLI MCP mutations to the host instead of applying them", async () => {
+    const operation = { kind: "config-set", path: "gateway.port", value: "19001" } as const;
+    vi.stubEnv(BRANCH_TOOLS_MCP_SYSTEM_AGENT_APPROVAL_ARMED_ENV, "1");
+    vi.stubEnv(BRANCH_TOOLS_MCP_SYSTEM_AGENT_PROPOSAL_ENV, hashSystemAgentOperation(operation));
+    const handlers = createPluginToolsMcpHandlers(
+      resolveBranchToolsForMcp({ tools: ["branch"], systemAgentSurface: "cli" }),
+    );
+
+    const result = await handlers.callTool({
+      name: "branch",
+      arguments: {
+        action: "config_set",
+        path: "gateway.port",
+        value: "19001",
+        approved: true,
+      },
+    });
+
+    expect(JSON.stringify(result)).toContain("directive:approved-operation:");
+  });
+
+  it("parses the served tool selection from env and defaults to cron", () => {
+    expect(resolveBranchToolsMcpToolSelection({})).toEqual(["cron"]);
+    expect(
+      resolveBranchToolsMcpToolSelection({
+        [BRANCH_TOOLS_MCP_TOOLS_ENV]: " branch , cron ",
+      }),
+    ).toEqual(["branch", "cron"]);
+    expect(() =>
+      resolveBranchToolsMcpToolSelection({ [BRANCH_TOOLS_MCP_TOOLS_ENV]: "exec" }),
+    ).toThrow(BRANCH_TOOLS_MCP_TOOLS_ENV);
+  });
+
+  it("parses the branch surface from env and defaults to cli", () => {
+    expect(resolveBranchToolsMcpSystemAgentSurface({})).toBe("cli");
+    expect(
+      resolveBranchToolsMcpSystemAgentSurface({
+        [BRANCH_TOOLS_MCP_SYSTEM_AGENT_SURFACE_ENV]: "gateway",
+      }),
+    ).toBe("gateway");
+    expect(() =>
+      resolveBranchToolsMcpSystemAgentSurface({
+        [BRANCH_TOOLS_MCP_SYSTEM_AGENT_SURFACE_ENV]: "remote",
+      }),
+    ).toThrow(BRANCH_TOOLS_MCP_SYSTEM_AGENT_SURFACE_ENV);
+  });
+
+  it("builds a branch-only stdio server config under the branch name", () => {
+    const config = buildSystemAgentToolsMcpServerConfig({ surface: "gateway" });
+
+    expect(Object.keys(config.mcpServers)).toEqual(["branch"]);
+    const server = config.mcpServers.branch as {
+      command?: string;
+      args?: string[];
+      env?: Record<string, string>;
+    };
+    expect(server.command).toBe(process.execPath);
+    expect(server.args?.at(-1)).toMatch(/branch-tools-serve\.(js|ts)$/);
+    expect(server.env).toEqual({
+      [BRANCH_TOOLS_MCP_TOOLS_ENV]: "branch",
+      [BRANCH_TOOLS_MCP_SYSTEM_AGENT_SURFACE_ENV]: "gateway",
+    });
+  });
+
+  it("serializes operator-approval-only through the native CLI MCP config", () => {
+    const config = buildSystemAgentToolsMcpServerConfig({
+      surface: "cli",
+      operatorApprovalOnly: true,
+      proposalRef: { current: "deadbeef" },
+    });
+    const server = config.mcpServers.branch as { env?: Record<string, string> };
+    expect(server.env?.[BRANCH_TOOLS_MCP_SYSTEM_AGENT_APPROVAL_ARMED_ENV]).toBe("operator-only");
+
+    // Non-delegated configs must not arm approval (direct sessions keep the
+    // interactive "reply yes" approval flow until the host arms a turn).
+    const direct = buildSystemAgentToolsMcpServerConfig({ surface: "cli" });
+    const directServer = direct.mcpServers.branch as { env?: Record<string, string> };
+    expect(directServer.env).not.toHaveProperty(BRANCH_TOOLS_MCP_SYSTEM_AGENT_APPROVAL_ARMED_ENV);
+
+    // A host-armed direct turn uses "1", distinct from the delegated value.
+    const armed = buildSystemAgentToolsMcpServerConfig({ surface: "cli", approvalArmed: true });
+    const armedServer = armed.mcpServers.branch as { env?: Record<string, string> };
+    expect(armedServer.env?.[BRANCH_TOOLS_MCP_SYSTEM_AGENT_APPROVAL_ARMED_ENV]).toBe("1");
+  });
+
+  it("reconstructs delegated proposal staging from env on the native CLI MCP tool", async () => {
+    const operation = {
+      kind: "config-set",
+      path: "agents.defaults.subagents.thinking",
+      value: "high",
+    } as const;
+    vi.stubEnv(BRANCH_TOOLS_MCP_SYSTEM_AGENT_APPROVAL_ARMED_ENV, "operator-only");
+    vi.stubEnv(BRANCH_TOOLS_MCP_SYSTEM_AGENT_PROPOSAL_ENV, hashSystemAgentOperation(operation));
+    const handlers = createPluginToolsMcpHandlers(
+      resolveBranchToolsForMcp({ tools: ["branch"], systemAgentSurface: "cli" }),
+    );
+
+    const result = await handlers.callTool({
+      name: "branch",
+      arguments: {
+        action: "config_set",
+        path: "agents.defaults.subagents.thinking",
+        value: "high",
+        approved: true,
+      },
+    });
+
+    const text = JSON.stringify(result);
+    expect(text).toContain("needs-approval:");
+    expect(text).toContain("requesting session's permission policy");
+    expect(text).toContain("returns the final outcome");
+    expect(text).not.toContain("Branch Agent operator UI");
+    expect(text).not.toContain("ask the user to reply yes");
+  });
+});

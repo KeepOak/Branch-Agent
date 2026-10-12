@@ -1,0 +1,37 @@
+---
+summary: "Branch Agent ClickClack channel plugin."
+read_when:
+  - You are installing, configuring, or auditing the clickclack plugin
+title: "Clickclack plugin reference"
+---
+
+<!-- Generated file. Do not edit by hand.
+Run `pnpm plugins:inventory:gen` to rebuild it. Hand-written text survives only
+between the branch-plugin-reference:manual-start and
+branch-plugin-reference:manual-end comment markers. -->
+
+Branch Agent ClickClack channel plugin.
+
+## Distribution
+
+- Package: `@branch/clickclack`
+- Install route: npm or Seedbank: `clawhub:@branch/clickclack`
+
+## Surface
+
+- Channels: `clickclack`
+- Contracts: `tools`
+
+<!-- branch-plugin-reference:manual-start -->
+
+The plugin can optionally create a lifecycle-synchronized ClickClack channel
+for each Branch Agent session. Managed discussion channels use a same-agent side
+session for observation and relay, while the attached main session receives a
+pull-only `discussion` tool. See [ClickClack session discussions](/channels/clickclack#session-discussions)
+for configuration and session-tool visibility requirements.
+
+<!-- branch-plugin-reference:manual-end -->
+
+## Related docs
+
+- [clickclack](/channels/clickclack)

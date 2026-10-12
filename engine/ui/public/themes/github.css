@@ -1,0 +1,67 @@
+/* Ported from old Branch Agent's finished github palette. */
+:root[data-theme="github"] {
+  --bg: #0d1117;
+  --bg-accent: #13171e;
+  --bg-elevated: #1a1f27;
+  --text: #e6edf3;
+  --muted-strong: #bbc1c7;
+  --muted: #919aa4;
+  --border: #292e34;
+  --accent: #2f81f7;
+  --primary: #2f81f7;
+  --primary-foreground: #1a1a1a;
+  --ring: #2f81f7;
+  --accent-muted: #2f81f7;
+  --accent-hover: #5196FE;
+  --accent-foreground: #1a1a1a;
+  --card: #1a1f27;
+  --card-foreground: #e6edf3;
+  --popover: #1a1f27;
+  --popover-foreground: #e6edf3;
+  --panel: #0d1117;
+  --panel-strong: #1a1f27;
+  --panel-hover: #1c2026;
+  --secondary: #13171e;
+  --secondary-foreground: #e6edf3;
+  --muted-foreground: #919aa4;
+  --input: #292e34;
+  --destructive: #ff958e;
+  --destructive-foreground: #1a1a1a;
+  --chat-text: #e6edf3;
+  --text-strong: #e6edf3;
+  --chrome: #0d1117;
+  --chrome-strong: #0d1117;
+}
+:root[data-theme="github-light"] {
+  --bg: #ffffff;
+  --bg-accent: #f9fafc;
+  --bg-elevated: #fefefe;
+  --text: #1f2328;
+  --muted-strong: #4c4f53;
+  --muted: #5a626a;
+  --border: #e2e2e3;
+  --accent: #0969da;
+  --primary: #0969da;
+  --primary-foreground: #ffffff;
+  --ring: #0969da;
+  --accent-muted: #0969da;
+  --accent-hover: #2279EB;
+  --accent-foreground: #ffffff;
+  --card: #fefefe;
+  --card-foreground: #1f2328;
+  --popover: #fefefe;
+  --popover-foreground: #1f2328;
+  --panel: #ffffff;
+  --panel-strong: #fefefe;
+  --panel-hover: #eff0f0;
+  --secondary: #f9fafc;
+  --secondary-foreground: #1f2328;
+  --muted-foreground: #5a626a;
+  --input: #e2e2e3;
+  --destructive: #a43b38;
+  --destructive-foreground: #ffffff;
+  --chat-text: #1f2328;
+  --text-strong: #1f2328;
+  --chrome: #ffffff;
+  --chrome-strong: #ffffff;
+}

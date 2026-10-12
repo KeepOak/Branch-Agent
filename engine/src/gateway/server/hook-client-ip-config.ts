@@ -1,0 +1,12 @@
+import type { BranchConfig } from "../../config/types.branch.js";
+import type { HookClientIpConfig } from "./hooks-request-handler.js";
+
+/**
+ * Adapts gateway network trust config to the hooks HTTP request handler.
+ */
+export function resolveHookClientIpConfig(cfg: BranchConfig): HookClientIpConfig {
+  return {
+    trustedProxies: cfg.gateway?.trustedProxies,
+    allowRealIpFallback: cfg.gateway?.allowRealIpFallback === true,
+  };
+}

@@ -1,0 +1,74 @@
+{
+  "id": "AGENT-LOOP-0020",
+  "state": "blocked",
+  "upstream": "CherryHQ/cherry-studio",
+  "commit": "e2f53146eb6944718b091661df0854c75a4d933a",
+  "source_files_reviewed": [
+    "src/main/ai/runtime/pi/PiRuntimeDriver.ts",
+    "src/main/ai/runtime/pi/PiRuntimeConnection.ts",
+    "src/main/ai/runtime/pi/piMcpToolAdapter.ts",
+    "src/main/ai/runtime/pi/approvalExtension.ts",
+    "src/main/ai/runtime/pi/piThinkingReplay.ts"
+  ],
+  "upstream_tests": [
+    "src/main/ai/runtime/pi/PiRuntimeDriver.test.ts",
+    "src/main/ai/runtime/pi/approvalExtension.test.ts",
+    "src/main/ai/runtime/pi/piCompactionBudget.test.ts",
+    "src/main/ai/runtime/pi/piLengthRecovery.test.ts",
+    "src/main/ai/runtime/pi/PiRuntimeConnection.sdkContract.test.ts",
+    "src/main/ai/runtime/pi/PiRuntimeConnection.test.ts",
+    "src/main/ai/runtime/pi/piMcpToolAdapter.test.ts",
+    "src/main/ai/runtime/pi/__tests__/piMcpToolAdapter.test.ts"
+  ],
+  "owner_documents_available": true,
+  "owner_requirements": [
+    {
+      "page": "41 Shared safety layer.md",
+      "section": "4.1",
+      "requirement": "One shared eight-stage decision path; later packs call it before every effect with no local permission check; outbound effects use ledger and scrubber."
+    },
+    {
+      "page": "42 Pack 1 - Chat with tools.md",
+      "section": "2 Prerequisites item 3",
+      "requirement": "Shared safety layer built before this pack; every command / file write / outbound send / spend / delete / microphone / camera / settings change calls it."
+    }
+  ],
+  "missing_piece": "Cherry Pi approvalExtension and MCP adapter need shared effect classification / approval / lock-revision recheck and outbound ledger APIs (SAFETY-0192 / 0193 / 0198); existing tool-list policy and builtin Pi runtime do not provide this Cherry adapter safety contract.",
+  "checkout_evidence": [
+    {
+      "path": "window/src/composer/ModeMenu.tsx",
+      "line": 29,
+      "finding": "Engine has no Lockdown switch."
+    },
+    {
+      "path": "window/src/places/settings/set1/permissions-rows.tsx",
+      "line": 44,
+      "finding": "Engine has no app lock or PIN."
+    },
+    {
+      "path": "window/src/places/settings/set1/permissions-rows.tsx",
+      "line": 47,
+      "finding": "Engine has no spending limits."
+    },
+    {
+      "path": "window/src/places/settings/set1/permissions-sections.tsx",
+      "line": 42,
+      "finding": "Engine cannot stop every task on every computer."
+    },
+    {
+      "path": "engine/src/agents/tool-policy-pipeline.ts",
+      "finding": "Existing tool filtering is not the specified caller / locks / revisions / effect-ledger decision path."
+    },
+    {
+      "path": "engine/src/agents/embedded-agent-runner/run-permissions.ts",
+      "finding": "Existing run permission lifecycle is not the required unified lock and effect authority layer."
+    },
+    {
+      "path": "engine/src/agents/harness/registry.ts",
+      "finding": "Harness registration exists; required unified safety enforcement API does not."
+    }
+  ],
+  "tests_ported": "0/8",
+  "command_result": "No runtime or test port: mandatory production dependency unavailable; no stub or local permission substitute added.",
+  "unblock": "Implement the page 41 shared safety layer and its conformance API in its own safety pack; then wire this pinned runtime and port all cited tests."
+}

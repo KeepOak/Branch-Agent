@@ -1,0 +1,177 @@
+{
+ "backgrounds": [
+  {
+   "id": "night17-lake",
+   "name": "Still lake at night",
+   "file": "assets/art17/bg/lake-night.webp"
+  },
+  {
+   "id": "night17-highland",
+   "name": "Moonlit highland",
+   "file": "assets/art17/bg/highland-moon.webp"
+  },
+  {
+   "id": "day17-sea",
+   "name": "Morning sea",
+   "file": "assets/art17/bg/sea-morning.webp"
+  },
+  {
+   "id": "day17-meadow",
+   "name": "Meadow afternoon",
+   "file": "assets/art17/bg/meadow-afternoon.webp"
+  },
+  {
+   "id": "glow17-amber",
+   "name": "Amber glass",
+   "file": "assets/art17/bg/glow-amber.webp"
+  },
+  {
+   "id": "season17-snow",
+   "name": "First snow",
+   "file": "assets/art17/bg/first-snow.webp"
+  }
+ ],
+ "pets": [
+  {
+   "id": "redpanda",
+   "name": "Red panda",
+   "still": "assets/art17/pets/redpanda.webp",
+   "walk": "assets/art17/pets/redpanda-walk.webm",
+   "reactions": {
+    "pat": "assets/art17/pets/redpanda-pat.webm",
+    "cheer": "assets/art17/pets/redpanda-cheer.webm",
+    "notice": "assets/art17/pets/redpanda-notice.webm"
+   },
+   "reactionScale": 1.171
+  },
+  {
+   "id": "pangolin",
+   "name": "Pangolin",
+   "still": "assets/art17/pets/pangolin.webp",
+   "walk": "assets/art17/pets/pangolin-walk.webm",
+   "reactions": {
+    "pat": "assets/art17/pets/pangolin-pat.webm",
+    "cheer": "assets/art17/pets/pangolin-cheer.webm",
+    "notice": "assets/art17/pets/pangolin-notice.webm"
+   },
+   "reactionScale": 1.023
+  },
+  {
+   "id": "quokka",
+   "name": "Quokka",
+   "still": "assets/art17/pets/quokka.webp",
+   "walk": "assets/art17/pets/quokka-walk.webm",
+   "reactions": {
+    "pat": "assets/art17/pets/quokka-pat.webm",
+    "cheer": "assets/art17/pets/quokka-cheer.webm",
+    "notice": "assets/art17/pets/quokka-notice.webm"
+   },
+   "reactionScale": 1.241
+  },
+  {
+   "id": "goatkid",
+   "name": "Goat kid",
+   "still": "assets/art17/pets/goatkid.webp",
+   "walk": "assets/art17/pets/goatkid-walk.webm",
+   "reactions": {
+    "pat": "assets/art17/pets/goatkid-pat.webm",
+    "cheer": "assets/art17/pets/goatkid-cheer.webm",
+    "notice": "assets/art17/pets/goatkid-notice.webm"
+   },
+   "reactionScale": 1.297
+  },
+  {
+   "id": "piglet",
+   "name": "Teacup piglet",
+   "still": "assets/art17/pets/piglet.webp",
+   "walk": "assets/art17/pets/piglet-walk.webm",
+   "reactions": {
+    "pat": "assets/art17/pets/piglet-pat.webm",
+    "cheer": "assets/art17/pets/piglet-cheer.webm",
+    "notice": "assets/art17/pets/piglet-notice.webm"
+   },
+   "reactionScale": 1.088
+  }
+ ],
+ "agents": [
+  {
+   "id": "sorrel",
+   "name": "Sorrel",
+   "still": "assets/art17/agents/sorrel/still.webp",
+   "states": {
+    "idle": "assets/art17/agents/sorrel/idle.webm",
+    "think": "assets/art17/agents/sorrel/think.webm",
+    "work": "assets/art17/agents/sorrel/work.webm",
+    "yay": "assets/art17/agents/sorrel/yay.webm",
+    "search": "assets/art17/agents/sorrel/search.webm",
+    "read": "assets/art17/agents/sorrel/read.webm",
+    "talk": "assets/art17/agents/sorrel/talk.webm",
+    "wait": "assets/art17/agents/sorrel/wait.webm",
+    "oops": "assets/art17/agents/sorrel/oops.webm",
+    "sleep": "assets/art17/agents/sorrel/sleep.webm"
+   }
+  },
+  {
+   "id": "skein",
+   "name": "Skein",
+   "still": "assets/art17/agents/skein/still.webp",
+   "states": {
+    "idle": "assets/art17/agents/skein/idle.webm",
+    "think": "assets/art17/agents/skein/think.webm",
+    "work": "assets/art17/agents/skein/work.webm",
+    "yay": "assets/art17/agents/skein/yay.webm",
+    "search": "assets/art17/agents/skein/search.webm",
+    "read": "assets/art17/agents/skein/read.webm",
+    "talk": "assets/art17/agents/skein/talk.webm",
+    "wait": "assets/art17/agents/skein/wait.webm",
+    "oops": "assets/art17/agents/skein/oops.webm",
+    "sleep": "assets/art17/agents/skein/sleep.webm"
+   }
+  },
+  {
+   "id": "nib",
+   "name": "Nib",
+   "still": "assets/art17/agents/nib/still.webp",
+   "states": {
+    "idle": "assets/art17/agents/nib/idle.webm",
+    "think": "assets/art17/agents/nib/think.webm",
+    "work": "assets/art17/agents/nib/work.webm",
+    "yay": "assets/art17/agents/nib/yay.webm",
+    "search": "assets/art17/agents/nib/search.webm",
+    "read": "assets/art17/agents/nib/read.webm",
+    "talk": "assets/art17/agents/nib/talk.webm",
+    "wait": "assets/art17/agents/nib/wait.webm",
+    "oops": "assets/art17/agents/nib/oops.webm",
+    "sleep": "assets/art17/agents/nib/sleep.webm"
+   }
+  }
+ ],
+ "art": {
+  "art17-cloud": {
+   "still": "assets/art17/feature/cloud.webp",
+   "loop": "assets/art17/feature/cloud.webm"
+  },
+  "art17-call": {
+   "still": "assets/art17/feature/call.webp",
+   "loop": "assets/art17/feature/call.webm"
+  },
+  "art17-meeting": {
+   "still": "assets/art17/feature/meeting.webp",
+   "loop": "assets/art17/feature/meeting.webm"
+  },
+  "art17-learn": {
+   "still": "assets/art17/feature/learn.webp",
+   "loop": "assets/art17/feature/learn.webm"
+  },
+  "art17-timeline": {
+   "still": "assets/art17/feature/timeline.webp",
+   "loop": "assets/art17/feature/timeline.webm"
+  },
+  "art17-branch-call": {
+   "still": "assets/art17/branch/branch-call.webp"
+  },
+  "art17-branch-workbook": {
+   "still": "assets/art17/branch/branch-workbook.webp"
+  }
+ }
+}

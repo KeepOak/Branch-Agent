@@ -1,0 +1,4 @@
+window:src/shell/ControlTower.test.tsx
+window:src/shell/control-tower-data.test.ts
+window:src/shell/status-data.test.ts
+window:src/shell/use-status-limits.test.tsx

@@ -1,0 +1,5 @@
+window:src/face/CharacterPanel.test.tsx
+window:src/face/agentState.test.ts
+window:src/places/office/office.test.tsx
+window:src/shell/place-head.test.tsx
+window:src/shell/r2-shell.test.ts

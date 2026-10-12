@@ -1,0 +1,67 @@
+/* Ported from old Branch Agent's finished rose-pine palette. */
+:root[data-theme="rose-pine"] {
+  --bg: #191724;
+  --bg-accent: #1d1b2a;
+  --bg-elevated: #242233;
+  --text: #e0def4;
+  --muted-strong: #b8b6ca;
+  --muted: #aca8c7;
+  --border: #33313f;
+  --accent: #ebbcba;
+  --primary: #ebbcba;
+  --primary-foreground: #1a1a1a;
+  --ring: #ebbcba;
+  --accent-muted: #ebbcba;
+  --accent-hover: #FDD0CE;
+  --accent-foreground: #1a1a1a;
+  --card: #242233;
+  --card-foreground: #e0def4;
+  --popover: #242233;
+  --popover-foreground: #e0def4;
+  --panel: #191724;
+  --panel-strong: #242233;
+  --panel-hover: #272533;
+  --secondary: #1d1b2a;
+  --secondary-foreground: #e0def4;
+  --muted-foreground: #aca8c7;
+  --input: #33313f;
+  --destructive: #ff958e;
+  --destructive-foreground: #1a1a1a;
+  --chat-text: #e0def4;
+  --text-strong: #e0def4;
+  --chrome: #191724;
+  --chrome-strong: #191724;
+}
+:root[data-theme="rose-pine-light"] {
+  --bg: #faf4ed;
+  --bg-accent: #fdf8f1;
+  --bg-elevated: #fefdfc;
+  --text: #464261;
+  --muted-strong: #58546f;
+  --muted: #625e7b;
+  --border: #e3dddb;
+  --accent: #d7827e;
+  --primary: #d7827e;
+  --primary-foreground: #1a1a1a;
+  --ring: #d7827e;
+  --accent-muted: #d7827e;
+  --accent-hover: #E8918D;
+  --accent-foreground: #1a1a1a;
+  --card: #fefdfc;
+  --card-foreground: #464261;
+  --popover: #fefdfc;
+  --popover-foreground: #464261;
+  --panel: #faf4ed;
+  --panel-strong: #fefdfc;
+  --panel-hover: #ede8e3;
+  --secondary: #fdf8f1;
+  --secondary-foreground: #464261;
+  --muted-foreground: #625e7b;
+  --input: #e3dddb;
+  --destructive: #a13835;
+  --destructive-foreground: #1a1a1a;
+  --chat-text: #464261;
+  --text-strong: #464261;
+  --chrome: #faf4ed;
+  --chrome-strong: #faf4ed;
+}

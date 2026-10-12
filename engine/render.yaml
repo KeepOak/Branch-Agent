@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: branch
+    runtime: docker
+    plan: starter
+    # The image CMD has no --allow-unconfigured, so a fresh disk with no
+    # branch.json exits before binding. Render has no shell before the first
+    # boot, so the flag has to come from the blueprint.
+    dockerCommand: node branch.mjs gateway --allow-unconfigured
+    healthCheckPath: /startupz
+    envVars:
+      - key: BRANCH_GATEWAY_PORT
+        value: "8080"
+      - key: BRANCH_STATE_DIR
+        value: /data/.branch
+      - key: BRANCH_WORKSPACE_DIR
+        value: /data/workspace
+      - key: BRANCH_GATEWAY_TOKEN
+        generateValue: true
+    disk:
+      name: branch-data
+      mountPath: /data
+      sizeGB: 1

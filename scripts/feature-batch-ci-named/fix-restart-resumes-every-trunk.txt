@@ -1,0 +1,2 @@
+engine:src/agents/main-session-recovery/main-session-restart-recovery.parallel-startup.test.ts
+window:src/thread/recovery-continue.test.tsx

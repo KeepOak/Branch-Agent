@@ -1,0 +1,2 @@
+# Unique pack6-0031 harvest test; listed for trusted coverage after rate limit.
+engine:src/cron/delivery-routing.behaviour.test.ts
