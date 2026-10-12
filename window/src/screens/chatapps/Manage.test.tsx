@@ -46,6 +46,6 @@ it("never offers the allowlist as a choice it can't edit, and keeps its people w
   expect(allowlist.disabled).toBe(true);
   expect(allowlist.textContent).toContain("Coming");
   await act(async () => { select.value = "pairing"; select.dispatchEvent(new Event("change", { bubbles: true })); });
-  const patch = request.mock.calls.find(([m]) => m === "config.patch");
-  expect(JSON.parse((patch![1] as { raw: string }).raw)).toEqual({ channels: { telegram: { dmPolicy: "pairing", allowFrom: ["ada", "bo"] } } });
+  const patch = request.mock.calls.find(([m]) => m === "config.patch") as unknown as [string, { raw: string }];
+  expect(JSON.parse(patch[1].raw)).toEqual({ channels: { telegram: { dmPolicy: "pairing", allowFrom: ["ada", "bo"] } } });
 });
