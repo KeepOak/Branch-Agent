@@ -86,6 +86,8 @@ if (info) {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
       stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
+      /** The owner's Install now: the same owned-window restart the update bar's button sends. */
+      install: () => ipcRenderer.send("branch-desktop:restart-engine"),
     },
     onUpdateApplied: (listener: (notice: AppliedUpdateNotice) => void) => subscribeApplied(listener),
     onUpdateUndone: (listener: () => void) => subscribeUndone(listener),
@@ -208,6 +210,8 @@ function showToast(message: string): void {
 
 /** Says why an update did not finish, above the update bar, then fades; the engine keeps or regains a working version. */
 function showUpdateFailure(message: string): void {
+  // The update did not finish: the Settings page clears its pending state and says why.
+  window.dispatchEvent(new CustomEvent("branch:update-state", { detail: { state: "failed", message } }));
   const show = () => {
     document.getElementById("branch-desktop-update-failed")?.remove();
     const note = document.createElement("div");
@@ -251,6 +255,8 @@ function showRecoveryError(message: string): void {
 
 /** A small bar at the bottom of the window while an update waits or applies. The app and window stay open throughout. */
 function showUpdateBar(state: UpdateState): void {
+  // The Settings page mirrors this bar, so it can clear its own pending state on the same outcomes.
+  window.dispatchEvent(new CustomEvent("branch:update-state", { detail: { state } }));
   if (state === "updated") document.getElementById("branch-desktop-recovery-error")?.remove();
   if (state === "kept") {
     // The new engine did not start; Branch keeps running the version it had.
