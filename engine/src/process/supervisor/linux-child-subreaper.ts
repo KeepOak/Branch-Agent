@@ -1,4 +1,4 @@
-// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover process-leader PPIDs and waitid candidates when optional procfs task children files are absent; reap waitable loader leftovers without blocking on a still-running tsx compiler.
+// From openclaw/openclaw@40ee2cbdd25bd2eadf01ea9685464502509771e3:src/process/supervisor/linux-child-subreaper.ts (atlas SESSIONS-0102). Changed for Branch: discover process-leader PPIDs and waitid candidates when optional procfs task children files are absent; admission (built owner only, no existing children) is unchanged.
 import type { ChildProcess } from "node:child_process";
 import { Buffer } from "node:buffer";
 import { readdirSync, readFileSync } from "node:fs";
@@ -138,14 +138,32 @@ function childPids(): number[] {
   return [...children];
 }
 
+/**
+ * Byte offset of si_pid in Linux siginfo_t. The kernel preamble is si_signo,
+ * si_errno and si_code, padded to the union's pointer alignment
+ * (__ARCH_SI_PREAMBLE_SIZE): 16 bytes on 64-bit ABIs, 12 on 32-bit ones.
+ * si_pid is the first union member for both SIGCHLD and kill-style records.
+ */
+export function linuxSiginfoPidOffset(pointerBytes: number): number {
+  if (pointerBytes === 8) {
+    return 16;
+  }
+  if (pointerBytes === 4) {
+    return 12;
+  }
+  throw new Error("Linux child ownership requires a 32-bit or 64-bit siginfo layout");
+}
+
 /** One dedicated process acquires adoption before launching any application work. */
 export function acquireLinuxChildSubreaper() {
   if (process.platform !== "linux" || process.versions.bun) {
     throw new Error("Linux child ownership requires the Node runtime");
   }
-  // Source loaders are allowed only when they leave no compiler children.
-  // Named CI runs the owner through tsx; the kernel census, not the file
-  // extension, decides whether this process is still a dedicated owner.
+  if (/\.[cm]?ts$/u.test(new URL(import.meta.url).pathname)) {
+    throw new Error(
+      "Linux child ownership requires the built process owner, without a source loader",
+    );
+  }
   // This module is host-owned, never a native dependency of the portable worker archive.
   const koffi: typeof import("koffi").default = createRequire(import.meta.url)("koffi");
   const libc = koffi.load(null);
@@ -155,11 +173,12 @@ export function acquireLinuxChildSubreaper() {
   const getSubreaper = libc.func(
     "int prctl(int, _Out_ int *, unsigned long, unsigned long, unsigned long)",
   );
-  // Linux permits a null siginfo pointer for presence. Naming a child needs a
-  // 128-byte siginfo_t; koffi copies a Buffer back only for _Inout_ pointers.
-  // 64-bit layout places si_pid at offset 16 after si_signo/si_errno/si_code/pad.
+  // Linux permits a null siginfo pointer. WNOWAIT checks wait ownership without
+  // consuming libuv's direct-child status or releasing an adopted child's PID.
+  // Naming a child needs a siginfo_t (SI_MAX_SIZE, 128 bytes on every Linux
+  // ABI); koffi copies a Buffer back only for _Inout_ pointers.
   const SIGINFO_SIZE = 128;
-  const SI_PID_OFFSET = 16;
+  const SI_PID_OFFSET = linuxSiginfoPidOffset(koffi.sizeof("void *"));
   const waitidProbe = libc.func("int waitid(int, unsigned int, void *, int)");
   const waitidInfo = libc.func("int waitid(int, unsigned int, _Inout_ uint8_t *, int)");
   const waitpid = libc.func("int waitpid(int, int *, int)");
@@ -213,30 +232,13 @@ export function acquireLinuxChildSubreaper() {
       signaledChildren.delete(pid);
     });
   };
-  // Task-children files are the live-child census when this kernel has them.
-  // A NODE_OPTIONS preload can hide those files. Null waitid then returns
-  // rc=0 for both a loader zombie and a still-running tsx compiler worker.
-  // Reap waitable leftovers; do not block on live loader children (they do
-  // not exit before the owner is done). Visible live children still refuse.
-  const fromFiles = childPidsFromTaskFiles();
-  if (fromFiles.readableThreads > 0 && fromFiles.pids.length > 0) {
+  // A loader thread can reap its compiler concurrently with this thread. That
+  // would invalidate numeric-PID pinning. Admit only the dedicated built owner,
+  // before its one libuv-owned application root has been spawned. childPids()
+  // falls back to the /proc PPID census when task children files are absent,
+  // so this refusal also holds on kernels without CONFIG_PROC_CHILDREN.
+  if (childPids().length > 0) {
     throw new Error("Linux child ownership requires a dedicated owner without existing children");
-  }
-  for (;;) {
-    const leftover = observeWaitid(P_ALL, 0, WEXITED | WNOHANG | WNOWAIT | WALL);
-    if (leftover.errno === ECHILD) {
-      break;
-    }
-    if (leftover.rc !== 0) {
-      fail("admission wait", leftover.errno);
-    }
-    if (leftover.pid <= 0) {
-      break;
-    }
-    const reaped = observeWaitid(P_PID, leftover.pid, WEXITED | WNOHANG | WALL);
-    if (reaped.rc !== 0 && reaped.errno !== ECHILD) {
-      fail("admission reap", reaped.errno);
-    }
   }
   let closed = false;
   const owns = (pid: number): boolean => {
