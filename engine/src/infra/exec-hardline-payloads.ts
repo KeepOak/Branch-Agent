@@ -66,7 +66,7 @@ const READ_TOOL_SHORT_OPTIONS_WITH_ARG: Record<string, ReadonlySet<string>> = {
 
 function backtickEndFrom(segment: string, i: number): number | null {
   let j = segment.indexOf("`", i + 1);
-  while (j !== -1 && segment[j - 1] === "\\") {
+  while (j !== -1 && segment.charAt(j - 1) === "\\") {
     j = segment.indexOf("`", j + 1);
   }
   return j === -1 ? null : j;
@@ -93,7 +93,7 @@ function flushSpanToken(segment: string, state: LexState, end: number): void {
 
 /** Returns "end" when the unquoted char ends the simple command, else "continue". */
 function trackUnquotedChar(segment: string, i: number, state: LexState): "end" | "continue" {
-  const ch = segment[i];
+  const ch = segment.charAt(i);
   if (segment.startsWith("$(", i)) {
     state.depth += 1;
   } else if (ch === "`") {
@@ -122,7 +122,7 @@ export function shellTokensWithSpans(segment: string, start: number): SpanToken[
   };
   let endAt = segment.length;
   for (const { kind, i } of scanShell(segment, { start })) {
-    const ch = segment[i];
+    const ch = segment.charAt(i);
     if (kind === "char" && !state.quote) {
       if (isShellSpace(ch) && ch !== "\n") {
         if (state.tokenStart !== null) {
@@ -139,7 +139,7 @@ export function shellTokensWithSpans(segment: string, start: number): SpanToken[
     if (kind === "quote") {
       state.quote = state.quote ? null : (ch as ShellQuote);
     } else if (kind === "esc") {
-      state.value.push(segment[i + 1]);
+      state.value.push(segment.charAt(i + 1));
     } else if (ch === "\\" && !state.quote) {
       return null; // dangling backslash
     } else {
@@ -159,7 +159,7 @@ type GrepParse = { pcre: boolean; explicit: boolean; operand: number | null; pat
 
 /** Returns the index to continue from, or null when the option is missing its value. */
 function parseGrepLongOption(args: SpanToken[], i: number, parse: GrepParse): number | null {
-  const token = args[i].value;
+  const token = args[i]?.value ?? "";
   const equals = token.indexOf("=");
   const option = equals < 0 ? token : token.slice(0, equals);
   parse.pcre ||= option === "--perl-regexp";
@@ -175,9 +175,9 @@ function parseGrepLongOption(args: SpanToken[], i: number, parse: GrepParse): nu
 }
 
 function parseGrepShortBundle(args: SpanToken[], i: number, parse: GrepParse): number | null {
-  const chars = args[i].value.slice(1);
+  const chars = (args[i]?.value ?? "").slice(1);
   for (let k = 0; k < chars.length; k += 1) {
-    const char = chars[k];
+    const char = chars.charAt(k);
     parse.pcre ||= char === "P";
     parse.explicit ||= char === "e" || char === "f";
     if (GREP_SHORT_OPTIONS_WITH_ARG.has(char)) {
@@ -199,7 +199,7 @@ function parseGrepArgs(args: SpanToken[]): GrepParse | null {
   const parse: GrepParse = { pcre: false, explicit: false, operand: null, patterns: [] };
   let options = true;
   for (let i = 0; i < args.length; i += 1) {
-    const token = args[i].value;
+    const token = args[i]?.value ?? "";
     let next: number | null = i;
     if (options && token === "--") {
       options = false;
@@ -280,7 +280,7 @@ export function grepSafeDetectionVariant(command: string): { variant: string; ma
 export function bashExecPayload(args: string[]): { found: boolean; payload: string | null } {
   let index = 0;
   while (index < args.length) {
-    const token = args[index];
+    const token = args[index] ?? "";
     if (token === "--" || !(token.startsWith("-") || token.startsWith("+"))) {
       break;
     }
@@ -296,7 +296,7 @@ export function bashExecPayload(args: string[]): { found: boolean; payload: stri
     const consumedOptionArg = chars.includes("O") || chars.includes("o") ? 1 : 0;
     if (chars.includes("c")) {
       const payloadIndex = index + 1 + consumedOptionArg;
-      return { found: true, payload: payloadIndex < args.length ? args[payloadIndex] : null };
+      return { found: true, payload: args[payloadIndex] ?? null };
     }
     index += 1 + consumedOptionArg;
   }
@@ -307,7 +307,7 @@ function readToolOptionMatch(tool: string, token: string) {
   const equals = token.indexOf("=");
   const option = equals < 0 ? token : token.slice(0, equals);
   let payload: string | null = equals < 0 ? null : token.slice(equals + 1);
-  let matched = READ_TOOL_EXEC_FLAGS[tool].has(option) ? option : null;
+  let matched = READ_TOOL_EXEC_FLAGS[tool]?.has(option) ? option : null;
   if (tool === "man" && (token.startsWith("-P") || token.startsWith("-H")) && token.length > 2) {
     matched = token.slice(0, 2);
     payload = token.slice(2);
@@ -319,7 +319,7 @@ function readToolOptionMatch(tool: string, token: string) {
 export function readToolExecFlag(tool: string, args: string[]): [string, string] | null {
   let index = 0;
   while (index < args.length) {
-    const token = args[index];
+    const token = args[index] ?? "";
     if (token === "--") {
       break;
     }
@@ -330,10 +330,10 @@ export function readToolExecFlag(tool: string, args: string[]): [string, string]
         return [matched, payload];
       }
       index += payload !== null && !token.includes("=") ? 2 : 1;
-    } else if (READ_TOOL_LONG_OPTIONS_WITH_ARG[tool].has(option) && attached === null) {
+    } else if (READ_TOOL_LONG_OPTIONS_WITH_ARG[tool]?.has(option) && attached === null) {
       index += 2;
     } else if (token.startsWith("-") && !token.startsWith("--") && token.length > 1) {
-      const shorts = READ_TOOL_SHORT_OPTIONS_WITH_ARG[tool];
+      const shorts = READ_TOOL_SHORT_OPTIONS_WITH_ARG[tool] ?? new Set<string>();
       const owner = [...token.slice(1)].findIndex((char) => shorts.has(char));
       index += owner >= 0 && owner + 1 === token.length - 1 ? 2 : 1;
     } else {

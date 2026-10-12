@@ -56,20 +56,22 @@ function literalCommandSubstitutionOutput(script: string): string | null {
   if (tokens.length === 0) {
     return null;
   }
-  const command = tokens[0].toLowerCase();
+  const command = (tokens[0] ?? "").toLowerCase();
   let args = tokens.slice(1);
   if (command === "echo") {
-    while (args.length > 0 && /^-[nEe]+$/u.test(args[0])) {
+    while (args.length > 0 && /^-[nEe]+$/u.test(args[0] ?? "")) {
       args = args.slice(1);
     }
   } else if (command !== "printf") {
     return null;
   }
-  if (args.length === 1 && SIMPLE_SHELL_LITERAL_RE.test(args[0])) {
-    return args[0];
+  const [only] = args;
+  if (args.length === 1 && only !== undefined && SIMPLE_SHELL_LITERAL_RE.test(only)) {
+    return only;
   }
   if (command === "printf" && args.length === 2 && args[0] === "%s") {
-    return SIMPLE_SHELL_LITERAL_RE.test(args[1]) ? args[1] : null;
+    const literal = args[1] ?? "";
+    return SIMPLE_SHELL_LITERAL_RE.test(literal) ? literal : null;
   }
   return null;
 }
@@ -78,13 +80,13 @@ function replaceSimpleCommandSubstitutions(word: string): string {
   const chars: string[] = [];
   let i = 0;
   while (i < word.length) {
-    const opener = word.startsWith("$(", i) ? 2 : word[i] === "`" ? 1 : 0;
+    const opener = word.startsWith("$(", i) ? 2 : word.charAt(i) === "`" ? 1 : 0;
     const end =
       opener === 2 ? scanDollarParenEnd(word, i) : opener === 1 ? scanBacktickEnd(word, i) : null;
     const replacement =
       end === null ? null : literalCommandSubstitutionOutput(word.slice(i + opener, end - 1));
     if (replacement === null || end === null) {
-      chars.push(word[i]);
+      chars.push(word.charAt(i));
       i += 1;
     } else {
       chars.push(replacement);
@@ -104,7 +106,7 @@ function stripShellWordSyntax(word: string): string {
   const out: string[] = [];
   for (const step of scanShell(word)) {
     if (step.kind !== "quote") {
-      out.push(step.kind === "esc" ? word[step.i + 1] : word[step.i]);
+      out.push(step.kind === "esc" ? word.charAt(step.i + 1) : word.charAt(step.i));
     }
   }
   return out.join("");
@@ -124,7 +126,7 @@ export function deobfuscateShellWordForDetection(word: string): string {
 }
 
 function opensBraceGroup(command: string, i: number): boolean {
-  const previous = command[i - 1];
+  const previous = command.charAt(i - 1);
   return i === 0 || isShellSpace(previous) || "(;&|)".includes(previous ?? "\u0000");
 }
 
@@ -138,7 +140,7 @@ function collectCommandStarts(command: string, start: number, end: number, start
     comments: true,
   });
   for (const { kind, i, j, quote } of steps) {
-    const ch = command[i];
+    const ch = command.charAt(i);
     if (kind === "subst") {
       // Record a nested $(...)/backtick command start and scan its body.
       const inner = i + (ch === "`" ? 1 : 2);
@@ -148,7 +150,7 @@ function collectCommandStarts(command: string, start: number, end: number, start
       if ("(;\n".includes(ch) || (ch === "{" && opensBraceGroup(command, i))) {
         starts.push(i + 1);
       } else if (ch === "&" || ch === "|") {
-        const repeated = i + 1 < end && command[i + 1] === ch;
+        const repeated = i + 1 < end && command.charAt(i + 1) === ch;
         skip = repeated ? i + 1 : skip;
         starts.push(i + 1 + (repeated ? 1 : 0));
       }
@@ -162,7 +164,7 @@ export function iterShellCommandStarts(command: string): number[] {
   const seen = new Set<number>();
   const out: number[] = [];
   for (let index = 0; index < starts.length; index += 1) {
-    const start = skipShellWhitespace(command, starts[index]);
+    const start = skipShellWhitespace(command, starts[index] ?? command.length);
     if (start >= command.length || seen.has(start) || isShellCommentStart(command, start)) {
       continue;
     }
@@ -197,7 +199,7 @@ function maskQuotedNewlinesSpan(command: string, start: number, end: number): st
       out.push(command.slice(i, bodyStart));
       out.push(maskQuotedNewlinesSpan(command, bodyStart, bodyEnd));
       out.push(command.slice(bodyEnd, stop));
-    } else if (quote && kind === "char" && command[i] === "\n") {
+    } else if (quote && kind === "char" && command.charAt(i) === "\n") {
       out.push(" ");
     } else {
       out.push(command.slice(i, stop));
@@ -226,7 +228,7 @@ type WordWalk = { wrapper: string | null; positionals: number; options: boolean;
 
 function wrapperOptionStops(walk: WordWalk, deobfuscated: string): boolean | "skip" {
   const wrapper = walk.wrapper ?? "";
-  const option = deobfuscated.split("=", 1)[0];
+  const option = deobfuscated.split("=", 1)[0] ?? "";
   if (wrapper === "env" && (option === "--split-string" || deobfuscated.startsWith("-S"))) {
     // The split string and remaining argv form one command; the suffix is not a new executable.
     return true;
@@ -312,7 +314,7 @@ export function iterTopLevelShellSegments(command: string): string[] {
   const segments: string[] = [];
   let start = 0;
   for (const { kind, i, j, quote } of scanShell(command, { comments: true })) {
-    const separator = kind === "char" && quote === null && ";&|\n".includes(command[i]);
+    const separator = kind === "char" && quote === null && ";&|\n".includes(command.charAt(i));
     if (kind === "comment" || separator) {
       if (start < i) {
         segments.push(command.slice(start, i));

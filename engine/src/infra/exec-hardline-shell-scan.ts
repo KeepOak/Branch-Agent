@@ -25,17 +25,17 @@ export function isShellSpace(ch: string | undefined): boolean {
 
 export function skipShellWhitespace(command: string, pos: number): number {
   let next = pos;
-  while (next < command.length && isShellSpace(command[next])) {
+  while (next < command.length && isShellSpace(command.charAt(next))) {
     next += 1;
   }
   return next;
 }
 
 export function isShellCommentStart(command: string, index: number): boolean {
-  if (command[index] !== "#") {
+  if (command.charAt(index) !== "#") {
     return false;
   }
-  const previous = command[index - 1];
+  const previous = command.charAt(index - 1);
   return index === 0 || isShellSpace(previous) || ";&|()<>".includes(previous ?? "\u0000");
 }
 
@@ -50,7 +50,7 @@ export function scanDollarParenEnd(command: string, start: number): number | nul
   let depth = 1;
   for (const step of scanShell(command, { start: start + 2 })) {
     if (step.kind === "char" && !step.quote) {
-      depth += (command.startsWith("$(", step.i) ? 1 : 0) - (command[step.i] === ")" ? 1 : 0);
+      depth += (command.startsWith("$(", step.i) ? 1 : 0) - (command.charAt(step.i) === ")" ? 1 : 0);
       if (depth === 0) {
         return step.i + 1;
       }
@@ -60,14 +60,14 @@ export function scanDollarParenEnd(command: string, start: number): number | nul
 }
 
 function substitutionClose(text: string, i: number, naiveBacktick: boolean): number | null {
-  if (text[i] === "`") {
+  if (text.charAt(i) === "`") {
     if (naiveBacktick) {
       const close = text.indexOf("`", i + 1);
       return close < 0 ? null : close + 1;
     }
     return scanBacktickEnd(text, i);
   }
-  if (text[i + 1] === "(") {
+  if (text.charAt(i + 1) === "(") {
     return scanDollarParenEnd(text, i);
   }
   const close = text.indexOf("}", i + 2);
@@ -84,14 +84,14 @@ function opensSubstitution(
     return false;
   }
   return (
-    text[i] === "`" ||
+    text.charAt(i) === "`" ||
     text.startsWith("$(", i) ||
     (options.brace === true && !quote && text.startsWith("${", i))
   );
 }
 
 /**
- * Yield lexical steps over text[start:end] without expanding. quote is the state the step was
+ * Yield lexical steps over text.charAt(start:end) without expanding. quote is the state the step was
  * read in. An unterminated substitution falls through as plain chars unless stopUnterminated,
  * which yields a subst step with j: null and ends the scan.
  */
@@ -100,7 +100,7 @@ export function* scanShell(text: string, options: ShellScanOptions = {}): Genera
   let quote: ShellQuote = null;
   let i = options.start ?? 0;
   while (i < n) {
-    const ch = text[i];
+    const ch = text.charAt(i);
     let kind: ShellStepKind = "char";
     let j = i + 1;
     if (options.comments && quote === null && isShellCommentStart(text, i)) {
@@ -135,7 +135,7 @@ export function readShellWord(command: string, pos: number): ShellWordSpan {
   const start = skipShellWhitespace(command, pos);
   let end = start;
   for (const step of scanShell(command, { start, subst: "u", brace: true })) {
-    const ch = command[step.i] ?? "";
+    const ch = command.charAt(step.i) ?? "";
     const boundary = isShellSpace(ch) || ";&|<>()".includes(ch);
     if (step.kind === "char" && step.quote === null && boundary) {
       break;
@@ -171,14 +171,14 @@ function shlexFlush(state: ShlexState): void {
 }
 
 function shlexQuoted(text: string, start: number, state: ShlexState): number | null {
-  const quote = text[start];
+  const quote = text.charAt(start);
   let i = start + 1;
-  while (i < text.length && text[i] !== quote) {
-    const next = text[i + 1];
-    if (quote === '"' && text[i] === "\\" && (next === '"' || next === "\\")) {
+  while (i < text.length && text.charAt(i) !== quote) {
+    const next = text.charAt(i + 1);
+    if (quote === '"' && text.charAt(i) === "\\" && (next === '"' || next === "\\")) {
       i += 1;
     }
-    state.token += text[i];
+    state.token += text.charAt(i);
     i += 1;
   }
   return i < text.length ? i + 1 : null;
@@ -186,7 +186,7 @@ function shlexQuoted(text: string, start: number, state: ShlexState): number | n
 
 function shlexPunctuationEnd(text: string, start: number, punctuation: string): number {
   let end = start;
-  while (end < text.length && punctuation.includes(text[end])) {
+  while (end < text.length && punctuation.includes(text.charAt(end))) {
     end += 1;
   }
   return end;
@@ -200,7 +200,7 @@ export function shlexSplit(text: string, punctuation = ""): string[] | null {
   const state: ShlexState = { tokens: [], token: "", active: false };
   let i = 0;
   while (i < text.length) {
-    const ch = text[i];
+    const ch = text.charAt(i);
     if (isShellSpace(ch)) {
       shlexFlush(state);
       i += 1;
@@ -221,7 +221,7 @@ export function shlexSplit(text: string, punctuation = ""): string[] | null {
         return null;
       }
       state.active = true;
-      state.token += text[i + 1];
+      state.token += text.charAt(i + 1);
       i += 2;
     } else {
       state.active = true;
