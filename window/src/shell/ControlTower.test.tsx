@@ -399,4 +399,30 @@ describe("Control tower live sections", () => {
     expect(working).not.toMatch(/id:/i);
     expect(working).not.toContain("10001");
   });
+
+  it.each(["Fix the user id: field", "Why did the heartbeat poll fail?"])("preserves ordinary Working now title %s", async (title) => {
+    const rows = [
+      conv({
+        key: "agent:ada:poll",
+        title,
+        agentId: "ada",
+        working: true,
+        headline: "Alex River id:10001",
+      }),
+    ];
+    const host = await show(<ControlTower
+      engine={engine(live)}
+      rows={rows}
+      needsCount={0}
+      trunkName={(id) => id === "ada" ? "Ada" : id ?? ""}
+      onOpen={() => undefined}
+      onInbox={() => undefined}
+      onClose={() => undefined}
+    />);
+    const working = host.querySelector("section:nth-of-type(2)")?.textContent ?? "";
+    expect(working).toContain("Working now");
+    expect(working).toContain(title);
+    expect(working).toContain("Alex River");
+    expect(working).not.toContain("10001");
+  });
 });

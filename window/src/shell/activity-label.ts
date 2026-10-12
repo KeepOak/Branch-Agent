@@ -5,16 +5,15 @@
 export const ROUTINE_CHECK_IN = "Routine check-in";
 
 /** Engine `formatInboundFromLabel` appends ` id:<chat-app-id>` after the display name. */
-const CHAT_APP_ID = /\s+id:/i;
+const CHAT_APP_ID = /\s+id:\d+$/i;
 
 export function activityLabel(raw: string | undefined, fallback = ""): string {
   const text = (raw ?? "").replace(/\s+/g, " ").trim();
   if (!text) return fallback;
-  const lower = text.toLowerCase();
-  if (lower.includes("heartbeat poll") || lower.includes("heartbeat wake")) return ROUTINE_CHECK_IN;
+  if (text === "[Branch Agent heartbeat poll]") return ROUTINE_CHECK_IN;
   const at = text.search(CHAT_APP_ID);
   if (at > 0) return text.slice(0, at).trim() || fallback;
-  if (/^id:\s*\S+/i.test(text)) return fallback;
+  if (/^id:\d+$/i.test(text)) return fallback;
   return text;
 }
 

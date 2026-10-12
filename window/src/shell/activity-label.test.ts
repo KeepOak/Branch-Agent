@@ -4,8 +4,6 @@ import { ROUTINE_CHECK_IN, activityLabel, activityRowLines } from "./activity-la
 describe("activityLabel", () => {
   it("turns a heartbeat-poll session label into a routine check-in", () => {
     expect(activityLabel("[Branch Agent heartbeat poll]")).toBe(ROUTINE_CHECK_IN);
-    expect(activityLabel("Branch Agent heartbeat poll")).toBe(ROUTINE_CHECK_IN);
-    expect(activityLabel("heartbeat wake")).toBe(ROUTINE_CHECK_IN);
   });
 
   it("shows only the display name from a sender label with a numeric chat-app id", () => {
@@ -18,6 +16,26 @@ describe("activityLabel", () => {
     expect(activityLabel("id:10001", "Conversation")).toBe("Conversation");
     expect(activityLabel("Alex River id:10001")).not.toMatch(/id:/i);
     expect(activityLabel("Alex River id:10001")).not.toContain("10001");
+  });
+
+  it.each([
+    "Fix the user id: field",
+    "Inspect id:10001 before saving",
+    "Alex River id:contact",
+    "id: field documentation",
+    "id:10001 needs investigation",
+  ])("preserves ordinary id: title %s", (title) => {
+    expect(activityLabel(title, "Conversation")).toBe(title);
+  });
+
+  it.each([
+    "Why did the heartbeat poll fail?",
+    "Investigate heartbeat wake latency",
+    "Branch Agent heartbeat poll",
+    "heartbeat wake",
+    "Explain [Branch Agent heartbeat poll]",
+  ])("preserves ordinary heartbeat title %s", (title) => {
+    expect(activityLabel(title)).toBe(title);
   });
 
   it("keeps an ordinary conversation title", () => {
