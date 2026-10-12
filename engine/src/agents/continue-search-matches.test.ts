@@ -1,15 +1,7 @@
-// Source assertions unchanged; native Node runner replaces Vitest.
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-function expect(actual: unknown) {
-  return {
-    toEqual: (expected: unknown) => assert.deepStrictEqual(actual, expected),
-    toBe: (expected: unknown) => assert.strictEqual(actual, expected),
-    toBeNull: () => assert.strictEqual(actual, null),
-    toHaveLength: (expected: number) => assert.strictEqual((actual as { length: number }).length, expected),
-  };
-}
-import { findSearchMatches } from "./continue-search-match.ts";
+// Adapted from continuedev/continue@5522c6f44ca0ac3528b37244818fbfa39b5af470
+// core/edit/searchAndReplace test suites; source assertions unchanged.
+import { describe, expect, it } from "vitest";
+import { findSearchMatches } from "./continue-search-match.js";
 
 describe("findSearchMatches", () => {
   describe("exact match strategy", () => {
@@ -200,10 +192,8 @@ line 3 foo`;
       const matches = findSearchMatches(content, search);
 
       expect(matches).toHaveLength(1);
-      expect(matches[0].endIndex - matches[0].startIndex).toBe(8);
-      expect(content.slice(matches[0].startIndex, matches[0].endIndex)).toBe(
-        "VARIABLE",
-      );
+      expect(matches[0]!.endIndex - matches[0]!.startIndex).toBe(8);
+      expect(content.slice(matches[0]!.startIndex, matches[0]!.endIndex)).toBe("VARIABLE");
     });
 
     it("should not match when exact and trimmed strategies succeed", () => {
@@ -212,7 +202,7 @@ line 3 foo`;
       const matches = findSearchMatches(content, search);
 
       expect(matches).toHaveLength(1);
-      expect(matches[0].strategyName).toBe("exactMatch");
+      expect(matches[0]!.strategyName).toBe("exactMatch");
     });
   });
 
@@ -404,7 +394,7 @@ const baz = foo;`;
       const matches = findSearchMatches(content, search);
 
       expect(matches).toHaveLength(1);
-      expect(matches[0].strategyName).toBe("exactMatch");
+      expect(matches[0]!.strategyName).toBe("exactMatch");
     });
 
     it("should fallback to trimmed match when exact fails", () => {
@@ -413,7 +403,7 @@ const baz = foo;`;
       const matches = findSearchMatches(content, search);
 
       expect(matches).toHaveLength(1);
-      expect(matches[0].strategyName).toBe("trimmedMatch");
+      expect(matches[0]!.strategyName).toBe("trimmedMatch");
     });
 
     it("should fallback to whitespace ignored when others fail", () => {
@@ -422,7 +412,7 @@ const baz = foo;`;
       const matches = findSearchMatches(content, search);
 
       expect(matches).toHaveLength(1);
-      expect(matches[0].strategyName).toBe("whitespaceIgnoredMatch");
+      expect(matches[0]!.strategyName).toBe("whitespaceIgnoredMatch");
     });
   });
 
@@ -433,9 +423,9 @@ const baz = foo;`;
       const matches = findSearchMatches(content, search);
 
       expect(matches).toHaveLength(3);
-      expect(matches[0].startIndex).toBe(0);
-      expect(matches[1].startIndex).toBe(10);
-      expect(matches[2].startIndex).toBe(14);
+      expect(matches[0]!.startIndex).toBe(0);
+      expect(matches[1]!.startIndex).toBe(10);
+      expect(matches[2]!.startIndex).toBe(14);
     });
 
     it("should handle matches across different strategies", () => {
@@ -465,7 +455,7 @@ const baz = foo;`;
       const matches = findSearchMatches(content, search);
 
       expect(matches).toHaveLength(1);
-      expect(matches[0].strategyName).toBe("whitespaceIgnoredMatch");
+      expect(matches[0]!.strategyName).toBe("whitespaceIgnoredMatch");
     });
   });
 });
