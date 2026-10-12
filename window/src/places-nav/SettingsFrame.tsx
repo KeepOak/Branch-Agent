@@ -44,6 +44,8 @@ function saveLevel(level: Level): void {
 type Props = {
   page: string;
   backName: string;
+  /** Live working count already held by the shell. */
+  running?: number;
   engine: WindowEngine;
   onPage: (page: string) => void;
   onBack: () => void;
@@ -197,7 +199,7 @@ function useRowJump(page: string) {
 
 /** The Settings frame (DESIGN-SPEC §4.7.0): the nav column with Back, search, "Settings for", page items, the save
  *  state and the level; one page on the right. */
-export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, askName }: Props) {
+export function SettingsFrame({ page, backName, running, engine, onPage, onBack, onAsk, askName }: Props) {
   const [chosen, setLevel] = useState<Level>(readLevel);
   const level = levelFor(page, chosen); // opening a page this level hides raises the level
   useEffect(() => {
@@ -287,7 +289,7 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
           <FileProblem engine={engine} />
           <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : null} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>
             <SetupLock locked={!maySetup && SETUP_PAGES.includes(shown)}>
-              <SettingsPage page={shown} title={pageName(shown)} level={level} engine={engine} openSettings={go} searchSection={searchRow?.page === shown ? searchRow.sec : undefined} />
+              <SettingsPage running={running} page={shown} title={pageName(shown)} level={level} engine={engine} openSettings={go} searchSection={searchRow?.page === shown ? searchRow.sec : undefined} />
             </SetupLock>
           </KitProvider>
         </div>

@@ -79,7 +79,7 @@ const definition = (name: string, pair: Pair) => ({ name, description: "Made in 
 const NEEDS_PROFILE = "Saving a theme needs a signed-in profile on this Branch.";
 
 function useThemeActs({ engine }: SettingsPageProps, look: Look, themes: Themes, extra: Extra, profile: boolean) {
-  const save = useSaveRunner();
+  const save = useSaveRunner(profile ? "Could not save the theme change. Try again." : NEEDS_PROFILE);
   const keepExtra = (id: string, pair: Pair | null) => {
     const next: Extra = { ...extra };
     if (pair) next[id] = { light: { ok: pair.light.ok, warn: pair.light.warn }, dark: { ok: pair.dark.ok, warn: pair.dark.warn } }; else delete next[id];

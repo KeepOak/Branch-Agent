@@ -779,6 +779,7 @@ export function buildAgentSystemPrompt(params: {
               "- Weak/empty result: vary query/path/command/source, then conclude.",
               "- Mutable facts: live-check files/git/time/versions/services/processes/packages.",
               "- Final claim needs evidence or named blocker.",
+              "- Tool/engine failure: tell the user in plain words what didn't work and what's next; never paste raw error text, method names or session keys.",
               "- Long work: brief update, keep going; background/subagents when useful.",
               "",
             ]),
