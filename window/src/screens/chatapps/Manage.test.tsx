@@ -8,10 +8,10 @@ import { CHAT_APPS } from "./catalogue";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root;
 afterEach(async () => { if (root) await act(async () => root.unmount()); document.body.innerHTML = ""; });
-async function render(fail = false) {
+async function render(fail = false, config: Record<string, unknown> = {}) {
   const request = vi.fn(async (method: string) => {
     if (method === "channels.status") return { channelAccounts: { telegram: [{ accountId: "selected", running: true, configured: true }] } };
-    if (method === "config.get") return { config: {}, hash: "fixture", valid: true };
+    if (method === "config.get") return { config, hash: "fixture", valid: true };
     if (method === "agents.list") return { agents: [] };
     if (method === "channels.logout" && fail) throw new Error("Unlink failed");
     return {};
@@ -38,4 +38,14 @@ it("keeps a rejected unlink visible instead of claiming success", async () => {
   await act(async () => button(host, "Unlink account").click());
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("Unlink failed");
   expect(host.querySelector('[aria-label="Confirm unlink"]')).not.toBeNull();
+});
+it("never offers the allowlist as a choice it can't edit, and keeps its people when the policy changes", async () => {
+  const { host, request } = await render(false, { channels: { telegram: { dmPolicy: "allowlist", allowFrom: ["ada", "bo"] } } });
+  const select = host.querySelector<HTMLSelectElement>('select[aria-label="Who may message Telegram"]')!;
+  const allowlist = [...select.options].find(o => o.value === "allowlist")!;
+  expect(allowlist.disabled).toBe(true);
+  expect(allowlist.textContent).toContain("Coming");
+  await act(async () => { select.value = "pairing"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  const patch = request.mock.calls.find(([m]) => m === "config.patch");
+  expect(JSON.parse((patch![1] as { raw: string }).raw)).toEqual({ channels: { telegram: { dmPolicy: "pairing", allowFrom: ["ada", "bo"] } } });
 });

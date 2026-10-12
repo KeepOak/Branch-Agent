@@ -21,10 +21,17 @@ import { Popover } from "../../glass/Popover";
 const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }));
 
 /**
- * R1 Settings draws a page only once it has rows or its own slot. Every other page keeps the Classic page, which still
- * works, until its rows land: a working setting never turns into Coming (R1 README rule 6).
+ * Pages that keep the Classic page although R1 has a slot for them, because the R1 port still lacks working Classic
+ * features. Chat apps: Manage has no add another account, groups by ID, Check now, Reload or allowlist editing yet.
+ */
+const KEEP_CLASSIC: ReadonlySet<string> = new Set(["chatapps"]);
+
+/**
+ * R1 Settings draws a page only once it has rows or its own slot and nothing working is left behind in Classic. Every
+ * other page keeps the Classic page, which still works, until its port lands (R1 README rule 6).
  */
 export function r1SettingsPage(page: string, pages: PageSlots = R1_PAGES, rows: readonly Row[] = mergeRows(ROWS, pages)): boolean {
+  if (KEEP_CLASSIC.has(page)) return false;
   return Boolean((pages as Record<string, { component?: unknown } | undefined>)[page]?.component) || rows.some(row => row.page === page);
 }
 
