@@ -54,7 +54,7 @@ try {
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.locator('[data-connection=ready]').waitFor({ timeout: 60000 });
         await page.getByText('Researcher', { exact: true }).first().waitFor({ state: 'attached', timeout: 30000 });
-        if (width === 700 && ['main-chat', 'new-menu', 'settings-general', 'settings-accounts', 'add-claude-account', 'settings-updates', 'group-chat', 'topics', 'row-menu'].includes(screen.id)) {
+        if (width === 700 && ['main-chat', 'new-menu', 'new-trunk-menu', 'settings-general', 'settings-accounts', 'add-claude-account', 'settings-updates', 'group-chat', 'topics', 'row-menu'].includes(screen.id)) {
           const list = page.getByTestId('list-toggle');
           // At narrow widths the button opens a slide-out drawer. aria-pressed
           // describes the desktop rail, not the drawer's open state.

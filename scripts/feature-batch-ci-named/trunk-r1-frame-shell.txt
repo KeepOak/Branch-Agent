@@ -1,5 +1,8 @@
 window:src/App.engine-handoff.test.tsx
 window:src/App.handoff.test.tsx
+window:src/App.window-default.test.tsx
+window:src/App.window-swap.test.tsx
+window:src/face/face-host.test.tsx
 window:src/glass/tokens.test.ts
 window:src/places/settings/set1/appearance.test.tsx
 window:src/screens/frame/Frame.test.tsx
