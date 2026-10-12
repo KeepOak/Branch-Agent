@@ -3,7 +3,7 @@
 // once to the person's look (appearance-store); rows only the desktop app can do are greyed with the reason.
 import { Fragment, useEffect, useState } from "react";
 import { Btn, Ctl, Pick, Sec, Seg, Switch, useLevel, useSaveRunner, type Opt } from "../kit";
-import { DESKTOP, READING_MORE, rowOf, rowsOf, type RowSpec } from "./appearance-rows";
+import { READING_MORE, rowOf, rowsOf, type RowSpec } from "./appearance-rows";
 import { sceneFile, type useLook } from "./appearance-store";
 
 export type Look = ReturnType<typeof useLook>;
@@ -90,6 +90,7 @@ export function BackgroundSec({ look }: { look: Look }) {
     <Sec title="Background">
       <SpecRow r={rowOf("bg")} look={look} />
       {bg === "grove" ? <SpecRow r={rowOf("season")} look={look} /> : null}
+      {bg === "painted" ? (
       <div className="fld ap-k" data-row="Painted scenes"><span>Painted scenes</span>
         <div className="scenes12">
           {SCENES.map((s) => (
@@ -100,6 +101,7 @@ export function BackgroundSec({ look }: { look: Look }) {
           ))}
         </div>
       </div>
+      ) : null}
       <RangeRow look={look} k="scrim" def={35} max={90} title="How much the theme covers it" label="How much the theme covers the background" sub="More keeps text calmer; less shows more of the background." off={bg === "none"} />
       <RangeRow look={look} k="see" def={25} max={60} title="See-through panels" label="See-through panels" sub="Panels blur what’s behind them." off={bg === "none"} />
       <Ctl title="Preview" sub="Hold it to see the background on its own." off={previewReason}>
@@ -152,23 +154,6 @@ export function ShownSec({ look }: { look: Look }) {
   return <Sec title="What’s shown">{rowsOf("What’s shown").map((r) => <SpecRow key={r.key} r={r} look={look} />)}</Sec>;
 }
 
-const LANGS: Opt[] = [{ id: "en", label: "English" }, ...["Français", "Español", "Deutsch", "Yorùbá"].map((l) => ({ id: l, label: l, off: "Other languages come with the Branch app." }))];
-export function LanguageSec() {
-  return (
-    <Sec title="Language">
-      <Ctl title="Language" sub="Dates and numbers follow it too."><Pick value="en" options={LANGS} label="Language" onChange={() => undefined} /></Ctl>
-    </Sec>
-  );
-}
-
-export function TraySec() {
-  return (
-    <Sec title="Tray">
-      <Ctl title="Tray menu" sub="What Branch puts in the tray: its icon and menu." off={DESKTOP}><Btn sm>Open</Btn></Ctl>
-    </Sec>
-  );
-}
-
 /** The sample colours for each code-colour choice: keyword, string, comment (the preview's CODECOL_R618). */
 const CODE_SAMPLE: Record<string, [string, string, string]> = {
   theme: ["var(--accent)", "var(--ok)", "var(--ink-3)"], github: ["#cf222e", "#0a3069", "#6e7781"], monokai: ["#f92672", "#e6db74", "#75715e"],
@@ -201,8 +186,6 @@ export function WindowSec({ look }: { look: Look }) {
   return (
     <Sec title="Window">
       <SpecRow r={rowOf("tabs")} look={look} />
-      <Ctl title="Customize layout" sub="Drag the list and the side panel to the widths you like." off="Drag the edge of the list or the side panel to change its width."><Btn sm>Customize</Btn></Ctl>
-      <SpecRow r={rowOf("kiosk")} look={look} />
     </Sec>
   );
 }

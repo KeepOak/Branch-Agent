@@ -1,44 +1,24 @@
-// Settings › Appearance at Advanced and Technical (§4.7.3): Characters (how faces are drawn, each Trunk's look, model
-// and stage background, what faces do), Pictures around Branch, Window, technical, and The list. A Trunk's model
-// saves through agents.update; the small model line reads agents.defaults.utilityModel.
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import type { WindowEngine } from "../../../connect/engine";
+// Settings › Appearance, Advanced: how a Trunk's character sits beside the conversation (each Trunk's model and stage
+// background), Pictures around Branch, and how a contact's threads and the list show. Each look change saves at once to
+// the person's look (appearance-store); a Trunk's model saves through agents.update.
 import { useEffect, useState } from "react";
 import { readTopicSettings, setDefaultTopicLayout, topicLayoutNames, type TopicLayout } from "../../../shell/topic-layout";
+import type { WindowEngine } from "../../../connect/engine";
 import { trunkAppearance } from "../../../face/appearance";
-import { askBeforeDelete } from "../../../shell/ConfirmDelete";
 import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
-import { Btn, Ctl, LinkBtn, Sec, Seg, Switch, useConfig, useLevel, useSaveRunner, Val } from "../kit";
-import { DESKTOP, rowOf, rowsOf } from "./appearance-rows";
+import { Ctl, Sec, Seg, useLevel, useSaveRunner } from "../kit";
 import { SpecRow, type Look } from "./appearance-sections";
+import { rowOf, rowsOf } from "./appearance-rows";
 import type { useTrunk } from "./appearance-top";
 
 type Trunk = ReturnType<typeof useTrunk>;
-type MoreProps = { engine: WindowEngine; look: Look; trunk: Trunk; openSettings?: (page: string) => void };
+type CharProps = { engine: WindowEngine; look: Look; trunk: Trunk };
 
-export function AppearanceMore(p: MoreProps) {
+/** The Trunk beside the conversation (Look, Advanced): its stage, each Trunk's model and background, and how it moves. */
+export function CharactersSec({ engine, look, trunk }: CharProps) {
   const level = useLevel();
-  return (
-    <>
-      <TopicLayoutSec />
-      {level >= 1 ? <>
-      <CharactersSec {...p} />
-      <PicturesSec />
-      {level >= 2 ? (
-        <Sec title="Window, technical" showHeading={false} group="Window">
-          <Ctl title="Window frame" sub="Branch’s own title bar or the system one." off={DESKTOP}><Val>Branch’s own</Val><Btn sm>Choose</Btn></Ctl>
-        </Sec>
-      ) : null}
-      <ListSec {...p} />
-      </> : null}
-    </>
-  );
-}
-
-const STAGE_BG = [["none", "None"], ["rings", "Growth rings"], ["oak", "Oak"]];
-
-function CharactersSec({ engine, look, trunk }: MoreProps) {
+  if (level < 1) return null;
   const first = trunk.agents.find((a) => a.id === trunk.defaultId) ?? trunk.agents[0];
   const still = first ? trunkAppearance(String(record(first.identity).avatar ?? "") || undefined, trunk.nameOf(first))?.still : undefined;
   return (
@@ -53,7 +33,34 @@ function CharactersSec({ engine, look, trunk }: MoreProps) {
   );
 }
 
-function TrunkCards({ engine, look, trunk }: Omit<MoreProps, "openSettings">) {
+/** Pictures around Branch (Look, Advanced): the feature art shown where a feature starts or has nothing to show yet. */
+export function PicturesSec() {
+  const level = useLevel();
+  if (level < 1) return null;
+  return (
+    <Sec title="Pictures around Branch" hint="Shown where a feature starts or has nothing to show yet." help="Shown where a feature starts or has nothing to show yet. They move gently, and hold still when motion is reduced.">
+      <div className="arts17e ap-k" data-row="Pictures around Branch">
+        {ART.map(([id, label]) => <figure key={id} className="art-c17e"><img src={`/assets/art17/feature/${id}.webp`} alt="" width={88} height={88} /><figcaption>{label}</figcaption></figure>)}
+      </div>
+    </Sec>
+  );
+}
+
+/** How a contact's threads show and whether working rows show a headline (Layout). */
+export function ListMore({ look }: { look: Look }) {
+  const level = useLevel();
+  return (
+    <>
+      <TopicLayoutSec />
+      {level >= 1 ? <Sec title="The list" group="Status bar and list"><SpecRow r={rowOf("headlines")} look={look} /></Sec> : null}
+    </>
+  );
+}
+
+const STAGE_BG = [["none", "None"], ["rings", "Growth rings"], ["oak", "Oak"]];
+
+/** Per-Trunk model and stage background (look key "stage:<id>"). */
+function TrunkCards({ engine, look, trunk }: CharProps) {
   const save = useSaveRunner();
   const models = useResource<RecordValue>(engine, "models.list", {});
   const refs = list(models.data?.models).map((m) => ({ id: `${String(m.provider)}/${String(m.id)}`, label: visible(m.name ?? m.id) }));
@@ -87,15 +94,6 @@ function TrunkCards({ engine, look, trunk }: Omit<MoreProps, "openSettings">) {
 }
 
 const ART = [["cloud", "A cloud computer at work"], ["call", "A phone call in progress"], ["meeting", "Joining a meeting"], ["learn", "Learning an app"], ["timeline", "A timeline replaying"]];
-function PicturesSec() {
-  return (
-    <Sec title="Pictures around Branch" hint="Shown where a feature starts or has nothing to show yet." help="Shown where a feature starts or has nothing to show yet. They move gently, and hold still when motion is reduced.">
-      <div className="arts17e ap-k" data-row="Pictures around Branch">
-        {ART.map(([id, label]) => <figure key={id} className="art-c17e"><img src={`/assets/art17/feature/${id}.webp`} alt="" width={88} height={88} /><figcaption>{label}</figcaption></figure>)}
-      </div>
-    </Sec>
-  );
-}
 
 function TopicLayoutSec() {
   const [threadLayout, setThreadLayout] = useState(() => readTopicSettings().layout);
@@ -109,25 +107,4 @@ function TopicLayoutSec() {
   return <Sec title="Threads show as" group="Status bar and list"><Ctl title="Threads show as" sub="How a contact’s threads show beside its chat. A contact’s ⋯ › View can differ.">
     <Seg label="Threads show as" value={threadLayout} options={(Object.entries(topicLayoutNames) as [TopicLayout, string][]).map(([id, label]) => ({ id, label: label === "Tabs above the chat" ? "Tabs" : label }))} onChange={(next) => { setDefaultTopicLayout(next as TopicLayout); setThreadLayout(next as TopicLayout); }} />
   </Ctl></Sec>;
-}
-
-function ListSec({ engine, look, openSettings }: MoreProps) {
-  const save = useSaveRunner();
-  const level = useLevel();
-  const cfg = useConfig(engine);
-  const ask = look.val("askDelete", askBeforeDelete()) === true;
-  const small = cfg.get("agents.defaults.utilityModel");
-  const where = "set in Models › Sub-tasks and side jobs";
-  const smallLine = small === undefined ? "Chosen by Branch (Automatic, from Models › Sub-tasks and side jobs)" : small === "" ? `None (${where})` : `${visible(small)} (${where})`;
-  return (
-    <Sec title="The list" group="Status bar and list">
-      <Ctl title="Ask before deleting a conversation" sub="Removing a kept working copy always asks." keep="everywhere">
-        <Switch checked={ask} label="Ask before deleting a conversation" onChange={(on) => void save(() => look.store.set("askDelete", on))} />
-      </Ctl>
-      <SpecRow r={rowOf("headlines")} look={look} />
-      {level >= 2 ? (
-        <dl className="kv kvline-pe18 ap-k"><dt>Small model used</dt><dd>{cfg.loading ? "Reading…" : smallLine} <LinkBtn disabled={!openSettings} onClick={() => openSettings?.("models")}>Change</LinkBtn></dd></dl>
-      ) : null}
-    </Sec>
-  );
 }

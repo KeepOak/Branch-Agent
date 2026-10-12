@@ -4,7 +4,7 @@ import { levelFor, pageAtLevel, pageLevel, pageName, searchSettings, settingsGro
 describe("settings nav", () => {
   it("has plain group names and omits achievements at every level", () => {
     const count = (l: "regular" | "advanced" | "technical") => settingsGroups(l).reduce((n, g) => n + g.pages.length, 0);
-    expect([count("regular"), count("advanced"), count("technical")]).toEqual([20, 21, 22]);
+    expect([count("regular"), count("advanced"), count("technical")]).toEqual([22, 23, 24]);
     expect(settingsGroups("regular").map((g) => g.name)).toEqual(["General", "Trunks", "Safety", "Data", "About"]);
   });
   it("uses plain page names in navigation and search", () => {
@@ -22,6 +22,11 @@ describe("settings nav", () => {
     expect(ids("technical")).not.toContain("achievements");
     expect(pageAtLevel("achievements", "technical")).toBe("general");
   });
+  it("Pet and Layout are their own pages in This app, after Appearance", () => {
+    const names = settingsGroups("regular")[0].pages.map((p) => p.id);
+    expect(names).toEqual(["general", "people", "appearance", "pet", "layout", "notifications"]);
+  });
+
   it("a level drop moves a hidden page to General", () => {
     expect(pageAtLevel("developer", "advanced")).toBe("general");
     expect(pageAtLevel("advanced", "regular")).toBe("general");

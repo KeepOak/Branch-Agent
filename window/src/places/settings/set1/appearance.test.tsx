@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
-import { AppearancePage, APPEARANCE_ROWS } from "./appearance";
+import { AppearancePage, APPEARANCE_ROWS, LayoutPage, PetPage } from "./appearance";
 import { BUILTIN, contrast, fromPalette, SLATE, toPalette } from "./appearance-look";
 import { LEGACY_THEMES } from "./appearance-legacy";
 import { forgetLookStore, lookStore } from "./appearance-store";
@@ -43,8 +43,10 @@ function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; cu
   return { engine, request, prefs };
 }
 const report: SaveReport = { saving: vi.fn(), saved: vi.fn(), failed: vi.fn() };
-async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0) {
-  await act(async () => root.render(<KitProvider level={level} report={report} scope={null}><AppearancePage page="appearance" title="Appearance" level="regular" engine={engine} /></KitProvider>));
+const PAGES = { appearance: AppearancePage, pet: PetPage, layout: LayoutPage };
+async function render(engine: WindowEngine, level: 0 | 1 | 2 = 0, page: keyof typeof PAGES = "appearance") {
+  const Page = PAGES[page];
+  await act(async () => root.render(<KitProvider level={level} report={report} scope={null}><Page page={page} title="Appearance" level="regular" engine={engine} /></KitProvider>));
   await act(async () => { await Promise.resolve(); });
 }
 const button = (text: string, scope: ParentNode = host) => [...scope.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === text)!;
@@ -93,7 +95,7 @@ describe("Settings › Appearance", () => {
 
   it("keeps pet-sound rationale in help without hiding the row description", async () => {
     const { engine } = engineOf();
-    await render(engine);
+    await render(engine, 0, "pet");
     const row = host.querySelector('[data-row="Pet sounds"]')!;
     expect(row.querySelector("small")?.textContent).toContain("A tiny sound when you pat it.");
     expect(row.textContent).not.toContain("Off until you turn it on.");
@@ -146,8 +148,15 @@ describe("Settings › Appearance", () => {
     await render(engine);
     expect(host.querySelector(".theme-now .grow > b")?.textContent).toBe("Branch Slate");
     expect(button("Browse all 3 themes")).toBeTruthy();
-    expect([...host.querySelectorAll(".mirror b")].map((b) => b.textContent)).toEqual(["Light · live mirror of Birch", "Dark · live mirror of Birch", "Match this computer"]);
+    expect([...host.querySelectorAll(".mirror b")].map((b) => b.textContent)).toEqual(["Light · preview of Birch’s chat", "Dark · preview of Birch’s chat", "Match this computer"]);
+  });
+
+  it("the Pet page draws every pet and the Layout page holds the list and window rows", async () => {
+    const { engine } = engineOf();
+    await render(engine, 0, "pet");
     expect(host.querySelectorAll(".pet-c12").length).toBe(43);
+    await render(engine, 1, "layout");
+    expect(rows()).toEqual(expect.arrayContaining(["Keep things still", "Conversations as tabs", "Headlines for working conversations"]));
   });
 
   it("shows 46 themes once loaded and never 0 while themes exist", async () => {
@@ -169,6 +178,7 @@ describe("Settings › Appearance", () => {
     const { engine, request } = engineOf();
     await render(engine);
     expect([...document.querySelectorAll(".sec h2")].filter((heading) => heading.textContent === "Reading")).toHaveLength(1);
+    await render(engine, 0, "layout");
     await act(async () => sw("Keep things still").click());
     expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { "ui.window.look": { still: true } }, expectedEntries: { "ui.window.look": null } });
     expect(document.documentElement.classList.contains("still-k")).toBe(true);
@@ -277,14 +287,16 @@ describe("Settings › Appearance", () => {
     await act(async () => root.unmount());
     root = createRoot(host);
     await render(engine, 2);
-    expect(rows()).toEqual(expect.arrayContaining(["Interface font", "Acts out what it is doing", "Window frame", "Headlines for working conversations"]));
-    expect(host.querySelector('[data-row="Window frame"]')?.getAttribute("aria-disabled")).toBe("true");
+    expect(rows()).toEqual(expect.arrayContaining(["Interface font", "Acts out what it is doing"]));
+    expect(rows()).not.toContain("How faces are drawn");
+    expect(host.querySelector('[data-row="Pictures around Branch"]')).not.toBeNull();
   });
 
   it("with no signed-in profile the look is kept on this computer", async () => {
     const { engine, request } = engineOf({ profile: false });
     await render(engine);
     expect(host.textContent).toContain("Kept on this computer");
+    await render(engine, 0, "layout");
     await act(async () => sw("Scenery behind the list").click());
     expect(request.mock.calls.some(([m]) => m === "users.prefs.set")).toBe(false);
     expect(JSON.parse(localStorage.getItem("branch.look") ?? "{}").look.scenery).toBe(true);
@@ -292,7 +304,7 @@ describe("Settings › Appearance", () => {
 
   it("after a conflict it reads the look again and puts only the changed row on it", async () => {
     const { engine, request, prefs } = engineOf({ conflicts: 1 });
-    await render(engine);
+    await render(engine, 0, "layout");
     prefs["ui.window.look"] = { "show.gfx": true }; // another window saved meanwhile
     await act(async () => sw("Scenery behind the list").click());
     expect(prefs["ui.window.look"]).toEqual({ "show.gfx": true, scenery: true });
@@ -312,9 +324,35 @@ describe("Settings › Appearance", () => {
 
   it("reads saved rows from the engine", async () => {
     const { engine } = engineOf({ prefs: { "ui.window.look": { "show.usage": false } } });
-    await render(engine);
+    await render(engine, 0, "layout");
     expect(sw("The usage ring").checked).toBe(false);
+    await render(engine, 0, "pet");
     expect(sw("Let it roam").checked).toBe(false);
+  });
+
+  it("PR985 keeps Pictures around Branch on the Look page at Advanced and in search", async () => {
+    const { engine } = engineOf();
+    await render(engine, 0);
+    expect(host.querySelector('[data-row="Pictures around Branch"]')).toBeNull();
+    await render(engine, 1);
+    const art = host.querySelector('[data-row="Pictures around Branch"]')!;
+    expect([...art.querySelectorAll("figcaption")].map((c) => c.textContent)).toEqual(["A cloud computer at work", "A phone call in progress", "Joining a meeting", "Learning an app", "A timeline replaying"]);
+    expect(art.querySelector("img")?.getAttribute("src")).toBe("/assets/art17/feature/cloud.webp");
+    expect(APPEARANCE_ROWS.find((r) => r.title === "Pictures around Branch")).toMatchObject({ page: "appearance", lv: 1 });
+  });
+
+  it("PR985 keeps each Trunk's own Background and Model on the Look page and saves the background", async () => {
+    const { engine, prefs } = engineOf({ prefs: { "ui.window.look": { "stage:main": "rings" } } });
+    await render(engine, 1);
+    const bg = host.querySelector<HTMLSelectElement>('select[aria-label="Birch: background"]')!;
+    expect(bg).not.toBeNull();
+    expect([...bg.options].map((o) => o.textContent)).toEqual(["None", "Growth rings", "Oak"]);
+    expect(bg.value).toBe("rings");
+    expect(host.querySelector('select[aria-label="Birch: model"]')).not.toBeNull();
+    await act(async () => { bg.value = "oak"; bg.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(prefs["ui.window.look"]).toMatchObject({ "stage:main": "oak" });
+    await act(async () => { bg.value = "none"; bg.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(prefs["ui.window.look"] ?? {}).not.toHaveProperty("stage:main");
   });
 
   it("theme codes and engine palettes keep every colour", () => {
@@ -323,6 +361,6 @@ describe("Settings › Appearance", () => {
     expect(readThemeCode("{}")).toBeNull();
     expect(fromPalette(toPalette(SLATE.dark), "dark")).toEqual(SLATE.dark);
     expect(contrast("#000000", "#ffffff")).toBeCloseTo(21);
-    expect(APPEARANCE_ROWS.find((r) => r.title === "Window frame")?.lv).toBe(2);
+    expect(APPEARANCE_ROWS.find((r) => r.title === "Interface font")?.lv).toBe(1);
   });
 });
