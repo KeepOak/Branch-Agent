@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -135,4 +136,16 @@ it("every control is wired to the engine or shows Coming, even with no methods a
   const mine = [...document.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Message"] [role="menuitem"]')];
   for (const label of ["Edit", "Branch from here", "Put back in context"]) expect(coming(mine.find((b) => b.textContent === label)), label).toEqual(["true", true, false]);
   expect(undeclared()).toEqual([]);
+});
+
+it("follows the item 48 glass model: clear conversation and menus, text and controls on frosted pills, solid with Reduce transparency", () => {
+  const css = readFileSync("src/screens/chat/chat.css", "utf8").replace(/\s+/g, " ");
+  const tokens = readFileSync("src/theme/tokens.css", "utf8").replace(/\s+/g, " ");
+  expect(tokens).toContain("--gp-fill: rgba(255,255,255,.76); --gp-edge: rgba(0,0,0,.11);");
+  expect(tokens).toMatch(/:root\[data-transparency="reduce"\][^{]*\{ --gp-fill: var\(--raise\);[^}]*--gp-blur: none; \}/);
+  for (const piece of [".r1c-u", ".r1c-txt", ".r1c-notice", ".r1c-typing", ".r1c-steps > summary", ".r1c-chip", ".r1c-bar", ".r1c-mi", ".r1c-menu-meta"]) {
+    expect(css, piece).toMatch(new RegExp(":is\\([^)]*" + piece.replace(/[.>]/g, (c) => "\\" + c) + "[,)]"));
+  }
+  expect(css).toContain("background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge);");
+  expect(css).toContain(".g-popover:has(> .r1c-menu, > .r1c-react) { background: transparent; backdrop-filter: none;");
 });
