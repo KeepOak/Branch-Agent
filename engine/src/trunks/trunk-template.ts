@@ -4,6 +4,12 @@
  * hands only the fields below to buildTrunkTemplate, so nothing else can leave.
  */
 import { ALWAYS_ON_TOOL_IDS, listToolsetIds } from "../agents/tool-toolsets.js";
+import {
+  parseFirstRun,
+  parseStarter,
+  type TrunkTemplateFirstRun,
+  type TrunkTemplateStarter,
+} from "./trunk-template-first-run.js";
 
 export const TRUNK_TEMPLATE_FILE_NAME = "branch.trunk-template.json";
 export const TRUNK_TEMPLATE_FORMAT = "branch.trunk-template";
@@ -41,6 +47,10 @@ export type TrunkTemplate = {
   connections?: string[];
   /** What the Trunk may reach, in plain words, as the exporter found it. */
   permissions: string[];
+  /** The first-run contract: questions with defaults, owner timezone, paused routines, Overview card. */
+  firstRun?: TrunkTemplateFirstRun;
+  /** Bundled starters only: how the Chief offers this teammate in its first conversation. */
+  starter?: TrunkTemplateStarter;
 };
 
 /** The only fields the exporter may pass in. Anything else on a Trunk stays on it. */
@@ -55,6 +65,8 @@ export type TrunkTemplateSource = {
   automations?: TrunkTemplateAutomation[];
   connections?: string[];
   permissions?: string[];
+  firstRun?: TrunkTemplateFirstRun;
+  starter?: TrunkTemplateStarter;
 };
 
 export function skillIdForSlug(slug: string): string {
@@ -120,6 +132,8 @@ export function buildTrunkTemplate(source: TrunkTemplateSource): {
     ...(source.automations?.length ? { automations: source.automations } : {}),
     ...(keptConnections.length ? { connections: keptConnections } : {}),
     permissions: source.permissions?.length ? source.permissions : [NO_RESTRICTIONS_PERMISSION],
+    ...(source.firstRun ? { firstRun: source.firstRun } : {}),
+    ...(source.starter ? { starter: source.starter } : {}),
   };
   return { template, warnings: skills.warnings };
 }
@@ -222,6 +236,8 @@ export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
     permissions: Array.isArray(raw.permissions) && raw.permissions.every((line) => typeof line === "string")
       ? (raw.permissions as string[])
       : undefined,
+    firstRun: parseFirstRun(raw.firstRun, warnings),
+    starter: parseStarter(raw.starter, warnings),
   });
   warnings.push(...built.warnings);
   return { ok: true, template: built.template, warnings };

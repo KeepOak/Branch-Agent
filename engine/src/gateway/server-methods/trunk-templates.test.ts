@@ -275,13 +275,15 @@ describe("trunks.template.create adds routines turned off", () => {
 });
 
 describe("trunks.template catalog", () => {
-  it("lists the three bundled templates", async () => {
+  it("lists the five bundled templates", async () => {
     const { respond, done } = call("trunks.template.list", {});
     await done;
     const payload = respond.mock.calls[0]?.[1] as { templates: Array<{ id: string; source: string }> };
     expect(payload.templates.map((t) => [t.id, t.source])).toEqual([
       ["builder", "bundled"],
       ["inbox-helper", "bundled"],
+      ["lookout", "bundled"],
+      ["night-shift", "bundled"],
       ["researcher", "bundled"],
     ]);
   });

@@ -319,6 +319,10 @@ describe("listGatewayMethods", () => {
       "trunks.template.export",
       "trunks.template.create",
       "trunks.template.list",
+      "trunks.template.starters",
+      "trunks.template.start",
+      "trunks.template.stop",
+      "trunks.template.cards",
       "trunks.team.propose",
       "trunks.team.approve",
     ];
@@ -445,6 +449,10 @@ describe("listGatewayMethods", () => {
       "trunks.template.export",
       "trunks.template.create",
       "trunks.template.list",
+      "trunks.template.starters",
+      "trunks.template.start",
+      "trunks.template.stop",
+      "trunks.template.cards",
       "trunks.team.propose",
       "trunks.team.approve",
     ]);
@@ -705,6 +713,10 @@ describe("listGatewayMethods", () => {
       "trunks.template.export",
       "trunks.template.create",
       "trunks.template.list",
+      "trunks.template.starters",
+      "trunks.template.start",
+      "trunks.template.stop",
+      "trunks.template.cards",
       "trunks.team.propose",
       "trunks.team.approve",
     ];

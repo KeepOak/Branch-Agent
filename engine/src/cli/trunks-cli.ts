@@ -8,7 +8,36 @@ import { TRUNK_TEMPLATE_FILE_NAME } from "../trunks/trunk-template.js";
 import { callGatewayFromCli, type GatewayRpcOpts } from "./gateway-rpc.js";
 import { applyParentDefaultHelpAction } from "./program/parent-default-help.js";
 
-type TrunksCliOpts = GatewayRpcOpts & { out?: string; force?: boolean; link?: boolean; fromTemplate?: string; name?: string; json?: boolean };
+type TrunksCliOpts = GatewayRpcOpts & {
+  out?: string;
+  force?: boolean;
+  link?: boolean;
+  fromTemplate?: string;
+  name?: string;
+  json?: boolean;
+  answer?: string[];
+  timezone?: string;
+  agent?: string;
+  goal?: string;
+};
+
+/** Collects repeated --answer id=value options. */
+function collectAnswer(value: string, previous: string[] = []): string[] {
+  return [...previous, value];
+}
+
+/** "topics=AI news" -> { topics: "AI news" }. An entry without "=" is an error, so a typo never passes silently. */
+export function parseAnswerOptions(values: readonly string[] | undefined): Record<string, string> {
+  const answers: Record<string, string> = {};
+  for (const value of values ?? []) {
+    const at = value.indexOf("=");
+    if (at <= 0) {
+      throw new Error("--answer takes id=value, such as --answer topics=\"AI news\".");
+    }
+    answers[value.slice(0, at).trim()] = value.slice(at + 1).trim();
+  }
+  return answers;
+}
 
 const DEFAULT_TRUNKS_TIMEOUT_MS = 30_000;
 
@@ -42,14 +71,23 @@ type CreateResult = {
   routines?: Array<{ id: string; name: string }>;
   connections?: Array<{ id: string; ready: boolean }>;
   warnings?: string[];
+  firstRun?: { timezone: string; started: boolean };
 };
+type StartersResult = {
+  timezone: string;
+  reason?: string;
+  offer: Array<{ id: string; name: string; pitch: string; questions: Array<{ id: string; prompt: string; default: string }> }>;
+};
+type CardResult = { card: { name: string; started: boolean; summary: string; nextRunAtMs?: number }; warnings?: string[] };
 type ListResult = { templates: Array<{ id: string; source: string; name: string; description: string; routines: number }> };
 
 /** What the owner still has to do after a create: approve routines and set up channels. */
 export function createFollowUps(result: CreateResult): string[] {
-  const lines = (result.routines ?? []).map(
-    (routine) => `Routine "${routine.name}" was added turned off. Turn it on in Automations once you approve it.`,
-  );
+  const lines = result.firstRun
+    ? [`Its routines are paused and run in ${result.firstRun.timezone} once you start it: branch trunks start ${result.agentId}`]
+    : (result.routines ?? []).map(
+        (routine) => `Routine "${routine.name}" was added turned off. Turn it on in Automations once you approve it.`,
+      );
   for (const connection of result.connections ?? []) {
     if (!connection.ready) {
       lines.push(`This Trunk talks on ${connection.id}, which is not set up here. Set it up in Channels.`);
@@ -134,12 +172,20 @@ export function registerTrunksCli(program: Command) {
       .description("Create a Trunk from a catalog template id, a template file, or a template link")
       .requiredOption("--from-template <idPathOrLink>", "A catalog template id, a path to a .trunk-template.json file, or a branch-template: link")
       .option("--name <name>", "Name for the new Trunk (defaults to the template's name)")
+      .option("--answer <id=value>", "A first-run answer; repeat for each question (unanswered ones take their default)", collectAnswer)
+      .option("--timezone <zone>", "Timezone for the template's routines (defaults to this machine's)")
       .action(async (opts: TrunksCliOpts) => {
         const source = templateSourceFromArg(opts.fromTemplate ?? "", process.cwd());
+        const answers = parseAnswerOptions(opts.answer);
         const result = (await callGatewayFromCli(
           "trunks.template.create",
           opts,
-          { ...source, ...(opts.name ? { name: opts.name } : {}) },
+          {
+            ...source,
+            ...(opts.name ? { name: opts.name } : {}),
+            ...(Object.keys(answers).length ? { answers } : {}),
+            ...(opts.timezone ? { timezone: opts.timezone } : {}),
+          },
           { scopes: ["operator.admin"] },
         )) as CreateResult;
         if (opts.json === true) {
@@ -175,4 +221,56 @@ export function registerTrunksCli(program: Command) {
         }
       }),
   );
+
+  addTrunksGatewayOptions(
+    trunks
+      .command("starters")
+      .description("The three starter teammates the main Trunk offers in its first conversation")
+      .option("--agent <agentId>", "Ask as this Trunk; only the main Trunk gets an offer")
+      .option("--goal <text>", "The owner's goal, so the best-fitting teammates come first")
+      .action(async (opts: TrunksCliOpts) => {
+        const result = (await callGatewayFromCli(
+          "trunks.template.starters",
+          opts,
+          { ...(opts.agent ? { agentId: opts.agent } : {}), ...(opts.goal ? { goal: opts.goal } : {}) },
+          { scopes: ["operator.read"] },
+        )) as StartersResult;
+        if (opts.json === true) {
+          process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+          return;
+        }
+        if (result.offer.length === 0) {
+          process.stdout.write(`${result.reason ?? "No starter teammates are available."}\n`);
+          return;
+        }
+        for (const offer of result.offer) {
+          process.stdout.write(`${offer.id}\t${offer.pitch}\n`);
+          for (const question of offer.questions) {
+            process.stdout.write(`  ${question.id}: ${question.prompt} (default: ${question.default})\n`);
+          }
+        }
+        process.stdout.write(`Timezone: ${result.timezone}\n`);
+      }),
+  );
+
+  for (const [verb, method, description] of [
+    ["start", "trunks.template.start", "Turn on a new teammate's paused routines (the owner's Start)"],
+    ["stop", "trunks.template.stop", "Turn a teammate's starter routines off again"],
+  ] as const) {
+    addTrunksGatewayOptions(
+      trunks
+        .command(`${verb} <agentId>`)
+        .description(description)
+        .action(async (agentId: string, opts: TrunksCliOpts) => {
+          const result = (await callGatewayFromCli(method, opts, { agentId }, { scopes: ["operator.admin"] })) as CardResult;
+          if (opts.json === true) {
+            process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+            return;
+          }
+          const next = result.card.nextRunAtMs ? ` Next run: ${new Date(result.card.nextRunAtMs).toLocaleString()}.` : "";
+          process.stdout.write(`${result.card.name} is ${result.card.started ? "started" : "stopped"}. ${result.card.summary}${next}\n`);
+          writeWarnings(result.warnings);
+        }),
+    );
+  }
 }
