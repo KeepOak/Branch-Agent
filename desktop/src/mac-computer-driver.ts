@@ -6,6 +6,12 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createConnection, createServer, type Server } from "node:net";
 import { dirname, join } from "node:path";
 
+/** The SDK's typed errors carry the reason (e.g. the rejected environment name) in `inner`; String() keeps only the variant. */
+export function describeDriverError(error: unknown): string {
+  const reason = (error as { inner?: { reason?: unknown } } | undefined)?.inner?.reason;
+  return typeof reason === "string" && reason ? reason : String(error);
+}
+
 type PermissionStatus = { accessibility: boolean; screenRecording: boolean };
 export function macScreenControlEnabled(configPath: string): boolean {
   try {
@@ -110,10 +116,8 @@ export class MacComputerDriver {
       approveCapabilityManifest: false,
       approveSessionPolicy: false,
       dangerouslyBypassApprovals: false,
-      environment: [
-        { name: "CUA_DRIVER_RS_TELEMETRY_ENABLED", value: "false" },
-        { name: "CUA_DRIVER_RS_UPDATE_CHECK", value: "false" },
-      ],
+      // Only names on the SDK's embedded safe allowlist: any other name makes withOptions throw Configuration.
+      environment: [{ name: "CUA_DRIVER_RS_TELEMETRY_ENABLED", value: "false" }],
       inheritStderr: false,
     });
     try {

@@ -85,7 +85,9 @@ export function rows(value: unknown): Row[] {
       visibility: str(r.visibility), sharingRole: str(r.sharingRole), kind: str(r.kind), chatType: str(r.chatType),
       model: str(r.model), participants: recs(r.participants).map(p => str(p.label)).filter(Boolean),
       swarm: r.swarm ? rec(r.swarm) : null, childSessions: strs(r.childSessions), subagentRole: str(r.subagentRole),
-      helper: Boolean(str(r.spawnedBy) || str(r.parentSessionKey)),
+      // only a spawned helper (spawnedBy) rides inside its parent run; parentSessionKey just says where a run was
+      // started (a queue job or background conversation from a Trunk's main chat) and is a run of its own
+      helper: Boolean(str(r.spawnedBy)),
     };
   });
 }

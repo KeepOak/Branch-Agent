@@ -23,7 +23,7 @@ it("renders service allowance bars and real costs, with engine-backed period cha
 it("distinguishes provider refresh and unavailable cost from zero", async () => {
   const request = vi.fn(async (method:string) => { if (method === "usage.status") return {refreshing:true,providers:[]}; throw new Error("Cost service unavailable"); });
   await act(async () => root.render(<UsageSettings {...props(request)} />));
-  expect(host.textContent).toContain("refreshing provider allowances"); expect(host.textContent).toContain("Cost service unavailable"); expect(host.textContent).not.toContain("$0.00");
+  expect(host.textContent).toContain("The engine is refreshing account allowances."); expect(host.textContent).toContain("Cost service unavailable"); expect(host.textContent).not.toContain("$0.00");
 });
 it("renders available computer actions and node presence without claiming pending approval is online", async () => {
   const request = vi.fn(async (method:string) => method === "computer.status" ? { configured:true,available:true,computerUse:{provider:{label:"Knothole"},actions:["browser_navigate"]}} : { nodes:[{nodeId:"pending",displayName:"Studio",approvalState:"pending-approval"},{nodeId:"paired",displayName:"Laptop",connected:true,paired:true}] });

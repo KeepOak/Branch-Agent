@@ -157,3 +157,18 @@ function contactMenuItems(row: Conversation, c: Ctx, contact: Contact): MenuItem
   ];
   return items.filter((item): item is MenuItem => item !== null);
 }
+
+/** A thread's right-click menu in the thread column: the four things a person does to one thread, with the same
+ *  words, keys and icons as the row menu. Everything else lives in the conversation's ⋯ menu. */
+export function threadMenuItems(row: Conversation, c: { actions: Actions; rename: (row: Conversation) => void }): MenuItem[] {
+  return [
+    { label: "Rename", letter: "r", run: () => c.rename(row), testid: "menu-rename", ...ic("edit") },
+    { label: row.pinned ? "Unpin" : "Pin", letter: "p", run: () => void c.actions.pin(row), testid: "menu-pin", ...ic("pin") },
+    row.unread
+      ? { label: "Mark as read", letter: "u", run: () => void c.actions.setUnread(row, false), testid: "menu-unread", ...ic("chat") }
+      : { label: "Mark as unread", letter: "u", run: () => void c.actions.setUnread(row, true), testid: "menu-unread", ...ic("chat") },
+    row.archived
+      ? { label: "Restore", letter: "a", run: () => void c.actions.restore(row), testid: "menu-archive", ...ic("box") }
+      : { label: "Archive", letter: "a", run: () => void c.actions.archive(row), testid: "menu-archive", ...ic("box") },
+  ];
+}

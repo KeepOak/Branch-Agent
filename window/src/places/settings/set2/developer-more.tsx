@@ -476,7 +476,7 @@ function NodeDialog({ engine, onClose }: { engine: SettingsPageProps["engine"]; 
 /* ───────────── Settings file editor ───────────── */
 
 const SECTION_NAMES: [string, string, string][] = [
-  ["session", "Conversations", "Branch itself"], ["logging", "Logs", "Advanced"], ["telemetry", "Feature counts", "Advanced"], ["memory", "Memory", "Advanced"],
+  ["session", "Conversations", "About Branch"], ["logging", "Logs", "Advanced"], ["telemetry", "Feature counts", "Advanced"], ["memory", "Memory", "Advanced"],
   ["agents", "Trunk defaults", "Advanced"], ["cron", "Schedules", "Advanced"], ["tools", "Tools", "Advanced"], ["skills", "Skills", "Advanced"], ["plugins", "Plugins", "Advanced"],
   ["proxy", "Network", "Advanced"], ["wizard", "Setup", "Advanced"], ["gateway", "Gateway", "Developer"], ["env", "Launch variables", "Developer"], ["commands", "Chat commands", "Developer"],
   ["diagnostics", "Diagnostics", "Developer"], ["discovery", "Finding Branch", "Developer"], ["mcp", "Connectors", "Developer"], ["worktreeRoot", "Working copies", "Developer"],
@@ -539,7 +539,7 @@ function FormView({ config }: { config: Config }) {
   const [q, setQ] = useState("");
   const keys = Object.keys(config.cfg).filter((k) => k !== "meta");
   const named = new Map(SECTION_NAMES.map(([k, l, g]) => [k, [l, g] as const]));
-  const groups = ["Branch itself", "Advanced", "Developer", "Everything else"];
+  const groups = ["About Branch", "Advanced", "Developer", "Everything else"];
   const all = keys.map((k) => ({ k, l: named.get(k)?.[0] ?? k, g: named.get(k)?.[1] ?? "Everything else" })).filter((s) => !q || `${s.k} ${s.l}`.toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => groups.indexOf(a.g) - groups.indexOf(b.g));
   const [sel, setSel] = useState("");
