@@ -26,7 +26,7 @@ export function providersOf(value: unknown): Provider[] {
 export type Account = { p: Provider; a: Profile; n: number; first: boolean; last: boolean; ordered: boolean; next: boolean };
 
 /** An account that hit its rate or usage limit and isn't used until `limitedUntil`. */
-export const isLimited = (a: Pick<Profile, "limitedUntil">, now = Date.now()) => typeof a.limitedUntil === "number" && a.limitedUntil > now;
+const isLimited = (a: Pick<Profile, "limitedUntil">, now = Date.now()) => typeof a.limitedUntil === "number" && a.limitedUntil > now;
 
 /** "Sat 2:00 AM": when a limited account comes back. */
 export function limitedLabel(until: number): string {
@@ -170,8 +170,8 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
   );
 }
 
-export type MenuProps = { engine: SettingsPageProps["engine"]; acc: Account; all: Account[]; at: MenuAnchor; agent: { agentId?: string }; reload: () => Promise<void>; setOrder: (a: Account, ids: string[]) => Promise<boolean>; onClose: () => void };
-export function AccountMenu({ engine, acc, all, at, agent, reload, setOrder, onClose }: MenuProps) {
+type MenuProps = { engine: SettingsPageProps["engine"]; acc: Account; all: Account[]; at: MenuAnchor; agent: { agentId?: string }; reload: () => Promise<void>; setOrder: (a: Account, ids: string[]) => Promise<boolean>; onClose: () => void };
+function AccountMenu({ engine, acc, all, at, agent, reload, setOrder, onClose }: MenuProps) {
   const save = useSaveRunner();
   const provider = acc.p.authProvider ?? acc.p.provider;
   const ids = all.filter((x) => x.p === acc.p).map((x) => x.a.profileId);
