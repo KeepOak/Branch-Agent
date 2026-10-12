@@ -39,6 +39,14 @@ async function mount(element: React.ReactNode) {
 }
 
 describe("ApprovalCard under Lockdown", () => {
+  it("exec card: the command toggle says what it does, Show command and then Hide command", async () => {
+    const host = await mount(<ApprovalCard approval={approval("e2")} details={detail("e2", { plugin: false })} name="Sapling" onAnswer={vi.fn()} />);
+    const toggle = host.querySelector<HTMLButtonElement>("[data-action=open]");
+    expect(toggle?.textContent).toBe("Show command");
+    await act(async () => toggle?.click());
+    expect(host.querySelector<HTMLButtonElement>("[data-action=open]")?.textContent).toBe("Hide command");
+  });
+
   it("exec card: Allow once and Always allow are disabled with the preview tooltip; Don't stays and answers deny", async () => {
     const onAnswer = vi.fn();
     const host = await mount(<ApprovalCard approval={approval("e1")} details={detail("e1", { plugin: false })} name="Sapling" onAnswer={onAnswer} disabled={true} />);

@@ -1,5 +1,6 @@
 import { resolveAgentDir } from "../agents/agent-scope-config.js";
 import { resolveAuthProfileDatabasePath } from "../agents/auth-profiles/sqlite.js";
+import { PreparedModelRuntimePublicationSupersededError } from "../agents/prepared-model-runtime.errors.js";
 import type { PreparedModelRuntimeInput } from "../agents/prepared-model-runtime.js";
 import { resolveConfiguredAgentDatabaseTargets } from "../config/sessions/targets.js";
 import type { BranchConfig } from "../config/types.branch.js";
@@ -82,6 +83,38 @@ export async function replaceStartupAgentModelPreparation(
   const { replacePreparedModelRuntimeAgentBuilds } =
     await import("../agents/prepared-model-runtime.js");
   return replacePreparedModelRuntimeAgentBuilds(resolveAgentDir(cfg, agentId, env), reason);
+}
+
+/** Consecutive superseded publications an attempt republishes before it fails as superseded. */
+export const MAX_STARTUP_PUBLICATION_SKIPS = 8;
+
+/**
+ * Runs one startup model publication, republishing it each time a newer refresh, reload, or
+ * metadata read supersedes it. The agent's config and secrets are checked before each republish, so
+ * a change there fails the attempt with its own superseded error. Too many skips in a row also fail
+ * it as superseded; the attempt's watchdog still bounds the time.
+ */
+export async function publishStartupModelsUntilUnskipped(params: {
+  publishOnce: (onSkipped: () => void) => Promise<void>;
+  assertCurrent: () => void;
+  onRepublish: () => void;
+}): Promise<void> {
+  for (let skips = 1; ; skips += 1) {
+    let skipped = false;
+    await params.publishOnce(() => {
+      skipped = true;
+    });
+    if (!skipped) {
+      return;
+    }
+    params.assertCurrent();
+    if (skips >= MAX_STARTUP_PUBLICATION_SKIPS) {
+      throw new AgentDatabasePreparationSupersededError(
+        `startup model publication was superseded ${skips} times in a row`,
+      );
+    }
+    params.onRepublish();
+  }
 }
 
 /**
@@ -339,17 +372,31 @@ export function activateGatewayAgentDatabaseStartup(params: {
               );
             }
             preparedInput = undefined;
-            await runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
-              withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
-                refreshPreparedModelRuntimeSnapshots(cfg, {
-                  agentIds,
-                  catalogMode: "static",
-                  allowGatewaySubagentBinding: true,
-                  ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
-                  isPublicationCurrent,
-                }),
-              ),
-            );
+            await publishStartupModelsUntilUnskipped({
+              assertCurrent: assertPreparationCurrent,
+              onRepublish: () =>
+                params.log.info(
+                  `agent ${agentId} startup model publication was superseded; publishing it again`,
+                ),
+              publishOnce: (onSkipped) =>
+                runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
+                  withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
+                    refreshPreparedModelRuntimeSnapshots(cfg, {
+                      agentIds,
+                      catalogMode: "static",
+                      allowGatewaySubagentBinding: true,
+                      ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
+                      isPublicationCurrent,
+                      onPublicationSkipped: onSkipped,
+                    }).catch((error: unknown) => {
+                      if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) {
+                        throw error;
+                      }
+                      onSkipped();
+                    }),
+                  ),
+                ),
+            });
             preparedInput = listConfiguredOwnerInputs(cfg, undefined, true).find(
               (input) => input.agentId === agentId,
             );

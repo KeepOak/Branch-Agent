@@ -1,5 +1,8 @@
 // Small shared helpers for the Trunk queue: the recognised refusal of a Trunk that is not ready, and how a sweep reports
 // a Trunk's availability (logged only when it changes).
+import { isRuntimeRaceFailure } from "../sessions/session-run-error-presentation.js";
+import { isModelNotFoundErrorMessage } from "./live-model-errors.js";
+
 export type Rec = Record<string, unknown>;
 export const rec = (v: unknown): Rec => (v && typeof v === "object" ? (v as Rec) : {});
 
@@ -16,7 +19,31 @@ export function isTrunkUnavailableError(error: unknown): boolean {
   return (
     shape.gatewayCode === "UNAVAILABLE" ||
     shape.code === "UNAVAILABLE" ||
-    /has not completed startup inspection/.test(errorText(error))
+    errorText(error).includes("has not completed startup inspection")
+  );
+}
+
+// The Trunk's runtime was not published yet, its preparation timed out, or the state store was offline: the
+// not-ready failures main-session-restart-dispatch.ts retries and gateway-state-owner.ts reports.
+const NOT_READY_RUN_FAILURES =
+  /runtime owner was not published|is undergoing offline maintenance|has not completed startup inspection|preparation watchdog/i;
+
+/**
+ * A claimed run that failed because its Trunk could not run anything yet: a startup race, a not-ready refusal, an offline
+ * state store, or a model the Trunk cannot reach right now. The brief never ran, so like an UNAVAILABLE refusal at
+ * dispatch it is not a failed attempt of the job.
+ */
+export function isTrunkNotReadyRunFailure(error: unknown, errorKind?: unknown): boolean {
+  // Contention may happen after execution; its text must never grant a free replay.
+  if (errorKind === "state_contention") {
+    return false;
+  }
+  const text = errorText(error);
+  return (
+    isTrunkUnavailableError(error) ||
+    isRuntimeRaceFailure(error) ||
+    NOT_READY_RUN_FAILURES.test(text) ||
+    isModelNotFoundErrorMessage(text)
   );
 }
 
