@@ -12,9 +12,9 @@ export async function loadTrunks(engine: WindowEngine): Promise<{ trunks: Trunk[
   return { trunks, defaultId: str(r.defaultId) || trunks[0]?.id || "" };
 }
 
-export type JobRuns = { entries: Row[]; total: number };
+type JobRuns = { entries: Row[]; total: number };
 /** Each automation's newest runs (cron.runs scope job, newest first), one bounded request per automation. */
-export async function loadRecentRuns(engine: WindowEngine, jobs: Row[]): Promise<Map<string, JobRuns>> {
+async function loadRecentRuns(engine: WindowEngine, jobs: Row[]): Promise<Map<string, JobRuns>> {
   const ids = jobs.map(j => str(j.id)).filter(Boolean);
   const pages = await Promise.allSettled(ids.map(id => engine.request("cron.runs", { scope: "job", id, sortDir: "desc", limit: 50 })));
   const map = new Map<string, JobRuns>();

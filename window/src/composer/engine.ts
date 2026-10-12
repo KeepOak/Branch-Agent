@@ -23,7 +23,7 @@ export function agentOf(sessionKey: string | null | undefined): string | undefin
   return m ? m[1] : undefined;
 }
 
-export const ADMIN_SCOPE = "operator.admin";
+const ADMIN_SCOPE = "operator.admin";
 
 export function isAdmin(scopes: readonly string[]): boolean {
   return scopes.includes(ADMIN_SCOPE);
