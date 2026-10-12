@@ -3,6 +3,9 @@
 // atlas/NN.json shards of packed rows [id, area, name, what it does, status, pack], each under 100 KB so GitHub still
 // returns a reviewable patch, and loaded together on first open. Rows: {id, a: area, f: name, w: what it does, s: status, p: pack}.
 
+import type { PlaceId } from "../../places-nav/routes";
+import type { PageId } from "../settings/nav";
+
 export type AtlasStatus = "in Branch" | "partly built" | "planned";
 export type AtlasRow = { id: string; a: string; f: string; w: string; s: AtlasStatus; p: string };
 export type StatusFilter = "all" | "in" | "part" | "soon";
@@ -29,8 +32,8 @@ export const AREA: Readonly<Record<string, string>> = {
 /** Areas shown only at the Technical level, or while searching. */
 export const TECHNICAL_AREAS: ReadonlySet<string> = new Set(["agent-loop", "ops", "observability"]);
 
-/** Where a feature lives: a Settings page (the R1-06 page ids) or a place, optionally on a tab. */
-export type FeatureHome = { kind: "settings"; page: string } | { kind: "place"; place: string; tab?: string };
+/** Where a feature lives: a Settings page (the R1-06 page ids), a place (optionally on a tab), or a conversation. */
+export type FeatureHome = { kind: "settings"; page: PageId } | { kind: "place"; place: PlaceId; tab?: string } | { kind: "chat" };
 
 // The preview's HOME table, moved to the new page ids (its OLD2NEW: computer → browser, gateway → remote, usage → privacy,
 // self → learning). research and media have no home yet.
@@ -49,11 +52,11 @@ export const HOME: Readonly<Record<string, FeatureHome>> = {
   observability: { kind: "settings", page: "privacy" },
   ops: { kind: "settings", page: "remote" },
   "self-improvement": { kind: "settings", page: "learning" },
-  "multi-agent": { kind: "settings", page: "trunksP17" },
+  "multi-agent": { kind: "settings", page: "trunks" },
   "agent-loop": { kind: "settings", page: "instructions" },
   "ui-desktop": { kind: "settings", page: "appearance" },
   "ui-mobile-web": { kind: "settings", page: "general" },
-  sessions: { kind: "place", place: "chat" },
+  sessions: { kind: "chat" },
 };
 
 export const statusWord = (s: AtlasStatus): string => (s === "in Branch" ? "In Branch" : s === "partly built" ? "Partly built" : "Coming");
