@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Conversation } from "../connect/conversations";
 import { conversationMenuItems, keyHint, type ConversationMenuContext, type ConversationMenuRun } from "./conversation-menu";
 import type { MenuItem } from "./Menu";
+import { roomMenuItems } from "../rooms/room-menu";
 import { conversationLink, publicShareLink, readDetail } from "./ConversationMenu";
 import { readSharing } from "./ShareDialog";
 import { knownTrunks, mayTalk } from "./who-it-knows";
@@ -30,14 +31,16 @@ describe("P54 conversation header menu", () => {
       "Unpin", "Share this conversation…", "Clear messages and start fresh…", "Archive", "---", "Research…", "---", "More ›",
     ]);
     const all = leaves(conversationMenuItems(ctx("regular", true, { canMove: true }))).map((i) => i.label);
-    expect(all).not.toEqual(expect.arrayContaining(["Reload", "Copy link", "Send to the board", "Research’s profile", "Edit Research…"]));
+    for (const label of ["Reload", "Copy link", "Search in this conversation", "Send to the board", "Research’s profile", "Edit Research…"]) {
+      expect(all).not.toContain(label);
+    }
   });
 
   it("keeps every other action reachable under More", () => {
     const labels = leaves(more(conversationMenuItems(ctx("regular", true)))).map((i) => i.label);
     expect(labels).toEqual(expect.arrayContaining([
       "Talk live", "Rename this thread…", "Who Research knows", "Make a card on the Canopy board", "Look inside the last reply", "Map of this conversation",
-      "Replay this conversation", "As Markdown", "As a web page", "Side panel", "Hide or show the list", "Open the browser", "Switch light or dark",
+      "Replay this conversation", "As Markdown", "As a web page", "Side panel", "Hide or show the list", "Open the browser",
       "Why each thing is here", "Delete this conversation…", "Remove Research…",
     ]));
   });
@@ -84,6 +87,27 @@ describe("P54 conversation header menu", () => {
     expect(leaves(more(group)).map((i) => i.label)).toEqual(expect.arrayContaining(["Room rules", "Rename this group…"]));
   });
 
+  it("keeps exactly one room delete action wired to the room callback", () => {
+    calls.length = 0;
+    const room = roomMenuItems({ ruleWords: null, canLeave: true, run: { rename: run.rename, rules: run.guide, leave: run.archive, remove: run.remove } });
+    const items = more(conversationMenuItems(ctx("regular", true, { room })));
+    const deletes = leaves(items).filter((entry) => /^Delete/.test(entry.label));
+    expect(deletes.map((entry) => entry.label)).toEqual(["Delete…"]);
+    expect(deletes[0].danger).toBe(true);
+    expect(deletes[0].disabled).toBeUndefined();
+    deletes[0].run();
+    expect(calls).toEqual(["remove"]);
+    expect(leaves(items).filter((entry) => /^Rename/.test(entry.label)).map((entry) => entry.label)).toEqual(["Rename this group…"]);
+    const protectedRoom = roomMenuItems({ ruleWords: null, canLeave: false, run: { rename: run.rename, rules: run.guide, leave: run.archive, remove: run.remove } });
+    expect(leaves(conversationMenuItems(ctx("regular", false, { room: protectedRoom }))).filter((entry) => /^Delete/.test(entry.label))).toEqual([]);
+  });
+
+  it("leaves light or dark to the profile menu and Settings (DA-09)", () => {
+    for (const own of [true, false]) {
+      expect(leaves(conversationMenuItems(ctx("regular", own))).filter((entry) => /light|dark|theme/i.test(entry.label))).toEqual([]);
+    }
+  });
+
   it("offers four correctly worded snooze choices and a Wake action", () => {
     const snooze = more(conversationMenuItems(ctx("regular", true))).find((i) => i.kind === "sub" && i.label === "Snooze") as Extract<MenuItem, { kind: "sub" }>;
     expect(shape(snooze.items)).toEqual(["[Snooze until]", "In 1 hour", "In 3 hours", "Tomorrow", "Next week"]);
@@ -97,13 +121,16 @@ describe("P54 conversation header menu", () => {
   it("keeps the view actions wired", () => {
     calls.length = 0;
     const items = conversationMenuItems(ctx("regular", true));
-    for (const label of ["Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Switch light or dark", "Why each thing is here"]) {
+    for (const label of ["Side panel", "Hide or show the list", "Open in its own window", "Open its computer", "Open the browser", "Why each thing is here"]) {
       const found = leaf(items, label)!;
       expect(found.disabled).toBeUndefined();
       found.run();
     }
-    expect(calls).toEqual(["sidePanel", "list", "ownWindow", "computer", "browser", "theme", "guide"]);
-    expect(shape(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).toBeDefined();
+    expect(calls).toEqual(["sidePanel", "list", "ownWindow", "computer", "browser", "guide"]);
+    const tower = leaf(items, "Show the Control tower")!;
+    expect(tower.disabled).toBeUndefined();
+    tower.run();
+    expect(calls.at(-1)).toBe("tower");
     expect(leaves(more(conversationMenuItems(ctx("regular", true, { towerVisible: true })))).map((i) => i.label)).toContain("Hide the Control tower");
   });
 

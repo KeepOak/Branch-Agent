@@ -89,8 +89,8 @@ function HelpersModel({ c }: { c: Ctx }) {
   const raw = c.config.get("agents.defaults.subagents.model");
   const value = typeof raw === "string" ? raw : str(rec(raw).primary);
   return (
-    <Ctl title="Helpers’ model" sub="Helpers may use their own account and a different model." help="A Trunk’s helpers can use a cheaper or stronger model, and their own account.">
-      <Pick label="Helpers’ model" value={value} disabled={c.config.loading} onChange={(v) => void c.config.set("agents.defaults.subagents.model", v || null)} options={[{ id: "", label: "Same as the Trunk" }, ...modelOpts(models.data)]} />
+    <Ctl title="Trunks’ model" sub="Trunks may use their own account and a different model." help="A Trunk’s sub-Trunks can use a cheaper or stronger model, and their own account.">
+      <Pick label="Trunks’ model" value={value} disabled={c.config.loading} onChange={(v) => void c.config.set("agents.defaults.subagents.model", v || null)} options={[{ id: "", label: "Same as the Trunk" }, ...modelOpts(models.data)]} />
     </Ctl>
   );
 }
@@ -151,7 +151,7 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   { t: "Memory engine", lv: 2, draw: (c) => <MemoryEngine c={c} /> },
   { t: "Outside memory", s: "Off until you choose: it changes where your data goes.", kind: "seg", off: "This engine has none of these memory services.", opts: ["None", "Mem0", "Honcho", "Hindsight"].map((x) => ({ id: x, label: x })) },
   no("Keep a history in Git", "Every change to memory as a commit, on this computer."),
-  { t: "Recall before replying", s: "Searches memory more deeply when quick recall finds nothing strong.", help: "Before a reply about the past, a helper searches memory more deeply. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
+  { t: "Recall before replying", s: "Searches memory more deeply when quick recall finds nothing strong.", help: "Before a reply about the past, a Trunk searches memory more deeply. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
   { t: "Memory wiki", s: "Keeps what Trunks know as linked Markdown pages.", help: "Each fact has its source. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", plug: "memory-wiki" },
 ], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "plugins")}>Open Plugins</LinkBtn></p> };
 
@@ -249,14 +249,14 @@ const TOOLS_SKILLS: SecSpec = { title: "Tools and skills", lv: 1, rows: [
 
 /* ---------- the remaining plain sections ---------- */
 const btnOff = (t: string, s: string, btn: string, off = NOSET): Spec => ({ t, s, kind: "btn", btn, off });
-const HELPERS: SecSpec = { title: "Helpers", lv: 1, rows: [{ t: "Helpers’ model", draw: (c) => <HelpersModel c={c} /> }, no("Helpers get the connectors", "Off: helpers get the Trunk’s tools minus connectors. They never get more than the Trunk.")] };
+const HELPERS: SecSpec = { title: "Trunks", lv: 1, rows: [{ t: "Trunks’ model", draw: (c) => <HelpersModel c={c} /> }, no("Trunks get the connectors", "Off: Trunks get the Trunk’s tools minus connectors. They never get more than the Trunk.")] };
 const TOOLS_TECH: SecSpec = { title: "Tools, technical", group: "Tools", lv: 2, rows: [
   no("Your own tools from files", "Loads tool files from the tools folder. Each one is checked before it’s offered."),
   no("Find tools with a command", "A command that prints more tools for this project.", "text"),
   no("Run connector programs on Branch’s own Node.js", "Off: the Node.js installed on this computer."),
   { t: "Python service", s: "Comes with Branch. Runs Python for tools that need it.", kind: "none", off: "The engine doesn’t report a Python service." },
 ] };
-const HOOKS: SecSpec = { title: "Hooks", lv: 2, rows: ["Before a tool runs", "After a tool runs", "When a conversation starts", "When you send a message", "When a Trunk stops", "When a helper stops", "Before tidying up", "When it needs you", "When a task finishes", "When a session ends", "When settings change", "When a file changes"].map((t) => ({ t })), whole: (c) => <HooksSec c={c} /> };
+const HOOKS: SecSpec = { title: "Hooks", lv: 2, rows: ["Before a tool runs", "After a tool runs", "When a conversation starts", "When you send a message", "When a Trunk stops", "Before tidying up", "When it needs you", "When a task finishes", "When a session ends", "When settings change", "When a file changes"].map((t) => ({ t })), whole: (c) => <HooksSec c={c} /> };
 const AUTO_MORE: SecSpec = { title: "Automations, more", group: "Automations", lv: 1, rows: [no("Run on GitHub Actions while this computer is off", "Schedules and their skills run on free GitHub runners; results and memory come back as commits. Off until you choose: your skills run on GitHub’s computers.")] };
 const SHARING_MORE: SecSpec = { title: "Sharing, more", group: "Sharing", lv: 1, rows: [btnOff("Pages Trunks publish", "Pages and their comments.", "See them", "Needs the engine’s list of published pages.")] };
 const TRUNKS_MORE: SecSpec = { title: "Trunks, more", group: "Trunks", lv: 1, rows: [
@@ -351,7 +351,7 @@ function LearnRow({ c }: { c: Ctx }) {
 }
 const RECALL: SecSpec = { title: "Recall and memory files", lv: 1, rows: [
   no("Bring up what it remembers, mid-task", "When something it knows matters to the step it’s on, it says so. Off until you choose: it can add a model call while it works."),
-  no("Helpers and side conversations may", "What a helper or a /btw side question can do with memory.", "seg", { def: "rw", opts: [{ id: "read", label: "Read memory only" }, { id: "rw", label: "Read and write" }] }),
+  no("Trunks and side conversations may", "What a Trunk or a /btw side question can do with memory.", "seg", { def: "rw", opts: [{ id: "read", label: "Read memory only" }, { id: "rw", label: "Read and write" }] }),
   sw("Save notes before tidying a conversation", "Before older messages fold away, the Trunk writes down what is worth keeping.", "agents.defaults.compaction.memoryFlush.enabled", true),
   btnOff("Notes about this computer", "Short files kept up to date in the background: this computer, its disks, the devices on your network and what you use most. Off until you choose.", "Read them"),
   no("Keep notes about this computer", "Off until you choose: it looks at your network, disks and recent activity."),
@@ -380,9 +380,9 @@ const DOCS: SecSpec = { title: "Documents it reads", lv: 1, rows: [
   no("Where the index lives", "This computer needs no server. A database server is for big or shared indexes.", "seg", { lv: 2, opts: seg2("This computer", "A database server") }),
   no("Database server address", "Vector or storage databases such as Postgres, Qdrant or Redis.", "text", { lv: 2, ph: "postgres://… or https://…" }),
 ] };
-const HELPERS_AGENTS: SecSpec = { title: "Helpers and other agents", lv: 1, rows: [
-  no("New helpers start with", "A copy of the conversation gives a helper everything said so far.", "seg", { off: "Only helpers tied to a chat thread have this choice in this engine.", opts: seg2("The task only", "A copy of the conversation") }),
-  no("Helpers use", "Their own: the model set in each specialist.", "seg", { off: "Set in Helpers › Helpers’ model.", opts: seg2("The Trunk’s model", "Their own") }),
+const HELPERS_AGENTS: SecSpec = { title: "Trunks and other agents", lv: 1, rows: [
+  no("New Trunks start with", "A copy of the conversation gives a Trunk everything said so far.", "seg", { off: "Only Trunks tied to a chat thread have this choice in this engine.", opts: seg2("The task only", "A copy of the conversation") }),
+  no("Trunks use", "Their own: the model set in each specialist.", "seg", { off: "Set in Trunks › Trunks’ model.", opts: seg2("The Trunk’s model", "Their own") }),
   no("Ask a stronger model on hard calls", "Off until you choose: it spends a call on a bigger model."),
   no("Plan first on long tasks", "Off until you choose: an extra planning call on long tasks."),
   no("Wait for my yes on the plan", "Off until you choose: it adds a wait for your go-ahead."),
@@ -395,8 +395,8 @@ const HELPERS_AGENTS: SecSpec = { title: "Helpers and other agents", lv: 1, rows
   sw("Look after several assistants at once", "Off until you choose: it sends work to other assistants.", "acp.enabled", false),
   no("Other computers running Branch, side by side", "Off until you choose: it hands work to other computers."),
   no("Trunks on other computers", "Off until you choose: it talks to Trunks on other computers."),
-  { t: "Helpers at once", s: "In each conversation; each conversation’s helpers count on their own.", lv: 2, k: "agents.defaults.subagents.maxConcurrent", kind: "num", def: 8, min: 1 },
-  no("When every helper slot is busy", "Wait in line keeps the request until a slot frees up.", "seg", { lv: 2, opts: seg2("Wait in line", "Say no") }),
+  { t: "Trunks at once", s: "In each conversation; each conversation’s Trunks count on their own.", lv: 2, k: "agents.defaults.subagents.maxConcurrent", kind: "num", def: 8, min: 1 },
+  no("When every Trunk slot is busy", "Wait in line keeps the request until a slot frees up.", "seg", { lv: 2, opts: seg2("Wait in line", "Say no") }),
   no("Waiting line", "Requests that can wait for a slot.", "num", { lv: 2 }),
   no("Wait at most", "Then the request is turned down.", "num", { lv: 2, unit: "seconds" }),
 ] };

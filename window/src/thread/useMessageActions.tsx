@@ -27,7 +27,6 @@ type DialogState =
 
 const NO_ENGINE = "Not connected to the engine yet.";
 const NO_REPLY = "Replying to one message needs the composer's reply chip, which isn't in this window yet.";
-const LATEST = "Branching starts just before one of your messages; send another message to branch after this reply.";
 
 const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -42,7 +41,11 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
     return () => clearTimeout(timer);
   }, [undoContext]);
   const busy = running ? `Not while ${name} is working.` : null;
-  const act = (run: () => void, reason: string | null): Act => ({ run, disabled: engine ? reason : NO_ENGINE });
+  // A row that is blocked only while the Trunk works says so (waiting), so the menu keeps it visible and explains it.
+  const act = (run: () => void, reason: string | null): Act => {
+    const disabled = engine ? reason : NO_ENGINE;
+    return { run, disabled, ...(disabled && reason === busy ? { waiting: true } : {}) };
+  };
   const fail = (e: unknown) => toast(errorText(e));
   const reload = () => opts.onReload?.();
 
@@ -71,20 +74,21 @@ export function useMessageActions(ctx: ThreadContextValue, opts: Options): { act
     const userText = block.kind === "user" ? block.text : "";
     return {
       copy: { run: () => void copyText(block.text, toast), disabled: null },
-      ...(isReply ? { retry: act(() => asked?.meta?.entryId && retry(asked.meta.entryId), busy ?? (asked ? null : "There is no message of yours before this reply to ask again.")) } : {}),
-      ...(!isReply ? { edit: act(() => entryId && setDialog({ kind: "edit", entryId, text: userText }), busy ?? (entryId ? null : NO_ENGINE)) } : {}),
+      // Rows that can never apply to this message are left out (no engine id, no earlier message to ask again).
+      ...(isReply && asked?.meta?.entryId ? { retry: act(() => asked.meta?.entryId && retry(asked.meta.entryId), busy) } : {}),
+      ...(!isReply && entryId ? { edit: act(() => setDialog({ kind: "edit", entryId, text: userText }), busy) } : {}),
       reply: { run: () => entryId && opts.onReply?.({ entryId, name: isReply ? name : "you", text: block.text }), disabled: opts.onReply && entryId ? null : NO_REPLY },
       react: (emoji, remove) => react(entryId, emoji, remove),
       reactDisabled: !engine ? NO_ENGINE : !entryId ? "This message has no engine id yet." : null,
       ...(isReply ? { inspect: act(() => setDialog({ kind: "inspect", block, turn: turnOf(blocks, index) }), null) } : {}),
-      branch: act(() => branchAt && setDialog({ kind: "branch", entryId: branchAt }), busy ?? (branchAt ? null : LATEST)),
-      context: { ...act(() => entryId && setContext(entryId, !block.meta?.excluded), busy ?? (entryId ? null : "This message has no engine id yet.")), excluded: block.meta?.excluded === true },
-      ...(opts.onStartTopic ? { startConversation: { run: () => entryId && opts.onStartTopic?.(entryId), disabled: entryId ? null : "This message has no engine id yet." } } : {}),
-      ...(isReply
+      ...(branchAt ? { branch: act(() => setDialog({ kind: "branch", entryId: branchAt }), busy) } : {}),
+      ...(entryId ? { context: { ...act(() => setContext(entryId, !block.meta?.excluded), busy), excluded: block.meta?.excluded === true } } : {}),
+      ...(opts.onStartTopic && entryId ? { startConversation: { run: () => opts.onStartTopic?.(entryId), disabled: null } } : {}),
+      ...(isReply && block.text.trim()
         ? {
             read: {
               reading: reading === block.key,
-              disabled: block.text.trim() ? null : "There are no words to read in this reply.",
+              disabled: null,
               run: () => {
                 if (reading === block.key) {
                   stopReading();

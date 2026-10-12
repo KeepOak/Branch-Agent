@@ -232,7 +232,33 @@ export function createExperienceReviewMessages(modelId: string) {
     ];
   }
 
-  return { positiveMessages, learnableMessages, negativeMessages, interruptedMessages };
+  function repeatedFailureRecoveryMessages(): Message[] {
+    return [
+      makeAgentUserMessage({ content: "Publish the release bundle with the tile tool." }),
+      ...toolRound(
+        "publish-first",
+        "exec",
+        { command: "tilectl publish --manifest first.json" },
+        "lock held by another publish",
+        true,
+      ),
+      ...toolRound(
+        "publish-retry",
+        "exec",
+        { command: "tilectl publish --manifest release.json" },
+        '{"accepted":true,"receipt":"receipt-r43"}',
+      ),
+      assistantText("The publish succeeded after the lock cleared."),
+    ];
+  }
+
+  return {
+    positiveMessages,
+    learnableMessages,
+    negativeMessages,
+    interruptedMessages,
+    repeatedFailureRecoveryMessages,
+  };
 }
 
 export async function createExperienceReviewCandidate(

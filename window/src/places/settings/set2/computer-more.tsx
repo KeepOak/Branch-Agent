@@ -1,6 +1,6 @@
 // Settings › Computer & browser (DESIGN-SPEC §4.7.12), every section below "Which Trunk uses which", in the
 // preview's order and gated by level. Rows are one table per section: a row with a `key` reads and saves that engine
-// config path (config.patch), a row with `off` is greyed with why. The live sections at the end: Cloud computers
+// config path (config.patch), a row with `off` is not drawn (its spec stays as the engine-lane backlog). The live sections at the end: Cloud computers
 // (environments.*, cloudWorkers.*), Everything connected (device.pair.*, node.*, device.token.*) and Who is
 // connected now (system-presence). The browser rows are in computer-browser.tsx, the code and git rows in
 // computer-code.tsx.
@@ -57,7 +57,6 @@ const ON_COMPUTER: SecSpec = { t: "On a computer", lv: 0, rows: [
 const USING_SCREEN: SecSpec = { t: "Using the screen", lv: 0, rows: [
   { t: "Apps it may use", sub: "Each app on the list is allowed or never used. Every other app follows “Ask before opening an app it hasn’t used”.", k: "btn", btn: "Add an app", off: "Needs the engine to keep a list of allowed apps." },
   { t: "Pause when you touch the mouse", sub: "Moving the mouse or typing while a Trunk uses this computer pauses it at once. Its own clicks don’t count.", k: "sw", off: "Needs the screen driver to notice your own mouse and keys." },
-  { t: "Stop-everything key", k: "custom", render: () => <StopKey /> },
   { t: "Branch’s own windows", sub: "Never in its pictures or recordings, and its pointer and borders stay out too.", k: "val", val: "Always", tone: "idle", off: "Needs the screen driver to leave Branch’s windows out of its pictures." },
   { t: "Sign-in and password windows", sub: "No picture is taken while one shows. The live view is never saved, logged or shown to a model, and it’s refused under Lockdown and App lock.", k: "val", val: "Always", tone: "idle", off: "Needs the screen driver to recognise sign-in windows." },
   { t: "Check what works", k: "custom", render: (c) => <CheckWorks c={c} /> },
@@ -66,7 +65,6 @@ const USING_SCREEN: SecSpec = { t: "Using the screen", lv: 0, rows: [
 const TECHNICAL: SecSpec = { t: "Technical", group: "Connections", showHeading: false, lv: 2, body: (c) => <TechKv c={c} /> };
 
 const LET_TRUNKS: SecSpec = { t: "Let Trunks use this computer", lv: 0, hint: "Lend this computer to Branch on another computer.", rows: [
-  { t: "Code from the other computer", k: "custom", render: () => <PairRow /> },
   { t: "Share this computer’s screen", k: "custom", lv: 1, render: (c) => <ShareScreen c={c} /> },
 ] };
 
@@ -225,11 +223,14 @@ export function ComputerMore(props: SettingsPageProps) {
   return <>{SECTIONS.filter((s) => s.lv <= lv).map((s) => <SecView key={s.t} s={s} c={c} />)}</>;
 }
 
+/** A section shows only when it has a live row or a live body; a section of greyed rows is not drawn at all. */
 function SecView({ s, c }: { s: SecSpec; c: Ctx }) {
+  const rows = (s.rows ?? []).filter((r) => (r.lv ?? 0) <= c.lv && c.lv <= (r.upTo ?? 2) && !r.off);
+  if (!s.body && !rows.length) return null;
   return (
     <Sec title={s.t} group={s.group} showHeading={s.showHeading} hint={s.hint} id={s.id}>
       {s.body ? s.body(c) : null}
-      {(s.rows ?? []).filter((r) => (r.lv ?? 0) <= c.lv && c.lv <= (r.upTo ?? 2)).map((r) => <Row key={r.t} s={r} c={c} />)}
+      {rows.map((r) => <Row key={r.t} s={r} c={c} />)}
     </Sec>
   );
 }
@@ -243,7 +244,7 @@ function subOf(s: Spec): ReactNode {
 export function Row({ s, c }: { s: Spec; c: Ctx }) {
   if (s.k === "hint") return <Hint>{s.sub}</Hint>;
   if (s.k === "custom") return <>{s.render?.(c)}</>;
-  if (s.off) return <OffRow s={s} />;
+  if (s.off) return null; // greyed stubs are not drawn; their specs stay as the engine-lane backlog (TODO(engine-lane))
   if (s.k === "code") return <CodeRow title={s.t} code={s.code ?? ""} sub={s.sub} />;
   if (s.k === "copy") return <CopyCfgRow s={s} c={c} />;
   if (s.k === "change") return <ChangeRow s={s} c={c} />;
@@ -251,22 +252,6 @@ export function Row({ s, c }: { s: Spec; c: Ctx }) {
   if (s.k === "list") return <ListRow s={s} c={c} />;
   if (s.k === "arg") return <ArgRow s={s} c={c} />;
   return <CfgRow s={s} c={c} />;
-}
-
-/** A row the engine can't back yet: the control drawn inert and the reason as its sub-line. */
-function OffRow({ s }: { s: Spec }) {
-  const none = () => undefined;
-  const opts = (s.opts ?? []).map((o, i) => ({ id: String(i), label: o.l }));
-  const control = s.k === "sw" ? <Switch label={s.t} checked={false} onChange={none} disabled />
-    : s.k === "seg" ? <Seg label={s.t} value="" options={opts} onChange={none} disabled />
-    : s.k === "pick" ? <Pick label={s.t} value="0" options={opts} onChange={none} disabled />
-    : s.k === "num" ? <Num label={s.t} value={undefined} onCommit={none} unit={s.unit} disabled />
-    : s.k === "code" ? <code className="s2-code">{s.code}</code>
-    : s.k === "text" || s.k === "list" || s.k === "arg" ? <Field label={s.t} value="" placeholder={s.ph} onCommit={none} disabled />
-    : s.k === "val" ? (s.tone ? <Pill tone={s.tone}>{s.val}</Pill> : s.code ? <code className="s2-code">{s.val}</code> : <span className="val-k">{s.val}</span>)
-    : s.btns ? <>{s.btns.map((b) => <Btn key={b} sm disabled>{b}</Btn>)}</>
-    : s.btn ? <Btn sm disabled>{s.btn}</Btn> : null;
-  return <Ctl title={s.t} sub={subOf(s)} off={s.off}>{control}</Ctl>;
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -449,25 +434,6 @@ function TechKv({ c }: { c: Ctx }) {
   return <Kv rows={[["Sealed box", mode === "off" ? `Off · ${image}` : image], ["Browser profile", str(rec(br.data).userDataDir)]]} />;
 }
 
-/** Stop-everything key: the keys drawn inert until the engine has a stop key on this computer. */
-function StopKey() {
-  return (
-    <Ctl title="Stop-everything key" sub="Stops every Trunk’s mouse and keyboard on every computer." help="Press it anywhere to stop every Trunk’s mouse and keyboard on every computer at once. It stays stopped until you let them resume." off="Needs the engine’s stop key on this computer.">
-      <span className="s2cm-kbd">{["Ctrl", "Alt", "Shift", "Esc"].map((k) => <kbd key={k}>{k}</kbd>)}</span>
-    </Ctl>
-  );
-}
-
-/** Lending this computer starts on this computer's node: the Branch app pairs it with the other Branch. */
-function PairRow() {
-  return (
-    <Ctl title="Code from the other computer" sub="8 characters, two groups of 4." help="8 characters, two groups of 4. Make it on the other computer: Add a computer › Another computer with Branch." off="Lending this computer is done by the Branch app on it.">
-      <input className="inp s2cm-code" aria-label="Code from the other computer" placeholder="ABCD-1234" disabled />
-      <Btn pri sm disabled>Pair</Btn>
-    </Ctl>
-  );
-}
-
 /** desktop.host.enabled, with the local desktop's setup state from environments.list. */
 function ShareScreen({ c }: { c: Ctx }) {
   const cfg = useConfig(c.engine);
@@ -548,7 +514,6 @@ function ScreenDriver({ c }: { c: Ctx }) {
   return (
     <Ctl title="Screen driver" sub={str(d.error) || "The driver computer control uses on this computer."}>
       {st.data ? <Pill tone={tone}>{word}</Pill> : null}
-      <Btn sm disabled title="Reinstalling the driver is done by the Branch app on your computer.">Reinstall</Btn>
     </Ctl>
   );
 }

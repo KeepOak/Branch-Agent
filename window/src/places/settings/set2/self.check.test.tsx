@@ -1,0 +1,65 @@
+// @vitest-environment jsdom
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { WindowEngine } from "../../../connect/engine";
+import { SelfPage } from "./self";
+
+let root: Root;
+let host: HTMLDivElement;
+beforeEach(() => {
+  (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+});
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
+async function show(level: "regular" | "advanced" = "regular", health: unknown = { ok: true }, memory: unknown = { embedding: { ok: true } }) {
+  const request = vi.fn(async (method: string) => {
+    const reply = method === "health" ? health : method === "doctor.memory.status" ? memory : {};
+    if (reply instanceof Error) throw reply;
+    return reply;
+  });
+  const engine = { request, onEvent: () => () => {}, sessionKey: "agent:main:main", agentId: "main", scopes: ["operator.admin"] } as WindowEngine;
+  await act(async () => root.render(<SelfPage page="self" engine={engine} title="Branch itself" level={level} />));
+  const button = [...host.querySelectorAll("button")].find(b => b.textContent === "Check Branch");
+  expect(button).toBeDefined();
+  await act(async () => button!.click());
+  return request;
+}
+it("checks Branch without terminal instructions in Regular", async () => {
+  const request = await show();
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain("Branch is responding.");
+  expect(document.body.textContent).not.toContain("branch doctor");
+  expect(dialog.querySelector("code")).toBeNull();
+  expect(request).toHaveBeenCalledWith("health", { probe: false });
+  expect(request).toHaveBeenCalledWith("doctor.memory.status", {});
+  expect(request.mock.calls.some(([method]) => method.includes("fix"))).toBe(false);
+});
+it("keeps terminal checks and repairs in Advanced", async () => {
+  await show("advanced");
+  expect(host.textContent).toContain("branch doctor --fix");
+  expect(document.querySelector('[role="dialog"]')!.textContent).not.toContain("branch doctor");
+});
+it("shows failed checks in plain language without leaking terminal instructions", async () => {
+  await show("regular", new Error("run branch doctor --fix"), new Error("transport failed"));
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain("Branch couldn’t be checked. Close this window and try again.");
+  expect(dialog.textContent).toContain("Memory search couldn’t be checked.");
+  expect(document.body.textContent).not.toContain("branch doctor");
+});
+it("does not claim skipped memory checks worked", async () => {
+  await show("regular", { ok: true }, { embedding: { ok: true, checked: false } });
+  expect(document.querySelector('[role="dialog"]')!.textContent).toContain("Memory search was not checked.");
+});
+
+it("keeps pending checks neutral until their responses arrive", async () => {
+  let resolveHealth!: (value: unknown) => void;
+  const health = new Promise(resolve => { resolveHealth = resolve; });
+  await show("regular", health, {});
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain("Checking Branch…");
+  expect(dialog.textContent).toContain("Memory search did not report a result.");
+  expect(dialog.querySelector("li.ok")).toBeNull();
+  await act(async () => resolveHealth({ ok: true }));
+  expect(dialog.textContent).toContain("Branch is responding.");
+});

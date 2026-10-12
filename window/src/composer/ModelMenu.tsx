@@ -40,7 +40,6 @@ type Props = {
   trunkId?: string;
 };
 
-const NO_PICK_ACCOUNT = "Picking one account for a single conversation isn't in the engine yet. Change the order in Accounts.";
 
 const accountsFor = (all: Account[], provider: string | undefined) => (provider ? all.filter((a) => a.p.provider === provider || a.p.authProvider === provider) : []);
 const UNAVAILABLE_LABELS: Record<AvailabilityReason, string> = {
@@ -165,9 +164,6 @@ export function ModelMenu(p: Props) {
             <Sep />
             <Head>Account</Head>
             <MenuItem label="Automatic" sub="Branch picks, and moves on when one runs low" checked />
-            {accounts.map((a) => (
-              <MenuItem key={a.a.profileId} label={accountName(a)} disabled reason={NO_PICK_ACCOUNT} />
-            ))}
             <LinkRow icon="users" label="Manage accounts…" target="settings/accounts" onOpen={p.onOpen} open={open} />
           </>
         ) : null}
@@ -178,7 +174,6 @@ export function ModelMenu(p: Props) {
           Thinking options depend on the model.
           {accounts.length > 1 ? ` When ${accountName(accounts[0])} runs out, Branch moves to ${accountName(accounts[1])}.` : ""}
         </p> : null}
-        {!p.embedded ? <LinkRow icon="users" label="Accounts and order…" target="settings/accounts" onOpen={p.onOpen} open={open} /> : null}
         {!p.embedded ? <LinkRow icon="sliders" label="Manage models…" target="settings/models" onOpen={p.onOpen} open={open} /> : null}
       </div>
   );

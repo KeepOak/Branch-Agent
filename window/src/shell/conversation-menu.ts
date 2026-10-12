@@ -39,7 +39,6 @@ export type ConversationMenuRun = {
   sidePanel: () => void;
   tower: () => void;
   list: () => void;
-  theme: () => void;
   computer: () => void;
   browser: () => void;
   guide: () => void;
@@ -61,7 +60,7 @@ export type ConversationMenuContext = {
   now: number;
   /** Whether the Trunk has replied in this conversation yet (Look inside reads the last reply). */
   hasReply: boolean;
-  /** Why Talk live is greyed, or null when voice works. */
+  /** Why live voice cannot run (the row is then left out), or null when it works. */
   talkOff: string | null;
   /** The agent window is closed (its × hides it; this row brings it back). */
   characterHidden?: boolean;
@@ -157,7 +156,6 @@ function viewRows(c: ConversationMenuContext): MenuItem[] {
     item(c.ownWindowOpen ? "Show its window" : "Open in its own window", "panel", c.run.ownWindow, c.ownWindowOff ? { disabled: c.ownWindowOff } : {}),
     item("Open its computer", "monitor", c.run.computer),
     item("Open the browser", "eye", c.run.browser),
-    item("Switch light or dark", "spark", c.run.theme),
   ].filter(present);
 }
 
@@ -165,9 +163,9 @@ function exportRows(c: ConversationMenuContext): MenuItem[] {
   return [item("As Markdown", "doc", c.run.exportConversation), item("As a web page", "doc", c.run.exportWebPage)];
 }
 
-/** The room rows (rooms/room-menu.ts), without the rename and delete ones this menu already has. */
+/** The room rows (rooms/room-menu.ts), without the rename row this menu already has. */
 function roomRows(c: ConversationMenuContext): MenuItem[] {
-  return (c.room ?? []).filter((entry) => entry.kind === "sep" || (entry.kind !== "head" && entry.kind !== "custom" && !/^Rename|^Delete/.test(entry.label)));
+  return (c.room ?? []).filter((entry) => entry.kind === "sep" || (entry.kind !== "head" && entry.kind !== "custom" && !/^Rename/.test(entry.label)));
 }
 
 function moreRows(c: ConversationMenuContext): (MenuItem | null)[] {
