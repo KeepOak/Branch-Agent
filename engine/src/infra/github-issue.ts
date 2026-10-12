@@ -1,8 +1,14 @@
-// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/infra/github-issue.ts (atlas OPS-0056). Changed for Branch: preserve canonical external GitHub API and validator paths through the rename map.
+// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/infra/github-issue.ts (atlas OPS-0056). Changed for Branch: file reports on the Branch-owned KeepOak/Branch-Agent repository, never the upstream tracker.
 import { spawn } from "node:child_process";
-/** Prepares and submits bounded issue content to openclaw/openclaw. */
+/** Prepares and submits bounded issue content to the Branch Agent repository. */
 import { createHash } from "node:crypto";
 import { truncateUtf8Prefix } from "../utils/utf8-truncate.js";
+import {
+  GITHUB_CREATED_ISSUE_PATH_RE,
+  GITHUB_ISSUE_CREATE_API,
+  GITHUB_ISSUE_NEW_URL,
+  GITHUB_ISSUE_REPOSITORY_REF,
+} from "./github-issue-target.js";
 
 export type PreparedGithubIssue = {
   body: string;
@@ -62,8 +68,6 @@ export type GithubIssueSubmitHooks = GithubIssueReconcileHooks & {
   beforeIssueCreate?: () => Promise<() => undefined> | (() => undefined);
 };
 
-const GITHUB_REPOSITORY = "github.com/openclaw/openclaw";
-const GITHUB_REPOSITORY_ISSUES_API = "repos/openclaw/openclaw/issues";
 const GITHUB_ISSUE_CREATE_TIMEOUT_MS = 30_000;
 const GITHUB_OUTPUT_MAX_BYTES = 1024 * 1024;
 const GITHUB_ISSUE_BODY_MAX_BYTES = 20_000;
@@ -88,7 +92,7 @@ function prepareGithubIssueBrowserFallback(
   body: string,
 ): GithubIssueBrowserFallback {
   const query = new URLSearchParams({ body, title });
-  const url = `https://github.com/openclaw/openclaw/issues/new?${query.toString()}`;
+  const url = `${GITHUB_ISSUE_NEW_URL}?${query.toString()}`;
   if (Buffer.byteLength(url, "utf8") > GITHUB_PREFILL_URL_MAX_BYTES) {
     return { reason: "url-too-long", status: "unavailable" };
   }
@@ -139,7 +143,7 @@ function issueCreateArgs(): readonly string[] {
     "--include",
     "--method",
     "POST",
-    GITHUB_REPOSITORY_ISSUES_API,
+    GITHUB_ISSUE_CREATE_API,
     "--input",
     "-",
     "--jq",
@@ -152,7 +156,7 @@ function issueLookupArgs(marker: string): readonly string[] {
     "issue",
     "list",
     "--repo",
-    GITHUB_REPOSITORY,
+    GITHUB_ISSUE_REPOSITORY_REF,
     "--state",
     "all",
     "--search",
@@ -174,7 +178,7 @@ function createdIssueUrl(value: unknown): string | undefined {
       url.origin === "https://github.com" &&
       !url.search &&
       !url.hash &&
-      /^\/openclaw\/openclaw\/issues\/\d+$/u.test(url.pathname)
+      GITHUB_CREATED_ISSUE_PATH_RE.test(url.pathname)
     ) {
       return url.toString();
     }
