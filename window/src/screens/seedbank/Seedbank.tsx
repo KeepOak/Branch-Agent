@@ -9,6 +9,7 @@ import { InstallSheet, PasteSheet } from "./InstallSheet";
 import { Adapters, Card, Row, Soon } from "./parts";
 import { parseSeed, type Seed } from "./seed";
 import { useSeedbank } from "./useSeedbank";
+import "../../glass/glass.css";
 import "./seedbank.css";
 
 export const KEEPOAK_COMING = "Coming: keepoak.com/seedbank";
@@ -73,19 +74,19 @@ export function Seedbank({ engine, variant = "place" }: Props) {
   const rowProps = { engine, onOpen: setOpen, onAdd: setOpen, onNotice: setNotice };
   const grid = (items: Entry[]) => <div className="sb-grid">{items.map(e => <Row key={e.id} entry={e} {...rowProps} />)}</div>;
   const section = (title: string, items: Entry[], more?: KindId) => <div className="sb-sec-list" key={title}>
-    <div className="sb-sec-h"><b>{title}</b><small>{items.length}</small>{more && <button type="button" className="sb-all" data-local="" onClick={() => setKind(more)}>View all</button>}</div>
-    {items.length ? grid(more ? items.slice(0, 4) : items) : <p className="sb-hint">{data.loading ? "Loading…" : "Nothing here yet."}</p>}
+    <div className="sb-sec-h"><b className="g-label">{title}</b><small className="g-label">{items.length}</small>{more && <button type="button" className="sb-all" data-local="" onClick={() => setKind(more)}>View all</button>}</div>
+    {items.length ? grid(more ? items.slice(0, 4) : items) : <p className="sb-hint g-label">{data.loading ? "Loading…" : "Nothing here yet."}</p>}
   </div>;
   const comingSection = (id: KindId, brief: boolean) => {
     const k = kindOf(id);
     return <div className="sb-sec-list" key={id} data-coming-kind={id}>
-      <div className="sb-sec-h"><b>{k.label}</b><small>Coming</small>{brief && id === "adapters" && <button type="button" className="sb-all" data-local="" onClick={() => setKind(id)}>View all</button>}</div>
-      {id === "adapters" ? <Adapters brief={brief} /> : <p className="sb-hint">{k.coming}</p>}
+      <div className="sb-sec-h"><b className="g-label">{k.label}</b><small className="g-label">Coming</small>{brief && id === "adapters" && <button type="button" className="sb-all" data-local="" onClick={() => setKind(id)}>View all</button>}</div>
+      {id === "adapters" ? <Adapters brief={brief} /> : <p className="sb-hint g-label" data-lines>{k.coming}</p>}
     </div>;
   };
 
   function results() {
-    if (query.trim()) return shown.length ? section(shown.length + " result" + (shown.length === 1 ? "" : "s"), shown) : <p className="sb-none">Nothing matches. Try another word.</p>;
+    if (query.trim()) return shown.length ? section(shown.length + " result" + (shown.length === 1 ? "" : "s"), shown) : <p className="sb-none g-label">Nothing matches. Try another word.</p>;
     if (kind !== "all") {
       const k = kindOf(kind);
       if (k.coming) return comingSection(kind, false);
@@ -119,22 +120,22 @@ export function Seedbank({ engine, variant = "place" }: Props) {
     </>;
   }
 
-  return <div className="sb" data-variant={variant} data-dropping={dropping || undefined}>
+  return <div className="sb g-clear" data-variant={variant} data-dropping={dropping || undefined}>
     <div className="sb-top">
-      <div>{variant === "place" && <h2 className="sb-title">Seedbank</h2>}<p className="sb-hint">{LEDE}</p></div>
+      <div>{variant === "place" && <h2 className="sb-title g-label">Seedbank</h2>}<p className="sb-hint g-label" data-lines>{LEDE}</p></div>
       <Soon className="sb-web" need="seedbank.web" reason={KEEPOAK_COMING} label="Open on keepoak.com (coming)">Open on keepoak.com ↗</Soon>
     </div>
-    <div className="sb-paste"><button type="button" className="sb-btn" data-local="" onClick={() => setPaste("")}>＋ Paste a seed</button><small>Or ⌘V on this page, or drop a .seed file on the window.</small></div>
+    <div className="sb-paste"><button type="button" className="sb-btn" data-local="" onClick={() => setPaste("")}>＋ Paste a seed</button><small className="g-label">Or ⌘V on this page, or drop a .seed file on the window.</small></div>
     <div className="sb-chips" role="tablist" aria-label="Kinds" data-local="">
       {[{ id: "all" as const, label: "All" }, ...KINDS].map(k => <button key={k.id} type="button" role="tab" className="sb-chip" aria-selected={kind === k.id} onClick={() => { setKind(k.id); setCat("All"); }}>{k.label}</button>)}
     </div>
-    <label className="sb-search"><Icon name="search" size={16} /><input type="search" placeholder="Search by name or creator" aria-label="Search Seedbank by name or creator" autoComplete="off" data-local="" value={query} onChange={e => setQuery(e.target.value)} /></label>
+    <label className="sb-search g-frost"><Icon name="search" size={16} /><input type="search" placeholder="Search by name or creator" aria-label="Search Seedbank by name or creator" autoComplete="off" data-local="" value={query} onChange={e => setQuery(e.target.value)} /></label>
     <div className="sb-sort" role="group" aria-label="Sort">
       {SORTS.map(s => s.coming ? <Soon key={s.id} need="seedbank.ratings" reason={s.coming}>{s.label}</Soon>
         : <button key={s.id} type="button" data-local="" aria-pressed={sort === s.id} title={s.tip} onClick={() => setSort(s.id)}>{s.label}</button>)}
     </div>
-    {data.offline && <p className="sb-notice" role="status">Seedbank is offline · <button type="button" data-local="" onClick={data.reload}>Try again</button></p>}
-    {notice && <p className="sb-notice" role="status">{notice} <button type="button" className="sb-x" data-local="" aria-label="Dismiss" onClick={() => setNotice(null)}>×</button></p>}
+    {data.offline && <p className="sb-notice g-label" data-lines role="status">Seedbank is offline · <button type="button" data-local="" onClick={data.reload}>Try again</button></p>}
+    {notice && <p className="sb-notice g-label" data-lines role="status">{notice} <button type="button" className="sb-x" data-local="" aria-label="Dismiss" onClick={() => setNotice(null)}>×</button></p>}
     <div className="sb-results">{results()}</div>
     {open && <InstallSheet entry={open} engine={engine} trunks={data.trunks} onClose={() => setOpen(null)} onDone={result => { setOpen(null); setNotice(result.notice); data.reload(); }} />}
     {paste !== null && <PasteSheet initial={paste} onClose={() => setPaste(null)} onSeed={openSeed} />}
@@ -158,7 +159,7 @@ export function CustomizeWithCommunity({ engine, personal }: { engine: WindowEng
 /** Customize's switch (item 28): Personal is today's Customize, Community is Seedbank. */
 export function CustomizeModes({ engine, mode, onMode, personal }: { engine: WindowEngine; mode: "personal" | "community"; onMode: (mode: "personal" | "community") => void; personal: ReactNode }) {
   return <div className="sb-place">
-    <div className="sb-modes"><span className="g-ctl sb-modes-seg" role="tablist" aria-label="Customize" data-local="">
+    <div className="sb-modes"><span className="g-frost sb-modes-seg" role="tablist" aria-label="Customize" data-local="">
       {(["personal", "community"] as const).map(m => <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => onMode(m)}>{m === "personal" ? "Personal" : "Community"}</button>)}
     </span></div>
     {mode === "community" ? <><h1 className="sb-sr">Customize · Community</h1><Seedbank engine={engine} /></> : personal}

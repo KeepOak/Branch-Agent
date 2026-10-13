@@ -101,6 +101,8 @@
 .g-label[data-lines]:not(#g48) { padding: 5px 11px; border-radius: 14px; }
 /* a control inside a pill shares that pill's frost instead of stacking a second one */
 :is(.g-frost, .g-label) :is(button, a[href], select, textarea, input):not(#g48#g48) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+/* ...and the chosen one in a group of choices on one pill (a segmented switch) takes the light lift over it */
+:is(.g-frost, .g-label) :is(button, a[href]):is([aria-selected="true"], [aria-pressed="true"]):not(#g48#g48#g48) { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
 /* the chosen one in a group, and a hovered control: a light lift over the same frost, outline kept */
 :is(.g-frost, .g-clear :is(button, a[href])):is([aria-current="true"], [aria-current="step"], [aria-current="page"], [aria-selected="true"], [aria-pressed="true"], :hover:not(:disabled, [aria-disabled="true"])):not([role="switch"], [data-solid], #g48#g48) {
   box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
