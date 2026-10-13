@@ -19,13 +19,14 @@
 
 /* One frosted pill: the fill, the blur and a 1 px outline drawn inside; softer inks firm up to the pill's own ink. */
 .r1c-pill, .r1c-note, .r1c-quiet, .r1c-flag, .r1c-tile, .r1c-mi, .r1c-chip,
-.r1c-menu :is(.c-pt, .c-pp, .c-grp, .c-mi, .c-row, .c-search, .c-seg, .r1c-runs, .r1c-line, .r1c-ctx, .r1c-more .bars, .mi, .pt, .ph, .acctT5, .sp-note) {
+.r1c-menu :is(.c-pt, .c-pp, .c-grp, .c-mi, .c-row, .c-search, .c-seg, .r1c-runs, .r1c-line, .r1c-ctx, .r1c-more .bars, .mi, .pt, .ph, .acctT5, .sp-note),
+.r1c-plugpop :is(.c-plug-h, .c-search, .c-ph, .c-tool, .c-librow, .c-plug-changed, .c-manage, .c-pp) {
   background: var(--r1c-p-fill); backdrop-filter: var(--r1c-p-blur); -webkit-backdrop-filter: var(--r1c-p-blur);
   border-color: transparent; box-shadow: inset 0 0 0 1px var(--r1c-p-edge);
   --ink-2: var(--r1c-p-ink2); --ink-3: var(--r1c-p-ink2); --bad: var(--r1c-p-bad);
 }
 /* the chosen or open one: a light lift over the same frost, outline kept */
-:is(.r1c-quiet, .r1c-mi, .r1c-tile, .r1c-menu .c-mi, .r1c-ringpop .mi, button.r1c-run):is(:hover, :focus-visible, [aria-expanded="true"], [aria-checked="true"], [aria-selected="true"], .on) {
+:is(.r1c-quiet, .r1c-mi, .r1c-tile, .r1c-menu .c-mi, .r1c-ringpop .mi, button.r1c-run, .r1c-plugpop :is(.c-tool, .c-manage), .r1c-menu .c-seg button):is(:hover, :focus-visible, [aria-expanded="true"], [aria-checked="true"], [aria-selected="true"], .on) {
   background: var(--r1c-p-fill); box-shadow: inset 0 0 0 1px var(--r1c-p-edge), inset 0 0 0 100vmax var(--r1c-p-on); outline: 0; }
 :root[data-transparency="reduce"] :is(.r1c-pill, .r1c-note, .r1c-quiet, .r1c-flag, .r1c-tile, .r1c-mi, .r1c-chip) { backdrop-filter: none; -webkit-backdrop-filter: none; }
 
@@ -33,6 +34,10 @@
 .g-popover:has(> .r1c-menu), .g-popover:has(> .r1c-plus) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border-color: transparent; }
 :root[data-transparency="reduce"] :is(.g-popover:has(> .r1c-menu), .g-popover:has(> .r1c-plus)) { background: var(--raise); box-shadow: inset 0 0 0 1px var(--r1c-p-edge); }
 @media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) :is(.g-popover:has(> .r1c-menu), .g-popover:has(> .r1c-plus)) { background: var(--raise); box-shadow: inset 0 0 0 1px var(--r1c-p-edge); } }
+/* ...and so is the tools menu, which is the classic composer's popover (composer/PlugMenu) */
+.c-pop.r1c-plugpop { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border-color: transparent; }
+:root[data-transparency="reduce"] .c-pop.r1c-plugpop { background: var(--raise); box-shadow: inset 0 0 0 1px var(--r1c-p-edge); }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .c-pop.r1c-plugpop { background: var(--raise); box-shadow: inset 0 0 0 1px var(--r1c-p-edge); } }
 .r1c-menu { display: grid; gap: 4px; }
 .r1c-menu :is(.c-pt, .c-pp, .c-grp, .r1c-runs, .r1c-line:not(button)) { width: fit-content; max-width: 100%; border-radius: 999px; }
 .r1c-menu :is(.c-pt, .c-grp) { padding: 2px 9px; margin: 6px 0 0; }
@@ -92,13 +97,32 @@
 .r1c-model .c-settings > .c-row:has([aria-label="Thinking"]) { display: none; }
 .r1c-menu .c-seg, .r1c-seg .c-seg { padding: 2px; border-radius: var(--r-seg); }
 .r1c-menu .c-seg button { padding: 4px 11px; border-radius: var(--r-thumb); font-size: var(--fs-12-5); font-weight: 500; color: var(--ink-2); }
-.r1c-menu .c-seg button.on { background: var(--gk-on); color: var(--ink); box-shadow: inset 0 1px 0 var(--gf-hi), var(--gk-sh-thumb), 0 0 0 .5px var(--gf-edge); }
+.r1c-menu .c-seg button.on { color: var(--ink); }
 .r1c-seg { padding: 4px 8px 6px; }
 .r1c-runs { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; font-size: 12.5px; color: var(--ink-2); }
 .r1c-runs > i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--ink-2); }
 .r1c-runs > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r1c-runs b { color: var(--ink); font-weight: 600; }
 .r1c-chip { flex: none; height: 26px; padding: 0 11px; border: 0; border-radius: 999px; color: var(--ink); font-size: 12.5px; font-weight: 500; cursor: pointer; }
+
+/* The tools menu (composer/PlugMenu), opened from the row's permission menu: the same clear menu, with its header, search,
+   section names, rows, notes and actions on pills, and no rule lines */
+.c-pop.r1c-plugpop { padding: 6px; gap: 4px; }
+.r1c-plugpop :is(.c-plug-h, .c-ph, .c-pp) { width: fit-content; max-width: 100%; box-sizing: border-box; }
+.r1c-plugpop .c-plug-h { margin: 0; padding: 6px 12px; border-radius: 14px; }
+.r1c-plugpop .c-ph { gap: 10px; margin: 6px 0 2px; padding: 2px 9px; border-radius: 999px; }
+.r1c-plugpop .c-pp { margin: 2px 0; padding: 2px 9px; border-radius: 14px; }
+.r1c-plugpop .c-search { margin: 0; border: 0; border-radius: 12px; }
+.r1c-plugpop .c-plug-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-content: start; padding: 0; }
+.r1c-plugpop :is(.c-subtools, .c-lib) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.r1c-plugpop :is(.c-tool, .c-librow) { border-radius: 14px; }
+.r1c-plugpop .c-tool:hover { background: var(--r1c-p-fill); }
+.r1c-plugpop :is(.c-plug-changed, .c-plug-foot) { border-top: 0; }
+.r1c-plugpop .c-plug-changed { padding: 6px 12px; border-radius: 14px; }
+.r1c-plugpop .c-plug-foot { padding: 0; }
+.r1c-plugpop .c-manage { padding: 6px 12px; border-radius: 999px; }
+.r1c-plugpop :is(.c-librow, .c-plug-changed) .btn { border: 0; border-radius: 999px; background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--r1c-p-edge); }
+.r1c-plugpop :is(.c-librow, .c-plug-changed) .btn:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--r1c-p-edge), inset 0 0 0 100vmax var(--r1c-p-on); }
 
 /* The + menu: tiles (grid, gap 6, 56 tall, radius 14) and rows (min 32, 6×10, radius 10, 13.5 px); groups split by 6 px */
 .r1c-plus { display: grid; gap: 6px; }
