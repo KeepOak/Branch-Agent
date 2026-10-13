@@ -1,13 +1,21 @@
-/* Settings › Branch › All features (preview .fBarP17 … .fGoP17). Rows separate by space, never by lines. */
+/* Settings › Branch › All features (preview .fBarP17 … .fGoP17). Rows separate by space, never by lines.
+   Glass (README item 48, owner, final): only the window's left sidebar is frosted. This page is clear glass (.g-clear) and
+   paints no frosted fill or blur of its own: every heading, line of text and control sits on a shared frosted pill (.g-frost,
+   .g-label, or a control inside .g-clear; glass/glass.css and the --gp-* tokens), so High contrast and Reduce transparency
+   reach it. --feat-tone only sets how much status colour a chip's word takes, so it keeps 4.5:1 on its pill. */
+:root { --feat-tone: 50%; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --feat-tone: 35%; } }
+:root[data-theme="dark"] { --feat-tone: 35%; }
+
 .feat-page { display: grid; gap: 0; min-width: 0; }
 .feat-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 4px; }
-/* Glass (HANDOFF 1.2): the search box is control glass (--gc-*); rows, chips and Open use chip and control glass. */
-.feat-search { flex: 1 1 240px; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; box-sizing: border-box; border-radius: 10px; color: var(--ink-3);
-  background: var(--gc-fill); border: .5px solid var(--gc-edge); box-shadow: inset 0 1px 0 var(--gc-hi); backdrop-filter: var(--gc-blur); -webkit-backdrop-filter: var(--gc-blur); }
-.feat-search:focus-within { box-shadow: inset 0 1px 0 var(--gc-hi), 0 0 0 3px color-mix(in srgb, var(--ink) 12%, transparent); }
+.feat-search { flex: 1 1 240px; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; box-sizing: border-box; border-radius: 10px; color: var(--ink-3); }
+.feat-search:focus-within { box-shadow: inset 0 0 0 1px var(--gp-edge), 0 0 0 3px color-mix(in srgb, var(--ink) 12%, transparent); }
 .feat-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 13px; color: var(--ink); }
-.feat-seg { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
-.feat-seg .seg { white-space: nowrap; }
+.feat-seg { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; border-radius: 12px; }
+/* The status filter is one pill; the chosen part takes the pill's light lift instead of a solid thumb. */
+.feat-seg .seg { white-space: nowrap; background: transparent; }
+.feat-seg .seg::before { background: var(--gp-on); box-shadow: inset 0 0 0 1px var(--gp-edge); }
 .feat-count { margin: 14px 0 0; font-size: 12.5px; color: var(--ink-3); min-height: 1.4em; }
 .feat-list { position: relative; height: min(64vh, 640px); overflow: auto; border-radius: 16px; outline: none; margin-top: 4px; }
 .feat-list:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 12%, transparent); }
@@ -15,23 +23,24 @@
 .feat-k, .feat-a, .feat-r { position: absolute; left: 0; right: 0; box-sizing: border-box; display: flex; align-items: center; gap: 10px; }
 .feat-k { height: 44px; padding: 14px 8px 0; font-weight: 700; font-size: 15px; color: var(--ink); }
 .feat-a { height: 34px; padding: 0 8px; color: var(--ink-2); font-size: 12.5px; }
+.feat-al { display: inline-flex; align-items: baseline; gap: 8px; }
 .feat-a b { font-weight: 600; }
 .feat-a small { color: var(--ink-3); font-size: inherit; }
 .feat-r { height: 58px; padding: 0 8px; border-radius: 10px; }
-.feat-r:hover { background: var(--gk-chip); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi); }
-.feat-r.focus { background: var(--gk-on); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi), var(--gk-sh-sel); }
-.feat-t { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+/* A hovered or deep-linked row: the same light lift and outline the shared pills use, over the clear page. */
+.feat-r:hover { background: var(--gp-on); }
+.feat-r.focus { background: var(--gp-on); box-shadow: inset 0 0 0 1px var(--gp-edge); }
+.feat-t { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .feat-t b { font-weight: 600; font-size: 13.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .feat-t small { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.feat-chip { flex: 0 0 auto; font-size: 11px; padding: 2px 8px; border-radius: 999px; color: var(--ink-3); white-space: nowrap;
-  background: var(--gk-chip); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi); }
-.feat-chip.in { color: var(--ok); }
-.feat-chip.part { color: var(--warn); }
-.feat-go { flex: 0 0 auto; height: 26px; padding: 0 10px; border-radius: 999px; color: var(--ink-2); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
-  background: var(--gc-fill); border: .5px solid var(--gc-edge); box-shadow: inset 0 1px 0 var(--gc-hi), var(--gc-sh-sm); backdrop-filter: var(--gc-blur); -webkit-backdrop-filter: var(--gc-blur); }
-.feat-go:hover { color: var(--ink); box-shadow: inset 0 1px 0 var(--gc-hi), var(--gc-sh); }
-.feat-empty { position: absolute; inset: 24px 0 auto; margin: 0; text-align: center; font-size: 13px; color: var(--ink-3); }
+.feat-chip { flex: 0 0 auto; margin-left: auto; font-size: 11px; white-space: nowrap; }
+.feat-chip.in:not(#g48#g48) { color: color-mix(in srgb, var(--ok) var(--feat-tone), var(--ink)); }
+.feat-chip.part:not(#g48#g48) { color: color-mix(in srgb, var(--warn) var(--feat-tone), var(--ink)); }
+.feat-chip.soon:not(#g48#g48) { color: var(--gp-ink-2); }
+.feat-go { flex: 0 0 auto; height: 26px; padding: 0 10px; border: 0; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+.feat-empty { position: absolute; inset: 24px 0 auto; margin: 0 auto; text-align: center; font-size: 13px; }
 @media (max-width: 760px) {
   .feat-bar { flex-direction: column; align-items: stretch; }
   .feat-search { flex: 0 0 34px; }
+  .feat-seg { align-self: flex-start; }
 }
