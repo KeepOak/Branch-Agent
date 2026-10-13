@@ -2,7 +2,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell } from "electron";
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
-import { appendFileSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
@@ -25,6 +25,7 @@ import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from 
 import { createAutoApplyUpdate } from "./auto-apply-update";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
+import { appendCappedLog } from "./log-rotation";
 import { readTail, recentLines, reportReadme } from "./diagnostics-report";
 import { zipStored } from "./diagnostics-zip";
 
@@ -82,7 +83,7 @@ const install: DesktopInstall | undefined = app.isPackaged ? {
 /** Appends one line to the app's own data directory log. */
 function log(line: string): void {
   try {
-    appendFileSync(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} ${line}
+    appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} ${line}
 `);
   } catch {
     // logging must never stop the app

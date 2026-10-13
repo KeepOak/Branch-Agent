@@ -155,6 +155,12 @@ export async function finishGatewayStartup(params: {
       activateGatewayAgentDatabaseStartup({
         admission: databaseStartupAdmission,
         preparationReady: databasePreparationReady.promise,
+        waitForPostReadyWork: params.waitForPostReadyWork,
+        trackDeferredWork: (run) => {
+          runtime.connectionWork.track(run).catch((error: unknown) => {
+            log.warn(`deferred transcript repair failed: ${String(error)}`);
+          });
+        },
         getConfig: getRuntimeConfig,
         getPluginRegistry: () => pluginRuntime.registry,
         getPluginMetadataSnapshot,

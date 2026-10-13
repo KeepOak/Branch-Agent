@@ -14,7 +14,7 @@ const rowOf = (over: Partial<Contact>): SideRow => contactRows([contact(over)], 
 const ctx = (over: Partial<RowMenuContext> = {}): RowMenuContext => ({
   now: new Date(2026, 9, 12, 12).getTime(), projects: [], ownWindowOff: null,
   actions: { snooze: vi.fn(), setUnread: vi.fn(), archive: vi.fn(), restore: vi.fn(), copyConversation: vi.fn() } as unknown as Actions,
-  open: vi.fn(), pin: vi.fn(), markRead: vi.fn(), archiveRoom: vi.fn(), rename: vi.fn(), moveToProject: vi.fn(), newConversation: vi.fn(),
+  open: vi.fn(), pin: vi.fn(), markRead: vi.fn(), archiveRoom: vi.fn(), unarchiveRoom: vi.fn(), rename: vi.fn(), moveToProject: vi.fn(), moveToGroup: vi.fn(), newConversation: vi.fn(),
   copyLink: vi.fn(), copyMarkdown: vi.fn(), copyText: vi.fn(), ownWindow: vi.fn(), ask: vi.fn(), editTrunk: vi.fn(), tidy: vi.fn(),
   removeTrunk: vi.fn(), confirmDelete: vi.fn(), ...over,
 });

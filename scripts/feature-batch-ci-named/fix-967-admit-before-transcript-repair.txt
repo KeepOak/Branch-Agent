@@ -1,0 +1,2 @@
+# Phase 1 PR-3 of #967: admission completes while a transcript repair is held open.
+engine:src/agents/prepared-model-runtime.transcript-repair.test.ts
