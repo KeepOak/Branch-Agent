@@ -32,7 +32,10 @@ import { usePersonName } from "../../shell/PersonMenu";
 import { useProjects } from "../../shell/Projects";
 import { copyMarkdown, copyText } from "../../shell/row-actions";
 import { ShortcutsDialog } from "../../shell/ShortcutsDialog";
-import { tidy } from "../../shell/StatusLayer";
+import { useSelection } from "../../shell/sidebar-state";
+import { KeepLastDialog, tidy } from "../../shell/StatusLayer";
+import { readLevel } from "../../places-nav/SettingsFrame";
+import { batchEntries } from "./batch";
 import { useUpdate } from "../../shell/use-status";
 import { readThemeChoice, setThemeChoice, type ThemeChoice } from "../../theme/theme";
 import { buildSections, contactRows, personRows, type Folder, type Person, type SideRow } from "./model";
@@ -117,7 +120,8 @@ export function Sidebar(p: SidebarProps) {
   const [menu, setMenu] = useState<SideRow | null>(null), menuAnchor = useRef<HTMLElement | null>(null);
   const [plusOpen, setPlusOpen] = useState(false), plusRef = useRef<HTMLButtonElement>(null);
   const [personOpen, setPersonOpen] = useState(false), meRef = useRef<HTMLButtonElement>(null);
-  const [dialog, setDialog] = useState<null | { kind: "rename"; row: SideRow } | { kind: "delete"; row: Conversation } | { kind: "remove"; agentId: string; name: string } | { kind: "shortcuts" | "apps" | "pair" }>(null);
+  const [dialog, setDialog] = useState<null | { kind: "rename"; row: SideRow } | { kind: "delete"; row: Conversation } | { kind: "deleteMany"; rows: Conversation[] } | { kind: "keep"; row: Conversation } | { kind: "remove"; agentId: string; name: string } | { kind: "shortcuts" | "apps" | "pair" }>(null);
+  const [batchOpen, setBatchOpen] = useState(false), batchAnchor = useRef<HTMLElement | null>(null);
   const [theme, setTheme] = useState<ThemeChoice>(readThemeChoice);
   const [installing, setInstalling] = useState(false);
 
@@ -140,7 +144,23 @@ export function Sidebar(p: SidebarProps) {
   const binsOpen = archivedOpen || narrow;
 
   const openRow = (row: SideRow) => { if (row.key) p.onOpen(row.key); else p.onSettings("people"); };
-  const handlers: RowHandlers = { onOpen: openRow, onMenu: (row, anchor) => { menuAnchor.current = anchor; setMenu(row); } };
+  // Select several (Classic shell/sidebar-state.ts): Alt+Click picks a row, Shift+Click extends, a plain click or Escape
+  // clears. The rows go in the order they show; the Trunks' own conversations can't be picked, as in Classic.
+  const shownRows = [...sections.pinned, ...sections.trunks, ...sections.people, ...sections.groups, ...sections.grafted, ...(binsOpen ? sections.archived : [])];
+  const shownThreads = () => shownRows.map(row => row.row).filter((row): row is Conversation => Boolean(row));
+  const selection = useSelection(shownThreads);
+  const pickedRows = () => shownThreads().filter(row => selection.picked.has(row.key));
+  const handlers: RowHandlers = {
+    onOpen: (row, event) => {
+      if (event && (event.altKey || event.shiftKey) && row.row) { selection.select(row.row, event); return; }
+      selection.clear(); openRow(row);
+    },
+    onMenu: (row, anchor) => {
+      if (selection.picked.size > 1 && row.key && selection.picked.has(row.key)) { batchAnchor.current = anchor; setBatchOpen(true); return; }
+      menuAnchor.current = anchor; setMenu(row);
+    },
+  };
+  const batch = batchOpen ? batchEntries(pickedRows(), actions, rows => (askBeforeDelete() ? setDialog({ kind: "deleteMany", rows }) : void actions.removeMany(rows).then(selection.clear)), selection.clear) : null;
   const markAllRead = (list: SideRow[]) => {
     const unread = list.filter(row => row.unread && row.contact);
     void Promise.all(unread.map(row => markContactRead(row.contact!, request))).then(
@@ -177,6 +197,8 @@ export function Sidebar(p: SidebarProps) {
     ask: key => { p.onOpen(key); void session.open(key).then(() => session.send("What can you do?")); },
     editTrunk: () => p.onPlace("customize"),
     tidy: row => void tidy({ session, list: p.list }, row, false),
+    advanced: readLevel() !== "regular",
+    keepLast: row => setDialog({ kind: "keep", row }),
     removeTrunk: (agentId, name) => setDialog({ kind: "remove", agentId, name }),
     confirmDelete: row => (askBeforeDelete() ? setDialog({ kind: "delete", row }) : void actions.remove(row).then(refreshContacts)),
   }) : null;
@@ -207,7 +229,7 @@ export function Sidebar(p: SidebarProps) {
 
   const section = (label: string, list: SideRow[], head?: React.ReactNode) => list.length ? <section className="r1sb-sec" data-section={label.toLowerCase()} key={label}>
     <SectionHead label={label}>{head}</SectionHead>
-    {list.map(row => <SideRowView key={row.id} row={row} current={row.key !== null && row.key === p.currentKey} now={now} handlers={handlers} />)}
+    {list.map(row => <SideRowView key={row.id} row={row} current={row.key !== null && row.key === p.currentKey} now={now} handlers={handlers} picked={row.key !== null && selection.picked.has(row.key)} />)}
   </section> : null;
   const nothing = !sections.pinned.length && !sections.trunks.length && !sections.people.length && !sections.groups.length && !sections.grafted.length;
 
@@ -230,7 +252,7 @@ export function Sidebar(p: SidebarProps) {
         <button type="button" className="r1sb-bin" data-local="" aria-expanded={binsOpen} onClick={() => setArchivedOpen(open => !open)} disabled={narrow}>
           <span className="r1sb-bin-chev">{icons.chevron}</span><span>Archived</span>{sections.archived.length ? <i>{sections.archived.length}</i> : null}
         </button>
-        {binsOpen ? sections.archived.length ? sections.archived.map(row => <SideRowView key={row.id} row={row} current={row.key === p.currentKey} now={now} handlers={handlers} />) : <p className="r1sb-bin-none">Nothing here</p> : null}
+        {binsOpen ? sections.archived.length ? sections.archived.map(row => <SideRowView key={row.id} row={row} current={row.key === p.currentKey} now={now} handlers={handlers} picked={row.key !== null && selection.picked.has(row.key)} />) : <p className="r1sb-bin-none">Nothing here</p> : null}
         <Coming need="sessions.restore" reason="Recently deleted comes in a later update. Deleting is final for now.">
           <button type="button" className="r1sb-bin"><span className="r1sb-bin-chev">{icons.chevron}</span><span>Recently deleted</span></button>
         </Coming>
@@ -251,6 +273,7 @@ export function Sidebar(p: SidebarProps) {
     </div>
 
     {menu && menuItems ? <Popover anchor={menuAnchor} label={`${menu.name} menu`} width={300} onClose={() => setMenu(null)}><div className="r1sb-pop"><Menu label={menu.name} tiles={menuItems.tiles} rows={menuItems.rows} onClose={() => setMenu(null)} /></div></Popover> : null}
+    {batch ? <Popover anchor={batchAnchor} label={batch.label ?? "Conversations"} width={260} onClose={() => setBatchOpen(false)}><div className="r1sb-pop"><Menu label={batch.label ?? "Conversations"} rows={batch.rows} onClose={() => setBatchOpen(false)} /></div></Popover> : null}
     {plusOpen ? <Popover anchor={plusRef} label="New, places and more" width={270} align="end" onClose={() => setPlusOpen(false)}><div className="r1sb-pop"><Menu label="New, places and more" rows={plusRows} onClose={() => setPlusOpen(false)} /></div></Popover> : null}
     {personOpen ? <Popover anchor={meRef} label="Who is using Branch" width={280} placement="above" onClose={() => setPersonOpen(false)}>
       <div className="r1sb-person r1sb-pop">
@@ -272,6 +295,8 @@ export function Sidebar(p: SidebarProps) {
     {dialog ? createPortal(<>
     {dialog?.kind === "rename" ? <RenameDialog row={dialog.row} onClose={() => setDialog(null)} onSave={label => { if (dialog.row.row) void actions.rename(dialog.row.row, label).then(refreshContacts); setDialog(null); }} /> : null}
     {dialog?.kind === "delete" ? <ConfirmDelete clear row={dialog.row} onCancel={() => setDialog(null)} onDelete={() => { const row = dialog.row; setDialog(null); void actions.remove(row).then(refreshContacts); }} /> : null}
+    {dialog?.kind === "deleteMany" && dialog.rows.length ? <ConfirmDelete clear row={dialog.rows[0]} count={dialog.rows.length} onCancel={() => setDialog(null)} onDelete={() => { const rows = dialog.rows; setDialog(null); void actions.removeMany(rows).then(() => { selection.clear(); refreshContacts(); }); }} /> : null}
+    {dialog?.kind === "keep" ? <KeepLastDialog onCancel={() => setDialog(null)} onKeep={() => { const row = dialog.row; setDialog(null); void tidy({ session, list: p.list }, row, true); }} /> : null}
     {dialog?.kind === "remove" ? <RemoveTrunkDialog clear engine={engine} agentId={dialog.agentId} name={dialog.name} onClose={() => setDialog(null)} /> : null}
     {dialog?.kind === "shortcuts" ? <ShortcutsDialog onClose={() => setDialog(null)} defaultName={trunks.list.find(trunk => trunk.isDefault)?.name} /> : null}
     {dialog?.kind === "apps" ? <GetAppsDialog onClose={() => setDialog(null)} onPair={() => setDialog({ kind: "pair" })} /> : null}
