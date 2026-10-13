@@ -49,6 +49,11 @@ const subscribe = (l: () => void) => {
 };
 const snapshot = () => current;
 
+/** The banner store, for a window that draws it with its own shell (screens/approvals/ProblemBanners.tsx). */
+export type ShownBanner = Banner;
+export const subscribeBanner = subscribe;
+export const currentBanner = snapshot;
+
 export function BannerView({ onOpen, setupOpen = false }: { onOpen: (sessionKey: string) => void; setupOpen?: boolean }) {
   const banner = useSyncExternalStore(subscribe, snapshot);
   useEffect(() => {

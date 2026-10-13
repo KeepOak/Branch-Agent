@@ -20,8 +20,10 @@ export type RowMenuContext = {
   pin: (contact: Contact) => void;
   markRead: (contact: Contact) => void;
   archiveRoom: (contact: Contact) => void;
+  unarchiveRoom: (contact: Contact) => void;
   rename: (row: SideRow) => void;
   moveToProject: (key: string, projectId: string) => void;
+  moveToGroup: (key: string, name: string) => void;
   newConversation: (agentId: string) => void;
   copyLink: (key: string) => void;
   copyMarkdown: (key: string, title: string) => void;
@@ -38,10 +40,8 @@ export const FIRST_MESSAGE = "Send a first message first.";
 export const DEFAULT_AWAKE = "Your default stays awake";
 export const DEFAULT_LISTED = "Your default stays in the list";
 export const TRUNK_LISTED = "Trunks stay in the list";
-export const MOVE_GROUP_OFF = "Moving into a group from here comes in a later update.";
 export const PAUSE_OFF = "Pausing a Trunk needs an engine method it doesn't have yet.";
 export const NO_PROJECTS = "No projects yet.";
-export const UNARCHIVE_GROUP_OFF = "Unarchiving a group comes in a later update.";
 
 /** The engine calls behind each entry (HANDOFF R1-02 "Engine calls"; shell/conversation-actions.ts). */
 export const NEED = {
@@ -52,7 +52,8 @@ export const NEED = {
   copy: ["sessions.create", "sessions.patch"],
   delete: "sessions.delete",
   roomArchive: "rooms.archive",
-  groupMove: "sessions.groups.put",
+  /** The group catalog to pick from, then the conversation's category (a new name joins the catalog). */
+  groupMove: ["sessions.groups.list", "sessions.patch"],
   pause: "agents.update",
   removeTrunk: "agents.delete",
   ask: "chat.send",
@@ -79,7 +80,7 @@ function archiveTile(row: SideRow, thread: Conversation | null, c: RowMenuContex
   const contact = row.contact!;
   const base = { label: row.archived ? "Unarchive" : "Archive", letter: "a", icon: icon("box") };
   if (row.isDefault) return { ...base, off: DEFAULT_LISTED };
-  if (contact.roomId) return row.archived ? { ...base, need: NEED.roomArchive, off: UNARCHIVE_GROUP_OFF } : { ...base, need: NEED.roomArchive, onSelect: () => c.archiveRoom(contact) };
+  if (contact.roomId) return { ...base, need: NEED.roomArchive, onSelect: () => (row.archived ? c.unarchiveRoom(contact) : c.archiveRoom(contact)) };
   if (row.kind === "trunk" && !row.archived) return { ...base, off: TRUNK_LISTED };
   if (!thread || !row.row) return { ...base, off: FIRST_MESSAGE };
   const target = row.row;
@@ -106,7 +107,10 @@ export function rowMenu(row: SideRow, c: RowMenuContext): { tiles: MenuEntry[]; 
     : { label: "Project…", icon: icon("folder"), off: NO_PROJECTS };
   const rows: (MenuEntry | null)[] = [
     trunk && agentId ? { label: "Rename", letter: "r", icon: icon("edit"), local: true, onSelect: () => c.editTrunk(agentId) } : { label: "Rename", letter: "r", icon: icon("edit"), need: NEED.patch, onSelect: () => c.rename(row) },
-    { label: "Move to", icon: icon("folder"), submenu: [{ label: "Group…", icon: icon("users"), need: NEED.groupMove, off: MOVE_GROUP_OFF }, projects] },
+    { label: "Move to", icon: icon("folder"), submenu: [
+      thread ? { label: "Group…", icon: icon("users"), need: NEED.groupMove, onSelect: () => c.moveToGroup(key, row.name) } : { label: "Group…", icon: icon("users"), off: FIRST_MESSAGE },
+      projects,
+    ] },
     trunk || row.kind === "grafted" ? { label: "New conversation", letter: "f", icon: icon("chat"), submenu: [
       trunk && agentId ? { label: "Fresh", icon: icon("plus"), need: NEED.create, onSelect: () => c.newConversation(agentId) } : { label: "Fresh", icon: icon("plus"), off: "A Grafted agent keeps one conversation." },
       thread ? { label: "Continue from this one", icon: icon("copy"), need: NEED.copy, hint: thread.working ? "From the last finished reply" : undefined, onSelect: () => void c.actions.copyConversation(thread, c.open) } : { label: "Continue from this one", icon: icon("copy"), off: FIRST_MESSAGE },
