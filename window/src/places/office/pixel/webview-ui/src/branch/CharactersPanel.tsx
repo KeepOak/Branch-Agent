@@ -94,7 +94,7 @@ function TrunkTile({ agent, selected, server, onPick }: TileProps) {
   return (
     <button type="button" title={agent.name} onClick={onPick} className={box}>
       <SpriteView frame={frame} scale={2} />
-      <span className="mt-[3px] pr-[2px] text-xs leading-[16px] tracking-[-1px] text-text">{agent.name}</span>
+      <span className="mt-[3px] pr-[2px] text-[15.5px] leading-[16px] tracking-normal text-text">{agent.name}</span>
     </button>
   );
 }
@@ -126,7 +126,7 @@ function HueRow({ hue, onHue }: { hue: number; onHue: (value: number) => void })
       <div className="relative ml-[10px] mt-[3px] h-[16px] w-[165px] border-2 border-border bg-bg-dark">
         <div className="absolute inset-y-0 left-0 bg-accent" style={{ width: fill }} />
         <div className="absolute -top-[5px] h-[19px] bg-border" style={{ left: handle, width: HUE_HANDLE_WIDTH }}>
-          <div className="absolute inset-x-[1px] inset-y-[2px] bg-text" />
+          <div className="absolute inset-y-[2px] left-[3px] w-[5px] bg-text" />
         </div>
         <input
           type="range"
@@ -234,7 +234,7 @@ export function CharactersPanel({ isOpen, onClose, server, officeState, agents, 
         <div className="mt-[11px] h-[28px]">
           <DeskRow officeState={officeState} seatId={look.seatId} onSeat={(seatId) => change({ seatId })} />
         </div>
-        <div className="mt-[14px] h-[9px] overflow-hidden pl-[9.75px] text-xs leading-[11px] tracking-[0.6px] text-text-muted">
+        <div className="mt-[14px] relative top-[-1px] h-[9px] overflow-hidden pl-[10.75px] text-[15.8px] leading-[11px] tracking-[0.05px] text-text-muted">
           You can also drag a Trunk onto a free desk in the office.
         </div>
         <ActionRow onReset={resetLook} onDone={onClose} />
