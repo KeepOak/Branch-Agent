@@ -8,6 +8,8 @@ import { featured, KINDS, kindOf, matches, SORTS, sortEntries, type Entry, type 
 import { InstallSheet, PasteSheet } from "./InstallSheet";
 import { Adapters, Card, Row, Soon } from "./parts";
 import { parseSeed, type Seed } from "./seed";
+import { looksLikeTeam, parseTeamMarkdown, type TeamFile } from "./team-markdown";
+import { TeamReview } from "./TeamReview";
 import { useSeedbank } from "./useSeedbank";
 import "../../glass/glass.css";
 import "./seedbank.css";
@@ -33,25 +35,32 @@ export function Seedbank({ engine, variant = "place" }: Props) {
   const [kind, setKind] = useState<KindId | "all">("all");
   const [query, setQuery] = useState(""), [sort, setSort] = useState<Sort>("popular"), [cat, setCat] = useState("All");
   const [open, setOpen] = useState<Entry | null>(null), [paste, setPaste] = useState<string | null>(null);
+  const [team, setTeam] = useState<TeamFile | null>(null);
   const [notice, setNotice] = useState<string | null>(null), [dropping, setDropping] = useState(false);
   const data = useSeedbank(engine, query);
   const shown = useMemo(() => sortEntries(data.entries.filter(e => (kind === "all" || e.kind === kind) && matches(e, query)), sort), [data.entries, kind, query, sort]);
 
+  const openTeam = (text: string, seedReason: string): string | null => {
+    if (!looksLikeTeam(text)) return seedReason;
+    const parsed = parseTeamMarkdown(text);
+    if (!parsed.ok) return parsed.reason;
+    setPaste(null); setTeam(parsed.team); return null;
+  };
   const openSeed = (text: string): string | null => {
     const parsed = parseSeed(text);
-    if (!parsed.ok) return parsed.reason;
+    if (!parsed.ok) return openTeam(text, parsed.reason);
     const entry = entryForSeed(parsed.seed, data.entries);
     if (!entry) return "That template isn’t in this version of Branch.";
     setPaste(null); setOpen(entry); return null;
   };
-  // ⌘V on this page (outside a text field) and a dropped .seed file open the sheet.
+  // ⌘V on this page (outside a text field) and a dropped .seed or .md file open the sheet.
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest?.("input, textarea, [contenteditable='true']") || document.querySelector(".sb-sheet")) return;
       const text = event.clipboardData?.getData("text") ?? "";
       const parsed = parseSeed(text);
-      if (!parsed.ok && !parsed.coming) return;
+      if (!parsed.ok && !parsed.coming && !looksLikeTeam(text)) return;
       event.preventDefault();
       const failed = openSeed(text);
       if (failed) setNotice(failed);
@@ -61,10 +70,11 @@ export function Seedbank({ engine, variant = "place" }: Props) {
     const onLeave = (event: DragEvent) => { if (!event.relatedTarget) setDropping(false); };
     const onDrop = (event: DragEvent) => {
       setDropping(false);
-      const file = [...(event.dataTransfer?.files ?? [])].find(f => /\.seed$/i.test(f.name));
+      const file = [...(event.dataTransfer?.files ?? [])].find(f => /\.(seed|md)$/i.test(f.name));
       if (!file) return;
       event.preventDefault();
-      void file.text().then(text => { const failed = openSeed(text); if (failed) setNotice(failed === "That isn’t a seed link or file." ? "That file isn’t a seed." : failed); });
+      const kindWord = /\.md$/i.test(file.name) ? "a team" : "a seed";
+      void file.text().then(text => { const failed = openSeed(text); if (failed) setNotice(failed === "That isn’t a seed link or file." ? `That file isn’t ${kindWord}.` : failed); });
     };
     document.addEventListener("paste", onPaste);
     window.addEventListener("dragover", onOver); window.addEventListener("dragleave", onLeave); window.addEventListener("drop", onDrop);
@@ -138,6 +148,7 @@ export function Seedbank({ engine, variant = "place" }: Props) {
     {notice && <p className="sb-notice g-label" data-lines role="status">{notice} <button type="button" className="sb-x" data-local="" aria-label="Dismiss" onClick={() => setNotice(null)}>×</button></p>}
     <div className="sb-results">{results()}</div>
     {open && <InstallSheet entry={open} engine={engine} trunks={data.trunks} onClose={() => setOpen(null)} onDone={result => { setOpen(null); setNotice(result.notice); data.reload(); }} />}
+    {team && <TeamReview team={team} engine={engine} onClose={() => setTeam(null)} onDone={result => { setTeam(null); setNotice(result.notice); data.reload(); }} />}
     {paste !== null && <PasteSheet initial={paste} onClose={() => setPaste(null)} onSeed={openSeed} />}
   </div>;
 }
