@@ -11,7 +11,7 @@ import { useLockdown } from "../../shell/use-lockdown";
 import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
 import { PlaceView } from "../../places-nav/PlaceView";
-import { PLACES, loadRoute, parseRoute, saveRoute, windowTitle, type Route } from "../../places-nav/routes";
+import { PLACES, loadRoute, parseRoute, saveRoute, windowTitle, type PlaceId, type Route } from "../../places-nav/routes";
 import { SettingsFrame as ClassicSettingsFrame } from "../../places-nav/SettingsFrame";
 import { SettingsFrame } from "../settings";
 import { R1_PAGES } from "../settings/pages/plugged";
@@ -30,6 +30,9 @@ import { recordOnboarding } from "../onboarding/finish";
 
 /** Places R1 Settings search can open (its Go to group). */
 const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }));
+
+/** Header and window title for a place. Seedbank has no sidebar row, so it has no PLACES name. */
+const placeTitle = (place: PlaceId) => place === "seedbank" ? "Seedbank" : place;
 
 /**
  * Pages that keep the Classic page although R1 has a slot for them, because the R1 port still lacks working Classic
@@ -116,7 +119,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   };
   useEffect(() => { if (ready) void lookStore(engine).load(); }, [ready, engine]);
   useEffect(() => {
-    document.title = windowTitle(route.kind === "chat" ? snapshot.name : route.kind === "settings" ? "Settings" : route.place, waiting.size, !ready);
+    document.title = windowTitle(route.kind === "chat" ? snapshot.name : route.kind === "settings" ? "Settings" : placeTitle(route.place), waiting.size, !ready);
   }, [route, snapshot.name, waiting.size, ready]);
   useEffect(() => {
     if (!agentOpen || !ready) return;
@@ -150,7 +153,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
     <div className="r1-ob-behind" inert={onboarding} aria-hidden={onboarding || undefined} style={{ display: "contents", visibility: onboarding ? "hidden" : undefined }}>
     <Frame sidebar={sidebar} main={main} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
-      title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : route.place,
+      title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: <Face size={24} label={snapshot.name} />, pillRef: pill, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
         { label: "Computer", icon: <Icon name="monitor" />, coming: "Computer controls are not connected yet." },

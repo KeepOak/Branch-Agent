@@ -6,6 +6,7 @@ import { InboxPlace } from "../places/inbox";
 import { LibraryPlace } from "../places/library";
 import { OverviewPlace } from "../places/overview";
 import { PeoplePlace } from "../places/people";
+import { SeedbankPlace } from "../screens/seedbank/SeedbankPlace";
 import { useLevel } from "./level";
 import { TrunkHost } from "./TrunkHost";
 import type { PlaceProps } from "./PlaceFrame";
@@ -22,6 +23,7 @@ const MOUNTS: Record<PlaceId, (p: PlaceProps) => React.ReactNode> = {
   people: PeoplePlace,
   customize: CustomizePlace,
   office: OfficePlace,
+  seedbank: SeedbankPlace,
 };
 
 /** Routes to a place's mount point (window/src/places/<place>/index.tsx). Preview enter11: only the place remounts. */
