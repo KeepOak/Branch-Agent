@@ -27,8 +27,10 @@ import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
+import { FindAnything } from "../find/FindAnything";
+import { ShortcutsDialog } from "../../shell/ShortcutsDialog";
 
-const FIND_ANYTHING_COMING = "Find anything is not connected yet.";
+const FIND_ANYTHING_NAMES_ONLY = "Message search needs a newer Branch engine. Find anything lists names only.";
 
 /** Places R1 Settings search can open (its Go to group). */
 const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }));
@@ -85,6 +87,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const [agentOpen, setAgentOpen] = useState(false), [identity, setIdentity] = useState<{ name?: string; emoji?: string } | null>(null);
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [finding, setFinding] = useState(false), [shortcuts, setShortcuts] = useState(false);
   // Both belong to the open conversation: opening another one drops them without an effect.
   const [reply, setReply] = useState<{ key: string | null; target: ReplyTarget } | null>(null);
   const replyTo = reply && reply.key === snapshot.sessionKey ? reply.target : null;
@@ -97,6 +100,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const setupReads = useMemo(() => ({ request: <T,>(method: string, params?: unknown) => Promise.resolve(engine.request<T>(method, params)) }), [engine]);
   const firstRun = useFirstRun(setupReads as Pick<SaplingSession, "request">, ready, () => document.querySelector(".r1-ob, [role=dialog][aria-modal=true]") !== null);
   const onboarding = ready && firstRun.step !== null;
+  // A clear card or dialog over the whole window: the window behind it steps aside (README item 48).
+  const behind = onboarding || finding;
   const closeAgent = useCallback(() => setAgentOpen(false), []);
   const applyRoute = useCallback((next: Route) => {
     saveRoute(next); setRoute(next); setAgentOpen(false);
@@ -155,7 +160,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       onLater={state => { firstRun.close(); void recordOnboarding(engine, state).catch((e: unknown) => setNotice(`Couldn’t save that setup is done: ${e instanceof Error ? e.message : String(e)}`)); }}
       onDone={({ sessionKey }) => { firstRun.close(); navigate({ kind: "chat", key: sessionKey }); }} />}
     {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
-    <div className="r1-ob-behind" inert={onboarding} aria-hidden={onboarding || undefined} style={{ display: "contents", visibility: onboarding ? "hidden" : undefined }}>
+    <div className="r1-ob-behind" inert={behind} aria-hidden={behind || undefined} style={{ display: "contents", visibility: behind ? "hidden" : undefined }}>
     <Frame sidebar={sidebar} main={main} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
@@ -176,12 +181,18 @@ export function R1Window({ session }: { session: SaplingSession }) {
     }} /> : undefined} onShortcut={action => {
       if (action === "settings") navigate({ kind: "settings", page: "appearance" });
       else if (action === "nextConversation" && rows.length) { const index = rows.findIndex(row => row.key === snapshot.sessionKey); openConversation(rows[(index + 1) % rows.length].key); }
-      else if (document.activeElement === search.current) setNotice(`Coming · ${FIND_ANYTHING_COMING}`);
+      // Ctrl K focuses the sidebar search; a second Ctrl K, from the search, opens Find anything (CHANGELOG-PASS17 line 156).
+      else if (action === "palette" && document.activeElement === search.current) setFinding(true);
       else { search.current?.focus(); }
     }} />
     </div>
-    {/* A second Ctrl K would open Find anything; it is a shortcut, not a control, so it registers hidden with the call it waits for. */}
-    <Coming engine={engine} need="sessions.search" unwired hidden reason={FIND_ANYTHING_COMING} where="Find anything"><span /></Coming>
+    {/* Find anything is a shortcut, not a control: it registers hidden with the call its message rows need. */}
+    <Coming engine={engine} need="sessions.search" hidden reason={FIND_ANYTHING_NAMES_ONLY} where="Find anything"><span /></Coming>
+    {finding && <FindAnything session={session} ready={ready} list={list} conversations={conversations.rows.filter(row => !row.system && !row.archived && !row.helper)} current={current}
+      lockdownOn={lockdown.on} onToggleLockdown={lockdown.supported ? () => void lockdown.toggle() : undefined} onOpenConversation={openConversation}
+      onPlace={place => navigate({ kind: "place", place })} onSettings={page => navigate({ kind: "settings", page })} onSetup={() => firstRun.open(0)}
+      onShortcuts={() => setShortcuts(true)} onClose={() => setFinding(false)} />}
+    {shortcuts && <ShortcutsDialog onClose={() => setShortcuts(false)} />}
     {lockdown.confirmation}
     <Toasts />
     <ApprovalsLayer engine={engine} ready={ready} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
