@@ -29,7 +29,8 @@ type Props = {
 
 /** The Classic banner as an R1 banner row: its face or line icon, title (×N), text and its one action. */
 export function bannerItem(banner: ShownBanner, onOpen: (sessionKey: string) => void): BannerItem {
-  const id = PREFIX + banner.id;
+  // A repeat keeps the stored id but has a new time, so the row is drawn afresh and its 6 s timer starts again.
+  const id = `${PREFIX}${banner.id}:${banner.at}`;
   const action = banner.action;
   const key = banner.sessionKey;
   return {
@@ -66,5 +67,5 @@ export function useProblemBannerRows({ session, shownKey, machineName, defaultNa
   useProblemBanners({ session, phase, machineName, defaultName, openConnection: onOpenConnection, askDefault: onAsk });
   const banner = useSyncExternalStore(subscribeBanner, currentBanner);
   const items = useMemo(() => (banner ? [bannerItem(banner, onOpen)] : []), [banner, onOpen]);
-  return useMemo(() => ({ items, dismiss: (id: string) => { if (id.startsWith(PREFIX)) clearBanner(Number(id.slice(PREFIX.length))); } }), [items]);
+  return useMemo(() => ({ items, dismiss: (id: string) => { if (id.startsWith(PREFIX)) clearBanner(Number(id.slice(PREFIX.length).split(":")[0])); } }), [items]);
 }

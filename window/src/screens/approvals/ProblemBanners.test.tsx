@@ -118,4 +118,34 @@ describe("R1 problem banners (Classic hooks in the R1 Banners shell)", () => {
     await settle();
     expect(banners()).toHaveLength(0);
   });
+
+  it("starts the 6 s timer again when a repeat arrives, so a late ×2 stays its full time", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const tick = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
+      const { session } = sessionOf([]);
+      let phase = "connected";
+      const watchers = new Set<() => void>();
+      Object.assign(session, { subscribe: (fn: () => void) => { watchers.add(fn); return () => watchers.delete(fn); }, getSnapshot: () => ({ status: { phase } }) });
+      const setPhase = async (next: string) => { phase = next; await act(async () => watchers.forEach((fn) => fn())); await tick(10); };
+      const calls = { onOpen: vi.fn(), onAsk: vi.fn(), onOpenConnection: vi.fn() };
+      const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+      const engine = engineOf([]);
+      await act(async () => root!.render(<CapabilityProvider engine={engine}><Window session={session} engine={engine} calls={calls} view="chat" /></CapabilityProvider>));
+      await tick(10);
+      await setPhase("connecting");
+      expect(banners()).toHaveLength(1);
+      await tick(5000);
+      await setPhase("connected");
+      await setPhase("connecting");
+      expect(banners()[0].querySelector("b")?.textContent).toBe("Can’t reach Studio ×2");
+      // Past the first banner's 6 s and its leave time: the repeat is still up, and not leaving.
+      await tick(3000);
+      expect(document.querySelectorAll("[data-testid=r1-banner]:not([data-gone])")).toHaveLength(1);
+      await tick(3500);
+      expect(banners()).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
