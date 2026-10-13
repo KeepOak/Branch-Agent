@@ -23,6 +23,8 @@ vi.mock("../../face/Face", () => ({ Face: () => <span /> }));
 vi.mock("../sidebar/Sidebar", () => ({ Sidebar: ({ ready, onSettings }: { ready: boolean; onSettings: (page: string) => void }) => <nav aria-label="Sidebar stub" data-ready={ready}><button type="button" aria-label="Settings" onClick={() => onSettings("appearance")} /></nav> }));
 vi.mock("../../places/settings/set1/appearance-store", () => ({ lookStore: () => ({ load: async () => undefined }) }));
 vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: [] }], usePendingApprovals: () => new Map(), useMachine: () => null }));
+const problemArgs: { value?: { onOpenConnection: () => void; machineName: string } } = {};
+vi.mock("../approvals/ProblemBanners", () => ({ useProblemBannerRows: (args: { onOpenConnection: () => void; machineName: string }) => { problemArgs.value = args; return undefined; } }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root, host: HTMLDivElement;
 beforeEach(() => {
@@ -55,6 +57,16 @@ it("mounts in a host without matchMedia or ResizeObserver, as App-level tests do
   await act(async () => root.render(<R1Window session={session} />));
   expect(host.querySelector('.r1-frame')?.getAttribute("data-wide")).toBe("true");
   expect(host.querySelector('[aria-label="Message"]')).not.toBeNull();
+});
+it("draws the Classic problem banners, whose Open connection goes to Settings › Devices", async () => {
+  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request: vi.fn() } } as unknown as SaplingSession;
+  await act(async () => root.render(<R1Window session={session} />));
+  const args = problemArgs.value!;
+  expect(args.machineName).toBe("");
+  await act(async () => args.onOpenConnection());
+  expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "devices" });
+  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("devices");
 });
 it("opens settings using an in-window history entry", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
