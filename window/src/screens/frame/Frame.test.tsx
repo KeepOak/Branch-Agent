@@ -65,7 +65,7 @@ it("unwired controls expose Coming reasons and cannot invoke actions", async () 
   await render();
   const controls = [...host.querySelectorAll<HTMLButtonElement>('.r1-header-right button')];
   expect(controls).toHaveLength(3);
-  for (const control of controls) { expect(control.disabled).toBe(true); expect(control.title).toMatch(/^Coming · /); expect(control.getAttribute('aria-label')).toContain('Coming'); }
+  for (const control of controls) { expect(control.getAttribute('aria-disabled')).toBe('true'); expect(control.dataset.coming).toMatch(/not connected yet/); expect(control.getAttribute('aria-label')).toContain('Coming'); }
   expect(host.querySelector<HTMLButtonElement>('[aria-label="Back"]')?.disabled).toBe(true);
 });
 it("isolates a failed region and offers a real retry", async () => {
