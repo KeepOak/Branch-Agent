@@ -2,6 +2,9 @@
 // Search, a status filter and one virtualised list of 4,973 features with In Branch / Partly built / Coming chips.
 // Static data, no engine calls; every control here is local (data-local). "Open" shows only when the host can take
 // the person to where the feature lives (onOpen) and the feature exists at least in part.
+// Glass (README item 48): the page is clear glass (.g-clear). Every heading, line of text and control sits on a frosted pill
+// with a 1px outline: the search box and the status filter are .g-frost, words are .g-label, and Open is a control on the
+// clear page, which takes the pill on its own (glass/glass.css).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Segmented } from "../../shell/Popover";
 import { HOME, countLine, countsOf, flatten, fmt, loadAtlas, statusWord, visibleRange, TECHNICAL_AREAS, KINDS, AREA, type AtlasRow, type FeatureHome, type ListItem, type StatusFilter } from "./atlas";
@@ -21,7 +24,7 @@ export type FeaturesPageProps = {
   rows?: readonly AtlasRow[];
 };
 
-const chipClass = (s: AtlasRow["s"]) => (s === "in Branch" ? "feat-chip in" : s === "partly built" ? "feat-chip part" : "feat-chip soon");
+const chipClass = (s: AtlasRow["s"]) => (s === "in Branch" ? "feat-chip g-label in" : s === "partly built" ? "feat-chip g-label part" : "feat-chip g-label soon");
 
 export function FeaturesPage({ technical, focus = null, onOpen, rows: given }: FeaturesPageProps) {
   const [loaded, setLoaded] = useState<readonly AtlasRow[] | null>(given ?? null);
@@ -85,32 +88,33 @@ export function FeaturesPage({ technical, focus = null, onOpen, rows: given }: F
   const open = (home: FeatureHome | undefined) => (home && onOpen ? () => onOpen(home) : null);
 
   const item = (it: ListItem, top: number) => {
-    if (it.kind === "k") return <div key={it.key} className="feat-k" style={{ top }} role="presentation">{it.label}</div>;
+    if (it.kind === "k") return <div key={it.key} className="feat-k" style={{ top }} role="presentation"><span className="g-label">{it.label}</span></div>;
     if (it.kind === "a") {
       const go = open(HOME[it.area]);
       return <div key={it.key} className="feat-a" style={{ top }}>
-        <b>{it.label}</b><small>{fmt(it.count)}</small>
+        <span className="feat-al g-label"><b>{it.label}</b><small>{fmt(it.count)}</small></span>
         {go ? <button type="button" className="feat-go" data-local onClick={go} aria-label={`Open ${it.label}`}>Open</button> : null}
       </div>;
     }
     const { row } = it;
     const go = row.s !== "planned" ? open(HOME[row.a]) : null;
     return <div key={it.key} className={row.id === focused ? "feat-r focus" : "feat-r"} style={{ top }} data-fid={row.id} role="listitem">
-      <span className="feat-t"><b>{row.f}</b><small>{row.w}</small></span>
+      <span className="feat-t g-label" data-lines><b>{row.f}</b><small>{row.w}</small></span>
       <span className={chipClass(row.s)}>{statusWord(row.s)}</span>
       {go ? <button type="button" className="feat-go" data-local onClick={go} aria-label={`Open where ${row.f} lives`}>Open</button> : null}
     </div>;
   };
 
   const total = rows?.length ?? 0;
-  return <div className="feat-page">
+  const line = failed ? "The feature list didn't load." : rows ? countLine(flat, total) : "";
+  return <div className="feat-page g-clear">
     <div className="feat-bar">
-      <label className="feat-search">
+      <label className="feat-search g-frost">
         <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" /><path d="m20 20-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
         <input data-local value={query} placeholder={`Search ${fmt(total)} features`} autoComplete="off" aria-label="Search all features"
           onChange={(e) => { setQuery(e.target.value); setFocused(null); }} />
       </label>
-      <div data-local className="feat-seg">
+      <div data-local className="feat-seg g-frost">
         <Segmented label="Show" value={filter} onChange={setFilter} options={[
           { id: "all", name: `All ${fmt(counts.all)}` },
           { id: "in", name: `In Branch ${fmt(counts.in)}` },
@@ -119,12 +123,12 @@ export function FeaturesPage({ technical, focus = null, onOpen, rows: given }: F
         ]} />
       </div>
     </div>
-    <p className="feat-count" aria-live="polite">{failed ? "The feature list didn't load." : rows ? countLine(flat, total) : ""}</p>
+    <p className={line ? "feat-count g-label" : "feat-count"} data-lines={line ? "" : undefined} aria-live="polite">{line}</p>
     <div ref={box} className="feat-list" tabIndex={0} role="list" aria-label="All features" aria-busy={!rows && !failed} onScroll={onScroll}>
       <div className="feat-in" style={{ height: flat.height }}>
         {flat.items.slice(from, to).map((it, i) => item(it, flat.offsets[from + i]!))}
       </div>
-      {rows && !flat.items.length ? <p className="feat-empty">Nothing matches. Try another word.</p> : null}
+      {rows && !flat.items.length ? <p className="feat-empty g-label">Nothing matches. Try another word.</p> : null}
     </div>
   </div>;
 }
