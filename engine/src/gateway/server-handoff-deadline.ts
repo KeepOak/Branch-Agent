@@ -9,10 +9,15 @@ export const HANDOFF_DEACTIVATION_PER_RUN_MS = 3_000;
 /** Extra time per queued command (the writer queue the step-down must fence behind). */
 export const HANDOFF_DEACTIVATION_PER_QUEUED_MS = 500;
 /**
- * The ceiling: the desktop waits 60 s for the step-down answer (desktop/src/handoff-timeouts.json stepDownTimeoutMs),
- * and an aborted step-down still needs time to restore its producers and answer inside that window.
+ * The ceiling. The desktop waits 60 s for the step-down answer (desktop/src/handoff-timeouts.json stepDownTimeoutMs);
+ * an aborted step-down must still let its late step settle and restore its producers inside that window, so
+ * max + settle window + restore budget stays under it and an abort is always answered as refused, never unanswered.
  */
-export const HANDOFF_DEACTIVATION_MAX_MS = 45_000;
+export const HANDOFF_DEACTIVATION_MAX_MS = 30_000;
+/** How long an overrun step (or a late state-lease release) gets to settle before it is treated as stuck. */
+export const HANDOFF_SETTLE_WINDOW_MS = 12_000;
+/** The fresh budget the producer restore gets after an aborted step-down. */
+export const HANDOFF_RESTORE_MS = 12_000;
 
 export type HandoffDeactivationBudget = { ms: number; reason: string };
 

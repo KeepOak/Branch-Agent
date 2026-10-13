@@ -260,6 +260,42 @@ describe("Gateway startup phases", () => {
     });
   });
 
+  it("accepts a state-lease release that finishes late instead of exiting (#481)", async () => {
+    await withPhaseState("gateway-phase-late-release", async (port) => {
+      const release = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, 25_000);
+          }),
+      );
+      const server = await startGatewayServerCore(port, {
+        ...options("gateway-phase-late-release-token"),
+        gatewayStateOwner: { assertDatabaseAccess: () => {}, release },
+      });
+      const previousDeadline = process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS;
+      process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS = "18000";
+      try {
+        await server.startupSettled;
+        vi.useFakeTimers();
+        const outcome = server.deactivate().then(
+          () => "released",
+          (error: unknown) => error,
+        );
+        await vi.advanceTimersByTimeAsync(30_000);
+        await expect(outcome).resolves.toBe("released");
+        expect(release).toHaveBeenCalledOnce();
+      } finally {
+        if (previousDeadline === undefined) {
+          delete process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS;
+        } else {
+          process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS = previousDeadline;
+        }
+        vi.useRealTimers();
+        await server.close({ reason: "late release test cleanup" });
+      }
+    });
+  });
+
   it("fails a receipt drain that never settles after the deactivation deadline", async () => {
     await withPhaseState("gateway-phase-deactivate-deadline", async (port) => {
       const release = vi.fn(async () => {});

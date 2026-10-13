@@ -22,6 +22,8 @@ import {
 import type { GatewayCronState } from "./server-cron.js";
 import {
   HANDOFF_DEACTIVATION_BASE_MS,
+  HANDOFF_RESTORE_MS,
+  HANDOFF_SETTLE_WINDOW_MS,
   isGatewayHandoffDeadlineError,
   raceHandoffDeadline,
   settlesWithin,
@@ -133,7 +135,7 @@ export function createGatewayRunHandoff(params: {
       if (isGatewayHandoffDeadlineError(error)) {
         // The late step is still this engine's own work: wait for it to finish before restoring, so the restore
         // never races it. Only a step that never settles keeps admission fenced for the run loop to stop.
-        if (!(await settlesWithin(error.settled, budgetMs))) {
+        if (!(await settlesWithin(error.settled, HANDOFF_SETTLE_WINDOW_MS))) {
           throw new GatewayHandoffFatalError(`${error.message}, but its step never settled`, {
             cause: error,
           });
@@ -154,7 +156,7 @@ export function createGatewayRunHandoff(params: {
         await beforeHandoffDeadline(
           restoreHandoffProducers(),
           "producer restore",
-          Date.now() + budgetMs,
+          Date.now() + HANDOFF_RESTORE_MS,
         );
         restored = true;
       } catch (restoreError) {

@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import timeouts from "../../../desktop/src/handoff-timeouts.json" with { type: "json" };
 import {
   GatewayHandoffDeadlineError,
   HANDOFF_DEACTIVATION_BASE_MS,
   HANDOFF_DEACTIVATION_MAX_MS,
+  HANDOFF_RESTORE_MS,
+  HANDOFF_SETTLE_WINDOW_MS,
   raceHandoffDeadline,
   resolveHandoffDeactivationBudget,
   settlesWithin,
@@ -23,7 +26,13 @@ describe("handoff step-down deadline (#481)", () => {
     const loaded = resolveHandoffDeactivationBudget({ activeRuns: 40, queuedCommands: 100 });
     expect(loaded.ms).toBe(HANDOFF_DEACTIVATION_MAX_MS);
     expect(loaded.reason).toContain("capped");
-    expect(HANDOFF_DEACTIVATION_MAX_MS).toBeLessThan(60_000);
+  });
+
+  it("answers an aborted step-down before the desktop stops waiting for it", () => {
+    // Worst case: the whole budget, then the settle window, then the restore, plus a margin to answer.
+    expect(
+      HANDOFF_DEACTIVATION_MAX_MS + HANDOFF_SETTLE_WINDOW_MS + HANDOFF_RESTORE_MS + 5_000,
+    ).toBeLessThan(timeouts.stepDownTimeoutMs);
   });
 
   it("takes a configured deadline within the same bounds", () => {

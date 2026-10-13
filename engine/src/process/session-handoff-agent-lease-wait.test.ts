@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getFileLockProcessStartTime } from "../shared/pid-alive.js";
+import type { AgentDatabaseAdmissionRefusal } from "../state/agent-database-admission.js";
+import { waitForPreviousEngineRelease } from "../state/agent-database-startup.stages.js";
 import {
   resolveSessionHandoffLeaseDir,
   writeSessionHandoffLease,
@@ -112,6 +114,23 @@ describe("agent database inspection waits for the previous engine's leases (#951
     await pause(200);
     holder.kill();
     await expect(wait).resolves.toMatchObject({ waitedMs: expect.any(Number) });
+  });
+
+  it("tells a timed-out preparation stage to wait for the release and retry, not count a failure", async () => {
+    const refusal = { reason: "" } as AgentDatabaseAdmissionRefusal;
+    const signal = new AbortController().signal;
+    const params = { agentId: "main", refusal, statusReason: "Agent main is preparing.", signal };
+    await expect(waitForPreviousEngineRelease(params)).resolves.toBe("free");
+    const holder = await previousEngine();
+    const file = leaseFor("session:agent:main:kept-run", holder.pid!);
+    refreshSessionHandoffLeases();
+    const wait = waitForPreviousEngineRelease(params);
+    await pause(300);
+    expect(refusal.reason).toBe(
+      "Agent main is preparing. Stage: waiting for the previous engine to release it.",
+    );
+    fs.unlinkSync(file);
+    await expect(wait).resolves.toBe("waited");
   });
 
   it("ends the wait when startup stops", async () => {

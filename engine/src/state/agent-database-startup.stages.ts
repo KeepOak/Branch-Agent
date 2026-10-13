@@ -143,17 +143,17 @@ export async function waitForStage<T>(params: {
 }
 
 /**
- * #951: after a handoff the previous engine may still be finishing a kept session of this agent. Its database work
- * must end before this engine reads the agent's deletion journal or opens its databases, so this waits on that
- * release itself (no stage clock runs meanwhile) rather than timing out against a held lock. False when startup
- * stopped during the wait.
+ * #951: after a handoff the previous engine may still be finishing a kept session of this agent, holding its
+ * databases. A preparation stage that timed out meanwhile timed out against that lock, so this waits on the release
+ * itself (no stage clock runs) instead of retrying against the held lock with a doubled limit. "free": nothing was
+ * held, the timeout is a real failure. "stopped": startup stopped during the wait.
  */
 export async function waitForPreviousEngineRelease(params: {
   agentId: string;
   refusal: AgentDatabaseAdmissionRefusal;
   statusReason: string;
   signal: AbortSignal;
-}): Promise<boolean> {
+}): Promise<"waited" | "free" | "stopped"> {
   const { agentId, refusal, statusReason, signal } = params;
   let waited = false;
   try {
@@ -171,11 +171,21 @@ export async function waitForPreviousEngineRelease(params: {
     if (waited) {
       log.info("previous engine released the agent's sessions; preparing", { agentId, waitedMs });
     }
-    return true;
+    return waited ? "waited" : "free";
   } catch (error) {
     if (signal.aborted) {
-      return false;
+      return "stopped";
     }
     throw error;
   }
+}
+
+/** True when `error` is a stage timeout and this agent's sessions were held by the previous engine until now. */
+export async function waitedForPreviousEngine(
+  error: unknown,
+  params: Parameters<typeof waitForPreviousEngineRelease>[0],
+): Promise<boolean> {
+  return (
+    error instanceof StageTimeoutError && (await waitForPreviousEngineRelease(params)) === "waited"
+  );
 }

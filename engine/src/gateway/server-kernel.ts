@@ -27,7 +27,10 @@ import { createGatewayControlUiRootLifecycle } from "./server-control-ui-root.js
 import { startGatewayCoreRuntime } from "./server-core-runtime.js";
 import {
   formatHandoffSeconds,
+  HANDOFF_RESTORE_MS,
+  HANDOFF_SETTLE_WINDOW_MS,
   resolveHandoffDeactivationBudget,
+  settlesWithin,
 } from "./server-handoff-deadline.js";
 import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import { prepareGatewayKernelRequestRuntime } from "./server-kernel-request-runtime.js";
@@ -238,12 +241,44 @@ export async function prepareGatewayKernel(
             // Every step-down step is bounded inside; an overrun rejects without fencing this engine for good.
             await sdkResourceHost.run(() => kernel.deactivate(deadline, budget.ms));
             releaseDeadline = Math.max(deadline, Date.now() + STATE_RELEASE_MIN_MS);
+            const release = Promise.resolve(stateLease?.release?.());
+            let releaseFailed = false;
+            let releaseError: unknown;
             try {
-              await beforeDeadline(Promise.resolve(stateLease?.release?.()));
+              await beforeDeadline(release);
             } catch (error) {
-              if (error instanceof GatewayHandoffFatalError) {
-                throw error;
+              if (!(error instanceof GatewayHandoffFatalError)) {
+                releaseFailed = true;
+                releaseError = error;
+              } else {
+                // A release that succeeds late has transferred ownership: accept it, never reverse it.
+                let lateError: unknown;
+                const lateFailed = release.then(
+                  () => false,
+                  (reason: unknown) => {
+                    lateError = reason;
+                    return true;
+                  },
+                );
+                if (
+                  !(await settlesWithin(
+                    lateFailed.then(() => undefined),
+                    HANDOFF_SETTLE_WINDOW_MS,
+                  ))
+                ) {
+                  throw error;
+                }
+                if (await lateFailed) {
+                  releaseFailed = true;
+                  releaseError = lateError;
+                } else {
+                  log.warn("gateway handoff state release finished late; the handoff continues");
+                }
               }
+            }
+            if (releaseFailed) {
+              const error = releaseError;
+              releaseDeadline = Date.now() + HANDOFF_RESTORE_MS;
               // The lease release may fail before ownership transfers. In that
               // case this kernel is still the only engine and must take work again.
               try {
