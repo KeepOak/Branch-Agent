@@ -111,3 +111,21 @@ it("the conversation menu's \"Show agents' work as\" rows turn Coming when the e
   await act(async () => rows[1].click());
   expect(setOverride).not.toHaveBeenCalled();
 });
+
+it("opens the R1 onboarding card on first run, with the window behind it stepped aside, and never once setup is recorded", async () => {
+  const snapshot = { status: { phase: "connected" }, name: "Main", sessionKey: "agent:main:main", mainKey: "agent:main:main", history: [], live: [], queued: [] };
+  const make = (config: unknown) => ({ subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request: vi.fn(async (method: string) => (method === "config.get" ? config : {})), onEvent: () => () => undefined, agentId: "main" } }) as unknown as SaplingSession;
+  await act(async () => root.render(<R1Window session={make({ hash: "h", config: {} })} />));
+  await act(async () => { await new Promise((r) => setTimeout(r, 800)); });
+  expect(host.querySelector(".r1-ob [role=dialog]")?.getAttribute("aria-label")).toBe("Set up Branch");
+  expect(host.querySelector(".r1-ob h1")?.textContent).toBe("Hi, I’m Branch.");
+  const behind = host.querySelector(".r1-ob-behind") as HTMLElement;
+  expect(behind.hasAttribute("inert")).toBe(true);
+  expect(behind.getAttribute("aria-hidden")).toBe("true");
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await act(async () => root.render(<R1Window session={make({ hash: "h", config: { wizard: { lastRunAt: "2026-10-01T00:00:00.000Z" } } })} />));
+  await act(async () => { await new Promise((r) => setTimeout(r, 800)); });
+  expect(host.querySelector(".r1-ob")).toBeNull();
+  expect(host.querySelector(".r1-ob-behind")?.hasAttribute("inert")).toBe(false);
+});
