@@ -3,9 +3,9 @@
 // its start (it removes the journal). No confirmation in time: stop the new app by its PID, put the previous copy
 // back, remember the release as rejected and relaunch the previous app.
 import { spawn, execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { readdir, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 
 export interface HelperPlan {
   journal: string;
@@ -125,8 +125,30 @@ async function rollback(plan: HelperPlan, journal: Journal, previous: string, pi
   await rm(plan.journal, { force: true });
 }
 
+// The desktop's log cap (src/log-rotation.ts), repeated here because this file runs alone: the live file rotates
+// when the next line would pass 100 MB, and five numbered archives are kept as desktop.1.log to desktop.5.log.
+const LOG_MAX_BYTES = 100 * 1024 * 1024;
+const LOG_ROTATED_FILES = 5;
+function rotatedLogPath(file: string, index: number): string {
+  const ext = extname(file);
+  return `${file.slice(0, file.length - ext.length)}.${index}${ext}`;
+}
+function appendCappedLog(file: string, text: string): void {
+  const size = existsSync(file) ? statSync(file).size : 0;
+  if (size > 0 && size + Buffer.byteLength(text) > LOG_MAX_BYTES) {
+    try {
+      rmSync(rotatedLogPath(file, LOG_ROTATED_FILES), { force: true });
+      for (let index = LOG_ROTATED_FILES - 1; index >= 1; index -= 1) {
+        if (existsSync(rotatedLogPath(file, index))) renameSync(rotatedLogPath(file, index), rotatedLogPath(file, index + 1));
+      }
+      renameSync(file, rotatedLogPath(file, 1));
+    } catch { /* keep appending: a log over its cap beats lost lines */ }
+  }
+  appendFileSync(file, text);
+}
+
 export async function runHelper(plan: HelperPlan): Promise<"applied" | "kept" | "rolled-back" | "none"> {
-  const log = (line: string): void => { try { appendFileSync(plan.log, `${new Date().toISOString()} ${line}\n`); } catch { /* never stops the swap */ } };
+  const log = (line: string): void => { try { appendCappedLog(plan.log, `${new Date().toISOString()} ${line}\n`); } catch { /* never stops the swap */ } };
   for (let i = 0; i < 240 && alive(plan.waitPid); i++) await sleep(250);
   const journal = readJournal(plan.journal);
   if (journal?.phase !== "staged" || alive(plan.waitPid)) {
@@ -155,7 +177,7 @@ export async function runHelper(plan: HelperPlan): Promise<"applied" | "kept" | 
 if (require.main === module && process.argv[2]) {
   const plan = JSON.parse(readFileSync(process.argv[2], "utf8")) as HelperPlan;
   void runHelper(plan).catch(error => {
-    try { appendFileSync(plan.log, `${new Date().toISOString()} desktop update helper failed: ${String(error)}\n`); } catch { /* ignore */ }
+    try { appendCappedLog(plan.log, `${new Date().toISOString()} desktop update helper failed: ${String(error)}\n`); } catch { /* ignore */ }
     process.exitCode = 1;
   });
 }

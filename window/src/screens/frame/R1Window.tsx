@@ -27,7 +27,8 @@ import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
-import { ToolPopover } from "./ToolPanels";
+import { R1Stage, R1StagePip } from "../stage/R1Stage";
+import type { PipTarget, StageMode } from "../../stage/ComputerStage";
 
 const FIND_ANYTHING_COMING = "Find anything is not connected yet.";
 
@@ -79,6 +80,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const limits = useLimits(session, ready);
   const lockdown = useLockdown(engine, ready, session, true);
   const [route, setRoute] = useState<Route>(loadRoute);
+  // The re-hosted Classic computer stage (parity row 1): which side is open, and the small window it shrinks to.
+  const [stage, setStage] = useState<StageMode | null>(null);
+  const [pip, setPip] = useState<PipTarget | null>(null);
   const [history, setHistory] = useState({ index: 0, count: 1 });
   const entries = useRef<Route[]>([route]);
   const search = useRef<HTMLInputElement>(null);
@@ -92,10 +96,6 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const setReplyTo = (target: ReplyTarget | null) => setReply(target ? { key: snapshot.sessionKey, target } : null);
   const [menuFor, setMenuFor] = useState<string | null | undefined>(undefined), convAnchor = useRef<HTMLElement | null>(null);
   const convMenu = menuFor === snapshot.sessionKey;
-  // The header's Computer and Browser panels (#977): one open at a time, anchored to its button.
-  const [tool, setTool] = useState<"computer" | "browser" | null>(null), toolAnchor = useRef<HTMLElement | null>(null);
-  const openTool = (which: "computer" | "browser", label: string) => { toolAnchor.current = document.querySelector<HTMLElement>(`.r1-header-right [aria-label="${label}"]`); setTool(open => open === which ? null : which); };
-  const closeTool = useCallback(() => setTool(null), []);
   const setConvMenu = (open: boolean) => setMenuFor(open ? snapshot.sessionKey : undefined);
   const work = useWorkMode(ready ? engine : undefined, snapshot.sessionKey);
   // R1-07: the onboarding card opens by itself on first run (no wizard.lastRunAt), as Classic setup does.
@@ -148,7 +148,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const sidebar = <Sidebar session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
     currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} error={conversations.error} />;
-  const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={CLASSIC_PAGE[route.page] ?? route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : <ChatView
+  const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={CLASSIC_PAGE[route.page] ?? route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
+    onMode={setStage} onClose={() => setStage(null)} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <ChatView
     name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo}
@@ -165,9 +166,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
-        // Computer reads computer.status, Browser reads (and can start) Branch's browser through browser.request.
-        { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t report on computer control.", onClick: ready ? () => openTool("computer", "Computer") : undefined },
-        { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t report on the browser.", onClick: ready ? () => openTool("browser", "Browser") : undefined },
+        { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", onClick: ready ? () => { setPip(null); setStage(open => open === "Computer" ? null : "Computer"); } : undefined },
+        { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", onClick: ready ? () => { setPip(null); setStage(open => open === "Browser" ? null : "Browser"); } : undefined },
         // ••• opens this window's conversation menu; each of its rows declares its own call.
         { label: "More", icon: <Icon name="more" />, onClick: ready ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
       ] : undefined,
@@ -189,6 +189,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {/* A second Ctrl K would open Find anything; it is a shortcut, not a control, so it registers hidden with the call it waits for. */}
     <Coming engine={engine} need="sessions.search" unwired hidden reason={FIND_ANYTHING_COMING} where="Find anything"><span /></Coming>
     {lockdown.confirmation}
+    {pip && route.kind === "chat" && !stage ? <R1StagePip key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} computer={pip} blocks={[...snapshot.history, ...snapshot.live]} onOpen={() => { setStage(pip.kind === "browser" ? "Browser" : "Computer"); setPip(null); }} onClose={() => setPip(null)} /> : null}
     <Toasts />
     <ApprovalsLayer engine={engine} ready={ready} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
     {convMenu && <Popover anchor={convAnchor} label="Conversation" align="end" width={260} onClose={() => setConvMenu(false)}><div className="r1c-menu" role="menu" aria-label="Show agents’ work as">
@@ -196,7 +197,6 @@ export function R1Window({ session }: { session: SaplingSession }) {
       {[{ id: null, label: `Like Settings (${WORK_MODES.find(m => m.id === work.global)?.label})` }, ...WORK_MODES].map(m => <Coming key={m.id ?? "default"} engine={engine} need="users.prefs.set" reason="This engine can’t save how agents’ work shows here." where={m.label}><button type="button" role="menuitemradio" className="r1c-mi" aria-checked={work.override === m.id}
         onClick={() => { void work.setOverride(m.id).catch((e: unknown) => setNotice(e instanceof Error ? e.message : String(e))); setConvMenu(false); }}><span className="r1c-mi-t">{m.label}</span>{work.override === m.id ? <Icon name="check" size={15} /> : null}</button></Coming>)}
     </div></Popover>}
-    {tool && route.kind === "chat" && <ToolPopover key={tool} tool={tool} engine={engine} anchor={toolAnchor} onClose={closeTool} onSettings={page => { closeTool(); navigate({ kind: "settings", page }); }} />}
     {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details g-clear">
       <strong className="g-label">{identity?.name ?? snapshot.name}</strong>{agentLine ? <p className="g-label">{agentLine}</p> : null}
       <button type="button" data-local="" onClick={closeAgent}>Close</button>

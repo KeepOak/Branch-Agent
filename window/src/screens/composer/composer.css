@@ -144,6 +144,8 @@
 /* The ring popover: min 320, max min(78vh, 640px), sections split by spacing */
 .r1c-ringpop { min-width: min(320px, calc(100vw - 32px)); max-height: min(78vh, 640px); overflow: auto; }
 .r1c-sec { display: grid; gap: 4px; padding: 2px 0 6px; margin-bottom: 6px; }
+/* This computer's actions (#977): start the browser, open its settings. */
+.r1c-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 8px 0; }
 .r1c-line { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 3px 12px; border: 0; border-radius: 999px; color: var(--ink); font-size: 13px; line-height: 1.5; text-align: left; }
 .r1c-line b { font-weight: 600; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r1c-line small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-size: 10.8px; }
