@@ -30,15 +30,15 @@ type Look = ReturnType<typeof useLook>;
 const lookCalls = (look: Look): string[] => (look.snap.where === "device" ? [] : ["users.prefs.set"]);
 
 /** One control and the calls it makes: through Coming when it makes some, else marked data-local. */
-function Needs({ engine, need, where, children }: { engine: WindowEngine; need: string[]; where: string; children: ReactElement }) {
+export function Needs({ engine, need, where, children }: { engine: WindowEngine; need: string[]; where: string; children: ReactElement }) {
   return need.length ? <Coming engine={engine} need={need} where={where}>{children}</Coming> : cloneElement(children, { "data-local": "" } as Record<string, unknown>);
 }
 
 /** A failed change, on its own pill under the control. */
-const Failed = ({ text }: { text: string }) => (text ? <small className="r1s-msg r1s-bad g-label" role="status" data-lines>{text}</small> : null);
+export const Failed = ({ text }: { text: string }) => (text ? <small className="r1s-msg r1s-bad g-label" role="status" data-lines>{text}</small> : null);
 
 /** Runs a change and keeps its failure to show; Classic's own save runner (useSaveRunner) reports here too. */
-function useFailure(): [string, (run: () => Promise<unknown>) => Promise<boolean>, SaveReport] {
+export function useFailure(): [string, (run: () => Promise<unknown>) => Promise<boolean>, SaveReport] {
   const [text, setText] = useState("");
   const report = useMemo<SaveReport>(() => ({ saving: () => setText(""), saved: () => setText(""), failed: (m) => setText(m) }), []);
   const run = async (fn: () => Promise<unknown>) => {

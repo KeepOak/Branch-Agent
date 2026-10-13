@@ -82,6 +82,23 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!.dataset.page).toBe("chatapps");
 });
+it("opens Settings › Accounts as the R1 page, which draws every working Classic Accounts control (#976)", async () => {
+  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "accounts" }));
+  await act(async () => root.render(<R1Window session={session} />));
+  expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')?.dataset.page).toBe("accounts");
+  expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
+  expect(r1SettingsPage("accounts")).toBe(true);
+});
+it("hands Sign-ins & keys to Classic under its Classic name, so Accounts › Add a key reaches the working key page", async () => {
+  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "signins" }));
+  await act(async () => root.render(<R1Window session={session} />));
+  expect(r1SettingsPage("signins")).toBe(false);
+  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("secrets");
+});
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
@@ -93,9 +110,10 @@ it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so
 it("sends a page to R1 Settings only when the row table or a slot covers it and Classic has nothing more", () => {
   expect(r1SettingsPage("general")).toBe(true);
   expect(r1SettingsPage("appearance")).toBe(true);
+  expect(r1SettingsPage("accounts")).toBe(true);
   expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(true);
   expect(r1SettingsPage("chatapps")).toBe(true);
-  for (const page of ["accounts", "models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
+  for (const page of ["models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
 });
 
 it("the conversation menu's \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {

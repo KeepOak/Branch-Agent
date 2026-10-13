@@ -38,11 +38,14 @@ const placeTitle = (place: PlaceId) => place === "seedbank" ? "Seedbank" : place
 
 /**
  * Pages that keep the Classic page although R1 has a slot for them, because the R1 port still lacks working Classic
- * features. Accounts keeps Classic until its R1 page draws every working Classic control.
- * Appearance is R1: its page draws every working Classic control (settings/pages/appearance-live.tsx, #976).
- * Chat apps is R1: its page draws every working Classic Chat apps control (screens/chatapps, #976).
+ * features. None is left: Appearance, Chat apps and Accounts each draw every working Classic control in R1
+ * (settings/pages/appearance-live.tsx, screens/chatapps, settings/pages/accounts-live.tsx; #976).
  */
-const KEEP_CLASSIC: ReadonlySet<string> = new Set(["accounts"]);
+const KEEP_CLASSIC: ReadonlySet<string> = new Set<string>();
+
+/** R1 page ids the Classic frame knows by another name, for a page R1 hands to Classic. Temporary: Accounts › Add a key
+ *  opens Sign-ins & keys, which has no R1 page yet and is Classic's secrets page; remove this when that page lands. */
+const CLASSIC_PAGE: Readonly<Record<string, string>> = { signins: "secrets" };
 
 /**
  * R1 Settings draws a page only once it has rows or its own slot and nothing working is left behind in Classic. Every
@@ -140,7 +143,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const sidebar = <Sidebar session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
     currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} error={conversations.error} />;
-  const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : <ChatView
+  const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={CLASSIC_PAGE[route.page] ?? route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : <ChatView
     name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo}
