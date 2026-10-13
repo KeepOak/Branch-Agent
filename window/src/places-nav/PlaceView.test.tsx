@@ -52,6 +52,11 @@ const openTrunk = (detail: unknown) => act(async () => {
 });
 
 describe("PlaceView", () => {
+  it("mounts the R1 Seedbank screen for the seedbank place", async () => {
+    await show("seedbank");
+    expect(document.querySelector(".sb-title")?.textContent).toBe("Seedbank");
+  });
+
   it("keeps TrunkHost mounted and an open profile or editor open across a place change", async () => {
     await show("overview");
     expect(document.querySelector("[data-testid=place-overview]")).toBeTruthy();
