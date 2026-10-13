@@ -49,9 +49,10 @@ describe("R1 Settings, the Coming contract", () => {
     await click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === "Technical")!);
     for (const page of [...TOP_PAGES, ...NAV.flatMap((group) => group.pages)]) {
       if (page.id === "chatapps" || page.id === "features") continue; // drawn by their own screens (slots), with their own tests
+      // every expected page must be in the nav: a missing one fails here instead of being skipped
       const nav = host.querySelector(`[data-page="${page.id}"]`);
-      if (!nav) continue;
-      await click(nav);
+      expect(nav, `nav entry for ${page.id}`).not.toBeNull();
+      await click(nav!);
       expect(undeclared(), page.id).toEqual([]);
     }
     await click(host.querySelector("[data-page='general']")!);
@@ -88,11 +89,16 @@ describe("R1 Settings, the Coming contract", () => {
     const control = host.querySelector<HTMLElement>(".r1s-row:not([aria-disabled]) .r1s-ctl")!;
     expect(control.getAttribute("aria-disabled")).toBeNull();
     expect(control.dataset.need).toMatch(/config\.patch|users\.prefs\.set/);
-    const toggle = host.querySelector<HTMLElement>(".r1s-row:not([aria-disabled]) .r1s-sw:not(:disabled)");
-    if (toggle) {
-      await click(toggle);
-      expect(request.mock.calls.map(([method]) => method)).toEqual(expect.arrayContaining([expect.stringMatching(/config\.patch|users\.prefs\.set/)]));
-    }
+    // One named live row, always: General › "Show the thinking" saves agents.defaults.reasoningDefault through config.patch.
+    await click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === "Technical")!);
+    const row = host.querySelector<HTMLElement>('[data-row="general.work.thinking"]');
+    expect(row, "General › Show the thinking").not.toBeNull();
+    expect(row!.getAttribute("aria-disabled")).toBeNull();
+    const toggle = row!.querySelector<HTMLElement>(".r1s-sw");
+    expect(toggle, "its switch").not.toBeNull();
+    const before = request.mock.calls.length;
+    await click(toggle!);
+    expect(request.mock.calls.slice(before).map(([method]) => method)).toContain("config.patch");
     expect(undeclared()).toEqual([]);
   });
 });
