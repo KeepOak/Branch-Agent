@@ -96,3 +96,48 @@ MIT and ISC sources
 - conorbronsdon/avoid-ai-writing @ bdeb726580634868b254972d8eab1a9340d9db16 (third_party/avoid-ai-writing/LICENSE)
 - pixel-agents-hq/pixel-agents @ 3537e140c2094761beae748592aeb92ece8edfdd (third_party/pixel-agents/LICENSE)
 - moonrunnerkc/swarm-orchestrator @ 7d8f018e5774325b658018c151cfa4c09f78341d, ISC (third_party/swarm-orchestrator/LICENSE)
+
+Bundled components (credits folded in from the former THIRD_PARTY_NOTICES.md)
+----------------------------------------------------------------------------
+
+- Pi / pi-mono, Copyright (c) 2025 Mario Zechner, MIT License. Upstream
+  https://github.com/earendil-works/pi-mono. third_party/pi-mono/LICENSE.
+  Portions of the OpenClaw engine were adapted from Pi / pi-mono; see
+  engine/THIRD_PARTY_NOTICES.md.
+
+- GitHub Octicons, Copyright (c) 2026 GitHub Inc., MIT License. Upstream
+  https://github.com/primer/octicons. third_party/octicons/LICENSE.
+
+- Slack skills plugin (engine/extensions/slack/skills/_vendor/), Copyright
+  (c) 2020- Slack Technologies, LLC, MIT License. third_party/slack-skills/LICENSE.
+
+- skill-creator (engine/skills/skill-creator/), Apache License 2.0. The
+  upstream file names no copyright holder. third_party/skill-creator/LICENSE.
+
+- codex-live-docker-security (engine/scripts/lib/codex-live-docker-security/),
+  Apache License 2.0 (third_party/codex-live-docker-security/LICENSE). Its
+  NOTICE names Docker, Inc., Copyright 2012-2017, and contains creack/pty by
+  Keith Rarick under the MIT License. The creack/pty MIT text is not vendored
+  in this repository; it needs to be added (owner action).
+
+- devicon (engine/ui/public/cloud-provider-icons/), Copyright (c) 2015 konpa,
+  MIT License. third_party/devicon/LICENSE.
+
+- Simple Icons (engine/ui/public/cloud-provider-icons/), CC0 1.0 Universal.
+  third_party/simple-icons/LICENSE.
+
+- Mermaid renderer bundle (engine/packages/mermaid-renderer/native/): bundled
+  upstream packages (Mermaid, Chevrotain, KaTeX, d3 modules, cytoscape,
+  DOMPurify and others). Each component's license is listed in
+  third_party/mermaid-renderer/NOTICE.txt, copied from the bundle directory.
+
+- engine/src/agents/source-writing-detector/ is MIT, Copyright (c) 2026 Conor
+  Bronsdon; it is the avoid-ai-writing entry above.
+
+- OpenClaw MIT files under engine/extensions/facetime/, engine/extensions/typesafe/
+  and engine/packages/{ai,gateway-client,gateway-protocol}/ are covered by the
+  OpenClaw entry above (engine/LICENSE).
+
+Not distributed in this repository: BlackHole (GPL-3.0) is downloaded and
+compiled by an administrator build script (see engine/extensions/facetime/
+THIRD_PARTY_NOTICES.md). It is not bundled here.
