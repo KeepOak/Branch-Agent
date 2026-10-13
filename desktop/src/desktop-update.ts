@@ -55,6 +55,13 @@ const CONFIRM_TIMEOUT_MS = 90_000;
 export const STAGED_ASAR = ".asar.staged";
 const stagedName = (name: string): string => name.replace(/\.asar(?=\/|$)/g, STAGED_ASAR);
 const sealedMacInstall = (install: DesktopInstall): boolean => process.platform === "darwin" && install.appDir.endsWith(".app");
+/**
+ * A Linux AppImage runs from a read-only mount, so neither app.asar nor the whole app can be swapped in place.
+ * Engine and window components still update; re-running install.sh replaces the AppImage itself.
+ */
+export function runsFromAppImage(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): boolean {
+  return platform === "linux" && Boolean(env.APPIMAGE);
+}
 
 /** Electron's fs opens app.asar as an archive; original-fs reads the file's own bytes. */
 const rawFs: typeof NodeFs = process.versions.electron ? require("original-fs") : require("node:fs");
@@ -124,7 +131,7 @@ async function assertFile(file: string): Promise<void> {
 
 /** Downloads, verifies and extracts the release's desktop component; nothing in the running app changes. */
 export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, install?: DesktopInstall): Promise<boolean> {
-  if (!install || await readDesktopJournal(cfg)) return false;
+  if (!install || runsFromAppImage() || await readDesktopJournal(cfg)) return false;
   if (process.platform === "win32" && await readOrEmpty(packagedIconFile(install)) === ICON_REVISION
     && await readOrEmpty(iconFile(cfg)) !== ICON_REVISION) {
     await replaceFile(iconFile(cfg), `${ICON_REVISION}\n`);

@@ -18,7 +18,7 @@ Windows (x64), in PowerShell:
 irm https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.ps1 | iex
 ```
 
-The scripts install for the current user with no sudo or admin prompt. They check the download's SHA-256 against the release's `SHA256SUMS` before installing and stop on a mismatch. For a specific release, run `... | sh -s -- --version v1.2.3`, or on Windows set `$env:BRANCH_INSTALL_VERSION = 'v1.2.3'` first. Re-running upgrades in place. Details are in [desktop/INSTALLERS.md](desktop/INSTALLERS.md).
+The scripts install for the current user with no sudo or admin prompt. They check the download's SHA-256 against the release's `SHA256SUMS` before installing and stop on a mismatch. For a specific release, run `... | sh -s -- --version v1.2.3`, or on Windows set `$env:BRANCH_INSTALL_VERSION = 'v1.2.3'` first. Re-running upgrades in place. On Linux the script installs the release's AppImage as `~/.local/bin/branch-agent` with an app-menu entry. Details are in [desktop/INSTALLERS.md](desktop/INSTALLERS.md).
 
 Alternatively, download the installer from the [latest release](https://github.com/KeepOak/Branch-Agent/releases/latest). It isn't signed yet, so macOS needs right-click → Open on first launch and Windows SmartScreen needs More info → Run anyway.
 

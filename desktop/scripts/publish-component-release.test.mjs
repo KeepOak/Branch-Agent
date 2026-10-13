@@ -231,7 +231,8 @@ test("desktop checks run the publication order test by name", async () => {
   assert.match(workflow, /^\s+run: node --test scripts\/publish-component-release\.test\.mjs\s*$/m);
 });
 
-const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg` };
+const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg`,
+  "linux-x64": `Branch-Agent-${version}-linux-x64.AppImage` };
 async function listInstaller(assets, target, { place = true, listed } = {}) {
   const name = installerNames[target], file = join(assets, name);
   await writeFile(file, `unsigned ${target} installer`);
@@ -243,14 +244,14 @@ async function listInstaller(assets, target, { place = true, listed } = {}) {
   await writeFile(proofFile, JSON.stringify(proof, null, 2) + "\n");
 }
 
-test("listed installers are uploaded as release assets and Linux publishes without one", () => fixture(async assets => {
-  await listInstaller(assets, "win32-x64"); await listInstaller(assets, "darwin-arm64");
+test("listed installers, the Linux AppImage included, are uploaded as release assets and listed in SHA256SUMS", () => fixture(async assets => {
+  await listInstaller(assets, "win32-x64"); await listInstaller(assets, "darwin-arm64"); await listInstaller(assets, "linux-x64");
   const remote = githubMock(assets);
   await publishRelease(assets, commit, version, remote.request, remote.download, { sleep: remote.sleep, now: remote.now });
   const created = remote.calls.find(args => args[1] === "create");
   const uploaded = created.slice(3, created.indexOf("--repo")).map(file => basename(file));
   for (const name of Object.values(installerNames)) assert(uploaded.includes(name), `${name} was not uploaded`);
-  assert(!uploaded.some(name => /linux-x64\.(deb|AppImage)$/.test(name)));
+  assert(!uploaded.some(name => /linux-x64\.deb$/.test(name)));
   const sums = await readFile(join(assets, "SHA256SUMS"), "utf8");
   for (const name of Object.values(installerNames)) assert.match(sums, new RegExp(`^${(await fileDigest(join(assets, name))).sha256}  ${name.replace(/\./g, "\\.")}$`, "m"));
   // The one-line install scripts ship with every release, so releases/latest/download/install.sh is stable.

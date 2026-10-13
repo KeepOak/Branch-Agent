@@ -116,7 +116,8 @@ test("macOS proofs declare identity or ad-hoc signing; other targets declare non
   await assert.rejects(verifyReleaseDirectory(assets, commit, version), /Only macOS release proofs declare signing/);
 }));
 
-const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg` };
+const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg`,
+  "linux-x64": `Branch-Agent-${version}-linux-x64.AppImage` };
 /** Puts an installer beside the assets and lists it in its target's proof, optionally with a different listed digest. */
 async function listInstaller(assets, target, { name = installerNames[target], place = true, listed } = {}) {
   const file = join(assets, name);
@@ -128,7 +129,7 @@ async function listInstaller(assets, target, { name = installerNames[target], pl
 
 test("each platform's release proof lists its installer by name, size and sha256", () => fixture(async ({ root, assets }) => {
   const built = join(root, "installers"); await mkdir(built);
-  for (const target of ["win32-x64", "darwin-arm64"]) {
+  for (const target of ["win32-x64", "darwin-arm64", "linux-x64"]) {
     const file = join(built, installerNames[target]);
     await writeFile(file, `${target} installer bytes`);
     await inventoryModule.recordInstaller(assets, target, file);
@@ -136,10 +137,10 @@ test("each platform's release proof lists its installer by name, size and sha256
     assert.deepEqual(proof.installers, { [installerNames[target]]: { sha256: (await fileDigest(file)).sha256, bytes: Buffer.byteLength(`${target} installer bytes`) } });
     await cp(file, join(assets, installerNames[target]));
   }
-  const linux = JSON.parse(await readFile(join(assets, "release-proof-linux-x64.json"), "utf8"));
-  assert.equal(linux.installers, undefined);
   const result = await verifyReleaseDirectory(assets, commit, version);
-  assert.equal(Object.keys(result.inventory).length, 18);
+  assert.equal(Object.keys(result.inventory).length, 19);
+  // Linux ships the AppImage; its proof lists it beside the tar.gz bootstrap package the updater uses.
+  assert(Object.hasOwn(result.inventory, `Branch-Agent-${version}-linux-x64.AppImage`));
   for (const name of Object.values(installerNames)) assert.deepEqual(result.inventory[name], await fileDigest(join(assets, name)));
   const stray = join(built, "Branch-Agent-other.exe"); await writeFile(stray, "x");
   await assert.rejects(inventoryModule.recordInstaller(assets, "win32-x64", stray), /Unexpected installer/);
@@ -164,7 +165,12 @@ test("release inventory refuses an installer whose bytes differ from its listing
 }));
 
 test("release inventory refuses an installer listed under another target's name", () => fixture(async ({ assets }) => {
-  await listInstaller(assets, "linux-x64", { name: `Branch-Agent-${version}-linux-x64.AppImage` });
+  await listInstaller(assets, "linux-x64", { name: `branch-agent_${version}_amd64.deb` });
+  await assert.rejects(verifyReleaseDirectory(assets, commit, version), /Unexpected installer/);
+}));
+
+test("release inventory refuses an AppImage listed for another target", () => fixture(async ({ assets }) => {
+  await listInstaller(assets, "darwin-arm64", { name: `Branch-Agent-${version}-linux-x64.AppImage` });
   await assert.rejects(verifyReleaseDirectory(assets, commit, version), /Unexpected installer/);
 }));
 

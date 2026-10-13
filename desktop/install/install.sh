@@ -4,9 +4,9 @@
 #   curl -fsSL https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.sh | sh
 #   curl -fsSL https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.sh | sh -s -- --version v1.2.3
 #
-# It downloads the release's desktop package and SHA256SUMS, checks the package's SHA-256 against
-# SHA256SUMS before touching the install, and installs for the current user only. It never uses sudo.
-# Re-running replaces the install: the new copy is unpacked and verified beside the old one, then swapped in.
+# It downloads the release's desktop package (macOS) or AppImage (Linux) and SHA256SUMS, checks the download's
+# SHA-256 against SHA256SUMS before touching the install, and installs for the current user only. It never uses sudo.
+# Re-running replaces the install: the new copy is verified and staged beside the old one, then swapped in.
 #
 # BRANCH_INSTALL_BASE_URL is for tests only. It points the script at a local fixture release instead of
 # https://github.com/KeepOak/Branch-Agent/releases. Do not set it for a real install. BRANCH_INSTALL_TEST_TARGET,
@@ -38,7 +38,6 @@ if [ "$(id -u)" = 0 ]; then
 fi
 
 command -v curl >/dev/null 2>&1 || fail "curl is required"
-command -v tar >/dev/null 2>&1 || fail "tar is required"
 
 case $(uname -s) in
   Darwin) os=darwin ;;
@@ -60,6 +59,7 @@ case $target in
   darwin-x64) fail "Branch Agent ships for Apple silicon Macs only (no Intel build yet)" ;;
   *) fail "no Branch Agent build for $target yet" ;;
 esac
+[ "$os" = linux ] || command -v tar >/dev/null 2>&1 || fail "tar is required"
 
 if [ -n "$version" ]; then
   case $version in v*) tag=$version ;; *) tag=v$version ;; esac
@@ -85,11 +85,17 @@ fetch() {
     || fail "could not download $1"
 }
 
-# Which release asset this platform installs. The Linux AppImage replaces the tar.gz here later.
+# Which release asset this platform installs: the desktop package on macOS, the AppImage on Linux (never a tar.gz).
+asset_suffix() {
+  case $target in
+    darwin-arm64) say "darwin-arm64.tar.gz" ;;
+    linux-x64) say "linux-x64.AppImage" ;;
+  esac
+}
 asset_pattern() {
   case $target in
     darwin-arm64) say "branch-desktop-[0-9][^ ]*-darwin-arm64[.]tar[.]gz" ;;
-    linux-x64) say "branch-desktop-[0-9][^ ]*-linux-x64[.]tar[.]gz" ;;
+    linux-x64) say "Branch-Agent-[0-9][^ ]*-linux-x64[.]AppImage" ;;
   esac
 }
 
@@ -108,7 +114,7 @@ asset=$(printf '%s\n' "$entry" | awk '{ print $2 }')
 printf '%s\n' "$expected" | grep -Eq '^[0-9a-f]{64}$' || fail "SHA256SUMS entry for $asset is malformed; nothing was installed"
 if [ -n "$tag" ]; then
   case $asset in
-    *-"${tag#v}"-"$target".tar.gz) ;;
+    *-"${tag#v}"-"$(asset_suffix)") ;;
     *) fail "SHA256SUMS for $tag lists $asset, which is another version; nothing was installed" ;;
   esac
 fi
@@ -121,9 +127,6 @@ if [ "$actual" != "$expected" ]; then
   exit 1
 fi
 say "Verified SHA-256 $actual"
-
-mkdir "$work/unpacked"
-tar -xzf "$work/$asset" -C "$work/unpacked" || fail "could not unpack $asset; nothing was installed"
 
 # Swap a verified staging copy into place. The old install stays until the new one is in.
 replace() {
@@ -149,6 +152,8 @@ signed_with_release_identity() {
 }
 
 install_darwin() {
+  mkdir "$work/unpacked"
+  tar -xzf "$work/$asset" -C "$work/unpacked" || fail "could not unpack $asset; nothing was installed"
   app="$work/unpacked/Branch Agent.app"
   [ -d "$app" ] || fail "$asset has no Branch Agent.app; nothing was installed"
   apps=$HOME/Applications
@@ -179,26 +184,27 @@ install_darwin() {
 }
 
 install_linux() {
-  root="$work/unpacked"
-  [ -x "$root/branch-agent" ] || fail "$asset has no branch-agent launcher; nothing was installed"
-  data=${XDG_DATA_HOME:-$HOME/.local/share}
-  dest=$data/branch-agent
+  data=$HOME/.local/share
   bin=$HOME/.local/bin
-  mkdir -p "$data" "$bin" "$data/applications"
-  staging=$(mktemp -d "$data/.branch-agent-install.XXXXXX")
-  mv "$root" "$staging/app"
-  replace "$staging/app" "$dest"
-  rmdir "$staging" 2>/dev/null || true
-  launcher_tmp=$(mktemp "$bin/.branch-agent.XXXXXX")
-  printf '#!/bin/sh\nexec "%s/branch-agent" "$@"\n' "$dest" > "$launcher_tmp"
-  chmod 755 "$launcher_tmp"
-  mv -f "$launcher_tmp" "$bin/branch-agent"
-  entry_tmp=$(mktemp "$data/applications/.branch-agent.XXXXXX")
+  mkdir -p "$bin" "$data/applications"
+  # Stage in the same folder so the final move is a rename; the old AppImage stays until the new one is in.
+  staged=$(mktemp "$bin/.branch-agent-install.XXXXXX") || fail "could not stage in $bin; nothing was installed"
+  if ! cp "$work/$asset" "$staged" || ! chmod 755 "$staged" || ! mv -f "$staged" "$bin/branch-agent"; then
+    rm -f "$staged"
+    fail "could not move the AppImage into $bin/branch-agent"
+  fi
+  entry_tmp=$(mktemp "$data/applications/.branch-agent-install.XXXXXX")
   printf '[Desktop Entry]\nType=Application\nName=Branch Agent\nExec="%s" %%U\nTerminal=false\nCategories=Utility;\n' "$bin/branch-agent" > "$entry_tmp"
   chmod 644 "$entry_tmp"
   mv -f "$entry_tmp" "$data/applications/branch-agent.desktop"
-  say "Installed $dest"
-  say "Launcher $bin/branch-agent"
+  # This script's first design unpacked a tar.gz into ~/.local/share/branch-agent. Drop that copy; app data lives
+  # elsewhere (~/.local/share/BranchAgent) and is never touched here.
+  old=$data/branch-agent
+  if [ -d "$old" ] && [ ! -L "$old" ] && [ -f "$old/branch-agent" ] && [ -f "$old/Branch Agent.bin" ]; then
+    rm -rf "$old" "$old.install-old"
+    say "Removed the older tar.gz install in $old"
+  fi
+  say "Installed $bin/branch-agent (AppImage)"
   say ""
   case :${PATH:-}: in
     *:"$bin":*) say "Next: run branch-agent, or open Branch Agent from your app menu." ;;

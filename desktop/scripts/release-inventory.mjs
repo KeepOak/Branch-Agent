@@ -12,10 +12,11 @@ export async function fileDigest(file) {
   return { sha256: hash.digest("hex"), bytes: (await stat(file)).size };
 }
 
-/** The one installer a target may ship, or null when it has none (Linux keeps the tar.gz). */
+/** The one installer a target may ship, or null when it has none. Linux ships a per-user AppImage. */
 export function installerAssetName(version, target) {
   if (target === "win32-x64") return `Branch-Agent-Setup-${version}-win32-x64.exe`;
   if (target === "darwin-arm64") return `Branch-Agent-${version}-darwin-arm64.dmg`;
+  if (target === "linux-x64") return `Branch-Agent-${version}-linux-x64.AppImage`;
   return null;
 }
 

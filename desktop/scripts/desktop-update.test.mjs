@@ -67,6 +67,12 @@ async function fixture(run, { runtime = false, iconRuntime = false, macBundle = 
   finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
 }
 
+test("an AppImage install never stages a swap of its read-only mount", () => {
+  assert.equal(desktopUpdate.runsFromAppImage("linux", { APPIMAGE: "/home/person/.local/bin/branch-agent" }), true);
+  assert.equal(desktopUpdate.runsFromAppImage("linux", {}), false);
+  assert.equal(desktopUpdate.runsFromAppImage("darwin", { APPIMAGE: "/tmp/x" }), false);
+});
+
 test("manifest accepts a targeted desktop component and rejects one without its Electron", () => fixture(async ({ release }) => {
   assert.equal(parseComponentRelease(release).components.desktop.electronVersion, ELECTRON);
   const broken = structuredClone(release); delete broken.components.desktop.electronVersion;
