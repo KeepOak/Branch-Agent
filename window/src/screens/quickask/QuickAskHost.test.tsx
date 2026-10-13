@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -46,6 +47,8 @@ describe("Quick ask in R1 (Classic QuickAsk re-hosted)", () => {
     expect(box()!.className).toContain("g-clear");
     expect(box()!.querySelector(".qa-to-l")!.className).toContain("g-label");
     expect([...box()!.querySelectorAll("[role=radio]")].map(b => b.textContent)).toEqual(["Sapling", "Ops"]);
+    // Item 48: the conversation it covers steps aside while it is open.
+    expect(readFileSync("src/screens/quickask/quickask.css", "utf8")).toContain("body:has(.qa-box.g-clear) .r1-conversation > .r1-scroll { visibility: hidden; }");
     await press();
     expect(box()).toBeNull();
   });

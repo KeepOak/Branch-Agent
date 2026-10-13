@@ -11,6 +11,7 @@ import { useTrunks } from "../../shell/engine-data";
 import { QuickAsk } from "../../shell/QuickAsk";
 import { shortcutFor } from "../../shell/use-shortcuts";
 import "../../shell/quick-ask.css";
+import "./quickask.css";
 
 export const QUICK_ASK_EVENT = "branch:quick-ask";
 /** The calls Start makes. */
