@@ -243,6 +243,16 @@ describe("Your first Trunk (step 4)", () => {
     expect(onDone).toHaveBeenCalledOnce();
   });
 
+  it("stays on step 4 with the engine's words when the first message is refused, and doesn't land in an empty conversation", async () => {
+    const { engine } = fakeEngine({ "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "session is archived" } });
+    const { host, onDone } = await show(engine, { startAt: 3 });
+    await act(async () => button(host, "Start with Sapling").click());
+    await flush();
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t start your first conversation. session is archived");
+    expect(host.querySelector("h1")?.textContent).toBe("Your first Trunk");
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
   it("Start with the default Trunk makes nothing and greets in its main conversation", async () => {
     const { engine, request } = fakeEngine({ "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {} });
     const { host, onDone } = await show(engine, { startAt: 3 });

@@ -56,6 +56,9 @@ export async function recordOnboarding(engine: WindowEngine, s: OnboardingState)
 /** Sends the first message into the Trunk's main conversation and returns that conversation's key. */
 export async function greet(engine: WindowEngine, agentId: string, mainKey: string): Promise<string> {
   const sessionKey = mainSessionOf(agentId, mainKey);
-  await engine.request("chat.send", { sessionKey, message: GREETING, idempotencyKey: crypto.randomUUID() });
+  const result = await engine.request("chat.send", { sessionKey, message: GREETING, idempotencyKey: crypto.randomUUID() });
+  // chat.send can refuse without throwing ({status: "error", error}), as RunCard reads it; that is a failure too.
+  const r = result && typeof result === "object" ? (result as Record<string, unknown>) : {};
+  if (r.status === "error") throw new Error(typeof r.error === "string" && r.error ? r.error : "The first message was rejected.");
   return sessionKey;
 }
