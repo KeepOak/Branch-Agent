@@ -31,13 +31,12 @@ beforeEach(() => {
   host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
-it("keeps Classic by default and opens R1 only behind the exact opt-in", () => {
-  expect(r1Window("")).toBe(false);
+it("opens R1 with no flag, and keeps Classic only behind ?classic or the branch.classic flag", () => {
+  expect(r1Window("")).toBe(true);
   expect(r1Window("?r1")).toBe(true);
-  expect(r1Window("?r1&classic")).toBe(false);
-  localStorage.setItem("branch.r1", "true"); expect(r1Window("")).toBe(false);
-  localStorage.setItem("branch.r1", "1"); expect(r1Window("")).toBe(true);
   expect(r1Window("?classic")).toBe(false);
+  expect(r1Window("?r1&classic")).toBe(false);
+  localStorage.setItem("branch.classic", "0"); expect(r1Window("")).toBe(true);
   localStorage.setItem("branch.classic", "1"); expect(r1Window("")).toBe(false); expect(r1Window("?r1")).toBe(false);
 });
 it("renders an empty disconnected engine without demo conversations", async () => {

@@ -47,17 +47,15 @@ export function r1SettingsPage(page: string, pages: PageSlots = R1_PAGES, rows: 
 }
 
 /**
- * The R1 frame is opt-in until the ship card (R1-11) flips the default; every install opens Classic.
- * Opt in with `?r1` or the hidden `branch.r1` flag; `?classic` and `branch.classic` always win.
+ * R1 is the only window (R1-12). `?classic` and the hidden `branch.classic` flag keep the old window only until
+ * the R1 Settings pages land (R1-14, #976); the escape goes with the Classic window itself.
  */
 export function r1Window(search = location.search): boolean {
-  const params = new URLSearchParams(search);
-  if (params.has("classic")) return false;
+  if (new URLSearchParams(search).has("classic")) return false;
   try {
-    if (localStorage.getItem("branch.classic") === "1") return false;
-    return params.has("r1") || localStorage.getItem("branch.r1") === "1";
+    return localStorage.getItem("branch.classic") !== "1";
   } catch {
-    return params.has("r1");
+    return true;
   }
 }
 
