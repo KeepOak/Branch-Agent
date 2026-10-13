@@ -6,10 +6,11 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import type * as NodeFs from "node:fs";
-import { appendFile, copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
+import { appendCappedLog } from "./log-rotation";
 import { downloadComponent, replaceFile } from "./component-update-files";
 import type { ComponentRelease, DesktopAsset } from "./component-update-manifest";
 import type { HelperPlan } from "./desktop-update-helper";
@@ -152,7 +153,7 @@ async function helperMissing(helperSource: string): Promise<boolean> {
 async function discardStagedUpdate(cfg: DesktopConfig, journal: DesktopJournal, reason: string): Promise<false> {
   await rm(journalFile(cfg), { force: true });
   // The log never blocks launch.
-  await appendFile(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version} discarded: ${reason}; starting the current build\n`).catch(() => undefined);
+  try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version} discarded: ${reason}; starting the current build\n`); } catch { /* ignore */ }
   return false;
 }
 
