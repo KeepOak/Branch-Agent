@@ -70,3 +70,21 @@ it("renders only the gateway WhatsApp QR and stops waiting after unmount", async
   await act(async () => vi.advanceTimersByTimeAsync(2000));
   expect(request).toHaveBeenCalledTimes(count);
 });
+
+it.each([["telegram", true], ["discord", false]] as const)("shows Telegram's Save options as Coming only for Telegram (%s)", async (id, shown) => {
+  const request = vi.fn(async (method: string) => method === "wizard.start" ? { sessionId: "setup", done: true, status: "done" } : method === "config.get" ? { config: {}, hash: "fixture", valid: true } : method === "agents.list" ? { agents: [] } : method === "channels.pairing.list" ? { accounts: [], requests: [] } : {});
+  const engine = { request, sessionKey: null, scopes: ["operator.admin"], onEvent: () => () => {}, features: { methods: ["channels.pairing.list"], events: [] } } as WindowEngine;
+  const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root.render(<SetupWizard engine={engine} app={CHAT_APPS.find(a => a.id === id)!} onClose={() => {}} />));
+  await act(async () => button(host, "I have the details").click());
+  await act(async () => button(host, "Continue to Save").click());
+  expect(host.textContent).toContain("setup is saved by the engine");
+  for (const label of ["Keep forum topics apart", "Photos and files reach the task"]) {
+    const toggle = host.querySelector<HTMLInputElement>(`[aria-label="${label}"]`);
+    if (!shown) { expect(toggle).toBeNull(); continue; }
+    expect(toggle).not.toBeNull();
+    expect(toggle!.disabled).toBe(true);
+    // Greyed with its reason, as Manage does; the kit keeps the developer note out of the visible text.
+    expect(host.querySelector(`[data-row="${label}"]`)?.getAttribute("aria-disabled")).toBe("true");
+  }
+});
