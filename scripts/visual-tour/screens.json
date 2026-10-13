@@ -1,6 +1,7 @@
 [
   {"id":"main-chat","steps":[{"action":"click","by":"text","target":"Researcher","expectBy":"testid","expect":"composer"}]},
   {"id":"new-menu","steps":[{"action":"click","by":"testid","target":"new","expectBy":"testid","expect":"new-menu"}]},
+  {"id":"new-trunk-menu","steps":[{"action":"click","by":"testid","target":"new","expectBy":"testid","expect":"new-menu"},{"action":"click","by":"testid","target":"new-trunk","expectBy":"testid","expect":"new-trunk-blank"}]},
   {"id":"connection","steps":[{"action":"click","by":"testid","target":"sb-connection","expectBy":"css","expect":".pop"}]},
   {"id":"gateway","steps":[{"action":"click","by":"testid","target":"sb-gateway","expectBy":"testid","expect":"pop-gateway"}]},
   {"id":"usage","steps":[{"action":"click","by":"testid","target":"sb-usage","expectBy":"testid","expect":"pop-usage"}]},

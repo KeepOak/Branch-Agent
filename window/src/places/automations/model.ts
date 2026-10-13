@@ -5,7 +5,7 @@ import { rec, str, type Row } from "./runtime";
 
 export type Repeat = "daily" | "weekdays" | "weekends" | "weekly" | "monthly" | "once" | "every" | "custom";
 export const REPEAT_NAMES: Record<Exclude<Repeat, "custom">, string> = { daily: "Every day", weekdays: "Weekdays", weekends: "Weekends", weekly: "Once a week", monthly: "Monthly", once: "Once", every: "Every…" };
-export type EveryUnit = "minutes" | "hours" | "days";
+type EveryUnit = "minutes" | "hours" | "days";
 export type ScheduleForm = {
   repeat: Repeat; time: string; weekday: number; monthDay: number; at: string;
   everyN: string; everyUnit: EveryUnit; expr: string; tz: string; exact: boolean; spreadN: string; spreadUnit: "seconds" | "minutes";
@@ -13,9 +13,8 @@ export type ScheduleForm = {
 export const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const UNIT_MS: Record<EveryUnit, number> = { minutes: 60_000, hours: 3_600_000, days: 86_400_000 };
 
-export const localZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const pad = (n: number) => String(n).padStart(2, "0");
-export const localInput = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const localInput = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
 export function emptyForm(now = Date.now()): ScheduleForm {
   return { repeat: "daily", time: "09:00", weekday: new Date(now).getDay(), monthDay: 1, at: "", everyN: "30", everyUnit: "minutes", expr: "", tz: "", exact: false, spreadN: "", spreadUnit: "seconds" };
@@ -85,7 +84,7 @@ export function scheduleToForm(schedule: Row, now = Date.now()): ScheduleForm {
   return { ...base, repeat: "weekly", weekday: Number(dow) };
 }
 
-export function clock(time: string): string {
+function clock(time: string): string {
   const [h, m] = time.split(":").map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return time;
   return `${h % 12 || 12}:${pad(m)} ${h < 12 ? "AM" : "PM"}`;

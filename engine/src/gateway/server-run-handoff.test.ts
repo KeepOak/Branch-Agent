@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerHandoffRetryWait } from "../agents/embedded-agent-runner/retry-handoff.js";
 import { captureAgentRunLifecycleGeneration } from "../infra/agent-events.js";
+import { GatewayHandoffDeadlineError } from "./server-handoff-deadline.js";
+import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import { createGatewayRunHandoff } from "./server-run-handoff.js";
 
 const mocks = vi.hoisted(() => ({
@@ -35,7 +37,82 @@ vi.mock("../process/session-handoff-lease-holder.js", () => ({
   listBusySessionLanes: () => [],
 }));
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.clearAllMocks();
+});
+
+function handoffWithCron(cron: { start: () => unknown; stopAndDrainForHandoff: () => unknown }) {
+  return createGatewayRunHandoff({
+    runtime: {
+      channelManager: { startChannels: vi.fn(), stopChannel: vi.fn() },
+      chatAbortControllers: new Map(),
+      pluginRuntime: { registry: {} },
+      resolvePluginGatewayContext: vi.fn(),
+      scheduler: {},
+    } as unknown as Parameters<typeof createGatewayRunHandoff>[0]["runtime"],
+    shutdownRuntime: {
+      markRestartAbortedMainSessions: vi.fn(async () => ({ marked: 1 })),
+      stopCronMaintenance: vi.fn(),
+    } as unknown as Parameters<typeof createGatewayRunHandoff>[0]["shutdownRuntime"],
+    getCron: () =>
+      cron as unknown as ReturnType<Parameters<typeof createGatewayRunHandoff>[0]["getCron"]>,
+  });
+}
+
+describe("Gateway handoff deactivation deadline (#481)", () => {
+  it("aborts an overrun step-down and keeps this engine serving instead of a fatal exit", async () => {
+    vi.useFakeTimers();
+    // A loaded host: the cron drain takes 25 s against the 18 s deadline, then finishes.
+    const cron = {
+      start: vi.fn(),
+      stopAndDrainForHandoff: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, 25_000);
+          }),
+      ),
+    };
+    const handoff = handoffWithCron(cron);
+    const deactivation = handoff.deactivate(Date.now() + 18_000, 18_000);
+    const outcome = deactivation.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await vi.advanceTimersByTimeAsync(25_000);
+    const error = await outcome;
+    expect(error).toBeInstanceOf(GatewayHandoffDeadlineError);
+    expect(error).not.toBeInstanceOf(GatewayHandoffFatalError);
+    expect(String(error)).toContain("exceeded 18 seconds at cron drain");
+    // The late drain finished first; then every producer came back and admission reopened.
+    expect(cron.start).toHaveBeenCalledOnce();
+    expect(mocks.leases.releaseAll).toHaveBeenCalled();
+    expect(mocks.admission.release).toHaveBeenCalledOnce();
+    expect(mocks.admission.rollback).toHaveBeenCalledOnce();
+    expect(mocks.admission.commit).not.toHaveBeenCalled();
+    handoff.release();
+  });
+
+  it("stays fenced and fatal only when the overrun step never settles", async () => {
+    vi.useFakeTimers();
+    const cron = {
+      start: vi.fn(),
+      stopAndDrainForHandoff: vi.fn(() => new Promise<void>(() => {})),
+    };
+    const handoff = handoffWithCron(cron);
+    const outcome = handoff.deactivate(Date.now() + 18_000, 18_000).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await vi.advanceTimersByTimeAsync(36_000);
+    const error = await outcome;
+    expect(error).toBeInstanceOf(GatewayHandoffFatalError);
+    expect(String(error)).toContain("never settled");
+    expect(cron.start).not.toHaveBeenCalled();
+    expect(mocks.admission.rollback).not.toHaveBeenCalled();
+    handoff.release();
+  });
+});
 
 describe("Gateway quiet-run handoff state transfer", () => {
   it.each([true, false])(

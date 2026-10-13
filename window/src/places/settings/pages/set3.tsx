@@ -8,6 +8,8 @@ import { GatewayPage, ROWS as GATEWAY_ROWS } from "../set2/gateway";
 import { SelfPage, ROWS as SELF_ROWS } from "../set2/self";
 import { AgentsPage, ROWS as AGENTS_ROWS } from "../set2/agents";
 import { BackupsPage, ROWS as BACKUPS_ROWS } from "../set2/backups";
+import { DevicesPage } from "../set2/devices";
+import { HelpersPage } from "../set2/helpers";
 
 export const PAGES: Record<string, ComponentType<SettingsPageProps>> = {
   computer: ComputerPage,
@@ -17,6 +19,8 @@ export const PAGES: Record<string, ComponentType<SettingsPageProps>> = {
   gateway: GatewayPage,
   self: SelfPage,
   agents: AgentsPage,
+  devices: DevicesPage,
+  helpers: HelpersPage,
 };
 
 /** Row search entries for these pages (title = the row's exact Ctl title). */

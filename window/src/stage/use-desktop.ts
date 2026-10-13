@@ -3,7 +3,7 @@ import type { DesktopObserveResult, DesktopSource, EnvironmentSummary } from "@b
 import type { WindowEngine } from "../connect/engine";
 import { DesktopClient, type DesktopConnectionHandle } from "./desktop-client";
 
-export type DesktopPhase = "loading" | "empty" | "connected" | "error";
+type DesktopPhase = "loading" | "empty" | "connected" | "error";
 export type DesktopView = {
   phase: DesktopPhase;
   /** The computer's own label, when the engine gave one. */
@@ -13,7 +13,7 @@ export type DesktopView = {
 };
 
 /** The source desktop.observe needs for an environment id: the host, a paired node or a worker. */
-export function sourceFor(id: string): DesktopSource {
+function sourceFor(id: string): DesktopSource {
   return id === "gateway"
     ? { kind: "host" }
     : id.startsWith("node:")

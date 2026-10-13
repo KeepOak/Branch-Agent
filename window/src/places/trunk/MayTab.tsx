@@ -14,8 +14,8 @@ import { shows, type Level } from "../../places-nav/level";
 import type { Draft } from "./api";
 import type { May } from "./may";
 
-export const SEND_WHY = "Needs the engine’s per-Trunk setting for asking before it sends.";
-export const NOTES_WHY = "Each Trunk keeps its notes in its own folder; the engine has no setting to share them.";
+const SEND_WHY = "Needs the engine’s per-Trunk setting for asking before it sends.";
+const NOTES_WHY = "Each Trunk keeps its notes in its own folder; the engine has no setting to share them.";
 
 function Row({ title, hint, children, off }: { title: string; hint: string; children: ReactNode; off?: string }) {
   return <div className={off ? "tk-ctl off" : "tk-ctl"} title={shownWhy(off)}><b>{title}</b><span className="tk-right">{children}</span><small>{shownWhy(off) || hint}</small></div>;
