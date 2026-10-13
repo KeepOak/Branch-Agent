@@ -5,7 +5,7 @@
 // names, and opens it.
 import type { Conversation } from "../../connect/conversations";
 import type { RunEnd, SaplingSession } from "../../connect/session";
-import { readLevel } from "../../places-nav/SettingsFrame";
+import { shows, useLevel } from "../../places-nav/level";
 import { notify } from "../../shell/notify";
 import { DoneCheer } from "../../thread/DoneCheer";
 import type { Block } from "../../thread/model";
@@ -33,9 +33,10 @@ export async function startWhere(session: Pick<SaplingSession, "request">, agent
 }
 
 export function ThreadExtras(p: ThreadExtrasProps) {
+  const advanced = shows(useLevel(), "advanced");
   return <div className="r1-thread-extras">
     <div className="r1-cheer"><DoneCheer name={p.name} ended={p.ended} history={p.history} room={Boolean(p.row?.groupChat)} /></div>
-    {p.ready && p.empty ? <div className="r1-where g-clear"><WhereChips key={p.row?.key ?? "none"} engine={p.session.engine} row={p.row} trunkName={p.name} advanced={readLevel() !== "regular"} projectName={null}
+    {p.ready && p.empty ? <div className="r1-where g-clear"><WhereChips key={p.row?.key ?? "none"} engine={p.session.engine} row={p.row} trunkName={p.name} advanced={advanced} projectName={null}
       onStartTopic={(params) => {
         void startWhere(p.session, p.row?.agentId, params).then(
           (key) => { if (key) p.onOpen(key); else notify("The engine didn't return the new conversation.", { tone: "bad" }); },
