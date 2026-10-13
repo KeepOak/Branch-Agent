@@ -46,7 +46,12 @@ it("keeps the pill live once the engine offers agent.identity.get, and the unwir
   await act(async () => pill.click());
   expect(onOpen).toHaveBeenCalledOnce();
   // The header tools have nothing to run yet: Coming, still naming their calls.
-  for (const tool of host.querySelectorAll<HTMLButtonElement>(".r1-header-right button")) expect(tool.getAttribute("aria-disabled")).toBe("true");
+  const tools = [...host.querySelectorAll<HTMLButtonElement>(".r1-header-right button")];
+  expect(tools.map((tool) => tool.getAttribute("aria-label"))).toEqual(["Computer · Coming", "Browser · Coming", "More · Coming"]);
+  expect(tools.map((tool) => tool.getAttribute("aria-disabled"))).toEqual(["true", "true", "true"]);
+  const named = (label: string) => host.querySelector<HTMLButtonElement>(`.r1-header-right button[aria-label="${label} · Coming"]`);
+  expect(named("Computer")!.getAttribute("aria-disabled")).toBe("true");
+  expect(named("Browser")!.getAttribute("aria-disabled")).toBe("true");
   expect(comingControls().map((entry) => entry.where)).toEqual(expect.arrayContaining(["Computer", "Browser", "More"]));
   expect(undeclared()).toEqual([]);
 });
