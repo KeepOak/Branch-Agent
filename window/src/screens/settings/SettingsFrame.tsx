@@ -12,6 +12,7 @@ import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
 import { INVALID_CONFIG, useSchemaHints } from "./useRow";
+import "../../glass/glass.css";
 import "./settings.css";
 
 const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
@@ -82,12 +83,12 @@ function NavButton({ page, current, onOpen, sub }: { page: NavPage; current: boo
 
 function Results({ hits, onOpen, onMakeDefault }: { hits: ReturnType<typeof searchSettings>; onOpen: (hit: SearchHit) => void; onMakeDefault?: (id: string) => void }) {
   const groups: [string, SearchHit[]][] = [["Settings", hits.settings], ["Go to", hits.goto], ["Trunks", hits.trunks], ["Features", hits.features]];
-  if (!groups.some(([, list]) => list.length)) return <p className="r1s-none" role="status">{NOTHING_MATCHES}</p>;
+  if (!groups.some(([, list]) => list.length)) return <p className="r1s-none g-label" role="status">{NOTHING_MATCHES}</p>;
   return (
     <>
       {groups.filter(([, list]) => list.length).map(([title, list]) => (
         <div key={title} role="group" aria-label={title}>
-          <div className="r1s-grp">{title}</div>
+          <div className="r1s-grp g-label">{title}</div>
           {list.map((hit) => {
             const button = (
               <button key={`${hit.kind}:${hit.id}`} type="button" className="r1s-nav r1s-res" data-hit={hit.id} onClick={() => onOpen(hit)}>
@@ -119,8 +120,8 @@ function CardRows({ engine, rows, hints }: { engine: WindowEngine; rows: Row[]; 
   return (
     <>
       {regular.map((row) => <RowView key={row.id} engine={engine} row={row} />)}
-      <div className="r1s-fine" role="group" aria-label={FINE}>
-        <h3>{FINE}</h3>
+      <div className="r1s-fine g-clear" role="group" aria-label={FINE}>
+        <h3 className="g-label">{FINE}</h3>
         {finer.map((row) => <RowView key={row.id} engine={engine} row={row} />)}
       </div>
     </>
@@ -188,15 +189,15 @@ export function SettingsFrame(props: SettingsFrameProps) {
   const Custom = slots[shownPage]?.component;
 
   return (
-    <div className="r1set" data-level={LEVEL_WORD[level]}>
-      <aside className="r1s-side" aria-label="Settings">
-        <label className="r1s-search">
+    <div className="r1set g-clear" data-level={LEVEL_WORD[level]}>
+      <aside className="r1s-side g-clear" aria-label="Settings">
+        <label className="r1s-search g-frost">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></svg>
           <input type="search" value={q} placeholder={SEARCH_PLACEHOLDER} aria-label={SEARCH_PLACEHOLDER} onChange={(e) => setQ(e.target.value)} onKeyDown={onSearchKey} />
         </label>
         <div className="r1s-level">
           <Segmented label="How much to show" value={level} options={LEVELS.map((l) => ({ v: l.v, label: l.label }))} onChange={(v) => setLevel(v as Level)} />
-          <small>{levelLine}</small>
+          <small className="g-label" data-lines>{levelLine}</small>
         </div>
         <nav className="r1s-list" aria-label="Settings pages">
           {q.trim() ? <Results hits={hits} onOpen={open} onMakeDefault={props.onTrunk ? (id) => { setQ(""); props.onTrunk?.(id, "makeDefault"); } : undefined} /> : (
@@ -206,7 +207,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
                 const pages = g.pages.filter((p) => pageShown(p.id, level));
                 return pages.length ? (
                   <div key={g.title} role="group" aria-label={g.title} style={{ display: "contents" }}>
-                    <div className="r1s-grp">{g.title}</div>
+                    <div className="r1s-grp g-label">{g.title}</div>
                     {pages.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} onOpen={() => go(p.id)} />)}
                   </div>
                 ) : null;
@@ -218,11 +219,11 @@ export function SettingsFrame(props: SettingsFrameProps) {
       <div className="r1s-page" ref={scroller}>
         {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} /></div> : <>
         <header className="r1s-head">
-          <h1>{spec.title}</h1>
-          <p className="r1s-lede">{spec.lede} <button type="button" className="r1s-learn" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>
+          <h1 className="g-label">{spec.title}</h1>
+          <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>
           {help ? (
-            <div className="r1s-help" role="dialog" aria-label={`About ${spec.title}`}>
-              <h3>On this page</h3>
+            <div className="r1s-help g-clear" role="dialog" aria-label={`About ${spec.title}`}>
+              <h3 className="g-label">On this page</h3>
               <ul>{sections.map((s) => <li key={s.card}><button type="button" className="r1s-link" onClick={() => { setHelp(false); setJump(`sec-${shownPage}-${s.card}`); }}>{s.card || spec.title}</button></li>)}</ul>
               {props.onAsk ? <button type="button" className="r1s-btn" onClick={() => props.onAsk?.(`Help me with Settings › ${spec.title}.`)}>Ask a Trunk</button>
                 : <button type="button" className="r1s-btn" aria-disabled="true" data-coming="sessions.send" title={ASK_COMING} style={{ opacity: .55, cursor: "not-allowed" }}>Ask a Trunk</button>}
@@ -230,26 +231,26 @@ export function SettingsFrame(props: SettingsFrameProps) {
           ) : null}
         </header>
         <div className="r1s-col">
-          {loadFailed ? <div className="r1s-notice" role="alert">Settings didn’t load · <button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></div> : null}
+          {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></div> : null}
           {invalid ? (
-            <div className="r1s-notice r1s-invalid" role="alert">
+            <div className="r1s-notice r1s-invalid g-frost" role="alert">
               {INVALID_CONFIG}
               {invalid.length ? <ul>{invalid.map((line, i) => <li key={i}>{line}</li>)}</ul> : null}
             </div>
           ) : null}
           {sections.length ? sections.map(({ card, visible }) => (
-            <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec" aria-label={card || spec.title}>
-              {card ? <h2>{card}</h2> : null}
+            <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title}>
+              {card ? <h2 className="g-label">{card}</h2> : null}
               {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} /> : (
                 <div className="r1s-row" aria-disabled="true" data-coming={`settings:${shownPage}/${card || "main"}`} title={SECTION_COMING(card || spec.title)}>
-                  <b>Coming</b>
-                  <small className="r1s-note">{SECTION_COMING(card || spec.title)}</small>
+                  <b className="g-label">Coming</b>
+                  <small className="r1s-note g-label" data-lines>{SECTION_COMING(card || spec.title)}</small>
                 </div>
               )}
             </section>
           )) : (
-            <div className="r1s-empty">
-              <p>These settings show at {first !== null && first > level ? LEVELS[first].label : "Advanced"}.</p>
+            <div className="r1s-empty g-clear">
+              <p className="g-label">These settings show at {first !== null && first > level ? LEVELS[first].label : "Advanced"}.</p>
               <button type="button" className="r1s-btn" onClick={() => setLevel(first !== null && first > level ? first : 1)}>Show {first !== null && first > level ? LEVELS[first].label : "Advanced"}</button>
             </div>
           )}
