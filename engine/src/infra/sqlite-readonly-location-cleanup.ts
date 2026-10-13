@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { extractErrorCode } from "@branch/normalization-core/error-coercion";
 import {
   createRetainedOperation,
@@ -238,6 +239,50 @@ const tempDirectoryRemovalOptions = {
   retryDelay: 20,
 } as const;
 
+// Windows keeps a just-closed snapshot busy for a moment (scanners, indexers). Only those
+// transient lock errors are retried, with backoff; anything else surfaces at once.
+const removalBackoffMs = [20, 40, 80, 160, 320] as const;
+const removalRetryCodes = new Set(["EBUSY", "EPERM", "ENOTEMPTY"]);
+const removalBackoffCell = new Int32Array(new SharedArrayBuffer(4));
+
+function removalBackoff(error: unknown, attempt: number): number | undefined {
+  return removalRetryCodes.has(extractErrorCode(error) ?? "")
+    ? removalBackoffMs.at(attempt)
+    : undefined;
+}
+
+/** Synchronous removal of one snapshot path, retried only on transient lock errors. */
+function removeSnapshotPathSync(target: string): void {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      fs.rmSync(target, tempDirectoryRemovalOptions);
+      return;
+    } catch (error) {
+      const wait = removalBackoff(error, attempt);
+      if (wait === undefined) {
+        throw error;
+      }
+      Atomics.wait(removalBackoffCell, 0, 0, wait);
+    }
+  }
+}
+
+/** Asynchronous removal of one snapshot path, retried only on transient lock errors. */
+async function removeSnapshotPathAsync(target: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await fs.promises.rm(target, tempDirectoryRemovalOptions);
+      return;
+    } catch (error) {
+      const wait = removalBackoff(error, attempt);
+      if (wait === undefined) {
+        throw error;
+      }
+      await delay(wait);
+    }
+  }
+}
+
 // A non-throwing cleanup-failure report emitted once per owner; a successful
 // read is never turned into a failure by temp-file cleanup.
 export type CleanupFailureReport = {
@@ -298,7 +343,7 @@ export function retireSqliteSnapshotPayload(
   retirement: ReturnType<typeof beginSqliteSnapshotRetirement>,
 ): void {
   for (const file of retirement.payload) {
-    fs.rmSync(file, tempDirectoryRemovalOptions);
+    removeSnapshotPathSync(file);
   }
   // Free copied bytes before SQLite allocates its retirement page/journal.
   // Controls stay intact until every marker commits and native handle closes.
@@ -324,7 +369,7 @@ export function removeTempDirectory(
         owner.release = undefined;
         owner.retired = true;
       }
-      fs.rmSync(tempDir, tempDirectoryRemovalOptions);
+      removeSnapshotPathSync(tempDir);
     } finally {
       retirement?.release();
     }
@@ -362,7 +407,7 @@ export async function removeTempDirectoryAsync(
     const retirement = prepareSnapshotRetirement(tempDir, owner);
     try {
       for (const file of retirement?.payload ?? []) {
-        await retainSnapshotWork(fs.promises.rm(file, tempDirectoryRemovalOptions));
+        await retainSnapshotWork(removeSnapshotPathAsync(file));
       }
       if (retirement) {
         retirement.retire();
@@ -370,7 +415,7 @@ export async function removeTempDirectoryAsync(
         owner.release = undefined;
         owner.retired = true;
       }
-      await retainSnapshotWork(fs.promises.rm(tempDir, tempDirectoryRemovalOptions));
+      await retainSnapshotWork(removeSnapshotPathAsync(tempDir));
     } finally {
       retirement?.release();
     }

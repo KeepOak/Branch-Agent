@@ -35,7 +35,7 @@ import type { SqliteStagingToken as SnapshotToken } from "./sqlite-staging-token
 
 type ReclamationPass = { controller: AbortController; done: Promise<void> };
 const pendingReclamations = new Map<string, ReclamationPass>();
-const currentAgeMs = 15 * 60 * 1000;
+const currentAgeMs = 10 * 60 * 1000;
 const reclamationByteBudget = 512 * 1024 * 1024;
 
 function stagingParent(root: string): string | undefined {
@@ -143,6 +143,11 @@ export function reclaimAbandonedSqliteSnapshotsAsync(
     controller,
     done: (async () => {
       try {
+        const entries = await fs.promises.readdir(root, { withFileTypes: true }).catch(() => []);
+        // An empty pass needs no worker process; the next pass observes later allocations.
+        if (!entries.some((entry) => entry.isDirectory() && isStagingName(entry.name))) {
+          return;
+        }
         const { runSqliteReadOnlyWorker } = await import("./sqlite-readonly-worker.js");
         if (!controller.signal.aborted) {
           for (const message of await runSqliteReadOnlyWorker(root, {

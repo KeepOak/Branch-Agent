@@ -611,7 +611,7 @@ describe("prepareSqliteReadOnlyLocation", () => {
     }
   });
 
-  it("retries cleanup after a transient removal failure", async () => {
+  it("absorbs a brief removal lock inside one cleanup", async () => {
     const databasePath = createTempDatabasePath("CREATE TABLE probe (value TEXT);");
     const prepared = await prepareSqliteReadOnlyLocationInProcess(databasePath);
     const privateDirectory = path.dirname(prepared.location);
@@ -627,8 +627,28 @@ describe("prepareSqliteReadOnlyLocation", () => {
       return rmSync(pathname, options);
     }) as typeof fs.rmSync);
 
+    expect(prepared.cleanup()).toBe(true);
+    expect(fs.existsSync(privateDirectory)).toBe(false);
+  });
+
+  it("retries cleanup after a removal lock outlasts the backoff", async () => {
+    const databasePath = createTempDatabasePath("CREATE TABLE probe (value TEXT);");
+    const prepared = await prepareSqliteReadOnlyLocationInProcess(databasePath);
+    const privateDirectory = path.dirname(prepared.location);
+    const rmSync = fs.rmSync.bind(fs);
+    let busy = true;
+    vi.spyOn(fs, "rmSync").mockImplementation(((pathname, options) => {
+      if (busy && path.resolve(String(pathname)) === path.resolve(privateDirectory)) {
+        const error = new Error("busy");
+        (error as NodeJS.ErrnoException).code = "EBUSY";
+        throw error;
+      }
+      return rmSync(pathname, options);
+    }) as typeof fs.rmSync);
+
     expect(prepared.cleanup()).toBe(false);
     expect(fs.existsSync(privateDirectory)).toBe(true);
+    busy = false;
     expect(prepared.cleanup()).toBe(true);
     expect(fs.existsSync(privateDirectory)).toBe(false);
   });
