@@ -4,6 +4,7 @@ import { useChannelWizard } from "../../places/settings/set1/chatapps-connect";
 import { ChatLogo } from "../../places/settings/set1/chatapps-logo";
 import { safeSignInUrl, type WizardStep } from "../../places/settings/account-login";
 import { Dialog } from "../../shell/Dialog";
+import { Ctl, Switch } from "../../places/settings/kit";
 import { Access } from "./Access";
 import { Pairing } from "./Pairing";
 import { useChatApps } from "./useChatApps";
@@ -53,9 +54,17 @@ function EngineSetup({ engine, app, onClose }: { engine: WindowEngine; app: Chat
       {tokenInvalid && <small>Paste the complete bot token from BotFather.</small>}
     </div>}
     {view.phase === "done" && !saved && <><p>{app.name} is configured. Send it a message, then approve your request below.</p><Pairing engine={engine} snapshot={live.pairing} reload={live.reload} /><button type="button" data-local="save-step" onClick={() => setSaved(true)}>Continue to Save</button></>}
-    {view.phase === "done" && saved && <><p>{app.name} setup is saved by the engine.</p><Access engine={engine} app={app} /><button type="button" data-local="close" onClick={close}>Done</button></>}
+    {view.phase === "done" && saved && <><p>{app.name} setup is saved by the engine.</p><Access engine={engine} app={app} />{app.id === "telegram" && <TelegramSaveOptions app={app} />}<button type="button" data-local="close" onClick={close}>Done</button></>}
   </WizardFrame>;
 }
+/** Telegram's Save step options from the R1-09 wizard table. The engine has no setting for either yet, so both stay Coming, as in Manage. */
+function TelegramSaveOptions({ app }: { app: ChatApp }) {
+  return <>
+    <Ctl title="Keep forum topics apart" sub="Each topic in a group becomes its own conversation." off={NO_SETTING}><Switch checked label="Keep forum topics apart" disabled onChange={() => undefined} /></Ctl>
+    <Ctl title="Photos and files reach the task" sub={`What you send in ${app.name} is handed to the Trunk as material.`} off={NO_SETTING}><Switch checked label="Photos and files reach the task" disabled onChange={() => undefined} /></Ctl>
+  </>;
+}
+const NO_SETTING = "Branch has no setting for this yet.";
 export function WizardFrame({ app, active, onClose, children, steps = STEPS }: { app: ChatApp; active: number; onClose: () => void; children: React.ReactNode; steps?: string[] }) {
   return <div className="r1-cw"><Dialog title={`Set up ${app.name}`} onClose={onClose} testid="r1-channel-setup"><div className="r1-cw-head"><ChatLogo id={app.channel ?? app.id} name={app.name} size={40} /><span><b>{app.name}</b><small>{app.estimate}</small></span></div><ol className="r1-cw-steps" aria-label="Setup steps">{steps.map((s, i) => <li key={s} aria-current={i === active ? "step" : undefined}><em>{i + 1}</em>{s}</li>)}</ol>{children}</Dialog></div>;
 }
