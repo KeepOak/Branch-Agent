@@ -723,7 +723,7 @@ export async function finishGatewayStartup(params: {
         retryDelayMs: RETAINED_PLUGIN_CLEANUP_DELAY_MS,
         isClosing: () => lifecycle.closePreludeStarted,
         isBusy: () => getActiveGatewayRootWorkCount({ excludeCurrent: true }) > 0,
-        repeatDelayMs: 15 * 60_000,
+        repeatDelayMs: 5 * 60_000,
         run: async () => {
           const { reclaimAbandonedSqliteSnapshotsAsync } =
             await import("../infra/sqlite-snapshot-staging.js");

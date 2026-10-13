@@ -132,7 +132,7 @@ function Starters({ engine, onStart }: { engine?: WindowEngine; onStart: (text: 
   if (!conv.loaded || hasNoModel(conv, currentModelRef(conv.row, conv.defaults))) return null;
   const list = startersFor(conv.trunk?.theme ?? "", !conv.trunk || conv.trunk.id === conv.defaultTrunkId).slice(0, 3);
   return <div className="r1c-chips" role="group" aria-label="Starters">
-    {list.map((text) => <Coming key={text} need="chat.send"><button type="button" className="r1c-chip g-chip" onClick={() => onStart(text)}>{text}</button></Coming>)}
+    {list.map((text) => <Coming key={text} need="chat.send"><button type="button" className="r1c-chip" onClick={() => onStart(text)}>{text}</button></Coming>)}
   </div>;
 }
 
@@ -207,7 +207,7 @@ export function ChatView(props: ChatViewProps) {
         {grouped.size === 2 ? <ApprovalGroup approvals={waitingTwo} details={details} name={name} onAnswer={answer} /> : null}
         {helperChip}
         {suggestions.length ? <div className="r1c-chips r1c-suggest" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
-          {suggestions.map((text) => <Coming key={text} need="chat.send"><button type="button" className="r1c-chip g-chip" title={"Send “" + text + "” as your reply"} onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{"“" + text + "”"}</button></Coming>)}
+          {suggestions.map((text) => <Coming key={text} need="chat.send"><button type="button" className="r1c-chip" title={"Send “" + text + "” as your reply"} onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{"“" + text + "”"}</button></Coming>)}
         </div> : null}
       </div>
       <Rail scroller={scroller} blocks={all} sessionKey={props.sessionKey} />

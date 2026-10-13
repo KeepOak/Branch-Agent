@@ -39,7 +39,9 @@ const FULL = {
   "users.self": { profile: { id: "me", displayName: "Taofik" } },
   "users.list": { profiles: [{ id: "me", displayName: "Taofik" }, { id: "dana", displayName: "Dana Okafor", role: "member" }] },
 };
-const methods = ["contacts.list", "agents.list", "rooms.list", "sessions.patch", "sessions.delete", "contacts.markRead"];
+// Everything the sidebar calls except the two the engine really lacks (sessions.restore, sessions.folders.put).
+const methods = ["contacts.list", "agents.list", "rooms.list", "sessions.patch", "sessions.patchMany", "sessions.delete", "sessions.create", "sessions.compact",
+  "sessions.groups.put", "contacts.markRead", "contacts.topics", "rooms.create", "rooms.archive", "agents.create", "agents.update", "agents.delete", "chat.send", "chat.history"];
 
 function setup(responses: Record<string, unknown>, ready = true, over: Partial<SidebarProps> = {}) {
   const request = vi.fn(async (method: string) => responses[method] ?? {});

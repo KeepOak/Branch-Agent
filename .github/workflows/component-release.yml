@@ -465,6 +465,14 @@ jobs:
           pattern: release-native-*
           merge-multiple: true
           path: ${{ runner.temp }}/release-assets
+      # Installers are optional per target (Linux has none). Each release proof lists the installer its target built,
+      # so a listed installer that did not arrive, or arrived with other bytes, fails the checks below.
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        continue-on-error: true
+        with:
+          pattern: release-installers-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-assets
       - name: Verify the merged cross-target release directory without publishing
         if: github.event_name == 'pull_request'
         run: >-

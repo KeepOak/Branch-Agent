@@ -11,10 +11,12 @@
 .r1-header-left { position: absolute; left: 12px; top: 9px; display: flex; align-items: center; gap: 6px; }
 .r1-header-right { position: absolute; right: 8px; top: 8px; }
 .r1-header :is(button, .g-capsule) { pointer-events: auto; }
-.r1-header .r1-history { height: 34px; gap: 0; box-shadow: inset 0 1px 0 var(--gc-hi), var(--gc-sh-sm); }
+/* README item 48: the header sits on the clear conversation, so its drawer button, history and tools capsules and the title pill
+   are frosted pills (.g-frost); only the sidebar is frosted glass. */
+.r1-header .r1-history { height: 34px; gap: 0; }
 .r1-history button { height: 28px; width: 28px; font-size: 24px; line-height: 1; }
 .r1-pill-position { position: absolute; top: 8px; max-width: 440px; }
-.r1-drawer-button { display: none; }
+.r1-drawer-button { display: none; border: 0; }
 .r1-scroll { flex: 1; min-height: 0; overflow: auto; padding-top: calc(var(--hdr) + 8px); scroll-padding-top: calc(var(--hdr) + 16px); }
 .r1-content { min-height: 100%; }
 /* The notice line ("Reconnecting…", a part that didn't load): text on a frosted pill (.g-label, README item 48), centred. */
@@ -31,8 +33,14 @@
 .r1-sidebar-search { width: 100%; border: 0; border-radius: 12px; padding: 8px; background: var(--gk-chip); margin-bottom: 8px; }
 .r1-frame[data-wide="false"] .r1-sidebar-search { display: none; }
 .r1-sidebar-footer { display: flex; justify-content: center; padding-top: 12px; }
-.r1-agent-details { padding: 8px; }
-.r1-agent-details p { color: var(--ink-3); font-size: 12.5px; }
+/* Agent details (the header pill's popover), README item 48: the popover is clear; the name, its line and Close sit on pills.
+   Reduce transparency makes the popover solid. */
+.g-popover:has(> .r1-agent-details) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border-color: transparent; }
+:root[data-transparency="reduce"] .g-popover:has(> .r1-agent-details) { background: var(--raise); box-shadow: inset 0 0 0 1px var(--gp-edge); }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .g-popover:has(> .r1-agent-details) { background: var(--raise); box-shadow: inset 0 0 0 1px var(--gp-edge); } }
+.r1-agent-details { display: grid; justify-items: start; gap: 6px; padding: 8px; }
+.r1-agent-details p { margin: 0; color: var(--ink-3); font-size: 12.5px; }
+.r1-agent-details button { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; font: inherit; font-size: 12.5px; cursor: pointer; }
 /* Classic content remains functional until its screen port lands, with frame-owned scrolling. */
 .r1-content > .thread-wrap { min-height: 100%; height: auto; }
 .r1-content .thread-wrap > .scroll { overflow: visible; }

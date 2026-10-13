@@ -4,8 +4,8 @@
 .r1u-btn {
   position: relative; display: inline-grid; place-items: center; flex: none; box-sizing: border-box;
   width: 36px; height: 36px; padding: 0; border-radius: var(--r-pill);
-  border: 1px solid var(--gc-edge); background: var(--on-accent); color: var(--accent);
-  box-shadow: var(--gc-sh-sm); font: 600 var(--fs-13)/1 var(--sans);
+  border: 1px solid var(--gp-edge); background: var(--on-accent); color: var(--accent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--mask-opaque) 18%, transparent); font: 600 var(--fs-13)/1 var(--sans);
   transition: width var(--spring-thumb), transform var(--spring-press);
   animation: r1u-in var(--spring-thumb);
 }
@@ -15,7 +15,7 @@
 .r1u-btn[data-kind="failed"] { color: var(--bad); }
 .r1u-btn[data-leaving] { animation: r1u-out var(--ease-exit) forwards; }
 .r1u-ring { display: block; }
-.r1u-ring-track { stroke: var(--gc-edge); }
+.r1u-ring-track { stroke: var(--gp-edge); }
 .r1u-ring-arc { stroke: var(--accent); transform-origin: 50% 50%; animation: r1u-spin 1s linear infinite; }
 .r1u-label { padding: 0 2px; }
 .r1u-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
