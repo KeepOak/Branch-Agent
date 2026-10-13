@@ -8,6 +8,7 @@ import {
   restoreActivePluginRegistrySnapshot,
   stageActivePluginRegistry,
 } from "../plugins/runtime.js";
+import { withAgentDatabaseStartupAdmission } from "../state/agent-database-startup.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import { acquireTestPortBlock } from "../test-utils/port-claims.js";
 import { prepareGatewayKernel } from "./server-kernel.js";
@@ -100,6 +101,14 @@ describe("Gateway startup node capabilities", () => {
       },
     );
     const peers = [affected, unaffected, operator];
+    let databaseReady = false;
+    const admission = vi
+      .spyOn(await import("./server-agent-database-startup.js"), "activateGatewayAgentDatabaseStartup")
+      .mockImplementation(({ preparationReady }) => {
+        void preparationReady.then(() => {
+          databaseReady = true;
+        });
+      });
     let kernel: Awaited<ReturnType<Awaited<ReturnType<typeof prepareGatewayKernel>>["activate"]>> | undefined;
     let server: GatewayServer | undefined;
     const prepareKernel = prepareGatewayKernel;
@@ -114,6 +123,13 @@ describe("Gateway startup node capabilities", () => {
             for (const { client } of peers) {
               kernel.clients.add(client);
             }
+            if (kernel.workerPlacementRuntime) {
+              vi.spyOn(kernel.workerPlacementRuntime, "startRuntime").mockImplementation(async () => {
+                await Promise.resolve();
+                expect(databaseReady).toBe(true);
+                return null;
+              });
+            }
             return kernel;
           },
         };
@@ -121,7 +137,9 @@ describe("Gateway startup node capabilities", () => {
     const postAttach = vi
       .spyOn(await import("./server-startup-post-attach.js"), "startGatewayPostAttachRuntime")
       .mockImplementation(async (params) => {
+        expect(databaseReady).toBe(false);
         await params.onStartupPluginsLoaded?.({ pluginRegistry: registry, gatewayMethods: [] });
+        await params.startWorkerEnvironmentRuntime?.();
         return { stopGatewayUpdateCheck: async () => {}, startupSettled: Promise.resolve() };
       });
     try {
@@ -138,12 +156,14 @@ describe("Gateway startup node capabilities", () => {
         state.applyEnv();
         stageActivePluginRegistry(createEmptyPluginRegistry(), null, "default");
         const { startGatewayServerCore } = await import("./server-start.js");
-        return await startGatewayServerCore(claim.port, {
-          auth: { mode: "token", token },
-          bind: "loopback",
-          controlUiEnabled: false,
-          sidecarStartup: "defer",
-        });
+        return await withAgentDatabaseStartupAdmission(() =>
+          startGatewayServerCore(claim.port, {
+            auth: { mode: "token", token },
+            bind: "loopback",
+            controlUiEnabled: false,
+            sidecarStartup: "defer",
+          }),
+        );
       });
       expect(affected.client.invalidated).toBe(true);
       await expect(affected.closed).resolves.toEqual({
@@ -162,6 +182,7 @@ describe("Gateway startup node capabilities", () => {
         await server?.close();
       } finally {
         factory.mockRestore();
+        admission.mockRestore();
         postAttach.mockRestore();
         restoreActivePluginRegistrySnapshot(previousRegistry);
         await state.cleanup();
