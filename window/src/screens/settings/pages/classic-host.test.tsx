@@ -11,6 +11,7 @@ import { ROWS } from "../rows";
 import { searchSettings } from "../search";
 import { mergeRows } from "../slots";
 import { SettingsFrame } from "../SettingsFrame";
+import { ADMIN_ONLY } from "./classic-host";
 import { R1_PAGES, REHOSTED } from "./plugged";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -24,7 +25,7 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
-const engine = () => ({ request: vi.fn(async () => ({})), onEvent: () => () => undefined, sessionKey: "s", agentId: "main", scopes: ["operator.admin"], features: { methods: [], events: [] } }) as unknown as WindowEngine;
+const engine = (scopes = ["operator.admin"]) => ({ request: vi.fn(async () => ({})), onEvent: () => () => undefined, sessionKey: "s", agentId: "main", scopes, features: { methods: [], events: [] } }) as unknown as WindowEngine;
 /** What a page draws: its section titles and its rows, in order. */
 const drawn = (el: ParentNode) => ({
   sections: [...el.querySelectorAll<HTMLElement>("[data-sec]")].map((s) => s.dataset.sec),
@@ -32,8 +33,8 @@ const drawn = (el: ParentNode) => ({
 });
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
-it("re-hosts exactly these Classic pages in this PR", () => {
-  expect(REHOSTED).toEqual({ who: "people", notifications: "notifications", instructions: "instructions" });
+it("re-hosts exactly these Classic pages", () => {
+  expect(REHOSTED).toEqual({ who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: "updates" });
 });
 
 for (const [page, classic] of Object.entries(REHOSTED)) {
@@ -49,6 +50,14 @@ for (const [page, classic] of Object.entries(REHOSTED)) {
     expect(drawn(hosted!)).toEqual(before);
   });
 }
+
+it("keeps Sign-ins & keys empty without operator.admin, as Classic hides it, and says why", async () => {
+  await act(async () => root.render(<SettingsFrame engine={engine(["operator.read"])} page="signins" pages={R1_PAGES} />));
+  await settle();
+  const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="signins"] .r1s-classic[data-classic="secrets"]')!;
+  expect(hosted.textContent).toContain(ADMIN_ONLY);
+  expect(drawn(hosted)).toEqual({ sections: [], rows: [] });
+});
 
 it("adds each re-hosted page's Classic rows to the R1 table, so R1 search finds them on their R1 page", () => {
   const merged = mergeRows(ROWS, R1_PAGES);

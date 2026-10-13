@@ -8,7 +8,7 @@ import { SETTINGS_ROWS, SettingsPage } from "../../../places/settings";
 import { errorText, visible } from "../../../places/settings/adapter";
 import { KitProvider, SetupLock, type SaveReport } from "../../../places/settings/kit";
 import { usePins, type Pin } from "../../../places/settings/pins";
-import { SETUP_PAGES } from "../../../places-nav/settings-nav";
+import { HIDDEN_PAGES, SETUP_PAGES } from "../../../places-nav/settings-nav";
 import { Icon } from "../../../shell/icons";
 import { PAGES, pageFor, type PageId } from "../nav";
 import type { Row } from "../rows";
@@ -17,6 +17,8 @@ import type { PageSlot } from "../slots";
 import "./classic-host.css";
 
 const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
+/** A page Classic hides without operator.admin. */
+export const ADMIN_ONLY = "This page needs a connection to Branch that may change its setup. Open it on the computer Branch runs on.";
 
 type SaveState = { kind: "saving" } | { kind: "saved" } | { kind: "failed"; message: string } | null;
 
@@ -46,6 +48,17 @@ export function ClassicHost({ engine, page, classic, onPage }: { engine: WindowE
   }, [report]);
   const goPin = useCallback((pin: Pin) => open(pin[0]), [open]);
   const pins = usePins(engine, classic, level, runSave, goPin);
+  // Classic leaves these pages out without operator.admin; R1 keeps them in the nav, so the page says why it is empty.
+  if (!maySetup && HIDDEN_PAGES.includes(classic)) {
+    return (
+      <div className="settings r1s-classic" data-classic={classic}>
+        <div className="set-col">
+          <h1>{PAGES[page].title}</h1>
+          <p className="g-label" data-lines role="status">{ADMIN_ONLY}</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="settings r1s-classic" data-classic={classic}>
       <div className="set-col">
