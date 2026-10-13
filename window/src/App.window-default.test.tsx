@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { GatewayStatus } from "./connect/gateway";
 
-// Which window a connected install gets. Classic stays the default until R1-11 flips it; R1 is opt-in.
+// Which window a connected install gets. R1 is the default; Classic only behind ?classic or branch.classic (R1-12).
 type Options = { url: string; onStatus: (status: GatewayStatus) => void };
 const fake = vi.hoisted(() => ({ gateways: [] as Array<{ options: Options }> }));
 vi.mock("./connect/gateway", () => ({
@@ -67,22 +67,16 @@ async function windowThroughReload(): Promise<[string | null, string | null]> {
   return [first, shown(await reload())];
 }
 
-it("opens the Classic window by default, including after a reload", async () => {
+it("opens the R1 window by default, including after a reload", async () => {
+  expect(await windowThroughReload()).toEqual(["r1", "r1"]);
+});
+
+it("keeps the Classic override for ?classic, including after a reload", async () => {
+  window.history.replaceState(null, "", "/?classic");
   expect(await windowThroughReload()).toEqual(["classic", "classic"]);
 });
 
-it("opens the R1 frame when opted in with ?r1, including after a reload", async () => {
-  window.history.replaceState(null, "", "/?r1");
-  expect(await windowThroughReload()).toEqual(["r1", "r1"]);
-});
-
-it("opens the R1 frame when opted in with the hidden branch.r1 flag, including after a reload", async () => {
-  localStorage.setItem("branch.r1", "1");
-  expect(await windowThroughReload()).toEqual(["r1", "r1"]);
-});
-
-it("lets the Classic override win over the R1 opt-in", async () => {
-  localStorage.setItem("branch.r1", "1");
-  window.history.replaceState(null, "", "/?r1&classic");
+it("keeps the Classic override for the branch.classic flag, including after a reload", async () => {
+  localStorage.setItem("branch.classic", "1");
   expect(await windowThroughReload()).toEqual(["classic", "classic"]);
 });
