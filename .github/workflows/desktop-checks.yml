@@ -69,6 +69,19 @@ jobs:
         run: node --test scripts/publish-component-release.test.mjs
       - name: Check the unsigned installer builder
         run: node --test scripts/release-installers.test.mjs
+      - name: Check the one-line install scripts against a fixture release
+        run: node --test scripts/install-scripts.test.mjs
+      - name: Lint install.sh with shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck -s sh install/install.sh
+      - name: Lint install.ps1 with PSScriptAnalyzer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) { Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -RequiredVersion 1.23.0 }
+          $issues = @(Invoke-ScriptAnalyzer -Path install/install.ps1 -Severity Warning,Error)
+          $issues | Format-Table -AutoSize | Out-String | Write-Output
+          if ($issues.Count -gt 0) { exit 1 }
       - name: Check updates, startup and owned process cleanup
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist

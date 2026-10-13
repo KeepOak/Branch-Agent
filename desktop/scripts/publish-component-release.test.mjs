@@ -253,6 +253,12 @@ test("listed installers are uploaded as release assets and Linux publishes witho
   assert(!uploaded.some(name => /linux-x64\.(deb|AppImage)$/.test(name)));
   const sums = await readFile(join(assets, "SHA256SUMS"), "utf8");
   for (const name of Object.values(installerNames)) assert.match(sums, new RegExp(`^${(await fileDigest(join(assets, name))).sha256}  ${name.replace(/\./g, "\\.")}$`, "m"));
+  // The one-line install scripts ship with every release, so releases/latest/download/install.sh is stable.
+  for (const name of ["install.sh", "install.ps1"]) {
+    assert(uploaded.includes(name), `${name} was not uploaded`);
+    const source = await fileDigest(fileURLToPath(new URL(`../install/${name}`, import.meta.url)));
+    assert.match(sums, new RegExp(`^${source.sha256}  ${name.replace(/\./g, "\\.")}$`, "m"));
+  }
   assert.equal(remote.latest(), tag);
 }));
 

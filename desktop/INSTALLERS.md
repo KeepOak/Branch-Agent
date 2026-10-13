@@ -1,5 +1,45 @@
 # Installers
 
+## One-line install (recommended)
+
+macOS (Apple silicon) and Linux (x64):
+
+```sh
+curl -fsSL https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.sh | sh -s -- --version v1.2.3
+```
+
+Windows (x64), in PowerShell:
+
+```powershell
+irm https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.ps1 | iex
+$env:BRANCH_INSTALL_VERSION = 'v1.2.3'; irm https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.ps1 | iex
+```
+
+This is the primary beta install path. Files fetched by curl or Invoke-WebRequest carry no quarantine flag or Mark of the Web, so Gatekeeper and SmartScreen don't stop the unsigned build. The scripts live in `desktop/install/`. Every release uploads them as the assets `install.sh` and `install.ps1` and lists them in `SHA256SUMS` (`addInstallScripts` in `release-inventory.mjs`, called by `publish-component-release.mjs`), so `releases/latest/download/<name>` is their stable URL.
+
+Both scripts:
+
+- read the release's `SHA256SUMS` (latest, or the `--version` / `-Version` / `BRANCH_INSTALL_VERSION` tag) and pick the one entry for this platform's asset;
+- download that asset and check its SHA-256 before installing. A mismatch or a missing entry stops with a non-zero exit and installs nothing;
+- never use sudo or admin, and re-running replaces the install.
+
+| Platform | Asset | Installs to |
+|---|---|---|
+| macOS arm64 | `branch-desktop-<version>-darwin-arm64.tar.gz` | `~/Applications/Branch Agent.app`. The script reports whether the app carries a code signature (Apple silicon needs at least an ad-hoc one). |
+| Linux x64 | `branch-desktop-<version>-linux-x64.tar.gz` | `~/.local/share/branch-agent`, a `~/.local/bin/branch-agent` launcher and `~/.local/share/applications/branch-agent.desktop`. The AppImage replaces this asset later; only `asset_pattern` in `install.sh` changes. |
+| Windows x64 | `Branch-Agent-Setup-<version>-win32-x64.exe` | `%LOCALAPPDATA%\Programs\Branch Agent`, through Inno Setup's per-user silent install (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER`). |
+
+On macOS and Linux the new copy is unpacked and staged beside the install, then swapped in with a rename. A failed download or check leaves the existing install as it was.
+
+`BRANCH_INSTALL_BASE_URL` is **test-only**. `desktop/scripts/install-scripts.test.mjs` sets it to a local `file://` fixture release with `HOME` in a temp folder. Don't set it for a real install. Desktop checks run that test on macOS and Linux, shellcheck on `install.sh` (Linux) and PSScriptAnalyzer on `install.ps1` (Windows).
+
+## Download instead
+
+The release page also carries a normal download for each platform. It isn't signed yet, so on macOS right-click the app → Open the first time, and on Windows choose More info → Run anyway in SmartScreen.
+
+## Installer packages
+
 Every release already publishes each platform's verified desktop package (`branch-desktop-<version>-<target>.tar.gz`). On first launch it downloads the engine and window. `desktop/scripts/release-installers.mjs` wraps that package in something a person can double-click. The `native` job of `.github/workflows/component-release.yml` runs it after the package is verified and uploads the result as the `release-installers-<target>` workflow artifact (7 days).
 
 Installers are **release assets**. Once an installer is built, `release-installers.mjs` lists it (name, bytes, sha256) in its target's `release-proof-<target>.json`. The `publish` job downloads every `release-installers-<target>` artifact next to the native assets. `release-inventory.mjs` then checks each listed installer like any other asset, and `publish-component-release.mjs` uploads it with the release and adds it to `SHA256SUMS`. Installers are optional per target. A target that built none (Linux, or a failed installer step) publishes without one. An installer that is listed but missing, or whose bytes differ, fails the publish. Installers ship unsigned until signing lands.

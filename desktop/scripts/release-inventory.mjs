@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export async function fileDigest(file) {
   const hash = createHash("sha256");
@@ -32,6 +33,22 @@ export async function recordInstaller(directory, target, file) {
   proof.installers = { ...proof.installers, [name]: await fileDigest(file) };
   await writeFile(proofFile, JSON.stringify(proof, null, 2) + "\n");
   return proof.installers[name];
+}
+
+/** The one-line install scripts every release carries, so releases/latest/download/<name> is their stable URL. */
+export const INSTALL_SCRIPTS = ["install.sh", "install.ps1"];
+
+/**
+ * Copies desktop/install/install.sh and install.ps1 (from the release commit's checkout) beside the verified
+ * assets and lists them in the inventory, so publish uploads them and adds them to SHA256SUMS.
+ */
+export async function addInstallScripts(directory, inventory, source = fileURLToPath(new URL("../install/", import.meta.url))) {
+  for (const name of INSTALL_SCRIPTS) {
+    assert(!Object.hasOwn(inventory, name), `Install script name collides with a release asset: ${name}`);
+    await copyFile(join(source, name), join(directory, name));
+    inventory[name] = await fileDigest(join(directory, name));
+  }
+  return inventory;
 }
 
 export function validateReleaseIdentity({ commit, version, platform, arch }) {

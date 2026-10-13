@@ -4,6 +4,24 @@ Branch Agent is a desktop AI assistant from [KeepOak](https://keepoak.com). This
 
 This is a source snapshot under active development. A feature being present in source does not establish that every workflow is complete or released.
 
+## Install
+
+macOS (Apple silicon) and Linux (x64):
+
+```sh
+curl -fsSL https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.sh | sh
+```
+
+Windows (x64), in PowerShell:
+
+```powershell
+irm https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.ps1 | iex
+```
+
+The scripts install for the current user with no sudo or admin prompt. They check the download's SHA-256 against the release's `SHA256SUMS` before installing and stop on a mismatch. For a specific release, run `... | sh -s -- --version v1.2.3`, or on Windows set `$env:BRANCH_INSTALL_VERSION = 'v1.2.3'` first. Re-running upgrades in place. Details are in [desktop/INSTALLERS.md](desktop/INSTALLERS.md).
+
+Alternatively, download the installer from the [latest release](https://github.com/KeepOak/Branch-Agent/releases/latest). It isn't signed yet, so macOS needs right-click → Open on first launch and Windows SmartScreen needs More info → Run anyway.
+
 ## Requirements
 
 - Node.js matching the engine requirement: `>=24.16.0 <25 || >=26.1.0`.
