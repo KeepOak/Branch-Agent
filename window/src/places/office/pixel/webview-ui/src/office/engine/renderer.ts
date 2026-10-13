@@ -275,7 +275,7 @@ export function renderAreaLabels(
   const fontSize = Math.max(AREA_LABEL_FONT_SIZE_PX * zoom, AREA_LABEL_MIN_FONT_SIZE_PX);
 
   ctx.save();
-  ctx.font = `bold ${fontSize}px 'Pixelify Sans'`;
+  ctx.font = `bold ${fontSize}px 'Micro 5'`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 

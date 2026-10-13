@@ -162,7 +162,7 @@ export function loadAssets(): Promise<DecodedAssets> {
 
 let fontReady: Promise<void> | null = null;
 
-/** Pixelify Sans (SIL OFL 1.1, see third_party/pixelify-sans/OFL.txt) is registered via FontFace; inside a shadow root that is ignored, so register it
+/** Micro 5 (SIL OFL 1.1, see third_party/micro-5/OFL.txt) is registered via FontFace; inside a shadow root that is ignored, so register it
  *  document-wide with the FontFace API (subset to Latin-1 + punctuation by scripts/build-assets). */
 export function loadPixelFont(): Promise<void> {
   fontReady ??= (async () => {
@@ -170,7 +170,7 @@ export function loadPixelFont(): Promise<void> {
       const bin = atob(ASSETS.font);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const face = new FontFace('Pixelify Sans', bytes.buffer, { style: 'normal', weight: '400' });
+      const face = new FontFace('Micro 5', bytes.buffer, { style: 'normal', weight: '400' });
       await face.load();
       document.fonts.add(face);
     } catch (err) {
