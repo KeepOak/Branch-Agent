@@ -2,7 +2,7 @@
 // Groups / Grafted rows, the Archived and Recently deleted bins, and the bottom row (avatar, Seedbank, update). It reads
 // the engine through the Classic hooks (shell/engine-data.ts, group-drop.tsx, Projects.tsx) and acts through
 // shell/conversation-actions.ts, so every control is a real call or says Coming.
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { Conversation, ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
@@ -31,10 +31,12 @@ import { conversationLink, openConversationWindow, ownWindowUnavailable } from "
 import { usePersonName } from "../../shell/PersonMenu";
 import { useProjects } from "../../shell/Projects";
 import { copyMarkdown, copyText } from "../../shell/row-actions";
+import { SearchResultsView, useSearch } from "../../shell/Search";
 import { ShortcutsDialog } from "../../shell/ShortcutsDialog";
 import { tidy } from "../../shell/StatusLayer";
 import { useUpdate } from "../../shell/use-status";
 import { readThemeChoice, setThemeChoice, type ThemeChoice } from "../../theme/theme";
+import { FIND_EVENT } from "../../thread/FindBar";
 import { buildSections, contactRows, personRows, type Folder, type Person, type SideRow } from "./model";
 import { FolderChip, icons, PinnedGrid, SectionHead, SideRowView, TopCapsules, type RowHandlers } from "./parts";
 import { NEED, rowMenu } from "./row-menu";
@@ -112,7 +114,12 @@ export function Sidebar(p: SidebarProps) {
   const update = useUpdate(session, ready, useBranchVersion(session.gatewayUrl));
   const actions = useMemo(() => conversationActions(request, p.list, () => p.currentKey), [request, p.list, p.currentKey]);
   const narrow = useNarrow(), now = useNow();
-  const [query, setQuery] = useState(""), [folder, setFolder] = useState<Folder>("all"), [foldOpen, setFoldOpen] = useState(false);
+  const trunkName = useCallback((id: string | undefined) => trunks.list.find(trunk => trunk.id === id)?.name ?? id ?? "", [trunks.list]);
+  // The search capsule re-hosts the Classic search (shell/Search.tsx): sessions.search for words inside messages,
+  // memory.search for files and memory, and the conversation list for chats and past sessions.
+  const search = useSearch(request, p.sessions, trunkName);
+  const query = search.query, setQuery = search.setQuery;
+  const [folder, setFolder] = useState<Folder>("all"), [foldOpen, setFoldOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [menu, setMenu] = useState<SideRow | null>(null), menuAnchor = useRef<HTMLElement | null>(null);
   const [plusOpen, setPlusOpen] = useState(false), plusRef = useRef<HTMLButtonElement>(null);
@@ -209,6 +216,19 @@ export function Sidebar(p: SidebarProps) {
     <SectionHead label={label}>{head}</SectionHead>
     {list.map(row => <SideRowView key={row.id} row={row} current={row.key !== null && row.key === p.currentKey} now={now} handlers={handlers} />)}
   </section> : null;
+  const searching = Boolean(query.trim());
+  // While searching, the sidebar's own matches lead Chats and Trunks; the Classic matches add only what they don't cover.
+  const leadRows = [...sections.pinned, ...sections.trunks, ...sections.people, ...sections.groups, ...sections.grafted, ...sections.archived];
+  const leadKeys = new Set(leadRows.map(row => row.key).filter(Boolean));
+  const rowName = (key: string) => p.sessions.find(row => row.key === key)?.title || rows.find(row => row.key === key)?.name || "Conversation";
+  const leaveSearch = () => setQuery("");
+  // Opening a message hit lands in its conversation and asks find in this conversation for the words.
+  const results = searching ? <SearchResultsView query={query} chip={search.chip} now={now} trunkName={trunkName} rowName={rowName} onChip={search.setChip}
+    results={{ ...search.results, chats: search.results.chats.filter(row => !leadKeys.has(row.key)), past: search.results.past.filter(row => !leadKeys.has(row.key)) }}
+    lead={{ count: leadRows.length, rows: leadRows.map(row => <SideRowView key={row.id} row={row} current={row.key !== null && row.key === p.currentKey} now={now} handlers={handlers} />) }}
+    onOpen={key => { leaveSearch(); p.onOpen(key); }}
+    onOpenMessage={(key, words) => { leaveSearch(); p.onOpen(key); setTimeout(() => window.dispatchEvent(new CustomEvent(FIND_EVENT, { detail: { query: words } })), 0); }}
+    onLibrary={() => { leaveSearch(); p.onPlace("library"); }} /> : null;
   const nothing = !sections.pinned.length && !sections.trunks.length && !sections.people.length && !sections.groups.length && !sections.grafted.length;
 
   return <div className="r1sb" data-searching={query ? "" : undefined} data-fold-open={foldOpen || undefined}>
@@ -219,6 +239,8 @@ export function Sidebar(p: SidebarProps) {
     </div>
     <nav className="r1sb-list" aria-label="Conversations">
       {p.error ? <p className="r1sb-error" role="alert">{p.error}</p> : null}
+      {results}
+      {searching ? null : <>
       {sections.pinned.length ? <section className="r1sb-sec" data-section="pinned"><SectionHead label="Pinned" /><PinnedGrid rows={sections.pinned} currentKey={p.currentKey} handlers={handlers} /></section> : null}
       {section("Trunks", sections.trunks, sections.trunks.some(row => row.unread) ? <Coming need={NEED.markRead}><button type="button" className="r1sb-mar" onClick={() => markAllRead(sections.trunks)}>Mark all read</button></Coming> : null)}
       {section("People", sections.people, <button type="button" className="r1sb-head-go" data-local="" aria-label="People settings" title="People" onClick={() => p.onSettings("people")}>{icons.chevron}</button>)}
@@ -235,6 +257,7 @@ export function Sidebar(p: SidebarProps) {
           <button type="button" className="r1sb-bin"><span className="r1sb-bin-chev">{icons.chevron}</span><span>Recently deleted</span></button>
         </Coming>
       </div>
+      </>}
       <div className="r1sb-rail-bins">
         <button type="button" className="r1sb-cap" data-local="" aria-label={`Archived, ${sections.archived.length}`} title="Archived" onClick={() => { setArchivedOpen(true); toggleRail(); }}>{icons.archive}{sections.archived.length ? <i className="r1sb-badge">{sections.archived.length}</i> : null}</button>
         <Coming need="sessions.restore" reason="Recently deleted comes in a later update. Deleting is final for now."><button type="button" className="r1sb-cap" aria-label="Recently deleted">{icons.trash}</button></Coming>

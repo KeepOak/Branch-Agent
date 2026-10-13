@@ -1,0 +1,1 @@
+window:src/screens/sidebar/search.test.tsx
