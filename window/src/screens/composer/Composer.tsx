@@ -15,7 +15,7 @@ import { isEngineMode, modeName, nextMode, type EngineMode } from "../../compose
 import { currentModelRef, currentThinking } from "../../composer/model";
 import type { OpenTarget } from "../../composer/nav";
 import { PhotoDialog, PictureDialog } from "../../composer/PhotoDialog";
-import { buildExtras, planSend, sendTooltip } from "../../composer/sending";
+import { buildExtras, planSend, sendTooltip, type Reply } from "../../composer/sending";
 import { newPick, pickText, reconcilePicks, resolveSend, trimMessage, type Message, type SkillPick } from "../../composer/skill-picks";
 import { Drawer } from "../../composer/SlashDrawer";
 import { useBackground } from "../../composer/useBackground";
@@ -75,6 +75,9 @@ type Props = {
   mainKey?: string;
   lockdown?: boolean;
   onToggleLockdown?: () => void;
+  /** The message being answered (the message menu's Reply, R1-03); it rides on the next send and then clears. */
+  replyTo?: Reply | null;
+  onClearReply?: () => void;
 };
 
 type Menu = RowMenu | "plus" | "ring" | null;
@@ -147,9 +150,9 @@ export function Composer(props: Props) {
     seenText.current = draft.text;
     if (before !== draft.text) setPicks((now) => reconcilePicks(now, before, draft.text));
   }, [draft.text]);
-  const sendMessage = (message: Message, parts: { files?: typeof draft.files; people?: typeof draft.people; queue?: string; id?: string } = {}) => {
+  const sendMessage = (message: Message, parts: { files?: typeof draft.files; people?: typeof draft.people; queue?: string; replyTo?: Reply | null; id?: string } = {}) => {
     const text = resolveSend(message.text, message.picks, drawer.skills);
-    return onSend(text, buildExtras(text, parts.files ?? [], parts.people ?? [], parts.queue), parts.id);
+    return onSend(text, buildExtras(text, parts.files ?? [], parts.people ?? [], parts.queue, parts.replyTo), parts.id);
   };
   const line = useWaitingLine(sessionKey, working, offline, (item, steer) => {
     sendMessage({ text: item.text, picks: item.picks ?? [] }, { files: item.files, queue: steer ? "steer" : undefined, id: item.id });
@@ -207,7 +210,8 @@ export function Composer(props: Props) {
       const message = trimMessage({ text: draft.text, picks });
       line.add(message.text, draft.files, message.picks);
     } else {
-      sendMessage(trimMessage({ text: draft.text, picks }), { files: draft.files, people: draft.people, queue: plan.kind === "send" ? plan.queueMode : undefined });
+      sendMessage(trimMessage({ text: draft.text, picks }), { files: draft.files, people: draft.people, queue: plan.kind === "send" ? plan.queueMode : undefined, replyTo: props.replyTo });
+      props.onClearReply?.();
       if (plan.kind === "send" && plan.queueMode === "steer") toast(`Steered ${trunkName}. It picks this up at its next step.`);
     }
     history.record(draft.text.trim());
@@ -333,6 +337,8 @@ export function Composer(props: Props) {
     {notes.map((n, i) => <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : shortReason(n)}</p>)}
     {draft.note ? <p className="r1c-note">{draft.note}</p> : null}
     {drawer.peopleError && view?.kind === "mention" ? <p className="r1c-note bad">{drawer.peopleError}</p> : null}
+    {props.replyTo ? <div className="c-dock-row"><span className="c-chip" data-testid="reply-chip"><Icon name="back" size={14} />Replying to {props.replyTo.name}: {props.replyTo.text.slice(0, 60)}
+      <button type="button" className="c-x" aria-label="Don't reply" onClick={props.onClearReply}><Icon name="x" size={12} /></button></span></div> : null}
     <DockRow plan={null} trunkName={trunkName} working={working} offline={offline} line={line.line}
       onReword={(id, text) => { line.reword(id, text); toast("Reworded. It goes as you wrote it now."); }} onMoveUp={line.moveUp} onRemove={line.remove} onSteerQueued={line.steerNow} onRetry={line.retry}
       jobs={bg.jobs} onStopJob={async (key) => { const error = await bg.stop(key); setProblem(error); if (!error) toast("Stopped. Nothing it started was left half done."); }} onOpenJob={props.onOpenConversation}

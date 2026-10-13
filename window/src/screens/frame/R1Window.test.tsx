@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../../connect/session";
 import { r1SettingsPage, r1Window, R1Window } from "./R1Window";
-vi.mock("../../thread/Thread", () => ({ Thread: ({ name }: { name: string }) => <p>{name}</p> }));
+vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <p>{name}</p> }));
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
@@ -50,7 +50,7 @@ it("renders an empty disconnected engine without demo conversations", async () =
 it("mounts in a host without matchMedia or ResizeObserver, as App-level tests do", async () => {
   vi.stubGlobal("matchMedia", undefined); vi.stubGlobal("ResizeObserver", undefined);
   const snapshot = { status: { phase: "connected" }, name: "Main", sessionKey: "agent:main:main", mainKey: "agent:main:main", history: [], live: [], queued: [] };
-  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request: vi.fn(async () => ({})) } } as unknown as SaplingSession;
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request: vi.fn(async () => ({})), onEvent: () => () => undefined } } as unknown as SaplingSession;
   await act(async () => root.render(<R1Window session={session} />));
   expect(host.querySelector('.r1-frame')?.getAttribute("data-wide")).toBe("true");
   expect(host.querySelector('[aria-label="Message"]')).not.toBeNull();
@@ -92,4 +92,21 @@ it("sends a page to R1 Settings only when the row table or a slot covers it and 
   expect(r1SettingsPage("general")).toBe(true);
   expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(false);
   for (const page of ["chatapps", "appearance", "accounts", "models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
+});
+
+it("the conversation menu's \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
+  const snapshot = { status: { phase: "connected" }, name: "Scout", sessionKey: "agent:scout:main", mainKey: "agent:scout:main", history: [], live: [], queued: [] };
+  const setOverride = vi.fn();
+  const request = vi.fn(async (method: string) => { if (method === "users.prefs.set") setOverride(); return {}; });
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", features: { methods: ["users.prefs.get"], events: [] } } } as unknown as SaplingSession;
+  await act(async () => root.render(<R1Window session={session} />));
+  await act(async () => document.querySelector<HTMLButtonElement>('.r1-header-right [aria-label="More"]')!.click());
+  const rows = [...document.querySelectorAll<HTMLElement>('[aria-label="Show agents’ work as"] [role="menuitemradio"]')];
+  expect(rows.length).toBeGreaterThan(1);
+  for (const row of rows) {
+    expect(row.getAttribute("aria-disabled"), row.textContent ?? "").toBe("true");
+    expect(row.dataset.coming, row.textContent ?? "").toBeTruthy();
+  }
+  await act(async () => rows[1].click());
+  expect(setOverride).not.toHaveBeenCalled();
 });

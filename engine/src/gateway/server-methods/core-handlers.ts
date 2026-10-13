@@ -192,6 +192,8 @@ const CORE_GATEWAY_HANDLER_MODULES = {
     })),
   "trunk-queue": () => import("./trunk-queue.js").then((module) => module.trunkQueueHandlers),
   "trunk-team": () => import("./trunk-team.js").then((module) => module.trunkTeamHandlers),
+  "build-worktrees": () =>
+    import("./build-worktrees.js").then((module) => module.buildWorktreesHandlers),
   "sessions-rewind": () =>
     import("./sessions-rewind.js").then((module) => module.sessionRewindHandlers),
   "sessions-sharing": () =>

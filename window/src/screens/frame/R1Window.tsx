@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import type { SaplingSession } from "../../connect/session";
 import { useConversations, usePendingApprovals } from "../../shell/engine-data";
 import { Frame } from "./Frame";
-import { Thread } from "../../thread/Thread";
+import { ChatView } from "../chat/ChatView";
+import { WORK_MODES, useWorkMode } from "../chat/chat-logic";
+import type { ReplyTarget } from "../../thread/useMessageActions";
 import { Composer } from "../composer/Composer";
 import { useLimits } from "../../shell/use-status";
 import { useLockdown } from "../../shell/use-lockdown";
@@ -18,6 +20,7 @@ import { mergeRows, type PageSlots } from "../settings/slots";
 import type { Row } from "../settings/rows";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Popover } from "../../glass/Popover";
+import { Coming } from "../../glass/coming";
 
 /** Places R1 Settings search can open (its Go to group). */
 const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }));
@@ -68,6 +71,14 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const [agentOpen, setAgentOpen] = useState(false), [identity, setIdentity] = useState<{ name?: string; emoji?: string } | null>(null);
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Both belong to the open conversation: opening another one drops them without an effect.
+  const [reply, setReply] = useState<{ key: string | null; target: ReplyTarget } | null>(null);
+  const replyTo = reply && reply.key === snapshot.sessionKey ? reply.target : null;
+  const setReplyTo = (target: ReplyTarget | null) => setReply(target ? { key: snapshot.sessionKey, target } : null);
+  const [menuFor, setMenuFor] = useState<string | null | undefined>(undefined), convAnchor = useRef<HTMLElement | null>(null);
+  const convMenu = menuFor === snapshot.sessionKey;
+  const setConvMenu = (open: boolean) => setMenuFor(open ? snapshot.sessionKey : undefined);
+  const work = useWorkMode(ready ? engine : undefined, snapshot.sessionKey);
   const closeAgent = useCallback(() => setAgentOpen(false), []);
   const applyRoute = useCallback((next: Route) => {
     saveRoute(next); setRoute(next); setAgentOpen(false);
@@ -120,18 +131,24 @@ export function R1Window({ session }: { session: SaplingSession }) {
     </nav>
     <div className="r1-sidebar-footer"><button type="button" className="g-ctl" aria-label="Settings" onClick={() => navigate({ kind: "settings", page: "appearance" })}><Icon name="gear" /></button></div>
   </>;
-  const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : <Thread
-    name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} running={Boolean(snapshot.liveRunId)} liveStartedAt={snapshot.liveStartedAt}
+  const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : <ChatView
+    name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
+    onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo}
   />;
   return <>
     <Frame sidebar={sidebar} main={main} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : route.place,
       face: <Face size={24} label={snapshot.name} />, pillRef: pill, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
+      right: route.kind === "chat" ? [
+        { label: "Computer", icon: <Icon name="monitor" />, coming: "Computer controls are not connected yet." },
+        { label: "Browser", icon: <Icon name="globe" />, coming: "Browser controls are not connected yet." },
+        { label: "More", icon: <Icon name="more" />, onClick: ready ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
+      ] : undefined,
       canBack: history.index > 0, canForward: history.index < history.count - 1, onBack: () => { if (history.index > 0) window.history.back(); }, onForward: () => { if (history.index < history.count - 1) window.history.forward(); },
-    }} composer={route.kind === "chat" ? <Composer name={snapshot.name} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}
+    }} composer={route.kind === "chat" ? <Composer name={snapshot.name} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}
       lockdown={lockdown.on} onToggleLockdown={lockdown.supported ? () => void lockdown.toggle() : undefined}
-      onSend={(text, extras, id) => { void session.send(text, extras, id); }} onStop={() => void session.stopRun()} onToast={setNotice} onOpenConversation={openConversation} onOpen={target => {
+      onSend={(text, extras, id) => { setReplyTo(null); void session.send(text, extras, id); }} onStop={() => void session.stopRun()} onToast={setNotice} onOpenConversation={openConversation} onOpen={target => {
       if (target === "settings/accounts/add") { sessionStorage.setItem("branch.openAddAccount", "1"); navigate({ kind: "settings", page: "accounts" }); }
       else if (target.startsWith("settings/")) navigate({ kind: "settings", page: target.slice("settings/".length) });
       else if (target === "customize/tools") navigate({ kind: "place", place: "customize" });
@@ -143,6 +160,11 @@ export function R1Window({ session }: { session: SaplingSession }) {
       else { search.current?.focus(); }
     }} />
     {lockdown.confirmation}
+    {convMenu && <Popover anchor={convAnchor} label="Conversation" align="end" width={260} onClose={() => setConvMenu(false)}><div className="r1c-menu" role="menu" aria-label="Show agents’ work as">
+      <div className="r1c-menu-meta">Show agents’ work as</div>
+      {[{ id: null, label: `Like Settings (${WORK_MODES.find(m => m.id === work.global)?.label})` }, ...WORK_MODES].map(m => <Coming key={m.id ?? "default"} engine={engine} need="users.prefs.set" reason="This engine can’t save how agents’ work shows here." where={m.label}><button type="button" role="menuitemradio" className="r1c-mi" aria-checked={work.override === m.id}
+        onClick={() => { void work.setOverride(m.id).catch((e: unknown) => setNotice(e instanceof Error ? e.message : String(e))); setConvMenu(false); }}><span className="r1c-mi-t">{m.label}</span>{work.override === m.id ? <Icon name="check" size={15} /> : null}</button></Coming>)}
+    </div></Popover>}
     {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details">
       <strong>{identity?.name ?? snapshot.name}</strong><p>{identityError ?? (identity ? identity.emoji ?? "" : "Loading agent details…")}</p>
       <button type="button" onClick={closeAgent}>Close</button>

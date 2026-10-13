@@ -324,6 +324,7 @@ describe("listGatewayMethods", () => {
       "trunks.template.list",
       "trunks.team.propose",
       "trunks.team.approve",
+      "buildWorktrees.status",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -453,6 +454,7 @@ describe("listGatewayMethods", () => {
       "trunks.template.list",
       "trunks.team.propose",
       "trunks.team.approve",
+      "buildWorktrees.status",
     ]);
   });
 
@@ -716,6 +718,7 @@ describe("listGatewayMethods", () => {
       "trunks.template.list",
       "trunks.team.propose",
       "trunks.team.approve",
+      "buildWorktrees.status",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));
