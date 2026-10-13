@@ -86,11 +86,13 @@ describe("R1 Settings follows the item 48 glass model", () => {
     expect(bareText(host)).toEqual([]);
   });
 
-  it("paints no frosted fill or blur of its own, keeps the title in place with no fill; switches and the chosen page use the shared pill", () => {
+  it("paints no frosted fill or blur of its own, lets the title scroll away with the page (v15) with no fill; switches and the chosen page use the shared pill", () => {
     const css = readFileSync("src/screens/settings/settings.css", "utf8").replace(/\s+/g, " ");
     expect(css).not.toMatch(/var\(--g[cfk]-/);
     expect(css).not.toMatch(/backdrop-filter/);
-    expect(css).toMatch(/\.r1s-head \{ position: sticky; top: 0;[^}]*\}/);
+    // owner-approved v15: the Settings header is not pinned, it scrolls away with the page
+    expect(css).toMatch(/\.r1s-head \{[^}]*\}/);
+    expect(css).not.toMatch(/\.r1s-head[^{]*\{[^}]*position: (sticky|fixed)/);
     expect(css).not.toMatch(/\.r1s-head \{[^}]*background/);
     expect(css).not.toMatch(/\.r1s-head::after/);
     expect(css).not.toMatch(/\.r1set \{[^}]*background/);
