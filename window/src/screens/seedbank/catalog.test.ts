@@ -27,6 +27,13 @@ describe("day-one templates", () => {
     expect(addCall(watch)).toEqual({ method: "trunks.template.create" });
   });
 
+  it("adds Home Desk from the engine's bundled home-desk template", () => {
+    const listed = { templates: [{ id: "home-desk", name: "Home Desk", description: "From the engine", permissions: ["Ask first"] }] };
+    const entry = templateEntries(listed, undefined).find(e => e.name === "Home Desk")!;
+    expect(entry.source).toMatchObject({ type: "template", templateId: "home-desk", permissions: ["Ask first"] });
+    expect(addCall(entry)).toEqual({ method: "trunks.template.create" });
+  });
+
   it("marks a template Added when a Trunk with its name exists", () => {
     const entries = templateEntries(undefined, { agents: [{ id: "x", identity: { name: "Home Desk" } }] });
     expect(entries.find(e => e.name === "Home Desk")?.installed).toBe(true);
