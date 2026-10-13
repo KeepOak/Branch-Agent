@@ -335,6 +335,7 @@ describe("trunks.template catalog", () => {
       ["project-lead", "bundled"],
       ["prospect-finder", "bundled"],
       ["researcher", "bundled"],
+      ["search-brief-desk", "bundled"],
       ["spend-saver", "bundled"],
       ["trunk-doctor", "bundled"],
     ]);
