@@ -57,6 +57,30 @@ describe("PlaceView", () => {
     expect(document.querySelector(".sb-title")?.textContent).toBe("Seedbank");
   });
 
+  it("keeps Customize one tap away from the Seedbank place: Manage installed, then each Tools kind", async () => {
+    const opened: string[] = [];
+    const tabs: unknown[] = [];
+    const onTab = (event: Event) => tabs.push((event as CustomEvent).detail);
+    window.addEventListener("branch:place-tab", onTab);
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root!.render(<PlaceView place="seedbank" {...props} openPlace={place => opened.push(place)} />);
+    });
+    const manage = host.querySelector('[aria-label="Manage installed"]')!;
+    const click = async (label: string) => {
+      const button = [...manage.querySelectorAll("button")].find(b => b.textContent === label)!;
+      await act(async () => button.click());
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    };
+    await click("Manage installed");
+    await click("Skills");
+    window.removeEventListener("branch:place-tab", onTab);
+    expect(opened).toEqual(["customize", "customize"]);
+    expect(tabs).toEqual([{ place: "customize", tab: "Tools" }, { place: "customize", tab: "Skills" }]);
+  });
+
   it("keeps TrunkHost mounted and an open profile or editor open across a place change", async () => {
     await show("overview");
     expect(document.querySelector("[data-testid=place-overview]")).toBeTruthy();
