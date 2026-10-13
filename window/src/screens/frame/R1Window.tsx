@@ -20,6 +20,7 @@ import { mergeRows, type PageSlots } from "../settings/slots";
 import type { Row } from "../settings/rows";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Popover } from "../../glass/Popover";
+import { ApprovalsLayer } from "../approvals";
 import { Coming } from "../../glass/coming";
 
 /** Places R1 Settings search can open (its Go to group). */
@@ -160,6 +161,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       else { search.current?.focus(); }
     }} />
     {lockdown.confirmation}
+    <ApprovalsLayer engine={engine} ready={ready} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
     {convMenu && <Popover anchor={convAnchor} label="Conversation" align="end" width={260} onClose={() => setConvMenu(false)}><div className="r1c-menu" role="menu" aria-label="Show agents’ work as">
       <div className="r1c-menu-meta">Show agents’ work as</div>
       {[{ id: null, label: `Like Settings (${WORK_MODES.find(m => m.id === work.global)?.label})` }, ...WORK_MODES].map(m => <Coming key={m.id ?? "default"} engine={engine} need="users.prefs.set" reason="This engine can’t save how agents’ work shows here." where={m.label}><button type="button" role="menuitemradio" className="r1c-mi" aria-checked={work.override === m.id}
