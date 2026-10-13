@@ -244,7 +244,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </nav>
       </aside>
       <div className="r1s-page" ref={scroller}>
-        {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} /></div> : <>
+        {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} /></div> : <>
         <header className="r1s-head">
           <h1 className="g-label">{spec.title}</h1>
           <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" data-local="" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>

@@ -1,0 +1,12 @@
+/* A Classic page re-hosted in the R1 Settings frame (classic-host.tsx): one column without Classic's nav grid, on the
+   R1 page's clear glass (item 48). Its controls take the glass pill from .g-clear; its cards drop Classic's fill so the
+   page reads like the row pages beside it. */
+.r1s-classic.settings { display: block; min-height: 0; }
+.r1s-classic .set-col { max-width: 760px; margin: 0; padding: 0 0 56px; }
+.r1s-classic .set-col > .page > h1, .r1s-classic .set-col h1 { margin-top: 0; }
+.r1s-classic .sec { background: transparent; box-shadow: none; border-color: var(--hair17, transparent); }
+.r1s-classic-save { margin: 0 0 8px; }
+.r1s-classic-save.bad { color: var(--bad); }
+@media (max-width: 720px) {
+  .r1s-classic .set-col { padding: 0 0 40px; }
+}
