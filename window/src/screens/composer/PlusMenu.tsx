@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from "rea
 import { Icon, type IconName } from "../../composer/icons";
 import type { OpenTarget } from "../../composer/nav";
 import { Popover } from "../../glass/Popover";
-import { IMPROVE_COMING, Later } from "./Composer";
+import { IMPROVE_COMING, IMPROVE_NEED, Later } from "./Composer";
 
 type Props = {
   anchor: RefObject<HTMLElement | null>;
@@ -29,6 +29,18 @@ type Props = {
 };
 
 type View = "top" | "folder" | "add" | "call";
+
+/** The engine call each hidden item waits for (HANDOFF R1-04 "Engine calls"; voicecall.* is the voice-call plugin's). */
+export const PLUS_NEED = {
+  screenshot: "desktop.observe",
+  teach: "desktop.observe",
+  office: "agents.documents.create",
+  branch: "sessions.fork",
+  temporary: "sessions.patch",
+  checkWithMe: "sessions.patch",
+  phone: "voicecall.initiate",
+  meeting: "voicecall.start",
+} as const;
 
 export const PLUS_COMING = {
   screenshot: "Taking a screenshot needs the Branch app on your computer.",
@@ -71,15 +83,15 @@ export function PlusMenu(p: Props) {
         <div className="r1c-tiles">
           <Tile icon="file" label="Files" onClick={run(p.onFiles)} />
           <Tile icon="camera" label="Photo" onClick={run(p.onPhoto)} />
-          <Later hidden reason={PLUS_COMING.screenshot} where="+ menu › Screenshot" />
+          <Later hidden need={PLUS_NEED.screenshot} reason={PLUS_COMING.screenshot} where="+ menu › Screenshot" />
           <Tile icon="folder" label="Folder ›" onClick={() => setView("folder")} />
         </div>
         <div className="r1c-group">
           {p.onDictate ? <Item icon="mic" label="Dictate into the box" onClick={run(p.onDictate)} /> : null}
-          {p.tight ? <Later hidden reason={IMPROVE_COMING} where="+ menu › Improve my draft" /> : null}
-          <Later hidden reason={PLUS_COMING.teach} where="+ menu › Teach a task" />
+          {p.tight ? <Later hidden need={IMPROVE_NEED} reason={IMPROVE_COMING} where="+ menu › Improve my draft" /> : null}
+          <Later hidden need={PLUS_NEED.teach} reason={PLUS_COMING.teach} where="+ menu › Teach a task" />
           {p.hasModel ? <Item icon="image" label="Make a picture" onClick={run(p.onPicture)} /> : null}
-          <Later hidden reason={PLUS_COMING.office} where="+ menu › Write a doc, sheet or slides" />
+          <Later hidden need={PLUS_NEED.office} reason={PLUS_COMING.office} where="+ menu › Write a doc, sheet or slides" />
           <Item icon="target" label="Set a goal" hint={<kbd>/goal</kbd>} onClick={run(() => p.onInsert("/goal "))} />
           <Item icon="star" label="Skills & saved prompts" hint={<kbd>/</kbd>} onClick={run(() => p.onInsert("/"))} />
         </div>
@@ -89,9 +101,9 @@ export function PlusMenu(p: Props) {
         </div>
         <div className="r1c-group">
           <Item icon="clock" label="Run as a background job" hint={<kbd>/bg</kbd>} onClick={run(p.onBackground)} />
-          <Later hidden reason={PLUS_COMING.branch} where="+ menu › Branch from here" />
-          <Later hidden reason={PLUS_COMING.temporary} where="+ menu › Temporary chat" />
-          <Later hidden reason={PLUS_COMING.checkWithMe} where="+ menu › Check with me" />
+          <Later hidden need={PLUS_NEED.branch} reason={PLUS_COMING.branch} where="+ menu › Branch from here" />
+          <Later hidden need={PLUS_NEED.temporary} reason={PLUS_COMING.temporary} where="+ menu › Temporary chat" />
+          <Later hidden need={PLUS_NEED.checkWithMe} reason={PLUS_COMING.checkWithMe} where="+ menu › Check with me" />
         </div>
       </> : view === "folder" ? <>
         {back("Add a folder")}
@@ -103,8 +115,8 @@ export function PlusMenu(p: Props) {
         {back("Call")}
         {p.voiceLive ? <Item icon="mic" label="Voice call" hint={<span className="r1c-hint">here, hands-free</span>} onClick={run(p.onCall)} /> : null}
         {p.onVoiceNote ? <Item icon="wave" label="Record a voice note" onClick={run(p.onVoiceNote)} /> : null}
-        <Later hidden reason={PLUS_COMING.phone} where="+ menu › Call › Phone call" />
-        <Later hidden reason={PLUS_COMING.meeting} where="+ menu › Call › Join a meeting" />
+        <Later hidden need={PLUS_NEED.phone} reason={PLUS_COMING.phone} where="+ menu › Call › Phone call" />
+        <Later hidden need={PLUS_NEED.meeting} reason={PLUS_COMING.meeting} where="+ menu › Call › Join a meeting" />
       </>}
     </div>
   </Popover>;

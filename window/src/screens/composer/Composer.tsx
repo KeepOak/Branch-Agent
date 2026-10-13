@@ -1,7 +1,7 @@
 // R1-04 Composer (HANDOFF R1-04, preview composeP17): the floating glass pill (+, field, Improve, mic, ring, voice → send),
 // the quiet row under it and their menus. The logic is the Classic composer's (composer/*.ts hooks, imported, not
 // rewritten); this file only draws it the approved way and joins the parts. Every control is wired or shows Coming.
-import { cloneElement, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
 import type { Conversation as ListRow } from "../../connect/conversations";
 import { isPreparationPending, preparationLabel } from "../../connect/preparation-status";
 import { PASTED_TEXT_CHIP_CHARS } from "../../composer/attachments";
@@ -26,7 +26,7 @@ import { useHistoryKeys } from "../../composer/useHistoryKeys";
 import { useWaitingLine } from "../../composer/useWaitingLine";
 import { vimKey, type VimMode } from "../../composer/vim";
 import { DictationStrip, TALK_EVENT, useDictation, useVoiceCatalog, useVoiceNote, VoiceNoteStrip, VoiceScreen } from "../../composer/VoiceParts";
-import { registerComing } from "../../glass/coming-registry";
+import { Coming } from "../../glass/coming";
 import { Ring } from "../../glass/Ring";
 import type { Limits } from "../../shell/status-data";
 import { shortReason } from "../../thread/format";
@@ -40,15 +40,14 @@ import "./composer.css";
 
 export const VOICE_OFF = "Off until you choose: it uses the microphone. Turn it on in Settings › Voice.";
 export const IMPROVE_COMING = "Improving a draft with your model comes in a later update.";
+/** Improve asks the side model about the draft, not the conversation's Trunk. */
+export const IMPROVE_NEED = "sessions.companion.ask";
 
-/** A control with no engine call behind it yet (R1-10): greyed, its reason as the tooltip, the click swallowed, listed
- *  in the dev Coming report. `hidden` is the + menu's exception: not drawn, still listed. */
-export function Later({ reason, where, hidden, children }: { reason: string; where: string; hidden?: boolean; children?: ReactElement }) {
-  const id = useId();
-  useEffect(() => registerComing(id, { need: [], missing: [], reason, where, hidden: Boolean(hidden) }), [id, reason, where, hidden]);
-  if (hidden || !children) return null;
-  const stop = (event: { preventDefault(): void; stopPropagation(): void }) => { event.preventDefault(); event.stopPropagation(); };
-  return cloneElement(children, { "aria-disabled": "true", "data-coming": reason, title: reason, onClick: stop, onClickCapture: stop } as Record<string, unknown>);
+/** A control this window doesn't wire yet (R1-10): drawn through <Coming> with the engine call it waits for, so it is
+ *  greyed with its reason as the tooltip, the click swallowed, and listed in the dev Coming report by method. `hidden` is
+ *  the + menu's exception: not drawn, still listed. */
+export function Later({ need, reason, where, hidden, children }: { need: string | readonly string[]; reason: string; where: string; hidden?: boolean; children?: ReactElement }) {
+  return <Coming need={need} unwired hidden={hidden} reason={reason} where={where}>{children ?? <span />}</Coming>;
 }
 
 export type TopicRow = { key: string; title: string };
@@ -356,10 +355,10 @@ export function Composer(props: Props) {
       )}
       {prefs.vimKeys && vim.mode === "normal" ? <span className="r1c-flag" data-testid="vim-normal">Normal</span> : null}
       {row.incognito === true ? <span className="r1c-flag">Temporary</span> : null}
-      {hasText && !tight ? <Later reason={IMPROVE_COMING} where="Improve my draft"><button type="button" className="r1c-btn" aria-label="Improve my draft"><Icon name="spark" /></button></Later> : null}
+      {hasText && !tight ? <Later need={IMPROVE_NEED} reason={IMPROVE_COMING} where="Improve my draft"><button type="button" className="r1c-btn" aria-label="Improve my draft"><Icon name="spark" /></button></Later> : null}
       {dict.on || tight ? null : voice.dictation
         ? <button type="button" className="r1c-btn" data-need="talk.catalog" aria-label="Dictate into the box" title="Dictate into the box" onClick={() => void dict.start()}><Icon name="mic" /></button>
-        : <Later reason={VOICE_OFF} where="Dictate into the box"><button type="button" className="r1c-btn" aria-label="Dictate into the box"><Icon name="mic" /></button></Later>}
+        : <Later need="talk.catalog" reason={VOICE_OFF} where="Dictate into the box"><button type="button" className="r1c-btn" aria-label="Dictate into the box"><Icon name="mic" /></button></Later>}
       <Ring ref={ring} usage={usage?.percent ?? null} context={context?.percent ?? null} running={runningCount} label={summary} open={menu === "ring"} onOpen={() => setMenu(menu === "ring" ? null : "ring")} />
       {stopMode
         ? <button type="submit" className="r1c-send stop" data-need="chat.abort" aria-label="Stop" title="Stop"><StopMark /></button>
@@ -367,15 +366,15 @@ export function Composer(props: Props) {
           ? <button type="submit" key="send" className="r1c-send" data-need="chat.send" aria-label="Send" title={sendWhy} disabled={!ready}><Icon name="up" stroke={2.2} /></button>
           : voice.live
             ? <button type="button" key="voice" className="r1c-btn" data-need="talk.catalog" aria-label="Talk live with voice" title="Talk live with voice" onClick={() => setTalking(true)}><Icon name="wave" /></button>
-            : <Later reason={VOICE_OFF} where="Talk live with voice"><button type="button" key="voice" className="r1c-btn" aria-label="Talk live with voice"><Icon name="wave" /></button></Later>}
-      <input ref={(el) => { folderInput.current = el; el?.setAttribute("webkitdirectory", ""); }} type="file" hidden onChange={(e) => {
+            : <Later need="talk.session.create" reason={VOICE_OFF} where="Talk live with voice"><button type="button" key="voice" className="r1c-btn" aria-label="Talk live with voice"><Icon name="wave" /></button></Later>}
+      <input ref={(el) => { folderInput.current = el; el?.setAttribute("webkitdirectory", ""); }} type="file" hidden data-local="" onChange={(e) => {
         const files = [...(e.target.files ?? [])];
         const listing = folderContext(files.map((f) => f.webkitRelativePath || f.name));
         if (listing) draft.addPastedText(listing);
         void draft.addFiles(files, "file");
         e.target.value = "";
       }} />
-      <input ref={fileInput} type="file" multiple hidden onChange={(e) => { void draft.addFiles([...(e.target.files ?? [])], "file"); e.target.value = ""; }} />
+      <input ref={fileInput} type="file" multiple hidden data-local="" onChange={(e) => { void draft.addFiles([...(e.target.files ?? [])], "file"); e.target.value = ""; }} />
     </form>
     <Row engine={engine} menu={menu === "plus" || menu === "ring" ? null : menu} setMenu={setMenu} close={close} conv={conv} current={current} currentRef={currentRef} thinking={thinking}
       mode={mode} asSet={asSet} admin={admin} noModel={noModel} trunkName={trunkName} lockdown={props.lockdown} onToggleLockdown={props.onToggleLockdown}
