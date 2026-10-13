@@ -57,7 +57,7 @@ const BASE: SettingsGroup[] = [
 export const SETUP_PAGES: readonly string[] = ["general", "models", "local", "accounts", "chatapps", "permissions", "computer", "usage", "seasons", "updates", "advanced", "developer"];
 
 /** Pages that hold keys or run the engine: without operator.admin they leave the nav (Classic) or say why (R1). */
-export const HIDDEN_PAGES: readonly string[] = ["secrets", "gateway", "self"];
+export const HIDDEN_PAGES: string[] = ["secrets", "gateway", "self"];
 
 export const LEVEL_LINES: Record<Level, string> = {
   regular: "The essentials, in plain words.",
