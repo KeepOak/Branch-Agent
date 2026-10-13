@@ -42,10 +42,10 @@ export function groupHint(drop: SidebarDrop, contacts: readonly GroupContact[], 
   return "";
 }
 
-export function useGroupRooms(session: SaplingSession, ready: boolean) {
+export function useGroupRooms(session: SaplingSession, ready: boolean, includeArchived = false) {
   const [rooms, setRooms] = useState<GroupRoom[]>([]);
   const [peerOnline, setPeerOnline] = useState<Map<string, boolean>>(new Map());
-  const reload = () => session.request<{ rooms: GroupRoom[] }>("rooms.list", {}).then((result) => setRooms(result.rooms), (error: unknown) => console.warn("rooms.list failed", error));
+  const reload = () => session.request<{ rooms: GroupRoom[] }>("rooms.list", includeArchived ? { includeArchived: true } : {}).then((result) => setRooms(result.rooms), (error: unknown) => console.warn("rooms.list failed", error));
   const reloadPeers = () => session.request<{ peers: { name: string; online?: boolean }[] }>("a2a.peers.list", {}).then(
     (result) => setPeerOnline(new Map(result.peers.filter((peer) => typeof peer.online === "boolean").map((peer) => [peer.name, peer.online!]))),
     () => undefined,
@@ -54,7 +54,7 @@ export function useGroupRooms(session: SaplingSession, ready: boolean) {
     if (!ready) { setRooms([]); setPeerOnline(new Map()); return; }
     void reload(); void reloadPeers();
     return session.onGatewayEvent((event) => { if (event === "rooms.changed") void reload(); else if (event === "contacts.changed") void reloadPeers(); });
-  }, [session, ready]);
+  }, [session, ready, includeArchived]);
   return { rooms, peerOnline, reload };
 }
 
