@@ -27,6 +27,7 @@ import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
+import { useMarkRead } from "./use-mark-read";
 import { R1Stage, R1StagePip } from "../stage/R1Stage";
 import type { PipTarget, StageMode } from "../../stage/ComputerStage";
 
@@ -144,6 +145,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const rows = conversations.rows.filter(row => !row.system && !row.archived && !row.helper);
   const current = conversations.rows.find(row => row.key === snapshot.sessionKey);
   const topics = current?.isMain ? conversations.rows.filter(row => row.agentId === current.agentId && row.key !== current.key && !row.isMain && !row.system && !row.archived && !row.helper).map(row => ({ key: row.key, title: row.title })) : [];
+  // Opening a conversation clears its unread flag once per unread episode (Classic read-on-open, connect/unread-guard.ts).
+  const markRequest = useCallback((method: string, params?: unknown) => session.request(method, params), [session]);
+  const refreshList = useCallback(() => { void list.refresh(); }, [list]);
+  useMarkRead(markRequest, current ?? null, ready && route.kind === "chat", refreshList);
   const running = conversations.rows.filter(row => row.working).map(row => ({ key: row.key, title: row.title, line: row.preview, needsYou: row.needsYou }));
   const sidebar = <Sidebar session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
     currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
