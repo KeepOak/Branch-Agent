@@ -87,6 +87,7 @@
 .r1s-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .r1s-val { padding: 2px 10px; border-radius: 10px; font-size: 13px; color: var(--ink-2); }
 .r1s-swatch { display: inline-flex; flex: none; }
+.r1s-swatch .sw6 { width: 120px; height: 68px; }
 .r1s-well { width: 32px; height: 32px; padding: 2px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; }
 .r1s-btn[disabled], .r1s-link[disabled] { opacity: .55; cursor: not-allowed; }
 .r1s-row[aria-disabled="true"] > .r1s-ctl { opacity: .55; cursor: not-allowed; }
