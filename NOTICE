@@ -1,0 +1,14 @@
+Branch Agent
+Copyright (c) 2026 KeepOak
+
+Branch Agent is licensed under the MIT License (LICENSE).
+
+The engine (engine/) is derived from OpenClaw, Copyright (c) 2026 OpenClaw
+Foundation, used under the MIT License (engine/LICENSE). Its own third-party
+notices are in engine/THIRD_PARTY_NOTICES.md.
+
+Parts of Branch Agent adapt code from OpenMausBot,
+https://github.com/milind-soni/OpenMausBot, Copyright 2026 Milind Soni and
+OpenMausBot contributors, used under the Apache License, Version 2.0
+(third_party/openmausbot/LICENSE). Each adapted file names its source in its
+header, and docs/upstream/COPIED.csv lists them.
