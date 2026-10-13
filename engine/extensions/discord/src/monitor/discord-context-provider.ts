@@ -15,9 +15,28 @@ const BOT_PLATFORM_LINES = [
   "</bot_platform_context>",
 ];
 
+const SNOWFLAKE_PATTERN = /^[0-9]+$/;
+
+function escapeIdValue(value: string): string {
+  let escaped = "";
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    const needsEscape = "&<>\"'".includes(char) || code < 0x20 || code === 0x7f;
+    escaped += needsEscape ? `&#x${code.toString(16).padStart(2, "0")};` : char;
+  }
+  return escaped;
+}
+
+// Discord ids are digit-only snowflakes and pass through unchanged. Any other
+// value is escaped so it cannot close the attribute or the tag.
+function formatIdValue(id: string): string {
+  const text = String(id);
+  return SNOWFLAKE_PATTERN.test(text) ? text : escapeIdValue(text);
+}
+
 function formatChannelLine(channel: NonNullable<DiscordContext["channel"]>): string {
   const typeAttribute = channel.type === undefined ? "" : ` type="${String(channel.type)}"`;
-  return `  <channel id="${channel.id}"${typeAttribute} />`;
+  return `  <channel id="${formatIdValue(channel.id)}"${typeAttribute} />`;
 }
 
 export function formatDiscordContext(context: DiscordContext): string | undefined {
@@ -27,13 +46,13 @@ export function formatDiscordContext(context: DiscordContext): string | undefine
   }
   const lines: string[] = [CONTEXT_OPEN_TAG];
   if (guild) {
-    lines.push(`  <guild id="${guild.id}" />`);
+    lines.push(`  <guild id="${formatIdValue(guild.id)}" />`);
   }
   if (channel) {
     lines.push(formatChannelLine(channel));
   }
   if (thread) {
-    lines.push(`  <thread id="${thread.id}" />`);
+    lines.push(`  <thread id="${formatIdValue(thread.id)}" />`);
   }
   lines.push(CONTEXT_CLOSE_TAG);
   return lines.join("\n");
