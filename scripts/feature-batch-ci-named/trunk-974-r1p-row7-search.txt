@@ -1,1 +1,2 @@
+window:src/screens/chat/ChatView.test.tsx
 window:src/screens/sidebar/search.test.tsx

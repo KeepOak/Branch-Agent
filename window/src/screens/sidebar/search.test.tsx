@@ -84,6 +84,16 @@ describe("R1 sidebar search (the Classic search re-hosted in the capsule)", () =
     expect([...host.querySelectorAll(".search-results .r1sb-name > span")].map(node => node.textContent)).toEqual(["Claude Code"]);
   });
 
+  it("leaves the search when one of the sidebar's own matches is opened", async () => {
+    const { render, props } = setup();
+    await render();
+    await type("ledger");
+    await click(host.querySelector('.search-results .r1sb-row[aria-label^="Ledger"]'));
+    expect(props.onOpen).toHaveBeenCalledWith("agent:ledger:main");
+    expect(host.querySelector<HTMLInputElement>(".r1sb-search input")!.value).toBe("");
+    expect(host.querySelector('[data-testid="search-results"]')).toBeNull();
+  });
+
   it("opens a message hit in its conversation and asks find in this conversation for the words", async () => {
     const { render, props } = setup();
     await render();

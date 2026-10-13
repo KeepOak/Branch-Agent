@@ -222,10 +222,12 @@ export function Sidebar(p: SidebarProps) {
   const leadKeys = new Set(leadRows.map(row => row.key).filter(Boolean));
   const rowName = (key: string) => p.sessions.find(row => row.key === key)?.title || rows.find(row => row.key === key)?.name || "Conversation";
   const leaveSearch = () => setQuery("");
+  // Opening any result leaves the search, as the Classic results do; the row ••• menu stays as it is.
+  const leadHandlers: RowHandlers = { ...handlers, onOpen: row => { leaveSearch(); openRow(row); } };
   // Opening a message hit lands in its conversation and asks find in this conversation for the words.
   const results = searching ? <SearchResultsView query={query} chip={search.chip} now={now} trunkName={trunkName} rowName={rowName} onChip={search.setChip}
     results={{ ...search.results, chats: search.results.chats.filter(row => !leadKeys.has(row.key)), past: search.results.past.filter(row => !leadKeys.has(row.key)) }}
-    lead={{ count: leadRows.length, rows: leadRows.map(row => <SideRowView key={row.id} row={row} current={row.key !== null && row.key === p.currentKey} now={now} handlers={handlers} />) }}
+    lead={{ count: leadRows.length, rows: leadRows.map(row => <SideRowView key={row.id} row={row} current={row.key !== null && row.key === p.currentKey} now={now} handlers={leadHandlers} />) }}
     onOpen={key => { leaveSearch(); p.onOpen(key); }}
     onOpenMessage={(key, words) => { leaveSearch(); p.onOpen(key); setTimeout(() => window.dispatchEvent(new CustomEvent(FIND_EVENT, { detail: { query: words } })), 0); }}
     onLibrary={() => { leaveSearch(); p.onPlace("library"); }} /> : null;
