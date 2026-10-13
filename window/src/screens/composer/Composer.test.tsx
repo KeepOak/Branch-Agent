@@ -64,7 +64,8 @@ describe("R1-04 composer", () => {
     const { host, send } = await mount();
     expect(host.querySelector(".r1c-send")).toBeNull();
     await type(host, "Find the invoice");
-    expect(button("Improve my draft")?.getAttribute("aria-disabled")).toBe("true");
+    // Improve is live on an engine whose methods aren't known yet (improve.test.tsx covers the call).
+    expect(button("Improve my draft")?.getAttribute("aria-disabled")).toBeNull();
     await act(async () => button("Send")!.click());
     expect(send).toHaveBeenCalledWith("Find the invoice", {}, undefined);
   });
@@ -147,7 +148,8 @@ describe("R1-04 composer", () => {
       expect(button("Dictate into the box")).toBeUndefined();
       await act(async () => host.querySelector<HTMLButtonElement>(".r1c-pill [aria-label^='Attach']")!.click());
       expect([...document.querySelectorAll(".r1c-plus .r1c-mi-t")].map((t) => t.textContent)).toContain("Dictate into the box");
-      expect(comingControls().some((c) => c.where === "+ menu › Improve my draft" && c.hidden)).toBe(true);
+      // With nothing typed there is nothing to improve, so the + menu has no Improve row.
+      expect([...document.querySelectorAll(".r1c-plus .r1c-mi-t")].map((t) => t.textContent)).not.toContain("Improve my draft");
     } finally { width.mockRestore(); }
   });
 

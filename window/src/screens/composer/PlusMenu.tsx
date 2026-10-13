@@ -1,12 +1,14 @@
 // The + menu (HANDOFF R1-04, owner item 29; preview POPS.plusmenu): the tiles and the rows under them, with submenus
 // that replace the content behind a back row. The items the engine can't do yet (Screenshot, Teach a task, Write a doc,
 // Branch from here, Temporary chat, Check with me, Phone call, Join a meeting) left the menu for Seedbank › Coming to
-// Branch (R1-15); only a folded Improve my draft is still hidden here and listed in the dev Coming report.
+// Branch (R1-15). A folded Improve my draft is drawn when the engine has its call, else hidden and listed as Coming.
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Icon, type IconName } from "../../composer/icons";
 import type { OpenTarget } from "../../composer/nav";
+import type { WindowEngine } from "../../connect/engine";
+import { Coming } from "../../glass/coming";
 import { Popover } from "../../glass/Popover";
-import { IMPROVE_COMING, IMPROVE_NEED, Later } from "./Composer";
+import { IMPROVE_COMING, IMPROVE_NEED } from "./Composer";
 
 type Props = {
   anchor: RefObject<HTMLElement | null>;
@@ -23,8 +25,12 @@ type Props = {
   onCall: () => void;
   /** Dictate, folded in from the pill when the dock is 300 px or narrower. */
   onDictate?: () => void;
-  /** The dock is 300 px or narrower, so Improve folds in here too (and, being Coming, is listed but not drawn). */
+  /** The dock is 300 px or narrower, so Improve folds in here too (hidden, but listed, on an engine without its call). */
   tight?: boolean;
+  /** Improve my draft (sessions.companion.ask); absent while there is no text to improve. */
+  onImprove?: () => void;
+  /** The engine Improve checks its call against; the CapabilityProvider's when absent. */
+  engine?: Pick<WindowEngine, "features">;
   /** Records a voice note; absent where the browser can't record. */
   onVoiceNote?: () => void;
 };
@@ -65,7 +71,7 @@ export function PlusMenu(p: Props) {
         </div>
         <div className="r1c-group">
           {p.onDictate ? <Item icon="mic" label="Dictate into the box" onClick={run(p.onDictate)} /> : null}
-          {p.tight ? <Later hidden need={IMPROVE_NEED} reason={IMPROVE_COMING} where="+ menu › Improve my draft" /> : null}
+          {p.tight && p.onImprove ? <Coming hidden engine={p.engine} need={IMPROVE_NEED} reason={IMPROVE_COMING} where="+ menu › Improve my draft"><Item icon="spark" label="Improve my draft" onClick={run(p.onImprove)} /></Coming> : null}
           {p.hasModel ? <Item icon="image" label="Make a picture" onClick={run(p.onPicture)} /> : null}
           <Item icon="target" label="Set a goal" hint={<kbd>/goal</kbd>} onClick={run(() => p.onInsert("/goal "))} />
           <Item icon="star" label="Skills & saved prompts" hint={<kbd>/</kbd>} onClick={run(() => p.onInsert("/"))} />
