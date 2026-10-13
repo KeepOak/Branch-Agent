@@ -47,7 +47,7 @@ export function hasHiddenInstructions(text: string): boolean {
   return HIDDEN.some(pattern => pattern.test(text));
 }
 
-const SECRETS = [/\bsk-[A-Za-z0-9_-]{20,}/, /\bgh[pousr]_[A-Za-z0-9]{30,}/, /\bAKIA[0-9A-Z]{16}\b/, /\bxox[abpr]-[A-Za-z0-9-]{10,}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/];
+export const SECRETS = [/\bsk-[A-Za-z0-9_-]{20,}/, /\bgh[pousr]_[A-Za-z0-9]{30,}/, /\bAKIA[0-9A-Z]{16}\b/, /\bxox[abpr]-[A-Za-z0-9-]{10,}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/];
 /** True when the text carries something that looks like a key or token. */
 export function hasSecrets(text: string): boolean {
   return SECRETS.some(pattern => pattern.test(text));
