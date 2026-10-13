@@ -123,13 +123,12 @@ describe("Gateway startup node capabilities", () => {
             for (const { client } of peers) {
               kernel.clients.add(client);
             }
-            if (kernel.workerPlacementRuntime) {
-              vi.spyOn(kernel.workerPlacementRuntime, "startRuntime").mockImplementation(async () => {
-                await Promise.resolve();
-                expect(databaseReady).toBe(true);
-                return null;
-              });
-            }
+            expect(kernel.workerPlacementRuntime).toBeDefined();
+            vi.spyOn(kernel.workerPlacementRuntime!, "startRuntime").mockImplementation(async () => {
+              await Promise.resolve();
+              expect(databaseReady).toBe(true);
+              return null;
+            });
             return kernel;
           },
         };
