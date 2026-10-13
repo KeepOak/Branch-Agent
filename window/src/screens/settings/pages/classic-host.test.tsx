@@ -11,7 +11,7 @@ import { ROWS } from "../rows";
 import { searchSettings } from "../search";
 import { mergeRows } from "../slots";
 import { SettingsFrame } from "../SettingsFrame";
-import { ADMIN_ONLY } from "./classic-host";
+import { ADMIN_ONLY, classicList } from "./classic-host";
 import { R1_PAGES, REHOSTED } from "./plugged";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -34,19 +34,20 @@ const drawn = (el: ParentNode) => ({
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
 it("re-hosts exactly these Classic pages", () => {
-  expect(REHOSTED).toEqual({ who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: "updates", privacy: "usage", history: "backups", learning: "self", remote: "gateway" });
+  expect(REHOSTED).toEqual({ who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: "updates", privacy: "usage", history: "backups", learning: ["self", "seasons"], remote: "gateway" });
 });
 
 for (const [page, classic] of Object.entries(REHOSTED)) {
-  it(`draws Settings › ${page} in the R1 frame with every section and row of Classic ${classic}`, async () => {
-    await act(async () => root.render(<KitProvider level={2} report={{ saving() {}, saved() {}, failed() {} }} scope={null}><SettingsPage page={classic} title="Classic" level="technical" engine={engine()} /></KitProvider>));
+  const list = classicList(classic);
+  it(`draws Settings › ${page} in the R1 frame with every section and row of Classic ${list.join(" and ")}`, async () => {
+    await act(async () => root.render(<KitProvider level={2} report={{ saving() {}, saved() {}, failed() {} }} scope={null}>{list.map((id) => <SettingsPage key={id} page={id} title="Classic" level="technical" engine={engine()} />)}</KitProvider>));
     await settle();
     const before = drawn(host);
     await act(async () => root.render(<SettingsFrame engine={engine()} page={page} pages={R1_PAGES} />));
     await settle();
-    const hosted = host.querySelector<HTMLElement>(`.r1s-custom[data-slot="${page}"] .r1s-classic[data-classic="${classic}"]`);
+    const hosted = host.querySelector<HTMLElement>(`.r1s-custom[data-slot="${page}"] .r1s-classic[data-classic="${list.join(" ")}"]`);
     expect(hosted, page).not.toBeNull();
-    expect(before.sections.length + before.rows.length, classic).toBeGreaterThan(0);
+    expect(before.sections.length + before.rows.length, list.join(" ")).toBeGreaterThan(0);
     expect(drawn(hosted!)).toEqual(before);
   });
 }
@@ -63,8 +64,8 @@ it("adds each re-hosted page's Classic rows to the R1 table, so R1 search finds 
   const merged = mergeRows(ROWS, R1_PAGES);
   expect(new Set(merged.map((r) => r.id)).size).toBe(merged.length);
   for (const [page, classic] of Object.entries(REHOSTED)) {
-    const titles = new Set(SETTINGS_ROWS.filter((r) => r.page === classic).map((r) => r.title));
-    expect(titles.size, classic).toBeGreaterThan(0);
+    const titles = new Set(SETTINGS_ROWS.filter((r) => classicList(classic).includes(r.page)).map((r) => r.title));
+    expect(titles.size, classicList(classic).join(" ")).toBeGreaterThan(0);
     expect(new Set(merged.filter((r) => r.page === page).map((r) => r.label))).toEqual(titles);
     const first = [...titles][0]!;
     const hits = searchSettings(first, { level: 2, hints: {}, rows: merged }).settings;
