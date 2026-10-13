@@ -93,7 +93,7 @@ describe("trunk templates", () => {
 
   it("parses every bundled template with no warnings", () => {
     const files = readdirSync(BUNDLED_DIR).filter((f) => f.endsWith(".branch.trunk-template.json"));
-    expect(files.length).toBe(9);
+    expect(files.length).toBe(10);
     for (const file of files) {
       const parsed = parseTrunkTemplate(JSON.parse(readFileSync(path.join(BUNDLED_DIR, file), "utf8")));
       expect(parsed, file).toMatchObject({ ok: true, warnings: [] });
