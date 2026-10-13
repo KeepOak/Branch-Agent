@@ -319,7 +319,7 @@ describe("trunks.template.create adds routines turned off", () => {
 });
 
 describe("trunks.template catalog", () => {
-  it("lists the nine bundled templates", async () => {
+  it("lists the eleven bundled templates", async () => {
     const { respond, done } = call("trunks.template.list", {});
     await done;
     const payload = respond.mock.calls[0]?.[1] as {
@@ -335,6 +335,8 @@ describe("trunks.template catalog", () => {
       ["prospect-finder", "bundled"],
       ["researcher", "bundled"],
       ["search-brief-desk", "bundled"],
+      ["spend-saver", "bundled"],
+      ["trunk-doctor", "bundled"],
     ]);
   });
 
@@ -501,6 +503,15 @@ describe("trunks.template.create applies toolset switches and skills", () => {
     await done;
     expect(respond.mock.calls[0]?.[0]).toBe(true);
     expect(draft.current.agents.entries.newagent.toolsets).toEqual({ browser: false, files: true });
+  });
+
+  it("adds the template's denyTools to the new Trunk's tools.deny", async () => {
+    createAnswers(workspace());
+    const file = templateFile({ toolsets: { sessions: true }, denyTools: ["sessions_spawn", "subagents"] });
+    const { respond, done } = call("trunks.template.create", { templatePath: file });
+    await done;
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+    expect(draft.current.agents.entries.newagent.tools.deny).toEqual(["sessions_spawn", "subagents"]);
   });
 
   it("skips toolset names that are unknown or always on, with plain warnings", async () => {
