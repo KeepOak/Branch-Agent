@@ -1,5 +1,3 @@
-// Adapted from bytedance/UI-TARS-desktop@2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a:
-// multimodal/tarko/agent-ui/src/common/hooks/useReplay.ts and standalone/replay/ReplayControlPanel.tsx (SESSIONS-0127).
 /** This function is embedded in the exported file and must have no module dependencies. */
 export function installReplay(): void {
   const container = document.getElementById("branch-replay-events");

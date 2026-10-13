@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/geolocation/src/database-store.test.ts (atlas INTEGRATIONS-0144). Changed for Branch: keep newer publication assertions and restore pinned source-isolation and concurrent-publication cases.
+// Changed for Branch: keep newer publication assertions and restore pinned source-isolation and concurrent-publication cases.
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";

@@ -1,6 +1,3 @@
-// Ported from Kilo-Org/kilocode@6fd9b7b29ce63b5a38176e45b738e94ed6167cfb
-// packages/opencode/src/kilocode/session/metrics.ts.
-// kilocode_change - new file
 // Wire shape mirrors the SDK schema (packages/sdk/js/src/v2/gen/types.gen.ts
 // StepFinishPart.metrics). `source` stays on the wire for backward
 // compatibility with downstream consumers — see packages/kilo-vscode/
@@ -27,7 +24,7 @@ export type ComputeInput = {
   elapsedMs: number
 }
 
-// kilocode_change start - tokens/second throughput for #6579.
+// tokens/second throughput.
 export function computeMetrics(input: ComputeInput): TokenRates | undefined {
   if (!Number.isFinite(input.elapsedMs) || input.elapsedMs <= 0) return undefined
 
@@ -46,7 +43,6 @@ export function formatRate(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "0 t/s"
   return `${numberFormat.format(value)} t/s`
 }
-// kilocode_change end
 
 /** Projects only explicitly measured assistant-call duration and normalized usage.
  * Branch output includes reasoning as a detail (agents/usage.ts), whereas the

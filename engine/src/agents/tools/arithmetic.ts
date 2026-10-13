@@ -1,5 +1,4 @@
-/** Copied deterministic arithmetic from elizaOS/eliza@3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf,
- * plugins/plugin-assistant/src/features/basic-capabilities/actions/calculate.ts.
+/** Deterministic arithmetic.
  * Source limits, grammar, BigInt exactness and float precision are preserved. */
 type Num = { kind: "int"; value: bigint } | { kind: "float"; value: number };
 
@@ -22,7 +21,7 @@ const toFloat = (n: Num): number => (n.kind === "int" ? Number(n.value) : n.valu
 
 export class ExpressionError extends Error {}
 
-/** Recursive-descent evaluator over + - * / % ^ ( ) with unary minus. */
+/** Recursive-descent evaluator over + - * / % ^  with unary minus. */
 class Parser {
   private pos = 0;
   private depth = 0;

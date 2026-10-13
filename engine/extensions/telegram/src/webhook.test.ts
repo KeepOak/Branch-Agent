@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/telegram/src/webhook.test.ts (atlas CHAT-APPS-0119). Changed for Branch: resolve the Gateway port selected by the test environment.
+// Changed for Branch: resolve the Gateway port selected by the test environment.
 import fs from "node:fs/promises";
 import os from "node:os";
 import nodePath from "node:path";

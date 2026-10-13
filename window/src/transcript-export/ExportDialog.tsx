@@ -1,4 +1,4 @@
-// From OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f:src/components/features/conversation/transcript-export-modal.tsx (atlas SESSIONS-0047). Adapted to Branch's dialog and gateway.
+// Adapted to Branch's dialog and gateway.
 import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { Dialog } from "../shell/Dialog";

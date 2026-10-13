@@ -1,4 +1,3 @@
-// Adapted from letta-ai/letta-code@3687ea51f6d1 src/channels/gateway-supervisor.ts.
 // Branch's child already has a readyz signal and its own process-tree stop; this
 // supervisor owns only unexpected post-ready exits and their bounded restarts.
 import type { ChildProcess } from "node:child_process";

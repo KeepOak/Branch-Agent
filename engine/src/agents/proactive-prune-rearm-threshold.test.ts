@@ -1,4 +1,4 @@
-// From NousResearch/hermes-agent@18d125cc1bd9d0e26188ab49bb325427d5945fa2:tests/agent/test_proactive_prune_rearm_threshold.py (atlas AGENT-LOOP-0102). Five source cases ported with Branch estimates and warning callback.
+// Five source cases ported with Branch estimates and warning callback.
 import { expect, it, vi } from "vitest";
 import { estimateMessagesTokens } from "./compaction-planning.js";
 import { ProactiveToolResultPruner } from "./proactive-tool-result-pruning.js";
