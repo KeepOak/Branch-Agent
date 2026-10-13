@@ -2,7 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
-import { adoptPreparedLocation, removeTempDirectory } from "./sqlite-readonly-location-cleanup.js";
+import {
+  adoptPreparedLocation,
+  deferredSnapshotRemovalPolicy,
+  removeTempDirectory,
+  retireSqliteSnapshotPayload,
+} from "./sqlite-readonly-location-cleanup.js";
 import {
   acquireSqliteSnapshotReadToken,
   createSqliteSnapshotStagingDirectorySync,
@@ -125,6 +130,109 @@ it("removes a snapshot that a briefly-held Windows handle blocks past the inline
     });
   }
   expect(fs.existsSync(directory)).toBe(false);
+});
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/** Fails every removal under the directory with the given error and counts the attempts. */
+function failRemovals(directory: string, failure: () => Error): { attempts: () => number } {
+  let count = 0;
+  const syncRemove = fs.rmSync;
+  const asyncRemove = fs.promises.rm;
+  vi.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+    if (String(target).startsWith(directory)) {
+      count += 1;
+      throw failure();
+    }
+    return syncRemove(target, options);
+  });
+  vi.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+    if (String(target).startsWith(directory)) {
+      count += 1;
+      throw failure();
+    }
+    return asyncRemove(target, options);
+  });
+  return { attempts: () => count };
+}
+
+it("does not keep retrying a removal that fails with a non-transient error", async () => {
+  const cache = createCache();
+  const directory = createSqliteSnapshotStagingDirectorySync(cache);
+  writeSnapshot(directory);
+  const attempts = failRemovals(directory, () =>
+    Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }),
+  );
+  expect(removeTempDirectory(directory)).toBe(false);
+  // Let several retry intervals pass; a non-transient failure must not be retried again.
+  await sleep(1_500);
+  const settled = attempts.attempts();
+  await sleep(2_500);
+  expect(attempts.attempts()).toBe(settled);
+  expect(fs.existsSync(directory)).toBe(true);
+});
+
+it("gives up a transient removal once the retry window ends and leaves the directory for the sweep", async () => {
+  const cache = createCache();
+  const directory = createSqliteSnapshotStagingDirectorySync(cache);
+  writeSnapshot(directory);
+  const previousWindow = deferredSnapshotRemovalPolicy.giveUpAfterMs;
+  deferredSnapshotRemovalPolicy.giveUpAfterMs = 1_500;
+  try {
+    const attempts = failRemovals(directory, () =>
+      Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" }),
+    );
+    expect(removeTempDirectory(directory)).toBe(false);
+    // The retry window ends during this wait; retries then stop.
+    await sleep(4_000);
+    const retried = attempts.attempts();
+    await sleep(2_500);
+    expect(attempts.attempts()).toBe(retried);
+    expect(fs.existsSync(directory)).toBe(true);
+  } finally {
+    deferredSnapshotRemovalPolicy.giveUpAfterMs = previousWindow;
+  }
+});
+
+it("caps the blocking wait of one snapshot removal across all its paths", () => {
+  const cache = createCache();
+  const directory = createSqliteSnapshotStagingDirectorySync(cache);
+  // Three payload paths, each held for its first five removal attempts (the full inline backoff) and then
+  // released. Unshared waits would total 3 x 620 ms; the per-snapshot budget caps the wait at 620 ms.
+  const payload = ["database.sqlite", "database.sqlite-wal", "database.sqlite-shm"].map((name) => {
+    const file = path.join(directory, name);
+    fs.writeFileSync(file, "held");
+    return file;
+  });
+  const syncRemove = fs.rmSync;
+  const attemptsByPath = new Map<string, number>();
+  vi.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+    const key = String(target);
+    if (payload.includes(key)) {
+      const count = (attemptsByPath.get(key) ?? 0) + 1;
+      attemptsByPath.set(key, count);
+      if (count <= 5) {
+        throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+      }
+    }
+    return syncRemove(target, options);
+  });
+  const retirement = { payload, retire: () => {} } as unknown as Parameters<
+    typeof retireSqliteSnapshotPayload
+  >[0];
+  const started = performance.now();
+  // One call retires one snapshot's payload, so the default per-call budget applies to all three paths.
+  try {
+    retireSqliteSnapshotPayload(retirement);
+  } catch {
+    // The budget ran out on a held path; the failure is handed to the deferred retry.
+  }
+  const elapsedMs = performance.now() - started;
+  expect(elapsedMs).toBeLessThan(1_000);
 });
 
 it("reclaims an orphaned snapshot older than ten minutes but spares one with an active reader", () => {
