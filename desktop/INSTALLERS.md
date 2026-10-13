@@ -26,13 +26,17 @@ Both scripts:
 
 | Platform | Asset | Installs to |
 |---|---|---|
-| macOS arm64 | `branch-desktop-<version>-darwin-arm64.tar.gz` | `~/Applications/Branch Agent.app`. The script reports whether the app carries a code signature (Apple silicon needs at least an ad-hoc one). |
+| macOS arm64 | `branch-desktop-<version>-darwin-arm64.tar.gz` | `~/Applications/Branch Agent.app`. The script reports whether the app carries a code signature (Apple silicon needs at least an ad-hoc one). It refuses to replace an app signed with the release identity by an ad-hoc one. |
 | Linux x64 | `branch-desktop-<version>-linux-x64.tar.gz` | `~/.local/share/branch-agent`, a `~/.local/bin/branch-agent` launcher and `~/.local/share/applications/branch-agent.desktop`. The AppImage replaces this asset later; only `asset_pattern` in `install.sh` changes. |
 | Windows x64 | `Branch-Agent-Setup-<version>-win32-x64.exe` | `%LOCALAPPDATA%\Programs\Branch Agent`, through Inno Setup's per-user silent install (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER`). |
 
 On macOS and Linux the new copy is unpacked and staged beside the install, then swapped in with a rename. A failed download or check leaves the existing install as it was.
 
 `BRANCH_INSTALL_BASE_URL` is **test-only**. `desktop/scripts/install-scripts.test.mjs` sets it to a local `file://` fixture release with `HOME` in a temp folder. Don't set it for a real install. Desktop checks run that test on macOS and Linux, shellcheck on `install.sh` (Linux) and PSScriptAnalyzer on `install.ps1` (Windows).
+
+### macOS signing
+
+`release-build.mjs` signs the macOS app with the pinned release identity (rcodesign) when `BRANCH_MACOS_SIGNING_P12_FILE`, `BRANCH_MACOS_SIGNING_PASSWORD_FILE` and `BRANCH_MACOS_RCODESIGN` are all set. With none set it signs ad-hoc (`codesign --force --deep --sign -`) and prints one notice. Some but not all set fails the build and names what's missing (`mac-release-signing.mjs`). The darwin release proof records `signing: "identity"` or `"adhoc"`. The release workflow's signature check accepts ad-hoc only when the proof declares `"adhoc"`. Neither the in-app Applications install nor `install.sh` replaces an app signed with the release identity by an ad-hoc or unsigned one.
 
 ## Download instead
 

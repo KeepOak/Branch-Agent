@@ -10,18 +10,37 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const script = fileURLToPath(new URL("../install/install.sh", import.meta.url));
-const target = `${process.platform}-${process.arch}`;
-const supported = target === "darwin-arm64" || target === "linux-x64";
-const skip = supported ? false : `install.sh installs on darwin-arm64 and linux-x64; this host is ${target}`;
+const hostTarget = `${process.platform}-${process.arch}`;
+const supported = hostTarget === "darwin-arm64" || hostTarget === "linux-x64";
+const skip = supported ? false : `install.sh installs on darwin-arm64 and linux-x64; this host is ${hostTarget}`;
+const RELEASE_DESIGNATED = 'designated => identifier "com.electron.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"';
 
 function sha256(file) { return createHash("sha256").update(readFileSync(file)).digest("hex"); }
 
-/** A fake desktop package for this host, as the release publishes it. */
-function makeAsset(root, version) {
+/** A codesign stand-in on PATH: an app's Contents/SIGNATURE file says "identity", "adhoc", or nothing (unsigned). */
+function fakeCodesign(root) {
+  const bin = join(root, "bin");
+  mkdirSync(bin);
+  writeFileSync(join(bin, "codesign"), `#!/bin/sh
+mode=$1
+for last; do :; done
+kind=$(cat "$last/Contents/SIGNATURE" 2>/dev/null || true)
+case $mode in
+  -dv) case $kind in adhoc) echo "Signature=adhoc" >&2 ;; identity) echo "Authority=Branch Release" >&2 ;; *) echo "code object is not signed at all" >&2; exit 1 ;; esac ;;
+  -dr) case $kind in identity) echo '${RELEASE_DESIGNATED}' ;; adhoc) echo 'designated => cdhash H"00"' ;; *) exit 1 ;; esac ;;
+esac
+`);
+  chmodSync(join(bin, "codesign"), 0o755);
+  return bin;
+}
+
+/** A fake desktop package for the target, as the release publishes it. */
+function makeAsset(root, version, target, signing) {
   const stage = mkdtempSync(join(root, "stage-"));
-  if (process.platform === "darwin") {
+  if (target.startsWith("darwin")) {
     mkdirSync(join(stage, "Branch Agent.app", "Contents"), { recursive: true });
     writeFileSync(join(stage, "Branch Agent.app", "Contents", "VERSION"), version);
+    if (signing) writeFileSync(join(stage, "Branch Agent.app", "Contents", "SIGNATURE"), signing);
   } else {
     writeFileSync(join(stage, "branch-agent"), "#!/bin/sh\necho branch\n");
     chmodSync(join(stage, "branch-agent"), 0o755);
@@ -36,12 +55,12 @@ function makeAsset(root, version) {
 }
 
 /** releases/download/v<version>/ for each version, and releases/latest/download/ for the last one. */
-function makeRelease(root, versions) {
+function makeRelease(root, versions, target, signing = {}) {
   const releases = join(root, "releases");
   for (const version of versions) {
     const dir = join(releases, "download", `v${version}`);
     mkdirSync(dir, { recursive: true });
-    const asset = makeAsset(root, version);
+    const asset = makeAsset(root, version, target, signing[version]);
     cpSync(asset.file, join(dir, asset.name));
     // Neighbouring assets, including the desktop-app component whose name shares the prefix.
     writeFileSync(join(dir, `branch-desktop-app-${version}-${target}.tar.gz`), "component");
@@ -54,18 +73,21 @@ function makeRelease(root, versions) {
   return releases;
 }
 
-function fixture(versions = ["1.0.0", "1.2.3"]) {
+function fixture(versions = ["1.0.0", "1.2.3"], { target = hostTarget, signing } = {}) {
   const root = mkdtempSync(join(tmpdir(), "branch-install-test-"));
   const home = join(root, "home"), temp = join(root, "tmp");
   mkdirSync(home); mkdirSync(temp);
-  const releases = makeRelease(root, versions);
+  const bin = fakeCodesign(root);
+  const releases = makeRelease(root, versions, target, signing);
   const run = (...args) => spawnSync("sh", [script, ...args], {
     encoding: "utf8",
-    env: { PATH: process.env.PATH, HOME: home, TMPDIR: temp, BRANCH_INSTALL_BASE_URL: pathToFileURL(releases).href },
+    env: { PATH: `${bin}:${process.env.PATH}`, HOME: home, TMPDIR: temp, BRANCH_INSTALL_BASE_URL: pathToFileURL(releases).href,
+      ...(target === hostTarget ? {} : { BRANCH_INSTALL_TEST_TARGET: target }) },
   });
-  const installRoot = process.platform === "darwin" ? join(home, "Applications", "Branch Agent.app") : join(home, ".local", "share", "branch-agent");
+  const darwin = target.startsWith("darwin");
+  const installRoot = darwin ? join(home, "Applications", "Branch Agent.app") : join(home, ".local", "share", "branch-agent");
   const installed = () => {
-    const file = process.platform === "darwin" ? join(installRoot, "Contents", "VERSION") : join(installRoot, "VERSION");
+    const file = darwin ? join(installRoot, "Contents", "VERSION") : join(installRoot, "VERSION");
     return existsSync(file) ? readFileSync(file, "utf8") : null;
   };
   const leftovers = () => {
@@ -152,6 +174,32 @@ test("--version selects that release's tag", { skip }, () => {
     assert.equal(f.installed(), "1.2.3");
     const missing = f.run("--version", "v9.9.9");
     assert.notEqual(missing.status, 0);
+    assert.equal(f.installed(), "1.2.3");
+  } finally { f.cleanup(); }
+});
+
+test("an ad-hoc release never replaces an app signed with the pinned release identity", { skip }, () => {
+  const f = fixture(["1.0.0", "1.2.3"], { target: "darwin-arm64", signing: { "1.0.0": "identity", "1.2.3": "adhoc" } });
+  try {
+    const first = f.run("--version", "v1.0.0");
+    assert.equal(first.status, 0, first.stderr);
+    const downgrade = f.run();
+    assert.notEqual(downgrade.status, 0);
+    assert.match(downgrade.stderr, /signed with the Branch release identity and this release is ad-hoc signed/);
+    assert.match(downgrade.stderr, /nothing was installed/);
+    assert.equal(f.installed(), "1.0.0");
+    assert.equal(readFileSync(join(f.installRoot, "Contents", "SIGNATURE"), "utf8"), "identity");
+    assert.deepEqual(f.leftovers(), []);
+  } finally { f.cleanup(); }
+});
+
+test("an ad-hoc release installs fresh and replaces an ad-hoc install", { skip }, () => {
+  const f = fixture(["1.0.0", "1.2.3"], { target: "darwin-arm64", signing: { "1.0.0": "adhoc", "1.2.3": "adhoc" } });
+  try {
+    assert.equal(f.run("--version", "v1.0.0").status, 0);
+    const upgrade = f.run();
+    assert.equal(upgrade.status, 0, upgrade.stderr);
+    assert.match(upgrade.stdout, /Code signature present/);
     assert.equal(f.installed(), "1.2.3");
   } finally { f.cleanup(); }
 });

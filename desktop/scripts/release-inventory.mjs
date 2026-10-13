@@ -4,6 +4,7 @@ import { createReadStream } from "node:fs";
 import { copyFile, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { MAC_SIGNING_KINDS } from "./mac-release-signing.mjs";
 
 export async function fileDigest(file) {
   const hash = createHash("sha256");
@@ -97,6 +98,7 @@ export async function verifyReleaseDirectory(directory, expectedCommit, expected
 async function verifyTarget(directory, proof, inventory) {
   assert(proof.assets && typeof proof.assets === "object" && !Array.isArray(proof.assets));
   verifyRuntime(proof);
+  verifySigning(proof);
   const target = `${proof.platform}-${proof.arch}`;
   const manifestName = `branch-release-${target}.json`;
   assert(Object.hasOwn(proof.assets, manifestName), "Missing platform component manifest");
@@ -133,6 +135,12 @@ async function verifyInstallers(directory, proof, inventory) {
     assert.deepEqual(actual, expected, `Installer digest mismatch: ${name}`);
     inventory.set(name, actual);
   }
+}
+
+/** macOS proofs say how the app is signed (mac-release-signing.mjs); other targets carry no signing field. */
+function verifySigning(proof) {
+  if (proof.platform === "darwin") assert(MAC_SIGNING_KINDS.includes(proof.signing), "macOS release proof must declare signing: identity or adhoc");
+  else assert.equal(proof.signing, undefined, "Only macOS release proofs declare signing");
 }
 
 function verifyRuntime(proof) {

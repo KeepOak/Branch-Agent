@@ -9,7 +9,8 @@
 # Re-running replaces the install: the new copy is unpacked and verified beside the old one, then swapped in.
 #
 # BRANCH_INSTALL_BASE_URL is for tests only. It points the script at a local fixture release instead of
-# https://github.com/KeepOak/Branch-Agent/releases. Do not set it for a real install.
+# https://github.com/KeepOak/Branch-Agent/releases. Do not set it for a real install. BRANCH_INSTALL_TEST_TARGET,
+# also test-only and honoured only beside BRANCH_INSTALL_BASE_URL, runs another platform's install path.
 set -eu
 
 base_url=${BRANCH_INSTALL_BASE_URL:-https://github.com/KeepOak/Branch-Agent/releases}
@@ -50,6 +51,10 @@ case $(uname -m) in
   *) fail "unsupported processor $(uname -m)" ;;
 esac
 target=$os-$arch
+if [ -n "${BRANCH_INSTALL_TEST_TARGET:-}" ]; then
+  [ -n "${BRANCH_INSTALL_BASE_URL:-}" ] || fail "BRANCH_INSTALL_TEST_TARGET is for tests only"
+  target=$BRANCH_INSTALL_TEST_TARGET os=${BRANCH_INSTALL_TEST_TARGET%-*}
+fi
 case $target in
   darwin-arm64|linux-x64) ;;
   darwin-x64) fail "Branch Agent ships for Apple silicon Macs only (no Intel build yet)" ;;
@@ -135,10 +140,27 @@ replace() {
   rm -rf "$dest.install-old"
 }
 
+# The designated requirement of the pinned release identity (macReleaseSigning in desktop/src/mac-applications.ts).
+release_designated='designated => identifier "com.electron.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"'
+signed_with_release_identity() {
+  command -v codesign >/dev/null 2>&1 || return 1
+  codesign -dv "$1" 2>&1 | grep -q 'Signature=adhoc' && return 1
+  codesign -dr - "$1" 2>/dev/null | grep -Fxq "$release_designated"
+}
+
 install_darwin() {
   app="$work/unpacked/Branch Agent.app"
   [ -d "$app" ] || fail "$asset has no Branch Agent.app; nothing was installed"
   apps=$HOME/Applications
+  # Never trade an app signed with the release identity for an ad-hoc or unsigned one: macOS would treat it as
+  # another app, and its Keychain items and privacy grants would stop applying.
+  if ! signed_with_release_identity "$app"; then
+    for installed in "$apps/Branch Agent.app" "$apps/Branch.app" "/Applications/Branch.app"; do
+      if [ -d "$installed" ] && signed_with_release_identity "$installed"; then
+        fail "$installed is signed with the Branch release identity and this release is ad-hoc signed. Refusing to replace it with a weaker signature; nothing was installed."
+      fi
+    done
+  fi
   mkdir -p "$apps"
   # Stage on the same volume so the final move is a rename.
   staging=$(mktemp -d "$apps/.branch-agent-install.XXXXXX")

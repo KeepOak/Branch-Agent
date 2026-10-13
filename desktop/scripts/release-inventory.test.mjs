@@ -35,7 +35,7 @@ async function fixture(body) {
       const desktop = { app: asar, electronVersion: "44.5.1", runtime: app };
       const manifest = await makeComponentRelease({ version, sourceCommit: commit, tag: `v${version}`, engine, window, desktop, output, platform, arch });
       const name = `branch-desktop-${version}-${platform}-${arch}.tar.gz`;
-      const identity = { commit, version, platform, arch, electronVersion: "44.5.1", runtime: {
+      const identity = { commit, version, platform, arch, electronVersion: "44.5.1", ...(platform === "darwin" ? { signing: "identity" } : {}), runtime: {
         electronVersion: "44.5.1", electron: { sha256: "b".repeat(64), bytes: 1 },
         node: { version: "v24.19.0", platform, arch, sha256: "c".repeat(64) } }, smoke: { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: 10, runtime: { version: "v24.19.0", platform, arch }, source: "verified-component-archive", archiveSha256: manifest.components.engine.sha256, archiveBytes: manifest.components.engine.bytes, expandedBytes: manifest.components.engine.expandedBytes } };
       await writeReleaseInventory(output, identity); await cp(output, assets, { recursive: true });
@@ -102,6 +102,18 @@ test("release inventory rejects corrupted payload and unlisted assets", () => fi
   const name = `branch-engine-${version}-win32-x64.tar.gz`;
   await writeFile(join(assets, name), "corrupt");
   await assert.rejects(verifyReleaseDirectory(assets, commit, version), /digest mismatch/);
+}));
+
+test("macOS proofs declare identity or ad-hoc signing; other targets declare none", () => fixture(async ({ assets }) => {
+  await alterProof(assets, proof => { proof.signing = "adhoc"; }, "darwin-arm64");
+  assert.deepEqual((await verifyReleaseDirectory(assets, commit, version)).targets, ["darwin-arm64", "linux-x64", "win32-x64"]);
+  await alterProof(assets, proof => { delete proof.signing; }, "darwin-arm64");
+  await assert.rejects(verifyReleaseDirectory(assets, commit, version), /must declare signing/);
+  await alterProof(assets, proof => { proof.signing = "self"; }, "darwin-arm64");
+  await assert.rejects(verifyReleaseDirectory(assets, commit, version), /must declare signing/);
+  await alterProof(assets, proof => { proof.signing = "identity"; }, "darwin-arm64");
+  await alterProof(assets, proof => { proof.signing = "adhoc"; }, "linux-x64");
+  await assert.rejects(verifyReleaseDirectory(assets, commit, version), /Only macOS release proofs declare signing/);
 }));
 
 const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg` };
