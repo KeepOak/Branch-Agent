@@ -9,8 +9,8 @@ const svg = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", stroke
 const CloudDown = () => <svg {...svg} width={18} height={18}><path d="M7 17.5a4.5 4.5 0 0 1-.4-8.98A5.5 5.5 0 0 1 17.3 9.6 4 4 0 0 1 17 17.5" /><path d="M12 11v8M9 16l3 3 3-3" /></svg>;
 const Ring = () => <svg className="r1u-ring" width={22} height={22} viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="9" fill="none" strokeWidth="2.2" className="r1u-ring-track" /><circle cx="11" cy="11" r="9" fill="none" strokeWidth="2.2" strokeLinecap="round" strokeDasharray="14 57" className="r1u-ring-arc" /></svg>;
 
-/** The exit animation's length in updates.css (.r1u-btn[data-leaving]). */
-export const EXIT_MS = 240;
+/** --ease-exit's length (theme/tokens.css), which .r1u-btn[data-leaving] plays. */
+export const EXIT_MS = 440;
 /** Keeps the last real view on screen while the button plays its exit (--ease-exit), then removes it. */
 function useExit(view: UpdateView): { shown: UpdateView | null; leaving: boolean } {
   const last = useRef<UpdateView | null>(view.kind === "none" ? null : view);

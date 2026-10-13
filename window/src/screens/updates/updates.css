@@ -1,22 +1,22 @@
 /* R1-11 update button and banner. README item 48: the sidebar is the only frosted surface, so the button is a solid
-   white disc on it; the banner sits in a clear menu, so its line and its action are small frosted pills with a 1 px
-   low-alpha outline. No divider lines. */
+   white disc on it; the banner sits in a clear menu, so its line and its action are small frosted pills (--gp-*)
+   with a 1 px low-alpha outline. No divider lines. Reduce transparency comes from the --gp-* tokens. */
 .r1u-btn {
   position: relative; display: inline-grid; place-items: center; flex: none; box-sizing: border-box;
-  width: 36px; height: 36px; padding: 0; border-radius: var(--r-pill, 999px);
-  border: 1px solid rgba(0, 0, 0, .08); background: #fff; color: #1c1c1e;
-  box-shadow: var(--gc-sh-sm, 0 4px 12px rgba(0, 0, 0, .10)); font: 600 var(--fs-13, 13px)/1 var(--sans, system-ui);
-  transition: width var(--spring-thumb, .45s cubic-bezier(.3, 1.35, .5, 1)), transform var(--spring-press, .2s ease);
-  animation: r1u-in var(--spring-thumb, .45s cubic-bezier(.3, 1.35, .5, 1));
+  width: 36px; height: 36px; padding: 0; border-radius: var(--r-pill);
+  border: 1px solid var(--gc-edge); background: var(--on-accent); color: var(--accent);
+  box-shadow: var(--gc-sh-sm); font: 600 var(--fs-13)/1 var(--sans);
+  transition: width var(--spring-thumb), transform var(--spring-press);
+  animation: r1u-in var(--spring-thumb);
 }
 .r1u-btn:active:not(:disabled) { transform: scale(.94); }
 .r1u-btn:disabled { cursor: default; }
 .r1u-btn[data-wide] { width: auto; padding: 0 14px; white-space: nowrap; }
-.r1u-btn[data-kind="failed"] { color: var(--bad, #d70015); }
-.r1u-btn[data-leaving] { animation: r1u-out .24s var(--ease-exit, cubic-bezier(.4, 0, 1, 1)) forwards; }
+.r1u-btn[data-kind="failed"] { color: var(--bad); }
+.r1u-btn[data-leaving] { animation: r1u-out var(--ease-exit) forwards; }
 .r1u-ring { display: block; }
-.r1u-ring-track { stroke: rgba(0, 0, 0, .1); }
-.r1u-ring-arc { stroke: var(--accent, #484ce5); transform-origin: 50% 50%; animation: r1u-spin 1s linear infinite; }
+.r1u-ring-track { stroke: var(--gc-edge); }
+.r1u-ring-arc { stroke: var(--accent); transform-origin: 50% 50%; animation: r1u-spin 1s linear infinite; }
 .r1u-label { padding: 0 2px; }
 .r1u-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @keyframes r1u-in { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
@@ -25,31 +25,16 @@
 
 .r1u-ban { display: flex; align-items: center; gap: 8px; padding: 4px 4px 8px; background: transparent; }
 .r1u-ban-text, .r1u-ban-act {
-  border-radius: var(--r-pill, 999px); border: 1px solid rgba(0, 0, 0, .08);
-  backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-radius: var(--r-pill); border: 1px solid var(--gp-edge);
+  backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); font: 600 var(--fs-13)/1.2 var(--sans);
 }
 .r1u-ban-text {
   flex: 1; min-width: 0; padding: 7px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  background: color-mix(in srgb, var(--accent, #484ce5) 16%, rgba(255, 255, 255, .7)); color: var(--accent-ink, #3a3eba);
-  font: 600 var(--fs-13, 13px)/1.2 var(--sans, system-ui);
+  background: color-mix(in srgb, var(--accent) 18%, var(--gp-fill)); color: var(--accent-ink);
 }
-.r1u-ban-act { flex: none; padding: 7px 14px; background: #fff; color: #1c1c1e; font: 600 var(--fs-13, 13px)/1.2 var(--sans, system-ui); }
-.r1u-ban-act:hover { background: rgba(255, 255, 255, .85); }
+.r1u-ban-act { flex: none; padding: 7px 14px; background: var(--on-accent); color: var(--accent); }
+.r1u-ban-act:hover { background: color-mix(in srgb, var(--on-accent) 88%, var(--accent)); }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .r1u-btn, :root:not([data-theme="light"]) .r1u-ban-act { border-color: rgba(255, 255, 255, .16); }
-  :root:not([data-theme="light"]) .r1u-ban-text { border-color: rgba(255, 255, 255, .14); background: color-mix(in srgb, var(--accent, #6064e4) 30%, rgba(30, 30, 32, .55)); color: var(--accent-ink, #b4bbfe); }
-}
-:root[data-theme="dark"] .r1u-btn, :root[data-theme="dark"] .r1u-ban-act { border-color: rgba(255, 255, 255, .16); }
-:root[data-theme="dark"] .r1u-ban-text { border-color: rgba(255, 255, 255, .14); background: color-mix(in srgb, var(--accent, #6064e4) 30%, rgba(30, 30, 32, .55)); color: var(--accent-ink, #b4bbfe); }
-/* Reduce transparency: the pills go solid. */
-:root[data-transparency="reduce"] .r1u-ban-text, :root[data-transparency="reduce"] .r1u-ban-act { backdrop-filter: none; -webkit-backdrop-filter: none; }
-:root[data-transparency="reduce"] .r1u-ban-text { background: var(--accent-tint, #e9efff); }
-@media (prefers-reduced-transparency: reduce) {
-  :root:not([data-transparency]) .r1u-ban-text, :root:not([data-transparency]) .r1u-ban-act { backdrop-filter: none; -webkit-backdrop-filter: none; }
-  :root:not([data-transparency]) .r1u-ban-text { background: var(--accent-tint, #e9efff); }
-}
-/* Reduce motion: no spin, spring or exit motion. */
 @media (prefers-reduced-motion: reduce) {
   .r1u-btn, .r1u-btn[data-leaving], .r1u-ring-arc { animation-duration: .01ms; animation-iteration-count: 1; transition: none; }
 }
