@@ -42,6 +42,14 @@ describe("day-one templates", () => {
     expect(addCall(entry)).toEqual({ method: "trunks.template.create" });
   });
 
+  it("adds Mentions Watch from the engine's bundled mentions-watch template, with its face colour", () => {
+    const listed = { templates: [{ id: "mentions-watch", name: "Mentions Watch", description: "Never posts", permissions: ["Never posts, replies or contacts anyone"] }] };
+    const entry = templateEntries(listed, undefined).find(e => e.name === "Mentions Watch")!;
+    expect(entry.source).toMatchObject({ type: "template", templateId: "mentions-watch", permissions: ["Never posts, replies or contacts anyone"] });
+    expect(DAY_ONE_TEMPLATES.find(t => t.id === "mentions-watch")?.colour).toBe("var(--warn)");
+    expect(addCall(entry)).toEqual({ method: "trunks.template.create" });
+  });
+
   it("marks a template Added when a Trunk with its name exists", () => {
     const entries = templateEntries(undefined, { agents: [{ id: "x", identity: { name: "Home Desk" } }] });
     expect(entries.find(e => e.name === "Home Desk")?.installed).toBe(true);
