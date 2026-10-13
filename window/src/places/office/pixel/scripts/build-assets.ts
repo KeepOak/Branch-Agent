@@ -75,7 +75,7 @@ const data = {
   pets,
   trunkMeta,
   trunkPngs,
-  font: raw64(path.join(BR, 'fs-pixel-sans-subset.woff2')),
+  font: raw64(path.join(BR, 'pixelify-sans-subset.woff2')),
 };
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
