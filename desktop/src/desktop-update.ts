@@ -204,6 +204,18 @@ export async function stagedDesktopVersion(cfg: DesktopConfig): Promise<string |
 }
 
 /**
+ * Starts the helper detached. Resolves to undefined once it runs, or to the failure text when it cannot start. The
+ * error listener is required: an unhandled 'error' event would stop the app before startup continues.
+ */
+function startHelper(node: string, args: string[], env: NodeJS.ProcessEnv): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const child = spawn(node, args, { detached: true, stdio: "ignore", windowsHide: true, env });
+    child.on("error", (error) => resolve(error.message));
+    child.once("spawn", () => { child.unref(); resolve(undefined); });
+  });
+}
+
+/**
  * Hands a staged update to the helper, which swaps it in once this process (pid) exits and relaunches the app.
  * Returns false when nothing is staged; otherwise the caller quits so the helper can work. `explicit` (the owner's
  * Restart) ignores the wait after a swap that found the app still in use.
@@ -247,8 +259,8 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
   const planFile = join(work, "desktop-update-plan.json");
   await replaceFile(planFile, JSON.stringify(plan));
   const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
-  const child = spawn(node, [helper, planFile], { detached: true, stdio: "ignore", windowsHide: true, env });
-  child.unref();
+  const failure = await startHelper(node, [helper, planFile], env);
+  if (failure) return discardStagedUpdate(cfg, journal, `the update helper could not start: ${failure}`);
   return true;
 }
 

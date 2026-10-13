@@ -291,3 +291,23 @@ test("a missing update helper discards the staged record instead of stopping lau
   assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
   assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: the update helper is missing/);
 }));
+
+test("a helper that cannot start discards the staged record and the app keeps starting", () => fixture(async ({ cfg, request, install }) => {
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const launch = await launchHandOff(cfg, { ...install, nodePath: join(cfg.dataDir, "no-such-node") });
+  assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
+  assert.equal(await exists(join(cfg.dataDir, "desktop-update-pending.json")), false, "the record is removed");
+  assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: the update helper could not start: /);
+}));
+
+test("a helper that is not executable discards the staged record and the app keeps starting", () => fixture(async ({ cfg, request, install }) => {
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const node = join(cfg.dataDir, "not-executable-node");
+  await writeFile(node, "not a program\n", { mode: 0o644 });
+  const launch = await launchHandOff(cfg, { ...install, nodePath: node });
+  assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
+  assert.equal(await exists(join(cfg.dataDir, "desktop-update-pending.json")), false, "the record is removed");
+  assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: the update helper could not start: /);
+}));
