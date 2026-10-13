@@ -109,6 +109,12 @@ describe("formatDiscordBotPlatformContext (golden case is redacted)", () => {
     expect(block.endsWith(BOT_PLATFORM_CLOSE)).toBe(true);
   });
 
+  it("states that the reply is delivered automatically and forbids a second messaging-tool reply", () => {
+    const block = formatDiscordBotPlatformContext();
+    expect(block).toContain("automatically delivered to this conversation");
+    expect(block).toContain("Do not send a second reply with a messaging tool");
+  });
+
   it("has a non-empty body between the tags", () => {
     const body = formatDiscordBotPlatformContext().split("\n").slice(1, -1);
     expect(body.length).toBeGreaterThanOrEqual(2);
