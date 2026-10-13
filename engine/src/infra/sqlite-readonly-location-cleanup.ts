@@ -251,21 +251,31 @@ function removalBackoff(error: unknown, attempt: number): number | undefined {
     : undefined;
 }
 
+/** Blocking wait one snapshot's synchronous removal may spend in total, shared by all its paths. */
+export type SyncRemovalBudget = { remainingMs: number };
+const syncRemovalBudgetMs = removalBackoffMs.reduce((total, wait) => total + wait, 0);
+
+export function createSyncRemovalBudget(): SyncRemovalBudget {
+  return { remainingMs: syncRemovalBudgetMs };
+}
+
 /**
- * Synchronous removal of one snapshot path, retried only on transient lock errors. Bound: at most
- * removalBackoffMs.length retries, so at most 620 ms of Atomics.wait per call, and only after a lock error.
- * A handle still open at rm time (the Windows EPERM case) outlasts that bound; closing it first is the fix.
+ * Synchronous removal of one snapshot path, retried only on transient lock errors. The shared budget caps
+ * the total Atomics.wait for the whole snapshot at 620 ms, so many locked payload files cannot block the
+ * caller for 620 ms each. A handle still open at rm time (the Windows EPERM case) outlasts the budget; the
+ * deferred retry then removes the directory once the handle is released.
  */
-function removeSnapshotPathSync(target: string): void {
+function removeSnapshotPathSync(target: string, budget: SyncRemovalBudget): void {
   for (let attempt = 0; ; attempt += 1) {
     try {
       fs.rmSync(target, tempDirectoryRemovalOptions);
       return;
     } catch (error) {
       const wait = removalBackoff(error, attempt);
-      if (wait === undefined) {
+      if (wait === undefined || wait > budget.remainingMs) {
         throw error;
       }
+      budget.remainingMs -= wait;
       Atomics.wait(removalBackoffCell, 0, 0, wait);
     }
   }
@@ -288,17 +298,25 @@ async function removeSnapshotPathAsync(target: string): Promise<void> {
 }
 
 // A removal that loses to a briefly-held Windows handle used to wait in memory until process exit.
-// Failed removals now retry on an interval until they succeed. The timer stops once nothing is pending;
-// the age-based orphan sweep backs these up across restarts because a failed claim keeps its mtime.
-const deferredRemovalIntervalMs = 1_000;
+// Only the transient lock codes retry, on an interval, and only for a bounded window. Any other error
+// gives up at once. After the window the directory stays on disk and the age-based orphan sweep takes it
+// over, because a claimed directory keeps its mtime.
+export const deferredSnapshotRemovalPolicy = {
+  intervalMs: 1_000,
+  giveUpAfterMs: 10 * 60_000,
+};
 const deferredRemovalsInFlight = new Set<string>();
+const deferredRemovalSince = new Map<string, number>();
 let deferredRemovalTimer: ReturnType<typeof setInterval> | undefined;
 
 function scheduleDeferredSnapshotRemoval(): void {
   if (deferredRemovalTimer) {
     return;
   }
-  deferredRemovalTimer = setInterval(retryDeferredSnapshotRemovals, deferredRemovalIntervalMs);
+  deferredRemovalTimer = setInterval(
+    retryDeferredSnapshotRemovals,
+    deferredSnapshotRemovalPolicy.intervalMs,
+  );
   deferredRemovalTimer.unref?.();
 }
 
@@ -313,10 +331,56 @@ function retryDeferredSnapshotRemovals(): void {
       continue;
     }
     deferredRemovalsInFlight.add(directory);
-    void removeTempDirectoryAsync(directory, undefined, owner).finally(() => {
+    void retryDeferredSnapshotRemoval(directory, owner).finally(() => {
       deferredRemovalsInFlight.delete(directory);
     });
   }
+}
+
+async function retryDeferredSnapshotRemoval(
+  directory: string,
+  owner: SnapshotDirectory,
+): Promise<void> {
+  const since = deferredRemovalSince.get(directory) ?? Date.now();
+  deferredRemovalSince.set(directory, since);
+  let failure: unknown;
+  const removed = await removeTempDirectoryAsync(
+    directory,
+    (error) => {
+      failure = error;
+    },
+    owner,
+  );
+  if (removed) {
+    deferredRemovalSince.delete(directory);
+    return;
+  }
+  const code = extractErrorCode(failure);
+  if (!removalRetryCodes.has(code ?? "")) {
+    giveUpDeferredSnapshotRemoval(directory, owner, "non-transient error", code);
+  } else if (Date.now() - since >= deferredSnapshotRemovalPolicy.giveUpAfterMs) {
+    giveUpDeferredSnapshotRemoval(directory, owner, "retry window ended", code);
+  }
+}
+
+function giveUpDeferredSnapshotRemoval(
+  directory: string,
+  owner: SnapshotDirectory,
+  reason: string,
+  code: string | undefined,
+): void {
+  deferredRemovalSince.delete(directory);
+  try {
+    owner.release?.();
+  } catch {
+    // The native token is released as far as it can be; the sweep reclaims the directory later.
+  }
+  owner.release = undefined;
+  releaseSnapshotDirectoryCustody(directory, owner);
+  getChildLogger({ subsystem: "infra/sqlite-snapshot" }).warn(
+    { path: directory, errorCode: code, reason },
+    "SQLite snapshot removal gave up for this process; the orphan sweep reclaims it once idle.",
+  );
 }
 
 // A non-throwing cleanup-failure report emitted once per owner; a successful
@@ -377,9 +441,10 @@ function prepareSnapshotRetirement(directory: string, owner: SnapshotDirectory |
 /** Delete in the token process: owner death must stop unlinking when its locks disappear. */
 export function retireSqliteSnapshotPayload(
   retirement: ReturnType<typeof beginSqliteSnapshotRetirement>,
+  budget: SyncRemovalBudget = createSyncRemovalBudget(),
 ): void {
   for (const file of retirement.payload) {
-    removeSnapshotPathSync(file);
+    removeSnapshotPathSync(file, budget);
   }
   // Free copied bytes before SQLite allocates its retirement page/journal.
   // Controls stay intact until every marker commits and native handle closes.
@@ -390,6 +455,7 @@ export function removeTempDirectory(
   tempDir: string,
   onFailure?: (error: unknown) => void,
   selectedOwner = findSnapshotDirectory(tempDir),
+  budget: SyncRemovalBudget = createSyncRemovalBudget(),
 ): boolean {
   let owner = selectedOwner;
   try {
@@ -400,12 +466,12 @@ export function removeTempDirectory(
     const retirement = prepareSnapshotRetirement(tempDir, owner);
     try {
       if (retirement) {
-        retireSqliteSnapshotPayload(retirement);
+        retireSqliteSnapshotPayload(retirement, budget);
         owner = snapshotDirectory(tempDir);
         owner.release = undefined;
         owner.retired = true;
       }
-      removeSnapshotPathSync(tempDir);
+      removeSnapshotPathSync(tempDir, budget);
     } finally {
       retirement?.release();
     }

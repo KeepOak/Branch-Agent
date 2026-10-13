@@ -14,6 +14,7 @@ import {
   resolvePrivateSqliteSnapshotStagingRoot,
 } from "./sqlite-private-directory.js";
 import {
+  createSyncRemovalBudget,
   registerSnapshotTempDirectory,
   removeTempDirectory,
   removeTempDirectoryAsync,
@@ -107,13 +108,15 @@ export function* reclaimAbandonedSqliteSnapshots(root: string, report = warn): G
           throw new Error("Snapshot reclamation byte budget exhausted for this pass");
         }
         admittedBytes += bytes;
-        retireSqliteSnapshotPayload(retirement);
+        // One blocking-wait budget for this snapshot's payload and its directory together.
+        const budget = createSyncRemovalBudget();
+        retireSqliteSnapshotPayload(retirement, budget);
         const claimed = path.join(
           root,
           `${legacy ? `branch-sqlite-readonly-${process.pid}-` : prefix}${randomUUID()}`,
         );
         fs.renameSync(directory, claimed);
-        if (!removeTempDirectory(claimed)) {
+        if (!removeTempDirectory(claimed, undefined, undefined, budget)) {
           throw new Error("Snapshot removal failed; check private cache permissions");
         }
         report(`Reclaimed ${bytes} bytes of interrupted SQLite snapshot data.`);
