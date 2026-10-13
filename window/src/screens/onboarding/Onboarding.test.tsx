@@ -85,7 +85,6 @@ describe("Onboarding", () => {
     expect(comingControls().flatMap((c) => c.need)).not.toEqual(expect.arrayContaining(["device.pair.setupCode"]));
     expect(comingControls().flatMap((c) => c.need)).not.toContain("environments.create");
     expect(host.querySelector(".r1-ob-sheet")?.textContent).toContain("Seedbank › Coming to Branch");
-    await act(async () => radios[0].click());
     await act(async () => button(host, "Done").click());
     expect(host.textContent).toContain("Runs on this computer");
   });
