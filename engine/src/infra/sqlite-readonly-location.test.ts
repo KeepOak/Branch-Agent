@@ -658,3 +658,5 @@ describe("prepareSqliteReadOnlyLocation", () => {
     expect(fs.readdirSync(path.dirname(databasePath)).toSorted()).toEqual(beforeEntries);
   });
 });
+
+// probe: comment-only touch so the Windows named-test job selects this file (throwaway)
