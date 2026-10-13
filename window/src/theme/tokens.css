@@ -318,5 +318,5 @@
 /* Reduce transparency: solid pills. The repeated attribute outranks the contrast and dark rules above in both modes. */
 :root[data-transparency="reduce"][data-transparency][data-transparency] { --gp-fill: var(--raise); --gp-on: color-mix(in srgb, var(--ink) 8%, var(--raise)); --gp-ink-2: var(--ink-2); --gp-blur: none; }
 @media (prefers-reduced-transparency: reduce) {
-  :root:not([data-transparency]):not([data-transparency-x]):not([data-transparency-y]) { --gp-fill: var(--raise); --gp-on: color-mix(in srgb, var(--ink) 8%, var(--raise)); --gp-ink-2: var(--ink-2); --gp-blur: none; }
+  :root:not([data-transparency]):not([data-transparency]):not([data-transparency]) { --gp-fill: var(--raise); --gp-on: color-mix(in srgb, var(--ink) 8%, var(--raise)); --gp-ink-2: var(--ink-2); --gp-blur: none; }
 }
