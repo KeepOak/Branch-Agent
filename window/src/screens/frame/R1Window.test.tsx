@@ -17,6 +17,7 @@ vi.mock("../settings", () => ({
 }));
 vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: () => <p>Place content</p> }));
 vi.mock("../../face/Face", () => ({ Face: () => <span /> }));
+vi.mock("../sidebar/Sidebar", () => ({ Sidebar: ({ ready, onSettings }: { ready: boolean; onSettings: (page: string) => void }) => <nav aria-label="Sidebar stub" data-ready={ready}><button type="button" aria-label="Settings" onClick={() => onSettings("appearance")} /></nav> }));
 vi.mock("../../places/settings/set1/appearance-store", () => ({ lookStore: () => ({ load: async () => undefined }) }));
 vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: [] }], usePendingApprovals: () => new Map() }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,8 +42,8 @@ it("renders an empty disconnected engine without demo conversations", async () =
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request: vi.fn() } } as unknown as SaplingSession;
   await act(async () => root.render(<R1Window session={session} />));
-  expect(host.textContent).toContain("No conversations yet"); expect(host.textContent).toContain("Reconnecting…");
-  expect(host.querySelectorAll('.r1-sidebar-list button')).toHaveLength(0);
+  expect(host.textContent).toContain("Reconnecting…");
+  expect(host.querySelector('[aria-label="Sidebar stub"]')?.getAttribute("data-ready")).toBe("false");
   expect(host.querySelector<HTMLButtonElement>('[aria-label="Back"]')?.disabled).toBe(true);
 });
 it("mounts in a host without matchMedia or ResizeObserver, as App-level tests do", async () => {
