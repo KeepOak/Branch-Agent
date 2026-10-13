@@ -2,6 +2,7 @@
 // Say hello is a real model call (setup's testModel: branch.setup.verify, or branch.setup.activate for a new pick),
 // never the preview's timed fetch. Continue waits for a hello that worked.
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "../../composer/icons";
 import { Coming } from "../../glass/coming";
 import type { WindowEngine } from "../../connect/engine";
@@ -62,7 +63,9 @@ export function Models({ engine, off, onOff, hello, onHello }: Props) {
         {bad ? <><span className="r1-ob-dot" data-ok="false" /><span><b>{bad.error}</b><small><button type="button" className="r1-ob-link" data-local onClick={sayHello}>Try again</button> · <button type="button" className="r1-ob-link" data-local onClick={() => setAdding(true)}>Use another model</button></small></span></> : null}
       </div>
       {ok ? null : <p className="r1-ob-none">No model? <button type="button" className="r1-ob-link" {...unwired(EXAMPLES_REASON)}>Try it with examples</button>: look around with example Trunks and replies, no account needed.</p>}
-      {adding ? <SetupAddAccountDialog engine={engine} agentId={engine.agentId ?? ""} onClose={(added) => { setAdding(false); if (added) { onHello(null); reload(); } }} /> : null}
+      {/* Over the whole window (README item 48): a clear dialog, so the card it covers steps aside while it is open (onboarding.css).
+          Inside the card, the body's edge fade would clip it. */}
+      {adding ? createPortal(<div className="r1-ob-dlg"><SetupAddAccountDialog clear engine={engine} agentId={engine.agentId ?? ""} onClose={(added) => { setAdding(false); if (added) { onHello(null); reload(); } }} /></div>, document.body) : null}
     </>
   );
 }
