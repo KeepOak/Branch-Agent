@@ -114,7 +114,7 @@ describe("All features", () => {
   });
 });
 
-describe("the page's glass (HANDOFF 1.2)", () => {
+describe("the page's glass (README item 48; the full check is glass48.test.tsx)", () => {
   const css = readFileSync(join(process.cwd(), "src/screens/features/features.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   const rule = (selector: string): string => {
     const at = css.indexOf(`${selector} {`);
@@ -123,21 +123,20 @@ describe("the page's glass (HANDOFF 1.2)", () => {
   };
   const background = (selector: string): string => /background:\s*([^;]+);/.exec(rule(selector))?.[1]?.trim() ?? "";
 
-  it("uses chip glass for row hover, the focused row and the status chips, never a solid fill", () => {
-    expect(background(".feat-r:hover")).toBe("var(--gk-chip)");
-    expect(background(".feat-r.focus")).toBe("var(--gk-on)");
-    expect(background(".feat-chip")).toBe("var(--gk-chip)");
-    for (const sel of [".feat-r:hover", ".feat-r.focus", ".feat-chip"]) expect(rule(sel), sel).toContain("inset 0 0 0 .5px var(--gf-edge)");
+  it("lifts row hover and the focused row with the shared pill's light lift, and the chips (shared pills) keep their status colours, never a solid fill", () => {
+    expect(background(".feat-r:hover")).toBe("var(--gp-on)");
+    expect(background(".feat-r.focus")).toBe("var(--gp-on)");
+    expect(rule(".feat-r.focus")).toContain("inset 0 0 0 1px var(--gp-edge)");
+    expect(background(".feat-chip")).toBe("");
     expect(css).not.toMatch(/var\(--(ok|warn)-tint\)/);
-    expect(rule(".feat-chip.in")).toContain("color: var(--ok)");
-    expect(rule(".feat-chip.part")).toContain("color: var(--warn)");
+    expect(rule(".feat-chip.in:not(#g48#g48)")).toContain("var(--ok)");
+    expect(rule(".feat-chip.part:not(#g48#g48)")).toContain("var(--warn)");
   });
 
-  it("uses control glass with the 0.5px glass edge for the search box and Open, not a drawn line", () => {
+  it("leaves the search box and Open to the shared pill (frost and 1px outline), with no drawn line", () => {
     for (const sel of [".feat-search", ".feat-go"]) {
-      expect(background(sel), sel).toBe("var(--gc-fill)");
-      expect(rule(sel), sel).toContain("border: .5px solid var(--gc-edge)");
-      expect(rule(sel), sel).toContain("backdrop-filter: var(--gc-blur)");
+      expect(background(sel), sel).toBe("");
+      expect(rule(sel), sel).not.toMatch(/border: [^;]*solid/);
     }
     expect(css).not.toMatch(/background:\s*var\(--fill\)/);
     expect(css).not.toMatch(/var\(--line\)/);
