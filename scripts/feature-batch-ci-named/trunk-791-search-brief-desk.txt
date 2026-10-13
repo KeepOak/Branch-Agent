@@ -1,6 +1,4 @@
-engine:src/gateway/server-methods/trunk-template-first-run.test.ts
 engine:src/gateway/server-methods/trunk-templates.test.ts
 engine:src/trunks/day-one-search-brief-desk.test.ts
-engine:src/trunks/trunk-template-first-run.test.ts
 engine:src/trunks/trunk-template.test.ts
 window:src/screens/seedbank/catalog.test.ts
