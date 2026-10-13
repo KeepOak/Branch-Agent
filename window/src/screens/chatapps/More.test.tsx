@@ -64,7 +64,8 @@ it("sets up any app the engine has through its wizard, and finds another app, as
   await act(async () => extra.click());
   expect(setup).toHaveBeenLastCalledWith(expect.objectContaining({ channel: "nostrish" }));
   await act(async () => button(host, "Find another app").click());
-  expect(setup).toHaveBeenLastCalledWith(expect.objectContaining({ id: "another", channel: undefined }));
+  expect(setup.mock.lastCall?.[0]).toMatchObject({ id: "another" });
+  expect(setup.mock.lastCall?.[0].channel).toBeUndefined();
 });
 
 it("approves a request with Tell them and make them the owner (channels.pairing.approve notify, bootstrapCommandOwner)", async () => {
@@ -89,10 +90,12 @@ it("chooses who answers in one chat (a chat-level route in bindings), as Classic
 
 it("draws Classic's Advanced tables: a table row saves its key and a row Classic greys stays Coming", async () => {
   const { host, request } = await render("advanced");
-  const typed = host.querySelector<HTMLButtonElement>('#row-chatapps\\.more\\.commands-from-chat-apps\\.typed-commands [role="switch"]')!;
-  expect(typed.getAttribute("aria-checked")).toBe("true");
-  await act(async () => typed.click());
-  expect(patches(request).at(-1)).toEqual({ commands: { text: false } });
+  // Typed commands (commands.text) is one of the page's own rows, so it is drawn there only, never twice.
+  expect(host.querySelector("#row-chatapps\\.more\\.commands-from-chat-apps\\.typed-commands")).toBeNull();
+  const bang = host.querySelector<HTMLButtonElement>('#row-chatapps\\.more\\.commands-from-chat-apps\\.run-commands-from-chat-apps [role="switch"]')!;
+  expect(bang.getAttribute("aria-checked")).toBe("false");
+  await act(async () => bang.click());
+  expect(patches(request).at(-1)).toEqual({ commands: { bash: true } });
   const edited = host.querySelector<HTMLElement>("#row-chatapps\\.more\\.what-the-trunk-sees\\.edited-messages")!;
   expect(edited.dataset.coming).toBeTruthy();
   expect(edited.getAttribute("aria-disabled")).toBe("true");
