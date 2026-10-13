@@ -49,6 +49,28 @@ describe("Seedbank", () => {
     expect(host.querySelectorAll("[data-testid=sb-row]").length).toBe(8);
   });
 
+  it("R1-10: Soon controls go through <Coming>: nothing they wrap runs or bubbles, even when the engine offers the call", async () => {
+    const soon = ["mcp.import", "mcp.registry.search", "mcp.servers.add", "skills.import", "skills.workshop.create"];
+    const { engine } = engineOf(soon);
+    const outer = vi.fn();
+    const host = await render(engine, <div onClick={outer} onKeyDown={outer}><Seedbank engine={engine} /></div>);
+    for (const tab of ["Connectors", "Skills"]) {
+      const opener = buttons(host, tab)[0];
+      if (opener) await click(opener);
+    }
+    const coming = [...host.querySelectorAll<HTMLElement>("[data-coming]")];
+    expect(coming.length).toBeGreaterThan(0);
+    outer.mockClear();
+    for (const el of coming) {
+      expect(el.getAttribute("aria-disabled")).toBe("true");
+      await click(el);
+      await act(async () => { el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    }
+    expect(outer).not.toHaveBeenCalled();
+    const listed = comingControls().flatMap(c => c.need);
+    expect(listed).toEqual(expect.arrayContaining(["seedbank.web"]));
+  });
+
   it("adds a day-one template through trunks.template.create from the install sheet", async () => {
     const { engine, request } = engineOf(["trunks.template.list", "trunks.template.create", "agents.list"], method => (method === "trunks.template.list" ? TEMPLATES : method === "agents.list" ? { agents: [] } : method === "trunks.template.create" ? { agentId: "home-desk", warnings: [] } : {}));
     const host = await render(engine);
