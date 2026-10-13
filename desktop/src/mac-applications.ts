@@ -1,9 +1,10 @@
 // Places the launchable macOS bundle in Applications and keeps the release signature stable.
 // The engine and window data stay in ~/Library/Application Support; only the .app moves.
 import { execFile } from "node:child_process";
-import { access, appendFile, constants, cp, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { access, constants, cp, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { appendCappedLog } from "./log-rotation";
 
 export const MAC_APP_NAME = "Branch";
 export const MAC_BUNDLE_FOLDER = "Branch.app";
@@ -232,7 +233,7 @@ export async function ensureMacApplicationsInstall(appDir: string, logFile: stri
     await installMacApp(appDir, { runningAppDir: appDir });
   } catch (error) {
     try {
-      await appendFile(logFile, `${new Date().toISOString()} macOS Applications install failed: ${String(error)}\n`);
+      appendCappedLog(logFile, `${new Date().toISOString()} macOS Applications install failed: ${String(error)}\n`);
     } catch { /* a log failure must not block launch */ }
   }
 }
