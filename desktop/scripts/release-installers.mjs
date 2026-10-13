@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installerAssetName, recordInstaller } from "./release-inventory.mjs";
 
 /** Stable across releases so an installer upgrades the same per-user install. Never change it. */
 export const WINDOWS_APP_ID = "{{6F0B6A43-3C1E-4D8B-9A57-2E4B1C9D7F10}";
@@ -19,9 +20,7 @@ export const TARGETS = ["win32-x64", "darwin-arm64", "linux-x64"];
 export const LINUX_PENDING = "No Linux installer yet: a .deb or AppImage installs read-only, and the desktop updater swaps its own folder. Ship the tar.gz until the install location is decided.";
 
 export function installerName(version, target) {
-  if (target === "win32-x64") return `Branch-Agent-Setup-${version}-win32-x64.exe`;
-  if (target === "darwin-arm64") return `Branch-Agent-${version}-darwin-arm64.dmg`;
-  return null;
+  return installerAssetName(version, target);
 }
 
 /** Inno Setup wants a numeric a.b.c.d version for the file metadata; the build id stays in AppVersion. */
@@ -140,5 +139,9 @@ export function main(argv = process.argv.slice(2)) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { main(); } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); }
+  try {
+    const file = main();
+    // The target's release proof lists the installer, so publish attaches it and checks its bytes.
+    if (file) { const { assets, target } = parseArgs(process.argv.slice(2)); await recordInstaller(assets, target, file); }
+  } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); }
 }

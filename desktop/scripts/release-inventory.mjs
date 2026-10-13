@@ -2,12 +2,36 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 export async function fileDigest(file) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(file)) hash.update(chunk);
   return { sha256: hash.digest("hex"), bytes: (await stat(file)).size };
+}
+
+/** The one installer a target may ship, or null when it has none (Linux keeps the tar.gz). */
+export function installerAssetName(version, target) {
+  if (target === "win32-x64") return `Branch-Agent-Setup-${version}-win32-x64.exe`;
+  if (target === "darwin-arm64") return `Branch-Agent-${version}-darwin-arm64.dmg`;
+  return null;
+}
+
+/**
+ * Lists a built installer in its target's release proof (name, bytes, sha256). The installer travels in its own
+ * workflow artifact; publish puts it beside the release assets and refuses it if it is missing or differs.
+ */
+export async function recordInstaller(directory, target, file) {
+  const proofFile = join(directory, `release-proof-${target}.json`);
+  const proof = JSON.parse(await readFile(proofFile, "utf8"));
+  validateReleaseIdentity(proof);
+  assert.equal(`${proof.platform}-${proof.arch}`, target, "Installer target differs from the release proof");
+  const name = basename(file);
+  assert.equal(name, installerAssetName(proof.version, target), "Unexpected installer for this target");
+  assert(!Object.hasOwn(proof.assets ?? {}, name), "Installer name collides with a release asset");
+  proof.installers = { ...proof.installers, [name]: await fileDigest(file) };
+  await writeFile(proofFile, JSON.stringify(proof, null, 2) + "\n");
+  return proof.installers[name];
 }
 
 export function validateReleaseIdentity({ commit, version, platform, arch }) {
@@ -68,6 +92,7 @@ async function verifyTarget(directory, proof, inventory) {
     if (inventory.has(name)) assert.deepEqual(inventory.get(name), actual, "Conflicting shared asset");
     inventory.set(name, actual);
   }
+  await verifyInstallers(directory, proof, inventory);
   const manifest = JSON.parse(await readFile(join(directory, manifestName), "utf8"));
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.version, proof.version);
@@ -75,6 +100,22 @@ async function verifyTarget(directory, proof, inventory) {
   const components = ["engine", "window", "desktop", "desktopRuntime"];
   for (const component of components) verifyComponent(manifest.components?.[component], proof, inventory, component);
   assert.equal(manifest.components.engine.expandedBytes, proof.smoke.expandedBytes, "Extracted archive receipt byte count mismatch");
+}
+
+// Installers are optional per target. One the proof lists must be present, byte for byte.
+async function verifyInstallers(directory, proof, inventory) {
+  const installers = proof.installers ?? {};
+  assert(installers && typeof installers === "object" && !Array.isArray(installers), "Invalid installer inventory");
+  const target = `${proof.platform}-${proof.arch}`;
+  for (const [name, expected] of Object.entries(installers)) {
+    assert.equal(name, installerAssetName(proof.version, target), "Unexpected installer for this target");
+    assert(!Object.hasOwn(proof.assets, name) && !inventory.has(name), "Installer name collides with a release asset");
+    let actual;
+    try { actual = await fileDigest(join(directory, name)); }
+    catch (error) { if (error?.code === "ENOENT") assert.fail(`Missing listed installer: ${name}`); throw error; }
+    assert.deepEqual(actual, expected, `Installer digest mismatch: ${name}`);
+    inventory.set(name, actual);
+  }
 }
 
 function verifyRuntime(proof) {
