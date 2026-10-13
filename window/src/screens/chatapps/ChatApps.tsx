@@ -29,18 +29,18 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
   const listed = new Set(catalogue(live.status).map(c => c.id));
   const shown = CHAT_APPS.filter(a => `${a.name} ${a.id} ${a.group}`.toLowerCase().includes(q));
   const connected = CHAT_APPS.filter(a => a.channel && appOf(live.status, { id: a.channel, name: a.name, detail: "" }).on);
-  return <section className="r1-chatapps" aria-label="Chat apps">
-    <h1>Chat apps</h1><p className="r1-ca-lede">Telegram, WhatsApp, Slack and 71 more: who answers, who may message, and how replies arrive.</p>
-    {live.error && <p role="alert">{live.error} <button type="button" className="g-ctl" onClick={() => void live.reload()} data-need="channels.status">Try again</button></p>}
-    <div className="r1-ca-surface"><section aria-labelledby="r1-ca-your"><h2 id="r1-ca-your">Your chat apps</h2>
-      <p role="status">{live.loading ? "Checking your chat apps…" : !live.status ? "Chat app status is unavailable." : connected.length ? "Manage your connected apps below." : "No chat apps connected yet. Choose an app below to get started."}</p>
+  return <section className="r1-chatapps g-clear" aria-label="Chat apps">
+    <h1 className="g-label">Chat apps</h1><p className="r1-ca-lede g-label" data-lines>Telegram, WhatsApp, Slack and 71 more: who answers, who may message, and how replies arrive.</p>
+    {live.error && <p role="alert"><span className="g-label">{live.error}</span> <button type="button" onClick={() => void live.reload()} data-need="channels.status">Try again</button></p>}
+    <div className="r1-ca-surface g-clear"><section aria-labelledby="r1-ca-your"><h2 id="r1-ca-your" className="g-label">Your chat apps</h2>
+      <p role="status" className="g-label">{live.loading ? "Checking your chat apps…" : !live.status ? "Chat app status is unavailable." : connected.length ? "Manage your connected apps below." : "No chat apps connected yet. Choose an app below to get started."}</p>
       <Pairing engine={engine} snapshot={live.pairing} reload={live.reload} />
     </section>
-    <section aria-labelledby="r1-ca-all"><h2 id="r1-ca-all">Every chat app</h2>
-      <label className="r1-ca-search g-ctl"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search chat apps" placeholder="Search all 74 chat apps" value={query} onChange={e => setQuery(e.target.value)} data-local="search" /></label>
+    <section aria-labelledby="r1-ca-all"><h2 id="r1-ca-all" className="g-label">Every chat app</h2>
+      <label className="r1-ca-search g-frost"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search chat apps" placeholder="Search all 74 chat apps" value={query} onChange={e => setQuery(e.target.value)} data-local="search" /></label>
       {GROUPS.map(group => {
         const apps = shown.filter(a => a.group === group);
-        return apps.length ? <section className="r1-ca-group" key={group}><h3>{group} <span>{apps.length}</span></h3><div className="r1-ca-grid">{apps.map(app => {
+        return apps.length ? <section className="r1-ca-group" key={group}><h3 className="g-label">{group} <span>{apps.length}</span></h3><div className="r1-ca-grid">{apps.map(app => {
           const state = app.channel ? appOf(live.status, { id: app.channel, name: app.name, detail: "" }) : undefined;
           const connected = state?.on === true;
           const action = connected ? onManage : onSetup;
@@ -50,13 +50,13 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
           const locked = !connected && offered && !admin;
           const enabled = Boolean(app.channel && action && offered && !locked);
           const reason = locked ? `Setting up ${app.name} needs full access on this connection.` : `Setting up ${app.name} comes in a later update.`;
-          return <button key={app.id} type="button" className="r1-ca-card g-chip" aria-disabled={!enabled} data-coming={!enabled && !locked ? reason : undefined} title={!enabled ? reason : undefined} data-need={needs.join(" ")} onClick={() => { if (enabled) action?.(app); }}>
+          return <button key={app.id} type="button" className="r1-ca-card g-frost" aria-disabled={!enabled} data-coming={!enabled && !locked ? reason : undefined} title={!enabled ? reason : undefined} data-need={needs.join(" ")} onClick={() => { if (enabled) action?.(app); }}>
             <ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{connected ? state?.running ? "Connected" : state?.word : app.estimate ?? "Coming in a later update"}</small></span><span className="r1-ca-action">{locked ? "Needs full access" : !enabled ? "Coming" : connected ? "Manage" : "Set up"}</span>
           </button>;
         })}</div></section> : null;
       })}
-      {!shown.length && <p>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}
+      {!shown.length && <p className="g-label" data-lines>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}
     </section>
-    </div>{renderAccess && <section aria-label="Who answers and who may message"><h2>Who answers</h2>{connected.length ? connected.map(a => <div key={a.id}>{renderAccess(a)}</div>) : <p className="r1-ca-hint">{live.loading ? "Checking your chat apps…" : "Connect a chat app above to choose who answers in it and who may message it."}</p>}</section>}<ChatAppSettings engine={engine} />
+    </div>{renderAccess && <section aria-label="Who answers and who may message"><h2 className="g-label">Who answers</h2>{connected.length ? connected.map(a => <div key={a.id}>{renderAccess(a)}</div>) : <p className="r1-ca-hint g-label" data-lines>{live.loading ? "Checking your chat apps…" : "Connect a chat app above to choose who answers in it and who may message it."}</p>}</section>}<ChatAppSettings engine={engine} />
   </section>;
 }
