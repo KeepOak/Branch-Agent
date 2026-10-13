@@ -40,7 +40,7 @@ function Banner({ item, onDismiss }: { item: BannerItem; onDismiss: (id: string)
   useEffect(() => { run(); return () => clearTimeout(clock.current.timer); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div
-      ref={ref} className="r1-banner" role="status" data-testid="r1-banner" data-gone={gone || undefined} data-drag={dragging || undefined}
+      ref={ref} className="r1-banner g-clear" role="status" data-testid="r1-banner" data-gone={gone || undefined} data-drag={dragging || undefined}
       style={{ translate: `${dx}px 0`, opacity: dragging ? Math.max(0.25, 1 - Math.max(0, dx) / 360) : undefined }}
       onPointerEnter={hold} onPointerLeave={resume} onFocus={hold}
       onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setTimeout(resume, 0); }}

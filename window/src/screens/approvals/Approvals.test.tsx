@@ -47,7 +47,7 @@ describe("R1-05 approvals", () => {
     expect(request).not.toHaveBeenCalled();
     await emit("plugin.approval.requested", EMAIL);
     expect(host.querySelector(".r1-ask-q")?.textContent).toBe("Send this email to Dana Okafor?");
-    expect(host.querySelector(".r1-ask")?.className).toBe("r1-ask");
+    expect(host.querySelector(".r1-ask")?.className).toBe("r1-ask g-clear");
     expect(button(host, "Send it").getAttribute("aria-disabled")).toBe("true");
     expect(undeclaredControls(host).map((e) => e.textContent)).toEqual([]);
     expect(comingControls().some((c) => c.need.includes("plugin.approval.resolve"))).toBe(true);

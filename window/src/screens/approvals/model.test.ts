@@ -48,7 +48,9 @@ describe("approvals glass model (README item 48)", () => {
   const lum = (c: number[]) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
   const over = (c: number[], base: number[]) => [0, 1, 2].map((k) => c[k] * (c[3] ?? 1) + base[k] * (1 - (c[3] ?? 1)));
   const ratio = (a: number[], b: number[]) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-  const themes = [...css.matchAll(/--r1a-fill: (rgba\([^)]+\)); --r1a-edge: [^;]+; --r1a-on: [^;]+; --r1a-ink2: (rgb\([^)]+\))/g)].map((m) => [rgba(m[1]), rgba(m[2])]);
+  /* The pills use the shared pill tokens (theme/tokens.css), so the contrast is checked on those, in light and dark. */
+  const tokens = readFileSync("src/theme/tokens.css", "utf8");
+  const themes = [...tokens.matchAll(/--gp-fill: (rgba\([^)]+\)); --gp-edge: [^;]+; --gp-on: [^;]+; --gp-ink-2: (rgb\([^)]+\))/g)].map((m) => [rgba(m[1]), rgba(m[2])]);
 
   it("gives every pill ink at least 4.5:1 over white and over black, in light and dark", () => {
     expect(themes.length).toBeGreaterThanOrEqual(2);
@@ -57,8 +59,11 @@ describe("approvals glass model (README item 48)", () => {
 
   it("keeps the card, drop and banners clear, outlines pills in 1px, and goes solid under Reduce transparency", () => {
     for (const sel of [".r1-ask {", ".r1-drop {", ".r1-banner {"]) expect(css.slice(css.indexOf(sel), css.indexOf("}", css.indexOf(sel)))).toContain("background: transparent");
-    expect(css).toContain("box-shadow: inset 0 0 0 1px var(--r1a-edge)");
-    expect(css).toMatch(/html\[data-transparency="reduce"\][^{]+\{\s*background: var\(--raise\); -webkit-backdrop-filter: none; backdrop-filter: none;/);
+    expect(css).toContain("box-shadow: inset 0 0 0 1px var(--gp-edge)");
+    expect(css).toContain("background: var(--gp-fill); -webkit-backdrop-filter: var(--gp-blur); backdrop-filter: var(--gp-blur);");
+    const flat = tokens.replace(/\s+/g, " ");
+    expect(flat).toMatch(/:root\[data-transparency="reduce"\][^{]*\{ --gp-fill: var\(--raise\);[^}]*--gp-blur: none; \}/);
+    expect(flat).toMatch(/@media \(prefers-reduced-transparency: reduce\) \{[^{]*\{ --gp-fill: var\(--raise\);[^}]*--gp-blur: none; \}/);
     expect(css).not.toMatch(/border-(top|bottom):\s*1px/);
   });
 });

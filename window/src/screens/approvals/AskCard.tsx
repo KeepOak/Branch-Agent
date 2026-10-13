@@ -28,7 +28,7 @@ type CardProps = {
 export function Decided({ ask, how, name }: { ask: Ask; how: NonNullable<AskState["settled"]>; name: string }) {
   const { text, tone } = settledText(ask, how, name);
   return (
-    <div className="r1-ask-decided" data-testid="r1-ask" data-state={how}>
+    <div className="r1-ask-decided g-clear" data-testid="r1-ask" data-state={how}>
       <span className="r1-ask-pill" data-tone={tone}>{text}</span>
       <span className="r1-ask-what">{ask.title.replace(/\?$/, "")}</span>
     </div>
@@ -43,7 +43,7 @@ export function AskCard({ state, name, onAnswer, lockdown, scopes }: CardProps) 
   const decide = canDecideApprovals(undefined, scopes);
   const busy = state.status === "sending";
   return (
-    <div className="r1-ask" data-testid="r1-ask" data-state={state.status} data-kind={ask.kind} data-approval={ask.id}>
+    <div className="r1-ask g-clear" data-testid="r1-ask" data-state={state.status} data-kind={ask.kind} data-approval={ask.id}>
       <div className="r1-ask-head">
         <span className="r1-ask-q">{ask.title}</span>
         <span className="r1-ask-pill" data-tone={ask.warning ? "warn" : "wait"}><i />{ask.warning ? "Warning" : decide ? "Waiting for you" : "Waiting"}</span>
@@ -72,7 +72,7 @@ export function AskCard({ state, name, onAnswer, lockdown, scopes }: CardProps) 
 function Answer({ ask, kind, off, why, onClick, children }: { ask: Ask; kind?: "primary" | "ghost"; off?: boolean; why?: string; onClick: () => void; children: React.ReactNode }) {
   return (
     <Coming need={RESOLVE_OF[ask.kind]} reason={RESOLVE_WHY}>
-      <button type="button" className="r1-ask-btn" data-kind={kind} disabled={off} title={why} onClick={onClick}>{children}</button>
+      <button type="button" className="r1-ask-btn" data-kind={kind} data-solid={kind === "primary" ? "" : undefined} disabled={off} title={why} onClick={onClick}>{children}</button>
     </Coming>
   );
 }
@@ -113,7 +113,7 @@ function QuestionForm({ ask, busy, onAnswer }: { ask: Ask; busy: boolean; onAnsw
         </div>
       ))}
       <div className="r1-ask-acts">
-        {single ? null : <Coming need="question.resolve" reason={RESOLVE_WHY}><button type="button" className="r1-ask-btn" data-kind="primary" disabled={busy || !ready} onClick={() => onAnswer(ask.id, { answers: answers() })}>Reply</button></Coming>}
+        {single ? null : <Coming need="question.resolve" reason={RESOLVE_WHY}><button type="button" className="r1-ask-btn" data-kind="primary" data-solid="" disabled={busy || !ready} onClick={() => onAnswer(ask.id, { answers: answers() })}>Reply</button></Coming>}
         <Coming need="question.resolve" reason={RESOLVE_WHY}><button type="button" className="r1-ask-btn" data-kind="ghost" disabled={busy} onClick={() => onAnswer(ask.id, "skip")}>Skip</button></Coming>
       </div>
     </>

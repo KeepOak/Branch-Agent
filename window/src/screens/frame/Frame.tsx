@@ -10,7 +10,7 @@ import "./frame.css";
 class Region extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
-  render() { return this.state.failed ? <p className="r1-notice" role="alert">This part didn’t load · <button onClick={() => this.setState({ failed: false })}>Try again</button></p> : this.props.children; }
+  render() { return this.state.failed ? <p className="r1-notice g-label" role="alert">This part didn’t load · <button onClick={() => this.setState({ failed: false })}>Try again</button></p> : this.props.children; }
 }
 export type FrameProps = {
   sidebar: ReactNode; main: ReactNode; composer?: ReactNode; topics?: ReactNode; notice?: ReactNode;
@@ -72,7 +72,7 @@ export function Frame({ sidebar, main, composer, topics, notice, header, navigat
     {topics && <section className="r1-topics" aria-label="Topics"><Region>{topics}</Region></section>}
     <section className="r1-conversation" aria-label="Conversation">
       <Header {...header} onToggleSidebar={toggle} />
-      <div className="r1-scroll edge-fade" ref={scroll}><div ref={content} className="r1-content"><Region>{notice && <div className="r1-notice" role="status">{notice}</div>}{main}</Region></div></div>
+      <div className="r1-scroll edge-fade" ref={scroll}><div ref={content} className="r1-content"><Region>{notice && <div className="r1-notice g-label" role="status">{notice}</div>}{main}</Region></div></div>
       {composer && <div className="r1-composer-slot"><Region>{composer}</Region></div>}
     </section>
   </div>;
