@@ -29,7 +29,7 @@ export type BuildWorktreeCleanupDeps = {
   platform: NodeJS.Platform;
   now: () => number;
   git: GitRun;
-  /** Working folders of running processes, or null where they cannot be listed. */
+  /** Folders and files running processes hold open (working folders included), or null where they cannot be listed. */
   processDirectories: () => Promise<string[] | null>;
   pullRequestState: (input: {
     originUrl: string;

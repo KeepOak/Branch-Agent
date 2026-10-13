@@ -11,7 +11,12 @@ import {
   type BuildWorktreeCleanupDeps,
   type PullRequestState,
 } from "./cleanup.js";
-import { createBuildWorktreeCleanupDeps } from "./cleanup.runtime.js";
+import {
+  createBuildWorktreeCleanupDeps,
+  lsofOpenPaths,
+  LSOF_OPEN_FILES_ARGV,
+  readProcOpenPaths,
+} from "./cleanup.runtime.js";
 import { buildWorktreeGitArgs, toLongPathSafe } from "./long-path.js";
 
 const HOUR = 60 * 60 * 1000;
@@ -290,6 +295,61 @@ describe("build worktree cleanup", () => {
     expect(fs.existsSync(path.join(busy, "node_modules"))).toBe(true);
     expect(report.freedBytes).toBeGreaterThanOrEqual(8192);
     expect(report.removed).toBe(0);
+  });
+});
+
+describe("processes holding a worktree", () => {
+  it.skipIf(process.platform === "win32")(
+    "lists files a process holds open on Linux, not just its working folder",
+    async () => {
+      const held = addWorktree("card-held");
+      const proc = path.join(temp, "proc");
+      fs.mkdirSync(path.join(proc, "101", "fd"), { recursive: true });
+      fs.symlinkSync(path.join(temp, "elsewhere"), path.join(proc, "101", "cwd"));
+      fs.symlinkSync(path.join(held, "server.log"), path.join(proc, "101", "fd", "3"));
+      fs.symlinkSync("socket:[42]", path.join(proc, "101", "fd", "4"));
+      fs.mkdirSync(path.join(proc, "self"));
+
+      const paths = await readProcOpenPaths(proc);
+      expect(paths).toContain(path.join(held, "server.log"));
+      expect(paths).not.toContain("socket:[42]");
+
+      const { report } = await run(
+        deps({ processDirectories: async () => paths ?? [] }, ["card-held"]),
+      );
+      expect(fs.existsSync(held)).toBe(true);
+      expect(report.kept["in-use"]).toBe(1);
+    },
+  );
+
+  it("asks lsof for every open file and refuses a cut-off list", async () => {
+    expect(LSOF_OPEN_FILES_ARGV).not.toContain("cwd");
+    const calls: string[][] = [];
+    const output =
+      "p101\nfcwd\nn/elsewhere\nf3\nn/builds/card-held/server.log\nf4\nnlocalhost:3000\n";
+    const runCommand = (async (argv: string[]) => {
+      calls.push(argv);
+      return { stdout: output, stderr: "", code: 0, termination: "exit" };
+    }) as unknown as Parameters<typeof lsofOpenPaths>[0];
+    expect(await lsofOpenPaths(runCommand)).toEqual(["/elsewhere", "/builds/card-held/server.log"]);
+    expect(calls[0]).not.toContain("-d");
+
+    const cutOff = (async () => ({
+      stdout: output,
+      stderr: "",
+      code: null,
+      termination: "exit",
+      outputLimitExceeded: true,
+    })) as unknown as Parameters<typeof lsofOpenPaths>[0];
+    expect(await lsofOpenPaths(cutOff)).toBeNull();
+
+    const timedOut = (async () => ({
+      stdout: output,
+      stderr: "",
+      code: null,
+      termination: "timeout",
+    })) as unknown as Parameters<typeof lsofOpenPaths>[0];
+    expect(await lsofOpenPaths(timedOut)).toBeNull();
   });
 });
 
