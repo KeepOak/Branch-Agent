@@ -10,7 +10,7 @@ import "./frame.css";
 class Region extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
-  render() { return this.state.failed ? <p className="r1-notice g-label" role="alert">This part didn’t load · <button onClick={() => this.setState({ failed: false })}>Try again</button></p> : this.props.children; }
+  render() { return this.state.failed ? <p className="r1-notice g-label" role="alert">This part didn’t load · <button type="button" data-local="" onClick={() => this.setState({ failed: false })}>Try again</button></p> : this.props.children; }
 }
 export type FrameProps = {
   sidebar: ReactNode; main: ReactNode; composer?: ReactNode; topics?: ReactNode; notice?: ReactNode;
@@ -57,7 +57,7 @@ export function Frame({ sidebar, main, composer, topics, notice, header, navigat
     return () => document.removeEventListener("keydown", key);
   });
   return <div className="r1-frame" data-wide={wide} data-drawer={drawer} data-topics={Boolean(topics)}>
-    {narrow && drawer && <button className="r1-drawer-scrim" type="button" aria-label="Close sidebar" onClick={close} />}
+    {narrow && drawer && <button className="r1-drawer-scrim" type="button" data-local="" aria-label="Close sidebar" onClick={close} />}
     <aside className="r1-sidebar" ref={side} aria-label="Sidebar" role={narrow ? "dialog" : undefined} aria-modal={narrow && drawer ? true : undefined} inert={narrow && !drawer} tabIndex={-1} onKeyDown={event => {
       if (!narrow || !drawer || event.key !== "Tab") return;
       const items = [...event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled),input,a,[tabindex='0']")];
@@ -66,7 +66,7 @@ export function Frame({ sidebar, main, composer, topics, notice, header, navigat
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }}>
-      <div className="r1-side-top"><button type="button" className="g-ctl" onClick={toggle} aria-label={narrow ? "Close sidebar" : wide ? "Use sidebar rail" : "Expand sidebar"}><Icon name="menu" /></button></div>
+      <div className="r1-side-top"><button type="button" className="g-ctl" data-local="" onClick={toggle} aria-label={narrow ? "Close sidebar" : wide ? "Use sidebar rail" : "Expand sidebar"}><Icon name="menu" /></button></div>
       <Region>{sidebar}</Region>
     </aside>
     {topics && <section className="r1-topics" aria-label="Topics"><Region>{topics}</Region></section>}

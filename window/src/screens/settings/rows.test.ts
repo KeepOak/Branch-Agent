@@ -109,7 +109,7 @@ describe("settings row table", () => {
     expect(cardRows("general", "The conversation", 1, {}).map((r) => r.id)).toContain("general.conversation.ask-delete");
   });
 
-  it("keeps every Classic Accounts control on the R1 Accounts page, on the key Classic uses or Coming with its need (#952)", () => {
+  it("keeps every Classic Accounts control on the R1 Accounts page, drawn by the page or Coming with its need (#952, #976)", () => {
     const page = ROWS.filter((r) => r.page === "accounts");
     const labels = new Set(page.map((r) => r.label));
     // Each control Classic's Accounts page draws (accounts.tsx, accounts-more.tsx, accounts-select.tsx, coding-apps.tsx,
@@ -127,19 +127,18 @@ describe("settings row table", () => {
       "Point your coding apps at Branch",
     ];
     for (const title of classic) expect(labels.has(title), title).toBe(true);
-    // Codex's switch saves the engine key Classic saves; true only when it is true.
+    // Each working control is a row the page draws (accounts-live.tsx), naming the calls it makes; what Classic greys
+    // names the call it waits for.
     const at = (id: string) => page.find((r) => r.id === id);
-    const codex = at("accounts.apps.codex");
-    expect(codex).toMatchObject({ card: "Coding apps on this computer", control: "toggle", level: 0, source: { kind: "config", path: "plugins.entries.codex.enabled" } });
-    expect([codex?.codec?.read(undefined), codex?.codec?.read(true), codex?.codec?.write(false), codex?.codec?.write(true)]).toEqual([false, true, false, true]);
-    // Everything else names the call or row kind it waits for.
-    for (const row of page.filter((r) => r.id !== "accounts.apps.codex")) {
-      expect(row.source.kind, row.id).toBe("coming");
+    for (const row of page) {
+      expect(["slot", "coming"], row.id).toContain(row.source.kind);
       if (row.source.kind === "coming") expect(row.source.need, row.id).toMatch(/^(window|engine): /);
     }
-    expect(at("accounts.order.sign-out")?.source).toMatchObject({ need: expect.stringContaining("models.authLogout") });
-    expect(at("accounts.order.answer-first")?.source).toMatchObject({ need: expect.stringContaining("models.authOrderSet") });
-    expect(at("accounts.order.test")?.source).toMatchObject({ need: expect.stringContaining("models.probe") });
+    expect(at("accounts.apps.codex")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["config.patch"]) });
+    expect(at("accounts.order.sign-out")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["models.authLogout"]) });
+    expect(at("accounts.order.answer-first")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["models.authOrderSet"]) });
+    expect(at("accounts.order.test")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["models.probe"]) });
+    for (const id of ["accounts.order.rename", "accounts.order.pause", "accounts.keepoak.connect"]) expect(at(id)?.source.kind, id).toBe("coming");
     // Classic's levels: Terms and Accounts, more at Advanced; Which goes next, the sources and Accounts, technical at Technical.
     expect(cardRows("accounts", "Accounts, more", 0, {})).toEqual([]);
     expect(cardRows("accounts", "Accounts, more", 1, {}).length).toBeGreaterThan(0);

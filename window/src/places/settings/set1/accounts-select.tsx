@@ -5,8 +5,25 @@ import { Btn, useSaveRunner } from "../kit";
 import type { Account } from "./accounts";
 import "./accounts.css";
 
-const PAUSE_OFF = "Branch can’t pause an account yet.";
-const key = (acc: Account) => `${acc.p.provider}/${acc.a.profileId}`;
+export const PAUSE_OFF = "Branch can’t pause an account yet.";
+export const key = (acc: Account) => `${acc.p.provider}/${acc.a.profileId}`;
+
+/** Move to the top: each service's ticked accounts first, in its own order (models.authOrderSet per service). */
+export async function moveToTop(engine: WindowEngine, all: Account[], chosen: Account[], agent: { agentId?: string }): Promise<void> {
+  for (const p of [...new Set(chosen.map((acc) => acc.p))]) {
+    const ids = all.filter((x) => x.p === p).map((x) => x.a.profileId);
+    const first = chosen.filter((x) => x.p === p).map((x) => x.a.profileId);
+    await engine.request("models.authOrderSet", { provider: p.authProvider ?? p.provider, profileIds: [...first, ...ids.filter((id) => !first.includes(id))], ...agent });
+  }
+}
+
+/** Sign out of the ticked accounts Branch can sign out (models.authLogout per service). */
+export async function signOutAll(engine: WindowEngine, chosen: Account[], agent: { agentId?: string }): Promise<void> {
+  const leaving = chosen.filter((acc) => acc.a.logoutSupported);
+  for (const p of [...new Set(leaving.map((acc) => acc.p))]) {
+    await engine.request("models.authLogout", { provider: p.authProvider ?? p.provider, profileIds: leaving.filter((x) => x.p === p).map((x) => x.a.profileId), ...agent });
+  }
+}
 
 export function SelectLink({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return <Btn sm aria-pressed={on} onClick={onToggle}>{on ? "Done selecting" : "Select accounts"}</Btn>;
@@ -24,18 +41,8 @@ export function BulkBar({ engine, all, picked, agent, reload, done }: BulkProps)
   const providers = [...new Set(chosen.map((acc) => acc.p))];
   const leaving = chosen.filter((acc) => acc.a.logoutSupported);
   const run = (work: () => Promise<void>) => void save(async () => { await work(); await reload(); }).then((ok) => { if (ok) done(); });
-  const toTop = () => run(async () => {
-    for (const p of providers) {
-      const ids = all.filter((x) => x.p === p).map((x) => x.a.profileId);
-      const first = chosen.filter((x) => x.p === p).map((x) => x.a.profileId);
-      await engine.request("models.authOrderSet", { provider: p.authProvider ?? p.provider, profileIds: [...first, ...ids.filter((id) => !first.includes(id))], ...agent });
-    }
-  });
-  const signOut = () => run(async () => {
-    for (const p of [...new Set(leaving.map((acc) => acc.p))]) {
-      await engine.request("models.authLogout", { provider: p.authProvider ?? p.provider, profileIds: leaving.filter((x) => x.p === p).map((x) => x.a.profileId), ...agent });
-    }
-  });
+  const toTop = () => run(() => moveToTop(engine, all, chosen, agent));
+  const signOut = () => run(() => signOutAll(engine, chosen, agent));
   const n = chosen.length;
   const locked = providers.some((p) => p.profileOrderLocked);
   return (

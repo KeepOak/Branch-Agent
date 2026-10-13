@@ -1,6 +1,6 @@
 import type { WindowEngine } from "../../connect/engine";
 import { useRow, type Row } from "../settings";
-import { CHAT_APP_ROWS } from "./rows";
+import { BASE_ROWS } from "./rows";
 
 export function ChatAppRow({ engine, row }: { engine: WindowEngine; row: Row }) {
   const view = useRow(engine, row);
@@ -13,5 +13,5 @@ export function ChatAppRow({ engine, row }: { engine: WindowEngine; row: Row }) 
   </div>;
 }
 export function ChatAppSettings({ engine }: { engine: WindowEngine }) {
-  return <>{[...new Set(CHAT_APP_ROWS.map(r => r.card))].map(card => <section key={card}><h2 className="g-label">{card}</h2>{CHAT_APP_ROWS.filter(r => r.card === card).map(row => <ChatAppRow key={row.id} engine={engine} row={row} />)}</section>)}</>;
+  return <>{[...new Set(BASE_ROWS.map(r => r.card))].map(card => <section key={card}><h2 className="g-label">{card}</h2>{BASE_ROWS.filter(r => r.card === card).map(row => <ChatAppRow key={row.id} engine={engine} row={row} />)}</section>)}</>;
 }

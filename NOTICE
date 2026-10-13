@@ -18,20 +18,11 @@ docs/upstream/COPIED.csv lists each file, its source path and the pinned
 commit. Each project's license text is in third_party/<name>/LICENSE, copied
 from the pinned commit.
 
-Exception until the clean-room rewrites land
---------------------------------------------
+Files that were not MIT-licensed
+-----------------------------
 
-The files below still carry code from projects that are not MIT-licensed. They
-are being rewritten from public specifications, and their COPIED.csv rows are
-marked for rewrite. Until those rewrites merge, the MIT license does not cover
-them:
-
-- engine/src/secrets/totp.ts, totp.test.ts (Skyvern-AI/skyvern, AGPL-3.0)
-- engine/src/safety/scoped-api-key.ts, scoped-api-key.test.ts (AstrBotDevs/AstrBot, AGPL-3.0)
-- engine/src/sessions/resume-tree-types.ts, resume-message-tree.ts,
-  engine/src/agents/tools/sequential-thinking-tool.ts (CherryHQ/cherry-studio, AGPL-3.0)
-- engine/extensions/discord/src/monitor/discord-context-provider.ts,
-  discord-context-provider.test.ts (lobehub/lobehub, LobeHub Community License)
+Every file this notice listed as not yet MIT has been rewritten clean-room or
+removed (PR #1382; the follow-up Discord fix is PR #1383). None remains.
 
 Apache License, Version 2.0 sources
 -----------------------------------
