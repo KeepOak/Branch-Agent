@@ -50,6 +50,14 @@ describe("day-one templates", () => {
     expect(addCall(entry)).toEqual({ method: "trunks.template.create" });
   });
 
+  it("adds Search Brief Desk from the engine's bundled search-brief-desk template, with its face colour", () => {
+    const listed = { templates: [{ id: "search-brief-desk", name: "Search Brief Desk", description: "Never publishes or edits your site", permissions: ["Writes ideas and briefs only"] }] };
+    const entry = templateEntries(listed, undefined).find(e => e.name === "Search Brief Desk")!;
+    expect(entry.source).toMatchObject({ type: "template", templateId: "search-brief-desk", permissions: ["Writes ideas and briefs only"] });
+    expect(DAY_ONE_TEMPLATES.find(t => t.id === "search-brief-desk")?.colour).toBe("var(--trunk-2)");
+    expect(addCall(entry)).toEqual({ method: "trunks.template.create" });
+  });
+
   it("marks a template Added when a Trunk with its name exists", () => {
     const entries = templateEntries(undefined, { agents: [{ id: "x", identity: { name: "Home Desk" } }] });
     expect(entries.find(e => e.name === "Home Desk")?.installed).toBe(true);
