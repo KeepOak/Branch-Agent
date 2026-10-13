@@ -65,6 +65,7 @@ button.r1sb-cap:hover { color: var(--ink); }
 .r1sb .search-results .sr { min-height: 52px; padding: 8px 10px; border-radius: var(--r-row, 12px); color: var(--ink); }
 .r1sb .search-results .sr:hover { background: var(--gk-chip); }
 .r1sb .search-results .sr-title { gap: 0; }
+.r1sb .search-results .sr-title > :is(span, mark) { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 .r1sb .search-results .sr-title time { padding-left: 8px; }
 .r1sb .search-results .sr:focus-visible { outline: 2px solid var(--ink-3); outline-offset: -2px; }
 .r1sb .search-results .sr-none { margin: 24px 12px; color: var(--ink-3); }
