@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CapabilityProvider, noteUnknownMethod } from "../connect/capabilities";
 import type { EngineFeatures } from "../connect/engine";
 import { Coming } from "./coming";
+import { Menu } from "./Menu";
 import { COMING_REASON, comingControls, comingReport, undeclaredControls } from "./coming-registry";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -155,6 +156,64 @@ describe("Coming", () => {
     expect(comingControls()).toHaveLength(1);
     await act(async () => root!.unmount()); root = undefined;
     expect(comingControls()).toEqual([]);
+  });
+});
+
+describe("Coming, beyond click and keys", () => {
+  it("keeps a control the window hasn't wired Coming even when the engine has the method, naming that method", async () => {
+    const onClick = vi.fn();
+    const host = await render(<CapabilityProvider engine={{ features: features(["agents.update"]) }}>
+      <Coming need="agents.update" unwired reason="Pausing comes in a later update."><button type="button" onClick={onClick}>Pause</button></Coming>
+    </CapabilityProvider>);
+    const button = host.querySelector("button")!;
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => button.click());
+    expect(onClick).not.toHaveBeenCalled();
+    expect(comingControls()).toEqual([{ need: ["agents.update"], missing: ["agents.update"], reason: "Pausing comes in a later update.", where: "Pause", hidden: false }]);
+  });
+
+  it("blocks double-click, right-click, touch end, drop and paste handlers", async () => {
+    const handlers = { onDoubleClick: vi.fn(), onContextMenu: vi.fn(), onTouchEnd: vi.fn(), onDrop: vi.fn(), onPaste: vi.fn() };
+    const host = await render(<Coming engine={{ features: features([]) }} need="sessions.patch"><div role="button" tabIndex={0} {...handlers}>Row</div></Coming>);
+    const node = host.querySelector("div")!;
+    await act(async () => {
+      for (const type of ["dblclick", "contextmenu", "touchend", "drop", "paste"]) node.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));
+    });
+    for (const handler of Object.values(handlers)) expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe("Menu entries in the contract", () => {
+  it("turns an entry whose method is missing to Coming, shows its reason line, and its shortcut letter runs nothing", async () => {
+    const pin = vi.fn(), copy = vi.fn();
+    const host = await render(<CapabilityProvider engine={{ features: features([]) }}>
+      <Menu label="Row" onClose={() => undefined}
+        tiles={[{ label: "Pin", letter: "p", need: "sessions.patch", why: "Pinning needs the engine.", onSelect: pin }]}
+        rows={[{ label: "Copy ID", letter: "c", local: true, onSelect: copy }, { label: "Group…", need: "sessions.groups.put", off: "Moving into a group comes in a later update." }]} />
+    </CapabilityProvider>);
+    const tile = host.querySelector<HTMLElement>(".g-menu-tile")!;
+    expect(tile.getAttribute("aria-disabled")).toBe("true");
+    expect(tile.querySelector("small")?.textContent).toBe("Pinning needs the engine.");
+    await act(async () => tile.click());
+    await act(async () => void host.querySelector(".g-menu")!.dispatchEvent(new KeyboardEvent("keydown", { key: "p", bubbles: true })));
+    expect(pin).not.toHaveBeenCalled();
+    expect(undeclaredControls(host)).toEqual([]);
+    expect(comingControls().map(entry => entry.need)).toEqual([["sessions.patch"], ["sessions.groups.put"]]);
+    await act(async () => void host.querySelector(".g-menu")!.dispatchEvent(new KeyboardEvent("keydown", { key: "c", bubbles: true })));
+    expect(copy).toHaveBeenCalledOnce();
+  });
+
+  it("runs the entry and marks its call once the engine offers it", async () => {
+    const pin = vi.fn();
+    const host = await render(<CapabilityProvider engine={{ features: features(["sessions.patch"]) }}>
+      <Menu label="Row" onClose={() => undefined} rows={[{ label: "Pin", letter: "p", need: "sessions.patch", onSelect: pin }, { label: "Plain", onSelect: () => undefined }]} />
+    </CapabilityProvider>);
+    const [entry, plain] = host.querySelectorAll<HTMLElement>(".g-menu-row");
+    expect(entry.dataset.need).toBe("sessions.patch");
+    await act(async () => entry.click());
+    expect(pin).toHaveBeenCalledOnce();
+    // An entry that declares neither a call nor local is what the dev check reports.
+    expect(undeclaredControls(host)).toEqual([plain]);
   });
 });
 

@@ -17,6 +17,8 @@ export type ComingProps = {
   where?: string;
   /** The owner said hidden, not greyed (+ menu items, "Open in new window"): render nothing, still register. */
   hidden?: boolean;
+  /** This window doesn't make the call yet, even when the engine offers it: always Coming, still naming the method. */
+  unwired?: boolean;
   /** Checks against this engine instead of the CapabilityProvider's. */
   engine?: Pick<WindowEngine, "features"> | null;
   /** One element that forwards DOM props, including aria-disabled, readOnly and event guards.
@@ -43,14 +45,14 @@ function labelOf(child: ReactElement): string {
   return typeof child.type === "string" ? child.type : "control";
 }
 
-export function Coming({ need, reason, where, hidden = false, engine, children }: ComingProps): ReactElement | null {
+export function Coming({ need, reason, where, hidden = false, unwired = false, engine, children }: ComingProps): ReactElement | null {
   const fromContext = useCapabilityEngine();
   useCapabilityVersion();
   const id = useId();
   const needs = typeof need === "string" ? [need] : [...need];
   const target = engine === undefined ? fromContext : engine;
   // Before the first hello nothing is known: draw the control as it is rather than flash Coming and back.
-  const missing = needs.filter((method) => availability(target, method) === "no");
+  const missing = unwired ? needs : needs.filter((method) => availability(target, method) === "no");
   const why = reason ?? COMING_REASON;
   const entry: ComingEntry | null = missing.length ? { need: needs, missing, reason: why, where: where ?? labelOf(children), hidden } : null;
   const entryKey = entry ? JSON.stringify(entry) : "";
@@ -73,6 +75,14 @@ export function Coming({ need, reason, where, hidden = false, engine, children }
     onBeforeInputCapture: swallow,
     onAuxClick: swallow,
     onAuxClickCapture: swallow,
+    onDoubleClickCapture: swallow,
+    onContextMenuCapture: swallow,
+    onTouchEndCapture: swallow,
+    onDragStartCapture: swallow,
+    onDropCapture: swallow,
+    onPasteCapture: swallow,
+    onCutCapture: swallow,
+    onSubmitCapture: swallow,
     onKeyDownCapture: swallowKeys,
     onKeyUpCapture: swallowKeys,
     ...((children.type === "input" || children.type === "textarea" || typeof children.type !== "string") ? { readOnly: true } : {}),

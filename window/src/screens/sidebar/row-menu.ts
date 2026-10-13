@@ -1,7 +1,8 @@
 // The row ••• menu (HANDOFF R1-02, owner item 20): four quick tiles (Pin, Unread, Snooze ›, Archive) and the rows
 // Rename, Move to ›, New conversation ›, Copy ›, Open in new window, the Trunk's own submenu, then Delete in red. Each
 // entry calls the engine through the Classic actions (shell/conversation-actions.ts, contacts-model.ts); one that this
-// window can't run yet says why instead of pretending.
+// window can't run yet says why instead of pretending. Each entry names the engine method it calls (R1-10), so an engine
+// without it shows Coming; entries that only copy, open or navigate are local.
 import type { Conversation } from "../../connect/conversations";
 import { snoozeChoices, snoozeTime, wakeWords, type Actions } from "../../shell/conversation-actions";
 import type { Contact } from "../../shell/contacts-model";
@@ -40,6 +41,24 @@ export const TRUNK_LISTED = "Trunks stay in the list";
 export const MOVE_GROUP_OFF = "Moving into a group from here comes in a later update.";
 export const PAUSE_OFF = "Pausing a Trunk needs an engine method it doesn't have yet.";
 export const NO_PROJECTS = "No projects yet.";
+export const UNARCHIVE_GROUP_OFF = "Unarchiving a group comes in a later update.";
+
+/** The engine calls behind each entry (HANDOFF R1-02 "Engine calls"; shell/conversation-actions.ts). */
+export const NEED = {
+  patch: "sessions.patch",
+  unpin: ["sessions.patchMany", "contacts.topics"],
+  markRead: "contacts.markRead",
+  create: "sessions.create",
+  copy: ["sessions.create", "sessions.patch"],
+  delete: "sessions.delete",
+  roomArchive: "rooms.archive",
+  groupMove: "sessions.groups.put",
+  pause: "agents.update",
+  removeTrunk: "agents.delete",
+  ask: "chat.send",
+  tidy: "sessions.compact",
+  history: "chat.history",
+} as const;
 
 const icon = (name: Parameters<typeof menuIcon>[0]) => menuIcon(name);
 const present = (entries: (MenuEntry | null)[]): MenuEntry[] => entries.filter((entry): entry is MenuEntry => entry !== null);
@@ -49,10 +68,10 @@ function snoozeTile(row: SideRow, thread: Conversation | null, c: RowMenuContext
   if (row.isDefault) return { label: "Snooze", icon: icon("clock"), off: DEFAULT_AWAKE };
   if (!thread) return { label: "Snooze", icon: icon("clock"), off: FIRST_MESSAGE };
   if (thread.snoozedUntil && thread.snoozedUntil > c.now) {
-    return { label: "Wake", icon: icon("clock"), hint: wakeWords(thread.snoozedUntil, c.now), onSelect: () => void c.actions.snooze(thread, null) };
+    return { label: "Wake", icon: icon("clock"), need: NEED.patch, hint: wakeWords(thread.snoozedUntil, c.now), onSelect: () => void c.actions.snooze(thread, null) };
   }
   return { label: "Snooze", icon: icon("clock"), submenu: snoozeChoices(c.now).map(choice => ({
-    label: choice.label, hint: snoozeTime(choice.until, choice.label), onSelect: () => void c.actions.snooze(thread, choice.until),
+    label: choice.label, need: NEED.patch, hint: snoozeTime(choice.until, choice.label), onSelect: () => void c.actions.snooze(thread, choice.until),
   })) };
 }
 
@@ -60,11 +79,11 @@ function archiveTile(row: SideRow, thread: Conversation | null, c: RowMenuContex
   const contact = row.contact!;
   const base = { label: row.archived ? "Unarchive" : "Archive", letter: "a", icon: icon("box") };
   if (row.isDefault) return { ...base, off: DEFAULT_LISTED };
-  if (contact.roomId) return row.archived ? { ...base, off: "Unarchiving a group comes in a later update." } : { ...base, onSelect: () => c.archiveRoom(contact) };
+  if (contact.roomId) return row.archived ? { ...base, need: NEED.roomArchive, off: UNARCHIVE_GROUP_OFF } : { ...base, need: NEED.roomArchive, onSelect: () => c.archiveRoom(contact) };
   if (row.kind === "trunk" && !row.archived) return { ...base, off: TRUNK_LISTED };
   if (!thread || !row.row) return { ...base, off: FIRST_MESSAGE };
   const target = row.row;
-  return { ...base, onSelect: () => void (row.archived ? c.actions.restore(target) : c.actions.archive(target)) };
+  return { ...base, need: NEED.patch, onSelect: () => void (row.archived ? c.actions.restore(target) : c.actions.archive(target)) };
 }
 
 /** The tiles and rows for one contact row. People rows have no menu. */
@@ -74,38 +93,38 @@ export function rowMenu(row: SideRow, c: RowMenuContext): { tiles: MenuEntry[]; 
   const key = row.key, thread = contact.thread, agentId = agentOf(row), trunk = row.kind === "trunk";
   const tiles: MenuEntry[] = [
     thread || contact.roomId || row.pinned
-      ? { label: row.pinned ? "Unpin" : "Pin", letter: "p", icon: icon("pin"), onSelect: () => c.pin(contact) }
+      ? { label: row.pinned ? "Unpin" : "Pin", letter: "p", icon: icon("pin"), need: row.pinned ? NEED.unpin : NEED.patch, onSelect: () => c.pin(contact) }
       : { label: "Pin", letter: "p", icon: icon("pin"), off: FIRST_MESSAGE },
     row.unread
-      ? { label: "Read", letter: "u", icon: icon("chat"), onSelect: () => c.markRead(contact) }
-      : thread ? { label: "Unread", letter: "u", icon: icon("chat"), onSelect: () => void c.actions.setUnread(thread, true) } : { label: "Unread", letter: "u", icon: icon("chat"), off: FIRST_MESSAGE },
+      ? { label: "Read", letter: "u", icon: icon("chat"), need: NEED.markRead, onSelect: () => c.markRead(contact) }
+      : thread ? { label: "Unread", letter: "u", icon: icon("chat"), need: NEED.patch, onSelect: () => void c.actions.setUnread(thread, true) } : { label: "Unread", letter: "u", icon: icon("chat"), off: FIRST_MESSAGE },
     snoozeTile(row, thread, c),
     archiveTile(row, thread, c),
   ];
   const projects: MenuEntry = c.projects.length
-    ? { label: "Project…", icon: icon("folder"), submenu: c.projects.map(project => ({ label: project.name, onSelect: () => c.moveToProject(key, project.id) })) }
+    ? { label: "Project…", icon: icon("folder"), submenu: c.projects.map(project => ({ label: project.name, need: NEED.patch, onSelect: () => c.moveToProject(key, project.id) })) }
     : { label: "Project…", icon: icon("folder"), off: NO_PROJECTS };
   const rows: (MenuEntry | null)[] = [
-    { label: "Rename", letter: "r", icon: icon("edit"), onSelect: () => trunk && agentId ? c.editTrunk(agentId) : c.rename(row) },
-    { label: "Move to", icon: icon("folder"), submenu: [{ label: "Group…", icon: icon("users"), off: MOVE_GROUP_OFF }, projects] },
+    trunk && agentId ? { label: "Rename", letter: "r", icon: icon("edit"), local: true, onSelect: () => c.editTrunk(agentId) } : { label: "Rename", letter: "r", icon: icon("edit"), need: NEED.patch, onSelect: () => c.rename(row) },
+    { label: "Move to", icon: icon("folder"), submenu: [{ label: "Group…", icon: icon("users"), need: NEED.groupMove, off: MOVE_GROUP_OFF }, projects] },
     trunk || row.kind === "grafted" ? { label: "New conversation", letter: "f", icon: icon("chat"), submenu: [
-      trunk && agentId ? { label: "Fresh", icon: icon("plus"), onSelect: () => c.newConversation(agentId) } : { label: "Fresh", icon: icon("plus"), off: "A Grafted agent keeps one conversation." },
-      thread ? { label: "Continue from this one", icon: icon("copy"), hint: thread.working ? "From the last finished reply" : undefined, onSelect: () => void c.actions.copyConversation(thread, c.open) } : { label: "Continue from this one", icon: icon("copy"), off: FIRST_MESSAGE },
+      trunk && agentId ? { label: "Fresh", icon: icon("plus"), need: NEED.create, onSelect: () => c.newConversation(agentId) } : { label: "Fresh", icon: icon("plus"), off: "A Grafted agent keeps one conversation." },
+      thread ? { label: "Continue from this one", icon: icon("copy"), need: NEED.copy, hint: thread.working ? "From the last finished reply" : undefined, onSelect: () => void c.actions.copyConversation(thread, c.open) } : { label: "Continue from this one", icon: icon("copy"), off: FIRST_MESSAGE },
     ] } : null,
     { label: "Copy", letter: "c", icon: icon("link"), submenu: [
-      { label: "Link to this conversation", icon: icon("link"), onSelect: () => c.copyLink(key) },
-      { label: "Conversation as Markdown", icon: icon("doc"), onSelect: () => c.copyMarkdown(key, row.name) },
-      { label: "Conversation ID", icon: icon("copy"), onSelect: () => c.copyText(key) },
+      { label: "Link to this conversation", icon: icon("link"), local: true, onSelect: () => c.copyLink(key) },
+      { label: "Conversation as Markdown", icon: icon("doc"), need: NEED.history, onSelect: () => c.copyMarkdown(key, row.name) },
+      { label: "Conversation ID", icon: icon("copy"), local: true, onSelect: () => c.copyText(key) },
     ] },
-    c.ownWindowOff ? null : { label: "Open in new window", icon: icon("panel"), onSelect: () => c.ownWindow(key) },
+    c.ownWindowOff ? null : { label: "Open in new window", icon: icon("panel"), local: true, onSelect: () => c.ownWindow(key) },
     trunk && agentId ? { label: row.name, icon: icon("users"), gap: true, submenu: present([
-      { label: "What can it do?", icon: icon("info"), onSelect: () => c.ask(key) },
-      { label: "Pause", icon: icon("pause"), off: PAUSE_OFF },
-      { label: "Edit Trunk…", icon: icon("sliders"), onSelect: () => c.editTrunk(agentId) },
-      thread ? { label: "Tidy up", icon: icon("spark"), submenu: [{ label: "Tidy up this conversation", onSelect: () => c.tidy(thread) }] } : { label: "Tidy up", icon: icon("spark"), off: FIRST_MESSAGE },
-      row.isDefault ? null : { label: `Remove ${row.name}…`, icon: icon("trash"), danger: true, gap: true, onSelect: () => c.removeTrunk(agentId, row.name) },
+      { label: "What can it do?", icon: icon("info"), need: NEED.ask, onSelect: () => c.ask(key) },
+      { label: "Pause", icon: icon("pause"), need: NEED.pause, off: PAUSE_OFF },
+      { label: "Edit Trunk…", icon: icon("sliders"), local: true, onSelect: () => c.editTrunk(agentId) },
+      thread ? { label: "Tidy up", icon: icon("spark"), submenu: [{ label: "Tidy up this conversation", need: NEED.tidy, onSelect: () => c.tidy(thread) }] } : { label: "Tidy up", icon: icon("spark"), off: FIRST_MESSAGE },
+      row.isDefault ? null : { label: `Remove ${row.name}…`, icon: icon("trash"), danger: true, gap: true, need: NEED.removeTrunk, onSelect: () => c.removeTrunk(agentId, row.name) },
     ]) } : null,
-    !row.isDefault && thread ? { label: "Delete conversation…", letter: "d", icon: icon("trash"), danger: true, gap: true, onSelect: () => c.confirmDelete(thread) } : null,
+    !row.isDefault && thread ? { label: "Delete conversation…", letter: "d", icon: icon("trash"), danger: true, gap: true, need: NEED.delete, onSelect: () => c.confirmDelete(thread) } : null,
   ];
   return { tiles, rows: present(rows) };
 }
