@@ -8,7 +8,7 @@
 import type { Level } from "../nav";
 import type { Control, Row, RowOption } from "../rows";
 
-type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[]; ownerLevel?: boolean };
+type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[] };
 const coming = (id: string, card: string, label: string, need: string, reason: string, extra: Extra = {}): Row =>
   ({ id, page: "accounts", card, label, level: 0, control: "custom", ...extra, source: { kind: "coming", need, reason } });
 /** A row the page draws itself (accounts-live.tsx), making these calls. */
@@ -61,7 +61,7 @@ export const ACCOUNTS_ROWS: Row[] = [
 
   // Coding apps on this computer: Codex runs through the engine's codex plugin; the others follow their own sign-in.
   slot("accounts.apps.claude", APPS, "Claude Code", [DETECT, "usage.status"], { help: "Follows Claude Code’s own sign-in on this computer." }),
-  slot("accounts.apps.codex", APPS, "Codex", [DETECT, "config.get", "config.patch"], { help: "Turn it on to use Codex’s models. Turning it on doesn’t sign you in.", ownerLevel: true }),
+  slot("accounts.apps.codex", APPS, "Codex", [DETECT, "config.get", "config.patch"], { help: "Turn it on to use Codex’s models. Turning it on doesn’t sign you in." }),
   slot("accounts.apps.gemini", APPS, "Gemini CLI", [DETECT], { help: "Follows Gemini CLI’s own sign-in on this computer." }),
   slot("accounts.apps.check", APPS, "Check again", [DETECT], { help: "Looks for the coding apps on this computer again." }),
 

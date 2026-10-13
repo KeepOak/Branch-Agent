@@ -4,7 +4,7 @@
 // GitHubSettings.tsx): the accounts in order with Move up and the ⋯ menu, Select accounts, Add an account, falling back
 // to this computer, which account goes next, where each sign-in comes from, your own accounts, coding apps, GitHub and
 // the rows that show what the engine reports. The rows of one list share one read, so a change in one row shows in all.
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { canAll } from "../../../connect/capabilities";
 import { configStore } from "../../../places/settings/config-store";
@@ -44,7 +44,7 @@ class SharedRead {
   }
   async reload(): Promise<void> {
     const gen = ++this.gen;
-    this.set({ ...this.snap, loading: true });
+    if (!this.snap.loading) this.set({ ...this.snap, loading: true });
     try {
       const data = record(await this.engine.request(this.method, this.params));
       if (gen === this.gen) this.set({ data, loading: false });
@@ -63,7 +63,9 @@ function sharedRead(engine: WindowEngine, method: string, params: RecordValue = 
 }
 function useRead(engine: WindowEngine, method: string, params: RecordValue = {}) {
   const read = sharedRead(engine, method, params);
-  const snap = useSyncExternalStore((fn) => read.subscribe(fn), () => read.snap, () => read.snap);
+  // One subscription per read for as long as the row shows: a new one on every render would read again each time.
+  const subscribe = useCallback((fn: () => void) => read.subscribe(fn), [read]);
+  const snap = useSyncExternalStore(subscribe, () => read.snap, () => read.snap);
   return { ...snap, reload: () => read.reload() };
 }
 
@@ -72,8 +74,10 @@ const agentOf = (engine: WindowEngine): { agentId?: string } => (engine.agentId 
 function useAccounts(engine: WindowEngine) {
   const agent = agentOf(engine);
   const status = useRead(engine, "models.authStatus", agent);
-  const providers = providersOf(status.data?.providers);
-  return { status, agent, providers, caps: list(status.data?.providerCapabilities), all: accountsOf(providers) };
+  // The same account objects until the engine answers again, so an open menu's account is one of the list's.
+  const providers = useMemo(() => providersOf(status.data?.providers), [status.data]);
+  const all = useMemo(() => accountsOf(providers), [providers]);
+  return { status, agent, providers, caps: list(status.data?.providerCapabilities), all };
 }
 
 /** Classic's dialogs save through its save runner; this reports their failures under the row. */
@@ -108,7 +112,10 @@ const accountLine = (acc: Account): string => [accountSub(acc), acc.ordered && a
 export function AccountList({ engine }: SlotControlProps) {
   const { status, agent, all } = useAccounts(engine);
   const [failed, run] = useFailure();
-  const [menu, setMenu] = useState<{ at: MenuAnchor; acc: Account } | null>(null);
+  const [open, setMenu] = useState<{ at: MenuAnchor; key: string } | null>(null);
+  // The menu's account, by key, from the list as it is now (a reload makes new account objects).
+  const menuAcc = open ? all.find((x) => key(x) === open.key) : undefined;
+  const menu = open && menuAcc ? { at: open.at, acc: menuAcc } : null;
   const line = statusLine(status, all.length);
   const reorder = (acc: Account, ids: string[]) => void run(async () => { await saveOrder(engine, acc.p, ids, agent); await status.reload(); });
   const can = (method: string) => (canAll(engine, [method]) ? undefined : COMING);
@@ -137,7 +144,7 @@ export function AccountList({ engine }: SlotControlProps) {
                   <button type="button" className="r1s-btn" aria-label={"Move up " + name} title={upWhy ?? "Move up"} disabled={Boolean(upWhy)} onClick={() => reorder(acc, movedUp(acc, all))}>{UP}</button>
                 </Needs>
                 <button type="button" className="r1s-btn" data-local="" aria-label={"More for " + name} aria-haspopup="menu"
-                  onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu?.acc === acc ? null : { at: { x: r.right - 200, y: r.bottom + 4 }, acc }); }}>{MORE}</button>
+                  onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(open?.key === key(acc) ? null : { at: { x: r.right - 200, y: r.bottom + 4 }, key: key(acc) }); }}>{MORE}</button>
               </span>
             </div>
           );
@@ -269,7 +276,8 @@ export function SelectAccounts({ engine }: SlotControlProps) {
 /** The window's config (config.get), saved with config.patch, shared with every Settings row. */
 function useConfigSnap(engine: WindowEngine) {
   const store = configStore(engine);
-  const snap = useSyncExternalStore((fn) => store.subscribe(fn), () => store.snap, () => store.snap);
+  const subscribe = useCallback((fn: () => void) => store.subscribe(fn), [store]);
+  const snap = useSyncExternalStore(subscribe, () => store.snap, () => store.snap);
   useEffect(() => { if (!store.snap) void store.load(); }, [store]);
   return { store, snap, config: record(snap?.config) };
 }
