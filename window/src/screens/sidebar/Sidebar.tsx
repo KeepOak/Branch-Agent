@@ -37,7 +37,7 @@ import { useUpdate } from "../../shell/use-status";
 import { readThemeChoice, setThemeChoice, type ThemeChoice } from "../../theme/theme";
 import { buildSections, contactRows, personRows, type Folder, type Person, type SideRow } from "./model";
 import { FolderChip, icons, PinnedGrid, SectionHead, SideRowView, TopCapsules, type RowHandlers } from "./parts";
-import { rowMenu } from "./row-menu";
+import { NEED, rowMenu } from "./row-menu";
 import "./sidebar.css";
 
 export type SidebarProps = {
@@ -183,25 +183,25 @@ export function Sidebar(p: SidebarProps) {
   const ordered = [...trunks.list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
   const plusRows: MenuEntry[] = [
     { label: "New conversation", icon: menuIcon("chat"), submenu: ordered.length
-      ? ordered.map(trunk => ({ label: `with ${trunk.name}${trunk.isDefault ? " (default)" : ""}`, onSelect: () => newConversation(trunk.id) }))
+      ? ordered.map(trunk => ({ label: `with ${trunk.name}${trunk.isDefault ? " (default)" : ""}`, need: NEED.create, onSelect: () => newConversation(trunk.id) }))
       : [{ label: "with a Trunk", off: "Make a Trunk first." }] },
-    { label: "New Trunk", icon: menuIcon("plus"), hint: "random character", onSelect: () => void newTrunk() },
-    { label: "New group", icon: menuIcon("users"), onSelect: () => openNewGroupChat() },
-    { label: "Have Branch make a Trunk", icon: menuIcon("spark"), off: "Having Branch make a Trunk comes in a later update." },
-    { label: "New automation", icon: menuIcon("clock"), onSelect: () => p.onPlace("automations") },
-    { label: narrow ? "Close the list" : "Collapse the list to faces", icon: menuIcon("panel"), hint: "Ctrl B", gap: true, onSelect: toggleRail },
+    { label: "New Trunk", icon: menuIcon("plus"), hint: "random character", need: ["agents.create", NEED.create], onSelect: () => void newTrunk() },
+    { label: "New group", icon: menuIcon("users"), need: "rooms.create", onSelect: () => openNewGroupChat() },
+    { label: "Have Branch make a Trunk", icon: menuIcon("spark"), need: "agents.create", off: "Having Branch make a Trunk comes in a later update." },
+    { label: "New automation", icon: menuIcon("clock"), local: true, onSelect: () => p.onPlace("automations") },
+    { label: narrow ? "Close the list" : "Collapse the list to faces", icon: menuIcon("panel"), hint: "Ctrl B", gap: true, local: true, onSelect: toggleRail },
   ];
   const short = update?.latest ? versionParts(update.latest).short : "";
   const busy = installing || Boolean(update?.installing);
   const personRows_: MenuEntry[] = [
-    { label: "Keyboard shortcuts", icon: menuIcon("list"), hint: "?", onSelect: () => setDialog({ kind: "shortcuts" }) },
-    { label: "Get the apps", icon: menuIcon("monitor"), onSelect: () => setDialog({ kind: "apps" }) },
+    { label: "Keyboard shortcuts", icon: menuIcon("list"), hint: "?", local: true, onSelect: () => setDialog({ kind: "shortcuts" }) },
+    { label: "Get the apps", icon: menuIcon("monitor"), local: true, onSelect: () => setDialog({ kind: "apps" }) },
     { label: "Guide", icon: menuIcon("info"), submenu: guideMenuItems(() => undefined, url => { window.open(url, "_blank", "noopener"); }).map(item => {
       const entry = item as { label: string; hint?: string; run: () => void };
-      return entry.label === "Walkthrough" ? { label: entry.label, off: "The walkthrough returns with the new setup." } : { label: entry.label, hint: entry.hint, onSelect: entry.run };
+      return entry.label === "Walkthrough" ? { label: entry.label, off: "The walkthrough returns with the new setup." } : { label: entry.label, hint: entry.hint, local: true, onSelect: entry.run };
     }) },
-    { label: "About Branch", icon: menuIcon("info"), onSelect: () => p.onSettings("updates") },
-    { label: "Lock Branch", icon: menuIcon("lock"), gap: true, onSelect: () => p.onSettings("permissions") },
+    { label: "About Branch", icon: menuIcon("info"), local: true, onSelect: () => p.onSettings("updates") },
+    { label: "Lock Branch", icon: menuIcon("lock"), gap: true, local: true, onSelect: () => p.onSettings("permissions") },
   ];
 
   const section = (label: string, list: SideRow[], head?: React.ReactNode) => list.length ? <section className="r1sb-sec" data-section={label.toLowerCase()} key={label}>
@@ -219,14 +219,14 @@ export function Sidebar(p: SidebarProps) {
     <nav className="r1sb-list" aria-label="Conversations">
       {p.error ? <p className="r1sb-error" role="alert">{p.error}</p> : null}
       {sections.pinned.length ? <section className="r1sb-sec" data-section="pinned"><SectionHead label="Pinned" /><PinnedGrid rows={sections.pinned} currentKey={p.currentKey} handlers={handlers} /></section> : null}
-      {section("Trunks", sections.trunks, sections.trunks.some(row => row.unread) ? <button type="button" className="r1sb-mar" onClick={() => markAllRead(sections.trunks)}>Mark all read</button> : null)}
-      {section("People", sections.people, <button type="button" className="r1sb-head-go" aria-label="People settings" title="People" onClick={() => p.onSettings("people")}>{icons.chevron}</button>)}
+      {section("Trunks", sections.trunks, sections.trunks.some(row => row.unread) ? <Coming need={NEED.markRead}><button type="button" className="r1sb-mar" onClick={() => markAllRead(sections.trunks)}>Mark all read</button></Coming> : null)}
+      {section("People", sections.people, <button type="button" className="r1sb-head-go" data-local="" aria-label="People settings" title="People" onClick={() => p.onSettings("people")}>{icons.chevron}</button>)}
       {section("Groups", sections.groups)}
       {section("Grafted", sections.grafted)}
       {ready && contactsLoaded && nothing ? <p className="r1sb-empty">{query ? "No matches." : folder !== "all" ? "Nothing in this folder." : "No Trunks yet."}</p> : null}
       {!ready ? <p className="r1sb-empty">Your conversations show here once Branch connects.</p> : null}
       <div className="r1sb-bins">
-        <button type="button" className="r1sb-bin" aria-expanded={binsOpen} onClick={() => setArchivedOpen(open => !open)} disabled={narrow}>
+        <button type="button" className="r1sb-bin" data-local="" aria-expanded={binsOpen} onClick={() => setArchivedOpen(open => !open)} disabled={narrow}>
           <span className="r1sb-bin-chev">{icons.chevron}</span><span>Archived</span>{sections.archived.length ? <i>{sections.archived.length}</i> : null}
         </button>
         {binsOpen ? sections.archived.length ? sections.archived.map(row => <SideRowView key={row.id} row={row} current={row.key === p.currentKey} now={now} handlers={handlers} />) : <p className="r1sb-bin-none">Nothing here</p> : null}
@@ -235,32 +235,32 @@ export function Sidebar(p: SidebarProps) {
         </Coming>
       </div>
       <div className="r1sb-rail-bins">
-        <button type="button" className="r1sb-cap" aria-label={`Archived, ${sections.archived.length}`} title="Archived" onClick={() => { setArchivedOpen(true); toggleRail(); }}>{icons.archive}{sections.archived.length ? <i className="r1sb-badge">{sections.archived.length}</i> : null}</button>
+        <button type="button" className="r1sb-cap" data-local="" aria-label={`Archived, ${sections.archived.length}`} title="Archived" onClick={() => { setArchivedOpen(true); toggleRail(); }}>{icons.archive}{sections.archived.length ? <i className="r1sb-badge">{sections.archived.length}</i> : null}</button>
         <Coming need="sessions.restore" reason="Recently deleted comes in a later update. Deleting is final for now."><button type="button" className="r1sb-cap" aria-label="Recently deleted">{icons.trash}</button></Coming>
       </div>
     </nav>
     <div className="r1sb-foot">
-      <button type="button" className="r1sb-me" ref={meRef} aria-haspopup="menu" aria-label={`${person} · Who is using Branch, look, lock`} title="Who is using Branch, look, lock" onClick={() => setPersonOpen(open => !open)}>
+      <button type="button" className="r1sb-me" data-local="" ref={meRef} aria-haspopup="menu" aria-label={`${person} · Who is using Branch, look, lock`} title="Who is using Branch, look, lock" onClick={() => setPersonOpen(open => !open)}>
         <span aria-hidden="true">{person.slice(0, 1).toUpperCase()}</span>
       </button>
-      <button type="button" className="r1sb-seed" aria-label="Seedbank: agents, skills, tools, plugins and connections" title="Seedbank: agents, skills, tools, plugins and connections" onClick={() => p.onPlace("customize")}>
+      <button type="button" className="r1sb-seed" data-local="" aria-label="Seedbank: agents, skills, tools, plugins and connections" title="Seedbank: agents, skills, tools, plugins and connections" onClick={() => p.onPlace("customize")}>
         <span className="r1sb-seed-icons" aria-hidden="true"><i>{icons.apps}</i><i>{icons.term}</i><i>{icons.leaf}</i></span><span className="r1sb-seed-t">Seedbank</span>
       </button>
-      {update?.latest ? <button type="button" className="r1sb-upd" data-busy={busy || undefined} aria-label={busy ? `Installing ${short}` : `Update to ${short}`} title={update.waiting ?? `Update to ${short}`} disabled={busy} onClick={install}>{icons.cloud}</button> : null}
+      {update?.latest ? <button type="button" className="r1sb-upd" data-local="" data-busy={busy || undefined} aria-label={busy ? `Installing ${short}` : `Update to ${short}`} title={update.waiting ?? `Update to ${short}`} disabled={busy} onClick={install}>{icons.cloud}</button> : null}
     </div>
 
     {menu && menuItems ? <Popover anchor={menuAnchor} label={`${menu.name} menu`} width={300} onClose={() => setMenu(null)}><div className="r1sb-pop"><Menu label={menu.name} tiles={menuItems.tiles} rows={menuItems.rows} onClose={() => setMenu(null)} /></div></Popover> : null}
     {plusOpen ? <Popover anchor={plusRef} label="New, places and more" width={270} align="end" onClose={() => setPlusOpen(false)}><div className="r1sb-pop"><Menu label="New, places and more" rows={plusRows} onClose={() => setPlusOpen(false)} /></div></Popover> : null}
     {personOpen ? <Popover anchor={meRef} label="Who is using Branch" width={280} placement="above" onClose={() => setPersonOpen(false)}>
       <div className="r1sb-person r1sb-pop">
-        {update?.latest ? <div className="r1sb-upd-ban"><span>Update to {short}</span><button type="button" disabled={busy} onClick={() => { setPersonOpen(false); install(); }}>{busy ? "Installing…" : "Install"}</button></div> : null}
+        {update?.latest ? <div className="r1sb-upd-ban"><span>Update to {short}</span><button type="button" data-local="" disabled={busy} onClick={() => { setPersonOpen(false); install(); }}>{busy ? "Installing…" : "Install"}</button></div> : null}
         <div className="r1sb-ph">Who is using Branch</div>
         <div className="r1sb-people">
           <span className="r1sb-person-chip" aria-current="true"><i>{person.slice(0, 1).toUpperCase()}</i><span>{person}</span></span>
-          <button type="button" className="r1sb-person-chip" onClick={() => { setPersonOpen(false); p.onSettings("people"); }}><i>+</i><span>Add</span></button>
+          <button type="button" className="r1sb-person-chip" data-local="" onClick={() => { setPersonOpen(false); p.onSettings("people"); }}><i>+</i><span>Add</span></button>
         </div>
         <div className="r1sb-look"><span>Look</span><div className="r1sb-seg" role="radiogroup" aria-label="Look">
-          {(["light", "dark", "system"] as const).map(choice => <button key={choice} type="button" role="radio" aria-checked={theme === choice} onClick={() => setTheme(setThemeChoice(choice))}>{choice === "system" ? "Auto" : choice === "light" ? "Light" : "Dark"}</button>)}
+          {(["light", "dark", "system"] as const).map(choice => <button key={choice} type="button" role="radio" data-local="" aria-checked={theme === choice} onClick={() => setTheme(setThemeChoice(choice))}>{choice === "system" ? "Auto" : choice === "light" ? "Light" : "Dark"}</button>)}
         </div></div>
         <Menu label="Who is using Branch" rows={personRows_} onClose={() => setPersonOpen(false)} />
       </div>
@@ -283,9 +283,9 @@ export function Sidebar(p: SidebarProps) {
 function RenameDialog({ row, onClose, onSave }: { row: SideRow; onClose: () => void; onSave: (label: string) => void }) {
   const [value, setValue] = useState(row.name);
   return <Dialog title={`Rename ${row.name}`} onClose={onClose} testid="rename" clear footer={<>
-    <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-    <button type="button" className="btn" data-solid="" onClick={() => onSave(value)}>Rename</button>
+    <button type="button" className="btn ghost" data-local="" onClick={onClose}>Cancel</button>
+    <Coming need={NEED.patch}><button type="button" className="btn" data-solid="" onClick={() => onSave(value)}>Rename</button></Coming>
   </>}>
-    <input className="inp" aria-label="Name" value={value} autoFocus onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === "Enter") onSave(value); }} />
+    <input className="inp" data-local="" aria-label="Name" value={value} autoFocus onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === "Enter") onSave(value); }} />
   </Dialog>;
 }

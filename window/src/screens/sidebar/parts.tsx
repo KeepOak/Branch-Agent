@@ -1,5 +1,6 @@
 // The R1 sidebar's pieces (HANDOFF R1-02), ported from the preview's `sideR2`, `foldP11`, `contactsLookT5`, `renderSide`
-// rows and the owner row. Layout and glass live in sidebar.css; data comes in as SideRows (model.ts).
+// rows and the owner row. Layout and glass live in sidebar.css; data comes in as SideRows (model.ts). Every control here
+// only opens, filters or navigates, so it says data-local (R1-10); the calls live in the menus (row-menu.ts).
 import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Avatar, InitialsFace } from "../../glass/Avatar";
 import { GroupCluster } from "../../glass/GroupCluster";
@@ -49,7 +50,7 @@ export function SideRowView({ row, current, now, handlers }: { row: SideRow; cur
   const time = rowTime(row.at, now);
   const label = [row.name, row.unread ? "unread" : "", row.waiting ? "waiting for you" : "", row.working ? "working" : ""].filter(Boolean).join(", ");
   return <div className="r1sb-rw" ref={wrap} data-kind={row.kind} data-current={current || undefined}>
-    <button type="button" className="r1sb-row" aria-current={current ? "true" : undefined} aria-label={label} title={row.name}
+    <button type="button" className="r1sb-row" data-local="" aria-current={current ? "true" : undefined} aria-label={label} title={row.name}
       data-one={row.preview ? undefined : ""} data-offline={row.offline || undefined}
       onClick={() => handlers.onOpen(row)}
       onContextMenu={event => { if (!menu) return; event.preventDefault(); handlers.onMenu(row, wrap.current!); }}
@@ -59,7 +60,7 @@ export function SideRowView({ row, current, now, handlers }: { row: SideRow; cur
       <span className="r1sb-meta">{time ? <time>{time}</time> : null}{row.unread && !current ? <i className="r1sb-unread" aria-hidden="true" /> : null}</span>
       {row.preview ? <p className="r1sb-pv" data-unread={row.unread || undefined}>{row.sender ? <span className="r1sb-from">{row.sender}: </span> : null}{row.preview}</p> : null}
     </button>
-    {menu ? <button type="button" className="r1sb-more" ref={more} aria-label={`More for ${row.name}`} title="More" aria-haspopup="menu" onClick={() => handlers.onMenu(row, more.current!)}>{icons.more}</button> : null}
+    {menu ? <button type="button" className="r1sb-more" data-local="" ref={more} aria-label={`More for ${row.name}`} title="More" aria-haspopup="menu" onClick={() => handlers.onMenu(row, more.current!)}>{icons.more}</button> : null}
   </div>;
 }
 
@@ -90,14 +91,14 @@ export function PinnedGrid({ rows, currentKey, handlers }: { rows: SideRow[]; cu
 function PinnedTile({ row, current, handlers }: { row: SideRow; current: boolean; handlers: RowHandlers }) {
   const tile = useRef<HTMLDivElement>(null), more = useRef<HTMLButtonElement>(null);
   return <div className="r1sb-pin" role="listitem" data-pin={row.id} ref={tile}>
-    <button type="button" className="r1sb-pin-open" aria-current={current ? "true" : undefined} title={row.name}
+    <button type="button" className="r1sb-pin-open" data-local="" aria-current={current ? "true" : undefined} title={row.name}
       aria-label={`${row.name}, ${row.role}${row.unread ? ", unread" : ""}${row.working ? ", working" : ""}`}
       onClick={() => handlers.onOpen(row)} onContextMenu={event => { event.preventDefault(); handlers.onMenu(row, tile.current!); }}>
       <span className="r1sb-pin-face"><RowFace row={row} size={60} />{row.unread && !current ? <i className="r1sb-pin-unread" aria-hidden="true" /> : null}</span>
       <b className="r1sb-pin-name">{row.name}</b>
       <span className="r1sb-pin-role">{row.role}</span>
     </button>
-    <button type="button" className="r1sb-pin-more" ref={more} aria-label={`More for ${row.name}`} aria-haspopup="menu" onClick={() => handlers.onMenu(row, more.current!)}>{icons.more}</button>
+    <button type="button" className="r1sb-pin-more" data-local="" ref={more} aria-label={`More for ${row.name}`} aria-haspopup="menu" onClick={() => handlers.onMenu(row, more.current!)}>{icons.more}</button>
   </div>;
 }
 
@@ -112,7 +113,7 @@ export function FolderChip({ rows, folder, onFolder, open, onOpen }: { rows: Sid
     onKeyDown={event => { if (event.key === "Escape" && open) { event.stopPropagation(); onOpen(false); } }}>
     {FOLDERS.map(item => {
       const selected = item.id === folder, count = folderCount(rows, item.id);
-      return <button key={item.id} type="button" role="tab" className="r1sb-chip" aria-selected={selected}
+      return <button key={item.id} type="button" role="tab" className="r1sb-chip" data-local="" aria-selected={selected}
         tabIndex={selected || open ? 0 : -1}
         onClick={() => { if (!open) { onOpen(true); return; } onFolder(item.id); onOpen(false); }}>
         {item.label}{count && (open || selected) ? <b>{count}</b> : null}
@@ -135,13 +136,13 @@ export function TopCapsules({ searchRef, plusRef, ...p }: Capsules) {
   return <div className="r1sb-caps" data-tap={tapOpen || undefined} onPointerLeave={() => setTapOpen(false)}>
     <label className="r1sb-cap r1sb-search" data-keep={p.query ? "" : undefined} title="Search · Ctrl K">
       {icons.search}
-      <input ref={searchRef} type="search" aria-label="Search chats, Trunks, messages and past sessions" placeholder="Search" value={p.query}
+      <input ref={searchRef} type="search" data-local="" aria-label="Search chats, Trunks, messages and past sessions" placeholder="Search" value={p.query}
         onChange={event => p.onQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape" && p.query) { event.stopPropagation(); p.onQuery(""); } }} />
       <kbd>Ctrl K</kbd>
     </label>
-    <button type="button" className="r1sb-cap" aria-label="Settings" title="Settings · Ctrl ," onClick={p.onSettings}>{icons.gear}</button>
-    <button type="button" className="r1sb-cap" aria-label="Grove" title="Grove: all your Trunks at a glance" onClick={p.onGrove}>{icons.grove}</button>
-    <button type="button" className="r1sb-cap r1sb-plus" ref={plusRef} aria-label="New, places and more" title="New, places and more" aria-haspopup="menu"
+    <button type="button" className="r1sb-cap" data-local="" aria-label="Settings" title="Settings · Ctrl ," onClick={p.onSettings}>{icons.gear}</button>
+    <button type="button" className="r1sb-cap" data-local="" aria-label="Grove" title="Grove: all your Trunks at a glance" onClick={p.onGrove}>{icons.grove}</button>
+    <button type="button" className="r1sb-cap r1sb-plus" data-local="" ref={plusRef} aria-label="New, places and more" title="New, places and more" aria-haspopup="menu"
       onPointerDown={event => { pointer.current = event.pointerType; }}
       onClick={() => { if (pointer.current === "touch" && !tapOpen && rail()) { setTapOpen(true); return; } p.onPlus(); }}>
       {icons.plus}{p.plusDot ? <span className="r1sb-plus-dot" aria-hidden="true" /> : null}
