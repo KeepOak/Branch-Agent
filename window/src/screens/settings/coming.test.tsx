@@ -74,7 +74,7 @@ describe("R1 Settings, the Coming contract", () => {
     expect(request.mock.calls.slice(writes).map(([method]) => method)).not.toContain("config.patch");
     expect(request.mock.calls.slice(writes).map(([method]) => method)).not.toContain("users.prefs.set");
     const needs = comingControls().flatMap((entry) => entry.need);
-    expect(needs).toEqual(expect.arrayContaining(["config.patch", "sessions.send"]));
+    expect(needs).toEqual(expect.arrayContaining(["config.patch", "chat.send"]));
     // Sections with no rows yet name a real engine call, never a page/card label.
     const sections = comingControls().filter((entry) => entry.reason.endsWith("comes to this page in a later update."));
     expect(sections.length).toBeGreaterThan(0);
