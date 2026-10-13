@@ -247,7 +247,6 @@ export function ToolsBody() {
 }
 
 // TODO(desktop-lane): gateway mode needs the desktop app to run the engine's background service (branch gateway install);
-// see RecBar.tsx for why it can't yet.
 const DESKTOP = "The desktop app owns this; the window can’t change it yet.";
 
 export function KeepBody({ autoUpdate, onAutoUpdate, boot = null, onBoot }: {
