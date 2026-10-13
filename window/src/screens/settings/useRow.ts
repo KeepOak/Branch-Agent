@@ -153,9 +153,23 @@ class DesktopStore extends Emitter {
   async load(): Promise<void> {
     try { this.snap = { state: await this.bridge.get() }; } catch (e) { this.snap = { state: null, error: errorText(e) }; } finally { this.emit(); }
   }
-  async set(name: keyof DesktopControlsState, on: boolean): Promise<void> {
-    const next = await this.bridge.set(name, on);
-    window.dispatchEvent(new CustomEvent(DESKTOP_CONTROLS_CHANGED, { detail: next }));
+  private queue: Promise<unknown> = Promise.resolve();
+  /** Shows the change at once, so a quick second click reads it and sends the opposite, and sends changes one at a time
+   *  in click order; a refused change puts the value back. */
+  set(name: keyof DesktopControlsState, on: boolean): Promise<void> {
+    const before = this.snap.state;
+    if (before) { this.snap = { state: { ...before, [name]: on } }; this.emit(); }
+    const run = this.queue.then(async () => {
+      try {
+        const next = await this.bridge.set(name, on);
+        window.dispatchEvent(new CustomEvent(DESKTOP_CONTROLS_CHANGED, { detail: next }));
+      } catch (e) {
+        if (this.snap.state && before) { this.snap = { state: { ...this.snap.state, [name]: before[name] } }; this.emit(); }
+        throw e;
+      }
+    });
+    this.queue = run.catch(() => undefined);
+    return run;
   }
 }
 const desktops = new WeakMap<DesktopControlsBridge, DesktopStore>();

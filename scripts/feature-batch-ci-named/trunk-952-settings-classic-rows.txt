@@ -1,0 +1,4 @@
+window:src/screens/settings/rows.test.ts
+window:src/screens/settings/useRow.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/places/settings/set1/general.test.tsx

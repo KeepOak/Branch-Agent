@@ -81,6 +81,35 @@ describe("useRow on this device and the desktop app", () => {
     expect(view.value).toBe(false);
   });
 
+  it("shows a desktop change at once, so a quick second click while the first is pending turns it back", async () => {
+    let state = controls();
+    const gates: (() => void)[] = [];
+    const set = vi.fn((name: keyof DesktopControlsState, on: boolean) => new Promise<DesktopControlsState>((done) => { gates.push(() => { state = { ...state, [name]: on }; done(state); }); }));
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get: vi.fn(async () => state), set } };
+    await mount(engineOf().engine, startRow);
+    let first!: Promise<void>, second!: Promise<void>;
+    await act(async () => { first = view.set(!(view.value as boolean)); });
+    expect(view.value).toBe(true);
+    await act(async () => { second = view.set(!(view.value as boolean)); });
+    expect(view.value).toBe(false);
+    // Sent one at a time, in click order.
+    await act(async () => { await Promise.resolve(); });
+    expect(set.mock.calls).toEqual([["startWithWindows", true]]);
+    await act(async () => { gates[0](); await first; });
+    await act(async () => { gates[1](); await second; });
+    expect(set.mock.calls).toEqual([["startWithWindows", true], ["startWithWindows", false]]);
+    expect(view.value).toBe(false);
+  });
+
+  it("puts a refused desktop change back", async () => {
+    const state = controls();
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get: vi.fn(async () => state), set: vi.fn(async () => { throw new Error("no"); }) } };
+    await mount(engineOf().engine, startRow);
+    await act(async () => { await view.set(true).catch(() => undefined); });
+    expect(view.value).toBe(false);
+    expect(view.state).toBe("error");
+  });
+
   it("greys a desktop row with why when there is no Branch app here, or it is too old", async () => {
     const { engine } = engineOf();
     await mount(engine, startRow);
