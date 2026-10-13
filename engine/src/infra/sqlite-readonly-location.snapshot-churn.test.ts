@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
   adoptPreparedLocation,
+  cleanupSnapshotOperations,
   deferredSnapshotRemovalPolicy,
   removeTempDirectory,
   retireSqliteSnapshotPayload,
@@ -16,8 +17,11 @@ import {
 } from "./sqlite-snapshot-staging.js";
 
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks();
+    // Staging directories hold native token handles and may still have a deferred removal in flight.
+    // On Windows either one makes removing the temp root fail with EPERM, so join them first.
+    await cleanupSnapshotOperations();
     cleanup();
   });
 });
