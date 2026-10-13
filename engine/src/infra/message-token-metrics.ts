@@ -1,7 +1,5 @@
-// Wire shape mirrors the SDK schema (packages/sdk/js/src/v2/gen/types.gen.ts
-// StepFinishPart.metrics). `source` stays on the wire for backward
-// compatibility with downstream consumers — see packages/kilo-vscode/
-// webview-ui/src/context/session-utils.ts and AssistantMessage.tsx —
+// Wire shape mirrors the SDK schema (StepFinishPart.metrics). `source` stays on the wire for backward
+// compatibility with downstream consumers —
 // but only the "computed" literal is reachable here because llama.cpp's
 // `prompt_per_second` / `predicted_per_second` are dropped upstream by
 // `@ai-sdk/openai-compatible` before the raw usage reaches our adapter.

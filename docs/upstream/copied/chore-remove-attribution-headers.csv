@@ -186,3 +186,5 @@ window/src/transcript-export/replay-html.test.ts,,bytedance/UI-TARS-desktop,2ff4
 window/src/transcript-export/replay-html.ts,SESSIONS-0049,bytedance/UI-TARS-desktop,2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a,multimodal/tarko/agent-ui-builder/src/builder.ts,2026-10-13
 window/src/transcript-export/replay-runtime.ts,SESSIONS-0127,bytedance/UI-TARS-desktop,2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a,multimodal/tarko/agent-ui/src/common/hooks/useReplay.ts,2026-10-13
 window/src/transcript-export/replay-runtime.ts,SESSIONS-0127,bytedance/UI-TARS-desktop,2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a,multimodal/tarko/agent-ui/src/standalone/replay/ReplayControlPanel.tsx,2026-10-13
+window/src/connect/gateway.ts,,openclaw/openclaw,57e0aaa1c190,ui/src/api/gateway.ts (per-file credit removed 2026-10-13; upstream OpenClaw at 57e0aaa1c190),2026-10-13
+window/src/connect/stream-order.ts,,openclaw/openclaw,57e0aaa1c190,docs/gateway/clients.md (per-file credit removed 2026-10-13; upstream OpenClaw at 57e0aaa1c190),2026-10-13
