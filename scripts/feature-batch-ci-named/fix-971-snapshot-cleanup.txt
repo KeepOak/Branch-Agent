@@ -1,1 +1,3 @@
+engine:src/infra/sqlite-readonly-location.cleanup.test.ts
 engine:src/infra/sqlite-readonly-location.snapshot-churn.test.ts
+engine:src/infra/sqlite-readonly-location.test.ts
