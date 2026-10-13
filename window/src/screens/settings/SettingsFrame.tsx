@@ -4,9 +4,10 @@
 // page can instead draw its own component (slots.ts, such as Chat apps); nav, search and the level stay the frame's.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
 import { lookStore } from "../../places/settings/set1/appearance-store";
-import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, type Level, type NavPage, type PageId } from "./nav";
+import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
 import { ROWS, cardRows, pageFirstLevel, rowLevel, type Row, type UiHints } from "./rows";
 import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots } from "./slots";
@@ -75,13 +76,13 @@ export type SettingsFrameProps = {
 
 function NavButton({ page, current, onOpen, sub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string }) {
   return (
-    <button type="button" className="r1s-nav" aria-current={current ? "page" : undefined} data-page={page.id} onClick={onOpen}>
+    <button type="button" className="r1s-nav" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} onClick={onOpen}>
       <span>{page.title}</span>{sub ? <small>{sub}</small> : null}
     </button>
   );
 }
 
-function Results({ hits, onOpen, onMakeDefault }: { hits: ReturnType<typeof searchSettings>; onOpen: (hit: SearchHit) => void; onMakeDefault?: (id: string) => void }) {
+function Results({ engine, hits, onOpen, onMakeDefault }: { engine: WindowEngine; hits: ReturnType<typeof searchSettings>; onOpen: (hit: SearchHit) => void; onMakeDefault?: (id: string) => void }) {
   const groups: [string, SearchHit[]][] = [["Settings", hits.settings], ["Go to", hits.goto], ["Trunks", hits.trunks], ["Features", hits.features]];
   if (!groups.some(([, list]) => list.length)) return <p className="r1s-none g-label" role="status">{NOTHING_MATCHES}</p>;
   return (
@@ -91,7 +92,7 @@ function Results({ hits, onOpen, onMakeDefault }: { hits: ReturnType<typeof sear
           <div className="r1s-grp g-label">{title}</div>
           {list.map((hit) => {
             const button = (
-              <button key={`${hit.kind}:${hit.id}`} type="button" className="r1s-nav r1s-res" data-hit={hit.id} onClick={() => onOpen(hit)}>
+              <button key={`${hit.kind}:${hit.id}`} type="button" className="r1s-nav r1s-res" data-local="" data-hit={hit.id} onClick={() => onOpen(hit)}>
                 <span><b data-lv={hit.kind === "row" && hit.level > 0 ? LEVELS[hit.level].label : undefined}>{hit.label}</b>{"sub" in hit && hit.sub ? <small>{hit.sub}</small> : null}</span>
               </button>
             );
@@ -100,8 +101,10 @@ function Results({ hits, onOpen, onMakeDefault }: { hits: ReturnType<typeof sear
             return (
               <div key={`${hit.kind}:${hit.id}`} className="r1s-hit">
                 {button}
-                {onMakeDefault ? <button type="button" className="r1s-link r1s-mkdef" onClick={() => onMakeDefault(hit.id)}>Make default</button>
-                  : <button type="button" className="r1s-link r1s-mkdef" aria-disabled="true" data-coming="agents.setDefault" title={MAKE_DEFAULT_COMING}>Make default</button>}
+                {/* Make default is a config.patch of the default agent (HANDOFF R1-06); without a host that makes it, Coming. */}
+                <Coming engine={engine} need="config.patch" unwired={!onMakeDefault} reason={onMakeDefault ? undefined : MAKE_DEFAULT_COMING}>
+                  <button type="button" className="r1s-link r1s-mkdef" onClick={() => onMakeDefault?.(hit.id)}>Make default</button>
+                </Coming>
               </div>
             );
           })}
@@ -193,14 +196,14 @@ export function SettingsFrame(props: SettingsFrameProps) {
       <aside className="r1s-side g-clear" aria-label="Settings">
         <label className="r1s-search g-frost">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></svg>
-          <input type="search" value={q} placeholder={SEARCH_PLACEHOLDER} aria-label={SEARCH_PLACEHOLDER} onChange={(e) => setQ(e.target.value)} onKeyDown={onSearchKey} />
+          <input type="search" data-local="" value={q} placeholder={SEARCH_PLACEHOLDER} aria-label={SEARCH_PLACEHOLDER} onChange={(e) => setQ(e.target.value)} onKeyDown={onSearchKey} />
         </label>
-        <div className="r1s-level">
+        <div className="r1s-level" data-local="">
           <Segmented label="How much to show" value={level} options={LEVELS.map((l) => ({ v: l.v, label: l.label }))} onChange={(v) => setLevel(v as Level)} />
           <small className="g-label" data-lines>{levelLine}</small>
         </div>
         <nav className="r1s-list" aria-label="Settings pages">
-          {q.trim() ? <Results hits={hits} onOpen={open} onMakeDefault={props.onTrunk ? (id) => { setQ(""); props.onTrunk?.(id, "makeDefault"); } : undefined} /> : (
+          {q.trim() ? <Results engine={engine} hits={hits} onOpen={open} onMakeDefault={props.onTrunk ? (id) => { setQ(""); props.onTrunk?.(id, "makeDefault"); } : undefined} /> : (
             <>
               {TOP_PAGES.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={p.id === "goto" ? GOTO_SUB : undefined} onOpen={() => go(p.id)} />)}
               {NAV.map((g) => {
@@ -220,18 +223,19 @@ export function SettingsFrame(props: SettingsFrameProps) {
         {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} /></div> : <>
         <header className="r1s-head">
           <h1 className="g-label">{spec.title}</h1>
-          <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>
+          <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" data-local="" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>
           {help ? (
             <div className="r1s-help g-clear" role="dialog" aria-label={`About ${spec.title}`}>
               <h3 className="g-label">On this page</h3>
-              <ul>{sections.map((s) => <li key={s.card}><button type="button" className="r1s-link" onClick={() => { setHelp(false); setJump(`sec-${shownPage}-${s.card}`); }}>{s.card || spec.title}</button></li>)}</ul>
-              {props.onAsk ? <button type="button" className="r1s-btn" onClick={() => props.onAsk?.(`Help me with Settings › ${spec.title}.`)}>Ask a Trunk</button>
-                : <button type="button" className="r1s-btn" aria-disabled="true" data-coming="sessions.send" title={ASK_COMING} style={{ opacity: .55, cursor: "not-allowed" }}>Ask a Trunk</button>}
+              <ul>{sections.map((s) => <li key={s.card}><button type="button" className="r1s-link" data-local="" onClick={() => { setHelp(false); setJump(`sec-${shownPage}-${s.card}`); }}>{s.card || spec.title}</button></li>)}</ul>
+              <Coming engine={engine} need="sessions.send" unwired={!props.onAsk} reason={props.onAsk ? undefined : ASK_COMING}>
+                <button type="button" className="r1s-btn" onClick={() => props.onAsk?.(`Help me with Settings › ${spec.title}.`)}>Ask a Trunk</button>
+              </Coming>
             </div>
           ) : null}
         </header>
         <div className="r1s-col">
-          {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></div> : null}
+          {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></Coming></div> : null}
           {invalid ? (
             <div className="r1s-notice r1s-invalid g-frost" role="alert">
               {INVALID_CONFIG}
@@ -242,16 +246,19 @@ export function SettingsFrame(props: SettingsFrameProps) {
             <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title}>
               {card ? <h2 className="g-label">{card}</h2> : null}
               {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} /> : (
-                <div className="r1s-row" aria-disabled="true" data-coming={`settings:${shownPage}/${card || "main"}`} title={SECTION_COMING(card || spec.title)}>
-                  <b className="g-label">Coming</b>
-                  <small className="r1s-note g-label" data-lines>{SECTION_COMING(card || spec.title)}</small>
-                </div>
+                // A section with no rows in the table yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
+                <Coming engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
+                  <div className="r1s-row">
+                    <b className="g-label">Coming</b>
+                    <small className="r1s-note g-label" data-lines>{SECTION_COMING(card || spec.title)}</small>
+                  </div>
+                </Coming>
               )}
             </section>
           )) : (
             <div className="r1s-empty g-clear">
               <p className="g-label">These settings show at {first !== null && first > level ? LEVELS[first].label : "Advanced"}.</p>
-              <button type="button" className="r1s-btn" onClick={() => setLevel(first !== null && first > level ? first : 1)}>Show {first !== null && first > level ? LEVELS[first].label : "Advanced"}</button>
+              <button type="button" className="r1s-btn" data-local="" onClick={() => setLevel(first !== null && first > level ? first : 1)}>Show {first !== null && first > level ? LEVELS[first].label : "Advanced"}</button>
             </div>
           )}
         </div>
