@@ -12,7 +12,8 @@ import { configStore } from "../../places/settings/config-store";
 import { errorText } from "../../places/settings/adapter";
 import { Models } from "./Models";
 import { ModeStep } from "./ModeStep";
-import { clampStep, freshState, LAST_STEP, MODES, picked, primary, STEPS, togglePick, type OnboardingState } from "./model";
+import { clampStep, freshState, LAST_STEP, MODES, picked, primary, STEPS, togglePick, WAITS_FOR, type OnboardingState } from "./model";
+import { Unwired } from "./Unwired";
 import { Welcome, WhereSheet } from "./Welcome";
 import "./onboarding.css";
 
@@ -123,7 +124,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
           {s.step >= 2 ? <Coming need={need} where={p.label}>{primaryButton}</Coming> : primaryButton}
         </div>
         <div className="r1-ob-later">
-          {s.step === 0 ? <>{onTalk ? <button type="button" className="r1-ob-link" data-local onClick={onTalk}>Set up by talking</button> : <button type="button" className="r1-ob-link" aria-disabled="true" data-coming="Setting up by talking comes in a later update." title="Setting up by talking comes in a later update.">Set up by talking</button>}<span aria-hidden="true">·</span></> : null}
+          {s.step === 0 ? <>{onTalk ? <button type="button" className="r1-ob-link" data-local onClick={onTalk}>Set up by talking</button> : <Unwired need={WAITS_FOR.talk} reason="Setting up by talking comes in a later update." where="Set up by talking"><button type="button" className="r1-ob-link">Set up by talking</button></Unwired>}<span aria-hidden="true">·</span></> : null}
           <button type="button" className="r1-ob-link" data-local onClick={() => onLater(s)}>Set up later</button>
         </div>
       </div>
