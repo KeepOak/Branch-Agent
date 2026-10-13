@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../../connect/session";
 import { ConfirmLockdown } from "../../shell/ConfirmLockdown";
+import { Frame } from "./Frame";
 import { R1Window } from "./R1Window";
 
 /* README item 48 (owner, final): menus, popovers and dialogs are clear glass with their words on frosted pills. In the R1
@@ -35,6 +36,7 @@ function bareText(scope: Element) {
   for (const el of scope.querySelectorAll("*")) {
     if (el.closest("svg, script, style")) continue;
     if (![...el.childNodes].some((n) => n.nodeType === 3 && /\S/.test(n.nodeValue ?? ""))) continue;
+    if (el.closest(".g-label, .g-frost")) continue;
     const pill = el.closest(".g-label, .g-frost, button, a[href], select");
     if (!pill || (!pill.matches(".g-label, .g-frost") && !pill.closest(".g-clear"))) bare.push(`<${el.tagName.toLowerCase()} class="${el.className}"> ${el.textContent!.trim().slice(0, 48)}`);
   }
@@ -73,4 +75,18 @@ it("asks for the Lockdown confirmation as a clear dialog with its words on a pil
   const buttons = [...dlg.querySelectorAll(".dlg-f button")];
   expect(buttons.find((b) => b.textContent === "Turn Lockdown on")!.hasAttribute("data-solid")).toBe(true);
   expect(buttons.find((b) => b.textContent === "Cancel")!.hasAttribute("data-solid")).toBe(false);
+});
+
+it("draws the header on the clear conversation as frosted pills, never the earlier control glass", async () => {
+  await act(async () => root.render(<Frame sidebar={<span />} main={<p>Chat</p>} header={{ title: "Ledger", onOpen: () => {} }} />));
+  const header = host.querySelector(".r1-header")!;
+  expect(header.querySelectorAll(".g-ctl")).toHaveLength(0);
+  for (const sel of [".r1-drawer-button", ".r1-history", ".r1-header-right .g-capsule", ".g-pill"]) expect(header.querySelector(sel)!.classList, sel).toContain("g-frost");
+  expect(header.querySelector(".g-pill-title")!.textContent).toBe("Ledger");
+  expect(bareText(header)).toEqual([]);
+  // Only the sidebar keeps frosted glass: no earlier --gc/--gf/--gk fill outside its rules, in frame.css or the shared capsule.
+  const rules = (file: string) => [...readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  const outside = rules("src/screens/frame/frame.css").filter(([, sel]) => !/r1-sid(e|ebar)/.test(sel)).filter(([, , body]) => /var\(--g[cfk]-/.test(body)).map(([, sel]) => sel.trim());
+  expect(outside).toEqual([]);
+  expect(rules("src/glass/glass.css").filter(([sel, , body]) => /g-capsule|g-pill/.test(sel) && /var\(--g[cfk]-/.test(body ?? "")).map(([s]) => s.trim())).toEqual([]);
 });
