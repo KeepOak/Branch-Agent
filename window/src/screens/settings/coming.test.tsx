@@ -62,7 +62,7 @@ describe("R1 Settings, the Coming contract", () => {
     expect(ask.getAttribute("aria-disabled")).toBe("true");
     await typeIn("Ledger");
     expect(undeclared()).toEqual([]);
-    expect(host.querySelector(".r1s-mkdef")?.getAttribute("aria-disabled")).toBe("true");
+    expect(host.querySelector(".r1s-mkdef")).toBeNull();
 
     await typeIn("");
     const writes = request.mock.calls.length;
@@ -75,11 +75,13 @@ describe("R1 Settings, the Coming contract", () => {
     expect(request.mock.calls.slice(writes).map(([method]) => method)).not.toContain("users.prefs.set");
     const needs = comingControls().flatMap((entry) => entry.need);
     expect(needs).toEqual(expect.arrayContaining(["config.patch", "sessions.send"]));
-    // Sections with no rows yet name a real engine call, never a page/card label.
-    const sections = comingControls().filter((entry) => entry.reason.endsWith("comes to this page in a later update."));
-    expect(sections.length).toBeGreaterThan(0);
-    expect(sections.flatMap((entry) => entry.need).filter((need) => !/^[a-z][a-zA-Z]*(\.[a-zA-Z]+)+$/.test(need))).toEqual([]);
-    expect(comingControls().find((entry) => entry.where === "General › Keyboard")?.need).toEqual(["config.patch"]);
+    // General draws none of its empty sections (they wait in Seedbank, R1-15); other pages' empty sections name a real
+    // engine call, never a page/card label.
+    const comingSections = () => comingControls().filter((entry) => entry.reason.endsWith("comes to this page in a later update."));
+    expect(comingSections().filter((entry) => entry.where.startsWith("General ›"))).toEqual([]);
+    await click(host.querySelector("[data-page='remote']")!);
+    expect(comingSections().length).toBeGreaterThan(0);
+    expect(comingSections().flatMap((entry) => entry.need).filter((need) => !/^[a-z][a-zA-Z]*(\.[a-zA-Z]+)+$/.test(need))).toEqual([]);
   });
 
   it("keeps the rows live and saving once the engine offers config and prefs", async () => {
