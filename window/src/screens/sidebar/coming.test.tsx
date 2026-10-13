@@ -92,6 +92,12 @@ describe("R1 sidebar, the Coming contract", () => {
     expect(undeclared()).toEqual([]);
     await click(row("Guide"));
     expect(undeclared()).toEqual([]);
+    // Without the greyed-with-a-reason exemption too: every Guide row says local (the walkthrough is the window's own tour).
+    const guide = [...document.querySelectorAll<HTMLElement>(".g-menu-row:not(.g-menu-back)")];
+    expect(guide.length).toBeGreaterThan(1);
+    expect(guide.filter(item => !item.closest("[data-local], [data-need], [data-coming]")).map(item => item.textContent)).toEqual([]);
+    expect(row("Walkthrough").hasAttribute("data-local")).toBe(true);
+    expect(row("Walkthrough").getAttribute("aria-disabled")).toBe("true");
     expect(request).not.toHaveBeenCalled();
   });
 

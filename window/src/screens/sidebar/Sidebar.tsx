@@ -198,7 +198,8 @@ export function Sidebar(p: SidebarProps) {
     { label: "Get the apps", icon: menuIcon("monitor"), local: true, onSelect: () => setDialog({ kind: "apps" }) },
     { label: "Guide", icon: menuIcon("info"), submenu: guideMenuItems(() => undefined, url => { window.open(url, "_blank", "noopener"); }).map(item => {
       const entry = item as { label: string; hint?: string; run: () => void };
-      return entry.label === "Walkthrough" ? { label: entry.label, off: "The walkthrough returns with the new setup." } : { label: entry.label, hint: entry.hint, local: true, onSelect: entry.run };
+      // The walkthrough is the window's own tour (HANDOFF R1-07, no engine call): local, greyed until R1-07 brings it.
+      return entry.label === "Walkthrough" ? { label: entry.label, local: true, off: "The walkthrough returns with the new setup." } : { label: entry.label, hint: entry.hint, local: true, onSelect: entry.run };
     }) },
     { label: "About Branch", icon: menuIcon("info"), local: true, onSelect: () => p.onSettings("updates") },
     { label: "Lock Branch", icon: menuIcon("lock"), gap: true, local: true, onSelect: () => p.onSettings("permissions") },
