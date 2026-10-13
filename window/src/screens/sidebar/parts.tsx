@@ -4,7 +4,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Avatar, InitialsFace } from "../../glass/Avatar";
 import { GroupCluster } from "../../glass/GroupCluster";
-import { Coming } from "../../glass/coming";
 import { Face } from "../../face/Face";
 import { FOLDERS, folderCount, rowTime, type Folder, type SideRow } from "./model";
 
@@ -119,9 +118,7 @@ export function FolderChip({ rows, folder, onFolder, open, onOpen }: { rows: Sid
         {item.label}{count && (open || selected) ? <b>{count}</b> : null}
       </button>;
     })}
-    <Coming need="sessions.folders.put" reason="Your own folders come in a later update.">
-      <button type="button" className="r1sb-chip r1sb-chip-add" aria-label="New folder" tabIndex={open ? 0 : -1}>{svg(<path d="M12 5v14M5 12h14" />, 13)}</button>
-    </Coming>
+    {/* Your own folders (sessions.folders.put) wait in Seedbank › Coming to Branch until the engine has them (R1-15). */}
   </div>;
 }
 
