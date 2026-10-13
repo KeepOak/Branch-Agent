@@ -6,6 +6,7 @@ import { appendFileSync, existsSync, readFileSync, renameSync, unlinkSync, write
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { ADMISSION_POLL_MS, ADMISSION_ROLLBACK_AFTER_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STANDBY_READY_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
@@ -61,6 +62,8 @@ const TAKE_OVER_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_TAKE_OVER_TIMEOUT_
 const STANDBY_READY_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_STANDBY_READY_TIMEOUT_MS, HANDOFF_STANDBY_READY_TIMEOUT_MS);
 const ROLLBACK_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_ROLLBACK_TIMEOUT_MS, HANDOFF_ROLLBACK_TIMEOUT_MS);
 const RETIRE_KILL_AFTER_MS = envMs(process.env.BRANCH_DESKTOP_RETIRE_KILL_AFTER_MS, HANDOFF_RETIRE_KILL_AFTER_MS);
+/** Private #951: agents still refused this long after a swap roll the update back; tests shorten it. */
+const ADMISSION_ROLLBACK_MS = envMs(process.env.BRANCH_DESKTOP_ADMISSION_ROLLBACK_MS, ADMISSION_ROLLBACK_AFTER_MS);
 /** How long an old engine that says it still serves gets to prove it on /readyz. */
 const PRIOR_READY_CHECK_MS = 10_000;
 /** A standby only loads code before it reports warm; one that takes longer is stopped and the old engine keeps serving. */
@@ -282,6 +285,9 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
   // A crash restart always runs first: an update never cancels it, and never starts with no engine serving.
   if (!engineServing()) throw new Error("The engine is restarting after an exit; the update waits for it");
   const lock = held ?? updateLock.acquire(`update ${label}`)!;
+  // A new update (or Undo) ends the last update's probation: it neither promotes nor rolls back from here on.
+  admissionWatch?.abort();
+  admissionWatch = undefined;
   const windowBefore = windowBuild(servedWindowDir);
   const priorGateway = gateway;
   const attempt = { stepDownSent: false };
@@ -301,8 +307,12 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     if (handoffOnly && (!standby || retiring.size > 0)) {
       throw new Error("A standby is needed to hand off without interrupting running work");
     }
+    // Agents the running engine already refuses never hold the new one's promotion back.
+    const knownRefused = new Set(held ? [] : (await readAgentAdmission(gatewayPort))?.refused ?? []);
     priorGateway.off("exit", priorExited);
     stillOpen();
+    // Until its agents are admitted the new engine is on probation: the confirmed release cleanup waits for it.
+    admissionProbation = !held;
     const started = Date.now();
     if (explicit) sendToBranchWindows("branch-desktop:engine-update", "updating");
     const resumeSupervision = gatewaySupervisor.expectExit(priorGateway);
@@ -334,6 +344,8 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     }
     log(`update ${label}: engine ${rolledBack ? "rolled back" : "swapped"} in place${handoff === "drain" ? "" : " by handoff"}; stop ${stopped - started} ms, start ${Date.now() - stopped} ms, app and window kept open`);
     engineUpdateReady = false;
+    if (rolledBack || held) admissionProbation = false;
+    else watchAdmission(label, knownRefused);
     if (rolledBack) {
       if (explicit) sendToBranchWindows("branch-desktop:engine-update", "kept");
       handWindowToGateway();
@@ -345,6 +357,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
       else sendToBranchWindows("branch-desktop:engine-update", "updated");
     }
   } catch (error) {
+    admissionProbation = false;
     if (standby) stopGateway(standby.child);
     standby = undefined;
     if (quitting) throw error;
@@ -393,6 +406,36 @@ async function afterUpdateLockRelease(released: UpdateLockHandle): Promise<void>
     if (engineUpdateReady && staged) void restartEngine();
     else sendToBranchWindows("branch-desktop:engine-update", "kept");
   }
+}
+
+/** The swapped-in engine's probation (Private #951), until its agents are admitted or the update is rolled back. */
+let admissionWatch: AbortController | undefined;
+let admissionProbation = false;
+
+/**
+ * Private #951: an update is promoted only once the new engine admits its agents, not when its listener binds.
+ * Promotion runs the confirmed release cleanup; agents still refused ADMISSION_ROLLBACK_MS after the swap roll the
+ * update back to the previous build through Undo, automatically. An engine that exits is left to crash recovery.
+ */
+function watchAdmission(label: string, knownRefused: ReadonlySet<string>): void {
+  const child = gateway;
+  if (!child) { admissionProbation = false; return; }
+  const watch = new AbortController();
+  admissionWatch = watch;
+  const end = () => { if (admissionWatch === watch) { admissionWatch = undefined; admissionProbation = false; } };
+  void superviseUpdateAdmission({
+    label,
+    wait: () => waitForAgentAdmission({ port: () => gatewayPort, child, rollbackAfterMs: ADMISSION_ROLLBACK_MS, knownRefused,
+      pollMs: ADMISSION_POLL_MS, signal: watch.signal }),
+    promote: () => { end(); if (componentsReady) runConfirmedReleasePrune(); },
+    rollback: async () => {
+      end();
+      if (quitting || gateway !== child) return;
+      if (!await canUndoComponentUpdate(cfg)) throw new Error("the previous build is no longer available");
+      await undoLastUpdate(true);
+    },
+    log,
+  }).catch(error => log(`update ${label}: admission watch: ${String(error)}`)).finally(end);
 }
 
 /** Seamless handoff is on by default; desktop.json can set seamlessHandoff to false for drain-first updates. */
@@ -1100,7 +1143,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   observed.ready();
   gatewayRecoveryError = undefined;
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
-  if (componentsReady) runConfirmedReleasePrune();
+  if (componentsReady && !admissionProbation) runConfirmedReleasePrune();
   if (confirmUpdate) engineUpdateReady = false;
   if (!quitting) watchEngine();
 }
@@ -1177,19 +1220,24 @@ function offerWindowStatus(w: BrowserWindow): void {
   if (updateNotice && updateNotice.expiresAt > Date.now()) w.webContents.send("branch-desktop:update-applied", updateNotice);
 }
 
-/** Undo owns the same lock as update, recovery and staged-release replacement, including its publication moves. */
-async function undoLastUpdate(): Promise<void> {
+/**
+ * Undo owns the same lock as update, recovery and staged-release replacement, including its publication moves.
+ * `automatic`: the update's agents are still refused (Private #951), so it goes back even while other work runs; the
+ * swap hands that work over (or drains it) as any update does.
+ */
+async function undoLastUpdate(automatic = false): Promise<void> {
   const lock = updateLock.acquire("undo update");
   if (!lock) {
+    if (automatic) log(`automatic rollback skipped: ${updateLock.purpose} holds the update lock`);
     sendToBranchWindows("branch-desktop:update-undo-failed", "An update is finishing, try again in a moment");
     return;
   }
   try {
     if (!gateway || !engineServing()) throw new Error("The engine is not ready to switch");
-    const active = await gatewayActivity(gateway);
-    const window = await probeWindowState();
-    if (active.activeRuns || active.totalActive || active.pendingReplies || window.pendingApprovals ||
-        window.streaming || window.unsavedDraftFiles) throw new Error("The previous version cannot take over while work is running");
+    const active = automatic ? undefined : await gatewayActivity(gateway);
+    const window = automatic ? undefined : await probeWindowState();
+    if (active && window && (active.activeRuns || active.totalActive || active.pendingReplies || window.pendingApprovals ||
+        window.streaming || window.unsavedDraftFiles)) throw new Error("The previous version cannot take over while work is running");
     if (!await prepareComponentUpdateUndo(cfg, dir => { servedWindowDir = dir; })) throw new Error("The previous version is no longer available");
     const previousVersion = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
     await swapEngineInPlace("previous version", true, lock);
@@ -1258,6 +1306,7 @@ function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
 
 function shutdown(): void {
   quitting = true;
+  admissionWatch?.abort();
   log(`quit; stopping gateway pid ${gateway?.pid}`);
   gatewaySupervisor.close();
   stopEngineWatch?.();
