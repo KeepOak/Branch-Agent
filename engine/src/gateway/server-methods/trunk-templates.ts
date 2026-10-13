@@ -420,7 +420,8 @@ async function applyTemplateSettings(
     .filter((slug): slug is string => slug !== undefined);
   const installed = installedSkillSlugs(slugs, workspaceDir);
   const toolsets = { ...template.toolsets };
-  if (Object.keys(toolsets).length > 0 || slugs.length > 0) {
+  const denyTools = template.denyTools ?? [];
+  if (Object.keys(toolsets).length > 0 || slugs.length > 0 || denyTools.length > 0) {
     await mutateConfigFileWithRetry({
       afterWrite: { mode: "auto" },
       mutate: (draft) => {
@@ -429,6 +430,10 @@ async function applyTemplateSettings(
         const entry = (entries[agentId] ??= {});
         if (Object.keys(toolsets).length > 0) {
           entry.toolsets = toolsets;
+        }
+        if (denyTools.length > 0) {
+          const tools = (entry.tools ??= {});
+          tools.deny = [...new Set([...(tools.deny ?? []), ...denyTools])];
         }
         const defaultSkills = agents.defaults?.skills;
         if (slugs.length > 0 && Array.isArray(defaultSkills)) {

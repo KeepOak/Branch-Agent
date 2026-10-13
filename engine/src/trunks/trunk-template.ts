@@ -3,7 +3,7 @@
  * branch.trunk-template.json. Pure data and functions. The exporter reads a Trunk and
  * hands only the fields below to buildTrunkTemplate, so nothing else can leave.
  */
-import { ALWAYS_ON_TOOL_IDS, listToolsetIds } from "../agents/tool-toolsets.js";
+import { ALWAYS_ON_TOOL_IDS, listToolsetIds, TOOLSETS } from "../agents/tool-toolsets.js";
 import {
   parseFirstRun,
   parseStarter,
@@ -39,6 +39,8 @@ export type TrunkTemplate = {
   skills: string[];
   /** Named toolset switches carried by the file, applied to the new Trunk on create. */
   toolsets: Record<string, boolean>;
+  /** Single built-in tools turned off inside a toolset that stays on, such as sessions_spawn. Added to tools.deny on create. */
+  denyTools?: string[];
   /** A model family such as "gpt-5.5". Never an account, key or auth profile. */
   model?: { family: string };
   /** Routines. Import adds each one turned off, so nothing runs until the owner approves it. */
@@ -61,6 +63,7 @@ export type TrunkTemplateSource = {
   soulMd?: string;
   skillSlugs?: string[];
   toolsets?: Record<string, boolean>;
+  denyTools?: string[];
   modelFamily?: string;
   automations?: TrunkTemplateAutomation[];
   connections?: string[];
@@ -128,6 +131,7 @@ export function buildTrunkTemplate(source: TrunkTemplateSource): {
     },
     skills: skills.ids,
     toolsets: toolsetSwitches(source.toolsets),
+    ...(source.denyTools?.length ? { denyTools: [...new Set(source.denyTools)] } : {}),
     ...(modelFamily ? { model: { family: modelFamily } } : {}),
     ...(source.automations?.length ? { automations: source.automations } : {}),
     ...(keptConnections.length ? { connections: keptConnections } : {}),
@@ -188,6 +192,32 @@ function parseAutomations(value: unknown, warnings: string[]): TrunkTemplateAuto
   });
 }
 
+/** Every built-in tool a template may switch off by name: the tools of every toolset. */
+function knownToolIds(): Set<string> {
+  return new Set(TOOLSETS.flatMap((toolset) => toolset.tools));
+}
+
+/** The optional denyTools list. Unknown or always-on names warn and are skipped; it never fails. */
+function parseDenyTools(raw: unknown, warnings: string[]): string[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(raw)) {
+    warnings.push("denyTools is not a list of tool names and was skipped.");
+    return undefined;
+  }
+  const known = knownToolIds();
+  const kept: string[] = [];
+  for (const id of raw as unknown[]) {
+    if (typeof id === "string" && known.has(id) && !ALWAYS_ON_TOOL_IDS.includes(id)) {
+      kept.push(id);
+    } else {
+      warnings.push("One denyTools entry names no built-in tool and was skipped.");
+    }
+  }
+  return kept.length ? kept : undefined;
+}
+
 /** Checks the shape of a template file. Bad toolsets and malformed skill ids warn; they do not fail. */
 export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
   if (!isStringRecord(raw) || raw.format !== TRUNK_TEMPLATE_FORMAT || raw.version !== TRUNK_TEMPLATE_VERSION) {
@@ -228,6 +258,7 @@ export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
     soulMd: typeof raw.persona.soulMd === "string" ? raw.persona.soulMd : undefined,
     skillSlugs: skills.ids.map((id) => skillSlugForId(id) ?? ""),
     toolsets,
+    denyTools: parseDenyTools(raw.denyTools, warnings),
     modelFamily: isStringRecord(raw.model) && typeof raw.model.family === "string" ? raw.model.family : undefined,
     automations: parseAutomations(raw.automations, warnings),
     connections: Array.isArray(raw.connections)
