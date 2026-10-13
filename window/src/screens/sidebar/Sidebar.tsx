@@ -3,6 +3,7 @@
 // the engine through the Classic hooks (shell/engine-data.ts, group-drop.tsx, Projects.tsx) and acts through
 // shell/conversation-actions.ts, so every control is a real call or says Coming.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import type { Conversation, ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
 import { componentDesktop, stageWindowUpdate } from "../../connect/desktop-component-updates";
@@ -265,21 +266,25 @@ export function Sidebar(p: SidebarProps) {
       </div>
     </Popover> : null}
 
+    {/* The dialogs draw over the whole window: inside the sidebar, its frosted backdrop would hold the fixed scrim to the
+        sidebar's own box, and a dialog would open squeezed into the list. */}
+    {dialog ? createPortal(<>
     {dialog?.kind === "rename" ? <RenameDialog row={dialog.row} onClose={() => setDialog(null)} onSave={label => { if (dialog.row.row) void actions.rename(dialog.row.row, label).then(refreshContacts); setDialog(null); }} /> : null}
-    {dialog?.kind === "delete" ? <ConfirmDelete row={dialog.row} onCancel={() => setDialog(null)} onDelete={() => { const row = dialog.row; setDialog(null); void actions.remove(row).then(refreshContacts); }} /> : null}
-    {dialog?.kind === "remove" ? <RemoveTrunkDialog engine={engine} agentId={dialog.agentId} name={dialog.name} onClose={() => setDialog(null)} /> : null}
+    {dialog?.kind === "delete" ? <ConfirmDelete clear row={dialog.row} onCancel={() => setDialog(null)} onDelete={() => { const row = dialog.row; setDialog(null); void actions.remove(row).then(refreshContacts); }} /> : null}
+    {dialog?.kind === "remove" ? <RemoveTrunkDialog clear engine={engine} agentId={dialog.agentId} name={dialog.name} onClose={() => setDialog(null)} /> : null}
     {dialog?.kind === "shortcuts" ? <ShortcutsDialog onClose={() => setDialog(null)} defaultName={trunks.list.find(trunk => trunk.isDefault)?.name} /> : null}
     {dialog?.kind === "apps" ? <GetAppsDialog onClose={() => setDialog(null)} onPair={() => setDialog({ kind: "pair" })} /> : null}
     {dialog?.kind === "pair" ? <PairDialog engine={engine} close={() => setDialog(null)} /> : null}
+    </>, document.body) : null}
     <NewGroupChatHost engine={ready ? engine : undefined} onOpen={p.onOpen} />
   </div>;
 }
 
 function RenameDialog({ row, onClose, onSave }: { row: SideRow; onClose: () => void; onSave: (label: string) => void }) {
   const [value, setValue] = useState(row.name);
-  return <Dialog title={`Rename ${row.name}`} onClose={onClose} testid="rename" footer={<>
+  return <Dialog title={`Rename ${row.name}`} onClose={onClose} testid="rename" clear footer={<>
     <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-    <button type="button" className="btn" onClick={() => onSave(value)}>Rename</button>
+    <button type="button" className="btn" data-solid="" onClick={() => onSave(value)}>Rename</button>
   </>}>
     <input className="inp" aria-label="Name" value={value} autoFocus onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === "Enter") onSave(value); }} />
   </Dialog>;

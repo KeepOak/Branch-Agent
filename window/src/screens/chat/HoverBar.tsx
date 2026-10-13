@@ -106,7 +106,7 @@ export function HoverBar({ text, isReply, actions, meta, replyLabel = "Reply" }:
   const react = useRef<HTMLButtonElement>(null), more = useRef<HTMLButtonElement>(null);
   const close = () => setMenu(null);
   const reply = actions.reply;
-  return <div className="r1c-bar g-ctl" data-held={menu ? "" : undefined} data-testid="hover-bar" role="toolbar" aria-label="Message actions">
+  return <div className="r1c-bar" data-held={menu ? "" : undefined} data-testid="hover-bar" role="toolbar" aria-label="Message actions">
     <Coming need="session.reactions.set" reason="Reactions come in a later update.">
       <button ref={react} type="button" aria-label="React" title={actions.reactDisabled ?? "React"} aria-disabled={actions.reactDisabled ? "true" : undefined} aria-haspopup="menu" aria-expanded={menu === "react"}
         onClick={() => { if (!actions.reactDisabled) setMenu((m) => (m === "react" ? null : "react")); }}><PathIcon d={ICONS.react} size={15} /></button>

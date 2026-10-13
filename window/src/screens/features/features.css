@@ -34,6 +34,8 @@
 .feat-t b { font-weight: 600; font-size: 13.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .feat-t small { color: var(--ink-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .feat-chip { flex: 0 0 auto; margin-left: auto; font-size: 11px; white-space: nowrap; }
+/* Why the #g48 ids (glass/glass.css explains the ladder): each chip is a .g-label pill, and glass.css's pill rule
+   (:is(.g-frost, .g-label):not(#g48)) sets color: var(--ink) on every pill. These rules keep the status tone over it. */
 .feat-chip.in:not(#g48#g48) { color: color-mix(in srgb, var(--ok) var(--feat-tone), var(--ink)); }
 .feat-chip.part:not(#g48#g48) { color: color-mix(in srgb, var(--warn) var(--feat-tone), var(--ink)); }
 .feat-chip.soon:not(#g48#g48) { color: var(--gp-ink-2); }
