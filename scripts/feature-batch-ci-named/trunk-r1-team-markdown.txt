@@ -1,2 +1,2 @@
-window:src/screens/seedbank/team-markdown.test.ts
 window:src/screens/seedbank/Seedbank.test.tsx
+window:src/screens/seedbank/team-markdown.test.ts
