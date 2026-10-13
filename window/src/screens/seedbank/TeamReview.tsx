@@ -19,14 +19,13 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 function BotRow({ bot, index, outcome }: { bot: TeamBot; index: number; outcome: Outcome }) {
   const error = outcome.errors.get(index);
   const state = outcome.added.has(index) ? "Added ✓" : error ? "Not added: " + error : "";
-  return <div className="sb-bot">
-    <b className="g-label">{bot.name}</b>
-    <small className="g-label">{[bot.model || "Default model", count(bot.routines.length, "routine", "routines")].join(" · ")}</small>
-    {bot.description && <small className="g-label" data-lines>{bot.description}</small>}
+  return <div className="sb-sec-list">
+    <div className="sb-row"><b className="g-label">{bot.name}</b><small className="g-label">{[bot.model || "Default model", count(bot.routines.length, "routine", "routines")].join(" · ")}</small></div>
+    {bot.description && <p className="g-label" data-lines>{bot.description}</p>}
     {bot.permissions.length > 0 && <ul className="sb-may g-frost">{bot.permissions.map(line => <li key={line}>{line}</li>)}</ul>}
-    {bot.routines.map(routine => <small key={routine.name} className="g-label" data-lines>Routine {routine.name} · {routine.cron} · off until you turn it on</small>)}
+    {bot.routines.map(routine => <p key={routine.name} className="g-label" data-lines>Routine {routine.name} · {routine.cron} · off until you turn it on</p>)}
     {hasHiddenInstructions(bot.instructions) && <p className="sb-error g-label" data-lines role="alert">{bot.name} has hidden instructions. Add is off.</p>}
-    {state && <small className="g-label" data-lines>{state}</small>}
+    {state && <p className="g-label" data-lines>{state}</p>}
   </div>;
 }
 
