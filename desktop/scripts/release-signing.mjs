@@ -10,8 +10,8 @@
 // Command lines are built by pure functions so tests can check them without running anything. Secret values travel
 // in the environment or in files, and any that reach a printed command line are replaced with ***.
 import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { closeSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readSync, rmSync, writeFileSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { closeSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,11 +45,40 @@ const UNSIGNED = {
 
 /** Azure's recommended timestamp authority. Its certificates last three days, so every signature is timestamped. */
 export const AZURE_TIMESTAMP_URL = "http://timestamp.acs.microsoft.com";
-/** Pinned NuGet packages: SignTool from the Windows SDK build tools, and the Artifact Signing dlib it loads. */
+/**
+ * Pinned NuGet packages: SignTool from the Windows SDK build tools, and the Artifact Signing dlib it loads.
+ * Each digest is pinned in the repo, never taken from the download: sha512 is the packageHash NuGet's catalog
+ * publishes for that exact version, and sha256 is of the same .nupkg bytes. A download that matches neither
+ * is refused before it is extracted, so a changed or substituted package never runs with the signing secrets.
+ */
 export const WINDOWS_TOOL_PACKAGES = [
-  { id: "Microsoft.Windows.SDK.BuildTools", version: "10.0.26100.6901", file: "signtool.exe" },
-  { id: "Microsoft.ArtifactSigning.Client", version: "1.0.146", file: "Azure.CodeSigning.Dlib.dll" },
+  {
+    id: "Microsoft.Windows.SDK.BuildTools",
+    version: "10.0.26100.6901",
+    file: "signtool.exe",
+    sha256: "40109fe95b6ccd449327edfbf91a8eef4838e6982e66a6a90a1d6d9eb7d98747",
+    sha512: "IfSuuRHAr1KrSYZpDMYHUCROkDBrUuHI+CRXw68KwFMx0hGNmn4NeWvumVN0d75W9ZLD3yy25YfclV6eSAIqHQ==",
+  },
+  {
+    id: "Microsoft.ArtifactSigning.Client",
+    version: "1.0.146",
+    file: "Azure.CodeSigning.Dlib.dll",
+    sha256: "7761e5d8f31e54b764da21d33cd8b0a2940e1b05526c7dfcb5e94b0431426f70",
+    sha512: "/G0hG/VDIS6psW23b5t1V/ORIgn0PVAOtGj9w+hkPmAuI4pempfwlW50E2GtHscnz9+5Qz3hbC4mcb7ej2Yn1A==",
+  },
 ];
+
+/** Checks a downloaded .nupkg against its pinned digests. Throws, naming the package, on any mismatch. */
+export function verifyToolPackage(archive, pkg) {
+  const bytes = readFileSync(archive);
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const sha512 = createHash("sha512").update(bytes).digest("base64");
+  if (sha256 !== pkg.sha256 || sha512 !== pkg.sha512) {
+    throw new Error(
+      `Refusing ${pkg.id} ${pkg.version}: the download does not match its pinned digest (SHA-256 ${sha256}, expected ${pkg.sha256}). Nothing was extracted or signed.`,
+    );
+  }
+}
 /** Only EnvironmentCredential (the three AZURE_* secrets) may authenticate. Skip every other way DefaultAzureCredential tries. */
 export const AZURE_EXCLUDED_CREDENTIALS = [
   "ManagedIdentityCredential", "WorkloadIdentityCredential", "SharedTokenCacheCredential", "VisualStudioCredential",
@@ -273,7 +302,7 @@ function findFile(dir, file, arch = "x64") {
  * Signs for one target, or does nothing when signing isn't fully configured. Tools are fetched, and the macOS keychain
  * made, on first use; dispose() removes them. run(command, args, options) is injectable so tests run nothing.
  */
-export function createSigner({ target, env = process.env, run = defaultRun, log = console.log, temp } = {}) {
+export function createSigner({ target, env = process.env, run = defaultRun, log = console.log, temp, packages = WINDOWS_TOOL_PACKAGES } = {}) {
   const status = signingStatus(target, env);
   const enabled = status.state === "ready";
   const extra = [];
@@ -287,11 +316,12 @@ export function createSigner({ target, env = process.env, run = defaultRun, log 
     const dir = scratch();
     const system = join(env.SYSTEMROOT ?? "C:\\Windows", "System32");
     const found = {};
-    for (const pkg of WINDOWS_TOOL_PACKAGES) {
+    for (const pkg of packages) {
       const archive = join(dir, `${pkg.id}.${pkg.version}.zip`);
       const out = join(dir, pkg.id);
       mkdirSync(out, { recursive: true });
       exec(join(system, "curl.exe"), ["-fsSL", "--retry", "3", "-o", archive, nugetUrl(pkg)]);
+      verifyToolPackage(archive, pkg);
       exec(join(system, "tar.exe"), ["-xf", archive, "-C", out]);
       found[pkg.file] = findFile(out, pkg.file);
     }

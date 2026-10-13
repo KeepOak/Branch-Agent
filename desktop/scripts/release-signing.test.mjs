@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -89,11 +90,13 @@ test("Windows: SignTool with the Artifact Signing dlib, the app before packaging
   const temp = mkdtempSync(join(tmpdir(), "branch-signing-test-"));
   try {
     const calls = [];
+    const packages = fakePackages();
     const run = (command, args) => {
       calls.push([command, args]);
+      if (command.endsWith("curl.exe")) writeFileSync(args[args.indexOf("-o") + 1], "fake " + args.at(-1));
       if (command.endsWith("tar.exe")) {
         const out = args[args.indexOf("-C") + 1];
-        const pkg = WINDOWS_TOOL_PACKAGES.find((p) => out.endsWith(p.id));
+        const pkg = packages.find((p) => out.endsWith(p.id));
         for (const arch of ["x86", "x64", "arm64"]) {
           mkdirSync(join(out, "bin", arch), { recursive: true });
           writeFileSync(join(out, "bin", arch, pkg.file), "");
@@ -102,7 +105,7 @@ test("Windows: SignTool with the Artifact Signing dlib, the app before packaging
       return "";
     };
     const logs = [];
-    const signer = createSigner({ target: "win32-x64", env: { ...WINDOWS_ENV, SYSTEMROOT: "C:\\Windows" }, run, log: (line) => logs.push(line), temp });
+    const signer = createSigner({ target: "win32-x64", env: { ...WINDOWS_ENV, SYSTEMROOT: "C:\\Windows" }, run, log: (line) => logs.push(line), temp, packages });
     assert.equal(signer.signApp("payload\\Branch Agent.exe"), true);
     assert.equal(signer.signInstaller("out\\Branch-Agent-Setup-0.4.4-win32-x64.exe"), true);
     signer.dispose();
@@ -262,4 +265,37 @@ test("INSTALLERS.md tells the owner every name to add", () => {
   const owner = doc.slice(doc.indexOf("## Left for the owner"));
   for (const name of [...WINDOWS_SECRETS, ...WINDOWS_VARIABLES, ...MAC_SECRETS]) assert.ok(owner.includes("`" + name + "`"), name);
   assert.match(owner, /release-signing\.mjs/);
+});
+
+/** The pinned packages with digests of the bytes the fake curl writes, so the happy path can run offline. */
+function fakePackages() {
+  return WINDOWS_TOOL_PACKAGES.map((pkg) => {
+    const bytes = Buffer.from("fake " + nugetUrl(pkg));
+    return { ...pkg, sha256: createHash("sha256").update(bytes).digest("hex"), sha512: createHash("sha512").update(bytes).digest("base64") };
+  });
+}
+
+test("Windows tool packages are pinned by digest, not only by version", () => {
+  for (const pkg of WINDOWS_TOOL_PACKAGES) {
+    assert.match(pkg.sha256, /^[0-9a-f]{64}$/, pkg.id);
+    assert.equal(Buffer.from(pkg.sha512, "base64").length, 64, pkg.id);
+  }
+});
+
+test("Windows: a tool package that doesn't match its pinned digest is refused before tar or SignTool run", () => {
+  const temp = mkdtempSync(join(tmpdir(), "branch-signing-test-"));
+  try {
+    const calls = [];
+    const run = (command, args) => {
+      calls.push(command);
+      if (command.endsWith("curl.exe")) writeFileSync(args[args.indexOf("-o") + 1], "a substituted package");
+      return "";
+    };
+    const signer = createSigner({ target: "win32-x64", env: { ...WINDOWS_ENV, SYSTEMROOT: "C:\\Windows" }, run, log: () => {}, temp });
+    assert.throws(() => signer.signApp("payload\\Branch Agent.exe"), /Refusing Microsoft\.Windows\.SDK\.BuildTools 10\.0\.26100\.6901: the download does not match its pinned digest.*Nothing was extracted or signed\./);
+    signer.dispose();
+    assert.deepEqual(calls.map((c) => c.split(/[\\/]/).at(-1)), ["curl.exe"], "nothing after the download ran");
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
 });
