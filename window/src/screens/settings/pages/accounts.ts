@@ -95,7 +95,7 @@ export const ACCOUNTS_ROWS: Row[] = [
     { help: "Key or sign-in, and which account; never the key itself.", level: 1 }),
   coming("accounts.more.organisation", MORE, "Organisation", "engine: an organisation setting for accounts in more than one", NO_KEY,
     { help: "For accounts in more than one organisation: who is billed.", level: 1, control: "select", options: [{ v: "personal", label: "Personal" }] }),
-  coming("accounts.more.customer-chatgpt", MORE, "A customer’s ChatGPT account on a computer KeepOak manages", "engine: a setting for a customer's own ChatGPT sign-in on a computer KeepOak manages", NO_KEY,
+  coming("accounts.more.customer-chatgpt", MORE, "A customer’s ChatGPT account on a KeepOak computer", "engine: a setting for a customer's own ChatGPT sign-in on a computer KeepOak manages", NO_KEY,
     { help: "Only with that customer’s own sign-in on it.", level: 1, control: "toggle" }),
 
   // Accounts, technical (Technical)
