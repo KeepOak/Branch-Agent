@@ -23,7 +23,7 @@ export const record = (v: unknown): Record<string, unknown> => v !== null && typ
 export const text = (v: unknown): string => typeof v === "string" ? v : "";
 export const number = (v: unknown): number | undefined => typeof v === "number" && Number.isFinite(v) ? v : undefined;
 export const records = (v: unknown): Record<string, unknown>[] => Array.isArray(v) ? v.map(record) : [];
-const errorMessage = (e: unknown): string => e instanceof Error ? e.message : String(e);
+export const errorMessage = (e: unknown): string => e instanceof Error ? e.message : String(e);
 
 /** Individual tiles fail independently. Late responses from a closed view cannot publish. */
 export class OverviewData {
