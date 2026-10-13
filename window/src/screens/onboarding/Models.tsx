@@ -10,7 +10,8 @@ import { Logo } from "../../places/settings/set1/service";
 import { SetupAddAccountDialog } from "../../setup/SetupFlow";
 import { logoId } from "../../setup/steps-early";
 import { testModel, useDetected } from "../../setup/use-setup-engine";
-import { answeredBy, canSayHello, EXAMPLES_REASON, toggle, unwired, type Hello } from "./model";
+import { answeredBy, canSayHello, EXAMPLES_REASON, toggle, WAITS_FOR, type Hello } from "./model";
+import { Unwired } from "./Unwired";
 
 type Props = { engine: WindowEngine; off: string[]; onOff: (off: string[]) => void; hello: Hello; onHello: (h: Hello) => void };
 
@@ -62,7 +63,7 @@ export function Models({ engine, off, onOff, hello, onHello }: Props) {
         {ok ? <><span className="r1-ob-dot" data-ok="true" /><span><b>{answeredBy(detected, ok.modelRef)} answered in {ok.seconds} s</b><small>{ok.modelRef}{ok.madeDefault ? " · now the default model" : ""}</small></span></> : null}
         {bad ? <><span className="r1-ob-dot" data-ok="false" /><span><b>{bad.error}</b><small><button type="button" className="r1-ob-link" data-local onClick={sayHello}>Try again</button> · <button type="button" className="r1-ob-link" data-local onClick={() => setAdding(true)}>Use another model</button></small></span></> : null}
       </div>
-      {ok ? null : <p className="r1-ob-none">No model? <button type="button" className="r1-ob-link" {...unwired(EXAMPLES_REASON)}>Try it with examples</button>: look around with example Trunks and replies, no account needed.</p>}
+      {ok ? null : <p className="r1-ob-none">No model? <Unwired need={WAITS_FOR.examples} reason={EXAMPLES_REASON} where="Try it with examples"><button type="button" className="r1-ob-link">Try it with examples</button></Unwired>: look around with example Trunks and replies, no account needed.</p>}
       {/* Over the whole window (README item 48): a clear dialog, so the card it covers steps aside while it is open (onboarding.css).
           Inside the card, the body's edge fade would clip it. */}
       {adding ? createPortal(<div className="r1-ob-dlg"><SetupAddAccountDialog clear engine={engine} agentId={engine.agentId ?? ""} onClose={(added) => { setAdding(false); if (added) { onHello(null); reload(); } }} /></div>, document.body) : null}

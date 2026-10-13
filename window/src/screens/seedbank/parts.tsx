@@ -1,21 +1,19 @@
 // Seedbank's pieces (preview item 28: .mkRowP17, .mkCardP17, .mkAddP17, .mkSeedP17, item 45 Adapters tiles).
-import { useEffect, useId, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
-import { registerComing } from "../../glass/coming-registry";
 import { Glyph } from "../../places/customize/glyphs";
 import { Icon } from "../../shell/icons";
 import { kindOf, shortCount, type Entry } from "./catalog";
 import { seedText } from "./seed";
 import { addCall } from "./useSeedbank";
 
-/** A control whose engine call doesn't exist anywhere yet: the Coming look and reason, registered for the dev check. */
+/** A control Seedbank doesn't wire yet: drawn through <Coming unwired>, so it has the Coming look and reason, swallows
+ *  every click, key and pointer event, and is listed by the call it waits for, even on an engine that offers it (R1-10). */
 export function Soon({ need, reason, className, label, children }: { need: string; reason: string; className?: string; label?: string; children: ReactNode }) {
-  const id = useId();
   const where = label ?? (typeof children === "string" ? children : need);
-  useEffect(() => registerComing(id, { need: [need], missing: [need], reason, where, hidden: false }), [id, need, reason, where]);
-  return <button type="button" className={className} aria-disabled="true" aria-label={label} data-coming={reason} title={reason} style={{ opacity: 0.55, cursor: "not-allowed" }} onClick={event => event.preventDefault()}>{children}</button>;
+  return <Coming need={need} unwired reason={reason} where={where}><button type="button" className={className} aria-label={label}>{children}</button></Coming>;
 }
 
 const GLYPH = { skills: "bolt", mcp: "plug", plugins: "puzzle" } as const;

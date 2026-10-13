@@ -2,7 +2,8 @@
 // preselected; Full access lives in Settings › Permissions only. The choice saves as tools.exec.mode on Continue.
 import { Icon } from "../../composer/icons";
 import { Coming } from "../../glass/coming";
-import { MODES, PLAN_FIRST_REASON, unwired, type ModeId } from "./model";
+import { MODES, PLAN_FIRST_REASON, WAITS_FOR, type ModeId } from "./model";
+import { Unwired } from "./Unwired";
 
 export function ModeStep({ mode, onMode, error }: { mode: ModeId; onMode: (m: ModeId) => void; error: string | null }) {
   return (
@@ -14,7 +15,7 @@ export function ModeStep({ mode, onMode, error }: { mode: ModeId; onMode: (m: Mo
           const body = <><Icon name={m.icon} size={15} /><span><b>{m.name}{m.recommended ? <em>Recommended</em> : null}</b><small>{m.line}</small></span></>;
           return m.exec
             ? <Coming key={m.id} need="config.patch" where={m.name}><button type="button" className="r1-ob-mode" role="radio" aria-checked={mode === m.id} onClick={() => onMode(m.id)}>{body}</button></Coming>
-            : <button key={m.id} type="button" className="r1-ob-mode" role="radio" aria-checked={false} {...unwired(PLAN_FIRST_REASON)}>{body}</button>;
+            : <Unwired key={m.id} need={WAITS_FOR.planFirst} reason={PLAN_FIRST_REASON} where={m.name}><button type="button" className="r1-ob-mode" role="radio" aria-checked={false}>{body}</button></Unwired>;
         })}
       </div>
       {error ? <p className="r1-ob-error" role="alert">{error}</p> : null}

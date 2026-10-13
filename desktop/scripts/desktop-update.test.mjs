@@ -248,3 +248,66 @@ test("desktop confirmation retains exactly the current and previous update folde
     assert.equal(await desktopUpdate.confirmDesktopUpdate(cfg), null, "confirmation is idempotent");
   }
 }));
+
+/** Runs the launch hand-off in its own process, as the app does at start; exit 0 means the app goes on starting. */
+function launchHandOff(cfg, install, helper = join(dist, "desktop-update-helper.js")) {
+  const script = `require(${JSON.stringify(join(dist, "desktop-update.js"))}).handOffDesktopUpdate(${JSON.stringify(cfg)},${JSON.stringify(install)},${JSON.stringify(helper)},[],false).then(handed=>process.exit(handed?4:0),error=>{console.error(String(error));process.exit(5);});`;
+  const child = spawn(process.execPath, ["-e", script], { stdio: ["ignore", "ignore", "pipe"] });
+  let stderr = "";
+  child.stderr.on("data", chunk => { stderr += chunk; });
+  return new Promise(resolve => child.on("exit", code => resolve({ code, stderr })));
+}
+
+test("a staged record whose payload folder is gone is discarded and the current app starts", () => fixture(async ({ cfg, install }) => {
+  const journal = join(cfg.dataDir, "desktop-update-pending.json");
+  const staged = join(cfg.dataDir, "updates", "desktop-0.4.5-gone00", "payload", `app${desktopUpdate.STAGED_ASAR}`);
+  await writeFile(journal, JSON.stringify({ version: "0.4.5", sha256: "a".repeat(64), kind: "asar", phase: "staged", staged, target: join(install.resourcesDir, "app.asar") }));
+  const launch = await launchHandOff(cfg, install);
+  assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
+  assert.equal(await exists(journal), false, "the stale record is removed");
+  assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: app\.asar\.staged is missing; starting the current build/);
+  assert.equal(await desktopUpdate.stagedDesktopVersion(cfg), null);
+}));
+
+test("a staged app.asar whose bytes changed since staging is discarded, never swapped in", () => fixture(async ({ cfg, request, install }) => {
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const journal = await desktopUpdate.readDesktopJournal(cfg);
+  assert.equal(journal.phase, "staged");
+  assert.match(journal.stagedSha256, /^[0-9a-f]{64}$/, "staging records the SHA256 of the payload");
+  await writeFile(journal.staged, "tampered desktop asar");
+  const launch = await launchHandOff(cfg, install);
+  assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
+  assert.equal(await exists(join(cfg.dataDir, "desktop-update-pending.json")), false, "the altered record is removed");
+  assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: app\.asar\.staged fails its SHA256/);
+}));
+
+test("a missing update helper discards the staged record instead of stopping launch", () => fixture(async ({ cfg, request, install }) => {
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const launch = await launchHandOff(cfg, install, join(cfg.dataDir, "no-such-helper.js"));
+  assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
+  assert.equal(await exists(join(cfg.dataDir, "desktop-update-pending.json")), false, "the record is removed");
+  assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: the update helper is missing/);
+}));
+
+test("a helper that cannot start discards the staged record and the app keeps starting", () => fixture(async ({ cfg, request, install }) => {
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const launch = await launchHandOff(cfg, { ...install, nodePath: join(cfg.dataDir, "no-such-node") });
+  assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
+  assert.equal(await exists(join(cfg.dataDir, "desktop-update-pending.json")), false, "the record is removed");
+  assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: the update helper could not start: /);
+}));
+
+test("a helper that is not executable discards the staged record and the app keeps starting", () => fixture(async ({ cfg, request, install }) => {
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const node = join(cfg.dataDir, "not-executable-node");
+  await writeFile(node, "not a program\n", { mode: 0o644 });
+  const launch = await launchHandOff(cfg, { ...install, nodePath: node });
+  assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
+  assert.equal(await exists(join(cfg.dataDir, "desktop-update-pending.json")), false, "the record is removed");
+  assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: the update helper could not start: /);
+}));
