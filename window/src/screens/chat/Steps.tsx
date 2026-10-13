@@ -1,6 +1,7 @@
 // The calm steps display (owner item 26, HANDOFF §2 #15): one plain summary line; open, one row per step; a row opens
 // to its input (once), its output and "Exit code N" on failure. Thoughts follow "Show agents' work as".
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { copyText, useThread } from "../../thread/context";
 import { Dialog } from "../../thread/Dialog";
 import { stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename } from "../../thread/format";
@@ -105,8 +106,9 @@ function StepRow({ step, mode }: { step: Step; mode: WorkMode }) {
         {exit != null ? <p className="r1c-step-err">Exit code {exit}</p> : failed && step.detail && !/^Exit /.test(step.detail) ? <p className="r1c-step-err">{step.detail}</p> : null}
       </div>
     </details>
-    {full ? <Dialog title="Full output" onClose={() => setFull(false)} testid="step-full-output" footer={<button type="button" className="btn primary" onClick={() => setFull(false)}>Close</button>}>
-      <pre className="r1c-full">{whole}</pre>
-    </Dialog> : null}
+    {/* Over the whole window: inside the steps list, its glass would hold the fixed scrim to the list's own box. */}
+    {full ? createPortal(<Dialog title="Full output" clear onClose={() => setFull(false)} testid="step-full-output" footer={<button type="button" className="btn primary" data-solid="" onClick={() => setFull(false)}>Close</button>}>
+      <pre className="r1c-full g-label" data-lines>{whole}</pre>
+    </Dialog>, document.body) : null}
   </li>;
 }
