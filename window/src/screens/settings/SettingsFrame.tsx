@@ -1,16 +1,17 @@
 // R1 Settings frame, ported from the approved preview (item 36): the nav column with search and "How much to show" at
 // the top and the pages in their groups, a page title with Learn more that scrolls away with the page (v15), and one glass card per section. Rows come
 // from the row table (rows.ts) and draw through RowView; a section with no rows in the table yet is Coming (R1-10). A
-// page can instead draw its own component (slots.ts, such as Chat apps); nav, search and the level stay the frame's.
+// page can instead draw its own component (slots.ts, such as Chat apps); nav, search and the level stay the frame's. A
+// row page can also draw some rows with its own control (slots.ts controls, such as Appearance's theme gallery).
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
-import { ROWS, cardRows, pageFirstLevel, rowLevel, type Row, type UiHints } from "./rows";
+import { ROWS, cardRows, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 import { RowView, Segmented } from "./RowView";
-import { mergeRows, type PageSlots } from "./slots";
+import { mergeRows, type PageSlots, type SlotControl } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
 import { INVALID_CONFIG, useSchemaHints } from "./useRow";
 import "../../glass/glass.css";
@@ -116,16 +117,39 @@ function Results({ engine, hits, onOpen, onMakeDefault }: { engine: WindowEngine
 
 /** A card's rows: its regular rows, then the finer ones (Advanced and Technical) in a borderless "Fine-tune each part"
  *  group, as in the preview's .s36Fine. A card with no regular row shown draws its rows flat. */
-function CardRows({ engine, rows, hints }: { engine: WindowEngine; rows: Row[]; hints: UiHints }) {
+type RowHost = { engine: WindowEngine; hints: UiHints; controls?: Record<string, SlotControl>; onPage?: (page: PageId) => void };
+
+/** A row its page draws itself (slots.ts controls): the row's label, help and level tag, then the page's control in
+ *  the control's place. A list-sized control (a "custom" row) takes the row's full width under its label. */
+function SlotRow({ engine, row, hints, control: Control, onPage }: RowHost & { row: Row; control: SlotControl }) {
+  const level = rowLevel(row, hints);
+  const tag = level > 0 ? LEVELS[level].label : undefined;
+  const help = rowHelp(row, hints);
+  return (
+    <div id={`row-${row.id}`} className={`r1s-row${row.control === "custom" ? " r1s-stack" : ""}`} data-row={row.id} data-lv={tag} data-slot="">
+      <b className="g-label" data-lv={tag}>{rowLabel(row, hints)}</b>
+      {help ? <small className="g-label" data-lines>{help}</small> : null}
+      <div className="r1s-ctl r1s-own"><Control engine={engine} row={row} onPage={onPage} /></div>
+    </div>
+  );
+}
+
+function OneRow({ row, ...host }: RowHost & { row: Row }) {
+  const control = host.controls?.[row.id];
+  return control ? <SlotRow {...host} row={row} control={control} /> : <RowView engine={host.engine} row={row} />;
+}
+
+function CardRows({ rows, ...host }: RowHost & { rows: Row[] }) {
+  const { hints } = host;
   const regular = rows.filter((row) => rowLevel(row, hints) === 0);
   const finer = rows.filter((row) => rowLevel(row, hints) > 0);
-  if (!regular.length || !finer.length) return <>{rows.map((row) => <RowView key={row.id} engine={engine} row={row} />)}</>;
+  if (!regular.length || !finer.length) return <>{rows.map((row) => <OneRow key={row.id} {...host} row={row} />)}</>;
   return (
     <>
-      {regular.map((row) => <RowView key={row.id} engine={engine} row={row} />)}
+      {regular.map((row) => <OneRow key={row.id} {...host} row={row} />)}
       <div className="r1s-fine g-clear" role="group" aria-label={FINE}>
         <h3 className="g-label">{FINE}</h3>
-        {finer.map((row) => <RowView key={row.id} engine={engine} row={row} />)}
+        {finer.map((row) => <OneRow key={row.id} {...host} row={row} />)}
       </div>
     </>
   );
@@ -245,7 +269,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
           {sections.length ? sections.map(({ card, visible }) => (
             <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title}>
               {card ? <h2 className="g-label">{card}</h2> : null}
-              {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} /> : (
+              {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} /> : (
                 // A section with no rows in the table yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
                 <Coming engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
                   <div className="r1s-row">

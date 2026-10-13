@@ -332,6 +332,7 @@ export function callsOf(engine: WindowEngine, row: Row): string[] {
   if (src.kind === "pref") return ["users.prefs.get", "users.prefs.set"];
   if (src.kind === "look") return isDeviceKey(src.key) || lookStore(engine).snap.where === "device" ? [] : ["users.prefs.set"];
   if (src.kind === "coming") return [src.need];
+  if (src.kind === "slot") return [...src.calls];
   return [];
 }
 
@@ -379,7 +380,7 @@ export function useRow(engine: WindowEngine, row: Row): RowView {
   const hint = path ? hintFor(hints, path) : undefined;
   return {
     value, set, retry, state, reason: failed ?? blocked ?? base.reason,
-    need: row.source.kind === "coming" ? row.source.need : undefined,
+    need: row.source.kind === "coming" ? row.source.need : row.source.kind === "slot" ? row.source.calls.join(" ") : undefined,
     calls: callsOf(engine, row),
     label: rowLabel(row, hints), help: rowHelp(row, hints), level: rowLevel(row, hints), restart, sensitive: hint?.sensitive === true,
   };

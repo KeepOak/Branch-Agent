@@ -22,6 +22,16 @@ describe("mergeRows", () => {
     expect(() => mergeRows([], { chatapps: { rows: [row("general.x", "general")] } })).toThrow('Settings row "general.x" is on page "general" but page "chatapps" adds it.');
   });
 
+  it("draws a page's own control only for a row of that page", () => {
+    const control = () => null;
+    expect(() => mergeRows([row("general.a", "general")], { general: { controls: { "general.a": control } } })).not.toThrow();
+    expect(() => mergeRows([row("general.a", "general")], { general: { controls: { "general.zz": control } } })).toThrow('Page "general" draws a control for row "general.zz", which is not a row of that page.');
+    expect(() => mergeRows([row("general.a", "general")], { appearance: { controls: { "general.a": control } } })).toThrow(/not a row of that page/);
+    // Every control the shipped pages draw is for one of their own rows.
+    expect(() => mergeRows(ROWS, R1_PAGES)).not.toThrow();
+    expect(Object.keys(R1_PAGES.appearance?.controls ?? {}).length).toBeGreaterThan(0);
+  });
+
   it("keeps the shipped table unique: every R1 row and every Chat apps row, merged once", () => {
     const merged = mergeRows(ROWS, R1_PAGES);
     expect(new Set(merged.map((r) => r.id)).size).toBe(merged.length);
