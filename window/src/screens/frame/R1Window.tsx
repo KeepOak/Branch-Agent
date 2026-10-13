@@ -20,6 +20,7 @@ import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Popover } from "../../glass/Popover";
 import { Sidebar } from "../sidebar/Sidebar";
 import { Toasts } from "../../shell/Toasts";
+import { ApprovalsLayer, useLockdown } from "../approvals";
 import { Coming } from "../../glass/coming";
 
 /** Places R1 Settings search can open (its Go to group). */
@@ -61,6 +62,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const ready = snapshot.status.phase === "connected", engine = session.engine;
   const [conversations, list] = useConversations(session, ready, snapshot.mainKey);
   const waiting = usePendingApprovals(session, ready);
+  const lockdown = useLockdown(engine, ready).on;
   const [route, setRoute] = useState<Route>(loadRoute);
   const [history, setHistory] = useState({ index: 0, count: 1 });
   const entries = useRef<Route[]>([route]);
@@ -135,7 +137,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
         { label: "More", icon: <Icon name="more" />, onClick: ready ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
       ] : undefined,
       canBack: history.index > 0, canForward: history.index < history.count - 1, onBack: () => { if (history.index > 0) window.history.back(); }, onForward: () => { if (history.index < history.count - 1) window.history.forward(); },
-    }} composer={route.kind === "chat" ? <Composer name={snapshot.name} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} sessionKey={snapshot.sessionKey} working={Boolean(snapshot.liveRunId)} disabled={!ready} offline={!ready} onSend={(text, extras, id) => { setReplyTo(null); void session.send(text, extras, id); }} onStop={() => void session.stopRun()} onReload={() => void session.reload()} onToast={setNotice} onOpenConversation={openConversation} onOpen={target => {
+    }} composer={route.kind === "chat" ? <Composer name={snapshot.name} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} sessionKey={snapshot.sessionKey} working={Boolean(snapshot.liveRunId)} lockdown={lockdown} disabled={!ready} offline={!ready} onSend={(text, extras, id) => { setReplyTo(null); void session.send(text, extras, id); }} onStop={() => void session.stopRun()} onReload={() => void session.reload()} onToast={setNotice} onOpenConversation={openConversation} onOpen={target => {
       if (target === "settings/accounts/add") { sessionStorage.setItem("branch.openAddAccount", "1"); navigate({ kind: "settings", page: "accounts" }); }
       else if (target.startsWith("settings/")) navigate({ kind: "settings", page: target.slice("settings/".length) });
       else if (target === "customize/tools") navigate({ kind: "place", place: "customize" });
@@ -147,6 +149,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       else { search.current?.focus(); }
     }} />
     <Toasts />
+    <ApprovalsLayer engine={engine} ready={ready} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
     {convMenu && <Popover anchor={convAnchor} label="Conversation" align="end" width={260} onClose={() => setConvMenu(false)}><div className="r1c-menu" role="menu" aria-label="Show agents’ work as">
       <div className="r1c-menu-meta">Show agents’ work as</div>
       {[{ id: null, label: `Like Settings (${WORK_MODES.find(m => m.id === work.global)?.label})` }, ...WORK_MODES].map(m => <Coming key={m.id ?? "default"} engine={engine} need="users.prefs.set" reason="This engine can’t save how agents’ work shows here." where={m.label}><button type="button" role="menuitemradio" className="r1c-mi" aria-checked={work.override === m.id}
