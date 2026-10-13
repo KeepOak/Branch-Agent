@@ -167,3 +167,13 @@ test("install.sh never uses sudo and passes shellcheck when it is installed", { 
   if (check.error?.code === "ENOENT") return;
   assert.equal(check.status, 0, check.stdout + check.stderr);
 });
+
+test("CI lints install.ps1 with a PSScriptAnalyzer pinned by digest, never an unpinned Install-Module", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/desktop-checks.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const at = workflow.indexOf("- name: Lint install.ps1 with PSScriptAnalyzer");
+  assert.ok(at !== -1);
+  const step = workflow.slice(at, workflow.indexOf("\n      - name:", at + 1));
+  assert.doesNotMatch(step, /Install-Module/);
+  assert.match(step, /PSA_SHA256: b9969345f78251112fb75bdddc789be8689a343472a2e09762303aa03287afab/);
+  assert.ok(step.indexOf("Get-FileHash") < step.indexOf("Expand-Archive") && step.indexOf("Expand-Archive") < step.indexOf("Import-Module"), "verified before unpacked or imported");
+});

@@ -77,8 +77,18 @@ jobs:
       - name: Lint install.ps1 with PSScriptAnalyzer
         if: runner.os == 'Windows'
         shell: pwsh
+        # PSScriptAnalyzer 1.23.0 pinned by digest (the PowerShell Gallery's own SHA-512 packageHash for that version,
+        # plus the SHA-256 of the same .nupkg). Checked before it is unpacked or imported.
+        env:
+          PSA_SHA256: b9969345f78251112fb75bdddc789be8689a343472a2e09762303aa03287afab
         run: |
-          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) { Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -RequiredVersion 1.23.0 }
+          $nupkg = Join-Path $env:RUNNER_TEMP 'psscriptanalyzer.1.23.0.nupkg'
+          Invoke-WebRequest -Uri 'https://cdn.powershellgallery.com/packages/psscriptanalyzer.1.23.0.nupkg' -OutFile $nupkg
+          $actual = (Get-FileHash -Algorithm SHA256 -Path $nupkg).Hash.ToLowerInvariant()
+          if ($actual -ne $env:PSA_SHA256) { throw "PSScriptAnalyzer download does not match its pinned digest ($actual). Nothing was imported." }
+          $module = Join-Path $env:RUNNER_TEMP 'PSScriptAnalyzer'
+          Expand-Archive -Path $nupkg -DestinationPath $module -Force
+          Import-Module (Join-Path $module 'PSScriptAnalyzer.psd1') -Force
           $issues = @(Invoke-ScriptAnalyzer -Path install/install.ps1 -Severity Warning,Error)
           $issues | Format-Table -AutoSize | Out-String | Write-Output
           if ($issues.Count -gt 0) { exit 1 }
