@@ -1,5 +1,5 @@
 // R1 Settings frame, ported from the approved preview (item 36): the nav column with search and "How much to show" at
-// the top and the pages in their groups, a sticky page title with Learn more, and one glass card per section. Rows come
+// the top and the pages in their groups, a page title with Learn more that scrolls away with the page (v15), and one glass card per section. Rows come
 // from the row table (rows.ts) and draw through RowView; a section with no rows in the table yet is Coming (R1-10). A
 // page can instead draw its own component (slots.ts, such as Chat apps); nav, search and the level stay the frame's.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";

@@ -40,7 +40,8 @@
 
 /* the page: clear; the title stays put as you scroll, with no fill or blur of its own (its words sit on pills); one clear group per section */
 .r1s-page { position: relative; min-height: 0; overflow-y: auto; scroll-padding-top: 140px; }
-.r1s-head { position: sticky; top: 0; z-index: 6; max-width: 820px; margin: 0 auto; padding: 26px 32px 14px; }
+/* The page title scrolls away with the page, as in the preview (owner-approved v15: the Settings header is not pinned). */
+.r1s-head { max-width: 820px; margin: 0 auto; padding: 26px 32px 14px; }
 .r1s-head h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.025em; }
 .r1s-head h1.g-label { padding: 0 14px; border-radius: 20px; }
 .r1s-lede { margin: 6px 0 0; font-size: 13.5px; color: var(--ink-3); max-width: 640px; }
