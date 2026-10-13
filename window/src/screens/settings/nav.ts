@@ -148,3 +148,21 @@ export const LEVELS: { v: Level; label: string; line: string }[] = [
   { v: 1, label: "Advanced", line: "Every feature and the fine controls." },
   { v: 2, label: "Technical", line: "File paths, raw keys, launch variables, config and logs." },
 ];
+
+/** The engine call a section with no rows yet waits for (R1-10; HANDOFF R1-06 "Engine calls": a row with no key is
+ *  Coming with need = the method it waits for). A card listed here overrides its page; any other section on a page
+ *  waits for config.patch, the call that will save its keys. */
+const PAGE_NEED: Partial<Record<PageId, string>> = {
+  card: "users.setDisplayName", appearance: "users.prefs.set", who: "users.list", trunks: "agents.list", instructions: "agents.files.set",
+  customize: "tools.catalog", seedbank: "plugins.catalog.browse", memory: "memory.status", autos: "cron.list", voice: "talk.config",
+  chatapps: "channels.status", accounts: "usage.status", models: "models.list", permissions: "exec.approvals.get", signins: "secrets.store.list",
+  devices: "node.list", coding: "projects.list", history: "backup.status", learning: "skills.proposals.list", updates: "update.status",
+};
+const CARD_NEED: Record<string, string> = {
+  "notifications/Web Push": "push.web.subscribe", "trunks/Defaults for every Trunk": "config.patch",
+  "trunks/Trunks’ own databases": "config.patch", "customize/Skills": "skills.search", "customize/Plugins": "plugins.list",
+  "customize/Helpers and other agents": "agents.list", "voice/Speaking back": "tts.status", "accounts/Usage by account": "usage.cost",
+  "permissions/Mode": "config.patch", "privacy/Archived & Recently deleted": "sessions.list", "history/Snapshots": "worktrees.list",
+  "developer/Logs": "logs.tail", "developer/Hooks": "hooks.status", "developer/Health": "diagnostics.stability",
+};
+export const sectionNeed = (page: PageId, card: string): string => CARD_NEED[`${page}/${card}`] ?? PAGE_NEED[page] ?? "config.patch";

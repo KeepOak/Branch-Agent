@@ -1,15 +1,17 @@
 // R1 Settings frame, ported from the approved preview (item 36): the nav column with search and "How much to show" at
 // the top and the pages in their groups, a page title with Learn more that scrolls away with the page (v15), and one glass card per section. Rows come
 // from the row table (rows.ts) and draw through RowView; a section with no rows in the table yet is Coming (R1-10). A
-// page can instead draw its own component (slots.ts, such as Chat apps); nav, search and the level stay the frame's.
+// page can instead draw its own component (slots.ts, such as Chat apps); nav, search and the level stay the frame's. A
+// row page can also draw some rows with its own control (slots.ts controls, such as Appearance's theme gallery).
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
 import { lookStore } from "../../places/settings/set1/appearance-store";
-import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, type Level, type NavPage, type PageId } from "./nav";
-import { ROWS, cardRows, pageFirstLevel, rowLevel, type Row, type UiHints } from "./rows";
+import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
+import { ROWS, cardRows, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 import { RowView, Segmented } from "./RowView";
-import { mergeRows, type PageSlots } from "./slots";
+import { mergeRows, type PageSlots, type SlotControl } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
 import { INVALID_CONFIG, useSchemaHints } from "./useRow";
 import "../../glass/glass.css";
@@ -75,13 +77,13 @@ export type SettingsFrameProps = {
 
 function NavButton({ page, current, onOpen, sub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string }) {
   return (
-    <button type="button" className="r1s-nav" aria-current={current ? "page" : undefined} data-page={page.id} onClick={onOpen}>
+    <button type="button" className="r1s-nav" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} onClick={onOpen}>
       <span>{page.title}</span>{sub ? <small>{sub}</small> : null}
     </button>
   );
 }
 
-function Results({ hits, onOpen, onMakeDefault }: { hits: ReturnType<typeof searchSettings>; onOpen: (hit: SearchHit) => void; onMakeDefault?: (id: string) => void }) {
+function Results({ engine, hits, onOpen, onMakeDefault }: { engine: WindowEngine; hits: ReturnType<typeof searchSettings>; onOpen: (hit: SearchHit) => void; onMakeDefault?: (id: string) => void }) {
   const groups: [string, SearchHit[]][] = [["Settings", hits.settings], ["Go to", hits.goto], ["Trunks", hits.trunks], ["Features", hits.features]];
   if (!groups.some(([, list]) => list.length)) return <p className="r1s-none g-label" role="status">{NOTHING_MATCHES}</p>;
   return (
@@ -91,7 +93,7 @@ function Results({ hits, onOpen, onMakeDefault }: { hits: ReturnType<typeof sear
           <div className="r1s-grp g-label">{title}</div>
           {list.map((hit) => {
             const button = (
-              <button key={`${hit.kind}:${hit.id}`} type="button" className="r1s-nav r1s-res" data-hit={hit.id} onClick={() => onOpen(hit)}>
+              <button key={`${hit.kind}:${hit.id}`} type="button" className="r1s-nav r1s-res" data-local="" data-hit={hit.id} onClick={() => onOpen(hit)}>
                 <span><b data-lv={hit.kind === "row" && hit.level > 0 ? LEVELS[hit.level].label : undefined}>{hit.label}</b>{"sub" in hit && hit.sub ? <small>{hit.sub}</small> : null}</span>
               </button>
             );
@@ -100,8 +102,10 @@ function Results({ hits, onOpen, onMakeDefault }: { hits: ReturnType<typeof sear
             return (
               <div key={`${hit.kind}:${hit.id}`} className="r1s-hit">
                 {button}
-                {onMakeDefault ? <button type="button" className="r1s-link r1s-mkdef" onClick={() => onMakeDefault(hit.id)}>Make default</button>
-                  : <button type="button" className="r1s-link r1s-mkdef" aria-disabled="true" data-coming="agents.setDefault" title={MAKE_DEFAULT_COMING}>Make default</button>}
+                {/* Make default is a config.patch of the default agent (HANDOFF R1-06); without a host that makes it, Coming. */}
+                <Coming engine={engine} need="config.patch" unwired={!onMakeDefault} reason={onMakeDefault ? undefined : MAKE_DEFAULT_COMING}>
+                  <button type="button" className="r1s-link r1s-mkdef" onClick={() => onMakeDefault?.(hit.id)}>Make default</button>
+                </Coming>
               </div>
             );
           })}
@@ -113,16 +117,39 @@ function Results({ hits, onOpen, onMakeDefault }: { hits: ReturnType<typeof sear
 
 /** A card's rows: its regular rows, then the finer ones (Advanced and Technical) in a borderless "Fine-tune each part"
  *  group, as in the preview's .s36Fine. A card with no regular row shown draws its rows flat. */
-function CardRows({ engine, rows, hints }: { engine: WindowEngine; rows: Row[]; hints: UiHints }) {
+type RowHost = { engine: WindowEngine; hints: UiHints; controls?: Record<string, SlotControl>; onPage?: (page: PageId) => void };
+
+/** A row its page draws itself (slots.ts controls): the row's label, help and level tag, then the page's control in
+ *  the control's place. A list-sized control (a "custom" row) takes the row's full width under its label. */
+function SlotRow({ engine, row, hints, control: Control, onPage }: RowHost & { row: Row; control: SlotControl }) {
+  const level = rowLevel(row, hints);
+  const tag = level > 0 ? LEVELS[level].label : undefined;
+  const help = rowHelp(row, hints);
+  return (
+    <div id={`row-${row.id}`} className={`r1s-row${row.control === "custom" ? " r1s-stack" : ""}`} data-row={row.id} data-lv={tag} data-slot="">
+      <b className="g-label" data-lv={tag}>{rowLabel(row, hints)}</b>
+      {help ? <small className="g-label" data-lines>{help}</small> : null}
+      <div className="r1s-ctl r1s-own"><Control engine={engine} row={row} onPage={onPage} /></div>
+    </div>
+  );
+}
+
+function OneRow({ row, ...host }: RowHost & { row: Row }) {
+  const control = host.controls?.[row.id];
+  return control ? <SlotRow {...host} row={row} control={control} /> : <RowView engine={host.engine} row={row} />;
+}
+
+function CardRows({ rows, ...host }: RowHost & { rows: Row[] }) {
+  const { hints } = host;
   const regular = rows.filter((row) => rowLevel(row, hints) === 0);
   const finer = rows.filter((row) => rowLevel(row, hints) > 0);
-  if (!regular.length || !finer.length) return <>{rows.map((row) => <RowView key={row.id} engine={engine} row={row} />)}</>;
+  if (!regular.length || !finer.length) return <>{rows.map((row) => <OneRow key={row.id} {...host} row={row} />)}</>;
   return (
     <>
-      {regular.map((row) => <RowView key={row.id} engine={engine} row={row} />)}
+      {regular.map((row) => <OneRow key={row.id} {...host} row={row} />)}
       <div className="r1s-fine g-clear" role="group" aria-label={FINE}>
         <h3 className="g-label">{FINE}</h3>
-        {finer.map((row) => <RowView key={row.id} engine={engine} row={row} />)}
+        {finer.map((row) => <OneRow key={row.id} {...host} row={row} />)}
       </div>
     </>
   );
@@ -193,14 +220,14 @@ export function SettingsFrame(props: SettingsFrameProps) {
       <aside className="r1s-side g-clear" aria-label="Settings">
         <label className="r1s-search g-frost">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></svg>
-          <input type="search" value={q} placeholder={SEARCH_PLACEHOLDER} aria-label={SEARCH_PLACEHOLDER} onChange={(e) => setQ(e.target.value)} onKeyDown={onSearchKey} />
+          <input type="search" data-local="" value={q} placeholder={SEARCH_PLACEHOLDER} aria-label={SEARCH_PLACEHOLDER} onChange={(e) => setQ(e.target.value)} onKeyDown={onSearchKey} />
         </label>
-        <div className="r1s-level">
+        <div className="r1s-level" data-local="">
           <Segmented label="How much to show" value={level} options={LEVELS.map((l) => ({ v: l.v, label: l.label }))} onChange={(v) => setLevel(v as Level)} />
           <small className="g-label" data-lines>{levelLine}</small>
         </div>
         <nav className="r1s-list" aria-label="Settings pages">
-          {q.trim() ? <Results hits={hits} onOpen={open} onMakeDefault={props.onTrunk ? (id) => { setQ(""); props.onTrunk?.(id, "makeDefault"); } : undefined} /> : (
+          {q.trim() ? <Results engine={engine} hits={hits} onOpen={open} onMakeDefault={props.onTrunk ? (id) => { setQ(""); props.onTrunk?.(id, "makeDefault"); } : undefined} /> : (
             <>
               {TOP_PAGES.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={p.id === "goto" ? GOTO_SUB : undefined} onOpen={() => go(p.id)} />)}
               {NAV.map((g) => {
@@ -220,18 +247,19 @@ export function SettingsFrame(props: SettingsFrameProps) {
         {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} /></div> : <>
         <header className="r1s-head">
           <h1 className="g-label">{spec.title}</h1>
-          <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>
+          <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" data-local="" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>
           {help ? (
             <div className="r1s-help g-clear" role="dialog" aria-label={`About ${spec.title}`}>
               <h3 className="g-label">On this page</h3>
-              <ul>{sections.map((s) => <li key={s.card}><button type="button" className="r1s-link" onClick={() => { setHelp(false); setJump(`sec-${shownPage}-${s.card}`); }}>{s.card || spec.title}</button></li>)}</ul>
-              {props.onAsk ? <button type="button" className="r1s-btn" onClick={() => props.onAsk?.(`Help me with Settings › ${spec.title}.`)}>Ask a Trunk</button>
-                : <button type="button" className="r1s-btn" aria-disabled="true" data-coming="sessions.send" title={ASK_COMING} style={{ opacity: .55, cursor: "not-allowed" }}>Ask a Trunk</button>}
+              <ul>{sections.map((s) => <li key={s.card}><button type="button" className="r1s-link" data-local="" onClick={() => { setHelp(false); setJump(`sec-${shownPage}-${s.card}`); }}>{s.card || spec.title}</button></li>)}</ul>
+              <Coming engine={engine} need="sessions.send" unwired={!props.onAsk} reason={props.onAsk ? undefined : ASK_COMING}>
+                <button type="button" className="r1s-btn" onClick={() => props.onAsk?.(`Help me with Settings › ${spec.title}.`)}>Ask a Trunk</button>
+              </Coming>
             </div>
           ) : null}
         </header>
         <div className="r1s-col">
-          {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></div> : null}
+          {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></Coming></div> : null}
           {invalid ? (
             <div className="r1s-notice r1s-invalid g-frost" role="alert">
               {INVALID_CONFIG}
@@ -241,17 +269,20 @@ export function SettingsFrame(props: SettingsFrameProps) {
           {sections.length ? sections.map(({ card, visible }) => (
             <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title}>
               {card ? <h2 className="g-label">{card}</h2> : null}
-              {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} /> : (
-                <div className="r1s-row" aria-disabled="true" data-coming={`settings:${shownPage}/${card || "main"}`} title={SECTION_COMING(card || spec.title)}>
-                  <b className="g-label">Coming</b>
-                  <small className="r1s-note g-label" data-lines>{SECTION_COMING(card || spec.title)}</small>
-                </div>
+              {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} /> : (
+                // A section with no rows in the table yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
+                <Coming engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
+                  <div className="r1s-row">
+                    <b className="g-label">Coming</b>
+                    <small className="r1s-note g-label" data-lines>{SECTION_COMING(card || spec.title)}</small>
+                  </div>
+                </Coming>
               )}
             </section>
           )) : (
             <div className="r1s-empty g-clear">
               <p className="g-label">These settings show at {first !== null && first > level ? LEVELS[first].label : "Advanced"}.</p>
-              <button type="button" className="r1s-btn" onClick={() => setLevel(first !== null && first > level ? first : 1)}>Show {first !== null && first > level ? LEVELS[first].label : "Advanced"}</button>
+              <button type="button" className="r1s-btn" data-local="" onClick={() => setLevel(first !== null && first > level ? first : 1)}>Show {first !== null && first > level ? LEVELS[first].label : "Advanced"}</button>
             </div>
           )}
         </div>

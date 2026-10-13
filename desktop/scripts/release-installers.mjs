@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Wraps a target's verified desktop package (branch-desktop-<version>-<target>.tar.gz) in an installer a person can
-// double-click. Nothing here signs: Windows signing is the owner's last step (see desktop/INSTALLERS.md).
+// double-click. Signing goes through release-signing.mjs and stays off until the owner adds its secrets
+// (desktop/INSTALLERS.md, "Left for the owner"); until then the installers are built unsigned and the log says so.
 //   node desktop/scripts/release-installers.mjs --assets <release-assets> --version <version> --target <target> --out <dir>
 // win32-x64: a per-user Inno Setup installer (no admin prompt; the desktop updater must be able to swap its own folder).
 // darwin-arm64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
@@ -12,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installerAssetName, recordInstaller } from "./release-inventory.mjs";
+import { createSigner, statusLine } from "./release-signing.mjs";
 
 /** Stable across releases so an installer upgrades the same per-user install. Never change it. */
 export const WINDOWS_APP_ID = "{{6F0B6A43-3C1E-4D8B-9A57-2E4B1C9D7F10}";
@@ -172,6 +174,8 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
   const archive = resolve(assets, `branch-desktop-${version}-${target}.tar.gz`);
   if (!existsSync(archive)) throw new Error(`Missing desktop package ${archive}`);
   mkdirSync(out, { recursive: true });
+  const signer = createSigner({ target });
+  console.log(statusLine(signer.status));
   const work = mkdtempSync(join(tmpdir(), "branch-installer-"));
   try {
     const payload = join(work, "payload");
@@ -180,6 +184,7 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     const file = resolve(out, installerName(version, target));
     if (target === "win32-x64") {
       if (!existsSync(join(payload, "Branch Agent.exe"))) throw new Error("The Windows package has no Branch Agent.exe at its root");
+      signer.signApp(join(payload, "Branch Agent.exe"));
       const script = join(work, "branch-agent.iss");
       writeFileSync(script, "\ufeff" + innoSetupScript({ version, source: payload, out: resolve(out) }));
       run(innoCompiler(), ["/Qp", script]);
@@ -191,13 +196,16 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
       chmodSync(file, 0o755);
     } else {
       if (!existsSync(join(payload, "Branch Agent.app"))) throw new Error("The macOS package has no Branch Agent.app at its root");
+      signer.signApp(join(payload, "Branch Agent.app"));
       symlinkSync("/Applications", join(payload, "Applications"));
       run("hdiutil", dmgArgs({ stage: payload, out: file }));
     }
     if (!existsSync(file)) throw new Error(`The installer was not written: ${file}`);
-    console.log(`unsigned installer: ${file}`);
+    const signed = signer.signInstaller(file);
+    console.log(`${signed ? "signed" : "unsigned"} installer: ${file}`);
     return file;
   } finally {
+    signer.dispose();
     rmSync(work, { recursive: true, force: true });
   }
 }

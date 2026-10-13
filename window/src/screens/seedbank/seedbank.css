@@ -15,6 +15,7 @@
 .sb-web { flex: none; font-size: var(--fs-12-5); padding: 6px 12px; border-radius: var(--r-pill); border: 0; font-family: inherit; }
 .sb-paste { display: flex; align-items: center; gap: 10px; }
 .sb-paste > .sb-btn { flex: none; }
+.sb-manage { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
 .sb-paste small { color: var(--ink-3); font-size: var(--fs-12); }
 .sb-btn { height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 11px; border-radius: var(--r-pill); border: 0; font: inherit; font-size: var(--fs-12-5); font-weight: 500; white-space: nowrap; cursor: pointer; }
 .sb-btn[data-primary] { height: 32px; padding: 0 16px; font-size: var(--fs-13); font-weight: 600; }

@@ -103,7 +103,7 @@ test("appimagetool runs with the pinned runtime, no network and no FUSE", () => 
 
 test("the release workflow builds the Linux AppImage as a required step", () => {
   const workflow = readFileSync(new URL("../../.github/workflows/component-release.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-  const at = workflow.indexOf("      - name: Build installers\n");
+  const at = workflow.indexOf("      - name: Build installers, signed only when configured\n");
   assert.ok(at !== -1);
   const step = workflow.slice(at, workflow.indexOf("\n      - ", at + 1));
   assert.doesNotMatch(step, /if: matrix\.target != 'linux-x64'/);

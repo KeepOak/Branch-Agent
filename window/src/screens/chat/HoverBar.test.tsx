@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CapabilityProvider } from "../../connect/capabilities";
+import { comingControls } from "../../glass/coming-registry";
 import type { HoverActions } from "../../thread/HoverBar";
 import { plainText } from "./chat-logic";
 import { HoverBar } from "./HoverBar";
@@ -29,6 +30,20 @@ const actions = (): HoverActions => ({
 const methods = ["session.reactions.set", "chat.send", "sessions.fork", "sessions.rewind", "session.context.set", "talk.speak"];
 const engine = { features: { methods, events: [] } };
 const menuRows = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] [role="menuitem"]')];
+
+it("R1-10: rows the window doesn't wire stay Coming and listed by their call even when the engine offers it", async () => {
+  const soon = ["sessions.messages.pin", "sessions.messages.share", "sessions.handoff", "sessions.messages.delete"];
+  const a = actions();
+  await act(async () => root.render(<CapabilityProvider engine={{ features: { methods: [...methods, ...soon], events: [] } }}><HoverBar text="Hi" isReply actions={a} /></CapabilityProvider>));
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+  const row = (label: string) => menuRows().find((b) => b.textContent === label)!;
+  for (const label of ["Pin", "Share as a picture", "Continue in a coding app", "Delete"]) {
+    expect(row(label).getAttribute("aria-disabled"), label).toBe("true");
+    expect(row(label).dataset.coming, label).toBeTruthy();
+  }
+  const listed = comingControls().filter((c) => soon.some((m) => c.need.includes(m))).map((c) => c.where);
+  expect(listed).toEqual(expect.arrayContaining(["Pin", "Share as a picture", "Continue in a coding app", "Delete"]));
+});
 
 it("has exactly three buttons: React, Reply and •••", async () => {
   await act(async () => root.render(<CapabilityProvider engine={engine}><HoverBar text="Hi" isReply actions={actions()} /></CapabilityProvider>));

@@ -928,6 +928,19 @@ describe("gateway run option collisions", () => {
     expect(runtimeErrors.join("\n")).toContain("--profile <name> with a free port");
   });
 
+  it("refuses a plain start when a verified gateway already listens on the port", async () => {
+    findVerifiedGatewayListenerPidsOnPortSync.mockReturnValue([4242]);
+
+    await expect(runGatewayCli(["gateway", "run", "--allow-unconfigured"])).rejects.toThrow(
+      "__exit__:1",
+    );
+
+    expect(findVerifiedGatewayListenerPidsOnPortSync).toHaveBeenCalledWith(18789);
+    expect(forceFreePortAndWait).not.toHaveBeenCalled();
+    expect(startGatewayServer).not.toHaveBeenCalled();
+    expect(runtimeErrors.join("\n")).toContain("pid 4242");
+  });
+
   it("reports restart storms before managed macOS Gateway startup", async () => {
     const warning = "Gateway restart storm: inspect launchd jobs with branch gateway status.";
     warnAboutGatewayRestartStorm.mockImplementation(async (_env, warn) => warn(warning));

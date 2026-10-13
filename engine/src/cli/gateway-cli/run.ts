@@ -664,6 +664,19 @@ async function runGatewayCommandOnce(
       }
     }
   }
+  if (!opts.force) {
+    // A stray second gateway must not bind beside the verified listener already on this port.
+    const holders = findVerifiedGatewayListenerPidsOnPortSync(port).filter(
+      (pid) => pid !== process.pid,
+    );
+    if (holders.length > 0) {
+      defaultRuntime.error(
+        `Port ${port} is already served by a running gateway (pid ${formatGatewayPidList(holders)}). Stop it first, or start with --force to replace it.`,
+      );
+      defaultRuntime.exit(1);
+      return;
+    }
+  }
   if (opts.force) {
     const interactive = isTerminalInteractive();
     const describeNonInteractiveGatewayOwner = () => {
