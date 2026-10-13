@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { fileDigest, verifyReleaseDirectory } from "./release-inventory.mjs";
+import { addInstallScripts, fileDigest, verifyReleaseDirectory } from "./release-inventory.mjs";
 
 const repository = "KeepOak/Branch-Agent";
 const execute = promisify(execFile);
@@ -159,6 +159,8 @@ export async function publishRelease(directory, commit, version, request = gh, d
   const existing = JSON.parse(await request(["api", `repos/${repository}/releases`, "--paginate", "--slurp"])).flat();
   assert(!existing.some(item => item.tag_name === tag), "Release tags/assets are immutable; choose a new source version");
   await ensureImmutableTag(tag, commit, request);
+  // The one-line install scripts ride along with every release and are checksummed like any other asset.
+  await addInstallScripts(directory, proof.inventory);
   const checksums = Object.entries(proof.inventory).map(([name, info]) => `${info.sha256}  ${name}`).join("\n") + "\n";
   await writeFile(join(directory, "SHA256SUMS"), checksums);
   const names = [...Object.keys(proof.inventory), "SHA256SUMS"].sort();

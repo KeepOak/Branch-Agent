@@ -38,7 +38,7 @@ async function fixture(body) {
       const output = join(root, platform); await mkdir(output);
       const desktop = { app: asar, electronVersion: "44.5.1", runtime: app };
       const manifest = await makeComponentRelease({ version, sourceCommit: commit, tag, engine, window, desktop, output, platform, arch });
-      const identity = { commit, version, platform, arch, electronVersion: "44.5.1", runtime: {
+      const identity = { commit, version, platform, arch, electronVersion: "44.5.1", ...(platform === "darwin" ? { signing: "identity" } : {}), runtime: {
         electronVersion: "44.5.1", electron: { sha256: "b".repeat(64), bytes: 1 },
         node: { version: "v24.19.0", platform, arch, sha256: "c".repeat(64) } }, smoke: { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: 10, runtime: { version: "v24.19.0", platform, arch }, source: "verified-component-archive", archiveSha256: manifest.components.engine.sha256, archiveBytes: manifest.components.engine.bytes, expandedBytes: manifest.components.engine.expandedBytes } };
       await writeReleaseInventory(output, identity); await cp(output, assets, { recursive: true });
@@ -231,7 +231,8 @@ test("desktop checks run the publication order test by name", async () => {
   assert.match(workflow, /^\s+run: node --test scripts\/publish-component-release\.test\.mjs\s*$/m);
 });
 
-const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg` };
+const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg`,
+  "linux-x64": `Branch-Agent-${version}-linux-x64.AppImage` };
 async function listInstaller(assets, target, { place = true, listed } = {}) {
   const name = installerNames[target], file = join(assets, name);
   await writeFile(file, `unsigned ${target} installer`);
@@ -243,16 +244,22 @@ async function listInstaller(assets, target, { place = true, listed } = {}) {
   await writeFile(proofFile, JSON.stringify(proof, null, 2) + "\n");
 }
 
-test("listed installers are uploaded as release assets and Linux publishes without one", () => fixture(async assets => {
-  await listInstaller(assets, "win32-x64"); await listInstaller(assets, "darwin-arm64");
+test("listed installers, the Linux AppImage included, are uploaded as release assets and listed in SHA256SUMS", () => fixture(async assets => {
+  await listInstaller(assets, "win32-x64"); await listInstaller(assets, "darwin-arm64"); await listInstaller(assets, "linux-x64");
   const remote = githubMock(assets);
   await publishRelease(assets, commit, version, remote.request, remote.download, { sleep: remote.sleep, now: remote.now });
   const created = remote.calls.find(args => args[1] === "create");
   const uploaded = created.slice(3, created.indexOf("--repo")).map(file => basename(file));
   for (const name of Object.values(installerNames)) assert(uploaded.includes(name), `${name} was not uploaded`);
-  assert(!uploaded.some(name => /linux-x64\.(deb|AppImage)$/.test(name)));
+  assert(!uploaded.some(name => /linux-x64\.deb$/.test(name)));
   const sums = await readFile(join(assets, "SHA256SUMS"), "utf8");
   for (const name of Object.values(installerNames)) assert.match(sums, new RegExp(`^${(await fileDigest(join(assets, name))).sha256}  ${name.replace(/\./g, "\\.")}$`, "m"));
+  // The one-line install scripts ship with every release, so releases/latest/download/install.sh is stable.
+  for (const name of ["install.sh", "install.ps1"]) {
+    assert(uploaded.includes(name), `${name} was not uploaded`);
+    const source = await fileDigest(fileURLToPath(new URL(`../install/${name}`, import.meta.url)));
+    assert.match(sums, new RegExp(`^${source.sha256}  ${name.replace(/\./g, "\\.")}$`, "m"));
+  }
   assert.equal(remote.latest(), tag);
 }));
 
