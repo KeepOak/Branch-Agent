@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { SaplingSession } from "../../connect/session";
 import { useConversations, usePendingApprovals } from "../../shell/engine-data";
 import { Frame } from "./Frame";
@@ -24,6 +24,9 @@ import { Sidebar } from "../sidebar/Sidebar";
 import { Toasts } from "../../shell/Toasts";
 import { ApprovalsLayer } from "../approvals";
 import { Coming } from "../../glass/coming";
+import { useFirstRun } from "../../setup/use-first-run";
+import { Onboarding } from "../onboarding";
+import { recordOnboarding } from "../onboarding/finish";
 
 /** Places R1 Settings search can open (its Go to group). */
 const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }));
@@ -82,6 +85,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const convMenu = menuFor === snapshot.sessionKey;
   const setConvMenu = (open: boolean) => setMenuFor(open ? snapshot.sessionKey : undefined);
   const work = useWorkMode(ready ? engine : undefined, snapshot.sessionKey);
+  // R1-07: the onboarding card opens by itself on first run (no wizard.lastRunAt), as Classic setup does.
+  const setupReads = useMemo(() => ({ request: <T,>(method: string, params?: unknown) => Promise.resolve(engine.request<T>(method, params)) }), [engine]);
+  const firstRun = useFirstRun(setupReads as Pick<SaplingSession, "request">, ready, () => document.querySelector(".r1-ob, [role=dialog][aria-modal=true]") !== null);
+  const onboarding = ready && firstRun.step !== null;
   const closeAgent = useCallback(() => setAgentOpen(false), []);
   const applyRoute = useCallback((next: Route) => {
     saveRoute(next); setRoute(next); setAgentOpen(false);
@@ -134,6 +141,11 @@ export function R1Window({ session }: { session: SaplingSession }) {
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo}
   />;
   return <>
+    {onboarding && <Onboarding engine={engine} startAt={firstRun.step ?? 0}
+      onLater={state => { firstRun.close(); void recordOnboarding(engine, state).catch((e: unknown) => setNotice(`Couldn’t save that setup is done: ${e instanceof Error ? e.message : String(e)}`)); }}
+      onDone={({ sessionKey }) => { firstRun.close(); navigate({ kind: "chat", key: sessionKey }); }} />}
+    {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
+    <div className="r1-ob-behind" inert={onboarding} aria-hidden={onboarding || undefined} style={{ display: "contents", visibility: onboarding ? "hidden" : undefined }}>
     <Frame sidebar={sidebar} main={main} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : route.place,
       face: <Face size={24} label={snapshot.name} />, pillRef: pill, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
@@ -156,6 +168,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       else if (document.activeElement === search.current) setNotice("Coming · Find anything is not connected yet.");
       else { search.current?.focus(); }
     }} />
+    </div>
     {lockdown.confirmation}
     <Toasts />
     <ApprovalsLayer engine={engine} ready={ready} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
