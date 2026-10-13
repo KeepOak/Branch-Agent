@@ -13,6 +13,7 @@ import {
   prepareSqliteReadOnlyLocationSyncInProcess,
   SqliteSourceChangedError,
 } from "./sqlite-readonly-location.js";
+import { cleanupSnapshotOperations } from "./sqlite-readonly-location-cleanup.js";
 import { withSqliteReadOnlyWorkerScope } from "./sqlite-readonly-worker.js";
 import {
   prepareSqliteReadOnlyLocation,
@@ -27,6 +28,9 @@ const tempDirs = useAutoCleanupTempDirTracker((cleanup) => {
     vi.restoreAllMocks();
     try {
       await Promise.all(writers.splice(0).map((writer) => writer.stop()));
+      // A snapshot worker or child still holding a directory makes its removal fail with EPERM on
+      // Windows; join it before the temp root is removed.
+      await cleanupSnapshotOperations();
     } finally {
       cleanup();
     }

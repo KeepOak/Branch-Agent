@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
-import { adoptPreparedLocation } from "./sqlite-readonly-location-cleanup.js";
+import { adoptPreparedLocation, removeTempDirectory } from "./sqlite-readonly-location-cleanup.js";
 import {
   acquireSqliteSnapshotReadToken,
   createSqliteSnapshotStagingDirectorySync,
@@ -82,6 +82,49 @@ it("keeps snapshot directories bounded across a create-and-release loop when rem
     stub.mockRestore();
   }
   expect(snapshotDirectories(cache)).toEqual([]);
+});
+
+/**
+ * SIMULATED: a briefly-held Windows handle. Removal of the directory throws EPERM until the window ends.
+ * Evidence for the mechanism: a node:sqlite handle left open inside a snapshot directory makes rm fail
+ * with EPERM (errno 1, syscall rm) on Windows, and the same directories were removed without error once
+ * the holder released (the interim sweep removed 1,000+ leaked directories with zero errors).
+ */
+it("removes a snapshot that a briefly-held Windows handle blocks past the inline backoff", async () => {
+  const cache = createCache();
+  const directory = createSqliteSnapshotStagingDirectorySync(cache);
+  writeSnapshot(directory);
+  const blockedUntil = Date.now() + 1_500;
+  const blocked = (target: fs.PathLike) =>
+    Date.now() < blockedUntil && String(target).startsWith(directory);
+  const eperm = (target: fs.PathLike) =>
+    Object.assign(new Error(`EPERM: operation not permitted, rm '${String(target)}'`), {
+      code: "EPERM",
+    });
+  const syncRemove = fs.rmSync;
+  const asyncRemove = fs.promises.rm;
+  vi.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+    if (blocked(target)) {
+      throw eperm(target);
+    }
+    return syncRemove(target, options);
+  });
+  vi.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+    if (blocked(target)) {
+      throw eperm(target);
+    }
+    return asyncRemove(target, options);
+  });
+
+  // The inline backoff gives up while the handle is still held; the removal must then complete on its own.
+  expect(removeTempDirectory(directory)).toBe(false);
+  const deadline = Date.now() + 5_000;
+  while (fs.existsSync(directory) && Date.now() < deadline) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 100);
+    });
+  }
+  expect(fs.existsSync(directory)).toBe(false);
 });
 
 it("reclaims an orphaned snapshot older than ten minutes but spares one with an active reader", () => {
