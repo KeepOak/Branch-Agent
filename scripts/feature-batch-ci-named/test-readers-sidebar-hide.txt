@@ -10,6 +10,8 @@ window:src/shell/list-model.test.ts
 window:src/shell/new-menu.test.ts
 window:src/shell/new-trunk-flow.test.ts
 window:src/shell/palette-model.test.ts
+window:src/shell/pet-first-frame.test.ts
+window:src/shell/pet-pixel.test.ts
 window:src/shell/place-head.test.tsx
 window:src/shell/r2-shell.test.ts
 window:src/shell/readers.test.ts

@@ -137,6 +137,8 @@ export const windowTests = [
   'src/shell/guide.test.tsx',
   'src/shell/limit-window-reading.test.ts',
   'src/shell/new-menu.test.ts',
+  'src/shell/pet-first-frame.test.ts',
+  'src/shell/pet-pixel.test.ts',
   'src/shell/r2-shell.test.ts',
   'src/shell/resize-cancel.test.tsx',
   'src/shell/row-menu.test.ts',
