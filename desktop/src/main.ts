@@ -865,7 +865,11 @@ const windowUrl = (): string => `http://127.0.0.1:${cfg.windowPort}/`;
  * it. A running app never restarts itself for a desktop update.
  */
 async function handOffDesktop(): Promise<boolean> {
-  if (!install || !await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), false)) return false;
+  if (!install) return false;
+  // A broken hand-off must never stop the app from starting on its current build.
+  const handed = await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), false)
+    .catch((error: unknown) => { log(`desktop update skipped: ${String(error)}`); return false; });
+  if (!handed) return false;
   log("desktop update staged; handing off to the update helper and quitting");
   return true;
 }
