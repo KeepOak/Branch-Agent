@@ -18,8 +18,9 @@ import {
 import type { BranchDatabaseSchemaPreflight } from "../state/branch-database-preflight.types.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 import { activateGatewayAgentDatabaseStartup } from "../gateway/server-agent-database-startup.js";
+import { resolveAuthProfileDatabasePath } from "./auth-profiles/sqlite.js";
 
-usePreparedModelRuntimeHarness({ label: "startup-transcript-repair" });
+const fixture = usePreparedModelRuntimeHarness({ label: "startup-transcript-repair" });
 const mocks = getPreparedModelRuntimeMocks();
 
 // The session migration hands each agent database to the caller. Drive that hand-off directly; the
@@ -36,6 +37,40 @@ vi.mock("../config/sessions/startup-migration.js", async (importOriginal) => {
         await params.handoffDatabase?.(database);
       }
     },
+  };
+});
+
+// The Gateway's startup preparation refreshes the active secrets snapshot before publishing. The
+// fixture supplies a snapshot whose auth store is the agent's own database.
+const secrets = vi.hoisted(() => ({
+  active: false,
+  revision: 0,
+  authDatabasePaths: [] as string[],
+}));
+vi.mock("../secrets/runtime.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../secrets/runtime.js")>();
+  const snapshot = () => ({
+    sourceConfig: {},
+    authStores: secrets.authDatabasePaths.map((databasePath) => ({ databasePath })),
+  });
+  return {
+    ...actual,
+    getActiveSecretsRuntimeSnapshot: (() =>
+      secrets.active
+        ? snapshot()
+        : actual.getActiveSecretsRuntimeSnapshot()) as typeof actual.getActiveSecretsRuntimeSnapshot,
+    getActiveSecretsRuntimeSnapshotRevision: () =>
+      secrets.active ? secrets.revision : actual.getActiveSecretsRuntimeSnapshotRevision(),
+    refreshActiveSecretsRuntimeSnapshotForConfig: (async (
+      params: Parameters<typeof actual.refreshActiveSecretsRuntimeSnapshotForConfig>[0],
+    ) => {
+      if (!secrets.active) {
+        return await actual.refreshActiveSecretsRuntimeSnapshotForConfig(params);
+      }
+      params.assertCurrent?.();
+      secrets.revision += 1;
+      return true;
+    }) as typeof actual.refreshActiveSecretsRuntimeSnapshotForConfig,
   };
 });
 
@@ -63,10 +98,13 @@ async function closeDatabases() {
 }
 afterEach(closeDatabases);
 
-const config: BranchConfig = {};
+// The roster must own "tk": inspection and preparation resolve its database path from the config.
+const config = { agents: { entries: { tk: {} } } } as BranchConfig;
 
 it("admits an agent while its transcript repair is still pending, then runs the repair once", async () => {
   mocks.configuredAgentIds = ["tk"];
+  secrets.authDatabasePaths = [resolveAuthProfileDatabasePath(fixture.state.agentDir("tk"))];
+  secrets.active = true;
   const env = {
     BRANCH_STATE_DIR: tempDirs.make("startup-transcript-repair-"),
     BRANCH_AGENT_PREPARATION_RETRY_MS: "1",
@@ -114,10 +152,15 @@ it("admits an agent while its transcript repair is still pending, then runs the 
     });
     // Admission completes while the repair is still held open.
     await expect
-      .poll(() => ({ reason: readAgentDatabaseAdmissionRefusal("tk", { env })?.reason, trace }), {
-        timeout: 8000,
-      })
-      .toEqual({ reason: undefined, trace: expect.anything() });
+      .poll(
+        () => ({
+          reason: readAgentDatabaseAdmissionRefusal("tk", { env })?.reason,
+          repairCalls: repair.calls,
+          trace,
+        }),
+        { timeout: 8000 },
+      )
+      .toEqual({ reason: undefined, repairCalls: expect.any(Number), trace: expect.anything() });
     await expect.poll(() => repair.calls, { timeout: 10000 }).toBe(1);
     // Resolve the repair and assert it ran exactly once.
     held.resolve({ reconciledSessions: 0 });
@@ -126,6 +169,7 @@ it("admits an agent while its transcript repair is still pending, then runs the 
   } finally {
     // Release the held repair so a failing run still shuts down.
     held.resolve({ reconciledSessions: 0 });
+    secrets.active = false;
     await stop?.();
   }
 });
