@@ -32,7 +32,7 @@ const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }
  * Pages that keep the Classic page although R1 has a slot for them, because the R1 port still lacks working Classic
  * features. Chat apps: Manage has no add another account, groups by ID, Check now, Reload or allowlist editing yet.
  */
-const KEEP_CLASSIC: ReadonlySet<string> = new Set(["chatapps", "accounts"]);
+const KEEP_CLASSIC: ReadonlySet<string> = new Set(["chatapps", "accounts", "appearance"]);
 
 /**
  * R1 Settings draws a page only once it has rows or its own slot and nothing working is left behind in Classic. Every

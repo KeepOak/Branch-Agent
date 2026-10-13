@@ -12,6 +12,7 @@ import { OverviewData, agentName, agents, number, people, personFrom, record, re
 import { money, runLength, whenWord } from "./format";
 import { PersonRow, type PersonLine } from "./People";
 import { FinishSetup } from "./Setup";
+import { NewTeammates } from "./NewTeammates";
 import "./overview.css";
 
 export const PAUSE_ALL_GAP = "Needs the engine's pause-all method.";
@@ -103,6 +104,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   const recent = recentActivity(rows, runList);
   return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<button type="button" className="btn sm" onClick={() => openPlace("office")}>Grove</button>}>
     <div className="ov-grid">
+      <NewTeammates engine={engine} mainKey={trunks.mainKey} openConversation={openConversation} />
       <Tile title="Now" action={<button type="button" className="ov-link" onClick={() => openPlace("canopy")}>Open Canopy</button>}>
         {status("sessions", "running conversations")}
         {running.map(row => <button key={row.key} type="button" className="ov-now" onClick={() => openConversation(row.key)}><Face size={34} state="work" label={agentName(trunks.list, row.agentId)} /><span className="ov-grow"><b>{agentName(trunks.list, row.agentId)}</b><small>{row.preview || row.title}</small></span></button>)}
