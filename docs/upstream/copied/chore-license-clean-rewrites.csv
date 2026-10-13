@@ -1,11 +1,11 @@
 branch_path,atlas_id,project,commit,upstream_path,date
-engine/src/secrets/totp.ts,INTEGRATIONS-0064,Skyvern-AI/skyvern,4a3ca3abcc,"removed: unused (no importers), 2026-10-13",2026-10-11
-engine/src/secrets/totp.test.ts,INTEGRATIONS-0064,Skyvern-AI/skyvern,4a3ca3abcc,"removed: unused (no importers), 2026-10-13",2026-10-11
-engine/src/safety/scoped-api-key.ts,SAFETY-0099,AstrBotDevs/AstrBot,9d4f523464,"removed: unused (no importers), 2026-10-13",2026-10-12
-engine/src/safety/scoped-api-key.test.ts,SAFETY-0099,AstrBotDevs/AstrBot,9d4f523464,"removed: unused (no importers), 2026-10-13",2026-10-12
-engine/src/sessions/resume-tree-types.ts,,CherryHQ/cherry-studio,e2f53146eb,"rewritten clean-room 2026-10-13, no upstream code",
-engine/src/sessions/resume-message-tree.ts,,CherryHQ/cherry-studio,e2f53146eb,"rewritten clean-room 2026-10-13, no upstream code",
-engine/src/sessions/resume-message-tree.native-tests.ts,,CherryHQ/cherry-studio,e2f53146eb,"rewritten clean-room 2026-10-13, no upstream code",
-engine/src/agents/tools/sequential-thinking-tool.ts,,CherryHQ/cherry-studio,e2f53146eb,"rewritten clean-room 2026-10-13, no upstream code",
-engine/extensions/discord/src/monitor/discord-context-provider.ts,,lobehub/lobehub,4bcb808c60,"rewritten clean-room 2026-10-13, no upstream code",
-engine/extensions/discord/src/monitor/discord-context-provider.test.ts,,lobehub/lobehub,4bcb808c60,"rewritten clean-room 2026-10-13, no upstream code",
+engine/src/secrets/totp.ts,INTEGRATIONS-0064,Skyvern-AI/skyvern,4a3ca3abcc,"skyvern/forge/sdk/services/credentials.py (removed: unused (no importers), 2026-10-13)",2026-10-11
+engine/src/secrets/totp.test.ts,INTEGRATIONS-0064,Skyvern-AI/skyvern,4a3ca3abcc,"tests/unit/test_parse_totp_secret.py (removed: unused (no importers), 2026-10-13)",2026-10-11
+engine/src/safety/scoped-api-key.ts,SAFETY-0099,AstrBotDevs/AstrBot,9d4f523464,"astrbot/dashboard/services/api_key_service.py (removed: unused (no importers), 2026-10-13)",2026-10-12
+engine/src/safety/scoped-api-key.test.ts,SAFETY-0099,AstrBotDevs/AstrBot,9d4f523464,"tests/test_api_key_open_api.py (removed: unused (no importers), 2026-10-13)",2026-10-12
+engine/src/sessions/resume-tree-types.ts,,CherryHQ/cherry-studio,e2f53146eb,"src/renderer/components/chat/flow/topicMessageFlowGraph.ts (rewritten clean-room 2026-10-13, no upstream code)",
+engine/src/sessions/resume-message-tree.ts,,CherryHQ/cherry-studio,e2f53146eb,"src/renderer/components/chat/flow/topicMessageFlowGraph.ts (rewritten clean-room 2026-10-13, no upstream code)",
+engine/src/sessions/resume-message-tree.native-tests.ts,,CherryHQ/cherry-studio,e2f53146eb,"src/renderer/components/chat/flow/__tests__/topicMessageFlowGraph.test.ts (rewritten clean-room 2026-10-13, no upstream code)",
+engine/src/agents/tools/sequential-thinking-tool.ts,,CherryHQ/cherry-studio,e2f53146eb,"src/main/ai/mcp/servers/sequentialthinking.ts (rewritten clean-room 2026-10-13, no upstream code)",
+engine/extensions/discord/src/monitor/discord-context-provider.ts,,lobehub/lobehub,4bcb808c60,"packages/context-engine/src/providers/DiscordContextProvider.ts; packages/prompts/src/prompts/discordContext/index.ts (rewritten clean-room 2026-10-13, no upstream code)",
+engine/extensions/discord/src/monitor/discord-context-provider.test.ts,,lobehub/lobehub,4bcb808c60,"packages/context-engine/src/providers/__tests__/DiscordContextProvider.test.ts (rewritten clean-room 2026-10-13, no upstream code)",
