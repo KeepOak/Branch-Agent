@@ -376,6 +376,8 @@ export async function finishGatewayStartup(params: {
                   if (lifecycle.closePreludeStarted) {
                     return null;
                   }
+                  // Plugins are attached; worker recovery awaits admission.
+                  databasePreparationReady.resolve();
                   return await workerPlacementRuntime.startRuntime({
                     isClosePreludeStarted: () => lifecycle.closePreludeStarted,
                     // Close must see the drain handle before reconciliation can yield.

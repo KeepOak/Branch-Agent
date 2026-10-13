@@ -4,6 +4,7 @@
 import { Fragment, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { canAll, requestOrComing } from "../../connect/capabilities";
+import { Coming } from "../../glass/coming";
 import { errorText, visible } from "../../places/settings/adapter";
 import { ago } from "../../places/settings/set1/chatapps-data";
 import type { Pairing as Snapshot, PairRequest } from "../../places/settings/set1/chatapps-asking";
@@ -12,6 +13,7 @@ const APPROVE_LATER = "Approving requests here comes in a later update.";
 const DISMISS_LATER = "Dismissing requests here comes in a later update.";
 const until = (iso: string) => { const at = Date.parse(iso); if (!Number.isFinite(at)) return ""; const m = Math.max(0, Math.round((at - Date.now()) / 60000)); return m < 60 ? "in " + m + " min" : "in " + Math.round(m / 60) + " h"; };
 const reqLine = (r: PairRequest) => [visible(r.channelLabel), visible(r.accountLabel ?? r.accountId), r.createdAt ? "asked " + ago(Date.parse(r.createdAt)) : "", r.expiresAt && until(r.expiresAt) ? "expires " + until(r.expiresAt) : ""].filter(Boolean).join(" · ");
+const CODE_LATER = "Approval by code needs a window-safe engine flow.";
 
 type Props = {
   engine: WindowEngine; snapshot?: Snapshot; reload: () => Promise<void>;
@@ -64,8 +66,8 @@ export function Pairing({ engine, snapshot, reload, apps = [], level = 0, trunkF
       <button type="button" disabled={busy} data-need={dismiss ? "channels.pairing.dismiss" : "channels.pairing.approve"} onClick={() => void run({ channel: pending.channel, accountId: pending.accountId, requestId: pending.requestId, ...(!dismiss && tell ? { notify: true } : {}), ...(!dismiss && owner ? { bootstrapCommandOwner: true } : {}) }, dismiss ? "channels.pairing.dismiss" : "channels.pairing.approve")}>{dismiss ? "Dismiss request" : "Approve request"}</button>
     </div>}
     <div className="r1-ca-code" data-coming="Approval by code needs a window-safe engine flow.">
-      <label><span className="g-label">Approve by code</span><input aria-label="Pairing code" placeholder="Code from the app" disabled /></label>
-      <button type="button" disabled title="Approval by code needs a window-safe engine flow.">Coming</button>
+      <label><span className="g-label">Approve by code</span><Coming need="channels.pairing.approve" unwired reason={CODE_LATER} where="Pairing code"><input aria-label="Pairing code" placeholder="Code from the app" disabled /></Coming></label>
+      <Coming need="channels.pairing.approve" unwired reason={CODE_LATER} where="Approve by code"><button type="button" disabled>Coming</button></Coming>
       <small className="g-label" data-lines>Approve a request above. Approval by code comes in a later update.</small>
     </div>
     {snapshot?.limits && <p className="r1-ca-hint g-label" data-lines>Requests expire after {Math.round(snapshot.limits.ttlMs / 60000)} minutes. Each account holds up to {snapshot.limits.pendingPerAccount} waiting.</p>}

@@ -52,9 +52,11 @@ function Row({ icon, label, act, onDone, danger, hint, need }: { icon: IconName;
   return need ? <Coming need={need.need} reason={need.reason} where={label}>{row}</Coming> : row;
 }
 
+/** A row this window doesn't wire yet: always Coming through <Coming unwired>, which greys it, gives the reason and lists
+ *  it by the call it waits for, even on an engine that has that call (R1-10). */
 function SoonRow({ icon, label, soon, danger }: { icon: IconName; label: string; soon: { need: string; reason: string }; danger?: boolean }) {
-  return <Coming need={soon.need} reason={soon.reason} where={label}>
-    <button type="button" role="menuitem" className="r1c-mi" data-danger={danger || undefined} aria-disabled="true" title={soon.reason}>
+  return <Coming need={soon.need} unwired reason={soon.reason} where={label}>
+    <button type="button" role="menuitem" className="r1c-mi" data-danger={danger || undefined}>
       <Icon name={icon} size={15} /><span className="r1c-mi-t">{label}</span>
     </button>
   </Coming>;

@@ -20,7 +20,10 @@ export type RowSource =
   /** A switch of the Branch app on this computer (the desktop bridge's controls), such as starting with the computer. */
   | { kind: "desktop"; name: DesktopControlName }
   /** Nothing to call yet: drawn as Coming with the call it waits for. */
-  | { kind: "coming"; need: string; reason: string };
+  | { kind: "coming"; need: string; reason: string }
+  /** Drawn by its page's own control (slots.ts PageSlot.controls), which makes these engine calls and declares each
+   *  one; a frame without that control draws the row as Coming with this reason. */
+  | { kind: "slot"; calls: string[]; reason: string };
 
 export type Control = "toggle" | "segmented" | "select" | "number" | "text" | "secret" | "custom";
 export type RowOption = { v: string | number | boolean; label: string };
@@ -74,7 +77,7 @@ export function rowLabel(row: Row, hints: UiHints): string {
   const hint = hintOf(row, hints);
   if (hint?.label) return hint.label;
   const src = row.source;
-  const key = src.kind === "config" ? src.path : src.kind === "coming" ? row.id : src.kind === "desktop" ? src.name : src.key;
+  const key = src.kind === "config" ? src.path : src.kind === "coming" || src.kind === "slot" ? row.id : src.kind === "desktop" ? src.name : src.key;
   return key.split(".").pop() ?? key;
 }
 export const rowHelp = (row: Row, hints: UiHints): string | undefined => row.help ?? hintOf(row, hints)?.help;

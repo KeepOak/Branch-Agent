@@ -11,6 +11,9 @@ import { appRoute, chatsOf, withRoute, type Binding, type Peer } from "../../pla
 import { trunksOf } from "../../places/settings/set1/chatapps-data";
 import type { ChatApp } from "./catalogue";
 import { useCfg } from "./parts";
+import { Coming } from "../../glass/coming";
+
+const WORKSPACE_COMING = "Workspace membership comes in a later update.";
 
 const bindingRow: Row = { id: "chatapps.answers.bindings", page: "chatapps", card: "Who answers", level: 0, control: "custom", source: { kind: "config", path: "bindings" } };
 const SESSIONS = { limit: 500, requireLastInteraction: true, excludeSubagents: true, excludeCron: true, excludeSystem: true };
@@ -53,7 +56,9 @@ export function Access({ engine, app }: { engine: WindowEngine; app: ChatApp }) 
       })}
     </div> : null}
     <label><span className="g-label">Who may message it</span><select aria-label={"Who may message " + app.name} disabled={access.state !== "ready"} value={policy} data-need="config.patch" onChange={e => setPolicy(e.target.value)}>
-      {WHO.map((w) => <option key={w.v} value={w.v} disabled={w.v === "workspace" || (w.v === "allowlist" && !named && policy !== "allowlist")}>{w.v === "allowlist" && !named ? "Only me · add yourself in Manage first" : w.label}</option>)}
+      {WHO.map((w) => w.v === "workspace"
+        ? <Coming key={w.v} need="users.list" unwired reason={WORKSPACE_COMING} where={app.name + " › Anyone in my workspace"}><option value={w.v} disabled>{w.label}</option></Coming>
+        : <option key={w.v} value={w.v} disabled={w.v === "allowlist" && !named && policy !== "allowlist"}>{w.v === "allowlist" && !named ? "Only me · add yourself in Manage first" : w.label}</option>)}
     </select></label><small className="g-label" data-lines>Everyone else gets no answer. Branch can’t tell who is in your workspace yet. Changing who may message keeps everyone already allowed. Changes save immediately.</small>
     {routes.reason && <p role="alert" className="g-label" data-lines>{routes.reason}</p>}{access.reason && <p role="alert" className="g-label" data-lines>{access.reason}</p>}{agents.error && <p role="alert" className="g-label" data-lines>{agents.error}</p>}
   </section>;

@@ -167,8 +167,12 @@ describe("settings row table", () => {
     for (const key of lookKeys) expect(wired.has(key), key).toBe(true);
     // Classic greys these: they stay Coming rows with the call they wait for, never a whole-card placeholder.
     const at = (id: string) => page.find((r) => r.id === id);
-    for (const id of ["appearance.reading.editor-theme", "appearance.window.kiosk", "appearance.window.frame", "appearance.tray.menu", "appearance.language.pick", "appearance.theme.mode"]) {
+    for (const id of ["appearance.reading.editor-theme", "appearance.window.kiosk", "appearance.window.frame", "appearance.tray.menu", "appearance.language.pick"]) {
       expect(at(id)?.source.kind, id).toBe("coming");
+    }
+    // Classic's controls with more than a key are drawn by the page itself (#976), each naming the calls it makes.
+    for (const id of ["appearance.theme.mode", "appearance.theme.pick", "appearance.background.preview", "appearance.pet.had", "appearance.characters.each-trunk", "appearance.list.threads", "appearance.list.small-model"]) {
+      expect(at(id)?.source.kind, id).toBe("slot");
     }
     // Back to the default removes the choice, as Classic's SpecRow does; the theme's own accent and font are no choice.
     const contrast = at("appearance.theme.contrast");
