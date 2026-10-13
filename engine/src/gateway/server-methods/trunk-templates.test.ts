@@ -319,7 +319,7 @@ describe("trunks.template.create adds routines turned off", () => {
 });
 
 describe("trunks.template catalog", () => {
-  it("lists the eleven bundled templates", async () => {
+  it("lists the thirteen bundled templates", async () => {
     const { respond, done } = call("trunks.template.list", {});
     await done;
     const payload = respond.mock.calls[0]?.[1] as {
@@ -331,6 +331,7 @@ describe("trunks.template catalog", () => {
       ["home-desk", "bundled"],
       ["inbox-helper", "bundled"],
       ["lookout", "bundled"],
+      ["mentions-watch", "bundled"],
       ["night-shift", "bundled"],
       ["project-lead", "bundled"],
       ["prospect-finder", "bundled"],

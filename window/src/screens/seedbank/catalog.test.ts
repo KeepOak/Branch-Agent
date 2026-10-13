@@ -42,6 +42,14 @@ describe("day-one templates", () => {
     expect(addCall(entry)).toEqual({ method: "trunks.template.create" });
   });
 
+  it("adds Mentions Watch from the engine's bundled mentions-watch template, with its face colour", () => {
+    const listed = { templates: [{ id: "mentions-watch", name: "Mentions Watch", description: "Never posts", permissions: ["Never posts, replies or contacts anyone"] }] };
+    const entry = templateEntries(listed, undefined).find(e => e.name === "Mentions Watch")!;
+    expect(entry.source).toMatchObject({ type: "template", templateId: "mentions-watch", permissions: ["Never posts, replies or contacts anyone"] });
+    expect(DAY_ONE_TEMPLATES.find(t => t.id === "mentions-watch")?.colour).toBe("var(--warn)");
+    expect(addCall(entry)).toEqual({ method: "trunks.template.create" });
+  });
+
   it("adds Search Brief Desk from the engine's bundled search-brief-desk template, with its face colour", () => {
     const listed = { templates: [{ id: "search-brief-desk", name: "Search Brief Desk", description: "Never publishes or edits your site", permissions: ["Writes ideas and briefs only"] }] };
     const entry = templateEntries(listed, undefined).find(e => e.name === "Search Brief Desk")!;
