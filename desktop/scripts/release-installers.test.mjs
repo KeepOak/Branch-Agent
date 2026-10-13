@@ -14,6 +14,7 @@ test("the Windows installer is per-user and leaves nothing the desktop updater s
   const lines = script.split("\r\n");
   assert.ok(lines.includes(`AppId=${WINDOWS_APP_ID}`));
   assert.ok(lines.includes("PrivilegesRequired=lowest"), "no admin prompt");
+  assert.ok(lines.includes("MinVersion=10.0"), "Setup refuses Windows the bundled Electron can't run on");
   assert.ok(lines.includes("DefaultDirName={localappdata}\\Programs\\Branch Agent"), "a folder the updater can rename");
   assert.ok(lines.includes("UninstallFilesDir={localappdata}\\Programs\\Branch Agent Uninstall"), "the uninstaller survives a whole-app swap");
   assert.ok(lines.includes('Type: filesandordirs; Name: "{app}"'));

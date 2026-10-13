@@ -13,6 +13,8 @@ import { fileURLToPath } from "node:url";
 
 /** Stable across releases so an installer upgrades the same per-user install. Never change it. */
 export const WINDOWS_APP_ID = "{{6F0B6A43-3C1E-4D8B-9A57-2E4B1C9D7F10}";
+/** The bundled Electron's floor (Electron 23 dropped Windows 7, 8 and 8.1). */
+export const WINDOWS_MIN_VERSION = "10.0";
 export const TARGETS = ["win32-x64", "darwin-arm64", "linux-x64"];
 export const LINUX_PENDING = "No Linux installer yet: a .deb or AppImage installs read-only, and the desktop updater swaps its own folder. Ship the tar.gz until the install location is decided.";
 
@@ -48,6 +50,8 @@ export function innoSetupScript({ version, source, out }) {
     "DisableProgramGroupPage=yes",
     "DisableDirPage=yes",
     "PrivilegesRequired=lowest",
+    // Electron 23 and later need Windows 10; Setup refuses older Windows before installing anything.
+    `MinVersion=${WINDOWS_MIN_VERSION}`,
     "ArchitecturesAllowed=x64compatible",
     "ArchitecturesInstallIn64BitMode=x64compatible",
     "UninstallDisplayIcon={app}\\Branch Agent.exe",
