@@ -26,7 +26,7 @@ export function providersOf(value: unknown): Provider[] {
 export type Account = { p: Provider; a: Profile; n: number; first: boolean; last: boolean; ordered: boolean; next: boolean };
 
 /** An account that hit its rate or usage limit and isn't used until `limitedUntil`. */
-const isLimited = (a: Pick<Profile, "limitedUntil">, now = Date.now()) => typeof a.limitedUntil === "number" && a.limitedUntil > now;
+export const isLimited = (a: Pick<Profile, "limitedUntil">, now = Date.now()) => typeof a.limitedUntil === "number" && a.limitedUntil > now;
 
 /** "Sat 2:00 AM": when a limited account comes back. */
 export function limitedLabel(until: number): string {
@@ -66,7 +66,7 @@ export function accountName({ p, a, n }: Pick<Account, "p" | "a" | "n">): string
 }
 
 export const STATUS_WORDS: Record<string, string> = { ok: "", expiring: "Signing in again soon", expired: "Signed out · sign in again", missing: "Sign-in missing", static: "" };
-function accountSub(acc: Account): string {
+export function accountSub(acc: Account): string {
   const plan = acc.p.usage?.plan ? visible(acc.p.usage.plan) : acc.a.type === "api_key" ? "Key" : isToken(acc.a) ? "Subscription" : "";
   const email = acc.a.email && acc.a.displayName && acc.a.email !== acc.a.displayName ? visible(acc.a.email) : "";
   const state = STATUS_WORDS[acc.a.status] ?? visible(acc.a.status);
@@ -81,6 +81,52 @@ export function movedUp(acc: Account, all: Account[]): string[] {
   return ids;
 }
 
+/** The engine's id for a service's sign-ins (models.authOrderSet, models.probe, models.authLogout). */
+export const authProviderOf = (p: Provider): string => p.authProvider ?? p.provider;
+
+/** Saves a service's order (models.authOrderSet), for the household or one Trunk. */
+export const saveOrder = (engine: SettingsPageProps["engine"], p: Provider, ids: string[], agent: { agentId?: string }) =>
+  engine.request("models.authOrderSet", { provider: authProviderOf(p), profileIds: ids, ...agent });
+
+/** The order with this account first within its service (Answer first). */
+export function firstOrder(acc: Account, all: Account[]): string[] {
+  const ids = all.filter((x) => x.p === acc.p).map((x) => x.a.profileId);
+  return [acc.a.profileId, ...ids.filter((id) => id !== acc.a.profileId)];
+}
+
+/** Why Answer first is greyed for this account, or undefined when it can be put first. */
+export const answerFirstWhy = (acc: Account): string | undefined =>
+  acc.first && acc.ordered ? "It answers first already." : acc.p.profileOrderLocked ? "The order is set in the settings file." : undefined;
+
+/** Why Sign out is greyed for this account, or undefined when Branch can sign it out. */
+export const signOutWhy = (a: Profile): string | undefined =>
+  a.logoutSupported ? undefined : a.source === "config" ? "This sign-in is set in the settings file." : a.source === "external" || a.externallyManaged ? "Its own app keeps this sign-in; sign out there." : "This sign-in can’t be removed from here.";
+
+/** Test it: models.probe for one account; throws with the engine's words when the test doesn't pass. */
+export async function testAccount(engine: SettingsPageProps["engine"], acc: Account, agent: { agentId?: string }): Promise<void> {
+  const r = record(await engine.request("models.probe", { provider: authProviderOf(acc.p), profileId: acc.a.profileId, ...agent }));
+  if (r.ok === false || (r.status && r.status !== "ok")) throw new Error(visible(r.error ?? r.status ?? "The test didn’t pass."));
+}
+
+/** Sign out: models.authLogout for one account. */
+export const signOut = (engine: SettingsPageProps["engine"], acc: Account, agent: { agentId?: string }) =>
+  engine.request("models.authLogout", { provider: authProviderOf(acc.p), profileIds: [acc.a.profileId], ...agent });
+
+/** The "Sign in to X" services: ones the engine features a sign-in for that have no account yet. */
+export const signInOffers = (caps: RecordValue[], providers: Provider[]): string[] =>
+  caps.filter((c) => !providers.some((p) => p.provider === c.provider && p.profiles.length) && list(c.loginOptions).some((o) => o.featured)).map((c) => text(c.provider));
+
+/** The services that get an "Another X account" button (Claude's sign-in adds another through Add an account). */
+export const anotherOffers = (all: Account[]): Provider[] => [...new Map(all.map((x) => [x.p.provider, x.p])).values()].filter((p) => p.provider !== "anthropic");
+
+/** What Add an account was asked to open (sessionStorage "branch.openAddAccount"): "1" the picker, else that service. */
+export function takeAddRequest(): AddStart | null {
+  const asked = sessionStorage.getItem("branch.openAddAccount");
+  if (!asked) return null;
+  sessionStorage.removeItem("branch.openAddAccount");
+  return asked === "1" ? {} : { provider: asked };
+}
+
 export function AccountsPage(props: SettingsPageProps) {
   const scope = useScope();
   // As in Models: with several Trunks the engine needs an owner, so the household view uses the default Trunk.
@@ -90,11 +136,9 @@ export function AccountsPage(props: SettingsPageProps) {
   const [add, setAdd] = useState<AddStart | null>(null);
   useEffect(() => {
     const consume = () => {
-      const asked = sessionStorage.getItem("branch.openAddAccount");
-      if (!asked) return;
-      sessionStorage.removeItem("branch.openAddAccount");
       // "1" opens the picker; a provider id opens that provider's sign-in.
-      setAdd(asked === "1" ? {} : { provider: asked });
+      const asked = takeAddRequest();
+      if (asked) setAdd(asked);
     };
     window.addEventListener("branch:open-add-account", consume);
     consume();
@@ -108,8 +152,8 @@ export function AccountsPage(props: SettingsPageProps) {
       <AccountsStatus loading={status.loading} error={status.error} count={all.length} unavailable={record(status.data?.unavailable).message} />
       <OrderSection {...props} all={all} reload={status.reload} onAdd={setAdd} agent={agent} />
       {!status.loading && !status.error ? <div className="acts">
-        {caps.filter((c) => !providers.some((p) => p.provider === c.provider && p.profiles.length) && list(c.loginOptions).some((o) => o.featured)).map((c) => (
-          <Btn key={text(c.provider)} onClick={() => setAdd({ provider: text(c.provider) })}>Sign in to {serviceName(text(c.provider))}</Btn>
+        {signInOffers(caps, providers).map((id) => (
+          <Btn key={id} onClick={() => setAdd({ provider: id })}>Sign in to {serviceName(id)}</Btn>
         ))}
       </div> : null}
       <CodingApps engine={props.engine} />
@@ -138,10 +182,9 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
   const [menu, setMenu] = useState<{ at: MenuAnchor; acc: Account } | null>(null);
   const [picked, setPicked] = useState<string[] | null>(null);
   const setOrder = (acc: Account, ids: string[]) => save(async () => {
-    await engine.request("models.authOrderSet", { provider: acc.p.authProvider ?? acc.p.provider, profileIds: ids, ...agent });
+    await saveOrder(engine, acc.p, ids, agent);
     await reload();
   });
-  const brands = [...new Map(all.map((x) => [x.p.provider, x.p])).values()];
   const selecting = lv >= 1 && picked !== null;
   const right = lv >= 1 && all.length ? <SelectLink on={selecting} onToggle={() => setPicked(selecting ? null : [])} /> : undefined;
   return (
@@ -163,7 +206,7 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
       {all.some((x) => !x.first) ? <Hint>When one account runs low, Branch moves to the next.</Hint> : null}
       <Acts>
         <Btn pri onClick={() => onAdd({})}><Icon name="plus" small />Add an account</Btn>
-        {brands.filter((p) => p.provider !== "anthropic").map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
+        {anotherOffers(all).map((p) => <Btn key={p.provider} onClick={() => onAdd({ provider: p.provider })}>Another {serviceName(p.provider, p.displayName)} account</Btn>)}
       </Acts>
       {menu ? <AccountMenu engine={engine} acc={menu.acc} all={all} at={menu.at} agent={agent} reload={reload} setOrder={setOrder} onClose={() => setMenu(null)} /> : null}
     </Sec>
@@ -173,16 +216,13 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
 type MenuProps = { engine: SettingsPageProps["engine"]; acc: Account; all: Account[]; at: MenuAnchor; agent: { agentId?: string }; reload: () => Promise<void>; setOrder: (a: Account, ids: string[]) => Promise<boolean>; onClose: () => void };
 function AccountMenu({ engine, acc, all, at, agent, reload, setOrder, onClose }: MenuProps) {
   const save = useSaveRunner();
-  const provider = acc.p.authProvider ?? acc.p.provider;
-  const ids = all.filter((x) => x.p === acc.p).map((x) => x.a.profileId);
-  const outWhy = acc.a.logoutSupported ? undefined : acc.a.source === "config" ? "This sign-in is set in the settings file." : acc.a.source === "external" || acc.a.externallyManaged ? "Its own app keeps this sign-in; sign out there." : "This sign-in can’t be removed from here.";
   const items: MenuItem[] = [
-    { label: "Test it", run: () => void save(async () => { const r = record(await engine.request("models.probe", { provider, profileId: acc.a.profileId, ...agent })); if (r.ok === false || (r.status && r.status !== "ok")) throw new Error(visible(r.error ?? r.status ?? "The test didn’t pass.")); }) },
-    { label: "Answer first", disabled: acc.first && acc.ordered ? "It answers first already." : acc.p.profileOrderLocked ? "The order is set in the settings file." : undefined, run: () => void setOrder(acc, [acc.a.profileId, ...ids.filter((id) => id !== acc.a.profileId)]) },
+    { label: "Test it", run: () => void save(() => testAccount(engine, acc, agent)) },
+    { label: "Answer first", disabled: answerFirstWhy(acc), run: () => void setOrder(acc, firstOrder(acc, all)) },
     { label: "Rename", disabled: "Branch can’t rename an account yet.", run: () => undefined },
     { label: "Which Trunks use it", disabled: "Every Trunk uses this account, in this order.", run: () => undefined },
     { kind: "sep" },
-    { label: "Sign out", danger: true, disabled: outWhy, run: () => void save(async () => { await engine.request("models.authLogout", { provider, profileIds: [acc.a.profileId], ...agent }); await reload(); }) },
+    { label: "Sign out", danger: true, disabled: signOutWhy(acc.a), run: () => void save(async () => { await signOut(engine, acc, agent); await reload(); }) },
   ];
   return <Menu at={at} items={items} onClose={onClose} label={accountName(acc)} />;
 }
