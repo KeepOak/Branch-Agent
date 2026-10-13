@@ -244,7 +244,7 @@ export function Sidebar(p: SidebarProps) {
       <button type="button" className="r1sb-me" data-local="" ref={meRef} aria-haspopup="menu" aria-label={`${person} · Who is using Branch, look, lock`} title="Who is using Branch, look, lock" onClick={() => setPersonOpen(open => !open)}>
         <span aria-hidden="true">{person.slice(0, 1).toUpperCase()}</span>
       </button>
-      <button type="button" className="r1sb-seed" data-local="" aria-label="Seedbank: agents, skills, tools, plugins and connections" title="Seedbank: agents, skills, tools, plugins and connections" onClick={() => p.onPlace("customize")}>
+      <button type="button" className="r1sb-seed" data-local="" aria-label="Seedbank: agents, skills, tools, plugins and connections" title="Seedbank: agents, skills, tools, plugins and connections" onClick={() => p.onPlace("seedbank")}>
         <span className="r1sb-seed-icons" aria-hidden="true"><i>{icons.apps}</i><i>{icons.term}</i><i>{icons.leaf}</i></span><span className="r1sb-seed-t">Seedbank</span>
       </button>
       {update?.latest ? <button type="button" className="r1sb-upd" data-local="" data-busy={busy || undefined} aria-label={busy ? `Installing ${short}` : `Update to ${short}`} title={update.waiting ?? `Update to ${short}`} disabled={busy} onClick={install}>{icons.cloud}</button> : null}

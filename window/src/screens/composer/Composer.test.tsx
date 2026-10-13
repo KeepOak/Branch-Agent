@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../composer/engine";
-import { comingControls } from "../../glass/coming-registry";
+import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import type { Limits } from "../../shell/status-data";
 import { Composer } from "./Composer";
 
@@ -24,7 +24,7 @@ const LIMITS: Limits = { updatedAt: 0, refreshing: false, rows: [
   { id: "a", name: "ChatGPT · Account 2", provider: "openai-codex", email: "work@example.com", account: "", pill: "Measured", line: "", windows: [{ name: "5-hour", left: 61, reset: "", low: false }, { name: "Week", left: 30, reset: "", low: false }] },
 ] };
 
-async function mount(opts: { models?: boolean; working?: boolean; offline?: boolean; dictation?: boolean; replyTo?: { entryId: string; name: string; text: string }; onClearReply?: () => void } = {}) {
+async function mount(opts: { methods?: string[]; models?: boolean; working?: boolean; offline?: boolean; dictation?: boolean; replyTo?: { entryId: string; name: string; text: string }; onClearReply?: () => void } = {}) {
   let row: Record<string, unknown> = { model: "openai/test", permissionMode: "guarded", thinkingLevel: "medium" };
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "agents.list") return { defaultId: "scout", agents: [{ id: "scout", name: "Scout" }] };
@@ -36,7 +36,7 @@ async function mount(opts: { models?: boolean; working?: boolean; offline?: bool
     if (method === "sessions.patch") { row = { ...row, ...params }; return {}; }
     return {};
   });
-  const engine: WindowEngine = { sessionKey: "agent:scout:main", agentId: "scout", request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, scopes: ["operator.admin"] };
+  const engine: WindowEngine = { sessionKey: "agent:scout:main", agentId: "scout", request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, scopes: ["operator.admin"], ...(opts.methods ? { features: { methods: opts.methods, events: [] } } : {}) } as WindowEngine;
   const send = vi.fn(), opened = vi.fn();
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
@@ -154,6 +154,23 @@ describe("R1-04 composer", () => {
     const { host } = await mount({ dictation: true });
     expect(button("Dictate into the box")?.closest(".r1c-pill")).not.toBeNull();
     expect(host.querySelector(".r1c-row")?.hasAttribute("data-overflow")).toBe(false);
+  });
+
+  it("R1-10: against an engine with no methods, every control is declared and every Coming item names its call", async () => {
+    const { host } = await mount({ methods: [] });
+    await type(host, "Find the invoice");
+    await act(async () => host.querySelector<HTMLButtonElement>(".r1c-pill [aria-label^='Attach']")!.click());
+    const undeclared = undeclaredControls(document).filter((el) => el.closest(".r1c, .g-popover")).map((el) => el.getAttribute("aria-label") || el.textContent?.trim() || el.tagName);
+    expect(undeclared).toEqual([]);
+    const coming = comingControls();
+    expect(coming.filter((c) => c.need.length === 0).map((c) => c.where)).toEqual([]);
+    const needOf = (where: string) => coming.find((c) => c.where === where)?.need;
+    expect(needOf("Improve my draft")).toEqual(["sessions.companion.ask"]);
+    expect(needOf("Dictate into the box")).toEqual(["talk.catalog"]);
+    expect(needOf("+ menu › Screenshot")).toEqual(["desktop.observe"]);
+    expect(needOf("+ menu › Write a doc, sheet or slides")).toEqual(["agents.documents.create"]);
+    expect(needOf("+ menu › Branch from here")).toEqual(["sessions.fork"]);
+    expect(needOf("+ menu › Temporary chat")).toEqual(["sessions.patch"]);
   });
 
   it("registers nothing as Coming that it draws as live", async () => {
