@@ -24,7 +24,7 @@ const LIMITS: Limits = { updatedAt: 0, refreshing: false, rows: [
   { id: "a", name: "ChatGPT · Account 2", provider: "openai-codex", email: "work@example.com", account: "", pill: "Measured", line: "", windows: [{ name: "5-hour", left: 61, reset: "", low: false }, { name: "Week", left: 30, reset: "", low: false }] },
 ] };
 
-async function mount(opts: { models?: boolean; working?: boolean; offline?: boolean; dictation?: boolean } = {}) {
+async function mount(opts: { models?: boolean; working?: boolean; offline?: boolean; dictation?: boolean; replyTo?: { entryId: string; name: string; text: string }; onClearReply?: () => void } = {}) {
   let row: Record<string, unknown> = { model: "openai/test", permissionMode: "guarded", thinkingLevel: "medium" };
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "agents.list") return { defaultId: "scout", agents: [{ id: "scout", name: "Scout" }] };
@@ -41,7 +41,7 @@ async function mount(opts: { models?: boolean; working?: boolean; offline?: bool
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root?.render(<Composer name="Scout" engine={engine} working={Boolean(opts.working)} offline={Boolean(opts.offline)} onSend={send} onStop={() => {}} onToast={() => {}} onOpen={opened} onOpenConversation={() => {}}
-    limits={LIMITS} row={{ key: "agent:scout:main", title: "Main", isMain: true, totalTokens: 36000, contextTokens: 256000 } as never} topics={[{ key: "agent:scout:t1", title: "Invoices" }]} running={[]} />));
+    limits={LIMITS} row={{ key: "agent:scout:main", title: "Main", isMain: true, totalTokens: 36000, contextTokens: 256000 } as never} topics={[{ key: "agent:scout:t1", title: "Invoices" }]} running={[]} replyTo={opts.replyTo} onClearReply={opts.onClearReply} />));
   return { host, request, send, opened };
 }
 const type = async (host: HTMLElement, text: string) => act(async () => {
@@ -67,6 +67,16 @@ describe("R1-04 composer", () => {
     expect(button("Improve my draft")?.getAttribute("aria-disabled")).toBe("true");
     await act(async () => button("Send")!.click());
     expect(send).toHaveBeenCalledWith("Find the invoice", {}, undefined);
+  });
+
+  it("shows the message being answered, sends it with the next message and then clears it", async () => {
+    const clear = vi.fn();
+    const { host, send } = await mount({ replyTo: { entryId: "m1", name: "Scout", text: "The invoice is due Friday" }, onClearReply: clear });
+    expect(host.querySelector("[data-testid='reply-chip']")?.textContent).toContain("Replying to Scout: The invoice is due Friday");
+    await type(host, "Pay it today");
+    await act(async () => button("Send")!.click());
+    expect(send).toHaveBeenCalledWith("Pay it today", { replyToId: "m1" }, undefined);
+    expect(clear).toHaveBeenCalled();
   });
 
   it("changes the permission with sessions.patch permissionMode, and keeps Plan first visible and disabled", async () => {

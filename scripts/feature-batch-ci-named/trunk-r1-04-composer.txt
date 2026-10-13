@@ -5,3 +5,4 @@ window:src/screens/composer/usage.test.ts
 window:src/screens/frame/Frame.test.tsx
 window:src/screens/frame/R1Window.test.tsx
 window:src/shell/ConnectElsewhereDialog.test.tsx
+window:src/shell/StatusPopovers.test.tsx
