@@ -28,6 +28,7 @@ import {
   openingExpiry,
   recordStage,
   StageTimeoutError,
+  waitedForPreviousEngine,
   waitForStage,
 } from "./agent-database-startup.stages.js";
 import { readAgentDeletionJournalStatusInWorker } from "./agent-deletion-journal.read.js";
@@ -619,6 +620,12 @@ class AgentDatabaseStartupAdmission {
                     log.info("agent database startup preparation superseded; retrying", {
                       agentId,
                     });
+                    continue;
+                  }
+                  // #951: timed out against the previous engine's lock: wait on its release, retry uncounted.
+                  const held = { agentId, refusal, statusReason, signal: this.signal };
+                  if (await waitedForPreviousEngine(error, held)) {
+                    attemptLimitMs = preparationAttemptLimitMs(env);
                     continue;
                   }
                   failures += 1;

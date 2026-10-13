@@ -25,7 +25,7 @@ type Native = "auto" | "on" | "off";
 const toNative = (v: unknown): Native => (v === true ? "on" : v === false ? "off" : "auto");
 const fromNative = (v: Native): boolean | "auto" => (v === "on" ? true : v === "off" ? false : "auto");
 /** The config.patch body for one commands field. */
-export const commandsPatch = (field: string, value: unknown): Row => ({ commands: { [field]: value } });
+const commandsPatch = (field: string, value: unknown): Row => ({ commands: { [field]: value } });
 
 const loadCommands = async (engine: WindowEngine) => rec(rec(rec(await engine.request("config.get", {})).config).commands);
 

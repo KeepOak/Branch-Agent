@@ -8,7 +8,7 @@ import { Icon } from "./icons";
 import { talkRows, workContextFor, type TalkRow, type WorkContext } from "./talk-beside";
 import "./talk-beside.css";
 
-export type TalkDock = "right" | "bottom";
+type TalkDock = "right" | "bottom";
 type Layout = { open: boolean; dock: TalkDock; w: number; h: number };
 const KEY = "branch.talkBeside";
 const START: Layout = { open: false, dock: "right", w: 380, h: 320 };

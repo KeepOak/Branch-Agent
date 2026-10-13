@@ -371,6 +371,15 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
   ) => Promise<AgentTool | undefined> | AgentTool | undefined;
 
   /**
+   * Adds runtime guidance to the "Tool <name> not found" result once no tool
+   * (including a deferred one) matched the call. The loop always lists the
+   * tools available in the current context; return one short sentence on how
+   * to reach the requested capability through them, or undefined for none.
+   * A thrown error is ignored so the result still lists the available tools.
+   */
+  describeMissingTool?: (context: DeferredToolCallContext) => string | undefined;
+
+  /**
    * Called after a tool finishes executing, before `tool_execution_end` and tool-result message events are emitted.
    *
    * Return an `AfterToolCallResult` to override parts of the executed tool result:

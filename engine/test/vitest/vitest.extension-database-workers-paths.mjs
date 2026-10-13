@@ -149,6 +149,7 @@ export const databaseWorkerExtensionTestFiles = [
   "extensions/codex/src/app-server/native-subagent-monitor.test.ts",
   "extensions/copilot/harness.test.ts",
   "extensions/codex/src/app-server/auth-profile-runtime-contract.test.ts",
+  "extensions/codex/src/app-server/auth-profile-usage.test.ts",
   "extensions/codex/src/app-server/attempt-startup.test.ts",
   "extensions/codex/src/app-server/attempt-startup-lifetime.test.ts",
   "extensions/codex/src/app-server/attempt-startup-retry.test.ts",

@@ -1,0 +1,40 @@
+/* R1-11 update button and banner. README item 48: the sidebar is the only frosted surface, so the button is a solid
+   white disc on it; the banner sits in a clear menu, so its line and its action are small frosted pills (--gp-*)
+   with a 1 px low-alpha outline. No divider lines. Reduce transparency comes from the --gp-* tokens. */
+.r1u-btn {
+  position: relative; display: inline-grid; place-items: center; flex: none; box-sizing: border-box;
+  width: 36px; height: 36px; padding: 0; border-radius: var(--r-pill);
+  border: 1px solid var(--gc-edge); background: var(--on-accent); color: var(--accent);
+  box-shadow: var(--gc-sh-sm); font: 600 var(--fs-13)/1 var(--sans);
+  transition: width var(--spring-thumb), transform var(--spring-press);
+  animation: r1u-in var(--spring-thumb);
+}
+.r1u-btn:active:not(:disabled) { transform: scale(.94); }
+.r1u-btn:disabled { cursor: default; }
+.r1u-btn[data-wide] { width: auto; padding: 0 14px; white-space: nowrap; }
+.r1u-btn[data-kind="failed"] { color: var(--bad); }
+.r1u-btn[data-leaving] { animation: r1u-out var(--ease-exit) forwards; }
+.r1u-ring { display: block; }
+.r1u-ring-track { stroke: var(--gc-edge); }
+.r1u-ring-arc { stroke: var(--accent); transform-origin: 50% 50%; animation: r1u-spin 1s linear infinite; }
+.r1u-label { padding: 0 2px; }
+.r1u-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@keyframes r1u-in { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+@keyframes r1u-out { to { opacity: 0; transform: scale(.6); } }
+@keyframes r1u-spin { to { transform: rotate(360deg); } }
+
+.r1u-ban { display: flex; align-items: center; gap: 8px; padding: 4px 4px 8px; background: transparent; }
+.r1u-ban-text, .r1u-ban-act {
+  border-radius: var(--r-pill); border: 1px solid var(--gp-edge);
+  backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); font: 600 var(--fs-13)/1.2 var(--sans);
+}
+.r1u-ban-text {
+  flex: 1; min-width: 0; padding: 7px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: color-mix(in srgb, var(--accent) 18%, var(--gp-fill)); color: var(--accent-ink);
+}
+.r1u-ban-act { flex: none; padding: 7px 14px; background: var(--on-accent); color: var(--accent); }
+.r1u-ban-act:hover { background: color-mix(in srgb, var(--on-accent) 88%, var(--accent)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .r1u-btn, .r1u-btn[data-leaving], .r1u-ring-arc { animation-duration: .01ms; animation-iteration-count: 1; transition: none; }
+}
