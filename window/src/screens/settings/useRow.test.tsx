@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
 import type { Row } from "./rows";
-import { CHANGED_ELSEWHERE, INVALID_CONFIG, LOAD_FAILED, NEEDS_ADMIN, NEEDS_WRITE, NO_PERSON, schemaDefault, useRow, type RowView } from "./useRow";
+import { askBeforeDelete } from "../../shell/ConfirmDelete";
+import { IN_BROWSER, type DesktopControlsBridge, type DesktopControlsState } from "../../connect/desktop-controls";
+import { askBeforeDeleting } from "./pages/general";
+import { CHANGED_ELSEWHERE, INVALID_CONFIG, LOAD_FAILED, NEEDS_ADMIN, NEEDS_APP_UPDATE, NEEDS_WRITE, NO_PERSON, schemaDefault, useRow, type RowView } from "./useRow";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -40,6 +43,83 @@ async function mount(engine: WindowEngine, row: Row) {
 const patches = (request: ReturnType<typeof engineOf>["request"]) => request.mock.calls.filter(([m]) => m === "config.patch").map(([, p]) => JSON.parse((p as { raw: string }).raw));
 
 const toggle: Row = { id: "general.x.lock", page: "general", card: "Writing", level: 0, control: "toggle", source: { kind: "config", path: "security.lockdown" } };
+
+describe("useRow on this device and the desktop app", () => {
+  afterEach(() => { delete (window as { branchDesktop?: unknown }).branchDesktop; });
+
+  it("keeps a device row in this window's storage, the key the delete dialog reads", async () => {
+    const row: Row = { id: "general.conversation.ask-delete", page: "general", card: "The conversation", level: 1, control: "toggle", source: { kind: "device", key: "branch.askBeforeDelete" }, codec: askBeforeDeleting };
+    const { engine, request } = engineOf();
+    await mount(engine, row);
+    expect(view).toMatchObject({ value: true, state: "ready" });
+    await act(async () => { await view.set(false); });
+    expect(localStorage.getItem("branch.askBeforeDelete")).toBe("0");
+    expect(askBeforeDelete()).toBe(false);
+    expect(view.value).toBe(false);
+    await act(async () => { await view.set(true); });
+    expect(localStorage.getItem("branch.askBeforeDelete")).toBeNull();
+    expect(askBeforeDelete()).toBe(true);
+    expect(view.value).toBe(true);
+    expect(request.mock.calls.filter(([m]) => m === "config.patch" || m === "users.prefs.set")).toEqual([]);
+  });
+
+  const startRow: Row = { id: "general.start.with-computer", page: "general", card: "Starting up", level: 0, control: "toggle", source: { kind: "desktop", name: "startWithWindows" }, fallback: false };
+  const controls = (over: Partial<DesktopControlsState> = {}): DesktopControlsState => ({ keepWorking: false, keepAwake: false, trayUsage: false, autoApplyUpdates: false, startWithWindows: false, branchOnPath: false, ...over });
+
+  it("reads and changes a desktop app switch through the bridge, and follows a change made elsewhere", async () => {
+    let state = controls();
+    const set = vi.fn(async (name: keyof DesktopControlsState, on: boolean) => { state = { ...state, [name]: on }; return state; });
+    const bridge = { get: vi.fn(async () => state), set } as unknown as DesktopControlsBridge;
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: bridge };
+    const { engine } = engineOf();
+    await mount(engine, startRow);
+    expect(view).toMatchObject({ value: false, state: "ready" });
+    await act(async () => { await view.set(true); });
+    expect(set).toHaveBeenCalledWith("startWithWindows", true);
+    expect(view.value).toBe(true);
+    await act(async () => { window.dispatchEvent(new CustomEvent("branch:desktop-controls", { detail: controls({ startWithWindows: false }) })); });
+    expect(view.value).toBe(false);
+  });
+
+  it("shows a desktop change at once, so a quick second click while the first is pending turns it back", async () => {
+    let state = controls();
+    const gates: (() => void)[] = [];
+    const set = vi.fn((name: keyof DesktopControlsState, on: boolean) => new Promise<DesktopControlsState>((done) => { gates.push(() => { state = { ...state, [name]: on }; done(state); }); }));
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get: vi.fn(async () => state), set } };
+    await mount(engineOf().engine, startRow);
+    let first!: Promise<void>, second!: Promise<void>;
+    await act(async () => { first = view.set(!(view.value as boolean)); });
+    expect(view.value).toBe(true);
+    await act(async () => { second = view.set(!(view.value as boolean)); });
+    expect(view.value).toBe(false);
+    // Sent one at a time, in click order.
+    await act(async () => { await Promise.resolve(); });
+    expect(set.mock.calls).toEqual([["startWithWindows", true]]);
+    await act(async () => { gates[0](); await first; });
+    await act(async () => { gates[1](); await second; });
+    expect(set.mock.calls).toEqual([["startWithWindows", true], ["startWithWindows", false]]);
+    expect(view.value).toBe(false);
+  });
+
+  it("puts a refused desktop change back", async () => {
+    const state = controls();
+    (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get: vi.fn(async () => state), set: vi.fn(async () => { throw new Error("no"); }) } };
+    await mount(engineOf().engine, startRow);
+    await act(async () => { await view.set(true).catch(() => undefined); });
+    expect(view.value).toBe(false);
+    expect(view.state).toBe("error");
+  });
+
+  it("greys a desktop row with why when there is no Branch app here, or it is too old", async () => {
+    const { engine } = engineOf();
+    await mount(engine, startRow);
+    expect(view).toMatchObject({ value: false, state: "blocked", reason: IN_BROWSER });
+    await expect(view.set(true)).rejects.toThrow(IN_BROWSER);
+    (window as { branchDesktop?: unknown }).branchDesktop = {};
+    await mount(engineOf().engine, { ...startRow });
+    expect(view).toMatchObject({ state: "blocked", reason: NEEDS_APP_UPDATE });
+  });
+});
 
 describe("useRow", () => {
   it("reads a config row, labels it from the schema and saves one path with config.patch", async () => {

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { NAV, PAGES, TOP_PAGES, pageFor, pageShown, type PageId } from "./nav";
-import { agentsWork } from "./pages/general";
+import { ASK_BEFORE_DELETE_KEY, agentsWork, askBeforeDeleting, checklistShown } from "./pages/general";
 import { ROWS, cardRows, hintFor, pageFirstLevel, rowLabel, rowLevel, type Row } from "./rows";
 
 /** The keys the engine keeps in its schema history but that do nothing (engine/src/config/dead-config-keys.test.ts). */
@@ -77,6 +77,35 @@ describe("settings row table", () => {
     expect(cardRows("general", "Waiting line", 2, {}).length).toBe(2);
     expect(pageFirstLevel("general", {})).toBe(0);
     expect(pageFirstLevel("seedbank", {})).toBeNull();
+  });
+
+  it("keeps Classic General's four controls, each on its card and on the key Classic uses (#952)", () => {
+    const at = (id: string) => ROWS.find((r) => r.id === id);
+    // Starting up: "Start with <computer>", which opens quietly in the tray: the desktop app's startWithWindows switch.
+    const start = at("general.start.with-computer");
+    expect(start).toMatchObject({ card: "Starting up", level: 0, control: "toggle", source: { kind: "desktop", name: "startWithWindows" } });
+    expect(start?.label).toMatch(/^Start with /);
+    expect(start?.help).toBe("Opens quietly in the tray.");
+    // Projects: Classic's Edit for a project's instructions was greyed; it stays a Coming row with the call it waits for.
+    const projects = at("general.projects.instructions");
+    expect(projects).toMatchObject({ card: "Projects", level: 0, source: { kind: "coming" } });
+    expect(projects?.source.kind === "coming" && projects.source.need).toMatch(/project's own instructions/);
+    // Writing: Show "Finish setting up", the person's look "checklist" (false hides it, null puts the default back).
+    expect(at("general.writing.finish-setup")).toMatchObject({ card: "Writing", level: 0, control: "toggle", source: { kind: "look", key: "checklist" } });
+    expect(checklistShown.read(undefined)).toBe(true);
+    expect(checklistShown.read(false)).toBe(false);
+    expect([checklistShown.write(true), checklistShown.write(false)]).toEqual([null, false]);
+    // The conversation (Advanced): Ask before deleting, the device key the delete dialog reads ("0" = don't ask).
+    expect(ASK_BEFORE_DELETE_KEY).toBe("branch.askBeforeDelete");
+    expect(at("general.conversation.ask-delete")).toMatchObject({ card: "The conversation", level: 1, control: "toggle", source: { kind: "device", key: ASK_BEFORE_DELETE_KEY } });
+    expect([askBeforeDeleting.read(null), askBeforeDeleting.read("0")]).toEqual([true, false]);
+    expect([askBeforeDeleting.write(true), askBeforeDeleting.write(false)]).toEqual([null, "0"]);
+    // Each card now draws these rows instead of a whole-card Coming mark.
+    expect(cardRows("general", "Starting up", 0, {}).map((r) => r.id)).toEqual(["general.start.with-computer"]);
+    expect(cardRows("general", "Projects", 0, {}).map((r) => r.id)).toEqual(["general.projects.instructions"]);
+    expect(cardRows("general", "Writing", 0, {}).map((r) => r.id)).toEqual(["general.writing.finish-setup"]);
+    expect(cardRows("general", "The conversation", 0, {})).toEqual([]);
+    expect(cardRows("general", "The conversation", 1, {}).map((r) => r.id)).toContain("general.conversation.ask-delete");
   });
 
   it("maps Show agents’ work to the two engine defaults and back", () => {
