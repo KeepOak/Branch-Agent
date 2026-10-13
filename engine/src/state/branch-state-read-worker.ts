@@ -31,6 +31,7 @@ import {
 } from "./branch-state-db-cache.js";
 import { captureCommand, requestBytes } from "./branch-state-read-request.js";
 import {
+  type BranchStateTaskTiming,
   getBranchStateReadTiming,
   listDispatchedBranchStateReads,
   markBranchStateReadDispatched,
@@ -343,8 +344,18 @@ function createReadTransport(
     let task: ReadTask | undefined;
     const cleanup: { retire: boolean; error?: Error } = { retire: true };
     const readTiming = getBranchStateReadTiming();
+    const taskTiming: BranchStateTaskTiming | undefined = readTiming ? {} : undefined;
+    if (readTiming && taskTiming) {
+      if (readCommand.type === "admit") {
+        readTiming.validate = taskTiming;
+      } else {
+        readTiming.query = taskTiming;
+      }
+    }
     const slotToken = {};
     let dispatchedAt: number | undefined;
+    let pollPool: ReadPool | undefined;
+    let workersBefore = 0;
     const completion = createRetainedOperation<BranchStateReadOutcome>(() => inContext(service));
     function service() {
       if (!task || completion.operation.read().status !== "pending") {
@@ -372,8 +383,11 @@ function createReadTransport(
       }
       // Native closes and quarantine cleanup can require exit even when the domain read succeeds.
       cleanup.retire = "error" in outcome || cleanup.error !== undefined;
-      if (readTiming && dispatchedAt !== undefined) {
-        readTiming.readMs = performance.now() - dispatchedAt;
+      if (taskTiming && dispatchedAt !== undefined) {
+        taskTiming.readMs = performance.now() - dispatchedAt;
+      }
+      if (taskTiming && pollPool) {
+        taskTiming.workerSpawned = pollPool.getSnapshot().workersCreated > workersBefore;
       }
       markBranchStateReadSettled(slotToken);
       completion.resolve(outcome);
@@ -396,16 +410,19 @@ function createReadTransport(
       };
       const enqueuedAt = performance.now();
       const pool = readPool(state, ownsAdmission());
-      if (readTiming) {
-        readTiming.queueDepth = pool.getSnapshot().pendingTasks;
-        readTiming.holders = listDispatchedBranchStateReads();
+      pollPool = pool;
+      const snapshot = pool.getSnapshot();
+      workersBefore = snapshot.workersCreated;
+      if (taskTiming) {
+        taskTiming.queueDepth = snapshot.pendingTasks;
+        taskTiming.holders = listDispatchedBranchStateReads();
       }
       task = pool.startTask(
         () => {
           authority.assertCurrent();
-          if (readTiming) {
+          if (taskTiming && readTiming) {
             dispatchedAt = performance.now();
-            readTiming.waitMs = dispatchedAt - enqueuedAt;
+            taskTiming.waitMs = dispatchedAt - enqueuedAt;
             markBranchStateReadDispatched(slotToken, readTiming.label);
           }
           return request;
