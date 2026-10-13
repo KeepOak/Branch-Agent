@@ -27,6 +27,7 @@ import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
+import { ToolPopover } from "./ToolPanels";
 
 const FIND_ANYTHING_COMING = "Find anything is not connected yet.";
 
@@ -91,6 +92,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const setReplyTo = (target: ReplyTarget | null) => setReply(target ? { key: snapshot.sessionKey, target } : null);
   const [menuFor, setMenuFor] = useState<string | null | undefined>(undefined), convAnchor = useRef<HTMLElement | null>(null);
   const convMenu = menuFor === snapshot.sessionKey;
+  // The header's Computer and Browser panels (#977): one open at a time, anchored to its button.
+  const [tool, setTool] = useState<"computer" | "browser" | null>(null), toolAnchor = useRef<HTMLElement | null>(null);
+  const openTool = (which: "computer" | "browser", label: string) => { toolAnchor.current = document.querySelector<HTMLElement>(`.r1-header-right [aria-label="${label}"]`); setTool(open => open === which ? null : which); };
+  const closeTool = useCallback(() => setTool(null), []);
   const setConvMenu = (open: boolean) => setMenuFor(open ? snapshot.sessionKey : undefined);
   const work = useWorkMode(ready ? engine : undefined, snapshot.sessionKey);
   // R1-07: the onboarding card opens by itself on first run (no wizard.lastRunAt), as Classic setup does.
@@ -160,8 +165,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
-        { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "Computer controls are not connected yet." },
-        { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "Browser controls are not connected yet." },
+        // Computer reads computer.status, Browser reads (and can start) Branch's browser through browser.request.
+        { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t report on computer control.", onClick: ready ? () => openTool("computer", "Computer") : undefined },
+        { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t report on the browser.", onClick: ready ? () => openTool("browser", "Browser") : undefined },
         // ••• opens this window's conversation menu; each of its rows declares its own call.
         { label: "More", icon: <Icon name="more" />, onClick: ready ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
       ] : undefined,
@@ -190,6 +196,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       {[{ id: null, label: `Like Settings (${WORK_MODES.find(m => m.id === work.global)?.label})` }, ...WORK_MODES].map(m => <Coming key={m.id ?? "default"} engine={engine} need="users.prefs.set" reason="This engine can’t save how agents’ work shows here." where={m.label}><button type="button" role="menuitemradio" className="r1c-mi" aria-checked={work.override === m.id}
         onClick={() => { void work.setOverride(m.id).catch((e: unknown) => setNotice(e instanceof Error ? e.message : String(e))); setConvMenu(false); }}><span className="r1c-mi-t">{m.label}</span>{work.override === m.id ? <Icon name="check" size={15} /> : null}</button></Coming>)}
     </div></Popover>}
+    {tool && route.kind === "chat" && <ToolPopover key={tool} tool={tool} engine={engine} anchor={toolAnchor} onClose={closeTool} onSettings={page => { closeTool(); navigate({ kind: "settings", page }); }} />}
     {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details g-clear">
       <strong className="g-label">{identity?.name ?? snapshot.name}</strong>{agentLine ? <p className="g-label">{agentLine}</p> : null}
       <button type="button" data-local="" onClick={closeAgent}>Close</button>
