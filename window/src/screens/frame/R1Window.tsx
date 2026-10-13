@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { SaplingSession } from "../../connect/session";
-import { useConversations, usePendingApprovals } from "../../shell/engine-data";
+import { useConversations, useMachine, usePendingApprovals } from "../../shell/engine-data";
 import { Frame } from "./Frame";
 import { ChatView } from "../chat/ChatView";
 import { WORK_MODES, useWorkMode } from "../chat/chat-logic";
@@ -23,6 +23,7 @@ import { Popover } from "../../glass/Popover";
 import { Sidebar } from "../sidebar/Sidebar";
 import { Toasts } from "../../shell/Toasts";
 import { ApprovalsLayer } from "../approvals";
+import { useProblemBannerRows } from "../approvals/ProblemBanners";
 import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
 import { Onboarding } from "../onboarding";
@@ -79,6 +80,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const waiting = usePendingApprovals(session, ready);
   const limits = useLimits(session, ready);
   const lockdown = useLockdown(engine, ready, session, true);
+  const machine = useMachine(session, ready);
   const [route, setRoute] = useState<Route>(loadRoute);
   // The re-hosted Classic computer stage (parity row 1): which side is open, and the small window it shrinks to.
   const [stage, setStage] = useState<StageMode | null>(null);
@@ -154,6 +156,13 @@ export function R1Window({ session }: { session: SaplingSession }) {
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo}
   />;
+  // Problem and news banners (the Classic hooks), drawn in the approvals banner stack.
+  const problems = useProblemBannerRows({ session, shownKey: route.kind === "chat" ? snapshot.sessionKey : null, machineName: machine?.name ?? "",
+    defaultName: conversations.rows.find(row => row.key === snapshot.mainKey)?.title || "your Trunk", onOpen: openConversation,
+    titleOf: key => conversations.rows.find(row => row.key === key)?.title || "A conversation",
+    trunkOf: key => { const row = conversations.rows.find(r => r.key === key); return conversations.rows.find(r => r.isMain && r.agentId === row?.agentId)?.title || row?.title || "Your Trunk"; },
+    onOpenConnection: () => navigate({ kind: "settings", page: "devices" }),
+    onAsk: text => { const key = snapshot.mainKey; if (!key) return; openConversation(key); void session.open(key).then(() => session.send(text)); } });
   // The agent details popover's second line: the error, the agent's emoji, or the loading line (none when there's no emoji).
   const agentLine = identityError ?? (identity ? identity.emoji ?? "" : "Loading agent details…");
   return <>
@@ -191,7 +200,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {lockdown.confirmation}
     {pip && route.kind === "chat" && !stage ? <R1StagePip key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} computer={pip} blocks={[...snapshot.history, ...snapshot.live]} onOpen={() => { setStage(pip.kind === "browser" ? "Browser" : "Computer"); setPip(null); }} onClose={() => setPip(null)} /> : null}
     <Toasts />
-    <ApprovalsLayer engine={engine} ready={ready} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
+    <ApprovalsLayer engine={engine} ready={ready} more={problems} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
     {convMenu && <Popover anchor={convAnchor} label="Conversation" align="end" width={260} onClose={() => setConvMenu(false)}><div className="r1c-menu" role="menu" aria-label="Show agents’ work as">
       <div className="r1c-menu-meta">Show agents’ work as</div>
       {[{ id: null, label: `Like Settings (${WORK_MODES.find(m => m.id === work.global)?.label})` }, ...WORK_MODES].map(m => <Coming key={m.id ?? "default"} engine={engine} need="users.prefs.set" reason="This engine can’t save how agents’ work shows here." where={m.label}><button type="button" role="menuitemradio" className="r1c-mi" aria-checked={work.override === m.id}
