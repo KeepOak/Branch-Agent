@@ -12,6 +12,7 @@ import { Coming } from "../../glass/coming";
 import { Menu, type MenuEntry } from "../../glass/Menu";
 import { Popover } from "../../glass/Popover";
 import type { PlaceId } from "../../places-nav/routes";
+import { readLevel } from "../../places-nav/SettingsFrame";
 import { PairDialog } from "../../places/customize/pairing";
 import { createReadyTrunk } from "../../places/trunk/api";
 import { TrunkStudio } from "../../places/trunk/TrunkStudio";
@@ -24,6 +25,7 @@ import { Dialog } from "../../shell/Dialog";
 import { useContacts, useTrunks } from "../../shell/engine-data";
 import { GetAppsDialog } from "../../shell/GetApps";
 import { guideMenuItems } from "../../shell/guide-menu";
+import { clearFilters, filtersDiffer, type ListPrefs } from "../../shell/list-model";
 import { moveContactToProject, roomContact, useGroupRooms } from "../../shell/group-drop";
 import { menuIcon } from "../../shell/menu-icons";
 import { nextTrunkName } from "../../shell/NewTrunkFlow";
@@ -38,6 +40,7 @@ import { tidy } from "../../shell/StatusLayer";
 import { useUpdate } from "../../shell/use-status";
 import { readThemeChoice, setThemeChoice, type ThemeChoice } from "../../theme/theme";
 import { FIND_EVENT } from "../../thread/FindBar";
+import { filterFacts, filterSideRows, R1FilterSort, readR1Prefs, saveR1Prefs, sortSections } from "./filter";
 import { buildSections, contactRows, personRows, type Folder, type Person, type SideRow } from "./model";
 import { FolderChip, icons, PinnedGrid, SectionHead, SideRowView, TopCapsules, type RowHandlers } from "./parts";
 import { NEED, rowMenu } from "./row-menu";
@@ -123,6 +126,9 @@ export function Sidebar(p: SidebarProps) {
   const query = search.query, setQuery = search.setQuery;
   const [folder, setFolder] = useState<Folder>("all"), [foldOpen, setFoldOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
+  // Filter and sort (Classic shell/FilterSort.tsx): the choices narrow and order the rows; the search looks past them.
+  const [prefs, setPrefs] = useState<ListPrefs>(readR1Prefs);
+  const changePrefs = (next: ListPrefs) => { setPrefs(next); saveR1Prefs(next); };
   const [menu, setMenu] = useState<SideRow | null>(null), menuAnchor = useRef<HTMLElement | null>(null);
   const [plusOpen, setPlusOpen] = useState(false), plusRef = useRef<HTMLButtonElement>(null);
   const [personOpen, setPersonOpen] = useState(false), meRef = useRef<HTMLButtonElement>(null);
@@ -144,9 +150,11 @@ export function Sidebar(p: SidebarProps) {
     }),
     ...personRows(people.list, people.selfId),
   ], [contacts, p.waiting, rooms.rooms, people]);
-  const sections = buildSections(rows, folder, query);
+  const listPeople = useMemo(() => ({ selfId: people.selfId, names: new Map(people.list.map(person => [person.id, person.name])) }), [people]);
+  const sections = sortSections(buildSections(query.trim() ? rows : filterSideRows(rows, prefs, now, listPeople), folder, query), prefs.sortBy, listPeople);
+  const filtered = filtersDiffer(prefs);
   const anyWaiting = [...p.waiting.values()].some(count => count > 0);
-  const binsOpen = archivedOpen || narrow;
+  const binsOpen = archivedOpen || narrow || prefs.status === "archived";
 
   const openRow = (row: SideRow) => { if (row.key) p.onOpen(row.key); else p.onSettings("people"); };
   const handlers: RowHandlers = { onOpen: openRow, onMenu: (row, anchor) => { menuAnchor.current = anchor; setMenu(row); } };
@@ -243,6 +251,7 @@ export function Sidebar(p: SidebarProps) {
       {query ? null : <FolderChip rows={rows} folder={folder} onFolder={setFolder} open={foldOpen} onOpen={setFoldOpen} />}
       <TopCapsules query={query} onQuery={setQuery} searchRef={p.searchRef} onSettings={() => p.onSettings("general")} onGrove={() => p.onPlace("office")}
         plusRef={plusRef} onPlus={() => setPlusOpen(open => !open)} plusDot={anyWaiting} />
+      {query ? null : <R1FilterSort prefs={prefs} facts={filterFacts(rows, trunks.list, listPeople, readLevel(), prefs, now)} onChange={changePrefs} onSettings={p.onSettings} />}
     </div>
     <nav className="r1sb-list" aria-label="Conversations">
       {p.error ? <p className="r1sb-error" role="alert">{p.error}</p> : null}
@@ -253,7 +262,7 @@ export function Sidebar(p: SidebarProps) {
       {section("People", sections.people, <button type="button" className="r1sb-head-go" data-local="" aria-label="People settings" title="People" onClick={() => p.onSettings("people")}>{icons.chevron}</button>)}
       {section("Groups", sections.groups)}
       {section("Grafted", sections.grafted)}
-      {ready && contactsLoaded && nothing ? <p className="r1sb-empty">{query ? "No matches." : folder !== "all" ? "Nothing in this folder." : "No Trunks yet."}</p> : null}
+      {ready && contactsLoaded && nothing && !(prefs.status === "archived" && sections.archived.length) ? <p className="r1sb-empty">{query ? "No matches." : filtered ? <>Nothing matches these filters. <button type="button" className="r1sb-clear" data-local="" onClick={() => changePrefs(clearFilters(prefs))}>Clear filters</button></> : folder !== "all" ? "Nothing in this folder." : "No Trunks yet."}</p> : null}
       {!ready ? <p className="r1sb-empty">Your conversations show here once Branch connects.</p> : null}
       <div className="r1sb-bins">
         <button type="button" className="r1sb-bin" data-local="" aria-expanded={binsOpen} onClick={() => setArchivedOpen(open => !open)} disabled={narrow}>
