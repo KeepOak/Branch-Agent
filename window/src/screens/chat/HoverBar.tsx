@@ -1,6 +1,7 @@
 // The message hover bar (owner item 40, HANDOFF §2 #17): exactly three buttons, React, Reply and •••, in control
 // glass. ••• opens the message menu: its time and model, then Copy ›, Pin, Edit or Try again, Read aloud, Branch from
-// here, Leave out of context, Share as a picture, Continue in a coding app, Look inside and Delete. Each row runs its
+// here, Leave out of context, Look inside and Delete. (Link, Share as a picture and Continue in a coding app wait in
+// Seedbank › Coming to Branch until the engine has their calls, R1-15.) Each row runs its
 // engine call (thread/useMessageActions) through <Coming need=…>, or shows Coming with its reason; nothing pretends.
 // Only Copy, its submenu and Look inside are local (data-local): they make no engine call.
 import { useRef, useState, type ReactNode } from "react";
@@ -18,10 +19,7 @@ const QUICK = ["👍", "❤️", "🎉", "👀", "🚀", "😂"];
 
 /** Rows the engine has no call for yet. Each names the call it waits for and says so in one plain line. */
 const SOON = {
-  link: { need: "sessions.messages.link", reason: "Links to one message come in a later update." },
   pin: { need: "sessions.messages.pin", reason: "Pinning a message comes in a later update." },
-  picture: { need: "sessions.messages.share", reason: "Sharing a message as a picture comes in a later update." },
-  coding: { need: "sessions.handoff", reason: "Carrying a conversation into a coding app on this computer needs the Branch app." },
   remove: { need: "sessions.messages.delete", reason: "Deleting one message comes in a later update." },
 } as const;
 
@@ -73,7 +71,6 @@ export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: s
       <button type="button" role="menuitem" className="r1c-mi r1c-back" data-local="" onClick={() => setCopyOpen(false)}><Icon name="back" size={15} /><span className="r1c-mi-t">Copy</span></button>
       <button type="button" role="menuitem" className="r1c-mi" data-local="" onClick={() => { void copyText(plainText(text), toast); onClose(); }}><Icon name="copy" size={15} /><span className="r1c-mi-t">Text</span></button>
       <button type="button" role="menuitem" className="r1c-mi" data-local="" onClick={() => { void copyText(text, toast); onClose(); }}><Icon name="code" size={15} /><span className="r1c-mi-t">Markdown</span></button>
-      <SoonRow icon="link" label="Link" soon={SOON.link} />
     </div>;
   }
   const read = actions.read;
@@ -86,8 +83,6 @@ export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: s
     {read ? <Row icon={read.reading ? "pause" : "play"} label={read.reading ? "Stop reading" : "Read aloud"} act={read} onDone={onClose} need={NEEDS.read} /> : null}
     <Row icon="branch" label="Branch from here" act={actions.branch} onDone={onClose} need={NEEDS.branch} />
     {actions.context ? <Row icon={actions.context.excluded ? "eye" : "eyeOff"} label={actions.context.excluded ? "Put back in context" : "Leave out of context"} act={actions.context} onDone={onClose} need={NEEDS.context} /> : null}
-    <SoonRow icon="camera" label="Share as a picture" soon={SOON.picture} />
-    <SoonRow icon="code" label="Continue in a coding app" soon={SOON.coding} />
     <Row icon="eye" label="Look inside" act={actions.inspect} onDone={onClose} />
     <div className="r1c-gap" />
     <SoonRow icon="trash" label="Delete" soon={SOON.remove} danger />
