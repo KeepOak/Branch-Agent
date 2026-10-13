@@ -10,6 +10,7 @@ import { useLockdown } from "../../../shell/use-lockdown";
 import { notify } from "../../../shell/notify";
 import { MODE_ROWS, blockedReason, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { platformName } from "../../../setup/steps-later";
+import { Coming } from "../../../glass/coming";
 import { record, text, visible, type RecordValue } from "../adapter";
 import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
@@ -97,12 +98,21 @@ async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void>) {
 }
 
 const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
+/** R1-05 "Approve for me": a level this window can't set yet. The row names the one call it waits for (R1-10). */
+export const APPROVE_FOR_ME_NEED = "exec.approval.level.set";
+const APPROVE_FOR_ME_WHY = "Approve for me comes in a later update.";
+
 export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<void> }) {
   const selected = execMode(cfg, agents);
   const lockdown = cfg.get("security.lockdown") === true;
   return (
     <Sec title="Access" hint="Every conversation starts here. A conversation can change its own.">
       <div data-row="Access"><Seg layout="radio" label="Access" value={selected} options={MODE_OPTS} disabled={cfg.loading || lockdown} onChange={(mode) => void saveMode(cfg, mode, reload)} /></div>
+      <Ctl title="Approve for me" sub="A reviewer approves routine actions and asks you about the rest.">
+        <Coming need={APPROVE_FOR_ME_NEED} unwired reason={APPROVE_FOR_ME_WHY} where="Approve for me">
+          <Btn sm>Choose</Btn>
+        </Coming>
+      </Ctl>
     </Sec>
   );
 }

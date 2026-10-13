@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
 import { PermissionsPage, PERMISSIONS_ROWS } from "./permissions";
+import { APPROVE_FOR_ME_NEED } from "./permissions-top";
+import { comingControls } from "../../../glass/coming-registry";
 import { notify } from "../../../shell/notify";
 
 vi.mock("../../../shell/notify", () => ({ notify: vi.fn() }));
@@ -145,6 +147,20 @@ describe("Settings › Permissions", () => {
     await act(async () => selected.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
     expect(document.activeElement?.textContent).toContain("Auto");
     expect(patchOf(request)).toEqual({ tools: { exec: { mode: "auto", security: null, ask: null } } });
+  });
+
+  it("Approve for me is a Coming row: greyed, names its call, and runs nothing", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    const row = host.querySelector<HTMLElement>('.ctl[data-row="Approve for me"]');
+    expect(row).not.toBeNull();
+    const choose = row!.querySelector<HTMLButtonElement>("button")!;
+    expect(choose.textContent).toBe("Choose");
+    expect(choose.getAttribute("aria-disabled")).toBe("true");
+    expect(choose.getAttribute("data-coming")).toBe("Approve for me comes in a later update.");
+    await act(async () => choose.click());
+    expect(request.mock.calls.map(([method]) => method)).not.toContain(APPROVE_FOR_ME_NEED);
+    expect(comingControls()).toContainEqual(expect.objectContaining({ need: [APPROVE_FOR_ME_NEED], missing: [APPROVE_FOR_ME_NEED], where: "Approve for me" }));
   });
 
   it("lists the rules from the approvals file and saves with its base hash", async () => {
