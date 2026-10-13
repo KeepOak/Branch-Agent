@@ -7,6 +7,7 @@ import { errorText, record, type RecordValue } from "../../places/settings/adapt
 import { configStore, pathKeys } from "../../places/settings/config-store";
 import { isDeviceKey, lookHolder, lookStore } from "../../places/settings/set1/appearance-store";
 import { has } from "../../places/inbox/data";
+import { DESKTOP_CONTROLS_CHANGED, NEEDS_NEWER_APP, desktopControls, type DesktopControlsBridge, type DesktopControlsState } from "../../connect/desktop-controls";
 import type { Level } from "./nav";
 import { hintFor, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 
@@ -38,6 +39,11 @@ export const NO_PERSON = "Sign in as yourself on this Branch to keep your own ch
 export const NEEDS_ADMIN = "Changing how Branch is set up needs full access on this connection.";
 export const NEEDS_WRITE = "This connection can look but not change your choices.";
 export const INVALID_CONFIG = "The settings file has a problem. Fix it before changing settings here.";
+/** Said on a desktop row when the Branch app on this computer is too old to change it (as Classic's Start with …). */
+export const NEEDS_APP_UPDATE = "Update the Branch app on this computer to change this.";
+export const DEVICE_REFUSED = "This device didn’t keep the choice.";
+/** Sent on window when a row changes a device key, so other rows showing it follow (storage events skip this window). */
+const DEVICE_CHANGED = "branch:device-setting";
 const CHANGED = /config changed since last load|base hash/i;
 
 type Listener = () => void;
@@ -131,9 +137,37 @@ class PrefStore extends Emitter {
   }
 }
 
+type DesktopSnap = { state: DesktopControlsState | null; error?: string };
+/** The desktop app's controls, read once per bridge and kept current when any row (or Classic's) changes one. */
+class DesktopStore extends Emitter {
+  snap: DesktopSnap = { state: null };
+  private started = false;
+  private bridge: DesktopControlsBridge;
+  constructor(bridge: DesktopControlsBridge) { super(); this.bridge = bridge; }
+  start() {
+    if (this.started) return;
+    this.started = true;
+    window.addEventListener(DESKTOP_CONTROLS_CHANGED, (e) => { this.snap = { state: (e as CustomEvent<DesktopControlsState>).detail }; this.emit(); });
+    void this.load();
+  }
+  async load(): Promise<void> {
+    try { this.snap = { state: await this.bridge.get() }; } catch (e) { this.snap = { state: null, error: errorText(e) }; } finally { this.emit(); }
+  }
+  async set(name: keyof DesktopControlsState, on: boolean): Promise<void> {
+    const next = await this.bridge.set(name, on);
+    window.dispatchEvent(new CustomEvent(DESKTOP_CONTROLS_CHANGED, { detail: next }));
+  }
+}
+const desktops = new WeakMap<DesktopControlsBridge, DesktopStore>();
+
+/** A device key's stored text, or null when there is none or storage is blocked. */
+function deviceValue(key: string): string | null {
+  try { return typeof localStorage === "undefined" ? null : localStorage.getItem(key); } catch { return null; }
+}
+
 const schemas = new WeakMap<WindowEngine, SchemaStore>();
 const prefs = new WeakMap<WindowEngine, PrefStore>();
-const once = <T,>(map: WeakMap<WindowEngine, T>, engine: WindowEngine, make: () => T): T => {
+const once = <K extends object, T>(map: WeakMap<K, T>, engine: K, make: () => T): T => {
   let value = map.get(engine);
   if (!value) { value = make(); map.set(engine, value); }
   return value;
@@ -211,6 +245,53 @@ function sourceOf(engine: WindowEngine, row: Row): Source {
       blocked: () => (isDeviceKey(src.key) || store.snap.where === "device" || has(engine, "operator.write") ? undefined : NEEDS_WRITE),
       save: (value: unknown) => store.set(src.key, value),
       retry: async () => { await store.load(); return true; },
+    };
+  }
+  if (src.kind === "device") {
+    return {
+      subscribe: (fn: Listener) => {
+        const on = (e: Event) => { if (!(e instanceof StorageEvent) || e.key === src.key || e.key === null) fn(); };
+        window.addEventListener("storage", on);
+        window.addEventListener(DEVICE_CHANGED, on);
+        return () => { window.removeEventListener("storage", on); window.removeEventListener(DEVICE_CHANGED, on); };
+      },
+      snapshot: () => deviceValue(src.key),
+      start: () => () => undefined,
+      read: () => deviceValue(src.key),
+      status: (): Status => ({ state: "ready" }),
+      blocked: () => undefined,
+      // null puts the default back by removing the key; this device keeps it, nothing goes to the engine.
+      save: async (value: unknown) => {
+        try {
+          if (value === null || value === undefined) localStorage.removeItem(src.key);
+          else localStorage.setItem(src.key, String(value));
+        } catch { throw new Error(DEVICE_REFUSED); }
+        window.dispatchEvent(new Event(DEVICE_CHANGED));
+      },
+      retry: async () => true,
+    };
+  }
+  if (src.kind === "desktop") {
+    const found = desktopControls();
+    if (!("bridge" in found)) {
+      // No Branch app on this computer (a browser), or one too old for these controls: the row shows why it is greyed.
+      const why = found.off === NEEDS_NEWER_APP ? NEEDS_APP_UPDATE : found.off;
+      return {
+        subscribe: () => () => undefined, snapshot: () => null, start: () => () => undefined, read: () => undefined,
+        status: (): Status => ({ state: "ready" }), blocked: () => why,
+        save: () => Promise.reject(new Error(why)), retry: async () => false,
+      };
+    }
+    const store = once(desktops, found.bridge, () => new DesktopStore(found.bridge));
+    return {
+      subscribe: store.subscribe,
+      snapshot: () => store.snap as unknown,
+      start: () => { store.start(); return () => undefined; },
+      read: () => store.snap.state?.[src.name],
+      status: (): Status => (store.snap.state ? { state: "ready" } : store.snap.error ? { state: "error", reason: LOAD_FAILED } : { state: "loading" }),
+      blocked: () => undefined,
+      save: (value: unknown) => store.set(src.name, value === true),
+      retry: async () => { await store.load(); return store.snap.state !== null; },
     };
   }
   return {
