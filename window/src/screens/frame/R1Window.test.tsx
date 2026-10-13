@@ -63,16 +63,17 @@ it("opens settings using an in-window history entry", async () => {
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!.click());
   expect(window.history.state.r1Index).toBe(1); expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "appearance" });
   expect(host.querySelector<HTMLButtonElement>('[aria-label="Back"]')?.disabled).toBe(false);
-  expect(host.textContent).toContain("Classic settings");
+  // Settings › Appearance is the R1 page now (#976): every working Classic control has its R1 row.
+  expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')?.dataset.page).toBe("appearance");
+  expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
 });
 it("mounts R1 Settings with the live engine and its slots, and hands Chat apps back to Classic until Manage is ported", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
   await act(async () => root.render(<R1Window session={session} />));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!.click());
-  await act(async () => [...host.querySelectorAll("button")].find(b => b.textContent === "General")!.click());
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
-  expect(settings.dataset.page).toBe("general");
+  expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
   expect(settings.dataset.pages).toBe("chatapps");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
@@ -84,15 +85,16 @@ it("mounts R1 Settings with the live engine and its slots, and hands Chat apps b
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "models" }));
   await act(async () => root.render(<R1Window session={session} />));
-  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!.click());
-  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("appearance");
+  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("models");
   expect(host.querySelector('[data-testid="r1-settings"]')).toBeNull();
 });
 it("sends a page to R1 Settings only when the row table or a slot covers it and Classic has nothing more", () => {
   expect(r1SettingsPage("general")).toBe(true);
+  expect(r1SettingsPage("appearance")).toBe(true);
   expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(false);
-  for (const page of ["chatapps", "appearance", "accounts", "models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
+  for (const page of ["chatapps", "accounts", "models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
 });
 
 it("the conversation menu's \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {

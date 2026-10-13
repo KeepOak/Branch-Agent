@@ -73,6 +73,22 @@
 .r1s-row > .r1s-note.r1s-bad { color: var(--bad); }
 .r1s-row > b[data-lv]::after { content: attr(data-lv); display: inline-block; vertical-align: 1px; margin-left: 6px; padding: 1px 6px; border-radius: 6px;
   font: 600 10px/1.4 var(--sans); letter-spacing: .02em; color: var(--ink-3); background: var(--gp-on); white-space: nowrap; }
+/* a row its page draws itself (slots.ts controls): a list-sized control takes the row's width; its lines sit on pills */
+.r1s-row.r1s-stack > .r1s-own { justify-self: stretch; overflow: visible; display: grid; gap: 8px; }
+.r1s-row > .r1s-own:not(:has(.r1s-items, .r1s-item)) { flex-wrap: wrap; justify-content: flex-end; }
+.r1s-own-ctl { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.r1s-items { display: grid; gap: 6px; }
+.r1s-item { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.r1s-item-t { display: grid; gap: 1px; flex: 1 1 200px; min-width: 0; padding: 4px 12px; border-radius: 14px; }
+.r1s-item-t b { font-size: 13.5px; font-weight: 500; }
+.r1s-item-t small, .r1s-msg { font-size: 12px; color: var(--ink-3); }
+.r1s-msg { justify-self: start; padding: 2px 10px; border-radius: 10px; }
+.r1s-msg.r1s-bad { color: var(--bad); }
+.r1s-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.r1s-val { padding: 2px 10px; border-radius: 10px; font-size: 13px; color: var(--ink-2); }
+.r1s-swatch { display: inline-flex; flex: none; }
+.r1s-well { width: 32px; height: 32px; padding: 2px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; }
+.r1s-btn[disabled], .r1s-link[disabled] { opacity: .55; cursor: not-allowed; }
 .r1s-row[aria-disabled="true"] > .r1s-ctl { opacity: .55; cursor: not-allowed; }
 .r1s-row[aria-disabled="true"] > .r1s-ctl * { pointer-events: none; }
 /* a section's finer rows: borderless group with its own heading (preview .s36Fine) */
