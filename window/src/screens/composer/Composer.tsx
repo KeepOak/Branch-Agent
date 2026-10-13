@@ -31,6 +31,7 @@ import { Ring } from "../../glass/Ring";
 import type { Limits } from "../../shell/status-data";
 import { shortReason } from "../../thread/format";
 import { useConversationPrefs } from "../../thread/prefs";
+import { improvedText, improvePrompt } from "./improve";
 import { PlusMenu } from "./PlusMenu";
 import { RingPopover, type RunningRow } from "./RingPopover";
 import { Row, type RowMenu } from "./Row";
@@ -39,7 +40,7 @@ import "../../composer/composer.css";
 import "./composer.css";
 
 export const VOICE_OFF = "Off until you choose: it uses the microphone. Turn it on in Settings › Voice.";
-export const IMPROVE_COMING = "Improving a draft with your model comes in a later update.";
+export const IMPROVE_COMING = "This engine can’t improve a draft with your model.";
 /** Improve asks the side model about the draft, not the conversation's Trunk. */
 export const IMPROVE_NEED = "sessions.companion.ask";
 
@@ -101,6 +102,8 @@ export function Composer(props: Props) {
   const [searching, setSearching] = useState(false);
   const [photo, setPhoto] = useState(false), [picture, setPicture] = useState(false), [talking, setTalking] = useState(false);
   const [target, setTarget] = useState<string | null>(null);
+  const [improving, setImproving] = useState(false), [improved, setImproved] = useState<{ before: string; after: string } | null>(null);
+  const textNow = useRef("");
   useEffect(() => { setTarget(null); setMenu(null); }, [sessionKey]);
   const box = useRef<HTMLTextAreaElement>(null), fileInput = useRef<HTMLInputElement>(null), folderInput = useRef<HTMLInputElement>(null);
   const plus = useRef<HTMLButtonElement>(null), ring = useRef<HTMLButtonElement>(null);
@@ -320,6 +323,24 @@ export function Composer(props: Props) {
   };
 
   const hasText = draft.text.trim().length > 0;
+  // Improve my draft (#977): the side model rewrites the draft; it lands only if nothing was typed meanwhile.
+  textNow.current = draft.text;
+  const improve = async () => {
+    const before = draft.text;
+    if (!before.trim() || improving || !sessionKey) return;
+    setImproving(true); setProblem(null); setMenu(null);
+    try {
+      const result = await engine.request<{ answer?: unknown }>(IMPROVE_NEED, { sessionKey, question: improvePrompt(before) });
+      const after = improvedText(rec(result).answer);
+      if (!after) { setProblem("Your model didn’t return a rewrite, so your draft is unchanged."); return; }
+      if (textNow.current !== before) return;
+      draft.setText(after); setImproved({ before, after });
+    } catch (error) {
+      setProblem(`Couldn’t improve the draft: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setImproving(false);
+    }
+  };
   const hasDraft = hasText || draft.files.length > 0;
   const stopMode = working && !hasDraft;
   const ready = hasDraft && !offline && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
@@ -335,6 +356,7 @@ export function Composer(props: Props) {
     {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
     {notes.map((n, i) => <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : shortReason(n)}</p>)}
     {draft.note ? <p className="r1c-note">{draft.note}</p> : null}
+    {improved && draft.text === improved.after ? <p className="r1c-note" role="status">Improved your draft · <button type="button" className="r1c-undo" data-local="" onClick={() => { draft.setText(improved.before); setImproved(null); box.current?.focus(); }}>Undo</button></p> : null}
     {drawer.peopleError && view?.kind === "mention" ? <p className="r1c-note bad">{drawer.peopleError}</p> : null}
     {props.replyTo ? <div className="c-dock-row"><span className="r1c-chip" data-testid="reply-chip"><Icon name="back" size={14} />Replying to {props.replyTo.name}: {props.replyTo.text.slice(0, 60)}
       <button type="button" className="c-x" aria-label="Don't reply" onClick={props.onClearReply}><Icon name="x" size={12} /></button></span></div> : null}
@@ -355,7 +377,7 @@ export function Composer(props: Props) {
       )}
       {prefs.vimKeys && vim.mode === "normal" ? <span className="r1c-flag" data-testid="vim-normal">Normal</span> : null}
       {row.incognito === true ? <span className="r1c-flag">Temporary</span> : null}
-      {hasText && !tight ? <Later need={IMPROVE_NEED} reason={IMPROVE_COMING} where="Improve my draft"><button type="button" className="r1c-btn" aria-label="Improve my draft"><Icon name="spark" /></button></Later> : null}
+      {hasText && !tight ? <Coming engine={engine} need={IMPROVE_NEED} reason={IMPROVE_COMING} where="Improve my draft"><button type="button" className="r1c-btn" aria-label="Improve my draft" title={improving ? "Improving…" : "Improve my draft"} aria-busy={improving || undefined} disabled={improving} onClick={() => void improve()}><Icon name="spark" /></button></Coming> : null}
       {dict.on || tight ? null : voice.dictation
         ? <button type="button" className="r1c-btn" data-need="talk.catalog" aria-label="Dictate into the box" title="Dictate into the box" onClick={() => void dict.start()}><Icon name="mic" /></button>
         : <Later need="talk.catalog" reason={VOICE_OFF} where="Dictate into the box"><button type="button" className="r1c-btn" aria-label="Dictate into the box"><Icon name="mic" /></button></Later>}
@@ -383,7 +405,7 @@ export function Composer(props: Props) {
     {menu === "plus" ? <PlusMenu anchor={plus} onClose={close} hasModel={!noModel} voiceLive={voice.live}
       onFiles={() => fileInput.current?.click()} onPhoto={() => setPhoto(true)} onFolder={() => folderInput.current?.click()} onPicture={() => setPicture(true)}
       onInsert={insert} onBackground={() => void runBackground(draft.text)} onOpen={onOpen} onCall={() => setTalking(true)}
-      tight={tight} onDictate={tight && voice.dictation && !dict.on ? () => void dict.start() : undefined}
+      tight={tight} engine={engine} onImprove={hasText && !improving ? () => void improve() : undefined} onDictate={tight && voice.dictation && !dict.on ? () => void dict.start() : undefined}
       onVoiceNote={typeof MediaRecorder !== "undefined" && navigator.mediaDevices ? () => void note.start() : undefined} /> : null}
     {menu === "ring" ? <RingPopover anchor={ring} onClose={close} engine={engine} sessionKey={sessionKey} name={trunkName} working={working} offline={offline}
       context={context} row={props.row} running={props.running} limits={props.limits} onOpen={onOpen} onOpenConversation={(key) => { setMenu(null); props.onOpenConversation(key); }} /> : null}

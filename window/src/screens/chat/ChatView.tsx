@@ -164,8 +164,9 @@ export function ChatView(props: ChatViewProps) {
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
   const signature = history.length + ":" + live.length + ":" + liveText + ":" + (running ? 1 : 0) + ":" + extras.length + ":" + (props.queued?.length ?? 0);
   const scroller = useFollow(root, signature, (pendingUser ?? "") + (ownLine.at(-1)?.id ?? ""), props.sessionKey ?? "");
-  const [finding, setFinding] = useState(false);
-  useFindKey(useCallback(() => setFinding(true), []));
+  // Find in this conversation. A search result that opens here passes its words, and a new request starts a fresh bar.
+  const [finding, setFinding] = useState<{ query?: string; nonce: number } | null>(null);
+  useFindKey(useCallback((query?: string) => setFinding(current => (query ? { query, nonce: (current?.nonce ?? 0) + 1 } : current ?? { nonce: 0 })), []));
   const [usedSuggestion, setUsedSuggestion] = useState<string | null>(null);
 
   const historyReady = props.historyReady !== false;
@@ -188,7 +189,7 @@ export function ChatView(props: ChatViewProps) {
   const liveShows = live.some((b) => b.kind === "text" || b.kind === "step" || b.kind === "plan" || b.kind === "preamble" || (b.kind === "approval") || (b.kind === "thinking" && work.mode !== "normal"));
   return <CapabilityProvider engine={capabilities}><ThreadContext.Provider value={ctx}>
     <div className="r1c" ref={root} data-mode={work.mode} data-times={prefs.messageTimes} dir={prefs.dir}>
-      {finding ? <FindBar root={root} name={name} signature={signature} onClose={() => setFinding(false)} /> : null}
+      {finding ? <FindBar key={finding.nonce} root={root} name={name} signature={signature} initialQuery={finding.query} onClose={() => setFinding(null)} /> : null}
       <div className="r1c-thread">
         {props.loadError ? <NoticeLine tone="bad" text="Couldn’t load this conversation" details={props.loadError} links={props.onReload ? [{ label: "Try again", onClick: props.onReload, need: "chat.history", reason: "This engine can’t read conversations." }] : []} testid="load-error" /> : null}
         {empty ? <EmptyChat name={name} engine={engine} onStart={props.onStart} /> : !historyReady && !history.length && !props.loadError ? <NoticeLine text="Opening this conversation…" testid="opening" /> : null}
