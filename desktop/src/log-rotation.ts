@@ -1,14 +1,12 @@
-// Size-capped log files for the desktop's own logs (desktop.log, gateway.log). The rule and the archive names are
-// upstream OpenClaw's: src/logging/logger.ts in cd89adf0ac01 ("fix(logging): rotate file logs instead of
-// suppressing") and engine/src/logging/logger-file-transport.ts (rotateLogFile). The live file rotates when the
-// next write would pass the cap, and the newest archives stay as name.1.ext through name.5.ext.
+// Size-capped log files for the desktop's own logs (desktop.log, gateway.log). The live file rotates when the next
+// write would pass the cap, and the newest archives stay as name.1.ext through name.5.ext.
 import { appendFileSync, existsSync, renameSync, rmSync, statSync } from "node:fs";
 import { extname } from "node:path";
 import { Writable } from "node:stream";
 
-/** Upstream's default for logging.maxFileBytes. */
+/** Default cap for one log file: 100 MB. */
 export const LOG_MAX_BYTES = 100 * 1024 * 1024;
-/** Numbered archives kept beside the live file (upstream MAX_ROTATED_LOG_FILES). */
+/** Numbered archives kept beside the live file. */
 export const LOG_ROTATED_FILES = 5;
 
 export function rotatedLogPath(file: string, index: number): string {

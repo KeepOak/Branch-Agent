@@ -10,7 +10,7 @@ if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_T
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const { startGateway } = await import(pathToFileURL(join(dist, "gateway.js")));
 
-// The upstream default for logging.maxFileBytes (100 MB), and the number of numbered archives upstream keeps.
+// The default cap (100 MB) and the number of numbered archives kept.
 const CAP = 100 * 1024 * 1024;
 const ARCHIVES = 5;
 const ENGINE_BYTES = CAP + 1024 * 1024;
