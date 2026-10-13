@@ -327,6 +327,7 @@ describe("trunks.template catalog", () => {
     };
     expect(payload.templates.map((t) => [t.id, t.source])).toEqual([
       ["builder", "bundled"],
+      ["home-desk", "bundled"],
       ["inbox-helper", "bundled"],
       ["lookout", "bundled"],
       ["night-shift", "bundled"],
