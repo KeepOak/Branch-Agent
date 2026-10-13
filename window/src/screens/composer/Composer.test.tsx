@@ -73,6 +73,7 @@ describe("R1-04 composer", () => {
     const clear = vi.fn();
     const { host, send } = await mount({ replyTo: { entryId: "m1", name: "Scout", text: "The invoice is due Friday" }, onClearReply: clear });
     expect(host.querySelector("[data-testid='reply-chip']")?.textContent).toContain("Replying to Scout: The invoice is due Friday");
+    expect(host.querySelector("[data-testid='reply-chip']")?.classList.contains("r1c-chip")).toBe(true);
     await type(host, "Pay it today");
     await act(async () => button("Send")!.click());
     expect(send).toHaveBeenCalledWith("Pay it today", { replyToId: "m1" }, undefined);

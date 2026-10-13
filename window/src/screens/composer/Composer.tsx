@@ -337,7 +337,7 @@ export function Composer(props: Props) {
     {notes.map((n, i) => <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : shortReason(n)}</p>)}
     {draft.note ? <p className="r1c-note">{draft.note}</p> : null}
     {drawer.peopleError && view?.kind === "mention" ? <p className="r1c-note bad">{drawer.peopleError}</p> : null}
-    {props.replyTo ? <div className="c-dock-row"><span className="c-chip" data-testid="reply-chip"><Icon name="back" size={14} />Replying to {props.replyTo.name}: {props.replyTo.text.slice(0, 60)}
+    {props.replyTo ? <div className="c-dock-row"><span className="r1c-chip" data-testid="reply-chip"><Icon name="back" size={14} />Replying to {props.replyTo.name}: {props.replyTo.text.slice(0, 60)}
       <button type="button" className="c-x" aria-label="Don't reply" onClick={props.onClearReply}><Icon name="x" size={12} /></button></span></div> : null}
     <DockRow plan={null} trunkName={trunkName} working={working} offline={offline} line={line.line}
       onReword={(id, text) => { line.reword(id, text); toast("Reworded. It goes as you wrote it now."); }} onMoveUp={line.moveUp} onRemove={line.remove} onSteerQueued={line.steerNow} onRetry={line.retry}
