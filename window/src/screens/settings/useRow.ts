@@ -21,6 +21,8 @@ export type RowView = {
   reason?: string;
   /** The call a Coming row waits for. */
   need?: string;
+  /** The engine calls the row's control makes (R1-10); empty when it only touches this window or this computer. */
+  calls: string[];
   label: string;
   help?: string;
   /** The level the row shows at (its own, or Advanced when the schema marks the key advanced). */
@@ -321,6 +323,19 @@ function sourceOf(engine: WindowEngine, row: Row): Source {
 }
 
 /** A row's value, its saver and its state. */
+/** The engine calls behind a row (HANDOFF R1-06 "Engine calls"): config rows read with config.get and save with
+ *  config.patch, the person's choices with users.prefs. A device key, a look kept on this device (no person) and the
+ *  desktop bridge's switches never reach the engine. */
+export function callsOf(engine: WindowEngine, row: Row): string[] {
+  const src = row.source;
+  if (src.kind === "config") return ["config.get", "config.patch"];
+  if (src.kind === "pref") return ["users.prefs.get", "users.prefs.set"];
+  if (src.kind === "look") return isDeviceKey(src.key) || lookStore(engine).snap.where === "device" ? [] : ["users.prefs.set"];
+  if (src.kind === "coming") return [src.need];
+  if (src.kind === "slot") return [...src.calls];
+  return [];
+}
+
 export function useRow(engine: WindowEngine, row: Row): RowView {
   const { hints, schema } = useSchemaHints(engine);
   const source = useMemo(() => sourceOf(engine, row), [engine, row]);
@@ -365,7 +380,8 @@ export function useRow(engine: WindowEngine, row: Row): RowView {
   const hint = path ? hintFor(hints, path) : undefined;
   return {
     value, set, retry, state, reason: failed ?? blocked ?? base.reason,
-    need: row.source.kind === "coming" ? row.source.need : undefined,
+    need: row.source.kind === "coming" ? row.source.need : row.source.kind === "slot" ? row.source.calls.join(" ") : undefined,
+    calls: callsOf(engine, row),
     label: rowLabel(row, hints), help: rowHelp(row, hints), level: rowLevel(row, hints), restart, sensitive: hint?.sensitive === true,
   };
 }

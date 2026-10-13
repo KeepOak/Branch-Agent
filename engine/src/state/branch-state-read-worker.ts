@@ -30,6 +30,12 @@ import {
   registerBranchStateDatabaseLifecycleListener,
 } from "./branch-state-db-cache.js";
 import { captureCommand, requestBytes } from "./branch-state-read-request.js";
+import {
+  getBranchStateReadTiming,
+  listDispatchedBranchStateReads,
+  markBranchStateReadDispatched,
+  markBranchStateReadSettled,
+} from "./branch-state-read-timing.js";
 import type {
   BranchStateReadAuthority,
   BranchStateReadCommand,
@@ -336,6 +342,9 @@ function createReadTransport(
     const inContext = AsyncLocalStorage.snapshot();
     let task: ReadTask | undefined;
     const cleanup: { retire: boolean; error?: Error } = { retire: true };
+    const readTiming = getBranchStateReadTiming();
+    const slotToken = {};
+    let dispatchedAt: number | undefined;
     const completion = createRetainedOperation<BranchStateReadOutcome>(() => inContext(service));
     function service() {
       if (!task || completion.operation.read().status !== "pending") {
@@ -363,6 +372,10 @@ function createReadTransport(
       }
       // Native closes and quarantine cleanup can require exit even when the domain read succeeds.
       cleanup.retire = "error" in outcome || cleanup.error !== undefined;
+      if (readTiming && dispatchedAt !== undefined) {
+        readTiming.readMs = performance.now() - dispatchedAt;
+      }
+      markBranchStateReadSettled(slotToken);
       completion.resolve(outcome);
     }
     try {
@@ -381,9 +394,20 @@ function createReadTransport(
         snapshotRoot,
         command: { ...readCommand },
       };
-      task = readPool(state, ownsAdmission()).startTask(
+      const enqueuedAt = performance.now();
+      const pool = readPool(state, ownsAdmission());
+      if (readTiming) {
+        readTiming.queueDepth = pool.getSnapshot().pendingTasks;
+        readTiming.holders = listDispatchedBranchStateReads();
+      }
+      task = pool.startTask(
         () => {
           authority.assertCurrent();
+          if (readTiming) {
+            dispatchedAt = performance.now();
+            readTiming.waitMs = dispatchedAt - enqueuedAt;
+            markBranchStateReadDispatched(slotToken, readTiming.label);
+          }
           return request;
         },
         { signal: authority.signal, inputBytes: requestBytes(request) },

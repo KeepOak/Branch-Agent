@@ -142,7 +142,7 @@ describe("R1 sidebar", () => {
     expect(deleted.getAttribute("aria-disabled")).toBe("true");
     expect(host.querySelector('[aria-label="New folder"]')?.getAttribute("aria-disabled")).toBe("true");
     await click(host.querySelector(".r1sb-seed"));
-    expect(props.onPlace).toHaveBeenCalledWith("customize");
+    expect(props.onPlace).toHaveBeenCalledWith("seedbank");
     await click(host.querySelector('[aria-label="Grove"]'));
     expect(props.onPlace).toHaveBeenCalledWith("office");
     await click(host.querySelector('.r1sb-caps [aria-label="Settings"]'));
