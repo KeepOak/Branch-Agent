@@ -3,5 +3,5 @@ engine:src/gateway/server-methods/trunk-templates.test.ts
 engine:src/trunks/day-one-mentions-watch.test.ts
 engine:src/trunks/trunk-template-first-run.test.ts
 engine:src/trunks/trunk-template.test.ts
-window:src/screens/seedbank/catalog.test.ts
 window:src/screens/onboarding/Onboarding.test.tsx
+window:src/screens/seedbank/catalog.test.ts
