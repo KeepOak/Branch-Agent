@@ -100,3 +100,28 @@ test("the update helper's log is capped the same way, with five numbered archive
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
+
+test("a failed macOS Applications install is logged through the same cap", async () => {
+  const { ensureMacApplicationsInstall } = await import(pathToFileURL(join(dist, "mac-applications.js")));
+  const root = await mkdtemp(join(tmpdir(), "desktop-mac-log-"));
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const testDist = process.env.BRANCH_DESKTOP_TEST_DIST;
+  try {
+    const log = join(root, "desktop.log");
+    await writeFile(log, "");
+    await truncate(log, CAP + 1);
+    // The launch path only installs on darwin outside tests; a missing bundle makes the install fail at once.
+    delete process.env.BRANCH_DESKTOP_TEST_DIST;
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    await ensureMacApplicationsInstall(join(root, "missing.app"), log);
+    Object.defineProperty(process, "platform", platform);
+    process.env.BRANCH_DESKTOP_TEST_DIST = testDist;
+    assert.equal(await sizeOf(join(root, "desktop.1.log")), CAP + 1, "the full log was rotated to an archive");
+    assert.match(await readFile(log, "utf8"), /macOS Applications install failed/);
+    assert.ok(await sizeOf(log) < 1024 * 1024, "the live log is small again");
+  } finally {
+    if (platform) Object.defineProperty(process, "platform", platform);
+    process.env.BRANCH_DESKTOP_TEST_DIST = testDist;
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
