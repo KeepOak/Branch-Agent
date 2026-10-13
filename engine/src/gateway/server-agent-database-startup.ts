@@ -205,7 +205,7 @@ export function activateGatewayAgentDatabaseStartup(params: {
   preparationReady: Promise<void>;
   /** Resolves when post-ready startup work may run; a deferred transcript repair waits for it. */
   waitForPostReadyWork: () => Promise<void>;
-  /** Tracks a deferred transcript repair so Gateway shutdown joins it. */
+  /** Runs a deferred transcript repair as tracked Gateway work (the Gateway's connection-scoped tracker). */
   trackDeferredWork: (run: () => Promise<void>) => void;
   getConfig: () => BranchConfig;
   getPluginRegistry: () => PluginRegistry;
