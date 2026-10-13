@@ -39,16 +39,16 @@ export function AskDrop({ waiting, nameOf, onAnswer, onOpen, lockdown }: DropPro
   const open = ask.sessionKey && onOpen ? () => onOpen(ask.sessionKey!) : undefined;
   return createPortal(
     <div className="r1-drop-wrap" data-host={host === document.body ? "body" : "column"}>
-      <div className="r1-drop" key={ask.id} role="region" aria-label={`${nameOf(ask.agentId)} needs you`} data-testid="r1-drop" data-away={leaving?.away || undefined} data-done={leaving ? (leaving.yes ? "yes" : "no") : undefined}>
+      <div className="r1-drop g-clear" key={ask.id} role="region" aria-label={`${nameOf(ask.agentId)} needs you`} data-testid="r1-drop" data-away={leaving?.away || undefined} data-done={leaving ? (leaving.yes ? "yes" : "no") : undefined}>
         <div className="r1-drop-top"><b className="r1-drop-who">{nameOf(ask.agentId)} needs you</b>{more ? <span className="r1-drop-more" aria-label={`${more} more waiting`}>+{more}</span> : null}</div>
         <span className="r1-drop-q">{ask.title}</span>
         <div className="r1-drop-acts">
           {leaving ? <span className="r1-drop-done">{leaving.yes ? "✓ Done" : "✕ Declined"}</span> : ask.kind === "question" ? (
-            open ? <button type="button" className="r1-ask-btn" data-kind="primary" data-local onClick={open}>Open</button> : null
+            open ? <button type="button" className="r1-ask-btn" data-kind="primary" data-solid="" data-local onClick={open}>Open</button> : null
           ) : (
             <>
               {ask.allowed.includes("allow-once") ? (
-                <Coming need={RESOLVE_OF[ask.kind]}><button type="button" className="r1-ask-btn" data-kind="primary" disabled={lockdown || current.status !== "waiting"} title={lockdown ? LOCKDOWN_WHY : undefined} onClick={() => send("allow-once", true)}>Yes</button></Coming>
+                <Coming need={RESOLVE_OF[ask.kind]}><button type="button" className="r1-ask-btn" data-kind="primary" data-solid="" disabled={lockdown || current.status !== "waiting"} title={lockdown ? LOCKDOWN_WHY : undefined} onClick={() => send("allow-once", true)}>Yes</button></Coming>
               ) : null}
               <Coming need={RESOLVE_OF[ask.kind]}><button type="button" className="r1-ask-btn" disabled={current.status !== "waiting"} onClick={() => send("deny", false)}>No</button></Coming>
             </>

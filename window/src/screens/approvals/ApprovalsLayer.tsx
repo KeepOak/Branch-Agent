@@ -79,7 +79,7 @@ export function ApprovalsLayer({ engine, ready = true, sessionKey, view, nameOf:
     title: `${nameOf(ask.agentId)} needs you`,
     body: ask.title,
     actions: <>
-      {ask.kind !== "question" && ask.allowed.includes("allow-once") ? <Coming need={RESOLVE_OF[ask.kind]}><button type="button" className="r1-ask-btn" data-kind="primary" disabled={lock.on} title={lock.on ? LOCKDOWN_WHY : undefined} onClick={() => { void answer(ask.id, "allow-once"); dismiss(ask.id); }}>Yes</button></Coming> : null}
+      {ask.kind !== "question" && ask.allowed.includes("allow-once") ? <Coming need={RESOLVE_OF[ask.kind]}><button type="button" className="r1-ask-btn" data-kind="primary" data-solid="" disabled={lock.on} title={lock.on ? LOCKDOWN_WHY : undefined} onClick={() => { void answer(ask.id, "allow-once"); dismiss(ask.id); }}>Yes</button></Coming> : null}
       {ask.kind !== "question" ? <Coming need={RESOLVE_OF[ask.kind]}><button type="button" className="r1-ask-btn" onClick={() => { void answer(ask.id, "deny"); dismiss(ask.id); }}>No</button></Coming> : null}
       {ask.sessionKey ? <button type="button" className="r1-ask-btn" data-kind="ghost" data-local onClick={() => { dismiss(ask.id); onOpen(ask.sessionKey!); }}>Open</button> : null}
     </>,
