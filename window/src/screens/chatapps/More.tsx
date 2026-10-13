@@ -347,7 +347,7 @@ function Groups({ app, cfg, base, has }: AppMoreProps & { base: string; has: (k:
           <span className="g-label" data-lines><b>{visible(id)}</b> · Answers when {mention ? "mentioned" : "every message"}</span>
           <span className="g-label">Allowed</span><Toggle label={"Allowed in " + id} on disabled={!cfg.ready} onChange={() => void cfg.set(base + ".groups." + id, null)} />
           <Segmented label={"Answers when in " + id} value={mention ? "m" : "e"} options={[{ v: "m", label: "Mentioned" }, { v: "e", label: "Every message" }]} disabled={!cfg.ready} onChange={(v) => void cfg.set(base + ".groups." + id + ".requireMention", v === "m")} />
-          <select aria-label={"Who in " + id} disabled title="Branch can’t limit who in a group yet." data-coming={NO_KEY}><option>Anyone</option></select>
+          <select className="r1s-inp" aria-label={"Who in " + id} disabled title="Branch can’t limit who in a group yet." data-coming={NO_KEY}><option>Anyone</option></select>
         </div>;
       })}
       <div className="r1-ca-add"><input className="r1s-inp" placeholder="Group ID" aria-label="Group ID" value={gid} disabled={!cfg.ready} onChange={(e) => setGid(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><button type="button" disabled={!cfg.ready || !gid.trim()} data-need="config.patch" onClick={add}>Add a group by ID</button></div>

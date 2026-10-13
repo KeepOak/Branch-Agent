@@ -43,9 +43,9 @@
 /* Ported Classic controls (README rule 6), in the item 48 look: rows use the Settings row (r1s-row), text sits on pills. */
 .r1-ca-connected { display: grid; gap: 6px; margin: 4px 0 12px; }
 .r1-ca-app { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 6px 0; }
-.r1-ca-app > span.g-label { flex: 1 1 200px; min-width: 0; }
+.r1-ca-app > span.g-label:not(.r1-ca-pill) { flex: 1 1 200px; min-width: 0; }
 .r1-ca-app small, .r1-ca-request small, .r1-ca-chat small { color: var(--ink-3); font-size: 12px; }
-.r1-ca-pill { font-size: 11.5px; }
+.r1-ca-pill { font-size: 11.5px; flex: none; }
 .r1-ca-pill[data-tone="ok"] { color: var(--ok, var(--ink)); }
 .r1-ca-pill[data-tone="bad"] { color: var(--bad, var(--ink)); }
 .r1-ca-pairing h3 span { font-weight: 400; margin-left: 4px; }
