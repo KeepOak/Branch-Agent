@@ -268,14 +268,15 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
   if (!iconUpgrade && await readOrEmpty(versionFile(cfg)) === release.version) return false;
   const choice = choose(release, install, iconUpgrade);
   if (!choice || await rejected(cfg, release.version, choice.asset.sha256)) return false;
-  const sums = await releaseSha256Sums(release, request, false);
-  const assetName = basename(new URL(choice.asset.url).pathname);
-  if (sums && sums.get(assetName) !== choice.asset.sha256) throw new Error(`${assetName} does not match the release's SHA256SUMS`);
   if (!iconUpgrade && await installedMatches(choice.asset, install)) {
     await replaceFile(versionFile(cfg), `${release.version}
 `);
     return false;
   }
+  // Only a release that will actually be downloaded is checked against its SHA256SUMS: nothing is fetched otherwise.
+  const sums = await releaseSha256Sums(release, request, false);
+  const assetName = basename(new URL(choice.asset.url).pathname);
+  if (sums && sums.get(assetName) !== choice.asset.sha256) throw new Error(`${assetName} does not match the release's SHA256SUMS`);
   const updates = join(cfg.dataDir, "updates");
   await mkdir(updates, { recursive: true });
   const directory = await mkdtemp(join(updates, `desktop-${release.version}-`));

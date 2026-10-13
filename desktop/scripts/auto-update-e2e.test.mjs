@@ -2,6 +2,7 @@
 // release's own SHA256SUMS, driven through the real staging and swap code for each platform's update path.
 // `platform` and `appImage` on the install select another platform's path, so all three run on any OS.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -193,3 +194,9 @@ test("Linux: a release without SHA256SUMS never updates an AppImage", () => fixt
   await assert.rejects(desktopUpdate.stageDesktopUpdate(cfg, release, request, install), /Release download failed \(404\)/);
   assert.equal(await installed(install), OLD.linux);
 }));
+
+test("an install that already matches the release fetches nothing, not even SHA256SUMS", async () => {
+  const src = readFileSync(new URL("../src/desktop-update.ts", import.meta.url), "utf8");
+  const stage = src.slice(src.indexOf("export async function stageDesktopUpdate"));
+  assert.ok(stage.indexOf("installedMatches(") < stage.indexOf("releaseSha256Sums("), "SHA256SUMS is fetched only after the install is known to differ");
+});
