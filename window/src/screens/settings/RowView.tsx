@@ -45,7 +45,7 @@ export function Segmented({ label, value, options, disabled, onChange }: { label
     requestAnimationFrame(() => box.current?.querySelectorAll<HTMLButtonElement>("button")[options.indexOf(next)]?.focus());
   };
   return (
-    <div ref={box} className="r1s-seg" role="radiogroup" aria-label={label} onKeyDown={move}>
+    <div ref={box} className="r1s-seg g-frost" role="radiogroup" aria-label={label} onKeyDown={move}>
       <i ref={thumb} aria-hidden="true" />
       {options.map((o, i) => (
         <button key={String(o.v)} type="button" role="radio" aria-checked={i === index} tabIndex={i === Math.max(index, 0) ? 0 : -1} disabled={disabled} onClick={() => onChange(o.v)}>{o.label}</button>
@@ -74,7 +74,7 @@ function Field({ label, value, kind, unit, disabled, placeholder, onSave }: { la
     <>
       <input className="r1s-inp" aria-label={label} type={kind === "secret" ? "password" : kind === "number" ? "number" : "text"} value={text} disabled={disabled} placeholder={placeholder}
         onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); }} />
-      {unit ? <span className="r1s-unit">{unit}</span> : null}
+      {unit ? <span className="r1s-unit g-label">{unit}</span> : null}
     </>
   );
 }
@@ -106,18 +106,18 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
   return (
     <div id={`row-${row.id}`} className={`r1s-row${stack ? " r1s-stack" : ""}`} data-row={row.id} data-lv={tag} aria-disabled={coming || undefined}
       aria-busy={r.state === "saving" || undefined} data-coming={coming ? r.need : undefined} title={coming ? r.reason : undefined}>
-      <b data-lv={tag}>{r.label}</b>
-      {r.help ? <small>{r.help}</small> : null}
+      <b className="g-label" data-lv={tag}>{r.label}</b>
+      {r.help ? <small className="g-label" data-lines>{r.help}</small> : null}
       <div className="r1s-ctl">{control}</div>
-      {coming || r.state === "blocked" ? <small className="r1s-note">{r.reason}</small>
+      {coming || r.state === "blocked" ? <small className="r1s-note g-label" data-lines>{r.reason}</small>
         : r.state === "error" && r.reason ? (
-          <small className="r1s-note r1s-bad" role="status">
+          <small className="r1s-note r1s-bad g-label" data-lines role="status">
             {r.reason === CHANGED_ELSEWHERE ? <>Changed somewhere else · <button type="button" className="r1s-link" onClick={() => void r.retry()}>Reload</button></>
               // A config load failure has the page's own Try again; a pref load failure is retried here.
               : r.reason === LOAD_FAILED && row.source.kind !== "config" ? <>Settings didn’t load · <button type="button" className="r1s-link" onClick={() => void r.retry()}>Try again</button></>
               : r.reason}
           </small>
-        ) : r.restart ? <small className="r1s-note">{RESTART_NOTE}</small> : null}
+        ) : r.restart ? <small className="r1s-note g-label">{RESTART_NOTE}</small> : null}
     </div>
   );
 }
