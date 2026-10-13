@@ -27,7 +27,7 @@ function GoTo({ go }: { go: (route: Route) => void }) {
   return (
     <>
       <Head page="goto" />
-      <section className="r1s-sec g-clear" aria-label="Places">
+      <div className="r1s-col"><section className="r1s-sec g-clear" aria-label="Places">
         <ul className="r1s-goto">
           {PLACES.map((place) => (
             <li key={place.id}>
@@ -37,7 +37,7 @@ function GoTo({ go }: { go: (route: Route) => void }) {
             </li>
           ))}
         </ul>
-      </section>
+      </section></div>
     </>
   );
 }
