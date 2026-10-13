@@ -17,7 +17,9 @@ export type DesktopControlsBridge = {
   onOpenUsage(listener: () => void): () => void;
 };
 
-const CHANGED = "branch:desktop-controls";
+/** Sent on window with the new state after any control changes, so every row showing a control follows it. */
+export const DESKTOP_CONTROLS_CHANGED = "branch:desktop-controls";
+const CHANGED = DESKTOP_CONTROLS_CHANGED;
 export const IN_BROWSER = "This is done by the Branch app on your computer; open Branch there to change it.";
 export const NEEDS_NEWER_APP = "Needs a newer Branch app on this computer.";
 

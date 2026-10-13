@@ -2,7 +2,9 @@
 // config path, a users.prefs entry, the person's look) or what it waits for (Coming), and one renderer and one hook
 // (useRow) draw and save it. Labels, help and the Advanced level come from the engine's config.schema uiHints; a row
 // carries its own label only where the owner's plain words differ.
+import type { DesktopControlName } from "../../connect/desktop-controls";
 import type { Level, PageId } from "./nav";
+import { APPEARANCE_ROWS } from "./pages/appearance";
 import { GENERAL_ROWS } from "./pages/general";
 
 export type RowSource =
@@ -12,6 +14,10 @@ export type RowSource =
   | { kind: "pref"; key: string }
   /** A key of the person's look (users.prefs "ui.window.look"), or a device key such as text size, via the look store. */
   | { kind: "look"; key: string }
+  /** A choice this window keeps in its own storage (localStorage), such as the delete dialog's "Ask before deleting". */
+  | { kind: "device"; key: string }
+  /** A switch of the Branch app on this computer (the desktop bridge's controls), such as starting with the computer. */
+  | { kind: "desktop"; name: DesktopControlName }
   /** Nothing to call yet: drawn as Coming with the call it waits for. */
   | { kind: "coming"; need: string; reason: string };
 
@@ -66,7 +72,8 @@ export function rowLabel(row: Row, hints: UiHints): string {
   if (row.label) return row.label;
   const hint = hintOf(row, hints);
   if (hint?.label) return hint.label;
-  const key = row.source.kind === "config" ? row.source.path : row.source.kind === "coming" ? row.id : row.source.key;
+  const src = row.source;
+  const key = src.kind === "config" ? src.path : src.kind === "coming" ? row.id : src.kind === "desktop" ? src.name : src.key;
   return key.split(".").pop() ?? key;
 }
 export const rowHelp = (row: Row, hints: UiHints): string | undefined => row.help ?? hintOf(row, hints)?.help;
@@ -77,7 +84,7 @@ export function rowLevel(row: Row, hints: UiHints): Level {
 }
 
 /** Every row of the R1 Settings pages. Pages add their list here. */
-export const ROWS: Row[] = [...GENERAL_ROWS];
+export const ROWS: Row[] = [...GENERAL_ROWS, ...APPEARANCE_ROWS];
 
 /** The rows of one card at this level, in table order. A row above the level is hidden. */
 export function cardRows(page: PageId, card: string, level: Level, hints: UiHints, rows: Row[] = ROWS): Row[] {
