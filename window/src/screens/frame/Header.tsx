@@ -35,7 +35,7 @@ export function Header({ title, face, onOpen, onToggleSidebar, canBack, canForwa
   }, [title, button, hidden]);
   return <header className="r1-header" ref={row}>
     <div className="r1-header-left" ref={left}>
-      <button className="g-ctl r1-drawer-button" aria-label="Toggle sidebar" type="button" onClick={onToggleSidebar}><Icon name="menu" /></button>
+      <button className="g-frost r1-drawer-button" aria-label="Toggle sidebar" type="button" onClick={onToggleSidebar}><Icon name="menu" /></button>
       <Capsule label="Conversation history" className="r1-history" items={[
         { label: "Back", icon: <span aria-hidden="true">‹</span>, onClick: onBack, disabled: !canBack },
         { label: "Forward", icon: <span aria-hidden="true">›</span>, onClick: onForward, disabled: !canForward },
