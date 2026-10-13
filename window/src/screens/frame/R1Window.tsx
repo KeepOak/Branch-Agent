@@ -30,6 +30,11 @@ import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
 import { R1Stage, R1StagePip } from "../stage/R1Stage";
 import type { PipTarget, StageMode } from "../../stage/ComputerStage";
+import { R1SidePane, PANE_TAB_NEEDS } from "../pane/R1SidePane";
+import { DEFAULT_PANE_TAB, type PaneTab } from "../../stage/SidePane";
+import { paneKeyFor, shortcutFor } from "../../shell/use-shortcuts";
+import { currentKeys, keyActions, readCustomKeys } from "../../shell/keymap";
+import { availability } from "../../connect/capabilities";
 
 const FIND_ANYTHING_COMING = "Find anything is not connected yet.";
 
@@ -85,6 +90,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
   // The re-hosted Classic computer stage (parity row 1): which side is open, and the small window it shrinks to.
   const [stage, setStage] = useState<StageMode | null>(null);
   const [pip, setPip] = useState<PipTarget | null>(null);
+  // The re-hosted Classic side panel (parity row 2): its open tab, or null while it is closed.
+  const [pane, setPane] = useState<PaneTab | null>(null);
   const [history, setHistory] = useState({ index: 0, count: 1 });
   const entries = useRef<Route[]>([route]);
   const search = useRef<HTMLInputElement>(null);
@@ -129,6 +136,27 @@ export function R1Window({ session }: { session: SaplingSession }) {
     setHistory({ index, count: entries.current.length }); applyRoute(next);
   };
   useEffect(() => { if (ready) void lookStore(engine).load(); }, [ready, engine]);
+  useEffect(() => {
+    // Classic's keys, under the person's own: Ctrl Shift K shows or hides the side panel, the pane keys open a tab
+    // (Ctrl ` Terminal, Ctrl Shift B Files, Side chat) or the computer stage. A key this engine can't serve does nothing.
+    if (!ready || route.kind !== "chat") return;
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    const key = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const keys = currentKeys(keyActions(""), readCustomKeys());
+      if (shortcutFor(event, mac, keys) === "sidePanel") {
+        if (availability(engine, PANE_TAB_NEEDS[DEFAULT_PANE_TAB][0]!) === "no") return;
+        event.preventDefault(); setPane(open => open ? null : DEFAULT_PANE_TAB); return;
+      }
+      const tab = paneKeyFor(event, mac, keys);
+      if (tab === "Browser" || tab === "Computer") {
+        if (availability(engine, tab === "Browser" ? "browser.request" : "computer.status") === "no") return;
+        event.preventDefault(); setPip(null); setStage(open => open === tab ? null : tab);
+      } else if (tab) { event.preventDefault(); setPane(open => open === tab ? null : tab); }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [ready, route.kind, engine]);
   useEffect(() => {
     document.title = windowTitle(route.kind === "chat" ? snapshot.name : route.kind === "settings" ? "Settings" : placeTitle(route.place), waiting.size, !ready);
   }, [route, snapshot.name, waiting.size, ready]);
@@ -180,12 +208,14 @@ export function R1Window({ session }: { session: SaplingSession }) {
       onDone={({ sessionKey }) => { firstRun.close(); navigate({ kind: "chat", key: sessionKey }); }} />}
     {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
     <div className="r1-ob-behind" inert={onboarding} aria-hidden={onboarding || undefined} style={{ display: "contents", visibility: onboarding ? "hidden" : undefined }}>
-    <Frame sidebar={sidebar} main={main} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
+    <Frame sidebar={sidebar} main={main} pane={pane && ready && route.kind === "chat" ? <R1SidePane key={snapshot.sessionKey ?? "none"} engine={engine} name={snapshot.name} title={snapshot.name || "Conversation"}
+      blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={setNotice} onReload={() => void session.reload()} /> : undefined} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
         { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", onClick: ready ? () => { setPip(null); setStage(open => open === "Computer" ? null : "Computer"); } : undefined },
         { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", onClick: ready ? () => { setPip(null); setStage(open => open === "Browser" ? null : "Browser"); } : undefined },
+        { label: "Side panel", icon: <Icon name="panel" />, need: PANE_TAB_NEEDS[DEFAULT_PANE_TAB], coming: "This engine can’t show the side panel.", onClick: ready ? () => setPane(open => open ? null : DEFAULT_PANE_TAB) : undefined },
         // ••• opens this window's conversation menu; each of its rows declares its own call.
         { label: "More", icon: <Icon name="more" />, onClick: ready ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
       ] : undefined,
