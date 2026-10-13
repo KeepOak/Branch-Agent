@@ -32,11 +32,6 @@ them:
   engine/src/agents/tools/sequential-thinking-tool.ts (CherryHQ/cherry-studio, AGPL-3.0)
 - engine/extensions/discord/src/monitor/discord-context-provider.ts,
   discord-context-provider.test.ts (lobehub/lobehub, LobeHub Community License)
-- engine/src/agents/sessions/bash-executor.ts,
-  engine/src/agents/embedded-agent-runner/tool-result-truncation.ts (mksglu/context-mode,
-  Elastic License 2.0). These rows are "already present" in COPIED.csv and
-  the files predate the harvest. No code-similarity scan has been run, so they
-  stay listed until cleared or rewritten.
 
 Apache License, Version 2.0 sources
 -----------------------------------
