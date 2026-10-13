@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
-  AZURE_TIMESTAMP_URL, codesignArgs, createSigner, keychainCommands, MAC_SECRETS, macSigningOrder, main, notaryKeyText,
+  AZURE_TIMESTAMP_URL, codesignArgs, createSigner, keychainCommands, securityLine, MAC_SECRETS, macSigningOrder, main, notaryKeyText,
   notarySubmitArgs, nugetUrl, parseDeveloperIdentity, printableCommand, redact, signingStatus, signtoolArgs, stapleArgs,
   statusLine, WINDOWS_SECRETS, WINDOWS_TOOL_PACKAGES, WINDOWS_VARIABLES,
 } from "./release-signing.mjs";
@@ -144,12 +144,15 @@ test("macOS: pure argv for keychain, hardened-runtime codesign, notarytool --wai
     ["notarytool", "submit", "/o.dmg", "--key", "/AuthKey_K.p8", "--key-id", "K", "--issuer", "I", "--wait"]);
   assert.deepEqual(stapleArgs("/o.dmg"), ["stapler", "staple", "/o.dmg"]);
   const commands = keychainCommands({ keychain: "/k", keychainPassword: "kc-pass-9999", p12: "/c.p12", p12Password: MAC_ENV.APPLE_DEVELOPER_ID_PASSWORD, existing: ["/login"] });
-  assert.deepEqual(commands.map(([, args]) => args[0]), ["create-keychain", "set-keychain-settings", "unlock-keychain", "import", "set-key-partition-list", "list-keychains"]);
+  assert.deepEqual(commands.map(([, args, input]) => operation(args, input)), ["create-keychain", "set-keychain-settings", "unlock-keychain", "import", "set-key-partition-list", "list-keychains"]);
   assert.deepEqual(commands.at(-1)[1], ["list-keychains", "-d", "user", "-s", "/k", "/login"]);
-  const printed = commands.map(([command, args]) => redact(printableCommand(command, args), MAC_ENV, ["kc-pass-9999"])).join("\n");
-  assert.ok(!printed.includes(MAC_ENV.APPLE_DEVELOPER_ID_PASSWORD), "p12 password redacted");
-  assert.ok(!printed.includes("kc-pass-9999"), "keychain password redacted");
-  assert.match(printed, /-P \*\*\*/);
+  for (const [, args] of commands) {
+    assert.ok(!args.includes("kc-pass-9999"), "the keychain password is never in argv: " + args.join(" "));
+    assert.ok(!args.includes(MAC_ENV.APPLE_DEVELOPER_ID_PASSWORD), "the .p12 password is never in argv: " + args.join(" "));
+  }
+  assert.deepEqual(words(commands[3][2]), ["import", "/c.p12", "-k", "/k", "-P", MAC_ENV.APPLE_DEVELOPER_ID_PASSWORD, "-f", "pkcs12", "-T", "/usr/bin/codesign"]);
+  assert.deepEqual(words(securityLine(['a "quoted" pass\\word', "/My Keychain"])), ['a "quoted" pass\\word', "/My Keychain"]);
+  assert.throws(() => securityLine(["two\nlines"]), /line break/);
   assert.equal(parseDeveloperIdentity("  1) " + IDENTITY + ' "Developer ID Application: KeepOak (TEAM123456)"\n     1 valid identities found'), IDENTITY);
   assert.throws(() => parseDeveloperIdentity("  0 valid identities found"), /Developer ID Application/);
   assert.equal(notaryKeyText(MAC_ENV.APPLE_NOTARY_KEY), MAC_ENV.APPLE_NOTARY_KEY);
@@ -189,8 +192,8 @@ test("macOS: a configured signer signs inside out, notarizes, staples and cleans
     const calls = [];
     const seen = {};
     const run = (command, args, options) => {
-      calls.push([command, args]);
-      if (args[0] === "import") seen.p12 = readFileSync(args[1], "utf8");
+      calls.push([command, args, options?.input]);
+      if (operation(args, options?.input) === "import") seen.p12 = readFileSync(words(options.input)[1], "utf8");
       if (args[0] === "notarytool") seen.keyMode = statSync(args[args.indexOf("--key") + 1]).mode & 0o777;
       if (args[0] === "list-keychains" && options?.capture) return '    "/Users/runner/Library/Keychains/login.keychain-db"\n';
       if (args[0] === "find-identity") return "  1) " + IDENTITY + ' "Developer ID Application: KeepOak (TEAM123456)"\n     1 valid identities found\n';
@@ -221,8 +224,11 @@ test("macOS: a configured signer signs inside out, notarizes, staples and cleans
       ["stapler", "staple", dmg],
     ]);
     assert.deepEqual(calls.filter(([, args]) => args[0] === "delete-keychain").map(([, args]) => args), [["delete-keychain", keychain]]);
-    assert.equal(calls.filter(([, args]) => args[0] === "create-keychain").length, 1, "one keychain per run");
-    const keychainPassword = calls.find(([, args]) => args[0] === "create-keychain")[1][2];
+    assert.equal(calls.filter(([, args, input]) => operation(args, input) === "create-keychain").length, 1, "one keychain per run");
+    const keychainPassword = words(calls.find(([, args, input]) => operation(args, input) === "create-keychain")[2])[2];
+    for (const [, args] of calls) {
+      assert.ok(!args.includes(keychainPassword) && !args.includes(MAC_ENV.APPLE_DEVELOPER_ID_PASSWORD), "no password in argv: " + args.join(" "));
+    }
     const printed = calls.map(([command, args]) => redact(printableCommand(command, args), MAC_ENV, [keychainPassword])).join("\n");
     for (const name of MAC_SECRETS) assert.ok(!printed.includes(MAC_ENV[name]), name + " is redacted");
     assert.ok(!printed.includes(keychainPassword), "the throwaway keychain password is redacted");
@@ -299,3 +305,13 @@ test("Windows: a tool package that doesn't match its pinned digest is refused be
     rmSync(temp, { recursive: true, force: true });
   }
 });
+
+/** The security(1) operation a call runs, whether in argv or on security -i's stdin. */
+function operation(args, input) {
+  return args[0] === "-i" ? words(input)[0] : args[0];
+}
+
+/** Splits one security -i line back into words, undoing securityLine's quoting. */
+function words(line) {
+  return [...String(line).matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((match) => match[1].replace(/\\(.)/g, "$1"));
+}

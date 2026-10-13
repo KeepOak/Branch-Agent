@@ -173,13 +173,27 @@ export function signtoolVerifyArgs(file) {
 // ---- macOS: Developer ID, hardened runtime, notarization ----
 
 /** A throwaway keychain holding only the Developer ID identity, searched alongside the existing user keychains. */
+/** One security(1) interactive-mode line, each word double-quoted so spaces and quotes survive. */
+export function securityLine(words) {
+  for (const word of words) {
+    if (/[\r\n]/.test(word)) throw new Error("A signing value contains a line break, which security -i cannot take");
+  }
+  return words.map((word) => '"' + word.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"').join(" ") + "\n";
+}
+
+/**
+ * The keychain setup, as [command, args, stdin?]. Commands that take a password run as `security -i` with the
+ * command on stdin, so neither the keychain password nor the .p12 password is ever in argv, where other local
+ * processes could read it with ps.
+ */
 export function keychainCommands({ keychain, keychainPassword, p12, p12Password, existing = [] }) {
+  const viaStdin = (words) => ["security", ["-i"], securityLine(words)];
   return [
-    ["security", ["create-keychain", "-p", keychainPassword, keychain]],
+    viaStdin(["create-keychain", "-p", keychainPassword, keychain]),
     ["security", ["set-keychain-settings", "-lut", "21600", keychain]],
-    ["security", ["unlock-keychain", "-p", keychainPassword, keychain]],
-    ["security", ["import", p12, "-k", keychain, "-P", p12Password, "-f", "pkcs12", "-T", "/usr/bin/codesign"]],
-    ["security", ["set-key-partition-list", "-S", "apple-tool:,apple:", "-s", "-k", keychainPassword, keychain]],
+    viaStdin(["unlock-keychain", "-p", keychainPassword, keychain]),
+    viaStdin(["import", p12, "-k", keychain, "-P", p12Password, "-f", "pkcs12", "-T", "/usr/bin/codesign"]),
+    viaStdin(["set-key-partition-list", "-S", "apple-tool:,apple:", "-s", "-k", keychainPassword, keychain]),
     ["security", ["list-keychains", "-d", "user", "-s", keychain, ...existing]],
   ];
 }
@@ -276,9 +290,11 @@ export function findNestedCode(app) {
 
 // ---- running ----
 
-function defaultRun(command, args, { env, extra, capture = false } = {}) {
-  console.log(`$ ${redact(printableCommand(command, args), env, extra)}`);
-  const result = spawnSync(command, args, { stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit", encoding: "utf8" });
+function defaultRun(command, args, { env, extra, capture = false, input } = {}) {
+  const shown = input === undefined ? "" : " <<< " + input.trim();
+  console.log(`$ ${redact(printableCommand(command, args) + shown, env, extra)}`);
+  const stdin = input === undefined ? "ignore" : "pipe";
+  const result = spawnSync(command, args, { input, stdio: capture ? [stdin, "pipe", "inherit"] : input === undefined ? "inherit" : [stdin, "inherit", "inherit"], encoding: "utf8" });
   if (result.status !== 0) throw new Error(`${command} ${args[0] ?? ""} exited with ${result.status ?? result.signal ?? result.error?.message}`);
   return capture ? result.stdout : "";
 }
@@ -345,7 +361,9 @@ export function createSigner({ target, env = process.env, run = defaultRun, log 
     const existing = parseKeychainList(exec("security", ["list-keychains", "-d", "user"], { capture: true }));
     tools = { keychain, keyFile, entitlements, existing };
     try {
-      for (const [command, args] of keychainCommands({ keychain, keychainPassword, p12, p12Password: env.APPLE_DEVELOPER_ID_PASSWORD, existing })) exec(command, args);
+      for (const [command, args, input] of keychainCommands({ keychain, keychainPassword, p12, p12Password: env.APPLE_DEVELOPER_ID_PASSWORD, existing })) {
+        exec(command, args, input === undefined ? {} : { input });
+      }
     } finally {
       rmSync(p12, { force: true });
     }
