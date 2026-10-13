@@ -22,6 +22,8 @@ type Props = {
   patch: (fields: Record<string, unknown>) => Promise<string | null>;
   onToast?: (text: string) => void;
   onOpen?: (target: OpenTarget) => void;
+  /** Extra classes for the menu surface (the R1 composer's row passes its clear-glass menu class). */
+  surface?: string;
 };
 
 type Catalog = { connectors: Connector[]; skills: SkillRow[]; webBase: boolean; effective: unknown };
@@ -68,7 +70,7 @@ export function PlugMenu(p: Props) {
   };
   const changed = changedCount(overrides);
   return (
-    <Popover anchor={p.anchor} onClose={p.onClose} label="Tools for this conversation" className="c-plug">
+    <Popover anchor={p.anchor} onClose={p.onClose} label="Tools for this conversation" className={p.surface ? `c-plug ${p.surface}` : "c-plug"}>
       <div className="c-plug-h">
         <b>Tools for {p.trunkName}</b>
         <small>Switch one off for this conversation only.</small>

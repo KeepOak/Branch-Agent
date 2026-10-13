@@ -84,7 +84,7 @@ export function Row(p: Props) {
       <Sep />
       <MenuItem icon="plug" label="Tools for this conversation…" onClick={() => p.setMenu("tools")} />
     </Menu> : null}
-    {p.menu === "tools" ? <PlugMenu anchor={perm} onClose={p.close} engine={p.engine} row={p.conv.row} trunkName={p.trunkName} isAdmin={p.admin} patch={p.patch} onToast={p.onToast} onOpen={open} /> : null}
+    {p.menu === "tools" ? <PlugMenu anchor={perm} onClose={p.close} engine={p.engine} row={p.conv.row} trunkName={p.trunkName} isAdmin={p.admin} patch={p.patch} onToast={p.onToast} onOpen={open} surface="r1c-plugpop" /> : null}
     {p.menu === "target" ? <Menu anchor={to} label="Send to" onClose={p.close} width={280}>
       <div className="c-pt">Send to</div>
       <MenuItem tick label="Main chat" checked={!p.target} onClick={() => p.onTarget(null)} />
