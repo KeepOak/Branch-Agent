@@ -135,7 +135,8 @@ async function defaultRegister(args: string[]): Promise<void> {
   await run(LSREGISTER, args);
 }
 
-async function defaultReadSignature(app: string): Promise<string | undefined> {
+/** An app's codesign report on macOS; undefined elsewhere and under tests. */
+export async function readMacSignature(app: string): Promise<string | undefined> {
   if (process.platform !== "darwin" || process.env.BRANCH_DESKTOP_TEST_DIST) return undefined;
   return new Promise(resolvePromise => {
     execFile("codesign", ["-d", "-r-", "--verbose=2", app], { windowsHide: true }, (_error, stdout, stderr) => resolvePromise(`${stderr}\n${stdout}`));
@@ -195,7 +196,7 @@ export async function installMacApp(source: string, options: InstallMacAppOption
     return destination;
   }
   if (await pathExists(destination)) {
-    const readSignature = options.readSignature ?? defaultReadSignature;
+    const readSignature = options.readSignature ?? readMacSignature;
     assertNoMacSigningDowngrade(await readSignature(destination), await readSignature(source));
   }
   const stageRoot = join(applicationsDir, `.Branch.install-${process.pid}`);
