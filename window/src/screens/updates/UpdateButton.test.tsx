@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ComponentUpdateStatus } from "../../connect/desktop-component-updates";
 import type { WindowEngine } from "../../connect/engine";
+import { undeclaredControls } from "../../glass/coming-registry";
 import { EXIT_MS, UpdateBanner, UpdateButton } from "./UpdateButton";
 import { DONE_MS, useUpdateFlow } from "./useUpdateFlow";
 
@@ -77,6 +78,29 @@ it("desktop rail: the restart button is ↻ with its name", async () => {
   await flush();
   expect(button()?.textContent).toBe("↻");
   expect(button()?.getAttribute("aria-label")).toBe("Restart Branch");
+});
+
+it("R1-10: the engine's button and banner name update.run and turn Coming without it; the desktop's are local", async () => {
+  const none = { ...engine({ updateAvailable: { latestVersion: "0.5.0" } }), features: { methods: [], events: [] } };
+  await act(async () => root.render(<Harness e={none} />));
+  await flush();
+  expect(undeclaredControls(host)).toEqual([]);
+  expect(button()?.getAttribute("aria-disabled")).toBe("true");
+  await act(async () => (host.querySelector(".r1u-ban-act") as HTMLButtonElement).click());
+  await act(async () => button()!.click());
+  expect(none.request).not.toHaveBeenCalledWith("update.run", expect.anything());
+  await act(async () => root.unmount()); root = createRoot(host);
+  const full = { ...engine({ updateAvailable: { latestVersion: "0.5.0" } }), features: { methods: ["update.status", "update.run"], events: [] } };
+  await act(async () => root.render(<Harness e={full} />));
+  await flush();
+  expect(button()?.dataset.need).toBe("update.run");
+  expect((host.querySelector(".r1u-ban-act") as HTMLElement).dataset.need).toBe("update.run");
+  await act(async () => root.unmount()); root = createRoot(host);
+  (window as { branchDesktop?: unknown }).branchDesktop = { gatewayUrl: URL, componentUpdates: { status: vi.fn(async () => base), check: vi.fn(async () => base), stage: vi.fn(async () => base), install: vi.fn() } };
+  await act(async () => root.render(<Harness e={engine()} />));
+  await flush();
+  expect(button()?.hasAttribute("data-local")).toBe(true);
+  expect(undeclaredControls(host)).toEqual([]);
 });
 
 it("engine: Install runs update.run and shows the engine's step; a refusal says why", async () => {

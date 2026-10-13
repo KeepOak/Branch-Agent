@@ -6,6 +6,11 @@ import { record } from "../../places/settings/adapter";
 import { appRoute, withRoute, type Binding } from "../../places/settings/set1/chatapps-who";
 import { trunksOf } from "../../places/settings/set1/chatapps-data";
 import type { ChatApp } from "./catalogue";
+import { Coming } from "../../glass/coming";
+
+const ONLY_ME_COMING = "Only me comes in a later update.";
+const WORKSPACE_COMING = "Workspace membership comes in a later update.";
+const ALLOWLIST_COMING = "Editing the allowlist comes in a later update.";
 
 const bindingRow: Row = { id: "chatapps.answers.bindings", page: "chatapps", card: "Who answers", level: 0, control: "custom", source: { kind: "config", path: "bindings" } };
 export function Access({ engine, app }: { engine: WindowEngine; app: ChatApp }) {
@@ -24,7 +29,8 @@ export function Access({ engine, app }: { engine: WindowEngine; app: ChatApp }) 
   return <section className="r1-ca-access" aria-label={`Access for ${app.name}`}>
     <label><span className="g-label">Who answers in {app.name}</span><select aria-label={`Who answers in ${app.name}`} disabled={routes.state !== "ready" || !trunks.length} value={appRoute(bindings, app.channel!) ?? defaultId} data-need="config.patch agents.list" onChange={e => void routes.set(withRoute(bindings, app.channel!, null, e.target.value === defaultId ? null : e.target.value)).catch(() => undefined)}>{!trunks.length && <option value="">Loading Trunks…</option>}{trunks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
     <label><span className="g-label">Who may message it</span><select aria-label={`Who may message ${app.name}`} disabled={access.state !== "ready"} value={policy} data-need="config.patch" onChange={e => setPolicy(e.target.value)}>
-      <option value="only-me" disabled>Only me · Coming</option><option value="pairing">People I approve</option><option value="workspace" disabled>Anyone in my workspace · Coming</option><option value="open">Anyone</option><option value="disabled">No one</option>{policy === "allowlist" && <option value="allowlist" disabled>People on the allowlist · Coming</option>}
+      {/* Options this window can't set yet go through <Coming unwired>, naming the call each waits for (R1-10). */}
+      <Coming need="users.self" unwired reason={ONLY_ME_COMING} where={`${app.name} › Only me`}><option value="only-me" disabled>Only me · Coming</option></Coming><option value="pairing">People I approve</option><Coming need="users.list" unwired reason={WORKSPACE_COMING} where={`${app.name} › Anyone in my workspace`}><option value="workspace" disabled>Anyone in my workspace · Coming</option></Coming><option value="open">Anyone</option><option value="disabled">No one</option>{policy === "allowlist" && <Coming need="config.patch" unwired reason={ALLOWLIST_COMING} where={`${app.name} › People on the allowlist`}><option value="allowlist" disabled>People on the allowlist · Coming</option></Coming>}
     </select></label><small className="g-label" data-lines>Only me, workspace membership and editing the allowlist come in a later update. Changing who may message keeps everyone already on the allowlist. Changes save immediately.</small>
     {routes.reason && <p role="alert" className="g-label" data-lines>{routes.reason}</p>}{access.reason && <p role="alert" className="g-label" data-lines>{access.reason}</p>}{agents.error && <p role="alert" className="g-label" data-lines>{agents.error}</p>}
   </section>;

@@ -11,7 +11,7 @@ import { useLockdown } from "../../shell/use-lockdown";
 import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
 import { PlaceView } from "../../places-nav/PlaceView";
-import { PLACES, loadRoute, parseRoute, saveRoute, windowTitle, type Route } from "../../places-nav/routes";
+import { PLACES, loadRoute, parseRoute, saveRoute, windowTitle, type PlaceId, type Route } from "../../places-nav/routes";
 import { SettingsFrame as ClassicSettingsFrame } from "../../places-nav/SettingsFrame";
 import { SettingsFrame } from "../settings";
 import { R1_PAGES } from "../settings/pages/plugged";
@@ -33,11 +33,15 @@ const FIND_ANYTHING_COMING = "Find anything is not connected yet.";
 /** Places R1 Settings search can open (its Go to group). */
 const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }));
 
+/** Header and window title for a place. Seedbank has no sidebar row, so it has no PLACES name. */
+const placeTitle = (place: PlaceId) => place === "seedbank" ? "Seedbank" : place;
+
 /**
  * Pages that keep the Classic page although R1 has a slot for them, because the R1 port still lacks working Classic
  * features. Chat apps: Manage has no add another account, groups by ID, Check now, Reload or allowlist editing yet.
+ * Appearance is R1: its page draws every working Classic control (settings/pages/appearance-live.tsx, #976).
  */
-const KEEP_CLASSIC: ReadonlySet<string> = new Set(["chatapps", "accounts", "appearance"]);
+const KEEP_CLASSIC: ReadonlySet<string> = new Set(["chatapps", "accounts"]);
 
 /**
  * R1 Settings draws a page only once it has rows or its own slot and nothing working is left behind in Classic. Every
@@ -49,17 +53,15 @@ export function r1SettingsPage(page: string, pages: PageSlots = R1_PAGES, rows: 
 }
 
 /**
- * The R1 frame is opt-in until the ship card (R1-11) flips the default; every install opens Classic.
- * Opt in with `?r1` or the hidden `branch.r1` flag; `?classic` and `branch.classic` always win.
+ * R1 is the only window (R1-12). `?classic` and the hidden `branch.classic` flag keep the old window only until
+ * the R1 Settings pages land (R1-14, #976); the escape goes with the Classic window itself.
  */
 export function r1Window(search = location.search): boolean {
-  const params = new URLSearchParams(search);
-  if (params.has("classic")) return false;
+  if (new URLSearchParams(search).has("classic")) return false;
   try {
-    if (localStorage.getItem("branch.classic") === "1") return false;
-    return params.has("r1") || localStorage.getItem("branch.r1") === "1";
+    return localStorage.getItem("branch.classic") !== "1";
   } catch {
-    return params.has("r1");
+    return true;
   }
 }
 
@@ -117,7 +119,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   };
   useEffect(() => { if (ready) void lookStore(engine).load(); }, [ready, engine]);
   useEffect(() => {
-    document.title = windowTitle(route.kind === "chat" ? snapshot.name : route.kind === "settings" ? "Settings" : route.place, waiting.size, !ready);
+    document.title = windowTitle(route.kind === "chat" ? snapshot.name : route.kind === "settings" ? "Settings" : placeTitle(route.place), waiting.size, !ready);
   }, [route, snapshot.name, waiting.size, ready]);
   useEffect(() => {
     if (!agentOpen || !ready) return;
@@ -151,7 +153,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
     <div className="r1-ob-behind" inert={onboarding} aria-hidden={onboarding || undefined} style={{ display: "contents", visibility: onboarding ? "hidden" : undefined }}>
     <Frame sidebar={sidebar} main={main} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
-      title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : route.place,
+      title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
         { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "Computer controls are not connected yet." },

@@ -1,8 +1,11 @@
 // One renderer for every Settings row: the label (with an inline Advanced / Technical tag), its help, the control the
 // table names, and the row's state from useRow. A Coming row keeps its control visible but disabled, with the one-line
-// reason, and is listed by data-coming with the call it waits for (R1-10). Rules lines never separate rows.
+// reason, and is listed by data-coming with the call it waits for (R1-10). Rules lines never separate rows. The control
+// goes through <Coming> with the calls the row makes (useRow callsOf), so an engine without config.patch or
+// users.prefs.set shows Coming instead of a live control; a row that stays on this computer says data-local.
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { Coming } from "../../glass/coming";
 import type { Level } from "./nav";
 import type { Row, RowOption } from "./rows";
 import { CHANGED_ELSEWHERE, LOAD_FAILED, NO_PERSON, useRow } from "./useRow";
@@ -108,13 +111,17 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
       aria-busy={r.state === "saving" || undefined} data-coming={coming ? r.need : undefined} title={coming ? r.reason : undefined}>
       <b className="g-label" data-lv={tag}>{r.label}</b>
       {r.help ? <small className="g-label" data-lines>{r.help}</small> : null}
-      <div className="r1s-ctl">{control}</div>
+      {coming || r.calls.length
+        ? <Coming engine={engine} need={r.calls} unwired={coming} reason={coming ? r.reason : undefined} where={r.label}><div className="r1s-ctl">{control}</div></Coming>
+        : <div className="r1s-ctl" data-local="">{control}</div>}
       {coming || r.state === "blocked" ? <small className="r1s-note g-label" data-lines>{r.reason}</small>
         : r.state === "error" && r.reason ? (
           <small className="r1s-note r1s-bad g-label" data-lines role="status">
-            {r.reason === CHANGED_ELSEWHERE ? <>Changed somewhere else · <button type="button" className="r1s-link" onClick={() => void r.retry()}>Reload</button></>
+            {r.reason === CHANGED_ELSEWHERE ? <>Changed somewhere else · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void r.retry()}>Reload</button></Coming></>
               // A config load failure has the page's own Try again; a pref load failure is retried here.
-              : r.reason === LOAD_FAILED && row.source.kind !== "config" ? <>Settings didn’t load · <button type="button" className="r1s-link" onClick={() => void r.retry()}>Try again</button></>
+              : r.reason === LOAD_FAILED && row.source.kind !== "config" ? <>Settings didn’t load · {row.source.kind === "pref" || row.source.kind === "look"
+                ? <Coming engine={engine} need="users.prefs.get"><button type="button" className="r1s-link" onClick={() => void r.retry()}>Try again</button></Coming>
+                : <button type="button" className="r1s-link" data-local="" onClick={() => void r.retry()}>Try again</button>}</>
               : r.reason}
           </small>
         ) : r.restart ? <small className="r1s-note g-label">{RESTART_NOTE}</small> : null}
