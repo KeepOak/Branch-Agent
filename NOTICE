@@ -1,4 +1,5 @@
 Branch Agent
+
 Copyright (c) 2026 KeepOak
 
 Branch Agent is licensed under the MIT License (LICENSE).
@@ -10,5 +11,88 @@ notices are in engine/THIRD_PARTY_NOTICES.md.
 Parts of Branch Agent adapt code from OpenMausBot,
 https://github.com/milind-soni/OpenMausBot, Copyright 2026 Milind Soni and
 OpenMausBot contributors, used under the Apache License, Version 2.0
-(third_party/openmausbot/LICENSE). Each adapted file names its source in its
-header, and docs/upstream/COPIED.csv lists them.
+(third_party/openmausbot/LICENSE).
+
+Files adapted from the projects listed below were modified by KeepOak;
+docs/upstream/COPIED.csv lists each file, its source path and the pinned
+commit. Each project's license text is in third_party/<name>/LICENSE, copied
+from the pinned commit.
+
+Exception until the clean-room rewrites land
+--------------------------------------------
+
+The files below still carry code from projects that are not MIT-licensed. They
+are being rewritten from public specifications, and their COPIED.csv rows are
+marked for rewrite. Until those rewrites merge, the MIT license does not cover
+them:
+
+- engine/src/secrets/totp.ts, totp.test.ts (Skyvern-AI/skyvern, AGPL-3.0)
+- engine/src/safety/scoped-api-key.ts, scoped-api-key.test.ts (AstrBotDevs/AstrBot, AGPL-3.0)
+- engine/src/sessions/resume-tree-types.ts, resume-message-tree.ts,
+  engine/src/agents/tools/sequential-thinking-tool.ts (CherryHQ/cherry-studio, AGPL-3.0)
+- engine/extensions/discord/src/monitor/discord-context-provider.ts,
+  discord-context-provider.test.ts (lobehub/lobehub, LobeHub Community License)
+
+Apache License, Version 2.0 sources
+-----------------------------------
+-----------------------------------
+
+- openai/codex @ cc31e374fc15cd616fca19c07d55f9fa7e6d7e31
+  Copyright 2025 OpenAI. third_party/openai-codex/LICENSE.
+  Its NOTICE file states:
+    This project includes code derived from Ratatui
+    (https://github.com/ratatui/ratatui), licensed under the MIT license.
+    Copyright (c) 2016-2022 Florian Dehau
+    Copyright (c) 2023-2025 The Ratatui Developers
+
+- mastra-ai/mastra @ 486d3b7f35edfeaeab47b1230b56880e672cc421
+  Adapted files are outside the ee/ directory, which carries a separate
+  enterprise license. third_party/mastra/LICENSE is the pinned commit's file.
+
+- bytedance/UI-TARS-desktop @ 2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a
+  third_party/ui-tars-desktop/LICENSE.
+
+- continuedev/continue @ 5522c6f44ca0ac3528b37244818fbfa39b5af470
+  third_party/continue/LICENSE.
+
+- aaif-goose/goose @ bab8ff641039c9cd3331121cd84a5c6045f365ca
+  third_party/goose/LICENSE.
+
+- cline/cline @ 0809928ab28783c0d2b41c1e56edaf0951dadcab
+  third_party/cline/LICENSE.
+
+- Aider-AI/aider @ 5dc9490bb35f9729ef2c95d00a19ccd30c26339c
+  third_party/aider/LICENSE.
+
+- QwenLM/qwen-code @ 728c13de219885de6a3e93223460c3ec8a8f690d
+  third_party/qwen-code/LICENSE.
+
+- RooCodeInc/Roo-Code @ b867ec9145750d0ae1ff7f02d35406e9bf2a0b16
+  third_party/roo-code/LICENSE.
+
+- google-gemini/gemini-cli @ c6bccb7ecbf6d8368d995455dd725ed34466faad
+  third_party/gemini-cli/LICENSE.
+
+- letta-ai/letta-code @ 3687ea51f6d1
+  third_party/letta-code/LICENSE.
+
+MIT and ISC sources
+-------------------
+
+- elizaOS/eliza @ 3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf (third_party/eliza/LICENSE)
+- OpenHands/OpenHands @ a8c05584ec6bb063a0857460b9cbff48e136919f (third_party/openhands/LICENSE)
+- OpenHands/software-agent-sdk @ 0a9abc87641ad7ffe02e2dadf5e2cb3976b35217 (third_party/openhands-agent-sdk/LICENSE)
+- Kilo-Org/kilocode @ 6fd9b7b29ce63b5a38176e45b738e94ed6167cfb (third_party/kilocode/LICENSE)
+- NousResearch/hermes-agent @ 18d125cc1bd9d0e26188ab49bb325427d5945fa2 (third_party/hermes-agent/LICENSE)
+- bytedance/deer-flow @ f840e843d3e2db1485cb65ceae73a5525aa80193 (third_party/deer-flow/LICENSE)
+- danny-avila/LibreChat @ f10b1d91f1eee3a2c82d5247bf620351486b7c1b (third_party/librechat/LICENSE)
+- zhayujie/CowAgent @ 986f44a19508b572d15d40dcb8bd5b2796559ec7 (third_party/cowagent/LICENSE)
+- Mintplex-Labs/anything-llm @ 4bff9da55539978a2a144d4cbda2cdfd87153597 (third_party/anything-llm/LICENSE)
+- dmmulroy/anti-slop @ 446268e5d15baa968eaec669ff65358d36ae6259 (third_party/anti-slop/LICENSE)
+- moeru-ai/airi @ 4b702bd6678def26b046a958c90dbdbe5c003b87 (third_party/airi/LICENSE)
+- JohnRiceML/clawport-ui @ 40db84d69b793048a9f738db57fe6e5db9751df3 (third_party/clawport-ui/LICENSE)
+- ypollak2/llm-router @ e4644871b4d434887b6dfe1cac6be9a3c166561a (third_party/llm-router/LICENSE)
+- cobusgreyling/loop-engineering @ 10a5f859a16a69d3ee4942b8b7b8b3af781c08e2 (third_party/loop-engineering/LICENSE)
+- conorbronsdon/avoid-ai-writing @ bdeb726580634868b254972d8eab1a9340d9db16 (third_party/avoid-ai-writing/LICENSE)
+- pixel-agents-hq/pixel-agents @ 3537e140c2094761beae748592aeb92ece8edfdd (third_party/pixel-agents/LICENSE)
+- moonrunnerkc/swarm-orchestrator @ 7d8f018e5774325b658018c151cfa4c09f78341d, ISC (third_party/swarm-orchestrator/LICENSE)
