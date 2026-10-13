@@ -55,7 +55,7 @@ it("lists every app the engine runs, not only the R1 four, and opens Manage for 
 });
 
 it("sets up any app the engine has through its wizard, and finds another app, as Classic's All chat apps does", async () => {
-  const { host, setup } = await render();
+  const { host, setup, request } = await render();
   const matrix = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find((b) => b.textContent?.includes("Matrix"))!;
   expect(matrix.getAttribute("aria-disabled")).toBe("false");
   await act(async () => matrix.click());
@@ -63,9 +63,13 @@ it("sets up any app the engine has through its wizard, and finds another app, as
   const extra = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find((b) => b.textContent?.includes("Nostrish"))!;
   await act(async () => extra.click());
   expect(setup).toHaveBeenLastCalledWith(expect.objectContaining({ channel: "nostrish" }));
+  const calls = setup.mock.calls.length;
   await act(async () => button(host, "Find another app").click());
-  expect(setup.mock.lastCall?.[0]).toMatchObject({ id: "another" });
-  expect(setup.mock.lastCall?.[0].channel).toBeUndefined();
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  // The engine's own setup with no app chosen, in the generic dialog that follows the channel the engine picks.
+  expect(setup.mock.calls.length).toBe(calls);
+  expect(request).toHaveBeenCalledWith("wizard.start", { flow: "channels" });
+  expect(document.querySelector('[data-testid="chatapps-connect"]')).not.toBeNull();
 });
 
 it("approves a request with Tell them and make them the owner (channels.pairing.approve notify, bootstrapCommandOwner)", async () => {

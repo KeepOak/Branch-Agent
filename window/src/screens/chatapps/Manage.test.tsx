@@ -37,8 +37,8 @@ function button(host: Element, label: string) { return [...host.querySelectorAll
 const type = async (el: HTMLInputElement, value: string) => act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, value); el.dispatchEvent(new Event("input", { bubbles: true })); });
 const pick = async (el: HTMLSelectElement, value: string) => act(async () => { el.value = value; el.dispatchEvent(new Event("change", { bubbles: true })); });
 
-it("pauses the selected engine account and confirms before unlinking", async () => {
-  const { host, request } = await render();
+it("pauses the app and confirms before unlinking", async () => {
+  const { host, request } = await render(false, {}, { methods: ADMIN });
   await act(async () => button(host, "Pause").click());
   expect(request).toHaveBeenCalledWith("channels.stop", { channel: "telegram", accountId: "selected" });
   await act(async () => button(host, "Unlink").click());
@@ -84,6 +84,21 @@ it("keeps a pause after a restart (channels.<id>.enabled) and disconnects every 
   await act(async () => button(host, "Disconnect Telegram").click());
   expect(patches(request).at(-1)).toEqual({ channels: { telegram: null } });
   expect(onClose).toHaveBeenCalled();
+});
+it("waits for the settings before Pause or Start, so a change is never sent without being kept", async () => {
+  const { host, request } = await render();
+  expect(button(host, "Pause").disabled).toBe(true);
+  await act(async () => button(host, "Pause").click());
+  expect(request.mock.calls.some(([m]) => m === "channels.stop" || m === "channels.start")).toBe(false);
+});
+it("follows the whole app for Pause or Start: one running account makes it Pause, for every account", async () => {
+  const accounts = [{ accountId: "selected", running: false, configured: true }, { accountId: "other", running: true, configured: true }];
+  const { host, request } = await render(false, {}, { methods: ADMIN, accounts });
+  expect(button(host, "Start")).toBeUndefined();
+  await act(async () => button(host, "Pause").click());
+  expect(request).toHaveBeenCalledWith("channels.stop", { channel: "telegram", accountId: "selected" });
+  expect(request).toHaveBeenCalledWith("channels.stop", { channel: "telegram", accountId: "other" });
+  expect(request.mock.calls.some(([m]) => m === "channels.start")).toBe(false);
 });
 it("replaces the token through the setup steps", async () => {
   const { host, onSetup } = await render();

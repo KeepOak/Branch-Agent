@@ -39,7 +39,8 @@ export function Manage({ engine, app, onClose, onSetup }: { engine: WindowEngine
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const running = account?.running === true || account?.connected === true;
+  // Pause and Start act on the whole app (every account), so they follow the app's state, as Classic's app-wide control does.
+  const running = state.running === true && !state.paused;
   const method = running ? "channels.stop" : "channels.start";
   const act = async (fn: () => Promise<unknown>) => {
     if (busy) return false;
@@ -51,9 +52,11 @@ export function Manage({ engine, app, onClose, onSetup }: { engine: WindowEngine
   /** channels.start/stop/logout act on one account; Pause, Start and Disconnect run it for each, as Classic does. */
   const eachAccount = async (m: string) => { const ids = state.accounts.length ? state.accounts.map((a) => a.accountId) : [undefined]; for (const id of ids) await requestOrComing(engine, m, { channel: ch, ...(id ? { accountId: id } : {}) }); };
   const pause = () => void act(async () => {
-    const start = state.paused || !running;
-    // Kept with channels.<id>.enabled, so a paused app stays paused after a restart (Classic's Pause).
-    if (cfg.ready && !(await cfg.set(base + ".enabled", start ? null : false))) throw new Error(cfg.error || "Branch couldn’t save that.");
+    const start = !running;
+    // Kept with channels.<id>.enabled, so a paused app stays paused after a restart (Classic's Pause). Never sent
+    // without that write: the button waits for the settings to load.
+    if (!cfg.ready) throw new Error("Settings haven’t loaded yet.");
+    if (!(await cfg.set(base + ".enabled", start ? null : false))) throw new Error(cfg.error || "Branch couldn’t save that.");
     await eachAccount(start ? "channels.start" : "channels.stop");
   });
   const unlink = () => void act(async () => { if (!account || !canAll(engine, ["channels.logout"])) return; await requestOrComing(engine, "channels.logout", { channel: ch, accountId: account.accountId }); setConfirm(false); });
@@ -78,7 +81,7 @@ export function Manage({ engine, app, onClose, onSetup }: { engine: WindowEngine
       <Line key={t} label={t} help={s} coming={NO_KEY}><Toggle label={t} on={!t.startsWith("Online")} disabled onChange={() => undefined} /></Line>
     ))}
     <Line label="Formatting" coming="Each app’s own formatting is always used."><Segmented label="Formatting" value="own" options={[{ v: "own", label: NATIVE[ch] ?? "Its own styles" }, { v: "plain", label: "Plain text" }]} disabled onChange={() => undefined} /></Line>
-    <div className="r1-cw-actions"><button type="button" disabled={busy || !canRun} data-need={method + (cfg.ready ? " config.patch" : "")} title={!canRun ? "Changing connection state comes in a later update." : undefined} onClick={pause}>{canRun ? running && !state.paused ? "Pause" : "Start" : "Coming"}</button><button type="button" disabled={busy} data-local="setup" onClick={onSetup}>{state.tone === "bad" && !state.paused ? "Set it up again" : "Set up again"}</button><button type="button" disabled={busy || !account || !canAll(engine, ["channels.logout"])} data-need="channels.logout" onClick={() => setConfirm(true)}>{canAll(engine, ["channels.logout"]) ? "Unlink" : "Coming"}</button></div>
+    <div className="r1-cw-actions"><button type="button" disabled={busy || !canRun || !cfg.ready} data-need={method + " config.patch"} title={!canRun ? "Changing connection state comes in a later update." : !cfg.ready ? cfg.error || "Reading settings…" : undefined} onClick={pause}>{canRun ? running ? "Pause" : "Start" : "Coming"}</button><button type="button" disabled={busy} data-local="setup" onClick={onSetup}>{state.tone === "bad" && !state.paused ? "Set it up again" : "Set up again"}</button><button type="button" disabled={busy || !account || !canAll(engine, ["channels.logout"])} data-need="channels.logout" onClick={() => setConfirm(true)}>{canAll(engine, ["channels.logout"]) ? "Unlink" : "Coming"}</button></div>
     {confirm && <section aria-label="Confirm unlink"><p className="g-label" data-lines>Unlink {account?.name ?? app.name}? You’ll need to connect this account again to receive messages.</p><button type="button" disabled={busy} data-local="cancel" onClick={() => setConfirm(false)}>Cancel</button><button type="button" disabled={busy} data-need="channels.logout" onClick={unlink}>Unlink account</button></section>}
     {level >= 1 ? <AppMore engine={engine} app={app} state={state} cfg={cfg} level={level} reload={live.reload} onSetup={onSetup} /> : null}
     <Disconnect engine={engine} app={app} state={state} cfg={cfg} base={base} busy={busy} act={act} eachAccount={eachAccount} onClose={onClose} />
