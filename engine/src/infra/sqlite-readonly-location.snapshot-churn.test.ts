@@ -48,7 +48,11 @@ function ageTree(directory: string, ageMs: number): void {
   fs.utimesSync(directory, stale, stale);
 }
 
-/** Windows keeps a just-closed snapshot busy for a moment: the first removal of each path throws EBUSY. */
+/**
+ * SYNTHETIC: this stands in for a transient Windows lock and does not reproduce it. The first removal of each
+ * path throws a fabricated EBUSY, so the retry path is exercised. The real Windows error seen on the affected
+ * machine is EPERM (see the PR body): a node:sqlite handle still open at rm time.
+ */
 function busyOnFirstRemoval(remove: typeof fs.rmSync): typeof fs.rmSync {
   const attempted = new Set<string>();
   return ((target, options) => {

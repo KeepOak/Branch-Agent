@@ -251,7 +251,11 @@ function removalBackoff(error: unknown, attempt: number): number | undefined {
     : undefined;
 }
 
-/** Synchronous removal of one snapshot path, retried only on transient lock errors. */
+/**
+ * Synchronous removal of one snapshot path, retried only on transient lock errors. Bound: at most
+ * removalBackoffMs.length retries, so at most 620 ms of Atomics.wait per call, and only after a lock error.
+ * A handle still open at rm time (the Windows EPERM case) outlasts that bound; closing it first is the fix.
+ */
 function removeSnapshotPathSync(target: string): void {
   for (let attempt = 0; ; attempt += 1) {
     try {
