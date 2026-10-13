@@ -34,7 +34,7 @@ const drawn = (el: ParentNode) => ({
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
 it("re-hosts exactly these Classic pages", () => {
-  expect(REHOSTED).toEqual({ who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: "updates", privacy: "usage", history: "backups", learning: ["self", "seasons"], remote: "gateway" });
+  expect(REHOSTED).toEqual({ who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: "updates", privacy: "usage", history: "backups", learning: ["self", "seasons"], remote: "gateway", voice: "voice" });
 });
 
 for (const [page, classic] of Object.entries(REHOSTED)) {
