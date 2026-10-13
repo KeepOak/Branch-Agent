@@ -27,6 +27,7 @@ import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
+import { WhatsNewHost } from "../updates/WhatsNewHost";
 
 const FIND_ANYTHING_COMING = "Find anything is not connected yet.";
 
@@ -183,6 +184,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {/* A second Ctrl K would open Find anything; it is a shortcut, not a control, so it registers hidden with the call it waits for. */}
     <Coming engine={engine} need="sessions.search" unwired hidden reason={FIND_ANYTHING_COMING} where="Find anything"><span /></Coming>
     {lockdown.confirmation}
+    <WhatsNewHost session={session} ready={ready} onSettings={page => navigate({ kind: "settings", page })} onSearch={() => search.current?.focus()} onSetup={() => firstRun.open(0)} onNotice={setNotice} />
     <Toasts />
     <ApprovalsLayer engine={engine} ready={ready} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
     {convMenu && <Popover anchor={convAnchor} label="Conversation" align="end" width={260} onClose={() => setConvMenu(false)}><div className="r1c-menu" role="menu" aria-label="Show agents’ work as">
