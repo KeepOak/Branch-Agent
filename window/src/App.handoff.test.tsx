@@ -77,4 +77,5 @@ it("keeps the draft and active voice recorder mounted through a gateway target s
   expect(host.querySelector('[data-testid="recording"]')?.textContent).toBe("on");
   expect(fake.recorderStops).toBe(0);
   expect(track.stop).not.toHaveBeenCalled();
-});
+  // The first import of App is the cold import of the whole graph (the R1 composer included); on Windows that alone can pass 5 s.
+}, 20_000);

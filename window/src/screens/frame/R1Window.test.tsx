@@ -5,7 +5,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../../connect/session";
 import { r1SettingsPage, r1Window, R1Window } from "./R1Window";
 vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <p>{name}</p> }));
-vi.mock("../../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
+vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
+vi.mock("../../shell/use-status", () => ({ useLimits: () => null }));
+vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
 vi.mock("../../places-nav/SettingsFrame", () => ({ SettingsFrame: ({ page, onPage }: { page: string; onPage: (page: string) => void }) => <div data-testid="classic-settings" data-page={page}>Classic settings<button type="button" onClick={() => onPage("general")}>General</button></div> }));
 vi.mock("../settings/pages/plugged", () => ({ R1_PAGES: { chatapps: { component: () => null } } }));
 vi.mock("../settings", () => ({

@@ -5,7 +5,9 @@ import { Frame } from "./Frame";
 import { ChatView } from "../chat/ChatView";
 import { WORK_MODES, useWorkMode } from "../chat/chat-logic";
 import type { ReplyTarget } from "../../thread/useMessageActions";
-import { Composer } from "../../composer/Composer";
+import { Composer } from "../composer/Composer";
+import { useLimits } from "../../shell/use-status";
+import { useLockdown } from "../../shell/use-lockdown";
 import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
 import { PlaceView } from "../../places-nav/PlaceView";
@@ -20,7 +22,7 @@ import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Popover } from "../../glass/Popover";
 import { Sidebar } from "../sidebar/Sidebar";
 import { Toasts } from "../../shell/Toasts";
-import { ApprovalsLayer, useLockdown } from "../approvals";
+import { ApprovalsLayer } from "../approvals";
 import { Coming } from "../../glass/coming";
 
 /** Places R1 Settings search can open (its Go to group). */
@@ -62,7 +64,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const ready = snapshot.status.phase === "connected", engine = session.engine;
   const [conversations, list] = useConversations(session, ready, snapshot.mainKey);
   const waiting = usePendingApprovals(session, ready);
-  const lockdown = useLockdown(engine, ready).on;
+  const limits = useLimits(session, ready);
+  const lockdown = useLockdown(engine, ready, session);
   const [route, setRoute] = useState<Route>(loadRoute);
   const [history, setHistory] = useState({ index: 0, count: 1 });
   const entries = useRef<Route[]>([route]);
@@ -119,6 +122,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
   }, [agentOpen, ready, engine]);
   const openConversation = (key: string) => navigate({ kind: "chat", key });
   const rows = conversations.rows.filter(row => !row.system && !row.archived && !row.helper);
+  const current = conversations.rows.find(row => row.key === snapshot.sessionKey);
+  const topics = current?.isMain ? conversations.rows.filter(row => row.agentId === current.agentId && row.key !== current.key && !row.isMain && !row.system && !row.archived && !row.helper).map(row => ({ key: row.key, title: row.title })) : [];
+  const running = conversations.rows.filter(row => row.working).map(row => ({ key: row.key, title: row.title, line: row.preview, needsYou: row.needsYou }));
   const sidebar = <Sidebar session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
     currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} error={conversations.error} />;
@@ -137,7 +143,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
         { label: "More", icon: <Icon name="more" />, onClick: ready ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
       ] : undefined,
       canBack: history.index > 0, canForward: history.index < history.count - 1, onBack: () => { if (history.index > 0) window.history.back(); }, onForward: () => { if (history.index < history.count - 1) window.history.forward(); },
-    }} composer={route.kind === "chat" ? <Composer name={snapshot.name} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} sessionKey={snapshot.sessionKey} working={Boolean(snapshot.liveRunId)} lockdown={lockdown} disabled={!ready} offline={!ready} onSend={(text, extras, id) => { setReplyTo(null); void session.send(text, extras, id); }} onStop={() => void session.stopRun()} onReload={() => void session.reload()} onToast={setNotice} onOpenConversation={openConversation} onOpen={target => {
+    }} composer={route.kind === "chat" ? <Composer name={snapshot.name} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}
+      lockdown={lockdown.on} onToggleLockdown={lockdown.supported ? () => void lockdown.toggle() : undefined}
+      onSend={(text, extras, id) => { setReplyTo(null); void session.send(text, extras, id); }} onStop={() => void session.stopRun()} onToast={setNotice} onOpenConversation={openConversation} onOpen={target => {
       if (target === "settings/accounts/add") { sessionStorage.setItem("branch.openAddAccount", "1"); navigate({ kind: "settings", page: "accounts" }); }
       else if (target.startsWith("settings/")) navigate({ kind: "settings", page: target.slice("settings/".length) });
       else if (target === "customize/tools") navigate({ kind: "place", place: "customize" });
@@ -148,6 +156,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       else if (document.activeElement === search.current) setNotice("Coming · Find anything is not connected yet.");
       else { search.current?.focus(); }
     }} />
+    {lockdown.confirmation}
     <Toasts />
     <ApprovalsLayer engine={engine} ready={ready} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
     {convMenu && <Popover anchor={convAnchor} label="Conversation" align="end" width={260} onClose={() => setConvMenu(false)}><div className="r1c-menu" role="menu" aria-label="Show agents’ work as">
