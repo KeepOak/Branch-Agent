@@ -287,6 +287,38 @@ async function removeSnapshotPathAsync(target: string): Promise<void> {
   }
 }
 
+// A removal that loses to a briefly-held Windows handle used to wait in memory until process exit.
+// Failed removals now retry on an interval until they succeed. The timer stops once nothing is pending;
+// the age-based orphan sweep backs these up across restarts because a failed claim keeps its mtime.
+const deferredRemovalIntervalMs = 1_000;
+const deferredRemovalsInFlight = new Set<string>();
+let deferredRemovalTimer: ReturnType<typeof setInterval> | undefined;
+
+function scheduleDeferredSnapshotRemoval(): void {
+  if (deferredRemovalTimer) {
+    return;
+  }
+  deferredRemovalTimer = setInterval(retryDeferredSnapshotRemovals, deferredRemovalIntervalMs);
+  deferredRemovalTimer.unref?.();
+}
+
+function retryDeferredSnapshotRemovals(): void {
+  if (pendingTempDirectoryCleanup.size === 0) {
+    clearInterval(deferredRemovalTimer);
+    deferredRemovalTimer = undefined;
+    return;
+  }
+  for (const [directory, owner] of Array.from(pendingTempDirectoryCleanup)) {
+    if (deferredRemovalsInFlight.has(directory)) {
+      continue;
+    }
+    deferredRemovalsInFlight.add(directory);
+    void removeTempDirectoryAsync(directory, undefined, owner).finally(() => {
+      deferredRemovalsInFlight.delete(directory);
+    });
+  }
+}
+
 // A non-throwing cleanup-failure report emitted once per owner; a successful
 // read is never turned into a failure by temp-file cleanup.
 export type CleanupFailureReport = {
@@ -385,6 +417,7 @@ export function removeTempDirectory(
   } catch (error) {
     onFailure?.(error);
     registerSnapshotTempDirectory(tempDir);
+    scheduleDeferredSnapshotRemoval();
     return false;
   }
 }
@@ -431,6 +464,7 @@ export async function removeTempDirectoryAsync(
   } catch (error) {
     onFailure?.(error);
     registerSnapshotTempDirectory(tempDir);
+    scheduleDeferredSnapshotRemoval();
     return false;
   }
 }

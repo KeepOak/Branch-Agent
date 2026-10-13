@@ -36,7 +36,9 @@ import type { SqliteStagingToken as SnapshotToken } from "./sqlite-staging-token
 type ReclamationPass = { controller: AbortController; done: Promise<void> };
 const pendingReclamations = new Map<string, ReclamationPass>();
 const currentAgeMs = 10 * 60 * 1000;
-const reclamationByteBudget = 512 * 1024 * 1024;
+// Measured leak rate: about 560 dirs/hour, about 23 GB/hour. At the 5-minute sweep cadence that is
+// about 1.9 GB per pass, so a 4 GiB pass budget keeps about 2x headroom (48 GB/hour).
+const reclamationByteBudget = 4 * 1024 * 1024 * 1024;
 
 function stagingParent(root: string): string | undefined {
   const parent = path.basename(root) === "branch" ? path.dirname(root) : root;
