@@ -56,7 +56,8 @@ describe("Seedbank", () => {
     const host = await render(engine, <div onClick={outer} onKeyDown={outer}><Seedbank engine={engine} /></div>);
     for (const tab of ["Connectors", "Skills"]) {
       const opener = buttons(host, tab)[0];
-      if (opener) await click(opener);
+      expect(opener, tab).toBeDefined();
+      await click(opener!);
     }
     const coming = [...host.querySelectorAll<HTMLElement>("[data-coming]")];
     expect(coming.length).toBeGreaterThan(0);
