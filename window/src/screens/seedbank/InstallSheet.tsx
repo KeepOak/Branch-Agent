@@ -9,7 +9,7 @@ import { useLayer } from "../../glass/Popover";
 import { Face } from "../../face/Face";
 import { kindOf, type Entry, type Rec } from "./catalog";
 import { ItemIcon, Soon } from "./parts";
-import { fingerprint, hasHiddenInstructions, hasSecrets, parseSeed } from "./seed";
+import { fingerprint, hasHiddenInstructions, hasSecrets } from "./seed";
 import { addCall, detailCall, type Trunk } from "./useSeedbank";
 
 const rec = (v: unknown): Rec => (v && typeof v === "object" && !Array.isArray(v) ? v as Rec : {});
@@ -162,10 +162,10 @@ export function InstallSheet({ entry, engine, trunks, onClose, onDone }: Props) 
   </Sheet>;
 }
 
-/** "＋ Paste a seed": a seed's text or a keepoak.com link. Links aren't local yet, so they say Coming. */
+/** "＋ Paste a seed": a seed's text, a team file or a keepoak.com link. The caller reads it and says why it can't. */
 export function PasteSheet({ onClose, onSeed, initial = "" }: { onClose: () => void; onSeed: (text: string) => string | null; initial?: string }) {
   const [text, setText] = useState(initial), [error, setError] = useState<string | null>(null);
-  const open = () => { const parsed = parseSeed(text); if (!parsed.ok) { setError(parsed.reason); return; } const failed = onSeed(text); if (failed) setError(failed); };
+  const open = () => { const failed = onSeed(text); if (failed) setError(failed); };
   return <Sheet title="Paste a seed" onClose={onClose} footer={<><button type="button" className="sb-btn" data-local="" onClick={onClose}>Cancel</button><button type="button" className="sb-btn" data-primary="" data-local="" onClick={open}>Open</button></>}>
     <p className="sb-hint g-label" data-lines>Paste a seed’s text. ⌘V anywhere on this page works too, and you can drop a .seed file on the window.</p>
     <textarea className="sb-input" rows={3} aria-label="Seed link or text" placeholder="Paste a seed" value={text} data-local="" onChange={e => { setText(e.target.value); setError(null); }} />

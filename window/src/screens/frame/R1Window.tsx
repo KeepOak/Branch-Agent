@@ -36,14 +36,13 @@ const placeTitle = (place: PlaceId) => place === "seedbank" ? "Seedbank" : place
 
 /**
  * Pages that keep the Classic page although R1 has a slot for them, because the R1 port still lacks working Classic
- * features. Chat apps: Manage has no add another account, groups by ID, Check now, Reload or allowlist editing yet.
- * Appearance and Accounts are R1: each page draws every working Classic control (settings/pages/appearance-live.tsx and
- * accounts-live.tsx, #976).
+ * features. None is left: Appearance, Chat apps and Accounts each draw every working Classic control in R1
+ * (settings/pages/appearance-live.tsx, screens/chatapps, settings/pages/accounts-live.tsx; #976).
  */
-const KEEP_CLASSIC: ReadonlySet<string> = new Set(["chatapps"]);
+const KEEP_CLASSIC: ReadonlySet<string> = new Set<string>();
 
-/** R1 page ids the Classic frame knows by another name, for a page R1 hands to Classic (Accounts › Add a key opens
- *  Sign-ins & keys, which is Classic's secrets page). */
+/** R1 page ids the Classic frame knows by another name, for a page R1 hands to Classic. Temporary: Accounts › Add a key
+ *  opens Sign-ins & keys, which has no R1 page yet and is Classic's secrets page; remove this when that page lands. */
 const CLASSIC_PAGE: Readonly<Record<string, string>> = { signins: "secrets" };
 
 /**

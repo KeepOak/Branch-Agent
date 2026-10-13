@@ -12,9 +12,11 @@ export const DONE_MS = 4000;
 const RUN_POLL_MS = 5000;
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-export type UpdateFlow = { view: UpdateView; act: () => void };
+/** `need` is the engine call `act` makes (R1-10): update.run when the engine updates itself, null when the desktop app's
+ *  own updater does it (a local call). `engine` is what the button checks `need` against. */
+export type UpdateFlow = { view: UpdateView; act: () => void; need: string | null; engine: Pick<WindowEngine, "features"> };
 
-export function useUpdateFlow(engine: Pick<WindowEngine, "request" | "onEvent" | "gatewayUrl">, ready: boolean, current: string, openSettings?: () => void): UpdateFlow {
+export function useUpdateFlow(engine: Pick<WindowEngine, "request" | "onEvent" | "gatewayUrl"> & Partial<Pick<WindowEngine, "features">>, ready: boolean, current: string, openSettings?: () => void): UpdateFlow {
   const desktop = componentDesktop(engine.gatewayUrl);
   const bridge = desktop?.componentUpdates;
   const native = useDesktopComponentStatus(engine.gatewayUrl);
@@ -86,5 +88,5 @@ export function useUpdateFlow(engine: Pick<WindowEngine, "request" | "onEvent" |
       return reload();
     }).catch((e: unknown) => { setStarted(false); setError(message(e)); });
   };
-  return { view, act };
+  return { view, act, need: desktop ? null : "update.run", engine };
 }

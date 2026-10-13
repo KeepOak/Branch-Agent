@@ -66,7 +66,7 @@ it("opens settings using an in-window history entry", async () => {
   expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')?.dataset.page).toBe("appearance");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
 });
-it("mounts R1 Settings with the live engine and its slots, and hands Chat apps back to Classic until Manage is ported", async () => {
+it("mounts R1 Settings with the live engine and its slots, and opens Chat apps in the R1 frame, not Classic", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
   await act(async () => root.render(<R1Window session={session} />));
@@ -78,8 +78,8 @@ it("mounts R1 Settings with the live engine and its slots, and hands Chat apps b
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
-  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')!.dataset.page).toBe("chatapps");
-  expect(host.querySelector('[data-testid="r1-settings"]')).toBeNull();
+  expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
+  expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!.dataset.page).toBe("chatapps");
 });
 it("opens Settings › Accounts as the R1 page, which draws every working Classic Accounts control (#976)", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
@@ -110,8 +110,9 @@ it("sends a page to R1 Settings only when the row table or a slot covers it and 
   expect(r1SettingsPage("general")).toBe(true);
   expect(r1SettingsPage("appearance")).toBe(true);
   expect(r1SettingsPage("accounts")).toBe(true);
-  expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(false);
-  for (const page of ["chatapps", "models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
+  expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(true);
+  expect(r1SettingsPage("chatapps")).toBe(true);
+  for (const page of ["models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
 });
 
 it("the conversation menu's \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
