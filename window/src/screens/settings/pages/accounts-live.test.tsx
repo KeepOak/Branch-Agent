@@ -30,7 +30,7 @@ const STATUS = {
   ] }],
   providerCapabilities: [{ provider: "google", loginOptions: [{ id: "oauth", featured: true }] }],
 };
-function engineOf() {
+function engineOf(scopes: string[] = ["operator.admin"]) {
   const request = vi.fn(async (method: string, _params?: unknown) => {
     if (method === "config.get") return { hash: "h1", valid: true, config: { agents: { defaults: { model: { fallbacks: [] } } }, plugins: { entries: { codex: { enabled: false } } } } };
     if (method === "config.schema") return { schema: {}, uiHints: {} };
@@ -48,7 +48,7 @@ function engineOf() {
     if (method === "tools.github.authorize.cancel") return { cancelled: true };
     return { ok: true, status: "ok" };
   });
-  const engine = { request, onEvent: () => () => undefined, sessionKey: "s", agentId: "main", scopes: ["operator.admin"], features: { methods: METHODS, events: [] } } as unknown as WindowEngine;
+  const engine = { request, onEvent: () => () => undefined, sessionKey: "s", agentId: "main", scopes, features: { methods: METHODS, events: [] } } as unknown as WindowEngine;
   return { engine, request };
 }
 const settle = () => act(async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0)); });
@@ -203,6 +203,24 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     expect(row("accounts.tech.identity")!.textContent).toContain("abcdef0123456789…");
     await click(button(row("accounts.more.fallback-keys"), "Add a key"));
     expect(onPage).toHaveBeenCalledWith("signins");
+  });
+
+  it("on a read-only connection the account changes are greyed with why, and nothing is sent", async () => {
+    const { engine, request } = engineOf(["operator.read"]);
+    await act(async () => root.render(<SettingsFrame engine={engine} page="accounts" pages={R1_PAGES} />));
+    await settle();
+    await click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === "Technical"));
+    const list = row("accounts.order.list")!;
+    for (const b of list.querySelectorAll<HTMLButtonElement>("button[aria-label^='Move up']")) expect(b.disabled).toBe(true);
+    expect(list.textContent).toContain("Only someone who may change Branch’s setup can change accounts.");
+    await click(list.querySelector("button[aria-label^='More for']"));
+    for (const label of ["Test it", "Answer first", "Sign out"]) expect(button(document.querySelector('[role="menu"]'), label)?.disabled, label).toBe(true);
+    for (const [id, label] of [["accounts.order.add", "Add an account"], ["accounts.order.test", "Test it"], ["accounts.apps.check", "Check again"], ["accounts.own.add", "Add your own account"]]) {
+      expect(button(row(id), label)?.disabled, id).toBe(true);
+    }
+    expect(row("accounts.out.this-computer")!.querySelector<HTMLButtonElement>('[role="switch"]')!.disabled).toBe(true);
+    expect(row("accounts.more.each-trunk")!.querySelector("select")!.disabled).toBe(true);
+    for (const m of ["models.authOrderSet", "models.probe", "models.authLogout", "config.patch", "users.selectModelAccount"]) expect(calls(request, m), m).toEqual([]);
   });
 
   it("without the page's controls the same rows are Coming, never live and silent", async () => {

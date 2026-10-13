@@ -90,6 +90,14 @@ it("opens Settings › Accounts as the R1 page, which draws every working Classi
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   expect(r1SettingsPage("accounts")).toBe(true);
 });
+it("hands Sign-ins & keys to Classic under its Classic name, so Accounts › Add a key reaches the working key page", async () => {
+  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "signins" }));
+  await act(async () => root.render(<R1Window session={session} />));
+  expect(r1SettingsPage("signins")).toBe(false);
+  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("secrets");
+});
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;

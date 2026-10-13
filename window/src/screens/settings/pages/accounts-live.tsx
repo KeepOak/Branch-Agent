@@ -69,6 +69,20 @@ function useRead(engine: WindowEngine, method: string, params: RecordValue = {})
   return { ...snap, reload: () => read.reload() };
 }
 
+/** Why this connection can't make a change that needs the engine's admin scope (models.authOrderSet, models.probe,
+ *  models.authLogout, models.authLogin, config.patch, branch.setup.detect), or undefined when it can. A connection that
+ *  reports no scopes is this computer's own, as in Classic's Local models page. */
+const ADMIN_WHY = "Only someone who may change Branch’s setup can change accounts.";
+export const adminWhy = (engine: WindowEngine): string | undefined => {
+  const scopes = engine.scopes ?? [];
+  return !scopes.length || scopes.includes("operator.admin") ? undefined : ADMIN_WHY;
+};
+/** The same for a person's own accounts (users.selectModelAccount, users.unlinkAuthProfile: write scope). */
+export const writeWhy = (engine: WindowEngine): string | undefined => {
+  const scopes = engine.scopes ?? [];
+  return !scopes.length || scopes.includes("operator.admin") || scopes.includes("operator.write") ? undefined : "Only someone who may make changes can pick their own account.";
+};
+
 /** The household's accounts, as Classic reads them: the default Trunk's models.authStatus. */
 const agentOf = (engine: WindowEngine): { agentId?: string } => (engine.agentId ? { agentId: engine.agentId } : {});
 function useAccounts(engine: WindowEngine) {
@@ -118,7 +132,8 @@ export function AccountList({ engine }: SlotControlProps) {
   const menu = open && menuAcc ? { at: open.at, acc: menuAcc } : null;
   const line = statusLine(status, all.length);
   const reorder = (acc: Account, ids: string[]) => void run(async () => { await saveOrder(engine, acc.p, ids, agent); await status.reload(); });
-  const can = (method: string) => (canAll(engine, [method]) ? undefined : COMING);
+  const admin = adminWhy(engine);
+  const can = (method: string) => (canAll(engine, [method]) ? admin : COMING);
   const items = (acc: Account): MenuItem[] => [
     { label: "Test it", disabled: can("models.probe"), run: () => void run(() => testAccount(engine, acc, agent)) },
     { label: "Answer first", disabled: can("models.authOrderSet") ?? answerFirstWhy(acc), run: () => reorder(acc, firstOrder(acc, all)) },
@@ -134,7 +149,7 @@ export function AccountList({ engine }: SlotControlProps) {
         {all.map((acc) => {
           const name = accountName(acc);
           const sub = accountLine(acc);
-          const upWhy = acc.first ? "First for " + serviceName(acc.p.provider, acc.p.displayName) + " already" : acc.p.profileOrderLocked ? "The order is set in the settings file" : undefined;
+          const upWhy = admin ?? (acc.first ? "First for " + serviceName(acc.p.provider, acc.p.displayName) + " already" : acc.p.profileOrderLocked ? "The order is set in the settings file" : undefined);
           return (
             <div key={key(acc)} className="r1s-item" data-account={key(acc)}>
               <Logo id={acc.p.provider} size={28} />
@@ -152,6 +167,7 @@ export function AccountList({ engine }: SlotControlProps) {
       </div>
     ) : !status.loading && !status.error ? <Line>No account yet. Add one, and Branch uses it for every Trunk.</Line> : null}
     {all.some((x) => !x.first) ? <Line>When one account runs low, Branch moves to the next.</Line> : null}
+    {admin && all.length ? <Line>{admin}</Line> : null}
     <Failed text={failed} />
     {menu ? <div data-need={MENU_CALLS.join(" ")}><Menu at={menu.at} items={items(menu.acc)} onClose={() => setMenu(null)} label={accountName(menu.acc)} /></div> : null}
   </>;
@@ -168,7 +184,7 @@ function AccountAction({ engine, kind }: SlotControlProps & { kind: ActKind }) {
   const [done, setDone] = useState("");
   const [picked, setPicked] = useState("");
   const acc = all.find((x) => key(x) === picked) ?? all[0];
-  const why = !acc ? "Add an account first." : kind === "first" ? answerFirstWhy(acc) : kind === "out" ? signOutWhy(acc.a) : undefined;
+  const why = adminWhy(engine) ?? (!acc ? "Add an account first." : undefined) ?? (kind === "first" && acc ? answerFirstWhy(acc) : kind === "out" && acc ? signOutWhy(acc.a) : undefined);
   const go = () => {
     if (!acc) return;
     setDone("");
@@ -214,18 +230,19 @@ export function AddAccount({ engine }: SlotControlProps) {
   }, []);
   const ready = !status.loading && !status.error;
   const need = ["models.authStatus", "models.authLogin"];
+  const admin = adminWhy(engine);
   return <Kit report={report}>
     <div className="r1s-acts">
       <Needs engine={engine} need={need} where="Add an account">
-        <button type="button" className="r1s-btn" data-solid="" onClick={() => setAdd({})}>Add an account</button>
+        <button type="button" className="r1s-btn" data-solid="" disabled={Boolean(admin)} title={admin} onClick={() => setAdd({})}>Add an account</button>
       </Needs>
       {anotherOffers(all).map((p) => {
         const name = "Another " + serviceName(p.provider, p.displayName) + " account";
-        return <Needs key={p.provider} engine={engine} need={need} where={name}><button type="button" className="r1s-btn" onClick={() => setAdd({ provider: p.provider })}>{name}</button></Needs>;
+        return <Needs key={p.provider} engine={engine} need={need} where={name}><button type="button" className="r1s-btn" disabled={Boolean(admin)} title={admin} onClick={() => setAdd({ provider: p.provider })}>{name}</button></Needs>;
       })}
       {ready ? signInOffers(caps, providers).map((id) => (
         <Needs key={id} engine={engine} need={need} where={"Sign in to " + serviceName(id)}>
-          <button type="button" className="r1s-btn" onClick={() => setAdd({ provider: id })}>Sign in to {serviceName(id)}</button>
+          <button type="button" className="r1s-btn" disabled={Boolean(admin)} title={admin} onClick={() => setAdd({ provider: id })}>Sign in to {serviceName(id)}</button>
         </Needs>
       )) : null}
     </div>
@@ -242,6 +259,7 @@ export function SelectAccounts({ engine }: SlotControlProps) {
   const chosen = all.filter((acc) => picked?.includes(key(acc)));
   const locked = chosen.some((acc) => acc.p.profileOrderLocked);
   const leaving = chosen.filter((acc) => acc.a.logoutSupported);
+  const admin = adminWhy(engine);
   const act = (work: () => Promise<void>) => void run(async () => { await work(); await status.reload(); }).then((ok) => { if (ok) setPicked(null); });
   return <>
     <span className="r1s-own-ctl">
@@ -261,11 +279,11 @@ export function SelectAccounts({ engine }: SlotControlProps) {
       <div className="r1s-acts" role="toolbar" aria-label="With the selected accounts">
         <Val>{chosen.length ? chosen.length + " selected" : "Tick the accounts"}</Val>
         <Needs engine={engine} need={["models.authOrderSet"]} where="Move to the top">
-          <button type="button" className="r1s-btn" disabled={!chosen.length || locked} title={locked ? "The order is set in the settings file." : undefined} onClick={() => act(() => moveToTop(engine, all, chosen, agent))}>Move to the top</button>
+          <button type="button" className="r1s-btn" disabled={Boolean(admin) || !chosen.length || locked} title={admin ?? (locked ? "The order is set in the settings file." : undefined)} onClick={() => act(() => moveToTop(engine, all, chosen, agent))}>Move to the top</button>
         </Needs>
         <button type="button" className="r1s-btn" disabled title={PAUSE_OFF}>Pause</button>
         <Needs engine={engine} need={["models.authLogout"]} where="Sign out of the selected accounts">
-          <button type="button" className="r1s-btn" disabled={!leaving.length} title={chosen.length && !leaving.length ? "These sign-ins can’t be removed from here." : undefined} onClick={() => act(() => signOutAll(engine, chosen, agent))}>Sign out</button>
+          <button type="button" className="r1s-btn" disabled={Boolean(admin) || !leaving.length} title={admin ?? (chosen.length && !leaving.length ? "These sign-ins can’t be removed from here." : undefined)} onClick={() => act(() => signOutAll(engine, chosen, agent))}>Sign out</button>
         </Needs>
       </div>
     </> : null}
@@ -294,8 +312,8 @@ export function FallBackHere({ engine }: SlotControlProps) {
   const on = Boolean(ref) && fallbacks.includes(ref);
   return <>
     <Needs engine={engine} need={["models.list", "config.patch"]} where="Fall back to this computer">
-      <span className="r1s-own-ctl">
-        <Toggle label="Fall back to this computer" on={on} disabled={!local || !snap} onChange={(v) => void run(() => store.set("agents.defaults.model.fallbacks", v ? [...fallbacks, ref] : fallbacks.filter((f) => f !== ref)))} />
+      <span className="r1s-own-ctl" title={adminWhy(engine)}>
+        <Toggle label="Fall back to this computer" on={on} disabled={Boolean(adminWhy(engine)) || !local || !snap} onChange={(v) => void run(() => store.set("agents.defaults.model.fallbacks", v ? [...fallbacks, ref] : fallbacks.filter((f) => f !== ref)))} />
       </span>
     </Needs>
     <Line>{local ? "When every account is out, keep going on " + visible(local.name ?? local.id) + " instead of stopping." : models.loading ? "Looking for a model on this computer…" : "Needs a model on this computer first."}</Line>
@@ -320,8 +338,8 @@ export function WhichNext({ engine }: SlotControlProps) {
               <Logo id={p.provider} size={22} />
               <span className="r1s-item-t g-label" data-lines><b>{name}</b><small>{nextSub(p)}</small></span>
               <Needs engine={engine} need={["models.authOrderSet"]} where={"Which " + name + " account goes next"}>
-                <span className="r1s-own-ctl">
-                  <Segmented label={"Which " + name + " account goes next"} value={nextModeOf(p)} options={NEXT_OPTIONS} disabled={Boolean(p.profileOrderLocked)}
+                <span className="r1s-own-ctl" title={adminWhy(engine)}>
+                  <Segmented label={"Which " + name + " account goes next"} value={nextModeOf(p)} options={NEXT_OPTIONS} disabled={Boolean(adminWhy(engine) || p.profileOrderLocked)}
                     onChange={(m) => void run(async () => { await setNextMode(engine, p, String(m), agent); await status.reload(); })} />
                 </span>
               </Needs>
@@ -368,7 +386,7 @@ function TrunkAccount({ engine, trunk }: { engine: WindowEngine; trunk: RecordVa
   return <div className="r1s-item">
     <span className="r1s-item-t g-label"><b>{name}</b></span>
     <Needs engine={engine} need={["models.authStatus", "models.authOrderSet"]} where={name + ": account"}>
-      <select className="r1s-inp" aria-label={name + ": account"} value={value} disabled={status.loading} onChange={(e) => { const v = e.target.value; void run(async () => { await setTrunkAccount(engine, id, providers, v); await status.reload(); }); }}>
+      <select className="r1s-inp" aria-label={name + ": account"} value={value} disabled={status.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onChange={(e) => { const v = e.target.value; void run(async () => { await setTrunkAccount(engine, id, providers, v); await status.reload(); }); }}>
         <option value="">Anyone’s</option>
         {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
       </select>
@@ -405,7 +423,7 @@ export function OwnAccountList({ engine }: SlotControlProps) {
             <Logo id={text(a.provider)} size={28} />
             <span className="r1s-item-t g-label" data-lines><b>{serviceName(text(a.provider), undefined, a.authType === "api_key") + " · " + visible(a.label)}</b><small>New conversations you start use it first.</small></span>
             <Needs engine={engine} need={["users.unlinkAuthProfile"]} where="Stop using">
-              <button type="button" className="r1s-btn" onClick={() => stop(a)}>Stop using</button>
+              <button type="button" className="r1s-btn" disabled={Boolean(writeWhy(engine))} title={writeWhy(engine)} onClick={() => stop(a)}>Stop using</button>
             </Needs>
           </div>
         ))}
@@ -423,7 +441,7 @@ export function AddOwnAccount({ engine }: SlotControlProps) {
   const accounts = list(own.data?.accounts);
   return <Kit report={report}>
     <Needs engine={engine} need={["users.listModelAccounts", "users.selectModelAccount"]} where="Add your own account">
-      <button type="button" className="r1s-btn" disabled={own.loading || Boolean(own.error) || !accounts.length} title={!own.loading && !accounts.length ? "Add an account above first." : undefined} onClick={() => setAdding(true)}>Add your own account</button>
+      <button type="button" className="r1s-btn" disabled={Boolean(writeWhy(engine)) || own.loading || Boolean(own.error) || !accounts.length} title={writeWhy(engine) ?? (!own.loading && !accounts.length ? "Add an account above first." : undefined)} onClick={() => setAdding(true)}>Add your own account</button>
     </Needs>
     <Failed text={failed} />
     {adding ? <PickOwn engine={engine} accounts={accounts.filter((a) => a.selected !== true)} onClose={(picked) => { setAdding(false); if (picked) void own.reload(); }} /> : null}
@@ -451,7 +469,7 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
       </span>
       {app.plugin ? (
         <Needs engine={engine} need={["config.patch"]} where={"Use " + app.name}>
-          <span className="r1s-own-ctl"><Toggle label={"Use " + app.name} on={pluginOn} disabled={!snap} onChange={(v) => void run(() => store.set("plugins.entries." + app.plugin + ".enabled", v))} /></span>
+          <span className="r1s-own-ctl" title={adminWhy(engine)}><Toggle label={"Use " + app.name} on={pluginOn} disabled={Boolean(adminWhy(engine)) || !snap} onChange={(v) => void run(() => store.set("plugins.entries." + app.plugin + ".enabled", v))} /></span>
         </Needs>
       ) : (
         <span className="r1s-own-ctl" title={"Follows " + app.name + "’s own sign-in on this computer."}><Toggle label={"Use " + app.name} on={pluginOn} disabled onChange={() => undefined} /></span>
@@ -469,7 +487,7 @@ export const GeminiCli = (p: SlotControlProps) => <CodingApp {...p} app={appOf("
 export function CheckApps({ engine }: SlotControlProps) {
   const detect = useRead(engine, "branch.setup.detect");
   return <Needs engine={engine} need={["branch.setup.detect"]} where="Check again">
-    <button type="button" className="r1s-btn" disabled={detect.loading} onClick={() => void detect.reload()}>Check again</button>
+    <button type="button" className="r1s-btn" disabled={detect.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void detect.reload()}>Check again</button>
   </Needs>;
 }
 
@@ -512,7 +530,7 @@ export function GitHubRow({ engine }: SlotControlProps) {
   const { connection, view } = useGitHub(engine);
   if (!engine.agentId) return <Line>Select a Trunk to read its GitHub connection.</Line>;
   const identity = view?.status?.selected.identity;
-  const admin = engine.scopes.includes("operator.admin");
+  const admin = (engine.scopes ?? []).includes("operator.admin");
   const loading = !view || view.phase === "loading";
   const sub = identity ? (identity.source === "agent-override" ? "This Trunk’s account" : identity.source === "system-configured" ? "Shared account" : "This computer’s account") + " · " + (identity.credentialKind === "managed-oauth" ? "GitHub sign-in" : identity.credentialKind === "managed-pat" ? "Managed token" : "Native sign-in") : loading ? "Reading connection…" : "Connect GitHub or refresh to try again.";
   const state = identity ? identity.credentialState.replaceAll("_", " ") : loading ? "Checking" : "Not connected";
