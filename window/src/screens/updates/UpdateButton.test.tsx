@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ComponentUpdateStatus } from "../../connect/desktop-component-updates";
+import type { WindowEngine } from "../../connect/engine";
 import { EXIT_MS, UpdateBanner, UpdateButton } from "./UpdateButton";
 import { DONE_MS, useUpdateFlow } from "./useUpdateFlow";
 
@@ -21,7 +22,8 @@ function engine(status: unknown = {}, run: unknown = { ok: true }) {
   return { gatewayUrl: URL, request, onEvent: vi.fn(() => () => undefined) };
 }
 function Harness({ e, rail }: { e: ReturnType<typeof engine>; rail?: boolean }) {
-  const flow = useUpdateFlow(e, true, "0.4.4", () => document.body.setAttribute("data-opened", "settings"));
+  // The mock request is not generic like WindowEngine.request; the hook only reads it.
+  const flow = useUpdateFlow(e as unknown as Pick<WindowEngine, "request" | "onEvent" | "gatewayUrl">, true, "0.4.4", () => document.body.setAttribute("data-opened", "settings"));
   return <><UpdateButton flow={flow} rail={rail} /><div role="menu"><UpdateBanner flow={flow} /></div></>;
 }
 const button = () => host.querySelector<HTMLElement>(".r1u-btn");
