@@ -293,6 +293,7 @@ const DEFAULT_RELOAD_POLICIES: ReloadPolicy[] = [
       "worktreeRoot",
       "worktreeMaxCount",
       "worktreeAcceleration",
+      "buildWorktreeRoots",
       "security.audit.suppressions",
       "security.lockdown",
       "security.installPolicy",
