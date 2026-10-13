@@ -55,7 +55,7 @@ export function AskHistory({ engine, limit = 20 }: { engine: WindowEngine | null
     try { await requestOrComing(engine, "exec.approval.grants.revoke", { grantId }); await loadGrants(); } catch (e) { setError(errorText(e)); }
   };
   return (
-    <section className="r1-ask-history" aria-label="Approvals" data-testid="r1-ask-history">
+    <section className="r1-ask-history g-clear" aria-label="Approvals" data-testid="r1-ask-history">
       <h3>Always allowed</h3>
       {grants.length ? grants.map((g) => (
         <div className="r1-ask-row" key={g.grantId}>

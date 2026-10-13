@@ -17,7 +17,8 @@
 .r1-drawer-button { display: none; }
 .r1-scroll { flex: 1; min-height: 0; overflow: auto; padding-top: calc(var(--hdr) + 8px); scroll-padding-top: calc(var(--hdr) + 16px); }
 .r1-content { min-height: 100%; }
-.r1-notice { margin: 8px auto; padding: 3px 12px; max-width: min(100%, 680px); color: var(--ink-3); font-size: var(--fs-12-5); text-align: center; }
+/* The notice line ("Reconnecting…", a part that didn't load): text on a frosted pill (.g-label, README item 48), centred. */
+.r1-notice { margin: 8px auto; max-width: min(100%, 680px); font-size: var(--fs-12-5); text-align: center; }
 .r1-notice button { background: transparent; border: 0; text-decoration: underline; }
 .r1-composer-slot { padding: 8px 16px 16px; }
 .r1-drawer-scrim { position: fixed; inset: 0; z-index: 29; border: 0; background: var(--scrim); }

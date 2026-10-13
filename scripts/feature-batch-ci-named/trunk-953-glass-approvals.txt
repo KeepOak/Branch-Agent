@@ -1,0 +1,4 @@
+window:src/screens/approvals/Approvals.test.tsx
+window:src/screens/approvals/model.test.ts
+window:src/screens/approvals/glass48.test.tsx
+window:src/screens/frame/Frame.test.tsx
