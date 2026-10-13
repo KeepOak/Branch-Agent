@@ -108,6 +108,47 @@ describe("settings row table", () => {
     expect(cardRows("general", "The conversation", 1, {}).map((r) => r.id)).toContain("general.conversation.ask-delete");
   });
 
+  it("keeps every Classic Accounts control on the R1 Accounts page, on the key Classic uses or Coming with its need (#952)", () => {
+    const page = ROWS.filter((r) => r.page === "accounts");
+    const labels = new Set(page.map((r) => r.label));
+    // Each control Classic's Accounts page draws (accounts.tsx, accounts-more.tsx, accounts-select.tsx, coding-apps.tsx,
+    // own-accounts.tsx, GitHubSettings.tsx), by its title or button.
+    const classic = [
+      "Add an account", "Test it", "Answer first", "Rename", "Which Trunks use it", "Sign out", "Select accounts", "Pause",
+      "Move to the next account in the list", "Fall back to this computer", "Each service’s terms", "Which account goes next",
+      "Your own accounts", "Add your own account", "Claude Code", "Codex", "Gemini CLI", "Check again", "Where each sign-in comes from",
+      "GitHub", "Permissions", "Access expires", "Connect your keepoak.com account",
+      "Which account each Trunk uses", "Helpers keep their account", "Pick by what the task needs", "Fallback keys", "Resting now",
+      "Which sign-in each request used", "Organisation", "A customer’s ChatGPT account on a KeepOak computer",
+      "A command that makes a sign-in", "On a build server, sign in with", "Accept sign-ins from your editor", "This Branch’s identity",
+      "Sign-ins through the Gateway", "Settings from another Branch", "Keep service settings in step on my devices",
+      "Use a model from a hub for one run", "Region", "Install a service’s package when needed", "Each account keeps its own folder",
+      "Point your coding apps at Branch",
+    ];
+    for (const title of classic) expect(labels.has(title), title).toBe(true);
+    // Codex's switch saves the engine key Classic saves; true only when it is true.
+    const at = (id: string) => page.find((r) => r.id === id);
+    const codex = at("accounts.apps.codex");
+    expect(codex).toMatchObject({ card: "Coding apps on this computer", control: "toggle", level: 0, source: { kind: "config", path: "plugins.entries.codex.enabled" } });
+    expect([codex?.codec?.read(undefined), codex?.codec?.read(true), codex?.codec?.write(false), codex?.codec?.write(true)]).toEqual([false, true, false, true]);
+    // Everything else names the call or row kind it waits for.
+    for (const row of page.filter((r) => r.id !== "accounts.apps.codex")) {
+      expect(row.source.kind, row.id).toBe("coming");
+      if (row.source.kind === "coming") expect(row.source.need, row.id).toMatch(/^(window|engine): /);
+    }
+    expect(at("accounts.order.sign-out")?.source).toMatchObject({ need: expect.stringContaining("models.authLogout") });
+    expect(at("accounts.order.answer-first")?.source).toMatchObject({ need: expect.stringContaining("models.authOrderSet") });
+    expect(at("accounts.order.test")?.source).toMatchObject({ need: expect.stringContaining("models.probe") });
+    // Classic's levels: Terms and Accounts, more at Advanced; Which goes next, the sources and Accounts, technical at Technical.
+    expect(cardRows("accounts", "Accounts, more", 0, {})).toEqual([]);
+    expect(cardRows("accounts", "Accounts, more", 1, {}).length).toBeGreaterThan(0);
+    expect(cardRows("accounts", "Accounts, technical", 1, {})).toEqual([]);
+    for (const card of ["Order Branch uses them in", "When one runs out", "Which account goes next", "Your own accounts", "Coding apps on this computer",
+      "Where each sign-in comes from", "Terms", "GitHub", "keepoak.com", "Accounts, more", "Accounts, technical"]) {
+      expect(cardRows("accounts", card, 2, {}).length, card).toBeGreaterThan(0);
+    }
+  });
+
   it("maps Show agents’ work to the two engine defaults and back", () => {
     expect(agentsWork.read(undefined)).toBe("normal");
     expect(agentsWork.read({ reasoningDefault: "on" })).toBe("thinking");
