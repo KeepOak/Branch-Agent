@@ -27,6 +27,13 @@ describe("day-one templates", () => {
     expect(addCall(watch)).toEqual({ method: "trunks.template.create" });
   });
 
+  it("adds Home Desk from the engine's bundled home-desk template", () => {
+    const listed = { templates: [{ id: "home-desk", name: "Home Desk", description: "From the engine", permissions: ["Ask first"] }] };
+    const entry = templateEntries(listed, undefined).find(e => e.name === "Home Desk")!;
+    expect(entry.source).toMatchObject({ type: "template", templateId: "home-desk", permissions: ["Ask first"] });
+    expect(addCall(entry)).toEqual({ method: "trunks.template.create" });
+  });
+
   it("adds Prospect Finder from the engine's bundled prospect-finder template, with its face colour", () => {
     const listed = { templates: [{ id: "prospect-finder", name: "Prospect Finder", description: "Drafts wait for your approval", permissions: ["Drafts messages only"] }] };
     const entry = templateEntries(listed, undefined).find(e => e.name === "Prospect Finder")!;
