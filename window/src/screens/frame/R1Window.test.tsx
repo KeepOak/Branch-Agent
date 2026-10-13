@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../../connect/session";
+import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { r1SettingsPage, r1Window, R1Window } from "./R1Window";
 vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <p>{name}</p> }));
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
@@ -101,6 +102,10 @@ it("the conversation menu's \"Show agents' work as\" rows turn Coming when the e
   const request = vi.fn(async (method: string) => { if (method === "users.prefs.set") setOverride(); return {}; });
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", features: { methods: ["users.prefs.get"], events: [] } } } as unknown as SaplingSession;
   await act(async () => root.render(<R1Window session={session} />));
+  // R1-10: the header names its calls (Computer, Browser, the pill) or says local (•••), and Find anything is registered.
+  expect(undeclaredControls(host.querySelector(".r1-header")!)).toEqual([]);
+  const needs = comingControls().flatMap((entry) => entry.need);
+  expect(needs).toEqual(expect.arrayContaining(["computer.status", "browser.request", "agent.identity.get", "sessions.search"]));
   await act(async () => document.querySelector<HTMLButtonElement>('.r1-header-right [aria-label="More"]')!.click());
   const rows = [...document.querySelectorAll<HTMLElement>('[aria-label="Show agents’ work as"] [role="menuitemradio"]')];
   expect(rows.length).toBeGreaterThan(1);
