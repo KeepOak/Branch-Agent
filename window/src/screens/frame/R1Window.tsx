@@ -68,7 +68,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const [conversations, list] = useConversations(session, ready, snapshot.mainKey);
   const waiting = usePendingApprovals(session, ready);
   const limits = useLimits(session, ready);
-  const lockdown = useLockdown(engine, ready, session);
+  const lockdown = useLockdown(engine, ready, session, true);
   const [route, setRoute] = useState<Route>(loadRoute);
   const [history, setHistory] = useState({ index: 0, count: 1 });
   const entries = useRef<Route[]>([route]);
@@ -140,6 +140,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo}
   />;
+  // The agent details popover's second line: the error, the agent's emoji, or the loading line (none when there's no emoji).
+  const agentLine = identityError ?? (identity ? identity.emoji ?? "" : "Loading agent details…");
   return <>
     {onboarding && <Onboarding engine={engine} startAt={firstRun.step ?? 0}
       onLater={state => { firstRun.close(); void recordOnboarding(engine, state).catch((e: unknown) => setNotice(`Couldn’t save that setup is done: ${e instanceof Error ? e.message : String(e)}`)); }}
@@ -177,8 +179,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
       {[{ id: null, label: `Like Settings (${WORK_MODES.find(m => m.id === work.global)?.label})` }, ...WORK_MODES].map(m => <Coming key={m.id ?? "default"} engine={engine} need="users.prefs.set" reason="This engine can’t save how agents’ work shows here." where={m.label}><button type="button" role="menuitemradio" className="r1c-mi" aria-checked={work.override === m.id}
         onClick={() => { void work.setOverride(m.id).catch((e: unknown) => setNotice(e instanceof Error ? e.message : String(e))); setConvMenu(false); }}><span className="r1c-mi-t">{m.label}</span>{work.override === m.id ? <Icon name="check" size={15} /> : null}</button></Coming>)}
     </div></Popover>}
-    {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details">
-      <strong>{identity?.name ?? snapshot.name}</strong><p>{identityError ?? (identity ? identity.emoji ?? "" : "Loading agent details…")}</p>
+    {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details g-clear">
+      <strong className="g-label">{identity?.name ?? snapshot.name}</strong>{agentLine ? <p className="g-label">{agentLine}</p> : null}
       <button type="button" onClick={closeAgent}>Close</button>
     </div></Popover>}
   </>;
