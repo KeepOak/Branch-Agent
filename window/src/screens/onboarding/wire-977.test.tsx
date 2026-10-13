@@ -19,7 +19,7 @@ afterEach(async () => { if (root) await act(async () => root!.unmount()); root =
 const ALL = ["branch.setup.detect", "branch.setup.verify", "branch.setup.activate", "models.authStatus", "config.get", "config.patch", "agents.list", "chat.send", "sessions.create", "trunks.template.starters"];
 const STARTERS = { timezone: "UTC", offer: [{ id: "home-desk", name: "Home Desk", description: "Family admin.", pitch: "I keep family and home admin moving." }, { id: "spend-saver", name: "Spend Saver", description: "Finds savings.", pitch: "" }] };
 function fakeEngine(methods = ALL) {
-  const request = vi.fn(async (method: string) => {
+  const request = vi.fn(async (method: string): Promise<unknown> => {
     if (method === "branch.setup.detect") return { candidates: [] };
     if (method === "trunks.template.starters") return STARTERS;
     if (method === "agents.list") return { defaultId: "scout", mainKey: "main", agents: [{ id: "scout", name: "Scout" }] };
