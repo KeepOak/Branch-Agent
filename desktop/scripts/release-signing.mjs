@@ -199,13 +199,15 @@ const BUNDLE = /\.(app|framework)$/;
 
 /**
  * Inside-out signing order for an app's nested code: deepest paths first, plain files before the bundles that hold
- * them, the app itself last. Executables and .app bundles get the entitlements; libraries and frameworks don't.
+ * them, the app's own Contents/MacOS executables after every nested bundle, the app itself last. Executables and .app bundles get the entitlements; libraries and frameworks don't.
  */
 export function macSigningOrder(app, nested) {
   const depth = (path) => path.split(/[\\/]/).length;
   const rank = (entry) => (entry.kind === "file" ? 0 : 1);
   const ordered = [...nested].sort((a, b) => depth(b.path) - depth(a.path) || rank(a) - rank(b) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return [...ordered, { path: app, kind: "bundle" }].map((entry) => ({
+  // The app's own executables in Contents/MacOS go after every nested bundle: they are the app's main code.
+  const main = (entry) => entry.path.startsWith(app + "/Contents/MacOS/") || entry.path.startsWith(app + "\\Contents\\MacOS\\");
+  return [...ordered.filter((entry) => !main(entry)), ...ordered.filter(main), { path: app, kind: "bundle" }].map((entry) => ({
     ...entry,
     entitlements: entry.kind === "bundle" ? entry.path.endsWith(".app") : !LIBRARY.test(entry.path),
   }));

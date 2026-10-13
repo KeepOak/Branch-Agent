@@ -20,7 +20,7 @@ The desktop updates itself: a whole-app update renames the install folder to `<f
 
 ## Left for the owner
 
-The signing steps are already in the workflow. They do nothing until these are added under the repository's Settings, Secrets and variables, Actions. Add all of a platform's names at once: a partial set signs nothing.
+The signing steps are already in the workflow (`desktop/scripts/release-signing.mjs`). They do nothing until these are added under the repository's Settings, Secrets and variables, Actions. Add all of a platform's names at once: a partial set signs nothing.
 
 1. **Windows code signing (Azure Artifact Signing).** Create the Artifact Signing account, finish identity validation, create a public-trust certificate profile, and give an app registration the Artifact Signing Certificate Profile Signer role on it. Then add:
    - Secrets: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET` (that app registration).
@@ -34,4 +34,4 @@ The signing steps are already in the workflow. They do nothing until these are a
 
    The certificate goes into a throwaway keychain that's deleted when the step ends. Notarization waits for Apple's answer inside the 35-minute native job. Only the installer's copy of the app is re-signed; the published desktop package keeps the stable self-signed identity the updater checks.
 3. **Publishing.** Once the installers are signed, add them to the release assets and to each platform's inventory. The publish job checks every asset against that inventory.
-4. **Linux:** pick the install model above.
+4. **Linux:** decided: a per-user AppImage (any distro; the auto-updater supports it). It ships in a following R1-11 PR; no signing is needed.
