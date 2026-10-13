@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, truncate, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -69,6 +70,32 @@ test("a capped log rotates at its cap and keeps exactly five numbered archives",
       assert.ok(text.endsWith("\n") && text.split("\n").length - 1 > 0, `${name} ends mid-record`);
     }
     assert.match(await readFile(file, "utf8"), /^0999 /m, "the newest record is in the live file");
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
+
+test("the update helper's log is capped the same way, with five numbered archives", async () => {
+  const { runHelper } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
+  const root = await mkdtemp(join(tmpdir(), "desktop-helper-log-"));
+  try {
+    // An exited process: the helper does not wait, finds nothing staged, logs one line and relaunches a no-op.
+    const exited = spawn(process.execPath, ["-e", ""]);
+    await new Promise(resolve => exited.on("exit", resolve));
+    const log = join(root, "desktop.log");
+    const plan = { journal: join(root, "desktop-update-pending.json"), versionFile: join(root, "desktop-update-version.txt"),
+      rejectedFile: join(root, "desktop-update-rejected.json"), log, waitPid: exited.pid,
+      relaunch: { command: process.execPath, args: ["-e", ""] }, confirmTimeoutMs: 1000 };
+    // Six rounds: each starts with a full live log (sparse, so cheap), so each helper line rotates it.
+    for (let round = 0; round < 6; round++) {
+      await writeFile(log, "");
+      await truncate(log, CAP + 1);
+      assert.equal(await runHelper(plan), "none");
+    }
+    const names = (await readdir(root)).filter(name => /^desktop(\.\d+)?\.log$/.test(name)).sort();
+    assert.deepEqual(names, ["desktop.1.log", "desktop.2.log", "desktop.3.log", "desktop.4.log", "desktop.5.log", "desktop.log"]);
+    assert.ok(await sizeOf(log) < 1024 * 1024, "the live desktop.log holds only the newest line");
+    assert.match(await readFile(log, "utf8"), /nothing staged or the app is still running/);
   } finally {
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
