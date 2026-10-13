@@ -158,7 +158,8 @@ it("admits an agent while its transcript repair is still pending, then runs the 
           repairCalls: repair.calls,
           trace,
         }),
-        { timeout: 8000 },
+        // Windows runners prepare the agent several times slower than Linux.
+        { timeout: 60_000 },
       )
       .toEqual({ reason: undefined, repairCalls: expect.any(Number), trace: expect.anything() });
     await expect.poll(() => repair.calls, { timeout: 10000 }).toBe(1);
@@ -172,4 +173,4 @@ it("admits an agent while its transcript repair is still pending, then runs the 
     secrets.active = false;
     await stop?.();
   }
-});
+}, 120_000);
