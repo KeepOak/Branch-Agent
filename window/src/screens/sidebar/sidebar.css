@@ -52,6 +52,25 @@ button.r1sb-cap:hover { color: var(--ink); }
 .r1sb-sec:hover .r1sb-head :is(.r1sb-mar, .r1sb-head-go), .r1sb-head:focus-within :is(.r1sb-mar, .r1sb-head-go) { opacity: 1; }
 .r1sb-mar:hover, .r1sb-head-go:hover { color: var(--ink); background: var(--fill); }
 .r1sb-empty { margin: 12px 14px; font-size: 13px; color: var(--ink-3); }
+
+/* Search results (the Classic view re-hosted in the frosted sidebar): the list itself scrolls, the chips stay on top as
+   glass chips with no fill behind them, and section labels match the sidebar's heads. */
+.r1sb .search-results { flex: none; max-height: none; overflow: visible; padding: 0; scrollbar-gutter: auto; }
+.r1sb .search-results .chips { position: sticky; top: 0; z-index: 3; gap: 6px; padding: 10px 2px 6px; background: transparent; }
+.r1sb .search-results .chip { display: inline-flex; align-items: center; height: 28px; padding: 0 11px; border: 0; border-radius: var(--r-pill); font-size: var(--fs-12-5); color: var(--ink-2);
+  background: var(--gk-chip); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi); backdrop-filter: var(--gf-blur); -webkit-backdrop-filter: var(--gf-blur); }
+.r1sb .search-results .chip[aria-selected="true"] { background: var(--ink); color: var(--bg); font-weight: 600; box-shadow: none; }
+.r1sb .search-results .chip:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
+.r1sb .search-results .lh { padding: 14px 10px 4px; font: 500 var(--fs-12-5)/1.3 var(--sans); letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+.r1sb .search-results .sr { min-height: 52px; padding: 8px 10px; border-radius: var(--r-row, 12px); color: var(--ink); }
+.r1sb .search-results .sr:hover { background: var(--gk-chip); }
+.r1sb .search-results .sr-title { gap: 0; }
+.r1sb .search-results .sr-title > :is(span, mark) { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.r1sb .search-results .sr-title time { padding-left: 8px; }
+.r1sb .search-results .sr:focus-visible { outline: 2px solid var(--ink-3); outline-offset: -2px; }
+.r1sb .search-results .sr-none { margin: 24px 12px; color: var(--ink-3); }
+.r1sb .search-results .sr-none .link { color: var(--ink); }
+:root[data-transparency="reduce"] .r1sb .search-results .chip:not([aria-selected="true"]) { background: var(--raise, var(--bg)); backdrop-filter: none; -webkit-backdrop-filter: none; }
 .r1sb-error { margin: 12px 14px; font-size: 13px; color: var(--bad); overflow-wrap: anywhere; }
 
 /* Pinned grid: 2 a row, 3 from 264 px of list, 4 from 354 px (max 4). */

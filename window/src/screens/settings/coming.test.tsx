@@ -74,7 +74,7 @@ describe("R1 Settings, the Coming contract", () => {
     expect(request.mock.calls.slice(writes).map(([method]) => method)).not.toContain("config.patch");
     expect(request.mock.calls.slice(writes).map(([method]) => method)).not.toContain("users.prefs.set");
     const needs = comingControls().flatMap((entry) => entry.need);
-    expect(needs).toEqual(expect.arrayContaining(["config.patch", "sessions.send"]));
+    expect(needs).toEqual(expect.arrayContaining(["config.patch", "chat.send"]));
     // General draws none of its empty sections (they wait in Seedbank, R1-15); other pages' empty sections name a real
     // engine call, never a page/card label.
     const comingSections = () => comingControls().filter((entry) => entry.reason.endsWith("comes to this page in a later update."));

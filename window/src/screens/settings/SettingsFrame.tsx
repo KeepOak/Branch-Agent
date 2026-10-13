@@ -254,7 +254,8 @@ export function SettingsFrame(props: SettingsFrameProps) {
             <div className="r1s-help g-clear" role="dialog" aria-label={`About ${spec.title}`}>
               <h3 className="g-label">On this page</h3>
               <ul>{sections.map((s) => <li key={s.card}><button type="button" className="r1s-link" data-local="" onClick={() => { setHelp(false); setJump(`sec-${shownPage}-${s.card}`); }}>{s.card || spec.title}</button></li>)}</ul>
-              <Coming engine={engine} need="sessions.send" unwired={!props.onAsk} reason={props.onAsk ? undefined : ASK_COMING}>
+              {/* Ask a Trunk sends the question to the default Trunk's conversation with chat.send (the window's session.send). */}
+              <Coming engine={engine} need="chat.send" unwired={!props.onAsk} reason={props.onAsk ? undefined : ASK_COMING}>
                 <button type="button" className="r1s-btn" onClick={() => props.onAsk?.(`Help me with Settings › ${spec.title}.`)}>Ask a Trunk</button>
               </Coming>
             </div>
