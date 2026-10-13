@@ -35,14 +35,22 @@ export const whereWord = (w: Where) => (w === "here" ? "this computer" : w === "
 
 export const EXAMPLES_REASON = "Trying Branch with examples comes in a later update.";
 
-/** The Coming look (R1-10) for a control no engine method backs yet, so there is no method for <Coming> to check:
- *  greyed, its one-line reason as the tooltip, and a click that does nothing. */
-export const unwired = (reason: string) => ({
-  "aria-disabled": true as const,
-  "data-coming": reason,
-  title: reason,
-  onClick: (e: { preventDefault(): void; stopPropagation(): void }) => { e.preventDefault(); e.stopPropagation(); },
-});
+/** The engine call each control the card doesn't wire yet waits for (R1-10). They render through <Coming unwired>
+ *  (Unwired.tsx), so the dev list names the method. */
+export const WAITS_FOR = {
+  /** Moving Branch to another computer starts with that computer's pairing code. */
+  other: "device.pair.setupCode",
+  /** A KeepOak computer is a cloud environment. */
+  keepoak: "environments.create",
+  /** Example Trunks and replies, with no account. */
+  examples: "trunks.template.starters",
+  /** A day-one template this engine doesn't carry yet. */
+  template: "trunks.template.create",
+  /** Plan first has no tools.exec.mode value yet (HANDOFF R1-04: COMING). */
+  planFirst: "config.patch",
+  /** The same questions in a conversation named "Setting up Branch". */
+  talk: "sessions.create",
+} as const;
 
 export type Hello = TestResult | "busy" | null;
 

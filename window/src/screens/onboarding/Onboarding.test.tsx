@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CapabilityProvider } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
-import { undeclaredControls } from "../../glass/coming-registry";
+import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { readDetected } from "../../setup/setup-model";
 import { readFileSync } from "node:fs";
 import { answeredBy, canSayHello, freshState, MODES, picked, primary, STEPS, suggest, togglePick } from "./model";
@@ -152,11 +152,18 @@ describe("Onboarding", () => {
 
   it("declares every control: wired through the engine, local, or Coming", async () => {
     const { engine } = fakeEngine({ "branch.setup.detect": DETECT, "config.get": { hash: "h", config: {} } }, []);
+    const needs = new Map<string, string[]>();
     for (const step of [0, 1, 2, 3]) {
       const { host } = await show(engine, { startAt: step });
       expect(undeclaredControls(host).map((e) => e.textContent)).toEqual([]);
+      for (const c of comingControls()) needs.set(c.where, c.need);
       await act(async () => root!.unmount()); root = undefined; host.remove();
     }
+    // R1-10: what the card doesn't wire yet is listed by the engine call it waits for, never by its look alone.
+    expect(needs.get("Set up by talking")).toEqual(["sessions.create"]);
+    expect(needs.get("Try it with examples")).toEqual(["trunks.template.starters"]);
+    expect(needs.get("Plan first")).toEqual(["config.patch"]);
+    expect([...needs.values()].every((need) => need.length > 0)).toBe(true);
   });
 });
 
