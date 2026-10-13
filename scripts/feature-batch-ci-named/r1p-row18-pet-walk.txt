@@ -1,2 +1,2 @@
-window:src/screens/pet/ComposerPet.test.tsx
 window:src/screens/composer/Composer.test.tsx
+window:src/screens/pet/ComposerPet.test.tsx
