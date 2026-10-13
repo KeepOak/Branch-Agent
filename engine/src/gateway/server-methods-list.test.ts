@@ -298,6 +298,8 @@ describe("listGatewayMethods", () => {
       "rooms.members.remove",
       "rooms.rule.set",
       "rooms.archive",
+      "rooms.merge.record",
+      "rooms.merge.follow",
       "contacts.outside.hello",
       "contacts.outside.list",
       "contacts.outside.set",
@@ -316,6 +318,7 @@ describe("listGatewayMethods", () => {
       "trunks.queue.done",
       "trunks.queue.release",
       "agents.retryStartup",
+      "skills.uninstall",
       "trunks.template.export",
       "trunks.template.create",
       "trunks.template.list",
@@ -325,6 +328,7 @@ describe("listGatewayMethods", () => {
       "trunks.template.cards",
       "trunks.team.propose",
       "trunks.team.approve",
+      "buildWorktrees.status",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -428,6 +432,8 @@ describe("listGatewayMethods", () => {
       "rooms.members.remove",
       "rooms.rule.set",
       "rooms.archive",
+      "rooms.merge.record",
+      "rooms.merge.follow",
       "contacts.outside.hello",
       "contacts.outside.list",
       "contacts.outside.set",
@@ -446,6 +452,7 @@ describe("listGatewayMethods", () => {
       "trunks.queue.done",
       "trunks.queue.release",
       "agents.retryStartup",
+      "skills.uninstall",
       "trunks.template.export",
       "trunks.template.create",
       "trunks.template.list",
@@ -455,6 +462,7 @@ describe("listGatewayMethods", () => {
       "trunks.template.cards",
       "trunks.team.propose",
       "trunks.team.approve",
+      "buildWorktrees.status",
     ]);
   });
 
@@ -692,6 +700,8 @@ describe("listGatewayMethods", () => {
       "rooms.members.remove",
       "rooms.rule.set",
       "rooms.archive",
+      "rooms.merge.record",
+      "rooms.merge.follow",
       "contacts.outside.hello",
       "contacts.outside.list",
       "contacts.outside.set",
@@ -710,6 +720,7 @@ describe("listGatewayMethods", () => {
       "trunks.queue.done",
       "trunks.queue.release",
       "agents.retryStartup",
+      "skills.uninstall",
       "trunks.template.export",
       "trunks.template.create",
       "trunks.template.list",
@@ -719,6 +730,7 @@ describe("listGatewayMethods", () => {
       "trunks.template.cards",
       "trunks.team.propose",
       "trunks.team.approve",
+      "buildWorktrees.status",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

@@ -1,0 +1,3 @@
+engine:src/agents/code-mode-missing-global.test.ts
+engine:src/agents/code-mode-node.test.ts
+engine:src/agents/code-mode.web-globals.test.ts

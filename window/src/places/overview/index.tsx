@@ -16,7 +16,7 @@ import { NewTeammates } from "./NewTeammates";
 import "./overview.css";
 
 export const PAUSE_ALL_GAP = "Needs the engine's pause-all method.";
-export const MILESTONES_GAP = "Needs the engine's milestones method.";
+const MILESTONES_GAP = "Needs the engine's milestones method.";
 
 function ResourceStatus({ resource, label, retry }: { resource: Resource; label: string; retry: () => void }) {
   if (resource.error) return <div className="ov-error" role="alert"><p>Couldn't load {label}. {resource.error}</p><button type="button" className="btn sm" onClick={retry}>Try again</button></div>;

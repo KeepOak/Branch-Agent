@@ -3,6 +3,7 @@
 // when something throws.
 // Prior art: Hermes Agent profile export/import and profile distributions (cron jobs arrive paused,
 // required connections are checked and shown as set or needing setup), NousResearch/hermes-agent.
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -15,11 +16,11 @@ import {
 } from "../../../packages/gateway-protocol/src/index.js";
 import { mutateConfigFileWithRetry } from "../../config/config.js";
 import { resolveStateDir } from "../../config/state-dir.js";
-import type { BranchConfig } from "../../config/types.branch.js";
 import { redactSensitiveText } from "../../logging/redact.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { resolveBundledSkillsDir } from "../../skills/loading/bundled-dir.js";
 import { exportTrunkTemplate } from "../../trunks/trunk-template-export.js";
+import { bindReadyChannels, screenImportedTemplate } from "../../trunks/trunk-template-import.js";
 import {
   answersSection,
   fillAnswerSlots,
@@ -90,19 +91,34 @@ function importedTemplatesDir(): string {
   return path.join(resolveStateDir(), "trunk-templates");
 }
 
-/** "Inbox Helper!" -> "inbox-helper". */
+/**
+ * "Inbox Helper!" -> "inbox-helper". A name with no Latin letters or digits, such as "研究者", gets
+ * "template-" and a short hash of the name, so two such names do not share a file.
+ */
 export function templateSlug(name: string): string {
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48).replace(/-+$/, "");
-  return slug || "template";
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+    .replace(/-+$/, "");
+  return slug || `template-${createHash("sha256").update(name, "utf8").digest("hex").slice(0, 8)}`;
 }
 
 /**
  * Where a create reads its template. `outside` marks a template that came from a file, a pasted
  * template or a link, which the create keeps in the imported catalog.
  */
-type TemplateSource = { ok: true; text: string; outside: boolean } | { ok: false; error: string } | undefined;
+type TemplateSource =
+  | { ok: true; text: string; outside: boolean }
+  | { ok: false; error: string }
+  | undefined;
 
-async function readCatalogFile(dir: string | undefined, slug: string, suffix: string): Promise<TemplateSource> {
+async function readCatalogFile(
+  dir: string | undefined,
+  slug: string,
+  suffix: string,
+): Promise<TemplateSource> {
   if (!dir || /[\\/]/.test(slug)) {
     return undefined;
   }
@@ -119,19 +135,29 @@ async function loadTemplateSource(params: {
 }): Promise<TemplateSource> {
   if (params.template !== undefined) {
     const text = JSON.stringify(params.template);
-    return Buffer.byteLength(text, "utf8") > TRUNK_TEMPLATE_LIMIT_BYTES ? { ok: false, error: TOO_LARGE } : { ok: true, text, outside: true };
+    return Buffer.byteLength(text, "utf8") > TRUNK_TEMPLATE_LIMIT_BYTES
+      ? { ok: false, error: TOO_LARGE }
+      : { ok: true, text, outside: true };
   }
   if (params.link) {
     const decoded = decodeTrunkTemplateLink(params.link);
-    return decoded.ok ? { ok: true, text: JSON.stringify(decoded.value), outside: true } : { ok: false, error: decoded.error };
+    return decoded.ok
+      ? { ok: true, text: JSON.stringify(decoded.value), outside: true }
+      : { ok: false, error: decoded.error };
   }
   if (params.templateId?.startsWith(IMPORTED_PREFIX)) {
     const slug = params.templateId.slice(IMPORTED_PREFIX.length);
-    return IMPORTED_SLUG.test(slug) ? readCatalogFile(importedTemplatesDir(), slug, TEMPLATE_SUFFIX) : undefined;
+    return IMPORTED_SLUG.test(slug)
+      ? readCatalogFile(importedTemplatesDir(), slug, TEMPLATE_SUFFIX)
+      : undefined;
   }
   if (params.templateId) {
     const dir = resolveBundledSkillsDir();
-    return readCatalogFile(dir && path.join(dir, "trunk-templates"), params.templateId, TEMPLATE_SUFFIX);
+    return readCatalogFile(
+      dir && path.join(dir, "trunk-templates"),
+      params.templateId,
+      TEMPLATE_SUFFIX,
+    );
   }
   if (!params.templatePath || !path.isAbsolute(params.templatePath)) {
     return undefined;
@@ -139,7 +165,9 @@ async function loadTemplateSource(params: {
   if (!params.templatePath.endsWith(TEMPLATE_PATH_SUFFIX)) {
     return { ok: false, error: `A template file must end with ${TEMPLATE_PATH_SUFFIX}.` };
   }
-  const size = await stat(params.templatePath).then((info) => info.size).catch(() => undefined);
+  const size = await stat(params.templatePath)
+    .then((info) => info.size)
+    .catch(() => undefined);
   if (size === undefined) {
     return undefined;
   }
@@ -158,13 +186,56 @@ function parseTemplateText(text: string): TrunkTemplateParse | undefined {
   }
 }
 
-/** Keeps an outside template in the imported catalog. A template with the same name is replaced. */
-async function saveImportedTemplate(template: TrunkTemplate): Promise<string> {
+const MAX_SLUG_TRIES = 50;
+
+function errorCode(error: unknown): unknown {
+  return typeof error === "object" && error !== null
+    ? (error as { code?: unknown }).code
+    : undefined;
+}
+
+/**
+ * Keeps an outside template in the imported catalog. A new file is created exclusively, so two
+ * imports never overwrite each other: a template with the same name replaces its earlier copy, and a
+ * different template whose name makes the same slug gets a numbered slug ("night-shift-2").
+ */
+async function saveImportedTemplate(
+  template: TrunkTemplate,
+): Promise<{ id: string; warnings: string[] }> {
   const dir = importedTemplatesDir();
   await mkdir(dir, { recursive: true });
-  const slug = templateSlug(template.name);
-  await writeFile(path.join(dir, `${slug}${TEMPLATE_SUFFIX}`), `${JSON.stringify(template, null, 2)}\n`, "utf8");
-  return `${IMPORTED_PREFIX}${slug}`;
+  const base = templateSlug(template.name);
+  const body = `${JSON.stringify(template, null, 2)}\n`;
+  for (let attempt = 1; attempt <= MAX_SLUG_TRIES; attempt += 1) {
+    const slug = attempt === 1 ? base : `${base}-${attempt}`;
+    const file = path.join(dir, `${slug}${TEMPLATE_SUFFIX}`);
+    const created = await writeFile(file, body, { encoding: "utf8", flag: "wx" }).then(
+      () => true,
+      (error: unknown) => {
+        if (errorCode(error) === "EEXIST") {
+          return false;
+        }
+        throw error;
+      },
+    );
+    if (created) {
+      return { id: `${IMPORTED_PREFIX}${slug}`, warnings: [] };
+    }
+    const existing = await readFile(file, "utf8").catch(() => undefined);
+    const parsed = existing === undefined ? undefined : parseTemplateText(existing);
+    if (parsed?.ok && parsed.template.name === template.name) {
+      await writeFile(file, body, "utf8");
+      return {
+        id: `${IMPORTED_PREFIX}${slug}`,
+        warnings: [
+          `The catalog already had a template named "${template.name}". It was replaced with this one.`,
+        ],
+      };
+    }
+  }
+  throw new Error(
+    `More than ${MAX_SLUG_TRIES} imported templates have a name like "${template.name}".`,
+  );
 }
 
 export type TrunkTemplateCatalogEntry = {
@@ -177,27 +248,33 @@ export type TrunkTemplateCatalogEntry = {
   connections: string[];
 };
 
-async function catalogEntries(dir: string | undefined, source: TrunkTemplateCatalogEntry["source"]): Promise<TrunkTemplateCatalogEntry[]> {
+async function catalogEntries(
+  dir: string | undefined,
+  source: TrunkTemplateCatalogEntry["source"],
+): Promise<TrunkTemplateCatalogEntry[]> {
   const names = dir ? await readdir(dir).catch(() => [] as string[]) : [];
   const entries = await Promise.all(
-    names.filter((name) => name.endsWith(TEMPLATE_SUFFIX)).toSorted().map(async (name) => {
-      const text = await readFile(path.join(dir ?? "", name), "utf8").catch(() => undefined);
-      const parsed = text === undefined ? undefined : parseTemplateText(text);
-      if (!parsed?.ok) {
-        return undefined;
-      }
-      const slug = name.slice(0, -TEMPLATE_SUFFIX.length);
-      const { template } = parsed;
-      return {
-        id: source === "imported" ? `${IMPORTED_PREFIX}${slug}` : slug,
-        source,
-        name: template.name,
-        description: template.description,
-        skills: template.skills.length,
-        routines: template.automations?.length ?? 0,
-        connections: template.connections ?? [],
-      };
-    }),
+    names
+      .filter((name) => name.endsWith(TEMPLATE_SUFFIX))
+      .toSorted()
+      .map(async (name) => {
+        const text = await readFile(path.join(dir ?? "", name), "utf8").catch(() => undefined);
+        const parsed = text === undefined ? undefined : parseTemplateText(text);
+        if (!parsed?.ok) {
+          return undefined;
+        }
+        const slug = name.slice(0, -TEMPLATE_SUFFIX.length);
+        const { template } = parsed;
+        return {
+          id: source === "imported" ? `${IMPORTED_PREFIX}${slug}` : slug,
+          source,
+          name: template.name,
+          description: template.description,
+          skills: template.skills.length,
+          routines: template.automations?.length ?? 0,
+          connections: template.connections ?? [],
+        };
+      }),
   );
   return entries.filter((entry): entry is TrunkTemplateCatalogEntry => entry !== undefined);
 }
@@ -232,19 +309,26 @@ export async function listBundledStarters(): Promise<StarterOffer[]> {
 /** Bundled templates first, then the ones imported on this computer. Unreadable files are left out. */
 export async function listTrunkTemplateCatalog(): Promise<TrunkTemplateCatalogEntry[]> {
   const bundledRoot = resolveBundledSkillsDir();
-  const bundled = await catalogEntries(bundledRoot && path.join(bundledRoot, "trunk-templates"), "bundled");
+  const bundled = await catalogEntries(
+    bundledRoot && path.join(bundledRoot, "trunk-templates"),
+    "bundled",
+  );
   return [...bundled, ...(await catalogEntries(importedTemplatesDir(), "imported"))];
 }
 
 /** What the create still leaves to the owner: the model choice. */
 function notAppliedWarnings(template: TrunkTemplate): string[] {
   return template.model
-    ? [`Model family "${template.model.family}" was not set. Pick a model for this Trunk in its settings.`]
+    ? [
+        `Model family "${template.model.family}" was not set. Pick a model for this Trunk in its settings.`,
+      ]
     : [];
 }
 
 function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function scrub(text: string): string {
@@ -271,7 +355,9 @@ async function addRoutinesTurnedOff(
   const warnings: string[] = [];
   for (const routine of template.automations ?? []) {
     let id = "";
-    let failure = add ? "cron.add did not answer." : "Automations are not available on this engine.";
+    let failure = add
+      ? "cron.add did not answer."
+      : "Automations are not available on this engine.";
     if (add) {
       const params = {
         name: routine.name,
@@ -309,23 +395,14 @@ async function addRoutinesTurnedOff(
   return { routines, warnings };
 }
 
-export type ConnectionStatus = { id: string; ready: boolean };
-
-/** Each channel the template names, and whether this computer has it set up. */
-function connectionStatus(cfg: BranchConfig, template: TrunkTemplate): ConnectionStatus[] {
-  const channels = record(cfg.channels);
-  return (template.connections ?? []).map((id) => {
-    const channel = channels[id];
-    return { id, ready: typeof channel === "object" && channel !== null && record(channel).enabled !== false };
-  });
-}
-
 /** Skill folders this engine can load: bundled, and the new Trunk's own workspace. */
 function installedSkillSlugs(slugs: readonly string[], workspaceDir: string): Set<string> {
   const roots = [resolveBundledSkillsDir(), path.join(workspaceDir, "skills")].filter(
     (root): root is string => root !== undefined,
   );
-  return new Set(slugs.filter((slug) => roots.some((root) => existsSync(path.join(root, slug, "SKILL.md")))));
+  return new Set(
+    slugs.filter((slug) => roots.some((root) => existsSync(path.join(root, slug, "SKILL.md")))),
+  );
 }
 
 /**
@@ -333,8 +410,14 @@ function installedSkillSlugs(slugs: readonly string[], workspaceDir: string): Se
  * A skill only needs an entry when the shared defaults already filter skills; otherwise every
  * installed skill is visible. Returns warnings for skills this engine does not have.
  */
-async function applyTemplateSettings(agentId: string, template: TrunkTemplate, workspaceDir: string): Promise<string[]> {
-  const slugs = template.skills.map(skillSlugForId).filter((slug): slug is string => slug !== undefined);
+async function applyTemplateSettings(
+  agentId: string,
+  template: TrunkTemplate,
+  workspaceDir: string,
+): Promise<string[]> {
+  const slugs = template.skills
+    .map(skillSlugForId)
+    .filter((slug): slug is string => slug !== undefined);
   const installed = installedSkillSlugs(slugs, workspaceDir);
   const toolsets = { ...template.toolsets };
   if (Object.keys(toolsets).length > 0 || slugs.length > 0) {
@@ -380,29 +463,41 @@ async function createTrunkFromTemplate(
   }
   const parsed = source === undefined ? undefined : parseTemplateText(source.text);
   if (!parsed) {
-    respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Trunk template not found or not JSON. Give a catalog templateId, a template, a link, or an absolute templatePath."));
+    respond(
+      false,
+      undefined,
+      errorShape(
+        ErrorCodes.INVALID_REQUEST,
+        "Trunk template not found or not JSON. Give a catalog templateId, a template, a link, or an absolute templatePath.",
+      ),
+    );
     return;
   }
   if (!parsed.ok) {
     respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, parsed.error));
     return;
   }
-  const { firstRun } = parsed.template;
+  // Every source is screened, not only outside ones: an imported catalog file can be edited by hand.
+  const screened = screenImportedTemplate(parsed.template);
+  if (!screened.ok) {
+    respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, screened.error));
+    return;
+  }
+  const { template } = screened;
+  const { firstRun } = template;
   const timezone = typeof params.timezone === "string" ? params.timezone : machineTimeZone();
   if (firstRun && !isValidTimeZone(timezone)) {
     respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "\"" + timezone + "\" is not a timezone. Use a name such as America/New_York or UTC."));
     return;
   }
   const setup: FirstRunSetup | undefined = firstRun ? { answers: resolveFirstRunAnswers(firstRun, params.answers as Record<string, unknown> | undefined), timezone } : undefined;
-  const saved = source?.ok && source.outside
-    ? await saveImportedTemplate(parsed.template).then(
-        (id) => ({ id, warnings: [] as string[] }),
-        (error: unknown) => ({ id: undefined, warnings: [`The template could not be kept in the catalog: ${scrub(messageOf(error))}`] }),
-      )
-    : { id: undefined, warnings: [] as string[] };
   const createHandler = agentsHandlers["agents.create"];
   if (!createHandler) {
-    respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "agents.create is not available."));
+    respond(
+      false,
+      undefined,
+      errorShape(ErrorCodes.UNAVAILABLE, "agents.create is not available."),
+    );
     return;
   }
   const outcome: { agentId?: string; workspace?: string } = {};
@@ -415,7 +510,11 @@ async function createTrunkFromTemplate(
       respond(false, undefined, error);
     }
   };
-  await createHandler({ ...options, params: { name: params.name ?? parsed.template.name }, respond: capture });
+  await createHandler({
+    ...options,
+    params: { name: params.name ?? template.name },
+    respond: capture,
+  });
   if (!outcome.agentId) {
     respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, CREATE_DID_NOT_RETURN));
     return;
@@ -423,19 +522,19 @@ async function createTrunkFromTemplate(
   const workspace = outcome.workspace ?? "";
   let settingsWarnings: string[];
   try {
-    await writePersona(workspace, parsed.template, setup);
-    settingsWarnings = await applyTemplateSettings(outcome.agentId, parsed.template, workspace);
+    await writePersona(workspace, template, setup);
+    settingsWarnings = await applyTemplateSettings(outcome.agentId, template, workspace);
   } catch (error) {
     respond(false, undefined, settingsFailureShape(outcome.agentId, workspace, error));
     return;
   }
-  const added = await addRoutinesTurnedOff(options, outcome.agentId, parsed.template, setup);
-  const name = typeof params.name === "string" ? params.name : parsed.template.name;
+  const added = await addRoutinesTurnedOff(options, outcome.agentId, template, setup);
+  const name = typeof params.name === "string" ? params.name : template.name;
   if (firstRun && setup) {
     await saveFirstRunState({
       agentId: outcome.agentId,
       name,
-      templateName: parsed.template.name,
+      templateName: template.name,
       routineIds: added.routines.map((routine) => routine.id),
       result: firstRun.result,
       answers: setup.answers,
@@ -445,6 +544,19 @@ async function createTrunkFromTemplate(
       added.warnings.push("The Overview card could not be saved: " + scrub(messageOf(error)));
     });
   }
+  const channels = await bindReadyChannels(
+    options.context.getRuntimeConfig(),
+    outcome.agentId,
+    template,
+  );
+  // Kept only once the Trunk exists, so a failed create leaves no catalog entry behind.
+  const saved =
+    source?.ok && source.outside
+      ? await saveImportedTemplate(template).catch((error: unknown) => ({
+          id: undefined,
+          warnings: [`The template could not be kept in the catalog: ${scrub(messageOf(error))}`],
+        }))
+      : { id: undefined, warnings: [] as string[] };
   respond(
     true,
     {
@@ -455,8 +567,16 @@ async function createTrunkFromTemplate(
       ...(firstRun && setup ? { firstRun: { ...setup, started: false, result: firstRun.result } } : {}),
       ...(saved.id ? { templateId: saved.id } : {}),
       routines: added.routines,
-      connections: connectionStatus(options.context.getRuntimeConfig(), parsed.template),
-      warnings: [...parsed.warnings, ...saved.warnings, ...settingsWarnings, ...added.warnings, ...notAppliedWarnings(parsed.template)],
+      connections: channels.connections,
+      warnings: [
+        ...parsed.warnings,
+        ...screened.warnings,
+        ...settingsWarnings,
+        ...added.warnings,
+        ...channels.warnings,
+        ...saved.warnings,
+        ...notAppliedWarnings(template),
+      ],
     },
     undefined,
   );
@@ -465,7 +585,10 @@ async function createTrunkFromTemplate(
 const ROUTINE_PAGE = 200;
 
 /** Every scheduled job for one Trunk, read through cron.list so its caller scope and visibility rules apply. */
-async function listTrunkRoutines(options: GatewayRequestHandlerOptions, agentId: string): Promise<unknown[]> {
+async function listTrunkRoutines(
+  options: GatewayRequestHandlerOptions,
+  agentId: string,
+): Promise<unknown[]> {
   const list = cronHandlers["cron.list"];
   if (!list) {
     return [];
@@ -478,7 +601,13 @@ async function listTrunkRoutines(options: GatewayRequestHandlerOptions, agentId:
     let failure = "cron.list did not answer.";
     await list({
       ...options,
-      params: { agentId, includeDisabled: true, limit: ROUTINE_PAGE, offset, includeDeliveryPreviews: false },
+      params: {
+        agentId,
+        includeDisabled: true,
+        limit: ROUTINE_PAGE,
+        offset,
+        includeDeliveryPreviews: false,
+      },
       respond: (ok, payload, error) => {
         if (ok) {
           page = record(payload);
@@ -491,10 +620,12 @@ async function listTrunkRoutines(options: GatewayRequestHandlerOptions, agentId:
       throw new Error(`This Trunk's routines could not be read: ${failure}`);
     }
     const rows = Array.isArray(page.jobs) ? page.jobs : [];
-    jobs.push(...rows.filter((job) => {
-      const effective = record(job).effectiveAgentId;
-      return typeof effective !== "string" || effective === owner;
-    }));
+    jobs.push(
+      ...rows.filter((job) => {
+        const effective = record(job).effectiveAgentId;
+        return typeof effective !== "string" || effective === owner;
+      }),
+    );
     if (page.hasMore !== true || typeof page.nextOffset !== "number") {
       return jobs;
     }
@@ -506,7 +637,14 @@ export const trunkTemplatesHandlers: GatewayRequestHandlers = {
   ...createFirstRunHandlers({ listRoutines: listTrunkRoutines, listStarters: listBundledStarters }),
   "trunks.template.list": async (options) => {
     const respond = onceRespond(options.respond);
-    if (!assertValidParams(options.params, validateTrunkTemplateListParams, "trunks.template.list", respond)) {
+    if (
+      !assertValidParams(
+        options.params,
+        validateTrunkTemplateListParams,
+        "trunks.template.list",
+        respond,
+      )
+    ) {
       return;
     }
     try {
@@ -518,18 +656,38 @@ export const trunkTemplatesHandlers: GatewayRequestHandlers = {
   "trunks.template.export": async (options) => {
     const respond = onceRespond(options.respond);
     const { params } = options;
-    if (!assertValidParams(params, validateTrunkTemplateExportParams, "trunks.template.export", respond)) {
+    if (
+      !assertValidParams(
+        params,
+        validateTrunkTemplateExportParams,
+        "trunks.template.export",
+        respond,
+      )
+    ) {
       return;
     }
     try {
       const cronJobs = await listTrunkRoutines(options, params.agentId);
-      const result = await exportTrunkTemplate({ cfg: options.context.getRuntimeConfig(), agentId: params.agentId, cronJobs });
+      const result = await exportTrunkTemplate({
+        cfg: options.context.getRuntimeConfig(),
+        agentId: params.agentId,
+        cronJobs,
+      });
       if (!result.ok) {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.error));
         return;
       }
       const link = encodeTrunkTemplateLink(result.template);
-      respond(true, { file: TRUNK_TEMPLATE_FILE_NAME, template: result.template, link, warnings: result.warnings }, undefined);
+      respond(
+        true,
+        {
+          file: TRUNK_TEMPLATE_FILE_NAME,
+          template: result.template,
+          link,
+          warnings: result.warnings,
+        },
+        undefined,
+      );
     } catch (error) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, messageOf(error)));
     }
@@ -537,7 +695,14 @@ export const trunkTemplatesHandlers: GatewayRequestHandlers = {
   "trunks.template.create": async (options) => {
     const respond = onceRespond(options.respond);
     const { params } = options;
-    if (!assertValidParams(params, validateTrunkTemplateCreateParams, "trunks.template.create", respond)) {
+    if (
+      !assertValidParams(
+        params,
+        validateTrunkTemplateCreateParams,
+        "trunks.template.create",
+        respond,
+      )
+    ) {
       return;
     }
     try {

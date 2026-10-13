@@ -13,6 +13,7 @@ import { DoneCheer } from "./DoneCheer";
 import { EmptyState } from "./EmptyState";
 import { FindBar, useFindKey } from "./FindBar";
 import { HelpersChip } from "./Helpers";
+import { nativeHelpers } from "./native-helpers";
 import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
@@ -101,7 +102,6 @@ type Props = {
   earlierError?: string;
   preparationError?: string | null;
   /** The Trunk got ready after this conversation stopped waiting for it: read the conversation again. */
-  onStartupReady?: () => void;
   advancedDiagnostics?: boolean;
   onLoadEarlier?: () => void;
 };
@@ -211,6 +211,7 @@ export function Thread(props: Props) {
   const { details } = useApprovalDetails(engine);
   const { reactions, apply } = useReactions(engine, history.length);
   const { helpers } = useHelpers(engine);
+  const native = useMemo(() => nativeHelpers([...history, ...live]), [history, live]);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const [usedSuggestion, setUsedSuggestion] = useState<string | null>(null);
   const all = useMemo(() => [...history, ...(running ? live : [])], [history, live, running]);
@@ -257,7 +258,7 @@ export function Thread(props: Props) {
   const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
     ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
   const preparationError = [props.preparationError, props.earlierError].find((error) => isPreparationPending(error) || isPreparationStalled(error));
-  const startup = useStartupPreparation(engine, Boolean(preparationError), isPreparationStalled(preparationError), props.onStartupReady);
+  const startup = useStartupPreparation(engine, Boolean(preparationError));
   const inRoom = Boolean(props.room);
   const ownAgentId = props.room?.ownAgentId;
   const anchors = useMemo(() => anchorQuestions(history, props.questions ?? []), [history, props.questions]);
@@ -272,8 +273,9 @@ export function Thread(props: Props) {
   const planAt = items.some((i) => i.type === "block" && i.index === planWanted) ? planWanted : -1;
   const lastUser = history.map((b) => b.kind).lastIndexOf("user");
   const stamps = useMemo(() => dayStamps(history), [history]);
-  const helperChip = helpers.length && engine?.sessionKey ? (
+  const helperChip = (helpers.length || native.length) && engine?.sessionKey ? (
     <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenActivity}
+      native={native}
       onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
   ) : null;
   const topicEvents = new Map<number, { at: number; node: ReactNode }[]>();

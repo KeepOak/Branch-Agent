@@ -17,7 +17,7 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.map(rec) : []);
 
 /** The interests the person can pick, with what Branch would suggest for each (the preview's five). */
-export const INTERESTS: [string, string][] = [
+const INTERESTS: [string, string][] = [
   ["Email and messages", "Inbox Manager, and a morning sweep at 6:30"],
   ["Money and receipts", "Expense Manager, and a month-end close"],
   ["Research", "Researcher, with briefs that cite sources"],

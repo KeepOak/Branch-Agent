@@ -4,7 +4,7 @@ import { readBrowserPresentation, type BrowserPresentation } from "./browser-pre
 import type { RunEvent } from "../connect/stream-order";
 import type { Sender } from "../rooms/sender";
 
-export type ApprovalState = "pending" | "allowed" | "denied";
+type ApprovalState = "pending" | "allowed" | "denied";
 export type StepStatus = "running" | "ok" | "failed" | "denied";
 export type ApprovalDecision = "allow-once" | "allow-always" | "deny";
 
@@ -87,7 +87,7 @@ export type Block =
   | { kind: "plan"; key: string; steps: { step: string; status: "pending" | "in_progress" | "completed" }[] }
   | { kind: "usage"; key: string; input: number; output: number; total: number }
   /** `codeMode`: an `exec` running code (Code Mode); its result's own status says whether the code failed. */
-  | { kind: "step"; key: string; outputKey?: string; tool: string; title: string; detail: string; status: StepStatus; input?: string; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number; codeMode?: boolean }
+  | { kind: "step"; key: string; outputKey?: string; tool: string; originalTool?: string; title: string; detail: string; status: StepStatus; input?: string; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number; codeMode?: boolean }
   | { kind: "approval"; key: string; approval: Approval }
   /** The end of a turn. `stopped`: you (or the engine) stopped it; the thread says so instead of "Done in". */
   | { kind: "done"; key: string; runId: string; durationMs?: number; stopped?: boolean }
@@ -149,7 +149,7 @@ export function wrapperFailed(isError: unknown, text: string, details?: unknown)
  * (`details`, and the text) says `"status":"failed"` (engine code-mode-execution.ts, tool-search-runtime.ts). When
  * the code read web content the text is wrapped in external-content markers, so the JSON is found inside it.
  */
-export function codeModeStatus(text: string, details?: unknown): string | null {
+function codeModeStatus(text: string, details?: unknown): string | null {
   const fromDetails = record(details).status;
   if (typeof fromDetails === "string") return fromDetails;
   try {
@@ -221,7 +221,7 @@ function addThinking(b: Builder, event: RunEvent): void {
 function startStep(b: Builder, id: string, name: string, args: unknown, at: number, runId: string): void {
   b.text = null;
   b.thinking = null;
-  b.blocks.push({ kind: "step", key: id, outputKey: `${runId}:${id}`, tool: name, title: describeToolCall(name, args), detail: "", status: "running", input: toolInput(args), changes: readFileChanges(args), ...recordedAt(at), ...(isCodeModeCall(name, args) ? { codeMode: true } : {}) });
+  b.blocks.push({ kind: "step", key: id, outputKey: `${runId}:${id}`, tool: name, originalTool: name, title: describeToolCall(name, args), detail: "", status: "running", input: toolInput(args), changes: readFileChanges(args), ...recordedAt(at), ...(isCodeModeCall(name, args) ? { codeMode: true } : {}) });
   b.steps.set(id, b.blocks.length - 1);
 }
 
@@ -238,7 +238,7 @@ function onTool(b: Builder, event: RunEvent): void {
     else {
       const at = b.steps.get(id)!;
       const step = b.blocks[at] as Extract<Block, { kind: "step" }>;
-      b.blocks[at] = { ...step, tool: name || step.tool, title: describeToolCall(name, d.args) || step.title, input: toolInput(d.args), changes: readFileChanges(d.args), ...(isCodeModeCall(name || step.tool, d.args) ? { codeMode: true } : {}) };
+      b.blocks[at] = { ...step, tool: name || step.tool, originalTool: name || step.originalTool, title: describeToolCall(name, d.args) || step.title, input: toolInput(d.args), changes: readFileChanges(d.args), ...(isCodeModeCall(name || step.tool, d.args) ? { codeMode: true } : {}) };
     }
     return;
   }

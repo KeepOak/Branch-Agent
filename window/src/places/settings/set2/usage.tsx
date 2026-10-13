@@ -31,7 +31,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const pct = (v: number, digits = 0) => `${(v * 100).toFixed(digits)}%`;
 /** "4.7M", "472k", "262". */
-export function tok(n: unknown): string {
+function tok(n: unknown): string {
   const v = num(n);
   return v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(Math.round(v));
 }
@@ -271,7 +271,7 @@ function periodDates(s: RepState): RecordValue {
 }
 
 /** The sessions.usage request for the report: who (Trunk, person), the time zone, the lineage, then the dates. */
-export function reportParams(s: RepState, sel: Sel): RecordValue {
+function reportParams(s: RepState, sel: Sel): RecordValue {
   return {
     ...(s.agent ? { agentId: s.agent } : ALL), ...(s.creator ? { creatorKey: s.creator } : {}),
     ...(s.utc ? { mode: "utc" } : LOCAL), groupBy: s.lineage, limit: 1000,
@@ -306,7 +306,7 @@ function daysOf(data: RecordValue): Day[] {
   });
 }
 
-export function ReportDialog({ engine, lv, days, names, onClose }: { engine: WindowEngine; lv: number; days: string; names: Map<string, string>; onClose: () => void }) {
+function ReportDialog({ engine, lv, days, names, onClose }: { engine: WindowEngine; lv: number; days: string; names: Map<string, string>; onClose: () => void }) {
   const [s, setS] = useState<RepState>(() => initial(days));
   const set = (patch: Partial<RepState>) => setS((o) => ({ ...o, ...patch }));
   const waiting = s.period === "Custom…" && !(s.from && s.to);
@@ -569,7 +569,7 @@ function Heat({ year }: { year: RecordValue }) {
 }
 
 /** Tokens and errors by local (or UTC) weekday and hour, from each conversation's quarter-hour buckets. */
-export function timeBuckets(rows: RecordValue[], utc: boolean) {
+function timeBuckets(rows: RecordValue[], utc: boolean) {
   const dow = Array<number>(7).fill(0); const hours = Array<number>(24).fill(0);
   const hourMsgs = Array<number>(24).fill(0); const hourErrs = Array<number>(24).fill(0);
   const at = (b: RecordValue) => { const d = new Date(`${str(b.date)}T00:00:00Z`); d.setTime(d.getTime() + num(b.quarterIndex) * 900_000); return d; };
@@ -720,7 +720,7 @@ const ROLE: Record<string, string> = { user: "You", tool: "Tool", toolResult: "T
 
 /* ---------- export ---------- */
 const cell = (v: unknown) => { const t = String(v ?? ""); return /[",\n]/.test(t) ? `"${t.replace(/"/g, "\"\"")}"` : t; };
-export function csv(rows: unknown[][]): string { return rows.map((r) => r.map(cell).join(",")).join("\n"); }
+function csv(rows: unknown[][]): string { return rows.map((r) => r.map(cell).join(",")).join("\n"); }
 
 function download(name: string, body: string, type: string) {
   const url = URL.createObjectURL(new Blob([body], { type }));
@@ -1196,7 +1196,7 @@ const SESSKEYS: Key[] = [
 ];
 
 /** The value as typed: numbers for num, JSON for json, booleans for bool; "" means back to default. */
-export function parseKey(kind: Key[2], raw: string): unknown {
+function parseKey(kind: Key[2], raw: string): unknown {
   if (raw.trim() === "") return null;
   if (kind === "num") { const n = Number(raw); if (!Number.isFinite(n)) throw new Error("Enter a number."); return n; }
   if (kind === "json") return JSON.parse(raw) as unknown;
