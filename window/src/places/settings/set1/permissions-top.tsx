@@ -108,7 +108,7 @@ export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: Rec
   return (
     <Sec title="Access" hint="Every conversation starts here. A conversation can change its own.">
       <div data-row="Access"><Seg layout="radio" label="Access" value={selected} options={MODE_OPTS} disabled={cfg.loading || lockdown} onChange={(mode) => void saveMode(cfg, mode, reload)} /></div>
-      <Ctl title="Approve for me" sub="A reviewer approves routine actions and asks you about the rest.">
+      <Ctl title="Approve for me" sub="A reviewer approves routine actions and asks you about the rest. Approve for me comes in a later update.">
         <Coming need={APPROVE_FOR_ME_NEED} unwired reason={APPROVE_FOR_ME_WHY} where="Approve for me">
           <Btn sm>Choose</Btn>
         </Coming>
