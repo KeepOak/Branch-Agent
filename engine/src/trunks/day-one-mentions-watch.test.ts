@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -96,6 +96,28 @@ describe("Mentions Watch day-one template: first run", () => {
     for (const id of listToolsetIds().filter((id) => !LISTED_TOOLSETS.includes(id))) {
       expect(toolsets[id]).toBe(false);
     }
+  });
+
+  it("keeps web search and page reading, and turns off the web toolset's weather lookup", async () => {
+    expect(loadTemplate().denyTools).toEqual(["get_weather"]);
+    const created = await call("trunks.template.create", { templateId: "mentions-watch" });
+    expect(created.ok).toBe(true);
+    const draft: Record<string, any> = { agents: { entries: { newagent: {} } } };
+    for (const [options] of mutateMock.mock.calls) {
+      (options as { mutate: (draft: Record<string, any>) => void }).mutate(draft);
+    }
+    expect(draft.agents.entries.newagent.tools.deny).toEqual(["get_weather"]);
+    expect(draft.agents.entries.newagent.toolsets).toMatchObject({ web: true, files: true, browser: false });
+  });
+
+  it("has a starter rank that no other bundled template uses", () => {
+    const dir = path.join(BUNDLED_SKILLS, "trunk-templates");
+    const others = readdirSync(dir)
+      .filter((f) => f.endsWith(".branch.trunk-template.json") && !f.startsWith("mentions-watch."))
+      .map((f) => (JSON.parse(readFileSync(path.join(dir, f), "utf8")) as { starter?: { rank?: number } }).starter?.rank);
+    const rank = loadTemplate().starter?.rank;
+    expect(rank).toBeTypeOf("number");
+    expect(others).not.toContain(rank);
   });
 
   it("is offered first when the owner's goal is about mentions of their brand", async () => {

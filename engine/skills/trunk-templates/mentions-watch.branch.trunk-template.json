@@ -26,6 +26,9 @@
     "goals": false,
     "secrets": false
   },
+  "denyTools": [
+    "get_weather"
+  ],
   "automations": [
     {
       "name": "Weekday mentions digest",
@@ -80,6 +83,6 @@
       "creator",
       "founder"
     ],
-    "rank": 9
+    "rank": 13
   }
 }
