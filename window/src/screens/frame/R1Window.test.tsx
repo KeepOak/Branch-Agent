@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../../connect/session";
+import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { r1SettingsPage, r1Window, R1Window } from "./R1Window";
 vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <p>{name}</p> }));
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
@@ -62,36 +63,39 @@ it("opens settings using an in-window history entry", async () => {
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!.click());
   expect(window.history.state.r1Index).toBe(1); expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "appearance" });
   expect(host.querySelector<HTMLButtonElement>('[aria-label="Back"]')?.disabled).toBe(false);
-  expect(host.textContent).toContain("Classic settings");
+  // Settings › Appearance is the R1 page now (#976): every working Classic control has its R1 row.
+  expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')?.dataset.page).toBe("appearance");
+  expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
 });
-it("mounts R1 Settings with the live engine and its slots, and hands Chat apps back to Classic until Manage is ported", async () => {
+it("mounts R1 Settings with the live engine and its slots, and opens Chat apps in the R1 frame, not Classic", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
   await act(async () => root.render(<R1Window session={session} />));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!.click());
-  await act(async () => [...host.querySelectorAll("button")].find(b => b.textContent === "General")!.click());
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
-  expect(settings.dataset.page).toBe("general");
+  expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
   expect(settings.dataset.pages).toBe("chatapps");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
-  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')!.dataset.page).toBe("chatapps");
-  expect(host.querySelector('[data-testid="r1-settings"]')).toBeNull();
+  expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
+  expect(host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!.dataset.page).toBe("chatapps");
 });
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "models" }));
   await act(async () => root.render(<R1Window session={session} />));
-  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Settings"]')!.click());
-  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("appearance");
+  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("models");
   expect(host.querySelector('[data-testid="r1-settings"]')).toBeNull();
 });
 it("sends a page to R1 Settings only when the row table or a slot covers it and Classic has nothing more", () => {
   expect(r1SettingsPage("general")).toBe(true);
-  expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(false);
-  for (const page of ["chatapps", "appearance", "accounts", "models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
+  expect(r1SettingsPage("appearance")).toBe(true);
+  expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(true);
+  expect(r1SettingsPage("chatapps")).toBe(true);
+  for (const page of ["accounts", "models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
 });
 
 it("the conversation menu's \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
@@ -100,6 +104,10 @@ it("the conversation menu's \"Show agents' work as\" rows turn Coming when the e
   const request = vi.fn(async (method: string) => { if (method === "users.prefs.set") setOverride(); return {}; });
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", features: { methods: ["users.prefs.get"], events: [] } } } as unknown as SaplingSession;
   await act(async () => root.render(<R1Window session={session} />));
+  // R1-10: the header names its calls (Computer, Browser, the pill) or says local (•••), and Find anything is registered.
+  expect(undeclaredControls(host.querySelector(".r1-header")!)).toEqual([]);
+  const needs = comingControls().flatMap((entry) => entry.need);
+  expect(needs).toEqual(expect.arrayContaining(["computer.status", "browser.request", "agent.identity.get", "sessions.search"]));
   await act(async () => document.querySelector<HTMLButtonElement>('.r1-header-right [aria-label="More"]')!.click());
   const rows = [...document.querySelectorAll<HTMLElement>('[aria-label="Show agents’ work as"] [role="menuitemradio"]')];
   expect(rows.length).toBeGreaterThan(1);

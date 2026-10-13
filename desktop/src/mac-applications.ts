@@ -120,6 +120,8 @@ export interface InstallMacAppOptions extends ApplicationsDirectoryOptions {
   /** When this is the running bundle, it is unregistered and left in place. */
   runningAppDir?: string;
   stripQuarantine?: (app: string) => Promise<void>;
+  /** Signature report for an app (`codesign -d -r- --verbose=2`), or undefined where it cannot be read. */
+  readSignature?: (app: string) => Promise<string | undefined>;
 }
 
 function run(command: string, args: string[]): Promise<void> {
@@ -131,6 +133,13 @@ function run(command: string, args: string[]): Promise<void> {
 async function defaultRegister(args: string[]): Promise<void> {
   if (process.platform !== "darwin" || process.env.BRANCH_DESKTOP_TEST_DIST) return;
   await run(LSREGISTER, args);
+}
+
+async function defaultReadSignature(app: string): Promise<string | undefined> {
+  if (process.platform !== "darwin" || process.env.BRANCH_DESKTOP_TEST_DIST) return undefined;
+  return new Promise(resolvePromise => {
+    execFile("codesign", ["-d", "-r-", "--verbose=2", app], { windowsHide: true }, (_error, stdout, stderr) => resolvePromise(`${stderr}\n${stdout}`));
+  });
 }
 
 async function stripQuarantine(app: string): Promise<void> {
@@ -185,6 +194,10 @@ export async function installMacApp(source: string, options: InstallMacAppOption
     await retireLegacy(applicationsDir, destination, options.runningAppDir ?? source, register);
     return destination;
   }
+  if (await pathExists(destination)) {
+    const readSignature = options.readSignature ?? defaultReadSignature;
+    assertNoMacSigningDowngrade(await readSignature(destination), await readSignature(source));
+  }
   const stageRoot = join(applicationsDir, `.Branch.install-${process.pid}`);
   const aside = join(applicationsDir, ".Branch.previous");
   await rm(stageRoot, { recursive: true, force: true });
@@ -224,13 +237,49 @@ export async function ensureMacApplicationsInstall(appDir: string, logFile: stri
   }
 }
 
-/** Fails closed when a release signature is ad-hoc, unsigned, or different from the pinned identity. */
-export function assertMacReleaseSignature(report: string, fingerprint: string): void {
-  if (/Signature=adhoc/i.test(report) || /flags=0x2\(adhoc\)/.test(report)) {
-    throw new Error("macOS release is ad-hoc signed");
+/** How a release declares its macOS app is signed (release proof `signing`, set by scripts/mac-release-signing.mjs). */
+export type MacReleaseSigningKind = "identity" | "adhoc";
+
+/** True when a `codesign -dv` report shows an ad-hoc signature. */
+export function macSignatureIsAdhoc(report: string): boolean {
+  return /Signature=adhoc/i.test(report) || /flags=0x[0-9a-f]*\(adhoc[,)]/i.test(report);
+}
+
+function designatedRequirement(report: string): string | undefined {
+  return report.split(/\r?\n/).map(line => line.trim()).find(line => line.startsWith("designated =>"));
+}
+
+/** True when a `codesign -dr -` report carries the pinned release identity's designated requirement. */
+export function macSignatureIsPinnedIdentity(report: string): boolean {
+  return !macSignatureIsAdhoc(report) && designatedRequirement(report) === `designated => ${macReleaseSigning.designatedRequirement}`;
+}
+
+/**
+ * Never trade a Branch app signed with the pinned identity for an ad-hoc (or unsigned) copy: macOS would treat it
+ * as a different app, and its Keychain items and privacy grants would stop applying.
+ */
+export function assertNoMacSigningDowngrade(installedReport: string | undefined, incomingReport: string | undefined): void {
+  if (!installedReport || !macSignatureIsPinnedIdentity(installedReport)) return;
+  if (incomingReport !== undefined && macSignatureIsPinnedIdentity(incomingReport)) return;
+  const kind = incomingReport !== undefined && macSignatureIsAdhoc(incomingReport) ? "an ad-hoc signed" : "an unsigned or differently signed";
+  throw new Error(`Refusing to replace a Branch app signed with the pinned release identity by ${kind} copy`);
+}
+
+/**
+ * Checks a release's macOS signature against what the release declares (its proof's `signing`). An ad-hoc signature
+ * passes only when the release declares "adhoc"; otherwise it must be the pinned identity. Unsigned always fails.
+ */
+export function assertMacReleaseSignature(report: string, fingerprint: string, declared: MacReleaseSigningKind = "identity"): void {
+  if (declared !== "identity" && declared !== "adhoc") throw new Error(`Unknown declared macOS signing: ${String(declared)}`);
+  const designated = designatedRequirement(report);
+  if (macSignatureIsAdhoc(report)) {
+    if (declared !== "adhoc") throw new Error("macOS release is ad-hoc signed but declares the pinned release identity");
+    const identifier = /^Identifier=(.*)$/m.exec(report)?.[1]?.trim();
+    if (identifier !== MAC_BUNDLE_ID) throw new Error("ad-hoc signature identifier differs from the Branch bundle id");
+    return;
   }
-  const designated = report.split(/\r?\n/).map(line => line.trim()).find(line => line.startsWith("designated =>"));
   if (!designated) throw new Error("macOS release is unsigned");
+  if (declared === "adhoc") throw new Error("macOS release declares ad-hoc signing but carries another signature");
   if (designated !== `designated => ${macReleaseSigning.designatedRequirement}`) {
     throw new Error("designated requirement differs from the pinned release identity");
   }

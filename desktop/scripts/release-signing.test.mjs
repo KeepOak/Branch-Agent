@@ -252,7 +252,8 @@ test("the release workflow runs the status every time and passes signing secrets
   assert.doesNotMatch(status, /^\s+if:/m, "runs on every target, every time");
   assert.doesNotMatch(status, /--strict/, "never fails a release when signing is not configured");
   const installers = step("Build installers, signed only when configured");
-  assert.match(installers, /continue-on-error: true/);
+  // Signing never blocks a release; only the Linux AppImage must build, because install.sh installs Linux from it.
+  assert.ok(installers.includes("continue-on-error: ${{ matrix.target != 'linux-x64' }}"), "only linux-x64 installers are required");
   const expr = (target, kind, name) => "          " + name + ": ${{ matrix.target == '" + target + "' && " + kind + "." + name + " || '' }}";
   for (const block of [status, installers]) {
     for (const name of WINDOWS_SECRETS) assert.ok(block.includes(expr("win32-x64", "secrets", name)), name);

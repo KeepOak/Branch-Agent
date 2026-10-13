@@ -28,6 +28,8 @@ import { useFirstRun } from "../../setup/use-first-run";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
 
+const FIND_ANYTHING_COMING = "Find anything is not connected yet.";
+
 /** Places R1 Settings search can open (its Go to group). */
 const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }));
 
@@ -36,9 +38,11 @@ const placeTitle = (place: PlaceId) => place === "seedbank" ? "Seedbank" : place
 
 /**
  * Pages that keep the Classic page although R1 has a slot for them, because the R1 port still lacks working Classic
- * features. Chat apps: Manage has no add another account, groups by ID, Check now, Reload or allowlist editing yet.
+ * features. Accounts keeps Classic until its R1 page draws every working Classic control.
+ * Appearance is R1: its page draws every working Classic control (settings/pages/appearance-live.tsx, #976).
+ * Chat apps is R1: its page draws every working Classic Chat apps control (screens/chatapps, #976).
  */
-const KEEP_CLASSIC: ReadonlySet<string> = new Set(["chatapps", "accounts", "appearance"]);
+const KEEP_CLASSIC: ReadonlySet<string> = new Set(["accounts"]);
 
 /**
  * R1 Settings draws a page only once it has rows or its own slot and nothing working is left behind in Classic. Every
@@ -151,10 +155,11 @@ export function R1Window({ session }: { session: SaplingSession }) {
     <div className="r1-ob-behind" inert={onboarding} aria-hidden={onboarding || undefined} style={{ display: "contents", visibility: onboarding ? "hidden" : undefined }}>
     <Frame sidebar={sidebar} main={main} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
-      face: <Face size={24} label={snapshot.name} />, pillRef: pill, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
+      face: <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
-        { label: "Computer", icon: <Icon name="monitor" />, coming: "Computer controls are not connected yet." },
-        { label: "Browser", icon: <Icon name="globe" />, coming: "Browser controls are not connected yet." },
+        { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "Computer controls are not connected yet." },
+        { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "Browser controls are not connected yet." },
+        // ••• opens this window's conversation menu; each of its rows declares its own call.
         { label: "More", icon: <Icon name="more" />, onClick: ready ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
       ] : undefined,
       canBack: history.index > 0, canForward: history.index < history.count - 1, onBack: () => { if (history.index > 0) window.history.back(); }, onForward: () => { if (history.index < history.count - 1) window.history.forward(); },
@@ -168,10 +173,12 @@ export function R1Window({ session }: { session: SaplingSession }) {
     }} /> : undefined} onShortcut={action => {
       if (action === "settings") navigate({ kind: "settings", page: "appearance" });
       else if (action === "nextConversation" && rows.length) { const index = rows.findIndex(row => row.key === snapshot.sessionKey); openConversation(rows[(index + 1) % rows.length].key); }
-      else if (document.activeElement === search.current) setNotice("Coming · Find anything is not connected yet.");
+      else if (document.activeElement === search.current) setNotice(`Coming · ${FIND_ANYTHING_COMING}`);
       else { search.current?.focus(); }
     }} />
     </div>
+    {/* A second Ctrl K would open Find anything; it is a shortcut, not a control, so it registers hidden with the call it waits for. */}
+    <Coming engine={engine} need="sessions.search" unwired hidden reason={FIND_ANYTHING_COMING} where="Find anything"><span /></Coming>
     {lockdown.confirmation}
     <Toasts />
     <ApprovalsLayer engine={engine} ready={ready} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
@@ -182,7 +189,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     </div></Popover>}
     {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details g-clear">
       <strong className="g-label">{identity?.name ?? snapshot.name}</strong>{agentLine ? <p className="g-label">{agentLine}</p> : null}
-      <button type="button" onClick={closeAgent}>Close</button>
+      <button type="button" data-local="" onClick={closeAgent}>Close</button>
     </div></Popover>}
   </>;
 }

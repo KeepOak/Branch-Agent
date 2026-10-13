@@ -287,8 +287,14 @@ jobs:
           BRANCH_MACOS_SIGNING_PASSWORD: ${{ secrets.BRANCH_MACOS_SIGNING_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "$BRANCH_MACOS_SIGNING_P12"
-          test -n "$BRANCH_MACOS_SIGNING_PASSWORD"
+          # No identity at all: release-build.mjs signs ad-hoc and records signing "adhoc" in the release proof.
+          # One secret without the other is a broken setup and fails here.
+          if [ -z "$BRANCH_MACOS_SIGNING_P12" ] && [ -z "$BRANCH_MACOS_SIGNING_PASSWORD" ]; then
+            echo "macOS signing: no signing identity configured. Building ad-hoc signed; Gatekeeper will warn on a downloaded copy, script installs are unaffected."
+            exit 0
+          fi
+          test -n "$BRANCH_MACOS_SIGNING_P12" || { echo "macOS signing identity is incomplete: BRANCH_MACOS_SIGNING_P12 is not set" >&2; exit 1; }
+          test -n "$BRANCH_MACOS_SIGNING_PASSWORD" || { echo "macOS signing identity is incomplete: BRANCH_MACOS_SIGNING_PASSWORD is not set" >&2; exit 1; }
           p12="$RUNNER_TEMP/branch-release-signing.p12"
           password="$RUNNER_TEMP/branch-release-signing-password"
           printf '%s' "$BRANCH_MACOS_SIGNING_P12" | base64 --decode > "$p12"
@@ -349,20 +355,30 @@ jobs:
           node_hash="$(shasum -a 256 "$app/Contents/Resources/node/node" | cut -d' ' -f1)"
           recorded_node_hash="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).runtime.node.sha256' "$RELEASE_ASSETS/release-proof-darwin-arm64.json")"
           test "$node_hash" = "$recorded_node_hash"
-          (cd "$extracted" && codesign -d --extract-certificates "$app" 2>/dev/null)
-          fingerprint="$(openssl x509 -inform DER -in "$extracted/codesign0" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)"
-          test "$fingerprint" = "$BRANCH_MACOS_SIGNING_IDENTITY"
-          codesign -dr - "$app" 2>&1 | grep -Fx 'designated => identifier "com.electron.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"'
+          # The build declares how it signed; ad-hoc passes only when the release proof says "adhoc".
+          signing="$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).signing' "$RELEASE_ASSETS/release-proof-darwin-arm64.json")"
           report="$RUNNER_TEMP/mac-signature-report.txt"
           {
             codesign -dv --verbose=4 "$app"
             codesign -dr - "$app"
           } >"$report" 2>&1
-          printf 'SHA1 Fingerprint=%s\n' "$fingerprint" >> "$report"
-          node --input-type=module -e 'import { readFileSync } from "node:fs"; import { pathToFileURL } from "node:url"; const mod = await import(pathToFileURL(process.argv[1])); if (process.env.BRANCH_MACOS_SIGNING_IDENTITY !== mod.macReleaseSigning.identitySha1) throw new Error("workflow signing identity differs from the pinned release identity"); const text = readFileSync(process.argv[2], "utf8"); const actual = (text.match(/SHA1 Fingerprint=([0-9A-Fa-f]+)/) || [])[1] || ""; mod.assertMacReleaseSignature(text, actual);' "$GITHUB_WORKSPACE/desktop/dist/mac-applications.js" "$report"
+          case "$signing" in
+            identity)
+              (cd "$extracted" && codesign -d --extract-certificates "$app" 2>/dev/null)
+              fingerprint="$(openssl x509 -inform DER -in "$extracted/codesign0" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)"
+              test "$fingerprint" = "$BRANCH_MACOS_SIGNING_IDENTITY"
+              codesign -dr - "$app" 2>&1 | grep -Fx 'designated => identifier "com.electron.branch-agent" and certificate root = H"30bbf0b68236ae05e063465c39dea6c5b396b11c"'
+              printf 'SHA1 Fingerprint=%s\n' "$fingerprint" >> "$report"
+              ;;
+            adhoc) echo "macOS signing: the release declares ad-hoc signing" ;;
+            *) echo "release-proof-darwin-arm64.json declares no known signing: $signing" >&2; exit 1 ;;
+          esac
+          node --input-type=module -e 'import { readFileSync } from "node:fs"; import { pathToFileURL } from "node:url"; const mod = await import(pathToFileURL(process.argv[1])); if (process.env.BRANCH_MACOS_SIGNING_IDENTITY !== mod.macReleaseSigning.identitySha1) throw new Error("workflow signing identity differs from the pinned release identity"); const text = readFileSync(process.argv[2], "utf8"); const actual = (text.match(/SHA1 Fingerprint=([0-9A-Fa-f]+)/) || [])[1] || ""; mod.assertMacReleaseSignature(text, actual, process.argv[3]);' "$GITHUB_WORKSPACE/desktop/dist/mac-applications.js" "$report" "$signing"
           # The self-signed identity is stable but not notarized; report Gatekeeper's assessment.
           spctl -a -vv "$app" || true
-      # Installers around the verified desktop package, kept as a workflow artifact and never published.
+      # Installers around the verified desktop package; each target's release proof lists its installer, so publish
+      # attaches it and adds it to SHA256SUMS (desktop/INSTALLERS.md). Windows and macOS installers are optional and a
+      # failure there never blocks a release. The Linux AppImage is how install.sh installs Linux, so it must build.
       # Code signing stays off until the owner adds its secrets and variables (desktop/INSTALLERS.md, "Left for the owner").
       # Unset or partly set prints one plain line and builds unsigned; it never fails a release or half-signs.
       # Secrets reach these steps only through env, and only on the target that uses them.
@@ -388,10 +404,9 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
-      - name: Build installers, signed only when configured (not published)
+      - name: Build installers, signed only when configured
         id: installers
-        if: matrix.target != 'linux-x64'
-        continue-on-error: true
+        continue-on-error: ${{ matrix.target != 'linux-x64' }}
         shell: bash
         env:
           RELEASE_ASSETS: ${{ runner.temp }}/release-assets
@@ -409,7 +424,7 @@ jobs:
         run: node desktop/scripts/release-installers.mjs --assets "$RELEASE_ASSETS" --version "$BRANCH_RELEASE_VERSION" --target "$BRANCH_RELEASE_TARGET" --out "$RUNNER_TEMP/installers"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: steps.installers.outcome == 'success'
-        continue-on-error: true
+        continue-on-error: ${{ matrix.target != 'linux-x64' }}
         with:
           name: release-installers-${{ matrix.target }}
           path: ${{ runner.temp }}/installers/
@@ -465,7 +480,7 @@ jobs:
           pattern: release-native-*
           merge-multiple: true
           path: ${{ runner.temp }}/release-assets
-      # Installers are optional per target (Linux has none). Each release proof lists the installer its target built,
+      # Installers are optional on Windows and macOS. Each release proof lists the installer its target built,
       # so a listed installer that did not arrive, or arrived with other bytes, fails the checks below.
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         continue-on-error: true

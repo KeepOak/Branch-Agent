@@ -10,6 +10,7 @@ import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from
 import { basename, dirname, join, relative } from "node:path";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
+import { appendCappedLog } from "./log-rotation";
 import { downloadComponent, replaceFile } from "./component-update-files";
 import type { ComponentRelease, DesktopAsset } from "./component-update-manifest";
 import type { HelperPlan } from "./desktop-update-helper";
@@ -35,6 +36,8 @@ export interface DesktopJournal {
   /** What the replacement takes the place of. */
   target: string;
   phase: "staged" | "applying" | "applied";
+  /** SHA256 of the staged app.asar, recorded at staging; a start that finds other bytes discards the update. */
+  stagedSha256?: string;
   /** Set when the app was still in use at the swap: later starts wait until then; Restart retries at once. */
   heldUntil?: number;
 }
@@ -55,6 +58,13 @@ const CONFIRM_TIMEOUT_MS = 90_000;
 export const STAGED_ASAR = ".asar.staged";
 const stagedName = (name: string): string => name.replace(/\.asar(?=\/|$)/g, STAGED_ASAR);
 const sealedMacInstall = (install: DesktopInstall): boolean => process.platform === "darwin" && install.appDir.endsWith(".app");
+/**
+ * A Linux AppImage runs from a read-only mount, so neither app.asar nor the whole app can be swapped in place.
+ * Engine and window components still update; re-running install.sh replaces the AppImage itself.
+ */
+export function runsFromAppImage(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): boolean {
+  return platform === "linux" && Boolean(env.APPIMAGE);
+}
 
 /** Electron's fs opens app.asar as an archive; original-fs reads the file's own bytes. */
 const rawFs: typeof NodeFs = process.versions.electron ? require("original-fs") : require("node:fs");
@@ -104,18 +114,47 @@ async function installedMatches(asset: DesktopAsset, install: DesktopInstall): P
   return await fileSha256(join(install.resourcesDir, "app.asar")) === asset.appAsarSha256;
 }
 
-/** A staged copy byte-identical to the installed one: for a whole app, the same executable and app.asar. */
-async function stagedMatchesInstalled(journal: DesktopJournal, install: DesktopInstall): Promise<boolean> {
+/** Each file a staged copy must contain, beside the installed file it replaces. */
+function stagedPairs(journal: DesktopJournal, install: DesktopInstall): Array<[string, string]> {
   const executable = sealedMacInstall(install) ? join("Contents", "MacOS", basename(install.executable)) : basename(install.executable);
   const resources = sealedMacInstall(install) ? join("Contents", "Resources") : "resources";
-  const pairs: Array<[string, string]> = journal.kind === "asar" ? [[journal.staged, journal.target]]
+  return journal.kind === "asar" ? [[journal.staged, journal.target]]
     : [[join(journal.staged, executable), install.executable],
       [join(journal.staged, resources, `app${STAGED_ASAR}`), join(install.resourcesDir, "app.asar")]];
-  for (const [staged, installed] of pairs) {
+}
+
+/** A staged copy byte-identical to the installed one: for a whole app, the same executable and app.asar. */
+async function stagedMatchesInstalled(journal: DesktopJournal, install: DesktopInstall): Promise<boolean> {
+  for (const [staged, installed] of stagedPairs(journal, install)) {
     const digest = await fileSha256(staged);
     if (!digest || digest !== await fileSha256(installed)) return false;
   }
   return true;
+}
+
+/** Why a staged record can no longer be applied: one of its files is gone, or the app.asar bytes changed since staging. */
+async function stagedDefect(journal: DesktopJournal, install: DesktopInstall): Promise<string | undefined> {
+  for (const [staged] of stagedPairs(journal, install)) {
+    if (await fileSha256(staged) === undefined) return `${basename(staged)} is missing`;
+  }
+  if (journal.stagedSha256 && await fileSha256(journal.staged) !== journal.stagedSha256) return `${basename(journal.staged)} fails its SHA256`;
+  return undefined;
+}
+
+/** The helper ships inside app.asar; without it the swap cannot run. Other read errors still surface. */
+async function helperMissing(helperSource: string): Promise<boolean> {
+  try { await readFile(helperSource); return false; } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    throw error;
+  }
+}
+
+/** A record that cannot be applied is dropped, and the app starts on its current build. The reason goes to desktop.log. */
+async function discardStagedUpdate(cfg: DesktopConfig, journal: DesktopJournal, reason: string): Promise<false> {
+  await rm(journalFile(cfg), { force: true });
+  // The log never blocks launch.
+  try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version} discarded: ${reason}; starting the current build\n`); } catch { /* ignore */ }
+  return false;
 }
 
 async function assertFile(file: string): Promise<void> {
@@ -124,7 +163,7 @@ async function assertFile(file: string): Promise<void> {
 
 /** Downloads, verifies and extracts the release's desktop component; nothing in the running app changes. */
 export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, install?: DesktopInstall): Promise<boolean> {
-  if (!install || await readDesktopJournal(cfg)) return false;
+  if (!install || runsFromAppImage() || await readDesktopJournal(cfg)) return false;
   if (process.platform === "win32" && await readOrEmpty(packagedIconFile(install)) === ICON_REVISION
     && await readOrEmpty(iconFile(cfg)) !== ICON_REVISION) {
     await replaceFile(iconFile(cfg), `${ICON_REVISION}\n`);
@@ -157,7 +196,8 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
     else for (const file of sealedMacInstall(install)
       ? [`Contents/MacOS/${basename(install.executable)}`, `Contents/Resources/app${STAGED_ASAR}`]
       : [basename(install.executable), `resources/app${STAGED_ASAR}`]) await assertFile(join(staged, file));
-    const journal: DesktopJournal = { version: release.version, sha256: choice.asset.sha256, kind: choice.kind, staged, target, phase: "staged" };
+    const journal: DesktopJournal = { version: release.version, sha256: choice.asset.sha256, kind: choice.kind, staged, target, phase: "staged",
+      ...(choice.kind === "asar" ? { stagedSha256: await fileSha256(staged) } : {}) };
     await replaceFile(journalFile(cfg), JSON.stringify(journal));
     await writeFile(join(directory, ".desktop-complete"), "");
     await rm(join(directory, ".update-staging"), { force: true });
@@ -169,6 +209,18 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
 export async function stagedDesktopVersion(cfg: DesktopConfig): Promise<string | null> {
   const journal = await readDesktopJournal(cfg);
   return journal?.phase === "staged" ? journal.version : null;
+}
+
+/**
+ * Starts the helper detached. Resolves to undefined once it runs, or to the failure text when it cannot start. The
+ * error listener is required: an unhandled 'error' event would stop the app before startup continues.
+ */
+function startHelper(node: string, args: string[], env: NodeJS.ProcessEnv): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const child = spawn(node, args, { detached: true, stdio: "ignore", windowsHide: true, env });
+    child.on("error", (error) => resolve(error.message));
+    child.once("spawn", () => { child.unref(); resolve(undefined); });
+  });
 }
 
 /**
@@ -184,6 +236,8 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
     return false;
   }
   const work = dirname(journal.kind === "asar" ? dirname(journal.staged) : journal.staged);
+  const defect = await stagedDefect(journal, install) ?? (await helperMissing(helperSource) ? "the update helper is missing" : undefined);
+  if (defect) return discardStagedUpdate(cfg, journal, defect);
   if (await stagedMatchesInstalled(journal, install)) {
     // Nothing would change: no swap, no restart; the installed copy already is this release's desktop.
     if (journal.kind === "runtime" && process.platform === "win32") await replaceFile(iconFile(cfg), ICON_REVISION);
@@ -213,8 +267,8 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
   const planFile = join(work, "desktop-update-plan.json");
   await replaceFile(planFile, JSON.stringify(plan));
   const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
-  const child = spawn(node, [helper, planFile], { detached: true, stdio: "ignore", windowsHide: true, env });
-  child.unref();
+  const failure = await startHelper(node, [helper, planFile], env);
+  if (failure) return discardStagedUpdate(cfg, journal, `the update helper could not start: ${failure}`);
   return true;
 }
 

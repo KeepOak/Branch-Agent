@@ -5,9 +5,10 @@
 //   node desktop/scripts/release-installers.mjs --assets <release-assets> --version <version> --target <target> --out <dir>
 // win32-x64: a per-user Inno Setup installer (no admin prompt; the desktop updater must be able to swap its own folder).
 // darwin-arm64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
-// linux-x64: none yet; a .deb or AppImage installs read-only, which the desktop self-update cannot swap.
+// linux-x64: a per-user AppImage (install.sh puts it at ~/.local/bin/branch-agent), built with a pinned appimagetool.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,7 +20,65 @@ export const WINDOWS_APP_ID = "{{6F0B6A43-3C1E-4D8B-9A57-2E4B1C9D7F10}";
 /** The bundled Electron's floor (Electron 23 dropped Windows 7, 8 and 8.1). */
 export const WINDOWS_MIN_VERSION = "10.0";
 export const TARGETS = ["win32-x64", "darwin-arm64", "linux-x64"];
-export const LINUX_PENDING = "No Linux installer yet: a .deb or AppImage installs read-only, and the desktop updater swaps its own folder. Ship the tar.gz until the install location is decided.";
+
+/**
+ * appimagetool and the AppImage runtime it embeds, pinned by release, size and SHA-256. Each download is checked before
+ * it is written executable or run; a mismatch stops the build. Bump both together and re-pin from the release assets.
+ */
+export const APPIMAGE_TOOLS = Object.freeze({
+  appimagetool: Object.freeze({ name: "appimagetool-x86_64.AppImage", bytes: 15092216,
+    url: "https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage",
+    sha256: "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0" }),
+  runtime: Object.freeze({ name: "runtime-x86_64", bytes: 944632,
+    url: "https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64",
+    sha256: "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d" }),
+});
+const APPRUN_SOURCE = fileURLToPath(new URL("./branch-agent-appimage.sh", import.meta.url));
+const LINUX_ICON = fileURLToPath(new URL("../assets/brand/linux/branch-512.png", import.meta.url));
+export const APPIMAGE_DESKTOP_ENTRY = ["[Desktop Entry]", "Type=Application", "Name=Branch Agent", "Exec=branch-agent %U",
+  "Icon=branch-agent", "Categories=Utility;", "Terminal=false", ""].join("\n");
+
+/** Downloads a pinned tool and verifies its size and SHA-256 before it is written executable. */
+export async function fetchPinned(tool, directory, request = fetch) {
+  const response = await request(tool.url);
+  if (!response.ok) throw new Error(`Could not download ${tool.name}: HTTP ${response.status}`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const actual = createHash("sha256").update(bytes).digest("hex");
+  if (actual !== tool.sha256 || bytes.length !== tool.bytes) {
+    throw new Error(`${tool.name} SHA-256 mismatch: expected ${tool.sha256}, got ${actual}; refusing to run it`);
+  }
+  const file = join(directory, tool.name);
+  writeFileSync(file, bytes);
+  chmodSync(file, 0o755);
+  return file;
+}
+
+/**
+ * Turns the extracted Linux desktop package into an AppDir: the package at the root, an AppRun that sets up the
+ * Chromium sandbox (branch-agent-appimage.sh, bound to this package's chrome-sandbox hash), a desktop entry and icon.
+ */
+export function assembleAppDir(payload, appDir, icon = LINUX_ICON) {
+  for (const name of ["Branch Agent.bin", "chrome-sandbox"]) {
+    if (!existsSync(join(payload, name))) throw new Error(`The Linux package has no ${name} at its root`);
+  }
+  renameSync(payload, appDir);
+  const sandbox = createHash("sha256").update(readFileSync(join(appDir, "chrome-sandbox"))).digest("hex");
+  writeFileSync(join(appDir, "AppRun"), readFileSync(APPRUN_SOURCE, "utf8").replaceAll("__BRANCH_SANDBOX_SHA256__", sandbox));
+  chmodSync(join(appDir, "AppRun"), 0o755);
+  writeFileSync(join(appDir, "branch-agent.desktop"), APPIMAGE_DESKTOP_ENTRY);
+  copyFileSync(icon, join(appDir, "branch-agent.png"));
+  return appDir;
+}
+
+/** appimagetool with the pinned runtime: nothing is fetched at build time and no AppStream check runs. */
+export function appImageToolArgs({ appDir, runtime, out }) {
+  return ["--no-appstream", "--runtime-file", runtime, appDir, out];
+}
+
+/** appimagetool is itself an AppImage; extract-and-run avoids needing FUSE on the build runner. */
+export function appImageToolEnv(version, env = process.env) {
+  return { ...env, ARCH: "x86_64", VERSION: version, APPIMAGE_EXTRACT_AND_RUN: "1" };
+}
 
 export function installerName(version, target) {
   return installerAssetName(version, target);
@@ -105,14 +164,13 @@ export function innoCompiler(env = process.env, exists = existsSync) {
   return found;
 }
 
-function run(command, args) {
-  const result = spawnSync(command, args, { stdio: "inherit" });
+function run(command, args, env = process.env) {
+  const result = spawnSync(command, args, { stdio: "inherit", env });
   if (result.status !== 0) throw new Error(`${command} exited with ${result.status ?? result.signal}`);
 }
 
-export function main(argv = process.argv.slice(2)) {
+export async function main(argv = process.argv.slice(2), request = fetch) {
   const { assets, version, target, out } = parseArgs(argv);
-  if (target === "linux-x64") { console.log(LINUX_PENDING); return null; }
   const archive = resolve(assets, `branch-desktop-${version}-${target}.tar.gz`);
   if (!existsSync(archive)) throw new Error(`Missing desktop package ${archive}`);
   mkdirSync(out, { recursive: true });
@@ -130,6 +188,12 @@ export function main(argv = process.argv.slice(2)) {
       const script = join(work, "branch-agent.iss");
       writeFileSync(script, "\ufeff" + innoSetupScript({ version, source: payload, out: resolve(out) }));
       run(innoCompiler(), ["/Qp", script]);
+    } else if (target === "linux-x64") {
+      const appDir = assembleAppDir(payload, join(work, "Branch-Agent.AppDir"));
+      const tool = await fetchPinned(APPIMAGE_TOOLS.appimagetool, work, request);
+      const runtime = await fetchPinned(APPIMAGE_TOOLS.runtime, work, request);
+      run(tool, appImageToolArgs({ appDir, runtime, out: file }), appImageToolEnv(version));
+      chmodSync(file, 0o755);
     } else {
       if (!existsSync(join(payload, "Branch Agent.app"))) throw new Error("The macOS package has no Branch Agent.app at its root");
       signer.signApp(join(payload, "Branch Agent.app"));
@@ -148,7 +212,7 @@ export function main(argv = process.argv.slice(2)) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const file = main();
+    const file = await main();
     // The target's release proof lists the installer, so publish attaches it and checks its bytes.
     if (file) { const { assets, target } = parseArgs(process.argv.slice(2)); await recordInstaller(assets, target, file); }
   } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); }
