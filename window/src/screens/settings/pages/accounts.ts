@@ -33,7 +33,7 @@ const GITHUB = ["tools.github.status", "tools.github.authorize.start", "tools.gi
 export const ACCOUNTS_ROWS: Row[] = [
   // Order Branch uses them in: the status line, Classic's list of accounts with Move up and its ⋯ menu, and Select accounts.
   slot("accounts.order.list", ORDER, "Your accounts, in order", [STATUS, ORDER_SET, "models.probe", "models.authLogout"],
-    { help: "Branch never sees your passwords. Each account is billed by its own site." }),
+    { help: "Move one up, or open its ⋯ menu to test it, put it first or sign out." }),
   slot("accounts.order.add", ORDER, "Add an account", ADD, { help: "Or another account of a service you use." }),
   slot("accounts.order.test", ORDER, "Test it", [STATUS, "models.probe"], { help: "Checks that an account answers." }),
   slot("accounts.order.answer-first", ORDER, "Answer first", [STATUS, ORDER_SET], { help: "Puts an account first for its service." }),
