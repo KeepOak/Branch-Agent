@@ -10,12 +10,11 @@ import { Segmented, Switch } from "../../shell/Popover";
 import { Icon } from "../../shell/icons";
 import { shows, type Level } from "../../places-nav/level";
 import type { Draft } from "./api";
+import { GitHubChoice } from "./GitHubChoice";
 import type { May } from "./may";
 
 const SEND_WHY = "Asking before this Trunk sends email comes in a later update.";
 const NOTES_WHY = "Keeping this Trunk’s notes apart comes in a later update.";
-/** The preview’s reason for the "Its own" choice. */
-const GITHUB_OWN_WHY = "Connecting GitHub for one Trunk happens in the Branch app on your computer.";
 
 function Row({ title, hint, children, off }: { title: string; hint: string; children: ReactNode; off?: string }) {
   return <div className={off ? "tk-ctl off" : "tk-ctl"}><b>{title}</b><span className="tk-right">{children}</span><small>{hint}</small>{off ? <small className="tk-why">{off}</small> : null}</div>;
@@ -55,7 +54,7 @@ function Fallbacks({ draft, models, setMay }: { draft: Draft; models: ModelChoic
   );
 }
 
-function Advanced({ name, draft, models, setMay }: { name: string; draft: Draft; models: ModelChoice[]; setMay: (m: Partial<May>) => void }) {
+function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: WindowEngine; agentId: string; name: string; draft: Draft; models: ModelChoice[]; setMay: (m: Partial<May>) => void }) {
   return (
     <>
       <Row title="Model for decisions" hint={`Small yes-or-no, pick-one and score calls inside ${name}’s work. None means it makes no such calls; its main model is never used for them.`}>
@@ -67,11 +66,7 @@ function Advanced({ name, draft, models, setMay }: { name: string; draft: Draft;
         </select>
       </Row>
       <Fallbacks draft={draft} models={models} setMay={setMay} />
-      <Row title="GitHub account for new work" hint="Which GitHub account this Trunk’s new work signs in with." off={GITHUB_OWN_WHY}>
-        <span className="tk-seg" role="group" aria-label="GitHub account for new work">
-          {["Same as Branch", "This computer’s GitHub", "Its own"].map((l) => <button key={l} type="button" disabled>{l}</button>)}
-        </span>
-      </Row>
+      <GitHubChoice engine={engine} agentId={agentId} name={name} />
     </>
   );
 }
@@ -97,7 +92,7 @@ export function MayTab({ engine, agentId, name, draft, models, level, set, openS
       </Row>
       <Row title="Spend money" hint="Never, whatever mode Branch is in."><span className="tk-fixed">Never</span></Row>
       <ModelPick draft={draft} models={models} setModel={(model) => set({ model })} openSettings={openSettings} />
-      {shows(level, "advanced") && <Advanced name={name} draft={draft} models={models} setMay={setMay} />}
+      {shows(level, "advanced") && <Advanced engine={engine} agentId={agentId} name={name} draft={draft} models={models} setMay={setMay} />}
       <Row title="Keep its own notes" hint="Separate from other Trunks’ memory." off={NOTES_WHY}>
         <button type="button" role="switch" aria-checked={true} aria-label="Keep its own notes" className="switch" disabled />
       </Row>
