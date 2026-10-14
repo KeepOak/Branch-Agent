@@ -20,6 +20,7 @@ import { NewTrunkPreview, type TrunkChoice } from "../trunk/NewTrunkPreview";
 import { canWrite, WRITE_WHY } from "../trunk/data";
 import { creationProblem, errorText, readRoster, type Roster, type TrunkRow } from "../trunk/model";
 import { RemoveTrunkDialog } from "../trunk/RemoveTrunk";
+import { ShareTrunkDialog } from "../trunk/ShareTrunk";
 import { TrunkDefaults } from "../trunk/TrunkDefaults";
 import { TrunkEditor } from "../trunk/TrunkEditor";
 import { RowFace } from "../trunk/TrunkFace";
@@ -28,8 +29,9 @@ import "../trunk/trunk.css";
 
 /** The preview's row face (40-places Trunks rows). */
 const ROW_FACE = 36; // av(t, 36) in renderCustomize
-type Open = { kind: "profile" | "edit" | "remove"; id: string } | null;
-type Props = Pick<PlaceProps, "engine" | "level" | "openConversation" | "openSettings" | "startConversation"> & {
+type Open = { kind: "profile" | "edit" | "remove" | "share"; id: string } | null;
+type Props = Pick<PlaceProps, "engine" | "level" | "openSettings" | "startConversation"> & {
+  openConversation?: PlaceProps["openConversation"];
   trunks: ReturnType<typeof useResource<Trunks>>;
   openPlace?: PlaceProps["openPlace"];
 };
@@ -118,16 +120,29 @@ export function TrunksTab(props: Props) {
     {known && <Menu at={known.at} label="Who it knows" testid="who-it-knows" onClose={() => setKnown(null)} items={known.items} />}
     {open?.kind === "profile" && <TrunkProfile engine={engine} agentId={open.id} level={level} openSettings={openSettings} openPlace={props.openPlace} onClose={() => { setOpen(null); trunks.reload(); }} />}
     {open?.kind === "edit" && <TrunkEditor engine={engine} agentId={open.id} level={level} openSettings={openSettings} onClose={() => setOpen(null)} onSaved={trunks.reload} />}
+    {open?.kind === "share" && roster && <ShareTrunkDialog engine={engine} agentId={open.id} name={roster.agents.find((a) => a.id === open.id)?.name || open.id} onClose={() => setOpen(null)} />}
     {open?.kind === "remove" && roster && <RemoveTrunkDialog engine={engine} agentId={open.id} name={roster.agents.find((a) => a.id === open.id)?.name || open.id} onClose={() => setOpen(null)} onRemoved={trunks.reload} />}
   </div>;
 }
+
+// The ••• items of Settings › Trunks (CUSTOMIZE-PROPOSAL §3, owner approved) that the engine can't run yet: greyed, each
+// naming the call it waits for. TODO(engine-lane): agents.pause/resume, trunks.watch and claws.packages.
+export const TRUNK_MENU_COMING = {
+  pause: "Needs the engine’s pause for a Trunk (agents.pause, agents.resume).",
+  watch: "Needs the engine to record a task you show it (trunks.watch).",
+  packages: "Needs the engine’s Trunk packages (claws.packages).",
+} as const;
 
 function rowMenu(p: Props, roster: Roster, row: TrunkRow, setOpen: (o: Open) => void, setError: (e: string | null) => void): MenuItem[] {
   const block = defaultBlock(roster, row.id), last = roster.agents.length <= 1, write = canWrite(p.engine);
   const toDefault = () => makeDefault(p.engine, roster, row.id).then(() => { notify(`${row.name} is now your default Trunk. Unrouted chats go to it.`); p.trunks.reload(); }, (e: unknown) => setError(errorText(e)));
   const cannotRemove = row.id === roster.defaultId ? "The default Trunk cannot be removed." : last ? "Branch needs at least one Trunk." : write ? undefined : WRITE_WHY;
   return [
+    { label: `Pause ${row.name}`, run: () => undefined, disabled: TRUNK_MENU_COMING.pause },
     row.id === roster.defaultId ? { kind: "info", label: `${row.name} is your default Trunk.` } : { label: "Make default", run: () => void toDefault(), disabled: block || (write ? undefined : WRITE_WHY) },
+    { label: "Share this Trunk…", run: () => setOpen({ kind: "share", id: row.id }) },
+    { label: "Show it how once", run: () => undefined, disabled: TRUNK_MENU_COMING.watch },
+    { label: "Package…", run: () => undefined, disabled: TRUNK_MENU_COMING.packages },
     { kind: "sep" },
     // Red (danger) always; when it can't run, the reason is written under it rather than only in a tooltip.
     { label: `Remove ${row.name}…`, danger: true, testid: "trunk-row-remove", run: () => setOpen({ kind: "remove", id: row.id }), disabled: cannotRemove, sub: shownWhy(cannotRemove) },

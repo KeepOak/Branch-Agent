@@ -41,7 +41,7 @@ function live() {
   const request = vi.fn(async () => ({}));
   const open = vi.fn(async () => undefined);
   const engine = { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", scopes: ["operator.admin"], features: { methods: ["agent.identity.get"], events: [] } };
-  return { session: { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine, open, gatewayUrl: "ws://gateway.invalid" } as unknown as SaplingSession, request, open };
+  return { session: { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine, open, gatewayUrl: "ws://gateway.invalid", request: vi.fn(async () => ({})), onGatewayEvent: () => () => undefined } as unknown as SaplingSession, request, open };
 }
 const header = (label: string) => host.querySelector<HTMLButtonElement>(`.r1-header-right [aria-label="${label}"]`);
 const tower = () => host.querySelector<HTMLElement>('.r1-tower [aria-label="Control tower"]');
