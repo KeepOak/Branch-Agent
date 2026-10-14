@@ -1,7 +1,8 @@
 // Fail a pull request when its title, body, or added diff lines include
 // personal machine details (absolute user-profile paths, emails, hostnames).
-// The workflow reads the event payload and the GitHub Files API; it never
-// checks out or executes pull-request code.
+// The workflow reads the event payload and git data (the pull request merge
+// ref). The GitHub Files API is only a fallback. It never checks out or
+// executes pull-request code.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -253,7 +254,8 @@ export function addedLinesFromPatch(patch) {
       newLine = Number(hunk[1]);
       continue;
     }
-    if (raw.startsWith('+++') || raw.startsWith('---') || raw.startsWith('\\')) continue;
+    // Patches hold hunks only, so a `+++` line is an added line whose text starts with `++`.
+    if (raw.startsWith('\\')) continue;
     if (raw.startsWith('+')) {
       added.push({ line: newLine, text: raw.slice(1) });
       newLine += 1;
@@ -351,7 +353,7 @@ export function ghApi(repo, token, requestPath, { paginate = false, retries = 6 
       if (!isRateLimitError(error) || attempt === retries) throw error;
       const wait = Math.min(32, 2 ** (attempt + 2));
       console.log(`GitHub API rate limited; retrying in ${wait}s…`);
-      execFileSync('sleep', [String(wait)], { windowsHide: true });
+      sleepSeconds(wait);
     }
   }
   return null;
@@ -371,9 +373,126 @@ export function readPullRequestEvent(eventPath = process.env.GITHUB_EVENT_PATH) 
   }
   return {
     number: pullRequest.number,
+    headSha: typeof pullRequest.head?.sha === 'string' ? pullRequest.head.sha : '',
     title: typeof pullRequest.title === 'string' ? pullRequest.title : '',
     body: typeof pullRequest.body === 'string' ? pullRequest.body : '',
   };
+}
+
+export function sleepSeconds(seconds) {
+  execFileSync('sleep', [String(seconds)], { windowsHide: true });
+}
+
+// Unquotes one `+++ ` path from git diff. Git appends a tab to names with spaces.
+export function gitDiffPath(raw) {
+  const value = String(raw ?? '').replace(/\t$/, '');
+  if (value === '/dev/null') return null;
+  const isQuoted = value.length >= 2 && value.startsWith('"') && value.endsWith('"');
+  const unquoted = isQuoted
+    ? value.slice(1, -1).replace(/\\(["\\tn])/g, (_, c) => ({ '"': '"', '\\': '\\', t: '\t', n: '\n' })[c])
+    : value;
+  return unquoted.replace(/^b\//, '');
+}
+
+// Turns `git diff --unified=0` output into the same { filename, patch } rows the
+// Files API returns, so collectFindings reads both sources the same way.
+export function parseGitDiffFiles(diffText) {
+  const files = [];
+  let current = null;
+  let inHunk = false;
+  for (const line of String(diffText ?? '').split(/\r?\n/)) {
+    if (line.startsWith('diff --git ')) {
+      current = { filename: null, lines: [] };
+      files.push(current);
+      inHunk = false;
+      continue;
+    }
+    if (!current) continue;
+    if (!inHunk && line.startsWith('+++ ')) {
+      current.filename = gitDiffPath(line.slice(4));
+    } else if (line.startsWith('@@')) {
+      inHunk = true;
+      current.lines.push(line);
+    } else if (inHunk) {
+      current.lines.push(line);
+    }
+  }
+  return files
+    .filter((file) => file.filename)
+    .map((file) => ({ filename: file.filename, patch: file.lines.join('\n') }));
+}
+
+const MERGE_REF_ATTEMPTS = 3;
+const MERGE_REF_RETRY_SECONDS = 10;
+const GIT_TIMEOUT_MS = 45_000;
+const GIT_MAX_BUFFER = 256 * 1024 * 1024;
+
+function runGit(cwd, args) {
+  return execFileSync('git', ['-C', cwd, ...args], {
+    encoding: 'utf8',
+    timeout: GIT_TIMEOUT_MS,
+    maxBuffer: GIT_MAX_BUFFER,
+    windowsHide: true,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+  });
+}
+
+// Fetches the PR merge commit with its two parents. Only git objects arrive; nothing is checked out.
+function fetchMergeCommit(cwd, prNumber) {
+  runGit(cwd, [
+    'fetch', '--quiet', '--no-tags', '--no-recurse-submodules', '--depth=2', 'origin',
+    `+refs/pull/${prNumber}/merge:refs/remotes/pr/${prNumber}`,
+  ]);
+  return runGit(cwd, ['rev-parse', '--verify', `refs/remotes/pr/${prNumber}^{commit}`]).trim();
+}
+
+// Returns the base (first parent) and merge commit once the merge ref's second parent is the event head.
+// A stale ref would scan old content and pass a leak pushed in the newest commit, so it never counts as a match.
+export function pullRequestMergeRange({ cwd, prNumber, headSha, sleep = sleepSeconds }) {
+  let reason = 'merge ref not fetchable';
+  for (let attempt = 1; attempt <= MERGE_REF_ATTEMPTS; attempt += 1) {
+    if (attempt > 1) sleep(MERGE_REF_RETRY_SECONDS);
+    try {
+      const commit = fetchMergeCommit(cwd, prNumber);
+      const [, base, head] = runGit(cwd, ['rev-list', '--parents', '-n', '1', commit]).trim().split(/\s+/);
+      if (base && headSha && head === headSha) return { base, commit };
+      reason = 'merge ref does not match the event head';
+    } catch {
+      reason = 'merge ref not fetchable';
+    }
+  }
+  throw new Error(reason);
+}
+
+// Added files for the pull request, computed from git alone: base..merge commit.
+export function gitAddedFiles({ cwd = root, prNumber, headSha, sleep }) {
+  const { base, commit } = pullRequestMergeRange({ cwd, prNumber, headSha, sleep });
+  let diff;
+  try {
+    diff = runGit(cwd, [
+      '-c', 'core.quotePath=false',
+      'diff', '--no-ext-diff', '--no-textconv', '--no-color', '--unified=0',
+      '--find-renames', '--src-prefix=a/', '--dst-prefix=b/', base, commit,
+    ]);
+  } catch {
+    throw new Error('git diff failed');
+  }
+  return parseGitDiffFiles(diff);
+}
+
+// Prefers git data. Falls back to the Files API only when the merge ref is missing, stale or unreadable.
+export function loadPullRequestFiles({
+  repo, token, pullRequest, cwd = root,
+  addedFiles = gitAddedFiles, fetchFiles = fetchPrFiles, log = console.log,
+}) {
+  try {
+    const files = addedFiles({ cwd, prNumber: pullRequest.number, headSha: pullRequest.headSha });
+    log(`Added lines read from git for pull request ${pullRequest.number} (${files.length} changed files).`);
+    return files;
+  } catch (error) {
+    log(`Merge ref check failed (${error.message}); falling back to the GitHub files API.`);
+    return fetchFiles(repo, pullRequest.number, token);
+  }
 }
 
 export function scanPullRequest({ title, body, files }) {
@@ -393,7 +512,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     console.error('Missing required scan inputs: repo, token, or pull request number.');
     process.exit(1);
   }
-  const files = fetchPrFiles(repo, pullRequest.number, token);
+  const files = loadPullRequestFiles({ repo, token, pullRequest });
   const result = scanPullRequest({
     title: pullRequest.title,
     body: pullRequest.body,

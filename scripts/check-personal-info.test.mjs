@@ -1,6 +1,7 @@
 // node --test scripts/check-personal-info.test.mjs
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -11,8 +12,12 @@ import {
   collectFindings,
   findPersonalInfo,
   formatReport,
+  gitAddedFiles,
+  gitDiffPath,
   isAllowlistedDiffPath,
+  loadPullRequestFiles,
   maskSnippet,
+  parseGitDiffFiles,
   parseScanWorkflowPolicy,
   readPullRequestEvent,
   scanPullRequest,
@@ -197,13 +202,188 @@ test('reads title and body from the event payload file', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'personal-info-event-'));
   const eventPath = path.join(dir, 'event.json');
   writeFileSync(eventPath, JSON.stringify({
-    pull_request: { number: 441, title: 'feat(window): topic row', body: pr441CleanBody },
+    pull_request: {
+      number: 441,
+      title: 'feat(window): topic row',
+      body: pr441CleanBody,
+      head: { sha: 'a'.repeat(40) },
+    },
   }));
   assert.deepEqual(readPullRequestEvent(eventPath), {
     number: 441,
+    headSha: 'a'.repeat(40),
     title: 'feat(window): topic row',
     body: pr441CleanBody,
   });
+});
+
+test('a `+++` added line is scanned, not skipped as a diff header', () => {
+  const patch = '@@ -0,0 +1,2 @@\n+++ C:/Users/exampleuser/spec.html\n+ok';
+  assert.deepEqual(addedLinesFromPatch(patch), [
+    { line: 1, text: '++ C:/Users/exampleuser/spec.html' },
+    { line: 2, text: 'ok' },
+  ]);
+  assert.deepEqual(collectFindings({ files: [{ filename: 'docs/notes.md', patch }] })
+    .map((finding) => finding.type), ['windows-user-profile']);
+});
+
+test('gitDiffPath unquotes git names, drops a trailing tab, and ignores /dev/null', () => {
+  assert.equal(gitDiffPath('b/spaced name.md\t'), 'spaced name.md');
+  assert.equal(gitDiffPath('"b/say \\"hi\\".md"'), 'say "hi".md');
+  assert.equal(gitDiffPath('/dev/null'), null);
+});
+
+test('parseGitDiffFiles keeps added hunks and drops renames, deletes and binaries', () => {
+  const diff = [
+    'diff --git a/notes.md b/notes.md',
+    'new file mode 100644',
+    '--- /dev/null',
+    '+++ b/notes.md',
+    '@@ -0,0 +1,2 @@',
+    '+line',
+    '+C:/Users/exampleuser/x',
+    'diff --git a/spaced name.md b/spaced name.md',
+    'new file mode 100644',
+    '--- /dev/null',
+    '+++ b/spaced name.md\t',
+    '@@ -0,0 +1 @@',
+    '+ok',
+    'diff --git a/old.md b/old.md',
+    'deleted file mode 100644',
+    '--- a/old.md',
+    '+++ /dev/null',
+    '@@ -1 +0,0 @@',
+    '-gone',
+    'diff --git a/README.md b/GUIDE.md',
+    'similarity index 100%',
+    'rename from README.md',
+    'rename to GUIDE.md',
+    'diff --git a/logo.png b/logo.png',
+    'Binary files a/logo.png and b/logo.png differ',
+  ].join('\n');
+  const files = parseGitDiffFiles(diff);
+  assert.deepEqual(files.map((file) => file.filename), ['notes.md', 'spaced name.md']);
+  assert.equal(files[0].patch, '@@ -0,0 +1,2 @@\n+line\n+C:/Users/exampleuser/x');
+  assert.deepEqual(parseGitDiffFiles(''), []);
+});
+
+// Git helpers for a hermetic fixture: origin has base on main, a PR head branch,
+// and refs/pull/7/merge = merge(base, head), the same shape GitHub serves.
+function git(cwd, args) {
+  return execFileSync('git', ['-C', cwd, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...args], {
+    encoding: 'utf8',
+  }).trim();
+}
+
+function makePullRequestOrigin(origin) {
+  mkdirSync(origin);
+  git(origin, ['init', '--quiet', '-b', 'main']);
+  writeFileSync(path.join(origin, 'README.md'), 'base\n');
+  writeFileSync(path.join(origin, 'gone.md'), 'bye\n');
+  git(origin, ['add', '.']);
+  git(origin, ['commit', '--quiet', '-m', 'base']);
+  const base = git(origin, ['rev-parse', 'HEAD']);
+  git(origin, ['checkout', '--quiet', '-b', 'feature']);
+  writeFileSync(path.join(origin, 'notes.md'), 'line\nC:/Users/exampleuser/x\n+++ C:/Users/exampleuser/y\n');
+  writeFileSync(path.join(origin, 'spaced name.md'), 'ok\n');
+  git(origin, ['mv', 'README.md', 'GUIDE.md']);
+  git(origin, ['rm', '--quiet', 'gone.md']);
+  git(origin, ['add', '.']);
+  git(origin, ['commit', '--quiet', '-m', 'head']);
+  const head = git(origin, ['rev-parse', 'HEAD']);
+  const merge = git(origin, ['commit-tree', `${head}^{tree}`, '-p', base, '-p', head, '-m', 'merge']);
+  git(origin, ['update-ref', 'refs/pull/7/merge', merge]);
+  git(origin, ['checkout', '--quiet', 'main']);
+  return { base, head };
+}
+
+// Runs fn with a shallow clone of the default branch, as the workflow checks out.
+function withShallowPrClone(fn) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'personal-info-git-'));
+  try {
+    const { base, head } = makePullRequestOrigin(path.join(dir, 'origin'));
+    const clone = path.join(dir, 'clone');
+    execFileSync('git', ['clone', '--quiet', '--depth', '1', `file://${path.join(dir, 'origin')}`, clone], {
+      encoding: 'utf8',
+    });
+    fn({ clone, base, head });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('gitAddedFiles reads the PR merge ref in a shallow clone without checking it out', () => {
+  withShallowPrClone(({ clone, head }) => {
+    const files = gitAddedFiles({ cwd: clone, prNumber: 7, headSha: head, sleep: () => {} });
+    assert.deepEqual(files.map((file) => file.filename).sort(), ['notes.md', 'spaced name.md']);
+    const notes = files.find((file) => file.filename === 'notes.md');
+    assert.deepEqual(addedLinesFromPatch(notes.patch).map((row) => row.text), [
+      'line',
+      'C:/Users/exampleuser/x',
+      '+++ C:/Users/exampleuser/y',
+    ]);
+    const findings = collectFindings({ files });
+    assert.deepEqual(findings.map((item) => item.type), [
+      'windows-user-profile',
+      'windows-user-profile',
+    ]);
+    assert.equal(git(clone, ['status', '--porcelain']), '');
+  });
+});
+
+test('gitAddedFiles refuses a merge ref whose second parent is not the event head', () => {
+  withShallowPrClone(({ clone, base }) => {
+    assert.throws(
+      () => gitAddedFiles({ cwd: clone, prNumber: 7, headSha: base, sleep: () => {} }),
+      /does not match the event head/,
+    );
+  });
+});
+
+test('gitAddedFiles reports a missing merge ref so the caller can fall back', () => {
+  withShallowPrClone(({ clone, head }) => {
+    assert.throws(
+      () => gitAddedFiles({ cwd: clone, prNumber: 99, headSha: head, sleep: () => {} }),
+      /not fetchable/,
+    );
+  });
+});
+
+test('loadPullRequestFiles uses git rows and never calls the API when the ref works', () => {
+  const logs = [];
+  const rows = [{ filename: 'a.md', patch: '@@ -0,0 +1 @@\n+ok' }];
+  const files = loadPullRequestFiles({
+    repo: 'KeepOak/Branch-Agent',
+    token: 'unused',
+    pullRequest: { number: 7, headSha: 'a'.repeat(40) },
+    addedFiles: () => rows,
+    fetchFiles: () => assert.fail('the REST files API must not run'),
+    log: (line) => logs.push(line),
+  });
+  assert.deepEqual(files, rows);
+  assert.match(logs.join('\n'), /read from git/);
+});
+
+test('loadPullRequestFiles falls back to the files API and logs the reason', () => {
+  const logs = [];
+  const apiRows = [{ filename: 'b.md', patch: '@@ -0,0 +1 @@\n+ok' }];
+  const files = loadPullRequestFiles({
+    repo: 'KeepOak/Branch-Agent',
+    token: 'unused',
+    pullRequest: { number: 8, headSha: 'a'.repeat(40) },
+    addedFiles: () => {
+      throw new Error('merge ref not fetchable');
+    },
+    fetchFiles: (repo, number) => {
+      assert.equal(repo, 'KeepOak/Branch-Agent');
+      assert.equal(number, 8);
+      return apiRows;
+    },
+    log: (line) => logs.push(line),
+  });
+  assert.deepEqual(files, apiRows);
+  assert.match(logs.join('\n'), /merge ref not fetchable/);
+  assert.match(logs.join('\n'), /falling back to the GitHub files API/);
 });
 
 test('does not treat lowercase desktop- or laptop- names as Windows computer names', () => {
