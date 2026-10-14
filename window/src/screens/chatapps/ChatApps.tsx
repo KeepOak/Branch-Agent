@@ -61,7 +61,7 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
   return <section className="r1-chatapps g-clear" aria-label="Chat apps">
     <h1 className="g-label">Chat apps</h1><p className="r1-ca-lede g-label" data-lines>Telegram, WhatsApp, Slack and 71 more: who answers, who may message, and how replies arrive.</p>
     {live.error && <p role="alert"><span className="g-label">{live.error}</span> <button type="button" onClick={() => void live.reload()} data-need="channels.status">Try again</button></p>}
-    <div className="r1-ca-surface g-clear"><section aria-labelledby="r1-ca-your"><h2 id="r1-ca-your" className="g-label">Your chat apps</h2>
+    <div className="r1-ca-surface g-clear cz-chgrid"><section aria-labelledby="r1-ca-your"><h2 id="r1-ca-your" className="g-label">Your chat apps</h2>
       <p role="status" className="g-label">{live.loading ? "Checking your chat apps…" : !live.status ? "Chat app status is unavailable." : connected.length ? "Manage your connected apps below." : "No chat apps connected yet. Choose an app below to get started."}</p>
       {connected.length ? <div className="r1-ca-connected" role="list" aria-label="Connected chat apps">{connected.map(({ app, state }) => (
         <div key={state.id} role="listitem" className="r1-ca-app"><ChatLogo id={state.id} name={state.name} size={32} /><span className="g-label" data-lines><b>{state.name}</b> <small>{state.sub}</small></span>

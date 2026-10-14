@@ -14,7 +14,8 @@ function sidePanel(open: boolean) {
   if (button && (button.getAttribute("aria-pressed") === "true") !== open) button.click();
 }
 const settings = (page: string) => () => window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page } }));
-const place = (id: string, tab?: string) => () => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: id, ...(tab ? { tab } : {}) } }));
+/** Chat apps left Customize: its tour step opens the Settings page. */
+const place = (id: string, tab?: string) => () => (id === "customize" && tab === "Chat apps" ? settings("chatapps")() : window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: id, ...(tab ? { tab } : {}) } })));
 const NARROW = 760;
 
 /** The cards, in the spec's order; the prototype-only surface switcher card is left out (§8). */
@@ -36,7 +37,7 @@ export function tourCards(defaultName: string): Card[] {
     { title: "Search everything", target: "[data-testid=search]", side: true, text: "Chats, Trunk names, words inside messages and past sessions, as you type. Ctrl F finds words in a conversation; Ctrl K opens every command." },
     { title: "Settings, your way", target: "[data-testid=gear]", side: true, text: "Regular, Advanced or Technical: just the essentials, or every file, port and raw key." },
     { title: "Models on this computer", target: ".lm-grid-k", prep: settings("local"), text: "Branch looks at your memory and graphics card and only offers what fits. One click installs it; it runs free and private." },
-    { title: "Every chat app", target: ".r1-ca-list", prep: settings("chatapps"), text: "Each has its own setup: paste the code it gives you, let Branch check it, then allow the connection." },
+    { title: "Every chat app", target: ".cz-chgrid", prep: place("customize", "Chat apps"), text: "Each has its own setup: paste the code it gives you, let Branch check it, then allow the connection." },
     { title: "Pets and painted scenes", target: ".pets12", prep: settings("appearance"), text: "Pick one of dozens of pets to walk along the list, and a painted scene to sit behind the glass. They nap, cheer and follow what your Trunks are doing." },
     { title: "Your team", target: '.side [data-place="people"]', side: true, text: "Who’s here and what their Trunks are running right now, shared Trunks, teams of Trunks, usage and rules. It comes from your keepoak.com workspace." },
     { title: "People", target: ".ppl", prep: place("people"), text: "On this computer with a PIN, on their own devices with a passkey or a one-time code, or from your keepoak.com team. Seven kinds of action each; groups only take away." },

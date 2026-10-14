@@ -60,7 +60,7 @@ describe("new conversation drafts", () => {
     const row = items.find((entry) => "label" in entry && entry.label === "New Trunk")!;
     expect(row).toMatchObject({ kind: "sub", testid: "new-trunk" });
     if (row.kind !== "sub") throw new Error("New Trunk should open its first step");
-    expect(row.items.map((entry) => "label" in entry ? entry.label : "")).toEqual(["Blank", "From a job…", "Let Branch suggest…"]);
+    expect(row.items.map((entry) => "label" in entry ? entry.label : "")).toEqual(["Blank", "Start from a template", "Let Branch suggest…"]);
     for (const item of row.items) if ("run" in item) item.run();
     expect(ctx.newTrunk).toHaveBeenCalledOnce();
     expect(ctx.openPlace).toHaveBeenCalledExactlyOnceWith("customize");

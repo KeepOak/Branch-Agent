@@ -93,23 +93,23 @@ describe("Tools, three panes", () => {
     expect(host.textContent).toContain("Several calls at once");
     if (root) await act(async () => root!.unmount()); document.body.innerHTML = "";
     await open("Connectors", { "config.get": { hash: "h", sourceConfig: {}, runtimeConfig: {} } });
-    expect(host.textContent).toContain("No connectors yet.");
+    expect(host.textContent).toContain("Nothing here for this Trunk.");
   });
   it("says why Test it and Check for updates are greyed, with and without a server", async () => {
     await open("Connectors", { "config.get": { hash: "h", sourceConfig: {}, runtimeConfig: {} } });
     expect(button("Test it")!.disabled).toBe(true);
-    expect(button("Test it")!.title).toBe("Add a server first");
+    expect(button("Test it")!.title).toBe("Testing a connector comes in a later update.");
     expect(button("Check for updates")!.disabled).toBe(true);
-    expect(button("Check for updates")!.title).toBe("Add a server first");
-    expect(host.textContent).toContain("Add a server first");
+    expect(button("Check for updates")!.title).toBe("Testing a connector comes in a later update.");
+    expect(host.textContent).toContain("Testing a connector comes in a later update.");
     expect(visibleDevNotes(host)).toEqual([]);
     if (root) await act(async () => root!.unmount()); document.body.innerHTML = "";
     await open("Connectors");
     expect(button("Test it")!.disabled).toBe(true);
-    expect(button("Test it")!.title).toBe("This connector cannot be tested yet.");
+    expect(button("Test it")!.title).toBe("Testing a connector comes in a later update.");
     expect(button("Check for updates")!.disabled).toBe(true);
-    expect(button("Check for updates")!.title).toBe("This connector cannot be checked for updates yet.");
-    expect(host.querySelector('[data-coming="This connector cannot be tested yet."]')).toBeTruthy();
+    expect(button("Check for updates")!.title).toBe("Checking a connector for updates comes in a later update.");
+    expect(host.querySelector('[data-coming="Testing a connector comes in a later update."]')).toBeTruthy();
     expect(visibleDevNotes(host.querySelector(".cz-acts")!)).toEqual([]);
   });
   it("installs from the connector catalogue with plugins.install", async () => {

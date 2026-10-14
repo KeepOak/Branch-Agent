@@ -63,9 +63,9 @@ export function connectorCount(ctx: ToolsCtx): number | null {
 }
 
 /** Person-facing reasons for the greyed Test it / Check for updates controls (shownWhy keeps developer notes out of sight). */
-export const NO_SERVER_WHY = "Add a server first";
-export const TEST_WHY = "This connector cannot be tested yet.";
-export const UPDATE_WHY = "This connector cannot be checked for updates yet.";
+export const NO_SERVER_WHY = "Testing a connector comes in a later update.";
+export const TEST_WHY = "Testing a connector comes in a later update.";
+export const UPDATE_WHY = "Checking a connector for updates comes in a later update.";
 
 function ConnectorActs({ server, onRemove }: { server?: Server; onRemove?: () => void }) {
   const testWhy = server ? TEST_WHY : NO_SERVER_WHY;
@@ -99,7 +99,7 @@ export function Connectors({ ctx }: { ctx: ToolsCtx }) {
       {config.data && <div className="cz-bar"><button type="button" className="btn ghost sm" disabled={config.loading} onClick={() => { config.reload(); setReloaded(true); }}>Reload connectors</button>
         {reloaded && !config.loading && <small role="status">Reloaded {servers.length} connectors from settings just now. Nothing restarted.</small>}</div>}
       <Status {...config} />
-      {config.data && !servers.length && <EmptyLine icon={<Glyph name="puzzle" size={22} />}>No connectors yet.</EmptyLine>}
+      {config.data && !servers.length && <EmptyLine icon={<Glyph name="puzzle" size={22} />}>Nothing here for this Trunk.</EmptyLine>}
       {shown.map(s => <div key={s.name} className="cz-rowline" role="listitem">
         <button type="button" className="t9-item" aria-current={s.name === server?.name} onClick={() => setChosen(s.name)}>
           <Mark server={s} size={32} />

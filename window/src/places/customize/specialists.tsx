@@ -41,7 +41,7 @@ export function SpecialistsTab({ engine, level, trunks, running, openAgents }: {
       {BUILT_IN.map(([name, line]) => <div key={name} className="cz-prow"><span className="cz-tile"><Glyph name="sparkle" size={16} /></span><span className="grow"><b>{name}</b><small>{line} · comes with Branch, can't be edited</small></span>
         <button type="button" role="switch" aria-checked={true} aria-label={`Offer ${name}`} className="switch" disabled title={shownWhy("Needs the engine's built-in helper switches.")} /></div>)}</section>}
     <section className="cz-block"><h2 className="cz-h2">Let helpers argue it out</h2>
-      <div className="cz-prow"><span className="cz-tile"><Glyph name="people" size={16} /></span><span className="grow"><b>Two or three helpers take sides on a question</b><small>Each answers the others in turn, then you get both sides and where they agree.</small></span><Grey reason="Running a debate between specialists comes in a later update.">Start</Grey></div></section>
+      <div className="cz-prow"><span className="cz-tile"><Glyph name="people" size={16} /></span><span className="grow"><b>Two or three specialists take sides on a question</b><small>Each answers the others in turn, then you get both sides and where they agree.</small></span><Grey reason="Running a debate between specialists comes in a later update.">Start</Grey></div></section>
   </div>;
 }
 

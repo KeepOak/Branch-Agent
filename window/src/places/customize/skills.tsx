@@ -3,7 +3,7 @@
 // skills.install, kept versions (skills.library.*), and "Add a skill" (skills.search / skills.install).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
-import { displayName, invocationName } from "../../display-names";
+import { displayName } from "../../display-names";
 import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { KindHead } from "./kind-chrome";
@@ -52,7 +52,7 @@ type SkillTab = "library" | "drafts" | "suggested";
 const SCOPES: { id: Scope; name: string }[] = [{ id: "mine", name: "Mine" }, { id: "team", name: "The team’s" }, { id: "all", name: "All" }, { id: "folder", name: "A Trunk’s folder" }];
 type Scope = "mine" | "team" | "all" | "folder";
 /** Bundles the preview lists above the skills (preview 38526). Their names are typed with / in a conversation. */
-const BUNDLES: [string, string][] = [["/month-end", "Ledger’s month-end, in one go · expense-report, file-receipts, finance:reconcile"], ["/research", "A brief with quotes lined up · brief, compare-quotes"]];
+const BUNDLES: [string, string, string][] = [["/month-end", "Ledger’s month-end, in one go", "expense-report, file-receipts, finance:reconcile"], ["/research", "A brief with quotes lined up", "brief, compare-quotes"]];
 
 export function Skills({ ctx }: { ctx: ToolsCtx }) {
   const [tab, setTab] = useState<SkillTab>("library");
@@ -104,7 +104,7 @@ function SkillList({ ctx, tabs, count, rows }: { ctx: ToolsCtx; tabs: ReactNode;
       <div className="cz-chips" role="group" aria-label="Show">{([["all", "All"], ["ready", "Ready"], ["setup", "Needs setup"], ["off", "Off"]] as [St, string][]).map(([id, name]) =>
         <button key={id} type="button" className="cz-chip" aria-pressed={st === id} onClick={() => setSt(id)}>{name} <em>{countOf(id)}</em></button>)}</div>
       <div className="cz-bundles"><p className="cz-grp">Skill bundles</p>
-        {BUNDLES.map(([name, line]) => <div key={name} className="cz-bundle"><span className="grow"><b>{name}</b><small>{line}</small></span></div>)}
+        {BUNDLES.map(([name, line, skills]) => <div key={name} className="cz-bundle"><span className="grow"><b>{name}</b><small>{line}</small><small>{skills}</small></span></div>)}
         <p className="cz-hint">Type the bundle’s name with / to load its skills together.</p></div>
       {ctx.skills.data != null && !shown.length && <EmptyLine icon={<Glyph name="bolt" size={22} />}>No skills match.</EmptyLine>}
       {shown.map(r => <div key={r.key} className="cz-rowline" role="listitem">
@@ -158,7 +158,7 @@ function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
     {stOf(skill) === "setup" && <div className="cz-card warn"><b>Needs setting up</b><small>It needs {skill.missing.join(", ") || "something this computer lacks"}.</small>
       {skill.installs.length > 0 && <div className="cz-acts">{skill.installs.map(i => <button key={i.id} type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.install", skillInstallParams(scopeOf(ctx), skill, i.id), ctx.skills.reload)}>{i.label}</button>)}</div>}</div>}
     {skill.raw.blockedByAgentFilter === true && <p className="cz-hint">This Trunk’s skill list leaves it out.</p>}
-        <Sec title="Set it up"><dl className="cz-kv"><dt>Where it came from</dt><dd>{skill.source}</dd><dt>Use</dt><dd>{skill.userInvocable ? `/${invocationName(skill.rawName)} in a conversation, or when a Trunk needs it` : "When a Trunk needs it"}</dd><dt>Always load it</dt><dd>{skill.always ? "Yes" : "No"}</dd>
+        <Sec title="Set it up"><dl className="cz-kv"><dt>Where it came from</dt><dd>{skill.source}</dd><dt>Always load it</dt><dd>{skill.always ? "Yes" : "No"}</dd>
       {shows(ctx.level, "technical") && skill.filePath && <><dt>File</dt><dd><code>{skill.filePath}</code></dd></>}</dl></Sec>
     <Sec title="Safety check"><dl className="cz-kv">
       <dt>Preflight</dt><dd>Not checked yet</dd>

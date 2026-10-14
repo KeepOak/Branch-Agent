@@ -33,13 +33,13 @@ const MOUNTS: Record<PlaceId, Mount> = {
 const R1_MOUNTS: Partial<Record<PlaceId, Mount>> = { customize: CustomizeR1Place };
 
 /** Routes to a place's mount point (window/src/places/<place>/index.tsx). Preview enter11: only the place remounts. */
-export function PlaceView({ place, r1 = false, usePrompt, ...props }: Omit<PlaceProps, "level"> & { place: PlaceId; r1?: boolean; usePrompt?: PromptHandoff }) {
+export function PlaceView({ place, r1 = false, ...props }: Omit<PlaceProps, "level"> & { place: PlaceId; r1?: boolean; usePrompt?: PromptHandoff }) {
   const Mount = (r1 && R1_MOUNTS[place]) || MOUNTS[place];
   const level = useLevel();
   return (
     <>
       <div className="enter11" key={place}>
-        <Suspense fallback={<p role="status">Opening the office…</p>}><Mount {...props} level={level} usePrompt={usePrompt} /></Suspense>
+        <Suspense fallback={<p role="status">Opening the office…</p>}><Mount {...props} level={level} /></Suspense>
       </div>
       <TrunkHost engine={props.engine} level={level} openSettings={props.openSettings} openPlace={props.openPlace} openConversation={props.openConversation} />
     </>

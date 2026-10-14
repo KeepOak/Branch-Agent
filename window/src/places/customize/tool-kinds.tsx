@@ -59,7 +59,7 @@ export function Clis({ ctx }: { ctx: ToolsCtx }) {
         <button type="button" className="btn sm" disabled={busy || !path.trim()} onClick={() => void add()}>Add</button></div>
       {error && <p role="alert" className="cz-error">{error}</p>}
       <Status {...ctx.skills} />
-      {ctx.skills.data != null && !shown.length && <EmptyLine icon={<Glyph name="terminal" size={22} />}>No command-line tools yet.</EmptyLine>}
+      {ctx.skills.data != null && !shown.length && <EmptyLine icon={<Glyph name="terminal" size={22} />}>Nothing here for this Trunk.</EmptyLine>}
       {shown.map(b => <button key={b.name} type="button" className="t9-item" aria-current={b.name === bin?.name} onClick={() => setChosen(b.name)}>
         <span className="cz-tile"><Glyph name="terminal" size={16} /></span><span className="grow"><b>{b.name}</b><small>{b.present ? "Used by " : "Not on this computer · needed by "}{b.skills.join(", ")}</small></span>
         {b.present ? <Dot on /> : <Pill tone="bad">Not found</Pill>}
@@ -78,8 +78,8 @@ function CliDetail({ ctx, bin }: { ctx: ToolsCtx; bin: Bin }) {
   const ask = str(rec(agents[scopeKey]).ask) || str(rec(rec(approvals.data).resolvedDefaults).ask);
   return <div className="t9-detail" data-testid="cli-detail">
     <div className="t9-dh"><span className="cz-tile big"><Glyph name="terminal" /></span><span className="grow"><b>{bin.name}</b><small>{bin.present ? "On this computer" : "Not found on this computer"}</small></span></div>
-    <Sec title="Who may use it"><div className="cz-line"><span>Which Trunks may run this command</span><Grey reason="Choosing which Trunks may run a command comes in a later update.">Choose</Grey></div></Sec>
-    <Sec title="What it may do"><h3 className="cz-h3">Commands</h3><Status {...approvals} />{approvals.data != null && <dl className="cz-kv cz-box"><dt>Allowed</dt><dd>{allowed.length ? allowed.map(a => <code key={a}>{a}</code>) : "None yet"}</dd><dt>Asks first</dt><dd>{ASKS[ask] ?? "As the conversation’s mode says"}</dd></dl>}
+    <Sec title="Who may use it"><div className="cz-line"><span>Which Trunks may use it</span><Grey reason="Choosing which Trunks may run a command comes in a later update.">Choose</Grey></div></Sec>
+    <Sec title="What it may do"><h3 className="cz-h3">Commands</h3><Status {...approvals} />{approvals.data != null && <dl className="cz-kv cz-box"><dt>Allowed</dt><dd>{allowed.length ? allowed.map(a => <code key={a}>{a}</code>) : "None yet"}</dd><dt>Asks first</dt><dd>{ASKS[ask] ?? "As the conversation"}</dd></dl>}
       <div className="cz-line"><span>Ask before each command<small>The conversation’s mode still applies.</small></span><Grey className="switch" reason="Asking before each command comes in a later update."><span /></Grey></div></Sec>
     <Sec title="Set it up"><h3 className="cz-h3">Used by</h3><p className="cz-hint">{bin.skills.join(", ")}</p></Sec>
     <Sec title="Safety check"><dl className="cz-kv"><dt>Preflight</dt><dd>Not checked yet</dd><dt>Malware scan</dt><dd>Not checked yet</dd><dt>Fingerprint</dt><dd>Not checked yet</dd><dt>Hidden instructions</dt><dd>Not checked yet</dd></dl></Sec>
@@ -135,7 +135,7 @@ export function Agents({ ctx }: { ctx: ToolsCtx }) {
     <KindHead ctx={ctx} kind="Agents" count={`${agents.filter(a => a.enabled).length} of ${agents.length} on`}>
       <Status {...ctx.agents} />
       <h3 className="cz-h3">Connected agents</h3>
-      {ctx.agents.data != null && !shown.length && <EmptyLine icon={<Glyph name="people" size={22} />}>No agents yet.</EmptyLine>}
+      {ctx.agents.data != null && !shown.length && <EmptyLine icon={<Glyph name="people" size={22} />}>Nothing here for this Trunk.</EmptyLine>}
       {shown.map(a => <button key={a.id} type="button" className="t9-item" aria-current={a.id === agent?.id} onClick={() => setChosen(a.id)}>
         <span className="cz-tile"><Glyph name="terminal" size={16} /></span><span className="grow"><b>{a.name}</b><small>ACP · {a.runtimeId}</small></span>
         {a.installation === "missing" ? <Pill tone="warn">Not installed</Pill> : <Dot on={a.enabled} />}
@@ -148,7 +148,7 @@ export function Agents({ ctx }: { ctx: ToolsCtx }) {
       <div className="t9-dh"><span className="cz-tile big"><Glyph name="terminal" /></span><span className="grow"><b>{agent.name}</b><small>ACP · {agent.runtimeId}{agent.installation === "missing" ? " · not installed on this computer" : ""}</small></span>
         <Switch label={`${agent.name} on or off`} on={agent.enabled} onChange={on => { void ctx.config.patch({ plugins: { entries: { acpx: { config: { nativeAgents: { [agent.id]: on } } } } } }).then(ok => ok && ctx.agents.reload()); }} /></div>
       {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
-      <Sec title="Who may use it"><div className="cz-line"><span>Which Trunks may talk to this agent</span><Grey reason="Choosing which Trunks may talk to an agent comes in a later update.">Choose</Grey></div></Sec>
+      <Sec title="Who may use it"><div className="cz-line"><span>Which Trunks may use it</span><Grey reason="Choosing which Trunks may talk to an agent comes in a later update.">Choose</Grey></div></Sec>
       <Sec title="What it may do"><div className="cz-line"><span>What it may be asked</span><Grey reason="Choosing what an agent may be asked comes in a later update.">Choose</Grey></div></Sec>
       <Sec title="Set it up"><h3 className="cz-h3">Rules</h3><dl className="cz-kv cz-box"><dt>Runs as</dt><dd><code>{agent.runtimeId}</code></dd></dl>
         <div className="cz-line"><span>Tasks it sends in</span><Grey reason="Choosing what an agent gets with its tasks comes in a later update.">Choose</Grey></div></Sec>
@@ -185,13 +185,13 @@ export function AddAgent({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
   if (linkBranch) return <BranchLinkDialog engine={ctx.engine} onClose={close} />;
   return <Dialog title="Connect another agent" onClose={close} footer={<><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn pri" disabled={ctx.config.busy} onClick={() => void connect()}>Connect</button></>}>
     <div className="cz-provs">
-      <div className="cz-prov"><b>An agent with an A2A card</b><small>Enter its address and outbound token. Your inbound token is generated locally and never shown here.</small>
+      <div className="cz-prov"><b>An agent with an A2A card</b><small>Paste its address. Branch reads what it can do.</small>
         <label>Name<input aria-label="Agent name" value={name} onChange={event => setName(event.target.value)} /></label>
         <label>Address<input aria-label="Agent address" type="url" value={url} onChange={event => setUrl(event.target.value)} /></label>
         <label>Outbound token<input aria-label="Outbound token" type="password" value={outboundToken} onChange={event => setOutboundToken(event.target.value)} /></label>
         {(error || ctx.config.writeError) && <p role="alert" className="cz-error">{error || ctx.config.writeError}</p>}</div>
-      <div className="cz-prov"><b>Branch on another computer</b><small>Its Trunks answer here.</small><button type="button" className="btn sm" onClick={() => setLinkBranch(true)}>Connect</button></div>
-      <div className="cz-prov"><b>An agent on your KeepOak computer</b><small>Runs in the cloud, answers here.</small><Grey reason="Connecting to keepoak.com from here comes in a later update.">Connect</Grey></div>
+      <div className="cz-prov"><b>Branch on another computer</b><small>Pair → Let it in → Name it → What it may do, with a check code.</small><button type="button" className="btn sm" onClick={() => setLinkBranch(true)}>Connect</button></div>
+      <div className="cz-prov"><b>An agent on your KeepOak computer</b><small>Hermes Agent or another Branch.</small><Grey reason="Connecting to keepoak.com from here comes in a later update.">Connect</Grey></div>
     </div>
   </Dialog>;
 }
