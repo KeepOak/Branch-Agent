@@ -40,7 +40,9 @@ it("draws Settings › Trunks as the full Trunks page: every Trunk, A new Trunk,
   await act(async () => root.render(<SettingsFrame engine={engine} page="trunks" pages={R1_PAGES} />));
   await settle();
   const page = host.querySelector<HTMLElement>('.r1s-custom[data-slot="trunks"]')!;
-  expect(page.querySelector("h1")!.textContent).toBe("Trunks");
+  // The frame draws the title above the page (#1049); the page draws none of its own.
+  expect([...host.querySelectorAll("h1")].map((h) => h.textContent)).toEqual(["Trunks"]);
+  expect(page.querySelector("h1")).toBeNull();
   expect([...page.querySelectorAll(".tk-row .tk-row-who")].map((b) => b.getAttribute("aria-label"))).toEqual(["Oak: profile", "Birch: profile"]);
   expect(button("A new Trunk").disabled).toBe(false);
   expect(button("New group chat")).toBeTruthy();

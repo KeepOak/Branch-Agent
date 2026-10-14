@@ -3,7 +3,7 @@ import type { SettingsPageProps } from "../index";
 import { KeeperMark } from "../../../brand/KeeperMark";
 import { Btn, Ctl, Hint, Page, Sec, Status, Switch } from "../kit";
 import { useDesktopControls } from "../../../connect/desktop-controls";
-import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus, type ComponentUpdateStatus, type EngineUpdateEvent } from "../../../connect/desktop-component-updates";
+import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus, type ComponentUpdateStatus, type EngineUpdateEvent, undoOpen, useDesktopUndoAvailability, type ComponentUpdates, type UndoAvailability } from "../../../connect/desktop-component-updates";
 
 /** The desktop drains running work for up to 330 s, then restarts; a silent desktop gets this long plus a 60 s margin. */
 export const INSTALL_NO_ANSWER_MS = 390_000;
@@ -81,6 +81,7 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
         ? "Branch applies it by itself the next time no Trunk is working."
         : "Branch won’t apply a staged update until you choose. Apply now, in place applies it."}</Hint>
         : <Hint>Branch checks every 10 minutes.</Hint>}
+      <UndoLastUpdate gatewayUrl={engine.gatewayUrl} bridge={bridge} />
     </Sec>
     <Sec title="About"><WhatsNewRow /></Sec>
   </Page>;
@@ -112,4 +113,24 @@ function statusLine(status: ComponentUpdateStatus | null): string {
   if (status.phase === "checking") return "Checking for updates…";
   if (status.phase === "staging") return "Downloading and checking the update…";
   return status.currentVersion ? `Branch ${versionParts(status.currentVersion).detail}` : "Check for updates";
+}
+
+/** The preview's version line under "Undo the last update": "0.19.4 installed Sep 20." (month and day in the owner's locale). */
+export function undoVersionLine(value: UndoAvailability | null, locale?: string | string[]): string | null {
+  if (!value?.version || value.installedAt == null) return null;
+  return `${versionParts(value.version).short} installed ${new Date(value.installedAt).toLocaleDateString(locale, { month: "short", day: "numeric" })}.`;
+}
+
+/** Preview Settings › Updating "Undo the last update": Undo, over the installed version's line. The row is there only while
+ *  Undo can run (the previous engine's 3-day probation, Private #983); after that, or once it is pruned, it goes. */
+function UndoLastUpdate({ gatewayUrl, bridge }: { gatewayUrl?: string; bridge: ComponentUpdates }) {
+  const { value } = useDesktopUndoAvailability(gatewayUrl);
+  const [undoing, setUndoing] = useState(false);
+  useEffect(() => { if (!undoing) return; const timer = setTimeout(() => setUndoing(false), 60_000); return () => clearTimeout(timer); }, [undoing]);
+  const line = undoVersionLine(value);
+  const undo = bridge.undo;
+  if (!undo || !undoOpen(value) || !line) return null;
+  return <Ctl title="Undo the last update" sub={line}>
+    <Btn sm disabled={undoing} onClick={() => { setUndoing(true); undo(); }}>Undo</Btn>
+  </Ctl>;
 }
