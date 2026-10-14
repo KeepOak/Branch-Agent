@@ -707,4 +707,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["trunks.team.propose", "trunk-team", "operator.read", "2026.10"],
   ["trunks.team.approve", "trunk-team", "operator.write", "2026.10"],
   ["buildWorktrees.status", "build-worktrees", "operator.read", "2026.10"],
+  ["sessions.messages.pin", "sessions-reactions", "operator.write", "2026.10"],
+  ["sessions.messages.delete", "sessions-reactions", "operator.write", "2026.10"],
 ] as const satisfies readonly CoreGatewayMethodSpecRow[];
