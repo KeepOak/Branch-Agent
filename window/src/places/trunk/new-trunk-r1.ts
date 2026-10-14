@@ -13,5 +13,5 @@ export async function makeRandomTrunk(engine: WindowEngine, openConversation: (a
   const agentId = await createTrunk(engine, choice.name, choice.avatar);
   await waitForTrunk(engine, agentId);
   const sessionKey = await openConversation(agentId);
-  return sessionKey ? { agentId, sessionKey, name: choice.name } : null;
+  return sessionKey ? { agentId, sessionKey, name: choice.name, avatar: choice.avatar } : null;
 }

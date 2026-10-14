@@ -24,7 +24,7 @@ describe("makeRandomTrunk", () => {
     expect(created[0].name.length).toBeGreaterThan(0);
     expect(created[0].avatar).toMatch(/^branch:/);
     expect(open).toHaveBeenCalledWith("ash");
-    expect(flow).toEqual({ agentId: "ash", sessionKey: "agent:ash:main", name: created[0].name });
+    expect(flow).toEqual({ agentId: "ash", sessionKey: "agent:ash:main", name: created[0].name, avatar: created[0].avatar });
   });
 
   it("makes no conversation and returns null when the conversation cannot open", async () => {
