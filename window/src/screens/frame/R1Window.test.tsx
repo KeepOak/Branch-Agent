@@ -128,7 +128,7 @@ it("sends a page to R1 Settings only when the row table or a slot covers it and 
   for (const page of ["models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
 });
 
-it("the conversation menu's \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
+it("the conversation menu's View › \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
   const snapshot = { status: { phase: "connected" }, name: "Scout", sessionKey: "agent:scout:main", mainKey: "agent:scout:main", history: [], live: [], queued: [] };
   const setOverride = vi.fn();
   const request = vi.fn(async (method: string) => { if (method === "users.prefs.set") setOverride(); return {}; });
@@ -139,7 +139,10 @@ it("the conversation menu's \"Show agents' work as\" rows turn Coming when the e
   const needs = comingControls().flatMap((entry) => entry.need);
   expect(needs).toEqual(expect.arrayContaining(["computer.status", "browser.request", "agent.identity.get", "sessions.search"]));
   await act(async () => document.querySelector<HTMLButtonElement>('.r1-header-right [aria-label="More"]')!.click());
-  const rows = [...document.querySelectorAll<HTMLElement>('[aria-label="Show agents’ work as"] [role="menuitemradio"]')];
+  const open = async (label: string) => act(async () => [...document.querySelectorAll<HTMLButtonElement>(".r1c-conv [data-menu-item]")].find((el) => el.querySelector(".g-menu-label")?.firstChild?.textContent === label)!.click());
+  await open("View");
+  await open("Show agents’ work as");
+  const rows = [...document.querySelectorAll<HTMLElement>('[aria-label="Show agents’ work as"] [role="menuitemcheckbox"]')];
   expect(rows.length).toBeGreaterThan(1);
   for (const row of rows) {
     expect(row.getAttribute("aria-disabled"), row.textContent ?? "").toBe("true");
@@ -165,4 +168,23 @@ it("opens the R1 onboarding card on first run, with the window behind it stepped
   await act(async () => { await new Promise((r) => setTimeout(r, 800)); });
   expect(host.querySelector(".r1-ob")).toBeNull();
   expect(host.querySelector(".r1-ob-behind")?.hasAttribute("inert")).toBe(false);
+});
+
+it("puts Talk beside on a place's header and opens the Classic pane beside the page, never on a conversation (parity row 20)", async () => {
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "place", place: "library" }));
+  const snapshot = { status: { phase: "connected" }, name: "Main", sessionKey: "agent:main:main", mainKey: "agent:main:main", history: [], live: [], queued: [] };
+  const request = vi.fn(async () => ({}));
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, request, onGatewayEvent: () => () => undefined, open: vi.fn(async () => undefined), engine: { request: vi.fn(async () => ({ hash: "h", config: { wizard: { lastRunAt: "2026-10-01T00:00:00.000Z" } } })), onEvent: () => () => undefined, agentId: "main" } } as unknown as SaplingSession;
+  await act(async () => root.render(<R1Window session={session} />));
+  const talk = host.querySelector<HTMLButtonElement>('.r1-header-right [aria-label^="Talk to"]')!;
+  expect(talk).not.toBeNull();
+  await act(async () => talk.click());
+  expect(host.querySelector(".r1-beside [data-testid=talk-beside]")).not.toBeNull();
+  expect(request).toHaveBeenCalledWith("chat.history", { sessionKey: "agent:main:main", limit: 60 });
+  await act(async () => root.unmount());
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "chat", key: "agent:main:main" }));
+  root = createRoot(host);
+  await act(async () => root.render(<R1Window session={session} />));
+  expect(host.querySelector('.r1-header-right [aria-label^="Talk to"]')).toBeNull();
+  expect(host.querySelector(".r1-beside")).toBeNull();
 });
