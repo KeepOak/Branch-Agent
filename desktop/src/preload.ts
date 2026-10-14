@@ -265,8 +265,9 @@ function showDiskFull(message: string): void {
       banner.setAttribute("role", "alert");
       banner.dataset.testid = "desktop-disk-full";
       banner.style.cssText = [
-        "position:fixed", "left:50%", "top:12px", "transform:translateX(-50%)", "z-index:2147483647",
-        "max-width:min(560px,calc(100vw - 32px))", "padding:8px 14px", "border-radius:10px",
+        // Below the window's top row of controls (R1 header pills end at 44px), sized to its text up to 560px.
+        "position:fixed", "left:50%", "top:56px", "transform:translateX(-50%)", "z-index:2147483647",
+        "width:max-content", "max-width:min(560px,calc(100vw - 32px))", "padding:8px 14px", "border-radius:10px",
         "background:#78350f", "color:#fff", "font:13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif",
         "box-shadow:0 6px 24px rgba(15,23,42,.28)",
       ].join(";");
