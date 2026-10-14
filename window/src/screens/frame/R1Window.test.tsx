@@ -128,7 +128,7 @@ it("sends a page to R1 Settings only when the row table or a slot covers it and 
   for (const page of ["models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
 });
 
-it("the conversation menu's \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
+it("the conversation menu's View › \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
   const snapshot = { status: { phase: "connected" }, name: "Scout", sessionKey: "agent:scout:main", mainKey: "agent:scout:main", history: [], live: [], queued: [] };
   const setOverride = vi.fn();
   const request = vi.fn(async (method: string) => { if (method === "users.prefs.set") setOverride(); return {}; });
@@ -139,7 +139,10 @@ it("the conversation menu's \"Show agents' work as\" rows turn Coming when the e
   const needs = comingControls().flatMap((entry) => entry.need);
   expect(needs).toEqual(expect.arrayContaining(["computer.status", "browser.request", "agent.identity.get", "sessions.search"]));
   await act(async () => document.querySelector<HTMLButtonElement>('.r1-header-right [aria-label="More"]')!.click());
-  const rows = [...document.querySelectorAll<HTMLElement>('[aria-label="Show agents’ work as"] [role="menuitemradio"]')];
+  const open = async (label: string) => act(async () => [...document.querySelectorAll<HTMLButtonElement>(".r1c-conv [data-menu-item]")].find((el) => el.querySelector(".g-menu-label")?.firstChild?.textContent === label)!.click());
+  await open("View");
+  await open("Show agents’ work as");
+  const rows = [...document.querySelectorAll<HTMLElement>('[aria-label="Show agents’ work as"] [role="menuitemcheckbox"]')];
   expect(rows.length).toBeGreaterThan(1);
   for (const row of rows) {
     expect(row.getAttribute("aria-disabled"), row.textContent ?? "").toBe("true");
