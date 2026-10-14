@@ -21,6 +21,7 @@ const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
 const LEVEL_KEY = "branch.level";
 export const SECTION_COMING = (card: string) => `${card} comes to this page in a later update.`;
 export const ASK_COMING = "Asking a Trunk from Settings comes in a later update.";
+export const MAKE_DEFAULT_COMING = "Making a Trunk the default from Settings comes in a later update.";
 const FINE = "Fine-tune each part";
 const NO_SLOTS: PageSlots = {};
 
@@ -96,15 +97,14 @@ function Results({ engine, hits, onOpen, onMakeDefault }: { engine: WindowEngine
                 <span><b data-lv={hit.kind === "row" && hit.level > 0 ? LEVELS[hit.level].label : undefined}>{hit.label}</b>{"sub" in hit && hit.sub ? <small>{hit.sub}</small> : null}</span>
               </button>
             );
-            // Without a host that makes it, Make default is not drawn: it waits in Seedbank › Coming to Branch (R1-15).
-            if (hit.kind !== "trunk" || !hit.actions.includes("makeDefault") || !onMakeDefault) return button;
+            if (hit.kind !== "trunk" || !hit.actions.includes("makeDefault")) return button;
             // Make default is its own button beside the Trunk, so it never reads as part of opening it.
             return (
               <div key={`${hit.kind}:${hit.id}`} className="r1s-hit">
                 {button}
-                {/* Make default is a config.patch of the default agent (HANDOFF R1-06). */}
-                <Coming engine={engine} need="config.patch">
-                  <button type="button" className="r1s-link r1s-mkdef" onClick={() => onMakeDefault(hit.id)}>Make default</button>
+                {/* Make default is a config.patch of the default agent (HANDOFF R1-06); without a host that makes it, Coming here (#1049). */}
+                <Coming engine={engine} need="config.patch" unwired={!onMakeDefault} reason={onMakeDefault ? undefined : MAKE_DEFAULT_COMING} where="Settings search › Make default">
+                  <button type="button" className="r1s-link r1s-mkdef" onClick={() => onMakeDefault?.(hit.id)}>Make default</button>
                 </Coming>
               </div>
             );
@@ -170,6 +170,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
   const [q, setQ] = useState("");
   const [help, setHelp] = useState(false);
   const [jump, setJump] = useState<string | null>(null);
+  const [slotSecs, setSlotSecs] = useState<string[]>([]);
   const scroller = useRef<HTMLDivElement>(null);
   const store = configStore(engine);
   const config = useSyncExternalStore((fn) => store.subscribe(fn), () => store.snap ?? store.error ?? null, () => store.snap ?? store.error ?? null);
@@ -212,8 +213,6 @@ export function SettingsFrame(props: SettingsFrameProps) {
     const all = rows.filter((r) => r.page === shownPage && r.card === card);
     const visible = cardRows(shownPage, card, level, hints, rows);
     if (all.length && !visible.length) return [];
-    // General's sections with no rows yet are not drawn: they wait in Seedbank › Coming to Branch (R1-15).
-    if (!all.length && shownPage === "general") return [];
     return [{ card, visible }];
   });
   const first = pageFirstLevel(shownPage, hints, rows);
@@ -251,14 +250,23 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </nav>
       </aside>
       <div className="r1s-page" ref={scroller}>
-        {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} /></div> : <>
+        {/* Every page, row page or slot page, has the frame's title, lede and Learn more (preview s36Head, HANDOFF R1-06);
+            slot pages draw no title of their own (#1049). */}
         <header className="r1s-head">
           <h1 className="g-label">{spec.title}</h1>
-          <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" data-local="" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>
+          <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" data-local="" aria-expanded={help} onClick={() => {
+            // A slot page's "On this page" is its section headings, read when the sheet opens (preview s36Help reads .s36Sec).
+            if (Custom) setSlotSecs([...(scroller.current?.querySelectorAll<HTMLElement>(".r1s-custom h2") ?? [])].map((h) => h.textContent?.trim() ?? "").filter(Boolean));
+            setHelp((v) => !v);
+          }}>Learn more</button></p>
           {help ? (
             <div className="r1s-help g-clear" role="dialog" aria-label={`About ${spec.title}`}>
-              <h3 className="g-label">On this page</h3>
-              <ul>{sections.map((s) => <li key={s.card}><button type="button" className="r1s-link" data-local="" onClick={() => { setHelp(false); setJump(`sec-${shownPage}-${s.card}`); }}>{s.card || spec.title}</button></li>)}</ul>
+              {/* A page with no sections (Go to) has no "On this page" list, as in the preview's s36Help. */}
+              {(Custom ? slotSecs.length : sections.length) ? <h3 className="g-label">On this page</h3> : null}
+              <ul>{Custom ? slotSecs.map((t, i) => <li key={`${i}-${t}`}><button type="button" className="r1s-link" data-local="" onClick={() => {
+                setHelp(false);
+                [...(scroller.current?.querySelectorAll<HTMLElement>(".r1s-custom h2") ?? [])].find((h) => h.textContent?.trim() === t)?.scrollIntoView?.({ block: "start" });
+              }}>{t}</button></li>) : sections.map((s) => <li key={s.card}><button type="button" className="r1s-link" data-local="" onClick={() => { setHelp(false); setJump(`sec-${shownPage}-${s.card}`); }}>{s.card || spec.title}</button></li>)}</ul>
               {/* Ask a Trunk sends the question to the default Trunk's conversation with chat.send (the window's session.send). */}
               <Coming engine={engine} need="chat.send" unwired={!props.onAsk} reason={props.onAsk ? undefined : ASK_COMING}>
                 <button type="button" className="r1s-btn" onClick={() => props.onAsk?.(`Help me with Settings › ${spec.title}.`)}>Ask a Trunk</button>
@@ -266,6 +274,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
             </div>
           ) : null}
         </header>
+        {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} /></div> : <>
         <div className="r1s-col">
           {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></Coming></div> : null}
           {invalid ? (
