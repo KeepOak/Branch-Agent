@@ -4,7 +4,7 @@
 // back, remember the release as rejected and relaunch the previous app.
 import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
-import { readdir, rename, rm, writeFile } from "node:fs/promises";
+import { cp, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 
 export interface HelperPlan {
@@ -33,11 +33,29 @@ async function writeJournal(file: string, journal: Journal): Promise<void> {
   await rename(`${file}.helper.tmp`, file);
 }
 
+/** A rename cannot cross volumes (EXDEV): the updates folder can live on another disk than the installed app.
+ * Copy beside the target first (symlinks kept as they are, so an app bundle's signature still holds), then rename
+ * that copy into place on its own volume, then remove the source. A failed copy leaves the target untouched. */
+async function copyAcross(source: string, target: string): Promise<void> {
+  const incoming = `${target}.incoming`;
+  await rm(incoming, { recursive: true, force: true });
+  try {
+    await cp(source, incoming, { recursive: true, verbatimSymlinks: true, preserveTimestamps: true, errorOnExist: true, force: false });
+    await rename(incoming, target);
+  } catch (error) {
+    await rm(incoming, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
+  await rm(source, { recursive: true, force: true }).catch(() => undefined);
+}
+
 /** Files can stay locked for a moment after a process exits (Windows); retry, then give up without changes. */
-async function move(source: string, target: string, attempts = 120): Promise<void> {
+export async function move(source: string, target: string, attempts = 120,
+  renameFile: (from: string, to: string) => Promise<void> = rename): Promise<void> {
   for (let attempt = 0;; attempt++) {
-    try { await rename(source, target); return; } catch (error) {
+    try { await renameFile(source, target); return; } catch (error) {
       const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (code === "EXDEV") { await copyAcross(source, target); return; }
       if (!["EPERM", "EBUSY", "EACCES", "ENOTEMPTY"].includes(code) || attempt >= attempts) throw error;
       await sleep(250);
     }

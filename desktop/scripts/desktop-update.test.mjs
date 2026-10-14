@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat, truncate, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, readdir, rename, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,7 +14,7 @@ if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_T
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const updater = await import(pathToFileURL(join(dist, "component-update.js")));
 const desktopUpdate = await import(pathToFileURL(join(dist, "desktop-update.js")));
-const { runHelper } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
+const { runHelper, move } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
 const { parseComponentRelease } = await import(pathToFileURL(join(dist, "component-update-manifest.js")));
 const ELECTRON = "44.5.1";
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -332,3 +332,46 @@ test("the discard line goes through the same 20 MB cap as desktop.log", () => fi
   assert.match(await readFile(log, "utf8"), /desktop update 0\.4\.5 discarded: app\.asar\.staged is missing/);
   assert.ok((await stat(log)).size < 1024 * 1024, "the live log is small again");
 }));
+
+test("a staged app on another volume than the installed one (EXDEV) is copied into place, links and modes kept", { skip: process.platform === "win32" }, async () => {
+  const parent = join(tmpdir(), "Codex-session-files"); await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(join(parent, "desktop-update-exdev-"));
+  try {
+    const staged = join(root, "updates", "payload", "Branch Agent.app"), target = join(root, "Applications", "Branch Agent.app");
+    const versions = join(staged, "Contents", "Frameworks", "Electron Framework.framework", "Versions");
+    await mkdir(join(versions, "A"), { recursive: true }); await mkdir(join(staged, "Contents", "MacOS"), { recursive: true });
+    await mkdir(join(root, "Applications"), { recursive: true });
+    await writeFile(join(versions, "A", "Electron Framework"), "framework");
+    await symlink("A", join(versions, "Current"));
+    await writeFile(join(staged, "Contents", "MacOS", "Branch Agent"), "new runtime"); await chmod(join(staged, "Contents", "MacOS", "Branch Agent"), 0o755);
+    // The first rename meets another volume, as a payload under the data folder on an external disk does.
+    const crossVolume = async (from, to) => {
+      if (from === staged) throw Object.assign(new Error(`EXDEV: cross-device link not permitted, rename '${from}' -> '${to}'`), { code: "EXDEV" });
+      await rename(from, to);
+    };
+    await move(staged, target, 120, crossVolume);
+    assert.equal(await readFile(join(target, "Contents", "MacOS", "Branch Agent"), "utf8"), "new runtime");
+    assert.equal((await stat(join(target, "Contents", "MacOS", "Branch Agent"))).mode & 0o777, 0o755);
+    const link = join(target, "Contents", "Frameworks", "Electron Framework.framework", "Versions", "Current");
+    assert.ok((await lstat(link)).isSymbolicLink());
+    assert.equal(await readlink(link), "A");
+    assert.equal(await exists(staged), false, "the staged copy is removed once the new copy is in place");
+    assert.deepEqual(await readdir(join(root, "Applications")), ["Branch Agent.app"], "no half-copied folder is left beside the app");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("a cross-volume copy that fails leaves the target untouched and the staged copy in place", { skip: process.platform === "win32" }, async () => {
+  const parent = join(tmpdir(), "Codex-session-files"); await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(join(parent, "desktop-update-exdev-"));
+  try {
+    const staged = join(root, "staged.asar"), target = join(root, "target", "app.asar");
+    await writeFile(staged, "new asar"); await mkdir(join(root, "target"));
+    // The target's folder is read-only, so the copy beside it fails.
+    await chmod(join(root, "target"), 0o555);
+    const crossVolume = async () => { throw Object.assign(new Error("EXDEV"), { code: "EXDEV" }); };
+    await assert.rejects(move(staged, target, 120, crossVolume));
+    await chmod(join(root, "target"), 0o755);
+    assert.equal(await readFile(staged, "utf8"), "new asar");
+    assert.deepEqual(await readdir(join(root, "target")), []);
+  } finally { await chmod(join(root, "target"), 0o755).catch(() => undefined); await rm(root, { recursive: true, force: true }); }
+});
