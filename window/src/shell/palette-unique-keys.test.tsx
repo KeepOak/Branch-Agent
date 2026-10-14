@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../connect/conversations";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
-import { WhatsNew, type NewRow } from "./WhatsNew";
+import { WhatsNew, type NewGroups } from "./WhatsNew";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -79,10 +79,10 @@ describe("Find anything keys", () => {
 describe("What's new keys", () => {
   it("lists update notes that repeat a line without a duplicate-key warning", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const row: NewRow = { icon: "check", title: "Find anything", line: "Ctrl K.", run: noop };
+    const row: NewGroups["New"][number] = { icon: "check", title: "Find anything", line: "Ctrl K.", run: noop };
     const host = await render(
       <WhatsNew version="1.0.0" update={null} installed={{ New: [row, { ...row }], Better: [], Fixed: [] }}
-        onOpenUpdates={noop} onInstall={noop} onClose={noop} />,
+        onOpenUpdates={noop} onClose={noop} />,
     );
     expect(host.ownerDocument.querySelectorAll(".new-row13")).toHaveLength(2);
     expect(keyWarnings(spy)).toEqual([]);
