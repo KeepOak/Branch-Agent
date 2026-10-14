@@ -1,22 +1,23 @@
 // Branch Agent desktop app: starts the engine gateway, serves the built window on 127.0.0.1 and shows it.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell } from "electron";
-import type { ChildProcess } from "node:child_process";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, powerMonitor, screen, session, shell } from "electron";
+import { spawn, type ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
-import { attachOrStartEngine, engineAnswers, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
+import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { attachOrStartEngine, engineAnswers, readEngineHealth, restartStoppedServiceEngine, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
+import { createRunKeepAwake, POWER_STATE_REFRESH_MS, writePowerState } from "./keep-awake";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, rollbackReadyBudgetMs, standbyReadyBudgetMs } from "./readiness-budget";
 import { readPreparedNormalProfile } from "./profile-migration";
-import { createGatewayCrashSupervisor } from "./gateway-supervisor";
+import { createGatewayCrashSupervisor, createServiceEngineWatch } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
-import { readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
+import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
 import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
@@ -246,7 +247,10 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
   restart: async () => {
     // An update in progress owns the engine; spending restart attempts against it would exhaust the budget.
     if (updateLock.held) { recoveryDeferred = true; log(`gateway exit during an update (${updateLock.purpose}); recovery waits for it`); return; }
-    if (quitting || engineServing()) return;
+    if (quitting) return;
+    // The engine service is brought back by its service manager, never by a second engine inside the app.
+    if (serviceEngine) return restartServiceEngine();
+    if (engineServing()) return;
     const lock = updateLock.acquire(RECOVERY)!;
     try {
       // A live engine that never became ready (a failed update's new engine slow to exit) is not serving: stop it.
@@ -273,10 +277,34 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
 });
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
 let tray: Tray | undefined;
+/** Said once in Settings when this computer runs the engine inside the app (engine-service takeChildModeNotice). */
+let childModeNotice: string | undefined;
 const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, TRAY_ICON), onChange: settings => {
   if (engineUpdateReady) sendToBranchWindows("branch-desktop:engine-update", settings.autoApplyUpdates ? "auto-wait" : "ready");
+  keepAwake.refresh();
   void autoApply.tick();
-} });
+},
+// Linux, with the engine service: "Keep working when nobody is signed in" through the engine's linger path.
+linger: process.platform === "linux" && cfg.alwaysOn ? {
+  get: () => runEngineLinger(cfg, serviceEngineDir(), token, "status"),
+  set: async on => { await runEngineLinger(cfg, serviceEngineDir(), token, on ? "on" : "off"); },
+} : undefined,
+notes: () => childModeNotice ? { keepWorking: `Branch runs inside the app on this computer because its background service couldn't be installed (${childModeNotice}). Quitting Branch stops your Trunks.` } : {},
+});
+/** True on battery power (false before the app is ready, or where Electron can't say). */
+function onBatteryPower(): boolean {
+  try { return app.isReady() && typeof powerMonitor?.isOnBatteryPower === "function" && powerMonitor.isOnBatteryPower(); } catch { return false; }
+}
+/** Always on (Private #454 D): the OS sleep blocker, held only while a Trunk has a live run. */
+const keepAwake = createRunKeepAwake({
+  platform: process.platform,
+  appPid: process.pid,
+  spawn: (file, args, options) => spawn(file, args, options),
+  enabled: () => controls.settings().keepAwake && !HIDDEN && !TEST_COPY,
+  onBatteryToo: () => controls.settings().keepAwakeOnBattery,
+  onBattery: () => onBatteryPower(),
+  log,
+});
 let nextProbeId = 0;
 
 type WindowState = { pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean; workingTrunks?: number };
@@ -956,7 +984,13 @@ function createWindow(): BrowserWindow {
     if (win === w) win = undefined;
     if (!quitting && !controls.settings().keepWorking) {
       for (const child of conversationWindows.values()) if (!child.isDestroyed()) child.close();
-      app.quit();
+      // "Keep working when Branch is closed" off: closing stops the engine, as before the service (Private #454 F).
+      if (serviceEngine) {
+        log("window closed with keep working off; stopping the engine service");
+        void runEngineServiceAction(cfg, serviceEngineDir(), token, "stop", log)
+          .catch(error => log(`stopping the engine service failed: ${error instanceof Error ? error.message : String(error)}`))
+          .finally(() => app.quit());
+      } else app.quit();
     }
   });
   tray = keepWindowResident(app, w, TRAY_ICON, {
@@ -1235,7 +1269,9 @@ async function start(): Promise<void> {
   }
   // Quit can run after the gateway becomes ready but before this startup continuation resumes.
   if (quitting) return;
+  childModeNotice = takeChildModeNotice(cfg.dataDir);
   watchTrayStatus();
+  watchPowerSource();
   watchUpdates(win);
   componentsReady = true;
   if (pendingReleasePrune) runConfirmedReleasePrune();
@@ -1284,6 +1320,43 @@ async function refuseOrphanedEngine(): Promise<void> {
 /** True while the window talks to the per-user engine service rather than a child of this app. */
 let serviceEngine = false;
 const SERVICE_ENGINE_WATCH_MS = 5_000;
+/** The engine stopped its own service after a crash storm: the owner restarts it (or reopens the app), not the watch. */
+let serviceStormed = false;
+/**
+ * The service engine is not this app's child: its death shows only as /readyz going quiet. A minute without an
+ * answer (six checks ten seconds apart, five seconds each) counts as down; a busy engine answers within that.
+ */
+const serviceWatch = createServiceEngineWatch({
+  probe: () => engineAnswers(cfg.gatewayPort, 5_000),
+  paused: () => quitting || !serviceEngine || updateLock.held,
+  down: error => gatewaySupervisor.down(error),
+  up: () => { serviceStormed = false; gatewaySupervisor.up(); },
+  log,
+  misses: 6,
+  intervalMs: 10_000,
+});
+
+/** Crash recovery for the engine service, under the update lock like a child's restart. */
+async function restartServiceEngine(): Promise<void> {
+  const lock = updateLock.acquire(RECOVERY)!;
+  try {
+    const probe = () => engineAnswers(cfg.gatewayPort);
+    const result = await restartStoppedServiceEngine({
+      probe,
+      stormed: () => serviceStormed,
+      quitting: () => quitting,
+      startService: () => runEngineServiceAction(cfg, serviceEngineDir(), token, "start", log),
+      waitForService: () => waitForEngineAnswer(probe, READY_TIMEOUT_MS),
+      log,
+    });
+    if (result === "restarted") {
+      gatewayRecoveryError = undefined;
+      handWindowToGateway(true);
+    }
+  } finally {
+    await updateLock.release(lock);
+  }
+}
 
 /**
  * Always on (Private #454 B): attach to the running service engine, or install and start it and then attach. Only a
@@ -1293,6 +1366,7 @@ const SERVICE_ENGINE_WATCH_MS = 5_000;
 async function attachServiceEngine(): Promise<boolean> {
   const stateDir = join(cfg.dataDir, "home", ".branch");
   const showStorm = (message: string) => {
+    serviceStormed = true;
     gatewayRecoveryError = message;
     log(`engine service: ${message}`);
     sendToBranchWindows("branch-desktop:gateway-recovery-failed", message);
@@ -1335,6 +1409,8 @@ async function attachServiceEngine(): Promise<boolean> {
   }, SERVICE_ENGINE_WATCH_MS);
   timer.unref();
   app.once("will-quit", () => clearInterval(timer));
+  // A service that stopped answering (it died and its manager did not bring it back) is restarted with backoff.
+  serviceWatch.start();
   return false;
 }
 
@@ -1351,6 +1427,8 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
     log(`Mac computer driver unavailable: ${describeDriverError(error)}`);
     return undefined;
   });
+  // A quit that arrived while this start waited never leaves an engine behind it.
+  if (quitting && !prepared) throw new Error("Branch Agent is quitting");
   const spawned = Date.now();
   const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);
   const preparedPid = prepared?.child.pid;
@@ -1563,6 +1641,8 @@ async function serviceWork(): Promise<ServiceWork> {
 function liveEngineState(): Promise<EngineLiveState> {
   return readEngineLiveState({
     engineUp: async () => serviceEngine ? engineAnswers(cfg.gatewayPort) : engineServing(),
+    // Honest health: an engine whose agent can't answer says so instead of looking Ready (or Stopped).
+    health: () => readEngineHealth(serviceEngine ? cfg.gatewayPort : gatewayPort),
     window: () => probeWindowState(),
     engineRuns: serviceEngine || !gateway ? undefined : async () => {
       const activity = await gatewayActivity(gateway!);
@@ -1572,17 +1652,62 @@ function liveEngineState(): Promise<EngineLiveState> {
 }
 
 const TRAY_STATUS_MS = 10_000;
-/** Keeps the tray's live line current ("2 Trunks working", "Waiting on you (1)", "Stopped"). */
+/** While a Trunk works the state is read more often, so the sleep blocker is released soon after its run ends. */
+const TRAY_STATUS_WORKING_MS = 3_000;
+/** Reach you with the window closed (Private #454 D): approvals and "done" as OS notifications from the tray. */
+const notifier = createClosedWindowNotifier({
+  windowShown: () => Boolean(win && !win.isDestroyed() && win.isVisible?.() !== false && win.isMinimized?.() !== true),
+  show: notice => {
+    if (HIDDEN || TEST_COPY || typeof Notification?.isSupported !== "function" || !Notification.isSupported()) return;
+    const shown = new Notification({ title: notice.title, body: notice.body, silent: false });
+    shown.on("click", () => { if (win && !win.isDestroyed()) { win.show(); win.focus(); } });
+    shown.show();
+    log(`notified: ${notice.kind}`);
+  },
+  // A paired phone gets a push too, through the engine's push service (the window holds the engine connection).
+  phone: notice => { if (win && !win.isDestroyed()) win.webContents.send("branch-desktop:phone-push", { title: notice.title, body: notice.body }); },
+});
+
+/** Keeps the tray's live line current ("2 Trunks working", "Waiting on you (1)", "Stopped"), and with it the sleep
+ *  blocker and the closed-window notifications. */
 function watchTrayStatus(): void {
   if (!tray) return;
   let reading = false;
+  let timer: NodeJS.Timeout | undefined;
+  const schedule = (working: boolean) => {
+    if (quitting) return;
+    timer = setTimeout(refresh, working ? TRAY_STATUS_WORKING_MS : TRAY_STATUS_MS);
+    timer.unref();
+  };
   const refresh = () => {
     if (reading || quitting) return;
     reading = true;
-    void liveEngineState().then(state => showTrayStatus(tray, state)).finally(() => { reading = false; });
+    let working = false;
+    void liveEngineState().then(state => {
+      working = state.running && state.workingTrunks > 0;
+      showTrayStatus(tray, state);
+      keepAwake.update(working);
+      notifier.observe(state);
+    }).finally(() => { reading = false; schedule(working); });
   };
   refresh();
-  const timer = setInterval(refresh, TRAY_STATUS_MS);
+  app.once("will-quit", () => { if (timer) clearTimeout(timer); });
+}
+
+/** Polite on battery: tells the engine the power source (it lowers its priority and backs off timed work that can
+ *  wait), and lets the sleep blocker follow it. */
+function watchPowerSource(): void {
+  const stateDir = join(cfg.dataDir, "home", ".branch");
+  const tell = () => {
+    writePowerState(stateDir, onBatteryPower());
+    keepAwake.refresh();
+  };
+  tell();
+  if (typeof powerMonitor?.on === "function") {
+    powerMonitor.on("on-battery", tell);
+    powerMonitor.on("on-ac", tell);
+  }
+  const timer = setInterval(tell, POWER_STATE_REFRESH_MS);
   timer.unref();
   app.once("will-quit", () => clearInterval(timer));
 }
@@ -1628,6 +1753,7 @@ function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
   quitting = true;
   quitAfterCleanStop = true;
   gatewaySupervisor.close();
+  serviceWatch.stop();
   stopGatewayCleanly(gateway, 15_000).then(() => log("gateway stopped cleanly for quit"),
     error => log(`quit: clean stop skipped: ${error instanceof Error ? error.message : String(error)}`)).finally(() => app.quit());
   return true;
@@ -1639,11 +1765,13 @@ function shutdown(): void {
   // Quit is instant with the engine service: it keeps working and drains on its own timeline.
   log(serviceEngine ? "quit; the engine service keeps running" : `quit; stopping gateway pid ${gateway?.pid}`);
   gatewaySupervisor.close();
+  serviceWatch.stop();
   stopEngineWatch?.();
   stopComponentWatch?.();
   autoApply.stop();
   stopWindowWatch?.();
   controls.dispose();
+  keepAwake.dispose();
   stopCandidate();
   stopWarmingStandby();
   // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.
@@ -1662,7 +1790,8 @@ if (!app.requestSingleInstanceLock()) {
   log("another Branch Agent window is open; quitting");
   app.quit();
 } else {
-  app.on("before-quit", () => { quitting = true; });
+  // From the first quit request on, no crash restart is scheduled or started: quit never turns into a restart loop.
+  app.on("before-quit", () => { quitting = true; gatewaySupervisor.close(); serviceWatch.stop(); });
   app.on("second-instance", () => {
     if (win && !win.isDestroyed() && !HIDDEN) {
       if (win.isMinimized()) win.restore();

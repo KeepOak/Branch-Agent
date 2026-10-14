@@ -153,7 +153,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     }
     if (fastSupervisor && name === "./gateway-supervisor") {
       const source = originalLoad.call(this, name, ...args);
-      return { createGatewayCrashSupervisor: options => source.createGatewayCrashSupervisor({ ...options,
+      return { ...source, createGatewayCrashSupervisor: options => source.createGatewayCrashSupervisor({ ...options,
         policy: typeof fastSupervisor === "object" ? fastSupervisor :
           { maxAttempts: 1, initialDelayMs: 10, maxDelayMs: 10, stableAfterMs: 60_000 } }) };
     }

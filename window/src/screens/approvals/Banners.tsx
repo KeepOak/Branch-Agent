@@ -1,5 +1,5 @@
 // Banners (preview item 12 bannersP17 / toastShowPA18; HANDOFF `2 Banners). Fixed top right, newest on top, at most 3
-// (the oldest is dismissed). Each has its own 6 s timer that pauses on hover or focus; × shows only on hover or focus;
+// (the oldest is dismissed). Each has its own 6 s timer that pauses on hover or focus, unless it is sticky; × shows only on hover or focus;
 // drag or flick right past 80 px to dismiss. They arrive with a spring from the right and leave by collapsing.
 // Approvals elsewhere in the app use this shell with Yes / No / Open. glass/Banners.tsx can adopt it for every toast.
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 
 export const BANNER_MS = 6000, BANNER_MAX = 3, LEAVE_MS = 380, FLING_PX = 80;
 
-export type BannerItem = { id: string; title: string; body?: string; face?: ReactNode; actions?: ReactNode };
+export type BannerItem = { id: string; title: string; body?: string; face?: ReactNode; actions?: ReactNode; sticky?: boolean };
 
 export function Banners({ items, onDismiss }: { items: BannerItem[]; onDismiss: (id: string) => void }) {
   const extra = items.slice(BANNER_MAX).map((b) => b.id).join(" ");
@@ -34,7 +34,7 @@ function Banner({ item, onDismiss }: { item: BannerItem; onDismiss: (id: string)
     setGone(true);
     setTimeout(() => latest.current(item.id), LEAVE_MS);
   };
-  const run = () => { const c = clock.current; if (c.t0) return; c.t0 = Date.now(); c.timer = setTimeout(() => dismiss(), c.left); };
+  const run = () => { const c = clock.current; if (c.t0 || item.sticky) return; c.t0 = Date.now(); c.timer = setTimeout(() => dismiss(), c.left); };
   const hold = () => { const c = clock.current; if (!c.t0) return; clearTimeout(c.timer); c.left = Math.max(900, c.left - (Date.now() - c.t0)); c.t0 = 0; };
   const resume = () => { const el = ref.current; if (el && !el.matches(":hover") && !el.contains(document.activeElement) && !drag.current) run(); };
   useEffect(() => { run(); return () => clearTimeout(clock.current.timer); }, []); // eslint-disable-line react-hooks/exhaustive-deps
