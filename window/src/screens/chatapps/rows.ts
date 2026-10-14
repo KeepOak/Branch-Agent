@@ -11,7 +11,7 @@ export const BASE_ROWS: Row[] = [
   { id: "chatapps.groups.policy", page: "chatapps", card: "Groups", label: "Groups, for every app", help: "An app’s own choice wins.", level: 1, control: "select", source: { kind: "config", path: "channels.defaults.groupPolicy" }, options: [{ v: "allowlist", label: "Groups I approve" }, { v: "open", label: "Any group" }, { v: "disabled", label: "No groups" }] },
   { id: "chatapps.commands.native", page: "chatapps", card: "Commands", label: "Commands in the app’s menu", level: 1, control: "select", source: { kind: "config", path: "commands.native" }, options: [{ v: "auto", label: "Auto" }, { v: true, label: "On" }, { v: false, label: "Off" }] },
   { id: "chatapps.commands.text", page: "chatapps", card: "Commands", label: "Typed commands", level: 1, control: "toggle", source: { kind: "config", path: "commands.text" } },
-  { id: "chatapps.approvals.enabled", page: "chatapps", card: "Approvals & what Trunks may do", label: "Send command approvals to chat apps", level: 1, control: "toggle", source: { kind: "config", path: "approvals.exec.enabled" } },
+  { id: "chatapps.approvals.enabled", page: "chatapps", card: "Approvals & what Trunks may do", label: "Send approvals to chat apps", level: 1, control: "toggle", source: { kind: "config", path: "approvals.exec.enabled" } },
   { id: "chatapps.limits.queue", page: "chatapps", card: "How replies look & arrive", label: "Hold up to", unit: "messages", level: 2, control: "number", source: { kind: "config", path: "messages.queue.cap" } },
 ];
 
