@@ -7,7 +7,7 @@ import { comingControls, undeclaredControls } from "../../glass/coming-registry"
 import { r1SettingsPage, r1Window, R1Window } from "./R1Window";
 vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <p>{name}</p> }));
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
-vi.mock("../../shell/use-status", () => ({ useLimits: () => null }));
+vi.mock("../../shell/use-status", () => ({ useLimits: () => null, useUpdate: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
 vi.mock("../../places-nav/SettingsFrame", () => ({ SettingsFrame: ({ page, onPage }: { page: string; onPage: (page: string) => void }) => <div data-testid="classic-settings" data-page={page}>Classic settings<button type="button" onClick={() => onPage("general")}>General</button></div> }));
 vi.mock("../settings/pages/plugged", () => ({ R1_PAGES: { chatapps: { component: () => null } } }));
@@ -196,6 +196,19 @@ it("opens the R1 onboarding card on first run, with the window behind it stepped
   await act(async () => { await new Promise((r) => setTimeout(r, 800)); });
   expect(host.querySelector(".r1-ob")).toBeNull();
   expect(host.querySelector(".r1-ob-behind")?.hasAttribute("inert")).toBe(false);
+});
+
+it("opens the What's new dialog in the R1 window on branch:whats-new, and its rows open R1 places", async () => {
+  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, gatewayUrl: "ws://127.0.0.1:1", engine: { id: "live-engine", request: vi.fn(async () => ({})), onEvent: () => () => undefined } } as unknown as SaplingSession;
+  await act(async () => root.render(<R1Window session={session} />));
+  expect(document.querySelector("[data-testid=whats-new]")).toBeNull();
+  await act(async () => { window.dispatchEvent(new CustomEvent("branch:whats-new")); });
+  const dialog = document.querySelector("[data-testid=whats-new]")!;
+  expect(dialog.textContent).toContain("Accounts sign in from Settings");
+  await act(async () => [...dialog.querySelectorAll("button")].find(b => b.textContent?.includes("Accounts sign in from Settings"))!.click());
+  expect(document.querySelector("[data-testid=whats-new]")).toBeNull();
+  expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "accounts" });
 });
 
 it("puts Talk beside on a place's header and opens the Classic pane beside the page, never on a conversation (parity row 20)", async () => {
