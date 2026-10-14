@@ -8,6 +8,7 @@ import type { OpenTarget } from "../../composer/nav";
 import { Popover } from "../../glass/Popover";
 import { EveryAccount } from "../../shell/StatusPopovers";
 import { readRoom, type Limits, type Room } from "../../shell/status-data";
+import { ThisComputer } from "./ThisComputer";
 import type { ContextUse } from "./usage";
 
 export type RunningRow = { key: string; title: string; line: string; needsYou?: boolean };
@@ -44,10 +45,7 @@ export function RingPopover(p: Props) {
   const others = p.running.filter((r) => r.key !== p.sessionKey);
   return <Popover anchor={p.anchor} label="Usage, running and context" onClose={p.onClose} width={340} align="end" placement="above">
     <div className="r1c-menu r1c-ringpop">
-      <section className="r1c-sec">
-        <div className="c-pt">This computer</div>
-        <div className="r1c-line"><i className="r1c-dot" data-state={p.offline ? "off" : "on"} />{p.offline ? "Offline · reconnecting to Branch" : "Online · you are here"}</div>
-      </section>
+      <ThisComputer engine={p.engine} offline={p.offline} onOpen={(target) => { p.onClose(); p.onOpen(target); }} />
       <section className="r1c-sec">
         <div className="c-pt">Running</div>
         {p.working ? <div className="r1c-line"><i className="r1c-dot" data-state="working" />{p.name} is working</div> : null}
