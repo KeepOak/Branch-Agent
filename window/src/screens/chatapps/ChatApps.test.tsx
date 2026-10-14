@@ -113,10 +113,10 @@ it("explains Who answers instead of leaving an empty card when no app is connect
   const access = vi.fn((app: { id: string }) => <p>Access for {app.id}</p>);
   const empty = await render({}, methods, ["operator.admin"], access);
   const section = empty.host.querySelector('[aria-label="Who answers and who may message"]')!;
-  expect(section.textContent).toContain("Connect a chat app above to choose who answers in it");
+  expect(section.textContent).toContain("No chat app is connected yet.");
   expect(access).not.toHaveBeenCalled();
   await act(async () => root.unmount()); document.body.innerHTML = "";
   const linked = await render({ channelAccounts: { telegram: [{ accountId: "default", configured: true, running: true }] } }, methods, ["operator.admin"], access);
   expect(linked.host.querySelector('[aria-label="Who answers and who may message"]')!.textContent).toContain("Access for telegram");
-  expect(linked.host.textContent).not.toContain("Connect a chat app above");
+  expect(linked.host.textContent).not.toContain("No chat app is connected yet.");
 });
