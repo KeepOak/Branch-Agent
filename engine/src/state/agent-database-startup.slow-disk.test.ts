@@ -134,18 +134,22 @@ async function startAdmission(agentIds: string[]) {
   return { prepares, refusal, admitted, stop: () => stop!() };
 }
 
-it("admits the other agents while one agent's final deletion-journal read is slow", async () => {
+it("hands the lane on during one agent's slow final read, and that agent keeps its read's progress", async () => {
   // projects-manager reaches the preparation lane first; its check after preparation takes 4 min.
   slowDisk.delays.set("projects-manager", [0, 240_000]);
   slowDisk.delays.set("builder-ash", [10]);
   slowDisk.delays.set("builder-maple", [20]);
   const started = await startAdmission(["projects-manager", "builder-ash", "builder-maple"]);
   try {
-    // On main both waited for the slow check, which held the preparation lane (120 s or more).
-    expect(await started.admitted("builder-ash")).toBeLessThan(10_000);
-    expect(await started.admitted("builder-maple")).toBeLessThan(10_000);
-    expect(await started.admitted("projects-manager")).toBeGreaterThanOrEqual(240_000);
-    expect(started.prepares.get("projects-manager")).toHaveBeenCalledTimes(1);
+    // The slow check holds the lane for at most one attempt limit (120 s), then hands it on.
+    expect(await started.admitted("builder-ash")).toBeLessThan(130_000);
+    expect(await started.admitted("builder-maple")).toBeLessThan(130_000);
+    const managerAt = await started.admitted("projects-manager");
+    expect(managerAt).toBeGreaterThanOrEqual(240_000);
+    expect(managerAt).toBeLessThan(250_000);
+    // Its retry joined the running read and reused the passed check before opening: 2 reads. On
+    // main the retry read both again and the 4-minute read started from nothing (4 reads, ~6 min).
+    expect(slowDisk.calls.filter((agentId) => agentId === "projects-manager")).toHaveLength(2);
   } finally {
     await started.stop();
   }
@@ -157,12 +161,13 @@ it("waits out deletion-journal reads that take longer than the attempt limit on 
   const started = await startAdmission(["projects-manager"]);
   try {
     const admittedAfterMs = await started.admitted("projects-manager");
-    // One read before opening and one after preparation, each waited out once. On main each
-    // expired at the attempt limit (120 s, then 240 s) and started again from nothing: 4 reads
-    // and about 16 minutes.
+    // One read before opening, waited out, and one after preparation: its attempt hands the lane
+    // on at the 120 s limit and the retry joins it. On main each read expired at the attempt
+    // limit and started again from nothing, many times over.
     expect(slowDisk.calls).toEqual(["projects-manager", "projects-manager"]);
     expect(admittedAfterMs).toBeLessThan(2 * 300_000 + 10_000);
-    expect(started.prepares.get("projects-manager")).toHaveBeenCalledTimes(1);
+    // It prepared again on the retry that joined the read.
+    expect(started.prepares.get("projects-manager")).toHaveBeenCalledTimes(2);
   } finally {
     await started.stop();
   }

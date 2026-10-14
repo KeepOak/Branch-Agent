@@ -412,8 +412,12 @@ class AgentDatabaseStartupAdmission {
             const readStartedAt = Date.now();
             let deletion: Awaited<ReturnType<typeof readAgentDeletionJournalStatusInWorker>>;
             try {
-              // #967: a read that is making progress on a slow disk is waited out, not failed at
-              // the attempt limit and started again; only a read past its maximum age is stuck.
+              // #967: a slow read keeps running across attempts and the next attempt joins it, so
+              // a busy disk never restarts it from nothing; only a read past its maximum age is stuck.
+              // The check before opening holds nothing and waits the read out. The check after
+              // preparation holds the preparation lane, so it still ends at the attempt limit and
+              // hands the lane on; its retry joins the read, which began after a completed
+              // preparation of this same pending agent.
               const read = this.journalReads.read(
                 `${agentId}:${phase}`,
                 (readSignal) =>
@@ -421,9 +425,15 @@ class AgentDatabaseStartupAdmission {
                     readAgentDeletionJournalStatusInWorker(agentId, { env }, readSignal),
                   ),
                 JOURNAL_READ_MAX_AGE_ATTEMPTS * preparationAttemptLimitMs(env),
-                phase === "after",
+                // The check before opening only keeps a deleted agent from being opened; the check
+                // after preparation guards admission. A retry need not pay for a passed one again.
+                { reuseAbsent: phase === "before" },
               );
-              deletion = await boundStage("deletion-journal read", read.promise, read.remainingMs(), {
+              const readLimitMs =
+                phase === "after"
+                  ? Math.min(attemptLimitMs, read.remainingMs())
+                  : read.remainingMs();
+              deletion = await boundStage("deletion-journal read", read.promise, readLimitMs, {
                 signal,
                 onExpire,
               });
@@ -534,15 +544,13 @@ class AgentDatabaseStartupAdmission {
                       timer.unref?.();
                       try {
                         await racePromiseWithAbortSignal(activation.prepareAgent(input), signal);
+                        await assertNotDeleted("after", signal, expire);
                       } finally {
                         clearTimeout(timer);
                       }
                     } finally {
                       completion.resolve();
                     }
-                    // #967: the final check reads the shared state database, not this agent's; on a
-                    // slow disk it must not hold every sibling's preparation behind it.
-                    await assertNotDeleted("after", signal, expire);
                   },
                 );
               },
