@@ -86,7 +86,7 @@ export const ROWS: RowEntry[] = [
   ...rows("Database, technical", 2, ["Check a copied database", "Who writes the database", "Hand writing to a supervisor"]),
 ].map(([title, sec, lv]) => ({ page: "self", title: String(title), ...(sec ? { sec: String(sec) } : {}), group: ({ "Working on its own code": "What it may change", "What it may fix by itself": "What it may change", "Database, technical": "Database" } as Record<string, string>)[String(sec)] ?? String(sec || "About Branch"), lv: Number(lv) as 0 | 1 | 2 }));
 
-type Ctx = SettingsPageProps & { config: ReturnType<typeof useConfig>; lv: number };
+export type Ctx = SettingsPageProps & { config: ReturnType<typeof useConfig>; lv: number };
 
 export function SelfPage(props: SettingsPageProps) {
   const ctx: Ctx = { ...props, config: useConfig(props.engine), lv: lvOf(props.level) };
@@ -388,7 +388,7 @@ function TalkTo() {
 }
 
 /** Conversation storage: sessions.storage.status, cold storage in session.maintenance.coldStorage, Tidy now on sessions.storage.run. */
-function Storage({ engine, config, lv }: Ctx) {
+export function Storage({ engine, config, lv }: Ctx) {
   const status = useLive<RecordValue>(engine, "sessions.storage.status", {}, []);
   const run = useCall();
   const [byTrunk, setByTrunk] = useState(false);
@@ -425,7 +425,7 @@ function ByTrunkDialog({ agents, onClose }: { agents: RecordValue[]; onClose: ()
   );
 }
 
-function DatabaseTechnical() {
+export function DatabaseTechnical() {
   return (
     <Sec title="Database, technical" group="Database">
       <CodeRow title="Check a copied database" code="branch database preflight <file>" sub="Says whether a copied database fits this version." />

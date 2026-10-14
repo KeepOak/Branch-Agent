@@ -1,0 +1,5 @@
+window:src/screens/settings/pages/privacy-live.test.tsx
+window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/places/settings/set2/usage.test.tsx
+window:src/places/settings/set2/self.check.test.tsx
