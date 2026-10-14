@@ -50,6 +50,14 @@ const undoFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-up
 const undoneFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-undone.json");
 const rejectedFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-rejected.json");
 const timeoutFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-timeouts.json");
+const previousFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-previous.txt");
+const probationFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-probation.json");
+/**
+ * After an update is confirmed, its predecessor engine stays on disk for this long (Undo update), then it is removed.
+ * An installed engine is about 1 GB: keeping one for good doubled the installed size (Private #983).
+ */
+export const PREVIOUS_ENGINE_PROBATION_MS = 3 * 24 * 60 * 60 * 1000;
+interface Probation { previous: string; confirmedAt: number }
 const releaseIdentity = (release: ComponentRelease): ReleaseIdentity => ({ version: release.version,
   engineSha256: release.components.engine.sha256, windowSha256: release.components.window.sha256 });
 const sameIdentity = (a: ReleaseIdentity | undefined, b: ReleaseIdentity): boolean =>
@@ -274,7 +282,31 @@ async function pruneConfirmedReleases(cfg: DesktopConfig, current: string, previ
   log?.(`removed ${removed} old updates, freed ${(freed / 1_000_000_000).toFixed(2)} GB`);
 }
 
-/** Call only after the newly selected engine actually reaches readyz. Keep its predecessor for rollback. */
+async function readProbation(cfg: DesktopConfig): Promise<Probation | undefined> {
+  const raw = await readOrEmpty(probationFile(cfg));
+  if (!raw) return undefined;
+  try {
+    const value = JSON.parse(raw) as Partial<Probation>;
+    return typeof value.previous === "string" && Number.isFinite(value.confirmedAt) ? value as Probation : undefined;
+  } catch (error) { if (error instanceof SyntaxError) return undefined; throw error; }
+}
+
+/**
+ * The predecessor to keep: it is kept only during its probation. One with no probation of its own (an older
+ * desktop confirmed it, or the install predates probation) starts one now, so nothing is removed on upgrade.
+ * A clock set back before the confirmation also restarts it: when in doubt, keep the engine.
+ */
+async function previousOnProbation(cfg: DesktopConfig, previous: string, now = Date.now()): Promise<string> {
+  if (!previous) return "";
+  const probation = await readProbation(cfg);
+  if (probation?.previous !== previous || probation.confirmedAt > now) {
+    await replaceFile(probationFile(cfg), JSON.stringify({ previous, confirmedAt: now } satisfies Probation));
+    return previous;
+  }
+  return now - probation.confirmedAt < PREVIOUS_ENGINE_PROBATION_MS ? previous : "";
+}
+
+/** Call only after the newly selected engine actually reaches readyz. Keep its predecessor for rollback during its probation. */
 export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFailure?: (error: unknown) => void, deferPrune = false, log?: (line: string) => void): Promise<(() => Promise<void>) | undefined> {
   const pending = await publication(cfg);
   if (!pending || pending.phase !== "pending") return;
@@ -285,7 +317,8 @@ export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFail
       enginePrevious: pending.enginePrevious, engineNext: pending.engineNext,
       windowPrevious: pending.windowPrevious, identity: pending.identity } satisfies UndoReceipt));
   } else if (!previousVersion) await rm(undoFile(cfg), { force: true });
-  await replaceFile(join(cfg.dataDir, "component-update-previous.txt"), `${pending.enginePrevious}\n`);
+  await replaceFile(probationFile(cfg), JSON.stringify({ previous: pending.enginePrevious, confirmedAt: Date.now() } satisfies Probation));
+  await replaceFile(previousFile(cfg), `${pending.enginePrevious}\n`);
   await replaceFile(versionFile(cfg), `${pending.version}\n`);
   await rm(journalFile(cfg));
   await rm(timeoutFile(cfg), { force: true });
@@ -302,7 +335,7 @@ export async function confirmComponentUpdate(cfg: DesktopConfig, reportPruneFail
 export async function pruneStartupUpdates(cfg: DesktopConfig, log: (line: string) => void): Promise<void> {
   try {
     const current = await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) || cfg.engineDir;
-    let previous = await readOrEmpty(join(cfg.dataDir, "component-update-previous.txt"));
+    let previous = await readOrEmpty(previousFile(cfg));
     if (!previous) {
       const undo = await readOrEmpty(undoFile(cfg));
       if (undo) previous = (JSON.parse(undo) as UndoReceipt).enginePrevious;
@@ -323,11 +356,28 @@ export async function pruneStartupUpdates(cfg: DesktopConfig, log: (line: string
       candidates.sort((a, b) => b.time - a.time || a.folder.localeCompare(b.folder));
       if (candidates[0]) {
         previous = join(candidates[0].folder, "engine");
-        await replaceFile(join(cfg.dataDir, "component-update-previous.txt"), `${previous}\n`);
+        await replaceFile(previousFile(cfg), `${previous}\n`);
       }
     }
-    await pruneConfirmedReleases(cfg, current, previous, error => log(`Update cleanup: ${String(error)}`), log);
+    const kept = await previousOnProbation(cfg, previous);
+    if (previous && !kept && existsSync(previous)) log("Update cleanup: the previous engine's probation ended; removing it");
+    await pruneConfirmedReleases(cfg, current, kept, error => log(`Update cleanup: ${String(error)}`), log);
   } catch (error) { log(`Update cleanup: ${String(error)}`); }
+}
+
+/**
+ * The app can run for weeks without a restart: once the previous engine's probation ends, remove it then. Does
+ * nothing while an update is staged or in flight (its confirmation prunes), or before the probation ends.
+ */
+export async function pruneEndedProbation(cfg: DesktopConfig, log: (line: string) => void, now = Date.now()): Promise<boolean> {
+  try {
+    if (await publication(cfg)) return false;
+    const probation = await readProbation(cfg);
+    if (!probation?.previous || probation.confirmedAt > now || now - probation.confirmedAt < PREVIOUS_ENGINE_PROBATION_MS) return false;
+    if (await readOrEmpty(previousFile(cfg)) !== probation.previous || !existsSync(probation.previous)) return false;
+    await pruneStartupUpdates(cfg, log);
+    return true;
+  } catch (error) { log(`Update cleanup: ${String(error)}`); return false; }
 }
 
 /** Reverse the last confirmed publication while retaining the current release for rollback. */
@@ -377,13 +427,38 @@ export async function confirmComponentUpdateUndo(cfg: DesktopConfig): Promise<vo
   }
 }
 
-export async function canUndoComponentUpdate(cfg: DesktopConfig): Promise<boolean> {
+/**
+ * Whether the running update can be undone, and until when. `until` is the same deadline the pruning uses (the
+ * confirmation time plus PREVIOUS_ENGINE_PROBATION_MS); null only when the predecessor has no probation yet.
+ * `removed`: this update had an Undo, but its window ended or the previous engine is gone, so it can no longer run.
+ */
+/**
+ * The last update's Undo, for Settings' version line ("0.19.4 installed Sep 20."): `version` is the installed release and
+ * `installedAt` when it was confirmed; `until` ends the previous engine's probation, after which Undo cannot run.
+ */
+export interface UndoAvailability { available: boolean; until: number | null; removed: boolean; version: string | null; installedAt: number | null }
+
+export async function readUndoAvailability(cfg: DesktopConfig, now = Date.now()): Promise<UndoAvailability> {
+  const none: UndoAvailability = { available: false, until: null, removed: false, version: null, installedAt: null };
   const raw = await readOrEmpty(undoFile(cfg));
-  if (!raw) return false;
-  const undo = JSON.parse(raw) as UndoReceipt;
-  return await readOrEmpty(versionFile(cfg)) === undo.version &&
-    await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) === undo.engineNext &&
-    existsSync(undo.windowPrevious) && existsSync(undo.enginePrevious);
+  if (!raw) return none;
+  let undo: UndoReceipt;
+  try { undo = JSON.parse(raw) as UndoReceipt; } catch (error) { if (error instanceof SyntaxError) return none; throw error; }
+  if (await readOrEmpty(versionFile(cfg)) !== undo.version ||
+    await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== undo.engineNext) return none;
+  const probation = await readProbation(cfg);
+  const confirmedAt = probation?.previous === undo.enginePrevious ? probation.confirmedAt : null;
+  const until = confirmedAt === null ? null : confirmedAt + PREVIOUS_ENGINE_PROBATION_MS;
+  // The receipt is written when the update is confirmed, so it dates an update confirmed before probation records existed.
+  const installedAt = confirmedAt ?? (await stat(undoFile(cfg)).catch(() => undefined))?.mtimeMs ?? null;
+  const present = existsSync(undo.windowPrevious) && existsSync(undo.enginePrevious);
+  const ended = until !== null && now >= until;
+  const line = { until, version: undo.version, installedAt };
+  return present && !ended ? { available: true, removed: false, ...line } : { available: false, removed: true, ...line };
+}
+
+export async function canUndoComponentUpdate(cfg: DesktopConfig, now = Date.now()): Promise<boolean> {
+  return (await readUndoAvailability(cfg, now)).available;
 }
 
 export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> {
@@ -598,6 +673,7 @@ export async function readComponentUpdateStatus(cfg: DesktopConfig): Promise<Com
 export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, options: RefreshOptions & { onStaged?: () => void } = {}): () => void {
   let busy = false;
   let stopped = false;
+  let first = true;
   const tick = async (): Promise<void> => {
     if (busy || stopped) return;
     busy = true;
@@ -608,7 +684,12 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
       }
     }
     catch (error) { log(`Component update check: ${error instanceof Error ? error.message : String(error)}`); }
-    finally { busy = false; }
+    finally {
+      // Startup already pruned: later checks remove a previous engine whose probation has ended since.
+      if (!first && !stopped) await pruneEndedProbation(cfg, log);
+      first = false;
+      busy = false;
+    }
   };
   void tick();
   const timer = setInterval(() => void tick(), COMPONENT_UPDATE_CHECK_MS);
