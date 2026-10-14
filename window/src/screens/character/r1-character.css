@@ -19,10 +19,9 @@
 .r1-character .character-panel-label i[data-state=oops] { background: var(--bad); }
 .r1-character .character-panel-controls { display: grid; gap: 2px; align-self: flex-start; cursor: auto; }
 .r1-character .character-panel-controls button { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; color: inherit; cursor: pointer; }
-/* A narrow window keeps the face and its state; the name is in the header already (Classic does the same under 760px). */
+/* A narrow window keeps the face, at the size Appearance chose (its drawing doesn't shrink with its box), and its state;
+   the name is in the header already (Classic drops it under 760px too). */
 @media (max-width: 760px) {
-  .r1-character .character-panel { right: 10px; }
-  .r1-character .character-panel-body > :is(.character-face, .pebble) { width: 56px !important; height: 56px !important; }
   .r1-character .character-panel-label b { display: none; }
 }
 /* One view of the work at a time: the card steps aside while the small computer window or an open sidebar drawer covers it. */
