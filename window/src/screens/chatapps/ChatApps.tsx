@@ -96,7 +96,7 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
     {/* preview: the "Your phone" tile after the app groups; Pair a phone opens the pairing code (device.pair.setupCode). */}
     <section className="r1-ca-phone" aria-label="Your phone">
       <span className="r1-ca-app"><Icon name="phone" size={20} /><span className="g-label" data-lines><b>Your phone</b> <small>Answer approvals and talk to Trunks from the Branch app.</small></span>
-        <Coming engine={engine} need="device.pair.setupCode" reason="Pairing a phone comes in a later update." where="Chat apps › Pair a phone">
+        <Coming engine={engine} need="device.pair.setupCode" reason="Pair a phone comes in a later update." where="Chat apps › Pair a phone">
           <button type="button" onClick={() => setPairing(true)}>Pair a phone</button>
         </Coming></span>
       {pairing ? <PairDialog engine={engine} close={() => setPairing(false)} /> : null}
