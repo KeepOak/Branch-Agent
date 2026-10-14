@@ -5,7 +5,7 @@
 import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { cp, readdir, rename, rm, writeFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 
 export interface HelperPlan {
   journal: string;
@@ -33,29 +33,24 @@ async function writeJournal(file: string, journal: Journal): Promise<void> {
   await rename(`${file}.helper.tmp`, file);
 }
 
-/** A rename cannot cross volumes (EXDEV): the updates folder can live on another disk than the installed app.
- * Copy beside the target first (symlinks kept as they are, so an app bundle's signature still holds), then rename
- * that copy into place on its own volume, then remove the source. A failed copy leaves the target untouched. */
-async function copyAcross(source: string, target: string): Promise<void> {
-  const incoming = `${target}.incoming`;
-  await rm(incoming, { recursive: true, force: true });
-  try {
-    await cp(source, incoming, { recursive: true, verbatimSymlinks: true, preserveTimestamps: true, errorOnExist: true, force: false });
-    await rename(incoming, target);
-  } catch (error) {
-    await rm(incoming, { recursive: true, force: true }).catch(() => undefined);
-    throw error;
-  }
-  await rm(source, { recursive: true, force: true }).catch(() => undefined);
+/** The file operations a swap uses; tests pass their own to stand in for another volume or a failed copy. */
+export interface HelperFs {
+  rename(source: string, target: string): Promise<void>;
+  /** A recursive copy that keeps symlinks as they are (a macOS bundle's frameworks link inside themselves). */
+  copy(source: string, target: string): Promise<void>;
+  remove(path: string): Promise<void>;
 }
+export const nodeHelperFs: HelperFs = {
+  rename: (source, target) => rename(source, target),
+  copy: (source, target) => cp(source, target, { recursive: true, verbatimSymlinks: true, preserveTimestamps: true, errorOnExist: true, force: false }),
+  remove: path => rm(path, { recursive: true, force: true }),
+};
 
 /** Files can stay locked for a moment after a process exits (Windows); retry, then give up without changes. */
-export async function move(source: string, target: string, attempts = 120,
-  renameFile: (from: string, to: string) => Promise<void> = rename): Promise<void> {
+async function move(source: string, target: string, attempts = 120, fs: HelperFs = nodeHelperFs): Promise<void> {
   for (let attempt = 0;; attempt++) {
-    try { await renameFile(source, target); return; } catch (error) {
+    try { await fs.rename(source, target); return; } catch (error) {
       const code = (error as NodeJS.ErrnoException).code ?? "";
-      if (code === "EXDEV") { await copyAcross(source, target); return; }
       if (!["EPERM", "EBUSY", "EACCES", "ENOTEMPTY"].includes(code) || attempt >= attempts) throw error;
       await sleep(250);
     }
@@ -114,32 +109,77 @@ async function restoreAsarNames(folder: string): Promise<void> {
   }
 }
 
-/** Old copy aside, new copy in. On failure the old copy is put back and the update stays staged. */
-async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (line: string) => void): Promise<boolean> {
-  await rm(previous, { recursive: true, force: true });
-  // A staged copy that has gone missing fails at the move below, which puts the old copy back.
+/** A sibling of the target, on the target's own volume, that no other update run uses. */
+const siblingPath = (target: string, label: string): string => join(dirname(target), `.${basename(target)}.${label}-${process.pid}`);
+
+/**
+ * Brings the staged copy beside the target, on the target's volume, so the final step is a rename within one
+ * volume. A rename is tried first; when the staged copy lives on another volume (EXDEV: the data folder on an
+ * external disk, the app in /Applications) it is copied into a sibling temp path instead. A failed copy leaves
+ * nothing behind. The installed app is not touched here.
+ */
+export async function bringBesideTarget(staged: string, target: string, fs: HelperFs = nodeHelperFs): Promise<{ path: string; copied: boolean }> {
+  const incoming = siblingPath(target, "incoming");
+  await fs.remove(incoming);
+  try { await fs.rename(staged, incoming); return { path: incoming, copied: false }; } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+  }
+  try { await fs.copy(staged, incoming); } catch (error) {
+    await fs.remove(incoming).catch(() => undefined);
+    throw error;
+  }
+  return { path: incoming, copied: true };
+}
+
+/**
+ * New copy onto the target's volume first, then old copy aside and new copy in, both renames within that volume.
+ * The installed app stays in place until the new one is ready beside it. On failure the old copy is put back, any
+ * temp copy is removed, and the update stays staged.
+ */
+async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (line: string) => void, fs: HelperFs): Promise<boolean> {
+  await fs.remove(previous);
+  // A staged copy that has gone missing fails at the move below, which leaves the installed copy in place.
   if (journal.kind === "runtime" && existsSync(journal.staged)) await restoreAsarNames(journal.staged);
   await writeJournal(plan.journal, { ...journal, phase: "applying" });
-  try { await move(journal.target, previous); } catch (error) {
+  const keep = async (line: string): Promise<false> => {
     await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
-    log(`desktop update ${journal.version}: the app is still in use (${String(error)}); kept staged for the next start`);
+    log(`desktop update ${journal.version}: ${line}`);
     return false;
+  };
+  let incoming: { path: string; copied: boolean };
+  try { incoming = await bringBesideTarget(journal.staged, journal.target, fs); } catch (error) {
+    return keep(`could not bring the new copy beside the app (${String(error)}); kept staged`);
   }
-  try { await move(journal.staged, journal.target); } catch (error) {
-    await move(previous, journal.target);
-    await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
-    log(`desktop update ${journal.version}: could not place the new copy (${String(error)}); kept staged`);
-    return false;
+  if (incoming.copied) log(`desktop update ${journal.version}: the update and the app are on different volumes; copied the new copy beside the app`);
+  // Put the staged copy back where the record names it (a rename on its own volume), or drop the temp copy.
+  const undoIncoming = async (): Promise<void> => {
+    if (incoming.copied) await fs.remove(incoming.path).catch(() => undefined);
+    else await fs.rename(incoming.path, journal.staged).catch(() => undefined);
+  };
+  try { await move(journal.target, previous, 120, fs); } catch (error) {
+    await undoIncoming();
+    return keep(`the app is still in use (${String(error)}); kept staged for the next start`);
   }
+  try { await move(incoming.path, journal.target, 120, fs); } catch (error) {
+    await move(previous, journal.target, 120, fs);
+    await undoIncoming();
+    return keep(`could not place the new copy (${String(error)}); kept staged`);
+  }
+  // The copy is in place; the staged original on the other volume is no longer needed.
+  if (incoming.copied) await fs.remove(journal.staged).catch(() => undefined);
   const { heldUntil: _retry, ...applied } = journal;
   await writeJournal(plan.journal, { ...applied, phase: "applied" });
   return true;
 }
 
-async function rollback(plan: HelperPlan, journal: Journal, previous: string, pid: number | undefined): Promise<void> {
+/** The failed copy is renamed aside beside the target (never across volumes), the previous copy returns, then the failed one goes. */
+async function rollback(plan: HelperPlan, journal: Journal, previous: string, pid: number | undefined, fs: HelperFs): Promise<void> {
   if (pid !== undefined) await stop(pid);
-  await move(journal.target, `${journal.staged}-failed`);
-  await move(previous, journal.target);
+  const failed = siblingPath(journal.target, "failed");
+  await fs.remove(failed);
+  await move(journal.target, failed, 120, fs);
+  await move(previous, journal.target, 120, fs);
+  await fs.remove(failed).catch(() => undefined);
   await writeFile(plan.rejectedFile, JSON.stringify({ version: journal.version, sha256: journal.sha256 }));
   await rm(plan.journal, { force: true });
 }
@@ -171,7 +211,7 @@ function appendCappedLog(file: string, text: string): void {
   }
 }
 
-export async function runHelper(plan: HelperPlan): Promise<"applied" | "kept" | "rolled-back" | "none"> {
+export async function runHelper(plan: HelperPlan, fs: HelperFs = nodeHelperFs): Promise<"applied" | "kept" | "rolled-back" | "none"> {
   const log = (line: string): void => { try { appendCappedLog(plan.log, `${new Date().toISOString()} ${line}\n`); } catch { /* never stops the swap */ } };
   for (let i = 0; i < 240 && alive(plan.waitPid); i++) await sleep(250);
   const journal = readJournal(plan.journal);
@@ -181,7 +221,7 @@ export async function runHelper(plan: HelperPlan): Promise<"applied" | "kept" | 
     return "none";
   }
   const previous = `${journal.target}.previous`;
-  if (!await swap(plan, journal, previous, log)) { launch(plan); return "kept"; }
+  if (!await swap(plan, journal, previous, log, fs)) { launch(plan); return "kept"; }
   log(`desktop update ${journal.version}: ${journal.kind} swapped in; relaunching`);
   registerLaunchedMacApp(journal.target, log);
   const pid = launch(plan);
@@ -192,7 +232,7 @@ export async function runHelper(plan: HelperPlan): Promise<"applied" | "kept" | 
     }
   }
   log(`desktop update ${journal.version}: the new app did not confirm its start; restoring the previous copy`);
-  await rollback(plan, journal, previous, pid);
+  await rollback(plan, journal, previous, pid, fs);
   registerLaunchedMacApp(journal.target, log);
   launch(plan);
   return "rolled-back";

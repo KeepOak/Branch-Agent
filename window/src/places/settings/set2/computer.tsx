@@ -84,6 +84,20 @@ export function ComputerPage(props: SettingsPageProps) {
   );
 }
 
+/** One block of the top of the page, for the R1 Devices page's cards: the requests waiting for a yes, the computers
+ *  Trunks may use (with Keep this computer awake and Add a computer), which Trunk uses which, or the build folders. */
+export function ComputerBlock(props: SettingsPageProps & { part: "waiting" | "computers" | "which" | "build" }) {
+  const lv = lvOf(props.level);
+  const agents = useLive<RecordValue>(props.engine, "agents.list", {}, ["agents"]);
+  const nodes = useLive<RecordValue>(props.engine, "node.list", {}, PAIR_EVENTS);
+  const { reload } = nodes;
+  useEffect(() => { const again = () => void reload(); window.addEventListener("branch:computers-changed", again); return () => window.removeEventListener("branch:computers-changed", again); }, [reload]);
+  if (props.part === "waiting") return <Waiting {...props} lv={lv} />;
+  if (props.part === "computers") return <Computers {...props} lv={lv} nodes={nodes} agents={rec(agents.data)} />;
+  if (props.part === "build") return <BuildCleanup engine={props.engine} />;
+  return <WhichTrunk {...props} nodes={list(rec(nodes.data).nodes)} agents={list(rec(agents.data).agents)} defaultId={rec(agents.data).defaultId} />;
+}
+
 /** Waiting for your yes: Allow (on after 1.5 s, so a stray click can't allow) and Don't allow (asks first). */
 function Waiting({ engine, lv }: SettingsPageProps & { lv: number }) {
   const devices = useLive<RecordValue>(engine, "device.pair.list", {}, PAIR_EVENTS);
