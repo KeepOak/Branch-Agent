@@ -11,11 +11,11 @@ vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null, useUpdate: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
-vi.mock("../../places-nav/SettingsFrame", () => ({ SettingsFrame: ({ page, onPage }: { page: string; onPage: (page: string) => void }) => <div data-testid="classic-settings" data-page={page}>Classic settings<button type="button" onClick={() => onPage("general")}>General</button></div> }));
+vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as const, SettingsFrame: ({ page, onPage }: { page: string; onPage: (page: string) => void }) => <div data-testid="classic-settings" data-page={page}>Classic settings<button type="button" onClick={() => onPage("general")}>General</button></div> }));
 // One stub slot per page the real R1 Settings re-hosts from Classic (plugged.ts REHOSTED), plus Chat apps.
 vi.mock("../settings/pages/plugged", async () => {
-  const { REHOSTED } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), chatapps: { component: () => null } } };
+  const { REHOSTED, R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
+  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), learning: R1_PAGES.learning, chatapps: { component: () => null } } };
 });
 vi.mock("../settings", () => ({
   SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (
@@ -94,7 +94,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("who,notifications,instructions,signins,updates,models,permissions,privacy,history,learning,remote,chatapps,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("who,notifications,instructions,signins,updates,models,permissions,privacy,history,browser,coding,remote,learning,chatapps,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
@@ -121,6 +121,14 @@ it("draws Sign-ins & keys as the R1 page, so Accounts › Add a key opens it in 
   await act(async () => host.querySelector<HTMLButtonElement>("button")!.click());
   expect(host.querySelector("button")!.textContent).toBe("Add a key");
   expect(onPage.mock.calls).toEqual([["signins"]]);
+});
+it("draws Settings › Browser & screen and Coding as R1 pages, not Classic General, with Computer & browser's controls", async () => {
+  const { R1_PAGES, REHOSTED } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
+  for (const page of ["browser", "coding"] as const) {
+    expect(r1SettingsPage(page, R1_PAGES), page).toBe(true);
+    expect(typeof R1_PAGES[page]?.component, page).toBe("function");
+    expect(REHOSTED[page], page).toBe(`computer-${page}`);
+  }
 });
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
@@ -157,7 +165,7 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
     voice: "classic:voice", chatapps: "r1:chatapps",
     accounts: "r1:accounts", models: "r1:models",
     permissions: "r1:permissions", signins: "r1:signins", privacy: "r1:privacy",
-    devices: "classic:devices", browser: "classic:computer", coding: "classic:computer", remote: "r1:remote",
+    devices: "classic:devices", browser: "r1:browser", coding: "r1:coding", remote: "r1:remote",
     history: "r1:history", learning: "r1:learning", updates: "r1:updates", features: "r1:features", developer: "classic:developer",
   });
 });

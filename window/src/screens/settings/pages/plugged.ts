@@ -10,6 +10,10 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { LEARNING_ROWS } from "./learning";
+import {
+  CheckBranch, ClearReplayed, Command, ConnectedNow, DiaryModel, Fact, Learned, PeopleHere, ProcessNames, RestartEngine, TasksAtOnce, Weighing,
+} from "./learning-live";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
@@ -19,14 +23,46 @@ export const REHOSTED = {
   permissions: "permissions",
   privacy: "usage",
   history: "backups",
-  learning: ["self", "seasons"],
+  browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
+  coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
   remote: "gateway",
 } as const;
 
+/** A re-hosted page's cards that no Classic control draws yet: Coming after its Classic sections, naming the call each
+ *  waits for (nav sectionNeed). */
+export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> = {
+  browser: ["Sites", "Saved flows"],
+  coding: ["Commands", "Files"],
+};
+
 export const R1_PAGES: PageSlots = {
-  ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic)])),
+  ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Learning & self-updates: native R1 cards in the preview's order; Classic About Branch and Seasons draw behind its
+  // rows (learning-live.tsx).
+  learning: {
+    rows: LEARNING_ROWS,
+    controls: {
+      "learning.may.program": Fact,
+      "learning.learning.learned": Learned,
+      "learning.learning.adopts": Fact,
+      "learning.code.pull-requests": Fact,
+      "learning.code.reaching": Fact,
+      "learning.gardener.clear": ClearReplayed,
+      "learning.gardener.weighing": Weighing,
+      "learning.gardener.model": DiaryModel,
+      "learning.runs.start-stop": Command,
+      "learning.runs.process": ProcessNames,
+      "learning.runs.connected": ConnectedNow,
+      "learning.runs.people": PeopleHere,
+      "learning.runs.tasks": TasksAtOnce,
+      "learning.runs.health": CheckBranch,
+      "learning.runs.restart-now": RestartEngine,
+      "learning.runs.check": Command,
+      "learning.runs.repair": Command,
+    },
+  },
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,

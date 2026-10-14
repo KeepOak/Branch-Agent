@@ -1,4 +1,4 @@
-// From OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f:src/utils/transcript-export/index.ts (atlas SESSIONS-0047). Adapted to Branch thread blocks.
+// Adapted to Branch thread blocks.
 export type TranscriptExportFormat = "markdown" | "html" | "replay";
 
 export interface TranscriptExportOptions {

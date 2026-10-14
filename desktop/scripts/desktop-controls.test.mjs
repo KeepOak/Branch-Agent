@@ -298,3 +298,32 @@ test("launch refreshes an existing branch command and never installs one", async
   assert.doesNotThrow(() => createDesktopControls(deps).apply());
   controls.dispose();
 }));
+
+test("a full disk keeps a changed setting in memory, shows the disk-full banner once, and saves on the next write", async () => fixture(async ({ deps }) => {
+  const { diskIsFull, onDiskFullChange } = await import(pathToFileURL(join(dist, "disk-full.js")));
+  const seen = [];
+  const stop = onDiskFullChange(full => seen.push(full));
+  let failing = true;
+  const writes = [];
+  // ENOSPC is injected into the settings write; the real disk is never filled.
+  const { writeFileSync } = await import("node:fs");
+  const writeFile = (file, text) => {
+    if (failing) throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC", errno: -28, syscall: "write" });
+    writes.push(file);
+    writeFileSync(file, text);
+  };
+  const controls = createDesktopControls({ ...deps, writeFile });
+  try {
+    assert.equal((await controls.set("keepWorking", false)).keepWorking, false, "the toggle never throws on a full disk");
+    assert.equal((await controls.set("trayUsage", true)).trayUsage, true);
+    assert.equal(controls.settings().keepWorking, false, "the new value stays in memory");
+    assert.equal(diskIsFull(), true);
+    assert.deepEqual(seen, [true], "one banner for both failed saves");
+    failing = false;
+    await controls.set("keepAwake", false);
+    assert.deepEqual(writes, [deps.settingsFile]);
+    assert.equal(readSettings(deps.settingsFile).keepWorking, false, "the next save writes the kept value");
+    assert.equal(diskIsFull(), false);
+    assert.deepEqual(seen, [true, false], "the banner goes away once a save lands");
+  } finally { stop(); }
+}));

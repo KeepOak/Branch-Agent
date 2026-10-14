@@ -9,6 +9,7 @@ import type { DesktopConfig } from "./config";
 import { appendCappedLog, BRANCH_LOG_LIMITS, cappedLogStream } from "./log-rotation";
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
 import { recordEngine } from "./engine-records";
+import { saveUnlessDiskFull } from "./disk-full";
 import { engineServiceArgs, runEngineCli, type EngineServiceAction } from "./engine-service";
 import { HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 
@@ -129,7 +130,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   child.stdout?.pipe(log);
   child.stderr?.pipe(log);
   if (!standby && child.pid !== undefined) {
-    writeFileSync(join(cfg.dataDir, "gateway.pid"), String(child.pid));
+    saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(child.pid)));
   }
   return child;
 }
