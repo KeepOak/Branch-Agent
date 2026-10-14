@@ -12,8 +12,9 @@ import { Skills, AddSkill, skillCount } from "./skills";
 import { Plugins, AddPlugin, pluginCount } from "./plugins";
 import { GetCapabilitiesDialog } from "./get-capabilities";
 import { Clis, AddTool, cliCount, Agents, AddAgent, agentCount, Toolsets, toolsetCount } from "./tool-kinds";
+import { Prompts, promptCount } from "./prompts";
 
-export type Kind = "Connectors" | "Skills" | "Plugins" | "Command-line tools" | "Agents" | "Toolsets";
+export type Kind = "Connectors" | "Skills" | "Plugins" | "Command-line tools" | "Agents" | "Toolsets" | "Prompts";
 export const KIND_LIST: { id: Kind; glyph: GlyphName; line: string; add?: string }[] = [
   { id: "Connectors", glyph: "plug", line: "MCP servers: apps and data a Trunk can reach", add: "Add a server" },
   { id: "Skills", glyph: "bolt", line: "Step-by-step know-how, as SKILL.md", add: "Add a skill" },
@@ -21,6 +22,7 @@ export const KIND_LIST: { id: Kind; glyph: GlyphName; line: string; add?: string
   { id: "Command-line tools", glyph: "terminal", line: "Programs on this computer it may run", add: "Add a tool" },
   { id: "Agents", glyph: "people", line: "Other assistants over A2A, and Trunks on other computers", add: "Connect an agent" },
   { id: "Toolsets", glyph: "grid", line: "Groups of tools a Trunk gets together" },
+  { id: "Prompts", glyph: "sparkle", line: "Saved prompts you can drop into any conversation." },
 ];
 
 export type Res<T> = { data: T | null; loading: boolean; error: string | null; reload: () => void };
@@ -36,15 +38,21 @@ export type ToolsCtx = {
   plugins: Res<unknown>;
   agents: Res<unknown>;
   catalog: Res<unknown>;
+  /** Saved prompts (skills.library.list), read by the Prompts kind. */
+  prompts: Res<unknown>;
   openConversation: (key: string) => void;
+  /** Drops text into a conversation's composer (R1); absent where the place cannot reach one. */
+  usePrompt?: (text: string) => void;
 };
 
-export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGetting, openConversation }: { engine: WindowEngine; level: Level; trunks: Trunk[]; kind: Kind; setKind: (k: Kind) => void; getting: boolean; setGetting: (getting: boolean) => void; openConversation: (key: string) => void }) {
+export type ToolsVariant = "classic" | "r1";
+export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGetting, openConversation, variant = "classic", usePrompt }: { engine: WindowEngine; level: Level; trunks: Trunk[]; kind: Kind; setKind: (k: Kind) => void; getting: boolean; setGetting: (getting: boolean) => void; openConversation: (key: string) => void; variant?: ToolsVariant; usePrompt?: (text: string) => void }) {
   const [whose, setWhose] = useState<string | null>(null);
   const [adding, setAdding] = useState<Kind | null>(null);
   const scope = whose ? { agentId: whose } : {};
   const ctx: ToolsCtx = {
-    engine, level, trunks, whose, openConversation,
+    engine, level, trunks, whose, openConversation, usePrompt,
+    prompts: useResource<unknown>(engine, "skills.library.list", {}),
     config: useConfig(engine),
     skills: useResource<unknown>(engine, "skills.status", scope),
     plugins: useResource<unknown>(engine, "plugins.list"),
@@ -53,7 +61,7 @@ export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGet
   };
   const counts: Record<Kind, number | null> = {
     Connectors: connectorCount(ctx), Skills: skillCount(ctx), Plugins: pluginCount(ctx),
-    "Command-line tools": cliCount(ctx), Agents: agentCount(ctx), Toolsets: toolsetCount(ctx),
+    "Command-line tools": cliCount(ctx), Agents: agentCount(ctx), Toolsets: toolsetCount(ctx), Prompts: promptCount(ctx),
   };
   const current = KIND_LIST.find(k => k.id === kind)!;
   const close = () => setAdding(null);
@@ -67,15 +75,15 @@ export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGet
         <Glyph name={k.glyph} size={16} /><span><b>{k.id}</b><small>{k.line}</small></span>{counts[k.id] !== null && <em>{counts[k.id]}</em>}
       </button>)}
       {current.add && <button type="button" className="btn pri t9-addbtn" onClick={() => setAdding(kind)}><Icon name="plus" small />{current.add}</button>}
-      <button type="button" className="btn ghost t9-addbtn" onClick={() => setGetting(true)}>Get capabilities</button>
+      {variant === "classic" && <button type="button" className="btn ghost t9-addbtn" onClick={() => setGetting(true)}>Get capabilities</button>}
     </nav>
     {kind === "Connectors" ? <Connectors ctx={ctx} /> : kind === "Skills" ? <Skills ctx={ctx} /> : kind === "Plugins" ? <Plugins ctx={ctx} />
-      : kind === "Command-line tools" ? <Clis ctx={ctx} /> : kind === "Agents" ? <Agents ctx={ctx} /> : <Toolsets ctx={ctx} />}
+      : kind === "Command-line tools" ? <Clis ctx={ctx} /> : kind === "Agents" ? <Agents ctx={ctx} /> : kind === "Prompts" ? <Prompts ctx={ctx} /> : <Toolsets ctx={ctx} />}
     {adding === "Connectors" && <AddConnector ctx={ctx} close={close} />}
     {adding === "Skills" && <AddSkill ctx={ctx} close={close} />}
     {adding === "Plugins" && <AddPlugin ctx={ctx} close={close} />}
     {adding === "Command-line tools" && <AddTool ctx={ctx} close={close} />}
     {adding === "Agents" && <AddAgent ctx={ctx} close={close} />}
-    {getting && <GetCapabilitiesDialog engine={engine} scope={scope} close={() => setGetting(false)} done={() => { ctx.plugins.reload(); ctx.skills.reload(); }} />}
+    {variant === "classic" && getting && <GetCapabilitiesDialog engine={engine} scope={scope} close={() => setGetting(false)} done={() => { ctx.plugins.reload(); ctx.skills.reload(); }} />}
   </div>;
 }

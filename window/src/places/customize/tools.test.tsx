@@ -62,7 +62,7 @@ const patches = (request: ReturnType<typeof vi.fn>) => request.mock.calls.filter
 describe("Tools, three panes", () => {
   it("lists the kinds with counts and the Whose tools chips, Connectors first", async () => {
     await open("Connectors");
-    expect([...host.querySelectorAll("[data-kind]")].map(k => k.getAttribute("data-kind"))).toEqual(["Connectors", "Skills", "Plugins", "Command-line tools", "Agents", "Toolsets"]);
+    expect([...host.querySelectorAll("[data-kind]")].map(k => k.getAttribute("data-kind"))).toEqual(["Connectors", "Skills", "Plugins", "Command-line tools", "Agents", "Toolsets", "Prompts"]);
     expect(host.querySelector('[data-kind="Connectors"] em')?.textContent).toBe("2");
     expect(host.querySelector('[data-kind="Skills"] em')?.textContent).toBe("1");
     expect([...host.querySelectorAll(".cz-whose .cz-chip")].map(c => c.textContent)).toEqual(["Every Trunk", "Sapling", "Oak"]);
@@ -142,7 +142,7 @@ describe("Tools › Skills", () => {
     expect(request).toHaveBeenCalledWith("skills.install", { name: "voice", installId: "brew" });
     await click(button("Add a skill"));
     const provs = [...document.querySelectorAll<HTMLElement>(".cz-provs .cz-prov")];
-    for (const label of ["Choose a file", "Add from GitHub", "Draft it"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toBe(""); }
+    for (const label of ["Choose a file", "Add from GitHub", "Draft it"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toMatch(/comes in a later update\.$/); }
     expect(provs.every(p => p.title === "")).toBe(true); expect(visibleDevNotes(document.body)).toEqual([]);
     await click(button("From the skill librarySearch skills others have shared and install one."));
     await click(button("Install"));

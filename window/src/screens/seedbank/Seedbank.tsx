@@ -11,6 +11,7 @@ import { parseSeed, type Seed } from "./seed";
 import { looksLikeTeam, parseTeamMarkdown, type TeamFile } from "./team-markdown";
 import { TeamReview } from "./TeamReview";
 import { useSeedbank } from "./useSeedbank";
+import { CUSTOMIZE_REQUEST_EVENT, takeCustomizeRequest, type CustomizeMode, type CustomizeRequest } from "../../places/customize/r1-request";
 import "../../glass/glass.css";
 import "./seedbank.css";
 
@@ -153,22 +154,23 @@ export function Seedbank({ engine, variant = "place" }: Props) {
   </div>;
 }
 
-/** Customize with its Personal | Community switch. "branch:place-tab" ({place: "customize", tab: "Community"}) opens Community. */
-export function CustomizeWithCommunity({ engine, personal }: { engine: WindowEngine; personal: ReactNode }) {
-  const [mode, setMode] = useState<"personal" | "community">("personal");
+/** Customize with its Personal | Community switch. `initial` is the mode the mount was asked for; later requests (requestCustomize) switch it. */
+export function CustomizeWithCommunity({ engine, personal, initial = "personal" }: { engine: WindowEngine; personal: ReactNode; initial?: CustomizeMode }) {
+  const [mode, setMode] = useState<CustomizeMode>(initial);
   useEffect(() => {
-    const onTab = (event: Event) => {
-      const detail = (event as CustomEvent<{ place?: unknown; tab?: unknown }>).detail;
-      if (detail?.place === "customize" && typeof detail.tab === "string") setMode(detail.tab === "Community" ? "community" : "personal");
+    const onRequest = (event: Event) => {
+      takeCustomizeRequest();
+      const next = (event as CustomEvent<CustomizeRequest>).detail?.mode;
+      if (next) setMode(next);
     };
-    addEventListener("branch:place-tab", onTab);
-    return () => removeEventListener("branch:place-tab", onTab);
+    addEventListener(CUSTOMIZE_REQUEST_EVENT, onRequest);
+    return () => removeEventListener(CUSTOMIZE_REQUEST_EVENT, onRequest);
   }, []);
   return <CustomizeModes engine={engine} mode={mode} onMode={setMode} personal={personal} />;
 }
 
 /** Customize's switch (item 28): Personal is today's Customize, Community is Seedbank. */
-export function CustomizeModes({ engine, mode, onMode, personal }: { engine: WindowEngine; mode: "personal" | "community"; onMode: (mode: "personal" | "community") => void; personal: ReactNode }) {
+export function CustomizeModes({ engine, mode, onMode, personal }: { engine: WindowEngine; mode: CustomizeMode; onMode: (mode: CustomizeMode) => void; personal: ReactNode }) {
   return <div className="sb-place">
     <div className="sb-modes"><span className="g-frost sb-modes-seg" role="tablist" aria-label="Customize" data-local="">
       {(["personal", "community"] as const).map(m => <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => onMode(m)}>{m === "personal" ? "Personal" : "Community"}</button>)}

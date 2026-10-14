@@ -90,14 +90,12 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     run: () => c.openConversation(r.key),
   }));
   const places = PLACES.map((p) => ({ id: `p:${p.id}`, group: "Places", label: p.name, hint: "Place", run: () => c.openPlace(p.id) }));
-  for (const tab of ["Skills", "Get capabilities"]) {
-    places.push({ id: `p:customize:${tab}`, group: "Places", label: tab, hint: "Customize · Tools", run: () => {
-      window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "customize", tab } }));
-    } });
-  }
+  places.push({ id: "p:customize:Skills", group: "Places", label: "Skills", hint: "Customize", run: () => {
+    window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "customize", tab: "Skills" } }));
+  } });
   const settings = settingsGroups("technical").flatMap((g) =>
     g.pages.map((p) => ({ id: `s:${p.id}`, group: "Settings", label: p.name, hint: "Settings", run: () => c.openSettings(p.id) })),
   );
-  const trunks = c.trunks.map((t) => ({ id: `t:${t.id}`, group: "Trunks", label: t.name, hint: "Trunk", run: () => c.openPlace("customize") }));
+  const trunks = c.trunks.map((t) => ({ id: `t:${t.id}`, group: "Trunks", label: t.name, hint: "Trunk", run: () => c.openSettings("trunks") }));
   return [...actions, ...conversations, ...places, ...settings, ...trunks];
 }

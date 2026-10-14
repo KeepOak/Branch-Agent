@@ -2,8 +2,10 @@
 // Config writes follow the engine's config.patch contract: a minimal merge-patch, the file's hash as baseHash, and
 // replacePaths for any array that shrinks (engine/src/gateway/server-methods/config.ts).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
+import { Coming } from "../../glass/coming";
+import { shows, type Level } from "../../places-nav/level";
 import type { WindowEngine } from "../../connect/engine";
 import { list, rec, str, type Rec } from "../../composer/engine";
 import { errorText, trunkName, type Trunk } from "../library/data";
@@ -94,9 +96,16 @@ export function withItem(items: string[], item: string, present: boolean): strin
 export function Sec({ title, children, testid }: { title: string; children: ReactNode; testid?: string }) {
   return <section className="cz-sec" data-testid={testid}><h2>{title}</h2>{children}</section>;
 }
-/** A control the engine cannot carry out yet: drawn greyed, its reason in the title (a developer note stays in data-reason only). */
+/** The level Customize is drawn at. R1 provides it; anywhere else every control shows, as before. */
+export const CustomizeLevelContext = createContext<Level>("technical");
+
+/** A control the engine cannot carry out yet, drawn as Coming (glass/coming.tsx): greyed, its one-line reason as the
+ *  title, and hidden below Technical. The developer note stays in data-need; a note with no person-facing line falls back. */
 export function Grey({ children, reason, className = "btn sm" }: { children: ReactNode; reason: string; className?: string }) {
-  return <button type="button" className={className} disabled title={shownWhy(reason)} data-reason={reason}>{children}</button>;
+  const level = useContext(CustomizeLevelContext);
+  return <Coming need={reason} unwired reason={shownWhy(reason) ?? "Comes in a later update."} hidden={!shows(level, "technical")}>
+    <button type="button" className={className} disabled>{children}</button>
+  </Coming>;
 }
 export function Dot({ on }: { on: boolean }) {
   return <span className={on ? "cz-dot on" : "cz-dot"} aria-hidden="true" />;
