@@ -95,7 +95,7 @@ describe("scoped browser viewing", () => {
     expect(request).toHaveBeenCalledWith("browser.request", {
       target: "host", method: "GET", path: "/", query: { profile: "branch" }, tabScope: { sessionKey: "agent:scout:one" },
     });
-    expect(container.textContent).toContain("Browse with your Trunk");
+    expect(container.textContent).toContain("Scout’s browser");
     expect(container.textContent).toContain("Enter a website address above and press Enter");
     expect(container.textContent).toContain("ask Scout to read, compare or work on the page");
     expect(container.querySelector('[aria-label="New tab"]')).not.toBeNull();
@@ -120,7 +120,7 @@ describe("scoped browser viewing", () => {
       body: { url: "https://example.test" }, tabScope: { sessionKey: "agent:scout:one" },
     });
     expect(container.textContent).toContain("Opening your page");
-    expect(container.textContent).not.toContain("Browse with your Trunk");
+    expect(container.textContent).not.toContain("Scout’s browser");
     expect(container.querySelector<HTMLButtonElement>('[aria-label="New tab"]')!.disabled).toBe(true);
     await act(async () => input.form!.requestSubmit());
     expect(request.mock.calls.filter(([, p]) => p.path === "/tabs/open")).toHaveLength(1);
@@ -139,7 +139,7 @@ describe("scoped browser viewing", () => {
     await render(owner(request as any), []);
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="New tab"]')!.click());
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/tabs/open", body: { url: "about:blank" } }));
-    expect(container.textContent).toContain("Browse with your Trunk");
+    expect(container.textContent).toContain("Scout’s browser");
     const input = await enterAddress("https://example.test");
     await act(async () => input.form!.requestSubmit());
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ path: "/navigate", body: { targetId: "blank", url: "https://example.test" } }));
@@ -187,7 +187,7 @@ describe("scoped browser viewing", () => {
     expect(container.querySelector<HTMLInputElement>(".br-addr-st")!.value).toContain("private-page");
     await render(owner(vi.fn(async () => ({ running: false })) as any, "agent:ada:two"), []);
     expect(container.querySelector<HTMLInputElement>(".br-addr-st")!.value).toBe("");
-    expect(container.textContent).toContain("Browse with your Trunk");
+    expect(container.textContent).toContain("Scout’s browser");
   });
   it("retires a closing final tab immediately and restores it if closing fails", async () => {
     let reject!: (error: Error) => void;
@@ -201,7 +201,7 @@ describe("scoped browser viewing", () => {
     await flush();
     const stream = casts.created[0];
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Close tab"]')!.click());
-    expect(container.textContent).toContain("Browse with your Trunk");
+    expect(container.textContent).toContain("Scout’s browser");
     expect(stream.close).toHaveBeenCalledOnce();
     await act(async () => stream.options.onClose());
     expect(container.textContent).not.toContain("The browser stream closed");
@@ -359,7 +359,7 @@ describe("scoped browser viewing", () => {
     const request = vi.fn(async (_m: string, params: any) => (params.path === "/" ? { running: false } : {}));
     await render(owner(request as any));
     await flush();
-    expect(container.textContent).toContain("Browse with your Trunk");
+    expect(container.textContent).toContain("Scout’s browser");
     const input = await enterAddress("example.test");
     await act(async () => input.form!.requestSubmit());
     expect(request).toHaveBeenCalledWith("browser.request", expect.objectContaining({ method: "POST", path: "/tabs/open", target: "node", node: "node-one", query: { profile: "work" }, body: { url: "https://example.test" } }));

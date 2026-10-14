@@ -116,5 +116,5 @@ export type ActivityState = { tone: "work" | "wait" | "idle"; text: string };
 export function activityState(running: boolean, waiting: number): ActivityState {
   if (waiting > 0) return { tone: "wait", text: "Waiting on you" };
   if (running) return { tone: "work", text: "Working" };
-  return { tone: "idle", text: "Not working" };
+  return { tone: "idle", text: "Idle" };
 }

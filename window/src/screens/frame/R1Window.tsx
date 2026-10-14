@@ -384,7 +384,6 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details g-clear">
       <strong className="g-label">{identity?.name ?? snapshot.name}</strong>{agentLine ? <p className="g-label">{agentLine}</p> : null}
       {room.header ? <p className="g-label" data-testid="room-members">{room.header.line}</p> : null}
-      {route.kind === "chat" ? <button type="button" data-local="" onClick={() => { setCharacterShown(!characterShown); closeAgent(); }}>{characterShown ? "Hide the character" : "Show the character"}</button> : null}
       <button type="button" data-local="" onClick={closeAgent}>Close</button>
     </div></Popover>}
   </>;

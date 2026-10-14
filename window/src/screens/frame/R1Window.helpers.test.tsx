@@ -41,7 +41,7 @@ it("opens the re-hosted helpers view beside the conversation from the chip, and 
   const panel = host.querySelector(".r1-with-helpers > .r1-helpers");
   expect(panel?.classList.contains("g-clear")).toBe(true);
   expect(host.querySelector('.r1-with-helpers [data-testid="chat"]')).not.toBeNull();
-  expect(panel?.textContent).toContain("No steps yet. What Scout does shows here as it works.");
+  expect(panel?.textContent).toContain("No steps yet.");
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close activity"]')!.click());
   expect(host.querySelector(".r1-helpers")).toBeNull();
   expect(host.querySelector('[data-testid="chat"]')).not.toBeNull();

@@ -110,7 +110,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
       remove: () => { if (!row) return; if (askBeforeDelete()) setOpen({ kind: "delete" }); else removeRow(row); },
     },
   });
-  const rows = p.onChanges ? [...items, { label: "Changes and pull request", icon: <Icon name="pr" size={15} />, need: p.changesNeed, why: "This engine can’t show this conversation’s changes.", onSelect: p.onChanges }] : items;
+  const rows = p.onChanges ? [...items, { label: "Changes", icon: <Icon name="pr" size={15} />, need: p.changesNeed, why: "This engine can’t show this conversation’s changes.", onSelect: p.onChanges }] : items;
   const dialog = !open || !target ? null
     : open.kind === "rename" && row ? <RenameDialog name={p.name} onClose={close} onSave={(label) => { close(); void actions.rename(row, label); }} />
     : open.kind === "delete" && row ? <ConfirmDelete clear row={row} onCancel={close} onDelete={() => { close(); removeRow(row); }} />

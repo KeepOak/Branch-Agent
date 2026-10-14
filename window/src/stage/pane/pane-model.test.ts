@@ -32,7 +32,7 @@ describe("side pane model", () => {
   it("says waiting before working", () => {
     expect(activityState(true, 1).text).toBe("Waiting on you");
     expect(activityState(true, 0).text).toBe("Working");
-    expect(activityState(false, 0).text).toBe("Not working");
+    expect(activityState(false, 0).text).toBe("Idle");
   });
 });
 

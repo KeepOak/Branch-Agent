@@ -78,18 +78,15 @@ it("shows the run's state, and Waiting for you while an approval waits", async (
   expect(r1CharacterState({ live: [], liveRunId: null, history: [], doneAt: null, lastActivityAt: null }, 0, Date.now())).toBe("idle");
 });
 
-it("hides from its ×, remembers it, and comes back from the header's agent details", async () => {
+it("hides from its ×, remembers it, and the agent details menu has no show toggle", async () => {
   await act(async () => root.render(<R1Window session={session()} />));
   await act(async () => panel()!.querySelector<HTMLButtonElement>('[aria-label="Hide the character"]')!.click());
   expect(panel()).toBeNull();
   expect(localStorage.getItem("branch.characterShown")).toBe("0");
   expect(saved).toContainEqual({ key: "agentShown", value: false });
   await act(async () => document.querySelector<HTMLElement>(".r1-pill-position button")!.click());
-  const show = [...document.querySelectorAll<HTMLButtonElement>(".r1-agent-details button")].find(b => b.textContent === "Show the character");
-  expect(show).toBeDefined();
-  await act(async () => show!.click());
-  expect(panel()).not.toBeNull();
-  expect(localStorage.getItem("branch.characterShown")).toBe("1");
+  const labels = [...document.querySelectorAll<HTMLButtonElement>(".r1-agent-details button")].map(b => b.textContent);
+  expect(labels).not.toContain("Show the character");
 });
 
 it("steps aside while the computer stage fills the conversation, as Classic's card does", async () => {
