@@ -132,16 +132,13 @@ describe("Coming up", () => {
     expect(towerComingUp(jobs, NOW)[0]?.when).toMatch(/Weekdays at 7:30 AM/);
     expect(towerComingUp(jobs, NOW)[1]?.when).toBe("in 2 h");
   });
-  it("names the engine's heartbeat and memory jobs in plain words, not by agent id or Rings (DA-25)", () => {
+  it("leaves the engine's own heartbeat and memory jobs out of Coming up; the person's job stays (DA-25, item 2)", () => {
     const jobs = [
       { id: "hb", name: "heartbeat-dev", displayName: "Heartbeat (dev)", agentId: "dev", enabled: true, payload: { kind: "heartbeat" }, schedule: { kind: "every", everyMs: 30 * 60_000 }, state: { nextRunAtMs: NOW + 5 * 60_000 } },
       { id: "rings", name: "Memory Rings Promotion", description: "[managed-by=memory-core.short-term-promotion] Promote weighted short-term recalls.", agentId: "main", enabled: true, state: { nextRunAtMs: NOW + 60 * 60_000 } },
       { id: "mine", name: "Weekday brief", agentId: "ada", enabled: true, state: { nextRunAtMs: NOW + 2 * 60 * 60_000 } },
     ];
-    const names = towerComingUp(jobs, NOW).map((job) => job.name);
-    expect(names).toEqual(["Check-in", "Overnight memory cleanup", "Weekday brief"]);
-    expect(names.join(" ")).not.toMatch(/\(dev\)|Rings/);
-    expect(towerComingUp(jobs, NOW)[0]).toMatchObject({ trunkId: "dev" });
+    expect(towerComingUp(jobs, NOW).map((job) => job.name)).toEqual(["Weekday brief"]);
   });
 });
 

@@ -2,7 +2,6 @@
 // Agents are the eight day-one templates; Skills come from skills.search with installed state from skills.status;
 // Connectors and Plugins from plugins.catalog.browse (split by catalog category); Themes & looks from themes.list.
 // Grove layouts, Graft setups, Command-line tools, Toolsets and Adapters have no engine call yet, so they show Coming.
-// Coming to Branch lists the features moved out of the main window until they work (upcoming.ts).
 // A count shows only when the catalog returns it (Pitfall 14).
 import { DAY_ONE_TEMPLATES, listedTemplate, readListedTemplates, type DayOneTemplate } from "./templates";
 
@@ -12,10 +11,11 @@ const list = (v: unknown): Rec[] => (Array.isArray(v) ? v.map(rec) : []);
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
-export type KindId = "agents" | "groves" | "graftsets" | "skills" | "mcp" | "plugins" | "clis" | "toolsets" | "looks" | "adapters" | "upcoming";
+export type KindId = "agents" | "groves" | "graftsets" | "skills" | "mcp" | "plugins" | "clis" | "toolsets" | "looks" | "adapters";
 export type Kind = { id: KindId; label: string; one: string; coming?: string };
 
-/** The kind chips, in the preview's order. A kind with `coming` has no engine call yet. */
+/** The kind chips, exactly the preview's (preview.html mkKinds: All · Agents · … · Adapters). A kind with `coming` has no
+ *  engine call yet. Features that are not Seedbank items are Coming rows in their own screens, never a kind here (#1049). */
 export const KINDS: readonly Kind[] = [
   { id: "agents", label: "Agents", one: "agent" },
   { id: "groves", label: "Grove layouts", one: "Grove layout", coming: "Grove layouts arrive in Seedbank in a later update." },
@@ -27,7 +27,6 @@ export const KINDS: readonly Kind[] = [
   { id: "toolsets", label: "Toolsets", one: "toolset", coming: "Toolsets arrive in Seedbank in a later update." },
   { id: "looks", label: "Themes & looks", one: "theme" },
   { id: "adapters", label: "Adapters", one: "adapter", coming: "Adapters arrive after release." },
-  { id: "upcoming", label: "Coming to Branch", one: "feature", coming: "Features that arrive in a later update." },
 ];
 export const kindOf = (id: KindId): Kind => KINDS.find(kind => kind.id === id)!;
 

@@ -124,7 +124,7 @@ export const PAGES: Record<PageId, PageSpec> = {
 
 /** Old page ids (the preview's and Classic's) and the page each one now lives on. */
 const OLD_IDS: Record<string, PageId> = {
-  people: "who", gateway: "remote", usage: "privacy", seasons: "history", backupsT5: "history", self: "learning",
+  people: "who", gateway: "remote", usage: "privacy", seasons: "learning", backupsT5: "history", self: "learning",
   achievements: "updates", branchP17: "updates", advanced: "general", computer: "browser", secrets: "signins",
   placesP17: "goto", graftsT5: "customize", czP17: "customize", trunksP17: "trunks", seedbankP17: "seedbank",
   featuresP17: "features", local: "devices",

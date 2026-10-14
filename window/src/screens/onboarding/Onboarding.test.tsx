@@ -28,6 +28,19 @@ function fakeEngine(answers: Answers, methods = ALL) {
 const calls = (request: ReturnType<typeof vi.fn>, method: string) => request.mock.calls.filter(([m]) => m === method).map(([, p]) => p);
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 const button = (host: HTMLElement, text: string) => [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === text) as HTMLButtonElement;
+/** Onboarding from the start through a hello that worked, to the last step (Your first Trunk). */
+async function toLastStepWithHello(engine: WindowEngine) {
+  const shown = await show(engine);
+  await act(async () => button(shown.host, "Get started").click());
+  await flush();
+  await act(async () => button(shown.host, "Continue").click());
+  await act(async () => button(shown.host, "Say hello").click());
+  await flush();
+  await act(async () => button(shown.host, "Continue").click());
+  await act(async () => button(shown.host, "Continue").click());
+  await flush();
+  return shown;
+}
 async function show(engine: WindowEngine, props: Partial<Parameters<typeof Onboarding>[0]> = {}) {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
@@ -75,17 +88,23 @@ describe("Onboarding", () => {
     expect(onLater).toHaveBeenCalledOnce();
   });
 
-  it("offers only this computer in Where Branch runs; the other two wait in Seedbank (R1-15)", async () => {
+  it("lists the preview's three places in Where Branch runs; picking another records it and says where to finish (#1049)", async () => {
     const { engine } = fakeEngine({});
     const { host } = await show(engine);
     await act(async () => button(host, "Change").click());
     const radios = [...host.querySelectorAll(".r1-ob-sheet [role=radio]")] as HTMLButtonElement[];
-    expect(radios.map((r) => r.querySelector("b")?.textContent)).toEqual(["This computer"]);
-    expect(host.querySelectorAll(".r1-ob-sheet [aria-disabled=true]")).toHaveLength(0);
-    expect(comingControls().flatMap((c) => c.need)).not.toEqual(expect.arrayContaining(["device.pair.setupCode"]));
-    expect(comingControls().flatMap((c) => c.need)).not.toContain("environments.create");
-    expect(host.querySelector(".r1-ob-sheet")?.textContent).toContain("Seedbank › Coming to Branch");
-    await act(async () => button(host, "Done").click());
+    // preview obWhereP37: This computer, Another computer, A KeepOak computer.
+    expect(radios.map((r) => r.querySelector("b")?.textContent)).toEqual(["This computer", "Another computer", "A KeepOak computer"]);
+    expect(radios.map((r) => r.getAttribute("aria-disabled"))).toEqual([null, null, null]);
+    expect(host.querySelector(".r1-ob-sheet")?.textContent).not.toContain("Seedbank");
+    expect(host.querySelector(".r1-ob-sheet")?.textContent).not.toMatch(/Mac mini|\bNAS\b/);
+    // preview obWhereSetP37: the pick closes the sheet and says where to finish it.
+    await act(async () => radios[1].click());
+    expect(host.querySelector(".r1-ob-sheet")).toBeNull();
+    expect(host.textContent).toContain("Runs on another computer");
+    expect(host.querySelector(".r1-ob [role=status]")?.textContent).toBe("You can finish that in Settings › Devices after setup.");
+    await act(async () => button(host, "Change").click());
+    await act(async () => ([...host.querySelectorAll(".r1-ob-sheet [role=radio]")] as HTMLButtonElement[])[0].click());
     expect(host.textContent).toContain("Runs on this computer");
   });
 
@@ -171,6 +190,8 @@ describe("Onboarding", () => {
 
 const LISTED = { templates: [{ id: "trunk-doctor", name: "Trunk Doctor", description: "" }, { id: "mention-monitor", name: "Mentions Watch", description: "" }, { id: "spend-saver", name: "Spend Saver", description: "" }, { id: "home-desk", name: "Home Desk", description: "" }] };
 const AGENTS = { defaultId: "sapling", mainKey: "main", agents: [{ id: "sapling", identity: { name: "Sapling" } }] };
+/** Answers for a hello that works: detection and a model call that answers. */
+const HELLO = { "branch.setup.detect": DETECT, "branch.setup.activate": { ok: true, modelRef: "anthropic/claude-opus", latencyMs: 1400 } };
 const textarea = (host: HTMLElement) => host.querySelector("textarea.r1-ob-text") as HTMLTextAreaElement;
 async function type(host: HTMLElement, value: string) {
   const box = textarea(host);
@@ -211,10 +232,10 @@ describe("Your first Trunk (step 4)", () => {
 
   it("Meet them creates the picked Trunks with the first-run contract, records setup and greets in the first one", async () => {
     const { engine, request } = fakeEngine({
-      "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { runId: "r1" },
+      ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { runId: "r1" },
       "trunks.template.create": (params: unknown) => ({ agentId: (params as { templateId: string }).templateId + "-1", name: "Made" }),
     });
-    const { host, onDone } = await show(engine, { startAt: 3 });
+    const { host, onDone } = await toLastStepWithHello(engine);
     await type(host, "I chase receipts and invoices");
     expect([...host.querySelectorAll(".r1-ob-pick b")].map((b) => b.textContent)).toEqual(["Spend Saver"]);
     await act(async () => (host.querySelector(".r1-ob-pick") as HTMLButtonElement).click());
@@ -224,7 +245,7 @@ describe("Your first Trunk (step 4)", () => {
     await flush();
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     expect(calls(request, "trunks.template.create")).toEqual([{ templateId: "spend-saver", timezone: zone }, { templateId: "home-desk", timezone: zone }]);
-    const patch = JSON.parse((calls(request, "config.patch")[0] as { raw: string }).raw);
+    const patch = JSON.parse((calls(request, "config.patch").at(-1) as { raw: string }).raw);
     expect(patch.wizard.lastRunAt).toEqual(expect.any(String));
     expect(calls(request, "chat.send")).toEqual([expect.objectContaining({ sessionKey: "agent:spend-saver-1:main", message: expect.stringContaining("ask what to call me") })]);
     expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ sessionKey: "agent:spend-saver-1:main", made: [expect.objectContaining({ agentId: "spend-saver-1" }), expect.objectContaining({ agentId: "home-desk-1" })] }));
@@ -233,10 +254,10 @@ describe("Your first Trunk (step 4)", () => {
   it("stays on step 4 with the engine's words when a Trunk can't be made, and never makes one twice", async () => {
     let fail = true;
     const { engine, request } = fakeEngine({
-      "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {},
+      ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {},
       "trunks.template.create": (params: unknown) => { const id = (params as { templateId: string }).templateId; if (id === "home-desk" && fail) throw new Error("disk full"); return { agentId: id + "-1" }; },
     });
-    const { host, onDone } = await show(engine, { startAt: 3 });
+    const { host, onDone } = await toLastStepWithHello(engine);
     await act(async () => button(host, "Spend Saver").click());
     await act(async () => button(host, "Home Desk").click());
     await act(async () => button(host, "Meet them").click());
@@ -253,8 +274,8 @@ describe("Your first Trunk (step 4)", () => {
   });
 
   it("stays on step 4 with the engine's words when the first message is refused, and doesn't land in an empty conversation", async () => {
-    const { engine } = fakeEngine({ "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "session is archived" } });
-    const { host, onDone } = await show(engine, { startAt: 3 });
+    const { engine } = fakeEngine({ ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "session is archived" } });
+    const { host, onDone } = await toLastStepWithHello(engine);
     await act(async () => button(host, "Start with Sapling").click());
     await flush();
     expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t start your first conversation. session is archived");
@@ -262,9 +283,29 @@ describe("Your first Trunk (step 4)", () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
+  it("with examples and no hello, Meet them sends no greeting and hands the examples state to the first conversation", async () => {
+    const { engine, request } = fakeEngine({
+      "branch.setup.detect": { candidates: [] }, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "Couldn't sign in to the AI service." },
+      "trunks.template.create": (params: unknown) => ({ agentId: (params as { templateId: string }).templateId + "-1", name: "Made" }),
+    }, [...ALL, "trunks.template.starters"]);
+    const { host, onDone } = await show(engine, { startAt: 1 });
+    await act(async () => button(host, "Try it with examples").click());
+    await flush();
+    await act(async () => button(host, "Continue").click());
+    await flush();
+    await act(async () => button(host, "Continue").click());
+    await flush();
+    await act(async () => button(host, "Spend Saver").click());
+    await act(async () => button(host, "Meet them").click());
+    await flush();
+    expect(calls(request, "chat.send")).toEqual([]);
+    expect(host.querySelector("[role=alert]")).toBeNull();
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ sessionKey: "agent:spend-saver-1:main", state: expect.objectContaining({ examples: true }) }));
+  });
+
   it("Start with the default Trunk makes nothing and greets in its main conversation", async () => {
-    const { engine, request } = fakeEngine({ "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {} });
-    const { host, onDone } = await show(engine, { startAt: 3 });
+    const { engine, request } = fakeEngine({ ...HELLO, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": {} });
+    const { host, onDone } = await toLastStepWithHello(engine);
     await act(async () => button(host, "Start with Sapling").click());
     await flush();
     expect(calls(request, "trunks.template.create")).toEqual([]);
