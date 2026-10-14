@@ -5,7 +5,7 @@
 // the listening engine and the Technical commands and key list.
 import { useEffect, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
-import { errorText, list, record, text, visible, type RecordValue } from "../../../places/settings/adapter";
+import { errorText, list, record, text, visible } from "../../../places/settings/adapter";
 import { useConfig } from "../../../places/settings/kit";
 import { group, providersOf, type Provider } from "../../../places/settings/set1/voice-kit";
 import { wakeProblem } from "../../../places/settings/set1/voice-listen";
