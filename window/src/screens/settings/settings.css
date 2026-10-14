@@ -146,3 +146,10 @@
   .r1s-row:has(.r1s-seg) { grid-template-columns: minmax(0, 1fr); }
   .r1s-row:has(.r1s-seg) > .r1s-ctl { grid-row: auto; grid-column: 1; justify-self: start; max-width: 100%; overflow-x: auto; scrollbar-width: none; margin-top: 6px; }
 }
+/* A row page's lead above its cards (preview: Models' tabs, then the chosen tab's block). */
+.r1s-lead { margin: 0 0 16px; min-width: 0; }
+.r1s-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.r1s-tabs > button { height: 30px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--gp-line, rgba(127, 127, 127, .28)); background: transparent;
+  color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+.r1s-tabs > button[aria-selected="true"] { background: var(--gp-on); font-weight: 600; }
+.r1s-leadhint { margin: 2px 0 12px; padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.45; }

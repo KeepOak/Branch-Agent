@@ -41,7 +41,6 @@ it("re-hosts exactly these Classic pages", () => {
     who: "people", notifications: "notifications", instructions: "instructions",
     browser: "computer-browser",
     coding: "computer-coding",
-    models: "models",
     permissions: "permissions",
     privacy: "usage",
   });
@@ -104,21 +103,6 @@ it("draws each Browser & screen and Coding card no Classic control has yet as Co
       expect(comingControls()).toContainEqual(expect.objectContaining({ where: `${PAGES[page].title} › ${card}`, need: [sectionNeed(page, card)] }));
     }
   }
-});
-
-it("keeps Models' Local tab on the R1 Models page and sends its Accounts tab to the R1 Accounts page", async () => {
-  const onPage = vi.fn();
-  await act(async () => root.render(<SettingsFrame engine={engine()} page="models" pages={R1_PAGES} onPage={onPage} />));
-  await settle();
-  const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="models"] .r1s-classic[data-classic="models"]')!;
-  const tab = (name: string) => [...hosted.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => b.textContent === name)!;
-  expect([...hosted.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(["Accounts", "Default", "Local", "Second opinion (a second model checks answers)", "Media"]);
-  await act(async () => tab("Local").click());
-  await settle();
-  expect(onPage).not.toHaveBeenCalled();
-  expect(tab("Local").getAttribute("aria-selected")).toBe("true");
-  await act(async () => tab("Accounts").click());
-  expect(onPage.mock.calls).toEqual([["accounts"]]);
 });
 
 it("opens Browser & screen from Permissions' Open that switch, where R1 keeps the screen switch", async () => {

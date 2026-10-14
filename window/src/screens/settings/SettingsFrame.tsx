@@ -220,6 +220,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
   const invalid = config && typeof config === "object" && config.valid === false ? configIssues(config.issues) : null;
   const levelLine = LEVELS[level].line;
   const Custom = slots[shownPage]?.component;
+  const Lead = slots[shownPage]?.lead;
 
   return (
     <div className="r1set g-clear" data-level={LEVEL_WORD[level]}>
@@ -283,6 +284,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
               {invalid.length ? <ul>{invalid.map((line, i) => <li key={i}>{line}</li>)}</ul> : null}
             </div>
           ) : null}
+          {Lead ? <div className="r1s-lead" data-lead={shownPage}><Lead engine={engine} onPage={(id) => go(id)} /></div> : null}
           {sections.length ? sections.map(({ card, visible }) => (
             <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title}>
               {card ? <h2 className="g-label">{card}</h2> : null}

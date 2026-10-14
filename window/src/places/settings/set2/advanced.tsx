@@ -229,7 +229,7 @@ function CodeMode({ c }: { c: Ctx }) {
     </Ctl>
   );
 }
-const TRY: SecSpec = { title: "Try early", lv: 1, hint: "Early features. They may change or go away in a later version.", rows: [
+export const TRY: SecSpec = { title: "Try early", lv: 1, hint: "Early features. They may change or go away in a later version.", rows: [
   sw("Skip tools on plain chat", "The decision model skips tools for plain chat.", "agents.defaults.experimental.decisionAssistance", false, { help: DECISION_HELP }),
   { t: "Code mode", draw: (c) => <CodeMode c={c} /> },
 ] };
