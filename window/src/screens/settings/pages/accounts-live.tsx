@@ -614,7 +614,8 @@ const QUIET_REPORT = { saving: () => undefined, saved: () => undefined, failed: 
 /** What Branch spent in the last 7, 30 or 90 days, and Open the report: Classic Data & usage's spend card. */
 export function UsageSpend({ engine }: SlotControlProps) {
   const [level] = useLevel(engine);
-  return <KitProvider level={level} report={QUIET_REPORT} scope={null}><AccountSpend engine={engine} level={level} /></KitProvider>;
+  // The period buttons and Open the report all read sessions.usage.
+  return <div data-need="sessions.usage"><KitProvider level={level} report={QUIET_REPORT} scope={null}><AccountSpend engine={engine} level={level} /></KitProvider></div>;
 }
 
 /** What each account has left: Classic's allowance list, one row per connection and account. */

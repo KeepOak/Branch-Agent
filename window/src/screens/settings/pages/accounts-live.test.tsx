@@ -68,7 +68,9 @@ async function mount(onPage = vi.fn(), env = engineOf()) {
   return { ...env, onPage };
 }
 
-const SLOT_ROWS = Object.keys(R1_PAGES.accounts?.controls ?? {});
+/** Rows the page draws as the preview's button, Coming until something stands behind it (Link, Connect…). */
+const COMING_BUTTONS = ["accounts.linked.gmail", "accounts.linked.calendar", "accounts.linked.drive", "accounts.keepoak.connect"];
+const SLOT_ROWS = Object.keys(R1_PAGES.accounts?.controls ?? {}).filter((id) => !COMING_BUTTONS.includes(id));
 
 describe("R1 Settings › Accounts draws every working Classic control", () => {
   it("draws each working Classic control itself, live, with every control declared", async () => {
@@ -81,8 +83,9 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
       expect(r!.getAttribute("aria-disabled"), id).toBeNull();
       expect(r!.querySelector("[data-coming]"), id).toBeNull();
     }
-    // What Classic greys stays Coming: Rename, Pause, keepoak.com.
-    for (const id of ["accounts.order.rename", "accounts.order.pause", "accounts.keepoak.connect"]) expect(row(id)?.getAttribute("aria-disabled"), id).toBe("true");
+    // What Classic greys stays Coming: Rename and Pause as rows; keepoak.com and the linked accounts as the preview's button.
+    for (const id of ["accounts.order.rename", "accounts.order.pause"]) expect(row(id)?.getAttribute("aria-disabled"), id).toBe("true");
+    for (const id of COMING_BUTTONS) expect(row(id)?.querySelector("button")?.getAttribute("aria-disabled"), id).toBe("true");
     expect(undeclaredControls(host).map((el) => el.getAttribute("aria-label") || el.textContent)).toEqual([]);
   });
 

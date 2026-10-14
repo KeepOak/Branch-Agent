@@ -1,0 +1,5 @@
+window:src/screens/settings/pages/accounts-preview.test.tsx
+window:src/screens/settings/pages/accounts-live.test.tsx
+window:src/screens/settings/rows.test.ts
+window:src/screens/settings/coming.test.tsx
+window:src/places/settings/set2/usage.test.tsx
