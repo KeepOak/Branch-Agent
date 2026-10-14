@@ -425,7 +425,6 @@ describe("subagent announce formatting", () => {
     // Set FAST_TEST_MODE before importing the module to ensure the module-level
     // constant picks it up. This fixes flaky Windows CI failures where the test
     // timeout budget is too tight without fast mode enabled.
-    // See: https://github.com/openclaw/openclaw/issues/31298
     previousFastTestEnv = process.env.BRANCH_TEST_FAST;
     process.env.BRANCH_TEST_FAST = "1";
     ({ runSubagentAnnounceFlow } = await import("./subagent-announce.js"));
@@ -1335,7 +1334,7 @@ describe("subagent announce formatting", () => {
       },
     };
 
-    // Simulate active sibling runs so non-bound paths would normally coordinate via agent().
+    // Simulate active sibling runs so non-bound paths would normally coordinate via agent.
     subagentRegistryMock.countPendingDescendantRuns.mockImplementation((sessionKey: string) =>
       sessionKey === "agent:main:main" ? 2 : 0,
     );

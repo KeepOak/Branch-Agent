@@ -1,4 +1,4 @@
-// Written by Branch for AUTOMATION-0073 from openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/hooks/bundled/command-logger/handler.ts and HOOK.md; verifies the current safe audit writer.
+// Verifies the current safe audit writer.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

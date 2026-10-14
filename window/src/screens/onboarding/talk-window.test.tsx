@@ -13,7 +13,7 @@ vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
-vi.mock("../../places-nav/SettingsFrame", () => ({ SettingsFrame: () => null }));
+vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as const, SettingsFrame: () => null }));
 vi.mock("../settings/pages/plugged", () => ({ R1_PAGES: {} }));
 vi.mock("../settings", () => ({ SettingsFrame: () => null }));
 vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: () => null }));

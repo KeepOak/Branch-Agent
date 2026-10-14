@@ -1,4 +1,3 @@
-// Copied from elizaOS/eliza@3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf:plugins/plugin-calendar/src/ics/windows-timezones.ts (atlas INTEGRATIONS-0069)
 /**
  * Windows → IANA timezone resolution for untrusted ICS feeds. Outlook and
  * Exchange serialize TZID with Windows display zone names ("Eastern Standard

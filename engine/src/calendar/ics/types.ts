@@ -1,5 +1,3 @@
-// Copied from elizaOS/eliza@3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf:plugins/plugin-calendar/src/ics/types.ts (atlas INTEGRATIONS-0069)
-
 /** Typed boundary between untrusted RFC 5545 feeds and calendar reconciliation. */
 
 export type IcsParseState = "complete" | "partial" | "error";

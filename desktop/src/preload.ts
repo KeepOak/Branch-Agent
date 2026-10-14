@@ -88,6 +88,9 @@ if (info) {
       stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
       /** The owner's Install now: the same owned-window restart the update bar's button sends. */
       install: () => ipcRenderer.send("branch-desktop:restart-engine"),
+      /** Whether the last update can still be undone, with its version line (the previous engine's probation, Private #983). */
+      undoAvailability: () => ipcRenderer.invoke("branch-desktop:undo-availability"),
+      undo: () => ipcRenderer.send("branch-desktop:undo-update"),
     },
     onUpdateApplied: (listener: (notice: AppliedUpdateNotice) => void) => subscribeApplied(listener),
     onUpdateUndone: (listener: () => void) => subscribeUndone(listener),
@@ -143,6 +146,8 @@ if (info) {
   });
   ipcRenderer.on("branch-desktop:gateway-recovery-failed", (_e, message: string) => showRecoveryError(message));
   ipcRenderer.on("branch-desktop:engine-update-failed", (_e, message: string) => showUpdateFailure(message));
+  ipcRenderer.on("branch-desktop:disk-full", (_e, message: string) => showDiskFull(message));
+  ipcRenderer.on("branch-desktop:disk-ok", () => document.getElementById("branch-desktop-disk-full")?.remove());
   ipcRenderer.on("branch-desktop:prepare-swap", (_e, id: number) => {
     saveBeforeSwap();
     ipcRenderer.send("branch-desktop:swap-ready", id);
@@ -255,6 +260,29 @@ function showRecoveryError(message: string): void {
       document.body.appendChild(alert);
     }
     alert.textContent = message;
+  };
+  if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
+}
+
+/** One plain banner across the top while the disk is full (Private #1036); it goes away when saving resumes. */
+function showDiskFull(message: string): void {
+  const show = () => {
+    let banner = document.getElementById("branch-desktop-disk-full");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "branch-desktop-disk-full";
+      banner.setAttribute("role", "alert");
+      banner.dataset.testid = "desktop-disk-full";
+      banner.style.cssText = [
+        // Below the window's top row of controls (R1 header pills end at 44px), sized to its text up to 560px.
+        "position:fixed", "left:50%", "top:56px", "transform:translateX(-50%)", "z-index:2147483647",
+        "width:max-content", "max-width:min(560px,calc(100vw - 32px))", "padding:8px 14px", "border-radius:10px",
+        "background:#78350f", "color:#fff", "font:13px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif",
+        "box-shadow:0 6px 24px rgba(15,23,42,.28)",
+      ].join(";");
+      document.body.appendChild(banner);
+    }
+    banner.textContent = message;
   };
   if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
 }

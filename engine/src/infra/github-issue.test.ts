@@ -1,4 +1,4 @@
-// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/infra/github-issue.test.ts (atlas OPS-0056). Changed for Branch: file reports on the Branch-owned KeepOak/Branch-Agent repository, never the upstream tracker.
+// Changed for Branch: file reports on the Branch-owned KeepOak/Branch-Agent repository, never the upstream tracker.
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";

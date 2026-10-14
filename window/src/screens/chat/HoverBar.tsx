@@ -1,6 +1,7 @@
 // The message hover bar (owner item 40, HANDOFF §2 #17): exactly three buttons, React, Reply and •••, in control
 // glass. ••• opens the message menu: its time and model, then Copy ›, Pin or Unpin, Edit or Try again, Read aloud,
-// Branch from here, Leave out of context, Share as a picture, Continue in a coding app, Look inside and Delete. Each row runs its
+// Branch from here, Leave out of context, Look inside, Share as a picture…, Continue in a coding app… and Delete. The
+// last two are greyed with their reason until the window makes their calls (preview R1 message menu). Each row runs its
 // engine call (thread/useMessageActions) through <Coming need=…>, or shows Coming with its reason; nothing pretends.
 // Only Copy, its submenu and Look inside are local (data-local): they make no engine call.
 import { useRef, useState, type ReactNode } from "react";
@@ -15,13 +16,6 @@ import type { MessageMeta } from "../../thread/model";
 import { plainText } from "./chat-logic";
 
 const QUICK = ["👍", "❤️", "🎉", "👀", "🚀", "😂"];
-
-/** Rows the engine has no call for yet. Each names the call it waits for and says so in one plain line. */
-const SOON = {
-  link: { need: "sessions.messages.link", reason: "Links to one message come in a later update." },
-  picture: { need: "sessions.messages.share", reason: "Sharing a message as a picture comes in a later update." },
-  coding: { need: "sessions.handoff", reason: "Carrying a conversation into a coding app on this computer needs the Branch app." },
-} as const;
 
 type Need = { need: string | readonly string[]; reason: string };
 
@@ -40,6 +34,18 @@ const NEEDS = {
 /** One reason for Reply: it only sends, so without chat.send nothing can be sent at all. */
 const REPLY_NEED: Need = { need: "chat.send", reason: "This engine can’t send messages." };
 
+/** Rows this window doesn't make the call for yet. They stay greyed with their reason whatever the engine offers. */
+const SOON = {
+  picture: { need: "sessions.messages.share", reason: "Sharing a message as a picture comes in a later update." },
+  coding: { need: "sessions.handoff", reason: "Carrying a conversation into a coding app on this computer needs the Branch app." },
+} as const;
+
+function SoonRow({ icon, label, soon }: { icon: IconName; label: string; soon: { need: string; reason: string } }) {
+  return <Coming need={soon.need} unwired reason={soon.reason} where={label}>
+    <button type="button" role="menuitem" className="r1c-mi"><Icon name={icon} size={15} /><span className="r1c-mi-t">{label}</span></button>
+  </Coming>;
+}
+
 /** A row that runs now. With "need" it calls the engine and goes through Coming; without it the row is local
  *  (Copy, Look inside) and says so with data-local. */
 function Row({ icon, label, act, onDone, danger, hint, need }: { icon: IconName; label: string; act?: Act | null; onDone: () => void; danger?: boolean; hint?: ReactNode; need?: Need }) {
@@ -50,16 +56,6 @@ function Row({ icon, label, act, onDone, danger, hint, need }: { icon: IconName;
     <Icon name={icon} size={15} /><span className="r1c-mi-t">{label}</span>{hint ? <span className="r1c-mi-hint">{hint}</span> : null}
   </button>;
   return need ? <Coming need={need.need} reason={need.reason} where={label}>{row}</Coming> : row;
-}
-
-/** A row this window doesn't wire yet: always Coming through <Coming unwired>, which greys it, gives the reason and lists
- *  it by the call it waits for, even on an engine that has that call (R1-10). */
-function SoonRow({ icon, label, soon, danger }: { icon: IconName; label: string; soon: { need: string; reason: string }; danger?: boolean }) {
-  return <Coming need={soon.need} unwired reason={soon.reason} where={label}>
-    <button type="button" role="menuitem" className="r1c-mi" data-danger={danger || undefined}>
-      <Icon name={icon} size={15} /><span className="r1c-mi-t">{label}</span>
-    </button>
-  </Coming>;
 }
 
 export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: string; isReply: boolean; actions: HoverActions; meta?: MessageMeta; onClose: () => void }) {
@@ -73,7 +69,6 @@ export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: s
       <button type="button" role="menuitem" className="r1c-mi r1c-back" data-local="" onClick={() => setCopyOpen(false)}><Icon name="back" size={15} /><span className="r1c-mi-t">Copy</span></button>
       <button type="button" role="menuitem" className="r1c-mi" data-local="" onClick={() => { void copyText(plainText(text), toast); onClose(); }}><Icon name="copy" size={15} /><span className="r1c-mi-t">Text</span></button>
       <button type="button" role="menuitem" className="r1c-mi" data-local="" onClick={() => { void copyText(text, toast); onClose(); }}><Icon name="code" size={15} /><span className="r1c-mi-t">Markdown</span></button>
-      <SoonRow icon="link" label="Link" soon={SOON.link} />
     </div>;
   }
   const read = actions.read;
@@ -86,9 +81,9 @@ export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: s
     {read ? <Row icon={read.reading ? "pause" : "play"} label={read.reading ? "Stop reading" : "Read aloud"} act={read} onDone={onClose} need={NEEDS.read} /> : null}
     <Row icon="branch" label="Branch from here" act={actions.branch} onDone={onClose} need={NEEDS.branch} />
     {actions.context ? <Row icon={actions.context.excluded ? "eye" : "eyeOff"} label={actions.context.excluded ? "Put back in context" : "Leave out of context"} act={actions.context} onDone={onClose} need={NEEDS.context} /> : null}
-    <SoonRow icon="camera" label="Share as a picture" soon={SOON.picture} />
-    <SoonRow icon="code" label="Continue in a coding app" soon={SOON.coding} />
     <Row icon="eye" label="Look inside" act={actions.inspect} onDone={onClose} />
+    <SoonRow icon="camera" label="Share as a picture…" soon={SOON.picture} />
+    <SoonRow icon="code" label="Continue in a coding app…" soon={SOON.coding} />
     {actions.remove ? <><div className="r1c-gap" /><Row icon="trash" label="Delete" act={actions.remove} onDone={onClose} danger need={NEEDS.remove} /></> : null}
   </div>;
 }

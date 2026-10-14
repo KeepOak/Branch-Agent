@@ -1,5 +1,6 @@
 // Private #951: readiness budgets come from this host's measured cold start, never below a floor, not a flat 120 s.
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { saveUnlessDiskFull } from "./disk-full";
 import { ADMISSION_ROLLBACK_AFTER_MS } from "./agent-admission";
 import { HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STANDBY_READY_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 
@@ -36,8 +37,11 @@ export function recordColdStart(file: string, ms: number): number[] {
   const samplesMs = readColdStarts(file);
   if (!Number.isFinite(ms) || ms <= 0) return samplesMs;
   const next = [...samplesMs, Math.round(ms)].slice(-COLD_START_SAMPLES);
-  writeFileSync(`${file}.tmp`, JSON.stringify({ samplesMs: next }));
-  renameSync(`${file}.tmp`, file);
+  // A full disk keeps this sample in memory only; the budget still sizes from the samples already saved.
+  saveUnlessDiskFull(() => {
+    writeFileSync(`${file}.tmp`, JSON.stringify({ samplesMs: next }));
+    renameSync(`${file}.tmp`, file);
+  });
   return next;
 }
 
@@ -51,6 +55,19 @@ export function measuredBudgetMs(samplesMs: readonly number[], bounds: { floorMs
 /** How long a standby that took over gets to answer /readyz on this host (floor: the shared 120 s deadline). */
 export function standbyReadyBudgetMs(samplesMs: readonly number[]): number {
   return measuredBudgetMs(samplesMs, { floorMs: HANDOFF_STANDBY_READY_TIMEOUT_MS, ceilingMs: STANDBY_READY_CEILING_MS });
+}
+
+/**
+ * Private #967: after a failed standby the old engine takes control back by restarting in place, and that restart first
+ * drains the runs it kept through step-down (the engine's restart drain budget, up to about 5 minutes) before its
+ * /readyz answers again. Judged on the standby's budget, a healthy engine that owns the state was killed mid-drain.
+ */
+export const ROLLBACK_RESTART_DRAIN_MS = 315_000;
+
+/** How long an old engine that answered the rollback gets to serve again: its restart drain plus a cold start. */
+export function rollbackReadyBudgetMs(samplesMs: readonly number[], ceilingMs: number): number {
+  const coldStartMs = standbyReadyBudgetMs(samplesMs);
+  return Math.max(coldStartMs, Math.min(ceilingMs, ROLLBACK_RESTART_DRAIN_MS + coldStartMs));
 }
 
 /** How long agents may stay refused after a swap before it rolls back (floor: the 10 minutes from #951 part 2). */
