@@ -1,4 +1,3 @@
-// Written by Branch for AUTOMATION-0074 from openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/hooks/bundled/compaction-notifier/handler.ts and HOOK.md.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createInternalHookEvent } from "../../internal-hooks.js";
 import handler from "./handler.js";

@@ -11,6 +11,7 @@ import { isPreparationPending, isPreparationStalled, PreparationRetry, preparati
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
+import { pendingApprovalsWithin } from "../connect/update-probe";
 import { useBranchVersion } from "../connect/branch-version";
 import { LOCAL_ADDRESS, readTargetName, saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
@@ -23,7 +24,7 @@ import { pageName } from "../places-nav/settings-nav";
 import { effectiveDark, readThemeChoice, setThemeChoice, toggleTheme, type ThemeChoice } from "../theme/theme";
 import { BannerView, raiseBanner } from "./Banner";
 import { bannerFor } from "./banner-news";
-import { useProblemBanners } from "./problem-banners";
+import { useDiskFullBanner, useProblemBanners } from "./problem-banners";
 import { askBeforeDelete, ConfirmCatalogDelete, ConfirmDelete } from "./ConfirmDelete";
 import { conversationActions } from "./conversation-actions";
 import { SessionUnreadPatchGuard } from "../connect/unread-guard";
@@ -81,7 +82,7 @@ import { Sidebar, type TalkEntry } from "./Sidebar";
 import { topBarTalk } from "./talk-entry";
 import { TalkBeside, useTalkLayout } from "./TalkBeside";
 import { StatusBar, type StatusItem } from "./StatusBar";
-import { KeepLastDialog, remindedToday, StatusPopover, statusAnchor, tidy } from "./StatusLayer";
+import { KeepLastDialog, pauseAll, remindedToday, StatusPopover, statusAnchor, tidy, type StatusContext } from "./StatusLayer";
 import { copyMarkdown, copyText } from "./row-actions";
 import { readLevel } from "../places-nav/SettingsFrame";
 import type { Above } from "./Popover";
@@ -90,13 +91,12 @@ import { desktopControls } from "../connect/desktop-controls";
 import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
 import { useLockdown } from "./use-lockdown";
 import { LockdownBanner } from "./LockdownBanner";
-import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
 import { conversationNeedsYou } from "./conversation-more";
 import { ConversationMoreButton, HeaderRow, PlaceHead, TopBar } from "./TopBar";
 import { toggleListLayout, useLayout } from "./use-layout";
 import { usePinOrder } from "./use-pin-order";
-import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
+import { hideMenuItems, hideTarget, HIDEABLE, useCheerOn, usePetLook, useShown } from "./shown";
 import { StatusGfx, StatusLeftExtras } from "./StatusExtras";
 import { paneKeyFor, useShortcuts } from "./use-shortcuts";
 import { currentKeys, keyActions, readCustomKeys } from "./keymap";
@@ -252,13 +252,13 @@ function useThemeSync(setTheme: (t: ThemeChoice) => void): boolean {
   return systemDark;
 }
 
-/** Whether the character panel is shown; remembered across windows. */
+/** Whether the character panel is shown; off until turned on, and remembered across windows. */
 function useCharacterShown() {
   const [shown, setShown] = useState(() => {
     try {
-      return localStorage.getItem("branch.characterShown") !== "0";
+      return localStorage.getItem("branch.characterShown") === "1";
     } catch {
-      return true;
+      return false;
     }
   });
   useEffect(() => {
@@ -272,7 +272,7 @@ function useCharacterShown() {
     // Settings › Appearance changes the switch too ("branch:look-change"): follow it without a reload.
     const reread = () => {
       try {
-        setShown(localStorage.getItem("branch.characterShown") !== "0");
+        setShown(localStorage.getItem("branch.characterShown") === "1");
       } catch {
         // storage blocked: keep what this window shows
       }
@@ -324,18 +324,32 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const stop = bridge.onChanged((keys) => { if (live) setPoppedKeys(keys); });
     return () => { live = false; stop(); };
   }, [dedicated]);
+  // The desktop tray's live line and Pause all work (Private #454 C) read the live sessions list through this.
+  const liveWork = useRef<{ list?: StatusContext["list"]; trunks: number; working: StatusContext["working"] }>({ trunks: 0, working: [] });
+  // The approvals this window shows, for the update probe to answer with when the gateway is slow (Private #1047).
+  const shownApprovals = useRef(0);
   useEffect(() => componentDesktop(session.gatewayUrl)?.onAutoApplyProbe?.(async () => {
-    const approvals = await Promise.all(["exec.approval.list", "plugin.approval.list", "branch.approval.list"].map(
-      method => session.request<unknown>(method, {}),
-    ));
-    const pendingApprovals = approvals.reduce<number>((count, result) => {
-      const items = Array.isArray(result) ? result : (result as { items?: unknown })?.items;
-      if (!Array.isArray(items)) throw new Error("Approval status is unavailable");
-      return count + items.length;
-    }, 0);
-    return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles() };
+    const pendingApprovals = await pendingApprovalsWithin(session, shownApprovals.current);
+    return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles(),
+      workingTrunks: liveWork.current.trunks };
   }), [session]);
   const { s, ready, lists, list, gatewayContacts, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  shownApprovals.current = pending.size;
+  const workingRows = lists.rows.filter((r) => r.working);
+  liveWork.current = { list, trunks: new Set(workingRows.map((r) => r.agentId)).size,
+    working: workingRows.map((r) => ({ key: r.key, title: r.title || "", line: "", runIds: r.activeRunIds })) };
+  useEffect(() => componentDesktop(session.gatewayUrl)?.onPauseAll?.(() => {
+    const live = liveWork.current;
+    if (live.list) void pauseAll({ session, list: live.list, working: live.working });
+  }), [session]);
+  // With the window closed, a Trunk's "done" also reaches a paired phone through the engine's push service (Private
+  // #454 D). Approvals already reach it from the engine itself. A computer without a paired phone sends nothing.
+  useEffect(() => componentDesktop(session.gatewayUrl)?.onPhonePush?.((notice) => {
+    void session.request<{ nodes?: { nodeId?: unknown; platform?: unknown }[] }>("node.list", {}).then(async (listed) => {
+      const phones = (listed?.nodes ?? []).filter((node) => typeof node.nodeId === "string" && /ios|iphone|ipad/i.test(String(node.platform ?? "")));
+      await Promise.all(phones.map((node) => session.request("push.test", { nodeId: node.nodeId, title: notice.title, body: notice.body }).catch(() => undefined)));
+    }, () => undefined);
+  }), [session]);
   const lockdown = useLockdown(session.engine, ready, session);
   const toggleLockdown = () => void lockdown.toggle().catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
   const groupRooms = useGroupRooms(session, ready);
@@ -972,6 +986,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   useMarkRead(request, openRow, route.kind === "chat" && ready, () => void list.refresh());
   const rowExtras = useRowExtras(openKey, level, useCallback((key: string) => lists.rows.find((r) => r.key === key)?.title || "a conversation", [lists.rows]));
   useBannerNews(session, route.kind === "chat" ? openKey : null, rowName, (key) => trunkName(lists.rows.find((r) => r.key === key)?.agentId));
+  useDiskFullBanner();
   useProblemBanners({
     session,
     phase: s.status.phase,
@@ -1170,7 +1185,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       : null;
   const voiceReady = useVoiceCatalog(ready ? session.engine : undefined);
   const pet = usePetLook(session.engine);
-  // Let it roam (Appearance › Pet) walks the pet along the chat instead of the card; one pet on screen at a time.
+  const cheerOn = useCheerOn(session.engine);
+  // A picked pet (Appearance › Pet) roams the chat instead of the card; one pet on screen at a time.
   const lanePet = pet.roam ? pet : { ...pet, id: "none" };
   // Stopping the roam brings the card back, with Undo; the pet's menu and the header face both use it (pet-roam.ts).
   const roamSetting = lookStore(session.engine);
@@ -1388,6 +1404,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           lockdown={lockdown.on}
           {...areaProps}
           engine={showingAll ? undefined : session.engine}
+          cheerOn={cheerOn}
           sessionKey={showingAll ? null : s.sessionKey}
           findRequest={searchFind?.key === openKey ? searchFind : null}
           onFindRequestHandled={(nonce) => setSearchFind((current) => current?.nonce === nonce ? null : current)}
@@ -1472,7 +1489,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </>
     );
   } else {
-    main = <SettingsFrame page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} askName={defaultName} />;
+    main = <SettingsFrame running={running} page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} askName={defaultName} />;
   }
   const talkEntry: TalkEntry | null =
     route.kind === "chat" ? null : { name: defaultName, keys: currentKeys(keyActions(defaultName), readCustomKeys()).talkBeside, open: talk.open, onToggle: () => setTalk({ open: !talk.open }) };
@@ -1884,7 +1901,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           startOnReady={guide === "news-ready"}
           installed={installedRows({ setup: () => firstRun.open(0), shortcuts: () => setOverlay({ kind: "shortcuts" }), palette: () => setOverlay({ kind: "palette" }), settings: openSettings })}
           onOpenUpdates={() => openSettings("updates")}
-          onInstall={() => void stageWindowUpdate(session.engine).catch((e: unknown) => notify(`Couldn't install the update: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" }))}
           onClose={() => setGuide(null)}
         />
       ) : null}

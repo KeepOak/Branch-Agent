@@ -11,5 +11,43 @@
   "toolsets": {},
   "permissions": [
     "This template sets no tool restrictions. Tool switches are set per Trunk after creating it."
-  ]
+  ],
+  "firstRun": {
+    "questions": [
+      {
+        "id": "project",
+        "prompt": "Which project should I work on? A folder name or a repository link.",
+        "default": "I'll point you to it in chat"
+      },
+      {
+        "id": "checks",
+        "prompt": "How do you check that a change works?",
+        "default": "Run the project's own tests"
+      }
+    ],
+    "timezone": "owner",
+    "schedule": "paused-until-start",
+    "result": {
+      "title": "Builder",
+      "summary": "Makes small, checked changes in your project when you ask, and reports exactly what it changed."
+    }
+  },
+  "starter": {
+    "pitch": "Builder makes small, tested changes to a code project and tells you exactly what changed.",
+    "fits": [
+      "code",
+      "coding",
+      "build",
+      "app",
+      "website",
+      "project",
+      "software",
+      "prototype",
+      "developer",
+      "programming",
+      "fix",
+      "bugs"
+    ],
+    "rank": 5
+  }
 }

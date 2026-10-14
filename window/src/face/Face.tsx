@@ -44,12 +44,13 @@ function useThemeRepaint(player: FacePlayer | null): void {
       return;
     }
     const repaint = () => player.repaint();
-    const scheme = window.matchMedia("(prefers-color-scheme: dark)");
-    scheme.addEventListener("change", repaint);
+    // Hosts without matchMedia (jsdom, some embedded webviews) still repaint on theme attribute changes.
+    const scheme = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+    scheme?.addEventListener("change", repaint);
     const observer = new MutationObserver(repaint);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
     return () => {
-      scheme.removeEventListener("change", repaint);
+      scheme?.removeEventListener("change", repaint);
       observer.disconnect();
     };
   }, [player]);

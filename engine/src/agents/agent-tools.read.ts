@@ -61,6 +61,7 @@ import {
   type ReadToolTruncationDetails,
 } from "./sessions/tools/index.js";
 import { normalizePositiveLimit } from "./sessions/tools/limits.js";
+import { countTextLines, type FileReadLedger } from "./file-read-ledger.js";
 import { expandOsHomePrefix, resolveToCwd } from "./sessions/tools/path-utils.js";
 import {
   createBoundedReadTextPage,
@@ -97,6 +98,7 @@ type BranchReadToolOptions = {
   imageSanitization?: ImageSanitizationLimits;
   cwd?: string;
   bridge?: SandboxFsBridge;
+  readLedger?: FileReadLedger;
 };
 
 type SkillReadContent = {
@@ -139,7 +141,11 @@ type ReadTruncationDetails = {
 };
 
 const READ_CONTINUATION_NOTICE_RE =
-  /\n\n\[(?:Showing (?:lines|part of line) [^\]]*|Read output capped [^\]]*|\d+ more lines? in file\. [^\]]*)\]\s*$/;
+  /\n\n\[(?:File truncated\. (?:Showing (?:lines|part of line) [^\]]*|Read output capped [^\]]*)|Showing (?:lines|part of line) [^\]]*|Read output capped [^\]]*|\d+ more lines? in file\. [^\]]*)\]\s*$/;
+
+/** Read output that describes the file rather than returning its content. */
+const NON_CONTENT_READ_MESSAGE_RE =
+  /^(?:File is empty|File contains (?:no readable text|\d+ blank lines?)|Offset \d+ is beyond end of file|Cursor \d+ is at or beyond|Selected range contains|Read did not return)/;
 
 export function resolveAdaptiveReadMaxBytes(options?: BranchReadToolOptions): number {
   const contextWindowTokens = asPositiveFiniteNumber(options?.modelContextWindowTokens);
@@ -344,8 +350,9 @@ async function executeReadWithAdaptivePaging(params: {
     const delimiter = aggregatedText && pageText && next.kind === "line" ? "\n" : "";
     const candidateBytes = aggregatedBytes + delimiter.length + Buffer.byteLength(pageText, "utf8");
     const candidateContent = `${aggregatedContent}${delimiter}${pageContent}`;
+    const fileRange = { startLine: initialOffset, totalLines: truncation?.totalLines ?? 0 };
     const continuationNotice = pageContinuation
-      ? formatReadContinuationNotice(pageContinuation, params.maxBytes)
+      ? formatReadContinuationNotice(pageContinuation, params.maxBytes, fileRange)
       : "";
 
     if (
@@ -945,6 +952,7 @@ type SandboxToolParams = {
   modelContextWindowTokens?: number;
   imageSanitization?: ImageSanitizationLimits;
   modelHasVision?: boolean;
+  readLedger?: FileReadLedger;
 };
 
 /** Preserve the sandbox namespace before session tools use host path resolution. */
@@ -996,6 +1004,7 @@ export function createSandboxedReadTool(params: SandboxToolParams) {
     imageSanitization: params.imageSanitization,
     cwd: params.root,
     bridge: params.bridge,
+    readLedger: params.readLedger,
   });
 }
 
@@ -1004,6 +1013,7 @@ export function createSandboxedWriteTool(params: SandboxToolParams) {
   const base = eraseSessionFileTool(
     createWriteTool(params.root, {
       operations: createSandboxMutationOperations(params),
+      readLedger: params.readLedger,
     }),
   );
   return wrapToolParamValidation(
@@ -1030,11 +1040,13 @@ export function createHostWorkspaceWriteTool(
     workspaceOnly?: boolean;
     abortSignal?: AbortSignal;
     memoryWriteProvenance?: MemoryWriteProvenanceObserver;
+    readLedger?: FileReadLedger;
   },
 ) {
   const base = eraseSessionFileTool(
     createWriteTool(root, {
       operations: createHostMutationOperations(options?.containmentRoot ?? root, options),
+      readLedger: options?.readLedger,
     }),
   );
   return wrapToolParamValidation(base, REQUIRED_PARAM_GROUPS.write, root);
@@ -1056,6 +1068,37 @@ export function createHostWorkspaceEditTool(
     }),
   );
   return wrapToolParamValidation(base, REQUIRED_PARAM_GROUPS.edit, root);
+}
+
+/** Record which lines a finished text read covered, from structured details only. */
+function recordReadCoverage(
+  ledger: FileReadLedger | undefined,
+  absolutePath: string,
+  startLine: number,
+  result: AgentToolResult<ReadToolDetails>,
+): void {
+  if (!ledger || !result.details || typeof result.details !== "object") {
+    return;
+  }
+  const details = result.details;
+  if (details.kind === "truncated") {
+    ledger.recordRead({
+      absolutePath,
+      startLine,
+      endLine: details.continuation.offset - 1,
+      totalLines: details.truncation.totalLines,
+    });
+    return;
+  }
+  if (details.kind !== "text" || details.content.length === 0) {
+    return;
+  }
+  if (NON_CONTENT_READ_MESSAGE_RE.test(details.content)) {
+    return;
+  }
+  // A complete text read reached end of file, so its last line is the file's last line.
+  const endLine = startLine - 1 + countTextLines(details.content);
+  ledger.recordRead({ absolutePath, startLine, endLine, totalLines: endLine });
 }
 
 /** Wrap the base read tool with Branch Agent paging, MIME, and image handling. */
@@ -1100,7 +1143,16 @@ export function createBranchReadTool(
       const modelVisibleResult = ENV_FILE_PATH_RE.test(filePath)
         ? redactSecrets(sanitizedResult)
         : sanitizedResult;
-      return normalizeReadResultDetails(modelVisibleResult);
+      const finalResult = normalizeReadResultDetails(modelVisibleResult);
+      if (options?.readLedger && filePath !== "<unknown>") {
+        recordReadCoverage(
+          options.readLedger,
+          resolveToCwd(filePath, options.cwd ?? ""),
+          typeof normalizedRecord?.offset === "number" ? Math.floor(normalizedRecord.offset) : 1,
+          finalResult,
+        );
+      }
+      return finalResult;
     },
   };
 }

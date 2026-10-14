@@ -3,7 +3,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { EventFrame, GatewayProtocolRequestOptions, HelloOk } from "@branch/gateway-client/browser";
 import { BranchGateway, type GatewayStatus } from "./gateway";
-import type { SendExtras, WindowEngine } from "./engine";
+import type { EngineFeatures, SendExtras, WindowEngine } from "./engine";
 import { RunStreams, readRunEvent } from "./stream-order";
 import { storedOperatorToken } from "./device-token-store";
 import { withOwner } from "./agent-owner";
@@ -18,6 +18,7 @@ import { droppedFiles, engineKeyOf, FirstSendEcho, heldRuns, UnconfirmedSends } 
 import { failedAck, isRetryable, refusedOrUnsent, requestWithRetry } from "./send-errors";
 import { firstSendEcho, shouldKeepFirstSendEcho } from "../composer/sending";
 import { safeStorage } from "../composer/drafts";
+import { trunkDisplayName } from "./trunk-name";
 
 export type SessionSnapshot = {
   status: GatewayStatus;
@@ -274,6 +275,8 @@ export class SaplingSession {
   getSnapshot = (): SessionSnapshot => this.snapshot;
 
   private engineCache: { key: string | null; hello: HelloOk | null; epoch: number; engine: WindowEngine } | null = null;
+  /** The last hello's features, kept through a reconnect so controls don't flip to Coming and back. */
+  private lastFeatures: EngineFeatures | undefined;
 
   /** The shared engine handle for the open conversation (rebuilt when the conversation or connection changes). */
   get engine(): WindowEngine {
@@ -281,8 +284,9 @@ export class SaplingSession {
     const hello = status.phase === "connected" ? status.hello : null;
     const key = this.snapshot.sessionKey;
     const epoch = this.connectionEpoch;
+    if (hello?.features) this.lastFeatures = hello.features;
     if (!this.engineCache || this.engineCache.key !== key || this.engineCache.hello !== hello || this.engineCache.epoch !== epoch) {
-      this.engineCache = { key, hello, epoch, engine: buildEngine(this, key, hello) };
+      this.engineCache = { key, hello, epoch, engine: buildEngine(this, key, hello, this.lastFeatures) };
     }
     return this.engineCache.engine;
   }
@@ -1087,7 +1091,7 @@ export class SaplingSession {
   }
 }
 
-function buildEngine(session: SaplingSession, sessionKey: string | null, hello: HelloOk | null): WindowEngine {
+function buildEngine(session: SaplingSession, sessionKey: string | null, hello: HelloOk | null, features: EngineFeatures | undefined): WindowEngine {
   const attachments = hello?.policy.attachments;
   const agentId = sessionKey ? agentIdOf(sessionKey) : undefined;
   return {
@@ -1103,6 +1107,7 @@ function buildEngine(session: SaplingSession, sessionKey: string | null, hello: 
     send: (text) => session.send(text),
     rewound: (entryId) => session.rewound(entryId),
     scopes: hello ? [...hello.auth.scopes] : [],
+    ...(features ? { features } : {}),
     requestScopeUpgrade: (options) => session.requestScopeUpgrade(options),
     cancelScopeUpgrade: () => session.cancelScopeUpgrade(),
     ...(attachments ? { attachmentPolicy: { maxBytes: attachments.maxBytes, maxImageBytes: attachments.maxImageBytes } } : {}),
@@ -1132,7 +1137,7 @@ function readAgentName(result: unknown): string {
   if (!agent) {
     return "";
   }
-  return str(rec(agent.identity).name) || str(agent.name) || str(agent.id);
+  return trunkDisplayName(agent);
 }
 
 /** A picture on the Trunk's computer, ready to show, or why it can't. */

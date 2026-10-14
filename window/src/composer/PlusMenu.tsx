@@ -9,7 +9,7 @@ import { Icon } from "./icons";
 import type { Trunk } from "./useConversation";
 import { shownWhy } from "../shell/shown-why";
 
-export const GAP = {
+const GAP = {
   drive: "Not available in this window yet: Google's file picker opens in the desktop app.",
   oneDrive: "Not available in this window yet: the OneDrive and SharePoint picker opens in the desktop app.",
   screenshot: "Not available in this window yet: screen capture needs the desktop app.",

@@ -1,5 +1,7 @@
 // Test fixture only; the shipped entry point imports App.tsx instead.
 import React from 'react';
+import {createFrameActions} from './frame-harness-actions';
+const actions=createFrameActions();
 import {createRoot} from 'react-dom/client';
 import {WindowShell} from '../src/shell/WindowShell';
 import '../src/theme/tokens.css';
@@ -17,13 +19,15 @@ const fixture={
   subscribe:(fn:()=>void)=>{listeners.add(fn);return()=>listeners.delete(fn)},getSnapshot:()=>snap,
   onGatewayEvent:(fn:Function)=>{events.add(fn);return()=>events.delete(fn)},
   request:async(method:string,params:any)=>{
-    if(method==='sessions.subscribe')return {list:{sessions:rows}};
+    const action=actions.request(method,params);
+    if(action!==undefined)return action;
+    if(method==='sessions.subscribe')return {list:{sessions:[...rows,...actions.sessions]}};
     if(method==='sessions.list' && params?.spawnedBy)return {sessions:[]};
     if(method==='agents.list')return agents;
     if(method==='a2a.peers.list')return {peers:[]};
     if(method==='contacts.list')return {contacts:[]};
     if(method==='rooms.list')return {rooms:[]};
-    if(method==='sessions.list')return {sessions:rows,defaults:{modelProvider:'local',model:'fixture',thinkingLevel:'medium'}};
+    if(method==='sessions.list')return {sessions:[...rows,...actions.sessions],defaults:{modelProvider:'local',model:'fixture',thinkingLevel:'medium'}};
     if(method==='sessions.describe')return {session:{key:params.key,modelProvider:'local',model:'fixture',permissionMode:'full'}};
     if(method==='models.list')return {models:[{id:'fixture',provider:'local',name:'Local model',contextWindow:32768}]};
     if(method==='exec.approval.list')return [];

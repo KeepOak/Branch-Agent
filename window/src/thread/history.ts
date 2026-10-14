@@ -88,7 +88,7 @@ function readVia(branch: Record<string, unknown>): string | undefined {
 }
 
 /** What the engine recorded about a message: entry id, run, time, model and usage. */
-export function readMeta(m: Message): MessageMeta {
+function readMeta(m: Message): MessageMeta {
   const branch = rec(m.__branch);
   const sender = readSender(m);
   const usage = rec(m.usage);
@@ -106,6 +106,7 @@ export function readMeta(m: Message): MessageMeta {
     ...(sender ? { sender } : {}),
     ...(readOwner(m) ? { owner: true } : {}),
     ...(m.excludeFromContext === true ? { excluded: true } : {}),
+    ...(m.pinned === true ? { pinned: true } : {}),
     ...(m.usage
       ? { usage: { input: num(usage.input), output: num(usage.output), total: num(usage.totalTokens), cost: num(cost.total) } }
       : {}),

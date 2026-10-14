@@ -6,7 +6,6 @@ function pathFor(platform: NodeJS.Platform) {
 
 // Redirected Gateway homes can hide an operator's existing gh login. Look for
 // the operator config before suggesting authentication under the service HOME.
-// See https://github.com/openclaw/openclaw/issues/78063.
 
 type GhConfigDiscoveryEnv = {
   HOME?: string;

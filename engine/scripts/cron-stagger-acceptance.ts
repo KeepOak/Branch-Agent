@@ -1,5 +1,4 @@
-// Atlas AUTOMATION-0004: source scheduler acceptance through real Gateway RPC.
-// OpenClaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3 src/cron/stagger.ts.
+// Source scheduler acceptance through real Gateway RPC.
 import assert from "node:assert/strict";
 import type { GatewayClient } from "../src/gateway/client.js";
 import { computeJobNextRunAtMs } from "../src/cron/service/jobs-scheduling.js";

@@ -52,6 +52,21 @@ describe("new conversation drafts", () => {
     });
   });
 
+  it("offers one New Trunk row whose first step is blank, from a job or let Branch suggest", async () => {
+    const ctx = context(vi.fn());
+    const items = newMenuItems(ctx);
+    const labels = items.map((entry) => "label" in entry ? entry.label : "");
+    expect(labels.filter((label) => /trunk/i.test(label))).toEqual(["New Trunk"]);
+    const row = items.find((entry) => "label" in entry && entry.label === "New Trunk")!;
+    expect(row).toMatchObject({ kind: "sub", testid: "new-trunk" });
+    if (row.kind !== "sub") throw new Error("New Trunk should open its first step");
+    expect(row.items.map((entry) => "label" in entry ? entry.label : "")).toEqual(["Blank", "From a job…", "Let Branch suggest…"]);
+    for (const item of row.items) if ("run" in item) item.run();
+    expect(ctx.newTrunk).toHaveBeenCalledOnce();
+    expect(ctx.openPlace).toHaveBeenCalledExactlyOnceWith("customize");
+    expect(ctx.makeTrunk).toHaveBeenCalledOnce();
+  });
+
   it("rejects a blank first message without making an untitled session", async () => {
     const request = vi.fn();
     await expect(createTopic(request, "oak", "main", " \n ")).rejects.toThrow("Write a message");

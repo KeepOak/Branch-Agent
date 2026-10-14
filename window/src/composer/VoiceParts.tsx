@@ -214,7 +214,7 @@ function useCallAnswer(engine: WindowEngine, details: Map<string, ApprovalDetail
 }
 
 /** "Turn camera on" stays greyed: the window's calls go through the engine's relay, which carries voice only. */
-export const CALL_CAMERA_OFF = "The engine’s relayed calls carry voice only; showing your camera needs a call the engine runs in the browser.";
+const CALL_CAMERA_OFF = "The engine’s relayed calls carry voice only; showing your camera needs a call the engine runs in the browser.";
 
 /** The call screen: the Trunk's face, what is being said, an approval to answer by voice or tap, Mute and End. */
 export function VoiceScreen({ engine, name, onClose }: { engine: WindowEngine; name: string; onClose: () => void }) {
