@@ -6,7 +6,7 @@ import { createServer } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
-import { appendCappedLog, cappedLogStream } from "./log-rotation";
+import { appendCappedLog, BRANCH_LOG_LIMITS, cappedLogStream } from "./log-rotation";
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
 import { recordEngine } from "./engine-records";
 import { engineServiceArgs, runEngineCli, type EngineServiceAction } from "./engine-service";
@@ -104,9 +104,9 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   // The profile check can refuse a standby; it runs before the log is opened so a refusal leaks nothing.
   const prepared = standby ? readPreparedNormalProfile(join(cfg.dataDir, "home")) : undefined;
   const logPath = join(cfg.dataDir, "gateway.log");
-  const log = cappedLogStream(logPath);
+  const log = cappedLogStream(logPath, BRANCH_LOG_LIMITS);
   const profile = prepared ?? prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => {
-    if (message === "Profile migration start") appendCappedLog(logPath, `${new Date().toISOString()} ${message}\n`);
+    if (message === "Profile migration start") appendCappedLog(logPath, `${new Date().toISOString()} ${message}\n`, BRANCH_LOG_LIMITS);
     else log.write(message + "\n");
   }, join(engineDir, "docs", "reference", "templates"));
   if (profile.note) log.write(profile.note + "\n");

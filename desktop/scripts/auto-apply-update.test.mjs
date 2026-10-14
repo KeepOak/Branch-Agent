@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
-const { createAutoApplyUpdate, AUTO_APPLY_POLL_MS, AUTO_APPLY_IDLE_MS, AUTO_APPLY_RETRY_MS } = await import(
+const { createAutoApplyUpdate, readUpdateHealth, updateHealthRefusal, AUTO_APPLY_POLL_MS, AUTO_APPLY_IDLE_MS, AUTO_APPLY_RETRY_MS,
+  TRUNK_UPDATE_MIN_INTERVAL_MS, TRUNK_WORK_SAMPLE_MS } = await import(
   pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "auto-apply-update.js"))
 );
 const { COMPONENT_UPDATE_CHECK_MS } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js")));
@@ -72,10 +73,10 @@ test("staged idle is rechecked every 30 seconds and releases every ten minutes",
   assert.equal(COMPONENT_UPDATE_CHECK_MS, 10 * 60 * 1000);
 });
 
-test("flagged handoff applies during active work without an idle hold", async () => {
+test("off Trunk machines, a flagged handoff applies during active work without an idle hold", async () => {
   let applied = 0; let probes = 0;
   const controller = createAutoApplyUpdate({ pendingVersion: async () => "next", enabled: () => true,
-    seamlessHandoff: () => true,
+    seamlessHandoff: () => true, trunkWork: () => false,
     activity: async () => { probes++; return { activeRuns: 2, pendingApprovals: 1, streaming: true, unsavedDraftFiles: true }; },
     restart: async (version, handoffOnly) => { assert.equal(version, "next"); assert.equal(handoffOnly, true); applied++; }, onApplied: () => {}, log: () => {} });
   await controller.tick(); await controller.tick();
@@ -86,7 +87,7 @@ test("flagged handoff applies during active work without an idle hold", async ()
 test("failed flagged handoff falls back after idle and notifies once per version", async () => {
   let now = 0; let version = "next"; let activeRuns = 1; const attempts = []; const failures = [];
   const controller = createAutoApplyUpdate({ pendingVersion: async () => version, enabled: () => true,
-    seamlessHandoff: () => true, activity: async () => ({ activeRuns, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    seamlessHandoff: () => true, trunkWork: () => false, activity: async () => ({ activeRuns, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
     restart: async (_version, handoffOnly) => { attempts.push(handoffOnly); throw new Error("standby failed"); },
     onFailure: value => failures.push(value), log: () => {}, now: () => now });
   await controller.tick();
@@ -126,4 +127,83 @@ test("failed flagged handoff falls back after idle without notifying or waiting 
   now += AUTO_APPLY_IDLE_MS; await controller.tick();
   assert.deepEqual(attempts, [true, false]);
   assert.deepEqual(failures, []);
+});
+
+/** A seamless-handoff machine with an injectable clock, activity, health and security flag (Private #951). */
+function cadence({ security = false } = {}) {
+  const state = { now: 0, version: "next", activity: { activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false },
+    health: { diskFree: 0.5, memoryFree: 0.5 }, security };
+  const restarts = [], logs = [];
+  const controller = createAutoApplyUpdate({ pendingVersion: async () => state.version, enabled: () => true, seamlessHandoff: () => true,
+    activity: async () => state.activity, activeRuns: async () => state.activity.activeRuns, health: () => state.health, securityFix: async () => state.security,
+    restart: async (version, handoffOnly) => { restarts.push([version, handoffOnly]); }, log: line => logs.push(line), now: () => state.now });
+  return { state, restarts, logs, controller, tick: () => controller.tick() };
+}
+
+test("an update that arrives mid-run on a Trunk machine is deferred until idle, then hands off", async () => {
+  const f = cadence();
+  f.state.activity = { ...f.state.activity, activeRuns: 1 };
+  await f.tick(); f.state.now += AUTO_APPLY_IDLE_MS * 5; await f.tick();
+  assert.deepEqual(f.restarts, [], "the update interrupted a run in flight");
+  assert.ok(f.logs.some(line => line.includes("waiting for 1 active runs, 0 approvals; deferring next until Trunk work is idle")));
+  f.state.activity = { ...f.state.activity, activeRuns: 0 };
+  await f.tick();
+  assert.deepEqual(f.restarts, [], "applied without the idle hold");
+  f.state.now += AUTO_APPLY_IDLE_MS; await f.tick();
+  assert.deepEqual(f.restarts, [["next", true]]);
+});
+
+test("a Trunk machine applies at most one update an hour", async () => {
+  const f = cadence();
+  f.state.activity = { ...f.state.activity, activeRuns: 1 }; await f.tick();
+  f.state.activity = { ...f.state.activity, activeRuns: 0 }; await f.tick();
+  f.state.now += AUTO_APPLY_IDLE_MS; await f.tick();
+  assert.equal(f.restarts.length, 1);
+  f.state.version = "later"; await f.tick();
+  f.state.now += AUTO_APPLY_IDLE_MS * 10; await f.tick();
+  assert.equal(f.restarts.length, 1, "a second update landed within the hour");
+  assert.ok(f.logs.some(line => line.includes("batching later with Trunk work")));
+  f.state.now = AUTO_APPLY_IDLE_MS + TRUNK_UPDATE_MIN_INTERVAL_MS; await f.tick();
+  f.state.now += AUTO_APPLY_IDLE_MS; await f.tick();
+  assert.deepEqual(f.restarts.at(-1), ["later", true]);
+});
+
+test("a security fix lands mid-run on a Trunk machine without the batch", async () => {
+  const f = cadence({ security: true });
+  f.state.activity = { ...f.state.activity, activeRuns: 2 };
+  await f.tick();
+  assert.deepEqual(f.restarts, [["next", true]]);
+});
+
+test("Trunk work seen while nothing is pending batches the next update", async () => {
+  const f = cadence();
+  f.state.version = null; f.state.activity = { ...f.state.activity, activeRuns: 1 };
+  await f.tick();
+  f.state.activity = { ...f.state.activity, activeRuns: 0 };
+  f.state.now += TRUNK_WORK_SAMPLE_MS; f.state.version = "next"; await f.tick();
+  assert.deepEqual(f.restarts, [], "a Trunk machine took an idle update without the hold");
+  f.state.now += AUTO_APPLY_IDLE_MS; await f.tick();
+  assert.deepEqual(f.restarts, [["next", true]]);
+});
+
+for (const [name, health, reason] of [["low-disk", { diskFree: 0.09, memoryFree: 0.5 }, /low disk: 9% free, under 10%/],
+  ["low-RAM", { diskFree: 0.5, memoryFree: 0.19 }, /low memory: 19% free, under 20%/]]) {
+  test(`a ${name} host refuses to start an update, a security fix included`, async () => {
+    const f = cadence({ security: true });
+    f.state.health = health;
+    await f.tick(); f.state.now += AUTO_APPLY_IDLE_MS * 2; await f.tick(); await f.tick();
+    assert.deepEqual(f.restarts, []);
+    assert.ok(f.logs.some(line => reason.test(line)), f.logs.join("\n"));
+    f.state.health = { diskFree: 0.5, memoryFree: 0.5 }; await f.tick();
+    assert.deepEqual(f.restarts, [["next", true]]);
+  });
+}
+
+test("update health reads the data volume and RAM, and tests can pin either", () => {
+  assert.equal(updateHealthRefusal({ diskFree: 0.10, memoryFree: 0.20 }), undefined);
+  const real = readUpdateHealth(process.cwd(), 4, 16, {});
+  assert.ok(real.diskFree > 0 && real.diskFree <= 1);
+  assert.equal(real.memoryFree, 0.25);
+  assert.deepEqual(readUpdateHealth(process.cwd(), 4, 16, { BRANCH_DESKTOP_UPDATE_FREE_DISK: "0.05", BRANCH_DESKTOP_UPDATE_FREE_MEMORY: "0.1" }),
+    { diskFree: 0.05, memoryFree: 0.1 });
 });

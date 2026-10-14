@@ -202,6 +202,16 @@ test("a replacement that fails part way puts the staged pair back; the served wi
   assert.match(logs.join("\n"), /0\.4\.3 stays staged/);
 }));
 
+test("a release published as a security fix is staged as one (Private #951)", async () => fixture(async ({ cfg, request, release }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  const status = await source.readComponentUpdateStatus(cfg);
+  assert.equal(status.componentsPendingVersion, "0.4.3");
+  assert.equal(status.componentsPendingSecurity, true);
+  const { security: _security, ...plain } = release;
+  assert.equal(parseComponentRelease(plain).security, undefined);
+  assert.throws(() => parseComponentRelease({ ...release, security: "yes" }), /security flag/);
+}, ({ release }) => { release.security = true; }));
+
 test("a replacement whose undo also fails rolls back to the running build, and says where the window now is", async () => fixture(async (context) => {
   const { cfg, request } = context;
   await source.refreshComponentUpdate(cfg, request);

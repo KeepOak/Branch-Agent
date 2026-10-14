@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CapabilityProvider } from "../../connect/capabilities";
 import type { ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
+import { comingControls } from "../../glass/coming-registry";
 import { Sidebar, type SidebarProps } from "./Sidebar";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span data-face={label} /> }));
@@ -39,7 +40,7 @@ const FULL = {
   "users.self": { profile: { id: "me", displayName: "Taofik" } },
   "users.list": { profiles: [{ id: "me", displayName: "Taofik" }, { id: "dana", displayName: "Dana Okafor", role: "member" }] },
 };
-// Everything the sidebar calls except the two the engine really lacks (sessions.restore, sessions.folders.put).
+// Everything the sidebar calls except sessions.restore, which the engine lacks (own folders wait in Seedbank).
 const methods = ["contacts.list", "agents.list", "rooms.list", "sessions.patch", "sessions.patchMany", "sessions.delete", "sessions.create", "sessions.compact",
   "sessions.groups.list", "contacts.markRead", "contacts.topics", "rooms.create", "rooms.archive", "agents.create", "agents.update", "agents.delete", "chat.send", "chat.history", "branch.chat"];
 
@@ -135,12 +136,14 @@ describe("R1 sidebar", () => {
     expect(host.querySelector(".r1sb-fold")).toBeNull();
   });
 
-  it("marks Recently deleted and new folders Coming, and opens Seedbank, Grove and Settings", async () => {
+  it("marks Recently deleted Coming, draws no New folder (it waits in Seedbank), and opens Seedbank, Grove and Settings", async () => {
     const { render, props } = setup(FULL);
     await render();
     const deleted = [...host.querySelectorAll(".r1sb-bins .r1sb-bin")].find(bin => bin.textContent?.includes("Recently deleted"))!;
     expect(deleted.getAttribute("aria-disabled")).toBe("true");
-    expect(host.querySelector('[aria-label="New folder"]')?.getAttribute("aria-disabled")).toBe("true");
+    expect(host.querySelector('[aria-label="New folder"]')).toBeNull();
+    expect(host.querySelector(".r1sb-fold")?.querySelectorAll("[aria-disabled=true]").length).toBe(0);
+    expect(comingControls().flatMap(entry => entry.need)).not.toContain("sessions.folders.put");
     await click(host.querySelector(".r1sb-seed"));
     expect(props.onPlace).toHaveBeenCalledWith("seedbank");
     await click(host.querySelector('[aria-label="Grove"]'));
@@ -157,8 +160,8 @@ describe("R1 sidebar", () => {
     await click(host.querySelector(".r1sb-upd"));
     expect(props.onSettings).toHaveBeenCalledWith("updates");
     await click(host.querySelector('[aria-label="New, places and more"]'));
-    expect(text(".g-menu-row .g-menu-label")).toEqual(["New conversation", "New Trunk", "New group", "Have Branch make a Trunk", "New automation", "Collapse the list to faces"]);
-    expect(text(".g-menu-row .g-menu-end small")).toEqual(["random character", "Ctrl B"]);
+    expect(text(".g-menu-row .g-menu-label")).toEqual(["New conversation", "New Trunk", "New group", "Have Branch make a Trunk", "New automation", "Quick ask", "Collapse the list to faces"]);
+    expect(text(".g-menu-row .g-menu-end small")).toEqual(["random character", "Ctrl Shift Space", "Ctrl B"]);
   });
 
   it("opens the person menu with the update banner on top and no Settings row", async () => {
