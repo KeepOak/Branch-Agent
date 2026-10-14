@@ -26,11 +26,12 @@ export const PANE_TAB_NEEDS: Readonly<Record<PaneTab, readonly string[]>> = {
 };
 
 /**
- * The side panel's tabs in R1, as the preview draws them (preview.html, the last renderPane pass: "The side panel keeps Activity,
- * Plan, Files, Memory and Terminal; the browser has its own full-size view"). Timeline and Branches come from the same pass;
- * Branches shows only when the conversation has two or more paths. Computer and Browser open full size from the header, not here.
+ * The side panel's fixed tabs in R1, in the preview's order (preview.html §4.5.8, PT_PC18 and paneTabsPC18): Activity, Dashboard,
+ * Preview (only with a preview server), Timeline, Branches (only with two or more paths), Plan, Files, Memory, Terminal. The "+"
+ * adds Side chat and Changes (Advanced and up) and the Coming tabs, and an added tab stays in the conversation's row.
+ * Computer and Browser open full size from the header, not as tabs.
  */
-export const R1_PANE_TABS: readonly PaneTab[] = ["Activity", "Timeline", "Branches", "Plan", "Files", "Memory", "Terminal"];
+export const R1_PANE_TABS: readonly PaneTab[] = ["Activity", "Dashboard", "Preview", "Timeline", "Branches", "Plan", "Files", "Memory", "Terminal"];
 
 /** The one-line reason a tab shows when this engine can't fill it. */
 export const paneComingReason = (tab: PaneTab) => `This engine can’t show ${tab === "Side chat" ? "a side chat" : tab}.`;

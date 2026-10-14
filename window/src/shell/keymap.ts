@@ -29,7 +29,7 @@ export type ActionId =
 /** `off`: why the action can't run in this window yet; its row shows the keys greyed with that reason.
  *  `pane`: the side panel tab or full-size view it opens (the dialog's "Side panel" group). */
 export type KeyAction = { id: ActionId; name: string; keys: string; off?: string; pane?: PaneTarget };
-export type PaneTarget = "Terminal" | "Files" | "Side chat" | "Browser" | "Computer";
+export type PaneTarget = "Terminal" | "Files" | "Side chat" | "Dashboard" | "Browser" | "Computer";
 
 const DESKTOP = "Keys that work from any app belong to the desktop app, which doesn't offer them yet.";
 const NO_TAB = (tab: string) => `The side panel has no ${tab} tab in this window yet.`;
@@ -58,7 +58,7 @@ export function keyActions(defaultName: string): KeyAction[] {
     { id: "paneSideChat", name: "Side chat", keys: "Ctrl Alt Shift S", pane: "Side chat" },
     { id: "paneReview", name: "Review", keys: "Ctrl Alt Shift E", off: NO_TAB("Review") },
     { id: "paneDiscussion", name: "Discussion", keys: "Ctrl Alt Shift J", off: NO_TAB("Discussion") },
-    { id: "paneDashboard", name: "Dashboard", keys: "Ctrl Alt Shift G", off: NO_TAB("Dashboard") },
+    { id: "paneDashboard", name: "Dashboard", keys: "Ctrl Alt Shift G", pane: "Dashboard" },
     { id: "stageBrowser", name: "Browser, full size", keys: "Ctrl Alt Shift U", pane: "Browser" },
     { id: "stageComputer", name: "Computer, full size", keys: "Ctrl Alt Shift D", pane: "Computer" },
   ];

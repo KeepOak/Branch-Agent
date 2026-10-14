@@ -166,7 +166,8 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
     // The tab row scrolls sideways; keep the open tab in view.
     head.current?.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [tab]);
-  const tabs = PANE_TABS.filter((t) => !fixed || fixed.includes(t)).filter((t) =>
+  // A fixed set (R1) shows its own tabs in order, then the tabs added with "+" (Side chat, Changes) that this conversation opened.
+  const tabs = PANE_TABS.filter((t) => !fixed || fixed.includes(t) || ADDABLE.includes(t)).filter((t) =>
     t === "Conversations" ? Boolean(contactTopics) && tab === "Conversations" : t === "Branches" ? paths.length >= 2 || tab === "Branches" : t === "Preview" ? previews.portals.length > 0 || tab === "Preview" : ADDABLE.includes(t) ? added.includes(t) : true,
   );
   const current = tabs.includes(tab) ? tab : DEFAULT_PANE_TAB;
@@ -261,9 +262,9 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
               </span>
             ) : null}
           </div>
-          {fixed ? null : <button type="button" className="ib" aria-haspopup="menu" aria-label="Add a tab" title="Add a tab" onClick={(e) => addMenu(at(e, true))}>
+          <button type="button" className="ib" aria-haspopup="menu" aria-label="Add a tab" title="Add a tab" onClick={(e) => addMenu(at(e, true))}>
             <SIcon name="plus" small />
-          </button>}
+          </button>
           <button type="button" className="ib" aria-pressed={focus} aria-label="Focus" title="Focus" onClick={() => setFocus((v) => !v)}>
             <SIcon name="expand" small />
           </button>
