@@ -1,5 +1,6 @@
 // The conversation ••• menu in the header (owner-approved 2026-10-12, CHANGELOG-PASS17 "conversation ••• menu rebuilt"):
 // Pin to top, Rename, Snooze ›, Archive, Send to the board, then Export › and View ›, then Start over… and Delete… in red.
+// Share… follows Send to the board and opens the Classic Share dialog (owner placement for parity row 13, 2026-10-14).
 // It re-hosts the Classic menu's actions (shell/conversation-menu.ts, shell/ConversationMenu.tsx) on R1's glass Menu: each
 // entry names the engine call it makes, so an engine without it shows Coming; entries that only open or move are local.
 // Rows the R1 window can't run yet (Split, Side panel, its computer and browser) say why instead of pretending.
@@ -16,6 +17,7 @@ import { DEFAULT_AWAKE, DEFAULT_LISTED, FIRST_MESSAGE, TRUNK_LISTED } from "../s
 export const CONVERSATION_NEED = {
   patch: "sessions.patch",
   board: "canopy.cards.captureSession",
+  share: "session.members.list",
   history: "chat.history",
   map: "sessions.branches.list",
   describe: "sessions.describe",
@@ -42,6 +44,7 @@ export type ConversationMenuRun = {
   archive: () => void;
   restore: () => void;
   toBoard: () => void;
+  share: () => void;
   exportFile: () => void;
   exportWebPage: () => void;
   copyConversation: () => void;
@@ -131,7 +134,7 @@ function view(c: ConversationMenuContext): MenuEntry {
   ]) };
 }
 
-/** The approved nine rows, in the approved order; a group chat adds Group rules after View. */
+/** The approved nine rows, in the approved order, with Share… after Send to the board; a group chat adds Group rules after View. */
 export function conversationMenu(c: ConversationMenuContext): MenuEntry[] {
   const row = c.row;
   const deleteRow: MenuEntry = c.isDefault ? { label: "Delete…", icon: icon("trash"), danger: true, off: DEFAULT_LISTED }
@@ -145,6 +148,7 @@ export function conversationMenu(c: ConversationMenuContext): MenuEntry[] {
     snooze(c),
     archive(c),
     { label: "Send to the board", icon: icon("puzzle"), need: CONVERSATION_NEED.board, onSelect: c.run.toBoard },
+    row ? { label: "Share…", icon: icon("users"), need: CONVERSATION_NEED.share, onSelect: c.run.share } : { label: "Share…", icon: icon("users"), off: FIRST_MESSAGE },
     { label: "Export", icon: icon("doc"), gap: true, submenu: [
       { label: "Conversation file", icon: icon("doc"), need: CONVERSATION_NEED.history, onSelect: c.run.exportFile },
       { label: "Web page", icon: icon("doc"), need: CONVERSATION_NEED.history, onSelect: c.run.exportWebPage },
