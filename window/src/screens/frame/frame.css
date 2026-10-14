@@ -2,10 +2,6 @@
 .r1-frame[data-wide="false"] { grid-template-columns: 68px minmax(0, 1fr); }
 .r1-frame[data-topics="true"] { grid-template-columns: 292px 300px minmax(0, 1fr); }
 .r1-frame[data-topics="true"][data-wide="false"] { grid-template-columns: 68px 300px minmax(0, 1fr); }
-.r1-frame[data-aside="true"] { grid-template-columns: 292px minmax(0, 1fr) 316px; }
-.r1-frame[data-aside="true"][data-wide="false"] { grid-template-columns: 68px minmax(0, 1fr) 316px; }
-.r1-frame[data-aside="true"][data-topics="true"] { grid-template-columns: 292px 300px minmax(0, 1fr) 316px; }
-.r1-frame[data-aside="true"][data-topics="true"][data-wide="false"] { grid-template-columns: 68px 300px minmax(0, 1fr) 316px; }
 .r1-sidebar { min-width: 0; min-height: 0; height: 100%; padding: 8px 10px 12px; display: flex; flex-direction: column; background: color-mix(in srgb, var(--side) 80%, transparent); backdrop-filter: var(--gf-blur); -webkit-backdrop-filter: var(--gf-blur); }
 .r1-side-top { height: 44px; flex: none; }
 .r1-side-top button, .r1-drawer-button { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border-radius: var(--r-pill); }

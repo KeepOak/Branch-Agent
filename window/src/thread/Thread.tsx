@@ -84,6 +84,8 @@ type Props = {
   onStart?: (text: string) => void;
   /** How the last run ended; the done cheer plays only for one that finished. */
   ended?: RunEnd | null;
+  /** The done cheer shows only when the person turned it on (Settings › Appearance). Off by default. */
+  cheerOn?: boolean;
   /** The conversation's last run error (sessions.list lastRunError); restart recovery's own one shows "Stopped by restart". */
   recoveryFailure?: string;
   /** The Plan card; it goes after the turn that last updated it (planAnchor), else at the end (§4.2.2). */
@@ -402,7 +404,7 @@ export function Thread(props: Props) {
           <Icon d={ICONS.down} size={16} />
         </button>
       ) : null}
-      {props.room?.isRoom ? null : <DoneCheer name={name} ended={props.ended} history={history} />}
+      {props.room?.isRoom || !props.cheerOn ? null : <DoneCheer name={name} ended={props.ended} history={history} />}
       </div>
       {dialog}
     </ThreadContext.Provider>

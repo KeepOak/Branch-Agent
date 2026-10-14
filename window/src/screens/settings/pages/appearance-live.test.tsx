@@ -96,13 +96,24 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(JSON.stringify(calls(request, "users.prefs.set"))).toContain("#123456");
   });
 
+  it("picking None turns the pet and its roam off", async () => {
+    const { request } = await mount();
+    await change(row("appearance.pet.pick")!.querySelector("select")!, "otter");
+    await change(row("appearance.pet.pick")!.querySelector("select")!, "none");
+    const last = request.mock.calls.filter(([m]) => m === "users.prefs.set").pop()?.[1] as { entries: Record<string, Record<string, unknown>> };
+    expect(last.entries["ui.window.look"]).not.toHaveProperty("pet");
+    expect(last.entries["ui.window.look"]).not.toHaveProperty("roam");
+  });
+
   it("keeps the pets you've had when a pet is picked", async () => {
     const { request } = await mount();
     await change(row("appearance.pet.pick")!.querySelector("select")!, "otter");
     const sent = JSON.stringify(calls(request, "users.prefs.set"));
     expect(sent).toContain("otter");
     expect(sent).toContain("petsHad");
-    expect(row("appearance.pet.had")!.querySelector(".r1s-val")!.textContent).toMatch(/^2 of \d+/);
+    expect(sent).toContain('"roam":true'); // picking a pet turns it on
+    // No pet is the default now, so the one picked is the only pet had.
+    expect(row("appearance.pet.had")!.querySelector(".r1s-val")!.textContent).toMatch(/^1 of \d+/);
   });
 
   it("changes a Trunk's model with agents.update", async () => {

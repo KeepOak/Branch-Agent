@@ -16,8 +16,6 @@ class Region extends Component<{ children: ReactNode }, { failed: boolean }> {
 }
 export type FrameProps = {
   sidebar: ReactNode; main: ReactNode; composer?: ReactNode; topics?: ReactNode; notice?: ReactNode;
-  /** A column beside the conversation (the re-hosted control tower, parity row 5). */
-  aside?: ReactNode;
   /** The side panel beside the conversation (parity row 2); none while it is closed. */
   pane?: ReactNode;
   header: Omit<HeaderProps, "onToggleSidebar">; navigationKey?: string; onShortcut?: (action: "settings" | "nextConversation" | "palette" | "focusSearch") => void;
@@ -33,7 +31,7 @@ const HANDLE_LABEL: Record<Edge, string> = {
   side: "Resize the sidebar. Drag to any size, double-click for the rail, Alt-drag resizes both.",
   topics: "Resize the threads. Drag to any size, double-click for the rail, Alt-drag resizes both.",
 };
-export function Frame({ sidebar, main, composer, topics, notice, aside, pane, header, navigationKey, onShortcut, beside, freeLayout }: FrameProps) {
+export function Frame({ sidebar, main, composer, topics, notice, pane, header, navigationKey, onShortcut, beside, freeLayout }: FrameProps) {
   const [wide, setWide] = useState(readWide), [drawer, setDrawer] = useState(false);
   const [narrow, setNarrow] = useState(() => narrowQuery()?.matches ?? false);
   const scroll = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), side = useRef<HTMLElement>(null), frame = useRef<HTMLDivElement>(null);
@@ -78,14 +76,14 @@ export function Frame({ sidebar, main, composer, topics, notice, aside, pane, he
     return () => document.removeEventListener("keydown", key);
   });
   const gridStyle: CSSProperties | undefined = free ? {
-    gridTemplateColumns: `${sideW}px ${topicsW}px minmax(0, 1fr)${aside ? " 316px" : ""}`,
+    gridTemplateColumns: `${sideW}px ${topicsW}px minmax(0, 1fr)`,
     position: "relative", transition: drag.live ? "none" : undefined,
   } : undefined;
   const handle = (edge: Edge, left: number) => <div key={edge} className={`r1-free-handle${topicsW <= 0 && edge === "topics" ? " r1-free-open" : ""}`} role="separator" aria-orientation="vertical" aria-valuenow={Math.round(edge === "side" ? sideW : topicsW)} tabIndex={0} data-edge={edge}
     aria-label={topicsW <= 0 && edge === "topics" ? "Threads are closed. Drag right to open them, or press Enter." : HANDLE_LABEL[edge]} style={{ left: left - 4 }}
     onPointerDown={(event) => drag.begin(edge, event)} onPointerMove={drag.move} onPointerUp={drag.end} onPointerCancel={drag.end}
     onDoubleClick={() => drag.doubleClick(edge)} onKeyDown={(event) => drag.handleKey(edge, event)} />;
-  return <div ref={frame} className="r1-frame" data-wide={wideNow} data-drawer={drawer} data-topics={Boolean(topics)} data-aside={Boolean(aside)} data-pane={Boolean(pane)}
+  return <div ref={frame} className="r1-frame" data-wide={wideNow} data-drawer={drawer} data-topics={Boolean(topics)} data-pane={Boolean(pane)}
     data-free={free} data-side-tier={free ? sideTier(sideW) : undefined} data-topic-tier={free && topicsW > 0 ? topicsTier(topicsW) : undefined} style={gridStyle}>
     {narrow && drawer && <button className="r1-drawer-scrim" type="button" data-local="" aria-label="Hide the sidebar" onClick={close} />}
     <aside className="r1-sidebar" ref={side} aria-label="Sidebar" role={narrow ? "dialog" : undefined} aria-modal={narrow && drawer ? true : undefined} inert={narrow && !drawer} tabIndex={-1} onKeyDown={event => {
@@ -106,7 +104,6 @@ export function Frame({ sidebar, main, composer, topics, notice, aside, pane, he
       {composer && <div className="r1-composer-slot"><Region>{composer}</Region></div>}
       {beside && <div className="r1-beside"><Region>{beside.node}</Region></div>}
     </section>
-    {aside && <div className="r1-aside"><Region>{aside}</Region></div>}
     {pane && <div className="r1-pane-slot"><Region>{pane}</Region></div>}
     {free && handle("side", sideW)}
     {free && (topicsW > 0 ? handle("topics", sideW + topicsW) : handle("topics", sideW))}
