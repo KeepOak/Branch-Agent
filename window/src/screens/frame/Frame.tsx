@@ -14,6 +14,8 @@ class Region extends Component<{ children: ReactNode }, { failed: boolean }> {
 }
 export type FrameProps = {
   sidebar: ReactNode; main: ReactNode; composer?: ReactNode; topics?: ReactNode; notice?: ReactNode;
+  /** A column beside the conversation (the re-hosted control tower, parity row 5). */
+  aside?: ReactNode;
   /** The side panel beside the conversation (parity row 2); none while it is closed. */
   pane?: ReactNode;
   header: Omit<HeaderProps, "onToggleSidebar">; navigationKey?: string; onShortcut?: (action: "settings" | "nextConversation" | "palette" | "focusSearch") => void;
@@ -23,7 +25,7 @@ export type FrameProps = {
 /** jsdom and some embedded webviews have no matchMedia; treat a missing query as a wide window. */
 function narrowQuery(): MediaQueryList | null { return typeof matchMedia === "function" ? matchMedia("(max-width: 760px)") : null; }
 function readWide() { try { return localStorage.getItem("branch.r1.sidebar") !== "rail"; } catch { return true; } }
-export function Frame({ sidebar, main, composer, topics, notice, pane, header, navigationKey, onShortcut, beside }: FrameProps) {
+export function Frame({ sidebar, main, composer, topics, notice, aside, pane, header, navigationKey, onShortcut, beside }: FrameProps) {
   const [wide, setWide] = useState(readWide), [drawer, setDrawer] = useState(false);
   const [narrow, setNarrow] = useState(() => narrowQuery()?.matches ?? false);
   const scroll = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), side = useRef<HTMLElement>(null);
@@ -60,7 +62,7 @@ export function Frame({ sidebar, main, composer, topics, notice, pane, header, n
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
   });
-  return <div className="r1-frame" data-wide={wide} data-drawer={drawer} data-topics={Boolean(topics)} data-pane={Boolean(pane)}>
+  return <div className="r1-frame" data-wide={wide} data-drawer={drawer} data-topics={Boolean(topics)} data-aside={Boolean(aside)} data-pane={Boolean(pane)}>
     {narrow && drawer && <button className="r1-drawer-scrim" type="button" data-local="" aria-label="Close sidebar" onClick={close} />}
     <aside className="r1-sidebar" ref={side} aria-label="Sidebar" role={narrow ? "dialog" : undefined} aria-modal={narrow && drawer ? true : undefined} inert={narrow && !drawer} tabIndex={-1} onKeyDown={event => {
       if (!narrow || !drawer || event.key !== "Tab") return;
@@ -80,6 +82,7 @@ export function Frame({ sidebar, main, composer, topics, notice, pane, header, n
       {composer && <div className="r1-composer-slot"><Region>{composer}</Region></div>}
       {beside && <div className="r1-beside"><Region>{beside.node}</Region></div>}
     </section>
+    {aside && <div className="r1-aside"><Region>{aside}</Region></div>}
     {pane && <div className="r1-pane-slot"><Region>{pane}</Region></div>}
   </div>;
 }
