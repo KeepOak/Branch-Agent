@@ -22,14 +22,14 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 
 /** The approved preview's History & backups page (preview.html PG history), card by card, with its Regular rows. */
 const PREVIEW_CARDS = ["Backups", "Snapshots", "Roll back, see the change, undo", "A copy of your setup"];
-/** Rows the page adds to a card beyond the preview's own: Classic's working Back up now and its last result, and Restore,
- *  which stands for the preview's list of copies with Restore… until the engine can restore one. */
-const EXTRA_REGULAR: Record<string, string[]> = { Backups: ["Back up now", "Last backup", "Restore a copy"] };
+/** Rows the page adds to a card beyond the preview's own: Classic's working Back up now and its last result (which carries
+ *  the preview's Restore…). */
+const EXTRA_REGULAR: Record<string, string[]> = { Backups: ["Back up now", "Last backup"] };
 const PREVIEW_REGULAR: Record<string, string[]> = {
   Backups: ["Back up on a schedule", "How often", "Where"],
   Snapshots: ["Tidy memory overnight", "Night window", "Rings diary"],
   // Never dies, then Every change with its Roll back (preview: self Never dies and Every change).
-  "Roll back, see the change, undo": ["If the engine stops", "If it keeps crashing", "Interrupted work", "Last good settings", "Every change", "Roll back a change"],
+  "Roll back, see the change, undo": ["If the engine stops", "If it keeps crashing", "Interrupted work", "Last good settings", "Every change"],
   "A copy of your setup": ["Export a copy without secrets"],
 };
 
@@ -123,6 +123,10 @@ describe("R1 Settings › History & backups is a native R1 page with the preview
     await click(button(row("history.snapshots.dedupe"), "Remove repeats"));
     expect(row("history.snapshots.dedupe")?.textContent).toContain("Removed 3 repeats.");
     expect(row("history.undo.changes")?.textContent).toContain("Settings: Changed the night window");
+    // The preview's Restore… and Roll back, Coming until Branch can do them, with no row of their own.
+    expect(button(row("history.backups.last"), "Restore…")?.closest("[data-coming]")).not.toBeNull();
+    expect(button(row("history.undo.changes"), "Roll back")?.closest("[data-coming]")).not.toBeNull();
+    expect(host.textContent).not.toMatch(/Restore a copy|Roll back a change/);
     expect(row("history.copy.data")?.textContent).toContain("/data/branch");
   });
 });

@@ -68,7 +68,6 @@ export const HISTORY_ROWS: Row[] = [
   slot("history.backups.where", BACKUPS, "Where", [...BACKUP, "backup.schedule.clear"], { help: "A private Git repository you own, or a folder on this computer outside Branch’s own data." }),
   slot("history.backups.now", BACKUPS, "Back up now", ["backup.run", "backup.status"], { control: "toggle", help: "Runs in the background; the result shows below." }),
   slot("history.backups.last", BACKUPS, "Last backup", ["backup.status"], { control: "toggle" }),
-  coming("history.backups.restore", BACKUPS, "Restore a copy", "backup.restore", "Branch can’t restore a copy from here yet.", { help: "Puts back conversations, memory and settings from one copy." }),
   slot("history.backups.media-file", BACKUPS, "Largest media file", BACKUP, { control: "number", level: 1, help: "Large pictures, audio, video and PDFs are counted and left out." }),
   slot("history.backups.media-all", BACKUPS, "Media in all", BACKUP, { control: "number", level: 1, help: "Once a backup holds this much media, the rest is left out and counted." }),
 
@@ -101,7 +100,6 @@ export const HISTORY_ROWS: Row[] = [
     { help: "Safe steps carry on by themselves; anything that sends or changes something asks first." }),
   slot("history.undo.last-good", ROLL_BACK, "Last good settings", [], { control: "toggle" }),
   slot("history.undo.changes", ROLL_BACK, "Every change", ["branch.changes.list"], { help: "Each change to Branch’s setup, newest first, and what made it." }),
-  coming("history.undo.roll-back", ROLL_BACK, "Roll back a change", "engine: rolling back a settings change", "Rolling back a change needs the engine’s roll back."),
 
   // A copy of your setup: Classic About Branch's A copy of your setup and Your settings.
   coming("history.copy.export-all", COPY, "Export a copy without secrets", "engine: a setup export", "Branch can’t export your whole setup yet; Export, below, saves the settings alone.",

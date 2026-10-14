@@ -120,11 +120,16 @@ export function BackupNow({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** Last backup: when, what happened, and whether it succeeded. */
+/** Last backup: when, what happened, and whether it succeeded, with the preview's Restore… (Coming until a copy can be
+ *  put back from here). */
 export function LastBackup({ engine }: SlotControlProps) {
   const b = useBackups(engine);
   const last = lastBackup(b.status.data, str(b.schedule?.target));
-  return <><Val>{last.pill ? last.pill.label : "None"}</Val><Line bad={last.pill?.tone === "bad"}>{last.sub}</Line></>;
+  return <>
+    <span className="r1s-own-ctl"><Val>{last.pill ? last.pill.label : "None"}</Val>
+      <Coming engine={engine} need="backup.restore" unwired reason="Restoring a copy comes in a later update." where="Restore…"><button type="button" className="r1s-btn" disabled>Restore…</button></Coming></span>
+    <Line bad={last.pill?.tone === "bad"}>{last.sub}</Line>
+  </>;
 }
 
 function MediaLimit({ engine, row, field, fallback }: SlotControlProps & { field: keyof MediaLimits; fallback: number }) {
@@ -233,6 +238,8 @@ export function EveryChange({ engine, row }: SlotControlProps) {
               <li key={str(e.id)} className="r1s-item" data-bad={e.invalid === true || undefined}>
                 <span className="r1s-item-t g-label">{[SOURCE[str(e.source)], str(e.summary)].filter(Boolean).join(": ")}</span>
                 <small className="g-label">{when(e.at)}{Array.isArray(e.changedPaths) && e.changedPaths.length ? ` · ${e.changedPaths.map(String).slice(0, 3).join(", ")}` : ""}</small>
+                {e.kind === "config-write" ? <Coming engine={engine} need="engine: rolling back a settings change" unwired reason="Rolling back a change comes in a later update." where="Roll back">
+                  <button type="button" className="r1s-link" disabled>Roll back</button></Coming> : null}
               </li>
             ))}
           </ul>
