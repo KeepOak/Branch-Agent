@@ -9,7 +9,7 @@ import { KeyRow, NO_KEY, type Cfg, type Row } from "./chatapps-kit";
 const off = (t: string, sub: string | undefined, kind: Row["kind"], def?: unknown, opts?: string[]): Row => ({ t, sub, kind, def, off: NO_KEY, ...(opts ? { opts: opts.map((l, i) => [l, i] as [string, unknown]) } : {}) });
 const SCAN = "Instead of copying IDs and secrets.";
 /** Each app's own rows, keyed by the engine's channel id; a row with `key` saves channels.<id>.<key>. */
-const DEPTH: Record<string, (Row & { key?: string })[]> = {
+export const DEPTH: Record<string, (Row & { key?: string })[]> = {
   telegram: [
     { t: "Live typing", sub: "The reply appears as it is written, in one message that only notifies when done.", kind: "seg", key: "streaming.mode", opts: [["Off", "off"], ["One message", "partial"], ["Steps too", "progress"]] },
     off("Search commands with @bot", "Type @ and the bot’s name in any chat to find a command or skill.", "sw", true),
@@ -86,7 +86,7 @@ export function Depth({ catalogue, connected, cfg }: { catalogue: CatalogueApp[]
 }
 
 /** messages.* by key: [key, what it does, the section above that sets it, the default, how to edit it here]. */
-const MSG_KEYS: [string, string, string | null, string, ("text" | "number" | "select" | "json" | "bool")?, string[]?][] = [
+export const MSG_KEYS: [string, string, string | null, string, ("text" | "number" | "select" | "json" | "bool")?, string[]?][] = [
   ["messages.visibleReplies", "Whether each answer posts by itself.", null, "\"automatic\"", "select", ["automatic", "message_tool"]],
   ["messages.responsePrefix", "Text put before every reply.", "How replies are sent", "not set"],
   ["messages.usageTemplate", "The wording of the usage line under a reply.", null, "not set", "text"],

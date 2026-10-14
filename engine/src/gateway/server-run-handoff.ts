@@ -20,33 +20,17 @@ import {
   listBusySessionLanes,
 } from "../process/session-handoff-lease-holder.js";
 import type { GatewayCronState } from "./server-cron.js";
+import {
+  HANDOFF_DEACTIVATION_BASE_MS,
+  HANDOFF_RESTORE_MS,
+  HANDOFF_SETTLE_WINDOW_MS,
+  isGatewayHandoffDeadlineError,
+  raceHandoffDeadline,
+  settlesWithin,
+} from "./server-handoff-deadline.js";
 import { GatewayHandoffFatalError } from "./server-handoff-error.js";
 import type { prepareGatewayKernelState } from "./server-runtime-state-prepare.js";
 import type { GatewayShutdownRuntime } from "./server-shutdown.runtime.js";
-
-async function beforeHandoffDeadline<T>(work: Promise<T>, deadline: number): Promise<T> {
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) {
-    throw new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds");
-  }
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () =>
-            reject(
-              new GatewayHandoffFatalError("Gateway handoff deactivation exceeded 18 seconds"),
-            ),
-          remaining,
-        );
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /** Owns deactivation, retained session leases, and quiet-run retirement as one transaction. */
 export function createGatewayRunHandoff(params: {
@@ -67,8 +51,17 @@ export function createGatewayRunHandoff(params: {
     startCronMaintenance(runtime.scheduler);
     await startChannels();
   };
-  const deactivate = (deadline = Date.now() + 18_000) =>
-    (deactivation ??= (async () => {
+  /**
+   * Steps this engine down by `deadline` (#481). A step that overruns aborts the handoff instead of killing the
+   * engine: the late step settles, the producers come back and this engine keeps serving; the update retries later.
+   */
+  const deactivate = (
+    deadline = Date.now() + HANDOFF_DEACTIVATION_BASE_MS,
+    budgetMs = Math.max(0, deadline - Date.now()),
+  ) => {
+    const beforeHandoffDeadline = <T>(work: Promise<T>, step: string, until = deadline) =>
+      raceHandoffDeadline(work, until, budgetMs, step);
+    return (deactivation ??= (async () => {
       // Close new roots, while admitted runs retain their dispatch context and
       // may start required follow-up work through their existing root custody.
       handoffAdmission = tryBeginGatewaySuspendAdmission(() => {});
@@ -89,7 +82,7 @@ export function createGatewayRunHandoff(params: {
           throw new Error("Gateway could not persist the waiting run for handoff");
         }
       });
-      await beforeHandoffDeadline(retryWaitHandoff.ready, deadline);
+      await beforeHandoffDeadline(retryWaitHandoff.ready, "the waiting-run handoff");
       const busyLanes = () =>
         new Set(
           Array.from(chatAbortControllers.values(), (entry) =>
@@ -109,7 +102,7 @@ export function createGatewayRunHandoff(params: {
             stopChannel(plugin.id),
           ),
         ),
-        deadline,
+        "channel stop",
       );
       const failedChannel = stoppedChannels.find(
         (result): result is PromiseRejectedResult => result.status === "rejected",
@@ -124,11 +117,11 @@ export function createGatewayRunHandoff(params: {
           : cron.stopAndDrain
             ? cron.stopAndDrain()
             : Promise.resolve(cron.stop()),
-        deadline,
+        "cron drain",
       );
-      await beforeHandoffDeadline(shutdownRuntime.stopCronMaintenance(), deadline);
-      await beforeHandoffDeadline(drainCronReceiptAuthority(), deadline);
-      await beforeHandoffDeadline(releaseCronReceiptAuthorityForHandoff(), deadline);
+      await beforeHandoffDeadline(shutdownRuntime.stopCronMaintenance(), "cron maintenance stop");
+      await beforeHandoffDeadline(drainCronReceiptAuthority(), "cron receipt drain");
+      await beforeHandoffDeadline(releaseCronReceiptAuthorityForHandoff(), "cron receipt release");
       handoffLeases.seal();
       if (!handoffAdmission.commit()) {
         throw new Error("Gateway handoff admission was invalidated before state release");
@@ -137,9 +130,16 @@ export function createGatewayRunHandoff(params: {
       retryWaitHandoff?.stop();
       retryWaitHandoff = undefined;
       if (error instanceof GatewayHandoffFatalError) {
-        // Timed-out work may still settle. Keep admission and leases fenced;
-        // the run loop must stop this owner instead of racing a rollback.
         throw error;
+      }
+      if (isGatewayHandoffDeadlineError(error)) {
+        // The late step is still this engine's own work: wait for it to finish before restoring, so the restore
+        // never races it. Only a step that never settles keeps admission fenced for the run loop to stop.
+        if (!(await settlesWithin(error.settled, HANDOFF_SETTLE_WINDOW_MS))) {
+          throw new GatewayHandoffFatalError(`${error.message}, but its step never settled`, {
+            cause: error,
+          });
+        }
       }
       handoffLeases?.releaseAll();
       if (isGatewayRestartDraining()) {
@@ -152,7 +152,12 @@ export function createGatewayRunHandoff(params: {
       try {
         // This engine still owns state on a failed handoff. Restore every
         // producer before reopening admission to new work.
-        await beforeHandoffDeadline(restoreHandoffProducers(), deadline);
+        // The restore gets a fresh budget: the step-down deadline may already be spent.
+        await beforeHandoffDeadline(
+          restoreHandoffProducers(),
+          "producer restore",
+          Date.now() + HANDOFF_RESTORE_MS,
+        );
         restored = true;
       } catch (restoreError) {
         if (restoreError instanceof GatewayHandoffFatalError) {
@@ -172,6 +177,7 @@ export function createGatewayRunHandoff(params: {
       }
       throw error;
     }));
+  };
   const rollbackDeactivation = async () => {
     await deactivation;
     retryWaitHandoff?.stop();
@@ -209,12 +215,13 @@ export function createGatewayRunHandoff(params: {
     if (!handoffLeases) {
       return { deadlineElapsed: false, expiresAt: undefined };
     }
-    const expiresAt = handoffLeases.expiresAt;
+    const leases = handoffLeases;
     const deadlineElapsed = await Promise.race([
-      handoffLeases.released.then(() => false),
-      handoffLeases.deadline,
+      leases.released.then(() => false),
+      leases.deadline,
     ]);
-    return { deadlineElapsed, expiresAt };
+    // Read after the wait: a kept run's lease is renewed while it works (Private #1038).
+    return { deadlineElapsed, expiresAt: leases.expiresAt };
   };
   return {
     deactivate,

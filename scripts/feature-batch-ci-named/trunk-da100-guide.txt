@@ -1,0 +1,3 @@
+window:src/shell/guide-links.test.ts
+window:src/shell/guide-menu.test.tsx
+window:src/shell/palette-rows.test.ts

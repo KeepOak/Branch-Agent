@@ -1,0 +1,4 @@
+engine:extensions/discord/src/monitor/message-handler.context.test.ts
+engine:extensions/discord/src/monitor/discord-context-provider.test.ts
+engine:src/agents/tools/sequential-thinking-tool.test.ts
+engine:src/agents/tools/harvested-tools-construction.test.ts

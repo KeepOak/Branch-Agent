@@ -33,12 +33,12 @@ if (typeof window !== "undefined") {
 }
 
 /** Draws the requested Trunk profile or editor over the window while a place is shown. */
-export function TrunkHost({ engine, level, openSettings, openPlace }: Pick<PlaceProps, "engine" | "level" | "openSettings" | "openPlace">) {
+export function TrunkHost({ engine, level, openSettings, openPlace, openConversation }: Pick<PlaceProps, "engine" | "level" | "openSettings" | "openPlace"> & Partial<Pick<PlaceProps, "openConversation">>) {
   const open = useSyncExternalStore(subscribe, () => current);
   useEffect(() => () => setOpen(null), []);
   if (!open) return null;
   const close = () => setOpen(null);
   return open.view === "edit"
     ? <TrunkEditor key={open.agentId} engine={engine} agentId={open.agentId} level={level} onClose={close} openSettings={openSettings} />
-    : <TrunkProfile key={open.agentId} engine={engine} agentId={open.agentId} level={level} onClose={close} openSettings={openSettings} openPlace={openPlace} />;
+    : <TrunkProfile key={open.agentId} engine={engine} agentId={open.agentId} level={level} onClose={close} openSettings={openSettings} openPlace={openPlace} openConversation={openConversation} />;
 }

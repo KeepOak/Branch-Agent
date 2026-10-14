@@ -8,6 +8,8 @@ import { Popover } from "./Dialog";
 import { Icon, ICONS } from "./icons";
 import type { ApprovalDecision } from "./model";
 import type { ApprovalDetails, Helper } from "./useEngineData";
+import type { NativeHelper } from "./native-helpers";
+import { NativeHelpers } from "./NativeHelpers";
 import { modelName } from "./format";
 
 type Mark = "working" | "done" | "waiting" | "stopped" | "stalled";
@@ -111,11 +113,11 @@ export function HelpersTree(props: TreeProps) {
 }
 
 /** The chip in the thread: one status mark per helper (up to five, then "+n"), the count, and a chevron. */
-export function HelpersChip(props: TreeProps & {onOpenActivity?: () => void}) {
+export function HelpersChip(props: TreeProps & {onOpenActivity?: () => void; native?: NativeHelper[]}) {
   const [open, setOpen] = useState(false);
   const marks = props.helpers.map((h) => helperMark(h, props.approvals.some((a) => a.sessionKey === h.key && !a.decision)));
   const waiting = marks.filter((m) => m === "waiting").length;
-  const words = chipWords(props.helpers.length, waiting, marks.every((m) => m === "done"));
+  const words = chipWords(props.helpers.length + (props.native?.length ?? 0), waiting, marks.every((m) => m === "done") && (props.native ?? []).every((h) => h.status === "done"));
   return (
     <div className="helpers-wrap">
       <button type="button" className="helpers-chip" aria-expanded={props.onOpenActivity ? undefined : open} data-testid="helpers-chip" onClick={() => props.onOpenActivity ? props.onOpenActivity() : setOpen((v) => !v)}>
@@ -132,6 +134,7 @@ export function HelpersChip(props: TreeProps & {onOpenActivity?: () => void}) {
       {open ? (
         <Popover label="Helpers on this task" align="left" onClose={() => setOpen(false)}>
           <HelpersTree {...props} />
+          {props.native?.length ? <NativeHelpers helpers={props.native} /> : null}
         </Popover>
       ) : null}
     </div>
