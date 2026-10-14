@@ -1,6 +1,7 @@
 // Overview (DESIGN-SPEC §4.6.1; preview renderOverview + 40-places + 41-placesap p10-overview).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { activityLabel } from "../../shell/activity-label";
 import { shownWhy } from "../../shell/shown-why";
 import { useLockdown } from "../../shell/use-lockdown";
 import { LOCKDOWN_EXPLANATION } from "../../shell/ConfirmLockdown";
@@ -12,10 +13,12 @@ import { OverviewData, agentName, agents, number, people, personFrom, record, re
 import { money, runLength, whenWord } from "./format";
 import { PersonRow, type PersonLine } from "./People";
 import { FinishSetup } from "./Setup";
+import { NewTeammates } from "./NewTeammates";
+import { RecBar } from "../../places-nav/RecBar";
 import "./overview.css";
 
 export const PAUSE_ALL_GAP = "Needs the engine's pause-all method.";
-export const MILESTONES_GAP = "Needs the engine's milestones method.";
+const MILESTONES_GAP = "Needs the engine's milestones method.";
 
 function ResourceStatus({ resource, label, retry }: { resource: Resource; label: string; retry: () => void }) {
   if (resource.error) return <div className="ov-error" role="alert"><p>Couldn't load {label}. {resource.error}</p><button type="button" className="btn sm" onClick={retry}>Try again</button></div>;
@@ -101,8 +104,9 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   if (shared.length) lines.push({ ...personFrom("shared", "Shared owner", "", shared), shared: true });
   const status = (key: keyof typeof tiles, label: string) => <ResourceStatus resource={tiles[key]} label={label} retry={() => void data.refresh([key])} />;
   const recent = recentActivity(rows, runList);
-  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<button type="button" className="btn sm" onClick={() => openPlace("office")}>Grove</button>}>
+  return <PlaceFrame title="Overview" lede="What’s happening across your Trunks, at a glance." wide="overview" top={<FinishSetup engine={engine} openSettings={openSettings} />} before={<RecBar engine={engine} />}>
     <div className="ov-grid">
+      <NewTeammates engine={engine} mainKey={trunks.mainKey} openConversation={openConversation} />
       <Tile title="Now" action={<button type="button" className="ov-link" onClick={() => openPlace("canopy")}>Open Canopy</button>}>
         {status("sessions", "running conversations")}
         {running.map(row => <button key={row.key} type="button" className="ov-now" onClick={() => openConversation(row.key)}><Face size={34} state="work" label={agentName(trunks.list, row.agentId)} /><span className="ov-grow"><b>{agentName(trunks.list, row.agentId)}</b><small>{row.preview || row.title}</small></span></button>)}
@@ -113,7 +117,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
       <Tile title="Spend this week">{status("spend", "spending")}<Spending resource={tiles.spend} trunks={trunks.list} /></Tile>
       <Tile title="Recent activity">
         {status("sessions", "recent activity")}
-        {recent.map(({ row, length }) => <button key={row.key} type="button" className="ov-recent" onClick={() => openConversation(row.key)}><Face size={20} label={agentName(trunks.list, row.agentId)} /><span className="ov-recent-t">{row.title}</span><span className="ov-mono">{length}</span></button>)}
+        {recent.map(({ row, length }) => <button key={row.key} type="button" className="ov-recent" onClick={() => openConversation(row.key)}><Face size={20} label={agentName(trunks.list, row.agentId)} /><span className="ov-recent-t">{activityLabel(row.title, "Conversation")}</span><span className="ov-mono">{length}</span></button>)}
         {tiles.sessions.value !== undefined && !rows.length ? <p>Nothing has run yet.</p> : null}
         <div className="ov-acts"><button type="button" className="btn sm" onClick={() => { openPlace("inbox"); setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "inbox", tab: "History" } })), 0); }}>All history</button></div>
       </Tile>

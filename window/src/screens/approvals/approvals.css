@@ -1,0 +1,108 @@
+/* R1-05 Approvals, in the owner's glass model (README item 48, preview item 48): only the sidebar is frosted. The card, the
+   Live-Activity drop, banners, the answered list and the Lockdown line are clear (.g-clear); every piece of text and every
+   control on them sits on a small frosted pill with a 1px low-alpha outline. The pills use the one shared pill token set (--gp-*
+   in theme/tokens.css): fills and inks pass 4.5:1 composited over pure white and pure black, High contrast makes them firmer,
+   and Reduce transparency (the app setting or the system one) makes them solid. Primary answers are solid (data-solid). No
+   divider lines. --r1a-tone only sets how much status colour the pill words take. */
+:root { --r1a-tone: 50%; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --r1a-tone: 35%; } }
+:root[data-theme="dark"] { --r1a-tone: 35%; }
+
+/* The frost: one recipe for every pill this screen draws. */
+:is(.r1-ask-q, .r1-ask-pill, .r1-ask-kv, .r1-ask-code, .r1-ask-btn:not([data-kind="primary"]), .r1-ask-note, .r1-ask-error, .r1-ask-what,
+  .r1-ask-chip, .r1-ask-option, .r1-ask-input, .r1-ask-qtext, .r1-drop-who, .r1-drop-q, .r1-drop-more, .r1-drop-done, .r1-banner-text,
+  .r1-banner-x, .r1-banner-icon, .r1-lock, .r1-ask-history h3, .r1-ask-row > :is(code, small, time, span:not(.r1-ask-pill))) {
+  background: var(--gp-fill); -webkit-backdrop-filter: var(--gp-blur); backdrop-filter: var(--gp-blur);
+  box-shadow: inset 0 0 0 1px var(--gp-edge); border: 0; color: var(--ink);
+  --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2);
+}
+:is(.r1-ask-q, .r1-ask-what, .r1-ask-note, .r1-ask-error, .r1-ask-qtext, .r1-drop-who, .r1-drop-q, .r1-drop-done, .r1-ask-history h3, .r1-ask-row > :is(code, small, time, span:not(.r1-ask-pill))) {
+  width: fit-content; max-width: 100%; box-sizing: border-box; padding: 2px 9px; border-radius: var(--r-pill);
+}
+
+/* The card: clear. Its pieces stack as pills. */
+.r1-ask { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 4px 0; max-width: min(100%, 560px); font-size: var(--fs-14); background: transparent; }
+.r1-ask-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: 100%; }
+.r1-ask-q { font-weight: 600; font-size: 14.5px; padding: 3px 11px; }
+.r1-ask-pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: var(--r-pill); font-size: var(--fs-12); white-space: nowrap; color: var(--gp-ink-2); }
+.r1-ask-pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.r1-ask-pill[data-tone="wait"] { color: color-mix(in srgb, var(--accent-ink) var(--r1a-tone), var(--ink)); }
+.r1-ask-pill[data-tone="wait"] i { background: var(--accent); animation: r1-ask-blink 1.2s ease-in-out infinite; }
+.r1-ask-pill[data-tone="ok"] { color: color-mix(in srgb, var(--ok) var(--r1a-tone), var(--ink)); }
+.r1-ask-pill[data-tone="bad"] { color: color-mix(in srgb, var(--bad) var(--r1a-tone), var(--ink)); }
+.r1-ask-pill[data-tone="warn"] { color: color-mix(in srgb, var(--warn) var(--r1a-tone), var(--ink)); }
+@keyframes r1-ask-blink { 50% { opacity: .35; } }
+.r1-ask-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; padding: 7px 12px; border-radius: 14px; font-size: 13.5px; max-width: 100%; box-sizing: border-box; }
+.r1-ask-kv dt { color: var(--gp-ink-2); }
+.r1-ask-kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.r1-ask-kv .r1-ask-body { grid-column: 1 / -1; margin-top: 4px; color: var(--gp-ink-2); white-space: pre-wrap; }
+.r1-ask-code { margin: 0; padding: 7px 11px; border-radius: 14px; font: 12.5px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; max-width: 100%; box-sizing: border-box; }
+.r1-ask-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.r1-ask-btn { height: 30px; padding: 0 14px; border-radius: var(--r-pill); font: 500 13px var(--sans); cursor: pointer; transition: transform .12s, opacity .12s; }
+.r1-ask-btn:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
+.r1-ask-btn:active:not(:disabled) { transform: scale(.96); }
+.r1-ask-btn[data-kind="primary"] { border: 0; background: var(--btn); color: var(--on-btn); }
+.r1-ask-btn[data-kind="primary"]:hover:not(:disabled) { opacity: .88; }
+.r1-ask-btn:disabled { opacity: .5; cursor: not-allowed; }
+.r1-ask-note, .r1-ask-error { margin: 0; font-size: var(--fs-12); }
+.r1-ask-error { color: color-mix(in srgb, var(--bad) var(--r1a-tone), var(--ink)); }
+.r1-ask-decided { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--fs-13); }
+.r1-ask-what { color: var(--gp-ink-2); }
+.r1-ask-question { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-width: 100%; }
+.r1-ask-qline { display: flex; align-items: center; gap: 6px; font-size: 13.5px; flex-wrap: wrap; }
+.r1-ask-chip { padding: 1px 8px; border-radius: var(--r-pill); font-size: 11px; color: var(--gp-ink-2); }
+.r1-ask-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.r1-ask-option { height: 28px; padding: 0 12px; border-radius: var(--r-pill); font-size: 12.5px; cursor: pointer; }
+/* Why the #g48 ids (glass/glass.css explains the ladder): a picked option is a button on clear glass, so glass.css's pill rule
+   (.g-clear button:not(... #g48), one id) and the shared-frost reset (:is(.g-frost, .g-label) button:not(#g48#g48), two ids)
+   would otherwise win. Three ids match glass.css's own chosen-lift rule for [aria-selected]/[aria-pressed], which does not
+   cover [aria-checked]. */
+.r1-ask-option[aria-checked="true"]:not(#g48#g48#g48) { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); font-weight: 600; }
+.r1-ask-option:active:not(:disabled) { transform: scale(.96); }
+.r1-ask-input { height: 32px; padding: 0 12px; border-radius: 12px; font: inherit; font-size: 13.5px; }
+
+/* Live Activity: clear, dropping under the header (dropP17), lifting away after an answer (liftP17). */
+.r1-drop-wrap { position: absolute; z-index: 20; top: calc(var(--hdr) + 4px); left: 50%; translate: -50% 0; pointer-events: none; }
+.r1-drop-wrap[data-host="body"] { position: fixed; top: 64px; }
+.r1-lock ~ .r1-drop-wrap { top: calc(var(--hdr) + 40px); }
+.r1-drop { pointer-events: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; width: min(420px, calc(100vw - 32px)); box-sizing: border-box; padding: 4px 0; font-size: 13.5px; transform-origin: top center; animation: r1-drop-in var(--spring-panel); background: transparent; }
+.r1-drop[data-away] { animation: r1-drop-lift .3s cubic-bezier(.5, -.2, .7, .4) forwards; }
+.r1-drop-top { display: flex; align-items: center; gap: 6px; }
+.r1-drop-who { font-weight: 600; }
+.r1-drop-more { font-size: 11px; padding: 1px 7px; border-radius: var(--r-pill); color: var(--gp-ink-2); }
+.r1-drop-q { overflow-wrap: anywhere; color: var(--gp-ink-2); }
+.r1-drop-acts { display: flex; gap: 6px; align-self: flex-end; min-height: 30px; align-items: center; }
+.r1-drop-done { font-weight: 600; }
+.r1-drop[data-done="yes"] .r1-drop-done { color: color-mix(in srgb, var(--ok) var(--r1a-tone), var(--ink)); }
+@keyframes r1-drop-in { from { transform: translateY(-14px) scaleY(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes r1-drop-lift { to { transform: translateY(-12px) scaleY(.5); opacity: 0; } }
+@media (max-width: 760px) { .r1-drop-wrap { left: 8px; right: 8px; translate: none; } .r1-drop { width: 100%; } }
+
+/* Banners: clear rows of pills, fixed top right, newest on top, spring in from the right, collapse out. */
+.r1-banners { position: fixed; top: 64px; right: 16px; z-index: var(--z-banner); width: min(360px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.r1-banner { position: relative; pointer-events: auto; display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px; padding: 2px 0; max-height: 240px; overflow: hidden; cursor: grab; touch-action: pan-y; user-select: none; background: transparent; transition: translate .45s cubic-bezier(.3, 1.3, .5, 1), opacity .3s ease, max-height .38s cubic-bezier(.3, 1.1, .5, 1), margin .38s, padding .38s; animation: r1-banner-in .55s cubic-bezier(.3, 1.3, .5, 1); }
+.r1-banner[data-drag] { transition: opacity .1s; cursor: grabbing; }
+.r1-banner[data-gone] { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: -8px; pointer-events: none; }
+.r1-banner-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 200px; padding: 6px 30px 6px 12px; border-radius: 14px; font-size: 13.5px; }
+.r1-banner-text span { color: var(--gp-ink-2); overflow-wrap: anywhere; }
+.r1-banner-acts { display: flex; gap: 6px; margin-left: auto; }
+/* A problem banner has no Trunk face: its line icon sits on a round pill, the alert one in the status red. */
+.r1-banner-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; }
+.r1-banner-icon[data-icon="alert"] { color: color-mix(in srgb, var(--bad) calc(var(--r1a-tone) + 40%), var(--ink)); }
+.r1-banner-x { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; opacity: 0; transition: opacity .15s; cursor: pointer; }
+.r1-banner:hover .r1-banner-x, .r1-banner:focus-within .r1-banner-x { opacity: 1; }
+@keyframes r1-banner-in { from { translate: 120% 0; opacity: .3; } to { translate: 0 0; opacity: 1; } }
+@media (max-width: 760px) { .r1-banners { top: 58px; right: 8px; width: calc(100vw - 16px); } }
+
+/* Lockdown: one red-tinted pill line under the header; the tint is in the outline and the shield, the words stay ink. */
+.r1-lock { position: absolute; z-index: 15; top: var(--hdr); left: 50%; translate: -50% 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; max-width: min(calc(100% - 24px), 680px); padding: 4px 4px 4px 12px; border-radius: var(--r-pill); font-size: var(--fs-12); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 45%, transparent), inset 0 0 0 100vmax color-mix(in srgb, var(--bad) 10%, transparent); }
+.r1-lock svg { color: var(--bad); flex: none; }
+.r1-lock span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1-lock button { flex: none; height: 24px; padding: 0 10px; border: 0; border-radius: var(--r-pill); background: var(--bad); color: var(--on-accent); font-size: var(--fs-12); cursor: pointer; }
+
+.r1-ask-history { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.r1-ask-history h3 { margin: 10px 0 2px; font-size: var(--fs-13); font-weight: 600; }
+.r1-ask-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13.5px; }
+.r1-ask-row > :is(small, time) { font-size: var(--fs-12); color: var(--gp-ink-2); }
+
+@media (prefers-reduced-motion: reduce) { .r1-drop, .r1-drop[data-away], .r1-banner { animation: none; } .r1-banner { transition: opacity .2s; } .r1-ask-pill i { animation: none; } }

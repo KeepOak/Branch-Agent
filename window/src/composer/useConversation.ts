@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { agentOf, errorText, list, rec, str, type Rec, type WindowEngine } from "./engine";
 import { readModels, type ModelChoice } from "./model";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
+import { trunkDisplayName } from "../connect/trunk-name";
 
 export type Trunk = { id: string; name: string; defaultMode: string; theme: string; model: string };
 
@@ -44,7 +45,7 @@ function readTrunks(result: unknown): { trunks: Trunk[]; defaultId: string } {
   const r = rec(result);
   const trunks = list(r.agents).map((a) => ({
     id: str(a.id),
-    name: str(rec(a.identity).name) || str(a.name) || str(a.id),
+    name: trunkDisplayName(a),
     defaultMode: str(a.defaultPermissionMode),
     theme: str(rec(a.identity).theme),
     model: str(rec(a.model).primary),

@@ -381,7 +381,7 @@ describe("runReplyAgent media path normalization", () => {
   it.each([true, false])(
     "keeps the prepared global owner in executeAgentTurn (provided context: %s)",
     async (providedContext) => {
-      // Regression test for openclaw/openclaw#68056.
+ // Regression test for.
       // executeAgentTurn must use the caller-provided context so block
       // replies and final replies can share one media cache.
       runEmbeddedAgentMock.mockResolvedValue({
@@ -430,7 +430,7 @@ describe("runReplyAgent media path normalization", () => {
         },
       );
 
-      // The .runtime import is only used by agent-runner-execution.ts. This path
+      // The.runtime import is only used by agent-runner-execution.ts. This path
       // should never create its own media context when the caller provides one.
       if (providedContext) {
         expect(createReplyMediaContextRuntimeMock).not.toHaveBeenCalled();

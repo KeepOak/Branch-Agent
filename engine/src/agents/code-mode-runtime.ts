@@ -6,6 +6,7 @@ import type { BranchConfig } from "../config/types.branch.js";
 import { modelKey } from "../shared/model-key.js";
 import { clampNumber } from "../utils.js";
 import { resolveAgentConfig } from "./agent-scope-config.js";
+import { readCodeModeCallTimeoutMs } from "./code-mode-call-timeout.js";
 import type { CodeModeFailureCode } from "./code-mode-executor-types.js";
 import type { CodeModeNamespaceRuntime } from "./code-mode-namespaces.js";
 import { CODE_MODE_RESULTS_API_FILE } from "./code-mode-results-api.js";
@@ -221,6 +222,7 @@ export function readCode(args: unknown): {
   code: string;
   restartSafe: boolean;
   awaitResults: boolean;
+  timeoutMs?: number;
 } {
   const params = asToolParamsRecord(args);
   // Full-schema tool calls can materialize an unused alias as blank.
@@ -247,10 +249,12 @@ export function readCode(args: unknown): {
   if (restartSafe !== undefined && typeof restartSafe !== "boolean") {
     throw new ToolInputError("restartSafe must be a boolean.");
   }
+  const timeoutMs = readCodeModeCallTimeoutMs(params);
   return {
     code,
     restartSafe: restartSafe === true,
     awaitResults: awaitResults === true,
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
   };
 }
 

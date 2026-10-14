@@ -98,6 +98,8 @@ export const AgentEntryBaseSchema = z.strictObject({
   workspace: z.string().optional(),
   cwd: z.string().optional(),
   agentDir: z.string().optional(),
+  /** Use the owner's signed-in model accounts (default on). False keeps this Trunk to its own sign-ins. */
+  useOwnerAccounts: z.boolean().optional(),
   model: AgentModelSchema.optional(),
   utilityModel: z.string().optional(),
   decisionModel: DecisionModelSchema.optional(),

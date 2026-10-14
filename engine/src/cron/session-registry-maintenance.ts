@@ -33,6 +33,9 @@ type SessionRegistryMaintenanceStoreSummary =
       skippedReason: "agent-deletion-complete";
     })
   | (SessionRegistryMaintenanceStoreIdentity & {
+      skippedReason: "agent-deletion-pending";
+    })
+  | (SessionRegistryMaintenanceStoreIdentity & {
       skippedReason: "agent-store-held";
       warning: string;
     });
@@ -128,10 +131,13 @@ export async function runSessionRegistryMaintenance(params: {
       continue;
     }
     if (deletion) {
-      // The former writable listing refused incomplete deletion; read-only workers must too.
-      throw new Error(
-        `Branch Agent agent database is unavailable while agent ${target.agentId} is deleted.`,
+      // Its database stays unavailable until cleanup completes, but one pending deletion must
+      // not abort retention for every other agent. Skip this store and keep going.
+      log.warn(
+        `Skipped session retention for agent ${target.agentId}: its deletion cleanup is pending; retry agent deletion`,
       );
+      stores.push({ ...target, skippedReason: "agent-deletion-pending" });
+      continue;
     }
     if (retained) {
       const reason =

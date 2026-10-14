@@ -1,4 +1,4 @@
-// From OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f:__tests__/components/features/conversation/transcript-export-modal.test.tsx (atlas SESSIONS-0047). Ported download/cancel/retry cases to Branch.
+// Ported download/cancel/retry cases to Branch.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

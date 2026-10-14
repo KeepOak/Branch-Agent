@@ -1,0 +1,290 @@
+/* R1 sidebar (HANDOFF R1-02). Values measured from the approved preview at 1440 x 900 (P17-r3 and R2-audit blocks).
+   Liquid glass, no divider lines: sections are separated by sticky glass heads and space only. */
+.r1-sidebar:has(> .r1sb) { padding: 0; }
+/* The preview has no ☰ inside the sidebar: Ctrl+B, the + menu's "Collapse the list to faces" and the header ☰ drive it. */
+.r1-sidebar:has(> .r1sb) > .r1-side-top { display: none; }
+.r1sb { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; color: var(--ink); }
+.r1sb-i { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* Top row: folder chip at the left, the four capsules at the right (owner item 7). */
+.r1sb-top { position: relative; z-index: 6; display: flex; align-items: center; gap: 6px; min-height: 46px; padding: 8px 12px 6px; box-sizing: border-box; container: r1sbtop / inline-size; }
+.r1sb-caps { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex: 1 1 auto; min-width: 0; margin-left: auto; transition: opacity .18s; }
+.r1sb-cap { position: relative; flex: 0 0 32px; width: 32px; height: 32px; min-width: 32px; padding: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-pill); color: var(--ink-3);
+  background: var(--gc-fill); backdrop-filter: var(--gc-blur); -webkit-backdrop-filter: var(--gc-blur); border: .5px solid var(--gc-edge); box-shadow: inset 0 1px 0 var(--gc-hi), var(--gc-sh-sm); }
+button.r1sb-cap:hover { color: var(--ink); }
+.r1sb-search { justify-content: flex-start; overflow: hidden; cursor: text; transition: width var(--spring-search), flex-basis var(--spring-search); }
+.r1sb-search > .r1sb-i { margin: 0 8px; }
+.r1sb-search input { flex: 0 1 auto; width: 0; min-width: 0; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-13-5); opacity: 0; transition: opacity .2s; }
+.r1sb-search input::-webkit-search-cancel-button { display: none; }
+.r1sb-search kbd { font: 11px var(--mono); color: var(--ink-3); white-space: nowrap; opacity: 0; transition: opacity .2s; }
+.r1sb-search:hover, .r1sb-search:focus-within, .r1sb-search[data-keep] { flex: 0 1 auto; width: calc(100% - 114px); padding: 0 10px 0 0; }
+.r1sb-search:is(:hover, :focus-within, [data-keep]) input { flex: 1 1 auto; width: auto; opacity: 1; }
+.r1sb-search:is(:hover, :focus-within, [data-keep]) kbd { opacity: 1; }
+.r1sb-plus-dot { position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--side); }
+.r1sb[data-fold-open] .r1sb-caps { opacity: 0; pointer-events: none; }
+
+/* The folder chip: one chip at rest that springs open over glass. */
+.r1sb-fold { position: absolute; top: 10px; left: 12px; z-index: 6; display: flex; align-items: center; max-width: calc(100% - 24px); padding: 0; border-radius: var(--r-pill);
+  transition: background .2s, box-shadow .2s, padding .3s cubic-bezier(.3,1.35,.5,1); }
+.r1sb-fold[data-open] { padding: 2px 22px 2px 2px; overflow-x: auto; scrollbar-width: none; background: var(--gf-fill); backdrop-filter: var(--gf-blur); -webkit-backdrop-filter: var(--gf-blur);
+  box-shadow: inset 0 1px 0 var(--gf-hi), 0 0 0 .5px var(--gf-edge), var(--gf-sh); mask-image: linear-gradient(to right, var(--mask-opaque) calc(100% - 22px), transparent); }
+.r1sb-fold::-webkit-scrollbar { display: none; }
+.r1sb-chip { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; height: 28px; max-width: 160px; margin-right: 6px; padding: 0 11px; overflow: hidden; border: 0; border-radius: var(--r-pill); white-space: nowrap;
+  font-size: var(--fs-12-5); color: var(--ink-2); background: var(--gk-chip); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi); backdrop-filter: var(--gf-blur); -webkit-backdrop-filter: var(--gf-blur);
+  transition: max-width .42s cubic-bezier(.3,1.35,.5,1), padding .42s cubic-bezier(.3,1.35,.5,1), margin .42s cubic-bezier(.3,1.35,.5,1), opacity .2s, transform .42s cubic-bezier(.3,1.35,.5,1), background .15s; }
+.r1sb-chip[aria-selected="true"] { background: var(--ink); color: var(--bg); font-weight: 600; box-shadow: none; }
+.r1sb-chip b { display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; font-size: 10.5px; background: var(--accent); color: var(--on-accent); }
+.r1sb-chip[aria-selected="true"] b { background: var(--bg); color: var(--ink); }
+.r1sb-chip:active { transform: scale(.96); }
+.r1sb-chip:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
+.r1sb-chip-add { padding: 0 8px; }
+.r1sb-chip-add .r1sb-i { stroke-width: 2; }
+.r1sb-fold:not([data-open]) > .r1sb-chip:not([aria-selected="true"]) { max-width: 0; padding-inline: 0; margin-right: 0; opacity: 0; transform: scale(.85); pointer-events: none; }
+.r1sb-fold[data-open] > .r1sb-chip:last-child { margin-right: 0; }
+
+/* The list: sticky glass heads, rows scroll under them. */
+.r1sb-list { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 12px; container: r1sblist / inline-size; overscroll-behavior: contain; }
+.r1sb-head { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 14px 10px 4px; font: 500 var(--fs-12-5)/1.3 var(--sans); color: var(--ink-3);
+  background: color-mix(in srgb, var(--side, var(--bg)) 72%, transparent); backdrop-filter: var(--gf-blur); -webkit-backdrop-filter: var(--gf-blur); }
+.r1sb-head > span { flex: 1; min-width: 0; }
+.r1sb-mar { flex: none; padding: 2px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--mute17c); font-size: 12px; font-weight: 500; opacity: 0; transition: opacity .15s; }
+.r1sb-head-go { flex: none; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); opacity: 0; transition: opacity .15s; }
+.r1sb-sec:hover .r1sb-head :is(.r1sb-mar, .r1sb-head-go), .r1sb-head:focus-within :is(.r1sb-mar, .r1sb-head-go) { opacity: 1; }
+.r1sb-mar:hover, .r1sb-head-go:hover { color: var(--ink); background: var(--fill); }
+.r1sb-empty { margin: 12px 14px; font-size: 13px; color: var(--ink-3); }
+
+/* Search results (the Classic view re-hosted in the frosted sidebar): the list itself scrolls, the chips stay on top as
+   glass chips with no fill behind them, and section labels match the sidebar's heads. */
+.r1sb .search-results { flex: none; max-height: none; overflow: visible; padding: 0; scrollbar-gutter: auto; }
+.r1sb .search-results .chips { position: sticky; top: 0; z-index: 3; gap: 6px; padding: 10px 2px 6px; background: transparent; }
+.r1sb .search-results .chip { display: inline-flex; align-items: center; height: 28px; padding: 0 11px; border: 0; border-radius: var(--r-pill); font-size: var(--fs-12-5); color: var(--ink-2);
+  background: var(--gk-chip); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi); backdrop-filter: var(--gf-blur); -webkit-backdrop-filter: var(--gf-blur); }
+.r1sb .search-results .chip[aria-selected="true"] { background: var(--ink); color: var(--bg); font-weight: 600; box-shadow: none; }
+.r1sb .search-results .chip:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
+.r1sb .search-results .lh { padding: 14px 10px 4px; font: 500 var(--fs-12-5)/1.3 var(--sans); letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+.r1sb .search-results .sr { min-height: 52px; padding: 8px 10px; border-radius: var(--r-row, 12px); color: var(--ink); }
+.r1sb .search-results .sr:hover { background: var(--gk-chip); }
+.r1sb .search-results .sr-title { gap: 0; }
+.r1sb .search-results .sr-title > :is(span, mark) { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.r1sb .search-results .sr-title time { padding-left: 8px; }
+.r1sb .search-results .sr:focus-visible { outline: 2px solid var(--ink-3); outline-offset: -2px; }
+.r1sb .search-results .sr-none { margin: 24px 12px; color: var(--ink-3); }
+.r1sb .search-results .sr-none .link { color: var(--ink); }
+:root[data-transparency="reduce"] .r1sb .search-results .chip:not([aria-selected="true"]) { background: var(--raise, var(--bg)); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.r1sb-error { margin: 12px 14px; font-size: 13px; color: var(--bad); overflow-wrap: anywhere; }
+
+/* Pinned grid: 2 a row, 3 from 264 px of list, 4 from 354 px (max 4). */
+.r1sb-pins { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 2px 4px 6px; }
+@container r1sblist (min-width: 264px) { .r1sb-pins { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container r1sblist (min-width: 354px) { .r1sb-pins { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.r1sb-pin { position: relative; min-width: 0; }
+.r1sb-pin-open { display: grid; justify-items: center; gap: 3px; width: 100%; min-width: 0; padding: 8px 4px; border: 0; border-radius: 14px; background: transparent; color: var(--ink); }
+.r1sb-pin-open:hover { background: var(--gk-chip); }
+.r1sb-pin-open[aria-current="true"], .r1sb-row[aria-current="true"] { background: var(--gk-on); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi), var(--gk-sh-sel); }
+.r1sb-pin-face { position: relative; display: grid; place-items: center; width: 60px; height: 60px; }
+.r1sb-pin-unread { position: absolute; top: 2px; right: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--side); }
+.r1sb-pin-name, .r1sb-pin-role { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1sb-pin-name { font-size: var(--fs-12-5); font-weight: 600; line-height: 1.5; }
+.r1sb-pin-role { padding: 1px 7px; border-radius: var(--r-pill); font-size: 10.5px; line-height: 1.5; color: var(--ink-3); background: var(--gk-chip); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi); box-sizing: border-box; }
+.r1sb-pin-more { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); opacity: 0; }
+.r1sb-pin:hover .r1sb-pin-more, .r1sb-pin:focus-within .r1sb-pin-more { opacity: 1; }
+.r1sb-pin-more:hover { background: var(--fill); color: var(--ink); }
+
+/* Rows: two lines, 57 tall, a 40 face; hover shows only ••• (owner item 19). */
+.r1sb-rw { position: relative; }
+.r1sb-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 10px; row-gap: 1px; align-items: center; width: 100%; min-height: 57px; padding: 8px 10px; box-sizing: border-box;
+  border: 0; border-radius: var(--r-row, 12px); background: transparent; color: var(--ink); text-align: left; font-size: 14px; line-height: 1.5; }
+.r1sb-row:hover { background: var(--gk-chip); }
+/* A row picked with Alt or Shift (select several): the selected lift with an accent ring. */
+.r1sb-rw[data-picked] .r1sb-row { background: var(--gk-on); box-shadow: inset 0 0 0 1.5px var(--accent), inset 0 1px 0 var(--gf-hi); }
+.r1sb-row[data-one] { grid-template-rows: auto; min-height: 44px; padding-block: 6px; }
+.r1sb-face { grid-row: 1 / span 2; display: grid; place-items: center; width: 40px; height: 40px; }
+.r1sb-row[data-one] .r1sb-face { grid-row: 1; }
+.r1sb-name { display: flex; align-items: center; gap: 4px; min-width: 0; font-weight: 650; letter-spacing: -.01em; }
+.r1sb-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1sb-tag { flex: none; margin-left: 6px; padding: 0 6px; border-radius: var(--r-pill); font-size: 10.5px; font-style: normal; font-weight: 500; line-height: 1.5; color: var(--ink-3); background: var(--gk-chip); box-shadow: inset 0 0 0 .5px var(--gf-edge), inset 0 1px 0 var(--gf-hi); }
+.r1sb-meta { grid-column: 3; grid-row: 1; display: flex; align-items: center; gap: 6px; justify-self: end; }
+.r1sb-meta time { font-size: 12px; line-height: 1.5; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.r1sb-unread { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.r1sb-pv { grid-column: 2 / span 2; grid-row: 2; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-12-5); line-height: 1.35; color: var(--ink-3); }
+.r1sb-pv[data-unread] { color: var(--ink-2); font-weight: 600; }
+.r1sb-from { font-weight: 500; color: var(--accent-ink, var(--accent)); }
+.r1sb-row[data-offline] .r1sb-face { opacity: .6; }
+.r1sb-more { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: none; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--ink-3); }
+.r1sb-more:hover, .r1sb-more:focus-visible { background: var(--fill); color: var(--ink); }
+.r1sb-rw:is(:hover, :focus-within) > .r1sb-more { display: grid; }
+.r1sb-rw:is(:hover, :focus-within):has(> .r1sb-more) .r1sb-meta { visibility: hidden; }
+@media (hover: none) { .r1sb-rw > .r1sb-more { display: grid; } .r1sb-rw:has(> .r1sb-more) .r1sb-meta { visibility: hidden; } }
+
+/* Bins: Archived and Recently deleted, collapsed with a quiet count (owner item 13). */
+.r1sb-bins { margin-top: 4px; }
+.r1sb-bin { display: flex; align-items: center; gap: 6px; width: 100%; padding: 14px 10px 4px; border: 0; background: transparent; color: var(--ink-3); font: 500 var(--fs-12-5)/1.3 var(--sans); text-align: left; }
+.r1sb-bin:disabled { cursor: default; opacity: 1; }
+.r1sb-bin i { margin-left: auto; font-style: normal; }
+.r1sb-bin-chev { display: inline-grid; transition: transform var(--spring-press); }
+.r1sb-bin[aria-expanded="true"] .r1sb-bin-chev { transform: rotate(90deg); }
+.r1sb-bin-none { margin: 4px 8px; font-size: 12px; color: var(--ink-3); }
+.r1sb-rail-bins { display: none; }
+
+/* Bottom row: avatar, the Seedbank pill and, only when one exists, the update button (owner items 3 and 16). */
+.r1sb-foot { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; box-sizing: border-box; container: r1sbfoot / inline-size; }
+.r1sb-me { flex: 0 0 36px; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: transparent; }
+.r1sb-me > span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--ink); color: var(--bg); font-size: 13px; font-weight: 600; }
+.r1sb-me:hover > span { box-shadow: 0 0 0 3px var(--fill); }
+.r1sb-seed { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; height: 36px; padding: 0 14px 0 8px; overflow: hidden; border-radius: var(--r-pill); border: .5px solid var(--gc-edge);
+  background: var(--gc-fill); backdrop-filter: var(--gc-blur); -webkit-backdrop-filter: var(--gc-blur); box-shadow: inset 0 1px 0 var(--gc-hi), var(--gc-sh); color: var(--ink); font: 600 13px var(--sans);
+  transition: transform .3s cubic-bezier(.3,1.4,.5,1), box-shadow .2s; }
+.r1sb-seed:hover { transform: translateY(-1px); }
+.r1sb-seed:active { transform: scale(.97); }
+.r1sb-seed:focus-visible, .r1sb-upd:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
+.r1sb-seed-icons { display: inline-flex; flex: none; }
+.r1sb-seed-icons i { display: inline-grid; place-items: center; width: 22px; height: 22px; box-sizing: border-box; border-radius: 50%; background: var(--raise, var(--bg)); border: 1.5px solid var(--side, var(--bg)); color: var(--ink-2); }
+.r1sb-seed-icons i + i { margin-left: -7px; }
+.r1sb-seed-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1sb-upd { flex: 0 0 36px; display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: var(--r-pill); border: .5px solid var(--gc-edge); background: var(--on-accent); color: var(--on-accent);
+  box-shadow: var(--gc-sh); transition: transform .25s cubic-bezier(.3,1.4,.5,1); animation: r1sb-pop .4s cubic-bezier(.3,1.5,.5,1); }
+/* The icon is drawn in the disc's own white and inverted, so the disc stays white with a black icon in both themes. */
+.r1sb-upd svg { filter: invert(1); }
+.r1sb-upd:hover:not(:disabled) { transform: translateY(-1px); }
+.r1sb-upd[data-busy] { cursor: progress; background: conic-gradient(var(--accent) 0 30%, var(--on-accent) 30% 100%); animation: r1sb-spin 1s linear infinite; }
+@keyframes r1sb-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes r1sb-spin { to { rotate: 360deg; } }
+@container r1sbfoot (max-width: 250px) { .r1sb-seed-icons { display: none; } .r1sb-seed { padding-left: 14px; } }
+@container r1sbfoot (max-width: 150px) { .r1sb-seed-t { display: none; } .r1sb-seed-icons { display: inline-flex; } .r1sb-seed-icons i:not(:first-child) { display: none; } .r1sb-seed { padding: 0; justify-content: center; } }
+
+/* The person menu (PROTECTED, trimmed per owner items 16 and 22). */
+.r1sb-person { display: flex; flex-direction: column; }
+.r1sb-upd-ban { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; padding: 8px 8px 8px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--ink); font-size: 13px; font-weight: 600; }
+.r1sb-upd-ban button { padding: 4px 12px; border: 0; border-radius: var(--r-pill); background: var(--on-accent); color: var(--accent); font-size: 12px; font-weight: 600; box-shadow: var(--gk-sh-thumb); }
+.r1sb-ph { padding: 6px 10px 4px; font-size: var(--fs-12-5); font-weight: 600; color: var(--ink-3); }
+.r1sb-people { display: flex; gap: 12px; padding: 4px 10px 8px; }
+.r1sb-person-chip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 12px; }
+.r1sb-person-chip i { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--ink); color: var(--bg); font-style: normal; font-weight: 600; }
+button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
+.r1sb-look { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px 8px; font-size: var(--fs-13-5); }
+.r1sb-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-seg); background: var(--gk-track); }
+.r1sb-seg button { padding: 4px 10px; border: 0; border-radius: var(--r-thumb); background: transparent; color: var(--ink-2); font-size: var(--fs-12-5); }
+.r1sb-seg button[aria-checked="true"] { background: var(--gk-on); color: var(--ink); box-shadow: var(--gk-sh-thumb); }
+
+/* Rail (68): only + at rest; hover or focus drops the capsule stack; faces only. Never at 760 and below. */
+@media (min-width: 761px) {
+  .r1-frame[data-wide="false"] .r1sb-top { min-height: 0; padding: 8px 0 6px; align-items: flex-start; }
+  .r1-frame[data-wide="false"] .r1sb-fold { display: none; }
+  .r1-frame[data-wide="false"] .r1sb-caps { flex-direction: column; justify-content: flex-start; align-items: center; gap: 6px; width: 100%; height: 32px; margin: 0; overflow: visible; transition: height .44s cubic-bezier(.32,1.3,.5,1) .25s; }
+  .r1-frame[data-wide="false"] .r1sb-caps:is(:hover, :focus-within, [data-tap]) { height: 146px; transition-delay: 0s; }
+  .r1-frame[data-wide="false"] .r1sb-caps > * { flex: 0 0 32px; width: 32px; height: 32px; padding: 0; justify-content: center; }
+  .r1-frame[data-wide="false"] .r1sb-search { width: 32px !important; padding: 0 !important; }
+  .r1-frame[data-wide="false"] .r1sb-search > .r1sb-i { margin: 0; }
+  .r1-frame[data-wide="false"] .r1sb-search :is(input, kbd) { display: none; }
+  .r1-frame[data-wide="false"] .r1sb-plus { order: -1; }
+  .r1-frame[data-wide="false"] .r1sb-caps > :not(.r1sb-plus) { opacity: 0; transform: translateY(-10px) scale(.9); pointer-events: none; transition: opacity .16s .25s, transform .3s cubic-bezier(.32,1.3,.5,1) .25s; }
+  .r1-frame[data-wide="false"] .r1sb-caps:is(:hover, :focus-within, [data-tap]) > :not(.r1sb-plus) { opacity: 1; transform: none; pointer-events: auto; }
+  .r1-frame[data-wide="false"] .r1sb-caps:is(:hover, :focus-within, [data-tap]) > :nth-child(2) { transition-delay: 30ms; }
+  .r1-frame[data-wide="false"] .r1sb-caps:is(:hover, :focus-within, [data-tap]) > :nth-child(3) { transition-delay: 60ms; }
+  .r1-frame[data-wide="false"] .r1sb-caps:is(:hover, :focus-within, [data-tap]) > :nth-child(1) { transition-delay: 90ms; }
+  .r1-frame[data-wide="false"] .r1sb-list { padding: 4px 0 16px; }
+  .r1-frame[data-wide="false"] :is(.r1sb-head, .r1sb-bins, .r1sb-empty) { display: none; }
+  .r1-frame[data-wide="false"] .r1sb-pins { grid-template-columns: 1fr; justify-items: center; gap: 6px; padding: 4px 0; margin-bottom: 14px; }
+  .r1-frame[data-wide="false"] .r1sb-pin-open { width: 52px; padding: 4px; }
+  .r1-frame[data-wide="false"] :is(.r1sb-pin-name, .r1sb-pin-role, .r1sb-pin-more) { display: none; }
+  .r1-frame[data-wide="false"] .r1sb-pin-face { zoom: .7333; }
+  .r1-frame[data-wide="false"] .r1sb-row { display: grid; place-items: center; grid-template-columns: 1fr; width: 52px; height: 52px; min-height: 0; margin: 2px auto; padding: 0; border-radius: 14px; position: relative; }
+  .r1-frame[data-wide="false"] .r1sb-row > :not(.r1sb-face) { display: none; }
+  .r1-frame[data-wide="false"] .r1sb-row .r1sb-face { grid-row: auto; }
+  .r1-frame[data-wide="false"] .r1sb-more { display: none !important; }
+  .r1-frame[data-wide="false"] .r1sb-rail-bins { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 8px; }
+  .r1-frame[data-wide="false"] .r1sb-badge { position: absolute; top: -4px; right: -4px; min-width: 14px; height: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--ink-2); color: var(--bg); font: 600 9.5px/14px var(--sans); font-style: normal; }
+  .r1-frame[data-wide="false"] .r1sb-foot { flex-direction: column; gap: 8px; padding: 8px 0; justify-content: center; }
+  .r1-frame[data-wide="false"] .r1sb-seed { flex: 0 0 auto; width: 36px; padding: 0; justify-content: center; }
+  .r1-frame[data-wide="false"] .r1sb-seed-t { display: none; }
+  .r1-frame[data-wide="false"] .r1sb-seed-icons { position: relative; display: block; width: 28px; height: 27px; flex: 0 0 28px; }
+  .r1-frame[data-wide="false"] .r1sb-seed-icons i { position: absolute; width: 16px; height: 16px; margin: 0; }
+  .r1-frame[data-wide="false"] .r1sb-seed-icons i:nth-child(1) { left: 0; top: 0; z-index: 1; }
+  .r1-frame[data-wide="false"] .r1sb-seed-icons i:nth-child(2) { right: 0; top: 0; z-index: 2; }
+  .r1-frame[data-wide="false"] .r1sb-seed-icons i:nth-child(3) { left: 6px; bottom: 0; z-index: 3; }
+  .r1-frame[data-wide="false"] .r1sb-seed-icons svg { width: 9px; height: 9px; }
+}
+@media (prefers-reduced-motion: reduce) { .r1sb-caps, .r1sb-caps > *, .r1sb-chip, .r1sb-search, .r1sb-fold, .r1sb-upd { transition-duration: .01s !important; animation: none !important; } }
+:root[data-transparency="reduce"] :is(.r1sb-head, .r1sb-seed, .r1sb-fold[data-open]) { background: var(--raise, var(--bg)); }
+
+/* ===== Item 48, the glass model (owner, final): the sidebar itself stays the one tinted, frosted surface (the frame's
+   .r1-sidebar), but the menus it opens float over the clear conversation, so they are clear too. Each row, tile and line of
+   text in them sits on its own frosted pill with a 1px outline (--gp-* tokens, 4.5:1 ink); Reduce transparency makes them
+   solid. ===== */
+.g-popover:has(> .r1sb-pop) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.r1sb-pop .g-menu { gap: 4px; }
+.r1sb-pop .g-menu-tiles { padding: 0 0 4px; margin-bottom: 0; }
+.r1sb-pop :is(.g-menu-row, .g-menu-tile, .r1sb-ph, .r1sb-people, .r1sb-look, .r1sb-upd-ban) {
+  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
+  box-shadow: inset 0 0 0 1px var(--gp-edge); border-color: transparent; --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); --mute17c: var(--gp-ink-2); }
+.r1sb-pop :is(.g-menu-row, .r1sb-look) { border-radius: 999px; }
+.r1sb-pop :is(.r1sb-people, .r1sb-upd-ban) { border-radius: 14px; }
+.r1sb-pop .r1sb-ph { width: fit-content; padding: 2px 9px; border-radius: 999px; }
+.r1sb-pop .g-menu-row[data-gap] { margin-top: 4px; }
+.r1sb-pop .g-menu-row[aria-disabled="true"], .r1sb-pop .g-menu-tile[data-off] { opacity: .7; }
+.r1sb-pop :is(.g-menu-row, .g-menu-tile):is(:hover, :focus-visible):not([aria-disabled="true"]):not([data-off]) {
+  background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
+.r1sb-pop.r1sb-person { gap: 4px; }
+.r1sb-pop .r1sb-upd-ban { margin-bottom: 0; }
+/* Move to › Group…: the existing groups as chips above the name field. */
+.r1sb-groups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.r1sb-groups [aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); }
+
+/* Pinned order: a tile drags to a new place (the Classic pointer drag). The tile it would land beside shows an accent
+   edge on that side; the tile being moved dims. The default Trunk stays first and doesn't move. */
+.r1sb-pin.pin-drop-before { box-shadow: inset 3px 0 var(--accent); border-radius: 14px; }
+.r1sb-pin.pin-drop-after { box-shadow: inset -3px 0 var(--accent); border-radius: 14px; }
+.r1sb-pin.sidebar-drag-source { opacity: .45; }
+
+/* Filter and sort (the Classic button and popover re-hosted): a capsule after +, gone in the rail, while searching and
+   while the folders are open. The popover is clear glass over the window (item 48): its heads, rows, switches and the
+   Status control sit on frosted pills with the 1px --gp outline; Reduce transparency gives solid pills. */
+.r1sb-filt { flex: none; display: inline-flex; }
+/* Why the #g48 ids (glass/glass.css explains the ladder): glass.css's pill rule (:is(.g-frost, .g-label):not(#g48)) carries
+   one #g48 id, so the Filter button and its dot carry the same id and win by source order, not by !important. */
+.r1sb-filt > .filt:not(#g48) { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; opacity: 1; border-radius: var(--r-pill); color: var(--ink-3); background: var(--gc-fill); backdrop-filter: var(--gc-blur); -webkit-backdrop-filter: var(--gc-blur); border: .5px solid var(--gc-edge); box-shadow: inset 0 1px 0 var(--gc-hi), var(--gc-sh-sm); }
+.r1sb-filt > .filt:hover:not(#g48), .r1sb-filt > .filt.on:not(#g48) { color: var(--ink); }
+.r1sb-filt .filt-dot:not(#g48) { top: 5px; right: 5px; width: 7px; height: 7px; background: var(--accent); box-shadow: 0 0 0 2px var(--side, var(--bg)); }
+.r1sb[data-fold-open] .r1sb-filt { opacity: 0; pointer-events: none; }
+@media (min-width: 761px) { .r1-frame[data-wide="false"] .r1sb-filt { display: none; } }
+.r1sb-clear { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-decoration: underline; cursor: pointer; }
+.r1-fs { display: contents; }
+/* The Classic popover's own layout (shell/rows.css, which the R1 window doesn't load), scoped to this host. */
+.r1-fs .pop.fp { width: 330px; max-width: min(340px, calc(100% - 16px)); padding: 6px; }
+.r1-fs .pop.fp .row-in .seg { flex-wrap: nowrap; white-space: nowrap; display: inline-flex; height: auto; gap: 2px; padding: 2px; border-radius: 10px; }
+.r1-fs .pop.fp .seg::before { display: none; }
+.r1-fs .pop.fp .seg button { height: 26px; padding: 0 7px; border-radius: 8px; font-size: 12.5px; line-height: 1.5; font-weight: 400; color: var(--ink-2); }
+.r1-fs .pop.fp .seg button[aria-checked="true"] { background: var(--raise); box-shadow: var(--gk-sh-thumb); color: var(--ink); font-weight: 600; }
+.r1-fs .pop.fp .fh { display: flex; align-items: center; }
+.r1-fs .pop.fp .fr { margin-left: auto; font: 500 12px var(--sans); text-transform: none; letter-spacing: 0; }
+/* #g48 id (glass/glass.css explains the ladder): matches the weight of glass.css's pill rule so a switch row keeps this grid. */
+.r1-fs .pop .fsw:not(#g48) { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 7px 10px; align-items: center; }
+.r1-fs .pop .fsw b { font-weight: 500; font-size: 13.5px; }
+.r1-fs .pop .fsw small { grid-column: 1 / -1; font-size: 12px; color: var(--ink-3); }
+.r1-fs .pop .mi.fch .r { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: 12px; }
+.r1-fs .pop.fly { z-index: 62; min-width: 200px; }
+.r1-fs .pop .mi .tick { width: 15px; display: inline-grid; place-items: center; flex: none; }
+.r1-fs .pop.sheet { left: 8px !important; right: 8px !important; max-width: none; width: auto; top: auto !important; bottom: 8px; border-radius: 18px 18px 14px 14px; }
+.r1-fs .fpq { padding: 4px 8px; }
+.r1-fs .fpq .inp { width: 100%; height: 32px; }
+.r1-fs .who-dot.fpf { width: 22px; height: 22px; font-size: 10.5px; margin-right: 6px; }
+.r1-fs .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 4px; padding: 6px 8px 8px; }
+.r1-fs .tf { position: relative; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background-color: transparent; cursor: pointer; }
+.r1-fs .tf:hover { background: var(--gp-on); }
+.r1-fs .tf[aria-pressed="true"] { background: var(--gp-on); box-shadow: inset 0 0 0 1.5px var(--ink-2); }
+.r1-fs .tf .unread { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+/* Why the #g48 ids (glass/glass.css explains the ladder): the popover is clear glass, and glass.css's clear-surface rule
+   (.g-clear:not(#g48)) and pill rule (:is(.g-frost, .g-label):not(#g48)) carry one #g48 id. These popover rules carry the
+   same id so its own frosted pills win by source order, not by !important. */
+.r1-fs .pop:not(#g48) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.r1-fs .pop :is(.ph, .mi, .row-in, .fsw, .hint, .fpq, .tgrid):not(#g48) { background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); }
+.r1-fs .pop :is(.mi, .row-in, .fsw):not(#g48) { margin: 0 0 4px; border-radius: 14px; }
+.r1-fs .pop .mi:is(:hover, :focus-visible):not(#g48), .r1-fs .pop .mi.fch[aria-expanded="true"]:not(#g48) { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
+.r1-fs .pop .ph:not(#g48) { width: fit-content; margin: 4px 0; padding: 2px 9px; border-radius: var(--r-pill); text-transform: none; letter-spacing: normal; font: 500 12px var(--sans); }
+.r1-fs .pop.fp .ph.fh:not(#g48) { display: flex; gap: 10px; }
+.r1-fs .pop .row-in:not(#g48) { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 12px; }
+.r1-fs .pop :is(.hint, .fpq, .tgrid):not(#g48) { border-radius: 14px; }
+.r1-fs .pop .hint.fw:not(#g48) { width: fit-content; margin: 0 0 4px; padding: 3px 10px; }
+.r1-fs .pop hr:not(#g48) { border: 0; height: 6px; margin: 0; }
+.r1-fs .pop .switch:not(#g48) { box-shadow: inset 0 0 0 1px var(--gp-edge); }
+:root[data-transparency="reduce"] .r1-fs .pop :is(.ph, .mi, .row-in, .fsw, .hint, .fpq, .tgrid) { background: var(--raise, var(--bg)); backdrop-filter: none; -webkit-backdrop-filter: none; }

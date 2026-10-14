@@ -1,0 +1,3 @@
+window:src/screens/approvals/Approvals.test.tsx
+window:src/screens/approvals/model.test.ts
+window:src/screens/frame/R1Window.test.tsx

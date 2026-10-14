@@ -21,7 +21,7 @@ export type MdBlock =
   | { type: "math"; tex: string; raw: string };
 
 /** The longest reply drawn whole (Formatting in replies: "… cut short (<total> characters, …)"). */
-export const MAX_REPLY_CHARS = 140_000;
+const MAX_REPLY_CHARS = 140_000;
 
 const LIST = /^\s*([-*+]|\d+[.)])\s+(.*)$/;
 const TASK = /^\[( |x|X)\]\s+(.*)$/;

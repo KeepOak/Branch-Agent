@@ -10,7 +10,7 @@ export type TalkQuestion = { key: string; step: number; part: number; title: str
 export type TalkState = { look: Look; jobs: number[]; apps: { id: string; label: string; connected: boolean }[]; autoUpdate: boolean };
 
 /** The steps asked, in order: Make it yours, Your first Trunks, Reach it anywhere, Keep it running, People, Two more things. */
-export const TALK_STEPS = [3, 4, 5, 7, 8, 9] as const;
+const TALK_STEPS = [3, 4, 5, 7, 8, 9] as const;
 
 const head = (step: number) => `Setup · ${step + 1} of ${STEPS.length} · ${STEPS[step]}`;
 
