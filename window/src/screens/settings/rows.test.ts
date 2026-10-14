@@ -118,7 +118,8 @@ describe("settings row table", () => {
       "Add an account", "Test it", "Answer first", "Rename", "Which Trunks use it", "Sign out", "Select accounts", "Pause",
       "Move to the next account in the list", "Fall back to this computer", "Each service’s terms", "Which account goes next",
       "Your own accounts", "Add your own account", "Claude Code", "Codex", "Gemini CLI", "Check again", "Where each sign-in comes from",
-      "GitHub", "Permissions", "Access expires", "Your keepoak.com account",
+      // Classic's "Access expires" is a value on the GitHub row now ("Expires …"), as the preview shows an expiry.
+      "GitHub", "Permissions", "Your keepoak.com account",
       "Which account each Trunk uses", "Helpers keep their account", "Pick by what the task needs", "Fallback keys", "Resting now",
       "Which sign-in each request used", "Organisation", "A customer’s ChatGPT plan on a KeepOak computer",
       "A command that makes a sign-in", "On a build server, sign in with", "Accept sign-ins from your editor", "This Branch’s identity",
