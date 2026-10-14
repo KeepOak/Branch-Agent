@@ -94,7 +94,7 @@ else if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-n
   await writeFile(join(root, "gateway-token"), "isolated-fixture-token");
   // Preserve drain-first coverage explicitly; handoff tests override or remove this opt-out.
   await writeFile(join(root, "desktop.json"), JSON.stringify({ dataDir: root, engineDir: engine, windowDir,
-    nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort(), seamlessHandoff: false }));
+    nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort(), seamlessHandoff: false, alwaysOn: false }));
 }
 /** standby: true always warms a standby; "never" (the default) always runs the plain guarded swap, whatever the runner's memory. */
 async function fixture(run, holdStartup = false, fastSupervisor = false, holdCandidate = false, standby = "never", keepWorkingOff = false, prepare = undefined, holdUndo = false, manualEngineWatch = false) {
