@@ -1,4 +1,5 @@
 window:src/screens/frame/R1Window.stage.test.tsx
 window:src/screens/frame/R1Window.test.tsx
 window:src/screens/frame/R1Window.tower.test.tsx
+window:src/screens/g48-ids.test.ts
 window:src/shell/ControlTower.test.tsx
