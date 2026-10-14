@@ -48,7 +48,8 @@ export const ACCOUNTS_ROWS: Row[] = [
   // Linked accounts: GitHub (live, Classic's connection), then the three the preview lists, Coming.
   slot("accounts.github.connection", LINKED, "GitHub", GITHUB, { help: OVERVIEW }),
   slot("accounts.github.permissions", LINKED, "Permissions", ["tools.github.status"], { level: 1 }),
-  slot("accounts.github.expires", LINKED, "Access expires", ["tools.github.status"], { level: 1 }),
+  // The preview shows an expiry as a value, not as a row label: the row is bare, its label only for search.
+  slot("accounts.github.expires", LINKED, "Access expires", ["tools.github.status"], { level: 1, bare: true }),
   slot("accounts.linked.gmail", LINKED, "Gmail", ["engine: linking Gmail for Overview"], { help: OVERVIEW }, "Linking Gmail comes in a later update."),
   slot("accounts.linked.calendar", LINKED, "Google Calendar", ["engine: linking Google Calendar for Overview"], { help: `Coming to Overview. ${OVERVIEW}` }, "Linking Google Calendar comes in a later update."),
   slot("accounts.linked.drive", LINKED, "Google Drive", ["engine: linking Google Drive for Overview"], { help: OVERVIEW }, "Linking Google Drive comes in a later update."),
