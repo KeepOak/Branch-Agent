@@ -28,6 +28,7 @@ import {
 import type { AnyAgentTool } from "./agent-tools.types.js";
 import type { ApplyPatchContainmentSource } from "./apply-patch-containment-hint.js";
 import { createApplyPatchTool } from "./apply-patch.js";
+import { createFileReadLedger } from "./file-read-ledger.js";
 import type { ExecToolDefaults } from "./bash-tools.exec-types.js";
 import type { ProcessToolDefaults } from "./bash-tools.process.js";
 import type { ImageSanitizationLimits } from "./image-sanitization.js";
@@ -234,6 +235,8 @@ export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgent
     throw new Error("Sandbox filesystem bridge is unavailable.");
   }
 
+  // One read ledger per tool set: reads and whole-file writes in this session share it.
+  const readLedger = createFileReadLedger();
   const skillReadResources = options.skillReadResources ?? options.skillsSnapshot?.resolvedSkills;
   const skillReadRoots = sandboxRoot ? undefined : resolveSkillReadRoots(skillReadResources);
   const attachmentReadRoot = !sandboxRoot ? options.attachmentReadRoot : undefined;
@@ -336,6 +339,7 @@ export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgent
           modelContextWindowTokens: options.modelContextWindowTokens,
           imageSanitization: options.imageSanitization,
           modelHasVision: options.modelHasVision,
+          readLedger,
         })
       : createReadTool(options.codingRoot, {
           maxBytes: resolveAdaptiveReadMaxBytes(options),
@@ -368,6 +372,7 @@ export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgent
           modelContextWindowTokens: options.modelContextWindowTokens,
           imageSanitization: options.imageSanitization,
           cwd: options.codingRoot,
+          readLedger,
         });
     base.push(
       wrapReadToolWithSkillContent(
@@ -388,7 +393,7 @@ export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgent
     );
     if (!options.readOnly && !sandboxRoot) {
       for (const createTool of [createHostWorkspaceEditTool, createHostWorkspaceWriteTool]) {
-        const tool = createTool(options.codingRoot, options);
+        const tool = createTool(options.codingRoot, { ...options, readLedger });
         base.push(guardWorkspaceTool(tool));
       }
     }
@@ -400,6 +405,7 @@ export function createCoreCodingTools(options: CoreCodingToolsOptions): AnyAgent
       bridge: sandboxFsBridge!,
       memoryWriteProvenance: options.memoryWriteProvenance,
       abortSignal: options.abortSignal,
+      readLedger,
     };
     for (const createTool of [createSandboxedEditTool, createSandboxedWriteTool]) {
       const tool = createTool(toolOptions);

@@ -1,0 +1,5 @@
+window:src/screens/settings/pages/history-live.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/places/settings/set2/backups.test.tsx
+window:src/places/settings/set2/seasons-copy.test.tsx
+window:src/screens/settings/pages/accounts-live.test.tsx

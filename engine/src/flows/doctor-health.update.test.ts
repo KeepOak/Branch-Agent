@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -271,7 +272,7 @@ describe("runDoctorHealthFlow update outcomes", () => {
                 ? ""
                 : failure === "rejected" && uploads.length < 3
                   ? "HTTP/2.0 422 Unprocessable Entity\n"
-                  : "HTTP/2.0 201 Created\nhttps://github.com/openclaw/openclaw/issues/123",
+                  : "HTTP/2.0 201 Created\nhttps://github.com/KeepOak/Branch-Agent/issues/123",
             ),
           };
         });
@@ -327,7 +328,7 @@ describe("runDoctorHealthFlow update outcomes", () => {
           expect(authCalls).toBe(1);
           expect(log).toHaveBeenCalledWith(
             expect.stringContaining(
-              "Prefilled issue: https://github.com/openclaw/openclaw/issues/new?",
+              "Prefilled issue: https://github.com/KeepOak/Branch-Agent/issues/new?",
             ),
           );
         } else {
@@ -337,7 +338,7 @@ describe("runDoctorHealthFlow update outcomes", () => {
           expect(log).not.toHaveBeenCalledWith(expect.stringContaining("Created GitHub issue:"));
         } else {
           expect(log).toHaveBeenCalledWith(
-            "Created GitHub issue: https://github.com/openclaw/openclaw/issues/123",
+            "Created GitHub issue: https://github.com/KeepOak/Branch-Agent/issues/123",
           );
         }
       });
@@ -469,6 +470,10 @@ describe("runDoctorHealthFlow update outcomes", () => {
         typeof import("../commands/doctor-update.js")
       >("../commands/doctor-update.js");
       mocks.offerUpdate.mockImplementation(maybeOfferUpdateBeforeDoctor);
+      // The update offer runs only from the git checkout root; the engine package sits below it.
+      const checkoutRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+        encoding: "utf8",
+      }).trim();
       const stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
       Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
       try {
@@ -476,7 +481,7 @@ describe("runDoctorHealthFlow update outcomes", () => {
           const cfg: BranchConfig = { gateway: { mode: "local" } };
           await state.writeConfig(cfg);
           mocks.config.mockReturnValue(cfg);
-          mocks.packageRoot.mockReturnValue(process.cwd());
+          mocks.packageRoot.mockReturnValue(checkoutRoot);
           const updateResult: UpdateRunResult = {
             status: outcome === "failed" || outcome === "pending" ? "error" : outcome,
             mode: "git",

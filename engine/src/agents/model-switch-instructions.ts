@@ -1,4 +1,4 @@
-// From openai/codex@cc31e374fc15cd616fca19c07d55f9fa7e6d7e31:codex-rs/core/src/context/model_switch_instructions.rs and codex-rs/core/src/context/world_state/model.rs (atlas AGENT-LOOP-0098). Converted to TypeScript; Branch supplies its prepared target-model instructions.
+// Converted to TypeScript; Branch supplies its prepared target-model instructions.
 import type { AgentMessage, StreamFn } from "./runtime/index.js";
 
 export type PreviousModelState = { kind: "known"; model: string } | { kind: "unknown" | "absent" };

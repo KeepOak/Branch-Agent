@@ -191,10 +191,56 @@ test("staged macOS payloads fall back from the installed name to Branch.app", ()
   assert.equal(mac.pathStaysInside("/Applications", "/Applications"), false);
 });
 
+const pinnedReport = `Identifier=${mac.MAC_BUNDLE_ID}\nTeamIdentifier=${mac.macReleaseSigning.teamId}\ndesignated => ${mac.macReleaseSigning.designatedRequirement}\n`;
+const adhocReport = `Identifier=${mac.MAC_BUNDLE_ID}\nCodeDirectory v=20400 size=500 flags=0x20002(adhoc,linker-signed) hashes=10+7 location=embedded\nSignature=adhoc\nTeamIdentifier=not set\ndesignated => cdhash H"0123456789abcdef0123456789abcdef01234567"\n`;
+
+test("release signature check accepts ad-hoc only when the release declares adhoc", () => {
+  assert.doesNotThrow(() => mac.assertMacReleaseSignature(adhocReport, "", "adhoc"));
+  assert.throws(() => mac.assertMacReleaseSignature(adhocReport, ""), /ad-hoc signed but declares the pinned release identity/);
+  assert.throws(() => mac.assertMacReleaseSignature(adhocReport, "", "identity"), /ad-hoc signed but declares/);
+  assert.throws(() => mac.assertMacReleaseSignature(adhocReport.replace(mac.MAC_BUNDLE_ID, "com.example.other"), "", "adhoc"), /identifier differs/);
+  assert.throws(() => mac.assertMacReleaseSignature(pinnedReport, mac.macReleaseSigning.identitySha1, "adhoc"), /declares ad-hoc signing but carries another signature/);
+  assert.throws(() => mac.assertMacReleaseSignature("TeamIdentifier=not set\n", "", "adhoc"), /unsigned/);
+  assert.throws(() => mac.assertMacReleaseSignature(pinnedReport, mac.macReleaseSigning.identitySha1, "self"), /Unknown declared macOS signing/);
+});
+
+test("an app signed with the pinned identity is never replaced by an ad-hoc or unsigned one", () => {
+  assert.throws(() => mac.assertNoMacSigningDowngrade(pinnedReport, adhocReport), /Refusing to replace a Branch app signed with the pinned release identity by an ad-hoc signed copy/);
+  assert.throws(() => mac.assertNoMacSigningDowngrade(pinnedReport, "code object is not signed at all"), /Refusing to replace/);
+  assert.throws(() => mac.assertNoMacSigningDowngrade(pinnedReport, undefined), /Refusing to replace/);
+  assert.doesNotThrow(() => mac.assertNoMacSigningDowngrade(pinnedReport, pinnedReport));
+  assert.doesNotThrow(() => mac.assertNoMacSigningDowngrade(adhocReport, adhocReport));
+  assert.doesNotThrow(() => mac.assertNoMacSigningDowngrade(adhocReport, pinnedReport));
+  assert.doesNotThrow(() => mac.assertNoMacSigningDowngrade(undefined, adhocReport));
+  assert.equal(mac.macSignatureIsPinnedIdentity(`${pinnedReport}Signature=adhoc\n`), false);
+});
+
+test("installMacApp refuses to swap a pinned-identity Branch.app for an ad-hoc bundle", async () => {
+  const root = await mkdtemp(join(tmpdir(), "branch-mac-downgrade-"));
+  try {
+    const apps = join(root, "Applications");
+    const source = join(root, "stage", "Branch Agent.app");
+    for (const [app, marker] of [[source, "adhoc"], [join(apps, "Branch.app"), "pinned"]]) {
+      await mkdir(join(app, "Contents"), { recursive: true });
+      await writeFile(join(app, "Contents", "Info.plist"), plist());
+      await writeFile(join(app, "Contents", "MARKER"), marker);
+    }
+    const reports = { adhoc: adhocReport, pinned: pinnedReport };
+    const readSignature = async app => reports[(await readFile(join(app, "Contents", "MARKER"), "utf8").catch(() => ""))];
+    await assert.rejects(mac.installMacApp(source, { applicationsDirectory: apps, register: async () => {}, stripQuarantine: async () => {}, readSignature }), /Refusing to replace/);
+    assert.equal(await readFile(join(apps, "Branch.app", "Contents", "MARKER"), "utf8"), "pinned");
+    assert.deepEqual((await readdir(apps)).sort(), ["Branch.app"]);
+    reports.adhoc = pinnedReport;
+    await mac.installMacApp(source, { applicationsDirectory: apps, register: async () => {}, stripQuarantine: async () => {}, readSignature });
+    assert.equal(await readFile(join(apps, "Branch.app", "Contents", "MARKER"), "utf8"), "adhoc");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("release signature check rejects ad-hoc, unsigned, and drifted identity", () => {
   const designated = `designated => ${mac.macReleaseSigning.designatedRequirement}`;
   const good = `Identifier=${mac.MAC_BUNDLE_ID}\nTeamIdentifier=${mac.macReleaseSigning.teamId}\n${designated}\n`;
   assert.doesNotThrow(() => mac.assertMacReleaseSignature(good, mac.macReleaseSigning.identitySha1.toLowerCase()));
+  assert.doesNotThrow(() => mac.assertMacReleaseSignature(good, mac.macReleaseSigning.identitySha1, "identity"));
   assert.throws(() => mac.assertMacReleaseSignature(`${good}Signature=adhoc\n`, mac.macReleaseSigning.identitySha1), /ad-hoc/);
   assert.throws(() => mac.assertMacReleaseSignature("TeamIdentifier=not set\n", mac.macReleaseSigning.identitySha1), /unsigned/);
   assert.throws(() => mac.assertMacReleaseSignature(good.replace(designated, "designated => identifier \"other\""), mac.macReleaseSigning.identitySha1), /designated requirement/);
@@ -212,10 +258,13 @@ test("packaging, updates, and CI keep the Applications install and the pinned si
   const bundleCheck = await text("scripts/check-mac-bundle.mjs");
   assert.match(release, /darwinPackagerOptions\(macIcon\)/);
   assert.match(release, /assets\/branch\.icns/);
-  assert.doesNotMatch(release, /adhoc/);
-  assert.match(release, /macOS releases require a stable code-signing identity/);
+  assert.match(release, /macSigningPlan\(\)/);
+  assert.match(release, /signing: macSigning\.signing/);
   const stampAt = release.indexOf("await stampMacBundle");
-  assert.ok(stampAt !== -1 && release.indexOf('["sign"', stampAt) > stampAt);
+  assert.ok(stampAt !== -1 && release.indexOf("macSignCommand(macSigning, join(app, MAC_ARCHIVE_BUNDLE_FOLDER))", stampAt) > stampAt);
+  // The workflow reads the declared signing from the release proof and allows ad-hoc only for an "adhoc" build.
+  assert.match(componentRelease, /signing="\$\(node -p 'JSON\.parse\(require\("node:fs"\)\.readFileSync\(process\.argv\[1\], "utf8"\)\)\.signing' "\$RELEASE_ASSETS\/release-proof-darwin-arm64\.json"\)"/);
+  assert.match(componentRelease, /mod\.assertMacReleaseSignature\(text, actual, process\.argv\[3\]\);' "\$GITHUB_WORKSPACE\/desktop\/dist\/mac-applications\.js" "\$report" "\$signing"/);
   assert.match(updater, /ensureMacApplicationsInstall/);
   assert.match(updater, /chooseStagedMacBundle/);
   assert.match(helper, /lsregister/);
