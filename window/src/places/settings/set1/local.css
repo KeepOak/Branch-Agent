@@ -37,3 +37,9 @@
   .set-col .ctl:is([data-row="Installed models"], [data-row="Its address"]) > .right { grid-row: auto; grid-column: 1; flex-wrap: wrap; margin-top: 6px; }
   .set-col .under-k { margin-left: 0; }
 }
+.set-col .rt-more { margin-top: 10px; }
+.set-col .rt-more > summary { cursor: pointer; list-style: none; padding: 8px 4px; font: 500 13px/1.3 var(--sans); color: var(--ink-3); }
+.set-col .rt-more > summary::-webkit-details-marker { display: none; }
+.set-col .rt-more > summary::before { content: "›"; display: inline-block; margin-right: 6px; transition: transform .15s; }
+.set-col .rt-more[open] > summary::before { transform: rotate(90deg); }
+.set-col .rt-more > .rows { margin-top: 6px; }
