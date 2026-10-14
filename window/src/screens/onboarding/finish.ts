@@ -53,6 +53,19 @@ export async function recordOnboarding(engine: WindowEngine, s: OnboardingState)
   await recordSetup(engine, { ...freshChoices("system"), promise: true, where: "this", modelsOff: s.off, jobs: [] }, "", null);
 }
 
+/** Set up by talking (HANDOFF R1-07): the conversation's name and the first message, which asks the card's questions. */
+export const TALK_TITLE = "Setting up Branch";
+export const TALK_MESSAGE = "Help me set up Branch by asking me these one at a time, and wait for each answer: which of my models to use, how much you may do on your own (Ask first, Auto or Read only), what my first Trunk should take off my plate, and where I want to reach you. Start with the first question.";
+
+/** Starts "Setting up Branch" with the default Trunk (sessions.create with its first message); returns its key. */
+export async function startSetupTalk(engine: WindowEngine): Promise<string> {
+  const def = readDefaultTrunk(await engine.request("agents.list", {}).catch(() => null));
+  const result = await engine.request("sessions.create", { ...(def ? { agentId: def.id } : {}), displayName: TALK_TITLE, message: TALK_MESSAGE });
+  const r = result && typeof result === "object" ? (result as Record<string, unknown>) : {};
+  if (typeof r.key !== "string" || !r.key) throw new Error("The engine didn’t start the conversation.");
+  return r.key;
+}
+
 /** Sends the first message into the Trunk's main conversation and returns that conversation's key. */
 export async function greet(engine: WindowEngine, agentId: string, mainKey: string): Promise<string> {
   const sessionKey = mainSessionOf(agentId, mainKey);

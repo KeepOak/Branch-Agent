@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { SettingsPage, SETTINGS_ROWS } from "../../../places/settings";
 import { KitProvider } from "../../../places/settings/kit";
+import { pageFor } from "../nav";
 import { ROWS } from "../rows";
 import { searchSettings } from "../search";
 import { mergeRows } from "../slots";
@@ -34,7 +35,7 @@ const drawn = (el: ParentNode) => ({
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
 it("re-hosts exactly these Classic pages", () => {
-  expect(REHOSTED).toEqual({ who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: "updates", privacy: "usage", history: "backups", learning: ["self", "seasons"], remote: "gateway" });
+  expect(REHOSTED).toEqual({ who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"], privacy: "usage", history: "backups", learning: ["self", "seasons"], remote: "gateway" });
 });
 
 for (const [page, classic] of Object.entries(REHOSTED)) {
@@ -58,6 +59,22 @@ it("keeps Sign-ins & keys empty without operator.admin, as Classic hides it, and
   const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="signins"] .r1s-classic[data-classic="secrets"]')!;
   expect(hosted.textContent).toContain(ADMIN_ONLY);
   expect(drawn(hosted)).toEqual({ sections: [], rows: [] });
+});
+
+it("opens old Seasons links on Learning & self-updates, the R1 page that draws Classic Memory cleanup", async () => {
+  expect(pageFor("seasons")).toBe("learning");
+  expect(classicList(REHOSTED.learning)).toContain("seasons");
+  await act(async () => root.render(<SettingsFrame engine={engine()} page={pageFor("seasons")} pages={R1_PAGES} />));
+  await settle();
+  expect(host.querySelector('.r1s-custom[data-slot="learning"] .r1s-classic[data-classic="self seasons"]')).not.toBeNull();
+});
+
+it("keeps Classic Achievements on Updates & about, the R1 page an achievements link opens", async () => {
+  expect(pageFor("achievements")).toBe("updates");
+  await act(async () => root.render(<SettingsFrame engine={engine()} page="updates" pages={R1_PAGES} />));
+  await settle();
+  const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="updates"] .r1s-classic[data-classic="updates achievements"]')!;
+  expect(hosted.textContent).toContain("Keep achievements quiet");
 });
 
 it("adds each re-hosted page's Classic rows to the R1 table, so R1 search finds them on their R1 page", () => {

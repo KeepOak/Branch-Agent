@@ -1,1 +1,2 @@
 window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/settings/rows.test.ts
