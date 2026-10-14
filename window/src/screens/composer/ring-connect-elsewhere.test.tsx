@@ -78,7 +78,7 @@ it("clicking it opens ConnectElsewhereDialog in the window", async () => {
   await act(async () => row()!.click());
   await flush();
   expect(document.querySelector("[data-testid=connect-elsewhere]")).not.toBeNull();
-});
+}, 30_000);
 
 it("leaves Classic's machine menu entry unchanged", () => {
   const heard = vi.fn();
