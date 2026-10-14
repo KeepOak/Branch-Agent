@@ -37,6 +37,8 @@ interface Publication {
   windowExisted: boolean;
   /** While a staged pair is being replaced in place: the staged engine it replaces. */
   engineReplaced?: string;
+  /** The release was published as a security fix. */
+  security?: true;
 }
 interface UndoReceipt {
   version: string; previousVersion: string; enginePrevious: string; engineNext: string;
@@ -423,6 +425,7 @@ async function stage(cfg: DesktopConfig, release: ComponentRelease, request: typ
 
 async function publish(cfg: DesktopConfig, release: ComponentRelease, next: { engine: string; window: string }): Promise<void> {
   const pending: Publication = { version: release.version, identity: releaseIdentity(release), phase: "prepared",
+    ...(release.security ? { security: true as const } : {}),
     enginePrevious: await readOrEmpty(join(cfg.dataDir, "engine-current.txt")), engineNext: next.engine,
     windowPrevious: `${next.engine}-previous-window`, windowExisted: existsSync(cfg.windowDir) };
   await replaceFile(journalFile(cfg), JSON.stringify(pending));
@@ -464,8 +467,9 @@ export function setReplacementMoveForTests(fn: typeof move | undefined): void { 
  * Resolves with the superseded folders, which the caller removes once the swap guard is released.
  */
 async function replaceStagedInPlace(cfg: DesktopConfig, held: Publication, release: ComponentRelease, next: { engine: string; window: string }, log?: (line: string) => void): Promise<string[]> {
-  const pending: Publication = { ...held, version: release.version, identity: releaseIdentity(release), phase: "prepared",
-    engineNext: next.engine, engineReplaced: held.engineNext };
+  const { security: _heldSecurity, ...heldRest } = held;
+  const pending: Publication = { ...heldRest, version: release.version, identity: releaseIdentity(release), phase: "prepared",
+    ...(release.security ? { security: true as const } : {}), engineNext: next.engine, engineReplaced: held.engineNext };
   await replaceFile(journalFile(cfg), JSON.stringify(pending));
   const supersededWindow = `${held.engineNext}-superseded-window`;
   let heldWindowMoved = false, nextWindowMoved = false;
@@ -574,6 +578,8 @@ export interface ComponentUpdateState {
   pendingVersion: string | null;
   /** A staged engine/window pair, which the desktop applies in place without restarting the app. */
   componentsPendingVersion: string | null;
+  /** That staged pair was published as a security fix. */
+  componentsPendingSecurity: boolean;
   publicationInProgress: boolean;
   /** The window build the running engine was started with, kept beside the staged one until it is applied. */
   previousWindowDir: string | null;
@@ -585,7 +591,8 @@ export async function readComponentUpdateStatus(cfg: DesktopConfig): Promise<Com
   const previousWindowDir = pending?.phase === "pending" && typeof pending.windowPrevious === "string"
     && existsSync(join(pending.windowPrevious, "index.html")) ? pending.windowPrevious : null;
   return { currentVersion: await readOrEmpty(versionFile(cfg)) || null, pendingVersion: componentsPendingVersion ?? await stagedDesktopVersion(cfg),
-    componentsPendingVersion, publicationInProgress: Boolean(pending), previousWindowDir };
+    componentsPendingVersion, componentsPendingSecurity: componentsPendingVersion !== null && pending?.security === true,
+    publicationInProgress: Boolean(pending), previousWindowDir };
 }
 
 export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) => void, options: RefreshOptions & { onStaged?: () => void } = {}): () => void {

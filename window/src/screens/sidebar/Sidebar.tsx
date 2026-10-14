@@ -41,6 +41,7 @@ import { FIND_EVENT } from "../../thread/FindBar";
 import { buildSections, contactRows, personRows, type Folder, type Person, type SideRow } from "./model";
 import { FolderChip, icons, PinnedGrid, SectionHead, SideRowView, TopCapsules, type RowHandlers } from "./parts";
 import { NEED, rowMenu } from "./row-menu";
+import { QUICK_ASK_EVENT, QUICK_ASK_NEED } from "../quickask/QuickAskHost";
 import "./sidebar.css";
 
 export type SidebarProps = {
@@ -201,6 +202,8 @@ export function Sidebar(p: SidebarProps) {
     // Branch's own assistant proposes the Trunk (branch.chat, "new-agent") and makes it only once you say yes.
     { label: "Have Branch make a Trunk", icon: menuIcon("spark"), need: "branch.chat", onSelect: () => setDialog({ kind: "studio" }) },
     { label: "New automation", icon: menuIcon("clock"), local: true, onSelect: () => p.onPlace("automations") },
+    // Quick ask (the preview's + menu row): the R1 window's QuickAskHost opens the box.
+    { label: "Quick ask", icon: menuIcon("spark"), hint: "Ctrl Shift Space", need: [...QUICK_ASK_NEED], onSelect: () => window.dispatchEvent(new CustomEvent(QUICK_ASK_EVENT)) },
     { label: narrow ? "Close the list" : "Collapse the list to faces", icon: menuIcon("panel"), hint: "Ctrl B", gap: true, local: true, onSelect: toggleRail },
   ];
   const short = update?.latest ? versionParts(update.latest).short : "";
