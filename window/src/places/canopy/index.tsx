@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { PlaceScroll, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { canApprove, canWrite, usePlaceData } from "../automations/runtime";
-import { computers, loadCanopy } from "./data";
+import { computers, isRunning, loadCanopy } from "./data";
 import { buildRuns, filterRuns, NO_FILTERS, type Filters } from "./runs";
 import { NowTab } from "./NowTab";
 import { CardsTab } from "./CardsTab";
@@ -32,6 +32,13 @@ function moveTab(event: KeyboardEvent<HTMLButtonElement>, index: number, select:
 
 export function CanopyPlace({ engine, openConversation, openPlace, level }: PlaceProps) {
   const state = usePlaceData(engine, loadCanopy);
+  const hasActiveRuns = state.data?.sessions.some(isRunning) ?? false;
+  const refresh = state.refresh;
+  useEffect(() => {
+    if (!hasActiveRuns) return;
+    const timer = setInterval(() => { void refresh(); }, 15000);
+    return () => clearInterval(timer);
+  }, [hasActiveRuns, refresh]);
   const [tab, setTab] = useState<Tab>("now"), [f, setF] = useState<Filters>(NO_FILTERS);
   const [sheet, setSheet] = useState(""), [editing, setEditing] = useState<Row | null>(null);
   // The frame asks for a tab after routing here (window "branch:place-tab" {place, tab}).

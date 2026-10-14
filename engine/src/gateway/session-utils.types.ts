@@ -79,6 +79,7 @@ export type GatewaySessionRow = Omit<SessionRow, "archivedBy" | "updatedAt" | "w
   goal?: SessionGoal;
   hasActiveRun?: boolean;
   activeRunIds?: string[];
+  runPaces?: import("../infra/agent-run-pace.js").AgentRunPace[];
   hasAutomation?: boolean;
   subagentRunState?: SubagentRunState;
   hasActiveSubagentRun?: boolean;

@@ -1,0 +1,15 @@
+{
+  "id": "X09",
+  "verdict": "PASS",
+  "scope": "source checkout; fixed-timing event regression and overview rendering, not installed-release verification",
+  "checks": [
+    {
+      "area": "engine",
+      "passed": true
+    },
+    {
+      "area": "window",
+      "passed": true
+    }
+  ]
+}

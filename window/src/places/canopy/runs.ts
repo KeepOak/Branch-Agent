@@ -1,3 +1,4 @@
+import { paceLines } from "./pace";
 // Canopy › Now's one list of runs (§4.6.7): each run's column comes from its engine state, never from a drag.
 import { rec, str, type Row } from "../automations/runtime";
 import {
@@ -16,7 +17,7 @@ function sessionRuns(d: CanopyData): Run[] {
     const base = { agentId: str(row.agentId), who: who(row), task: sessionTitle(row), step: stepOf(row), comp: computerOf(row, d.nodes), model: modelOf(row), sessionKey: key, goal: goal ?? undefined };
     const board = d.cards.find(c => str(c.sessionKey) === key && !isArchived(c) && ["running", "review"].includes(str(c.status)));
     if (goal?.status === "paused") out.push({ ...base, key: "p:" + key, kind: "paused", col: "next", step: "Paused · nothing new starts" });
-    else if (isRunning(row) && !asks.has(key)) out.push({ ...base, key: "c:" + key, kind: "chat", col: "working", since: Number(row.startedAt) || Number(row.updatedAt) || undefined, pct: meterOf(row), helpers: helpersOf(row, d.sessions, d.pending), board });
+    else if (isRunning(row) && !asks.has(key)) out.push({ ...base, key: "c:" + key, kind: "chat", col: "working", pace: paceLines(row.runPaces), since: Number(row.startedAt) || Number(row.updatedAt) || undefined, pct: meterOf(row), helpers: helpersOf(row, d.sessions, d.pending), board });
     else if (goal && ["blocked", "usage_limited", "budget_limited"].includes(str(goal.status))) {
       const why: Why = goal.status === "blocked" ? "you" : "room";
       out.push({ ...base, key: "g:" + key, kind: "goal", col: "stuck", why, detail: str(goal.lastStatusNote), step: str(goal.lastStatusNote) || base.step });

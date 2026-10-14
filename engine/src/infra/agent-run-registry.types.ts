@@ -42,6 +42,7 @@ export type AgentRunContext = {
   /** Timestamp when this context was first registered (for TTL-based cleanup). */
   registeredAt?: number;
   /** Bounded presentation facts from this registration's accepted events; never authority. */
+  pace?: import("./agent-run-pace.js").AgentRunPaceHistory;
   executionActivity?: {
     tools: Array<{ id: string; name: string }>;
     pendingApprovalIds: string[];

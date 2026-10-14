@@ -1,0 +1,4 @@
+engine:src/gateway/session-row-presentation.test.ts
+engine:src/infra/agent-run-pace.test.ts
+window:src/places/canopy/canopy.test.tsx
+window:src/places/overview/overview.test.tsx

@@ -123,7 +123,7 @@ describe("Overview screen", () => {
     const sessions = (FX["sessions.list"] as { sessions: unknown[] }).sessions;
     const { host } = await render(vi.fn(async (method: string) => method === "sessions.list" ? { sessions: [...sessions, helper] } : FX[method] ?? {}));
     const now = [...host.querySelectorAll(".ov-now")].map(b => b.textContent);
-    expect(now).toEqual(["RowanReading the folder"]);
+    expect(now).toEqual(["RowanReading the folderPace unavailable · ETA unavailable — waiting for timed plan steps"]);
   });
   it("switches Lockdown through the engine while leaving unsupported controls disabled", async () => {
     const request = vi.fn(async (method: string) => method === "config.patch" ? { ok: true, hash: "h2", config: { security: { lockdown: true } } } : FX[method] ?? {});
@@ -228,4 +228,15 @@ describe("Overview screen", () => {
     expect(recent.some(text => text?.includes("Alex River"))).toBe(true);
     expect(host.textContent).not.toContain("10001");
   });
+});
+
+
+it("shows observed pace and ETA range for active overview runs", async () => {
+  const { host } = await render(vi.fn(async (method: string) => method === "sessions.list" ? { sessions: [
+    { key: "one", agentId: "main", hasActiveRun: true, label: "Timed run", runPaces: [{ runId: "one", observedSteps: 3, stepsPerMinute: 3, etaMinMs: 20000, etaMaxMs: 60000 }] },
+    { key: "two", agentId: "main", hasActiveRun: true, label: "New run" },
+  ] } : FX[method] ?? {}));
+  const active = [...host.querySelectorAll(".ov-now")];
+  expect(active[0].textContent).toContain("3.0 steps/min observed · Plan ETA 20s–1m (observed range)");
+  expect(active[1].textContent).toContain("Pace unavailable · ETA unavailable");
 });

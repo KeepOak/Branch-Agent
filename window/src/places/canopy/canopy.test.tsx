@@ -407,3 +407,14 @@ describe("Canopy data", () => {
     expect(convState({ status: "todo" }, [], now)[0]).toBe("No conversation");
   });
 });
+
+
+it("shows each active run's own observed pace and ETA range", async () => {
+  await mount(fx({ "sessions.list": { sessions: [
+    { ...SESSIONS[0], runPaces: [{ runId: "one", completed: 3, total: 5, observedSteps: 3, stepsPerMinute: 3, etaMinMs: 20000, etaMaxMs: 60000 }] },
+    SESSIONS[1], SESSIONS[2],
+  ], hasMore: false } }));
+  expect(runCard("Check the invoice").textContent).toContain("3.0 steps/min observed · Plan ETA 20s–1m (observed range)");
+  expect(runCard("Tidy files").textContent).toContain("Pace unavailable · ETA unavailable");
+  expect(runCard("Tidy files").textContent).not.toContain("3.0 steps/min");
+});

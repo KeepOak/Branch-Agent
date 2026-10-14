@@ -86,6 +86,7 @@
 .ov-pick small { color:var(--ink-3); }
 .ov-badges { display:flex; gap:8px; flex-wrap:wrap; min-height:28px; } /* the artifact's badge strip; empty until the engine reports milestones */
 
+.ov-now small.ov-pace { white-space: normal; overflow: visible; text-overflow: clip; }
 /* New teammates from a starter template (#463): one row per teammate with Start / Open / Stop. Spans two columns when there is room. */
 .ov-teammates { grid-column:span 2; }
 @media (max-width:640px) { .ov-teammates { grid-column:auto; } }

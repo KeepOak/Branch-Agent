@@ -1,5 +1,3 @@
-// Stores and broadcasts agent lifecycle and streaming events.
-import { traceAgentRunEvent } from "./run-trace.js";
 import { isRecord } from "@branch/normalization-core/record-coerce";
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
@@ -10,6 +8,8 @@ import {
 } from "./agent-event-execution-context.js";
 import { hasInvalidLifecycleStartTimestamp } from "./agent-event-lifecycle.js";
 import { createAgentRunStaleLifecycleError } from "./agent-lifecycle-error.js";
+// Stores and broadcasts agent lifecycle and streaming events.
+import { observeAgentRunPlan } from "./agent-run-pace.js";
 import {
   getAgentRunContext,
   getAgentRunContextOwnership,
@@ -21,6 +21,7 @@ import {
 } from "./agent-run-registry.js";
 import type { AgentRunContext } from "./agent-run-registry.types.js";
 import { recordAgentRunOutputTokens } from "./agent-run-usage.js";
+import { traceAgentRunEvent } from "./run-trace.js";
 
 /** Payload for approval requests and their later resolution events. */
 export type AgentApprovalEventData = {
@@ -236,6 +237,13 @@ function recordExecutionActivity(
     return;
   }
   const { stream, data } = event;
+  if (stream === "plan") {
+    context.pace = observeAgentRunPlan(
+      context.pace,
+      data.steps,
+      context.lastActiveAt ?? Date.now(),
+    );
+  }
   if (stream === "lifecycle" && (data.phase === "end" || data.phase === "error")) {
     context.executionActivity = undefined;
     return;

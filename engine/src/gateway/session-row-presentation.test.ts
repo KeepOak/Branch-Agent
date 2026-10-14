@@ -16,8 +16,8 @@ import {
 import { readUserProfileIdentity, retainUserProfileCatalog } from "../state/user-profile-list.js";
 import { linkEmail, setUserProfileRole } from "../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
-import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { withBranchTestState } from "../test-utils/branch-test-state.js";
+import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import {
   createExpectedProfileBinding,
   ExpectedProfileMismatchError,
@@ -446,7 +446,11 @@ it("presents current recipient roles without SQLite while rejecting source overr
       for (const client of clients.slice(0, 2)) {
         expect(
           JSON.parse(String(vi.mocked(client.socket).send.mock.lastCall?.[0])).payload.session,
-        ).toMatchObject({ hasActiveRun: true, activeRunIds: ["old-run"] });
+        ).toMatchObject({
+          hasActiveRun: true,
+          activeRunIds: ["old-run"],
+          runPaces: [{ runId: "old-run", reason: "no-plan", observedSteps: 0 }],
+        });
       }
       for (const client of clients) {
         vi.mocked(client.socket).send.mockClear();
