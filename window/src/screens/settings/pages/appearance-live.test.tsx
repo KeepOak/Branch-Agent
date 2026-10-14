@@ -69,7 +69,9 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
       expect(r, id).not.toBeNull();
       expect(r!.hasAttribute("data-slot"), id).toBe(true);
       expect(r!.getAttribute("aria-disabled"), id).toBeNull();
-      expect(r!.querySelector("[data-coming]"), id).toBeNull();
+      // The threads row's Freedom Mode option is Coming until its layout ships; every other control is live.
+      const coming = [...r!.querySelectorAll("[data-coming]")];
+      expect(coming.map((el) => el.textContent), id).toEqual(id === "appearance.list.threads" ? ["Freedom Mode"] : []);
     }
     expect(undeclaredControls(host).map((el) => el.getAttribute("aria-label") || el.textContent)).toEqual([]);
   });
@@ -111,11 +113,16 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(calls(request, "agents.update")).toContainEqual({ agentId: "main", model: "anthropic/big" });
   });
 
-  it("shows Tabs above the chat for threads, even when a removed layout was saved", async () => {
+  it("draws the threads picker as Tabs (live) and Freedom Mode (Coming), and a saved removed layout reads as Tabs", async () => {
     localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "side", width: 88, per: {} }));
     await mount();
-    expect(row("appearance.list.threads")!.textContent).toContain("Tabs above the chat");
-    expect(row("appearance.list.threads")!.querySelectorAll("button")).toHaveLength(0);
+    const radios = [...row("appearance.list.threads")!.querySelectorAll<HTMLButtonElement>('[role="radio"]')];
+    expect(radios.map((b) => b.textContent)).toEqual(["Tabs", "Freedom Mode"]);
+    expect(radios[0]!.getAttribute("aria-checked")).toBe("true");
+    expect(radios[1]!.getAttribute("aria-checked")).toBe("false");
+    expect(radios[1]!.closest("[title], [data-tip]")?.getAttribute("title") ?? radios[1]!.getAttribute("title") ?? "").toContain("comes in the next update");
+    await click(radios[0]!);
+    expect(JSON.parse(localStorage.getItem("branch-topics-t5")!).layout).toBe("tabs");
   });
 
   it("shows the small model and opens Models to change it", async () => {

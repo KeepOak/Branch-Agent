@@ -19,7 +19,7 @@ import { DEFAULT_PET, PETS, petsHad } from "../../../places/settings/set1/appear
 import { sceneFile, useLook } from "../../../places/settings/set1/appearance-store";
 import { localId, Swatch, themeGroup, themeName, ThemesDialog, useThemes, type Extra } from "../../../places/settings/set1/appearance-themes";
 import { useThemeChoice, useTrunk } from "../../../places/settings/set1/appearance-top";
-import { r1DefaultTopicLayout, r1TopicLayoutNames } from "../../../shell/topic-layout";
+import { r1DefaultTopicLayout, setR1TopicLayout, TOPIC_LAYOUT_KEY } from "../../../shell/topic-layout";
 import { setThemeChoice, type ThemeChoice } from "../../../theme/theme";
 import { Segmented } from "../RowView";
 import type { SlotControlProps } from "../slots";
@@ -243,9 +243,27 @@ export function EachTrunk({ engine }: SlotControlProps) {
   </>;
 }
 
-/** How a contact's threads show beside its chat. R1 offers one layout for now (Tabs above the chat), so this reads it; it is not a choice yet. */
-export function ThreadsShowAs(_props: SlotControlProps) {
-  return <div className="r1s-own-ctl" data-local=""><span className="r1s-val">{r1TopicLayoutNames[r1DefaultTopicLayout()]}</span></div>;
+const FREEDOM_WAIT = "Freedom Mode comes in the next update.";
+
+/** How a contact's threads show beside its chat, for every contact without its own (kept in this window). Tabs is live; the
+ *  preview's second option, Freedom Mode, is drawn Coming until its layout ships. */
+export function ThreadsShowAs({ row }: SlotControlProps) {
+  const [layout, setLayout] = useState(r1DefaultTopicLayout);
+  useEffect(() => {
+    const sync = () => setLayout(r1DefaultTopicLayout());
+    const storage = (e: StorageEvent) => { if (e.key === TOPIC_LAYOUT_KEY) sync(); };
+    window.addEventListener("branch:topic-layout-changed", sync);
+    window.addEventListener("storage", storage);
+    return () => { window.removeEventListener("branch:topic-layout-changed", sync); window.removeEventListener("storage", storage); };
+  }, []);
+  return <div className="r1s-own-ctl" data-local="">
+    <div className="r1s-seg g-frost" role="radiogroup" aria-label={row.label ?? "Threads show as"}>
+      <button type="button" role="radio" aria-checked={layout === "tabs"} onClick={() => { setR1TopicLayout("tabs"); setLayout("tabs"); }}>Tabs</button>
+      <Coming need="threads.freedom" unwired reason={FREEDOM_WAIT}>
+        <button type="button" role="radio" aria-checked={false}>Freedom Mode</button>
+      </Coming>
+    </div>
+  </div>;
 }
 
 /** The small model Branch uses for smaller jobs (agents.defaults.utilityModel), with a way to Models to change it. */
