@@ -81,7 +81,6 @@ export const APPEARANCE_ROWS: Row[] = [
     source: { kind: "look", key: "pet" }, codec: orDefault(DEFAULT_PET) },
   { id: "appearance.pet.name", page: "appearance", card: "The pet", label: "Name", help: "Shown on the pet’s tips and menu.", level: 0, control: "text", source: { kind: "look", key: "petName" },
     codec: { read: (v) => (typeof v === "string" && v ? v : "Hazel"), write: (x) => { const t = typeof x === "string" ? x.trim().slice(0, 40) : ""; return t && t !== "Hazel" ? t : null; } } },
-  fromClassic("appearance.pet.roam", "The pet", "roam"),
   fromClassic("appearance.pet.sounds", "The pet", "petSounds"),
   slot("appearance.pet.had", "The pet", "Pets you’ve had", [], { control: "text" }),
 

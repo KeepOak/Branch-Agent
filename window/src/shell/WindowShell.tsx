@@ -1181,7 +1181,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const voiceReady = useVoiceCatalog(ready ? session.engine : undefined);
   const pet = usePetLook(session.engine);
   const cheerOn = useCheerOn(session.engine);
-  // Let it roam (Appearance › Pet) walks the pet along the chat instead of the card; one pet on screen at a time.
+  // A picked pet (Appearance › Pet) roams the chat instead of the card; one pet on screen at a time.
   const lanePet = pet.roam ? pet : { ...pet, id: "none" };
   // Stopping the roam brings the card back, with Undo; the pet's menu and the header face both use it (pet-roam.ts).
   const roamSetting = lookStore(session.engine);

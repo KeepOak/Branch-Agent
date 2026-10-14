@@ -37,6 +37,17 @@ export function PixelPet({ p }: { p: Px }) {
   );
 }
 
+/** Picking a pet turns it on (the pick is the switch: there is no Let it roam). None turns the roam off. Keeps the pets
+ *  you've had and the day of the first, as Classic's pet gallery does. */
+export async function pickPet(look: Look, id: string): Promise<void> {
+  const had = petsHad(look);
+  const none = id === DEFAULT_PET;
+  await look.store.set("pet", none ? null : id);
+  await look.store.set("roam", none ? null : true);
+  if (!none && !had.includes(id)) await look.store.set("petsHad", [...had, id]);
+  if (!look.val("petFirst", "")) await look.store.set("petFirst", new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+}
+
 /** The pets you've had: every pet picked, the one you have now included. */
 export function petsHad(look: Look): string[] {
   const had = Array.isArray(look.val("petsHad", [])) ? (look.val("petsHad", []) as string[]) : [];
@@ -48,11 +59,7 @@ export function PetSec({ look }: { look: Look }) {
   const save = useSaveRunner();
   const cur = String(look.val("pet", DEFAULT_PET));
   const had = petsHad(look), first = look.val("petFirst", "");
-  const pick = (id: string) => void save(async () => {
-    await look.store.set("pet", id === DEFAULT_PET ? null : id);
-    if (id !== "none" && !had.includes(id)) await look.store.set("petsHad", [...had, id]);
-    if (!first) await look.store.set("petFirst", new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" }));
-  });
+  const pick = (id: string) => void save(() => pickPet(look, id));
   return (
     <Sec title="The pet">
       <div className="pets12 ap-k" data-row="Pet">
@@ -66,7 +73,6 @@ export function PetSec({ look }: { look: Look }) {
       <Ctl title="Name" sub="Shown on the pet’s tips and menu.">
         <Field value={String(look.val("petName", "Hazel"))} label="Pet name" onCommit={(v) => void save(() => look.store.set("petName", v.trim() && v.trim() !== "Hazel" ? v.trim().slice(0, 40) : null))} />
       </Ctl>
-      <SpecRow r={rowOf("roam")} look={look} />
       <SpecRow r={rowOf("petSounds")} look={look} />
       <Ctl title="Pets you’ve had">
         <Val>{`${had.length} of ${PETS.length - 1}${first ? ` · first ${String(first)}` : ""}`}</Val>

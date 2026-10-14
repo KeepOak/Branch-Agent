@@ -159,7 +159,7 @@ describe("settings row table", () => {
     expect(classic.length).toBeGreaterThan(40);
     for (const title of classic) expect(labels.has(renamed[title] ?? title), title).toBe(true);
     // Every one of Classic's look keys is a row on the same key (or Coming, where Classic greys it).
-    const lookKeys = ["reduceTransparency", "contrast", "agentSize", "bg", "season", "size", "roam", "petSounds", "show.usage", "show.gateway", "show.gfx", "show.projects", "show.live",
+    const lookKeys = ["reduceTransparency", "contrast", "agentSize", "bg", "season", "size", "petSounds", "show.usage", "show.gateway", "show.gfx", "show.projects", "show.live",
       "show.statusbar", "still", "scenery", "msgLook", "dir", "math", "scroll", "codeCol", "tabs", "ch.act", "ch.move", "ch.touch", "ch.cap", "headlines",
       "accent", "scene", "scrim", "see", "fontUi", "fontChat", "pet", "petName", "agentShown", "askDelete"];
     const wired = new Set(page.flatMap((r) => (r.source.kind === "look" ? [r.source.key] : [])));
@@ -184,6 +184,8 @@ describe("settings row table", () => {
     expect(at("appearance.pet.name")?.codec?.write("  Hazel ")).toBeNull();
     // No pet and no done cheer until the person picks one: the default is "none", picking it removes the choice.
     expect([at("appearance.pet.pick")?.codec?.read(undefined), at("appearance.pet.pick")?.codec?.write("otter"), at("appearance.pet.pick")?.codec?.write("none")]).toEqual(["none", "otter", null]);
+    // There is no Let it roam switch: picking a pet turns it on, so the roam row is gone from the page.
+    expect(at("appearance.pet.roam")).toBeUndefined();
     expect(at("appearance.characters.shown")).toMatchObject({ control: "toggle", source: { kind: "look", key: "agentShown" }, fallback: false });
     expect(at("appearance.characters.cheer")).toMatchObject({ card: "Characters", label: "Celebrate when a task finishes", control: "toggle", source: { kind: "look", key: "cheer" }, fallback: false });
     // Each Classic card now draws rows: none of the page's Classic cards is empty at Technical.
