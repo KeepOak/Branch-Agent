@@ -41,6 +41,8 @@ export type MessageMeta = {
   owner?: boolean;
   /** The engine omits this message from future model context while keeping it in the transcript. */
   excluded?: boolean;
+  /** Pinned in this conversation (sessions.messages.pin). */
+  pinned?: boolean;
 };
 
 /** A picture, sound, video or file carried by a message. `src` is a data: or http(s) address. */
