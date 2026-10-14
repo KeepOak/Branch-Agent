@@ -1,7 +1,7 @@
 // The message hover bar (owner item 40, HANDOFF §2 #17): exactly three buttons, React, Reply and •••, in control
 // glass. ••• opens the message menu: its time and model, then Copy ›, Pin or Unpin, Edit or Try again, Read aloud,
-// Branch from here, Leave out of context, Look inside and Delete. (Link, Share as a picture and Continue in a coding app
-// wait in Seedbank › Coming to Branch until the engine has their calls, R1-15.) Each row runs its
+// Branch from here, Leave out of context, Share as a picture, Continue in a coding app, Look inside and Delete. The
+// last two are greyed with their reason until the window makes their calls (preview R1 message menu). Each row runs its
 // engine call (thread/useMessageActions) through <Coming need=…>, or shows Coming with its reason; nothing pretends.
 // Only Copy, its submenu and Look inside are local (data-local): they make no engine call.
 import { useRef, useState, type ReactNode } from "react";
@@ -33,6 +33,18 @@ const NEEDS = {
 
 /** One reason for Reply: it only sends, so without chat.send nothing can be sent at all. */
 const REPLY_NEED: Need = { need: "chat.send", reason: "This engine can’t send messages." };
+
+/** Rows this window doesn't make the call for yet. They stay greyed with their reason whatever the engine offers. */
+const SOON = {
+  picture: { need: "sessions.messages.share", reason: "Sharing a message as a picture comes in a later update." },
+  coding: { need: "sessions.handoff", reason: "Carrying a conversation into a coding app on this computer needs the Branch app." },
+} as const;
+
+function SoonRow({ icon, label, soon }: { icon: IconName; label: string; soon: { need: string; reason: string } }) {
+  return <Coming need={soon.need} unwired reason={soon.reason} where={label}>
+    <button type="button" role="menuitem" className="r1c-mi"><Icon name={icon} size={15} /><span className="r1c-mi-t">{label}</span></button>
+  </Coming>;
+}
 
 /** A row that runs now. With "need" it calls the engine and goes through Coming; without it the row is local
  *  (Copy, Look inside) and says so with data-local. */
@@ -69,6 +81,8 @@ export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: s
     {read ? <Row icon={read.reading ? "pause" : "play"} label={read.reading ? "Stop reading" : "Read aloud"} act={read} onDone={onClose} need={NEEDS.read} /> : null}
     <Row icon="branch" label="Branch from here" act={actions.branch} onDone={onClose} need={NEEDS.branch} />
     {actions.context ? <Row icon={actions.context.excluded ? "eye" : "eyeOff"} label={actions.context.excluded ? "Put back in context" : "Leave out of context"} act={actions.context} onDone={onClose} need={NEEDS.context} /> : null}
+    <SoonRow icon="camera" label="Share as a picture" soon={SOON.picture} />
+    <SoonRow icon="code" label="Continue in a coding app" soon={SOON.coding} />
     <Row icon="eye" label="Look inside" act={actions.inspect} onDone={onClose} />
     {actions.remove ? <><div className="r1c-gap" /><Row icon="trash" label="Delete" act={actions.remove} onDone={onClose} danger need={NEEDS.remove} /></> : null}
   </div>;
