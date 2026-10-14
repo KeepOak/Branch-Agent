@@ -95,6 +95,8 @@ button.r1sb-cap:hover { color: var(--ink); }
 .r1sb-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 10px; row-gap: 1px; align-items: center; width: 100%; min-height: 57px; padding: 8px 10px; box-sizing: border-box;
   border: 0; border-radius: var(--r-row, 12px); background: transparent; color: var(--ink); text-align: left; font-size: 14px; line-height: 1.5; }
 .r1sb-row:hover { background: var(--gk-chip); }
+/* A row picked with Alt or Shift (select several): the selected lift with an accent ring. */
+.r1sb-rw[data-picked] .r1sb-row { background: var(--gk-on); box-shadow: inset 0 0 0 1.5px var(--accent), inset 0 1px 0 var(--gf-hi); }
 .r1sb-row[data-one] { grid-template-rows: auto; min-height: 44px; padding-block: 6px; }
 .r1sb-face { grid-row: 1 / span 2; display: grid; place-items: center; width: 40px; height: 40px; }
 .r1sb-row[data-one] .r1sb-face { grid-row: 1; }
