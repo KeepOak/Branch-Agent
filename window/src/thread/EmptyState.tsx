@@ -42,9 +42,20 @@ const STARTERS: [RegExp, string[]][] = [
 ];
 const EVERYDAY = ["Tidy my Downloads folder", "Find a file I worked on last week", "Free up space on this computer", "Plan my week from my calendar"];
 
+/** The default Trunk gets the everyday four. Any other Trunk is asked about its own job: the four for its theme, or,
+ * for a theme none of them fits, one starter that names it. A Trunk with no theme has not been told its job yet, so it
+ * gets none; Starters offers "Tell it its job" instead of chores it was not made for (UI audit N5). */
 export function startersFor(theme: string, isDefault: boolean): string[] {
-  if (isDefault || !theme) return EVERYDAY;
-  return STARTERS.find(([re]) => re.test(theme))?.[1] ?? EVERYDAY;
+  if (isDefault) return EVERYDAY;
+  const job = theme.trim();
+  if (!job) return [];
+  return STARTERS.find(([re]) => re.test(job))?.[1] ?? [`Show me how you can help with \u201c${job}\u201d`];
+}
+
+/** Opens this Trunk's editor on Look, where "What it's for" is set, the way the conversation menu opens it. */
+function openJobEditor(agentId: string): void {
+  window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "people" } }));
+  window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId, view: "edit" } }));
 }
 
 /** The four starters, once a model is set up; with none, the composer's no-model line says what to do instead. */
@@ -54,6 +65,16 @@ function Starters({ onStart }: { onStart: (text: string) => void }) {
   if (!conv.loaded || hasNoModel(conv, currentModelRef(conv.row, conv.defaults))) return null;
   const trunk = conv.trunk;
   const list = startersFor(trunk?.theme ?? "", !trunk || trunk.id === conv.defaultTrunkId);
+  if (trunk && !list.length) {
+    return (
+      <>
+        <p className="empty-where">{trunk.name || "This Trunk"} has no job yet. Say what it is for, or just ask.</p>
+        <div className="starters">
+          <button type="button" className="chipb" onClick={() => openJobEditor(trunk.id)}>Tell it its job</button>
+        </div>
+      </>
+    );
+  }
   return (
     <>
       <p className="empty-where">Pick where it works, then say what to do.</p>

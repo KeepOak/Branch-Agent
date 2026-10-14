@@ -1,10 +1,7 @@
 import { avoidTrailingHighSurrogateBreak } from "@branch/normalization-core/utf16-slice";
 import { truncateSanitizedExternalContent } from "branch/plugin-sdk/security-runtime";
-/**
- * Adapted from bytedance/UI-TARS-desktop@2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a:
- * multimodal/agent-tars/core/src/environments/local/browser/content-extractor.ts.
- * Readability operates on a clone; Branch's existing converter renders markdown.
- */
+// Copyright (c) 2025 Bytedance, Inc. and its affiliates.
+// SPDX-License-Identifier: Apache-2.0
 import { htmlToMarkdown } from "branch/plugin-sdk/web-content-extractor";
 import type { Page } from "playwright-core";
 import { READABILITY_SCRIPT } from "./pw-readability-script.js";

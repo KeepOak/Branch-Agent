@@ -8,10 +8,7 @@ import {
   openBranchAgentDatabase,
   runBranchAgentWriteTransaction,
 } from "../../state/branch-agent-db.js";
-import {
-  createBranchTestState,
-  type BranchTestState,
-} from "../../test-utils/branch-test-state.js";
+import { createBranchTestState, type BranchTestState } from "../../test-utils/branch-test-state.js";
 import { writeSessionEntry } from "./session-accessor.sqlite-entry-store.js";
 import { loadSessionEntryReadOnly } from "./session-accessor.sqlite-entry.js";
 import { enforceSqliteSessionHistoryDiskBudget } from "./session-history-eviction.js";
@@ -91,13 +88,42 @@ it("preserves archive cursor ties, page limits, and protected rows across worker
   );
 });
 
+it("omits quarantined archived rows from eviction candidates without consuming the page limit", async () => {
+  const quarantinedKey = "agent:main:quarantined-archive";
+  const eligibleKey = "agent:main:eligible-archive";
+  runBranchAgentWriteTransaction((database) => {
+    writeSessionEntry(database, quarantinedKey, { ...victim, archivedAt: 1 });
+    writeSessionEntry(database, eligibleKey, { ...victim, sessionId: "healthy-archive" });
+    database.db
+      .prepare("UPDATE session_nodes SET entry_valid = -1 WHERE session_key = ?")
+      .run(quarantinedKey);
+  }, options);
+  const database = openBranchAgentDatabase(options);
+  const before = database.db
+    .prepare("SELECT * FROM session_nodes WHERE session_key = ?")
+    .get(quarantinedKey);
+  await withSessionHistoryWorkerDatabase(
+    options,
+    async (owner) => {
+      const batch = await owner.readArchivedEvictionCandidates({
+        env: process.env,
+        archived: { limit: 1 },
+      });
+      expect(batch.candidates.map(({ sessionKey }) => sessionKey)).toEqual([eligibleKey]);
+      expect(batch.cursor).toEqual({ archivedAt: 10, sessionKey: eligibleKey });
+      expect(batch.exhausted).toBe(true);
+    },
+    maintenanceLane,
+  );
+  expect(
+    database.db.prepare("SELECT * FROM session_nodes WHERE session_key = ?").get(quarantinedKey),
+  ).toEqual(before);
+});
+
 it.each(["rebound", "admitted", "rejected", "revoked"] as const)(
   "refuses stale archived eviction after a delayed batch is %s",
   async (outcome) => {
-    runBranchAgentWriteTransaction(
-      (database) => writeSessionEntry(database, key, victim),
-      options,
-    );
+    runBranchAgentWriteTransaction((database) => writeSessionEntry(database, key, victim), options);
     const reached = createDeferred();
     const release = createDeferred();
     const createReaders = workerReaders.createSessionHistoryWorkerReaders;

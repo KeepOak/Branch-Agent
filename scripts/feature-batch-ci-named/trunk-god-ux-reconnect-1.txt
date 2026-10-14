@@ -1,0 +1,5 @@
+window:src/connect/session-bootstrap-timeout.test.ts
+window:src/connect/session-error-refresh.test.ts
+window:src/connect/session-startup-watch.test.ts
+window:src/places-nav/settings-reconnect.test.tsx
+window:src/thread/startup-preparation.test.tsx

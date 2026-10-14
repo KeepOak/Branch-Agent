@@ -12,6 +12,7 @@ import {
   setSqliteBusyTimeout,
 } from "./sqlite-busy-timeout.js";
 import { isSqliteLockError } from "./sqlite-error-diagnostics.js";
+import { isSqliteMaintenanceDeferred } from "./sqlite-maintenance-deferral.js";
 import { createSqliteLifecycleAggregateError } from "./sqlite-lifecycle-errors.js";
 import {
   createSqliteWalCheckpoint,
@@ -326,6 +327,15 @@ export function configureSqliteWalMaintenance(
   const maintenanceId = `sqlite-wal:${++nextMaintenanceId}`;
   // The periodic pass sets the vacuum budget; the next run consumes it, ticks add none.
   let nextPageBudget = 0;
+  // #967: a periodic budget that fell due while maintenance was deferred; the first tick after
+  // the deferral ends spends it, so admission never races a vacuum and the pass is not lost.
+  let deferredPageBudget = 0;
+  const releaseDeferredPageBudget = () => {
+    if (deferredPageBudget > 0 && !isSqliteMaintenanceDeferred()) {
+      nextPageBudget = Math.max(nextPageBudget, deferredPageBudget);
+      deferredPageBudget = 0;
+    }
+  };
   const maintainPeriodic = (
     request: SqliteWalPeriodicRequest,
     admit?: (stage: "transaction" | "commit") => void,
@@ -413,6 +423,12 @@ export function configureSqliteWalMaintenance(
               terminateForSqliteWalSplitBrain(splitBrain, options.databaseLabel);
             }
           }
+          if (isSqliteMaintenanceDeferred()) {
+            // Checkpoint only; the vacuum budget waits for the deferral to end.
+            deferredPageBudget = 512;
+            return maintain();
+          }
+          deferredPageBudget = 0;
           nextPageBudget = 512;
           return maintain();
         },
@@ -425,7 +441,10 @@ export function configureSqliteWalMaintenance(
         id: `${maintenanceId}:tick`,
         delayMs: checkpointTickMs,
         everyMs: checkpointTickMs,
-        run: maintain,
+        run: () => {
+          releaseDeferredPageBudget();
+          return maintain();
+        },
       }),
     );
   }

@@ -5,14 +5,15 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { createPortal } from "react-dom";
 import { Icon, ICONS } from "./icons";
 
-export function Dialog({ title, onClose, children, footer, testid }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode; testid?: string }) {
+/** clear: the R1 window's item 48 glass (README 48): the panel is clear glass (.g-clear) and its title sits on a frosted pill. */
+export function Dialog({ title, onClose, children, footer, testid, clear }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode; testid?: string; clear?: boolean }) {
   const panel = useRef<HTMLDivElement>(null);
   useOverlayFocus(panel, onClose, { modal: true, initial: "textarea, input, select, button:not(.dlg-x)" });
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dlg" role="dialog" tabIndex={-1} aria-modal="true" aria-label={title} ref={panel} data-testid={testid}>
+      <div className={clear ? "dlg g-clear" : "dlg"} role="dialog" tabIndex={-1} aria-modal="true" aria-label={title} ref={panel} data-testid={testid}>
         <div className="dlg-h">
-          <h2>{title}</h2>
+          <h2 className={clear ? "g-label" : undefined}>{title}</h2>
           <button type="button" className="icon-btn dlg-x" aria-label="Close" title="Close" onClick={onClose}>
             <Icon d={ICONS.x} size={16} />
           </button>

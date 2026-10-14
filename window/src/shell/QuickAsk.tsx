@@ -12,9 +12,11 @@ type Props = {
   defaultId: string | null;
   onSend: (text: string, agentId: string | undefined) => void;
   onClose: () => void;
+  /** The item 48 clear glass box (README 48), for the R1 window. */
+  clear?: boolean;
 };
 
-export function QuickAsk({ trunks, defaultId, onSend, onClose }: Props) {
+export function QuickAsk({ trunks, defaultId, onSend, onClose, clear }: Props) {
   const panel = useRef<HTMLDivElement>(null);
   useOverlayFocus(panel, onClose, { modal: true });
   const [text, setText] = useState("");
@@ -30,7 +32,7 @@ export function QuickAsk({ trunks, defaultId, onSend, onClose }: Props) {
   };
   return (
     <div className="qa-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={panel} tabIndex={-1} aria-modal="true" className="qa-box" role="dialog" aria-label="Quick ask" data-testid="quick-ask">
+      <div ref={panel} tabIndex={-1} aria-modal="true" className={clear ? "qa-box g-clear" : "qa-box"} role="dialog" aria-label="Quick ask" data-testid="quick-ask">
         <input
           className="qa-field"
           autoFocus
@@ -47,7 +49,7 @@ export function QuickAsk({ trunks, defaultId, onSend, onClose }: Props) {
         />
         <div className="qa-foot">
           <span className="qa-to" role="radiogroup" aria-label="To">
-            <span className="qa-to-l">To</span>
+            <span className={clear ? "qa-to-l g-label" : "qa-to-l"}>To</span>
             {ordered.map((t) => (
               <button key={t.id} type="button" role="radio" aria-checked={to === t.id} className="chip" onClick={() => setTo(t.id)}>
                 {t.name}

@@ -31,10 +31,10 @@ import { withMentions } from "../rooms/RoomMessage";
 type Of<K extends Block["kind"]> = Extract<Block, { kind: K }>;
 
 /** Asks the window to open a workspace file from a step's File changes card (preview pathPB18). */
-export const OPEN_FILE_EVENT = "branch:open-file";
+const OPEN_FILE_EVENT = "branch:open-file";
 
 /** Over 1,200 characters or 40 lines, your message shows its first 5 lines (§4.2.2 Parity adds "Long messages"). */
-export function isLong(text: string): boolean {
+function isLong(text: string): boolean {
   return text.length > 1200 || text.split("\n").length > 40;
 }
 
@@ -369,7 +369,7 @@ export function DoneLine({ block, name, words }: { block: Of<"done">; name: stri
 export const CHECK_STATUS_EVENT = "branch:check-status";
 
 /** The real Settings switch named by the computer tool when no device is connected. */
-export const SCREEN_CONTROL_SWITCH = "See the screen and use the mouse";
+const SCREEN_CONTROL_SWITCH = "See the screen and use the mouse";
 
 export function isScreenControlSetupError(message: string): boolean {
   return message.includes(SCREEN_CONTROL_SWITCH);

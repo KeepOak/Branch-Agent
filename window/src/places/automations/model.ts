@@ -5,7 +5,7 @@ import { rec, str, type Row } from "./runtime";
 
 export type Repeat = "daily" | "weekdays" | "weekends" | "weekly" | "monthly" | "once" | "every" | "custom";
 export const REPEAT_NAMES: Record<Exclude<Repeat, "custom">, string> = { daily: "Every day", weekdays: "Weekdays", weekends: "Weekends", weekly: "Once a week", monthly: "Monthly", once: "Once", every: "Every…" };
-export type EveryUnit = "minutes" | "hours" | "days";
+type EveryUnit = "minutes" | "hours" | "days";
 export type ScheduleForm = {
   repeat: Repeat; time: string; weekday: number; monthDay: number; at: string;
   everyN: string; everyUnit: EveryUnit; expr: string; tz: string; exact: boolean; spreadN: string; spreadUnit: "seconds" | "minutes";
@@ -13,9 +13,8 @@ export type ScheduleForm = {
 export const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const UNIT_MS: Record<EveryUnit, number> = { minutes: 60_000, hours: 3_600_000, days: 86_400_000 };
 
-export const localZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const pad = (n: number) => String(n).padStart(2, "0");
-export const localInput = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const localInput = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
 export function emptyForm(now = Date.now()): ScheduleForm {
   return { repeat: "daily", time: "09:00", weekday: new Date(now).getDay(), monthDay: 1, at: "", everyN: "30", everyUnit: "minutes", expr: "", tz: "", exact: false, spreadN: "", spreadUnit: "seconds" };
@@ -85,7 +84,7 @@ export function scheduleToForm(schedule: Row, now = Date.now()): ScheduleForm {
   return { ...base, repeat: "weekly", weekday: Number(dow) };
 }
 
-export function clock(time: string): string {
+function clock(time: string): string {
   const [h, m] = time.split(":").map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return time;
   return `${h % 12 || 12}:${pad(m)} ${h < 12 ? "AM" : "PM"}`;
@@ -155,12 +154,15 @@ export function guessFromWords(text: string, now = Date.now()): { task: string; 
 const tidy = (s: string) => { const t = s.trim().replace(/^[,.\s]+|[,.\s]+$/g, ""); return t ? t[0].toUpperCase() + t.slice(1) : ""; };
 
 export type Health = { count: number; failed: number; text: string; warn: boolean; points: string };
+/** Old history marked skips as failed completion; execution status wins for those records. */
+export const failedRun = (run: Row): boolean => run.status !== "skipped" && (run.status === "error" || run.completionStatus === "failed");
 /** "12 runs · all fine" / "7 runs · 7 failed", and the sparkline of run lengths (only from 8 runs up). */
 export function health(runs: Row[], total = runs.length): Health | null {
   if (!runs.length) return null;
-  const failed = runs.filter(r => r.status === "error" || r.completionStatus === "failed").length;
-  const count = Math.max(total, runs.length);
-  const text = `${count} run${count === 1 ? "" : "s"} · ${failed ? `${failed} failed` : "all fine"}`;
+  const failed = runs.filter(failedRun).length, skipped = runs.filter(r => r.status === "skipped").length;
+  // The failure count is page-local: never compare it to a lifetime run total.
+  const count = runs.length, recent = Number.isFinite(total) && total > count;
+  const text = `${count}${recent ? " recent" : ""} run${count === 1 ? "" : "s"} · ${failed ? `${failed} failed` : skipped ? "" : "all fine"}${skipped ? `${failed ? " · " : ""}${skipped} skipped` : ""}`;
   const last = runs.slice(0, 12).reverse().map(r => Number(r.durationMs) || 0);
   let points = "";
   if (runs.length >= 8 && last.some(v => v > 0)) {
@@ -180,7 +182,19 @@ export function autoDisabledWords(job: Row): string | null {
 
 export function failing(job: Row): boolean {
   const s = rec(job.state);
-  return Boolean(s.autoDisabled) || s.lastRunStatus === "error" || s.lastStatus === "error";
+  return Boolean(s.autoDisabled) || (s.lastRunStatus ?? s.lastStatus) === "error" || (s.lastRunStatus !== "skipped" && s.lastCompletionStatus === "failed");
+}
+
+/** Active failure streak, not the first historical failure. A skip ends the streak. */
+export function failureDetails(job: Row, runs: Row[]): { since: unknown; error: string } | null {
+  if (!failing(job)) return null;
+  const s = rec(job.state), streak: Row[] = [];
+  for (const run of runs) { if (!failedRun(run)) break; streak.push(run); }
+  const first = streak.at(-1), last = streak[0];
+  return {
+    since: s.failingSinceMs ?? first?.runAtMs ?? first?.ts ?? s.lastRunAtMs,
+    error: str(s.lastError) || str(s.lastDeliveryError) || str(last?.error) || str(last?.deliveryError),
+  };
 }
 
 export function copyName(name: string, names: string[]): string {

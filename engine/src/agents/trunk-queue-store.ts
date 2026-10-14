@@ -25,7 +25,9 @@ export type TrunkQueueItem = {
   released_from?: string;
   /** Claim attempts that ended in an error or a failed dispatch. At MAX_CLAIM_FAILURES the job is blocked. */
   failures?: number;
-  /** Plain reason a job stopped after MAX_CLAIM_FAILURES. Shown in the queue list; cleared by queue_release. */
+  /** Not-ready run endings across all Trunks; retained until a blocked job is explicitly released. */
+  not_ready_attempts?: number;
+  /** Plain reason a job stopped at a retry cap. Shown in the queue list; cleared by queue_release. */
   blocked_reason?: string;
   /** The gateway process (epoch) that made this claim. Its run cannot outlive that process. */
   gateway_epoch?: string;
@@ -121,7 +123,12 @@ export function isPastStaleTime(row: TrunkQueueItem, now: number): boolean {
 }
 
 export function isClaimable(row: TrunkQueueItem): boolean {
-  return !row.done_at && !row.claimed_by && (row.failures ?? 0) < MAX_CLAIM_FAILURES;
+  return (
+    !row.done_at &&
+    !row.claimed_by &&
+    !row.blocked_reason &&
+    (row.failures ?? 0) < MAX_CLAIM_FAILURES
+  );
 }
 
 /** Counts a failed attempt and puts the job back. At the cap the job is blocked with a plain reason. */

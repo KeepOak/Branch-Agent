@@ -9,6 +9,7 @@ import path from "node:path";
 import { resolveGlobalSingleton } from "branch/plugin-sdk/global-singleton";
 import type { CodexAppServerStartOptions, CodexManagedCommandOrder } from "./config.js";
 import { resolveMacOSDesktopCodexAppServerCommandCandidates } from "./desktop-app-paths.js";
+import { CodexNotInstalledError, type InstalledCodex } from "./installed-codex.js";
 import { MANAGED_CODEX_APP_SERVER_PACKAGE } from "./version.js";
 
 // Registration and lazy runtime artifacts can load separate module copies.
@@ -18,10 +19,26 @@ const registeredCodexPlugin = resolveGlobalSingleton<{ root?: string }>(
   () => ({}),
 );
 
+/**
+ * Where the plugin looks for the Codex installed on this computer (release
+ * builds ship no Codex binary). Unset means the bundled package is the only
+ * managed source, as before.
+ */
+export type ManagedCodexInstalled = Pick<InstalledCodex, "findPathCommand">;
+
+const registeredCodexInstalled = resolveGlobalSingleton<{ provider?: ManagedCodexInstalled }>(
+  Symbol.for("branch.codexManagedInstalled"),
+  () => ({}),
+);
+
 type ResolveManagedCodexAppServerOptions = {
   platform?: NodeJS.Platform;
   pluginRoot?: string;
   pathExists?: (filePath: string, platform: NodeJS.Platform) => Promise<boolean>;
+  /** Overrides the registered installed-Codex lookup; null disables it. */
+  installed?: ManagedCodexInstalled | null;
+  /** Whether the bundled launcher has its native binary; defaults to a filesystem check. */
+  bundledReady?: (launcher: string, platform: NodeJS.Platform) => boolean;
 };
 
 type ResolveManagedCodexNativeCommandOptions = {
@@ -34,6 +51,16 @@ type ResolveManagedCodexNativeCommandOptions = {
 /** Records the process-stable plugin root prepared by Branch Agent's plugin loader. */
 export function setManagedCodexPluginRoot(pluginRoot: string | undefined): void {
   registeredCodexPlugin.root = pluginRoot;
+}
+
+/** Records where the plugin looks for the Codex installed on this computer (PATH). */
+export function setManagedCodexInstalled(provider: ManagedCodexInstalled | undefined): void {
+  registeredCodexInstalled.provider = provider;
+}
+
+/** A codex on PATH at or above the supported minimum, without starting anything. */
+export async function resolveInstalledPathCodexCommand(): Promise<string | undefined> {
+  return (await registeredCodexInstalled.provider?.findPathCommand())?.command;
 }
 
 /** Rewrites managed stdio start options to point at an executable Codex binary path. */
@@ -52,12 +79,26 @@ export async function resolveManagedCodexAppServerStartOptions(
     );
   }
   const platform = options.platform ?? process.platform;
-  const candidateCommandPaths = resolveManagedCodexAppServerCommandCandidates(
-    pluginRoot,
-    platform,
-    startOptions.managedCommandOrder ?? "package-first",
-  );
+  const managedCommandOrder = startOptions.managedCommandOrder ?? "package-first";
   const pathExists = options.pathExists ?? commandPathExists;
+  const installed =
+    options.installed === null
+      ? undefined
+      : (options.installed ?? registeredCodexInstalled.provider);
+  const candidateCommandPaths = installed
+    ? await resolveInstalledCommandCandidates({
+        pluginRoot,
+        platform,
+        managedCommandOrder,
+        installed,
+        pathExists,
+        bundledReady:
+          options.bundledReady ??
+          ((launcher, launcherPlatform) =>
+            resolveManagedCodexNativeCommand(launcher, { platform: launcherPlatform }) !==
+            undefined),
+      })
+    : resolveManagedCodexAppServerCommandCandidates(pluginRoot, platform, managedCommandOrder);
   const commandPaths: string[] = [];
   for (const commandPath of candidateCommandPaths) {
     if (await pathExists(commandPath, platform)) {
@@ -110,8 +151,10 @@ export function resolveManagedCodexNativeCommand(
   if (!packageJsonPath) {
     return undefined;
   }
-  const candidate = path.join(
-    path.dirname(packageJsonPath),
+  // Paths follow the target platform, so a macOS layout reads the same on any host.
+  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  const candidate = pathApi.join(
+    pathApi.dirname(packageJsonPath),
     "vendor",
     target.triple,
     "bin",
@@ -211,6 +254,45 @@ function resolvePackageJsonFromRoot(packageName: string, root: string): string |
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Managed candidates when Codex is the one installed on this computer: a codex
+ * on PATH (meeting the minimum) first, then the bundled platform package when
+ * this build has it (source checkouts), with the desktop app where it was
+ * before. With none of them, the turn fails with the sentence the Codex row in
+ * Settings shows. Nothing is downloaded.
+ */
+async function resolveInstalledCommandCandidates(params: {
+  pluginRoot: string;
+  platform: NodeJS.Platform;
+  managedCommandOrder: CodexManagedCommandOrder;
+  installed: ManagedCodexInstalled;
+  pathExists: (filePath: string, platform: NodeJS.Platform) => Promise<boolean>;
+  bundledReady: (launcher: string, platform: NodeJS.Platform) => boolean;
+}): Promise<string[]> {
+  const { platform, managedCommandOrder, installed } = params;
+  const packageOnly = managedCommandOrder === "package-only";
+  const installedDesktop: string[] = [];
+  for (const command of packageOnly
+    ? []
+    : resolveMacOSDesktopCodexAppServerCommandCandidates(platform)) {
+    if (await params.pathExists(command, platform)) {
+      installedDesktop.push(command);
+    }
+  }
+  const onPath = packageOnly ? undefined : (await installed.findPathCommand())?.command;
+  const launcher = resolveManagedCodexPackageEntrypoint(params.pluginRoot);
+  const bundled = launcher && params.bundledReady(launcher, platform) ? launcher : undefined;
+  const packageCommandPaths = [onPath, bundled].filter(
+    (command): command is string => command !== undefined,
+  );
+  if (packageCommandPaths.length === 0 && installedDesktop.length === 0) {
+    throw new CodexNotInstalledError();
+  }
+  return managedCommandOrder === "desktop-first"
+    ? [...installedDesktop, ...packageCommandPaths]
+    : [...packageCommandPaths, ...installedDesktop];
 }
 
 function resolveManagedCodexAppServerCommandCandidates(
