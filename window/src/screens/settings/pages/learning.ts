@@ -6,10 +6,14 @@ import type { Level } from "../nav";
 import type { Codec, Control, Row, RowOption } from "../rows";
 
 type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[]; unit?: string; codec?: Codec };
+/** A Coming row's reason is one plain sentence in the preview's words (R1-10): a reason that names how Branch works
+ *  inside becomes "<label> comes in a later update."; the call it waits for stays in `need`. */
+export const plainReason = (label: string, reason: string): string =>
+  /engine|gateway call|method|config|\b[a-z]+\.[a-z]+\b/i.test(reason) ? `${label} comes in a later update.` : reason;
 const coming = (id: string, card: string, label: string, need: string, reason: string, extra: Extra = {}): Row =>
-  ({ id, page: "learning", card, label, level: 0, control: "custom", ...extra, source: { kind: "coming", need, reason } });
+  ({ id, page: "learning", card, label, level: 0, control: "custom", ...extra, source: { kind: "coming", need, reason: plainReason(label, reason) } });
 const slot = (id: string, card: string, label: string, calls: string[], extra: Extra = {}): Row =>
-  ({ id, page: "learning", card, label, level: 0, control: "custom", ...extra, source: { kind: "slot", calls, reason: `${label} comes with the R1 Learning & self-updates page.` } });
+  ({ id, page: "learning", card, label, level: 0, control: "custom", ...extra, source: { kind: "slot", calls, reason: `${label} comes in a later update.` } });
 const config = (id: string, card: string, label: string, path: string, control: Control, extra: Extra = {}): Row =>
   ({ id, page: "learning", card, label, level: 0, ownerLevel: true, control, ...extra, source: { kind: "config", path } });
 
