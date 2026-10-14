@@ -7,7 +7,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Coming } from "../../../glass/coming";
-import { COMING_REASON } from "../../../glass/coming-registry";
 import { ASK_COMING } from "../SettingsFrame";
 import { useResource as usePlaceResource, type Trunks } from "../../../places/library/data";
 import { ToolsTab, type Kind } from "../../../places/customize/tools";
@@ -171,7 +170,7 @@ function AgentCard({ engine, agent, trunks, sessions, nested, reload }: { engine
       <div className="r1s-acts">
         {/* The preview's seed and sharing buttons wait for the engine to describe a connected agent as a seed. */}
         {["Copy seed", "Download", "Share"].map((b) => (
-          <Coming key={b} engine={engine} need="engine: a connected agent as a seed" unwired reason={COMING_REASON}>
+          <Coming key={b} engine={engine} need="engine: a connected agent as a seed" unwired reason={`${b} comes in a later update.`}>
             <button type="button" className="r1s-btn">{b}</button>
           </Coming>
         ))}
@@ -232,7 +231,7 @@ export function ConnectedAgents({ engine }: SlotPageProps) {
 /** Connect an agent: one row per line an agent's owner pastes once (Classic CONNECT_LINES), each with Copy. */
 export const CONNECT_ROWS: Row[] = CONNECT_LINES.map(([title], i) => ({
   id: `customize.connect.line-${i + 1}`, page: "customize", card: "Connect an agent", label: title, level: 0, control: "custom",
-  source: { kind: "slot", calls: [], reason: COMING_REASON },
+  source: { kind: "slot", calls: [], reason: `${title} comes in a later update.` },
 }));
 function ConnectLine({ row }: SlotControlProps) {
   const line = CONNECT_LINES.find(([title]) => title === row.label)?.[1] ?? "";
