@@ -1,4 +1,4 @@
-// From OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f:src/utils/transcript-export/load-complete-events.ts (atlas SESSIONS-0047). Adapted to chat.history offset pagination.
+// Adapted to chat.history offset pagination.
 import type { WindowEngine } from "../connect/engine";
 import { historyToBlocks } from "../thread/history";
 import type { Block } from "../thread/model";

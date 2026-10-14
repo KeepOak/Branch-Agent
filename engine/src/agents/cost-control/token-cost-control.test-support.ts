@@ -1,5 +1,4 @@
-// Shared helpers for the TokenCostControl tests ported from mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421
-// packages/core/src/processors/processors/token-cost-control.test.ts (atlas MODELS-ACCOUNTS-0080).
+// Shared helpers for the TokenCostControl tests.
 import { vi } from "vitest";
 import {
   TokenCostControl,

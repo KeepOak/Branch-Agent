@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/channels/message/durable-receive.test.ts (atlas CHAT-APPS-0092). Changed for Branch: use the shared state fixture to settle SQLite workers before Windows cleanup.
+// Changed for Branch: use the shared state fixture to settle SQLite workers before Windows cleanup.
 import { describe, expect, it } from "vitest";
 import { withBranchTestState } from "../../test-utils/branch-test-state.js";
 import { createDurableInboundReceiveJournalFromQueue } from "./durable-receive.js";

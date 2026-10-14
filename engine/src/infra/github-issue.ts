@@ -1,4 +1,4 @@
-// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/infra/github-issue.ts (atlas OPS-0056). Changed for Branch: file reports on the Branch-owned KeepOak/Branch-Agent repository, never the upstream tracker.
+// Changed for Branch: file reports on the Branch-owned KeepOak/Branch-Agent repository, never the upstream tracker.
 import { spawn } from "node:child_process";
 /** Prepares and submits bounded issue content to the Branch Agent repository. */
 import { createHash } from "node:crypto";
