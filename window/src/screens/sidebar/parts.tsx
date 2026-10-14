@@ -5,7 +5,9 @@ import { useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode, typ
 import { Avatar, InitialsFace } from "../../glass/Avatar";
 import { GroupCluster } from "../../glass/GroupCluster";
 import { Face } from "../../face/Face";
+import { useSidebarPointerDrag, type DropZone, type SidebarDrop } from "../../shell/sidebar-drag";
 import { FOLDERS, folderCount, rowTime, type Folder, type SideRow } from "./model";
+import { pinAxis, pinKey } from "./pin-order";
 
 const svg = (body: ReactNode, size = 16) => <svg className="r1sb-i" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{body}</svg>;
 export const icons = {
@@ -64,9 +66,20 @@ export function SideRowView({ row, current, now, handlers, picked = false }: { r
   </div>;
 }
 
-/** The Pinned grid: a face, the name and a role chip; 2, 3 or 4 a row by the list's width (container queries). */
-export function PinnedGrid({ rows, currentKey, handlers }: { rows: SideRow[]; currentKey: string | null; handlers: RowHandlers }) {
-  const grid = useRef<HTMLDivElement>(null);
+const PIN_ZONES: readonly DropZone[] = ["before", "after"];
+const NO_ZONES: readonly DropZone[] = [];
+
+/** The Pinned grid: a face, the name and a role chip; 2, 3 or 4 a row by the list's width (container queries). With
+ *  onReorder, a tile drags to a new place (the Classic pointer drag, shell/sidebar-drag.ts); the default stays first. */
+export function PinnedGrid({ rows, currentKey, handlers, onReorder }: { rows: SideRow[]; currentKey: string | null; handlers: RowHandlers; onReorder?: (drop: SidebarDrop) => void }) {
+  const grid = useRef<HTMLDivElement | null>(null);
+  const { ref: dragRef, ...drag } = useSidebarPointerDrag(drop => onReorder?.(drop), {
+    itemAttribute: "data-pin", ignoreSelector: ".r1sb-pin-more, [data-pin-fixed]", dropZones: PIN_ZONES,
+    // Read at drag time: the collapsed rail stacks the tiles in one column (sidebar.css), so before and after go by height.
+    get axis() { return pinAxis(grid.current); },
+    zonesFor: (_source, _target, element) => (element.hasAttribute("data-pin-fixed") ? NO_ZONES : PIN_ZONES),
+    faceSelector: ".r1sb-pin-face", nameSelector: ".r1sb-pin-name",
+  });
   const last = useRef(new Map<string, DOMRect>());
   // FLIP: when the column count changes, each tile glides from where it was.
   useLayoutEffect(() => {
@@ -83,14 +96,14 @@ export function PinnedGrid({ rows, currentKey, handlers }: { rows: SideRow[]; cu
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  return <div className="r1sb-pins" role="list" aria-label="Pinned" ref={grid}>
+  return <div className="r1sb-pins" role="list" aria-label="Pinned" ref={node => { grid.current = node; dragRef.current = node; }} {...(onReorder ? drag : {})}>
     {rows.map(row => <PinnedTile key={row.id} row={row} current={row.key !== null && row.key === currentKey} handlers={handlers} />)}
   </div>;
 }
 
 function PinnedTile({ row, current, handlers }: { row: SideRow; current: boolean; handlers: RowHandlers }) {
   const tile = useRef<HTMLDivElement>(null), more = useRef<HTMLButtonElement>(null);
-  return <div className="r1sb-pin" role="listitem" data-pin={row.id} ref={tile}>
+  return <div className="r1sb-pin" role="listitem" data-pin={pinKey(row)} data-pin-fixed={row.isDefault ? "" : undefined} ref={tile}>
     <button type="button" className="r1sb-pin-open" data-local="" aria-current={current ? "true" : undefined} title={row.name}
       aria-label={`${row.name}, ${row.role}${row.unread ? ", unread" : ""}${row.working ? ", working" : ""}`}
       onClick={() => handlers.onOpen(row)} onContextMenu={event => { event.preventDefault(); handlers.onMenu(row, tile.current!); }}>
