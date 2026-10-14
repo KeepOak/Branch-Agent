@@ -74,8 +74,8 @@ function GatewayUpdating(props: SettingsPageProps) {
   const version = useBranchVersion(props.engine.gatewayUrl);
   const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
   return <>
-    {status.error ? <Status tone="bad" title="Branch couldn’t read its update status">{status.error}</Status> : null}
-    {status.loading && !status.data ? <Hint>Checking for updates…</Hint> : null}
+    {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
+    {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
     {status.data ? <Waiting {...props} data={data} version={version} /> : null}
     {status.data ? <Updating {...props} data={data} /> : null}
     {lvOf(props.level) >= 1 ? <HelpMore {...props} data={data} version={version} /> : null}
@@ -93,8 +93,8 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
   const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
   return (
     <Page title={props.title} lede={lede}>
-      {status.error ? <Status tone="bad" title="Branch couldn’t read its update status">{status.error}</Status> : null}
-      {status.loading && !status.data ? <Hint>Checking for updates…</Hint> : null}
+      {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
+      {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
       {status.data ? <Waiting {...props} data={data} version={version} /> : null}
       {status.data ? <Updating {...props} data={data} /> : null}
       <Devices lv={lvOf(props.level)} />
