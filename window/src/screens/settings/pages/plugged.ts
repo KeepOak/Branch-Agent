@@ -14,6 +14,8 @@ import { SIGNINS_ROWS } from "./signins";
 import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
 import { MODELS_ROWS } from "./models";
 import { PERMISSIONS_ROWS } from "./permissions";
+import { PRIVACY_ROWS } from "./privacy";
+import * as Priv from "./privacy-live";
 import * as Perm from "./permissions-live";
 import * as Mod from "./models-live";
 import { UPDATES_ROWS } from "./updates";
@@ -33,7 +35,6 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
   who: "people", notifications: "notifications", instructions: "instructions",
-  privacy: "usage",
   browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
   coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
 } as const;
@@ -65,6 +66,11 @@ export const R1_PAGES: PageSlots = {
     "permissions.approvals.block": Perm.Approvals, "permissions.guards.block": Perm.Guards, "permissions.money.block": Perm.Money,
     "permissions.connectors.block": Perm.Connectors, "permissions.isolation.block": Perm.Isolation, "permissions.network.block": Perm.Network,
     "permissions.policy.block": Perm.Policy, "permissions.privacy.block": Perm.Privacy,
+  } },
+  // Privacy & data: the preview's seven cards; Classic Data & usage's keeping, moving and data sections inside them.
+  privacy: { rows: PRIVACY_ROWS, controls: {
+    "privacy.data.block": Priv.YourDataCard, "privacy.keeping.block": Priv.KeepingCard, "privacy.conversations.block": Priv.ConversationsCard,
+    "privacy.moving.block": Priv.MovingCard, "privacy.flagged.block": Priv.FlaggedCard, "privacy.money.block": Priv.MoneyCard,
   } },
   // Updates & about: the preview's ten cards; Classic Updates' sections and the achievements badges inside them.
   updates: { rows: UPDATES_ROWS, controls: {

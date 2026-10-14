@@ -258,7 +258,7 @@ const TOOLS_TECH: SecSpec = { title: "Tools, technical", group: "Tools", lv: 2, 
 ] };
 const HOOKS: SecSpec = { title: "Hooks", lv: 2, rows: ["Before a tool runs", "After a tool runs", "When a conversation starts", "When you send a message", "When a Trunk stops", "Before tidying up", "When it needs you", "When a task finishes", "When a session ends", "When settings change", "When a file changes"].map((t) => ({ t })), whole: (c) => <HooksSec c={c} /> };
 const AUTO_MORE: SecSpec = { title: "Automations, more", group: "Automations", lv: 1, rows: [no("Run on GitHub Actions while this computer is off", "Schedules and their skills run on free GitHub runners; results and memory come back as commits. Off until you choose: your skills run on GitHub’s computers.")] };
-const SHARING_MORE: SecSpec = { title: "Sharing, more", group: "Sharing", lv: 1, rows: [btnOff("Pages Trunks publish", "Pages and their comments.", "See them", "Needs the engine’s list of published pages.")] };
+export const SHARING_MORE: SecSpec = { title: "Sharing, more", group: "Sharing", lv: 1, rows: [btnOff("Pages Trunks publish", "A Trunk can publish a report as a page at a fixed link.", "See them", "Pages Trunks publish comes in a later update.")] };
 const TRUNKS_MORE: SecSpec = { title: "Trunks, more", group: "Trunks", lv: 1, rows: [
   no("Projects pick up matching work", "A message about a project goes to that project by itself."),
   no("Follow-up tasks", "A Trunk can leave itself a task for later, shown in the Board."),

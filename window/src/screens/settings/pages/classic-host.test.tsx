@@ -41,7 +41,6 @@ it("re-hosts exactly these Classic pages", () => {
     who: "people", notifications: "notifications", instructions: "instructions",
     browser: "computer-browser",
     coding: "computer-coding",
-    privacy: "usage",
   });
 });
 

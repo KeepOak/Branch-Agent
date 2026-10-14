@@ -24,8 +24,8 @@ import { trunkDisplayName } from "../../../connect/trunk-name";
 
 /* ---------- figures ---------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
-const LOCAL = { mode: "specific", timeZone: TZ };
-const ALL = { agentScope: "all" };
+export const LOCAL = { mode: "specific", timeZone: TZ };
+export const ALL = { agentScope: "all" };
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const money = (v: unknown): string => formatMoney(num(v));
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -58,7 +58,7 @@ function useQuery(engine: WindowEngine, method: string, params: unknown) {
 }
 
 /** Trunk names by id, from agents.list. */
-function useNames(engine: WindowEngine): Map<string, string> {
+export function useNames(engine: WindowEngine): Map<string, string> {
   const agents = useLive<RecordValue>(engine, "agents.list", {}, []);
   return useMemo(() => new Map(list(rec(agents.data).agents).map((a) => [str(a.id), trunkDisplayName(a)])), [agents.data]);
 }
@@ -104,7 +104,7 @@ export function UsagePage(props: SettingsPageProps) {
 }
 
 /** The card at the top: what Branch spent in the period, how many tasks, and "Open the report". */
-type SpendResult = { data?: RecordValue; error?: string | null };
+export type SpendResult = { data?: RecordValue; error?: string | null };
 function SpendCard({ spend, days, setDays, onOpen }: { spend: SpendResult; days: string; setDays: (d: string) => void; onOpen: () => void }) {
   const data = rec(spend.data);
   const tasks = num(rec(rec(data.aggregates).messages).user);
@@ -222,7 +222,7 @@ function Allowances({ engine, openSettings }: { engine: WindowEngine; openSettin
 }
 
 /* ---------- spend per Trunk ---------- */
-function TrunkSpend({ spend, names, days }: { spend: SpendResult; names: Map<string, string>; days: string }) {
+export function TrunkSpend({ spend, names, days }: { spend: SpendResult; names: Map<string, string>; days: string }) {
   const rows = list(rec(rec(spend.data).aggregates).byAgent).map((a) => ({ id: str(a.agentId), cost: num(rec(a.totals).totalCost) })).sort((a, b) => b.cost - a.cost);
   const max = Math.max(0, ...rows.map((r) => r.cost));
   return (
@@ -807,7 +807,7 @@ function AllowanceRows({ engine }: { engine: WindowEngine }) {
   );
 }
 
-function Keeping({ engine, lv }: { engine: WindowEngine; lv: number }) {
+export function Keeping({ engine, lv }: { engine: WindowEngine; lv: number }) {
   const config = useConfig(engine);
   const [manage, setManage] = useState(false);
   const maintenance = rec(config.get("session.maintenance"));
@@ -937,7 +937,7 @@ export function Evals({ lv }: { lv: number }) {
 const CATALOGS: [string, string][] = [["anthropic", "Show Claude Code conversations"], ["codex", "Show Codex conversations"], ["opencode", "Show OpenCode conversations"]];
 const catalogPath = (id: string) => `plugins.entries.${id}.config.sessionCatalog.enabled`;
 
-function MovingInOut({ engine, lv }: { engine: WindowEngine; lv: number }) {
+export function MovingInOut({ engine, lv }: { engine: WindowEngine; lv: number }) {
   const config = useConfig(engine);
   const [move, setMove] = useState(false);
   const plugins = useLive<RecordValue>(engine, "plugins.list", {}, ["plugins"]);
@@ -1037,7 +1037,7 @@ export function MoveInDialog({ engine, onClose }: { engine: WindowEngine; onClos
 // TODO(engine-lane): metering export (the old app's usage/metering and usage/metering/now: write the usage figures to
 // a workspace folder on a schedule, or now). The artifact has no row for it; add one here, styled like "Backups",
 // once the engine has the method.
-function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
+export function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
   const [backups, setBackups] = useState(false);
   const usage = useLive<RecordValue>(engine, "usage.status", {}, []);
   const balances = list(rec(usage.data).providers).flatMap((p) => list(p.billing).filter((b) => b.type === "balance").map((b) => `${str(p.displayName)}: ${str(b.unit) === "USD" ? money(b.amount) : `${num(b.amount)} ${str(b.unit)}`}`));
@@ -1099,7 +1099,7 @@ function BackupRow({ t }: { t: RecordValue }) {
 const M = "session.maintenance";
 
 /** Keeping things, more (Advanced): session.maintenance.*, sessions.cleanup, sessions.storage.*, attachments.ttlHours. */
-function KeepingMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
+export function KeepingMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
   const config = useConfig(engine);
   const [store, setStore] = useState(false);
   const tidy = useCall(); const cold = useCall();
@@ -1222,7 +1222,7 @@ function KeyRow({ k, config }: { k: Key; config: Cfg }) {
   );
 }
 
-function EverySetting({ engine }: { engine: WindowEngine }) {
+export function EverySetting({ engine }: { engine: WindowEngine }) {
   const config = useConfig(engine);
   return (
     <Sec title="Conversations, every setting" group="Keeping things" showHeading={false} hint="Every conversation setting the engine has, by its key." help="Every conversation setting the engine has, by its key. Archive conversations idle for (above) sets when they leave the list.">
@@ -1232,7 +1232,7 @@ function EverySetting({ engine }: { engine: WindowEngine }) {
 }
 
 /* ---------- flagged replies, reset, your data ---------- */
-function Flagged({ lv }: { lv: number }) {
+export function Flagged({ lv }: { lv: number }) {
   return (
     <Sec title="Flagged replies">
       <Ctl title="Let me send a flagged reply to the Branch team" sub="Even then each flag asks, and only that reply and your note go." help="Even then each flag asks, and only that reply and your note go. Off until you choose: it sends them outside Branch, to the Branch team." off={NO_FLAG}><Switch label="Let me send a flagged reply to the Branch team" checked={false} onChange={() => undefined} /></Ctl>
@@ -1241,7 +1241,7 @@ function Flagged({ lv }: { lv: number }) {
   );
 }
 
-function YourData({ engine }: { engine: WindowEngine }) {
+export function YourData({ engine }: { engine: WindowEngine }) {
   const config = useConfig(engine);
   const storage = useLive<RecordValue>(engine, "sessions.storage.status", {}, []);
   const backup = useLive<RecordValue>(engine, "backup.status", {}, []);

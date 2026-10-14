@@ -16,7 +16,7 @@ vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as
 // page's own rows (and the other native pages'), and Chat apps.
 vi.mock("../settings/pages/plugged", async () => {
   const { REHOSTED, R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, learning: R1_PAGES.learning, signins: R1_PAGES.signins, models: R1_PAGES.models, permissions: R1_PAGES.permissions, updates: R1_PAGES.updates, chatapps: { component: () => null } } };
+  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, learning: R1_PAGES.learning, signins: R1_PAGES.signins, models: R1_PAGES.models, permissions: R1_PAGES.permissions, privacy: R1_PAGES.privacy, updates: R1_PAGES.updates, chatapps: { component: () => null } } };
 });
 vi.mock("../settings", () => ({
   SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (
@@ -95,7 +95,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("who,notifications,instructions,privacy,browser,coding,history,devices,learning,signins,models,permissions,updates,chatapps,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("who,notifications,instructions,browser,coding,history,devices,learning,signins,models,permissions,privacy,updates,chatapps,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
