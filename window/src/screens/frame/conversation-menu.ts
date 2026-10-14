@@ -76,12 +76,12 @@ export type ConversationMenuContext = {
 export const ROOM_RULE_NEED = { lead: "rooms.rule.set", activation: "sessions.patch" } as const;
 const LEAD = "A lead Trunk decides";
 
-/** The Classic room rules menu (rooms/room-rules.tsx) as glass menu rows: each choice a checked row, a greyed one keeps its reason. */
+/** The Classic room rules menu (rooms/room-rules.tsx) as glass menu rows: each choice a switch row on the current rule, a greyed one keeps its reason. */
 export function roomRuleEntries(items: readonly MenuItem[]): MenuEntry[] {
   return items.flatMap((item): MenuEntry[] => {
     if (item.kind !== undefined && item.kind !== "item") return [];
-    if (item.disabled) return [{ label: item.label, local: true, off: item.disabled }];
-    return [{ label: item.label, hint: item.sub, toggle: Boolean(item.checked), need: item.label === LEAD ? ROOM_RULE_NEED.lead : ROOM_RULE_NEED.activation, onSelect: item.run }];
+    if (item.disabled) return [{ label: item.label, toggle: Boolean(item.checked), local: true, off: item.disabled }];
+    return [{ label: item.label, toggle: Boolean(item.checked), need: item.label === LEAD ? ROOM_RULE_NEED.lead : ROOM_RULE_NEED.activation, onSelect: item.run }];
   });
 }
 

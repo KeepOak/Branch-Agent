@@ -108,7 +108,7 @@ describe("Group rules in a group chat (#974 row 21)", () => {
     const rules = roomRuleEntries(roomRulesItems({ chatApp: false, branchGroup: true, rule: "lead", choose }));
     expect(rules.map(row => row.label)).toEqual(["A lead Trunk decides", "Everyone, every time", "Only those you @mention"]);
     const lead = named(rules, "A lead Trunk decides");
-    expect(lead).toMatchObject({ need: ROOM_RULE_NEED.lead, toggle: true, hint: "It reads each message and picks who answers." });
+    expect(lead).toMatchObject({ need: ROOM_RULE_NEED.lead, toggle: true });
     lead.onSelect!();
     expect(choose).toHaveBeenCalledWith("lead");
     expect(named(rules, "Everyone, every time")).toMatchObject({ local: true, off: ROOM_REASONS.everyone });
