@@ -231,19 +231,18 @@ describe("Seedbank", () => {
     await click(buttons(section, "View all")[0]);
     const tiles = [...host.querySelectorAll(".sb-upcoming [role=group]")];
     expect(tiles.map(t => t.getAttribute("aria-label"))).toEqual([
-      "Link to one message, coming", "Share a message as a picture, coming", "Continue in a coding app, coming", "Your own folders, coming",
-      "Make default from search, coming", "More General settings, coming", "Run Branch on another computer, coming", "A KeepOak computer, coming",
-      "Screenshot, coming", "Teach a task, coming", "Write a doc, sheet or slides, coming", "Branch from here, coming", "Temporary chat, coming",
-      "Check with me, coming", "Phone call, coming", "Join a meeting, coming",
+      "Your own folders, coming", "Make default from search, coming", "More General settings, coming", "Run Branch on another computer, coming",
+      "A KeepOak computer, coming", "Screenshot, coming", "Teach a task, coming", "Write a doc, sheet or slides, coming", "Branch from here, coming",
+      "Temporary chat, coming", "Check with me, coming", "Phone call, coming", "Join a meeting, coming",
     ]);
     expect(tiles.every(t => t.textContent?.includes("Coming"))).toBe(true);
-    expect(tiles[6].textContent).toContain("Another computer you own or a home server, paired with a setup code.");
+    expect(tiles[3].textContent).toContain("Another computer you own or a home server, paired with a setup code.");
     expect(host.textContent).not.toMatch(/Mac mini|\bNAS\b/);
     expect(host.querySelector("[role=tab][aria-selected=true]")?.textContent).toBe("Coming to Branch");
     const listed = comingControls().filter(c => c.where.startsWith("Seedbank › Coming to Branch › "));
     expect(listed.map(c => c.need[0]).sort()).toEqual([
       "agents.documents.create", "config.patch", "config.patch", "desktop.observe", "desktop.observe", "device.pair.setupCode", "environments.create",
-      "sessions.folders.put", "sessions.fork", "sessions.handoff", "sessions.messages.link", "sessions.messages.share", "sessions.patch", "sessions.patch",
+      "sessions.folders.put", "sessions.fork", "sessions.patch", "sessions.patch",
       "voicecall.initiate", "voicecall.start",
     ]);
     expect(listed.every(c => c.hidden)).toBe(true);
