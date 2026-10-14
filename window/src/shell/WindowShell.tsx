@@ -81,7 +81,7 @@ import { Sidebar, type TalkEntry } from "./Sidebar";
 import { topBarTalk } from "./talk-entry";
 import { TalkBeside, useTalkLayout } from "./TalkBeside";
 import { StatusBar, type StatusItem } from "./StatusBar";
-import { KeepLastDialog, remindedToday, StatusPopover, statusAnchor, tidy } from "./StatusLayer";
+import { KeepLastDialog, pauseAll, remindedToday, StatusPopover, statusAnchor, tidy, type StatusContext } from "./StatusLayer";
 import { copyMarkdown, copyText } from "./row-actions";
 import { readLevel } from "../places-nav/SettingsFrame";
 import type { Above } from "./Popover";
@@ -324,6 +324,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const stop = bridge.onChanged((keys) => { if (live) setPoppedKeys(keys); });
     return () => { live = false; stop(); };
   }, [dedicated]);
+  // The desktop tray's live line and Pause all work (Private #454 C) read the live sessions list through this.
+  const liveWork = useRef<{ list?: StatusContext["list"]; trunks: number; working: StatusContext["working"] }>({ trunks: 0, working: [] });
   useEffect(() => componentDesktop(session.gatewayUrl)?.onAutoApplyProbe?.(async () => {
     const approvals = await Promise.all(["exec.approval.list", "plugin.approval.list", "branch.approval.list"].map(
       method => session.request<unknown>(method, {}),
@@ -333,9 +335,17 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       if (!Array.isArray(items)) throw new Error("Approval status is unavailable");
       return count + items.length;
     }, 0);
-    return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles() };
+    return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles(),
+      workingTrunks: liveWork.current.trunks };
   }), [session]);
   const { s, ready, lists, list, gatewayContacts, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  const workingRows = lists.rows.filter((r) => r.working);
+  liveWork.current = { list, trunks: new Set(workingRows.map((r) => r.agentId)).size,
+    working: workingRows.map((r) => ({ key: r.key, title: r.title || "", line: "", runIds: r.activeRunIds })) };
+  useEffect(() => componentDesktop(session.gatewayUrl)?.onPauseAll?.(() => {
+    const live = liveWork.current;
+    if (live.list) void pauseAll({ session, list: live.list, working: live.working });
+  }), [session]);
   const lockdown = useLockdown(session.engine, ready, session);
   const toggleLockdown = () => void lockdown.toggle().catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
   const groupRooms = useGroupRooms(session, ready);
