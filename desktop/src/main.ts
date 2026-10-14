@@ -9,7 +9,7 @@ import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } fro
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { attachOrStartEngine, engineAnswers, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
-import { HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
+import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, standbyReadyBudgetMs } from "./readiness-budget";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
@@ -65,6 +65,9 @@ const STEP_DOWN_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_STEP_DOWN_TIMEOUT_
 const TAKE_OVER_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_TAKE_OVER_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS);
 const ROLLBACK_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_ROLLBACK_TIMEOUT_MS, HANDOFF_ROLLBACK_TIMEOUT_MS);
 const RETIRE_KILL_AFTER_MS = envMs(process.env.BRANCH_DESKTOP_RETIRE_KILL_AFTER_MS, HANDOFF_RETIRE_KILL_AFTER_MS);
+const RETIRE_HARD_CAP_MS = envMs(process.env.BRANCH_DESKTOP_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_HARD_CAP_MS);
+/** How often a retiring engine still finishing kept runs is asked again before it is stopped (Private #1038). */
+const RETIRE_RECHECK_MS = envMs(process.env.BRANCH_DESKTOP_RETIRE_RECHECK_MS, 60_000);
 /** How long an old engine that says it still serves gets to prove it on /readyz. */
 const PRIOR_READY_CHECK_MS = 10_000;
 /** A standby only loads code before it reports warm; one slower than its budget is stopped and the old engine keeps serving. */
@@ -459,19 +462,35 @@ const seamlessHandoff = (): boolean => cfg.seamlessHandoff !== false;
 
 /**
  * Old engines from the moment step-down is sent: quitting stops them (shutdown), a crash leaves their
- * record for the next launch to retire, and one still alive at HANDOFF_RETIRE_KILL_AFTER_MS is killed.
+ * record for the next launch to retire, and one still alive at HANDOFF_RETIRE_KILL_AFTER_MS is killed, unless it
+ * still runs work it kept (Private #1038): its session leases renew while those runs work, so it is asked again
+ * every RETIRE_RECHECK_MS and killed once it is idle, does not answer, or reaches HANDOFF_RETIRE_HARD_CAP_MS.
  */
 const retiring = new Map<ChildProcess, ReturnType<typeof setTimeout>>();
 function keepRetiring(label: string, child: ChildProcess): void {
   if (child.exitCode !== null || child.signalCode !== null || retiring.has(child)) return;
-  const timer = setTimeout(() => {
+  const since = Date.now();
+  const expire = async () => {
+    const runs = Date.now() - since < RETIRE_HARD_CAP_MS
+      ? await gatewayActivity(child, false, 3_000).then(activity => activity.activeRuns > 0 || activity.totalActive > 0 ? Math.max(1, activity.activeRuns) : 0, () => 0)
+      : 0;
+    if (!retiring.has(child)) return;
+    if (runs > 0) {
+      log(`update ${label}: old engine ${child.pid} is still finishing ${runs} kept run(s); keeping it`);
+      arm(RETIRE_RECHECK_MS);
+      return;
+    }
     log(`update ${label}: old engine ${child.pid} is still alive past its lease deadline; stopping it`);
     stopGateway(child, "SIGKILL");
-  }, RETIRE_KILL_AFTER_MS);
-  timer.unref?.();
-  retiring.set(child, timer);
+  };
+  const arm = (ms: number) => {
+    const timer = setTimeout(() => void expire(), ms);
+    timer.unref?.();
+    retiring.set(child, timer);
+  };
+  arm(RETIRE_KILL_AFTER_MS);
   child.once("exit", () => {
-    clearTimeout(timer);
+    clearTimeout(retiring.get(child));
     if (retiring.delete(child)) log(`update ${label}: old engine ${child.pid} finished its kept sessions and stopped`);
   });
 }

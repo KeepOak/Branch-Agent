@@ -14,10 +14,12 @@ import {
 } from "./command-queue.js";
 import { resetCommandQueueStateForTest } from "./command-queue.test-support.js";
 import {
+  isSessionHandoffLeaseExpired,
   listSessionHandoffLeases,
   readHeldSessionHandoffLease,
   readSessionHandoffLease,
   resolveSessionHandoffLeaseDir,
+  SESSION_HANDOFF_LEASE_HARD_CAP_MS,
   SESSION_HANDOFF_LEASE_MAX_AGE_MS,
   SESSION_HANDOFF_LEASE_MAX_WAIT_MS,
   writeSessionHandoffLease,
@@ -262,7 +264,7 @@ describe("session handoff leases", () => {
     await expect(enqueueCommandInLane(LEASED, async () => "ran")).resolves.toBe("ran");
   });
 
-  it("gives the holder a deadline at 330 s and reports when its leases expire for successors", async () => {
+  it("renews a busy session's lease past 330 s and gives the holder its deadline only near the hard cap (Private #1038)", async () => {
     vi.useFakeTimers({
       toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "Date"],
     });
@@ -273,14 +275,66 @@ describe("session handoff leases", () => {
     void hold.deadline.then((value) => {
       elapsed = value;
     });
-    await vi.advanceTimersByTimeAsync(SESSION_HANDOFF_LEASE_MAX_WAIT_MS - 1);
+    await vi.advanceTimersByTimeAsync(SESSION_HANDOFF_LEASE_MAX_WAIT_MS);
     expect(elapsed).toBeUndefined();
-    await vi.advanceTimersByTimeAsync(1);
+    expect(hold.expiresAt).toBeGreaterThan(Date.now() + SESSION_HANDOFF_LEASE_MAX_WAIT_MS);
+    const margin = SESSION_HANDOFF_LEASE_MAX_AGE_MS - SESSION_HANDOFF_LEASE_MAX_WAIT_MS;
+    await vi.advanceTimersByTimeAsync(
+      startedAt + SESSION_HANDOFF_LEASE_HARD_CAP_MS - margin - Date.now() - 1_000,
+    );
+    expect(elapsed).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1_100);
     expect(elapsed).toBe(true);
+    expect(hold.expiresAt).toBe(startedAt + SESSION_HANDOFF_LEASE_HARD_CAP_MS);
     // Still busy: the leases stay until the caller stops that work; they are not silently dropped.
     expect(leaseFiles(LEASED)).toHaveLength(1);
     hold.releaseAll();
     expect(leaseFiles(LEASED)).toHaveLength(0);
+  });
+
+  it("keeps a 10-minute helper run's session across the handoff and frees it when the run ends (Private #1038)", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "Date"],
+    });
+    const helper = "session:agent:main:subagent:ten-minute-helper";
+    let running = true;
+    const hold = holdSessionHandoffLeases({ lanes: [helper], isBusy: () => running });
+    const [{ file }] = listSessionHandoffLeases(resolveSessionHandoffLeaseDir(), helper);
+    let elapsed: boolean | undefined;
+    void hold.deadline.then((value) => {
+      elapsed = value;
+    });
+    for (let minute = 1; minute < 10; minute += 1) {
+      await vi.advanceTimersByTimeAsync(60_000);
+      // What the new engine reads: a current lease, so the session stays with the engine running the helper.
+      expect(isSessionHandoffLeaseExpired(readSessionHandoffLease(file)!), `minute ${minute}`).toBe(false);
+      expect(elapsed, `minute ${minute}`).toBeUndefined();
+    }
+    await vi.advanceTimersByTimeAsync(59_000);
+    running = false;
+    await vi.advanceTimersByTimeAsync(200);
+    await hold.released;
+    expect(elapsed).toBe(false);
+    expect(leaseFiles(helper)).toHaveLength(0);
+  });
+
+  it("follows a predecessor's renewed lease instead of running the session at its first expiry (Private #1038)", async () => {
+    const holder = await liveProcess();
+    const file = leaseFor(LEASED, holder.pid!, {
+      acquiredAt: Date.now() - SESSION_HANDOFF_LEASE_MAX_AGE_MS + 600,
+    });
+    refreshSessionHandoffLeases();
+    let ran = false;
+    const leased = enqueueCommandInLane(LEASED, async () => {
+      ran = true;
+    });
+    // The predecessor renews it: the helper run in that session is still working.
+    fs.writeFileSync(file, JSON.stringify({ ...readSessionHandoffLease(file)!, renewedAt: Date.now() }));
+    await pause(1_500);
+    expect(ran).toBe(false);
+    fs.unlinkSync(file);
+    await leased;
+    expect(ran).toBe(true);
   });
 
   it("a hold released in time reports its deadline as not reached", async () => {

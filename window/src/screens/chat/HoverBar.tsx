@@ -1,6 +1,6 @@
 // The message hover bar (owner item 40, HANDOFF §2 #17): exactly three buttons, React, Reply and •••, in control
-// glass. ••• opens the message menu: its time and model, then Copy ›, Pin, Edit or Try again, Read aloud, Branch from
-// here, Leave out of context, Share as a picture, Continue in a coding app, Look inside and Delete. Each row runs its
+// glass. ••• opens the message menu: its time and model, then Copy ›, Pin or Unpin, Edit or Try again, Read aloud,
+// Branch from here, Leave out of context, Share as a picture, Continue in a coding app, Look inside and Delete. Each row runs its
 // engine call (thread/useMessageActions) through <Coming need=…>, or shows Coming with its reason; nothing pretends.
 // Only Copy, its submenu and Look inside are local (data-local): they make no engine call.
 import { useRef, useState, type ReactNode } from "react";
@@ -19,10 +19,8 @@ const QUICK = ["👍", "❤️", "🎉", "👀", "🚀", "😂"];
 /** Rows the engine has no call for yet. Each names the call it waits for and says so in one plain line. */
 const SOON = {
   link: { need: "sessions.messages.link", reason: "Links to one message come in a later update." },
-  pin: { need: "sessions.messages.pin", reason: "Pinning a message comes in a later update." },
   picture: { need: "sessions.messages.share", reason: "Sharing a message as a picture comes in a later update." },
   coding: { need: "sessions.handoff", reason: "Carrying a conversation into a coding app on this computer needs the Branch app." },
-  remove: { need: "sessions.messages.delete", reason: "Deleting one message comes in a later update." },
 } as const;
 
 type Need = { need: string | readonly string[]; reason: string };
@@ -35,6 +33,8 @@ const NEEDS = {
   read: { need: "talk.speak", reason: "This engine has no voice to read replies aloud." },
   branch: { need: "sessions.fork", reason: "This engine can’t branch a conversation." },
   context: { need: "session.context.set", reason: "This engine can’t leave a message out of context." },
+  pin: { need: "sessions.messages.pin", reason: "This engine can’t pin a message." },
+  remove: { need: "sessions.messages.delete", reason: "This engine can’t delete one message." },
 } as const satisfies Record<string, Need>;
 
 /** One reason for Reply: it only sends, so without chat.send nothing can be sent at all. */
@@ -80,7 +80,7 @@ export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: s
   return <div className="r1c-menu" role="menu" aria-label="Message">
     {head ? <div className="r1c-menu-meta" title={at ? fullTime(at) : undefined}>{head}</div> : null}
     <button type="button" role="menuitem" className="r1c-mi" data-local="" aria-haspopup="menu" onClick={() => setCopyOpen(true)}><Icon name="copy" size={15} /><span className="r1c-mi-t">Copy</span><span className="r1c-mi-hint" aria-hidden="true">›</span></button>
-    <SoonRow icon="pin" label="Pin" soon={SOON.pin} />
+    {actions.pin ? <Row icon="pin" label={actions.pin.pinned ? "Unpin" : "Pin"} act={actions.pin} onDone={onClose} need={NEEDS.pin} /> : null}
     <div className="r1c-gap" />
     {isReply ? <Row icon="retry" label="Try again" act={actions.retry} onDone={onClose} need={NEEDS.again} /> : <Row icon="edit" label="Edit" act={actions.edit} onDone={onClose} need={NEEDS.edit} />}
     {read ? <Row icon={read.reading ? "pause" : "play"} label={read.reading ? "Stop reading" : "Read aloud"} act={read} onDone={onClose} need={NEEDS.read} /> : null}
@@ -89,8 +89,7 @@ export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: s
     <SoonRow icon="camera" label="Share as a picture" soon={SOON.picture} />
     <SoonRow icon="code" label="Continue in a coding app" soon={SOON.coding} />
     <Row icon="eye" label="Look inside" act={actions.inspect} onDone={onClose} />
-    <div className="r1c-gap" />
-    <SoonRow icon="trash" label="Delete" soon={SOON.remove} danger />
+    {actions.remove ? <><div className="r1c-gap" /><Row icon="trash" label="Delete" act={actions.remove} onDone={onClose} danger need={NEEDS.remove} /></> : null}
   </div>;
 }
 
