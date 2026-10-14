@@ -146,13 +146,13 @@ export function OverviewBar({ range, onRange, source, onSource, layout, linked, 
       <div className="p34-head">
         <h1>Overview</h1>
         <span className="p34-seg" role="group" aria-label="Range">
-          {RANGES.map(([value, label]) => <button key={value} type="button" aria-pressed={range === value} onClick={() => onRange(value)}>{label}</button>)}
+          {RANGES.map(([value, label]) => <button key={value} type="button" aria-pressed={range === value} aria-current={range === value ? "true" : undefined} onClick={() => onRange(value)}>{label}</button>)}
         </span>
       </div>
       <div className="p34-src">
         <div className="p34-chips" role="group" aria-label="Accounts">
-          <button type="button" aria-pressed={source === "all"} onClick={() => onSource("all")}>All accounts</button>
-          {shown.map(id => <button key={id} type="button" aria-pressed={source === id} onClick={() => onSource(id)}>{WIDGET_NAMES[id]}</button>)}
+          <button type="button" aria-pressed={source === "all"} aria-current={source === "all" ? "true" : undefined} onClick={() => onSource("all")}>All accounts</button>
+          {shown.map(id => <button key={id} type="button" aria-pressed={source === id} aria-current={source === id ? "true" : undefined} onClick={() => onSource(id)}>{WIDGET_NAMES[id]}</button>)}
         </div>
         <div className="p34-add">
           <button type="button" className="btn sm" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><Icon name="plus" />Add a widget</button>
