@@ -1,4 +1,4 @@
-// Behaviour tests derived from zhayujie/CowAgent@986f44a19508b572d15d40dcb8bd5b2796559ec7:tests/test_agent_model_defaults.py (atlas MODELS-ACCOUNTS-0104)
+// Behaviour tests for agent model defaults.
 import { describe, expect, it } from "vitest";
 import type { BranchConfig } from "../config/types.branch.js";
 import { resolveSessionModelRef } from "./session-model-ref.js";

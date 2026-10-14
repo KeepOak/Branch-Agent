@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, renameSync, rmSync, statSync } from "node:fs";
+import { reportDiskFull } from "./disk-full";
 
 /** The UI event log is bounded to three files of 5 MB: the current file and two rotated copies. */
 export const UI_LOG_MAX_BYTES = 5 * 1024 * 1024;
@@ -27,8 +28,9 @@ export class RotatingLog {
     try {
       appendFileSync(this.file, `${line}\n`);
       this.size += bytes;
-    } catch {
-      // A full disk drops this event; diagnostics must never stop the app.
+    } catch (error) {
+      // A full disk drops this event and shows the disk-full banner; diagnostics must never stop the app.
+      reportDiskFull(error);
     }
   }
 

@@ -3,6 +3,7 @@
 import { appendFileSync, existsSync, renameSync, rmSync, statSync } from "node:fs";
 import { extname } from "node:path";
 import { Writable } from "node:stream";
+import { reportDiskFull } from "./disk-full";
 
 /** How large one capped log may grow and how many numbered archives stay beside the live file. */
 export interface LogLimits {
@@ -39,8 +40,9 @@ export function appendCappedLog(file: string, text: string | Buffer, limits: Log
       try { rotate(file, limits.archives); } catch { /* keep appending */ }
     }
     appendFileSync(file, text);
-  } catch {
-    // This line is dropped; the next write tries again.
+  } catch (error) {
+    // This line is dropped; the next write tries again. A full disk shows the one disk-full banner.
+    reportDiskFull(error);
   }
 }
 
