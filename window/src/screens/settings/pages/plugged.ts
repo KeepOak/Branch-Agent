@@ -29,20 +29,19 @@ import {
   BackupNow, BackupOften, BackupSchedule, BackupWhere, CleanupAction, CleanupCode, DataFolder, EveryChange, ExportSettings, FillIn, ImportSettings, LastBackup,
   MediaAll, MediaFile, NeverDies, ReadDiary,
 } from "./history-live";
+import { BROWSER } from "./browser";
 import { DEVICES } from "./devices";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
   who: "people", notifications: "notifications", instructions: "instructions",
-  browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
   coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
 } as const;
 
 /** A re-hosted page's cards that no Classic control draws yet: Coming after its Classic sections, naming the call each
  *  waits for (nav sectionNeed). */
 export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> = {
-  browser: ["Sites", "Saved flows"],
   coding: ["Commands", "Files"],
 };
 
@@ -127,6 +126,8 @@ export const R1_PAGES: PageSlots = {
   },
   // Devices: native R1 cards in the preview's order, from Classic Computer & browser's section data (devices.tsx).
   devices: DEVICES,
+  // Browser & screen: native R1 cards in the preview's order, from Classic Computer & browser's section data (browser.tsx).
+  browser: BROWSER,
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,
