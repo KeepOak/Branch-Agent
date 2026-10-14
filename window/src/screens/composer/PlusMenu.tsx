@@ -52,7 +52,7 @@ export const PLUS_NEED = {
 } as const;
 
 export const PLUS_COMING = {
-  screenshot: "Taking a screenshot needs the Branch app on your computer.",
+  screenshot: "Taking a screenshot comes in a later update.",
   teach: "Teaching a task by showing it comes in a later update.",
   office: "Writing a doc, sheet or slides comes in a later update.",
   branch: "Branching from the end of a conversation comes in a later update.",
