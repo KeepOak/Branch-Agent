@@ -103,13 +103,17 @@ it("opens Settings › Accounts as the R1 page, which draws every working Classi
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   expect(r1SettingsPage("accounts")).toBe(true);
 });
-it("hands Sign-ins & keys to Classic under its Classic name, so Accounts › Add a key reaches the working key page", async () => {
-  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
-  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
-  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "signins" }));
-  await act(async () => root.render(<R1Window session={session} />));
-  expect(r1SettingsPage("signins")).toBe(false);
-  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("secrets");
+it("draws Sign-ins & keys as the R1 page, so Accounts › Add a key opens it in R1 rather than in Classic", async () => {
+  const { R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
+  expect(r1SettingsPage("signins", R1_PAGES)).toBe(true);
+  expect(r1SettingsPage("accounts", R1_PAGES)).toBe(true);
+  expect(typeof R1_PAGES.signins?.component).toBe("function");
+  const { FallbackKeys } = await vi.importActual<typeof import("../settings/pages/accounts-live")>("../settings/pages/accounts-live");
+  const onPage = vi.fn();
+  await act(async () => root.render(<FallbackKeys {...({ onPage } as unknown as Parameters<typeof FallbackKeys>[0])} />));
+  await act(async () => host.querySelector<HTMLButtonElement>("button")!.click());
+  expect(host.querySelector("button")!.textContent).toBe("Add a key");
+  expect(onPage.mock.calls).toEqual([["signins"]]);
 });
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
@@ -128,7 +132,7 @@ it("sends a page to R1 Settings only when the row table or a slot covers it and 
   for (const page of ["models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
 });
 
-it("the conversation menu's \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
+it("the conversation menu's View › \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
   const snapshot = { status: { phase: "connected" }, name: "Scout", sessionKey: "agent:scout:main", mainKey: "agent:scout:main", history: [], live: [], queued: [] };
   const setOverride = vi.fn();
   const request = vi.fn(async (method: string) => { if (method === "users.prefs.set") setOverride(); return {}; });
@@ -139,7 +143,10 @@ it("the conversation menu's \"Show agents' work as\" rows turn Coming when the e
   const needs = comingControls().flatMap((entry) => entry.need);
   expect(needs).toEqual(expect.arrayContaining(["computer.status", "browser.request", "agent.identity.get", "sessions.search"]));
   await act(async () => document.querySelector<HTMLButtonElement>('.r1-header-right [aria-label="More"]')!.click());
-  const rows = [...document.querySelectorAll<HTMLElement>('[aria-label="Show agents’ work as"] [role="menuitemradio"]')];
+  const open = async (label: string) => act(async () => [...document.querySelectorAll<HTMLButtonElement>(".r1c-conv [data-menu-item]")].find((el) => el.querySelector(".g-menu-label")?.firstChild?.textContent === label)!.click());
+  await open("View");
+  await open("Show agents’ work as");
+  const rows = [...document.querySelectorAll<HTMLElement>('[aria-label="Show agents’ work as"] [role="menuitemcheckbox"]')];
   expect(rows.length).toBeGreaterThan(1);
   for (const row of rows) {
     expect(row.getAttribute("aria-disabled"), row.textContent ?? "").toBe("true");
