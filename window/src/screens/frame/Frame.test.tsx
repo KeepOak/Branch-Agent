@@ -33,7 +33,7 @@ it("opens a mobile drawer, restores focus on Escape and closes on navigation", a
   const opener = host.querySelector<HTMLButtonElement>('[aria-label="Toggle sidebar"]')!; opener.focus();
   await click("Toggle sidebar");
   expect(host.querySelector('aside')?.getAttribute("aria-modal")).toBe("true");
-  expect(document.activeElement?.getAttribute("aria-label")).toBe("Close sidebar");
+  expect(document.activeElement?.getAttribute("aria-label")).toBe("Hide the sidebar");
   expect(document.activeElement?.innerHTML).toBe(opener.innerHTML);
   expect(opener.querySelector("svg")).not.toBeNull();
   await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
@@ -48,7 +48,7 @@ it("renders as a wide frame when the host has no matchMedia or ResizeObserver", 
   await render();
   expect(host.querySelector('.r1-frame')?.getAttribute("data-wide")).toBe("true");
   expect(host.querySelector('aside')?.getAttribute("role")).toBeNull();
-  expect(host.querySelector('[aria-label="Use sidebar rail"]')).not.toBeNull();
+  expect(host.querySelector('[aria-label="Collapse sidebar"]')).not.toBeNull();
   expect(host.textContent).toContain("Empty conversation");
 });
 it("one Escape closes only the top popover, not the drawer", async () => {
