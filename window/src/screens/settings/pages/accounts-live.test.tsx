@@ -61,8 +61,7 @@ const row = (id: string) => host.querySelector<HTMLElement>(`[data-row="${id}"]`
 const button = (scope: ParentNode | null, text: string) => [...(scope ?? document).querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === text || b.getAttribute("aria-label") === text);
 const calls = (request: ReturnType<typeof engineOf>["request"], method: string) => request.mock.calls.filter(([m]) => m === method).map(([, p]) => p);
 
-async function mount(onPage = vi.fn()) {
-  const env = engineOf();
+async function mount(onPage = vi.fn(), env = engineOf()) {
   await act(async () => root.render(<SettingsFrame engine={env.engine} page="accounts" pages={R1_PAGES} onPage={onPage} />));
   await settle();
   await click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === "Technical"));
@@ -182,6 +181,34 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     const before = calls(request, "branch.setup.detect").length;
     await click(button(row("accounts.apps.check"), "Check again"));
     expect(calls(request, "branch.setup.detect").length).toBeGreaterThan(before);
+  });
+
+  it("Codex fetched on first use: the row names its Download state and reason, and Try again starts the download", async () => {
+    const env = engineOf();
+    const answer = env.request.getMockImplementation()!;
+    let runtime: Record<string, unknown> = { state: "unavailable", reason: "offline", version: "0.160.0", bytes: 134_311_083,
+      message: "Codex isn't downloaded yet and this computer looks offline (ENOTFOUND). Connect to the internet and try again." };
+    env.request.mockImplementation(async (method: string, params?: unknown) => {
+      if (method === "config.get") return { hash: "h1", valid: true, config: { agents: { defaults: { model: { fallbacks: [] } } }, plugins: { entries: { codex: { enabled: true } } } } };
+      if (method === "codex.runtime") return runtime;
+      if (method === "codex.runtime.download") {
+        runtime = { state: "downloading", version: "0.160.0", bytes: 134_311_083, received: 0, message: "Downloading Codex 0.160.0 (134 MB): 0%." };
+        return runtime;
+      }
+      return answer(method, params);
+    });
+    (env.engine as unknown as { features: { methods: string[] } }).features.methods = [...METHODS, "codex.runtime", "codex.runtime.download"];
+    const { request } = await mount(vi.fn(), env);
+    const codex = row("accounts.apps.codex")!;
+    expect(codex.textContent).toContain("Not downloaded");
+    expect(codex.textContent).toContain("looks offline (ENOTFOUND)");
+    await click(button(codex, "Try again"));
+    expect(calls(request, "codex.runtime.download")).toHaveLength(1);
+    expect(row("accounts.apps.codex")!.textContent).toContain("Downloading Codex 0.160.0 (134 MB)");
+    runtime = { state: "ready", source: "downloaded", command: "/state/tools/codex/0.160.0-darwin-arm64/node_modules/@openai/codex/bin/codex.js" };
+    await act(async () => { await new Promise((r) => setTimeout(r, 2100)); });
+    await settle();
+    expect(row("accounts.apps.codex")!.textContent).toContain("Models ready");
   });
 
   it("connects GitHub (tools.github.authorize.start) and refreshes it (tools.github.status)", async () => {

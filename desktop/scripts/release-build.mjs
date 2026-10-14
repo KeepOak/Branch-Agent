@@ -8,7 +8,7 @@ import { smokeProductionEngine } from "./production-engine-smoke.mjs";
 import { assertTrackedSourceClean } from "./release-source-freeze.mjs";
 import { assertHoistedDeployment, extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
 import { makeComponentRelease } from "./make-component-release.mjs";
-import { formatPayload, measurePayload, payloadBudgetProblems, pruneProductionDependencies } from "./release-payload.mjs";
+import { formatPayload, measurePayload, payloadBudgetProblems, pruneCodexPlatformPackages, pruneProductionDependencies } from "./release-payload.mjs";
 import { installLinuxLauncher } from "./linux-launcher.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { MAC_ADHOC_NOTICE, macSignCommand, macSigningPlan } from "./mac-release-signing.mjs";
@@ -63,6 +63,9 @@ async function deployEngine(pnpm, scratch, identity, macSigning) {
   // Dependency source maps and declarations: no packaged runtime loads them (~83 MB per installed engine).
   const pruned = await pruneProductionDependencies(deployment);
   console.log(`Removed ${pruned.files} dependency source maps and declarations (${(pruned.bytes / 1048576).toFixed(1)} MiB)`);
+  // Codex's platform package (~318 MiB) is fetched on first use, verified against its pinned SHA-256.
+  const codex = await pruneCodexPlatformPackages(deployment);
+  console.log(`Removed the Codex platform package (${codex.packages.join(", ") || "none"}; ${(codex.bytes / 1048576).toFixed(1)} MiB); Codex downloads on first use`);
   if (identity.platform === "darwin") {
     const binary = join(deployment, "cua-driver");
     await run("bash", [join(engineRoot, "scripts/stage-cua-driver-macos.sh"), binary]);
@@ -70,8 +73,9 @@ async function deployEngine(pnpm, scratch, identity, macSigning) {
   }
   assert.equal(JSON.parse(await readFile(join(deployment, "dist/build-info.json"), "utf8")).commit, identity.commit);
   assert(!(await readdir(deployment)).includes("src"), "Production deployment must not be an unbuilt source checkout");
-  // The Codex harness ships in every release: its plugin build and its runtime packages.
-  for (const file of ["dist/extensions/codex/branch.plugin.json", "node_modules/@openai/codex/package.json", "node_modules/smol-toml/package.json"]) {
+  // The Codex harness ships in every release: its plugin build, its launcher and runtime packages.
+  // Its platform package does not (the payload budget fails the build if it comes back).
+  for (const file of ["dist/extensions/codex/branch.plugin.json", "node_modules/@openai/codex/package.json", "node_modules/@openai/codex/bin/codex.js", "node_modules/smol-toml/package.json"]) {
     assert((await stat(join(deployment, file))).isFile(), `Production deployment is missing ${file}`);
   }
   const payload = await measurePayload(deployment);

@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { tryReadJson } from "@openclaw/fs-safe/json";
+import { resolveStateDir } from "branch/plugin-sdk/state-paths";
 import { isRecord as isConfigRecord } from "branch/plugin-sdk/string-coerce-runtime";
 import { escapeRegExp } from "branch/plugin-sdk/text-utility-runtime";
 import {
@@ -559,6 +560,11 @@ child.on("close", () => {
 `;
 }
 
+/** Written by the codex plugin once its first-use Codex download is verified and installed. */
+function resolveDownloadedCodexReceiptPath(): string {
+  return path.join(resolveStateDir(), "tools", "codex", "current.json");
+}
+
 function buildCodexAcpWrapperScript(installedBinPath?: string): string {
   return buildAdapterWrapperScript({
     displayName: "Codex",
@@ -600,7 +606,19 @@ if (shouldWriteCodexApiKeyAuth) {
 const env = {
   ...process.env,
   CODEX_HOME: codexHome,
-};`,
+};
+// Release builds ship no Codex platform package; the codex plugin downloads it on first use.
+// Point codex-acp at that verified copy unless CODEX_PATH is already chosen.
+if (!env.CODEX_PATH) {
+  try {
+    const downloadedCodex = JSON.parse(readFileSync(${JSON.stringify(resolveDownloadedCodexReceiptPath())}, "utf8"));
+    if (typeof downloadedCodex?.native === "string" && existsSync(downloadedCodex.native)) {
+      env.CODEX_PATH = downloadedCodex.native;
+    }
+  } catch {
+    // No downloaded Codex yet: codex-acp keeps its own launcher.
+  }
+}`,
     envConfigSetup: `function isCodexConfigObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

@@ -9,6 +9,7 @@ import path from "node:path";
 import { resolveGlobalSingleton } from "branch/plugin-sdk/global-singleton";
 import type { CodexAppServerStartOptions, CodexManagedCommandOrder } from "./config.js";
 import { resolveMacOSDesktopCodexAppServerCommandCandidates } from "./desktop-app-paths.js";
+import { CodexRuntimeUnavailableError, type CodexOnDemand } from "./on-demand.js";
 import { MANAGED_CODEX_APP_SERVER_PACKAGE } from "./version.js";
 
 // Registration and lazy runtime artifacts can load separate module copies.
@@ -18,10 +19,31 @@ const registeredCodexPlugin = resolveGlobalSingleton<{ root?: string }>(
   () => ({}),
 );
 
+/**
+ * Where the pinned Codex comes from when the platform package is not bundled
+ * (release builds fetch it on first use; see on-demand.ts). Unset means the
+ * bundled package is the only managed source, as before.
+ */
+export type ManagedCodexOnDemand = Pick<
+  CodexOnDemand,
+  "findPathCommand" | "installedLauncher" | "ensureLauncher"
+>;
+
+const registeredCodexOnDemand = resolveGlobalSingleton<{ provider?: ManagedCodexOnDemand }>(
+  Symbol.for("branch.codexManagedOnDemand"),
+  () => ({}),
+);
+
 type ResolveManagedCodexAppServerOptions = {
   platform?: NodeJS.Platform;
   pluginRoot?: string;
   pathExists?: (filePath: string, platform: NodeJS.Platform) => Promise<boolean>;
+  /** Overrides the registered on-demand source; null disables it. */
+  onDemand?: ManagedCodexOnDemand | null;
+  /** False keeps a missing Codex missing (status reads); true downloads on first use. */
+  download?: boolean;
+  /** Whether the bundled launcher has its native binary; defaults to a filesystem check. */
+  bundledReady?: (launcher: string, platform: NodeJS.Platform) => boolean;
 };
 
 type ResolveManagedCodexNativeCommandOptions = {
@@ -34,6 +56,17 @@ type ResolveManagedCodexNativeCommandOptions = {
 /** Records the process-stable plugin root prepared by Branch Agent's plugin loader. */
 export function setManagedCodexPluginRoot(pluginRoot: string | undefined): void {
   registeredCodexPlugin.root = pluginRoot;
+}
+
+/** Records the on-demand Codex source the plugin uses when the platform package is not bundled. */
+export function setManagedCodexOnDemand(provider: ManagedCodexOnDemand | undefined): void {
+  registeredCodexOnDemand.provider = provider;
+}
+
+/** The native binary of an already-downloaded Codex, without downloading. */
+export async function resolveInstalledOnDemandCodexNativeCommand(): Promise<string | undefined> {
+  const launcher = await registeredCodexOnDemand.provider?.installedLauncher();
+  return launcher ? resolveManagedCodexNativeCommand(launcher) : undefined;
 }
 
 /** Rewrites managed stdio start options to point at an executable Codex binary path. */
@@ -52,12 +85,25 @@ export async function resolveManagedCodexAppServerStartOptions(
     );
   }
   const platform = options.platform ?? process.platform;
-  const candidateCommandPaths = resolveManagedCodexAppServerCommandCandidates(
-    pluginRoot,
-    platform,
-    startOptions.managedCommandOrder ?? "package-first",
-  );
+  const managedCommandOrder = startOptions.managedCommandOrder ?? "package-first";
   const pathExists = options.pathExists ?? commandPathExists;
+  const onDemand =
+    options.onDemand === null ? undefined : (options.onDemand ?? registeredCodexOnDemand.provider);
+  const candidateCommandPaths = onDemand
+    ? await resolveOnDemandCommandCandidates({
+        pluginRoot,
+        platform,
+        managedCommandOrder,
+        onDemand,
+        pathExists,
+        download: options.download ?? true,
+        bundledReady:
+          options.bundledReady ??
+          ((launcher, launcherPlatform) =>
+            resolveManagedCodexNativeCommand(launcher, { platform: launcherPlatform }) !==
+            undefined),
+      })
+    : resolveManagedCodexAppServerCommandCandidates(pluginRoot, platform, managedCommandOrder);
   const commandPaths: string[] = [];
   for (const commandPath of candidateCommandPaths) {
     if (await pathExists(commandPath, platform)) {
@@ -211,6 +257,65 @@ function resolvePackageJsonFromRoot(packageName: string, root: string): string |
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Managed candidates when Codex can come from PATH or a first-use download:
+ * a user-installed codex on PATH (meeting the minimum) first, then the pinned
+ * Codex (bundled package, else the verified per-user download). The download
+ * runs only when nothing else can start Codex; if it fails while a desktop
+ * Codex app is installed, the app is used, otherwise the reason is thrown.
+ */
+async function resolveOnDemandCommandCandidates(params: {
+  pluginRoot: string;
+  platform: NodeJS.Platform;
+  managedCommandOrder: CodexManagedCommandOrder;
+  onDemand: ManagedCodexOnDemand;
+  pathExists: (filePath: string, platform: NodeJS.Platform) => Promise<boolean>;
+  download: boolean;
+  bundledReady: (launcher: string, platform: NodeJS.Platform) => boolean;
+}): Promise<string[]> {
+  const { platform, managedCommandOrder, onDemand } = params;
+  const packageOnly = managedCommandOrder === "package-only";
+  const desktopCommandPaths = packageOnly
+    ? []
+    : resolveMacOSDesktopCodexAppServerCommandCandidates(platform);
+  const installedDesktop: string[] = [];
+  for (const command of desktopCommandPaths) {
+    if (await params.pathExists(command, platform)) {
+      installedDesktop.push(command);
+    }
+  }
+  const onPath = packageOnly ? undefined : (await onDemand.findPathCommand())?.command;
+  const bundled = resolveManagedCodexPackageEntrypoint(params.pluginRoot);
+  let pinned =
+    bundled && params.bundledReady(bundled, platform)
+      ? bundled
+      : await onDemand.installedLauncher();
+  const desktopFirst = managedCommandOrder === "desktop-first" && installedDesktop.length > 0;
+  if (!pinned && !onPath && !desktopFirst) {
+    if (!params.download && installedDesktop.length === 0) {
+      throw new CodexRuntimeUnavailableError(
+        "not-downloaded",
+        "Codex is not downloaded yet. Branch Agent downloads it the first time Codex is used.",
+      );
+    }
+    if (params.download) {
+      try {
+        pinned = await onDemand.ensureLauncher();
+      } catch (error) {
+        if (installedDesktop.length === 0) {
+          throw error;
+        }
+      }
+    }
+  }
+  const packageCommandPaths = [onPath, pinned].filter(
+    (command): command is string => command !== undefined,
+  );
+  return managedCommandOrder === "desktop-first"
+    ? [...installedDesktop, ...packageCommandPaths]
+    : [...packageCommandPaths, ...installedDesktop];
 }
 
 function resolveManagedCodexAppServerCommandCandidates(

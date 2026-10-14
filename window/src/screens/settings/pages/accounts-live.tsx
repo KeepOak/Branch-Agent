@@ -18,7 +18,7 @@ import {
 import { nextModeOf, nextSub, restingOf, setNextMode, setTrunkAccount, shortId, sourceLine, trunkChoices } from "../../../places/settings/set1/accounts-more";
 import { key, moveToTop, PAUSE_OFF, signOutAll } from "../../../places/settings/set1/accounts-select";
 import { AddAccountDialog, type AddStart } from "../../../places/settings/set1/add-account";
-import { APPS, appSub, foundState, PILL, type App } from "../../../places/settings/set1/coding-apps";
+import { APPS, appSub, foundState, PILL, useCodexRuntime, type App } from "../../../places/settings/set1/coding-apps";
 import { PickOwn } from "../../../places/settings/set1/own-accounts";
 import { Logo, serviceName } from "../../../places/settings/set1/service";
 import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
@@ -456,17 +456,24 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   const { store, snap, config } = useConfigSnap(engine);
   const [failed, run] = useFailure();
   const f = foundState(app, detect.data);
-  const word = detect.loading ? "Looking…" : PILL[f.state][1];
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const pluginOn = app.plugin ? record(record(record(config.plugins).entries)[app.plugin]).enabled === true : f.state === "ready";
-  const sub = detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
+  // Codex is fetched on first use: until it's here, its Download state and the reason replace the found/ready words.
+  const codex = useCodexRuntime(engine, app.plugin === "codex" && pluginOn);
+  const word = codex.view?.word ?? (detect.loading ? "Looking…" : PILL[f.state][1]);
+  const sub = codex.view?.sub ?? (detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn));
   return <>
     <div className="r1s-item">
       <Logo id={app.brand} size={22} />
       <span className="r1s-item-t g-label" data-lines>
         <b>{word}{app.kind === "claude-cli" && claude?.accountEmail ? " · " + text(claude.accountEmail) : ""}</b>
-        <small>{detect.error ? visible(detect.error) : sub}</small>
+        <small>{detect.error && !codex.view ? visible(detect.error) : sub}</small>
       </span>
+      {codex.view?.action ? (
+        <Needs engine={engine} need={["codex.runtime.download"]} where={codex.view.action}>
+          <button type="button" className="r1s-btn" disabled={Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void run(codex.download)}>{codex.view.action}</button>
+        </Needs>
+      ) : null}
       {app.plugin ? (
         <Needs engine={engine} need={["config.patch"]} where={"Use " + app.name}>
           <span className="r1s-own-ctl" title={adminWhy(engine)}><Toggle label={"Use " + app.name} on={pluginOn} disabled={Boolean(adminWhy(engine)) || !snap} onChange={(v) => void run(() => store.set("plugins.entries." + app.plugin + ".enabled", v))} /></span>

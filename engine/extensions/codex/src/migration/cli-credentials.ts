@@ -76,12 +76,18 @@ export async function readCodexCliCredentialsAsync(
   }
   const home = await fs.realpath(options.codexHome).catch(() => path.resolve(options.codexHome));
   const { CodexAppServerClient } = await import("../app-server/client.js");
-  const { resolveManagedCodexPackageEntrypoint, resolveManagedCodexNativeCommand } =
-    await import("../app-server/managed-binary.js");
+  const {
+    resolveInstalledOnDemandCodexNativeCommand,
+    resolveManagedCodexPackageEntrypoint,
+    resolveManagedCodexNativeCommand,
+  } = await import("../app-server/managed-binary.js");
   const launcher = resolveManagedCodexPackageEntrypoint(
     path.dirname(fileURLToPath(import.meta.url)),
   );
-  const command = launcher ? resolveManagedCodexNativeCommand(launcher) : undefined;
+  // Release builds fetch Codex on first use; an already-downloaded copy reads the same storage.
+  const command =
+    (launcher ? resolveManagedCodexNativeCommand(launcher) : undefined) ??
+    (await resolveInstalledOnDemandCodexNativeCommand());
   if (!command) {
     return undefined;
   }
