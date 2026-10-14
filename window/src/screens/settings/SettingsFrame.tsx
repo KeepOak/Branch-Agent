@@ -8,6 +8,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
 import { lookStore } from "../../places/settings/set1/appearance-store";
+import { pinsOf } from "../../places/settings/pins";
 import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
 import { ROWS, cardRows, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 import { RowView, Segmented } from "./RowView";
@@ -209,7 +210,11 @@ export function SettingsFrame(props: SettingsFrameProps) {
   };
 
   const spec = PAGES[shownPage];
-  const sections = spec.cards.flatMap((card) => {
+  // General's Pinned card shows only once the person has pinned a row, as in the preview.
+  const pinCount = pinsOf(lookStore(engine).snap.look).length;
+  const cards = spec.cards.filter((card) => !(shownPage === "general" && card === "Pinned" && !pinCount));
+
+  const sections = cards.flatMap((card) => {
     const all = rows.filter((r) => r.page === shownPage && r.card === card);
     const visible = cardRows(shownPage, card, level, hints, rows);
     if (all.length && !visible.length) return [];
