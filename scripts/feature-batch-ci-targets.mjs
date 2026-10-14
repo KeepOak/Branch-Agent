@@ -569,7 +569,7 @@ export function touchedHarvestTests(lane, changedFiles) {
 // harvestUnlistedFileSeconds, the mean of the timed files without the 120 s timeout hang. Refresh this table
 // from CI logs when shard times drift.
 export const harvestFileSeconds = {
-  'extensions/agentsapi/agentsapi-harness.persistence.harvest.test.ts': 55,
+  'extensions/agentsapi/agentsapi-harness.persistence.harvest.test.ts': 57,
   'extensions/codex/src/conversation-binding.test.ts': 12,
   'extensions/copilot/harness.harvest.test.ts': 17,
   'extensions/copilot/src/attempt.harvest.test.ts': 4,
@@ -579,11 +579,11 @@ export const harvestFileSeconds = {
   'extensions/qa-channel/src/outbound.test.ts': 1,
   'extensions/slack/src/monitor/events/interactions.test.ts': 2,
   'extensions/team-reports/src/aggregate.test.ts': 1,
-  'extensions/telegram/src/polling-session.test.ts': 107,
+  'extensions/telegram/src/polling-session.test.ts': 119,
   'extensions/telegram/src/webhook.admission.test.ts': 110,
-  'extensions/telegram/src/webhook.callback-guards.test.ts': 93,
-  'extensions/telegram/src/webhook.dispatch.test.ts': 60,
-  'extensions/telegram/src/webhook.registration.test.ts': 60,
+  'extensions/telegram/src/webhook.callback-guards.test.ts': 141,
+  'extensions/telegram/src/webhook.dispatch.test.ts': 40,
+  'extensions/telegram/src/webhook.registration.test.ts': 70,
   'extensions/telegram/src/webhook.topic-lanes.test.ts': 124,
   'extensions/typesafe/src/transport.test.ts': 1,
   'packages/agent-core/src/agent-loop.harvest.test.ts': 1,
