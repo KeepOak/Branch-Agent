@@ -97,7 +97,7 @@ describe("Trunk editor", () => {
     expect(fields).toHaveLength(3);
     for (const f of fields) { expect(f.title).toBe(""); expect([...f.querySelectorAll("button")].every((b) => !b.disabled)).toBe(true); }
     for (const s of document.querySelectorAll<HTMLButtonElement>(".tk-shape")) expect(s.title).toBe(s.getAttribute("aria-label"));
-    expect([...document.querySelectorAll(".tk-why")].map((n) => n.textContent)).toEqual(["A photo for a Trunk comes in a later update."]);
+    expect([...document.querySelectorAll(".tk-why")].map((n) => n.textContent)).toEqual(["A photo instead of a face comes in a later update."]);
     expect(byText("Shuffle").disabled).toBe(false); expect(byText("Shuffle").title).toBe("");
     expect(visibleDevNotes(document.body)).toEqual([]);
   });

@@ -40,7 +40,7 @@ describe("Share a Trunk as a template", () => {
     await open();
     await act(async () => { tab("With the team").click(); });
     expect(button("Share with the team").closest("[data-coming]")).toBeTruthy();
-    expect(dialog().textContent).toContain("Sharing with the team comes in a later update.");
+    expect(dialog().textContent).toContain("Share with the team comes in a later update.");
   });
 
   it("saves the template file under the name the engine imports", async () => {

@@ -7,7 +7,7 @@ import { EMOJI, LOOKS } from "./model";
 import type { Draft } from "./api";
 
 /** A photo as the face has no engine call yet, so the file field stays greyed with its reason. */
-const PHOTO_WHY = "A photo for a Trunk comes in a later update.";
+const PHOTO_WHY = "A photo instead of a face comes in a later update.";
 
 export const COLOURS = ["#2F8C86", "#1785AF", "#8A5AA8", "#5E8C4A", "#4F6FA8", "#C9982E", "#B84A6B", "#56616B"];
 export const SHAPES = ["Circle", "Stone", "Leaf", "Acorn", "Shield"];

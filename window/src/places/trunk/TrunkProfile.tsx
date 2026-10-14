@@ -30,8 +30,7 @@ import { Layer } from "./layer";
 import "./trunk.css";
 
 // Pausing and the seed actions have no engine call yet, so they stay greyed with their reason (the Coming state).
-const PAUSE_WHY = "Pausing a Trunk comes in a later update.";
-const SEED_WHY = "Seed sharing comes in a later update.";
+const PAUSE_WHY = "Pause comes in a later update.";
 
 export type TrunkProfileProps = {
   engine: WindowEngine;
@@ -156,10 +155,10 @@ function ProfileBody({ engine, level, onClose, openPlace, openSettings, openConv
   const noop = () => {};
   const moreItems: MenuItem[] = [
     { label: "Share this Trunk…", run: () => { setMore(null); share(); } },
-    { label: "Copy seed", run: noop, disabled: SEED_WHY },
-    { label: "Download seed", run: noop, disabled: SEED_WHY },
-    { label: "Copy its look", run: noop, disabled: SEED_WHY },
-    { label: "Share to Seedbank…", run: noop, disabled: SEED_WHY },
+    { label: "Copy seed", run: noop, disabled: "Copy seed comes in a later update." },
+    { label: "Download seed", run: noop, disabled: "Download seed comes in a later update." },
+    { label: "Copy its look", run: noop, disabled: "Copy its look comes in a later update." },
+    { label: "Share to Seedbank…", run: noop, disabled: "Share to Seedbank comes in a later update." },
     ...(isDefault ? [] : [
       { kind: "sep" as const },
       { label: "Remove Trunk…", danger: true, disabled: write ? undefined : WRITE_WHY, run: () => { setMore(null); remove(); } },

@@ -83,7 +83,7 @@ it("keeps edited-Trunk identity visible but blocks all GitHub mutations for read
 it("greys This computer’s GitHub with its reason, since no call pins one Trunk to it", async () => {
   const { engine, request } = fixture(); await mount(engine);
   expect(button("This computer’s GitHub").disabled).toBe(true);
-  expect(document.body.textContent).toContain("Pinning a Trunk to this computer’s GitHub comes in a later update.");
+  expect(document.body.textContent).toContain("This computer’s GitHub comes in a later update.");
   await click("This computer’s GitHub");
   expect(request.mock.calls.some(([method]) => method === "tools.github.configure")).toBe(false);
 });

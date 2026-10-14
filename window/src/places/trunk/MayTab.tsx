@@ -13,8 +13,8 @@ import type { Draft } from "./api";
 import { GitHubChoice } from "./GitHubChoice";
 import type { May } from "./may";
 
-const SEND_WHY = "Asking before this Trunk sends email comes in a later update.";
-const NOTES_WHY = "Keeping this Trunk’s notes apart comes in a later update.";
+const SEND_WHY = "Send email and messages comes in a later update.";
+const NOTES_WHY = "Keep its own notes comes in a later update.";
 
 function Row({ title, hint, children, off }: { title: string; hint: string; children: ReactNode; off?: string }) {
   return <div className={off ? "tk-ctl off" : "tk-ctl"}><b>{title}</b><span className="tk-right">{children}</span><small>{hint}</small>{off ? <small className="tk-why">{off}</small> : null}</div>;
