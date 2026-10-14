@@ -10,7 +10,7 @@ import { appendCappedLog, BRANCH_LOG_LIMITS, cappedLogStream } from "./log-rotat
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
 import { recordEngine } from "./engine-records";
 import { saveUnlessDiskFull } from "./disk-full";
-import { engineServiceArgs, runEngineCli, type EngineServiceAction } from "./engine-service";
+import { engineLingerArgs, engineServiceArgs, parseLingerAnswer, runEngineCli, type EngineServiceAction } from "./engine-service";
 import { HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 
 export function readToken(cfg: DesktopConfig): string {
@@ -98,6 +98,12 @@ export async function runEngineServiceAction(cfg: DesktopConfig, engineDir: stri
   const run = (args: string[], stdin?: string) => runEngineCli({ file: cfg.nodePath, args, cwd: engineDir, env, stdin });
   if (action === "install") await run(engineServiceArgs("token"), JSON.stringify({ gateway: { auth: { token } } }));
   await run(engineServiceArgs(action, cfg.gatewayPort));
+}
+
+/** Linux: turns "keep working when nobody is signed in" on or off (or reads it) through the engine's linger path. */
+export async function runEngineLinger(cfg: DesktopConfig, engineDir: string, token: string, want: "on" | "off" | "status"): Promise<boolean> {
+  const env = engineEnvironment(cfg, false, cfg.gatewayPort, token);
+  return parseLingerAnswer(await runEngineCli({ file: cfg.nodePath, args: engineLingerArgs(want), cwd: engineDir, env, timeoutMs: 60_000 }));
 }
 
 /** `port` defaults to the configured one; an update's standby passes its own spare port without changing the config. */

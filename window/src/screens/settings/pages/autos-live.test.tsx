@@ -20,7 +20,7 @@ beforeEach(() => { host = document.body.appendChild(document.createElement("div"
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; });
 
 function engineOf(config: Record<string, unknown> = {}) {
-  const request = vi.fn(async (method: string) => {
+  const request = vi.fn(async (method: string, _params: Record<string, unknown> = {}) => {
     if (method === "config.get") return { hash: "h1", valid: true, config };
     if (method === "config.patch") return { ok: true };
     if (method === "config.schema") return { schema: {}, uiHints: {} };

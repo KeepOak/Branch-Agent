@@ -1,24 +1,25 @@
 // Branch Agent desktop app: starts the engine gateway, serves the built window on 127.0.0.1 and shows it.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell } from "electron";
-import type { ChildProcess } from "node:child_process";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, powerMonitor, screen, session, shell } from "electron";
+import { spawn, type ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
-import { attachOrStartEngine, engineAnswers, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
+import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { attachOrStartEngine, engineAnswers, readEngineHealth, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
+import { createRunKeepAwake, POWER_STATE_REFRESH_MS, writePowerState } from "./keep-awake";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
-import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, standbyReadyBudgetMs } from "./readiness-budget";
+import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, rollbackReadyBudgetMs, standbyReadyBudgetMs } from "./readiness-budget";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
-import { readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
+import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
-import { canUndoComponentUpdate, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -80,6 +81,13 @@ const coldStartFile = (): string => join(cfg.dataDir, "cold-start.json");
 /** How long a standby that took over gets to answer /readyz: sized from the measured cold start; tests pin it. */
 function standbyReadyTimeoutMs(): number {
   return envMs(process.env.BRANCH_DESKTOP_STANDBY_READY_TIMEOUT_MS, standbyReadyBudgetMs(readColdStarts(coldStartFile())));
+}
+/**
+ * Private #967: how long an old engine that answered the rollback gets to serve again. It owns the state and restarts in
+ * place, draining its kept runs first, so the standby's budget is too short; a child that exits still fails at once.
+ */
+function rollbackReadyTimeoutMs(): number {
+  return envMs(process.env.BRANCH_DESKTOP_ROLLBACK_READY_TIMEOUT_MS, rollbackReadyBudgetMs(readColdStarts(coldStartFile()), READY_TIMEOUT_MS));
 }
 /** Private #951: agents still refused this long after a swap roll the update back; sized from the measured cold start, tests shorten it. */
 function admissionRollbackMs(): number {
@@ -266,10 +274,34 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
 });
 const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
 let tray: Tray | undefined;
+/** Said once in Settings when this computer runs the engine inside the app (engine-service takeChildModeNotice). */
+let childModeNotice: string | undefined;
 const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, TRAY_ICON), onChange: settings => {
   if (engineUpdateReady) sendToBranchWindows("branch-desktop:engine-update", settings.autoApplyUpdates ? "auto-wait" : "ready");
+  keepAwake.refresh();
   void autoApply.tick();
-} });
+},
+// Linux, with the engine service: "Keep working when nobody is signed in" through the engine's linger path.
+linger: process.platform === "linux" && cfg.alwaysOn ? {
+  get: () => runEngineLinger(cfg, serviceEngineDir(), token, "status"),
+  set: async on => { await runEngineLinger(cfg, serviceEngineDir(), token, on ? "on" : "off"); },
+} : undefined,
+notes: () => childModeNotice ? { keepWorking: `Branch runs inside the app on this computer because its background service couldn't be installed (${childModeNotice}). Quitting Branch stops your Trunks.` } : {},
+});
+/** True on battery power (false before the app is ready, or where Electron can't say). */
+function onBatteryPower(): boolean {
+  try { return app.isReady() && typeof powerMonitor?.isOnBatteryPower === "function" && powerMonitor.isOnBatteryPower(); } catch { return false; }
+}
+/** Always on (Private #454 D): the OS sleep blocker, held only while a Trunk has a live run. */
+const keepAwake = createRunKeepAwake({
+  platform: process.platform,
+  appPid: process.pid,
+  spawn: (file, args, options) => spawn(file, args, options),
+  enabled: () => controls.settings().keepAwake && !HIDDEN && !TEST_COPY,
+  onBatteryToo: () => controls.settings().keepAwakeOnBattery,
+  onBattery: () => onBatteryPower(),
+  log,
+});
 let nextProbeId = 0;
 
 type WindowState = { pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean; workingTrunks?: number };
@@ -634,7 +666,7 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
       // it never stepped down; an engine that answers neither but serves is an old build and is drained instead.
       const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
       if ((back === "ok" || back === "unanswered") &&
-        await priorServes(prior, back === "ok" ? standbyReadyTimeoutMs() : PRIOR_READY_CHECK_MS)) {
+        await priorServes(prior, back === "ok" ? rollbackReadyTimeoutMs() : PRIOR_READY_CHECK_MS)) {
         stopRetiring(prior);
         log(`update ${label}: the old engine did not step down in time; it kept serving; draining it instead`);
         return "drain";
@@ -699,10 +731,12 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
   // Rollback has reclaimed the state. The old engine must keep its full readiness budget without the retire timer.
   if (back === "ok") stopRetiring(prior);
-  if (back !== "ok" || !await priorServes(prior, standbyReadyTimeoutMs())) {
+  if (back !== "ok" || !await priorServes(prior, rollbackReadyTimeoutMs())) {
     notServing(prior);
     resumeSupervision();
-    throw new Error(`the update failed and the old engine could not take control back (${back}): ${message}`);
+    const failure = `the update failed and the old engine could not take control back (${back}): ${message}`;
+    log(`update ${label}: ${failure}`);
+    throw new Error(failure);
   }
   resumeSupervision();
   log(`update ${label}: the old engine took control back on port ${gatewayPort}`);
@@ -944,7 +978,13 @@ function createWindow(): BrowserWindow {
     if (win === w) win = undefined;
     if (!quitting && !controls.settings().keepWorking) {
       for (const child of conversationWindows.values()) if (!child.isDestroyed()) child.close();
-      app.quit();
+      // "Keep working when Branch is closed" off: closing stops the engine, as before the service (Private #454 F).
+      if (serviceEngine) {
+        log("window closed with keep working off; stopping the engine service");
+        void runEngineServiceAction(cfg, serviceEngineDir(), token, "stop", log)
+          .catch(error => log(`stopping the engine service failed: ${error instanceof Error ? error.message : String(error)}`))
+          .finally(() => app.quit());
+      } else app.quit();
     }
   });
   tray = keepWindowResident(app, w, TRAY_ICON, {
@@ -1176,6 +1216,11 @@ async function start(): Promise<void> {
     else log(`update notice ${event}`);
     if (event === "dismissed" || event === "expired") updateNotice = undefined;
   });
+  // Settings shows "Undo the last update" with its version line only while Undo can run (the previous engine's probation).
+  ipcMain.handle("branch-desktop:undo-availability", async e => {
+    if (!isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) throw new Error("Undo availability requires the owned served window");
+    return readUndoAvailability(cfg);
+  });
   ipcMain.on("branch-desktop:undo-update", e => {
     if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void undoLastUpdate();
   });
@@ -1218,7 +1263,9 @@ async function start(): Promise<void> {
   }
   // Quit can run after the gateway becomes ready but before this startup continuation resumes.
   if (quitting) return;
+  childModeNotice = takeChildModeNotice(cfg.dataDir);
   watchTrayStatus();
+  watchPowerSource();
   watchUpdates(win);
   componentsReady = true;
   if (pendingReleasePrune) runConfirmedReleasePrune();
@@ -1471,6 +1518,8 @@ async function undoLastUpdate(automatic = false): Promise<void> {
     const window = automatic ? undefined : await probeWindowState();
     if (active && window && (active.activeRuns || active.totalActive || active.pendingReplies || window.pendingApprovals ||
         window.streaming || window.unsavedDraftFiles)) throw new Error("The previous version cannot take over while work is running");
+    // After the probation the previous engine is (or is about to be) pruned: Undo never runs past its deadline.
+    if (!await canUndoComponentUpdate(cfg)) throw new Error("The previous version is no longer available");
     if (!await prepareComponentUpdateUndo(cfg, dir => { servedWindowDir = dir; })) throw new Error("The previous version is no longer available");
     const previousVersion = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
     await swapEngineInPlace("previous version", true, lock);
@@ -1544,6 +1593,8 @@ async function serviceWork(): Promise<ServiceWork> {
 function liveEngineState(): Promise<EngineLiveState> {
   return readEngineLiveState({
     engineUp: async () => serviceEngine ? engineAnswers(cfg.gatewayPort) : engineServing(),
+    // Honest health: an engine whose agent can't answer says so instead of looking Ready (or Stopped).
+    health: () => readEngineHealth(serviceEngine ? cfg.gatewayPort : gatewayPort),
     window: () => probeWindowState(),
     engineRuns: serviceEngine || !gateway ? undefined : async () => {
       const activity = await gatewayActivity(gateway!);
@@ -1553,17 +1604,62 @@ function liveEngineState(): Promise<EngineLiveState> {
 }
 
 const TRAY_STATUS_MS = 10_000;
-/** Keeps the tray's live line current ("2 Trunks working", "Waiting on you (1)", "Stopped"). */
+/** While a Trunk works the state is read more often, so the sleep blocker is released soon after its run ends. */
+const TRAY_STATUS_WORKING_MS = 3_000;
+/** Reach you with the window closed (Private #454 D): approvals and "done" as OS notifications from the tray. */
+const notifier = createClosedWindowNotifier({
+  windowShown: () => Boolean(win && !win.isDestroyed() && win.isVisible?.() !== false && win.isMinimized?.() !== true),
+  show: notice => {
+    if (HIDDEN || TEST_COPY || typeof Notification?.isSupported !== "function" || !Notification.isSupported()) return;
+    const shown = new Notification({ title: notice.title, body: notice.body, silent: false });
+    shown.on("click", () => { if (win && !win.isDestroyed()) { win.show(); win.focus(); } });
+    shown.show();
+    log(`notified: ${notice.kind}`);
+  },
+  // A paired phone gets a push too, through the engine's push service (the window holds the engine connection).
+  phone: notice => { if (win && !win.isDestroyed()) win.webContents.send("branch-desktop:phone-push", { title: notice.title, body: notice.body }); },
+});
+
+/** Keeps the tray's live line current ("2 Trunks working", "Waiting on you (1)", "Stopped"), and with it the sleep
+ *  blocker and the closed-window notifications. */
 function watchTrayStatus(): void {
   if (!tray) return;
   let reading = false;
+  let timer: NodeJS.Timeout | undefined;
+  const schedule = (working: boolean) => {
+    if (quitting) return;
+    timer = setTimeout(refresh, working ? TRAY_STATUS_WORKING_MS : TRAY_STATUS_MS);
+    timer.unref();
+  };
   const refresh = () => {
     if (reading || quitting) return;
     reading = true;
-    void liveEngineState().then(state => showTrayStatus(tray, state)).finally(() => { reading = false; });
+    let working = false;
+    void liveEngineState().then(state => {
+      working = state.running && state.workingTrunks > 0;
+      showTrayStatus(tray, state);
+      keepAwake.update(working);
+      notifier.observe(state);
+    }).finally(() => { reading = false; schedule(working); });
   };
   refresh();
-  const timer = setInterval(refresh, TRAY_STATUS_MS);
+  app.once("will-quit", () => { if (timer) clearTimeout(timer); });
+}
+
+/** Polite on battery: tells the engine the power source (it lowers its priority and backs off timed work that can
+ *  wait), and lets the sleep blocker follow it. */
+function watchPowerSource(): void {
+  const stateDir = join(cfg.dataDir, "home", ".branch");
+  const tell = () => {
+    writePowerState(stateDir, onBatteryPower());
+    keepAwake.refresh();
+  };
+  tell();
+  if (typeof powerMonitor?.on === "function") {
+    powerMonitor.on("on-battery", tell);
+    powerMonitor.on("on-ac", tell);
+  }
+  const timer = setInterval(tell, POWER_STATE_REFRESH_MS);
   timer.unref();
   app.once("will-quit", () => clearInterval(timer));
 }
@@ -1625,6 +1721,7 @@ function shutdown(): void {
   autoApply.stop();
   stopWindowWatch?.();
   controls.dispose();
+  keepAwake.dispose();
   stopCandidate();
   stopWarmingStandby();
   // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.

@@ -97,7 +97,10 @@ it("keeps every working Classic Connected agents control: the switch, each agent
   expect(agents.map((a) => a.dataset.agent)).toEqual(["claude-code-a1b2c3", "codex-d4e5f6"]);
   expect(agents[0].textContent).toContain("May talk to Sapling · may use this window");
   await act(async () => { [...agents[0].querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Permissions")!.click(); });
-  expect(agents[0].textContent).toContain("May message Sapling");
+  expect(agents[0].textContent).toContain("Trunks it may talk to");
+  expect(agents[0].querySelector('[data-row="customize.agents.claude-code-a1b2c3.main"] b')?.textContent).toBe("Sapling");
+  expect(agents[0].textContent).toContain("Online · This computer");
+  expect(agents[0].textContent).not.toMatch(/Online now|Not seen yet|May message/);
   const off = host.querySelector<HTMLButtonElement>('[data-row="customize.allow.connect"] [role=switch]')!;
   expect(off.getAttribute("aria-checked")).toBe("true");
   await act(async () => { off.click(); await new Promise((r) => setTimeout(r, 0)); });

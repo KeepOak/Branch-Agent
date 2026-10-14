@@ -504,19 +504,30 @@ describe("agent database startup stages that could hang", () => {
   });
 
   it("a stage expiry grows the next attempt's limit, so each attempt is given more time than the last", async () => {
-    stalls.journalReadsToStall = 0;
-    // Base limit 40ms. Each stalled read expires at its limit, and each expiry doubles the next one:
-    // 40, 80, 160, 320, 640, 1280ms. Without growth these six would take 240ms, not 2520ms.
-    const started = await startAdmission([{ agentId: "tk" }], {}, undefined, () => {
-      stalls.journalReadsToStall = 6;
-    });
+    // Base limit 40ms. Each stalled preparation ends at its watchdog, and each expiry doubles the
+    // next limit: 40, 80, 160, 320, 640, 1280ms. Without growth these six would take 240ms, not
+    // 2520ms. (A slow deletion-journal read is waited out instead, up to its maximum age: #967.)
+    let stalledPreparations = 0;
+    const started = await startAdmission(
+      [
+        {
+          agentId: "tk",
+          prepareAgent: async () => {
+            if (stalledPreparations < 6) {
+              stalledPreparations += 1;
+              await new Promise<never>(() => {});
+            }
+          },
+        },
+      ],
+      {},
+    );
     const begun = Date.now();
     try {
       await started.admitted("tk");
       expect(Date.now() - begun).toBeGreaterThanOrEqual(2520);
-      expect(stalls.journalStalled).toBe(6);
-      expect(started.openAgent).toHaveBeenCalledTimes(1);
-      expect(started.prepares.get("tk")).toHaveBeenCalledTimes(1);
+      expect(stalledPreparations).toBe(6);
+      expect(started.prepares.get("tk")).toHaveBeenCalledTimes(7);
     } finally {
       await started.stop();
     }
