@@ -84,7 +84,8 @@ export function gmailQueries(range: Range) {
 }
 
 export type GitHubData = { opened: number | null; merged: number | null; reviews: number | null; requested: Row[]; mentioned: Row[]; repos: string[] };
-export type GmailData = { unread: number | null; needs: number | null; important: number | null; sent: number | null; needsRows: Row[]; senders: [string, number][] };
+/** Gmail's numbers from the search tool; the rows and senders from each message's metadata, or null when the connector has no get tool. */
+export type GmailData = { unread: number | null; needs: number | null; important: number | null; sent: number | null; needsRows: Row[] | null; senders: [string, number][] | null };
 export type WidgetData = { github: GitHubData | null; gmail: GmailData | null };
 
 /** The repository a PR or issue belongs to, as owner/name. */
@@ -112,12 +113,18 @@ export function topSenders(items: Row[], count = 4): [string, number][] {
   return [...tally.entries()].sort((a, b) => b[1] - a[1]).slice(0, count);
 }
 
-type Call = (tool: ToolRef, query: string) => Promise<unknown>;
+/** One tool call with its arguments. */
+type Call = (tool: ToolRef, args: Record<string, unknown>) => Promise<unknown>;
+const searchArgs = (query: string) => ({ query, q: query, maxResults: 50 });
+
+/** At most this many messages are read for their metadata in one load. */
+export const GMAIL_METADATA_CAP = 20;
+const METADATA_HEADERS = ["From", "Subject", "Date"];
 
 /** Reads the GitHub numbers and rows through the GitHub search tool. */
 export async function readGitHub(call: Call, tool: ToolRef, range: Range, repo: string, now?: Date): Promise<GitHubData> {
   const q = githubQueries(range, repo, now);
-  const settle = async (query: string) => call(tool, query).then(r => r, () => null);
+  const settle = async (query: string) => call(tool, searchArgs(query)).then(r => r, () => null);
   const [opened, merged, reviews, requested, mentioned] = await Promise.all([q.opened, q.merged, q.reviews, q.requested, q.mentioned].map(settle));
   const requestedRows = requested === null ? [] : itemsOf(requested);
   const mentionedRows = mentioned === null ? [] : itemsOf(mentioned);
@@ -128,18 +135,54 @@ export async function readGitHub(call: Call, tool: ToolRef, range: Range, repo: 
   };
 }
 
-/** Reads the Gmail numbers, the mail that needs a reply, and the senders through the Gmail search tool. */
-export async function readGmail(call: Call, tool: ToolRef, range: Range): Promise<GmailData> {
+/** The tool that reads one message (a get tool, not a search or a list). */
+export function getTool(tools: ToolRef[], server: RegExp): ToolRef | undefined {
+  return tools.filter(t => server.test(t.server)).find(t => /(get|read).*(message|email|mail|thread)/i.test(t.name) && !/search|list/i.test(t.name));
+}
+
+/** A message's From, Subject and Date, from a metadata read (top-level fields or the payload's headers). */
+export function headersOf(output: unknown): Row {
+  const r = record(unwrap(output));
+  const payload = record(r.payload ?? r);
+  const headers = records(payload.headers);
+  const pick = (name: string) => {
+    const header = headers.find(h => text(h.name).toLowerCase() === name.toLowerCase());
+    return header ? text(header.value) : "";
+  };
+  return { id: text(r.id), from: text(r.from) || pick("From"), subject: text(r.subject) || pick("Subject"), date: text(r.date) || pick("Date") };
+}
+
+/** The ids of a search's rows. */
+function idsOf(output: unknown): string[] {
+  return itemsOf(output).map(r => text(r.id) || text(r.messageId) || text(r.threadId)).filter(Boolean);
+}
+
+/** Reads the Gmail numbers through the search tool. The rows and senders come from each message's metadata, at most
+ *  GMAIL_METADATA_CAP messages a load; without a get tool they are null, and their blocks say Coming. */
+export async function readGmail(call: Call, search: ToolRef, get: ToolRef | undefined, range: Range): Promise<GmailData> {
   const q = gmailQueries(range);
-  const settle = async (query: string) => call(tool, query).then(r => r, () => null);
+  const settle = async (query: string) => call(search, searchArgs(query)).then(r => r, () => null);
   const [unread, needs, important, sent, inbox] = await Promise.all([q.unread, q.needs, q.important, q.sent, q.inbox].map(settle));
-  const needsRows = needs === null ? [] : itemsOf(needs);
-  return {
+  const counts = {
     unread: unread === null ? null : countOf(unread), needs: needs === null ? null : countOf(needs),
     important: important === null ? null : countOf(important), sent: sent === null ? null : countOf(sent),
-    needsRows: needsRows.slice(0, 3), senders: inbox === null ? [] : topSenders(itemsOf(inbox)),
   };
+  if (!get) return { ...counts, needsRows: null, senders: null };
+  const needIds = needs === null ? [] : idsOf(needs);
+  const inboxIds = inbox === null ? [] : idsOf(inbox);
+  const ids = [...new Set([...needIds, ...inboxIds])].slice(0, GMAIL_METADATA_CAP);
+  const metadata = new Map<string, Row>();
+  await Promise.all(ids.map(id => call(get, { id, format: "metadata", metadataHeaders: METADATA_HEADERS })
+    .then(output => metadata.set(id, { ...headersOf(output), id }), () => undefined)));
+  const needsRows = needIds.map(id => metadata.get(id)).filter((row): row is Row => row !== undefined).slice(0, 3);
+  const inboxRows = inboxIds.map(id => metadata.get(id)).filter((row): row is Row => row !== undefined);
+  return { ...counts, needsRows, senders: topSenders(inboxRows) };
 }
+
+/** The Gmail card's data per range, kept for the session: the metadata reads are not repeated for the same range. */
+const gmailCache = new Map<string, GmailData>();
+/** Forgets the cached reads (for tests, and when the connected accounts change). */
+export function clearWidgetCache(): void { gmailCache.clear(); }
 
 /** The connectors' data for the Overview, read once per range and repository. Each card is null until its tools answer. */
 export function useWidgetData(engine: WindowEngine, sessionKey: string | null, range: Range, repo: string): WidgetData {
@@ -147,18 +190,23 @@ export function useWidgetData(engine: WindowEngine, sessionKey: string | null, r
   useEffect(() => {
     let live = true;
     if (!sessionKey) { setData({ github: null, gmail: null }); return; }
-    const call: Call = async (tool, query) => {
-      const result = record(await engine.request("tools.invoke", { name: tool.id, args: { query, q: query, maxResults: 50 }, sessionKey }));
+    const call: Call = async (tool, args) => {
+      const result = record(await engine.request("tools.invoke", { name: tool.id, args, sessionKey }));
       if (result.ok !== true || result.requiresApproval === true) throw new Error("not readable");
       return result.output;
     };
     engine.request("tools.effective", { sessionKey }).then(effective => {
       const tools = offeredTools(effective);
-      const gh = searchTool(tools, /github/i, [/^search_pull_requests$/i, /^search_issues$/i]), gm = searchTool(tools, /gmail|google/i);
+      const gh = searchTool(tools, /github/i, [/^search_pull_requests$/i, /^search_issues$/i]), gm = searchTool(tools, /gmail|google/i), gt = getTool(tools, /gmail|google/i);
       if (!live) return;
       setData({ github: null, gmail: null });
       if (gh) readGitHub(call, gh, range, repo).then(github => { if (live) setData(d => ({ ...d, github })); });
-      if (gm) readGmail(call, gm, range).then(gmail => { if (live) setData(d => ({ ...d, gmail })); });
+      if (gm) {
+        const key = `${gm.id}|${gt?.id ?? ""}|${range}`;
+        const cached = gmailCache.get(key);
+        if (cached) setData(d => ({ ...d, gmail: cached }));
+        else readGmail(call, gm, gt, range).then(gmail => { gmailCache.set(key, gmail); if (live) setData(d => ({ ...d, gmail })); });
+      }
     }, () => undefined);
     return () => { live = false; };
   }, [engine, sessionKey, range, repo]);

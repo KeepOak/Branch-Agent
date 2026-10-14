@@ -77,8 +77,9 @@ function repoOfRow(row: Row): string {
 export function GmailBody({ data, onAsk, lockdown }: {
   data: GmailData | null; onAsk: (text: string) => void; lockdown?: boolean;
 }) {
-  const senders = data?.senders ?? [];
-  const top = senders[0]?.[1] ?? 0;
+  const senders = data?.senders ?? null;
+  const rows = data?.needsRows ?? null;
+  const top = senders?.[0]?.[1] ?? 0;
   return (
     <div className="p34-body">
       <div className="p34-stats">
@@ -92,18 +93,18 @@ export function GmailBody({ data, onAsk, lockdown }: {
         <ComingBlock title="Mail by day" />
         <div>
           <div className="p34-sub"><b>Top senders</b></div>
-          {senders.length ? (
+          {senders === null ? <span className="pill idle">Coming</span> : senders.length ? (
             <div className="p34-bars">
               {senders.map(([who, count]) => (
                 <div className="p34-bar" key={who}><span>{who}</span><i style={{ width: `${top > 0 ? (count / top) * 100 : 0}%` }} /><small>{count}</small></div>
               ))}
             </div>
-          ) : <span className="pill idle">Coming</span>}
+          ) : null}
         </div>
       </div>
-      <div className="p34-sub"><b>Needs a reply</b><span className="p34-count">{data?.needsRows.length ?? 0}</span></div>
+      <div className="p34-sub"><b>Needs a reply</b>{rows ? <span className="p34-count">{rows.length}</span> : null}</div>
       <div className="p34-list">
-        {(data?.needsRows ?? []).map((row, i) => {
+        {rows === null ? <span className="pill idle">Coming</span> : rows.map((row, i) => {
           const from = String(row.from ?? row.sender ?? "");
           const subject = String(row.subject ?? row.snippet ?? "");
           return (

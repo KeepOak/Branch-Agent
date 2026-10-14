@@ -6,6 +6,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { OverviewPlace } from "./index";
 import { githubLink, connectorLinked } from "./links";
 import { readLayout } from "./Dashboard";
+import { clearWidgetCache } from "./connector-data";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span role="img" aria-label={label} /> }));
@@ -28,7 +29,7 @@ const FX: Record<string, unknown> = {
 };
 
 let root: Root | undefined;
-beforeEach(() => { localStorage.clear(); });
+beforeEach(() => { localStorage.clear(); clearWidgetCache(); });
 afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
 async function render(overrides: Record<string, unknown> = {}, sessionKey: string | null = null) {
@@ -186,8 +187,10 @@ const EFFECTIVE_BOTH = {
   groups: [{ id: "mcp", tools: [
     { id: "github__search", mcpServer: "github", mcpToolName: "search_pull_requests" },
     { id: "gmail__search", mcpServer: "gmail", mcpToolName: "search_messages" },
+    { id: "gmail__get", mcpServer: "gmail", mcpToolName: "get_message" },
   ] }],
 };
+const EFFECTIVE_NO_GET = { groups: [{ id: "mcp", tools: EFFECTIVE_BOTH.groups[0].tools.filter(t => t.id !== "gmail__get") }] };
 function live(query: string): unknown {
   if (query.includes("review-requested")) return { items: [{ title: "Billing page copy", number: 212, repository: { full_name: "keepoak/site" } }] };
   if (query.includes("mentions")) return { items: [] };
@@ -195,16 +198,24 @@ function live(query: string): unknown {
   if (query.includes("is:pr author")) return { total_count: 5 };
   if (query.includes("reviewed-by")) return { total_count: 9 };
   if (query === "is:unread") return { resultSizeEstimate: 23 };
-  if (query.startsWith("is:unread in:inbox")) return { messages: [{ from: "Dana Okafor", subject: "August numbers" }] };
-  if (query.startsWith("in:inbox")) return { messages: [{ from: "Dana Okafor" }] };
+  if (query.startsWith("is:unread in:inbox")) return { messages: [{ id: "m1", threadId: "t1" }] };
+  if (query.startsWith("in:inbox")) return { messages: [{ id: "m1" }] };
   return { resultSizeEstimate: 4 };
+}
+/** A message's metadata read (format=metadata), by message id. */
+function metadata(id: string): unknown {
+  return { id, payload: { headers: [{ name: "From", value: "Dana Okafor" }, { name: "Subject", value: "August numbers" }] } };
+}
+function invoke(params: unknown): unknown {
+  const args = (params as { args: { query?: string; id?: string } }).args;
+  return { ok: true, output: args.id ? metadata(args.id) : live(String(args.query)) };
 }
 
 describe("Overview live connector data", () => {
   it("shows the GitHub numbers and attention rows the connector returns, and Ask Sapling sends to the default Trunk", async () => {
     const { host, request } = await render({
       "tools.effective": EFFECTIVE_BOTH,
-      "tools.invoke": (params: unknown) => ({ ok: true, output: live(String((params as { args: { query: string } }).args.query)) }),
+      "tools.invoke": invoke,
     }, "agent:main:main");
     for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
     const github = host.querySelector<HTMLElement>('[data-w="github"]')!;
@@ -225,7 +236,7 @@ describe("Overview live connector data", () => {
     const { host, request } = await render({
       "config.get": { hash: "h1", valid: true, config: { mcp: { servers: { gmail: { command: "gmail-mcp" } } } } },
       "tools.effective": EFFECTIVE_BOTH,
-      "tools.invoke": (params: unknown) => ({ ok: true, output: live(String((params as { args: { query: string } }).args.query)) }),
+      "tools.invoke": invoke,
     }, "agent:main:main");
     for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
     const gmail = host.querySelector<HTMLElement>('[data-w="gmail"]')!;
@@ -237,6 +248,18 @@ describe("Overview live connector data", () => {
     await act(async () => draft.click());
     for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
     expect(request).toHaveBeenCalledWith("chat.send", expect.objectContaining({ message: "Draft a reply to Dana Okafor about “August numbers”" }));
+  });
+
+  it("says Coming on the Gmail rows and senders when the connector has no get tool", async () => {
+    const { host } = await render({
+      "config.get": { hash: "h1", valid: true, config: { mcp: { servers: { gmail: { command: "gmail-mcp" } } } } },
+      "tools.effective": EFFECTIVE_NO_GET,
+      "tools.invoke": invoke,
+    }, "agent:main:main");
+    for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
+    const gmail = host.querySelector<HTMLElement>('[data-w="gmail"]')!;
+    expect(gmail.textContent).not.toContain("Dana Okafor");
+    expect(gmail.querySelectorAll(".pill.idle").length).toBeGreaterThanOrEqual(2);
   });
 
   it("says Coming only on the tiles it cannot read, when the connector offers no search tool", async () => {

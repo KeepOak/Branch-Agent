@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { countOf, githubQueries, gmailQueries, itemsOf, offeredTools, readGitHub, readGmail, repoOf, searchTool, sinceDate, topSenders, unwrap, type ToolRef } from "./connector-data";
+import { countOf, getTool, GMAIL_METADATA_CAP, githubQueries, gmailQueries, headersOf, itemsOf, offeredTools, readGitHub, readGmail, repoOf, searchTool, sinceDate, topSenders, unwrap, type ToolRef } from "./connector-data";
 
 const NOW = new Date("2026-10-14T12:00:00Z");
 const EFFECTIVE = {
@@ -61,7 +61,8 @@ describe("the searches for a range", () => {
 
 describe("reading the connectors", () => {
   it("reads GitHub counts, the repositories, and the review and mention rows", async () => {
-    const call = vi.fn(async (_tool: ToolRef, query: string) => {
+    const call = vi.fn(async (_tool: ToolRef, args: Record<string, unknown>) => {
+      const query = String(args.query);
       if (query.includes("review-requested")) return { items: [{ title: "Billing page copy", number: 212, repository: { full_name: "keepoak/site" } }] };
       if (query.includes("mentions")) return { items: [{ title: "Save files on iCloud", number: 88, repository: { full_name: "edilas/game" } }] };
       return { total_count: query.includes("merged") ? 3 : 5 };
@@ -76,23 +77,56 @@ describe("reading the connectors", () => {
   });
 
   it("gives null for a count whose search fails, so only that tile says Coming", async () => {
-    const call = vi.fn(async (_tool: ToolRef, query: string) => { if (query.includes("merged")) throw new Error("refused"); return { total_count: 2 }; });
+    const call = vi.fn(async (_tool: ToolRef, args: Record<string, unknown>) => {
+      const query = String(args.query); if (query.includes("merged")) throw new Error("refused"); return { total_count: 2 }; });
     const github = await readGitHub(call, { id: "gh", server: "github", name: "search" }, "week", "", NOW);
     expect(github.merged).toBeNull();
     expect(github.opened).toBe(2);
   });
 
-  it("reads Gmail counts, the mail that needs a reply, and the top senders", async () => {
-    const call = vi.fn(async (_tool: ToolRef, query: string) => {
-      if (query.startsWith("is:unread in:inbox")) return { messages: [{ from: "Dana Okafor", subject: "August numbers" }] };
+  it("reads Gmail counts, then each message's metadata for the rows and senders", async () => {
+    const search = { id: "gm", server: "gmail", name: "search" };
+    const get = { id: "gg", server: "gmail", name: "get" };
+    const call = vi.fn(async (tool: ToolRef, args: Record<string, unknown>) => {
+      if (tool.id === "gg") return { payload: { headers: [{ name: "From", value: args.id === "m3" ? "Hartwell Supply" : "Dana Okafor" }, { name: "Subject", value: "August numbers" }] } };
+      const query = String(args.query);
+      if (query.startsWith("is:unread in:inbox")) return { messages: [{ id: "m1", threadId: "t1" }] };
       if (query === "is:unread") return { resultSizeEstimate: 23 };
-      if (query.startsWith("in:inbox")) return { messages: [{ from: "Dana Okafor" }, { from: "Dana Okafor" }, { from: "Hartwell Supply" }] };
+      if (query.startsWith("in:inbox")) return { messages: [{ id: "m1" }, { id: "m2" }, { id: "m3" }] };
       return { resultSizeEstimate: 4 };
     });
-    const gmail = await readGmail(call, { id: "gm", server: "gmail", name: "search" }, "week");
+    const gmail = await readGmail(call, search, get, "week");
     expect(gmail.unread).toBe(23);
     expect(gmail.needs).toBe(1);
-    expect(gmail.needsRows).toEqual([{ from: "Dana Okafor", subject: "August numbers" }]);
-    expect(gmail.senders[0]).toEqual(["Dana Okafor", 2]);
+    expect(gmail.needsRows).toEqual([{ id: "m1", from: "Dana Okafor", subject: "August numbers", date: "" }]);
+    expect(gmail.senders?.[0]).toEqual(["Dana Okafor", 2]);
+  });
+
+  it("reads at most GMAIL_METADATA_CAP messages per load", async () => {
+    const search = { id: "gm", server: "gmail", name: "search" };
+    const get = { id: "gg", server: "gmail", name: "get" };
+    const messages = Array.from({ length: 30 }, (_, i) => ({ id: `m${i}` }));
+    const call = vi.fn(async (tool: ToolRef, args: Record<string, unknown>) => {
+      if (tool.id === "gg") return { payload: { headers: [{ name: "From", value: "Dana Okafor" }] } };
+      return String(args.query).startsWith("in:inbox") ? { messages } : { messages: [] };
+    });
+    await readGmail(call, search, get, "week");
+    expect(call.mock.calls.filter(([tool]) => tool.id === "gg")).toHaveLength(GMAIL_METADATA_CAP);
+  });
+
+  it("gives null rows and senders when the Gmail connector has no get tool", async () => {
+    const search = { id: "gm", server: "gmail", name: "search" };
+    const call = vi.fn(async () => ({ messages: [{ id: "m1" }] }));
+    const gmail = await readGmail(call, search, undefined, "week");
+    expect(gmail.needsRows).toBeNull();
+    expect(gmail.senders).toBeNull();
+    expect(call).toHaveBeenCalledTimes(5);
+  });
+
+  it("finds the get tool and reads the From, Subject and Date headers", () => {
+    const tools = [{ id: "gm", server: "gmail", name: "search_messages" }, { id: "gl", server: "gmail", name: "list_messages" }, { id: "gg", server: "gmail", name: "get_message" }];
+    expect(getTool(tools, /gmail/i)?.id).toBe("gg");
+    expect(getTool([tools[0]], /gmail/i)).toBeUndefined();
+    expect(headersOf({ payload: { headers: [{ name: "From", value: "Dana" }, { name: "subject", value: "Hi" }, { name: "Date", value: "Tue" }] } })).toEqual({ id: "", from: "Dana", subject: "Hi", date: "Tue" });
   });
 });
