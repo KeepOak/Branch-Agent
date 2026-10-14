@@ -35,7 +35,7 @@ export function PlaceView({ place, ...props }: Omit<PlaceProps, "level"> & { pla
       <div className="enter11" key={place}>
         <Suspense fallback={<p role="status">Opening the office…</p>}><Mount {...props} level={level} /></Suspense>
       </div>
-      <TrunkHost engine={props.engine} level={level} openSettings={props.openSettings} openPlace={props.openPlace} />
+      <TrunkHost engine={props.engine} level={level} openSettings={props.openSettings} openPlace={props.openPlace} openConversation={props.openConversation} />
     </>
   );
 }

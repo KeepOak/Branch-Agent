@@ -17,7 +17,7 @@ export interface HelperPlan {
   relaunch: { command: string; fallback?: string; args: string[] };
   confirmTimeoutMs: number;
 }
-interface Journal { version: string; sha256: string; kind: "asar" | "runtime"; staged: string; target: string; phase: string; heldUntil?: number }
+interface Journal { version: string; sha256: string; kind: "asar" | "runtime" | "appimage"; staged: string; target: string; phase: string; heldUntil?: number }
 /** After a swap that found the app in use, starts leave the update staged this long (Restart retries at once). */
 const RETRY_AFTER_MS = 60 * 60 * 1000;
 
@@ -99,7 +99,8 @@ async function restoreAsarNames(folder: string): Promise<void> {
 /** Old copy aside, new copy in. On failure the old copy is put back and the update stays staged. */
 async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (line: string) => void): Promise<boolean> {
   await rm(previous, { recursive: true, force: true });
-  if (journal.kind === "runtime") await restoreAsarNames(journal.staged);
+  // A staged copy that has gone missing fails at the move below, which puts the old copy back.
+  if (journal.kind === "runtime" && existsSync(journal.staged)) await restoreAsarNames(journal.staged);
   await writeJournal(plan.journal, { ...journal, phase: "applying" });
   try { await move(journal.target, previous); } catch (error) {
     await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
