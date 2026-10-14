@@ -32,7 +32,7 @@ export function PeopleBlock(props: SettingsPageProps) {
   const sel = ctx.people.find((p) => p.id === selId) ?? ctx.self ?? ctx.people[0] ?? null;
   return (
     <>
-      {ctx.error ? <Status tone="bad" title="Branch couldn’t read who uses it">{visible(ctx.error)}</Status> : null}
+      {ctx.error ? <Status tone="bad" title={`Couldn’t read: ${visible(ctx.error)}`} /> : null}
       <div className="t10-pp">
         <div className="plist-pp">
           {ctx.self ? <ProfileHead ctx={ctx} me={ctx.self} /> : null}
@@ -55,7 +55,7 @@ export function PeoplePage(props: SettingsPageProps) {
   const sel = ctx.people.find((p) => p.id === selId) ?? ctx.self ?? ctx.people[0] ?? null;
   return (
     <Page title={props.title} lede={LEDE} help={HELP}>
-      {ctx.error ? <Status tone="bad" title="Branch couldn’t read who uses it">{visible(ctx.error)}</Status> : null}
+      {ctx.error ? <Status tone="bad" title={`Couldn’t read: ${visible(ctx.error)}`} /> : null}
       <div className="t10-pp">
         <div className="plist-pp">
           {ctx.self ? <ProfileHead ctx={ctx} me={ctx.self} /> : null}
