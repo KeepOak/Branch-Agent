@@ -10,6 +10,7 @@ import { Dialog } from "../shell/Dialog";
 import { A2A_CHANNEL } from "./sender";
 import "./rooms.css";
 import { shownWhy } from "../shell/shown-why";
+import { trunkDisplayName } from "../connect/trunk-name";
 
 /** Both entry points (the + new menu and Customize › Trunks) open the dialog with this window event.
  *  A sidebar drop can pass the two chats so the dialog opens with them already filled in. */
@@ -42,7 +43,7 @@ const list = (v: unknown): Rec[] => (Array.isArray(v) ? v.map(rec) : []);
 /** The Trunks (agents.list), the other people (users.list without users.self) and the A2A peers (config). */
 export function readChoices(agents: unknown, users: unknown, self: unknown, config: unknown) {
   const selfId = str(rec(rec(self).profile).id);
-  const trunks = list(rec(agents).agents).map((a): Option => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) })).filter((t) => t.id);
+  const trunks = list(rec(agents).agents).map((a): Option => ({ id: str(a.id), name: trunkDisplayName(a) })).filter((t) => t.id);
   const people = list(rec(users).profiles).filter((p) => str(p.id) && str(p.id) !== selfId && !str(p.mergedInto)).map((p): Option => ({ id: str(p.id), name: str(p.displayName) || str(list(p.emails)[0]) || str(p.id) }));
   const peers = Object.keys(rec(rec(rec(rec(config).config).channels)[A2A_CHANNEL]).peers ?? {}).map((name): Option => ({ id: name, name }));
   return { trunks, people, peers, defaultId: str(rec(agents).defaultId) };

@@ -108,6 +108,19 @@ it("changes a thread's icon from its tab's menu and keeps the choice", async () 
   expect(JSON.parse(localStorage.getItem("branch-topic-emoji-t5")!)).toEqual({ "agent:ledger:t2": chosen });
 });
 
+it("draws Freedom Mode as the threads column beside the chat, with the + in its header", async () => {
+  localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "free", width: 0, per: {} }));
+  const { Host } = setup();
+  await act(async () => root.render(<Host />));
+  await flush();
+  expect(above().childElementCount).toBe(0);
+  const rail = column().querySelector(".r1-topic-host")!;
+  expect(rail.querySelector(".topicsT5.lay-column")).not.toBeNull();
+  expect(rail.querySelector(".tpResT5")).toBeNull();
+  expect(rail.querySelector(".tpHeadT5 > .tpAddP17")).not.toBeNull();
+  expect(rail.textContent).toContain("Card charges");
+});
+
 it("creates a topic from the + under the Trunk's main conversation, then opens it", async () => {
   const { Host, request, onOpen } = setup();
   await act(async () => root.render(<Host />));

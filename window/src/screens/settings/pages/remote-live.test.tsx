@@ -38,7 +38,7 @@ const PREVIEW: Record<string, string[]> = {
 const EXTRA: Record<string, string[]> = {
   "Keep Branch running": ["Keep working when the window closes"],
   Reach: ["The address"],
-  "What it has been doing": ["Lately", "Restart the engine"],
+  "What it has been doing": ["Restart the engine"],
   "Another computer": ["Its address", "SSH address", "Its gateway key", "Certificate fingerprint", "Connect"],
   Connection: ["Gateway ping", "Gateway activity"],
   Exposure: ["Risky switches"],

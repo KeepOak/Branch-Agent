@@ -14,6 +14,7 @@ import { RingsRow } from "./rings";
 import { EmptyIcon, Grey, IcoTile, LibIcon, plural, Row } from "./parts";
 import { FileDialog } from "./reader";
 import { shownWhy } from "../../shell/shown-why";
+import { trunkDisplayName } from "../../connect/trunk-name";
 
 const TIDY_REASON = "Needs the engine’s memory tidy-up method.";
 
@@ -50,7 +51,7 @@ export function MemoryTab(props: MemoryProps) {
   return <div className="lib-mem">
     <MemoryCard {...props} scope={scope} files={scoped} status={status} check={check} />
     <RingsRow engine={engine} level={level} scope={scope} status={status} openSettings={props.openSettings} />
-    <MemorySearch engine={engine} trunks={trunks} scope={scope} setScope={setScope} scopeName={scopeName ? scopeName.identity?.name || scopeName.name || scopeName.id : null} files={scoped} reloadFiles={props.reloadFiles} />
+    <MemorySearch engine={engine} trunks={trunks} scope={scope} setScope={setScope} scopeName={scopeName ? trunkDisplayName(scopeName) : null} files={scoped} reloadFiles={props.reloadFiles} />
     {shows(level, "advanced") && <HowItLearns engine={engine} trunks={trunks} scope={scope || props.defaultId} onApplied={props.reloadFiles} />}
     <MemoryHealth engine={engine} agentId={scope || props.defaultId} status={status} check={check} />
     <WhatToRemember />
@@ -127,13 +128,13 @@ function MemorySearch(props: SearchProps) {
     const scopeTrunks = trunks.filter(t => !scope || t.id === scope);
     const answers = await Promise.all(scopeTrunks.map(t => engine.request<unknown>("memory.search", { agentId: t.id, query: q })
       .then(r => ({ t, r: rec(r), e: null as string | null }), e => ({ t, r: null, e: errorText(e) }))));
-    const hits = answers.flatMap(a => hitsOf(a.r?.results).map(h => ({ ...h, agentId: a.t.id, trunk: a.t.identity?.name || a.t.name || a.t.id })));
+    const hits = answers.flatMap(a => hitsOf(a.r?.results).map(h => ({ ...h, agentId: a.t.id, trunk: trunkDisplayName(a.t) })));
     hits.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     const mode = answers.some(a => a.r?.searchMode === "hybrid") ? "by meaning and words" : "by words only";
     setResult({ q, hits, mode, errors: answers.flatMap(a => (a.e ? [`${a.t.identity?.name || a.t.id}: ${a.e}`] : [])) });
     setBusy(false);
   }
-  const scopeItems: MenuItem[] = [{ label: "Every Trunk", run: () => setScope("") }, { kind: "sep" }, ...trunks.map(t => ({ label: t.identity?.name || t.name || t.id, run: () => setScope(t.id) }))];
+  const scopeItems: MenuItem[] = [{ label: "Every Trunk", run: () => setScope("") }, { kind: "sep" }, ...trunks.map(t => ({ label: trunkDisplayName(t), run: () => setScope(t.id) }))];
   return <div className="lib-search">
     <form className="lib-search-row" role="search" onSubmit={search}>
       <label className="lib-field"><LibIcon name="search" /><input aria-label="Search memory" type="search" placeholder={`Search what ${scopeName ?? "every Trunk"} remembers`} value={query} onChange={e => setQuery(e.target.value)} /></label>
