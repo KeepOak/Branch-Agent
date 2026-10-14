@@ -3,6 +3,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, session, shell 
 import type { ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
@@ -22,7 +23,7 @@ import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./ti
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
-import { createAutoApplyUpdate } from "./auto-apply-update";
+import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
 import { appendCappedLog } from "./log-rotation";
@@ -675,6 +676,19 @@ const autoApply = createAutoApplyUpdate({
   },
   enabled: () => controls.settings().autoApplyUpdates && !updateLock.held,
   seamlessHandoff,
+  // Private #951: no automatic update starts under 10% free disk or 20% free RAM.
+  health: () => readUpdateHealth(cfg.dataDir, availableMemory().bytes, totalmem()),
+  // Runs in flight mark a machine running Trunk work, whose updates are batched (hourly at most, only when idle).
+  activeRuns: async () => {
+    if (!gateway) throw new Error("The gateway is not running");
+    const engine = await gatewayActivity(gateway);
+    return Math.max(engine.activeRuns, engine.totalActive);
+  },
+  // A release published as a security fix skips the Trunk-work batching.
+  securityFix: async version => {
+    const status = await readComponentUpdateStatus(cfg);
+    return status.componentsPendingVersion === version && status.componentsPendingSecurity;
+  },
   activity: async () => {
     if (!gateway) throw new Error("The gateway is not running");
     // The approval RPCs themselves count as gateway work; sample after they settle.
