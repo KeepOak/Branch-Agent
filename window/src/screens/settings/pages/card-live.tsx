@@ -3,13 +3,13 @@
 // Open). It reuses Classic People's own card logic on the same calls (places/settings/set1/people-mine.tsx and
 // people-data.tsx): users.self for who you are, users.setDisplayName for your name and users.setAvatar for your picture
 // (read on this computer, cropped square, at most 512 px). View and Open show your card in People, as teammates see it.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { record, visible, type RecordValue } from "../../../places/settings/adapter";
 import { useResource } from "../../../places/settings/hooks";
 import { KitProvider } from "../../../places/settings/kit";
 import { usePicture } from "../../../places/settings/set1/people-mine";
-import { initials, profilesOf, type Profile } from "../../../places/settings/set1/people-data";
+import { profilesOf, type Profile } from "../../../places/settings/set1/people-data";
 import { openPlace } from "../../../places/settings/set2/common";
 import type { PageSlot, SlotPageProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
@@ -29,6 +29,7 @@ function MyCard({ engine }: SlotPageProps) {
   const pic = usePicture(engine, me, reload);
   const [failed, run] = useFailure();
   const [edit, setEdit] = useState<string | null>(null);
+  const file = useRef<HTMLInputElement>(null);
   const draft = edit?.trim() ?? "";
   const save = () => { if (!me || !draft || draft === me.name) { setEdit(null); return; } void run(async () => { await engine.request("users.setDisplayName", { profileId: me.id, displayName: draft }); setEdit(null); await reload(); }); };
   if (loading) return null;
@@ -38,7 +39,6 @@ function MyCard({ engine }: SlotPageProps) {
     <div className="r1s-items">
       <div className="r1s-row" data-row="card.card.name">
         <span className="r1s-item">
-          <span className="r1s-av g-frost" aria-hidden="true">{pic.url ? <img src={pic.url} alt="" /> : initials(me.name)}</span>
           {edit === null ? <b className="g-label">{visible(me.name)}</b> : (
             <input className="r1s-inp" autoFocus maxLength={256} value={edit} aria-label="Your name" onChange={(e) => setEdit(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setEdit(null); } }} />
@@ -61,8 +61,9 @@ function MyCard({ engine }: SlotPageProps) {
         <small className="g-label" data-lines>Upload, take a photo, pick an emoji, or have a Trunk make one.</small>
         <div className="r1s-ctl">
           <Needs engine={engine} need={["users.setAvatar"]} where="Choose your picture">
-            <label className="r1s-btn r1s-file">Choose…<input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) pic.pick(f); }} /></label>
+            <button type="button" className="r1s-btn" onClick={() => file.current?.click()}>Choose…</button>
           </Needs>
+          <input ref={file} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) pic.pick(f); }} />
         </div>
         {pic.msg ? <small className="r1s-msg g-label" role="status">{pic.msg}</small> : null}
       </div>
