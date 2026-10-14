@@ -8,13 +8,16 @@ import type { WindowEngine } from "../../connect/engine";
 import type { PageId } from "./nav";
 import type { Row } from "./rows";
 
+/** What a page's own component gets: the frame's engine, and a way to open another Settings page. */
+export type SlotPageProps = { engine: WindowEngine; onPage?: (page: PageId) => void };
+
 /** What a page's own row control gets: the frame's engine, its row, and a way to open another Settings page. */
 export type SlotControlProps = { engine: WindowEngine; row: Row; onPage?: (page: PageId) => void };
 export type SlotControl = (props: SlotControlProps) => ReactNode;
 
 export type PageSlot = {
   /** Draws the page in place of its row cards, with the frame's own engine. */
-  component?: (props: { engine: WindowEngine }) => ReactNode;
+  component?: (props: SlotPageProps) => ReactNode;
   /** Rows this page adds to the table (for search and the level). Each row's page must be this page. */
   rows?: Row[];
   /** Controls this page draws itself, by row id: each in place of that row's control, under its label and help. */
