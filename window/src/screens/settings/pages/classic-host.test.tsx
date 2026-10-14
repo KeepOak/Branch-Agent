@@ -45,7 +45,6 @@ it("re-hosts exactly these Classic pages", () => {
     permissions: "permissions",
     privacy: "usage",
     history: "backups",
-    remote: "gateway",
   });
 });
 

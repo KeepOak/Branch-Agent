@@ -16,11 +16,11 @@ import "./gateway.css";
 const LEDE = "A small helper that keeps Branch running in the background, starts it again if it stops, and carries interrupted work on.";
 const APP = "Set by the Branch app on this computer.";
 const CONN = "This window’s connection is set by the Branch app; another computer is picked with the switcher at the top of the list.";
-const BIND = [{ id: "loopback", label: "This computer" }, { id: "lan", label: "My network" }, { id: "tailnet", label: "Tailscale" }, { id: "custom", label: "One address" }, { id: "auto", label: "Automatic" }];
-const BIND_LINE: Record<string, string> = { loopback: "Only this computer.", lan: "Any device on your network.", tailnet: "Your Tailscale devices, and this computer.", custom: "One address you choose, and this computer.", auto: "This computer if it can, otherwise every network." };
-const AUTH = [{ id: "token", label: "Session key" }, { id: "password", label: "Password" }, { id: "trusted-proxy", label: "Trusted proxy" }, { id: "none", label: "None" }];
-const COLORS = ["teal", "amber", "purple", "coral", "pink", "blue", "green", "red", "grey"];
-const DEFAULT_PORT = 18789;
+export const BIND = [{ id: "loopback", label: "This computer" }, { id: "lan", label: "My network" }, { id: "tailnet", label: "Tailscale" }, { id: "custom", label: "One address" }, { id: "auto", label: "Automatic" }];
+export const BIND_LINE: Record<string, string> = { loopback: "Only this computer.", lan: "Any device on your network.", tailnet: "Your Tailscale devices, and this computer.", custom: "One address you choose, and this computer.", auto: "This computer if it can, otherwise every network." };
+export const AUTH = [{ id: "token", label: "Session key" }, { id: "password", label: "Password" }, { id: "trusted-proxy", label: "Trusted proxy" }, { id: "none", label: "None" }];
+export const COLORS = ["teal", "amber", "purple", "coral", "pink", "blue", "green", "red", "grey"];
+export const DEFAULT_PORT = 18789;
 
 export const ROWS: RowEntry[] = [
   ["Gateway", "Keep Branch running", 0], ["Keep working when the window closes", "Keep Branch running", 0], ["Carry on interrupted work by itself", "Keep Branch running", 0], ["Show the gateway in the tray", "Keep Branch running", 0],
@@ -61,13 +61,13 @@ export function GatewayPage(props: SettingsPageProps) {
   );
 }
 
-function channelNames(health: RecordValue): string[] {
+export function channelNames(health: RecordValue): string[] {
   const labels = rec(health.channelLabels);
   return Object.entries(rec(health.channels)).filter(([, v]) => rec(v).connected === true || rec(v).running === true).map(([id]) => str(labels[id]) || id);
 }
 
 /** "just now", "4 min ago", "2 h ago", or the day and time. */
-function ago(ms: unknown, now = Date.now()): string {
+export function ago(ms: unknown, now = Date.now()): string {
   if (typeof ms !== "number" || !Number.isFinite(ms)) return "";
   const min = Math.floor((now - ms) / 60_000);
   if (min < 1) return "just now";
@@ -139,7 +139,7 @@ function Reach({ config, lv }: Ctx) {
   );
 }
 
-function localAddress(config: Config, sys: RecordValue): string {
+export function localAddress(config: Pick<Config, "get">, sys: RecordValue): string {
   const port = Number(config.get("gateway.port")) || Number(sys.port) || DEFAULT_PORT;
   const base = str(config.get("gateway.controlUi.basePath")).replace(/^\/?/, "/").replace(/\/$/, "");
   return `http://127.0.0.1:${port}${base}/`;
@@ -214,7 +214,7 @@ function Doing({ engine, health, sys, lv }: Ctx) {
 }
 
 /** Connection (Technical): a ping this page measures every 5 s while it is open, and the gateway's own load, asked as often. */
-function usePing(engine: SettingsPageProps["engine"]) {
+export function usePing(engine: SettingsPageProps["engine"]) {
   const [pings, setPings] = useState<number[]>([]);
   const [missed, setMissed] = useState(0);
   const [sys, setSys] = useState<RecordValue | null>(null);
@@ -236,7 +236,7 @@ function usePing(engine: SettingsPageProps["engine"]) {
   }, [engine]);
   return { pings, missed, sys };
 }
-function pct(sorted: number[], p: number): string { return sorted.length ? `${Math.round(sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))])} ms` : ""; }
+export function pct(sorted: number[], p: number): string { return sorted.length ? `${Math.round(sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))])} ms` : ""; }
 
 function Connection({ engine, config, sys: first }: Ctx) {
   const { pings, missed, sys: polled } = usePing(engine);
@@ -283,7 +283,7 @@ function Technical({ config, sys, openSettings }: Ctx) {
 }
 
 /** Risky switches that are on, by name. */
-function risky(config: Config): string[] {
+export function risky(config: Pick<Config, "get">): string[] {
   return [
     config.get("gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback") === true ? "Trust the Host header for origins" : "",
     config.get("gateway.controlUi.dangerouslyDisableDeviceAuth") === true ? "Browser sign-in without a paired device" : "",
