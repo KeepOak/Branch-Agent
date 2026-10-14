@@ -12,6 +12,8 @@ import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { INSTRUCTIONS_ROWS } from "./instructions";
 import { AboutYou, Files } from "./instructions-live";
+import { VOICE_ROWS } from "./voice";
+import * as Voice from "./voice-controls";
 import { REMOTE_ROWS } from "./remote";
 import { Activity, BrowserPage, GatewayAddress, Https, Infrastructure, LabelComputer, Lately, Origins, Ping, RestartEngine as RestartGateway, Risky, ScriptCode } from "./remote-live";
 import { GENERAL_PAGE } from "./general-live";
@@ -55,6 +57,32 @@ export const R1_PAGES: PageSlots = {
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
   instructions: { rows: INSTRUCTIONS_ROWS, controls: { "instructions.you.file": AboutYou, "instructions.project.files": Files } },
+  // Voice & calls: native R1 cards in the preview's order; Classic Voice draws behind its rows (voice-controls.tsx).
+  voice: {
+    rows: VOICE_ROWS,
+    controls: {
+      "voice.speaking.voice": Voice.VoicePick,
+      "voice.listening.wake-words": Voice.WakeWords,
+      "voice.listening.aloud": Voice.AnswerAloud,
+      "voice.speaking.engine": Voice.SpeakingEngine,
+      "voice.speaking.preview": Voice.PreviewVoice,
+      "voice.speaking.services": Voice.SpeakServices,
+      "voice.speaking.named": Voice.NamedVoices,
+      "voice.live.status": Voice.LiveStatus,
+      "voice.live.through": Voice.LiveThrough,
+      "voice.live.model": Voice.LiveModel,
+      "voice.live.speaker": Voice.LiveSpeaker,
+      "voice.live.gateway": Voice.LiveGateway,
+      "voice.live.who": Voice.LiveWho,
+      "voice.live.services": Voice.LiveServices,
+      "voice.calls.test": Voice.TestCall,
+      "voice.calls.notes": Voice.MeetingNotes,
+      "voice.services.all": Voice.AllVoiceSettings,
+      "voice.services.listening": Voice.ListeningEngine,
+      "voice.services.listen-keys": Voice.ListenServices,
+      ...Object.fromEntries(["file", "status", "call-setup", "call-speak", "during", "tail", "latency", "expose"].map((id) => [`voice.services.${id}`, Voice.VoiceCode])),
+    },
+  },
   // Remote access: native R1 cards in the preview's order; Classic Gateway draws behind its rows (remote-live.tsx).
   remote: {
     rows: REMOTE_ROWS,

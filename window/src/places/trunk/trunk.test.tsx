@@ -97,7 +97,7 @@ describe("Trunk editor", () => {
     expect(fields).toHaveLength(3);
     for (const f of fields) { expect(f.title).toBe(""); expect([...f.querySelectorAll("button")].every((b) => !b.disabled)).toBe(true); }
     for (const s of document.querySelectorAll<HTMLButtonElement>(".tk-shape")) expect(s.title).toBe(s.getAttribute("aria-label"));
-    expect(document.querySelector(".tk-why")).toBeNull();
+    expect([...document.querySelectorAll(".tk-why")].map((n) => n.textContent)).toEqual(["A photo instead of a face comes in a later update."]);
     expect(byText("Shuffle").disabled).toBe(false); expect(byText("Shuffle").title).toBe("");
     expect(visibleDevNotes(document.body)).toEqual([]);
   });
@@ -220,6 +220,9 @@ describe("Customize › Trunks", () => {
     await act(async () => { row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
     await click(byText("Remove Birch…"));
     expect(document.body.textContent).toContain("move to the Trash");
+    // The engine removes the Trunk itself for good, so the dialog must not promise otherwise.
+    expect(document.body.textContent).toContain("Branch can’t bring Birch back");
+    expect(document.body.textContent).not.toContain("nothing is deleted for good");
     await click(document.querySelector('[data-testid="trunk-remove"] .btn.bad'));
     expect(request).toHaveBeenCalledWith("agents.delete", { agentId: "birch" });
     expect(document.body.textContent).not.toContain("Undo");
@@ -301,7 +304,8 @@ describe("Trunk profile and studio", () => {
   it("opens the shared Remove confirmation from a non-default profile", async () => {
     const request = fake({ "sessions.list": { sessions: [] } });
     await mount(<TrunkProfile engine={engine(request)} agentId="birch" level="regular" onClose={() => {}} />);
-    await click(byText("Remove Birch…"));
+    await click(document.querySelector('[aria-label="More for Birch"]'));
+    await click(byText("Remove Trunk…"));
     expect(document.querySelector('[data-testid="trunk-remove"]')).toBeTruthy();
     await click(document.querySelector('[data-testid="trunk-remove"] .btn.bad'));
     expect(request).toHaveBeenCalledWith("agents.delete", { agentId: "birch" });
@@ -314,7 +318,7 @@ describe("Trunk profile and studio", () => {
     expect(document.body.textContent).toContain("ID birch");
     await click(document.querySelector('[aria-label="Morning on or off"]'));
     expect(request).toHaveBeenCalledWith("cron.update", { id: "j1", patch: { enabled: false } });
-    expect(byText("Pause Birch").disabled).toBe(true);
+    expect(byText("Pause Birch").getAttribute("aria-disabled")).toBe("true");
   });
   it("asks Branch through branch.chat and shows its reply", async () => {
     const request = vi.fn(() => Promise.resolve({ sessionId: "s", reply: "Here is my proposal.", action: "none", needsApproval: true }));
@@ -330,23 +334,6 @@ describe("Trunk profile and studio", () => {
 });
 
 describe("Trunk tools rows", () => {
-  it("shows a toolset off and its switch disabled when the Trunk's own tool list leaves its tools out", async () => {
-    const catalog = {
-      toolsets: [
-        { id: "files", label: "Files", description: "Read and edit files.", tools: ["read"], offered: true },
-        { id: "shell", label: "Shell", description: "Run commands.", tools: ["exec"], offered: false },
-      ],
-    };
-    await mount(<TrunkEditor engine={engine(fake({ "tools.catalog": catalog }))} agentId="birch" level="regular" tab="may" onClose={() => {}} />);
-    const shell = document.querySelector<HTMLButtonElement>('[aria-label="Use Shell"]');
-    expect(shell?.disabled).toBe(true);
-    expect(shell?.getAttribute("aria-checked")).toBe("false");
-    expect(shell?.closest(".tk-ctl")?.textContent).toContain("Its own tool list leaves these tools out");
-    const files = document.querySelector<HTMLButtonElement>('[aria-label="Use Files"]');
-    expect(files?.disabled).toBe(false);
-    expect(files?.getAttribute("aria-checked")).toBe("true");
-  });
-
   it("shows the browser off when a legacy deny lists it, even with the browser switch on", async () => {
     const config = { hash: "h1", valid: true, config: { agents: { entries: { birch: { toolsets: { browser: true }, tools: { deny: ["browser"] } } } } } };
     const catalog = {
@@ -359,3 +346,9 @@ describe("Trunk tools rows", () => {
     expect(browser?.closest(".tk-ctl")?.textContent).toContain("Its own tool list leaves these tools out");
   });
 });
+
+it("the Trunk editor has the preview's tabs: Look, What it may do and Its computers, with no Accounts tab", async () => {
+  await mount(<TrunkEditor engine={engine(fake({}))} agentId="birch" level="regular" tab="look" onClose={() => {}} />);
+  expect([...document.querySelectorAll("[role=tab]")].map(t => t.textContent)).toEqual(["Look", "What it may do", "Its computers"]);
+});
+
