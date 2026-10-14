@@ -27,6 +27,23 @@ export function engineServiceArgs(action: EngineServiceAction | "token", port?: 
 
 export type EngineServiceAction = "install" | "start" | "restart" | "stop";
 
+/**
+ * "Keep working when nobody is signed in" (Private #454 D, Linux): the engine's own systemd-linger path
+ * (`branch gateway linger on|off|status`, engine/src/daemon/systemd-linger.ts).
+ */
+export function engineLingerArgs(want: "on" | "off" | "status"): string[] {
+  return ["branch.mjs", "gateway", "linger", want, "--json"];
+}
+
+/** Reads `linger` from the engine's linger answer; rejects with its plain error. */
+export function parseLingerAnswer(stdout: string): boolean {
+  const answer = lastJsonObject(stdout);
+  if (answer?.ok !== true || (answer.linger !== "yes" && answer.linger !== "no")) {
+    throw new Error(typeof answer?.error === "string" ? answer.error : "the engine did not say whether linger is on");
+  }
+  return answer.linger === "yes";
+}
+
 export interface EngineCliCommand { file: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv; stdin?: string; timeoutMs?: number }
 
 /**
@@ -70,6 +87,21 @@ export async function engineAnswers(port: number, timeoutMs = 2_000): Promise<bo
   } catch { return false; }
 }
 
+/**
+ * Honest health (Private #454 D): the engine's /health on 127.0.0.1:port. A local probe gets the reason, for
+ * example the agent whose database is not admitting work. Never throws.
+ */
+export async function readEngineHealth(port: number, timeoutMs = 2_000): Promise<{ answered: boolean; degraded?: string }> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(timeoutMs) });
+    const body = await res.json().catch(() => ({})) as { ok?: unknown; status?: unknown; reason?: unknown };
+    if (body.status === "degraded" || body.ok === false) {
+      return { answered: true, degraded: typeof body.reason === "string" && body.reason ? body.reason : "an agent can't answer" };
+    }
+    return { answered: res.status === 200 };
+  } catch { return { answered: false }; }
+}
+
 /** Polls `probe` until it answers or `timeoutMs` passes. */
 export async function waitForEngineAnswer(probe: () => Promise<boolean>, timeoutMs: number, intervalMs = 500): Promise<boolean> {
   const end = Date.now() + timeoutMs;
@@ -78,6 +110,39 @@ export async function waitForEngineAnswer(probe: () => Promise<boolean>, timeout
     if (Date.now() >= end) return false;
     await new Promise(resolve => setTimeout(resolve, Math.min(intervalMs, Math.max(0, end - Date.now()))));
   }
+}
+
+export interface ServiceRestartSteps {
+  /** The service engine answers /readyz on the gateway port. */
+  probe(): Promise<boolean>;
+  /** The engine stopped its own service after a crash storm (its marker was seen): the owner decides, not this loop. */
+  stormed(): boolean;
+  quitting(): boolean;
+  /** `branch gateway start` through the service manager. */
+  startService(): Promise<void>;
+  /** Resolves true once the service engine answers, false when it never does in time. */
+  waitForService(): Promise<boolean>;
+  log(line: string): void;
+}
+
+/**
+ * Brings a stopped engine service back through the service manager, never by starting a second engine in the app.
+ * An engine that answers again by itself, a crash storm the engine stopped itself for, and quit all leave it alone.
+ * Rejects when the started service does not answer, so the caller's backoff tries again.
+ */
+export async function restartStoppedServiceEngine(steps: ServiceRestartSteps): Promise<"answering" | "storm" | "quitting" | "restarted"> {
+  if (steps.quitting()) return "quitting";
+  if (await steps.probe()) return "answering";
+  if (steps.stormed()) {
+    steps.log("engine service: stopped after a crash storm; it starts again when Branch Agent is opened");
+    return "storm";
+  }
+  steps.log("engine service: not answering; starting it through the service manager");
+  await steps.startService();
+  if (steps.quitting()) return "quitting";
+  if (!await steps.waitForService()) throw new Error("the engine service was started but did not answer in time; see gateway.log");
+  steps.log("engine service: answering again after a restart");
+  return "restarted";
 }
 
 export type EngineMode = "service" | "child";

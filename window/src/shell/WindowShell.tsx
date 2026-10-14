@@ -11,6 +11,7 @@ import { isPreparationPending, isPreparationStalled, PreparationRetry, preparati
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
+import { pendingApprovalsWithin } from "../connect/update-probe";
 import { useBranchVersion } from "../connect/branch-version";
 import { LOCAL_ADDRESS, readTargetName, saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
@@ -23,7 +24,7 @@ import { pageName } from "../places-nav/settings-nav";
 import { effectiveDark, readThemeChoice, setThemeChoice, toggleTheme, type ThemeChoice } from "../theme/theme";
 import { BannerView, raiseBanner } from "./Banner";
 import { bannerFor } from "./banner-news";
-import { useProblemBanners } from "./problem-banners";
+import { useDiskFullBanner, useProblemBanners } from "./problem-banners";
 import { askBeforeDelete, ConfirmCatalogDelete, ConfirmDelete } from "./ConfirmDelete";
 import { conversationActions } from "./conversation-actions";
 import { SessionUnreadPatchGuard } from "../connect/unread-guard";
@@ -90,7 +91,6 @@ import { desktopControls } from "../connect/desktop-controls";
 import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
 import { useLockdown } from "./use-lockdown";
 import { LockdownBanner } from "./LockdownBanner";
-import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
 import { conversationNeedsYou } from "./conversation-more";
 import { ConversationMoreButton, HeaderRow, PlaceHead, TopBar } from "./TopBar";
@@ -326,25 +326,29 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   }, [dedicated]);
   // The desktop tray's live line and Pause all work (Private #454 C) read the live sessions list through this.
   const liveWork = useRef<{ list?: StatusContext["list"]; trunks: number; working: StatusContext["working"] }>({ trunks: 0, working: [] });
+  // The approvals this window shows, for the update probe to answer with when the gateway is slow (Private #1047).
+  const shownApprovals = useRef(0);
   useEffect(() => componentDesktop(session.gatewayUrl)?.onAutoApplyProbe?.(async () => {
-    const approvals = await Promise.all(["exec.approval.list", "plugin.approval.list", "branch.approval.list"].map(
-      method => session.request<unknown>(method, {}),
-    ));
-    const pendingApprovals = approvals.reduce<number>((count, result) => {
-      const items = Array.isArray(result) ? result : (result as { items?: unknown })?.items;
-      if (!Array.isArray(items)) throw new Error("Approval status is unavailable");
-      return count + items.length;
-    }, 0);
+    const pendingApprovals = await pendingApprovalsWithin(session, shownApprovals.current);
     return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles(),
       workingTrunks: liveWork.current.trunks };
   }), [session]);
   const { s, ready, lists, list, gatewayContacts, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  shownApprovals.current = pending.size;
   const workingRows = lists.rows.filter((r) => r.working);
   liveWork.current = { list, trunks: new Set(workingRows.map((r) => r.agentId)).size,
     working: workingRows.map((r) => ({ key: r.key, title: r.title || "", line: "", runIds: r.activeRunIds })) };
   useEffect(() => componentDesktop(session.gatewayUrl)?.onPauseAll?.(() => {
     const live = liveWork.current;
     if (live.list) void pauseAll({ session, list: live.list, working: live.working });
+  }), [session]);
+  // With the window closed, a Trunk's "done" also reaches a paired phone through the engine's push service (Private
+  // #454 D). Approvals already reach it from the engine itself. A computer without a paired phone sends nothing.
+  useEffect(() => componentDesktop(session.gatewayUrl)?.onPhonePush?.((notice) => {
+    void session.request<{ nodes?: { nodeId?: unknown; platform?: unknown }[] }>("node.list", {}).then(async (listed) => {
+      const phones = (listed?.nodes ?? []).filter((node) => typeof node.nodeId === "string" && /ios|iphone|ipad/i.test(String(node.platform ?? "")));
+      await Promise.all(phones.map((node) => session.request("push.test", { nodeId: node.nodeId, title: notice.title, body: notice.body }).catch(() => undefined)));
+    }, () => undefined);
   }), [session]);
   const lockdown = useLockdown(session.engine, ready, session);
   const toggleLockdown = () => void lockdown.toggle().catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
@@ -982,6 +986,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   useMarkRead(request, openRow, route.kind === "chat" && ready, () => void list.refresh());
   const rowExtras = useRowExtras(openKey, level, useCallback((key: string) => lists.rows.find((r) => r.key === key)?.title || "a conversation", [lists.rows]));
   useBannerNews(session, route.kind === "chat" ? openKey : null, rowName, (key) => trunkName(lists.rows.find((r) => r.key === key)?.agentId));
+  useDiskFullBanner();
   useProblemBanners({
     session,
     phase: s.status.phase,
@@ -1896,7 +1901,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           startOnReady={guide === "news-ready"}
           installed={installedRows({ setup: () => firstRun.open(0), shortcuts: () => setOverlay({ kind: "shortcuts" }), palette: () => setOverlay({ kind: "palette" }), settings: openSettings })}
           onOpenUpdates={() => openSettings("updates")}
-          onInstall={() => void stageWindowUpdate(session.engine).catch((e: unknown) => notify(`Couldn't install the update: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" }))}
           onClose={() => setGuide(null)}
         />
       ) : null}

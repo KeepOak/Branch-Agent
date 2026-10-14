@@ -20,6 +20,15 @@ export function isComputerUseDriverFile(path) {
   return /^cua-driver(?:\.exe)?$/u.test(path) || /^node_modules\/(?:.+\/node_modules\/)?@(?:trycua|ubjs)\//u.test(path);
 }
 
+/**
+ * The Codex platform packages (@openai/codex-<os>-<arch>: codex, its code-mode and voice hosts, rg; ~318 MiB).
+ * Releases ship only the small @openai/codex launcher; Codex turns use the Codex installed on the computer
+ * (engine/extensions/codex/src/app-server/installed-codex.ts). Nothing is downloaded.
+ */
+export function isCodexPlatformPackageFile(path) {
+  return /^node_modules\/(?:.+\/node_modules\/)?@openai\/codex-(?:darwin|linux|win32)-(?:arm64|x64)\//u.test(path);
+}
+
 /** Regular files under root, as forward-slash paths, sorted. Links are never followed. */
 async function regularFiles(root, folder = "") {
   const result = [];
@@ -55,9 +64,21 @@ export async function pruneComputerUseDriver(deployment) {
   return { removed: [...folders].sort(), files, bytes };
 }
 
+/** Remove the Codex platform packages from a production engine deployment; the launcher stays. */
+export async function pruneCodexPlatformPackages(deployment) {
+  const packages = new Set(); let files = 0; let bytes = 0;
+  for (const file of await regularFiles(deployment)) {
+    if (!isCodexPlatformPackageFile(file.path)) continue;
+    packages.add(file.path.match(/^(.*?@openai\/codex-[^/]+)\//u)[1]);
+    files += 1; bytes += file.bytes;
+  }
+  for (const folder of packages) await rm(join(deployment, folder), { recursive: true, force: true });
+  return { packages: [...packages].sort(), files, bytes };
+}
+
 /** Payload categories, biggest known items first; the first match owns a file. */
 export const PAYLOAD_CATEGORIES = [
-  ["Codex CLI binary", path => /^node_modules\/@openai\/codex-[^/]+\//u.test(path)],
+  ["Codex CLI binary", isCodexPlatformPackageFile],
   ["Computer use (cua-driver, @trycua)", isComputerUseDriverFile],
   ["Dependency source maps", path => isDevelopmentOnlyDependencyFile(path) && path.endsWith(".map")],
   ["Dependency declarations", path => isDevelopmentOnlyDependencyFile(path)],
@@ -84,11 +105,14 @@ export async function measurePayload(root) {
 }
 
 /**
- * The engine payload budget. Removed categories stay removed (computer use is fetched on first use). A bundled
- * plugin's setup chunks stay small: a relative import into engine source once copied the whole engine graph (67 MB)
- * into one plugin.
+ * The engine payload budget. Removed categories stay removed (Codex is the one the person installs; computer use is fetched on
+ * first use). A bundled plugin's setup chunks stay small: a relative import into engine source once copied the whole engine graph
+ * (67 MB) into one plugin.
  */
-export const PAYLOAD_BUDGET = { removed: ["Computer use (cua-driver, @trycua)", "Dependency source maps", "Dependency declarations"], setupChunkBytes: 16 * MiB };
+export const PAYLOAD_BUDGET = {
+  removed: ["Codex CLI binary", "Computer use (cua-driver, @trycua)", "Dependency source maps", "Dependency declarations"],
+  setupChunkBytes: 16 * MiB,
+};
 
 export function payloadBudgetProblems(payload, budget = PAYLOAD_BUDGET) {
   const problems = [];

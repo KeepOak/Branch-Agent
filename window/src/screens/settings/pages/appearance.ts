@@ -102,7 +102,7 @@ export const APPEARANCE_ROWS: Row[] = [
 
   // The list
   slot("appearance.list.threads", "The list", "Threads show as", [], { help: "How a contact’s threads show beside its chat. A contact’s ⋯ › View can differ.", control: "segmented",
-    options: [{ v: "column", label: "Column" }, { v: "rail", label: "Emoji rail" }, { v: "side", label: "Side tabs" }, { v: "tabs", label: "Tabs" }] }),
+    options: [{ v: "tabs", label: "Tabs" }, { v: "free", label: "Freedom Mode" }] }),
   { id: "appearance.list.ask-delete", page: "appearance", card: "The list", label: "Ask before deleting a conversation", help: "Removing a kept working copy always asks.", level: 1, control: "toggle",
     source: { kind: "look", key: "askDelete" }, fallback: true },
   fromClassic("appearance.list.headlines", "The list", "headlines"),

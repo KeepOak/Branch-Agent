@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { formatPayload, isComputerUseDriverFile, isDevelopmentOnlyDependencyFile, measurePayload, PAYLOAD_BUDGET, payloadBudgetProblems,
-  pruneComputerUseDriver, pruneProductionDependencies } from "./release-payload.mjs";
+import { formatPayload, isCodexPlatformPackageFile, isComputerUseDriverFile, isDevelopmentOnlyDependencyFile, measurePayload, PAYLOAD_BUDGET,
+  payloadBudgetProblems, pruneCodexPlatformPackages, pruneComputerUseDriver, pruneProductionDependencies } from "./release-payload.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -20,6 +20,8 @@ const deploymentFiles = {
   "dist/extensions/a2a/index.js": 5,
   "dist/extensions/a2a/.setup/api-abc.mjs": 700,
   "dist/extensions/reef/.setup/api-def.mjs": 30,
+  "node_modules/@openai/codex/bin/codex.js": 6,
+  "node_modules/@openai/codex/package.json": 1,
   "node_modules/@openai/codex-darwin-arm64/vendor/bin/codex": 1000,
   "node_modules/@trycua/cua-driver-darwin-arm64/libcua_driver_sdk.dylib": 200,
   "node_modules/@ubjs/core/index.js": 6,
@@ -84,7 +86,7 @@ test("the payload measure names each category and fails the budget for removed c
     "Computer use (cua-driver, @trycua)": 506,
     "Dependency source maps": 150,
     "Dependency declarations": 85,
-    "Other dependencies": 114,
+    "Other dependencies": 121,
     "Plugin private setup chunks": 730,
     "Control UI": 50,
     "Graft": 60,
@@ -93,6 +95,7 @@ test("the payload measure names each category and fails the budget for removed c
   });
   assert.deepEqual(before.setupChunks, { a2a: 700, reef: 30 });
   assert.deepEqual(payloadBudgetProblems(before), [
+    "Codex CLI binary: 1000 bytes shipped; this category is removed from releases",
     "Computer use (cua-driver, @trycua): 506 bytes shipped; this category is removed from releases",
     "Dependency source maps: 150 bytes shipped; this category is removed from releases",
     "Dependency declarations: 85 bytes shipped; this category is removed from releases",
@@ -100,11 +103,36 @@ test("the payload measure names each category and fails the budget for removed c
   assert.match(formatPayload(before), /^\| Engine payload \| MiB \|\n\|---\|---:\|\n\| Codex CLI binary \| 0\.0 \|/u);
 
   await pruneProductionDependencies(root);
+  await pruneCodexPlatformPackages(root);
   await pruneComputerUseDriver(root);
   const after = await measurePayload(root);
-  assert.equal(after.total, before.total - 150 - 85 - 506);
+  assert.equal(after.total, before.total - 150 - 85 - 1000 - 506);
+  assert.equal(after.categories["Codex CLI binary"], 0);
   assert.equal(after.categories["Computer use (cua-driver, @trycua)"], 0);
   assert.deepEqual(payloadBudgetProblems(after), []);
+});
+
+test("the release payload no longer contains the Codex binary; the launcher stays", async t => {
+  const root = await fixture(t);
+  // A copy nested under another package (codex-acp also depends on @openai/codex) goes too.
+  const nested = "node_modules/@agentclientprotocol/codex-acp/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex";
+  await mkdir(dirname(join(root, nested)), { recursive: true });
+  await writeFile(join(root, nested), "x".repeat(400));
+  assert.deepEqual(await pruneCodexPlatformPackages(root), {
+    packages: ["node_modules/@agentclientprotocol/codex-acp/node_modules/@openai/codex-linux-x64", "node_modules/@openai/codex-darwin-arm64"],
+    files: 2, bytes: 1400,
+  });
+  const files = await listFiles(root);
+  assert.deepEqual(files.filter(isCodexPlatformPackageFile), []);
+  assert(!files.some(path => /@openai\/codex-(?:darwin|linux|win32)-/u.test(path)), "no Codex platform package folder is left");
+  assert(files.includes("node_modules/@openai/codex/bin/codex.js") && files.includes("node_modules/@openai/codex/package.json"),
+    "the small launcher stays (source checkouts pair it with the bundled platform package)");
+  const payload = await measurePayload(root);
+  assert.equal(payload.categories["Codex CLI binary"], 0);
+  assert.deepEqual(payloadBudgetProblems({ ...payload, categories: { ...payload.categories, "Computer use (cua-driver, @trycua)": 0, "Dependency source maps": 0, "Dependency declarations": 0 } }), []);
+  for (const path of ["node_modules/@openai/codex/bin/codex.js", "node_modules/@openai/codex-sdk/index.js", "node_modules/@agentclientprotocol/codex-acp/dist/index.js"]) {
+    assert.equal(isCodexPlatformPackageFile(path), false, path);
+  }
 });
 
 test("the release payload no longer contains the computer-use driver; its plugin and pins stay", async t => {
@@ -131,6 +159,7 @@ test("the release payload no longer contains the computer-use driver; its plugin
 test("a plugin whose setup chunks copy the engine graph is over budget", async t => {
   const root = await fixture(t);
   await pruneProductionDependencies(root);
+  await pruneCodexPlatformPackages(root);
   await pruneComputerUseDriver(root);
   const payload = await measurePayload(root);
   assert.deepEqual(payloadBudgetProblems(payload, { ...PAYLOAD_BUDGET, setupChunkBytes: 100 }), [
@@ -143,9 +172,13 @@ test("the release build prunes the engine deployment and enforces the payload bu
   const source = await readFile(join(here, "release-build.mjs"), "utf8");
   const deploy = source.indexOf("productionDeployArguments(deployment");
   const prune = source.indexOf("pruneProductionDependencies(deployment)");
+  const codex = source.indexOf("pruneCodexPlatformPackages(deployment)");
   const budget = source.indexOf("payloadBudgetProblems(payload)");
   const archive = source.indexOf("makeComponentRelease({");
-  assert(deploy > 0 && prune > deploy && budget > prune && archive > budget, "Engine deploy, prune, budget and archive run in that order");
+  assert(deploy > 0 && prune > deploy && codex > prune && budget > codex && archive > budget,
+    "Engine deploy, prune (dependency files, then Codex), budget and archive run in that order");
+  assert.equal(PAYLOAD_BUDGET.removed.includes("Codex CLI binary"), true, "a returning Codex binary fails the release build");
+  assert.match(source, /"node_modules\/@openai\/codex\/bin\/codex\.js"/u, "the release still asserts the Codex launcher ships");
   const computerUse = source.indexOf("pruneComputerUseDriver(deployment)");
   assert(computerUse > deploy && budget > computerUse, "The computer-use driver is removed before the budget is checked");
   assert(!source.includes("stage-cua-driver-macos.sh"), "Release builds no longer stage the computer-use driver");

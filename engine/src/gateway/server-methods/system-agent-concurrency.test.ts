@@ -21,6 +21,7 @@ function makeSession(
       handle,
       historyLength: () => 0,
       historySince: () => [],
+      getPendingOperatorProposal: () => null,
     },
     welcome: "welcome text",
     lastUsedAt: 1,

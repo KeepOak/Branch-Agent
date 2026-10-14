@@ -1,0 +1,7 @@
+window:src/screens/settings/pages/devices-live.test.tsx
+window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/places/settings/set2/computer.test.tsx
+window:src/places/settings/set2/computer-more.test.tsx
+window:src/places/settings/set1/local.test.tsx

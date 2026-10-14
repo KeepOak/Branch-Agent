@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat, truncate, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, truncate, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { makeComponentRelease } from "./make-component-release.mjs";
@@ -331,4 +331,124 @@ test("the discard line goes through the same 20 MB cap as desktop.log", () => fi
   assert.equal(await exists(join(cfg.dataDir, "desktop.1.log")), true, "the full log was rotated to an archive");
   assert.match(await readFile(log, "utf8"), /desktop update 0\.4\.5 discarded: app\.asar\.staged is missing/);
   assert.ok((await stat(log)).size < 1024 * 1024, "the live log is small again");
+}));
+
+test("an unreadable pending record is discarded and logged, and the app starts", () => fixture(async ({ cfg, install }) => {
+  const journal = join(cfg.dataDir, "desktop-update-pending.json");
+  await writeFile(journal, '{"version":"0.4.5","phase":"sta');
+  const launch = await launchHandOff(cfg, install);
+  assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
+  assert.equal(await exists(journal), false, "the unreadable record is removed");
+  assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update discarded: the record is unreadable \(.+\); starting the current build/);
+}));
+
+test("a staged whole app whose app.asar fails its SHA256 is discarded at launch, never swapped in", () => fixture(async ({ cfg, request, install }) => {
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const journal = await desktopUpdate.readDesktopJournal(cfg);
+  assert.equal(journal.kind, "runtime");
+  const asar = join(journal.staged, "resources", `app${desktopUpdate.STAGED_ASAR}`);
+  const digest = createHash("sha256").update(await readFile(asar)).digest("hex");
+  assert.equal(journal.stagedSha256, digest, "staging records the SHA256 of the whole app's app.asar");
+  await writeFile(asar, "tampered desktop asar");
+  const launch = await launchHandOff(cfg, install);
+  assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
+  assert.equal(await exists(join(cfg.dataDir, "desktop-update-pending.json")), false, "the altered record is removed");
+  assert.equal(await readFile(join(install.appDir, "Branch Agent.exe"), "utf8"), "old runtime", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: app\.asar\.staged fails its SHA256/);
+}, { runtime: true }));
+
+test("a pending update whose folder vanished (ENOENT writing the helper) is discarded and the app starts", () => fixture(async ({ root, cfg, install }) => {
+  // The staged file and its target exist and match the record, but the update's own folder is gone: the hand-off's
+  // first write into it fails with ENOENT, as the 12:30Z launch did on payload/desktop-update-helper.js.
+  const target = join(root, "Branch-Agent.AppImage"), staged = `${target}.update-0.4.5`;
+  await writeFile(target, "old appimage"); await writeFile(staged, "new appimage");
+  const stagedSha256 = createHash("sha256").update("new appimage").digest("hex");
+  const journal = join(cfg.dataDir, "desktop-update-pending.json");
+  await writeFile(journal, JSON.stringify({ version: "0.4.5", sha256: stagedSha256, kind: "appimage", staged, target, phase: "staged", stagedSha256,
+    work: join(cfg.dataDir, "updates", "desktop-0.4.5-gone00") }));
+  const launch = await launchHandOff(cfg, install);
+  assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
+  assert.equal(await exists(journal), false, "the record is removed");
+  assert.equal(await exists(staged), false, "the orphaned staged file is removed");
+  assert.equal(await readFile(target, "utf8"), "old appimage", "the installed app is untouched");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: ENOENT.*desktop-update-helper\.js.*; starting the current build/);
+}));
+
+/**
+ * Two "volumes": the data folder (where updates are staged) and Applications. A rename between them fails with
+ * EXDEV, as it does from an external data disk into /Applications.
+ */
+async function crossVolume(run) {
+  const root = await mkdtemp(join(tmpdir(), "desktop-exdev-"));
+  const dataVolume = join(root, "data-volume"), appVolume = join(root, "Applications");
+  const dataDir = join(dataVolume, "data"), payload = join(dataDir, "updates", "desktop-0.4.5-abc123", "payload");
+  const staged = join(payload, "Branch Agent.app"), target = join(appVolume, "Branch Agent.app");
+  for (const [bundle, label] of [[staged, "new"], [target, "old"]]) {
+    await mkdir(join(bundle, "Contents", "MacOS"), { recursive: true });
+    await mkdir(join(bundle, "Contents", "Resources"), { recursive: true });
+    await writeFile(join(bundle, "Contents", "MacOS", "Branch Agent"), `${label} runtime`);
+    await writeFile(join(bundle, "Contents", "Resources", label === "new" ? `app${desktopUpdate.STAGED_ASAR}` : "app.asar"), `${label} desktop asar`);
+  }
+  const plan = { journal: join(dataDir, "desktop-update-pending.json"), versionFile: join(dataDir, "desktop-update-version.txt"),
+    rejectedFile: join(dataDir, "desktop-update-rejected.json"), log: join(dataDir, "desktop.log"), waitPid: 0,
+    relaunch: { command: process.execPath, args: ["-e", `require("node:fs").rmSync(${JSON.stringify(join(dataDir, "desktop-update-pending.json"))}, { force: true })`] },
+    confirmTimeoutMs: 15_000 };
+  const exited = spawn(process.execPath, ["-e", ""]); await new Promise(resolve => exited.on("exit", resolve));
+  plan.waitPid = exited.pid;
+  await writeFile(plan.journal, JSON.stringify({ version: "0.4.5", sha256: "a".repeat(64), kind: "runtime", staged, target, phase: "staged" }));
+  const side = path => path.startsWith(dataVolume) ? "data" : "apps";
+  const calls = { copies: 0, renames: [] };
+  const fs = {
+    rename: async (source, to) => {
+      calls.renames.push([source, to]);
+      if (side(source) !== side(to)) throw Object.assign(new Error(`EXDEV: cross-device link not permitted, rename '${source}' -> '${to}'`), { code: "EXDEV" });
+      await rename(source, to);
+    },
+    copy: async (source, to) => { calls.copies++; await cp(source, to, { recursive: true, verbatimSymlinks: true }); },
+    remove: path => rm(path, { recursive: true, force: true }),
+  };
+  try { await run({ root, appVolume, dataDir, staged, target, plan, fs, calls }); }
+  finally { await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
+}
+const leftovers = async dir => (await readdir(dir)).filter(name => name.includes(".incoming-") || name.includes(".failed-"));
+
+test("EXDEV: a staged app on another volume is copied beside the app, then swapped in by a rename on that volume", () => crossVolume(async ({ appVolume, staged, target, plan, fs, calls }) => {
+  assert.equal(await runHelper(plan, fs), "applied");
+  assert.equal(calls.copies, 1, "the cross-volume move fell back to a copy");
+  assert.equal(await readFile(join(target, "Contents", "MacOS", "Branch Agent"), "utf8"), "new runtime");
+  assert.equal(await readFile(join(target, "Contents", "Resources", "app.asar"), "utf8"), "new desktop asar");
+  assert.equal(await readFile(join(`${target}.previous`, "Contents", "MacOS", "Branch Agent"), "utf8"), "old runtime", "the previous app is kept for rollback");
+  assert.deepEqual(await leftovers(appVolume), [], "no temp copy is left beside the app");
+  assert.equal(await exists(join(staged, "Contents", "MacOS", "Branch Agent")), false, "the staged original is cleaned up once the copy is in place");
+  for (const [source, to] of calls.renames.filter(([source]) => source === target || source.includes(".incoming-"))) {
+    assert.equal(dirname(source), dirname(to), `the swap renames stay on the app's volume: ${source} -> ${to}`);
+  }
+  assert.match(await readFile(plan.log, "utf8"), /different volumes; copied the new copy beside the app/);
+}));
+
+test("EXDEV: a copy that fails leaves the installed app in place, removes the temp copy and keeps the update staged", () => crossVolume(async ({ appVolume, staged, target, plan, fs }) => {
+  fs.copy = async (source, to) => {
+    await mkdir(join(to, "Contents"), { recursive: true });
+    await writeFile(join(to, "Contents", "partial"), "half a bundle");
+    throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
+  };
+  assert.equal(await runHelper(plan, fs), "kept");
+  assert.equal(await readFile(join(target, "Contents", "MacOS", "Branch Agent"), "utf8"), "old runtime", "the installed app never moved");
+  assert.equal(await exists(join(`${target}.previous`, "Contents", "MacOS", "Branch Agent")), false, "the installed app was never moved aside");
+  assert.deepEqual(await leftovers(appVolume), [], "the partial temp copy is removed");
+  assert.equal(await readFile(join(staged, "Contents", "MacOS", "Branch Agent"), "utf8"), "new runtime", "the staged copy stays for a retry");
+  const journal = JSON.parse(await readFile(plan.journal, "utf8"));
+  assert.equal(journal.phase, "staged"); assert.ok(journal.heldUntil > Date.now());
+  assert.match(await readFile(plan.log, "utf8"), /could not bring the new copy beside the app \(Error: ENOSPC/);
+}));
+
+test("EXDEV: a new app that never confirms is rolled back without a cross-volume move", () => crossVolume(async ({ appVolume, target, plan, fs }) => {
+  plan.relaunch = { command: process.execPath, args: ["-e", "setTimeout(() => {}, 4000)"] };
+  plan.confirmTimeoutMs = 1500;
+  assert.equal(await runHelper(plan, fs), "rolled-back");
+  assert.equal(await readFile(join(target, "Contents", "MacOS", "Branch Agent"), "utf8"), "old runtime", "the previous app is back");
+  assert.deepEqual(await leftovers(appVolume), [], "the failed copy is removed from beside the app");
+  assert.equal(await exists(plan.journal), false);
+  assert.equal(JSON.parse(await readFile(plan.rejectedFile, "utf8")).version, "0.4.5");
 }));

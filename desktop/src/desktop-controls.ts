@@ -1,4 +1,6 @@
-// The window's desktop controls: Start with Windows, keep working when the window closes, keep this computer awake,
+// The window's desktop controls: Start with Windows, keep working when the window closes, keep this computer awake
+// while Trunks work (Private #454 D: the blocker itself is keep-awake.ts, held only while a run is active), keep working
+// when nobody is signed in (Linux linger),
 // the branch command on PATH, the tray's usage ring and the "Get it" download pages. Every OS call is injected, so the
 // tests use fakes and never change this computer's startup, power or PATH settings.
 import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
@@ -10,8 +12,10 @@ import { isOwnedComponentWindow } from "./component-update-ipc";
 export interface DesktopSettings {
   /** Closing the window hides it in the tray and the engine keeps working (on by default, as before). */
   keepWorking: boolean;
-  /** Holds off idle sleep while the app runs. Off until the owner chooses. */
+  /** Keeps this computer awake while a Trunk works, and only then (keep-awake.ts). On by default, when plugged in. */
   keepAwake: boolean;
+  /** Keep awake while a Trunk works on battery too. Off by default: on battery the computer may sleep. */
+  keepAwakeOnBattery: boolean;
   /** The tray icon shows the usage ring instead of the Branch icon. */
   trayUsage: boolean;
   /** Apply verified releases after a sustained idle period. */
@@ -23,10 +27,14 @@ export interface DesktopSettings {
 export interface ControlsState extends DesktopSettings {
   startWithWindows: boolean;
   branchOnPath: boolean;
+  /** Linux only: the engine service keeps running when nobody is signed in (systemd linger). Off by default. */
+  keepWorkingSignedOut?: boolean;
+  /** One-time lines for Settings under a control, such as why the engine runs inside the app on this computer. */
+  notes?: Partial<Record<string, string>>;
 }
-export type ControlName = keyof ControlsState;
+export type ControlName = { [K in keyof ControlsState]-?: ControlsState[K] extends boolean | undefined ? K : never }[keyof ControlsState];
 
-export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true, agentControl: false };
+export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, keepAwake: true, keepAwakeOnBattery: false, trayUsage: false, autoApplyUpdates: true, agentControl: false };
 
 /** The engine's own app links (engine/ui/src/pages/apps/view.ts); desktops come from Branch's releases. */
 const DESKTOP_RELEASES = `https://github.com/${RELEASE_REPOSITORY}/releases/latest`;
@@ -42,7 +50,10 @@ export const DOWNLOAD_PAGES: Readonly<Record<string, string>> = {
 export interface ControlDeps {
   settingsFile: string;
   login: { get(): boolean; set(on: boolean): void };
-  awake: { start(): number; stop(id: number): void };
+  /** Linux: the engine's systemd-linger path (`branch gateway linger`); absent elsewhere. */
+  linger?: { get(): Promise<boolean>; set(on: boolean): Promise<void> };
+  /** One-time lines for Settings (the engine running inside the app, from engine-service takeChildModeNotice). */
+  notes?: () => Partial<Record<string, string>>;
   cli: {
     installed(): Promise<boolean>; install(): Promise<void>; uninstall(): Promise<void>;
     /** Rewrites shims that exist with this launch's node and engine paths (never creates one, never touches PATH). */
@@ -61,7 +72,7 @@ export interface DesktopControls {
   set(name: ControlName, on: boolean): Promise<ControlsState>;
   openDownload(id: string): Promise<void>;
   trayUsage(left: number | null): void;
-  /** Applies saved settings at launch (keep awake). */
+  /** Applies saved settings at launch (refreshes the branch command). */
   apply(): void;
   dispose(): void;
 }
@@ -70,7 +81,7 @@ export function readSettings(file: string): DesktopSettings {
   try {
     const saved = JSON.parse(readFileSync(file, "utf8")) as Partial<DesktopSettings>;
     const pick = (key: keyof DesktopSettings) => typeof saved[key] === "boolean" ? saved[key] : DEFAULT_SETTINGS[key];
-    return { keepWorking: pick("keepWorking"), keepAwake: pick("keepAwake"), trayUsage: pick("trayUsage"), autoApplyUpdates: pick("autoApplyUpdates"), agentControl: pick("agentControl") };
+    return { keepWorking: pick("keepWorking"), keepAwake: pick("keepAwake"), keepAwakeOnBattery: pick("keepAwakeOnBattery"), trayUsage: pick("trayUsage"), autoApplyUpdates: pick("autoApplyUpdates"), agentControl: pick("agentControl") };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -78,8 +89,9 @@ export function readSettings(file: string): DesktopSettings {
 
 export function createDesktopControls(deps: ControlDeps): DesktopControls {
   let saved = readSettings(deps.settingsFile);
-  let blocker: number | undefined;
   let lastLeft: number | null = null;
+  // Linger is the OS's state, read once through the engine and then kept as changed here.
+  let linger: Promise<boolean | undefined> | undefined;
   // A full disk keeps the new setting in memory and shows the disk-full banner; the next save writes it.
   const save = (): void => {
     saveUnlessDiskFull(() => {
@@ -87,19 +99,24 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
       (deps.writeFile ?? writeFileSync)(deps.settingsFile, `${JSON.stringify(saved, null, 2)}\n`);
     });
   };
-  const holdAwake = (on: boolean): void => {
-    if (on && blocker === undefined) blocker = deps.awake.start();
-    if (!on && blocker !== undefined) { deps.awake.stop(blocker); blocker = undefined; }
+  const get = async (): Promise<ControlsState> => {
+    linger ??= deps.linger?.get().catch(() => undefined);
+    const signedOut = await linger;
+    const notes = deps.notes?.() ?? {};
+    return { ...saved, startWithWindows: deps.login.get(), branchOnPath: await deps.cli.installed(),
+      ...(deps.linger ? { keepWorkingSignedOut: signedOut ?? false } : {}), ...(Object.keys(notes).length ? { notes } : {}) };
   };
-  const get = async (): Promise<ControlsState> => ({ ...saved, startWithWindows: deps.login.get(), branchOnPath: await deps.cli.installed() });
   const set = async (name: ControlName, on: boolean): Promise<ControlsState> => {
     if (typeof on !== "boolean") throw new Error("A desktop control takes on or off");
     if (name === "startWithWindows") deps.login.set(on);
     else if (name === "branchOnPath") await (on ? deps.cli.install() : deps.cli.uninstall());
-    else if (name === "keepWorking" || name === "keepAwake" || name === "trayUsage" || name === "autoApplyUpdates" || name === "agentControl") {
+    else if (name === "keepWorkingSignedOut") {
+      if (!deps.linger) throw new Error("Keeping Branch working when nobody is signed in is a Linux choice");
+      await deps.linger.set(on);
+      linger = Promise.resolve(on);
+    } else if (name === "keepWorking" || name === "keepAwake" || name === "keepAwakeOnBattery" || name === "trayUsage" || name === "autoApplyUpdates" || name === "agentControl") {
       saved = { ...saved, [name]: on };
       save();
-      if (name === "keepAwake") holdAwake(on);
       if (name === "trayUsage") deps.tray.usage(lastLeft, on);
       deps.onChange?.({ ...saved });
     } else throw new Error(`Unknown desktop control: ${String(name)}`);
@@ -117,11 +134,10 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
       deps.tray.usage(lastLeft, saved.trayUsage);
     },
     apply: () => {
-      holdAwake(saved.keepAwake);
       // An update can move the bundled node; the branch command (and agents registered with it) must keep working.
       try { deps.cli.refresh?.(); } catch { /* a locked or read-only shim keeps its old copy */ }
     },
-    dispose: () => holdAwake(false),
+    dispose: () => undefined,
   };
 }
 

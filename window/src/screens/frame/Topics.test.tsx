@@ -32,7 +32,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 
 function setup(currentKey = "agent:ledger:t1") {
-  const request = vi.fn(async (method: string) => (method === "contacts.topics" ? { topics } : {}));
+  const request = vi.fn(async (method: string) => (method === "contacts.topics" ? { topics } : method === "sessions.create" ? { key: "agent:ledger:t3" } : {}));
   const session = { request, onGatewayEvent: () => () => undefined, engine: { request } } as unknown as SaplingSession;
   const list = { refresh: vi.fn(async () => undefined) } as unknown as ConversationList;
   const onOpen = vi.fn();
@@ -53,27 +53,39 @@ it("finds the Trunk whose threads show from its own conversation or one of its t
   expect(topicContactFor([...rows, conv("agent:ledger:other", { parentKey: "agent:scout:main" })], "agent:ledger:other")).toBeNull();
 });
 
-it("draws the Classic thread rail in the topics column on clear glass, with General and each thread", async () => {
+it("draws the threads above the chat as Tabs by default, on clear glass, with General and each thread", async () => {
   const { Host, request } = setup();
   await act(async () => root.render(<Host />));
   await flush();
   expect(request).toHaveBeenCalledWith("contacts.topics", { contactId: "trunk:ledger", limit: 200 });
-  const rail = column().querySelector(".r1-topic-host")!;
+  expect(column().childElementCount).toBe(0);
+  const rail = above().querySelector(".r1-topic-host")!;
   expect(rail.classList).toContain("g-clear");
-  expect(rail.querySelector('nav[aria-label="Threads"]')).not.toBeNull();
+  expect(rail.querySelector(".topicsT5.lay-tabs")).not.toBeNull();
   expect(rail.textContent).toContain("General");
   expect(rail.textContent).toContain("Card charges");
-  expect(above().childElementCount).toBe(0);
 });
 
-it("renames a thread through sessions.patch from its More menu, in a clear dialog", async () => {
+it("reads a saved removed layout as Tabs above the chat, even at a narrow width", async () => {
+  narrow = true;
+  localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "column", width: 300, per: { "trunk:ledger": "side" } }));
+  const { Host } = setup();
+  await act(async () => root.render(<Host />));
+  await flush();
+  expect(column().childElementCount).toBe(0);
+  expect(above().querySelector(".topicsT5.lay-tabs")).not.toBeNull();
+  expect(above().querySelector(".r1-topic-fold")).toBeNull();
+});
+
+it("renames a thread from its tab's right-click menu through sessions.patch, in a clear dialog", async () => {
   const { Host, request } = setup();
   await act(async () => root.render(<Host />));
   await flush();
-  await act(async () => column().querySelector<HTMLButtonElement>('[aria-label="More for Card charges"]')!.click());
-  const rename = [...column().querySelectorAll<HTMLButtonElement>(".pop button")].find((b) => b.textContent?.startsWith("Rename"))!;
+  const tab = above().querySelector<HTMLButtonElement>('[aria-label="Card charges"]')!;
+  await act(async () => tab.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })));
+  const rename = [...above().querySelectorAll<HTMLButtonElement>(".pop button")].find((b) => b.textContent?.startsWith("Rename"))!;
   await act(async () => rename.click());
-  const dialog = column().querySelector<HTMLElement>('[role="dialog"][aria-label="Rename thread"]')!;
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-label="Rename thread"]')!;
   expect(dialog.classList).toContain("g-clear");
   const input = dialog.querySelector<HTMLInputElement>("input")!;
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Card fees"); input.dispatchEvent(new Event("input", { bubbles: true })); });
@@ -82,29 +94,45 @@ it("renames a thread through sessions.patch from its More menu, in a clear dialo
   expect(request).toHaveBeenCalledWith("sessions.patch", { key: "agent:ledger:t2", agentId: "ledger", expectedSessionId: "s2", label: "Card fees" });
 });
 
-it("changes a thread's emoji from its emoji button and keeps the choice", async () => {
+it("changes a thread's icon from its tab's menu and keeps the choice", async () => {
   const { Host } = setup();
   await act(async () => root.render(<Host />));
   await flush();
-  await act(async () => column().querySelector<HTMLButtonElement>('[aria-label="Change the emoji for Card charges"]')!.click());
-  const option = column().querySelector<HTMLButtonElement>('.emoGridT5 [role="option"]')!;
+  const tab = above().querySelector<HTMLButtonElement>('[aria-label="Card charges"]')!;
+  await act(async () => tab.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })));
+  const change = [...above().querySelectorAll<HTMLButtonElement>(".pop button")].find((b) => b.textContent?.startsWith("Change icon"))!;
+  await act(async () => change.click());
+  const option = document.querySelector<HTMLButtonElement>('.emoGridT5 [role="option"]')!;
   const chosen = option.textContent!;
   await act(async () => option.click());
   expect(JSON.parse(localStorage.getItem("branch-topic-emoji-t5")!)).toEqual({ "agent:ledger:t2": chosen });
 });
 
-it("folds the threads into a Threads · N chip above the chat below 900 px", async () => {
-  narrow = true;
+it("draws Freedom Mode as the threads column beside the chat, with the + in its header", async () => {
+  localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "free", width: 0, per: {} }));
   const { Host } = setup();
   await act(async () => root.render(<Host />));
   await flush();
-  expect(column().childElementCount).toBe(0);
-  const chip = above().querySelector<HTMLButtonElement>(".r1-topic-fold > button")!;
-  expect(chip.textContent).toBe("Threads · 3");
-  expect(above().querySelector(".r1-topic-host")).toBeNull();
-  await act(async () => chip.click());
-  expect(chip.getAttribute("aria-expanded")).toBe("true");
-  expect(above().querySelector(".r1-topic-host")?.textContent).toContain("Month-end close");
+  expect(above().childElementCount).toBe(0);
+  const rail = column().querySelector(".r1-topic-host")!;
+  expect(rail.querySelector(".topicsT5.lay-column")).not.toBeNull();
+  expect(rail.querySelector(".tpResT5")).toBeNull();
+  expect(rail.querySelector(".tpHeadT5 > .tpAddP17")).not.toBeNull();
+  expect(rail.textContent).toContain("Card charges");
+});
+
+it("creates a topic from the + under the Trunk's main conversation, then opens it", async () => {
+  const { Host, request, onOpen } = setup();
+  await act(async () => root.render(<Host />));
+  await flush();
+  await act(async () => above().querySelector<HTMLButtonElement>('.tpTabsT5 > .tpAddP17')!.click());
+  const name = document.querySelector<HTMLInputElement>('input[placeholder="What is it about?"]')!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(name, "Ski weekend"); name.dispatchEvent(new Event("input", { bubbles: true })); });
+  const create = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((b) => b.textContent === "Create")!;
+  await act(async () => create.click());
+  await flush();
+  expect(request).toHaveBeenCalledWith("sessions.create", { agentId: "ledger", parentSessionKey: "agent:ledger:main", label: "Ski weekend", displayName: "Ski weekend" });
+  expect(onOpen).toHaveBeenCalledWith("agent:ledger:t3");
 });
 
 it("draws Tabs above the chat when that is the chosen layout", async () => {

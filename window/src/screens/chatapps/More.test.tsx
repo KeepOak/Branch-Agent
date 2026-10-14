@@ -54,7 +54,7 @@ it("lists every app the engine runs, not only the R1 four, and opens Manage for 
   expect(manage).toHaveBeenCalledWith(expect.objectContaining({ id: "signal", channel: "signal" }));
 });
 
-it("sets up any app the engine has through its wizard, and finds another app, as Classic's All chat apps does", async () => {
+it("sets up any app the engine has through its wizard, and has no Find another app button (#1049: not in the preview)", async () => {
   const { host, setup, request } = await render();
   const matrix = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find((b) => b.textContent?.includes("Matrix"))!;
   expect(matrix.getAttribute("aria-disabled")).toBe("false");
@@ -63,13 +63,10 @@ it("sets up any app the engine has through its wizard, and finds another app, as
   const extra = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find((b) => b.textContent?.includes("Nostrish"))!;
   await act(async () => extra.click());
   expect(setup).toHaveBeenLastCalledWith(expect.objectContaining({ channel: "nostrish" }));
-  const calls = setup.mock.calls.length;
-  await act(async () => button(host, "Find another app").click());
-  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-  // The engine's own setup with no app chosen, in the generic dialog that follows the channel the engine picks.
-  expect(setup.mock.calls.length).toBe(calls);
-  expect(request).toHaveBeenCalledWith("wizard.start", { flow: "channels" });
-  expect(document.querySelector('[data-testid="chatapps-connect"]')).not.toBeNull();
+  // Every app the engine has is its own card (Nostrish above), so the preview has no Find another app.
+  expect([...host.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Find another app");
+  expect(document.querySelector('[data-testid="chatapps-connect"]')).toBeNull();
+  expect(request).not.toHaveBeenCalledWith("wizard.start", { flow: "channels" });
 });
 
 it("approves a request with Tell them and make them the owner (channels.pairing.approve notify, bootstrapCommandOwner)", async () => {
@@ -164,4 +161,35 @@ it("opens the watchdog log (logs.tail) and turns the watch off on every connecte
   await act(async () => button(host, "Open watchdog log").click());
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   expect(request.mock.calls.some(([m]) => m === "logs.tail")).toBe(true);
+});
+
+it("#1049: at Regular the page ends after Who answers; the setting cards and Who may message start at Advanced", async () => {
+  const { host } = await render("regular");
+  const heads = () => [...host.querySelectorAll("h2")].map((h) => h.textContent);
+  // preview Chat apps at Regular: Your chat apps, the app groups, Who answers.
+  expect(heads()).not.toEqual(expect.arrayContaining(["How replies look & arrive"]));
+  for (const card of ["How replies look & arrive", "Groups", "Commands", "Approvals & what Trunks may do", "Limits & quiet"]) expect(heads(), card).not.toContain(card);
+  expect(host.querySelector('[aria-label^="Who may message"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Show typing"]')).toBeNull();
+  await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = "";
+  const adv = await render("advanced");
+  expect(adv.host.querySelector('[aria-label="Show typing"]')).not.toBeNull();
+  expect(adv.host.querySelector('[aria-label^="Who may message"]')).not.toBeNull();
+  expect(adv.host.querySelector('[aria-label="Hold up to"]')).toBeNull();
+});
+
+it("#1049: every app card shows its set-up time (preview TIME_T5); apps not wired yet keep the Coming action", async () => {
+  const { host } = await render("regular");
+  const cards = [...host.querySelectorAll<HTMLElement>(".r1-ca-card")];
+  const sub = (name: string) => cards.find((c) => c.querySelector(".r1-ca-text b")?.textContent === name)?.querySelector(".r1-ca-text small")?.textContent;
+  expect(sub("WhatsApp Business")).toBe("About 15 minutes · needs a Meta business account");
+  expect(sub("iMessage")).toBe("About 5 minutes · needs a Mac");
+  expect(sub("Viber")).toBe("About 5 minutes");
+  expect(sub("A webhook of your own")).toBe("About 2 minutes");
+  // The catalogue's cards (an app only the engine lists keeps the engine's own line under its name).
+  const idle = cards.filter((c) => !/Connected|Manage/.test(c.textContent ?? "") && c.closest("section")?.querySelector("h3, b")?.textContent !== "Also in Branch" && !/Nostrish/.test(c.textContent ?? ""));
+  expect(idle.length).toBeGreaterThan(40);
+  expect(idle.filter((c) => !/^About \d+ minutes?/.test(c.querySelector(".r1-ca-text small")?.textContent ?? "")).map((c) => c.textContent)).toEqual([]);
+  expect(host.textContent).not.toContain("Coming in a later update");
+  expect(cards.find((c) => c.querySelector(".r1-ca-text b")?.textContent === "Viber")?.querySelector(".r1-ca-action")?.textContent).toBe("Coming");
 });
