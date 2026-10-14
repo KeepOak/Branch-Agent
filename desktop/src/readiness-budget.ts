@@ -1,5 +1,6 @@
 // Private #951: readiness budgets come from this host's measured cold start, never below a floor, not a flat 120 s.
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { saveUnlessDiskFull } from "./disk-full";
 import { ADMISSION_ROLLBACK_AFTER_MS } from "./agent-admission";
 import { HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STANDBY_READY_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 
@@ -36,8 +37,11 @@ export function recordColdStart(file: string, ms: number): number[] {
   const samplesMs = readColdStarts(file);
   if (!Number.isFinite(ms) || ms <= 0) return samplesMs;
   const next = [...samplesMs, Math.round(ms)].slice(-COLD_START_SAMPLES);
-  writeFileSync(`${file}.tmp`, JSON.stringify({ samplesMs: next }));
-  renameSync(`${file}.tmp`, file);
+  // A full disk keeps this sample in memory only; the budget still sizes from the samples already saved.
+  saveUnlessDiskFull(() => {
+    writeFileSync(`${file}.tmp`, JSON.stringify({ samplesMs: next }));
+    renameSync(`${file}.tmp`, file);
+  });
   return next;
 }
 

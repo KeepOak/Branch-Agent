@@ -15,7 +15,9 @@ import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
-import { keepWindowResident } from "./resident-window";
+import { keepWindowResident, showTrayStatus } from "./resident-window";
+import { readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
+import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
 import { canUndoComponentUpdate, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
@@ -31,6 +33,7 @@ import { RotatingLog, uiEventLine } from "./diagnostics-log";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 import { readTail, recentLines, reportReadme } from "./diagnostics-report";
 import { zipStored } from "./diagnostics-zip";
+import { DISK_FULL_MESSAGE, diskIsFull, installDiskFullGuard, onDiskFullChange, reportDiskFull, saveUnlessDiskFull, watchDiskSpace } from "./disk-full";
 
 /** How much of each log the report reads from the end. The time window then keeps only recent lines. */
 const REPORT_TAIL_BYTES = 4 * 1024 * 1024;
@@ -109,6 +112,13 @@ function log(line: string): void {
 }
 const launchStarted = Date.now();
 log(`launch v${app.getVersion()} pid ${process.pid}`);
+// Private #1036: a full disk pauses saving behind one banner and never raises Electron's modal error box, which also
+// blocked a normal quit. Any other uncaught error is still reported the way Electron reports it.
+installDiskFullGuard(process, error => {
+  const detail = error.stack ?? String(error);
+  log(`uncaught main-process error: ${detail}`);
+  if (!HIDDEN) dialog.showErrorBox("A JavaScript error occurred in the main process", `Uncaught Exception:\n${detail}`);
+});
 
 // Own profile and lock, apart from the old installed Branch Agent app.
 app.setPath("userData", join(cfg.dataDir, "electron"));
@@ -141,7 +151,7 @@ let lastGoodEngineDir: string | undefined;
 function writeGatewayPortFile(port: number): void {
   const file = join(cfg.dataDir, "gateway-port");
   try { writeFileSync(`${file}.tmp`, String(port)); renameSync(`${file}.tmp`, file); }
-  catch (error) { log(`gateway-port could not be recorded: ${String(error)}`); }
+  catch (error) { reportDiskFull(error); log(`gateway-port could not be recorded: ${String(error)}`); }
 }
 function adoptGatewayPort(port: number): void {
   gatewayPort = port;
@@ -166,12 +176,18 @@ const ownedWebContents = (sender: unknown) => {
   const owner = BrowserWindow.fromWebContents(sender as Electron.WebContents);
   return owner && branchWindows().includes(owner) ? owner.webContents : undefined;
 };
+// One plain banner while the disk is full; it goes away when a write lands again or space comes back.
+onDiskFullChange(full => {
+  log(full ? "the disk is full: saving paused" : "disk space is back: saving resumed");
+  sendToBranchWindows(full ? "branch-desktop:disk-full" : "branch-desktop:disk-ok", DISK_FULL_MESSAGE);
+});
+watchDiskSpace(cfg.dataDir);
 let quitting = false;
 const conversationWindowFile = join(cfg.dataDir, "conversation-windows.json");
 const conversationStateFile = (key: string): string => `conversation-window-${createHash("sha256").update(key).digest("hex").slice(0, 20)}.json`;
 let pendingSavedConversationKeys = savedConversationKeys();
 function saveConversationWindows(): void {
-  try { writeFileSync(conversationWindowFile, JSON.stringify([...new Set([...pendingSavedConversationKeys, ...conversationWindows.keys()])])); } catch { /* a window remains usable without persistence */ }
+  try { writeFileSync(conversationWindowFile, JSON.stringify([...new Set([...pendingSavedConversationKeys, ...conversationWindows.keys()])])); } catch (error) { reportDiskFull(error); /* a window remains usable without persistence */ }
   if (win && !win.isDestroyed()) win.webContents.send("branch-desktop:conversation-windows", [...conversationWindows.keys()]);
 }
 function savedConversationKeys(): string[] {
@@ -256,7 +272,8 @@ const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, TRAY
 } });
 let nextProbeId = 0;
 
-async function probeOneWindow(owner: Electron.WebContents): Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }> {
+type WindowState = { pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean; workingTrunks?: number };
+async function probeOneWindow(owner: Electron.WebContents): Promise<WindowState> {
   if (!owner || owner.isDestroyed()) throw new Error("The window is not ready to report approvals and drafts");
   const id = ++nextProbeId;
   return new Promise((resolve, reject) => {
@@ -265,21 +282,25 @@ async function probeOneWindow(owner: Electron.WebContents): Promise<{ pendingApp
     const receive = (event: Electron.IpcMainEvent, replyId: unknown, value: unknown) => {
       if (replyId !== id || !isOwnedComponentWindow(event, owner, windowUrl())) return;
       cleanup();
-      const result = value as { pendingApprovals?: unknown; streaming?: unknown; unsavedDraftFiles?: unknown; error?: unknown };
+      const result = value as { pendingApprovals?: unknown; streaming?: unknown; unsavedDraftFiles?: unknown; workingTrunks?: unknown; error?: unknown };
       if (typeof result?.pendingApprovals !== "number" || typeof result.streaming !== "boolean" || typeof result.unsavedDraftFiles !== "boolean") {
         reject(new Error(String(result?.error ?? "Invalid window activity snapshot"))); return;
       }
-      resolve({ pendingApprovals: result.pendingApprovals, streaming: result.streaming, unsavedDraftFiles: result.unsavedDraftFiles });
+      // workingTrunks: Trunks with a live run (windows from before Private #454 C do not report it).
+      const workingTrunks = typeof result.workingTrunks === "number" && Number.isInteger(result.workingTrunks) && result.workingTrunks >= 0 ? result.workingTrunks : undefined;
+      resolve({ pendingApprovals: result.pendingApprovals, streaming: result.streaming, unsavedDraftFiles: result.unsavedDraftFiles,
+        ...(workingTrunks === undefined ? {} : { workingTrunks }) });
     };
     ipcMain.on("branch-desktop:auto-apply:result", receive);
     owner.send("branch-desktop:auto-apply:probe", id);
   });
 }
-async function probeWindowState(): Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }> {
+async function probeWindowState(): Promise<WindowState> {
   const states = await Promise.all(branchWindows().map(w => probeOneWindow(w.webContents)));
   if (!states.length) throw new Error("The window is not ready to report approvals and drafts");
+  const counts = states.map(s => s.workingTrunks).filter((n): n is number => n !== undefined);
   return { pendingApprovals: Math.max(...states.map(s => s.pendingApprovals)), streaming: states.some(s => s.streaming),
-    unsavedDraftFiles: states.some(s => s.unsavedDraftFiles) };
+    unsavedDraftFiles: states.some(s => s.unsavedDraftFiles), ...(counts.length ? { workingTrunks: Math.max(...counts) } : {}) };
 }
 
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -299,6 +320,7 @@ const engineServing = (): boolean => engineRunning() && gateway === readyGateway
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
 async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false): Promise<void> {
+  if (serviceEngine) return swapServiceEngineInPlace(label, explicit, held, handoffOnly);
   // `held`: the caller (Undo) already holds the update lock and keeps it; otherwise the swap takes it.
   if (!gateway || !win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
   // A crash restart always runs first: an update never cancels it, and never starts with no engine serving.
@@ -401,6 +423,83 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
   } finally {
     priorGateway.off("exit", priorExited);
     // A held lock stays with its holder, whose release runs the same recovery check.
+    if (!held) await updateLock.release(lock);
+  }
+}
+
+/** The engine folder the service runs now: recorded when it was installed, restarted or attached. */
+function serviceEngineDir(): string {
+  try {
+    const recorded = readFileSync(join(cfg.dataDir, "engine-running.txt"), "utf8").trim();
+    if (recorded && existsSync(join(recorded, "branch.mjs"))) return recorded;
+  } catch { /* first attach */ }
+  return lastGoodEngineDir ?? resolveEngineDir(cfg);
+}
+
+/**
+ * Always on (Private #454 E): the engine runs as a service, so an update restarts the SERVICE instead of a child. The
+ * seamless-updates v2 steps stay: the new engine warms as a standby beside the serving one first (spare port, scratch
+ * state), then `branch gateway restart` from the new engine moves the service onto it through the service manager,
+ * and a new engine that is not ready in time is rolled back (the release recorded as failed, the pointers restored,
+ * the service restarted on the previous engine). A release that changed only the window never touches the engine.
+ */
+async function swapServiceEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false): Promise<void> {
+  // A service restart is never a seamless handoff: auto-apply's handoff attempt fails here, before the service is
+  // touched, and falls back to its idle drain (Private #1038: an update never cuts off running Trunk work).
+  if (handoffOnly) throw new Error("The engine service has no seamless handoff; the update waits until Trunk work is idle");
+  if (!win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
+  const lock = held ?? updateLock.acquire(`update ${label}`)!;
+  admissionWatch?.abort();
+  admissionWatch = undefined;
+  const windowBefore = windowBuild(servedWindowDir);
+  const running = serviceEngineDir();
+  const selected = resolveEngineDir(cfg);
+  const probe = () => engineAnswers(cfg.gatewayPort);
+  try {
+    if (explicit) sendToBranchWindows("branch-desktop:engine-update", "preparing");
+    const result = await updateServiceEngine({
+      runningEngineDir: running,
+      selectedEngineDir: selected,
+      // Runs, approvals or a streaming reply refuse the update with no service call (the Update click and the drain).
+      workRunning: serviceWork,
+      warmStandby: async () => {
+        // The machine-load rule: a second engine only when there is room for it; otherwise the restart with its rollback.
+        const { bytes, measure } = availableMemory();
+        if (bytes < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(bytes, measure)}`); return "slow"; }
+        return checkCandidateBeside(cfg, selected, token, standbyReadyTimeoutMs());
+      },
+      restartService: async engineDir => {
+        if (quitting) throw new Error("Branch Agent is quitting");
+        if (explicit) sendToBranchWindows("branch-desktop:engine-update", "updating");
+        await runEngineServiceAction(cfg, engineDir, token, "restart", log);
+        // publish-engine.sh and the release cleanup never remove the folder named here, and the service runs from it.
+        saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}\n`));
+      },
+      waitForReady: () => waitForEngineAnswer(probe, READY_TIMEOUT_MS),
+      confirm: async () => { pendingReleasePrune = await confirmComponentUpdate(cfg, error => log(`Confirmed update cleanup: ${String(error)}`), true, log); },
+      reject: () => rejectFailedComponentUpdate(cfg, selected),
+      rollback: async () => { await rollbackComponentUpdate(cfg); },
+      log: line => log(`update ${label}: ${line}`),
+    });
+    engineUpdateReady = false;
+    servedWindowDir = cfg.windowDir;
+    if (result === "updated") lastGoodEngineDir = selected;
+    if (result === "kept" || result === "rolled-back") {
+      if (explicit) sendToBranchWindows("branch-desktop:engine-update", "kept");
+      if (result === "rolled-back") handWindowToGateway(true);
+      return;
+    }
+    // The restarted service listens on the same port: the window reconnects to it.
+    if (result === "updated") handWindowToGateway(true);
+    if (componentsReady) runConfirmedReleasePrune();
+    if (windowBuild(cfg.windowDir) !== windowBefore) void hotSwapWindow();
+    else sendToBranchWindows("branch-desktop:engine-update", "updated");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (explicit) sendToBranchWindows("branch-desktop:engine-update-failed", message);
+    throw error;
+  } finally {
+    if (stopEngineWatch) watchEngine();
     if (!held) await updateLock.release(lock);
   }
 }
@@ -595,8 +694,8 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   servedWindowDir = cfg.windowDir;
   gateway = prior;
   // The branch command and the next launch name the engine that runs again, not the failed standby.
-  if (lastGoodEngineDir) writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`);
-  if (prior.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prior.pid));
+  if (lastGoodEngineDir) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`));
+  if (prior.pid !== undefined) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prior.pid)));
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
   // Rollback has reclaimed the state. The old engine must keep its full readiness budget without the retire timer.
   if (back === "ok") stopRetiring(prior);
@@ -715,6 +814,8 @@ const autoApply = createAutoApplyUpdate({
   health: () => readUpdateHealth(cfg.dataDir, availableMemory().bytes, totalmem()),
   // Runs in flight mark a machine running Trunk work, whose updates are batched (hourly at most, only when idle).
   activeRuns: async () => {
+    // The service engine has no app channel: its runs come from the same read as `activity` (Private #454 E).
+    if (serviceEngine) return (await engineActivity()).activeRuns;
     if (!gateway) throw new Error("The gateway is not running");
     const engine = await gatewayActivity(gateway);
     return Math.max(engine.activeRuns, engine.totalActive);
@@ -725,6 +826,12 @@ const autoApply = createAutoApplyUpdate({
     return status.componentsPendingVersion === version && status.componentsPendingSecurity;
   },
   activity: async () => {
+    if (serviceEngine) {
+      // The service engine has no app channel: the window's own engine calls say what runs (Private #454 E).
+      const window = await probeWindowState();
+      return { activeRuns: window.workingTrunks ?? (window.streaming ? 1 : 0), pendingApprovals: window.pendingApprovals,
+        streaming: window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
+    }
     if (!gateway) throw new Error("The gateway is not running");
     // The approval RPCs themselves count as gateway work; sample after they settle.
     const window = await probeWindowState();
@@ -845,6 +952,8 @@ function createWindow(): BrowserWindow {
     keepRunning: () => controls.settings().keepWorking,
     // With the usage ring in the tray, a click opens the same list (Settings › Usage).
     onTrayClick: () => { if (controls.settings().trayUsage) w.webContents.send("branch-desktop:open-usage"); },
+    pauseAll: pauseAllWork,
+    stopCompletely: () => { void stopCompletely(); },
   });
   return w;
 }
@@ -1109,6 +1218,7 @@ async function start(): Promise<void> {
   }
   // Quit can run after the gateway becomes ready but before this startup continuation resumes.
   if (quitting) return;
+  watchTrayStatus();
   watchUpdates(win);
   componentsReady = true;
   if (pendingReleasePrune) runConfirmedReleasePrune();
@@ -1187,9 +1297,19 @@ async function attachServiceEngine(): Promise<boolean> {
   });
   if (result.mode === "child") return rolledBack;
   serviceEngine = true;
-  // publish-engine.sh never removes the folder named here, and the service runs from it.
-  writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}\n`);
+  // publish-engine.sh never removes the folder named here, and the service runs from it. An engine that was already
+  // running keeps its record: after a window-only update the service still runs the folder it started from.
+  const running = result.via === "attached" ? serviceEngineDir() : engineDir;
+  saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${running}\n`));
+  lastGoodEngineDir = running;
   adoptGatewayPort(cfg.gatewayPort);
+  // Engine updates restart the service (Private #454 E): watch for a newer engine as the child path does, and offer
+  // the one published while the app was closed.
+  watchEngine();
+  if (!sameEngineBuild(running, engineDir)) {
+    engineUpdateReady = true;
+    log("engine service runs an older engine than the published one; offering Update");
+  }
   gatewayRecoveryError = storm;
   // The service manager restarts a crashed engine with backoff; the app only reports a storm that stopped it.
   const timer = setInterval(() => {
@@ -1216,7 +1336,8 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   });
   const spawned = Date.now();
   const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);
-  if (prepared?.child.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.child.pid));
+  const preparedPid = prepared?.child.pid;
+  if (preparedPid !== undefined) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(preparedPid)));
   if (prepared) {
     setEnginePriority(prepared.child, false);
     // The old engine has released the state: the standby takes over only on this word (#411).
@@ -1226,8 +1347,8 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   const observed = gatewaySupervisor.observe(child);
   log(`gateway started from ${engineDir}, pid ${child.pid}, port ${port}`);
   // publish-engine.sh never removes the folder named here.
-  writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
-`);
+  saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
+`));
   // Ready means listening on its own port and answering /readyz there; only then does the window follow it.
   await waitForReady({ ...cfg, gatewayPort: port }, child, options.readyTimeoutMs ?? READY_TIMEOUT_MS);
   // Only a confirmed engine moves the live port: a rollback reboots on the port the window already uses.
@@ -1328,6 +1449,7 @@ function offerWindowStatus(w: BrowserWindow): void {
   if (w.isDestroyed() || !w.webContents.getURL().startsWith(windowUrl())) return;
   if (engineUpdateReady) w.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
   if (gatewayRecoveryError) w.webContents.send("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
+  if (diskIsFull()) w.webContents.send("branch-desktop:disk-full", DISK_FULL_MESSAGE);
   if (updateNotice && updateNotice.expiresAt > Date.now()) w.webContents.send("branch-desktop:update-applied", updateNotice);
 }
 
@@ -1344,8 +1466,8 @@ async function undoLastUpdate(automatic = false): Promise<void> {
     return;
   }
   try {
-    if (!gateway || !engineServing()) throw new Error("The engine is not ready to switch");
-    const active = automatic ? undefined : await gatewayActivity(gateway);
+    if (!serviceEngine && (!gateway || !engineServing())) throw new Error("The engine is not ready to switch");
+    const active = automatic ? undefined : await engineActivity();
     const window = automatic ? undefined : await probeWindowState();
     if (active && window && (active.activeRuns || active.totalActive || active.pendingReplies || window.pendingApprovals ||
         window.streaming || window.unsavedDraftFiles)) throw new Error("The previous version cannot take over while work is running");
@@ -1371,7 +1493,7 @@ async function undoLastUpdate(automatic = false): Promise<void> {
 
 /** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
 async function restartEngine(): Promise<void> {
-  if (!gateway || !win || !componentsReady) return;
+  if ((!gateway && !serviceEngine) || !win || !componentsReady) return;
   if (updateLock.held) {
     if (updateLock.purpose === REPLACING && !updateClickQueued) {
       // A newer release is replacing the staged one: the click is kept and runs right after, on the newer release.
@@ -1381,7 +1503,7 @@ async function restartEngine(): Promise<void> {
     }
     return;
   }
-  if (!engineServing()) {
+  if (!serviceEngine && !engineServing()) {
     // A crash restart wins: the click never cancels it. If recovery already gave up, the click retries it now.
     log("update requested while the engine is restarting; recovery runs first");
     gatewaySupervisor.recover(new Error("the engine was not running when Update was clicked"));
@@ -1393,12 +1515,89 @@ async function restartEngine(): Promise<void> {
     sendToBranchWindows("branch-desktop:engine-update", "kept");
     return;
   }
-  log(`update requested (${staged ?? "rebuilt engine"}); old engine pid ${gateway.pid}`);
+  log(`update requested (${staged ?? "rebuilt engine"}); ${serviceEngine ? "the engine service" : `old engine pid ${gateway?.pid}`}`);
   try { await swapEngineInPlace(staged ?? "rebuilt engine", true); }
   catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`update failed: ${msg}`);
-    if (!quitting && !engineRunning() && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", msg);
+    if (!quitting && (serviceEngine || !engineRunning()) && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", msg);
+  }
+}
+
+/** What the engine runs now: the owned child answers itself; the service engine's work comes from the window. */
+async function engineActivity(): Promise<{ activeRuns: number; totalActive: number; pendingReplies: number }> {
+  if (!serviceEngine && gateway) return gatewayActivity(gateway);
+  const window = await probeWindowState();
+  const runs = window.workingTrunks ?? (window.streaming ? 1 : 0);
+  return { activeRuns: runs, totalActive: runs, pendingReplies: 0 };
+}
+
+/** The service engine's live work, read before any update restarts the service (Private #1038's idle rule). */
+async function serviceWork(): Promise<ServiceWork> {
+  const window = await probeWindowState();
+  const engine = await engineActivity();
+  return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
+    streaming: engine.pendingReplies > 0 || window.streaming };
+}
+
+/** The engine's live state for the tray, from the engine calls the app already makes. */
+function liveEngineState(): Promise<EngineLiveState> {
+  return readEngineLiveState({
+    engineUp: async () => serviceEngine ? engineAnswers(cfg.gatewayPort) : engineServing(),
+    window: () => probeWindowState(),
+    engineRuns: serviceEngine || !gateway ? undefined : async () => {
+      const activity = await gatewayActivity(gateway!);
+      return Math.max(activity.activeRuns, activity.totalActive);
+    },
+  });
+}
+
+const TRAY_STATUS_MS = 10_000;
+/** Keeps the tray's live line current ("2 Trunks working", "Waiting on you (1)", "Stopped"). */
+function watchTrayStatus(): void {
+  if (!tray) return;
+  let reading = false;
+  const refresh = () => {
+    if (reading || quitting) return;
+    reading = true;
+    void liveEngineState().then(state => showTrayStatus(tray, state)).finally(() => { reading = false; });
+  };
+  refresh();
+  const timer = setInterval(refresh, TRAY_STATUS_MS);
+  timer.unref();
+  app.once("will-quit", () => clearInterval(timer));
+}
+
+/** Tray "Pause all work": the window stops every live run through the same calls as its own Pause all. */
+function pauseAllWork(): void {
+  if (!win || win.isDestroyed()) return;
+  log("tray: pause all work");
+  win.webContents.send("branch-desktop:pause-all");
+}
+
+/**
+ * Tray "Stop Branch completely": warns first when work is running, then stops the engine service (the engine's own
+ * `branch gateway stop`) until the next sign-in or app launch, and quits. With the engine inside the app, quitting
+ * stops it.
+ */
+async function stopCompletely(): Promise<void> {
+  try {
+    await stopBranchCompletely({
+      state: liveEngineState,
+      confirm: async (message, detail) => {
+        if (HIDDEN) return false;
+        const answer = await dialog.showMessageBox({ type: "warning", buttons: ["Stop Branch", "Cancel"], defaultId: 1, cancelId: 1,
+          title: "Stop Branch completely", message, detail });
+        return answer.response === 0;
+      },
+      stopService: serviceEngine ? () => runEngineServiceAction(cfg, serviceEngineDir(), token, "stop", log) : undefined,
+      quit: () => app.quit(),
+      log,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log(`stop completely failed: ${message}`);
+    if (!HIDDEN) dialog.showErrorBox("Branch couldn't stop its engine", message);
   }
 }
 
@@ -1462,7 +1661,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on("window-all-closed", () => app.quit());
   app.on("will-quit", (event?: Electron.Event) => { if (!deferQuitForCleanStop(event)) shutdown(); });
   app.whenReady().then(start).catch((err: unknown) => {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = reportDiskFull(err) ? DISK_FULL_MESSAGE : err instanceof Error ? err.message : String(err);
     log(`could not start: ${msg}`);
     if (!HIDDEN) dialog.showErrorBox("Branch Agent could not start", msg);
     app.quit();
