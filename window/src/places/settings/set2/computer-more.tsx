@@ -888,6 +888,9 @@ const SECTIONS: SecSpec[] = [
   ON_MORE, USING_MORE, PHONES_SMALL, MORE_PLACES, USING_TECH, WHERE_MORE, SCRIPTS, SEALED_TECH, LIMITS_TECH,
 ];
 
+/** The sections the R1 Browser & screen and Coding pages draw on their cards (screens/settings/pages/browser.tsx, coding.tsx). */
+export const PART_SECS = { ON_COMPUTER, ON_MORE, USING_SCREEN, USING_MORE, USING_TECH, SCREEN_TECH, LOGBOOK, CODE_COMMITS };
+
 /** The sections the R1 Devices page draws on its cards (screens/settings/pages/devices.ts). */
 export const DEVICE_SECS = { CLOUD, LET_TRUNKS, PHONES_LENT, EVERYTHING, WHO, LENT_TECH, ALLOWING, NETWORK_MORE, TECHNICAL, PHONES_SMALL, MORE_PLACES, WHERE_MORE, SCRIPTS, SEALED_TECH, LIMITS_TECH };
 

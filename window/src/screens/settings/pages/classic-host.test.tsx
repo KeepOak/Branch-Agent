@@ -39,7 +39,6 @@ const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50
 it("re-hosts exactly these Classic pages", () => {
   expect(REHOSTED).toEqual({
     who: "people", notifications: "notifications", instructions: "instructions",
-    browser: "computer-browser",
     coding: "computer-coding",
   });
 });
@@ -68,11 +67,11 @@ it("splits Classic Computer & browser between Browser & screen, Coding and Devic
   expect(parts[2]).toEqual(expect.arrayContaining(["Cloud computers › Cloud computers", "Who is connected now › Who is connected now"]));
 });
 
-it("draws on Browser & screen and Coding only sections Classic Computer & browser draws, in its order, and Coding apps from Accounts", async () => {
+it("draws on Coding only sections Classic Computer & browser draws, in its order, and Coding apps from Accounts", async () => {
   await act(async () => root.render(<KitProvider level={2} report={{ saving() {}, saved() {}, failed() {} }} scope={null}><SettingsPage page="computer" title="Classic" level="technical" engine={engine()} /></KitProvider>));
   await settle();
   const classic = drawn(host).sections;
-  for (const page of ["browser", "coding"] as const) {
+  for (const page of ["coding"] as const) {
     await act(async () => root.render(<SettingsFrame engine={engine()} page={page} pages={R1_PAGES} />));
     await settle();
     const hosted = drawn(host.querySelector(`.r1s-custom[data-slot="${page}"] .r1s-classic`)!).sections;
@@ -84,8 +83,8 @@ it("draws on Browser & screen and Coding only sections Classic Computer & browse
   expect(host.querySelector('[data-sec="Coding apps on this computer"]')!.textContent).toContain("Codex");
 });
 
-it("draws each Browser & screen and Coding card no Classic control has yet as Coming, naming the call it waits for", async () => {
-  expect(COMING).toEqual({ browser: ["Sites", "Saved flows"], coding: ["Commands", "Files"] });
+it("draws each Coding card no Classic control has yet as Coming, naming the call it waits for", async () => {
+  expect(COMING).toEqual({ coding: ["Commands", "Files"] });
   for (const [page, cards] of Object.entries(COMING) as [keyof typeof COMING, readonly string[]][]) {
     const classic = classicList(REHOSTED[page]);
     for (const card of cards) {
