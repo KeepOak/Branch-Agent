@@ -245,16 +245,14 @@ it("unknown native connection cannot use local IPC or fall back to the generic u
   expect(stage).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
 });
 
-it("actual Version popover install uses the same native stage bridge", async () => {
+it("actual Version popover has no install control; updates apply in place (P45)", async () => {
   const stage = vi.fn(async () => ({ ...state, phase: "staged", pendingVersion: "1.1" }));
   desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl, componentUpdates: { status: async () => state, check: async () => state, stage } };
   const session = { engine, gatewayUrl: engine.gatewayUrl, request } as unknown as SaplingSession;
   const ctx = { session, update: { current: "1.0", latest: "1.1", notes: [], installing: false, waiting: null }, version: "1.0", onWhatsNew: vi.fn(), onReminded: vi.fn() } as unknown as StatusContext;
   await act(async () => root.render(<StatusPopover item="version" above={{ left: 10, right: 200, top: 700, align: "left" }} onClose={() => {}} ctx={ctx} />));
-  const button = document.querySelector<HTMLButtonElement>('[data-testid="ver-install"]');
-  if (!button) throw new Error("missing actual Version install control");
-  await act(async () => button.click());
-  expect(stage).toHaveBeenCalledTimes(1); expect(request).not.toHaveBeenCalled();
+  expect(document.querySelector('[data-testid="ver-install"]')).toBeNull();
+  expect(stage).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
 });
 
 it("remote and browser release notices show where to install, without an Install button", async () => {
