@@ -220,6 +220,35 @@ function Allowances({ engine, openSettings }: { engine: WindowEngine; openSettin
   );
 }
 
+/** Settings › Accounts & usage (R1): what Branch spent in the chosen period, with 7 / 30 / 90 days and the report
+ *  window, drawn as Classic's spend card above. */
+export function AccountSpend({ engine, level }: { engine: WindowEngine; level: number }) {
+  const [days, setDays] = useState("30");
+  const [report, setReport] = useState(false);
+  const names = useNames(engine);
+  const spend = useResource<RecordValue>(engine, "sessions.usage", { range: `${days}d`, ...ALL, ...LOCAL, limit: 1 });
+  return <>
+    <SpendCard spend={spend} days={days} setDays={setDays} onOpen={() => setReport(true)} />
+    {report ? <ReportDialog engine={engine} lv={level} days={days} names={names} onClose={() => setReport(false)} /> : null}
+  </>;
+}
+
+/** Settings › Accounts & usage (R1): what each account has left, as Classic's allowance list, without its heading and
+ *  without the rows the R1 page draws as its own rows. */
+export function AccountAllowanceList({ engine, openSettings }: { engine: WindowEngine; openSettings?: (page: string) => void }) {
+  const res = useLive<RecordValue>(engine, "usage.status", {}, []);
+  const auth = useLive<RecordValue>(engine, "models.authStatus", {}, []);
+  const data = rec(res.data);
+  const providers = list(data.providers);
+  const limits = withAccountEmails(readLimits(res.data), accountEmails(auth.data));
+  return (
+    <div className="s2usage-lims" data-need="usage.status">
+      {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
+      {providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} openSettings={openSettings} />)}
+    </div>
+  );
+}
+
 /* ---------- spend per Trunk ---------- */
 function TrunkSpend({ spend, names, days }: { spend: SpendResult; names: Map<string, string>; days: string }) {
   const rows = list(rec(rec(spend.data).aggregates).byAgent).map((a) => ({ id: str(a.agentId), cost: num(rec(a.totals).totalCost) })).sort((a, b) => b.cost - a.cost);

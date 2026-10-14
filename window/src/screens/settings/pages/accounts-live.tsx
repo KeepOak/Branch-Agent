@@ -25,6 +25,12 @@ import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { Coming } from "../../../glass/coming";
+import { AccountAllowanceList, AccountSpend } from "../../../places/settings/set2/usage";
+import { lookStore, useLook } from "../../../places/settings/set1/appearance-store";
+import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
+import { pageFor } from "../nav";
+import { useLevel } from "../SettingsFrame";
 
 // One engine read shared by every row that shows it (the accounts list, Select accounts, Which goes next…): a change
 // made in one row reloads it once, and every row redraws. It reads again when a row first shows after none did.
@@ -600,3 +606,50 @@ export const HubCommand = () => <Val><code>branch --model owner/package</code></
 
 /** Each account keeps its own folder (Technical): always on, as Classic shows it. */
 export const OwnFolder = () => <Val>Always on</Val>;
+
+/* ---------- Usage by account (preview PG accounts) and the rows the preview draws as buttons ---------- */
+
+const QUIET_REPORT = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
+
+/** What Branch spent in the last 7, 30 or 90 days, and Open the report: Classic Data & usage's spend card. */
+export function UsageSpend({ engine }: SlotControlProps) {
+  const [level] = useLevel(engine);
+  return <KitProvider level={level} report={QUIET_REPORT} scope={null}><AccountSpend engine={engine} level={level} /></KitProvider>;
+}
+
+/** What each account has left: Classic's allowance list, one row per connection and account. */
+export function UsageList({ engine, onPage }: SlotControlProps) {
+  return <KitProvider level={0} report={QUIET_REPORT} scope={null}><AccountAllowanceList engine={engine} openSettings={onPage ? (page) => onPage(pageFor(page)) : undefined} /></KitProvider>;
+}
+
+/** The ring bottom right: the status bar's ring, described; nothing to set. */
+export function UsageRing(_: SlotControlProps) {
+  return null;
+}
+
+/** Offer to save progress at 95%: the person's look key Classic saves (usage.ckpt), and Show me. */
+export function SaveProgressOffer({ engine, row }: SlotControlProps) {
+  const on = useCkptOn(engine);
+  const look = useLook(engine);
+  const [failed, run] = useFailure();
+  const label = row.label ?? "Offer to save progress at 95%";
+  return <>
+    <span className="r1s-own-ctl">
+      <button type="button" className="r1s-link" data-local="" onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button>
+      <Needs engine={engine} need={look.snap.where === "device" ? [] : ["users.prefs.set"]} where={label}>
+        <span className="r1s-own-ctl"><Toggle label={label} on={on} onChange={(v) => void run(() => lookStore(engine).set(CKPT_PREF, v))} /></span>
+      </Needs>
+    </span>
+    <Failed text={failed} />
+  </>;
+}
+
+/** A preview button with nothing behind it yet, Coming with its row's own reason. */
+function comingButton(button: string): (props: SlotControlProps) => ReactNode {
+  return function ComingButton({ engine, row }: SlotControlProps) {
+    const src = row.source.kind === "slot" ? row.source : null;
+    return <Coming engine={engine} need={src?.calls ?? []} unwired reason={src?.reason} where={row.label ?? button}><button type="button" className="r1s-btn">{button}</button></Coming>;
+  };
+}
+export const LinkButton = comingButton("Link");
+export const KeepOakConnect = comingButton("Connect your keepoak.com account");

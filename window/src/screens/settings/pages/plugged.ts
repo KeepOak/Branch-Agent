@@ -5,7 +5,7 @@
 import { CHAT_APP_ROWS, ChatAppsPage } from "../../chatapps";
 import type { PageSlots } from "../slots";
 import {
-  AccountList, AddAccount, AddOwnAccount, AnswerFirst, BranchIdentity, CheckApps, ClaudeCode, Codex, EachTrunkAccount, FallBackHere, FallbackKeys, GeminiCli,
+  AccountList, AddAccount, AddOwnAccount, KeepOakConnect, LinkButton, SaveProgressOffer, UsageList, UsageRing, UsageSpend, AnswerFirst, BranchIdentity, CheckApps, ClaudeCode, Codex, EachTrunkAccount, FallBackHere, FallbackKeys, GeminiCli,
   GitHubExpires, GitHubPermissions, GitHubRow, HubCommand, OwnAccountList, OwnFolder, RestingNow, SelectAccounts, SignInSources, SignOut, TestIt, WhichNext,
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
@@ -81,6 +81,14 @@ export const R1_PAGES: PageSlots = {
   },
   accounts: {
     controls: {
+      "accounts.usage.spend": UsageSpend,
+      "accounts.usage.list": UsageList,
+      "accounts.usage.ring": UsageRing,
+      "accounts.usage.save-progress": SaveProgressOffer,
+      "accounts.linked.gmail": LinkButton,
+      "accounts.linked.calendar": LinkButton,
+      "accounts.linked.drive": LinkButton,
+      "accounts.keepoak.connect": KeepOakConnect,
       "accounts.order.list": AccountList,
       "accounts.order.add": AddAccount,
       "accounts.order.test": TestIt,
