@@ -36,6 +36,12 @@ import { HoverBar } from "./HoverBar";
 import { NoticeLine, TimeDivider, TypingLine } from "./lines";
 import { AgentReply, TimeLine, UserBubble } from "./Message";
 import { LoneThought, StepsList } from "./Steps";
+import { foldTalks } from "../../rooms/fold";
+import { RoomLine } from "../../rooms/RoomLine";
+import { RoomMessage } from "../../rooms/RoomMessage";
+import { TalkedFold } from "../../rooms/TalkedFold";
+import { fromName, otherSender, type ThreadRoom } from "../../rooms/thread-room";
+import { roomEntries, type RoomEntry } from "./room-entries";
 import "../../thread/thread.css";
 import "./chat.css";
 
@@ -62,9 +68,12 @@ export type ChatViewProps = {
   onStart?: (text: string) => void;
   /** Puts "Replying to …" on the composer (chat.send replyToId). */
   onReply?: (target: ReplyTarget) => void;
+  /** Who else writes here (rooms/useShellRoom): their rows, the talked-it-through fold and the room line (§4.2.4). */
+  room?: ThreadRoom;
 };
 
-function entryTime(entry: Entry): number | undefined {
+function entryTime(entry: RoomEntry): number | undefined {
+  if (entry.type === "talk") return undefined;
   if (entry.type === "item") return blockTime(entry.item.block);
   if (entry.type === "thought") return undefined;
   for (const step of entry.steps) { const at = blockTime(step); if (at) return at; }
@@ -172,7 +181,9 @@ export function ChatView(props: ChatViewProps) {
   const historyReady = props.historyReady !== false;
   const waitingCount = (props.queued?.length ?? 0) + ownLine.length;
   const empty = historyReady && !history.length && !pendingUser && !running && !waitingCount && !props.loadError;
-  const entries = useMemo(() => entriesOf(layout(history)), [history]);
+  // As in the Classic thread: with a room, exchanges between Trunks fold into one row (rooms/fold.ts).
+  const inRoom = Boolean(props.room), ownAgentId = props.room?.ownAgentId;
+  const entries = useMemo<RoomEntry[]>(() => (inRoom ? roomEntries(foldTalks(layout(history), ownAgentId)) : entriesOf(layout(history))), [history, inRoom, ownAgentId]);
   const times = useMemo(() => entries.map(entryTime), [entries]);
   const dividers = useMemo(() => dividerPositions(times), [times]);
   const lastUser = history.map((b) => b.kind).lastIndexOf("user");
@@ -182,7 +193,7 @@ export function ChatView(props: ChatViewProps) {
   const helperChip = helpers.length && engine?.sessionKey ? <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession}
     onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast("Stopped " + h.name + ". " + name + " carries on without it."), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} /> : null;
 
-  const view: View = { all, name, running, live, actionsFor, reactions, apply, details, answer, grouped, times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast };
+  const view: View = { all, name, running, live, actionsFor, reactions, apply, details, answer, grouped, times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast, room: props.room };
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
   // The run's token count (the engine's usage block), as Classic's live-run header shows it; once something visible arrives.
   const usage = running ? live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage") : undefined;
@@ -195,8 +206,9 @@ export function ChatView(props: ChatViewProps) {
         {empty ? <EmptyChat name={name} engine={engine} onStart={props.onStart} /> : !historyReady && !history.length && !props.loadError ? <NoticeLine text="Opening this conversation…" testid="opening" /> : null}
         {entries.map((entry, i) => <Fragment key={entry.type === "item" ? entry.item.block.key : entry.key}>
           {dividers.has(i) && times[i] ? <TimeDivider at={times[i]!} /> : null}
-          <EntryView entry={entry} view={view} live={false} />
+          {entry.type === "talk" ? <div className="r1c-row r1c-talk"><TalkedFold talk={entry.talk} ownName={name} trunkName={props.room?.trunkName ?? ((id: string) => id)} /></div> : <EntryView entry={entry} view={view} live={false} />}
         </Fragment>)}
+        {props.room ? <RoomLine history={history} room={props.room} ownName={name} /> : null}
         {pendingUser ? <UserBubble block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="delivered" />
         {running ? liveEntries.map((entry) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live />) : null}
@@ -229,6 +241,7 @@ type View = {
   engine?: WindowEngine;
   onOpenSession?: (key: string) => void;
   toast: (text: string) => void;
+  room?: ThreadRoom;
 };
 
 /** "Put back" under a message left out of context calls the same method as the menu row. */
@@ -236,6 +249,13 @@ const PUT_BACK = { need: "session.context.set", reason: "This engine can’t put
 
 function faceFor(view: View, live: boolean): ReactNode {
   return <Face size={28} label={view.name} state={live && view.running ? "think" : "idle"} priority={live ? 300 : 100} />;
+}
+
+/** In a group chat, another Trunk's post carries that Trunk's face, not this conversation's (Classic thread). */
+function postedFace(block: Extract<Block, { kind: "text" }>, view: View): ReactNode | null {
+  const sender = block.meta?.sender;
+  if (!view.room?.isRoom || sender?.kind !== "trunk" || !sender.posted) return null;
+  return <Face size={28} label={view.room.trunkName(sender.agentId)} priority={100} />;
 }
 
 function EntryView({ entry, view, live }: { entry: Entry; view: View; live: boolean }) {
@@ -259,15 +279,19 @@ function EntryView({ entry, view, live }: { entry: Entry; view: View; live: bool
       const entryId = block.meta?.entryId;
       const chips = entryId ? view.reactions.get(entryId) ?? [] : [];
       const isReply = block.kind === "text";
+      const other = block.kind === "user" ? otherSender(block, view.room) : null;
       const bar = actions ? <HoverBar text={block.text} isReply={isReply} actions={actions} meta={block.meta} /> : null;
       const after = <>
         {block.meta?.excluded && actions?.context ? <div className="r1c-out-line">Left out of context · <Coming need={PUT_BACK.need} reason={PUT_BACK.reason} where="Put back"><button type="button" className="r1c-link" aria-disabled={actions.context.disabled ? "true" : undefined} title={actions.context.disabled ?? undefined} onClick={() => { if (!actions.context?.disabled) actions.context?.run(); }}>Put back</button></Coming></div> : null}
-        {live ? null : <TimeLine at={block.meta?.timestamp} model={isReply ? block.meta?.model : undefined} mine={!isReply} mode={view.times} />}
+        {live ? null : <TimeLine at={block.meta?.timestamp} model={isReply ? block.meta?.model : undefined} mine={!isReply && !other} mode={view.times} />}
         <ReactionChips list={chips} onToggle={(emoji, remove) => { if (actions && !actions.reactDisabled) actions.react(emoji, remove); }} />
       </>;
+      const posted = block.kind === "text" ? postedFace(block, view) : null;
       return <div data-block-key={block.key}>{block.kind === "user"
-        ? <UserBubble block={block} bar={bar} after={after} />
-        : <AgentReply block={block} face={face ? faceFor(view, live) : undefined} working={face && view.running && (live || index > view.lastUser)} bar={bar} after={after} grow={live && !block.streaming} />}</div>;
+        ? other
+          ? <div className="r1c-row r1c-room"><RoomMessage sender={other} text={block.text} attachments={block.attachments} entryId={block.meta?.entryId} where={other.kind === "agent" ? view.room?.whereRuns(other.id) ?? null : null} online={other.kind === "agent" && view.room?.isOnline?.(other.id) === true}>{bar}</RoomMessage>{after}</div>
+          : <UserBubble block={block} bar={bar} after={after} />
+        : <AgentReply block={block} face={face ? posted ?? faceFor(view, live) : undefined} working={face && !posted && view.running && (live || index > view.lastUser)} from={fromName(block, face, view.room, view.name)} bar={bar} after={after} grow={live && !block.streaming} />}</div>;
     }
     case "plan":
       return wrap(<PlanCard card={{ sessionKey: "run", revision: 1, updatedAt: Date.now(), steps: block.steps }} />);
