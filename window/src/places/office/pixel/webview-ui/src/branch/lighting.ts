@@ -21,9 +21,6 @@ const PHASES: Record<OfficeTheme, LightPhase> = {
   dark: { veilRgb: '10, 10, 50', veilAlpha: 0.3, glowAlpha: 0.3, glowBlend: 'lighter' },
 };
 
-/** A canvas colour from an 'r, g, b' triple and an alpha; the veil and the glow both build theirs here. */
-const rgba = (rgb: string, alpha: number): string => `rgba(${rgb}, ${alpha})`;
-
 const GLOW_RGB = '120, 190, 255';
 const GLOW_RADIUS = 22;
 const GLOW_LIFT = 4;
@@ -45,6 +42,10 @@ function roomRects(office: OfficeState, offsetX: number, offsetY: number, tile: 
 function addRectPath(ctx: CanvasRenderingContext2D, rects: Rect[]): void {
   ctx.beginPath();
   for (const r of rects) ctx.rect(r.x, r.y, r.size, r.size);
+}
+
+function rgba(rgb: string, alpha: number): string {
+  return `rgba(${rgb}, ${alpha})`;
 }
 
 function drawVeil(ctx: CanvasRenderingContext2D, rects: Rect[], phase: LightPhase): void {
