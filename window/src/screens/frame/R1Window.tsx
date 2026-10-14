@@ -79,7 +79,6 @@ export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
   customize: "advanced", // Tools and skills, Skills, Plugins, What it can do
   memory: "advanced", // Memory, Recall and memory files, Documents it reads
   autos: "advanced", // Automations, and Automations, steps and nudges
-  privacy: "usage", // Your data, Keeping things, Moving in and out, Flagged replies
   browser: "computer", // Computer & browser: the screen and the browser
   coding: "computer", // Computer & browser: code and commits, repositories
   remote: "gateway", // Keep Branch running, Reach, Exposure, From scripts
