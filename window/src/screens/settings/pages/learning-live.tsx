@@ -60,7 +60,7 @@ export function Learned({ engine, row }: SlotControlProps) {
               </li>
             ))}
           </ul>
-        ) : <Line>No changes yet.</Line>}
+        ) : <Line>No changes right now.</Line>}
       </div>
     </Needs>
   );
