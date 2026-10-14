@@ -9,6 +9,7 @@ import {
   GitHubExpires, GitHubPermissions, GitHubRow, HubCommand, OwnAccountList, OwnFolder, RestingNow, SelectAccounts, SignInSources, SignOut, TestIt, WhichNext,
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
+import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
@@ -21,6 +22,7 @@ export const REHOSTED = {
 export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic)])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
+  trunks: { component: TrunksPage, rows: TRUNK_ROWS },
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,
