@@ -84,6 +84,18 @@
 .r1s-row.r1s-stack > .r1s-own { justify-self: stretch; overflow: visible; display: grid; gap: 8px; }
 .r1s-row > .r1s-own:not(:has(.r1s-items, .r1s-item)) { flex-wrap: wrap; justify-content: flex-end; }
 .r1s-symbols { display: grid; gap: 6px; }
+/* These Appearance rows fill the card's width, as the preview draws them (the shared own-control cell ends at the right). */
+.r1s-row > .r1s-own:has(> .r1s-yours-pet, > .r1s-pictures, > .r1s-symbols) { justify-content: stretch; }
+.r1s-pictures { display: grid; gap: 8px; }
+.r1s-yours-pet { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: center; }
+.r1s-yours-pet > b, .r1s-yours-pet > small { grid-column: 1; justify-self: start; }
+.r1s-yours-pet > b { font-size: 14px; font-weight: 500; }
+.r1s-yours-pet > .r1s-ctl { grid-column: 2; grid-row: 1 / span 2; }
+.r1s-arts { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+.r1s-art { display: grid; justify-items: center; align-content: start; gap: 6px; margin: 0; padding: 12px 8px 10px; border-radius: 14px; }
+.r1s-art img { width: 88px; height: 88px; object-fit: contain; }
+.r1s-art figcaption { font-size: 12px; text-align: center; line-height: 1.3; }
+@media (prefers-reduced-motion: reduce) { .r1s-art img { animation: none; } }
 .r1s-symbol { display: grid; gap: 2px; }
 .r1s-slider { display: inline-flex; align-items: center; gap: 8px; }
 .r1s-slider input[type="range"] { width: 160px; accent-color: var(--ink-2); }

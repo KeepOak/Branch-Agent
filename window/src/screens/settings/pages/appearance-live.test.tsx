@@ -183,8 +183,8 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     for (const id of ["activity-log", "who-ran", "counts", "stability"]) expect(row("appearance.shown." + id)!.querySelector('[role="switch"], input[type="checkbox"], button'), id).not.toBeNull();
     expect([...row("appearance.shown.messages")!.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Off", "Direct messages", "All"]);
     for (const id of ["notes", "crash"]) expect(row("appearance.shown." + id)!.getAttribute("aria-disabled"), id).toBe("true");
-    const yours = [...host.querySelectorAll('[data-row^="appearance.yours."]')].map((r) => r.querySelector("b")?.textContent);
-    expect(yours).toEqual(["Your pet", "This theme and background", "Got a seed?", "Your picture", "Overview background", "Chat background", "Trunk, group and topic pictures", "A pet of your own"]);
+    const yours = [...host.querySelectorAll('[data-row^="appearance.yours."]')].map((r) => r.getAttribute("aria-label") ?? r.querySelector("b")?.textContent);
+    expect(yours).toEqual(["Your pet", "This theme and background", "Got a seed?", "Pictures around Branch", "Your picture", "Overview background", "Chat background", "Trunk, group and topic pictures", "A pet of your own"]);
     const button = (id: string, text: string) => [...row(id)!.querySelectorAll("button")].find((b) => b.textContent === text)!;
     expect(button("appearance.yours.pet", "Copy seed").getAttribute("aria-disabled")).toBe("true");
     // Each opens its own Settings page (the frame then moves there).
@@ -195,5 +195,20 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
       await click(host.querySelector("button")!);
       expect(go).toHaveBeenCalledWith(page);
     }
+  });
+
+  it("#1049: Your pet names the pet you have, and Pictures around Branch shows the preview's five pictures", async () => {
+    await mount();
+    const pet = row("appearance.yours.pet")!;
+    expect(pet.querySelector("b")?.textContent).toMatch(/^Your pet( · .+)?$/);
+    const pics = row("appearance.yours.pictures")!;
+    expect([...pics.querySelectorAll("figcaption")].map((f) => f.textContent)).toEqual(["A cloud computer at work", "A phone call in progress", "Joining a meeting", "Learning an app", "A timeline replaying"]);
+    expect([...pics.querySelectorAll("img")].map((i) => i.getAttribute("src"))).toEqual(["cloud", "call", "meeting", "learn", "timeline"].map((id) => `/assets/art17/feature/${id}.webp`));
+    const { YourPet } = await import("./appearance-yours");
+    const { lookStore } = await import("../../../places/settings/set1/appearance-store");
+    const engine = engineOf().engine;
+    await act(async () => { await lookStore(engine).set("pet", "px-owl"); });
+    await act(async () => root.render(<YourPet engine={engine} row={{} as never} />));
+    expect(host.querySelector(".r1s-yours-pet b")?.textContent).toBe("Your pet · Pixel owl");
   });
 });

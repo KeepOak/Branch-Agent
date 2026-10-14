@@ -141,9 +141,11 @@ export const APPEARANCE_ROWS: Row[] = [
     options: [{ v: "en", label: "English" }] }),
 
   // Make it yours (preview: Share your look, then Pictures around Branch). Making a theme stays in the Theme card.
-  slot("appearance.yours.pet", YOURS, "Your pet", [], { help: "A pet seed carries its sprite and every frame (idle, walk, cheer, notice, pat)." }),
+  // Drawn by the page with the pet's name (preview "Your pet · Squirrel"); the label and help still name it for search.
+  slot("appearance.yours.pet", YOURS, "Your pet", [], { help: "A pet seed carries its sprite and every frame (idle, walk, cheer, notice, pat).", bare: true }),
   slot("appearance.yours.theme", YOURS, "This theme and background", []),
   slot("appearance.yours.paste", YOURS, "Got a seed?", []),
+  slot("appearance.yours.pictures", YOURS, "Pictures around Branch", [], { help: "Shown where a feature starts or has nothing to show yet. They move gently, and hold still when motion is reduced.", bare: true }),
   slot("appearance.yours.picture", YOURS, "Your picture", [], { help: "On your card, the avatar and Who is using Branch." }),
   slot("appearance.yours.overview", YOURS, "Overview background", [], { help: "The picture behind the composer on Overview." }),
   slot("appearance.yours.chat", YOURS, "Chat background", [], { help: "Behind the glass, in every conversation." }),
