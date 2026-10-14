@@ -38,6 +38,7 @@ import { SearchResultsView, useSearch } from "../../shell/Search";
 import { ShortcutsDialog } from "../../shell/ShortcutsDialog";
 import { useSelection } from "../../shell/sidebar-state";
 import { KeepLastDialog, tidy } from "../../shell/StatusLayer";
+import { usePinOrder } from "../../shell/use-pin-order";
 import { batchEntries } from "./batch";
 import { useUpdate } from "../../shell/use-status";
 import { readThemeChoice, setThemeChoice, type ThemeChoice } from "../../theme/theme";
@@ -45,6 +46,7 @@ import { FIND_EVENT } from "../../thread/FindBar";
 import { filterFacts, filterSideRows, R1FilterSort, readR1Prefs, saveR1Prefs, sortSections } from "./filter";
 import { buildSections, contactRows, personRows, type Folder, type Person, type SideRow } from "./model";
 import { FolderChip, icons, PinnedGrid, SectionHead, SideRowView, TopCapsules, type RowHandlers } from "./parts";
+import { orderPins, pinKey } from "./pin-order";
 import { NEED, rowMenu } from "./row-menu";
 import { QUICK_ASK_EVENT, QUICK_ASK_NEED } from "../quickask/QuickAskHost";
 import "./sidebar.css";
@@ -118,6 +120,7 @@ export function Sidebar(p: SidebarProps) {
   const rooms = useGroupRooms(session, ready, true);
   const people = usePeople(session, ready);
   const { projects } = useProjects(session, ready);
+  const pinOrder = usePinOrder(session, ready);
   const person = usePersonName(session, ready);
   const update = useUpdate(session, ready, useBranchVersion(session.gatewayUrl));
   const actions = useMemo(() => conversationActions(request, p.list, () => p.currentKey), [request, p.list, p.currentKey]);
@@ -281,7 +284,8 @@ export function Sidebar(p: SidebarProps) {
       {p.error ? <p className="r1sb-error" role="alert">{p.error}</p> : null}
       {results}
       {searching ? null : <>
-      {sections.pinned.length ? <section className="r1sb-sec" data-section="pinned"><SectionHead label="Pinned" /><PinnedGrid rows={sections.pinned} currentKey={p.currentKey} handlers={handlers} /></section> : null}
+      {sections.pinned.length ? <section className="r1sb-sec" data-section="pinned"><SectionHead label="Pinned" /><PinnedGrid rows={orderPins(sections.pinned, pinOrder.order)} currentKey={p.currentKey} handlers={handlers}
+        onReorder={drop => void pinOrder.move(drop, orderPins(sections.pinned, pinOrder.order).filter(row => !row.isDefault).map(pinKey))} /></section> : null}
       {section("Trunks", sections.trunks, sections.trunks.some(row => row.unread) ? <Coming need={NEED.markRead}><button type="button" className="r1sb-mar" onClick={() => markAllRead(sections.trunks)}>Mark all read</button></Coming> : null)}
       {section("People", sections.people, <button type="button" className="r1sb-head-go" data-local="" aria-label="People settings" title="People" onClick={() => p.onSettings("people")}>{icons.chevron}</button>)}
       {section("Groups", sections.groups)}
