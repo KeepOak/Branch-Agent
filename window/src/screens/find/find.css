@@ -2,11 +2,12 @@
    it is open (R1Window), so there is no dimming scrim; the field, the group labels, every row and the key hints sit on
    frosted pills with a 1px low-alpha outline (--gp-*). Reduce transparency gives solid pills from the same tokens. */
 .r1-find { display: contents; }
+/* Why the #g48 ids (glass/glass.css explains the ladder): glass.css's clear-surface rule (.g-clear:not(#g48)) and its pill
+   rule (:is(.g-frost, .g-label):not(#g48)) carry one #g48 id. These palette rules carry the same id so the clear dialog and
+   its frosted rows win by source order, not by !important. */
 .r1-find .palette-scrim:not(#g48) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .r1-find .palette:not(#g48) { background: transparent; box-shadow: none; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; overflow: visible; }
-.r1-find :is(.pal-field, .pal-row, .ph, .pal-note, .pal-none, .pal-foot > span):not(#g48) {
-  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
-  box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); }
+.r1-find :is(.pal-field, .pal-row, .ph, .pal-note, .pal-none, .pal-foot > span):not(#g48) { background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); }
 .r1-find .pal-field:not(#g48) { border: 0; border-radius: 18px; }
 .r1-find .pal-list:not(#g48) { padding: 8px 0 0; }
 .r1-find .pal-row:not(#g48) { margin: 0 0 4px; border-radius: 12px; }

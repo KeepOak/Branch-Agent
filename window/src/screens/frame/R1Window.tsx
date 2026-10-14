@@ -31,6 +31,7 @@ import { useFirstRun } from "../../setup/use-first-run";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
 import { WhatsNewHost } from "../updates/WhatsNewHost";
+import { useR1Topics } from "./Topics";
 import { useMarkRead } from "./use-mark-read";
 import { FindAnything } from "../find/FindAnything";
 import { ShortcutsDialog } from "../../shell/ShortcutsDialog";
@@ -148,6 +149,17 @@ export function R1Window({ session }: { session: SaplingSession }) {
     setHistory({ index, count: entries.current.length }); applyRoute(next);
   };
   useEffect(() => { if (ready) void lookStore(engine).load(); }, [ready, engine]);
+  // Re-hosted Classic Settings pages open a place with branch:navigate-place (Classic WindowShell's event): R1 opens it here.
+  const navigateTo = useRef(navigate);
+  useEffect(() => { navigateTo.current = navigate; });
+  useEffect(() => {
+    const openPlace = (event: Event) => {
+      const place = PLACES.find(p => p.id === (event as CustomEvent<{ place?: string }>).detail?.place);
+      if (place) navigateTo.current({ kind: "place", place: place.id });
+    };
+    window.addEventListener("branch:navigate-place", openPlace);
+    return () => window.removeEventListener("branch:navigate-place", openPlace);
+  }, []);
   // Escape closes the stage unless a menu, dialog, picker or popover is open: those take Escape first.
   const stageShown = Boolean(stage) && route.kind === "chat";
   useEffect(() => {
@@ -192,6 +204,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
   // A room (group chat, or Trunks and people writing here): the Classic room hook, re-hosted (rooms/useShellRoom).
   const room = useR1Room(session, ready, snapshot.sessionKey, current ?? null, snapshot.name, snapshot.history);
   const topics = current?.isMain ? conversations.rows.filter(row => row.agentId === current.agentId && row.key !== current.key && !row.isMain && !row.system && !row.archived && !row.helper).map(row => ({ key: row.key, title: row.title })) : [];
+  // The open Trunk's threads (Classic TopicRail): in the topics column, or above the chat for Tabs and narrow windows.
+  const threads = useR1Topics({ session, ready, rows: conversations.rows, list, currentKey: route.kind === "chat" ? snapshot.sessionKey : null,
+    mainSuffix: snapshot.mainKey?.split(":").slice(2).join(":") || "main", onOpen: openConversation });
   // Opening a conversation clears its unread flag once per unread episode (Classic read-on-open, connect/unread-guard.ts).
   const markRequest = useCallback((method: string, params?: unknown) => session.request(method, params), [session]);
   const refreshList = useCallback(() => { void list.refresh(); }, [list]);
@@ -204,11 +219,11 @@ export function R1Window({ session }: { session: SaplingSession }) {
     currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} error={conversations.error} />;
   const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : changes ? <R1Changes key={snapshot.sessionKey ?? "none"} engine={engine} name={snapshot.name} onClose={closeChanges} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
-    onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <ChatView
-    name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
+    onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <>{threads.above}<ChatView
+    name={snapshot.name} history={threads.history ?? snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo} room={room.thread}
-  />;
+  /></>;
   // Problem and news banners (the Classic hooks), drawn in the approvals banner stack.
   const problems = useProblemBannerRows({ session, shownKey: route.kind === "chat" ? snapshot.sessionKey : null, machineName: machine?.name ?? "",
     defaultName: conversations.rows.find(row => row.key === snapshot.mainKey)?.title || "your Trunk", onOpen: openConversation,
@@ -228,7 +243,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       onTalk={sessionKey => { firstRun.close(); navigate({ kind: "chat", key: sessionKey }); }} />}
     {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
     <div className="r1-ob-behind" inert={behind} aria-hidden={behind || undefined} style={{ display: "contents", visibility: behind ? "hidden" : undefined }}>
-    <Frame sidebar={sidebar} main={main} beside={talk.beside} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
+    <Frame sidebar={sidebar} main={main} topics={route.kind === "chat" ? threads.column ?? undefined : undefined} beside={talk.beside} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: room.header && route.kind === "chat" ? room.header.faces(24) : <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
