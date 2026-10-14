@@ -2384,9 +2384,9 @@
     "screen": "customize",
     "label": "Channels",
     "previewAction": "Shows chat apps + pair a phone.",
-    "appFile": "window/src/places/customize/channels.tsx",
-    "appComponent": "ChannelsTab",
-    "appAction": "Tab label is Chat apps.",
+    "appFile": "window/src/screens/chatapps/ChatApps.tsx",
+    "appComponent": "ChatApps",
+    "appAction": "Customize has no Chat apps tab; chat apps live in Settings \u203a Chat apps.",
     "status": "different"
   },
   {
@@ -2454,9 +2454,9 @@
     "screen": "customize",
     "label": "Set up",
     "previewAction": "Toasts a two-minute setup stub, or Manage if already connected.",
-    "appFile": "window/src/places/customize/channels.tsx",
-    "appComponent": "ChannelsTab",
-    "appAction": "Starts the real chat-app setup / manage flow.",
+    "appFile": "window/src/screens/chatapps/ChatApps.tsx",
+    "appComponent": "ChatApps",
+    "appAction": "Starts the real chat-app setup / manage flow, in Settings \u203a Chat apps.",
     "status": "different"
   },
   {

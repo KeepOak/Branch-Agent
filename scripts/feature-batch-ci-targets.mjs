@@ -393,7 +393,6 @@ export const windowStrictFiles = [
   'src/places/trunk/profile-data.ts',
   'src/places/trunk/trunk.test.tsx',
   'src/places/trunk/create-readiness.test.ts',
-  'src/places/customize/channels.tsx',
   'src/places/customize/connectors.tsx',
   'src/places/customize/jobs.tsx',
   'src/places/customize/jobs-data.ts',
