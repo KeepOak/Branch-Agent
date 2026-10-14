@@ -25,7 +25,9 @@ export const UPDATED_IN_PLACE = "Updated in place. Nothing restarted.";
 /** Preview T0 (`updT5`): wait this long and try again while setup (`.ob-main, .ob9`) is on screen. */
 export const UPDATE_TOAST_SETUP_WAIT_MS = 5000;
 type Desktop = { gatewayUrl?: string; getGatewayUrl?: () => string; componentUpdates?: ComponentUpdates; unavailableReason?: string;
-  onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => () => void;
+  onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean; workingTrunks?: number }>) => () => void;
+  /** The tray's Pause all work (Private #454 C); older desktop builds lack it. */
+  onPauseAll?: (listener: () => void) => () => void;
   onUpdateApplied?: (listener: (notice: AppliedUpdateNotice) => void) => () => void;
   onUpdateUndone?: (listener: () => void) => () => void;
   reportUpdateNotice?: (event: UpdateNoticeEvent, notice: AppliedUpdateNotice) => void };
