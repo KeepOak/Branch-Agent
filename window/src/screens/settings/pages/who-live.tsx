@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { list, record, visible } from "../../../places/settings/adapter";
 import { RecordsDialog, openPeople } from "../../../places/settings/set1/people-more";
+import { PeopleBlock } from "../../../places/settings/set1/people";
+import { ClassicBlock } from "./spec-rows";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
 import { Needs } from "./appearance-live";
@@ -25,4 +27,9 @@ export function SignedRecords({ engine, row }: SlotControlProps) {
     <Needs engine={engine} need={["audit.list"]} where={row.label ?? ""}><button type="button" className="r1s-btn" onClick={() => setOpen(true)}>See the last</button></Needs>
     {open ? <RecordsDialog engine={engine} trunks={trunks} onClose={() => setOpen(false)} /> : null}
   </>;
+}
+
+/** Everyone who uses Branch, the chosen person's card and Invite someone: Classic's own block inside the People card. */
+export function Everyone(props: SlotControlProps) {
+  return <ClassicBlock {...props} draw={(c) => <PeopleBlock {...c.props} />} />;
 }

@@ -1,7 +1,7 @@
 // Settings › Who uses Branch: the approved preview's three cards (preview.html PG who): People, Records, Signing in to
-// Branch. The PIN and conversation-separation rows and every sign-in row wait for Branch (Coming in their own words); the
-// People place buttons and Signed household records are live (who-live.tsx). The list of everyone who uses Branch stays
-// in the People place, as the preview has it.
+// Branch. People opens with the list of everyone who uses Branch, the chosen person's card and Invite someone (Classic's
+// own block, who-live.tsx), as the preview draws it; the PIN and conversation-separation rows and every sign-in row wait
+// for Branch (Coming in their own words); the People place buttons and Signed household records are live.
 import type { Level } from "../nav";
 import type { Control, Row, RowOption } from "../rows";
 
@@ -12,6 +12,8 @@ const SIGN = "Signing in to Branch";
 const AUTH = "engine: ways to sign in to Branch";
 
 export const WHO_ROWS: Row[] = [
+  { id: "who.people.everyone", page: "who", card: "People", label: "Invite someone", level: 0, control: "custom", bare: true,
+    source: { kind: "slot", calls: ["users.list", "users.self", "system-presence"], reason: "Invite someone comes in a later update." } },
   coming("who.people.pin", "People", "Ask for a PIN when switching person", "engine: a PIN for switching person", { control: "toggle",
     help: "At least four digits, kept on this computer. Five wrong tries in a row tell the owner." }),
   coming("who.people.separate", "People", "Keep conversations separate", "window: setting each role's conversation access", { control: "toggle",

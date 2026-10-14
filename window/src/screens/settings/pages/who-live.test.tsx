@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Settings › Who uses Branch in R1 (#1049 section D): a native R1 page with the approved preview's three cards (preview.html
-// PG who), not Classic People in a wrapper; the list of everyone who uses Branch stays in the People place.
+// PG who), not Classic People in a wrapper; People opens with the list of everyone, as the preview does.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +26,8 @@ function engineOf() {
     if (method === "config.get") return { hash: "h1", valid: true, config: {} };
     if (method === "config.schema") return { schema: {}, uiHints: {} };
     if (method === "users.prefs.get") return { status: "ok", entries: {} };
+    if (method === "users.list") return { profiles: [{ id: "me", displayName: "Taofik", role: "owner" }] };
+    if (method === "users.self") return { profile: { id: "me", displayName: "Taofik", role: "owner" } };
     if (method === "agents.list") return { agents: [{ id: "main", name: "Sapling" }] };
     if (method === "audit.list") return { events: [{ eventId: "e1", agentId: "main", toolName: "read", status: "succeeded", occurredAt: Date.now() }] };
     return {};
@@ -55,6 +57,9 @@ describe("R1 Settings › Who uses Branch is a native R1 page with the preview's
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(["People"]);
     expect(labels(sections()[0])).toEqual(["Ask for a PIN when switching person", "Keep conversations separate"]);
     expect([...sections()[0].querySelectorAll("button")].map((b) => b.textContent)).toEqual(expect.arrayContaining(["Groups", "Signing in from other devices", "What you share"]));
+    // The preview opens People with everyone who uses Branch and Invite someone, with no heading of its own.
+    expect(sections()[0].textContent).toContain("Invite someone");
+    expect(sections()[0].querySelectorAll("h1, h2:not(:first-child)").length).toBe(0);
     await click([...host.querySelectorAll("button")].find((b) => b.textContent === "Learn more"));
     expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(["People"]);
   });
@@ -71,7 +76,7 @@ describe("R1 Settings › Who uses Branch is a native R1 page with the preview's
     window.addEventListener("branch:navigate-place", (e) => seen.push((e as CustomEvent).detail));
     const { request } = await mount();
     await setLevel("Advanced");
-    expect(undeclaredControls(host.querySelector(".r1s-col")!).map((e) => e.outerHTML.slice(0, 120))).toEqual([]);
+    expect(undeclaredControls(host.querySelector(".r1s-col")!).filter((e) => !e.closest("[data-classic-block]")).map((e) => e.outerHTML.slice(0, 120))).toEqual([]);
     await click([...host.querySelectorAll("button")].find((b) => b.textContent === "What you share"));
     expect(seen).toContainEqual({ place: "people", tab: "Shared" });
     await click([...host.querySelectorAll("button")].find((b) => b.textContent === "See the last"));
