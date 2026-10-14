@@ -1,0 +1,3 @@
+window:src/screens/seedbank/seedbank-curated.test.tsx
+window:src/screens/seedbank/Seedbank.test.tsx
+window:src/screens/seedbank/catalog.test.ts
