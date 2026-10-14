@@ -331,6 +331,33 @@ describe("Trunk profile and studio", () => {
     expect(document.body.textContent).toContain("Here is my proposal.");
     expect(byText("Make it")).toBeTruthy();
   });
+  it("shows a waiting proposal as the proposed-Trunk card, with Change it first greyed and No thanks sending the answer", async () => {
+    const request = vi.fn(() => Promise.resolve({ sessionId: "s", reply: "Here is my proposal.", action: "none", needsApproval: true }));
+    await mount(<TrunkStudio engine={engine(request)} onClose={() => {}} />);
+    const box = document.querySelector("textarea")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(box, "Watch renewals"); box.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click(byText("Propose it"));
+    const card = document.querySelector('[data-testid="trunk-proposed"]');
+    expect(card?.textContent).toContain("A new Trunk, proposed");
+    expect(card?.textContent).toContain("Waiting for you");
+    expect(byText("Change it first").getAttribute("aria-disabled")).toBe("true");
+    await click(byText("No thanks"));
+    expect(request).toHaveBeenLastCalledWith("branch.chat", expect.objectContaining({ message: "No thanks." }));
+  });
+  it("fills the proposed-Trunk card from the engine's structured proposal and sends Make with no chat bubble", async () => {
+    const request = vi.fn(() => Promise.resolve({ sessionId: "s", reply: "Here is my proposal.", action: "none", needsApproval: true, proposal: { kind: "create-agent", agentId: "quill", name: "Quill", job: "Watch renewals" } }));
+    await mount(<TrunkStudio engine={engine(request)} onClose={() => {}} />);
+    const box = document.querySelector("textarea")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(box, "Watch renewals"); box.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click(byText("Propose it"));
+    const card = document.querySelector('[data-testid="trunk-proposed"]')!;
+    expect(card.querySelector("dl")?.textContent).toContain("Watch renewals");
+    expect(card.querySelector("dl")?.textContent).toContain("Tools comes in a later update.");
+    expect(card.querySelector("dl")?.textContent).not.toContain("Here is my proposal.");
+    await click(byText("Make Quill"));
+    expect(request).toHaveBeenLastCalledWith("branch.chat", expect.objectContaining({ message: "Yes, make it." }));
+    expect(document.body.textContent).not.toContain("Yes, make it.");
+  });
 });
 
 describe("Trunk tools rows", () => {
