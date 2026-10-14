@@ -11,6 +11,7 @@ import {
 import { classicSlot } from "./classic-host";
 import { CUSTOMIZE_PAGE } from "./customize-live";
 import { MEMORY_PAGE } from "./memory-live";
+import { AUTOS_PAGE } from "./autos-live";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
@@ -39,6 +40,8 @@ export const R1_PAGES: PageSlots = {
   customize: CUSTOMIZE_PAGE,
   // Memory & documents is a row page; meaning search, the migration window and a few switches are its own (memory-live.tsx).
   memory: MEMORY_PAGE,
+  // Automations is a row page; where alerts go and the Edit windows are its own (autos-live.tsx).
+  autos: AUTOS_PAGE,
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,

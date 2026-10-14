@@ -6,6 +6,7 @@ import type { DesktopControlName } from "../../connect/desktop-controls";
 import type { Level, PageId } from "./nav";
 import { ACCOUNTS_ROWS } from "./pages/accounts";
 import { APPEARANCE_ROWS } from "./pages/appearance";
+import { AUTOS_ROWS } from "./pages/autos";
 import { CUSTOMIZE_ROWS } from "./pages/customize";
 import { GENERAL_ROWS } from "./pages/general";
 import { MEMORY_ROWS } from "./pages/memory";
@@ -93,7 +94,7 @@ export function rowLevel(row: Row, hints: UiHints): Level {
 }
 
 /** Every row of the R1 Settings pages. Pages add their list here. */
-export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...MEMORY_ROWS];
+export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...MEMORY_ROWS, ...AUTOS_ROWS];
 
 /** The rows of one card at this level, in table order. A row above the level is hidden. */
 export function cardRows(page: PageId, card: string, level: Level, hints: UiHints, rows: Row[] = ROWS): Row[] {
