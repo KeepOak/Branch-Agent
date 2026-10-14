@@ -9,6 +9,7 @@ import type { DesktopConfig } from "./config";
 import { appendCappedLog, cappedLogStream } from "./log-rotation";
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
 import { recordEngine } from "./engine-records";
+import { engineServiceArgs, runEngineCli } from "./engine-service";
 import { HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 
 export function readToken(cfg: DesktopConfig): string {
@@ -58,6 +59,46 @@ function testProfile(): Record<string, string> {
   };
 }
 
+/**
+ * The environment every engine process of this app gets: its own home, state and config under the data folder, the
+ * gateway port and token. The child engine and the engine service (installed through the engine's own CLI) share it,
+ * so both run the same engine on the same state.
+ */
+export function engineEnvironment(cfg: DesktopConfig, legacyDevMode: boolean, port: number, token: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    BRANCH_PROFILE: legacyDevMode ? "dev" : "default",
+    BRANCH_HOME: join(cfg.dataDir, "home"),
+    ...(legacyDevMode ? { BRANCH_STATE_DIR: undefined, BRANCH_CONFIG_PATH: undefined } : {
+      BRANCH_STATE_DIR: join(cfg.dataDir, "home", ".branch"),
+      BRANCH_CONFIG_PATH: join(cfg.dataDir, "home", ".branch", "branch.json"),
+    }),
+    // The desktop owns the live gateway: let it start every configured channel.
+    // Candidate and smoke gateways opt out separately.
+    BRANCH_SKIP_CHANNELS: undefined,
+    BRANCH_GATEWAY_PORT: String(port),
+    // The configured port (desktop.json), even when this child is a standby on a spare.
+    // After a hand-over the successor also listens here once the old engine exits.
+    BRANCH_GATEWAY_PREFERRED_PORT: String(cfg.gatewayPort),
+    BRANCH_GATEWAY_TOKEN: token,
+    ...testProfile(),
+  };
+}
+
+/**
+ * Runs one engine service command (`branch gateway install|start`, engine/src/daemon) for this app's engine, and
+ * before an install stores the app's gateway token in the engine config (from stdin, never on a command line), so
+ * the service started at sign-in accepts the same token the window uses.
+ */
+export async function runEngineServiceAction(cfg: DesktopConfig, engineDir: string, token: string, action: "install" | "start", log: (line: string) => void): Promise<void> {
+  const profile = prepareNormalProfile(join(cfg.dataDir, "home"), undefined, log, join(engineDir, "docs", "reference", "templates"));
+  if (profile.legacyDevMode) throw new Error("the legacy dev profile runs its engine inside the app");
+  const env = engineEnvironment(cfg, false, cfg.gatewayPort, token);
+  const run = (args: string[], stdin?: string) => runEngineCli({ file: cfg.nodePath, args, cwd: engineDir, env, stdin });
+  if (action === "install") await run(engineServiceArgs("token"), JSON.stringify({ gateway: { auth: { token } } }));
+  await run(engineServiceArgs(action, cfg.gatewayPort));
+}
+
 /** `port` defaults to the configured one; an update's standby passes its own spare port without changing the config. */
 export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort, macComputerEndpoint?: string): ChildProcess {
   // The profile check can refuse a standby; it runs before the log is opened so a refusal leaks nothing.
@@ -70,25 +111,10 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   }, join(engineDir, "docs", "reference", "templates"));
   if (profile.note) log.write(profile.note + "\n");
   const env = {
-    ...process.env,
-    BRANCH_PROFILE: profile.legacyDevMode ? "dev" : "default",
-    BRANCH_HOME: join(cfg.dataDir, "home"),
-    ...(profile.legacyDevMode ? { BRANCH_STATE_DIR: undefined, BRANCH_CONFIG_PATH: undefined } : {
-      BRANCH_STATE_DIR: join(cfg.dataDir, "home", ".branch"),
-      BRANCH_CONFIG_PATH: join(cfg.dataDir, "home", ".branch", "branch.json"),
-    }),
-    // The desktop owns the live gateway: let it start every configured channel.
-    // Candidate and smoke gateways opt out separately.
-    BRANCH_SKIP_CHANNELS: undefined,
-    BRANCH_GATEWAY_PORT: String(port),
-    // The configured port (desktop.json), even when this child is a standby on a spare.
-    // After a hand-over the successor also listens here once the old engine exits.
-    BRANCH_GATEWAY_PREFERRED_PORT: String(cfg.gatewayPort),
-    BRANCH_GATEWAY_TOKEN: token,
+    ...engineEnvironment(cfg, profile.legacyDevMode, port, token),
     BRANCH_GATEWAY_STANDBY: standby ? "1" : undefined,
     // Only Electron's Mac host can give the Gateway this app-owned daemon lease.
     BRANCH_CUA_DRIVER_ENDPOINT: macComputerEndpoint,
-    ...testProfile(),
   };
   const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];
   const child = spawn(cfg.nodePath, args, {
