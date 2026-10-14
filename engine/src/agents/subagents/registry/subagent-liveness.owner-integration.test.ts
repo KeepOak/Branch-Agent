@@ -374,7 +374,7 @@ it("counts a working helper as active work for the update idle check without an 
     expect(snapshot.counts.subagentRuns).toBe(1);
     expect(snapshot.idle).toBe(false);
     expect(snapshot.blockers).toContainEqual({
-      kind: "subagent-run",
+      kind: "agent-run",
       count: 1,
       message: "1 active helper (subagent) run(s)",
     });

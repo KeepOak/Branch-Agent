@@ -49,7 +49,6 @@ export type GatewayActiveWorkBlocker = {
     | "background-exec"
     | "cron-run"
     | "agent-run"
-    | "subagent-run"
     | "acp-run"
     | "media-generation"
     | "root-request"
@@ -179,7 +178,8 @@ export function createGatewayActiveWorkSnapshot(
   add(counts.backgroundExecSessions, "background-exec", "active background exec session(s)");
   add(counts.cronRuns, "cron-run", "active cron run(s)");
   add(counts.agentRuns, "agent-run", "admitted agent run(s)");
-  add(counts.subagentRuns, "subagent-run", "active helper (subagent) run(s)");
+  // The suspension wire protocol has no separate kind for helpers: they are agent runs there.
+  add(counts.subagentRuns, "agent-run", "active helper (subagent) run(s)");
   add(counts.acpRuns, "acp-run", "active ACP turn(s)");
   add(counts.mediaRuns, "media-generation", "active media generation(s)");
   const rootRequestHolders =
