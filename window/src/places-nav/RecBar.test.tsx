@@ -74,6 +74,7 @@ describe("RecBar", () => {
     expect(host.textContent).toContain("The gateway keeps Telegram, your phone and automations working, and restarts Branch if it ever stops.");
     expect(["Yes", "Not now", "Don’t ask again"].map(label => button(host, label)?.textContent)).toEqual(["Yes", "Not now", "Don’t ask again"]);
     expect(host.textContent).not.toContain(UPDATE_TITLE);
+    expect(host.querySelector(".recbar .mark.mark-face.rec-mark")).not.toBeNull();
   });
 
   it("Yes turns the gateway on through the app and then asks about updates", async () => {
@@ -95,6 +96,18 @@ describe("RecBar", () => {
     expect(request).toHaveBeenCalledWith("config.patch", expect.objectContaining({ raw: JSON.stringify({ update: { auto: { enabled: true } } }) }));
     expect(notify).toHaveBeenCalledWith("Branch keeps itself up to date.");
     expect(host.querySelector(".recbar")).toBeNull();
+  });
+
+  it("a failed update save shows the engine's error as a bad-tone toast", async () => {
+    installBridge(true);
+    const { engine } = engineWith({ update: { auto: { enabled: false } } });
+    const original = engine.request;
+    (engine as { request: unknown }).request = async (method: string, params?: Record<string, unknown>) =>
+      method === "config.patch" ? { ok: false, error: "Settings are locked." } : original(method, params);
+    const host = await mount(engine);
+    await click(button(host, "Yes"));
+    expect(notify).toHaveBeenCalledWith("Settings are locked.", { tone: "bad" });
+    expect(host.querySelector(".recbar")?.textContent).toContain(UPDATE_TITLE);
   });
 
   it("shows nothing when both settings are already on", async () => {
