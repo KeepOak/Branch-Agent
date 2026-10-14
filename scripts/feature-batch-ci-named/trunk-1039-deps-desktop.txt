@@ -1,0 +1,6 @@
+window:src/thread/math-katex.test.tsx
+engine:src/agents/mcp-oauth-refresh-issuer.test.ts
+engine:src/gateway/server.mcp-auth-login.test.ts
+engine:extensions/browser/src/browser/chrome-mcp.test.ts
+engine:extensions/acpx/src/codex-auth-bridge.test.ts
+engine:extensions/codex/src/app-server/config.test.ts
