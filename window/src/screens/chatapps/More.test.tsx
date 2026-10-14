@@ -54,7 +54,7 @@ it("lists every app the engine runs, not only the R1 four, and opens Manage for 
   expect(manage).toHaveBeenCalledWith(expect.objectContaining({ id: "signal", channel: "signal" }));
 });
 
-it("sets up any app the engine has through its wizard, and finds another app, as Classic's All chat apps does", async () => {
+it("sets up any app the engine has through its wizard, and has no Find another app button (#1049: not in the preview)", async () => {
   const { host, setup, request } = await render();
   const matrix = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find((b) => b.textContent?.includes("Matrix"))!;
   expect(matrix.getAttribute("aria-disabled")).toBe("false");
@@ -63,13 +63,10 @@ it("sets up any app the engine has through its wizard, and finds another app, as
   const extra = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find((b) => b.textContent?.includes("Nostrish"))!;
   await act(async () => extra.click());
   expect(setup).toHaveBeenLastCalledWith(expect.objectContaining({ channel: "nostrish" }));
-  const calls = setup.mock.calls.length;
-  await act(async () => button(host, "Find another app").click());
-  await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-  // The engine's own setup with no app chosen, in the generic dialog that follows the channel the engine picks.
-  expect(setup.mock.calls.length).toBe(calls);
-  expect(request).toHaveBeenCalledWith("wizard.start", { flow: "channels" });
-  expect(document.querySelector('[data-testid="chatapps-connect"]')).not.toBeNull();
+  // Every app the engine has is its own card (Nostrish above), so the preview has no Find another app.
+  expect([...host.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Find another app");
+  expect(document.querySelector('[data-testid="chatapps-connect"]')).toBeNull();
+  expect(request).not.toHaveBeenCalledWith("wizard.start", { flow: "channels" });
 });
 
 it("approves a request with Tell them and make them the owner (channels.pairing.approve notify, bootstrapCommandOwner)", async () => {
