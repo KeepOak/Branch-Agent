@@ -13,7 +13,17 @@ export type ComponentUpdates = {
   stage(): Promise<ComponentUpdateStatus>;
   /** Older desktop builds have no Install now; the page hides the button without it. */
   install?: () => void;
+  /** Whether the last update can still be undone, with its version line; older desktop builds lack it and offer no Undo here. */
+  undoAvailability?: () => Promise<UndoAvailability>;
+  undo?: () => void;
 };
+/** From the desktop: `until` is the end of the previous engine's probation (confirmation + 3 days, Private #983);
+ *  `version` and `installedAt` are the installed release and when it was confirmed, for the version line. */
+export type UndoAvailability = { available: boolean; until: number | null; removed: boolean; version?: string | null; installedAt?: number | null };
+/** Undo is offered only while it can still run: never past the probation's end or after the previous engine is pruned. */
+export function undoOpen(value: UndoAvailability | null, now = Date.now()): boolean {
+  return Boolean(value?.available && (value.until == null || now < value.until));
+}
 /** The desktop update bar's states, published by the preload as this window event (same wording as the bar). */
 export type EngineUpdateState = "ready" | "auto-wait" | "preparing" | "restarting" | "updating" | "updated" | "kept" | "failed";
 export type EngineUpdateEvent = { state: EngineUpdateState; message?: string };
@@ -28,6 +38,8 @@ type Desktop = { gatewayUrl?: string; getGatewayUrl?: () => string; componentUpd
   onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean; workingTrunks?: number }>) => () => void;
   /** The tray's Pause all work (Private #454 C); older desktop builds lack it. */
   onPauseAll?: (listener: () => void) => () => void;
+  /** A closed-window "done" notice for a paired phone (Private #454 D); older desktop builds lack it. */
+  onPhonePush?: (listener: (notice: { title: string; body: string }) => void) => () => void;
   onUpdateApplied?: (listener: (notice: AppliedUpdateNotice) => void) => () => void;
   onUpdateUndone?: (listener: () => void) => () => void;
   reportUpdateNotice?: (event: UpdateNoticeEvent, notice: AppliedUpdateNotice) => void };
@@ -124,6 +136,22 @@ export function useDesktopComponentStatus(gatewayUrl?: string): {
     return () => { live = false; clearInterval(timer); };
   }, [bridge]);
   return { status, error, setStatus: value => { setStatus(value); setError(value.error); } };
+}
+
+/** The last update's Undo, read from the desktop and re-read every minute (so Undo goes once its probation ends). */
+export function useDesktopUndoAvailability(gatewayUrl?: string): { value: UndoAvailability | null; reload: () => void } {
+  const bridge = componentDesktop(gatewayUrl)?.componentUpdates;
+  const [value, setValue] = useState<UndoAvailability | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const read = bridge?.undoAvailability;
+    if (!read) return;
+    let live = true;
+    void read().then(next => { if (live) setValue(next); }, () => { if (live) setValue(null); });
+    const timer = setTimeout(() => setTick(n => n + 1), 60_000);
+    return () => { live = false; clearTimeout(timer); };
+  }, [bridge, tick]);
+  return { value, reload: () => setTick(n => n + 1) };
 }
 
 function desktopBridge(): Desktop | undefined {
