@@ -25,7 +25,7 @@ import {
 } from "./history-live";
 import { DEVICES } from "./devices";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
-import { ChatBackground, OverviewBackground, OwnPet, PasteSeed, ReportBug, StatusSymbols, TrunkPictures, YourPet, YourPicture, YourTheme } from "./appearance-yours";
+import { ChatBackground, OverviewBackground, OwnPet, PasteSeed, PicturesAround, ReportBug, StatusSymbols, TrunkPictures, YourPet, YourPicture, YourTheme } from "./appearance-yours";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
@@ -120,6 +120,7 @@ export const R1_PAGES: PageSlots = {
       "appearance.yours.pet": YourPet,
       "appearance.yours.theme": YourTheme,
       "appearance.yours.paste": PasteSeed,
+      "appearance.yours.pictures": PicturesAround,
       "appearance.yours.picture": YourPicture,
       "appearance.yours.overview": OverviewBackground,
       "appearance.yours.chat": ChatBackground,

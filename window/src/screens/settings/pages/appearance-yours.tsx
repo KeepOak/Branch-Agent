@@ -3,6 +3,8 @@
 // Rows that open somewhere else are local; the ones Branch can't do yet are Coming in place, each naming what it waits for
 // (#1049).
 import { Coming } from "../../../glass/coming";
+import { DEFAULT_PET, PETS } from "../../../places/settings/set1/appearance-pet";
+import { useLook } from "../../../places/settings/set1/appearance-store";
 import type { SlotControlProps } from "../slots";
 
 /** The six symbols in the bar at the bottom, with their words (preview glyphSheetT5). */
@@ -38,7 +40,30 @@ export const YOURS_COMING = {
 } as const;
 
 export const ReportBug = () => <Later labels={["Make a report"]} need="diagnostics.export" reason={YOURS_COMING.report} where="Report for a bug" />;
-export const YourPet = () => <Later labels={["Copy seed", "Download"]} need="window: a pet seed with its sprite and frames" reason={YOURS_COMING.pet} where="Your pet" />;
+/** Your pet · <its name> (preview "Your pet · Squirrel"): the row names the pet you have, then its seed buttons. */
+export function YourPet({ engine }: SlotControlProps) {
+  const look = useLook(engine);
+  const id = String(look.val("pet", DEFAULT_PET));
+  const pet = id === "none" ? undefined : PETS.find((p) => p.id === id);
+  return <div className="r1s-yours-pet">
+    <b className="g-label">{pet ? `Your pet · ${pet.name}` : "Your pet"}</b>
+    <small className="g-label" data-lines>A pet seed carries its sprite and every frame (idle, walk, cheer, notice, pat).</small>
+    <div className="r1s-ctl"><Later labels={["Copy seed", "Download"]} need="window: a pet seed with its sprite and frames" reason={YOURS_COMING.pet} where="Your pet" /></div>
+  </div>;
+}
+
+/** Pictures around Branch (preview ART17, sec15): the five feature pictures, shown where a feature starts or is empty. */
+export const PICTURES: readonly (readonly [string, string])[] = [
+  ["cloud", "A cloud computer at work"], ["call", "A phone call in progress"], ["meeting", "Joining a meeting"], ["learn", "Learning an app"], ["timeline", "A timeline replaying"],
+];
+export function PicturesAround() {
+  return <div className="r1s-pictures">
+    <small className="g-label" data-lines>Shown where a feature starts or has nothing to show yet. They move gently, and hold still when motion is reduced.</small>
+    <div className="r1s-arts" role="list" aria-label="Pictures around Branch">{PICTURES.map(([id, label]) => (
+      <figure key={id} role="listitem" className="r1s-art g-clear"><img src={`/assets/art17/feature/${id}.webp`} alt="" width={88} height={88} /><figcaption className="g-label">{label}</figcaption></figure>
+    ))}</div>
+  </div>;
+}
 export const YourTheme = () => <Later labels={["Copy seed", "Download"]} need="window: a theme and background seed" reason={YOURS_COMING.theme} where="This theme and background" />;
 export const OverviewBackground = () => <Later labels={["Change…"]} need="window: a picture picker for Overview" reason={YOURS_COMING.overview} where="Overview background" />;
 export const OwnPet = () => <Later labels={["Make one with an agent…", "Upload a sprite…"]} need="window: a pet sprite of your own" reason={YOURS_COMING.ownPet} where="A pet of your own" />;
