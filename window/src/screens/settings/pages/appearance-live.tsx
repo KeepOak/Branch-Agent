@@ -19,7 +19,7 @@ import { DEFAULT_PET, PETS, petsHad } from "../../../places/settings/set1/appear
 import { sceneFile, useLook } from "../../../places/settings/set1/appearance-store";
 import { localId, Swatch, themeGroup, themeName, ThemesDialog, useThemes, type Extra } from "../../../places/settings/set1/appearance-themes";
 import { useThemeChoice, useTrunk } from "../../../places/settings/set1/appearance-top";
-import { readTopicSettings, setDefaultTopicLayout, TOPIC_LAYOUT_KEY, topicLayoutNames, type TopicLayout } from "../../../shell/topic-layout";
+import { r1DefaultTopicLayout, r1TopicLayoutNames } from "../../../shell/topic-layout";
 import { setThemeChoice, type ThemeChoice } from "../../../theme/theme";
 import { Segmented } from "../RowView";
 import type { SlotControlProps } from "../slots";
@@ -243,21 +243,9 @@ export function EachTrunk({ engine }: SlotControlProps) {
   </>;
 }
 
-const LAYOUTS = (Object.entries(topicLayoutNames) as [TopicLayout, string][]).map(([v, label]) => ({ v, label: label === "Tabs above the chat" ? "Tabs" : label }));
-
-/** How a contact's threads show beside its chat, for every contact without its own (kept in this window). */
-export function ThreadsShowAs({ row }: SlotControlProps) {
-  const [layout, setLayout] = useState(() => readTopicSettings().layout);
-  useEffect(() => {
-    const sync = () => setLayout(readTopicSettings().layout);
-    const storage = (e: StorageEvent) => { if (e.key === TOPIC_LAYOUT_KEY) sync(); };
-    window.addEventListener("branch:topic-layout-changed", sync);
-    window.addEventListener("storage", storage);
-    return () => { window.removeEventListener("branch:topic-layout-changed", sync); window.removeEventListener("storage", storage); };
-  }, []);
-  return <div className="r1s-own-ctl" data-local="">
-    <Segmented label={row.label ?? "Threads show as"} value={layout} options={LAYOUTS} onChange={(v) => { setDefaultTopicLayout(v as TopicLayout); setLayout(v as TopicLayout); }} />
-  </div>;
+/** How a contact's threads show beside its chat. R1 offers one layout for now (Tabs above the chat), so this reads it; it is not a choice yet. */
+export function ThreadsShowAs(_props: SlotControlProps) {
+  return <div className="r1s-own-ctl" data-local=""><span className="r1s-val">{r1TopicLayoutNames[r1DefaultTopicLayout()]}</span></div>;
 }
 
 /** The small model Branch uses for smaller jobs (agents.defaults.utilityModel), with a way to Models to change it. */

@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { undeclaredControls } from "../../../glass/coming-registry";
 import { forgetLookStore } from "../../../places/settings/set1/appearance-store";
-import { readTopicSettings } from "../../../shell/topic-layout";
 import { SettingsFrame } from "../SettingsFrame";
 import { R1_PAGES } from "./plugged";
 
@@ -112,10 +111,11 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(calls(request, "agents.update")).toContainEqual({ agentId: "main", model: "anthropic/big" });
   });
 
-  it("sets how threads show for every contact, in this window", async () => {
+  it("shows Tabs above the chat for threads, even when a removed layout was saved", async () => {
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "side", width: 88, per: {} }));
     await mount();
-    await click([...row("appearance.list.threads")!.querySelectorAll("button")].find((b) => b.textContent === "Side tabs")!);
-    expect(readTopicSettings().layout).toBe("side");
+    expect(row("appearance.list.threads")!.textContent).toContain("Tabs above the chat");
+    expect(row("appearance.list.threads")!.querySelectorAll("button")).toHaveLength(0);
   });
 
   it("shows the small model and opens Models to change it", async () => {

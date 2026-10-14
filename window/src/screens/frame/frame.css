@@ -118,3 +118,11 @@
 .r1-topic-fold .topicsT5:not(.lay-tabs), .r1-content > .r1-topic-host .topicsT5:not(.lay-tabs) { position: static; width: 100%; }
 .r1-topic-fold > .r1-topic-host { width: 100%; }
 .r1-topic-host .dlg.g-clear .fld > span { display: inline-block; width: fit-content; padding: 2px 9px; border-radius: var(--r-pill); background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }
+
+/* R1's New topic (owner item 5): the round glass + leads the tabs strip; the sheet's icon and colour choices are round pills, the chosen one ringed. */
+.r1-topic-host .tpAddP17 { flex: none; width: 28px; height: 28px; margin: 2px 4px 2px 0; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }
+.r1-topic-host .tpAddP17 svg { width: 14px; height: 14px; }
+.r1-topic-host .tpPickGridP17 { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.r1-topic-host .tpPickGridP17 > button { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); font-size: 16px; }
+.r1-topic-host .tpPickGridP17 > button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
+.r1-topic-host .tpPickGridP17 > .tpSwatchP17 { width: 22px; height: 22px; background: var(--c); }
