@@ -94,7 +94,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("who,notifications,instructions,signins,updates,privacy,history,learning,remote,chatapps,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("who,notifications,instructions,signins,updates,privacy,history,learning,remote,voice,chatapps,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
@@ -154,7 +154,7 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
     card: "classic:people", goto: "r1:goto",
     general: "r1:general", appearance: "r1:appearance", notifications: "r1:notifications", who: "r1:who",
     trunks: "classic:advanced", instructions: "r1:instructions", customize: "classic:advanced", seedbank: "r1:seedbank", memory: "classic:advanced", autos: "classic:advanced",
-    voice: "classic:voice", chatapps: "r1:chatapps",
+    voice: "r1:voice", chatapps: "r1:chatapps",
     accounts: "r1:accounts", models: "classic:models",
     permissions: "classic:permissions", signins: "r1:signins", privacy: "r1:privacy",
     devices: "classic:devices", browser: "classic:computer", coding: "classic:computer", remote: "r1:remote",
@@ -167,7 +167,7 @@ it("sends a page to R1 Settings only when the row table or a slot covers it and 
   expect(r1SettingsPage("accounts")).toBe(true);
   expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(true);
   expect(r1SettingsPage("chatapps")).toBe(true);
-  for (const page of ["models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
+  for (const page of ["models", "permissions", "keys", "devices", "trunks", "local"]) expect(r1SettingsPage(page)).toBe(false);
 });
 
 it("the conversation menu's View › \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
