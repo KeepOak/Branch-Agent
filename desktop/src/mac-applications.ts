@@ -14,6 +14,8 @@ export const MAC_LEGACY_BUNDLE_FOLDER = MAC_ARCHIVE_BUNDLE_FOLDER;
 export const MAC_BUNDLE_ID = "com.electron.branch-agent";
 export const MAC_EXECUTABLE_NAME = "Branch Agent";
 export const MAC_ICON_FILE = "branch.icns";
+/** The packaged name: Electron's helpers are "<this> Helper.app", so CFBundleName must stay this. */
+export const MAC_HELPER_PREFIX = "Branch Agent";
 
 /** Pinned self-signed release identity. TeamIdentifier is "not set" until a Developer ID is used. */
 export const macReleaseSigning = {
@@ -100,19 +102,31 @@ async function assertFile(file: string): Promise<void> {
   if (!info.isFile()) throw new Error(`Missing bundle file: ${basename(file)}`);
 }
 
+/** A packaged bundle (one with Frameworks) must carry the main helper Electron looks up from CFBundleName. */
+async function assertHelpers(contents: string): Promise<void> {
+  const frameworks = join(contents, "Frameworks");
+  try { await lstat(frameworks); } catch { return; }
+  const helper = `${MAC_HELPER_PREFIX} Helper`;
+  await assertFile(join(frameworks, `${helper}.app`, "Contents", "MacOS", helper));
+}
+
 /** Writes the user-facing name and the stable bundle id. Call this before signing; do not restamp a signed bundle. */
 export async function stampMacBundle(appDir: string): Promise<void> {
   const contents = join(appDir, "Contents");
   const plistPath = join(contents, "Info.plist");
   const original = await readFile(plistPath, "utf8");
   if (!original.includes("<key>")) throw new Error("Info.plist is not XML");
-  let plist = setPlistString(original, "CFBundleName", MAC_APP_NAME);
+  // Electron finds its helpers as "<CFBundleName> Helper.app" under Frameworks, so CFBundleName stays the packaged
+  // name; renaming it to "Branch" made 0.4.4-build-0daa39ebe50a abort at launch ("Unable to find helper app").
+  // Finder, the Dock and Spotlight show CFBundleDisplayName.
+  let plist = setPlistString(original, "CFBundleName", MAC_HELPER_PREFIX);
   plist = setPlistString(plist, "CFBundleDisplayName", MAC_APP_NAME);
   plist = setPlistString(plist, "CFBundlePackageType", "APPL");
   plist = setPlistString(plist, "CFBundleIdentifier", MAC_BUNDLE_ID);
   if (!/<key>CFBundleIconFile<\/key>/.test(plist)) plist = setPlistString(plist, "CFBundleIconFile", MAC_ICON_FILE);
   await assertFile(join(contents, "MacOS", MAC_EXECUTABLE_NAME));
   await assertFile(join(contents, "Resources", iconFileName(plist)));
+  await assertHelpers(contents);
   await writeFile(plistPath, plist);
 }
 
