@@ -121,7 +121,7 @@ describe("Get capabilities", () => {
     await open();
     const remove = button(rowNamed("tax-helper")!, "Remove") as HTMLButtonElement;
     expect(remove.disabled).toBe(true);
-    expect(remove.title).toBe("Comes in a later update.");
+    expect(remove.title).toBe("Coming in a later update.");
     expect(button(rowNamed("notes")!, "Remove")).toBeUndefined();
   });
 

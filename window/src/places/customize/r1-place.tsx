@@ -6,7 +6,7 @@ import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { CustomizeWithCommunity } from "../../screens/seedbank/Seedbank";
 import { useResource, type Trunks } from "../library/data";
 import { CustomizeLevelContext } from "./common";
-import { CUSTOMIZE_REQUEST_EVENT, peekCustomizeRequest, requestCustomize, takeCustomizeRequest, type CustomizeRequest } from "./r1-request";
+import { CUSTOMIZE_REQUEST_EVENT, peekCustomizeRequest, requestCustomize, takeCustomizeRequest, type CustomizeRequest, type PromptHandoff } from "./r1-request";
 import { KIND_LIST, ToolsTab, type Kind } from "./tools";
 import "../library/places.css";
 import "./customize.css";
@@ -16,7 +16,7 @@ const KINDS: string[] = KIND_LIST.map(k => k.id);
 const SETTINGS_PAGE: Record<string, string> = { Trunks: "trunks", "Chat apps": "chatapps" };
 const asKind = (value: unknown): Kind | null => (typeof value === "string" && KINDS.includes(value) ? value as Kind : null);
 
-export type CustomizeR1Props = PlaceProps & { usePrompt?: (text: string) => void };
+export type CustomizeR1Props = PlaceProps & { usePrompt?: PromptHandoff };
 
 export function CustomizeR1Place({ engine, openConversation, openSettings, level, usePrompt }: CustomizeR1Props) {
   const [asked] = useState<CustomizeRequest>(peekCustomizeRequest);

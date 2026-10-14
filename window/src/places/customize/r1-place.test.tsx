@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
 import { CustomizeR1Place } from "./r1-place";
-import { requestCustomize } from "./r1-request";
+import { requestCustomize, type PromptHandoff } from "./r1-request";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span role="img" aria-label={label} /> }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -30,7 +30,7 @@ let root: Root | null = null;
 let host: HTMLDivElement;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = null; document.body.innerHTML = ""; requestCustomize({}); });
 
-async function open(level: Level = "regular", usePrompt?: (text: string) => void) {
+async function open(level: Level = "regular", usePrompt?: PromptHandoff) {
   const request = vi.fn((method: string) => Promise.resolve(BASE[method] ?? { ok: true }));
   const engine: WindowEngine = { request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, sessionKey: "agent:main:main", scopes: ["operator.admin"] };
   host = document.createElement("div"); document.body.append(host);
@@ -80,14 +80,23 @@ describe("Customize (R1): the place", () => {
   });
 
   it("lists saved prompts and Use drops the command into the composer", async () => {
-    const usePrompt = vi.fn();
-    await open("regular", usePrompt);
+    const use = vi.fn();
+    await open("regular", { ready: true, use });
     await click(host.querySelector("[data-kind=Prompts]"));
     expect(host.querySelector("[data-testid=prompts]")?.textContent).toContain("/weekly");
     expect(host.querySelector("[data-testid=prompts]")?.textContent).not.toContain("/old");
     expect(host.textContent).toContain("1 saved");
     await click(button("Use", host));
-    expect(usePrompt).toHaveBeenCalledWith("/weekly ");
+    expect(use).toHaveBeenCalledWith("/weekly ");
+    expect(host.querySelector("[data-testid=prompts]")?.textContent).not.toContain("Copied");
+  });
+
+  it("says why Use is greyed when there is no default Trunk yet", async () => {
+    await open("technical", { ready: false, use: vi.fn() });
+    await click(host.querySelector("[data-kind=Prompts]"));
+    const use = button("Use", host);
+    expect(use?.getAttribute("data-coming")).toBe("Starting a conversation needs a Trunk first.");
+    expect(use?.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("hides a Coming control below Technical and tags it at Technical", async () => {

@@ -10,7 +10,7 @@ import type { ReplyTarget } from "../../thread/useMessageActions";
 import { Composer } from "../composer/Composer";
 import { COMPOSE_EVENT } from "../../composer/Composer";
 import { safeStorage, saveDraft } from "../../composer/drafts";
-import { requestCustomize } from "../../places/customize/r1-request";
+import { requestCustomize, type PromptHandoff } from "../../places/customize/r1-request";
 import { useLimits } from "../../shell/use-status";
 import { useLockdown } from "../../shell/use-lockdown";
 import { Face } from "../../face/Face";
@@ -272,12 +272,16 @@ export function R1Window({ session }: { session: SaplingSession }) {
   }, [agentOpen, ready, engine]);
   const openConversation = (key: string) => navigate({ kind: "chat", key });
   // Customize's Use: the command goes into the default Trunk's composer as a draft, and the conversation opens (as prepareBackground does).
-  const usePromptText = (text: string) => {
-    const key = session.getSnapshot().mainKey;
-    if (!key) { setNotice("Couldn’t find your default Trunk."); return; }
-    saveDraft(safeStorage(), key, text);
-    window.dispatchEvent(new CustomEvent(COMPOSE_EVENT, { detail: { sessionKey: key, text } }));
-    openConversation(key);
+  const promptKey = session.getSnapshot().mainKey;
+  const usePromptText: PromptHandoff = {
+    ready: Boolean(promptKey),
+    use: (text: string) => {
+      const key = session.getSnapshot().mainKey;
+      if (!key) return;
+      saveDraft(safeStorage(), key, text);
+      window.dispatchEvent(new CustomEvent(COMPOSE_EVENT, { detail: { sessionKey: key, text } }));
+      openConversation(key);
+    },
   };
   // Settings › Learn more › Ask a Trunk (#977): the default Trunk's conversation opens and the question is sent there.
   const askTrunk = (text: string) => {

@@ -5,6 +5,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { shownWhy } from "../../shell/shown-why";
 import { Coming } from "../../glass/coming";
+import { COMING_REASON } from "../../glass/coming-registry";
 import { shows, type Level } from "../../places-nav/level";
 import type { WindowEngine } from "../../connect/engine";
 import { list, rec, str, type Rec } from "../../composer/engine";
@@ -103,7 +104,7 @@ export const CustomizeLevelContext = createContext<Level>("technical");
  *  title, and hidden below Technical. The developer note stays in data-need; a note with no person-facing line falls back. */
 export function Grey({ children, reason, className = "btn sm" }: { children: ReactNode; reason: string; className?: string }) {
   const level = useContext(CustomizeLevelContext);
-  return <Coming need={reason} unwired reason={shownWhy(reason) ?? "Comes in a later update."} hidden={!shows(level, "technical")}>
+  return <Coming need={reason} unwired reason={shownWhy(reason) ?? COMING_REASON} hidden={!shows(level, "technical")}>
     <button type="button" className={className} disabled>{children}</button>
   </Coming>;
 }

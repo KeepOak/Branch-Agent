@@ -1,7 +1,5 @@
 // Customize › Prompts (R1, preview 44908 and 44977): the saved prompts. A saved prompt is a skill in the library with a
 // slash name (skills.library.list, the list Settings › Instructions reads). Use puts its command into the composer.
-import { useState } from "react";
-import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { Status } from "../library/ui";
 import { Grey, list, rec, str } from "./common";
 import { Glyph } from "./glyphs";
@@ -17,17 +15,16 @@ export function promptCount(ctx: ToolsCtx): number | null {
 
 export function Prompts({ ctx }: { ctx: ToolsCtx }) {
   const prompts = savedPrompts(ctx.prompts.data);
-  const [copied, setCopied] = useState("");
-  const copy = (slug: string) => { void navigator.clipboard?.writeText(`/${slug}`).then(() => setCopied(slug), () => setCopied("")); };
+  const handoff = ctx.usePrompt;
   return <div className="t9-list" data-testid="prompts">
     <div className="cz-head-row"><b>{prompts.length} saved</b><Grey className="btn pri sm" reason="Saving a new prompt from here comes in a later update.">＋ Add</Grey></div>
     <Status {...ctx.prompts} />
-    {ctx.prompts.data != null && !prompts.length && <EmptyLine icon={<Glyph name="sparkle" size={22} />}>No saved prompts yet.</EmptyLine>}
     {prompts.map(p => <div key={p.slug} className="t9-item cz-prompt">
       <span className="cz-tile"><Glyph name="sparkle" size={16} /></span>
-      <span className="grow"><b>/{p.slug}</b><small>{p.description || "A saved prompt"}</small></span>
-      <button type="button" className="btn ghost sm" aria-label={`Copy /${p.slug}`} onClick={() => copy(p.slug)}>{copied === p.slug ? "Copied" : "Copy"}</button>
-      {ctx.usePrompt && <button type="button" className="btn sm" onClick={() => ctx.usePrompt?.(`/${p.slug} `)}>Use</button>}
+      <span className="grow"><b>/{p.slug}</b>{p.description && <small>{p.description}</small>}</span>
+      <button type="button" className="icon-btn" aria-label={`Copy /${p.slug} as a seed`} title="Copy seed" onClick={() => void navigator.clipboard?.writeText(`/${p.slug}`)}>⧉</button>
+      {handoff?.ready !== false && handoff ? <button type="button" className="btn sm" onClick={() => handoff.use(`/${p.slug} `)}>Use</button>
+        : handoff && <Grey reason="Starting a conversation needs a Trunk first.">Use</Grey>}
     </div>)}
   </div>;
 }

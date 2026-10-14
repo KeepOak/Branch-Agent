@@ -142,7 +142,7 @@ describe("Tools › Skills", () => {
     expect(request).toHaveBeenCalledWith("skills.install", { name: "voice", installId: "brew" });
     await click(button("Add a skill"));
     const provs = [...document.querySelectorAll<HTMLElement>(".cz-provs .cz-prov")];
-    for (const label of ["Choose a file", "Add from GitHub", "Draft it"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toMatch(/comes in a later update\.$/); }
+    for (const label of ["Choose a file", "Add from GitHub", "Draft it"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toMatch(/in a later update\.$/); }
     expect(provs.every(p => p.title === "")).toBe(true); expect(visibleDevNotes(document.body)).toEqual([]);
     await click(button("From the skill librarySearch skills others have shared and install one."));
     await click(button("Install"));

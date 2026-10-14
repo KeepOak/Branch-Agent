@@ -13,6 +13,7 @@ import { Plugins, AddPlugin, pluginCount } from "./plugins";
 import { GetCapabilitiesDialog } from "./get-capabilities";
 import { Clis, AddTool, cliCount, Agents, AddAgent, agentCount, Toolsets, toolsetCount } from "./tool-kinds";
 import { Prompts, promptCount } from "./prompts";
+import type { PromptHandoff } from "./r1-request";
 
 export type Kind = "Connectors" | "Skills" | "Plugins" | "Command-line tools" | "Agents" | "Toolsets" | "Prompts";
 export const KIND_LIST: { id: Kind; glyph: GlyphName; line: string; add?: string }[] = [
@@ -42,11 +43,11 @@ export type ToolsCtx = {
   prompts: Res<unknown>;
   openConversation: (key: string) => void;
   /** Drops text into a conversation's composer (R1); absent where the place cannot reach one. */
-  usePrompt?: (text: string) => void;
+  usePrompt?: PromptHandoff;
 };
 
 export type ToolsVariant = "classic" | "r1";
-export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGetting, openConversation, variant = "classic", usePrompt }: { engine: WindowEngine; level: Level; trunks: Trunk[]; kind: Kind; setKind: (k: Kind) => void; getting: boolean; setGetting: (getting: boolean) => void; openConversation: (key: string) => void; variant?: ToolsVariant; usePrompt?: (text: string) => void }) {
+export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGetting, openConversation, variant = "classic", usePrompt }: { engine: WindowEngine; level: Level; trunks: Trunk[]; kind: Kind; setKind: (k: Kind) => void; getting: boolean; setGetting: (getting: boolean) => void; openConversation: (key: string) => void; variant?: ToolsVariant; usePrompt?: PromptHandoff }) {
   const [whose, setWhose] = useState<string | null>(null);
   const [adding, setAdding] = useState<Kind | null>(null);
   const scope = whose ? { agentId: whose } : {};

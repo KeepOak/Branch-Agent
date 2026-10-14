@@ -2,6 +2,8 @@
 // in memory for its mount to read it; a mounted place hears the window event at once. The mount clears what it read.
 export type CustomizeMode = "personal" | "community";
 export type CustomizeRequest = { mode?: CustomizeMode; kind?: string };
+/** Puts a command into the default Trunk's composer. `ready` is false while no default Trunk exists. */
+export type PromptHandoff = { ready: boolean; use: (text: string) => void };
 
 let pending: CustomizeRequest = {};
 export const CUSTOMIZE_REQUEST_EVENT = "branch:customize-request";

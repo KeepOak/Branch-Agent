@@ -3,6 +3,7 @@ import { AutomationsPlace } from "../places/automations";
 import { CanopyPlace } from "../places/canopy";
 import { CustomizePlace } from "../places/customize";
 import { CustomizeR1Place } from "../places/customize/r1-place";
+import type { PromptHandoff } from "../places/customize/r1-request";
 import { InboxPlace } from "../places/inbox";
 import { LibraryPlace } from "../places/library";
 import { OverviewPlace } from "../places/overview";
@@ -15,7 +16,7 @@ import type { PlaceId } from "./routes";
 
 const OfficePlace = lazy(() => import("../places/office").then(m => ({ default: m.OfficePlace })));
 
-type Mount = (p: PlaceProps & { usePrompt?: (text: string) => void }) => React.ReactNode;
+type Mount = (p: PlaceProps & { usePrompt?: PromptHandoff }) => React.ReactNode;
 const MOUNTS: Record<PlaceId, Mount> = {
   overview: OverviewPlace,
   canopy: CanopyPlace,
@@ -32,7 +33,7 @@ const MOUNTS: Record<PlaceId, Mount> = {
 const R1_MOUNTS: Partial<Record<PlaceId, Mount>> = { customize: CustomizeR1Place };
 
 /** Routes to a place's mount point (window/src/places/<place>/index.tsx). Preview enter11: only the place remounts. */
-export function PlaceView({ place, r1 = false, usePrompt, ...props }: Omit<PlaceProps, "level"> & { place: PlaceId; r1?: boolean; usePrompt?: (text: string) => void }) {
+export function PlaceView({ place, r1 = false, usePrompt, ...props }: Omit<PlaceProps, "level"> & { place: PlaceId; r1?: boolean; usePrompt?: PromptHandoff }) {
   const Mount = (r1 && R1_MOUNTS[place]) || MOUNTS[place];
   const level = useLevel();
   return (
