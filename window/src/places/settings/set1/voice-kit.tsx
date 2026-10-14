@@ -1,5 +1,5 @@
-// Settings › Voice shared bits: the greyed rows (the engine has no key, or the row runs in the desktop app), a resource
-// that keeps its last answer while it reloads, and the small choice helpers every Voice section uses.
+// Settings › Voice shared bits: the greyed rows (a capability the engine has but this page can't change yet), a
+// resource that keeps its last answer while it reloads, and the small choice helpers every Voice section uses.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useRef } from "react";
 import type { WindowEngine } from "../../../connect/engine";
@@ -8,7 +8,6 @@ import { useResource } from "../hooks";
 import { Btn, Ctl, Field, Pick, Pill, Seg, Switch, type Opt } from "../kit";
 
 export const NO_KEY = "Branch has no setting for this yet.";
-export const APP = "This runs in the Branch app on your computer.";
 const noop = () => undefined;
 
 /** A resource that keeps showing its last answer while it reloads after a save. */
@@ -38,7 +37,7 @@ function GreyControl({ c, t }: { c: GreyCtl; t: string }) {
   return <Pill tone="idle">{c.pill}</Pill>;
 }
 
-/** Rows the engine can't change yet (or that only the desktop app runs): greyed, each with why. */
+/** Rows for a capability the engine has but this page can't change yet (a slash command, a per-service key): greyed, each with why. */
 export function Greyed({ rows, why }: { rows: GreyRow[]; why: string }) {
   return (
     <>
