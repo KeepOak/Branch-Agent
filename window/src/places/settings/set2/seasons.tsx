@@ -97,7 +97,7 @@ function RingsSec({ engine, config, agent }: Ctx) {
   );
 }
 
-function DiaryDialog({ engine, agent, onClose }: Pick<SettingsPageProps, "engine"> & { agent: string; onClose: () => void }) {
+export function DiaryDialog({ engine, agent, onClose }: Pick<SettingsPageProps, "engine"> & { agent: string; onClose: () => void }) {
   const diary = useLive<RecordValue>(engine, "doctor.memory.dreamDiary", agent ? { agentId: agent } : {}, []);
   const d = rec(diary.data);
   return (
@@ -221,7 +221,7 @@ function ByHand({ engine, agent, lv }: Ctx & { lv: number }) {
 }
 
 /** Fill in from past conversations: memory.sessionBackfill.preview, then apply; rollback removes them all. */
-function BackfillDialog({ engine, agent, onClose }: Pick<SettingsPageProps, "engine"> & { agent: string; onClose: () => void }) {
+export function BackfillDialog({ engine, agent, onClose }: Pick<SettingsPageProps, "engine"> & { agent: string; onClose: () => void }) {
   const [days, setDays] = useState(7);
   const [preview, setPreview] = useState<RecordValue | null>(null);
   const call = useCall();

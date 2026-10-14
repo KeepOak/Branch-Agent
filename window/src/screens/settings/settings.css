@@ -44,6 +44,11 @@
 .r1s-head { max-width: 820px; margin: 0 auto; padding: 26px 32px 14px; }
 .r1s-head h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.025em; }
 .r1s-head h1.g-label { padding: 0 14px; border-radius: 20px; }
+/* A re-hosted Classic page sits under the frame's own title, lede and Learn more (#1049): its first part drops Classic's
+   title and lede so the page has one header, with the approved lede. Later parts keep their titles. */
+.r1s-custom .r1s-classic-part:first-of-type > h1,
+.r1s-custom .r1s-classic-part:first-of-type .kit-page > .kit-head > h1,
+.r1s-custom .r1s-classic-part:first-of-type .kit-page > .lede { display: none; }
 .r1s-lede { margin: 6px 0 0; font-size: 13.5px; color: var(--ink-3); max-width: 640px; }
 .r1s-learn { border: 0; padding: 0; margin-left: 4px; font-size: 13px; color: var(--accent-ink) !important; }
 .r1s-help { margin-top: 10px; font-size: 13px; }
