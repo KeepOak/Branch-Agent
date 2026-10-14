@@ -1,0 +1,17 @@
+/* The re-hosted Classic helpers view inside the R1 frame (parity row 3). Clear glass per README item 48: the panel adds no
+   fill of its own; its heading and confirm line sit on frosted pills (.g-label) and its controls are pills inside .g-clear. */
+.r1-with-helpers { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; }
+.r1-with-helpers > :first-child { flex: 1 1 auto; min-width: 0; }
+.r1-helpers { flex: 0 0 360px; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: calc(var(--hdr, 52px) + 8px) 12px 8px; }
+.r1-helpers-head { display: flex; align-items: center; gap: 8px; }
+.r1-helpers-head h2 { margin: 0 auto 0 0; font-size: var(--fs-14, 14px); }
+.r1-helpers-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.r1-helpers-confirm p { margin: 0; flex: 1 1 100%; }
+.r1-helpers-body { flex: 1 1 auto; min-height: 0; overflow: auto; background: transparent; }
+.r1-helpers-tell { display: flex; gap: 6px; align-items: center; }
+.r1-helpers-tell input { flex: 1 1 auto; min-width: 0; }
+/* Narrow windows: the panel covers the conversation instead of squeezing it. */
+@container (max-width: 760px) {
+  .r1-with-helpers > :first-child { display: none; }
+  .r1-helpers { flex: 1 1 auto; }
+}

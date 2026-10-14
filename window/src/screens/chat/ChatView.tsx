@@ -58,6 +58,8 @@ export type ChatViewProps = {
   onReload?: () => void;
   onOpenSession?: (key: string) => void;
   onToast?: (text: string) => void;
+  /** Opens the re-hosted Classic helpers view (parity row 3); without it the chip keeps its own popover. */
+  onOpenHelpers?: () => void;
   /** Sends a starter or a suggested reply the way the composer sends (chat.send). */
   onStart?: (text: string) => void;
   /** Puts "Replying to …" on the composer (chat.send replyToId). */
@@ -179,7 +181,7 @@ export function ChatView(props: ChatViewProps) {
   const lastReply = [...history].reverse().find((b) => b.kind === "text");
   const suggestionKey = lastReply ? (props.sessionKey ?? "") + ":" + lastReply.key : null;
   const suggestions = props.onStart && !waitingTwo.length && suggestionKey !== usedSuggestion ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
-  const helperChip = helpers.length && engine?.sessionKey ? <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession}
+  const helperChip = helpers.length && engine?.sessionKey ? <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenHelpers}
     onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast("Stopped " + h.name + ". " + name + " carries on without it."), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} /> : null;
 
   const view: View = { all, name, running, live, actionsFor, reactions, apply, details, answer, grouped, times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast };
