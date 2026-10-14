@@ -165,3 +165,19 @@ it("opens the watchdog log (logs.tail) and turns the watch off on every connecte
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   expect(request.mock.calls.some(([m]) => m === "logs.tail")).toBe(true);
 });
+
+it("#1049: every app card shows its set-up time (preview TIME_T5); apps not wired yet keep the Coming action", async () => {
+  const { host } = await render("regular");
+  const cards = [...host.querySelectorAll<HTMLElement>(".r1-ca-card")];
+  const sub = (name: string) => cards.find((c) => c.querySelector(".r1-ca-text b")?.textContent === name)?.querySelector(".r1-ca-text small")?.textContent;
+  expect(sub("WhatsApp Business")).toBe("About 15 minutes · needs a Meta business account");
+  expect(sub("iMessage")).toBe("About 5 minutes · needs a Mac");
+  expect(sub("Viber")).toBe("About 5 minutes");
+  expect(sub("A webhook of your own")).toBe("About 2 minutes");
+  // The catalogue's cards (an app only the engine lists keeps the engine's own line under its name).
+  const idle = cards.filter((c) => !/Connected|Manage/.test(c.textContent ?? "") && c.closest("section")?.querySelector("h3, b")?.textContent !== "Also in Branch" && !/Nostrish/.test(c.textContent ?? ""));
+  expect(idle.length).toBeGreaterThan(40);
+  expect(idle.filter((c) => !/^About \d+ minutes?/.test(c.querySelector(".r1-ca-text small")?.textContent ?? "")).map((c) => c.textContent)).toEqual([]);
+  expect(host.textContent).not.toContain("Coming in a later update");
+  expect(cards.find((c) => c.querySelector(".r1-ca-text b")?.textContent === "Viber")?.querySelector(".r1-ca-action")?.textContent).toBe("Coming");
+});
