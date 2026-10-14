@@ -188,7 +188,7 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     const answer = env.request.getMockImplementation()!;
     let runtime: Record<string, unknown> = { state: "unavailable", reason: "offline", version: "0.160.0", bytes: 134_311_083,
       message: "Codex isn't downloaded yet and this computer looks offline (ENOTFOUND). Connect to the internet and try again." };
-    env.request.mockImplementation(async (method: string, params?: unknown) => {
+    env.request.mockImplementation((async (method: string, params?: unknown) => {
       if (method === "config.get") return { hash: "h1", valid: true, config: { agents: { defaults: { model: { fallbacks: [] } } }, plugins: { entries: { codex: { enabled: true } } } } };
       if (method === "codex.runtime") return runtime;
       if (method === "codex.runtime.download") {
@@ -196,7 +196,7 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
         return runtime;
       }
       return answer(method, params);
-    });
+    }) as typeof answer);
     (env.engine as unknown as { features: { methods: string[] } }).features.methods = [...METHODS, "codex.runtime", "codex.runtime.download"];
     const { request } = await mount(vi.fn(), env);
     const codex = row("accounts.apps.codex")!;
