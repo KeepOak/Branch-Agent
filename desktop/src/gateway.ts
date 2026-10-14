@@ -123,7 +123,7 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   if (profile.note) log.write(profile.note + "\n");
   const endpointFile = macComputerEndpoint ? join(cfg.dataDir, `cua-endpoint-${randomBytes(16).toString("hex")}`) : undefined;
   if (endpointFile && macComputerEndpoint) writeFileSync(endpointFile, macComputerEndpoint, { flag: "wx", mode: 0o600 });
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...engineEnvironment(cfg, profile.legacyDevMode, port, token),
     BRANCH_GATEWAY_STANDBY: standby ? "1" : undefined,
     // Only Electron's Mac host can give the Gateway this app-owned daemon lease.
