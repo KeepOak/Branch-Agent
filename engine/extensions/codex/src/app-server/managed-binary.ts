@@ -151,8 +151,10 @@ export function resolveManagedCodexNativeCommand(
   if (!packageJsonPath) {
     return undefined;
   }
-  const candidate = path.join(
-    path.dirname(packageJsonPath),
+  // Paths follow the target platform, so a macOS layout reads the same on any host.
+  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  const candidate = pathApi.join(
+    pathApi.dirname(packageJsonPath),
     "vendor",
     target.triple,
     "bin",

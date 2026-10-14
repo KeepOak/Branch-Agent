@@ -46,7 +46,7 @@ export function CodingApps({ engine }: { engine: WindowEngine }) {
         return (
           <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn)}>
             {app.plugin
-              ? <Switch checked={pluginOn} label={`Use ${app.name}`} disabled={cfg.loading || (f.state !== "ready" && !pluginOn)} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
+              ? <Switch checked={f.state === "ready" && pluginOn} label={`Use ${app.name}`} disabled={cfg.loading || f.state !== "ready"} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
               : <span title={`Follows ${app.name}’s own sign-in on this computer.`}><Switch checked={pluginOn} label={`Use ${app.name}`} disabled onChange={() => undefined} /></span>}
           </Ctl>
         );

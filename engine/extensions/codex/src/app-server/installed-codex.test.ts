@@ -152,28 +152,34 @@ describe("Codex installed on this computer", () => {
   });
 
   it("uses a codex on PATH that meets the minimum version and skips an older one", async () => {
+    // Real folders on this host, so PATH uses the host's separator and codex name.
+    const platform = process.platform;
+    const name = platform === "win32" ? "codex.exe" : "codex";
     const oldBin = path.join(root, "old-bin");
     const bin = path.join(root, "bin");
-    await writeExecutable(path.join(oldBin, "codex"));
-    await writeExecutable(path.join(bin, "codex"));
+    await writeExecutable(path.join(oldBin, name));
+    await writeExecutable(path.join(bin, name));
     const installed = createInstalledCodex({
-      platform: "linux",
-      env: { PATH: [oldBin, bin].join(":") },
+      platform,
+      env: { PATH: [oldBin, bin].join(path.delimiter) },
       readVersion: async (command) =>
         command.startsWith(oldBin) ? "codex-cli 0.120.0" : "codex-cli 0.161.2",
     });
     await expect(
       resolveManagedCodexAppServerStartOptions(startOptions(), {
-        platform: "linux",
+        platform,
         pluginRoot,
         installed,
+        // A desktop Codex app on the test machine is not part of this check.
+        pathExists: async (candidate) =>
+          !candidate.startsWith("/Applications/") && existsSync(candidate),
       }),
     ).resolves.toMatchObject({
-      command: path.join(bin, "codex"),
+      command: path.join(bin, name),
       commandSource: "resolved-managed",
     });
     await expect(installed.findPathCommand()).resolves.toEqual({
-      command: path.join(bin, "codex"),
+      command: path.join(bin, name),
       version: "0.161.2",
     });
   });

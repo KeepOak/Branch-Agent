@@ -201,6 +201,10 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     // Preview §4.7.8: CODE_PILL_PE18.none = Not found; "Install and sign in to ${c.name} on ${comp}, then check again."
     expect(codex.querySelector(".r1s-item-t b")!.textContent).toBe("Not found");
     expect(codex.querySelector(".r1s-item-t small")!.textContent).toBe("Install and sign in to Codex on this computer, then check again.");
+    // Preview: a coding app that isn't ready shows its switch off and greyed (`${c.st === 'ready' ? '' : 'disabled'}`).
+    const use = codex.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
+    expect(use.getAttribute("aria-checked")).toBe("false");
+    expect(use.disabled).toBe(true);
     expect(codex.textContent).not.toMatch(/download/i);
     for (const gone of ["Download now", "Try again", "Cancel"]) expect(button(codex, gone)).toBeUndefined();
     expect(calls(request, "codex.runtime")).toHaveLength(0);
@@ -209,6 +213,9 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     detect = { candidates: [{ kind: "codex-cli", credentials: true }], unavailableCandidates: [] };
     await click(button(row("accounts.apps.check"), "Check again"));
     expect(row("accounts.apps.codex")!.querySelector(".r1s-item-t b")!.textContent).toBe("Models ready");
+    const ready = row("accounts.apps.codex")!.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Use Codex"]')!;
+    expect(ready.getAttribute("aria-checked")).toBe("true");
+    expect(ready.disabled).toBe(false);
   });
 
   it("has no Codex download in the window: no download line, no download calls", async () => {

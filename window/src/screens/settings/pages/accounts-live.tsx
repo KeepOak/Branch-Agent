@@ -451,6 +451,7 @@ export function AddOwnAccount({ engine }: SlotControlProps) {
 /** A coding app on this computer as branch.setup.detect finds it; Codex's switch is plugins.entries.codex.enabled, the
  *  others follow their own sign-in (a greyed switch, as Classic). Claude Code shows its account from usage.status. */
 function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
+  // §4.7.8: the switch reads on only when the app is ready, and is greyed until it is (preview's codingSecPE18).
   const detect = useRead(engine, "branch.setup.detect");
   const usage = useRead(engine, "usage.status");
   const { store, snap, config } = useConfigSnap(engine);
@@ -469,7 +470,7 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
       </span>
       {app.plugin ? (
         <Needs engine={engine} need={["config.patch"]} where={"Use " + app.name}>
-          <span className="r1s-own-ctl" title={adminWhy(engine)}><Toggle label={"Use " + app.name} on={pluginOn} disabled={Boolean(adminWhy(engine)) || !snap || (f.state !== "ready" && !pluginOn)} onChange={(v) => void run(() => store.set("plugins.entries." + app.plugin + ".enabled", v))} /></span>
+          <span className="r1s-own-ctl" title={adminWhy(engine)}><Toggle label={"Use " + app.name} on={f.state === "ready" && pluginOn} disabled={Boolean(adminWhy(engine)) || !snap || f.state !== "ready"} onChange={(v) => void run(() => store.set("plugins.entries." + app.plugin + ".enabled", v))} /></span>
         </Needs>
       ) : (
         <span className="r1s-own-ctl" title={"Follows " + app.name + "’s own sign-in on this computer."}><Toggle label={"Use " + app.name} on={pluginOn} disabled onChange={() => undefined} /></span>
