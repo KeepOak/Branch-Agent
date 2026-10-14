@@ -128,6 +128,26 @@ export async function rollbackComponentUpdate(cfg: DesktopConfig, retryServedWin
   return true;
 }
 
+/**
+ * Ends a failed update's publication with `serving` (the build that serves again) still selected. A journal can stay
+ * pending after its engine started: the engine serves, but its update could not be confirmed. A later failed update then
+ * names that serving build as its own next engine, or an older one as its previous engine, and a plain rollback would
+ * point every restart and the next launch at a build older than the one that serves (Private #1048).
+ */
+export async function settleFailedComponentUpdate(cfg: DesktopConfig, serving: string | undefined): Promise<void> {
+  const pending = await publication(cfg);
+  if (!pending) return;
+  if (serving && pending.phase === "pending" && pending.engineNext === serving) {
+    // The build this journal stages already serves: it is confirmed, not rolled back. Cleanup waits for the next launch.
+    await confirmComponentUpdate(cfg, undefined, true);
+    return;
+  }
+  await rollbackComponentUpdate(cfg);
+  if (serving && serving !== pending.enginePrevious && existsSync(join(serving, "branch.mjs"))) {
+    await replaceFile(join(cfg.dataDir, "engine-current.txt"), `${serving}\n`);
+  }
+}
+
 const runProcessList = promisify(execFile);
 
 /** Adopt only old, fully published release layouts whose build identity matches the folder. */
