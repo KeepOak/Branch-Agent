@@ -6,7 +6,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
 import { PAGES } from "./nav";
 import type { Row } from "./rows";
-import { MAKE_DEFAULT_COMING, SECTION_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
+import { MAKE_DEFAULT_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
 import type { PageSlots } from "./slots";
 import { NOTHING_MATCHES } from "./search";
 import { INVALID_CONFIG, NEEDS_ADMIN } from "./useRow";
