@@ -38,6 +38,11 @@
 .g-popover:has(> .r1-agent-details) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border-color: transparent; }
 :root[data-transparency="reduce"] .g-popover:has(> .r1-agent-details) { background: var(--raise); box-shadow: inset 0 0 0 1px var(--gp-edge); }
 @media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .g-popover:has(> .r1-agent-details) { background: var(--raise); box-shadow: inset 0 0 0 1px var(--gp-edge); } }
+/* The conversation ••• menu is clear glass too (README item 48): each row sits on its own frosted pill. */
+.g-popover:has(> .r1c-conv) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border-color: transparent; }
+.r1c-conv .g-menu { gap: 4px; }
+:root[data-transparency="reduce"] .g-popover:has(> .r1c-conv) { background: var(--raise); box-shadow: inset 0 0 0 1px var(--gp-edge); }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .g-popover:has(> .r1c-conv) { background: var(--raise); box-shadow: inset 0 0 0 1px var(--gp-edge); } }
 .r1-agent-details { display: grid; justify-items: start; gap: 6px; padding: 8px; }
 .r1-agent-details p { margin: 0; color: var(--ink-3); font-size: 12.5px; }
 .r1-agent-details button { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; font: inherit; font-size: 12.5px; cursor: pointer; }
