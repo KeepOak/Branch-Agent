@@ -18,6 +18,7 @@ import { Icon } from "../../../shell/icons";
 import { DesktopCtl } from "../desktop-ctl";
 import { useDesktopControls } from "../../../connect/desktop-controls";
 import { shownWhy } from "../../../shell/shown-why";
+import { trunkDisplayName } from "../../../connect/trunk-name";
 
 const PAIR_EVENTS = ["device.pair", "node.pair", "node"];
 const ALLOW_DELAY_MS = 1500;
@@ -142,7 +143,7 @@ type Node = RecordValue;
 
 /** Which Trunks are pinned to a computer (by node id or name). */
 function usersOf(node: Node, agents: RecordValue, cfgAgents: RecordValue[]): string[] {
-  const names = new Map(list(agents.agents).map((a) => [str(a.id), str(rec(a.identity).name) || str(a.name) || str(a.id)]));
+  const names = new Map(list(agents.agents).map((a) => [str(a.id), trunkDisplayName(a)]));
   const id = str(node.nodeId); const name = str(node.displayName);
   return cfgAgents.filter((a) => { const pin = str(rec(rec(a.tools).exec).node); return pin && (pin === id || pin === name); }).map((a) => names.get(str(a.id)) ?? str(a.id));
 }
@@ -396,7 +397,7 @@ function PinDialog({ engine, nodes, agents, defaultId, onClose }: Pick<SettingsP
       <p className="hint">A Trunk can use several computers side by side. A Trunk with no settings of its own follows the default.</p>
       <Plist>
         {ordered.map((a) => {
-          const id = str(a.id); const name = str(rec(a.identity).name) || str(a.name) || id;
+          const id = str(a.id); const name = trunkDisplayName(a);
           const hasEntry = id in entries;
           const pinned = pinnedNode(entries, id);
           return (

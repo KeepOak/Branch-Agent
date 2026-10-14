@@ -3,6 +3,7 @@
 // agents.list, node.list and computer.status. Nothing here is sample data; an absent source leaves its part empty.
 import type { WindowEngine } from "../../connect/engine";
 import { approvals, errorText, paged, rec, rows, sessions, str, type Row } from "../automations/runtime";
+import { trunkDisplayName } from "../../connect/trunk-name";
 
 export type Col = "working" | "waiting" | "next" | "stuck" | "done";
 export const COLS: [Col, string][] = [["working", "Working"], ["waiting", "Waiting for you"], ["next", "Coming up"], ["stuck", "Stuck"], ["done", "Done today"]];
@@ -44,7 +45,7 @@ export async function loadCanopy(engine: WindowEngine): Promise<CanopyData> {
   const errors = results.flatMap((r, i) => r.status === "rejected" && i !== 4 && i !== 8 ? [`${SOURCES[i]}: ${errorText(r.reason)}`] : []);
   const pending = value(1) as Awaited<ReturnType<typeof approvals>> | null;
   const agents = rec(value(5));
-  const trunks = rows(agents.agents).map(a => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) }));
+  const trunks = rows(agents.agents).map(a => ({ id: str(a.id), name: trunkDisplayName(a) }));
   return {
     sessions: rows(value(0)), pending: pending?.items ?? [], jobs: rows(value(2)),
     runs: rows(value(3)).filter(r => Number(r.ts) >= midnight.getTime()),

@@ -58,7 +58,9 @@ const FIND_ANYTHING_NAMES_ONLY = "Message search needs a newer Branch engine. Fi
 const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }));
 
 /** Header and window title for a place. Seedbank has no sidebar row, so it has no PLACES name. */
-const placeTitle = (place: PlaceId) => place === "seedbank" ? "Seedbank" : place;
+/** The header title of a place that has no sidebar row (preview: the Grove button reads "Grove"). */
+const PLACE_TITLES: Partial<Record<PlaceId, string>> = { office: "Grove", seedbank: "Seedbank" };
+export const placeTitle = (place: PlaceId) => PLACE_TITLES[place] ?? place;
 
 /**
  * Pages that keep the Classic page although R1 has a slot for them, because the R1 port still lacks working Classic

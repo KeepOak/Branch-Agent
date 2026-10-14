@@ -16,7 +16,7 @@ describe("engine readers", () => {
       ],
     });
     expect(readTrunks({ defaultId: "main", agents: [{ id: "main", kind: "system" }] })).toEqual({
-      defaultId: "main", list: [], bootstrapDefault: { id: "main", name: "main", isDefault: true },
+      defaultId: "main", list: [], bootstrapDefault: { id: "main", name: "Sapling", isDefault: true },
     });
   });
   it("users.self falls back like OpenClaw: name, email, Owner", () => {
