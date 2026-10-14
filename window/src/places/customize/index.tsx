@@ -1,15 +1,17 @@
-// Customize (preview 40-places.js, 42-placesbp.js, 93-g3p.js, 94-g4p.js): Trunks, Tools, Chat apps. Helpers (once
-// "Specialists") and Devices & apps (once "Everywhere") live in Settings, where their names say what they hold.
+// Customize (preview 40-places.js, 42-placesbp.js, 93-g3p.js, 94-g4p.js): Trunks and Tools. Helpers (once "Specialists")
+// and Devices & apps (once "Everywhere") live in Settings, and so do chat apps: the preview removed Customize's Chat apps
+// tab (QUEUE-PASS17 31.1), so a request for it opens Settings › Chat apps (#1049).
 import { TrunksTab } from "./trunks";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { useResource, type Trunks } from "../library/data";
 import { KIND_LIST, ToolsTab, type Kind } from "./tools";
-import { ChannelsTab } from "./channels";
 import "../library/places.css";
 import "./customize.css";
 
-const TABS = ["Trunks", "Tools", "Chat apps"];
+const TABS = ["Trunks", "Tools"];
+/** The old Chat apps tab's name: asking for it opens Settings › Chat apps. */
+export const CHAT_APPS_TAB = "Chat apps";
 const KINDS: string[] = KIND_LIST.map(k => k.id);
 /** "branch:place-tab" ({ place, tab }) opens a Customize tab, or Tools at one kind, from elsewhere in the window. */
 export function usePlaceTab(open: (tab: string, kind?: string, capabilities?: boolean) => void) {
@@ -19,7 +21,7 @@ export function usePlaceTab(open: (tab: string, kind?: string, capabilities?: bo
     const onTab = (event: Event) => {
       const detail = (event as CustomEvent<{ place?: unknown; tab?: unknown }>).detail;
       if (!detail || detail.place !== "customize" || typeof detail.tab !== "string") return;
-      if (TABS.includes(detail.tab)) latest.current(detail.tab);
+      if (TABS.includes(detail.tab) || detail.tab === CHAT_APPS_TAB) latest.current(detail.tab);
       else if (KINDS.includes(detail.tab)) latest.current("Tools", detail.tab);
       else if (detail.tab === "Get capabilities") latest.current("Tools", "Skills", true);
     };
@@ -47,14 +49,16 @@ export function CustomizePlace({ engine, openConversation, openPlace, openSettin
   const [tab, setTab] = useState("Trunks");
   const [kind, setKind] = useState<Kind>("Connectors");
   const [getting, setGetting] = useState(false);
-  usePlaceTab((nextTab, nextKind, capabilities) => { setTab(nextTab); if (nextKind) setKind(nextKind as Kind); setGetting(capabilities === true); });
+  usePlaceTab((nextTab, nextKind, capabilities) => {
+    if (nextTab === CHAT_APPS_TAB) { openSettings?.("chatapps"); return; }
+    setTab(nextTab); if (nextKind) setKind(nextKind as Kind); setGetting(capabilities === true);
+  });
   const trunks = useResource<Trunks>(engine, "agents.list");
   return <PlaceFrame title="Customize" lede="Who your Trunks are, what they can do, and where you can reach them." wide={tab === "Tools" ? "tools" : undefined}>
     <div className="kp kp-customize"><PlaceTabs value={tab} onChange={setTab} trunkCount={trunks.data?.agents.length} />
       {tab === "Trunks" && <TrunksTab engine={engine} level={level} trunks={trunks} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={startConversation} />}</div>
-    {tab !== "Trunks" && <div className="cz">
-      {tab === "Chat apps" ? <ChannelsTab engine={engine} openSettings={openSettings} />
-      : <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={getting} setGetting={setGetting} openConversation={openConversation} />}
+    {tab === "Tools" && <div className="cz">
+      <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={getting} setGetting={setGetting} openConversation={openConversation} />
     </div>}
   </PlaceFrame>;
 }

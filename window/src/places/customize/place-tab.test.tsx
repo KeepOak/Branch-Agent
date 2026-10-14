@@ -40,8 +40,6 @@ describe("branch:place-tab", () => {
   it("opens the named Customize tab, and Tools at a named kind", async () => {
     await mount();
     expect(selectedTab()).toBe("Trunks");
-    await send("customize", "Chat apps");
-    expect(selectedTab()).toBe("Chat apps");
     await send("customize", "Plugins");
     expect(selectedTab()).toBe("Tools");
     expect(kind()).toBe("Plugins");

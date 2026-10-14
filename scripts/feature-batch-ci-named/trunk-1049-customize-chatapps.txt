@@ -1,0 +1,4 @@
+window:src/places/customize/customize.test.tsx
+window:src/places/customize/place-tab.test.tsx
+window:src/places/overview/setup.test.tsx
+window:src/screens/frame/R1Window.test.tsx

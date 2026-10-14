@@ -201,7 +201,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
   }, []);
   useEffect(() => {
     const openPlace = (event: Event) => {
-      const place = PLACES.find(p => p.id === (event as CustomEvent<{ place?: string }>).detail?.place);
+      const detail = (event as CustomEvent<{ place?: string; tab?: string }>).detail;
+      // Customize has no Chat apps tab (#1049): they live in Settings › Chat apps.
+      if (detail?.place === "customize" && detail.tab === "Chat apps") { navigateTo.current({ kind: "settings", page: "chatapps" }); return; }
+      const place = PLACES.find(p => p.id === detail?.place);
       if (place) navigateTo.current({ kind: "place", place: place.id });
     };
     window.addEventListener("branch:navigate-place", openPlace);
