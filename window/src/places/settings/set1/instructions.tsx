@@ -44,7 +44,7 @@ export function InstructionsPage(props: SettingsPageProps) {
   const ownerName = owner === defaultId ? "every Trunk" : trunks.find((t) => t.id === owner)?.name ?? owner;
   return (
     <Page title={props.title} lede="Plain files every Trunk reads before it works." help="Plain files every Trunk reads before it works. They work the same as in other agents, so a file written for one of them works here.">
-      {agents.error ? <Status tone="bad" title="Branch couldn’t read your Trunks">{visible(agents.error)}</Status> : null}
+      {agents.error ? <Status tone="bad" title={`Couldn’t read: ${visible(agents.error)}`} /> : null}
       {defaultId ? <Whose trunks={trunks} defaultId={defaultId} owner={owner} onPick={setPick} /> : null}
       {owner ? <OwnerFiles key={`files-${owner}`} engine={props.engine} agentId={owner} ownerName={ownerName} /> : null}
       <Hint>A file can’t widen what Branch may do; Permissions still decides.</Hint>
@@ -67,7 +67,7 @@ export function InstructionFiles(props: SettingsPageProps) {
   const ownerName = owner === defaultId ? "every Trunk" : trunks.find((t) => t.id === owner)?.name ?? owner;
   return (
     <>
-      {agents.error ? <Status tone="bad" title="Branch couldn’t read your Trunks">{visible(agents.error)}</Status> : null}
+      {agents.error ? <Status tone="bad" title={`Couldn’t read: ${visible(agents.error)}`} /> : null}
       {defaultId ? <Whose trunks={trunks} defaultId={defaultId} owner={owner} onPick={setPick} /> : null}
       {owner ? <OwnerFiles key={`files-${owner}`} engine={props.engine} agentId={owner} ownerName={ownerName} /> : null}
       <Hint>A file can’t widen what Branch may do; Permissions still decides.</Hint>
