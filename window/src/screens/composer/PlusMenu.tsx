@@ -1,13 +1,14 @@
-// The + menu (HANDOFF R1-04, owner item 29; preview POPS.plusmenu): four tiles and the rows under them, with submenus
-// that replace the content behind a back row. Items the engine can't do yet are hidden here, not greyed (the one
-// documented exception to the Coming rule), and still listed in the dev Coming report.
+// The + menu (HANDOFF R1-04, owner item 29; preview POPS.plusmenu): the tiles and the rows under them, with submenus
+// that replace the content behind a back row. The items the engine can't do yet (Screenshot, Teach a task, Write a doc,
+// Branch from here, Temporary chat, Check with me, Phone call, Join a meeting) left the menu for Seedbank › Coming to
+// Branch (R1-15). A folded Improve my draft is drawn when the engine has its call, else hidden and listed as Coming.
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Icon, type IconName } from "../../composer/icons";
 import type { OpenTarget } from "../../composer/nav";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { Popover } from "../../glass/Popover";
-import { IMPROVE_COMING, IMPROVE_NEED, Later } from "./Composer";
+import { IMPROVE_COMING, IMPROVE_NEED } from "./Composer";
 
 type Props = {
   anchor: RefObject<HTMLElement | null>;
@@ -35,29 +36,6 @@ type Props = {
 };
 
 type View = "top" | "folder" | "add" | "call";
-
-/** The engine call each hidden item waits for (HANDOFF R1-04 "Engine calls"; voicecall.* is the voice-call plugin's). */
-export const PLUS_NEED = {
-  screenshot: "desktop.observe",
-  teach: "desktop.observe",
-  office: "agents.documents.create",
-  branch: "sessions.fork",
-  temporary: "sessions.patch",
-  checkWithMe: "sessions.patch",
-  phone: "voicecall.initiate",
-  meeting: "voicecall.start",
-} as const;
-
-export const PLUS_COMING = {
-  screenshot: "Taking a screenshot needs the Branch app on your computer.",
-  teach: "Teaching a task by showing it comes in a later update.",
-  office: "Writing a doc, sheet or slides comes in a later update.",
-  branch: "Branching from the end of a conversation comes in a later update. Use Branch from here on a message.",
-  temporary: "Temporary chats come in a later update.",
-  checkWithMe: "Check with me comes in a later update.",
-  phone: "Phone calls come in a later update.",
-  meeting: "Joining a meeting comes in a later update.",
-} as const;
 
 function Tile({ icon, label, onClick }: { icon: IconName; label: string; onClick: () => void }) {
   return <button type="button" className="r1c-tile" role="menuitem" data-local="" onClick={onClick}><Icon name={icon} /><span>{label}</span></button>;
@@ -89,15 +67,12 @@ export function PlusMenu(p: Props) {
         <div className="r1c-tiles">
           <Tile icon="file" label="Files" onClick={run(p.onFiles)} />
           <Tile icon="camera" label="Photo" onClick={run(p.onPhoto)} />
-          <Later hidden need={PLUS_NEED.screenshot} reason={PLUS_COMING.screenshot} where="+ menu › Screenshot" />
           <Tile icon="folder" label="Folder ›" onClick={() => setView("folder")} />
         </div>
         <div className="r1c-group">
           {p.onDictate ? <Item icon="mic" label="Dictate into the box" onClick={run(p.onDictate)} /> : null}
           {p.tight && p.onImprove ? <Coming hidden engine={p.engine} need={IMPROVE_NEED} reason={IMPROVE_COMING} where="+ menu › Improve my draft"><Item icon="spark" label="Improve my draft" onClick={run(p.onImprove)} /></Coming> : null}
-          <Later hidden need={PLUS_NEED.teach} reason={PLUS_COMING.teach} where="+ menu › Teach a task" />
           {p.hasModel ? <Item icon="image" label="Make a picture" onClick={run(p.onPicture)} /> : null}
-          <Later hidden need={PLUS_NEED.office} reason={PLUS_COMING.office} where="+ menu › Write a doc, sheet or slides" />
           <Item icon="target" label="Set a goal" hint={<kbd>/goal</kbd>} onClick={run(() => p.onInsert("/goal "))} />
           <Item icon="star" label="Skills & saved prompts" hint={<kbd>/</kbd>} onClick={run(() => p.onInsert("/"))} />
         </div>
@@ -107,9 +82,6 @@ export function PlusMenu(p: Props) {
         </div>
         <div className="r1c-group">
           <Item icon="clock" label="Run as a background job" hint={<kbd>/bg</kbd>} onClick={run(p.onBackground)} />
-          <Later hidden need={PLUS_NEED.branch} reason={PLUS_COMING.branch} where="+ menu › Branch from here" />
-          <Later hidden need={PLUS_NEED.temporary} reason={PLUS_COMING.temporary} where="+ menu › Temporary chat" />
-          <Later hidden need={PLUS_NEED.checkWithMe} reason={PLUS_COMING.checkWithMe} where="+ menu › Check with me" />
         </div>
       </> : view === "folder" ? <>
         {back("Add a folder")}
@@ -121,8 +93,6 @@ export function PlusMenu(p: Props) {
         {back("Call")}
         {p.voiceLive ? <Item icon="mic" label="Voice call" hint={<span className="r1c-hint">here, hands-free</span>} onClick={run(p.onCall)} /> : null}
         {p.onVoiceNote ? <Item icon="wave" label="Record a voice note" onClick={run(p.onVoiceNote)} /> : null}
-        <Later hidden need={PLUS_NEED.phone} reason={PLUS_COMING.phone} where="+ menu › Call › Phone call" />
-        <Later hidden need={PLUS_NEED.meeting} reason={PLUS_COMING.meeting} where="+ menu › Call › Join a meeting" />
       </>}
     </div>
   </Popover>;

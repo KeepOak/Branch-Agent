@@ -24,7 +24,7 @@ const LIMITS: Limits = { updatedAt: 0, refreshing: false, rows: [
   { id: "a", name: "ChatGPT · Account 2", provider: "openai-codex", email: "work@example.com", account: "", pill: "Measured", line: "", windows: [{ name: "5-hour", left: 61, reset: "", low: false }, { name: "Week", left: 30, reset: "", low: false }] },
 ] };
 
-async function mount(opts: { methods?: string[]; models?: boolean; working?: boolean; offline?: boolean; dictation?: boolean; replyTo?: { entryId: string; name: string; text: string }; onClearReply?: () => void } = {}) {
+async function mount(opts: { methods?: string[]; models?: boolean; working?: boolean; offline?: boolean; dictation?: boolean; replyTo?: { entryId: string; name: string; text: string }; onClearReply?: () => void; placeholder?: string } = {}) {
   let row: Record<string, unknown> = { model: "openai/test", permissionMode: "guarded", thinkingLevel: "medium" };
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
     if (method === "agents.list") return { defaultId: "scout", agents: [{ id: "scout", name: "Scout" }] };
@@ -41,7 +41,7 @@ async function mount(opts: { methods?: string[]; models?: boolean; working?: boo
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root?.render(<Composer name="Scout" engine={engine} working={Boolean(opts.working)} offline={Boolean(opts.offline)} onSend={send} onStop={() => {}} onToast={() => {}} onOpen={opened} onOpenConversation={() => {}}
-    limits={LIMITS} row={{ key: "agent:scout:main", title: "Main", isMain: true, totalTokens: 36000, contextTokens: 256000 } as never} topics={[{ key: "agent:scout:t1", title: "Invoices" }]} running={[]} replyTo={opts.replyTo} onClearReply={opts.onClearReply} />));
+    limits={LIMITS} row={{ key: "agent:scout:main", title: "Main", isMain: true, totalTokens: 36000, contextTokens: 256000 } as never} topics={[{ key: "agent:scout:t1", title: "Invoices" }]} running={[]} replyTo={opts.replyTo} onClearReply={opts.onClearReply} placeholder={opts.placeholder} />));
   return { host, request, send, opened };
 }
 const type = async (host: HTMLElement, text: string) => act(async () => {
@@ -108,7 +108,7 @@ describe("R1-04 composer", () => {
     expect(request).toHaveBeenCalledWith("chat.send", expect.objectContaining({ sessionKey: "agent:scout:t1", message: "Hello topic" }));
   });
 
-  it("opens the + menu with tiles and rows, hiding unwired items but listing them as Coming", async () => {
+  it("opens the + menu with tiles and rows, and no unwired items: they wait in Seedbank › Coming to Branch (R1-15)", async () => {
     const { host } = await mount();
     await act(async () => host.querySelector<HTMLButtonElement>(".r1c-pill [aria-label^='Attach']")!.click());
     expect([...document.querySelectorAll(".r1c-tile")].map((t) => t.textContent)).toEqual(["Files", "Photo", "Folder ›"]);
@@ -116,6 +116,7 @@ describe("R1-04 composer", () => {
     expect(rows).toEqual(expect.arrayContaining(["Make a picture", "Set a goal", "Skills & saved prompts", "Add from", "Run as a background job"]));
     expect(rows).not.toContain("Teach a task");
     expect(document.querySelectorAll(".r1c-plus [aria-disabled='true']")).toHaveLength(0);
+    expect(comingControls().filter((c) => c.where.startsWith("+ menu ›")).map((c) => c.where)).toEqual([]);
   });
 
   it("opens the ring popover with This computer, Running, Context and Every account", async () => {
@@ -130,6 +131,21 @@ describe("R1-04 composer", () => {
     expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Connect a model to start");
     await act(async () => button("Connect a model")!.click());
     expect(opened).toHaveBeenCalledWith("settings/accounts/add");
+  });
+
+  it("says the room's words in a group chat, and the Trunk's name everywhere else", async () => {
+    const room = await mount({ placeholder: "Message the group · @ to call a Trunk" });
+    expect(room.host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Message the group · @ to call a Trunk");
+    await act(async () => root?.unmount());
+    root = undefined;
+    document.body.innerHTML = "";
+    const plain = await mount();
+    expect(plain.host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Message Scout");
+    await act(async () => root?.unmount());
+    root = undefined;
+    document.body.innerHTML = "";
+    const noModel = await mount({ models: false, placeholder: "Message the group · @ to call a Trunk" });
+    expect(noModel.host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Connect a model to start");
   });
 
   it("disables send with its reason while offline", async () => {
@@ -169,10 +185,7 @@ describe("R1-04 composer", () => {
     const needOf = (where: string) => coming.find((c) => c.where === where)?.need;
     expect(needOf("Improve my draft")).toEqual(["sessions.companion.ask"]);
     expect(needOf("Dictate into the box")).toEqual(["talk.catalog"]);
-    expect(needOf("+ menu › Screenshot")).toEqual(["desktop.observe"]);
-    expect(needOf("+ menu › Write a doc, sheet or slides")).toEqual(["agents.documents.create"]);
-    expect(needOf("+ menu › Branch from here")).toEqual(["sessions.fork"]);
-    expect(needOf("+ menu › Temporary chat")).toEqual(["sessions.patch"]);
+    expect(coming.filter((c) => c.where.startsWith("+ menu ›")).map((c) => c.where)).toEqual([]);
   });
 
   it("registers nothing as Coming that it draws as live", async () => {
