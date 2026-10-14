@@ -119,7 +119,7 @@ const CODE_COMMITS: SecSpec = { t: "Code and commits", lv: 0, rows: [
 
 const NETWORK_MORE: SecSpec = { t: "Network, more", group: "Network", lv: 1, rows: [
   { t: "Its computer joins a private network", sub: "So a Trunk’s computer reaches your private machines without opening them to the internet.", k: "seg", opts: [{ v: "off", l: "Off" }, { v: "tailscale", l: "Tailscale" }, { v: "netbird", l: "NetBird" }], off: "Needs the engine to join a Trunk’s computer to a private network." },
-  { t: "Previews on your other computers", sub: "See a preview server running on another of your computers, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Needs the engine to forward preview servers from other computers." },
+  { t: "Previews on your other computers", sub: "See a preview server running on another of your computers, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Previews on your other computers comes in a later update." },
 ] };
 
 const ON_MORE: SecSpec = { t: "On a computer, more", group: "On a computer", showHeading: false, lv: 1, rows: [

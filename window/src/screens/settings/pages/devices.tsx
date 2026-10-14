@@ -44,7 +44,7 @@ const PLAN: [string, SecSpec[]][] = [
   ["Computers they may use", [
     block("Waiting for your yes", 0, (c) => <ComputerBlock {...c.props} part="waiting" />),
     block("Computers they may use", 0, (c) => <ComputerBlock {...c.props} part="computers" />),
-    block("Build folders", 0, (c) => <ComputerBlock {...c.props} part="build" />),
+    block("Separate copies", 0, (c) => <ComputerBlock {...c.props} part="build" />),
   ]],
   ["Which Trunk uses which", [block("Which Trunk uses which", 0, (c) => <ComputerBlock {...c.props} part="which" />)]],
   ["Who is connected now", [S.WHO, S.EVERYTHING, S.ALLOWING, S.NETWORK_MORE, S.TECHNICAL]],
