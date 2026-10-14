@@ -263,6 +263,12 @@ function PetsSec({ engine, openSettings }: Pick<SettingsPageProps, "engine" | "o
   );
 }
 
+/** The tier counts and the badges, for the R1 Updates & about page's Achievements card. */
+export function AchievementsBlock() {
+  const got = unlockedAt(useLevel());
+  return <><Summary got={got} /><BadgeGrid got={got} /></>;
+}
+
 export function AchievementsPage(props: SettingsPageProps) {
   const got = unlockedAt(useLevel());
   return (

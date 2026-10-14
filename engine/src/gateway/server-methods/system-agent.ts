@@ -606,7 +606,15 @@ export const systemAgentHandlers: GatewayRequestHandlers = {
       if (pendingApproval) {
         return pendingApproval;
       }
-      respond(true, buildSystemAgentChatResult({ sessionId, reply }), undefined);
+      respond(
+        true,
+        buildSystemAgentChatResult({
+          sessionId,
+          reply,
+          pendingProposal: session.engine.getPendingOperatorProposal(),
+        }),
+        undefined,
+      );
       return undefined;
     });
     // Human waiting must retain the requesting tool, but release the task queue:
