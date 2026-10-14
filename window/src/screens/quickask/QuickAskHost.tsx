@@ -33,8 +33,8 @@ export function QuickAskHost(props: Props) {
   useEffect(() => {
     const toggle = () => setOpen(shown => !shown);
     const key = (event: KeyboardEvent) => {
-      // Another dialog or the shortcut recorder owns the keyboard.
-      if (event.defaultPrevented || document.querySelector("[data-listening], [aria-modal=\"true\"]")) return;
+      // Another dialog or the shortcut recorder owns the keyboard. The open box is modal too, and the shortcut closes it.
+      if (event.defaultPrevented || document.querySelector("[data-listening], [aria-modal=\"true\"]:not(.qa-box)")) return;
       if (shortcutFor(event, /Mac|iPhone|iPad/.test(navigator.platform)) !== "quickAsk") return;
       event.preventDefault();
       toggle();
