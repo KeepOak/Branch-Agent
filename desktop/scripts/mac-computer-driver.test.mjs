@@ -146,6 +146,11 @@ test("a rejected embedded configuration surfaces the SDK's reason, not just its 
   } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
 });
 
+test("the Coming reasons are the preview's copy: none for a missing driver, its permission line for permissions", () => {
+  assert.equal(driverModule.DRIVER_NOT_PACKAGED, "");
+  assert.equal(driverModule.DRIVER_NEEDS_PERMISSION, "macOS asks you to allow this once, in System Settings.");
+});
+
 test("the driver keeps a plain reason while it has no endpoint, and clears it once ready", async () => {
   const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-why-"));
   let granted = false;
@@ -165,10 +170,10 @@ test("the driver keeps a plain reason while it has no endpoint, and clears it on
   const driver = new MacComputerDriver(() => {}, () => sdk, () => "ai.branch.mac");
   try {
     assert.equal(await driver.start(dir), undefined);
-    assert.equal(driver.reason, driverModule.DRIVER_NOT_PACKAGED);
+    assert.equal(driver.reason, "");
     await writeFile(join(dir, "cua-driver"), "fixture");
     assert.equal(await driver.start(dir), undefined);
-    assert.equal(driver.reason, driverModule.DRIVER_NEEDS_PERMISSION);
+    assert.equal(driver.reason, "macOS asks you to allow this once, in System Settings.");
     granted = true;
     await assert.rejects(driver.start(dir));
     assert.equal(driver.reason, "The Mac computer driver couldn't start: X is not in the embedded safe allowlist");

@@ -11,13 +11,14 @@ export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: Windo
   const [image, setImage] = useState("");
   const [error, setError] = useState("");
   // The desktop app's reason this computer's own driver isn't ready: Coming (R1-10) until it is, polling as before.
-  const [coming, setComing] = useState("");
+  // null: not Coming. An empty reason shows "Computer control · Coming" alone (the preview has no line for it).
+  const [coming, setComing] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     setImage("");
     setError("");
-    setComing("");
+    setComing(null);
     onLive(false);
     const capture = async () => {
       let generation: string | undefined;
@@ -25,14 +26,14 @@ export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: Windo
       try {
         const status = await engine.request<Status>("computer.status", {});
         if (!live) return;
-        if (!status.available && status.reason) {
+        if (!status.available && typeof status.reason === "string") {
           setImage("");
           setError("");
           setComing(status.reason);
           onLive(false);
           return;
         }
-        setComing("");
+        setComing(null);
         generation = status.computerUse?.provider.generation;
         if (!status.available || !generation) throw new Error("Screen unavailable");
         const result = await engine.request<{ payload: Frame }>("computer.invoke", {
@@ -63,7 +64,7 @@ export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: Windo
   }, [engine, retry, onLive]);
   return <div className="st7-wrap"><div className="st7-screen live-st">
     {image ? <img className="native-screen" src={image} alt="Live screen of this computer" /> : null}
-    {coming ? <div className="stage-empty" data-coming={coming}><b>Computer control · Coming</b><p>{coming}</p></div>
-      : !image || error ? <div className="stage-empty"><b>{error || "Connecting to this computer's screen…"}</b>{error ? <button type="button" className="btn" onClick={onRetry}>Try again</button> : null}</div> : null}
+    {coming !== null ? <div className="stage-empty" data-coming={coming}><b>Computer control · Coming</b>{coming ? <p>{coming}</p> : null}</div>
+      : !image || error ? <div className="stage-empty"><b>{error || "Connecting…"}</b>{error ? <button type="button" className="btn" onClick={onRetry}>Try again</button> : null}</div> : null}
   </div></div>;
 }

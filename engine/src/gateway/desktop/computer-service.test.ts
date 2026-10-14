@@ -196,6 +196,11 @@ describe("Gateway computer service", () => {
       reason,
     });
 
+    const bare = createFixture({ BRANCH_COMPUTER_DRIVER_REASON: "" });
+    delete bare.config.desktop;
+    vi.mocked(startComputerHostProcess).mockImplementation(unavailable);
+    expect(await bare.service.status()).toMatchObject({ available: false, reason: "" });
+
     const plain = createFixture({});
     delete plain.config.desktop;
     vi.mocked(startComputerHostProcess).mockImplementation(unavailable);

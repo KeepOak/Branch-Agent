@@ -32,9 +32,10 @@ export type GatewayComputerStatus = {
 
 /** Set by the desktop app when it starts the Gateway without a native driver endpoint. */
 const DRIVER_REASON_ENV = "BRANCH_COMPUTER_DRIVER_REASON";
+/** An empty reason still means Coming: the pane then shows "Computer control · Coming" with no reason line. */
 function appDriverReason(env: NodeJS.ProcessEnv): string | undefined {
   const reason = env[DRIVER_REASON_ENV]?.trim();
-  return reason && reason.length <= 300 ? reason : undefined;
+  return reason !== undefined && reason.length <= 300 ? reason : undefined;
 }
 type ComputerInvokeRequest = ComputerInvokeParams & {
   owner: string;
@@ -288,7 +289,12 @@ export function createGatewayComputerService(options: {
           message.startsWith("COMPUTER_DRIVER_UNAVAILABLE:")
             ? appDriverReason(options.env ?? process.env)
             : undefined;
-        return { configured, available: false, error: message, ...(reason ? { reason } : {}) };
+        return {
+          configured,
+          available: false,
+          error: message,
+          ...(reason !== undefined ? { reason } : {}),
+        };
       }
     },
     async invoke(request) {

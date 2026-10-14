@@ -27,7 +27,7 @@ function fixture(snapshot: () => Promise<unknown> = async () => ({ payload: fram
       return { ok: true };
     }
     if (method === "computer.status") {
-      if (driver.reason) return { configured: true, available: false, error: "COMPUTER_DRIVER_UNAVAILABLE: the Gateway desktop provider is unavailable", reason: driver.reason };
+      if (driver.reason !== undefined) return { configured: true, available: false, error: "COMPUTER_DRIVER_UNAVAILABLE: the Gateway desktop provider is unavailable", reason: driver.reason };
       return { available: enabled, computerUse: { provider: { generation: "driver-one" } } };
     }
     if (method === "computer.invoke") {
@@ -117,5 +117,21 @@ describe("computer screen setup", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     expect(document.querySelector(".stage-empty[data-coming]")).toBeNull();
     expect(document.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
+  });
+  it("shows Computer control · Coming alone when the app gives an empty reason", async () => {
+    const { engine, request } = fixture(undefined, false, { reason: "" });
+    await render(engine);
+    await act(async () => screenButton()!.click());
+    const coming = document.querySelector(".stage-empty[data-coming]");
+    expect(coming?.textContent).toBe("Computer control · Coming");
+    expect(coming?.querySelector("p")).toBeNull();
+    expect(request.mock.calls.some(([method]) => method === "computer.invoke")).toBe(false);
+  });
+  it("says Connecting… while the first picture is on its way", async () => {
+    const { engine } = fixture(() => new Promise(() => {}));
+    await render(engine);
+    await act(async () => screenButton()!.click());
+    expect(document.querySelector(".st7-screen .stage-empty b")?.textContent).toBe("Connecting…");
+    expect(document.body.textContent).not.toContain("Connecting to this computer's screen");
   });
 });

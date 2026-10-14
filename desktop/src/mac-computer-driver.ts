@@ -66,9 +66,11 @@ function hostBundleId(): string {
   }).trim();
 }
 
-/** Plain lines for the computer pane's Coming state; the Gateway gets the current one with its environment. */
-export const DRIVER_NOT_PACKAGED = "This copy of Branch Agent doesn't include the Mac computer driver.";
-export const DRIVER_NEEDS_PERMISSION = "Branch Agent needs Accessibility and Screen Recording permission in System Settings.";
+/** The computer pane's Coming reason line; the Gateway gets the current one with its environment.
+ * Copy is the design preview's own: its permission ask says "macOS asks you to allow this once, in System Settings."
+ * The preview has no line for a missing driver, so that reason is empty and the pane shows "Computer control · Coming" alone. */
+export const DRIVER_NOT_PACKAGED = "";
+export const DRIVER_NEEDS_PERMISSION = "macOS asks you to allow this once, in System Settings.";
 export const driverStartFailed = (error: unknown): string => `The Mac computer driver couldn't start: ${describeDriverError(error)}`;
 
 export class MacComputerDriver {
