@@ -58,14 +58,13 @@ describe("SettingsFrame", () => {
     expect($("[data-page=developer]")).toBeNull();
   });
 
-  it("puts one glass card per section, with no rule lines, and Coming for sections not wired yet", async () => {
+  it("puts one glass card per section, with no rule lines, and draws none of General's empty sections (R1-15)", async () => {
     await mount(engineOf().engine);
     const secs = $$(".r1s-sec");
     expect(secs.map((s) => s.querySelector("h2")?.textContent)).toContain("Show agents’ work");
     expect(secs.map((s) => s.querySelector("h2")?.textContent)).not.toContain("Waiting line");
-    const keyboard = secs.find((s) => s.querySelector("h2")?.textContent === "Keyboard")!;
-    expect(keyboard.querySelector("[data-coming]")?.getAttribute("aria-disabled")).toBe("true");
-    expect(keyboard.textContent).toContain(SECTION_COMING("Keyboard"));
+    expect(secs.map((s) => s.querySelector("h2")?.textContent)).not.toContain("Keyboard");
+    expect(secs.filter((s) => s.textContent?.includes(SECTION_COMING(s.querySelector("h2")?.textContent ?? "")))).toEqual([]);
   });
 
   it("shows higher rows inside their own section with an inline tag, and saves the level", async () => {
@@ -96,7 +95,7 @@ describe("SettingsFrame", () => {
     expect(work.querySelector(":scope > [data-row='general.work.mode']")).not.toBeNull();
   });
 
-  it("makes a Trunk the default from search with its own button, and shows it as Coming without a handler", async () => {
+  it("makes a Trunk the default from search with its own button, and draws none without a handler (R1-15)", async () => {
     const onTrunk = vi.fn();
     const trunks = [{ id: "t1", name: "Juniper" }, { id: "t2", name: "Juno", isDefault: true }];
     await act(async () => root.render(<SettingsFrame engine={engineOf().engine} trunks={trunks} onTrunk={onTrunk} />));
@@ -114,9 +113,8 @@ describe("SettingsFrame", () => {
 
     await act(async () => root.render(<SettingsFrame engine={engineOf().engine} trunks={trunks} />));
     await type("Juniper");
-    const off = $(".r1s-mkdef");
-    expect(off.getAttribute("aria-disabled")).toBe("true");
-    expect(off.getAttribute("data-coming")).toBeTruthy();
+    expect($$(".r1s-mkdef")).toHaveLength(0);
+    expect($("[data-hit='t1']")).not.toBeNull();
   });
 
   it("saves Show agents’ work as the two engine defaults in one patch", async () => {
