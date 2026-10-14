@@ -30,8 +30,10 @@ export function MeaningSearch({ engine }: SlotControlProps) {
   const emb = record(data.embedding);
   const provider = text(data.provider) || text(get("memory.search.provider")) || "openai";
   const checked = emb.checked !== false && (emb.ok === true || Boolean(emb.error));
-  const word = !checked ? "Not checked yet" : emb.ok === true ? "Working" : "Not working";
-  const line = st.error ? visible(st.error) : !checked ? "Branch hasn’t checked meaning search yet." : emb.ok === true ? "Meaning search answered." : visible(text(emb.error));
+  // The preview's words: "Not checked yet" until a check, "Working" when it answered; a failed check shows what the
+  // service said.
+  const word = !checked ? "Not checked yet" : emb.ok === true ? "Working" : visible(text(emb.error));
+  const line = st.error ? visible(st.error) : !checked ? "Branch hasn’t checked meaning search yet." : "";
   return <>
     <span className="r1s-own-ctl">
       <span className="r1s-val g-label">{word}</span>
@@ -39,7 +41,7 @@ export function MeaningSearch({ engine }: SlotControlProps) {
         <button type="button" className="r1s-btn" onClick={() => void run(async () => setProbe(record(await engine.request("doctor.memory.status", { probe: true }))))}>Test</button>
       </Needs>
     </span>
-    <small className="r1s-msg g-label" data-lines>{line} {PROVIDER[provider] ?? provider} · {LOCAL.has(provider) ? "on this computer" : "in the cloud"}</small>
+    <small className="r1s-msg g-label" data-lines>{line ? `${line} ` : ""}{PROVIDER[provider] ?? provider} · {LOCAL.has(provider) ? "on this computer" : "in the cloud"}</small>
     <Failed text={failed} />
   </>;
 }
@@ -77,8 +79,8 @@ export function OtherAgents({ engine, row }: SlotControlProps) {
       <Coming engine={engine} need="config: reading other coding agents' history as you go" unwired reason="Learning from their history as you go comes in a later update." where={label}>
         <span className="r1s-own-ctl"><Toggle label={label} on={false} onChange={() => undefined} /></span>
       </Coming>
-      <Needs engine={engine} need={["migrations.memory.plan", "migrations.memory.apply"]} where="Bring their memory in">
-        <button type="button" className="r1s-btn" disabled={!agent} onClick={() => setOpen(true)}>Bring their memory in…</button>
+      <Needs engine={engine} need={["migrations.memory.plan", "migrations.memory.apply"]} where="Bring it in">
+        <button type="button" className="r1s-btn" disabled={!agent} onClick={() => setOpen(true)}>Bring it in</button>
       </Needs>
     </span>
     {open ? <KitProvider level={2} report={QUIET} scope={null}><MigrateDialog engine={engine} agent={agent} onClose={() => setOpen(false)} /></KitProvider> : null}
