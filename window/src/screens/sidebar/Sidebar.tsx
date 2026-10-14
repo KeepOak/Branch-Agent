@@ -19,6 +19,7 @@ import { RemoveTrunkDialog } from "../../places/trunk/RemoveTrunk";
 import { NewGroupChatHost, openNewGroupChat } from "../../rooms/NewGroupChat";
 import { ConfirmDelete, askBeforeDelete } from "../../shell/ConfirmDelete";
 import { contactRowsFor, markContactRead, pinContact, projectContact, type Contact } from "../../shell/contacts-model";
+import { displayTrunkTitle } from "../../connect/trunk-name";
 import { conversationActions } from "../../shell/conversation-actions";
 import { Dialog } from "../../shell/Dialog";
 import { useContacts, useTrunks } from "../../shell/engine-data";
@@ -257,7 +258,10 @@ export function Sidebar(p: SidebarProps) {
   // While searching, the sidebar's own matches lead Chats and Trunks; the Classic matches add only what they don't cover.
   const leadRows = [...sections.pinned, ...sections.trunks, ...sections.people, ...sections.groups, ...sections.grafted, ...sections.archived];
   const leadKeys = new Set(leadRows.map(row => row.key).filter(Boolean));
-  const rowName = (key: string) => p.sessions.find(row => row.key === key)?.title || rows.find(row => row.key === key)?.name || "Conversation";
+  const rowName = (key: string) => {
+    const session = p.sessions.find(row => row.key === key);
+    return (session?.isMain && session.agentId ? displayTrunkTitle(session.title, session.agentId) : session?.title) || rows.find(row => row.key === key)?.name || "Conversation";
+  };
   const leaveSearch = () => setQuery("");
   // Opening any result leaves the search, as the Classic results do; the row ••• menu stays as it is.
   const leadHandlers: RowHandlers = { ...handlers, onOpen: row => { leaveSearch(); openRow(row); } };

@@ -216,7 +216,7 @@ export function Thread(props: Props) {
   const native = useMemo(() => nativeHelpers([...history, ...live]), [history, live]);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const [usedSuggestion, setUsedSuggestion] = useState<string | null>(null);
-  const all = useMemo(() => [...history, ...(running ? live : [])], [history, live, running]);
+  const all = useMemo(() => [...history, ...live], [history, live]);
   const extras = pendingExtras(details, shownApprovalIds(all), engine?.sessionKey);
   const answer = useCallback(
     (id: string, decision: ApprovalDecision) => {
@@ -254,7 +254,7 @@ export function Thread(props: Props) {
     props.onFindRequestHandled?.(props.findRequest.nonce);
   }, [props.findRequest?.nonce]);
   const historyReady = props.historyReady !== false;
-  const empty = historyReady && !history.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
+  const empty = historyReady && !history.length && !live.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
   const lastReply = [...history].reverse().find((block) => block.kind === "text");
   const suggestionKey = lastReply ? `${props.sessionKey ?? ""}:${lastReply.key}` : null;
   const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
@@ -378,7 +378,7 @@ export function Thread(props: Props) {
             )
           ) : null}
           <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="delivered" />
-          {running ? <LiveRun view={view} offset={history.length} /> : null}
+          {running || live.length ? <LiveRun view={view} offset={history.length} /> : null}
           {running ? (props.steered ?? []).map((note) => <SteeredNote key={note.runId} name={name} text={note.text} />) : null}
           <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
           {(anchors.get(-1) ?? []).map((r) => <QuestionLine key={r.id} record={r} />)}
@@ -488,21 +488,22 @@ function LiveRun({ view, offset }: { view: View; offset: number }) {
   const [elapsed, setElapsed] = useState(0);
   const startedAt = view.liveStartedAt;
   useEffect(() => {
+    if (!view.running) return;
     const started = startedAt ?? Date.now();
     const tick = () => setElapsed(Math.max(0, Date.now() - started));
     tick();
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [startedAt]);
+  }, [startedAt, view.running]);
   const usage = live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage");
   const waiting = live.some((b) => b.kind === "approval" && b.approval.state === "pending");
   const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || (b.kind === "step" && !isInternalStep(b)) || b.kind === "preamble" || b.kind === "plan");
   return (
-    <div className="live-run" data-streaming="true">
+    <div className="live-run" data-streaming={view.running}>
       {/* While only the dots show, nothing sits above them (P47); the clock comes with the first real activity. */}
-      {typing ? null : <header className="live-run-head">Working{elapsed >= 1000 ? ` · ${formatDuration(elapsed)}` : ""}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>}
-      {layout(live.filter((b) => b.kind !== "status"), offset).map((item) => <ItemView key={keyOf(item)} item={item} view={view} live />)}
-      {typing ? <Typing name={name} /> : null}
+      {!view.running || typing ? null : <header className="live-run-head">Working{elapsed >= 1000 ? ` · ${formatDuration(elapsed)}` : ""}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>}
+      {layout(live.filter((b) => b.kind !== "status"), offset).map((item) => <ItemView key={keyOf(item)} item={item} view={view} live={view.running} />)}
+      {view.running && typing ? <Typing name={name} /> : null}
     </div>
   );
 }
@@ -581,7 +582,7 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
     case "notice":
       return block.topicKey ? <div className="tpLblT5"><button type="button" onClick={() => view.onOpenSession?.(block.topicKey!)}>{block.text}</button></div> : <Notice block={block} />;
     case "steer":
-      return <SteeredNote name={view.name} text={block.text} />;
+      return <SteeredNote name={view.name} text={block.text} attachments={block.attachments} />;
     default:
       return null;
   }

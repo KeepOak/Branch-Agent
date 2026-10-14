@@ -36,7 +36,7 @@ export const CONNECTOR_CATEGORIES: readonly string[] = ["web", "integrations", "
 export type Source =
   | { type: "template"; template: DayOneTemplate; templateId: string | null; permissions: string[] }
   | { type: "skill"; ref: string }
-  | { type: "plugin"; catalogId: string; pluginId: string; packageName: string; install: Rec | null; unavailable: boolean }
+  | { type: "plugin"; catalogId: string; pluginId: string; packageName: string; install: Rec | null; unavailable: boolean; /** On this computer (comes with Branch or installed). */ present?: boolean }
   | { type: "theme"; themeId: string };
 
 export type Entry = {
@@ -84,7 +84,7 @@ export function pluginEntries(browse: unknown): Entry[] {
     const kind: KindId = category && CONNECTOR_CATEGORIES.includes(category) ? "mcp" : "plugins";
     return [{ id: kind + ":" + id, kind, name: str(c.name) || id, by: str(c.author) || (official ? "Branch" : "someone"), desc: str(c.summary), badge: official ? "Official" as const : "Community" as const,
       checked: Boolean(str(c.verificationTier)) || official, installed: local.installed === true, downloads: num(c.downloads), featuredRank: c.featured === true ? num(c.featuredRank) ?? 0 : undefined, category,
-      source: { type: "plugin" as const, catalogId: id, pluginId: str(local.pluginId) || str(c.packageName) || id, packageName: str(c.packageName), install, unavailable: str(local.action) === "unavailable" } }];
+      source: { type: "plugin" as const, catalogId: id, pluginId: str(local.pluginId) || str(c.packageName) || id, packageName: str(c.packageName), install, unavailable: str(local.action) === "unavailable", present: local.present === true } }];
   });
 }
 

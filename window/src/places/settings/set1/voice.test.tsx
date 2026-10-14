@@ -137,7 +137,7 @@ describe("Settings › Voice", () => {
   it("with no live-voice service installed, the list says so", async () => {
     const { engine } = engineOf({ "talk.catalog": { ...CATALOG, realtime: { providers: [] } } });
     await render(engine, 2);
-    expect(host.textContent).toContain("No live-voice service is installed.");
+    expect(host.textContent).toContain("No live-voice service is set up yet.");
     expect(row("Live voice").textContent).toContain("No live-voice service is set up yet.");
   });
 
