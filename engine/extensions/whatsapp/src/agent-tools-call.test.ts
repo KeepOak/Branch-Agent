@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/whatsapp/src/agent-tools-call.test.ts (atlas VOICE-0114). Changed for Branch: assert platform-specific setup commands on Windows and POSIX.
+// Changed for Branch: assert platform-specific setup commands on Windows and POSIX.
 // WhatsApp call tool tests cover requester binding, audio framing, and process cleanup.
 import fs from "node:fs/promises";
 import os from "node:os";

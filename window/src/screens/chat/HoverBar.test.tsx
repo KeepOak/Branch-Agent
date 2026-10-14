@@ -26,23 +26,41 @@ const actions = (): HoverActions => ({
   branch: { run: vi.fn(), disabled: "Not while Scout is working.", waiting: true },
   context: { run: vi.fn(), disabled: null, excluded: false },
   read: { run: vi.fn(), disabled: null, reading: false },
+  pin: { run: vi.fn(), disabled: null, pinned: false },
+  remove: { run: vi.fn(), disabled: null },
 });
-const methods = ["session.reactions.set", "chat.send", "sessions.fork", "sessions.rewind", "session.context.set", "talk.speak"];
+const methods = ["session.reactions.set", "chat.send", "sessions.fork", "sessions.rewind", "session.context.set", "talk.speak", "sessions.messages.pin", "sessions.messages.delete"];
 const engine = { features: { methods, events: [] } };
 const menuRows = () => [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] [role="menuitem"]')];
 
-it("R1-10: rows the window doesn't wire stay Coming and listed by their call even when the engine offers it", async () => {
-  const soon = ["sessions.messages.pin", "sessions.messages.share", "sessions.handoff", "sessions.messages.delete"];
+it("R1-15: Link, Share as a picture and Continue in a coding app stay out of the menu even when the engine offers their calls", async () => {
+  const moved = ["sessions.messages.link", "sessions.messages.share", "sessions.handoff"];
   const a = actions();
-  await act(async () => root.render(<CapabilityProvider engine={{ features: { methods: [...methods, ...soon], events: [] } }}><HoverBar text="Hi" isReply actions={a} /></CapabilityProvider>));
+  await act(async () => root.render(<CapabilityProvider engine={{ features: { methods: [...methods, ...moved], events: [] } }}><HoverBar text="Hi" isReply actions={a} /></CapabilityProvider>));
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+  const labels = menuRows().map((b) => b.textContent);
+  for (const label of ["Link", "Share as a picture", "Continue in a coding app"]) expect(labels, label).not.toContain(label);
+  expect(comingControls().filter((c) => moved.some((m) => c.need.includes(m)))).toEqual([]);
+});
+
+it("#977: Pin, Unpin and Delete run their engine calls on an engine that has them", async () => {
+  const a = actions();
+  const all = { features: { methods, events: [] } };
+  await act(async () => root.render(<CapabilityProvider engine={all}><HoverBar text="Hi" isReply actions={a} /></CapabilityProvider>));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const row = (label: string) => menuRows().find((b) => b.textContent === label)!;
-  for (const label of ["Pin", "Share as a picture", "Continue in a coding app", "Delete"]) {
-    expect(row(label).getAttribute("aria-disabled"), label).toBe("true");
-    expect(row(label).dataset.coming, label).toBeTruthy();
+  for (const label of ["Pin", "Delete"]) {
+    expect(row(label).getAttribute("aria-disabled"), label).toBeNull();
+    expect(row(label).dataset.coming, label).toBeFalsy();
   }
-  const listed = comingControls().filter((c) => soon.some((m) => c.need.includes(m))).map((c) => c.where);
-  expect(listed).toEqual(expect.arrayContaining(["Pin", "Share as a picture", "Continue in a coding app", "Delete"]));
+  await act(async () => row("Pin").click());
+  expect(a.pin!.run).toHaveBeenCalledOnce();
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+  await act(async () => row("Delete").click());
+  expect(a.remove!.run).toHaveBeenCalledOnce();
+  await act(async () => root.render(<CapabilityProvider engine={all}><HoverBar text="Hi" isReply actions={{ ...a, pin: { ...a.pin!, pinned: true } }} /></CapabilityProvider>));
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+  expect(menuRows().map((b) => b.textContent)).toContain("Unpin");
 });
 
 it("has exactly three buttons: React, Reply and •••", async () => {
@@ -56,13 +74,12 @@ it("••• opens the message menu with its time and model, and every row runs
   await act(async () => root.render(<CapabilityProvider engine={engine}><HoverBar text="**Hi** there" isReply actions={a} meta={{ timestamp: Date.now(), model: "openai/gpt-6.1-sol" }} /></CapabilityProvider>));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const labels = menuRows().map((b) => b.textContent);
-  expect(labels).toEqual(["Copy›", "Pin", "Try again", "Read aloud", "Branch from here", "Leave out of context", "Share as a picture", "Continue in a coding app", "Look inside", "Delete"]);
+  expect(labels).toEqual(["Copy›", "Pin", "Try again", "Read aloud", "Branch from here", "Leave out of context", "Look inside", "Delete"]);
+  // R1-15: Link, Share as a picture and Continue in a coding app wait in Seedbank › Coming to Branch, not here.
+  expect(comingControls().filter((c) => ["sessions.messages.link", "sessions.messages.share", "sessions.handoff"].some((m) => c.need.includes(m)))).toEqual([]);
   expect(document.querySelector(".r1c-menu-meta")!.textContent).toMatch(/·/);
   const row = (label: string) => menuRows().find((b) => b.textContent === label)!;
-  for (const soon of ["Pin", "Share as a picture", "Continue in a coding app", "Delete"]) {
-    expect(row(soon).getAttribute("aria-disabled")).toBe("true");
-    expect(row(soon).title).not.toBe("");
-  }
+  for (const wired of ["Pin", "Delete"]) expect(row(wired).getAttribute("aria-disabled"), wired).toBeNull();
   expect(row("Delete").dataset.danger).toBe("true");
   expect(row("Branch from here").title).toBe("Available when the agent finishes.");
   await act(async () => row("Branch from here").click());
@@ -80,16 +97,18 @@ it("every engine-calling row declares its method: with all of them each row runs
   expect(row("Read aloud").dataset.need).toBe("talk.speak");
   expect(row("Branch from here").dataset.need).toBe("sessions.fork");
   expect(row("Leave out of context").dataset.need).toBe("session.context.set");
+  expect(row("Pin").dataset.need).toBe("sessions.messages.pin");
+  expect(row("Delete").dataset.need).toBe("sessions.messages.delete");
   expect(menuRows().filter((b) => b.hasAttribute("data-local")).map((b) => b.textContent)).toEqual(["Copy›", "Look inside"]);
 });
 
-it("on an engine without those methods, Try again, Edit, Read aloud, Branch from here and Leave out of context turn Coming and run nothing", async () => {
+it("on an engine without those methods, Try again, Edit, Read aloud, Branch from here, Leave out of context, Pin and Delete turn Coming and run nothing", async () => {
   const none = { features: { methods: [], events: [] } };
   const a = actions();
   await act(async () => root.render(<CapabilityProvider engine={none}><HoverBar text="Hi" isReply actions={{ ...a, branch: { run: vi.fn(), disabled: null } }} /></CapabilityProvider>));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const row = (label: string) => menuRows().find((b) => b.textContent === label)!;
-  for (const label of ["Try again", "Read aloud", "Branch from here", "Leave out of context"]) {
+  for (const label of ["Try again", "Read aloud", "Branch from here", "Leave out of context", "Pin", "Delete"]) {
     expect(row(label).getAttribute("aria-disabled"), label).toBe("true");
     expect(row(label).dataset.coming, label).toBeTruthy();
     expect(row(label).title, label).toBe(row(label).dataset.coming);
@@ -111,13 +130,13 @@ it("on an engine without those methods, Try again, Edit, Read aloud, Branch from
   expect(row("Edit").dataset.coming).toBeTruthy();
 });
 
-it("Copy › offers text, Markdown and a Coming link", async () => {
+it("Copy › offers text and Markdown; the message link waits in Seedbank (R1-15)", async () => {
   await act(async () => root.render(<HoverBar text="Hi" isReply={false} actions={{ ...actions(), edit: { run: vi.fn(), disabled: null } }} />));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   expect(menuRows().map((b) => b.textContent)).toContain("Edit");
   await act(async () => menuRows()[0].click());
-  expect(menuRows().map((b) => b.textContent)).toEqual(["Copy", "Text", "Markdown", "Link"]);
-  expect(menuRows()[3].getAttribute("aria-disabled")).toBe("true");
+  expect(menuRows().map((b) => b.textContent)).toEqual(["Copy", "Text", "Markdown"]);
+  expect(document.querySelectorAll('[role="menu"] [aria-disabled="true"]')).toHaveLength(0);
 });
 
 it("reactions turn to Coming when the engine has no reactions method", async () => {

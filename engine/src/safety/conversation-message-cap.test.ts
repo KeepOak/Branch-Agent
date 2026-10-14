@@ -1,4 +1,3 @@
-// danny-avila/LibreChat@f10b1d91f1eee3a2c82d5247bf620351486b7c1b:api/server/middleware/limiters/messageLimiters.spec.js (atlas SAFETY-0098)
 // The express-rate-limit wiring is not ported; the violation payload assertions run
 // against buildMessageLimitViolation. Owner requests G-1566, G-1696, R-2377.
 import { describe, expect, it } from "vitest";

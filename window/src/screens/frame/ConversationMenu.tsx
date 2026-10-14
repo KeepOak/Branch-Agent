@@ -1,6 +1,6 @@
 // The R1 header's ••• conversation menu and what its rows open. The rows are the approved nine (conversation-menu.ts); the
 // dialogs are the Classic ones, re-hosted as clear glass (README item 48): Start over and Map (shell/ConversationDialogs.tsx),
-// Replay (shell/Replay.tsx), Export (transcript-export/ExportDialog.tsx), Look inside (thread/dialogs.tsx) and Delete
+// Replay (shell/Replay.tsx), Share (shell/ShareDialog.tsx, parity row 13), Export (transcript-export/ExportDialog.tsx), Look inside (thread/dialogs.tsx) and Delete
 // (shell/ConfirmDelete.tsx). Every row acts through the Classic conversation actions (shell/conversation-actions.ts).
 import { useEffect, useMemo, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -18,16 +18,19 @@ import { MapDialog, StartOverDialog } from "../../shell/ConversationDialogs";
 import { Dialog } from "../../shell/Dialog";
 import { notify } from "../../shell/notify";
 import { openConversationWindow, ownWindowUnavailable } from "../../shell/own-window";
+import { publicShareLink } from "../../shell/ConversationMenu";
 import { ReplayDialog } from "../../shell/Replay";
+import { ShareDialog } from "../../shell/ShareDialog";
 import { copyMarkdown } from "../../shell/row-actions";
-import { ThreadContext } from "../../thread/context";
+import { copyText, ThreadContext } from "../../thread/context";
 import { LookInside } from "../../thread/dialogs";
 import { turnOf } from "../../thread/layout";
 import type { Block } from "../../thread/model";
 import { ExportDialog } from "../../transcript-export/ExportDialog";
 import type { TranscriptExportFormat } from "../../transcript-export/render";
 import type { WorkMode } from "../chat/chat-logic";
-import { CONVERSATION_NEED, conversationMenu } from "./conversation-menu";
+import type { ShellRoom } from "../../rooms/useShellRoom";
+import { CONVERSATION_NEED, conversationMenu, roomRuleEntries } from "./conversation-menu";
 
 export type ConversationMenuProps = {
   session: SaplingSession;
@@ -49,13 +52,15 @@ export type ConversationMenuProps = {
   onOpen: (key: string) => void;
   mainKey: string | null;
   onPlace: (place: PlaceId) => void;
+  /** In a group chat, its rules (rooms/useShellRoom): the Group rules row. */
+  room?: ShellRoom["menu"];
   /** Parity row 4: opens the re-hosted Changes view (diff and pull request box) for this conversation's checkout. */
   onChanges?: () => void;
   /** The engine call the Changes view needs; the row is Coming without it. */
   changesNeed?: string;
 };
 
-type Open = { kind: "rename" | "delete" | "start" | "map" | "replay" | "inspect" } | { kind: "export"; format: TranscriptExportFormat } | null;
+type Open = { kind: "rename" | "delete" | "start" | "map" | "replay" | "inspect" | "share" } | { kind: "export"; format: TranscriptExportFormat } | null;
 
 const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const bad = (error: unknown) => notify(reason(error), { tone: "bad" });
@@ -82,6 +87,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
   const removeRow = (gone: Conversation) => void actions.remove(gone).then(() => { if (p.mainKey && p.mainKey !== gone.key) p.onOpen(p.mainKey); });
   const items = conversationMenu({
     row, isDefault: p.isDefault, now, hasReply: Boolean(lastReply), work: { global: p.work.global, override: p.work.override }, ownWindowOff: ownWindowUnavailable(),
+    room: p.room ? { ruleWords: p.room.ruleWords, rules: roomRuleEntries(p.room.rules()) } : null,
     run: {
       pin: () => { if (row) void actions.pin(row); },
       rename: () => setOpen({ kind: "rename" }),
@@ -90,6 +96,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
       archive: () => { if (row) void actions.archive(row); },
       restore: () => { if (row) void actions.restore(row); },
       toBoard: () => { if (key) void request(CONVERSATION_NEED.board, { sessionKey: key, title: p.name, ...(row?.agentId ? { agentId: row.agentId } : {}) }).then(() => notify(`Sent “${p.name}” to the board.`), bad); },
+      share: () => setOpen({ kind: "share" }),
       exportFile: () => setOpen({ kind: "export", format: "markdown" }),
       exportWebPage: () => setOpen({ kind: "export", format: "html" }),
       copyConversation: () => { if (key) void copyMarkdown(engine, key, p.name); },
@@ -110,6 +117,8 @@ export function ConversationMenu(p: ConversationMenuProps) {
     : open.kind === "start" ? <StartOverDialog clear trunkName={p.name} onClose={close} onStart={() => request(CONVERSATION_NEED.reset, { ...target, reason: "reset" }).then(() => session.reload())} />
     : open.kind === "map" ? <MapDialog clear engine={engine} sessionKey={target.key} agentId={target.agentId} onSwitched={() => void session.reload()} onClose={close} />
     : open.kind === "replay" ? <ReplayDialog clear history={p.history} trunkName={p.name} onClose={close} />
+    : open.kind === "share" ? <ShareDialog clear engine={engine} sessionKey={target.key} agentId={target.agentId} sessionId={row?.sessionId} title={p.name}
+      publicLink={(token) => publicShareLink(token, session.gatewayUrl, controlUiUrl(session))} onCopy={(text) => void copyText(text, notify)} onClose={close} />
     : open.kind === "export" ? <ExportDialog clear engine={engine} sessionKey={target.key} title={p.name} initialFormat={open.format} onClose={close} />
     : open.kind === "inspect" && lastReply?.kind === "text" ? <LastReply history={p.history} block={lastReply} name={p.name} sessionKey={target.key} session={session} onClose={close} />
     : null;
@@ -120,6 +129,13 @@ export function ConversationMenu(p: ConversationMenuProps) {
     </Popover> : null}
     {dialog ? createPortal(dialog, document.body) : null}
   </CapabilityProvider>;
+}
+
+/** The engine's web address from its last hello, so a public share link opens there (as the Classic menu builds it). */
+function controlUiUrl(session: SaplingSession): string {
+  const status = session.getSnapshot().status;
+  const hello = status?.phase === "connected" ? (status.hello as unknown as Record<string, unknown>) : null;
+  return typeof hello?.controlUiUrl === "string" ? hello.controlUiUrl : "";
 }
 
 /** Look inside the last reply: the Classic dialog reads its turn's meta and the engine through the thread context. */
