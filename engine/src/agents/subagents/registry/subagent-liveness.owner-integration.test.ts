@@ -11,6 +11,7 @@ import { projectGatewaySessionRunState } from "../../../gateway/session-utils-di
 import {
   claimAgentRunContext,
   clearAgentRunContext,
+  getActiveAgentRunContextCount,
   getAgentRunContext,
   getAgentRunContextOwnerStatus,
   hasLiveAgentRunContext,
@@ -19,6 +20,7 @@ import {
   rotateAgentRunRegistryLifecycleGeneration,
   sweepStaleRunContexts,
 } from "../../../infra/agent-run-registry.js";
+import { createGatewayActiveWorkSnapshot } from "../../../infra/gateway-active-work.js";
 import { enqueueCommandInLane, getCommandLaneSnapshot } from "../../../process/command-queue.js";
 import { resetCommandQueueStateForTest } from "../../../process/command-queue.test-support.js";
 import {
@@ -356,6 +358,30 @@ it("retains an exact queued collector reservation without calling it executor-li
   } finally {
     await hold?.release();
   }
+});
+
+it("counts a working helper as active work for the update idle check without an execution claim (Private #1038)", async () => {
+  const entry = await register("idle-check-helper");
+  // Live as the session list shows it (between model calls, or waiting on its own helpers), with no claim.
+  registerAgentRunContext(entry.runId, {
+    sessionKey: entry.childSessionKey,
+    projectSessionActive: true,
+  });
+  try {
+    expect(isSubagentRunLive(entry)).toBe(true);
+    expect(getActiveAgentRunContextCount()).toBe(0);
+    const snapshot = createGatewayActiveWorkSnapshot();
+    expect(snapshot.counts.subagentRuns).toBe(1);
+    expect(snapshot.idle).toBe(false);
+    expect(snapshot.blockers).toContainEqual({
+      kind: "subagent-run",
+      count: 1,
+      message: "1 active helper (subagent) run(s)",
+    });
+  } finally {
+    clearAgentRunContext(entry.runId);
+  }
+  expect(createGatewayActiveWorkSnapshot().counts.subagentRuns).toBe(0);
 });
 
 it("does not retain an old run after its last claim releases preserved routing metadata", async () => {

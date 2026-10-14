@@ -16,7 +16,7 @@ import {
   getActiveSessionLifecycleMutationCount,
   getActiveSessionWorkAdmissionCount,
 } from "../sessions/session-lifecycle-admission.js";
-import { getActiveAgentRunContextCount } from "./agent-run-registry.js";
+import { getActiveAgentRunContextCount, getActiveSubagentRunCount } from "./agent-run-registry.js";
 import { readLifecycleWriteCustody } from "./lifecycle-write-custody.js";
 
 type GatewayActiveWorkCounts = {
@@ -26,6 +26,7 @@ type GatewayActiveWorkCounts = {
   backgroundExecSessions: number;
   cronRuns: number;
   agentRuns: number;
+  subagentRuns: number;
   acpRuns: number;
   mediaRuns: number;
   rootRequests: number;
@@ -48,6 +49,7 @@ export type GatewayActiveWorkBlocker = {
     | "background-exec"
     | "cron-run"
     | "agent-run"
+    | "subagent-run"
     | "acp-run"
     | "media-generation"
     | "root-request"
@@ -80,6 +82,7 @@ export type GatewayActiveWorkInspectors = {
   getBackgroundExecSessions: () => number;
   getCronRuns: () => number;
   getAgentRuns: () => number;
+  getSubagentRuns: () => number;
   getAcpRuns: () => number;
   getMediaRuns: () => number;
   getRootRequests: () => number;
@@ -99,6 +102,7 @@ const defaultInspectors: GatewayActiveWorkInspectors = {
   getBackgroundExecSessions: getActiveBackgroundExecSessionCount,
   getCronRuns: () => Math.max(getActiveCronJobCount(), getSuspensionVisibleCronTaskRunCount()),
   getAgentRuns: getActiveAgentRunContextCount,
+  getSubagentRuns: getActiveSubagentRunCount,
   getAcpRuns: getActiveAcpTurnCount,
   getMediaRuns: getActiveMediaGenerationRunCount,
   getRootRequests: () => getActiveGatewayRootWorkCount({ excludeCurrent: true }),
@@ -149,6 +153,7 @@ export function createGatewayActiveWorkSnapshot(
     embeddedRuns: normalizeCount(resolved.getEmbeddedRuns()),
     backgroundExecSessions: normalizeCount(resolved.getBackgroundExecSessions()),
     agentRuns: normalizeCount(resolved.getAgentRuns()),
+    subagentRuns: normalizeCount(resolved.getSubagentRuns()),
     acpRuns: normalizeCount(resolved.getAcpRuns()),
     mediaRuns: normalizeCount(resolved.getMediaRuns()),
     sessionAdmissions: normalizeCount(resolved.getSessionAdmissions()),
@@ -174,6 +179,7 @@ export function createGatewayActiveWorkSnapshot(
   add(counts.backgroundExecSessions, "background-exec", "active background exec session(s)");
   add(counts.cronRuns, "cron-run", "active cron run(s)");
   add(counts.agentRuns, "agent-run", "admitted agent run(s)");
+  add(counts.subagentRuns, "subagent-run", "active helper (subagent) run(s)");
   add(counts.acpRuns, "acp-run", "active ACP turn(s)");
   add(counts.mediaRuns, "media-generation", "active media generation(s)");
   const rootRequestHolders =
