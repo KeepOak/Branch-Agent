@@ -152,7 +152,7 @@ export const LEARNING_ROWS: Row[] = [
   // Keeping a change
   coming("learning.keeping.better", KEEPING, "Keep a change only if it does better by", "engine: practice runs", { control: "number", unit: "%", help: "Measured on practice runs of your recent tasks." }),
   toggle("learning.keeping.paid", KEEPING, "Use paid models at night", "engine: a paid-models-at-night switch",
-    "Rings uses your usual model while you sleep. Off: it uses only the model on this computer."),
+    "Rings uses your usual model while you sleep. Off: Seasons uses only the model on this computer."),
 
   // Extras fetched when first used (Advanced)
   coming("learning.extras.list", EXTRAS, "Extras fetched when first used", "engine: the list of fetched extras", { level: 1 }),
