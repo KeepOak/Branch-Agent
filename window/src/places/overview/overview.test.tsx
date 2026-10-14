@@ -138,8 +138,8 @@ describe("Overview screen", () => {
     const offBtn = button(host, "Turn Lockdown off");
     expect(offBtn).toBeTruthy();
     expect(offBtn?.className).not.toContain("bad"); // Preview spec-v23 index.html:8759 button class when on
-    expect(button(host, "Pause all Trunks")).toMatchObject({ disabled: true, title: "" });
-    expect(PAUSE_ALL_GAP.startsWith("Needs the engine")).toBe(true);
+    expect(button(host, "Pause all Trunks")).toMatchObject({ disabled: true, title: "Pause all Trunks comes in a later update." });
+    expect(PAUSE_ALL_GAP).toBe("Pause all Trunks comes in a later update.");
     expect(visibleDevNotes(host)).toEqual([]);
     expect(host.querySelector(".ov-badges")).not.toBeNull();
     expect(host.querySelector(".ov-badges")!.parentElement!.textContent).toContain("Coming");

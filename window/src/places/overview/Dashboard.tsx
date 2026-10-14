@@ -120,7 +120,7 @@ export function OverviewHero({ name, me, chip, onSend }: { name: string; me: str
   return (
     <section className="p34-hero">
       <div className="p34-bg-row">
-        <Coming need="overview.background" reason="Choosing a picture for the Overview comes in a later update.">
+        <Coming need="overview.background" reason="Change background comes in a later update.">
           <button type="button" className="p34-bg" disabled>Change background</button>
         </Coming>
       </div>
