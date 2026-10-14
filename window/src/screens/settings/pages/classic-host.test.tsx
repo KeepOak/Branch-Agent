@@ -43,6 +43,7 @@ it("re-hosts exactly these Classic pages", () => {
     coding: "computer-coding",
     models: "models",
     permissions: "permissions",
+    privacy: "usage",
   });
 });
 

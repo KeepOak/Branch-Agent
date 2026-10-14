@@ -17,6 +17,7 @@ export const REHOSTED = {
   who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
   models: "models",
   permissions: "permissions",
+  privacy: "usage",
   browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
   coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
 } as const;
