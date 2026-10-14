@@ -84,6 +84,32 @@ export function LocalPage(props: SettingsPageProps) {
   );
 }
 
+/** One block of the page, for the R1 Devices page's cards: what this computer has, the models recommended for it, or
+ *  its runtimes. Each reads the same engine lists the whole page does. */
+export function LocalBlock(props: SettingsPageProps & { part: "hardware" | "recommended" | "runtimes" }) {
+  const scope = useScope();
+  const cfg = useConfig(props.engine);
+  const maySetup = props.engine.scopes.length === 0 || props.engine.scopes.includes("operator.admin");
+  const modelPath = scope ? ["agents", "entries", scope, "model", "primary"] : ["agents", "defaults", "model", "primary"];
+  const current = cfg.get(modelPath.slice(0, -1)) ?? cfg.get(["agents", "defaults", "model"]);
+  const primary = typeof current === "string" ? current : record(current).primary;
+  const agent = scope ? { agentId: scope } : {};
+  const info = useResource<RecordValue>(props.engine, "system.info", {});
+  const detect = useResource<RecordValue>(props.engine, "branch.setup.detect", agent);
+  const models = useResource<RecordValue>(props.engine, "models.list", { includeDetails: true });
+  const [setup, setSetup] = useState<RecordValue | null>(null);
+  const hw = hwOf(info.data);
+  const local = list(models.data?.models).filter((m) => m.local === true);
+  const found = foundRuntimes(detect.data, local);
+  const done = () => { setSetup(null); void detect.reload(); void models.reload(); };
+  if (props.part === "hardware") return <Hardware loading={info.loading} error={info.error} hw={hw} runtimes={detect.loading ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />;
+  if (props.part === "runtimes") return <Runtimes engine={props.engine} hw={hw} detect={detect} models={models} found={found} />;
+  return <>
+    <Recommended loading={detect.loading || models.loading} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} primary={primary} onUse={(ref) => { void cfg.set(modelPath, ref); }} maySetup={maySetup} />
+    {setup ? <SetupDialog engine={props.engine} option={setup} agent={agent} onClose={done} /> : null}
+  </>;
+}
+
 const SVG = (d: string) => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
 const CPU = SVG("M7 7h10v10H7zM10 10h4v4h-4zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4");
 const LAYERS = SVG("M12 3l9 5-9 5-9-5zM3 13l9 5 9-5");
