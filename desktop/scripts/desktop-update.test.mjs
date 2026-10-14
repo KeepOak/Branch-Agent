@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, truncate, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -316,4 +316,19 @@ test("a helper that is not executable discards the staged record and the app kee
   assert.equal(await exists(join(cfg.dataDir, "desktop-update-pending.json")), false, "the record is removed");
   assert.equal(await readFile(join(install.resourcesDir, "app.asar"), "utf8"), "old desktop asar", "the installed app is untouched");
   assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: the update helper could not start: /);
+}));
+
+test("the discard line goes through the same 100 MB cap as desktop.log", () => fixture(async ({ cfg, install }) => {
+  const log = join(cfg.dataDir, "desktop.log");
+  await writeFile(log, "");
+  await truncate(log, 100 * 1024 * 1024 + 1);
+  const journal = join(cfg.dataDir, "desktop-update-pending.json");
+  await writeFile(journal, JSON.stringify({ version: "0.4.5", sha256: "a".repeat(64), kind: "asar", phase: "staged",
+    staged: join(cfg.dataDir, "updates", "desktop-0.4.5-gone00", "payload", `app${desktopUpdate.STAGED_ASAR}`), target: join(install.resourcesDir, "app.asar") }));
+  const launch = await launchHandOff(cfg, install);
+  assert.deepEqual({ code: launch.code, stderr: launch.stderr }, { code: 0, stderr: "" });
+  assert.equal(await exists(journal), false, "the record is removed");
+  assert.equal(await exists(join(cfg.dataDir, "desktop.1.log")), true, "the full log was rotated to an archive");
+  assert.match(await readFile(log, "utf8"), /desktop update 0\.4\.5 discarded: app\.asar\.staged is missing/);
+  assert.ok((await stat(log)).size < 1024 * 1024, "the live log is small again");
 }));

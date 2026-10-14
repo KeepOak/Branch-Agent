@@ -10,6 +10,7 @@ import type { Block } from "../../thread/model";
 import { entriesOf } from "./chat-logic";
 import { ChatView, type ChatViewProps } from "./ChatView";
 import { layout } from "../../thread/layout";
+import { FIND_EVENT } from "../../thread/FindBar";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label: string }) => <span data-face={label} /> }));
 vi.mock("../../composer/useConversation", () => ({ useConversation: () => ({ loaded: false }), hasNoModel: () => true }));
@@ -148,4 +149,12 @@ it("follows the item 48 glass model: clear conversation and menus, text and cont
   }
   expect(css).toContain("background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge);");
   expect(css).toContain(".g-popover:has(> .r1c-menu, > .r1c-react) { background: transparent; backdrop-filter: none;");
+});
+
+it("opens find in this conversation with the words a search result asked for", async () => {
+  await show({ history }, ["chat.send"]);
+  expect(host.querySelector(".find-bar")).toBeNull();
+  await act(async () => { window.dispatchEvent(new CustomEvent(FIND_EVENT, { detail: { query: "Hartwell" } })); });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
+  expect(host.querySelector<HTMLInputElement>(".find-bar input")?.value).toBe("Hartwell");
 });

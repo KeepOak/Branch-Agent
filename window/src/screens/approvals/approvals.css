@@ -11,7 +11,7 @@
 /* The frost: one recipe for every pill this screen draws. */
 :is(.r1-ask-q, .r1-ask-pill, .r1-ask-kv, .r1-ask-code, .r1-ask-btn:not([data-kind="primary"]), .r1-ask-note, .r1-ask-error, .r1-ask-what,
   .r1-ask-chip, .r1-ask-option, .r1-ask-input, .r1-ask-qtext, .r1-drop-who, .r1-drop-q, .r1-drop-more, .r1-drop-done, .r1-banner-text,
-  .r1-banner-x, .r1-lock, .r1-ask-history h3, .r1-ask-row > :is(code, small, time, span:not(.r1-ask-pill))) {
+  .r1-banner-x, .r1-banner-icon, .r1-lock, .r1-ask-history h3, .r1-ask-row > :is(code, small, time, span:not(.r1-ask-pill))) {
   background: var(--gp-fill); -webkit-backdrop-filter: var(--gp-blur); backdrop-filter: var(--gp-blur);
   box-shadow: inset 0 0 0 1px var(--gp-edge); border: 0; color: var(--ink);
   --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2);
@@ -86,6 +86,9 @@
 .r1-banner-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 200px; padding: 6px 30px 6px 12px; border-radius: 14px; font-size: 13.5px; }
 .r1-banner-text span { color: var(--gp-ink-2); overflow-wrap: anywhere; }
 .r1-banner-acts { display: flex; gap: 6px; margin-left: auto; }
+/* A problem banner has no Trunk face: its line icon sits on a round pill, the alert one in the status red. */
+.r1-banner-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; }
+.r1-banner-icon[data-icon="alert"] { color: color-mix(in srgb, var(--bad) calc(var(--r1a-tone) + 40%), var(--ink)); }
 .r1-banner-x { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; opacity: 0; transition: opacity .15s; cursor: pointer; }
 .r1-banner:hover .r1-banner-x, .r1-banner:focus-within .r1-banner-x { opacity: 1; }
 @keyframes r1-banner-in { from { translate: 120% 0; opacity: .3; } to { translate: 0 0; opacity: 1; } }
