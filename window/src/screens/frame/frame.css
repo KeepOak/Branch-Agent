@@ -113,4 +113,5 @@
 .r1-topic-fold > button { padding: 4px 12px; border: 0; border-radius: var(--r-pill); font: 500 var(--fs-13-5) var(--sans); }
 .r1-topic-fold .topicsT5:not(.lay-tabs), .r1-content > .r1-topic-host .topicsT5:not(.lay-tabs) { position: static; width: 100%; }
 .r1-topic-fold > .r1-topic-host { width: 100%; }
-.r1-topic-host .dlg.g-clear .fld > span { display: inline-block; width: fit-content; padding: 2px 9px; border-radius: var(--r-pill); background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }
+/* A field label in a clear dialog is text on the tinted glass (preview v17): no pill. */
+.r1-topic-host .dlg.g-clear .fld > span { display: inline-block; width: fit-content; padding: 0; background: none; box-shadow: none; color: var(--ink); }
