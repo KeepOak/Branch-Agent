@@ -1,4 +1,4 @@
-// From aaif-goose/goose@bab8ff641039c9cd3331121cd84a5c6045f365ca:crates/goose-context-management/src/summarize.rs (atlas AGENT-LOOP-0100). Converted to TypeScript with Branch canonical toolResult messages.
+// Converted to TypeScript with Branch canonical toolResult messages.
 import { isContextOverflowError } from "./failover/context-overflow.js";
 import type { AgentMessage } from "./runtime/index.js";
 

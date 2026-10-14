@@ -4,6 +4,7 @@
 // the branch command on PATH, the tray's usage ring and the "Get it" download pages. Every OS call is injected, so the
 // tests use fakes and never change this computer's startup, power or PATH settings.
 import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { saveUnlessDiskFull } from "./disk-full";
 import { dirname } from "node:path";
 import { RELEASE_REPOSITORY } from "./component-update-manifest";
 import { isOwnedComponentWindow } from "./component-update-ipc";
@@ -60,6 +61,8 @@ export interface ControlDeps {
   };
   tray: { usage(left: number | null, on: boolean): void };
   openExternal(url: string): Promise<void>;
+  /** Writes the settings file; tests inject a failing one. */
+  writeFile?: (path: string, text: string) => void;
   onChange?: (settings: DesktopSettings) => void;
 }
 
@@ -89,9 +92,12 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
   let lastLeft: number | null = null;
   // Linger is the OS's state, read once through the engine and then kept as changed here.
   let linger: Promise<boolean | undefined> | undefined;
+  // A full disk keeps the new setting in memory and shows the disk-full banner; the next save writes it.
   const save = (): void => {
-    mkdirSync(dirname(deps.settingsFile), { recursive: true });
-    writeFileSync(deps.settingsFile, `${JSON.stringify(saved, null, 2)}\n`);
+    saveUnlessDiskFull(() => {
+      mkdirSync(dirname(deps.settingsFile), { recursive: true });
+      (deps.writeFile ?? writeFileSync)(deps.settingsFile, `${JSON.stringify(saved, null, 2)}\n`);
+    });
   };
   const get = async (): Promise<ControlsState> => {
     linger ??= deps.linger?.get().catch(() => undefined);

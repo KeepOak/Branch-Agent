@@ -1,4 +1,4 @@
-// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/infra/update-failure-report-receipt-store.ts (atlas OPS-0056). Changed for Branch: file reports on the Branch-owned KeepOak/Branch-Agent repository, never the upstream tracker.
+// Changed for Branch: file reports on the Branch-owned KeepOak/Branch-Agent repository, never the upstream tracker.
 import type { DatabaseSync } from "node:sqlite";
 import { safeParseJson } from "@branch/normalization-core";
 import { isRecord as isPlainRecord } from "@branch/normalization-core/record-coerce";
