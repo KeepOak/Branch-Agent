@@ -37,8 +37,6 @@ button.r1sb-cap:hover { color: var(--ink); }
 .r1sb-chip[aria-selected="true"] b { background: var(--bg); color: var(--ink); }
 .r1sb-chip:active { transform: scale(.96); }
 .r1sb-chip:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; }
-.r1sb-chip-add { padding: 0 8px; }
-.r1sb-chip-add .r1sb-i { stroke-width: 2; }
 .r1sb-fold:not([data-open]) > .r1sb-chip:not([aria-selected="true"]) { max-width: 0; padding-inline: 0; margin-right: 0; opacity: 0; transform: scale(.85); pointer-events: none; }
 .r1sb-fold[data-open] > .r1sb-chip:last-child { margin-right: 0; }
 
