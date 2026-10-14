@@ -615,12 +615,13 @@ const QUIET_REPORT = { saving: () => undefined, saved: () => undefined, failed: 
 export function UsageSpend({ engine }: SlotControlProps) {
   const [level] = useLevel(engine);
   // The period buttons and Open the report all read sessions.usage.
-  return <div data-need="sessions.usage"><KitProvider level={level} report={QUIET_REPORT} scope={null}><AccountSpend engine={engine} level={level} /></KitProvider></div>;
+  // Classic's usage styles are scoped to its page column (.set-col), as classic-host draws them.
+  return <div className="set-col r1s-usage" data-need="sessions.usage"><KitProvider level={level} report={QUIET_REPORT} scope={null}><AccountSpend engine={engine} level={level} /></KitProvider></div>;
 }
 
 /** What each account has left: Classic's allowance list, one row per connection and account. */
 export function UsageList({ engine, onPage }: SlotControlProps) {
-  return <KitProvider level={0} report={QUIET_REPORT} scope={null}><AccountAllowanceList engine={engine} openSettings={onPage ? (page) => onPage(pageFor(page)) : undefined} /></KitProvider>;
+  return <div className="set-col r1s-usage"><KitProvider level={0} report={QUIET_REPORT} scope={null}><AccountAllowanceList engine={engine} openSettings={onPage ? (page) => onPage(pageFor(page)) : undefined} /></KitProvider></div>;
 }
 
 /** The ring bottom right: the status bar's ring, described; nothing to set. */
