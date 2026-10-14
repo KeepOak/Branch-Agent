@@ -18,6 +18,7 @@ vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: () => <p>Place content
 vi.mock("../../face/Face", () => ({ Face: () => <span /> }));
 vi.mock("../sidebar/Sidebar", () => ({ Sidebar: ({ searchRef }: { searchRef: RefObject<HTMLInputElement | null> }) => <nav><input ref={searchRef} aria-label="Search stub" /></nav> }));
 vi.mock("../../places/settings/set1/appearance-store", () => ({ lookStore: () => ({ load: async () => undefined }) }));
+vi.mock("../../shell/group-drop", async (real) => ({ ...(await real<object>()), useGroupRooms: () => ({ rooms: [], peerOnline: new Map(), reload: async () => undefined }) }));
 vi.mock("../../shell/engine-data", async (load) => ({ ...(await load<typeof import("../../shell/engine-data")>()), useConversations: () => [{ loaded: true, error: null, rows: [] }], usePendingApprovals: () => new Map() }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
