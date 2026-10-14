@@ -92,6 +92,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const [pip, setPip] = useState<PipTarget | null>(null);
   // The re-hosted Classic side panel (parity row 2): its open tab, or null while it is closed.
   const [pane, setPane] = useState<PaneTab | null>(null);
+  // The header button that opened the stage; closing the stage hands focus back to it.
+  const stageOpener = useRef<string | null>(null);
+  const toggleStage = (mode: StageMode) => { setPip(null); stageOpener.current = mode; setStage(open => open === mode ? null : mode); };
+  const closeStage = useCallback(() => setStage(null), []);
   const [history, setHistory] = useState({ index: 0, count: 1 });
   const entries = useRef<Route[]>([route]);
   const search = useRef<HTMLInputElement>(null);
@@ -136,6 +140,22 @@ export function R1Window({ session }: { session: SaplingSession }) {
     setHistory({ index, count: entries.current.length }); applyRoute(next);
   };
   useEffect(() => { if (ready) void lookStore(engine).load(); }, [ready, engine]);
+  // Escape closes the stage unless a menu, dialog, picker or popover is open: those take Escape first.
+  const stageShown = Boolean(stage) && route.kind === "chat";
+  useEffect(() => {
+    if (!stageShown) {
+      const opener = stageOpener.current; stageOpener.current = null;
+      if (opener) document.querySelector<HTMLElement>(`.r1-header-right [aria-label="${opener}"]`)?.focus();
+      return;
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], [aria-modal="true"], [aria-haspopup][aria-expanded="true"]')) return;
+      closeStage();
+    };
+    window.addEventListener("keydown", escape, true);
+    return () => window.removeEventListener("keydown", escape, true);
+  }, [stageShown, closeStage]);
   useEffect(() => {
     // Classic's keys, under the person's own: Ctrl Shift K shows or hides the side panel, the pane keys open a tab
     // (Ctrl ` Terminal, Ctrl Shift B Files, Side chat) or the computer stage. A key this engine can't serve does nothing.
@@ -188,7 +208,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} error={conversations.error} />;
   const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={CLASSIC_PAGE[route.page] ?? route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
-    onMode={setStage} onClose={() => setStage(null)} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <ChatView
+    onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <ChatView
     name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo}
@@ -214,8 +234,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
-        { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", onClick: ready ? () => { setPip(null); setStage(open => open === "Computer" ? null : "Computer"); } : undefined },
-        { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", onClick: ready ? () => { setPip(null); setStage(open => open === "Browser" ? null : "Browser"); } : undefined },
+        { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", pressed: stageShown && stage === "Computer", onClick: ready ? () => toggleStage("Computer") : undefined },
+        { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", pressed: stageShown && stage === "Browser", onClick: ready ? () => toggleStage("Browser") : undefined },
         { label: "Side panel", icon: <Icon name="panel" />, need: PANE_TAB_NEEDS[DEFAULT_PANE_TAB], coming: "This engine can’t show the side panel.", onClick: ready ? () => setPane(open => open ? null : DEFAULT_PANE_TAB) : undefined },
         // ••• opens this window's conversation menu; each of its rows declares its own call.
         { label: "More", icon: <Icon name="more" />, onClick: ready ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },

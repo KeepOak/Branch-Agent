@@ -1,0 +1,4 @@
+window:src/glass/Capsule.pressed.test.tsx
+window:src/glass/primitives.test.tsx
+window:src/screens/frame/R1Window.stage.test.tsx
+window:src/screens/frame/coming.test.tsx
