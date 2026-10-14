@@ -1,5 +1,5 @@
-window:src/screens/chat/ChatView.delete-pin.test.tsx
-window:src/screens/chat/HoverBar.test.tsx
-window:src/screens/chat/ChatView.test.tsx
 window:src/glass/coming.test.tsx
+window:src/screens/chat/ChatView.delete-pin.test.tsx
+window:src/screens/chat/ChatView.test.tsx
+window:src/screens/chat/HoverBar.test.tsx
 window:src/thread/history.test.ts
