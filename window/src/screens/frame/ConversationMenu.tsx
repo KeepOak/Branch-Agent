@@ -9,6 +9,7 @@ import { CapabilityProvider } from "../../connect/capabilities";
 import type { SaplingSession } from "../../connect/session";
 import { Coming } from "../../glass/coming";
 import { Menu } from "../../glass/Menu";
+import { Icon } from "../../shell/icons";
 import { Popover } from "../../glass/Popover";
 import type { PlaceId } from "../../places-nav/routes";
 import { ConfirmDelete, askBeforeDelete } from "../../shell/ConfirmDelete";
@@ -51,6 +52,10 @@ export type ConversationMenuProps = {
   onPlace: (place: PlaceId) => void;
   /** In a group chat, its rules (rooms/useShellRoom): the Group rules row. */
   room?: ShellRoom["menu"];
+  /** Parity row 4: opens the re-hosted Changes view (diff and pull request box) for this conversation's checkout. */
+  onChanges?: () => void;
+  /** The engine call the Changes view needs; the row is Coming without it. */
+  changesNeed?: string;
 };
 
 type Open = { kind: "rename" | "delete" | "start" | "map" | "replay" | "inspect" } | { kind: "export"; format: TranscriptExportFormat } | null;
@@ -102,6 +107,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
       remove: () => { if (!row) return; if (askBeforeDelete()) setOpen({ kind: "delete" }); else removeRow(row); },
     },
   });
+  const rows = p.onChanges ? [...items, { label: "Changes and pull request", icon: <Icon name="pr" size={15} />, need: p.changesNeed, why: "This engine can’t show this conversation’s changes.", onSelect: p.onChanges }] : items;
   const dialog = !open || !target ? null
     : open.kind === "rename" && row ? <RenameDialog name={p.name} onClose={close} onSave={(label) => { close(); void actions.rename(row, label); }} />
     : open.kind === "delete" && row ? <ConfirmDelete clear row={row} onCancel={close} onDelete={() => { close(); removeRow(row); }} />
@@ -114,7 +120,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
   // It draws outside the frame (the header's popover and window-wide dialogs), so it names the engine its Coming rows check.
   return <CapabilityProvider engine={engine}>
     {p.open ? <Popover anchor={p.anchor} label="Conversation" align="end" width={280} onClose={p.onClose}>
-      <div className="r1c-conv g-clear"><Menu label="Conversation" rows={items} onClose={p.onClose} /></div>
+      <div className="r1c-conv g-clear"><Menu label="Conversation" rows={rows} onClose={p.onClose} /></div>
     </Popover> : null}
     {dialog ? createPortal(dialog, document.body) : null}
   </CapabilityProvider>;
