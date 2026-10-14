@@ -2,10 +2,11 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { trunkDisplayName } from "../../connect/trunk-name";
 export type Trunk = { id: string; name?: string; identity?: { name?: string; emoji?: string; theme?: string; avatar?: string; avatarUrl?: string }; createdVia?: string; workspace?: string; model?: { primary?: string } };
 export type Trunks = { agents: Trunk[]; defaultId: string; mainKey: string };
 export type FileEntry = { name: string; path: string; kind?: "file" | "directory"; size?: number; missing?: boolean; hash?: string; content?: string; encoding?: string; mimeType?: string };
-export function trunkName(t: Trunk) { return t.identity?.name || t.name || t.id; }
+export function trunkName(t: Trunk) { return trunkDisplayName(t); }
 export function errorText(error: unknown) { return error instanceof Error ? error.message : String(error); }
 /** A generation belongs to one screen/selection. Late results never replace a new selection. */
 export class RequestGeneration {
