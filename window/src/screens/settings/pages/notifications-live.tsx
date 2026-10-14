@@ -85,7 +85,7 @@ class PushStore {
   }
   setDevice(edit: (d: DevicePrefs) => DevicePrefs): Promise<void> {
     const { sub, device } = this.s.snap;
-    if (!sub || !device) return Promise.reject(new Error("Turn on notifications on this computer first."));
+    if (!sub || !device) return Promise.reject(new Error("Turn them on in the system’s settings"));
     const next = normalizeDevice(edit(device));
     this.s.set({ ...this.s.snap, device: next });
     const done = this.chain.then(() => this.engine.request("push.web.preferences.set", { endpoint: sub.endpoint, scope: "device", preferences: next })).then(() => undefined);
@@ -195,7 +195,7 @@ export function SendTest({ engine, row }: SlotControlProps) {
   const [busy, setBusy] = useState(false);
   const desktop = isDesktopApp();
   const go = () => { setBusy(true); void run(async () => {
-    if (desktop) { new Notification("Branch", { body: "Notifications are working on this computer." }); return; }
+    if (desktop) { new Notification("Branch", { body: "Send a test notification" }); return; }
     await engine.request("push.web.test", {});
   }).finally(() => setBusy(false)); };
   const btn = <button type="button" className="r1s-btn" disabled={busy} onClick={go}>Send test</button>;
@@ -212,8 +212,8 @@ export function QuietHours({ engine, row }: SlotControlProps) {
   return <>
     <Needs engine={engine} need={PREFS} where={row.label ?? ""}>
       <span className="r1s-own-ctl r1s-acts">
-        <Select label="Quiet hours from" value={String(q.startMinute)} options={opts(q.startMinute)} disabled={p.off || !q.enabled} onChange={(v) => setQ({ startMinute: Number(v) })} />
-        <Select label="Quiet hours to" value={String(q.endMinute)} options={opts(q.endMinute)} disabled={p.off || !q.enabled} onChange={(v) => setQ({ endMinute: Number(v) })} />
+        <span className="g-label">From</span><Select label="From" value={String(q.startMinute)} options={opts(q.startMinute)} disabled={p.off || !q.enabled} onChange={(v) => setQ({ startMinute: Number(v) })} />
+        <span className="g-label">To</span><Select label="To" value={String(q.endMinute)} options={opts(q.endMinute)} disabled={p.off || !q.enabled} onChange={(v) => setQ({ endMinute: Number(v) })} />
         <Toggle label={row.label ?? ""} on={q.enabled} disabled={p.off} onChange={(v) => setQ({ enabled: v })} />
       </span>
     </Needs>
