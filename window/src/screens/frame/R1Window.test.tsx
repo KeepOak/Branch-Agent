@@ -119,9 +119,9 @@ it("draws Sign-ins & keys as the R1 page, so Accounts › Add a key opens it in 
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
-  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "models" }));
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "local" }));
   await act(async () => root.render(<R1Window session={session} />));
-  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("models");
+  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("local");
   expect(host.querySelector('[data-testid="r1-settings"]')).toBeNull();
 });
 it("sends a page to R1 Settings only when the row table or a slot covers it and Classic has nothing more", () => {
@@ -130,7 +130,30 @@ it("sends a page to R1 Settings only when the row table or a slot covers it and 
   expect(r1SettingsPage("accounts")).toBe(true);
   expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(true);
   expect(r1SettingsPage("chatapps")).toBe(true);
-  for (const page of ["models", "permissions", "keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
+  for (const page of ["keys", "devices", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
+});
+it("draws Models and Permissions as R1 pages, which re-host every Classic Models and Permissions control", async () => {
+  const { R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
+  expect(r1SettingsPage("models", R1_PAGES)).toBe(true);
+  expect(r1SettingsPage("permissions", R1_PAGES)).toBe(true);
+  expect(typeof R1_PAGES.models?.component).toBe("function");
+  expect(typeof R1_PAGES.permissions?.component).toBe("function");
+});
+it("draws Trunks as the R1 page, the full Trunks page moved from Customize", async () => {
+  const { R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
+  expect(r1SettingsPage("trunks", R1_PAGES)).toBe(true);
+  expect(typeof R1_PAGES.trunks?.component).toBe("function");
+});
+it("opens the place a re-hosted Classic page asks for (branch:navigate-place), as the Classic window did", async () => {
+  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "models" }));
+  await act(async () => root.render(<R1Window session={session} />));
+  await act(async () => { window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "nowhere" } })); });
+  expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "models" });
+  await act(async () => { window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "people" } })); });
+  expect(window.history.state.r1Route).toEqual({ kind: "place", place: "people" });
+  expect(host.textContent).toContain("Place content");
 });
 
 it("the conversation menu's View › \"Show agents' work as\" rows turn Coming when the engine can't save preferences", async () => {
