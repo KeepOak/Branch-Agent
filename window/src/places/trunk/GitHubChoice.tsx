@@ -31,7 +31,7 @@ function Choices({ conn, admin, own, ownIdentity, busy }: { conn: GitHubConnecti
   </span>;
 }
 
-export function GitHubChoice({ engine, agentId, name }: { engine: WindowEngine; agentId: string; name: string }) {
+export function GitHubChoice({ engine, agentId }: { engine: WindowEngine; agentId: string }) {
   const [, redraw] = useState(0);
   const [conn, setConn] = useState<GitHubConnection | null>(null);
   useEffect(() => {
@@ -57,8 +57,6 @@ export function GitHubChoice({ engine, agentId, name }: { engine: WindowEngine; 
     <small>{account}{identity ? ` · ${identity.credentialState.replaceAll("_", " ")}` : ""}</small>
     {identity && <small>Permissions: {identity.oauthScopes.length ? identity.oauthScopes.join(", ") : "No scopes reported"}</small>}
     {view?.error && <p role="alert" className="hint">{view.error}</p>}
-    <button type="button" className="btn ghost sm" disabled={!conn || Boolean(view?.busy) || view?.phase === "loading"} onClick={() => void conn?.refresh()}>Refresh</button>
-    <p className="hint">GitHub connection changes save immediately for {name}, even if you cancel this editor. Other changes use Save below.</p>
     {!admin && <p className="hint">Only someone who may change Branch’s setup can connect or remove a shared account.</p>}
   </div>;
 }

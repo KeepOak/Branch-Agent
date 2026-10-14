@@ -42,7 +42,6 @@ it.each([null, "oak"])("pins mounted editor GitHub reads and sign-in to edited B
   const { engine, request } = fixture(); await mount(engine, scope);
   expect(request).toHaveBeenCalledWith("tools.github.status", { agentId: "birch", selectedScope: "agent" });
   expect(document.body.textContent).toContain("@birch-github");
-  expect(document.body.textContent).toContain("GitHub connection changes save immediately for Birch");
   expect(button("Save").disabled).toBe(true);
   await click("Its own");
   expect(request).toHaveBeenCalledWith("tools.github.authorize.start", { agentId: "birch", scope: "agent" });
@@ -76,9 +75,9 @@ it("keeps edited-Trunk identity visible but blocks all GitHub mutations for read
   const { engine, request } = fixture(["operator.read"]); await mount(engine, "oak");
   expect(document.body.textContent).toContain("@birch-github");
   expect(button("Its own").disabled).toBe(true); expect(button("Same as Branch").disabled).toBe(true);
-  await click("Its own"); await click("Same as Branch"); await click("Refresh");
+  await click("Its own"); await click("Same as Branch");
   expect(request.mock.calls.some(([method]) => method === "tools.github.configure" || method === "tools.github.authorize.start")).toBe(false);
-  expect(request.mock.calls.filter(([method]) => method === "tools.github.status")).toHaveLength(2);
+  expect(request.mock.calls.filter(([method]) => method === "tools.github.status")).toHaveLength(1);
 });
 
 it("greys This computer’s GitHub with its reason, since no call pins one Trunk to it", async () => {

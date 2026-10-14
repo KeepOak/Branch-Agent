@@ -66,7 +66,7 @@ function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: Wi
         </select>
       </Row>
       <Fallbacks draft={draft} models={models} setMay={setMay} />
-      <GitHubChoice engine={engine} agentId={agentId} name={name} />
+      <GitHubChoice engine={engine} agentId={agentId} />
     </>
   );
 }
