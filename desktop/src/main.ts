@@ -10,7 +10,7 @@ import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessT
 import { attachOrStartEngine, engineAnswers, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
-import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, standbyReadyBudgetMs } from "./readiness-budget";
+import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, rollbackReadyBudgetMs, standbyReadyBudgetMs } from "./readiness-budget";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
@@ -80,6 +80,13 @@ const coldStartFile = (): string => join(cfg.dataDir, "cold-start.json");
 /** How long a standby that took over gets to answer /readyz: sized from the measured cold start; tests pin it. */
 function standbyReadyTimeoutMs(): number {
   return envMs(process.env.BRANCH_DESKTOP_STANDBY_READY_TIMEOUT_MS, standbyReadyBudgetMs(readColdStarts(coldStartFile())));
+}
+/**
+ * Private #967: how long an old engine that answered the rollback gets to serve again. It owns the state and restarts in
+ * place, draining its kept runs first, so the standby's budget is too short; a child that exits still fails at once.
+ */
+function rollbackReadyTimeoutMs(): number {
+  return envMs(process.env.BRANCH_DESKTOP_ROLLBACK_READY_TIMEOUT_MS, rollbackReadyBudgetMs(readColdStarts(coldStartFile()), READY_TIMEOUT_MS));
 }
 /** Private #951: agents still refused this long after a swap roll the update back; sized from the measured cold start, tests shorten it. */
 function admissionRollbackMs(): number {
@@ -634,7 +641,7 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
       // it never stepped down; an engine that answers neither but serves is an old build and is drained instead.
       const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
       if ((back === "ok" || back === "unanswered") &&
-        await priorServes(prior, back === "ok" ? standbyReadyTimeoutMs() : PRIOR_READY_CHECK_MS)) {
+        await priorServes(prior, back === "ok" ? rollbackReadyTimeoutMs() : PRIOR_READY_CHECK_MS)) {
         stopRetiring(prior);
         log(`update ${label}: the old engine did not step down in time; it kept serving; draining it instead`);
         return "drain";
@@ -699,10 +706,12 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
   // Rollback has reclaimed the state. The old engine must keep its full readiness budget without the retire timer.
   if (back === "ok") stopRetiring(prior);
-  if (back !== "ok" || !await priorServes(prior, standbyReadyTimeoutMs())) {
+  if (back !== "ok" || !await priorServes(prior, rollbackReadyTimeoutMs())) {
     notServing(prior);
     resumeSupervision();
-    throw new Error(`the update failed and the old engine could not take control back (${back}): ${message}`);
+    const failure = `the update failed and the old engine could not take control back (${back}): ${message}`;
+    log(`update ${label}: ${failure}`);
+    throw new Error(failure);
   }
   resumeSupervision();
   log(`update ${label}: the old engine took control back on port ${gatewayPort}`);
