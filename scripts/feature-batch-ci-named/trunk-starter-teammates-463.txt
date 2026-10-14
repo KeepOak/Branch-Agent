@@ -1,0 +1,11 @@
+engine:src/agents/bootstrap-template.test.ts
+engine:src/cli/trunks-cli.test.ts
+engine:src/gateway/server-methods-list.test.ts
+engine:src/gateway/server-methods/trunk-template-first-run.test.ts
+engine:src/gateway/server-methods/trunk-templates.test.ts
+engine:src/trunks/trunk-template-first-run.test.ts
+engine:src/trunks/trunk-template.test.ts
+window:src/places/customize/get-capabilities.test.tsx
+window:src/places/overview/new-teammates.test.tsx
+window:src/places/overview/overview.test.tsx
+window:src/places/trunk/ShareTrunk.test.tsx

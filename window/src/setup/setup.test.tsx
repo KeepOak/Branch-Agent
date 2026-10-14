@@ -135,6 +135,7 @@ describe("setup flow", () => {
     await act(async () => new Promise((r) => setTimeout(r, 750)));
     await act(async () => tid(host, "new").click());
     await act(async () => tid(host, "new-trunk").click());
+    await act(async () => tid(document.body, "new-trunk-blank").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     const make = byText(document.body, "Create Trunk");
     expect(make).toBeTruthy();
@@ -185,6 +186,7 @@ describe("setup flow", () => {
     await act(async () => new Promise((r) => setTimeout(r, 750)));
     await act(async () => tid(host, "new").click());
     await act(async () => tid(host, "new-trunk").click());
+    await act(async () => tid(document.body, "new-trunk-blank").click());
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     const input = document.querySelector<HTMLInputElement>('[data-testid="new-trunk-preview"] input')!;
     expect(input).toBeTruthy();

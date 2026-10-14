@@ -1,4 +1,3 @@
-// Copied from elizaOS/eliza@3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf:plugins/plugin-calendar/src/ics/parser.windows-timezones.test.ts (atlas INTEGRATIONS-0069)
 /**
  * Windows TZID ingestion: Outlook/Exchange feeds label timed VEVENTs with
  * Windows display zone names, which must resolve through the CLDR mapping to

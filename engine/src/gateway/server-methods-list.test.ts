@@ -321,8 +321,16 @@ describe("listGatewayMethods", () => {
       "skills.uninstall",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.template.list",
+      "trunks.template.starters",
+      "trunks.template.start",
+      "trunks.template.stop",
+      "trunks.template.cards",
       "trunks.team.propose",
       "trunks.team.approve",
+      "buildWorktrees.status",
+      "sessions.messages.pin",
+      "sessions.messages.delete",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -449,8 +457,16 @@ describe("listGatewayMethods", () => {
       "skills.uninstall",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.template.list",
+      "trunks.template.starters",
+      "trunks.template.start",
+      "trunks.template.stop",
+      "trunks.template.cards",
       "trunks.team.propose",
       "trunks.team.approve",
+      "buildWorktrees.status",
+      "sessions.messages.pin",
+      "sessions.messages.delete",
     ]);
   });
 
@@ -711,8 +727,16 @@ describe("listGatewayMethods", () => {
       "skills.uninstall",
       "trunks.template.export",
       "trunks.template.create",
+      "trunks.template.list",
+      "trunks.template.starters",
+      "trunks.template.start",
+      "trunks.template.stop",
+      "trunks.template.cards",
       "trunks.team.propose",
       "trunks.team.approve",
+      "buildWorktrees.status",
+      "sessions.messages.pin",
+      "sessions.messages.delete",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));

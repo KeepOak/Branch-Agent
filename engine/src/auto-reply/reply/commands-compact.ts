@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/auto-reply/reply/commands-compact.ts (atlas AGENT-LOOP-0101). Changed for Branch: Cline aliases share the authorized manual compaction path.
+// Changed for Branch: aliases share the authorized manual compaction path.
 import { normalizeProviderId } from "@branch/model-catalog-core/provider-id";
 import {
   normalizeLowercaseStringOrEmpty,

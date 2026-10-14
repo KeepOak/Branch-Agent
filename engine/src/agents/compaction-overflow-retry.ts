@@ -1,4 +1,4 @@
-// From OpenHands/software-agent-sdk@0a9abc87641ad7ffe02e2dadf5e2cb3976b35217:openhands-sdk/openhands/sdk/context/condenser/llm_summarizing_condenser.py and openhands-sdk/openhands/sdk/utils/truncate.py (atlas AGENT-LOOP-0104). Converted to TypeScript; R-1541 drops oldest folded items before hard-reset scaling. Canonical history and caller cancellation are preserved.
+// Converted to TypeScript; R-1541 drops oldest folded items before hard-reset scaling. Canonical history and caller cancellation are preserved.
 
 import { serializeConversation } from "../../packages/agent-core/src/harness/compaction/utils.js";
 import { convertToLlm } from "../../packages/agent-core/src/harness/messages.js";

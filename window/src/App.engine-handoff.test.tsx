@@ -47,6 +47,7 @@ afterEach(async () => {
   fake.transcript.length = 0;
   document.body.replaceChildren();
   delete (window as { branchDesktop?: unknown }).branchDesktop;
+  localStorage.removeItem("branch.classic");
   vi.resetModules();
 });
 
@@ -54,6 +55,8 @@ it("keeps the resident conversation while the old run finishes and sends the nex
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   let currentUrl = "ws://127.0.0.1:1";
   (window as { branchDesktop?: unknown }).branchDesktop = { gatewayUrl: currentUrl, getGatewayUrl: () => currentUrl, gatewayToken: "shared-token" };
+  // This covers the Classic window (mocked above); the R1 frame has its own tests.
+  localStorage.setItem("branch.classic", "1");
   const { App } = await import("./App");
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
@@ -88,7 +91,8 @@ it("keeps the resident conversation while the old run finishes and sends the nex
   expect(host.querySelector('[data-testid="history"]')?.textContent).toContain("old run finished");
   expect(old.stopped).toBe(true);
   expect(host.querySelector('[data-testid="resident-window"]')).toBe(resident);
-});
+  // vi.resetModules makes this the cold import of the whole App graph; on Windows runners that alone can pass 5 s.
+}, 20_000);
 
 // PENDING (engine per-session write lease): the running test above verifies the mounted window's handoff
 // contract with controlled gateways. The cross-process case needs two real gateways sharing one profile:

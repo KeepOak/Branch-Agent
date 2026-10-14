@@ -1,0 +1,2 @@
+window:src/setup/setup.test.tsx
+window:src/shell/new-menu.test.ts

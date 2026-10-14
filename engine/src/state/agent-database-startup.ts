@@ -9,6 +9,7 @@ import {
   type FileMutationFingerprint,
 } from "../infra/file-descriptor.js";
 import { readSqliteIntegrityFileIdentity } from "../infra/sqlite-file-generation.js";
+import { createSqliteMaintenanceHold } from "../infra/sqlite-maintenance-deferral.js";
 import { withSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { createDeferredCore } from "../shared/deferred.js";
@@ -28,9 +29,16 @@ import {
   openingExpiry,
   recordStage,
   StageTimeoutError,
+  waitedForPreviousEngine,
   waitForStage,
 } from "./agent-database-startup.stages.js";
+import { createSharedDeletionJournalReads } from "./agent-database-startup.journal.js";
 import { readAgentDeletionJournalStatusInWorker } from "./agent-deletion-journal.read.js";
+import {
+  type BranchStateReadTiming,
+  describeSlowBranchStateRead,
+  runWithBranchStateReadTiming,
+} from "./branch-state-read-timing.js";
 import {
   AGENT_DATABASE_PREFLIGHT_CONCURRENCY,
   BRANCH_AGENT_SCHEMA_VERSION,
@@ -131,6 +139,12 @@ function preparationAttemptLimitMs(env: NodeJS.ProcessEnv): number {
     : DEFAULT_PREPARATION_ATTEMPT_MS;
 }
 
+/**
+ * #967: how many base attempt limits a shared deletion-journal read may run before it counts as
+ * stuck and the next attempt starts a fresh one (10 minutes at the default limit).
+ */
+const JOURNAL_READ_MAX_AGE_ATTEMPTS = 5;
+
 const DEFAULT_FIRST_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 60_000;
 /**
@@ -188,6 +202,10 @@ class AgentDatabaseStartupAdmission {
   /** The open still running for each agent, so a retry never opens an agent while its late open runs. */
   private readonly openings = new Map<string, OpeningRecord>();
   private preparedSchemaHeaders?: PreparedSchemaHeaders;
+  /** #967: deletion-journal reads that a slow disk is allowed to finish, shared across attempts. */
+  private readonly journalReads = createSharedDeletionJournalReads(this.controller.signal);
+  /** #967: incremental vacuum waits while any agent is still pending. */
+  private readonly maintenance = createSqliteMaintenanceHold("agent database startup admission");
 
   get signal(): AbortSignal {
     return this.controller.signal;
@@ -337,6 +355,7 @@ class AgentDatabaseStartupAdmission {
         reason: statusReason,
       });
       this.pending.set(agentId, refusal);
+      this.maintenance.hold();
       refusals.push(refusal);
       log.warn(refusal.reason, { agentId, paths, repairHint: refusal.repairHint });
       const witnesses = paths.map((pathname) => {
@@ -384,16 +403,46 @@ class AgentDatabaseStartupAdmission {
             }
           };
           const assertNotDeleted = async (
+            phase: "before" | "after",
             signal: AbortSignal,
             onExpire: (error: StageTimeoutError) => void,
           ) => {
             assertCurrent();
-            const deletion = await boundStage(
-              "deletion-journal read",
-              readAgentDeletionJournalStatusInWorker(agentId, { env }, signal),
-              attemptLimitMs,
-              { signal, onExpire },
-            );
+            const readTiming: BranchStateReadTiming = { label: `deletion-journal:${agentId}` };
+            const readStartedAt = Date.now();
+            let deletion: Awaited<ReturnType<typeof readAgentDeletionJournalStatusInWorker>>;
+            try {
+              // #967: a slow read keeps running across attempts and the next attempt joins it, so
+              // a busy disk never restarts it from nothing; only a read past its maximum age is stuck.
+              // The check before opening holds nothing and waits the read out. The check after
+              // preparation holds the preparation lane, so it still ends at the attempt limit and
+              // hands the lane on; its retry joins the read, which began after a completed
+              // preparation of this same pending agent.
+              const read = this.journalReads.read(
+                `${agentId}:${phase}`,
+                (readSignal) =>
+                  runWithBranchStateReadTiming(readTiming, () =>
+                    readAgentDeletionJournalStatusInWorker(agentId, { env }, readSignal),
+                  ),
+                JOURNAL_READ_MAX_AGE_ATTEMPTS * preparationAttemptLimitMs(env),
+                // The check before opening only keeps a deleted agent from being opened; the check
+                // after preparation guards admission. A retry need not pay for a passed one again.
+                { reuseAbsent: phase === "before" },
+              );
+              const readLimitMs =
+                phase === "after"
+                  ? Math.min(attemptLimitMs, read.remainingMs())
+                  : read.remainingMs();
+              deletion = await boundStage("deletion-journal read", read.promise, readLimitMs, {
+                signal,
+                onExpire,
+              });
+            } finally {
+              const slow = describeSlowBranchStateRead(readTiming, Date.now() - readStartedAt);
+              if (slow) {
+                log.info("agent deletion-journal read was slow", { agentId, ...slow });
+              }
+            }
             assertCurrent();
             if (deletion !== "absent") {
               throw new Error(`Agent ${agentId} was deleted during startup inspection`);
@@ -414,7 +463,7 @@ class AgentDatabaseStartupAdmission {
             };
             return withSqliteReadOnlyWorkerScope(
               async () => {
-                await assertNotDeleted(signal, expire);
+                await assertNotDeleted("before", signal, expire);
                 await preparePendingAgentDatabase(
                   refusal,
                   { env, assertCurrent: assertAttemptCurrent },
@@ -495,7 +544,7 @@ class AgentDatabaseStartupAdmission {
                       timer.unref?.();
                       try {
                         await racePromiseWithAbortSignal(activation.prepareAgent(input), signal);
-                        await assertNotDeleted(signal, expire);
+                        await assertNotDeleted("after", signal, expire);
                       } finally {
                         clearTimeout(timer);
                       }
@@ -621,6 +670,12 @@ class AgentDatabaseStartupAdmission {
                     });
                     continue;
                   }
+                  // #951: timed out against the previous engine's lock: wait on its release, retry uncounted.
+                  const held = { agentId, refusal, statusReason, signal: this.signal };
+                  if (await waitedForPreviousEngine(error, held)) {
+                    attemptLimitMs = preparationAttemptLimitMs(env);
+                    continue;
+                  }
                   failures += 1;
                   refusal.preparation = {
                     state: "retrying",
@@ -703,6 +758,7 @@ class AgentDatabaseStartupAdmission {
             if (this.pending.get(agentId) === refusal) {
               this.pending.delete(agentId);
             }
+            this.maintenance.settle(this.pending.size);
           }
         };
         await prepare();
@@ -739,6 +795,7 @@ class AgentDatabaseStartupAdmission {
   stop(): Promise<void> {
     return (this.stopping ??= (async () => {
       this.stopped = true;
+      this.maintenance.settle(0);
       adoptedAdmissions.delete(this);
       this.preparedSchemaHeaders = undefined;
       this.controller.abort(new Error("Gateway stopped during agent database inspection"));

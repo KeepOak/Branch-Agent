@@ -17,6 +17,8 @@ export type BannerNews = {
   /** A problem banner (§4.10.1 line-icon variant): an alert or chat icon, and its own action in Open's place. */
   icon?: "alert" | "chat";
   action?: { label: string; run: () => void };
+  /** Stays until dismissed or cleared: no timer (the disk-full notice, while saving is paused). */
+  sticky?: boolean;
 };
 type Banner = BannerNews & { id: number; at: number; count: number };
 
@@ -49,10 +51,15 @@ const subscribe = (l: () => void) => {
 };
 const snapshot = () => current;
 
+/** The banner store, for a window that draws it with its own shell (screens/approvals/ProblemBanners.tsx). */
+export type ShownBanner = Banner;
+export const subscribeBanner = subscribe;
+export const currentBanner = snapshot;
+
 export function BannerView({ onOpen, setupOpen = false }: { onOpen: (sessionKey: string) => void; setupOpen?: boolean }) {
   const banner = useSyncExternalStore(subscribe, snapshot);
   useEffect(() => {
-    if (!banner) {
+    if (!banner || banner.sticky) {
       return;
     }
     const timer = setTimeout(() => clearBanner(banner.id), Math.max(0, banner.at + BANNER_MS - Date.now()));

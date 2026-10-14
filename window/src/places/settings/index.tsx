@@ -9,7 +9,7 @@ import { PAGES as PAGES2, ROWS as ROWS2 } from "./pages/set2";
 import { PAGES as PAGES3, ROWS as ROWS3 } from "./pages/set3";
 import { PAGES as PAGES4, ROWS as ROWS4 } from "./pages/set4";
 
-export type SettingsPageProps = { page: string; title: string; level: Level; engine: WindowEngine; openSettings?: (page: string) => void; searchSection?: string };
+export type SettingsPageProps = { page: string; title: string; level: Level; engine: WindowEngine; running?: number; openSettings?: (page: string) => void; searchSection?: string };
 
 const PAGES: Record<string, React.ComponentType<SettingsPageProps>> = { ...PAGES1, ...PAGES2, ...PAGES3, ...PAGES4 };
 /** Every page's rows, for the settings search. */
