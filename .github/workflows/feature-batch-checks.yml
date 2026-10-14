@@ -86,7 +86,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: ${{ github.event_name == 'pull_request' && 16 || 6 }}
+      max-parallel: ${{ github.event_name == 'pull_request' && 20 || 6 }}
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       CI: 'true'

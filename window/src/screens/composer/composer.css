@@ -47,6 +47,8 @@
 @container (max-width: 760px) { .r1c { margin-bottom: -4px; } }
 .r1c-note { width: fit-content; margin: 0 auto 6px; padding: 3px 12px; border-radius: 999px; max-width: min(100%, 680px); color: var(--ink-3); font-size: var(--fs-12-5); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r1c-note.bad { color: var(--bad); }
+/* Improve my draft's Undo, inside its note (#977). */
+.r1c-undo { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
 
 /* The pill: 54 tall, radius 22, padding 8, gap 4 */
 .r1c-pill { position: relative; display: flex; align-items: flex-end; gap: 4px; min-height: 54px; padding: 8px; border-radius: var(--r-composer);
