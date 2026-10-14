@@ -30,6 +30,8 @@ import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
 import { R1Stage, R1StagePip } from "../stage/R1Stage";
 import type { PipTarget, StageMode } from "../../stage/ComputerStage";
+import { R1Tower, readTowerOn, saveTowerOn, useTowerNarrow } from "../tower/R1Tower";
+import { useNeedsCount } from "../../places/inbox";
 
 const FIND_ANYTHING_COMING = "Find anything is not connected yet.";
 
@@ -85,6 +87,21 @@ export function R1Window({ session }: { session: SaplingSession }) {
   // The re-hosted Classic computer stage (parity row 1): which side is open, and the small window it shrinks to.
   const [stage, setStage] = useState<StageMode | null>(null);
   const [pip, setPip] = useState<PipTarget | null>(null);
+  // The re-hosted Classic control tower (parity row 5): beside the conversation, or in its place on a narrow window.
+  const [tower, setTower] = useState(readTowerOn);
+  const towerNarrow = useTowerNarrow();
+  const needsCount = useNeedsCount(engine, ready);
+  const toggleTower = useCallback(() => setTower(on => { saveTowerOn(!on); return !on; }), []);
+  useEffect(() => { if (towerNarrow) setTower(false); }, [towerNarrow]);
+  useEffect(() => {
+    // Ctrl/Cmd+Shift+T shows or hides the tower, as in Classic.
+    const key = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.key.toLowerCase() !== "t") return;
+      event.preventDefault(); toggleTower();
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [toggleTower]);
   const [history, setHistory] = useState({ index: 0, count: 1 });
   const entries = useRef<Route[]>([route]);
   const search = useRef<HTMLInputElement>(null);
@@ -159,7 +176,12 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const sidebar = <Sidebar session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
     currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} error={conversations.error} />;
-  const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={CLASSIC_PAGE[route.page] ?? route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
+  const trunkName = (id?: string) => conversations.rows.find(row => row.isMain && row.agentId === id)?.title || snapshot.name || "Sapling";
+  const showTower = route.kind === "chat" && ready && tower && !stage && !onboarding;
+  const towerView = showTower ? <R1Tower engine={engine} rows={conversations.rows} needsCount={needsCount} trunkName={trunkName} inMain={towerNarrow}
+    onOpen={key => { if (towerNarrow) setTower(false); openConversation(key); }} onPlace={place => navigate({ kind: "place", place })} onSettings={page => navigate({ kind: "settings", page })}
+    onClose={() => { setTower(false); saveTowerOn(false); }} /> : null;
+  const main = towerView && towerNarrow ? towerView : route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={CLASSIC_PAGE[route.page] ?? route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
     onMode={setStage} onClose={() => setStage(null)} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <ChatView
     name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
@@ -181,10 +203,11 @@ export function R1Window({ session }: { session: SaplingSession }) {
       onTalk={sessionKey => { firstRun.close(); navigate({ kind: "chat", key: sessionKey }); }} />}
     {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
     <div className="r1-ob-behind" inert={onboarding} aria-hidden={onboarding || undefined} style={{ display: "contents", visibility: onboarding ? "hidden" : undefined }}>
-    <Frame sidebar={sidebar} main={main} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
+    <Frame sidebar={sidebar} main={main} aside={towerNarrow ? undefined : towerView} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
+        { label: "Control tower", icon: <Icon name="board" />, onClick: ready ? () => { if (stage) { setStage(null); setTower(true); saveTowerOn(true); } else toggleTower(); } : undefined },
         { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", onClick: ready ? () => { setPip(null); setStage(open => open === "Computer" ? null : "Computer"); } : undefined },
         { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", onClick: ready ? () => { setPip(null); setStage(open => open === "Browser" ? null : "Browser"); } : undefined },
         // ••• opens this window's conversation menu; each of its rows declares its own call.
