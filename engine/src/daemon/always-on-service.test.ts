@@ -76,13 +76,17 @@ describe("always-on service definitions (engine/src/daemon)", () => {
 
   it("Linux: a systemd --user unit with bounded restart backoff that stops on the storm exit status", async () => {
     const { programArguments, workingDirectory, environment } = await plan("linux");
+    expect(programArguments.slice(-3)).toEqual(["gateway", "--port", "19031"]);
+    // The unit is rendered from POSIX paths, as on a Linux machine: the host's own paths (backslashes on a Windows
+    // runner) would be systemd-escaped and could never match a plain join.
+    const linuxArgs = ["/usr/bin/node", "/opt/branch/engine/dist/index.js", ...programArguments.slice(programArguments.indexOf(serviceCli.entrypoint) + 1)];
     const unit = buildSystemdUnit({
       description: "Branch Agent Gateway",
-      programArguments,
-      workingDirectory,
+      programArguments: linuxArgs,
+      workingDirectory: "/opt/branch/engine",
       environment,
     });
-    expect(unit).toContain(`ExecStart=${programArguments.join(" ")}`);
+    expect(unit).toContain(`ExecStart=${linuxArgs.join(" ")}`);
     expect(unit).toContain("Restart=always");
     expect(unit).toContain("RestartSec=5");
     expect(unit).toContain("StartLimitBurst=10");
