@@ -88,6 +88,8 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
   rosterRef.current = roster;
   const createTrunkRef = useRef(createTrunk);
   createTrunkRef.current = createTrunk;
+  const openRef = useRef(openConversation);
+  openRef.current = openConversation;
 
   useEffect(() => {
     let live = true;
@@ -142,13 +144,21 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
         });
         office.current = module.mountPixelOffice(host.current, {
           agents: current?.agents ?? [], links, theme: "auto", reducedMotion: document.documentElement.hasAttribute("data-still") ? true : "auto", storage,
-          onOpen: (id: string) => { const key = rosterRef.current?.openKey.get(id); if (key) openConversation(key); },
+          onOpen: (id: string) => { const key = rosterRef.current?.openKey.get(id); if (key) openRef.current(key); },
           onNewAgent: () => createTrunkRef.current?.(),
         });
       } catch (e) { if (live) setError(e instanceof Error ? e.message : String(e)); }
     })();
-    return () => { live = false; motionObserver.disconnect(); office.current?.destroy(); office.current = null; };
-  }, [data !== null, engine, openConversation, retry]);
+    return () => {
+      live = false;
+      motionObserver.disconnect();
+      // Tear the office down after React's commit: unmounting its root inside the cleanup is what threw
+      // "Attempted to synchronously unmount a root while React was already rendering" on every close.
+      const done = office.current;
+      office.current = null;
+      setTimeout(() => done?.destroy(), 0);
+    };
+  }, [data !== null, engine, retry]);
 
   return <section className="pixel-office-view" aria-label="Grove" data-testid="pixel-office">
     <header className="pixel-office-head"><b>Grove</b><span>Your Trunks at their desks. Click one to open its chat; drag one to another desk.</span></header>

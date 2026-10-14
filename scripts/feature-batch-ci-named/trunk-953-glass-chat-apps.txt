@@ -1,0 +1,2 @@
+window:src/screens/chatapps/ChatApps.test.tsx
+window:src/screens/chatapps/glass48.test.tsx

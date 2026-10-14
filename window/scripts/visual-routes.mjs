@@ -3,6 +3,7 @@
 export const ROUTES = {
   "room-menu": "A group room's ⋯ conversation menu, opened by clicking the group's row (fixture: Design group).",
   "stage-preview": "The side panel's Preview tab, showing the Ledger app portal (fixture: port 3000).",
+  "side-panel-tabs": "The side panel's tab row at its 352 px default width. The capture fails if a tab label is clipped or the row overflows.",
   "team-approval-before": "The group room as it is on main, with no team proposal card (fixture: Design group).",
   "team-approval": "The team proposal card in its asking state, with Approve team and Not now (fixture: Ship the Q3 newsletter).",
 };

@@ -58,6 +58,7 @@ async function markRecoveryStore(params: {
         replaceRuns?: boolean;
         resetRuntime?: boolean;
         runs?: RestartRecoveryRun[];
+        retryAtMs?: number;
       }
     | { action: "retire_terminal" }
     | { action: "restore_yielded"; isCurrent: () => boolean }
@@ -112,6 +113,9 @@ async function markRecoveryStore(params: {
         if (plan.forceRestartSafeTools) {
           entry.restartRecoveryForceSafeTools = true;
         }
+        if ("retryAtMs" in plan) {
+          entry.restartRecoveryRetryAtMs = plan.retryAtMs;
+        }
         transitionMainSessionRecovery(entry, {
           kind: "mark_interrupted",
           cycleId: randomUUID(),
@@ -134,6 +138,9 @@ export async function markRestartAbortedMainSessions(params: {
   activeRuns: Iterable<RestartRecoveryCandidate>;
   isActiveRun?: (run: RestartRecoveryCandidate) => boolean;
   reason?: string;
+  /** A handoff parks only the listed quiet owners, not unrelated active admissions. */
+  onlyActiveRuns?: boolean;
+  retryAtMs?: number;
 }): Promise<{ marked: number; skipped: number }> {
   const activeRuns = [...params.activeRuns];
   const currentLifecycleGeneration = getAgentEventLifecycleGeneration();
@@ -215,11 +222,13 @@ export async function markRestartAbortedMainSessions(params: {
                     run.lifecycleGeneration !== currentLifecycleGeneration)) &&
                 params.isActiveRun?.(run) !== false,
             );
-            const matchedActiveAdmission = activeAdmissions.isActive({
-              scope: storePath,
-              sessionKey,
-              sessionId: entry.sessionId,
-            });
+            const matchedActiveAdmission =
+              !params.onlyActiveRuns &&
+              activeAdmissions.isActive({
+                scope: storePath,
+                sessionKey,
+                sessionId: entry.sessionId,
+              });
             if (matchingActiveRuns.length === 0 && !matchedActiveAdmission) {
               return undefined;
             }
@@ -261,6 +270,7 @@ export async function markRestartAbortedMainSessions(params: {
               replaceRuns: true,
               resetRuntime: entry.status !== "running",
               runs,
+              retryAtMs: params.retryAtMs,
             };
           },
         });

@@ -1,0 +1,5 @@
+window:src/composer/plus-menu-redesign.test.tsx
+window:src/screens/composer/Composer.test.tsx
+window:src/screens/composer/glass48.test.tsx
+window:src/screens/composer/improve.test.tsx
+window:src/screens/composer/usage.test.ts

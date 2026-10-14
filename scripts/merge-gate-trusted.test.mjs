@@ -2154,9 +2154,9 @@ test('trusted coverage counts the real-engine handoff e2e from engine-handoff-ch
   assert.ok(!withHandoff.uncovered.includes('engine/test/gateway-desktop-handoff.e2e.test.ts'));
 });
 
-test('merge-gate recheck fires on every completed run, so no check can drift out of its filter', () => {
+test('merge-gate recheck lists its workflows explicitly and reacts to their completed runs', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
-  assert.doesNotMatch(yaml, /^\s+workflows:/m);
+  assert.match(yaml, /^\s+workflows:\n\s+- Button crawl\n/m);
   assert.match(yaml, /types: \[completed\]/);
 });
 
@@ -2906,4 +2906,73 @@ test('the trusted preflight step reads the live body under one job budget and no
   assert.match(block, /PREFLIGHT_WAIT_SECONDS: '120'/);
   assert.match(block, /run: node scripts\/pr-preflight\.mjs --ci/);
   assert.doesNotMatch(block, /PR_BODY|github\.event\.pull_request\.body/);
+});
+
+test('the batch reads several files in one GraphQL request, with no REST read for clean answers', () => {
+  const requests = [];
+  const restReads = [];
+  const out = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['a.md', 'missing.md', 'b.yml'], {
+    graphql: (token, query, variables) => {
+      requests.push({ query, variables });
+      return { data: { repository: {
+        f0: { text: 'docs a', isBinary: false, isTruncated: false },
+        f1: null,
+        f2: { text: 'desk', isBinary: false, isTruncated: false },
+      } } };
+    },
+    fallback: (filePath) => { restReads.push(filePath); return 'rest'; },
+  });
+  assert.equal(requests.length, 1);
+  assert.deepEqual(restReads, []);
+  assert.deepEqual(out, { 'a.md': 'docs a', 'missing.md': null, 'b.yml': 'desk' });
+  assert.match(requests[0].query, /expression: "abc:a\.md"/);
+  assert.deepEqual(requests[0].variables, { owner: 'o', name: 'r' });
+});
+
+test('the batch reads over REST only the files GraphQL cannot answer cleanly', () => {
+  const restReads = [];
+  const out = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['a.md', 'big.bin', 'trunc.md'], {
+    graphql: () => ({ data: { repository: {
+      f0: { text: 'ok', isBinary: false, isTruncated: false },
+      f1: { text: null, isBinary: true, isTruncated: false },
+      f2: { text: 'cut', isBinary: false, isTruncated: true },
+    } } }),
+    fallback: (filePath) => { restReads.push(filePath); return `rest:${filePath}`; },
+  });
+  assert.deepEqual(restReads, ['big.bin', 'trunc.md']);
+  assert.deepEqual(out, { 'a.md': 'ok', 'big.bin': 'rest:big.bin', 'trunc.md': 'rest:trunc.md' });
+});
+
+test('a GraphQL error or outage reads every file over REST, never as empty', () => {
+  const restReads = [];
+  const fallback = (filePath) => { restReads.push(filePath); return `rest:${filePath}`; };
+  const partial = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['a.md', 'b.md'], {
+    graphql: () => ({ errors: [{ message: 'something' }], data: { repository: { f0: null, f1: null } } }),
+    fallback,
+  });
+  assert.deepEqual(partial, { 'a.md': 'rest:a.md', 'b.md': 'rest:b.md' });
+  const thrown = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['c.md'], {
+    graphql: () => { throw new Error('gh: API rate limit exceeded (HTTP 403)'); },
+    fallback,
+  });
+  assert.deepEqual(thrown, { 'c.md': 'rest:c.md' });
+  assert.deepEqual(restReads, ['a.md', 'b.md', 'c.md']);
+});
+
+test('named test lists: a rate limit is an error, not an empty list; a missing directory is empty', () => {
+  assert.throws(() => gate.fetchNamedTestLists('o/r', 'abc', 'tok', () => {
+    throw new Error('gh: API rate limit exceeded (HTTP 403)');
+  }), /rate limit/);
+  assert.deepEqual(gate.fetchNamedTestLists('o/r', 'abc', 'tok', () => {
+    throw Object.assign(new Error('gh: Not Found (HTTP 404)'), { httpStatus: 404 });
+  }), []);
+});
+
+test('the trusted gate gives its API calls their own rate-limit budget, separate from the zero poll budget', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /MERGE_GATE_WAIT_SECONDS: '0'/);
+  assert.match(yaml, /MERGE_GATE_API_WAIT_SECONDS: '600'/);
+  const main = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
+  assert.match(main, /gateApiBudget\.budgetSeconds = Number\(process\.env\.MERGE_GATE_API_WAIT_SECONDS \?\? DEFAULT_API_WAIT_SECONDS\)/);
+  assert.equal(gate.DEFAULT_API_WAIT_SECONDS, 600);
 });

@@ -1,4 +1,4 @@
-// From OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f:src/utils/transcript-export/load-complete-events.test.ts (atlas SESSIONS-0047). Ported pagination invariants to the gateway contract.
+// Ported pagination invariants to the gateway contract.
 import { describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { loadCompleteTranscript } from "./load";
