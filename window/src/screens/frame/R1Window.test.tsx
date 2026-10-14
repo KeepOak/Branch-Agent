@@ -103,13 +103,17 @@ it("opens Settings › Accounts as the R1 page, which draws every working Classi
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   expect(r1SettingsPage("accounts")).toBe(true);
 });
-it("hands Sign-ins & keys to Classic under its Classic name, so Accounts › Add a key reaches the working key page", async () => {
-  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
-  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
-  localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "signins" }));
-  await act(async () => root.render(<R1Window session={session} />));
-  expect(r1SettingsPage("signins")).toBe(false);
-  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("secrets");
+it("draws Sign-ins & keys as the R1 page, so Accounts › Add a key opens it in R1 rather than in Classic", async () => {
+  const { R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
+  expect(r1SettingsPage("signins", R1_PAGES)).toBe(true);
+  expect(r1SettingsPage("accounts", R1_PAGES)).toBe(true);
+  expect(typeof R1_PAGES.signins?.component).toBe("function");
+  const { FallbackKeys } = await vi.importActual<typeof import("../settings/pages/accounts-live")>("../settings/pages/accounts-live");
+  const onPage = vi.fn();
+  await act(async () => root.render(<FallbackKeys {...({ onPage } as unknown as Parameters<typeof FallbackKeys>[0])} />));
+  await act(async () => host.querySelector<HTMLButtonElement>("button")!.click());
+  expect(host.querySelector("button")!.textContent).toBe("Add a key");
+  expect(onPage.mock.calls).toEqual([["signins"]]);
 });
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
