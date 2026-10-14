@@ -70,7 +70,7 @@ export const APPEARANCE_ROWS: Row[] = [
   // Reading
   { id: "appearance.reading.width", page: "appearance", card: "Reading", label: "Conversation width", help: "Wide uses more of a big screen.", level: 0, control: "segmented",
     options: [{ v: "comfortable", label: "Comfortable" }, { v: "wide", label: "Wide" }, { v: "full", label: "Full" }], source: { kind: "look", key: "width" }, fallback: "comfortable" },
-  fromClassic("appearance.reading.size", "Reading", "size", { help: "Changes every screen. This device only." }),
+  fromClassic("appearance.reading.size", "Reading", "size"),
   fromClassic("appearance.reading.messages", "Reading", "msgLook"),
   fromClassic("appearance.reading.direction", "Reading", "dir"),
   fromClassic("appearance.reading.math", "Reading", "math"),

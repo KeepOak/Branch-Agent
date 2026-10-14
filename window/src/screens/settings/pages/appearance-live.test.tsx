@@ -187,7 +187,6 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(yours).toEqual(["Your pet", "This theme and background", "Got a seed?", "Your picture", "Overview background", "Chat background", "Trunk, group and topic pictures", "A pet of your own"]);
     const button = (id: string, text: string) => [...row(id)!.querySelectorAll("button")].find((b) => b.textContent === text)!;
     expect(button("appearance.yours.pet", "Copy seed").getAttribute("aria-disabled")).toBe("true");
-    expect(row("appearance.reading.size")!.textContent).toContain("Changes every screen. This device only.");
     // Each opens its own Settings page (the frame then moves there).
     const { PasteSeed, YourPicture, TrunkPictures } = await import("./appearance-yours");
     for (const [Ctl, page] of [[PasteSeed, "seedbank"], [YourPicture, "card"], [TrunkPictures, "trunks"]] as const) {
