@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/media-understanding/local-audio.test.ts (atlas VOICE-0065). Changed for Branch: assert the same discovered model path on Windows and POSIX.
+// Changed for Branch: assert the same discovered model path on Windows and POSIX.
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";

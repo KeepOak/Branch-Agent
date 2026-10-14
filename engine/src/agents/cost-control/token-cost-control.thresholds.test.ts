@@ -1,8 +1,6 @@
-// Adapted from mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421
-// packages/core/src/processors/processors/token-cost-control.test.ts (atlas MODELS-ACCOUNTS-0080).
-// Not ported: the MastraMemory fallback, __registerMastra and deprecated-alias cases
-// (Mastra-only surfaces; attach() replaces __registerMastra) and the two live-fire
-// cases on Mastra's in-memory store. session-cost-store.test.ts covers Branch's store.
+// Not covered: the memory-backed fallback, the register hook and deprecated-alias cases
+// (surfaces Branch does not have; attach replaces the register hook) and the two live-fire
+// cases on the in-memory store. session-cost-store.test.ts covers Branch's store.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TokenCostControl, type CostMetricStore } from "./token-cost-control.js";
