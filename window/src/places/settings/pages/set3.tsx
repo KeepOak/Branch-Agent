@@ -2,7 +2,7 @@ import type { ComponentType } from "react";
 import type { SettingsPageProps } from "../index";
 import type { RowEntry } from "../kit";
 import { ComputerPage, ROWS as COMPUTER_ROWS } from "../set2/computer";
-import { ComputerBrowserPage, ComputerCodingPage, ComputerDevicesPage, ROWS as COMPUTER_PART_ROWS } from "../set2/computer-parts";
+import { ComputerBrowserPage, ComputerCodingPage, ROWS as COMPUTER_PART_ROWS } from "../set2/computer-parts";
 import { UsagePage, ROWS as USAGE_ROWS } from "../set2/usage";
 import { SecretsPage, ROWS as SECRETS_ROWS } from "../set2/secrets";
 import { GatewayPage, ROWS as GATEWAY_ROWS } from "../set2/gateway";
@@ -17,7 +17,6 @@ export const PAGES: Record<string, ComponentType<SettingsPageProps>> = {
   // Parts of Computer & browser, each the whole of one page in the R1 Settings (computer-parts.tsx); not in this window's list.
   "computer-browser": ComputerBrowserPage,
   "computer-coding": ComputerCodingPage,
-  "computer-devices": ComputerDevicesPage,
   secrets: SecretsPage,
   usage: UsagePage,
   backups: BackupsPage,

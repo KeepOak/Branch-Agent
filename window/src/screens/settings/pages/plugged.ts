@@ -10,6 +10,7 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { DEVICES } from "./devices";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
@@ -21,8 +22,6 @@ export const REHOSTED = {
   history: "backups",
   browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
   coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
-  devices: ["computer-devices", "devices"], // Computer & browser's computers and connections, then Devices & apps' tiles
-  developer: "developer",
 } as const;
 
 /** A re-hosted page's cards that no Classic control draws yet: Coming after its Classic sections, naming the call each
@@ -30,13 +29,14 @@ export const REHOSTED = {
 export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> = {
   browser: ["Sites", "Saved flows"],
   coding: ["Commands", "Files"],
-  developer: ["Logs", "Docker", "Hooks", "Network", "Health", "Everything else"],
 };
 
 export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Devices: native R1 cards in the preview's order, from Classic Computer & browser's section data (devices.tsx).
+  devices: DEVICES,
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,

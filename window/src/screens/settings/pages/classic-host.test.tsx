@@ -45,8 +45,6 @@ it("re-hosts exactly these Classic pages", () => {
     permissions: "permissions",
     privacy: "usage",
     history: "backups",
-    devices: ["computer-devices", "devices"],
-    developer: "developer",
   });
 });
 
@@ -106,27 +104,8 @@ it("draws on Browser & screen and Coding only sections Classic Computer & browse
   expect(host.querySelector('[data-sec="Coding apps on this computer"]')!.textContent).toContain("Codex");
 });
 
-it("loses no section of Classic Computer & browser: Browser & screen, Coding and Devices together draw all of them, each once", async () => {
-  await act(async () => root.render(<KitProvider level={2} report={{ saving() {}, saved() {}, failed() {} }} scope={null}><SettingsPage page="computer" title="Classic" level="technical" engine={engine()} /></KitProvider>));
-  await settle();
-  const classic = drawn(host).sections;
-  const hosted: (string | undefined)[] = [];
-  for (const page of ["browser", "coding", "devices"] as const) {
-    await act(async () => root.render(<SettingsFrame engine={engine()} page={page} pages={R1_PAGES} />));
-    await settle();
-    const part = host.querySelector(`.r1s-custom[data-slot="${page}"] .r1s-classic-part`)!;
-    hosted.push(...drawn(part).sections.filter((sec) => sec !== "Coding apps on this computer"));
-  }
-  expect(classic.length).toBeGreaterThan(0);
-  expect([...hosted].sort()).toEqual([...classic].sort());
-  expect(host.querySelector('.r1s-custom[data-slot="devices"] .r1s-classic[data-classic="computer-devices devices"]')!.textContent).toContain("Devices & apps");
-});
-
 it("draws each Browser & screen and Coding card no Classic control has yet as Coming, naming the call it waits for", async () => {
-  expect(COMING).toEqual({
-    browser: ["Sites", "Saved flows"], coding: ["Commands", "Files"],
-    developer: ["Logs", "Docker", "Hooks", "Network", "Health", "Everything else"],
-  });
+  expect(COMING).toEqual({ browser: ["Sites", "Saved flows"], coding: ["Commands", "Files"] });
   for (const [page, cards] of Object.entries(COMING) as [keyof typeof COMING, readonly string[]][]) {
     const classic = classicList(REHOSTED[page]);
     for (const card of cards) {

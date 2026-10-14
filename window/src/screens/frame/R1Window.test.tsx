@@ -14,8 +14,8 @@ vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, su
 vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as const, SettingsFrame: ({ page, onPage }: { page: string; onPage: (page: string) => void }) => <div data-testid="classic-settings" data-page={page}>Classic settings<button type="button" onClick={() => onPage("general")}>General</button></div> }));
 // One stub slot per page the real R1 Settings re-hosts from Classic (plugged.ts REHOSTED), plus Chat apps.
 vi.mock("../settings/pages/plugged", async () => {
-  const { REHOSTED } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), chatapps: { component: () => null } } };
+  const { REHOSTED, R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
+  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), devices: R1_PAGES.devices, chatapps: { component: () => null } } };
 });
 vi.mock("../settings", () => ({
   SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (
@@ -94,7 +94,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("who,notifications,instructions,signins,updates,models,permissions,privacy,history,browser,coding,devices,developer,chatapps,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("who,notifications,instructions,signins,updates,models,permissions,privacy,history,browser,coding,devices,chatapps,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
@@ -129,15 +129,6 @@ it("draws Settings › Browser & screen and Coding as R1 pages, not Classic Gene
     expect(typeof R1_PAGES[page]?.component, page).toBe("function");
     expect(REHOSTED[page], page).toBe(`computer-${page}`);
   }
-});
-it("draws Settings › Devices and Developer as R1 pages, not the Classic frame, with every Classic control they had", async () => {
-  const { R1_PAGES, REHOSTED } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  for (const page of ["devices", "developer"] as const) {
-    expect(r1SettingsPage(page, R1_PAGES), page).toBe(true);
-    expect(typeof R1_PAGES[page]?.component, page).toBe("function");
-  }
-  expect(REHOSTED.devices).toEqual(["computer-devices", "devices"]);
-  expect(REHOSTED.developer).toBe("developer");
 });
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
@@ -175,7 +166,7 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
     accounts: "r1:accounts", models: "r1:models",
     permissions: "r1:permissions", signins: "r1:signins", privacy: "r1:privacy",
     devices: "r1:devices", browser: "r1:browser", coding: "r1:coding", remote: "classic:gateway",
-    history: "r1:history", learning: "classic:self", updates: "r1:updates", features: "r1:features", developer: "r1:developer",
+    history: "r1:history", learning: "classic:self", updates: "r1:updates", features: "r1:features", developer: "classic:developer",
   });
 });
 it("sends a page to R1 Settings only when the row table or a slot covers it and Classic has nothing more", () => {

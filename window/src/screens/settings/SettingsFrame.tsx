@@ -125,6 +125,11 @@ function SlotRow({ engine, row, hints, control: Control, onPage }: RowHost & { r
   const level = rowLevel(row, hints);
   const tag = level > 0 ? LEVELS[level].label : undefined;
   const help = rowHelp(row, hints);
+  if (row.bare) return (
+    <div id={`row-${row.id}`} className="r1s-row r1s-stack" data-row={row.id} data-lv={tag} data-slot="" data-bare="" aria-label={rowLabel(row, hints)}>
+      <div className="r1s-ctl r1s-own"><Control engine={engine} row={row} onPage={onPage} /></div>
+    </div>
+  );
   return (
     <div id={`row-${row.id}`} className={`r1s-row${row.control === "custom" ? " r1s-stack" : ""}`} data-row={row.id} data-lv={tag} data-slot="">
       <b className="g-label" data-lv={tag}>{rowLabel(row, hints)}</b>

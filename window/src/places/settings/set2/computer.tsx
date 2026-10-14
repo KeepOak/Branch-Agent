@@ -26,7 +26,6 @@ function watch(computerId: string): void {
   window.dispatchEvent(new CustomEvent("branch:watch-computer", { detail: { computerId } }));
 }
 const LEDE = "The computers your Trunks may use, and the browser they work in. Which Branch you talk to is the switcher at the top of the list.";
-const DEVICES_LEDE = "The computers your Trunks may use, and how they connect. Which Branch you talk to is the switcher at the top of the list.";
 
 /** What a request asks for, in plain words; the risky ones are marked. */
 const ACCESS: Record<string, string> = {
@@ -38,13 +37,11 @@ const ACCESS: Record<string, string> = {
 const RISKY = new Set(["Run commands", "Change Branch’s settings"]);
 const OS: Record<string, string> = { win32: "Windows", windows: "Windows", darwin: "macOS", macos: "macOS", linux: "Linux", ios: "iOS", android: "Android" };
 
-/** The rows of the top of the page, on `page`. */
-export const topRows = (page: string): RowEntry[] => [
-  { page, title: "Waiting for your yes", group: "Waiting for your yes", lv: 0 }, { page, title: "Computers they may use", group: "Computers they may use", lv: 0 },
-  { page, title: "Keep this computer awake", sec: "Computers they may use", group: "Computers they may use", lv: 0 }, { page, title: "Which Trunk uses which", group: "Which Trunk uses which", lv: 0 },
+export const ROWS: RowEntry[] = [
+  ...MORE_ROWS,
+  { page: "computer", title: "Waiting for your yes", group: "Waiting for your yes", lv: 0 }, { page: "computer", title: "Computers they may use", group: "Computers they may use", lv: 0 },
+  { page: "computer", title: "Keep this computer awake", sec: "Computers they may use", group: "Computers they may use", lv: 0 }, { page: "computer", title: "Which Trunk uses which", group: "Which Trunk uses which", lv: 0 },
 ];
-
-export const ROWS: RowEntry[] = [...MORE_ROWS, ...topRows("computer")];
 
 type Req = { id: string; kind: "device" | "node"; name: string; plat: string; access: string[]; more: boolean; ts: number; deviceId: string; ip: string; version: string };
 
@@ -70,23 +67,35 @@ function requests(devices: RecordValue, nodes: RecordValue): Req[] {
   return [...fromDevices, ...fromNodes].filter((r) => r.id).sort((a, b) => b.ts - a.ts);
 }
 
-/** The whole page, or with part="devices" only its computers and connections (computer-parts.tsx): the screen, browser
- *  and code sections then live on their own pages. */
-export function ComputerPage(props: SettingsPageProps & { part?: "devices" }) {
+export function ComputerPage(props: SettingsPageProps) {
   const lv = lvOf(props.level);
   const agents = useLive<RecordValue>(props.engine, "agents.list", {}, ["agents"]);
   const nodes = useLive<RecordValue>(props.engine, "node.list", {}, PAIR_EVENTS);
   const { reload } = nodes;
   useEffect(() => { const again = () => void reload(); window.addEventListener("branch:computers-changed", again); return () => window.removeEventListener("branch:computers-changed", again); }, [reload]);
   return (
-    <Page title={props.title} lede={props.part === "devices" ? DEVICES_LEDE : LEDE}>
+    <Page title={props.title} lede={LEDE}>
       <Waiting {...props} lv={lv} />
       <Computers {...props} lv={lv} nodes={nodes} agents={rec(agents.data)} />
       <WhichTrunk {...props} nodes={list(rec(nodes.data).nodes)} agents={list(rec(agents.data).agents)} defaultId={rec(agents.data).defaultId} />
       <BuildCleanup engine={props.engine} />
-      <ComputerMore {...props} part={props.part} />
+      <ComputerMore {...props} />
     </Page>
   );
+}
+
+/** One block of the top of the page, for the R1 Devices page's cards: the requests waiting for a yes, the computers
+ *  Trunks may use (with Keep this computer awake and Add a computer), which Trunk uses which, or the build folders. */
+export function ComputerBlock(props: SettingsPageProps & { part: "waiting" | "computers" | "which" | "build" }) {
+  const lv = lvOf(props.level);
+  const agents = useLive<RecordValue>(props.engine, "agents.list", {}, ["agents"]);
+  const nodes = useLive<RecordValue>(props.engine, "node.list", {}, PAIR_EVENTS);
+  const { reload } = nodes;
+  useEffect(() => { const again = () => void reload(); window.addEventListener("branch:computers-changed", again); return () => window.removeEventListener("branch:computers-changed", again); }, [reload]);
+  if (props.part === "waiting") return <Waiting {...props} lv={lv} />;
+  if (props.part === "computers") return <Computers {...props} lv={lv} nodes={nodes} agents={rec(agents.data)} />;
+  if (props.part === "build") return <BuildCleanup engine={props.engine} />;
+  return <WhichTrunk {...props} nodes={list(rec(nodes.data).nodes)} agents={list(rec(agents.data).agents)} defaultId={rec(agents.data).defaultId} />;
 }
 
 /** Waiting for your yes: Allow (on after 1.5 s, so a stray click can't allow) and Don't allow (asks first). */
