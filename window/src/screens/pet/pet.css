@@ -1,0 +1,7 @@
+/* QUEUE item 18: the pet walks ON the composer's top edge. The lane has no height and sits right above the pill, so
+   the pet stands on the rim, stays on it as the composer grows and at 390 px, and never covers the text field. */
+.r1-pet-rim { position: relative; height: 0; pointer-events: none; z-index: 2; }
+.r1-pet-rim > .keeper { position: absolute; left: 14px; right: 14px; bottom: 0; height: 44px; border: 0; padding: 0; margin: 0; pointer-events: none; }
+.r1-pet-rim .keeper .petbox { bottom: 0; pointer-events: auto; }
+.r1-pet-rim .keeper .pet-say { background: var(--gp-fill, var(--raise)); backdrop-filter: var(--gp-blur, none); -webkit-backdrop-filter: var(--gp-blur, none); box-shadow: inset 0 0 0 1px var(--gp-edge, transparent), var(--pop); }
+@media (prefers-reduced-motion: reduce) { .r1-pet-rim .keeper .petbox { transition: none; } }

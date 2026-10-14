@@ -1,0 +1,4 @@
+window:src/face/CharacterPanel.test.tsx
+window:src/screens/frame/R1Window.character.test.tsx
+window:src/screens/frame/R1Window.stage.test.tsx
+window:src/screens/frame/R1Window.test.tsx
