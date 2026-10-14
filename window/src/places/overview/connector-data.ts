@@ -17,9 +17,13 @@ export function offeredTools(effective: unknown): ToolRef[] {
     .filter(t => t.id !== "" && t.server !== "");
 }
 
-/** The search tool on a server: its name says search (or list, for mail). */
-export function searchTool(tools: ToolRef[], server: RegExp): ToolRef | undefined {
+/** The search tool on a server: the first preferred name it offers, else its first search (or list, for mail) tool. */
+export function searchTool(tools: ToolRef[], server: RegExp, prefer: RegExp[] = []): ToolRef | undefined {
   const mine = tools.filter(t => server.test(t.server));
+  for (const name of prefer) {
+    const hit = mine.find(t => name.test(t.name));
+    if (hit) return hit;
+  }
   return mine.find(t => /search/i.test(t.name)) ?? mine.find(t => /list/i.test(t.name));
 }
 
@@ -150,7 +154,7 @@ export function useWidgetData(engine: WindowEngine, sessionKey: string | null, r
     };
     engine.request("tools.effective", { sessionKey }).then(effective => {
       const tools = offeredTools(effective);
-      const gh = searchTool(tools, /github/i), gm = searchTool(tools, /gmail|google/i);
+      const gh = searchTool(tools, /github/i, [/^search_pull_requests$/i, /^search_issues$/i]), gm = searchTool(tools, /gmail|google/i);
       if (!live) return;
       setData({ github: null, gmail: null });
       if (gh) readGitHub(call, gh, range, repo).then(github => { if (live) setData(d => ({ ...d, github })); });

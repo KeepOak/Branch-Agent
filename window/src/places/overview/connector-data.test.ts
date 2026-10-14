@@ -21,6 +21,16 @@ describe("connector tools", () => {
     expect(searchTool(tools, /gmail/i)?.id).toBe("gmail__search_messages");
     expect(searchTool(tools, /slack/i)).toBeUndefined();
   });
+
+  it("prefers the pull request search over code search when a GitHub server offers both", () => {
+    const tools = offeredTools({ groups: [{ id: "mcp", tools: [
+      { id: "github__search_code", mcpServer: "github", mcpToolName: "search_code" },
+      { id: "github__search_pull_requests", mcpServer: "github", mcpToolName: "search_pull_requests" },
+    ] }] });
+    const prefer = [/^search_pull_requests$/i, /^search_issues$/i];
+    expect(searchTool(tools, /github/i)?.id).toBe("github__search_code");
+    expect(searchTool(tools, /github/i, prefer)?.id).toBe("github__search_pull_requests");
+  });
 });
 
 describe("reading a search result", () => {
