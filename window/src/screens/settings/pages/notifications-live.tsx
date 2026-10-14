@@ -17,7 +17,8 @@ import { Failed, Needs, useFailure } from "./appearance-live";
 class Shared<T> {
   snap: T;
   private subs = new Set<() => void>();
-  constructor(first: T, private start: () => void) { this.snap = first; }
+  private start: () => void;
+  constructor(first: T, start: () => void) { this.snap = first; this.start = start; }
   subscribe = (fn: () => void) => { if (!this.subs.size) this.start(); this.subs.add(fn); return () => void this.subs.delete(fn); };
   set(next: T) { this.snap = next; for (const fn of [...this.subs]) fn(); }
 }
@@ -28,7 +29,9 @@ class PrefsStore {
   private saved: unknown = null;
   private chain: Promise<unknown> = Promise.resolve();
   private off?: () => void;
-  constructor(private engine: WindowEngine) {
+  private engine: WindowEngine;
+  constructor(engine: WindowEngine) {
+    this.engine = engine;
     this.s = new Shared<PrefsSnap>({ status: "loading", prefs: DEFAULT_PREFS }, () => {
       void this.load();
       this.off ??= engine.onEvent((e) => { const keys = record(e.payload).keys; if (e.event === "users.prefs.changed" && Array.isArray(keys) && keys.includes(PREFS_KEY)) void this.load(); });
@@ -62,7 +65,9 @@ type PushSnap = { supported: boolean; permission: NotificationPermission | "unsu
 class PushStore {
   readonly s: Shared<PushSnap>;
   private chain: Promise<unknown> = Promise.resolve();
-  constructor(private engine: WindowEngine) {
+  private engine: WindowEngine;
+  constructor(engine: WindowEngine) {
+    this.engine = engine;
     this.s = new Shared<PushSnap>({ ...facts(), reg: null, sub: null, device: null, loading: true }, () => void this.load());
   }
   async load() {
