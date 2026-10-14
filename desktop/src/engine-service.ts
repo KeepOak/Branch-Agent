@@ -8,12 +8,24 @@ import { closeSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSyn
 import { join } from "node:path";
 
 /** The engine CLI arguments for one service step (run from the engine folder with the app's node). */
-export function engineServiceArgs(action: "install" | "start" | "token", port?: number): string[] {
+export function engineServiceArgs(action: EngineServiceAction | "token", port?: number): string[] {
   if (action === "install") return ["branch.mjs", "gateway", "install", "--port", String(port), "--json"];
   if (action === "start") return ["branch.mjs", "gateway", "start", "--json"];
+  // An update (Private #454 E): run from the new engine, the restart rewrites the service definition to it and the
+  // service manager restarts it. Never --force: the app only gets here once the engine reports no running work
+  // (service-update.ts serviceWorkRefusal), and --force would begin the restart at once and cut off work that just
+  // started. Not --safe either: --safe asks the RUNNING gateway to restart itself over RPC
+  // (engine/src/cli/daemon-cli/lifecycle-safe-restart.ts), which skips the definition rewrite, so the service would
+  // come back on the old engine. --force stays only on Stop Branch completely, after its warning.
+  if (action === "restart") return ["branch.mjs", "gateway", "restart", "--json"];
+  // Stop Branch completely (C): the app is not a terminal, so the stop is confirmed with --force; the definition
+  // stays, so the service starts again at the next sign-in (and the app starts it at its next launch).
+  if (action === "stop") return ["branch.mjs", "gateway", "stop", "--force", "--json"];
   // The token arrives on stdin as a config patch, so it never shows in a process list.
   return ["branch.mjs", "config", "patch", "--stdin"];
 }
+
+export type EngineServiceAction = "install" | "start" | "restart" | "stop";
 
 export interface EngineCliCommand { file: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv; stdin?: string; timeoutMs?: number }
 
