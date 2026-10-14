@@ -137,3 +137,43 @@ test("the archive is a valid zip with the expected entries", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("the main-process guard turns an uncaught ENOSPC into the disk-full banner and leaves other errors to Electron's report", async () => {
+  const { EventEmitter } = await import("node:events");
+  const { DISK_FULL_MESSAGE, diskIsFull, installDiskFullGuard, onDiskFullChange, reportDiskWritable } = await dist("disk-full.js");
+  assert.equal(DISK_FULL_MESSAGE, "Your disk is full. Branch paused saving until you free space.");
+  const fakeProcess = new EventEmitter();
+  const reported = []; const seen = [];
+  const stop = onDiskFullChange(full => seen.push(full));
+  installDiskFullGuard(fakeProcess, error => reported.push(error.message));
+  try {
+    // ENOSPC is injected as an uncaught error; the real disk is never filled.
+    const enospc = Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
+    fakeProcess.emit("uncaughtException", enospc);
+    fakeProcess.emit("uncaughtException", new Error("wrapped", { cause: enospc }));
+    assert.deepEqual(reported, [], "no modal error box for a full disk");
+    assert.equal(diskIsFull(), true);
+    assert.deepEqual(seen, [true], "one banner, not one per failure");
+    fakeProcess.emit("uncaughtException", new Error("a real bug"));
+    assert.deepEqual(reported, ["a real bug"]);
+  } finally { stop(); reportDiskWritable(); }
+});
+
+test("while the disk is full, the free-space watch clears the banner once space comes back", async () => {
+  const { DISK_SPACE_BACK_BYTES, diskIsFull, reportDiskFull, watchDiskSpace } = await dist("disk-full.js");
+  let free = 0;
+  const checked = [];
+  const stop = watchDiskSpace("/data", { intervalMs: 5, statfs: dir => { checked.push(dir); return { bavail: free, bsize: 1 }; } });
+  try {
+    assert.equal(reportDiskFull(Object.assign(new Error("ENOSPC"), { code: "ENOSPC" })), true);
+    await new Promise(resolve => setTimeout(resolve, 40));
+    assert.ok(checked.length > 0, "the watch checks free space while full");
+    assert.equal(diskIsFull(), true, "still full with no space");
+    free = DISK_SPACE_BACK_BYTES;
+    for (let i = 0; i < 100 && diskIsFull(); i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(diskIsFull(), false, "space came back: saving resumed with no write and no restart");
+    const after = checked.length;
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(checked.length, after, "the watch stops once the disk has space");
+  } finally { stop(); }
+});
