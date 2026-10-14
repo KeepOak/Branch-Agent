@@ -108,15 +108,25 @@ describe("R1-04 composer", () => {
     expect(request).toHaveBeenCalledWith("chat.send", expect.objectContaining({ sessionKey: "agent:scout:t1", message: "Hello topic" }));
   });
 
-  it("opens the + menu with tiles and rows, and no unwired items: they wait in Seedbank › Coming to Branch (R1-15)", async () => {
+  it("opens the + menu in the preview's order, with its unwired items as Coming rows in place (#1049)", async () => {
     const { host } = await mount();
     await act(async () => host.querySelector<HTMLButtonElement>(".r1c-pill [aria-label^='Attach']")!.click());
-    expect([...document.querySelectorAll(".r1c-tile")].map((t) => t.textContent)).toEqual(["Files", "Photo", "Folder ›"]);
+    // preview POPS.plusmenu: Files, Photo, Screenshot, Folder ›; Teach a task, Make a picture, Write a doc, sheet or slides,
+    // Set a goal, Skills & saved prompts; Add from, Call; Run as a background job, Branch from here, Temporary chat, Check with me.
+    expect([...document.querySelectorAll(".r1c-tile")].map((t) => t.textContent)).toEqual(["Files", "Photo", "Screenshot", "Folder ›"]);
     const rows = [...document.querySelectorAll(".r1c-plus .r1c-mi-t")].map((t) => t.textContent);
-    expect(rows).toEqual(expect.arrayContaining(["Make a picture", "Set a goal", "Skills & saved prompts", "Add from", "Run as a background job"]));
-    expect(rows).not.toContain("Teach a task");
-    expect(document.querySelectorAll(".r1c-plus [aria-disabled='true']")).toHaveLength(0);
-    expect(comingControls().filter((c) => c.where.startsWith("+ menu ›")).map((c) => c.where)).toEqual([]);
+    expect(rows).toEqual(["Teach a task", "Make a picture", "Write a doc, sheet or slides", "Set a goal", "Skills & saved prompts", "Add from", "Call",
+      "Run as a background job", "Branch from here", "Temporary chat", "Check with me"]);
+    const off = [...document.querySelectorAll(".r1c-plus [aria-disabled='true']")].map((b) => b.textContent);
+    expect(off).toEqual(["Screenshot", "Teach a task", "Write a doc, sheet or slides", "Branch from here", "Temporary chatOff", "Check with meOff"]);
+    expect(comingControls().filter((c) => c.where.startsWith("+ menu ›")).map((c) => [c.where, c.need[0], c.hidden])).toEqual([
+      ["+ menu › Screenshot", "desktop.observe", false], ["+ menu › Teach a task", "desktop.observe", false], ["+ menu › Write a doc, sheet or slides", "agents.documents.create", false],
+      ["+ menu › Branch from here", "sessions.fork", false], ["+ menu › Temporary chat", "sessions.patch", false], ["+ menu › Check with me", "sessions.patch", false],
+    ]);
+    await act(async () => button("Call")!.click());
+    const call = [...document.querySelectorAll(".r1c-plus .r1c-mi-t")].map((t) => t.textContent);
+    expect(call).toEqual(expect.arrayContaining(["Phone call…", "Join a meeting…"]));
+    expect([...document.querySelectorAll(".r1c-plus [aria-disabled='true']")].map((b) => b.textContent)).toEqual(["Phone call…", "Join a meeting…"]);
   });
 
   it("opens the ring popover with This computer, Running, Context and Every account", async () => {
@@ -185,7 +195,10 @@ describe("R1-04 composer", () => {
     const needOf = (where: string) => coming.find((c) => c.where === where)?.need;
     expect(needOf("Improve my draft")).toEqual(["sessions.companion.ask"]);
     expect(needOf("Dictate into the box")).toEqual(["talk.catalog"]);
-    expect(coming.filter((c) => c.where.startsWith("+ menu ›")).map((c) => c.where)).toEqual([]);
+    expect(coming.filter((c) => c.where.startsWith("+ menu ›")).map((c) => [c.where, c.need[0]])).toEqual([
+      ["+ menu › Screenshot", "desktop.observe"], ["+ menu › Teach a task", "desktop.observe"], ["+ menu › Write a doc, sheet or slides", "agents.documents.create"],
+      ["+ menu › Branch from here", "sessions.fork"], ["+ menu › Temporary chat", "sessions.patch"], ["+ menu › Check with me", "sessions.patch"],
+    ]);
   });
 
   it("registers nothing as Coming that it draws as live", async () => {

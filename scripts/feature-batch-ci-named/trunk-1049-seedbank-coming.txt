@@ -1,0 +1,5 @@
+window:src/screens/seedbank/Seedbank.test.tsx
+window:src/screens/seedbank/catalog.test.ts
+window:src/screens/composer/Composer.test.tsx
+window:src/screens/chat/HoverBar.test.tsx
+window:src/screens/chat/ChatView.test.tsx

@@ -1,7 +1,8 @@
 // The message hover bar (owner item 40, HANDOFF §2 #17): exactly three buttons, React, Reply and •••, in control
 // glass. ••• opens the message menu: its time and model, then Copy ›, Pin or Unpin, Edit or Try again, Read aloud,
-// Branch from here, Leave out of context, Look inside and Delete. (Link, Share as a picture and Continue in a coding app
-// wait in Seedbank › Coming to Branch until the engine has their calls, R1-15.) Each row runs its
+// Branch from here, Leave out of context, Look inside, Share as a picture, Continue in a coding app and Delete (preview
+// POPS.more17c "Share" group). Share as a picture, Continue in a coding app and Copy › Link are Coming rows here until the
+// engine has their calls (#1049). Each row runs its
 // engine call (thread/useMessageActions) through <Coming need=…>, or shows Coming with its reason; nothing pretends.
 // Only Copy, its submenu and Look inside are local (data-local): they make no engine call.
 import { useRef, useState, type ReactNode } from "react";
@@ -31,6 +32,19 @@ const NEEDS = {
   remove: { need: "sessions.messages.delete", reason: "This engine can’t delete one message." },
 } as const satisfies Record<string, Need>;
 
+/** Rows this window doesn't wire yet: Coming in place, naming the call each waits for (#1049). */
+const LATER = {
+  link: { need: "sessions.messages.link", reason: "Links to one message come in a later update." },
+  picture: { need: "sessions.messages.share", reason: "Sharing a message as a picture comes in a later update." },
+  coding: { need: "sessions.handoff", reason: "Carrying a conversation into a coding app on this computer needs the Branch app." },
+} as const satisfies Record<string, Need>;
+
+function LaterRow({ icon, label, later }: { icon: IconName; label: string; later: Need }) {
+  return <Coming need={later.need} unwired reason={later.reason} where={"Message menu › " + label}>
+    <button type="button" role="menuitem" className="r1c-mi"><Icon name={icon} size={15} /><span className="r1c-mi-t">{label}</span></button>
+  </Coming>;
+}
+
 /** One reason for Reply: it only sends, so without chat.send nothing can be sent at all. */
 const REPLY_NEED: Need = { need: "chat.send", reason: "This engine can’t send messages." };
 
@@ -57,6 +71,7 @@ export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: s
       <button type="button" role="menuitem" className="r1c-mi r1c-back" data-local="" onClick={() => setCopyOpen(false)}><Icon name="back" size={15} /><span className="r1c-mi-t">Copy</span></button>
       <button type="button" role="menuitem" className="r1c-mi" data-local="" onClick={() => { void copyText(plainText(text), toast); onClose(); }}><Icon name="copy" size={15} /><span className="r1c-mi-t">Text</span></button>
       <button type="button" role="menuitem" className="r1c-mi" data-local="" onClick={() => { void copyText(text, toast); onClose(); }}><Icon name="code" size={15} /><span className="r1c-mi-t">Markdown</span></button>
+      <LaterRow icon="link" label="Link" later={LATER.link} />
     </div>;
   }
   const read = actions.read;
@@ -70,6 +85,9 @@ export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: s
     <Row icon="branch" label="Branch from here" act={actions.branch} onDone={onClose} need={NEEDS.branch} />
     {actions.context ? <Row icon={actions.context.excluded ? "eye" : "eyeOff"} label={actions.context.excluded ? "Put back in context" : "Leave out of context"} act={actions.context} onDone={onClose} need={NEEDS.context} /> : null}
     <Row icon="eye" label="Look inside" act={actions.inspect} onDone={onClose} />
+    <div className="r1c-gap" />
+    <LaterRow icon="camera" label="Share as a picture…" later={LATER.picture} />
+    <LaterRow icon="code" label="Continue in a coding app…" later={LATER.coding} />
     {actions.remove ? <><div className="r1c-gap" /><Row icon="trash" label="Delete" act={actions.remove} onDone={onClose} danger need={NEEDS.remove} /></> : null}
   </div>;
 }
