@@ -7,7 +7,7 @@ import { errorText, record, type RecordValue } from "../../places/settings/adapt
 import { configStore, pathKeys } from "../../places/settings/config-store";
 import { isDeviceKey, lookHolder, lookStore } from "../../places/settings/set1/appearance-store";
 import { has } from "../../places/inbox/data";
-import { DESKTOP_CONTROLS_CHANGED, NEEDS_NEWER_APP, desktopControls, type DesktopControlsBridge, type DesktopControlsState } from "../../connect/desktop-controls";
+import { DESKTOP_CONTROLS_CHANGED, NEEDS_NEWER_APP, desktopControls, type DesktopControlName, type DesktopControlsBridge, type DesktopControlsState } from "../../connect/desktop-controls";
 import type { Level } from "./nav";
 import { hintFor, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 
@@ -158,7 +158,7 @@ class DesktopStore extends Emitter {
   private queue: Promise<unknown> = Promise.resolve();
   /** Shows the change at once, so a quick second click reads it and sends the opposite, and sends changes one at a time
    *  in click order; a refused change puts the value back. */
-  set(name: keyof DesktopControlsState, on: boolean): Promise<void> {
+  set(name: DesktopControlName, on: boolean): Promise<void> {
     const before = this.snap.state;
     if (before) { this.snap = { state: { ...before, [name]: on } }; this.emit(); }
     const run = this.queue.then(async () => {
@@ -211,6 +211,8 @@ type Source = {
   save: (value: unknown) => Promise<void>;
   /** Reads again; true when the read worked. */
   retry: () => Promise<boolean>;
+  /** A line the source has for this row now, shown in place of its help. */
+  note?: () => string | undefined;
 };
 
 /** Where a row's value lives, behind one shape: subscribe, a snapshot, what it reads, how it saves. */
@@ -304,6 +306,8 @@ function sourceOf(engine: WindowEngine, row: Row): Source {
       snapshot: () => store.snap as unknown,
       start: () => { store.start(); return () => undefined; },
       read: () => store.snap.state?.[src.name],
+      // A one-time line the app has for this switch (the engine running inside the app) replaces its help.
+      note: () => store.snap.state?.notes?.[src.name],
       status: (): Status => (store.snap.state ? { state: "ready" } : store.snap.error ? { state: "error", reason: LOAD_FAILED } : { state: "loading" }),
       blocked: () => undefined,
       save: (value: unknown) => store.set(src.name, value === true),
@@ -382,6 +386,6 @@ export function useRow(engine: WindowEngine, row: Row): RowView {
     value, set, retry, state, reason: failed ?? blocked ?? base.reason,
     need: row.source.kind === "coming" ? row.source.need : row.source.kind === "slot" ? row.source.calls.join(" ") : undefined,
     calls: callsOf(engine, row),
-    label: rowLabel(row, hints), help: rowHelp(row, hints), level: rowLevel(row, hints), restart, sensitive: hint?.sensitive === true,
+    label: rowLabel(row, hints), help: source.note?.() ?? rowHelp(row, hints), level: rowLevel(row, hints), restart, sensitive: hint?.sensitive === true,
   };
 }
