@@ -35,7 +35,7 @@ function controlOf(kind: string | undefined): { control: Control; options?: RowO
 }
 
 const PLAN: [string, Part[]][] = [
-  ["Build on Branch", [{ block: "Build on Branch", draw: (c) => <BuildOnBranch {...c} /> }, { block: "Build on Branch, more", draw: (c) => <BuildMore {...c} /> }]],
+  ["Build on Branch", [{ block: "Build on Branch", draw: (c) => <BuildOnBranch {...c} /> }, { block: "Build on Branch", draw: (c) => <BuildMore {...c} /> }]],
   ["Local address", [{ block: "Local address", draw: (c) => <LocalAddress {...c} /> }]],
   ["branch:// links", [{ off: [...LINKS, ...MORE_LINKS] }]],
   ["Editors and other apps", [{ block: "Editors and other apps", draw: (c) => <Editors {...c} /> }, { block: "Other programs", draw: (c) => <OtherPrograms {...c} /> }]],
