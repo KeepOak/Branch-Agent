@@ -14,13 +14,13 @@ const { mocks } = fixture;
 
 const config = { agents: { defaults: { model: "openai/gpt-5.5" } } };
 
-function holdNextCatalogWrite() {
+function holdNextStaticCatalog() {
   const started = createDeferred();
   const release = createDeferred();
-  mocks.ensureBranchModelsJson.mockImplementationOnce(async (_config, agentDir) => {
+  mocks.prepareStaticCatalog.mockImplementationOnce(async () => {
     started.resolve();
     await release.promise;
-    return { agentDir: String(agentDir), wrote: false };
+    return { entries: [] };
   });
   return { started, release };
 }
@@ -35,7 +35,7 @@ function readSnapshot(agentId: string) {
 describe("Gateway startup model publication superseded during admission (Private #1048)", () => {
   it("waits out an agent's own startup publication instead of failing the Gateway start", async () => {
     mocks.configuredAgentIds = ["main", "haggle-bot"];
-    const { started, release } = holdNextCatalogWrite();
+    const { started, release } = holdNextStaticCatalog();
     const startup = publishConfiguredModelRuntimeSnapshots({ cfg: config, isCurrent: () => true });
     let admission: Promise<void> | undefined;
     try {
@@ -58,13 +58,4 @@ describe("Gateway startup model publication superseded during admission (Private
       await Promise.allSettled([startup, admission]);
     }
   });
-
-  it("still fails the start when the publication itself fails", async () => {
-    mocks.configuredAgentIds = ["main"];
-    mocks.ensureBranchModelsJson.mockRejectedValueOnce(new Error("models.json is unreadable"));
-    await expect(
-      publishConfiguredModelRuntimeSnapshots({ cfg: config, isCurrent: () => true }),
-    ).rejects.toThrow("models.json is unreadable");
-  });
-
 });

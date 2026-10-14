@@ -100,7 +100,8 @@ export async function publishConfiguredModelRuntimeSnapshots(params: {
         `startup model publication was superseded (${error.message}); waiting for the newer publication`,
       );
       for (
-        let pending = getPendingPreparedModelRuntimeReplacement(), waited: Promise<void> | undefined;
+        let pending = getPendingPreparedModelRuntimeReplacement(),
+          waited: Promise<void> | undefined;
         pending && pending !== waited;
         pending = getPendingPreparedModelRuntimeReplacement()
       ) {
