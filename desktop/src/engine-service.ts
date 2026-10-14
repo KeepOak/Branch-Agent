@@ -27,6 +27,23 @@ export function engineServiceArgs(action: EngineServiceAction | "token", port?: 
 
 export type EngineServiceAction = "install" | "start" | "restart" | "stop";
 
+/**
+ * "Keep working when nobody is signed in" (Private #454 D, Linux): the engine's own systemd-linger path
+ * (`branch gateway linger on|off|status`, engine/src/daemon/systemd-linger.ts).
+ */
+export function engineLingerArgs(want: "on" | "off" | "status"): string[] {
+  return ["branch.mjs", "gateway", "linger", want, "--json"];
+}
+
+/** Reads `linger` from the engine's linger answer; rejects with its plain error. */
+export function parseLingerAnswer(stdout: string): boolean {
+  const answer = lastJsonObject(stdout);
+  if (answer?.ok !== true || (answer.linger !== "yes" && answer.linger !== "no")) {
+    throw new Error(typeof answer?.error === "string" ? answer.error : "the engine did not say whether linger is on");
+  }
+  return answer.linger === "yes";
+}
+
 export interface EngineCliCommand { file: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv; stdin?: string; timeoutMs?: number }
 
 /**
@@ -68,6 +85,21 @@ export async function engineAnswers(port: number, timeoutMs = 2_000): Promise<bo
     await res.body?.cancel();
     return res.status === 200;
   } catch { return false; }
+}
+
+/**
+ * Honest health (Private #454 D): the engine's /health on 127.0.0.1:port. A local probe gets the reason, for
+ * example the agent whose database is not admitting work. Never throws.
+ */
+export async function readEngineHealth(port: number, timeoutMs = 2_000): Promise<{ answered: boolean; degraded?: string }> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(timeoutMs) });
+    const body = await res.json().catch(() => ({})) as { ok?: unknown; status?: unknown; reason?: unknown };
+    if (body.status === "degraded" || body.ok === false) {
+      return { answered: true, degraded: typeof body.reason === "string" && body.reason ? body.reason : "an agent can't answer" };
+    }
+    return { answered: res.status === 200 };
+  } catch { return { answered: false }; }
 }
 
 /** Polls `probe` until it answers or `timeoutMs` passes. */
