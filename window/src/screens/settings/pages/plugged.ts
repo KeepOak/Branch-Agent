@@ -15,6 +15,7 @@ import {
   BackupNow, BackupOften, BackupSchedule, BackupWhere, CleanupAction, CleanupCode, DataFolder, EveryChange, ExportSettings, FillIn, ImportSettings, LastBackup,
   MediaAll, MediaFile, NeverDies, ReadDiary,
 } from "./history-live";
+import { DEVICES } from "./devices";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
@@ -63,6 +64,8 @@ export const R1_PAGES: PageSlots = {
       "history.copy.data": DataFolder,
     },
   },
+  // Devices: native R1 cards in the preview's order, from Classic Computer & browser's section data (devices.tsx).
+  devices: DEVICES,
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,

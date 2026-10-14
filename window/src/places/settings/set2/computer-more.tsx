@@ -119,7 +119,7 @@ const CODE_COMMITS: SecSpec = { t: "Code and commits", lv: 0, rows: [
 
 const NETWORK_MORE: SecSpec = { t: "Network, more", group: "Network", lv: 1, rows: [
   { t: "Its computer joins a private network", sub: "So a Trunk’s computer reaches your private machines without opening them to the internet.", k: "seg", opts: [{ v: "off", l: "Off" }, { v: "tailscale", l: "Tailscale" }, { v: "netbird", l: "NetBird" }], off: "Needs the engine to join a Trunk’s computer to a private network." },
-  { t: "Previews on your other computers", sub: "See a preview server running on taofik-ai, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Needs the engine to forward preview servers from other computers." },
+  { t: "Previews on your other computers", sub: "See a preview server running on another of your computers, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Previews on your other computers comes in a later update." },
 ] };
 
 const ON_MORE: SecSpec = { t: "On a computer, more", group: "On a computer", showHeading: false, lv: 1, rows: [
@@ -887,6 +887,9 @@ const SECTIONS: SecSpec[] = [
   LENT_TECH, SCREEN_TECH, ALLOWING, CODE_COMMITS, NETWORK_MORE, ...BROWSER_MORE, ...BROWSER_TECH, ...CODE_SECS, CODE_TECH,
   ON_MORE, USING_MORE, PHONES_SMALL, MORE_PLACES, USING_TECH, WHERE_MORE, SCRIPTS, SEALED_TECH, LIMITS_TECH,
 ];
+
+/** The sections the R1 Devices page draws on its cards (screens/settings/pages/devices.ts). */
+export const DEVICE_SECS = { CLOUD, LET_TRUNKS, PHONES_LENT, EVERYTHING, WHO, LENT_TECH, ALLOWING, NETWORK_MORE, TECHNICAL, PHONES_SMALL, MORE_PLACES, WHERE_MORE, SCRIPTS, SEALED_TECH, LIMITS_TECH };
 
 /** The parts the page splits into where Settings has a page for each: Browser & screen, Coding, and the rest (Devices). */
 export type ComputerPart = "browser" | "coding" | "devices";
