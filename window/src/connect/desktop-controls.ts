@@ -53,16 +53,19 @@ export function useDesktopControls() {
     window.addEventListener(CHANGED, follow);
     return () => { live = false; window.removeEventListener(CHANGED, follow); };
   }, [bridge]);
-  const set = useCallback(async (name: DesktopControlName, on: boolean) => {
-    if (!bridge) return;
+  /** Resolves true when the app saved the change. */
+  const set = useCallback(async (name: DesktopControlName, on: boolean): Promise<boolean> => {
+    if (!bridge) return false;
     setBusy(name);
     setError(null);
     try {
       const next = await bridge.set(name, on);
       setState(next);
       window.dispatchEvent(new CustomEvent(CHANGED, { detail: next }));
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setBusy(null);
     }

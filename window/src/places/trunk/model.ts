@@ -3,6 +3,7 @@
 // engine/src/config/zod-schema.agents.ts (agents.entries, default, ownership) and zod-schema.agent-runtime.ts (tools).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { CHARACTERS, EXTRA, trunkAppearance } from "../../face/appearance";
+import { trunkDisplayName } from "../../connect/trunk-name";
 
 export type Rec = Record<string, unknown>;
 export const rec = (v: unknown): Rec => (v && typeof v === "object" && !Array.isArray(v) ? (v as Rec) : {});
@@ -30,7 +31,7 @@ function readRow(a: Rec): TrunkRow {
   const identity = rec(a.identity);
   return {
     id: str(a.id),
-    name: str(identity.name) || str(a.name) || str(a.id),
+    name: trunkDisplayName(a),
     theme: str(identity.theme),
     emoji: str(identity.emoji),
     avatar: str(identity.avatar),

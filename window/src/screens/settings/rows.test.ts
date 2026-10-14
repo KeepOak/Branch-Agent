@@ -213,14 +213,14 @@ describe("settings nav", () => {
   });
 
   it("sends old page ids to their new page", () => {
-    const old: [string, PageId][] = [["people", "who"], ["gateway", "remote"], ["usage", "privacy"], ["seasons", "history"], ["trunksP17", "trunks"], ["general", "general"], ["nope", "general"], ["__proto__", "general"]];
+    const old: [string, PageId][] = [["people", "who"], ["gateway", "remote"], ["usage", "privacy"], ["seasons", "learning"], ["trunksP17", "trunks"], ["general", "general"], ["nope", "general"], ["__proto__", "general"]];
     for (const [from, to] of old) expect(pageFor(from)).toBe(to);
   });
 
   it("names the R1 page a route id belongs to, and leaves a Classic-only id as it is", () => {
     expect(r1PageFor("gateway")).toBe("remote");
     expect(r1PageFor("remote")).toBe("remote");
-    expect(r1PageFor("seasons")).toBe("history");
+    expect(r1PageFor("seasons")).toBe("learning");
     expect(r1PageFor("computer-browser")).toBe("computer-browser");
   });
 
