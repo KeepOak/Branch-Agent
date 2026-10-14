@@ -5,5 +5,5 @@ export { AskDrop } from "./AskDrop";
 export { AskHistory } from "./AskHistory";
 export { ApprovalsLayer, LockNotice, LOCKDOWN_LINE } from "./ApprovalsLayer";
 export { Banners, type BannerItem } from "./Banners";
-export { callFor, readAsk, settledText, type Ask, type AskKind, type Reply } from "./model";
+export { askOfApproval, callFor, readAsk, settledOfApproval, settledText, type Ask, type AskKind, type Reply } from "./model";
 export { useAsks, useLockdown, type AskState } from "./useAsks";

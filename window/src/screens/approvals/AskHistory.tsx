@@ -56,7 +56,7 @@ export function AskHistory({ engine, limit = 20 }: { engine: WindowEngine | null
   };
   return (
     <section className="r1-ask-history g-clear" aria-label="Approvals" data-testid="r1-ask-history">
-      <h3>Always allowed</h3>
+      <h3>Standing permissions</h3>
       {grants.length ? grants.map((g) => (
         <div className="r1-ask-row" key={g.grantId}>
           <code>{g.command}</code><small>{g.job}{g.uses ? `· used ${g.uses}×` : ""}</small>

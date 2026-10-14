@@ -25,7 +25,7 @@ import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Popover } from "../../glass/Popover";
 import { Sidebar } from "../sidebar/Sidebar";
 import { Toasts } from "../../shell/Toasts";
-import { ApprovalsLayer } from "../approvals";
+import { ApprovalsLayer, useAsks } from "../approvals";
 import { useProblemBannerRows } from "../approvals/ProblemBanners";
 import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
@@ -116,6 +116,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const waiting = usePendingApprovals(session, ready);
   const limits = useLimits(session, ready);
   const lockdown = useLockdown(engine, ready, session, true);
+  // One list of what waits for a yes, shared by the conversation cards and the banners and drop (approvals/ApprovalsLayer).
+  const approvals = useAsks(ready ? engine : null, lockdown.on);
   const machine = useMachine(session, ready);
   // The re-hosted Classic character panel (parity row 19), shown beside the conversation unless hidden.
   const [characterShown, setCharacterShown] = useR1CharacterShown(engine);
@@ -301,7 +303,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const main = towerView && towerNarrow ? towerView : route.kind === "settings" && !r1SettingsPage(route.page, settingsPages) ? <ClassicSettingsFrame page={CLASSIC_PAGE[route.page] ?? route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={settingsPages} places={SETTINGS_PLACES} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : changes ? <R1Changes key={snapshot.sessionKey ?? "none"} engine={engine} name={snapshot.name} onClose={closeChanges} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
     onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <>{threads.above}<ChatView
     name={snapshot.name} history={threads.history ?? snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
-    engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
+    engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} asks={approvals.asks} onAsk={(id, reply) => void approvals.answer(id, reply)} lockdown={lockdown.on} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo} onOpenHelpers={() => setHelpersView(open => ({ key: snapshot.sessionKey, focus: (open?.focus ?? 0) + 1 }))} room={room.thread}
   /></>;
   const shown = route.kind === "chat" && !stage && helpersOpen ? <div className="r1-with-helpers">{main}<R1HelpersPanel key={snapshot.sessionKey ?? "none"} engine={engine} name={snapshot.name} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
@@ -370,7 +372,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     <QuickAskHost session={session} ready={ready} list={list} onOpen={openConversation} onNotice={setNotice} />
     {pip && route.kind === "chat" && !stage ? <R1StagePip key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} computer={pip} blocks={[...snapshot.history, ...snapshot.live]} onOpen={() => { setStage(pip.kind === "browser" ? "Browser" : "Computer"); setPip(null); }} onClose={() => setPip(null)} /> : null}
     <Toasts />
-    <ApprovalsLayer engine={engine} ready={ready} more={problems} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
+    <ApprovalsLayer engine={engine} ready={ready} approvals={approvals} more={problems} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
     {/* The approved ••• menu (Pin, Rename, Snooze, Archive, Send to the board, Export, View, Start over, Delete) and its dialogs. */}
     {route.kind === "chat" ? <ConversationMenu session={session} open={convMenu} anchor={convAnchor} onClose={() => setConvMenu(false)} sessionKey={snapshot.sessionKey}
       row={current ?? null} isDefault={Boolean(snapshot.sessionKey && snapshot.sessionKey === snapshot.mainKey)} list={list} name={snapshot.name || "Conversation"} history={snapshot.history}
