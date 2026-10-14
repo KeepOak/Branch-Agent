@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
+import { PAGES } from "./nav";
 import type { Row } from "./rows";
 import { SECTION_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
 import type { PageSlots } from "./slots";
@@ -268,5 +269,42 @@ describe("SettingsFrame custom pages", () => {
     expect(String(errors[0])).toContain('Settings row id "general.work.show" is used twice');
     expect(el.querySelector(".r1set")).toBeNull();
     await act(async () => other.unmount());
+  });
+});
+
+describe("SettingsFrame header on slot pages (#1049)", () => {
+  it("draws the frame's title, the approved lede and Learn more above every slot page, with its sections in On this page", async () => {
+    const pages: PageSlots = {
+      goto: { component: () => <div><section><h2>Places</h2></section><section><h2>Recent</h2></section></div> },
+      seedbank: { component: () => <div><h2>Agents</h2></div> },
+    };
+    for (const [id, sections] of [["goto", ["Places", "Recent"]], ["seedbank", ["Agents"]]] as const) {
+      await act(async () => root.render(<SettingsFrame engine={engineOf().engine} page={id} pages={pages} />));
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+      // One title on the page, the frame's, with preview PG's lede and a Learn more.
+      expect([...host.querySelectorAll("h1")].map((h) => h.textContent)).toEqual([PAGES[id].title]);
+      expect(host.querySelector(".r1s-head .r1s-lede")?.textContent).toContain(PAGES[id].lede);
+      const learn = host.querySelector<HTMLButtonElement>(".r1s-head .r1s-learn")!;
+      expect(learn.textContent).toBe("Learn more");
+      await act(async () => learn.click());
+      const sheet = host.querySelector(".r1s-help")!;
+      expect(sheet.getAttribute("aria-label")).toBe(`About ${PAGES[id].title}`);
+      expect([...sheet.querySelectorAll("li button")].map((b) => b.textContent)).toEqual([...sections]);
+      expect([...sheet.querySelectorAll(".r1s-btn")].map((b) => b.textContent)).toContain("Ask a Trunk");
+      await act(async () => learn.click());
+    }
+  });
+
+  it("offers Trunks with Make default and New Trunk, and features, when the host passes them", async () => {
+    const onTrunk = vi.fn(), onOpenFeature = vi.fn();
+    await act(async () => root.render(<SettingsFrame engine={engineOf().engine} trunks={[{ id: "t1", name: "Newt" }]} features={[{ id: "F-1", name: "New tab page", description: "Coming" }]} onTrunk={onTrunk} onOpenFeature={onOpenFeature} />));
+    const input = host.querySelector<HTMLInputElement>(".r1s-search input")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "New"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    const group = (name: string) => host.querySelector(`[role=group][aria-label="${name}"]`);
+    expect([...group("Trunks")!.querySelectorAll(".r1s-res b")].map((b) => b.textContent)).toEqual(["Newt", "New Trunk"]);
+    expect(group("Trunks")!.querySelector(".r1s-mkdef")?.textContent).toBe("Make default");
+    expect(group("Features")!.textContent).toContain("New tab page");
+    await act(async () => group("Features")!.querySelector<HTMLButtonElement>(".r1s-res")!.click());
+    expect(onOpenFeature).toHaveBeenCalledWith("F-1");
   });
 });
