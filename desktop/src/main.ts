@@ -18,7 +18,7 @@ import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
-import { canUndoComponentUpdate, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -209,7 +209,8 @@ let withdrawnUpdateVersion: string | undefined;
 let recoveryDeferred = false;
 /** A failed update left nothing serving: once recovery brings the previous build back, the bar says it was kept. */
 let keptNoticeAfterRecovery = false;
-let updateNotice: { version: string; canUndo: boolean; expiresAt: number } | undefined;
+/** `undoUntil`: the end of the previous engine's probation, after which Undo is gone (Private #983). */
+let updateNotice: { version: string; canUndo: boolean; undoUntil: number | null; expiresAt: number } | undefined;
 let lastNotifiedVersion: string | undefined;
 let lastPostponedVersion: string | undefined;
 let gatewayRecoveryError: string | undefined;
@@ -831,9 +832,9 @@ const autoApply = createAutoApplyUpdate({
   },
   onApplied: async version => {
     if (lastNotifiedVersion === version) return;
-    const canUndo = await canUndoComponentUpdate(cfg);
+    const undo = await readUndoAvailability(cfg);
     lastNotifiedVersion = version;
-    updateNotice = { version, canUndo, expiresAt: Date.now() + 10 * 60_000 };
+    updateNotice = { version, canUndo: undo.available, undoUntil: undo.available ? undo.until : null, expiresAt: Date.now() + 10 * 60_000 };
     sendToBranchWindows("branch-desktop:update-applied", updateNotice);
   },
   onFailure: version => {
@@ -1162,6 +1163,11 @@ async function start(): Promise<void> {
     else log(`update notice ${event}`);
     if (event === "dismissed" || event === "expired") updateNotice = undefined;
   });
+  // Settings shows Undo only while it can run, with its deadline; after that, that the previous version was removed.
+  ipcMain.handle("branch-desktop:undo-availability", async e => {
+    if (!isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) throw new Error("Undo availability requires the owned served window");
+    return readUndoAvailability(cfg);
+  });
   ipcMain.on("branch-desktop:undo-update", e => {
     if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void undoLastUpdate();
   });
@@ -1455,6 +1461,8 @@ async function undoLastUpdate(automatic = false): Promise<void> {
     const window = automatic ? undefined : await probeWindowState();
     if (active && window && (active.activeRuns || active.totalActive || active.pendingReplies || window.pendingApprovals ||
         window.streaming || window.unsavedDraftFiles)) throw new Error("The previous version cannot take over while work is running");
+    // After the probation the previous engine is (or is about to be) pruned: Undo never runs past its deadline.
+    if (!await canUndoComponentUpdate(cfg)) throw new Error("The previous version was removed to save space");
     if (!await prepareComponentUpdateUndo(cfg, dir => { servedWindowDir = dir; })) throw new Error("The previous version is no longer available");
     const previousVersion = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
     await swapEngineInPlace("previous version", true, lock);

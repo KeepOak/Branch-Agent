@@ -13,12 +13,31 @@ export type ComponentUpdates = {
   stage(): Promise<ComponentUpdateStatus>;
   /** Older desktop builds have no Install now; the page hides the button without it. */
   install?: () => void;
+  /** Whether the last update can be undone and until when; older desktop builds lack it and offer no Undo here. */
+  undoAvailability?: () => Promise<UndoAvailability>;
+  undo?: () => void;
 };
+/** From the desktop: `until` is the end of the previous engine's probation (confirmation + 3 days, Private #983). */
+export type UndoAvailability = { available: boolean; until: number | null; removed: boolean };
+export const UNDO_REMOVED = "The previous version was removed to save space.";
+/** The Undo deadline as month and day in the owner's locale, e.g. "Oct 17". */
+export function undoDeadline(until: number, locale?: string | string[]): string {
+  return new Date(until).toLocaleDateString(locale, { month: "short", day: "numeric" });
+}
+export function undoUntilCopy(until: number | null, locale?: string | string[]): string {
+  return until === null ? "You can undo this update for a few days." : `You can undo this update until ${undoDeadline(until, locale)}.`;
+}
+/** What the window may show: Undo only while it can still run, never past its deadline (no dead button). */
+export function undoShown(value: UndoAvailability | null, now = Date.now()): "undo" | "removed" | "none" {
+  if (!value) return "none";
+  if (value.available && (value.until === null || now < value.until)) return "undo";
+  return value.available || value.removed ? "removed" : "none";
+}
 /** The desktop update bar's states, published by the preload as this window event (same wording as the bar). */
 export type EngineUpdateState = "ready" | "auto-wait" | "preparing" | "restarting" | "updating" | "updated" | "kept" | "failed";
 export type EngineUpdateEvent = { state: EngineUpdateState; message?: string };
 export const ENGINE_UPDATE_EVENT = "branch:update-state";
-export type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt: number };
+export type AppliedUpdateNotice = { version: string; canUndo: boolean; undoUntil?: number | null; expiresAt: number };
 export type UpdateNoticeEvent = "shown" | "dismissed" | "expired" | "undo";
 /** Preview T0 (`updT5` in design/spec-v23/index.html): a normal toast after an in-place update. */
 export const UPDATED_IN_PLACE = "Updated in place. Nothing restarted.";
@@ -126,6 +145,22 @@ export function useDesktopComponentStatus(gatewayUrl?: string): {
   return { status, error, setStatus: value => { setStatus(value); setError(value.error); } };
 }
 
+/** The last update's Undo window, read from the desktop and re-read every minute (so a passed deadline shows). */
+export function useDesktopUndoAvailability(gatewayUrl?: string): { value: UndoAvailability | null; reload: () => void } {
+  const bridge = componentDesktop(gatewayUrl)?.componentUpdates;
+  const [value, setValue] = useState<UndoAvailability | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const read = bridge?.undoAvailability;
+    if (!read) return;
+    let live = true;
+    void read().then(next => { if (live) setValue(next); }, () => { if (live) setValue(null); });
+    const timer = setTimeout(() => setTick(n => n + 1), 60_000);
+    return () => { live = false; clearTimeout(timer); };
+  }, [bridge, tick]);
+  return { value, reload: () => setTick(n => n + 1) };
+}
+
 function desktopBridge(): Desktop | undefined {
   return (window as unknown as { branchDesktop?: Desktop }).branchDesktop;
 }
@@ -151,7 +186,11 @@ export function showAppliedUpdateToast(notice: AppliedUpdateNotice): void {
       window.setTimeout(show, UPDATE_TOAST_SETUP_WAIT_MS);
       return;
     }
-    const id = notify(UPDATED_IN_PLACE);
+    const undo = desktopBridge()?.componentUpdates?.undo;
+    const canUndo = notice.canUndo && Boolean(undo) && (notice.undoUntil == null || Date.now() < notice.undoUntil);
+    const id = canUndo && undo
+      ? notify(UPDATED_IN_PLACE, { line: undoUntilCopy(notice.undoUntil ?? null), action: { label: "Undo update", run: () => { reportUpdateNotice("undo", notice); undo(); } } })
+      : notify(UPDATED_IN_PLACE);
     reportUpdateNotice("shown", notice);
     const unsub = subscribeToasts(() => {
       if (getToasts().some((toast) => toast.id === id)) return;

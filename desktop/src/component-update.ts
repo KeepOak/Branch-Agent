@@ -427,13 +427,30 @@ export async function confirmComponentUpdateUndo(cfg: DesktopConfig): Promise<vo
   }
 }
 
-export async function canUndoComponentUpdate(cfg: DesktopConfig): Promise<boolean> {
+/**
+ * Whether the running update can be undone, and until when. `until` is the same deadline the pruning uses (the
+ * confirmation time plus PREVIOUS_ENGINE_PROBATION_MS); null only when the predecessor has no probation yet.
+ * `removed`: this update had an Undo, but its window ended or the previous engine is gone, so it can no longer run.
+ */
+export interface UndoAvailability { available: boolean; until: number | null; removed: boolean }
+
+export async function readUndoAvailability(cfg: DesktopConfig, now = Date.now()): Promise<UndoAvailability> {
+  const none: UndoAvailability = { available: false, until: null, removed: false };
   const raw = await readOrEmpty(undoFile(cfg));
-  if (!raw) return false;
-  const undo = JSON.parse(raw) as UndoReceipt;
-  return await readOrEmpty(versionFile(cfg)) === undo.version &&
-    await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) === undo.engineNext &&
-    existsSync(undo.windowPrevious) && existsSync(undo.enginePrevious);
+  if (!raw) return none;
+  let undo: UndoReceipt;
+  try { undo = JSON.parse(raw) as UndoReceipt; } catch (error) { if (error instanceof SyntaxError) return none; throw error; }
+  if (await readOrEmpty(versionFile(cfg)) !== undo.version ||
+    await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== undo.engineNext) return none;
+  const probation = await readProbation(cfg);
+  const until = probation?.previous === undo.enginePrevious ? probation.confirmedAt + PREVIOUS_ENGINE_PROBATION_MS : null;
+  const present = existsSync(undo.windowPrevious) && existsSync(undo.enginePrevious);
+  const ended = until !== null && now >= until;
+  return present && !ended ? { available: true, until, removed: false } : { available: false, until, removed: true };
+}
+
+export async function canUndoComponentUpdate(cfg: DesktopConfig, now = Date.now()): Promise<boolean> {
+  return (await readUndoAvailability(cfg, now)).available;
 }
 
 export async function recoverComponentUpdate(cfg: DesktopConfig): Promise<void> {

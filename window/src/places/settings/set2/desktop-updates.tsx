@@ -3,7 +3,7 @@ import type { SettingsPageProps } from "../index";
 import { KeeperMark } from "../../../brand/KeeperMark";
 import { Btn, Ctl, Hint, Page, Sec, Status, Switch } from "../kit";
 import { useDesktopControls } from "../../../connect/desktop-controls";
-import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus, type ComponentUpdateStatus, type EngineUpdateEvent } from "../../../connect/desktop-component-updates";
+import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, MANUAL_UPDATE_UNSUPPORTED, UNDO_REMOVED, undoShown, undoUntilCopy, useDesktopComponentStatus, useDesktopUndoAvailability, type ComponentUpdates, type ComponentUpdateStatus, type EngineUpdateEvent } from "../../../connect/desktop-component-updates";
 
 /** The desktop drains running work for up to 330 s, then restarts; a silent desktop gets this long plus a 60 s margin. */
 export const INSTALL_NO_ANSWER_MS = 390_000;
@@ -78,9 +78,25 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
         ? "Branch applies a ready update once every Trunk is idle. On a busy computer that can take a long time. Update now applies it without waiting for that."
         : "Branch won’t apply a ready update until you choose. Update now applies it. Your conversations and settings stay in place."}</Hint>
         : <Hint>Branch checks every 10 minutes.</Hint>}
+      <UndoLastUpdate gatewayUrl={engine.gatewayUrl} bridge={bridge} />
     </Sec>
     <Sec title="About"><WhatsNewRow /></Sec>
   </Page>;
+}
+
+/** Preview Settings › Updating "Undo the last update": offered with its deadline while the previous engine is kept,
+ *  then a plain line that it was removed (Private #983). Never a button that cannot run. */
+function UndoLastUpdate({ gatewayUrl, bridge }: { gatewayUrl?: string; bridge: ComponentUpdates }) {
+  const { value } = useDesktopUndoAvailability(gatewayUrl);
+  const [undoing, setUndoing] = useState(false);
+  useEffect(() => { if (!undoing) return; const timer = setTimeout(() => setUndoing(false), 60_000); return () => clearTimeout(timer); }, [undoing]);
+  const shown = undoShown(value);
+  if (shown === "none" || !bridge.undo) return null;
+  if (shown === "removed") return <Ctl title="Undo the last update" sub={UNDO_REMOVED} />;
+  const undo = bridge.undo;
+  return <Ctl title="Undo the last update" sub={undoUntilCopy(value?.until ?? null)}>
+    <Btn sm disabled={undoing} onClick={() => { setUndoing(true); undo(); }}>{undoing ? "Undoing…" : "Undo update"}</Btn>
+  </Ctl>;
 }
 
 /** An older Branch Agent app has no Check now bridge, but it still checks every hour and stages updates by itself.
