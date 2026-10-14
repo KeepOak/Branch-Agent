@@ -3,13 +3,15 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, powerMoni
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { attachOrStartEngine, engineAnswers, readEngineHealth, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { createRunKeepAwake, POWER_STATE_REFRESH_MS, writePowerState } from "./keep-awake";
-import { ADMISSION_POLL_MS, ADMISSION_ROLLBACK_AFTER_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
-import { HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STANDBY_READY_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
+import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
+import { HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
+import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, standbyReadyBudgetMs } from "./readiness-budget";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
@@ -26,10 +28,10 @@ import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./ti
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
-import { createAutoApplyUpdate } from "./auto-apply-update";
+import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
-import { appendCappedLog } from "./log-rotation";
+import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 import { readTail, recentLines, reportReadme } from "./diagnostics-report";
 import { zipStored } from "./diagnostics-zip";
 
@@ -64,15 +66,26 @@ const READY_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_READY_TIMEOUT_MS, 600_
 /** The handoff deadlines (handoff-timeouts.ts, shared with the engine); tests shorten them through the environment. */
 const STEP_DOWN_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_STEP_DOWN_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS);
 const TAKE_OVER_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_TAKE_OVER_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS);
-const STANDBY_READY_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_STANDBY_READY_TIMEOUT_MS, HANDOFF_STANDBY_READY_TIMEOUT_MS);
 const ROLLBACK_TIMEOUT_MS = envMs(process.env.BRANCH_DESKTOP_ROLLBACK_TIMEOUT_MS, HANDOFF_ROLLBACK_TIMEOUT_MS);
 const RETIRE_KILL_AFTER_MS = envMs(process.env.BRANCH_DESKTOP_RETIRE_KILL_AFTER_MS, HANDOFF_RETIRE_KILL_AFTER_MS);
-/** Private #951: agents still refused this long after a swap roll the update back; tests shorten it. */
-const ADMISSION_ROLLBACK_MS = envMs(process.env.BRANCH_DESKTOP_ADMISSION_ROLLBACK_MS, ADMISSION_ROLLBACK_AFTER_MS);
 /** How long an old engine that says it still serves gets to prove it on /readyz. */
 const PRIOR_READY_CHECK_MS = 10_000;
-/** A standby only loads code before it reports warm; one that takes longer is stopped and the old engine keeps serving. */
-const STANDBY_WARM_TIMEOUT_MS = 120_000;
+/** A standby only loads code before it reports warm; one slower than its budget is stopped and the old engine keeps serving. */
+const STANDBY_WARM_FLOOR_MS = 120_000;
+/** This host's measured cold starts (spawn to /readyz), which size the readiness budgets below (Private #951). */
+const coldStartFile = (): string => join(cfg.dataDir, "cold-start.json");
+/** How long a standby that took over gets to answer /readyz: sized from the measured cold start; tests pin it. */
+function standbyReadyTimeoutMs(): number {
+  return envMs(process.env.BRANCH_DESKTOP_STANDBY_READY_TIMEOUT_MS, standbyReadyBudgetMs(readColdStarts(coldStartFile())));
+}
+/** Private #951: agents still refused this long after a swap roll the update back; sized from the measured cold start, tests shorten it. */
+function admissionRollbackMs(): number {
+  return envMs(process.env.BRANCH_DESKTOP_ADMISSION_ROLLBACK_MS, admissionRollbackBudgetMs(readColdStarts(coldStartFile())));
+}
+/** How long a standby gets to warm: the measured cold start with headroom, at least STANDBY_WARM_FLOOR_MS. */
+function standbyWarmTimeoutMs(): number {
+  return measuredBudgetMs(readColdStarts(coldStartFile()), { floorMs: STANDBY_WARM_FLOOR_MS, ceilingMs: READY_TIMEOUT_MS });
+}
 /** Failed standbys per update before the guarded stop/start swap takes over, so an update never becomes impossible. */
 const STANDBY_ATTEMPTS = 2;
 /** Free memory a candidate check needs (6 GB, or a quarter of RAM); tests lower it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB. */
@@ -88,7 +101,7 @@ const install: DesktopInstall | undefined = app.isPackaged ? {
 function log(line: string): void {
   try {
     appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} ${line}
-`);
+`, BRANCH_LOG_LIMITS);
   } catch {
     // logging must never stop the app
   }
@@ -455,7 +468,7 @@ async function swapServiceEngineInPlace(label: string, explicit: boolean, held?:
         // The machine-load rule: a second engine only when there is room for it; otherwise the restart with its rollback.
         const { bytes, measure } = availableMemory();
         if (bytes < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(bytes, measure)}`); return "slow"; }
-        return checkCandidateBeside(cfg, selected, token, STANDBY_READY_TIMEOUT_MS);
+        return checkCandidateBeside(cfg, selected, token, standbyReadyTimeoutMs());
       },
       restartService: async engineDir => {
         if (quitting) throw new Error("Branch Agent is quitting");
@@ -521,7 +534,7 @@ let admissionProbation = false;
 
 /**
  * Private #951: an update is promoted only once the new engine admits its agents, not when its listener binds.
- * Promotion runs the confirmed release cleanup; agents still refused ADMISSION_ROLLBACK_MS after the swap roll the
+ * Promotion runs the confirmed release cleanup; agents still refused admissionRollbackMs() after the swap roll the
  * update back to the previous build through Undo, automatically. An engine that exits is left to crash recovery.
  */
 function watchAdmission(label: string, knownRefused: ReadonlySet<string>): void {
@@ -532,7 +545,7 @@ function watchAdmission(label: string, knownRefused: ReadonlySet<string>): void 
   const end = () => { if (admissionWatch === watch) { admissionWatch = undefined; admissionProbation = false; } };
   void superviseUpdateAdmission({
     label,
-    wait: () => waitForAgentAdmission({ port: () => gatewayPort, child, rollbackAfterMs: ADMISSION_ROLLBACK_MS, knownRefused,
+    wait: () => waitForAgentAdmission({ port: () => gatewayPort, child, rollbackAfterMs: admissionRollbackMs(), knownRefused,
       pollMs: ADMISSION_POLL_MS, signal: watch.signal }),
     promote: () => { end(); if (componentsReady) runConfirmedReleasePrune(); },
     rollback: async () => {
@@ -607,7 +620,7 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
       // it never stepped down; an engine that answers neither but serves is an old build and is drained instead.
       const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
       if ((back === "ok" || back === "unanswered") &&
-        await priorServes(prior, back === "ok" ? STANDBY_READY_TIMEOUT_MS : PRIOR_READY_CHECK_MS)) {
+        await priorServes(prior, back === "ok" ? standbyReadyTimeoutMs() : PRIOR_READY_CHECK_MS)) {
         stopRetiring(prior);
         log(`update ${label}: the old engine did not step down in time; it kept serving; draining it instead`);
         return "drain";
@@ -631,8 +644,10 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
   }
   servedWindowDir = cfg.windowDir;
   try {
-    // Well under the lease deadline, so the old engine can still take control back.
-    await bootEngine(resolveEngineDir(cfg), true, selected, selected.port, { readyTimeoutMs: STANDBY_READY_TIMEOUT_MS, keepOnConfirmFailure: true });
+    // Sized from this host's measured cold start, and still under the lease deadline so the old engine can take control back.
+    const readyTimeoutMs = standbyReadyTimeoutMs();
+    log(`update ${label}: standby readiness budget ${readyTimeoutMs} ms`);
+    await bootEngine(resolveEngineDir(cfg), true, selected, selected.port, { readyTimeoutMs, keepOnConfirmFailure: true });
   } catch (error) {
     // Quitting: shutdown stops both engines; nothing is rolled back or recorded against the release.
     if (quitting) throw error;
@@ -670,7 +685,7 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
   // Rollback has reclaimed the state. The old engine must keep its full readiness budget without the retire timer.
   if (back === "ok") stopRetiring(prior);
-  if (back !== "ok" || !await priorServes(prior, STANDBY_READY_TIMEOUT_MS)) {
+  if (back !== "ok" || !await priorServes(prior, standbyReadyTimeoutMs())) {
     notServing(prior);
     resumeSupervision();
     throw new Error(`the update failed and the old engine could not take control back (${back}): ${message}`);
@@ -696,7 +711,7 @@ async function prepareUpdateStandby(label: string, explicit: boolean): Promise<v
     return;
   }
   try {
-    standby = await prepareStandbyGateway(cfg, resolveEngineDir(cfg), token, STANDBY_WARM_TIMEOUT_MS);
+    standby = await prepareStandbyGateway(cfg, resolveEngineDir(cfg), token, standbyWarmTimeoutMs());
     standbyFailures.delete(label);
     log(`update ${label}: standby engine ${standby.child.pid} prepared on port ${standby.port} while the current engine kept serving`);
   } catch (error) {
@@ -781,6 +796,19 @@ const autoApply = createAutoApplyUpdate({
   },
   enabled: () => controls.settings().autoApplyUpdates && !updateLock.held,
   seamlessHandoff,
+  // Private #951: no automatic update starts under 10% free disk or 20% free RAM.
+  health: () => readUpdateHealth(cfg.dataDir, availableMemory().bytes, totalmem()),
+  // Runs in flight mark a machine running Trunk work, whose updates are batched (hourly at most, only when idle).
+  activeRuns: async () => {
+    if (!gateway) throw new Error("The gateway is not running");
+    const engine = await gatewayActivity(gateway);
+    return Math.max(engine.activeRuns, engine.totalActive);
+  },
+  // A release published as a security fix skips the Trunk-work batching.
+  securityFix: async version => {
+    const status = await readComponentUpdateStatus(cfg);
+    return status.componentsPendingVersion === version && status.componentsPendingSecurity;
+  },
   activity: async () => {
     if (serviceEngine) {
       // The service engine has no app channel: the window's own engine calls say what runs (Private #454 E).
@@ -1298,6 +1326,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
     log(`Mac computer driver unavailable: ${describeDriverError(error)}`);
     return undefined;
   });
+  const spawned = Date.now();
   const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);
   if (prepared?.child.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.child.pid));
   if (prepared) {
@@ -1329,6 +1358,14 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   observed.ready();
   gatewayRecoveryError = undefined;
   log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
+  // A full start (not a warmed standby) is this host's cold start: it sizes the next handoff's readiness budgets.
+  if (!prepared) {
+    const coldStartMs = Date.now() - spawned;
+    try {
+      const samples = recordColdStart(coldStartFile(), coldStartMs);
+      log(`cold start ${coldStartMs} ms; handoff readiness budget ${standbyReadyBudgetMs(samples)} ms`);
+    } catch (error) { log(`cold start could not be recorded: ${String(error)}`); }
+  }
   if (componentsReady && !admissionProbation) runConfirmedReleasePrune();
   if (confirmUpdate) engineUpdateReady = false;
   if (!quitting) watchEngine();
