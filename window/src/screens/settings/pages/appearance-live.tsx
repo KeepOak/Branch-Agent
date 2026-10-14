@@ -15,7 +15,7 @@ import { KitProvider, type SaveReport } from "../../../places/settings/kit";
 import { startFrom, useThemeActs } from "../../../places/settings/set1/appearance";
 import { ACCENTS, ThemeEditor, type EditStart } from "../../../places/settings/set1/appearance-editor";
 import { DEFAULT_THEME, isHex, SLATE } from "../../../places/settings/set1/appearance-look";
-import { DEFAULT_PET, PETS, petsHad } from "../../../places/settings/set1/appearance-pet";
+import { DEFAULT_PET, PETS, petsHad, pickPet } from "../../../places/settings/set1/appearance-pet";
 import { sceneFile, useLook } from "../../../places/settings/set1/appearance-store";
 import { localId, Swatch, themeGroup, themeName, ThemesDialog, useThemes, type Extra } from "../../../places/settings/set1/appearance-themes";
 import { useThemeChoice, useTrunk } from "../../../places/settings/set1/appearance-top";
@@ -180,12 +180,7 @@ export function PetPick({ engine }: SlotControlProps) {
   const look = useLook(engine);
   const [failed, run] = useFailure();
   const cur = String(look.val("pet", DEFAULT_PET));
-  const pick = (id: string) => void run(async () => {
-    const had = petsHad(look);
-    await look.store.set("pet", id === DEFAULT_PET ? null : id);
-    if (id !== "none" && !had.includes(id)) await look.store.set("petsHad", [...had, id]);
-    if (!look.val("petFirst", "")) await look.store.set("petFirst", new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" }));
-  });
+  const pick = (id: string) => void run(() => pickPet(look, id));
   return <>
     <Needs engine={engine} need={lookCalls(look)} where="Pet">
       <select className="r1s-inp" aria-label="Pet" value={cur} onChange={(e) => pick(e.target.value)}>
