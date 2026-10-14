@@ -68,7 +68,6 @@ export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
   autos: "advanced", // Automations, and Automations, steps and nudges
   browser: "computer", // Computer & browser: the screen and the browser
   coding: "computer", // Computer & browser: code and commits, repositories
-  privacy: "usage", // Your data, Keeping things, Moving in and out, Flagged replies
   remote: "gateway", // Keep Branch running, Reach, Exposure, From scripts
   history: "backups", // Where, when and media of backups
   learning: "self", // What Branch may change about itself, Learning, Working on its own code
