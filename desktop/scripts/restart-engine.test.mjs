@@ -250,6 +250,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     previousCandidateMin === undefined ? delete process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB : process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = previousCandidateMin;
     for (const name of ["READY", "STEP_DOWN", "TAKE_OVER", "STANDBY_READY", "ROLLBACK"]) delete process.env[`BRANCH_DESKTOP_${name}_TIMEOUT_MS`];
     delete process.env.BRANCH_DESKTOP_RETIRE_KILL_AFTER_MS;
+    delete process.env.BRANCH_DESKTOP_RETIRE_RECHECK_MS;
     delete process.env.BRANCH_DESKTOP_ADMISSION_ROLLBACK_MS;
     delete process.env.BRANCH_DESKTOP_UPDATE_FREE_DISK;
     delete process.env.BRANCH_DESKTOP_UPDATE_FREE_MEMORY;
@@ -779,6 +780,20 @@ test("the retire backstop starts when step-down is sent, not when its slow reply
   await eventually(() => !alive(old), 8_000);
   assert.ok(Date.now() - started < 6_500, "the retire clock began after the three-second step-down reply");
 }, false, false, false, true, false, handoffOn({ RETIRE_KILL_AFTER_MS: 4000 })));
+test("a stepped-down engine still finishing a kept run outlives the lease deadline and stops once the run ends (Private #1038)", () => fixture(async ({ root, starts, restart }) => {
+  const old = (await starts())[0];
+  await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "retire-hangs"), "1");
+  // The old engine keeps a helper run in flight past the 3 s lease deadline.
+  await writeFile(join(root, "busy"), "1");
+  restart();
+  await eventually(() => swapped(root), 30_000);
+  await pause(4_500);
+  assert.equal(alive(old), true, "the old engine was killed while its kept run still worked");
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), new RegExp(`old engine ${old} is still finishing 1 kept run\\(s\\); keeping it`));
+  await unlink(join(root, "busy"));
+  await eventually(() => !alive(old), 10_000);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), new RegExp(`old engine ${old} is still alive past its lease deadline; stopping it`));
+}, false, false, false, true, false, handoffOn({ RETIRE_KILL_AFTER_MS: 3000, RETIRE_RECHECK_MS: 500 })));
 test("a busy engine from before drain-stop is never killed by an update click; the update is offered again", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const old = (await starts())[0]; await writeFile(join(root, "older-engine"), "1"); await writeFile(join(root, "busy"), "a Trunk is working");
