@@ -11,7 +11,7 @@ import { notify } from "../../../shell/notify";
 import { MODE_ROWS, blockedReason, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { platformName } from "../../../setup/steps-later";
 import { record, text, visible, type RecordValue } from "../adapter";
-import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg } from "../kit";
+import { Btn, Ctl, Empty, Hint, Pick, Plist, Prow, Sec, Seg, useHeadless } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
 
 /** Wording and the open-settings label for This computer, from the real platform. Linux has no one settings app. */
@@ -100,6 +100,9 @@ const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "pl
 export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<void> }) {
   const selected = execMode(cfg, agents);
   const lockdown = cfg.get("security.lockdown") === true;
+  const seg = <Seg layout="radio" label="Access" value={selected} options={MODE_OPTS} disabled={cfg.loading || lockdown} onChange={(mode) => void saveMode(cfg, mode, reload)} />;
+  // In the R1 Mode card the row reads as the preview writes it (preview.html PG permissions › Mode).
+  if (useHeadless()) return <Ctl title="Mode everywhere" sub="Every conversation starts here. Changing the mode in a conversation changes only that conversation." stack>{seg}</Ctl>;
   return (
     <Sec title="Access" hint="Every conversation starts here. A conversation can change its own.">
       <div data-row="Access"><Seg layout="radio" label="Access" value={selected} options={MODE_OPTS} disabled={cfg.loading || lockdown} onChange={(mode) => void saveMode(cfg, mode, reload)} /></div>
