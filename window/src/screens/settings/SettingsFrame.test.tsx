@@ -6,7 +6,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
 import { PAGES } from "./nav";
 import type { Row } from "./rows";
-import { MAKE_DEFAULT_COMING, SECTION_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
+import { MAKE_DEFAULT_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
 import type { PageSlots } from "./slots";
 import { NOTHING_MATCHES } from "./search";
 import { INVALID_CONFIG, NEEDS_ADMIN } from "./useRow";
@@ -59,18 +59,18 @@ describe("SettingsFrame", () => {
     expect($("[data-page=developer]")).toBeNull();
   });
 
-  it("puts one glass card per section in the preview's order, with Coming for General's sections not wired yet (#1049)", async () => {
+  it("puts one glass card per section in the preview's order, at the preview's level, and Pinned only once a row is pinned (#1049)", async () => {
     await mount(engineOf().engine);
     const secs = $$(".r1s-sec");
     const titles = secs.map((s) => s.querySelector("h2")?.textContent ?? "");
-    // preview.html PG.general: the card list, in order. Waiting line has only Advanced/Technical rows, so Regular skips it.
+    // preview.html PG.general: the card list, in order; at Regular the preview draws these six (Pinned only with a pin).
     const PREVIEW_GENERAL = ["Pinned", "Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "History repair", "Waiting line", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"];
     expect(titles).toEqual(PREVIEW_GENERAL.filter((t) => titles.includes(t)));
-    expect(titles).toEqual(expect.arrayContaining(["Pinned", "Show agents’ work", "Keyboard", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"]));
+    expect(titles).toEqual(["Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "Cover the screen"]);
     expect(titles).not.toContain("Waiting line");
+    expect(titles).not.toContain("Pinned");
     const keyboard = secs.find((s) => s.querySelector("h2")?.textContent === "Keyboard")!;
-    expect(keyboard.querySelector("[data-coming]")?.getAttribute("aria-disabled")).toBe("true");
-    expect(keyboard.textContent).toContain(SECTION_COMING("Keyboard"));
+    expect(keyboard.querySelector("[data-row='general.keyboard.shortcuts']")).not.toBeNull();
   });
 
   it("shows higher rows inside their own section with an inline tag, and saves the level", async () => {
