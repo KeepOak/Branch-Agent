@@ -1,11 +1,11 @@
 /**
  * Packs every asset the office needs into one generated TS module of base64 PNGs + JSON, so the
  * Vite lazy chunk has no network dependencies. Upstream assets come from
- * webview-ui/public/assets (copied to../upstream-assets); the furniture
+ * webview-ui/public/assets (copied to ../upstream-assets); the furniture
  * catalog is built with upstream's own core/src/assets/build.ts. Trunk sheets come from
  * scripts/trunk_sprites.py (../branch-assets/trunks).
  *
- * Run from the repository root: node --import./engine/scripts/tsx.mjs window/src/places/office/pixel/scripts/build-assets.ts
+ * Run from the repository root: node --import ./engine/scripts/tsx.mjs window/src/places/office/pixel/scripts/build-assets.ts
  */
 import * as fs from 'fs';
 import * as path from 'path';
