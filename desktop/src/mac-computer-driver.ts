@@ -69,7 +69,7 @@ function hostBundleId(): string {
 /** The computer pane's Coming reason line; the Gateway gets the current one with its environment.
  * Copy is the design preview's own: its permission ask says "macOS asks you to allow this once, in System Settings."
  * The preview has no line for a missing driver or a driver that fails to start, so those reasons are empty and the pane
- * shows "Computer control · Coming" alone. A start failure's SDK reason goes only to desktop.log (bootEngine logs it). */
+ * shows the preview's bare "Coming" alone. A start failure's SDK reason goes only to desktop.log (bootEngine logs it). */
 export const DRIVER_NOT_PACKAGED = "";
 export const DRIVER_NEEDS_PERMISSION = "macOS asks you to allow this once, in System Settings.";
 export const DRIVER_START_FAILED = "";

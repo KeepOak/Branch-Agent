@@ -106,7 +106,8 @@ describe("computer screen setup", () => {
     await render(engine);
     await act(async () => screenButton()!.click());
     const coming = document.querySelector(".stage-empty[data-coming]");
-    expect(coming?.textContent).toContain("Computer control · Coming");
+    expect(coming?.querySelector("b")?.textContent).toBe("Coming");
+    expect(document.body.textContent).not.toContain("Computer control");
     expect(coming?.textContent).toContain(driver.reason);
     expect(coming?.querySelector("button")).toBeNull();
     expect(document.body.textContent).not.toContain("Couldn't show this computer's screen");
@@ -118,12 +119,12 @@ describe("computer screen setup", () => {
     expect(document.querySelector(".stage-empty[data-coming]")).toBeNull();
     expect(document.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
   });
-  it("shows Computer control · Coming alone, with no reason sentence, when the driver fails to start", async () => {
+  it("shows Coming alone, with no reason sentence, when the driver fails to start", async () => {
     const { engine, request } = fixture(undefined, false, { reason: "" });
     await render(engine);
     await act(async () => screenButton()!.click());
     const coming = document.querySelector(".stage-empty[data-coming]");
-    expect(coming?.textContent).toBe("Computer control · Coming");
+    expect(coming?.textContent).toBe("Coming");
     expect(coming?.querySelector("p")).toBeNull();
     expect(request.mock.calls.some(([method]) => method === "computer.invoke")).toBe(false);
   });

@@ -11,7 +11,7 @@ export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: Windo
   const [image, setImage] = useState("");
   const [error, setError] = useState("");
   // The desktop app's reason this computer's own driver isn't ready: Coming (R1-10) until it is, polling as before.
-  // null: not Coming. An empty reason shows "Computer control · Coming" alone (the preview has no line for it).
+  // null: not Coming. An empty reason shows the preview's bare "Coming" alone (the preview has no line for it).
   const [coming, setComing] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -64,7 +64,7 @@ export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: Windo
   }, [engine, retry, onLive]);
   return <div className="st7-wrap"><div className="st7-screen live-st">
     {image ? <img className="native-screen" src={image} alt="Live screen of this computer" /> : null}
-    {coming !== null ? <div className="stage-empty" data-coming={coming}><b>Computer control · Coming</b>{coming ? <p>{coming}</p> : null}</div>
+    {coming !== null ? <div className="stage-empty" data-coming={coming}><b>Coming</b>{coming ? <p>{coming}</p> : null}</div>
       : !image || error ? <div className="stage-empty"><b>{error || "Connecting…"}</b>{error ? <button type="button" className="btn" onClick={onRetry}>Try again</button> : null}</div> : null}
   </div></div>;
 }

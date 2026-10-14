@@ -32,7 +32,7 @@ export type GatewayComputerStatus = {
 
 /** Set by the desktop app when it starts the Gateway without a native driver endpoint. */
 const DRIVER_REASON_ENV = "BRANCH_COMPUTER_DRIVER_REASON";
-/** An empty reason still means Coming: the pane then shows "Computer control · Coming" with no reason line. */
+/** An empty reason still means Coming: the pane then shows the preview's bare "Coming" with no reason line. */
 function appDriverReason(env: NodeJS.ProcessEnv): string | undefined {
   const reason = env[DRIVER_REASON_ENV]?.trim();
   return reason !== undefined && reason.length <= 300 ? reason : undefined;
