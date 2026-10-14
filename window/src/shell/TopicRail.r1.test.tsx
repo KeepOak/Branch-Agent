@@ -15,7 +15,7 @@ afterEach(async () => { if (root) await act(async () => root!.unmount()); root =
 const topic: Topic = { key: "agent:oak:trip", contactId: "trunk:oak", title: "Plan the Lisbon trip", labelled: true, status: "active", unread: false };
 
 function render(host: Partial<R1RailHost> = {}) {
-  const r1: R1RailHost = { layout: "tabs", onLayout: vi.fn(), onCreate: vi.fn(async () => {}), onDelete: vi.fn(async () => {}), ...host };
+  const r1: R1RailHost = { layout: "tabs", onLayout: vi.fn(), onCreate: vi.fn(async () => {}), onDelete: vi.fn(async () => {}), onReset: vi.fn(), ...host };
   const container = document.createElement("div"); document.body.append(container); root = createRoot(container);
   const onOpen = vi.fn();
   act(() => root!.render(<TopicRail clear r1={r1} contactId="trunk:oak" contactName="Oak" contactKey="agent:oak:main" generalPreview="Reply" generalUpdatedAt={1}
@@ -27,11 +27,21 @@ function render(host: Partial<R1RailHost> = {}) {
 }
 
 describe("R1 thread rail", () => {
-  it("offers only Tabs above the chat in its Threads show as menu", async () => {
+  it("offers only Tabs above the chat and Freedom Mode in its Threads show as menu, with Reset widths only in Freedom Mode", async () => {
     const t = render();
     await t.press("How threads show: Tabs above the chat");
     const items = [...document.querySelectorAll("[role='menu'] [role='menuitemradio']")].map((node) => node.textContent?.replace("✓", "").trim());
-    expect(items).toEqual(["Tabs above the chat"]);
+    expect(items).toEqual(["Tabs above the chat", "Freedom ModeDrag either side to any size"]);
+    expect([...document.querySelectorAll("[role='menu'] .mi")].some((node) => node.textContent === "Reset widths")).toBe(false);
+    await act(async () => [...document.querySelectorAll<HTMLElement>("[role='menu'] [role='menuitemradio']")][1]!.click());
+    expect(t.r1.onLayout).toHaveBeenCalledWith("free");
+  });
+
+  it("shows Reset widths in Freedom Mode and runs it", async () => {
+    const t = render({ layout: "free" });
+    await t.press("How threads show: Freedom Mode");
+    await t.press("Reset widths", document);
+    expect(t.r1.onReset).toHaveBeenCalled();
   });
 
   it("puts a round + first in the tabs, which opens New topic, and creates a topic from it", async () => {

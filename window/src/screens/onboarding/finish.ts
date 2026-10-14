@@ -10,6 +10,7 @@ import { freshChoices } from "../../setup/setup-model";
 import { recordSetup } from "../../setup/use-setup-engine";
 import { DAY_ONE_TEMPLATES, type ListedTemplate } from "../seedbank/templates";
 import { carried, GREETING, mainSessionOf, ownerTimeZone, type OnboardingState } from "./model";
+import { trunkDisplayName } from "../../connect/trunk-name";
 
 export type Made = { templateId: string; agentId: string; name: string };
 export type DefaultTrunk = { id: string; name: string; mainKey: string };
@@ -22,8 +23,7 @@ export function readDefaultTrunk(value: unknown): DefaultTrunk | null {
   if (!id) return null;
   const agents = Array.isArray(v.agents) ? (v.agents as Record<string, unknown>[]) : [];
   const row = agents.find((a) => a && a.id === id) ?? {};
-  const identity = row.identity && typeof row.identity === "object" ? (row.identity as Record<string, unknown>) : {};
-  return { id, name: str(identity.name) || str(row.name) || id, mainKey: str(v.mainKey) || "main" };
+  return { id, name: trunkDisplayName({ ...row, id }), mainKey: str(v.mainKey) || "main" };
 }
 
 /** Creates each picked template that isn't made yet, in order. Stops at the first failure with the engine's words. */
