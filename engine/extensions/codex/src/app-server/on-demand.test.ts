@@ -17,8 +17,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerCodexRuntime } from "../codex-runtime.js";
 import type { CodexAppServerStartOptions } from "./config-contracts.js";
-import { resolveManagedCodexAppServerStartOptions } from "./managed-binary.js";
+import {
+  isManagedCodexDownloadPending,
+  resolveManagedCodexAppServerStartOptions,
+  setManagedCodexOnDemand,
+} from "./managed-binary.js";
 import {
   CODEX_DOWNLOAD_ASSETS,
   codexDownloadPinsMatchVersion,
@@ -26,11 +31,13 @@ import {
 } from "./on-demand-assets.js";
 import {
   CodexRuntimeUnavailableError,
+  codexDownloadProgress,
   createCodexOnDemand,
   extractPackageTarball,
   parseCodexVersion,
   type CodexOnDemandDeps,
 } from "./on-demand.js";
+import { prepareCodexForTurn, type CodexTurnDownloadEvent } from "./turn-download.js";
 import { CODEX_APP_SERVER_VERSION } from "./version.js";
 
 const TRIPLE = "aarch64-apple-darwin";
@@ -89,6 +96,70 @@ function fixtureAsset(bytes: Buffer): CodexDownloadAsset {
 
 function okFetch(bytes: Buffer) {
   return vi.fn(async () => new Response(new Uint8Array(bytes), { status: 200 }));
+}
+
+/**
+ * A stream stub for the registry: the first part of the tarball arrives, then the
+ * body waits until release() (or the request's signal aborts, as a real fetch does).
+ */
+function gatedFetch(bytes: Buffer, cut: number) {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const signals: AbortSignal[] = [];
+  const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+    const signal = init?.signal ?? undefined;
+    if (signal) {
+      signals.push(signal);
+    }
+    let step = 0;
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (step === 0) {
+          step = 1;
+          controller.enqueue(new Uint8Array(bytes.subarray(0, cut)));
+          return;
+        }
+        if (step === 1) {
+          step = 2;
+          await Promise.race([
+            gate,
+            new Promise<void>((_resolve, reject) => {
+              signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+            }),
+          ]);
+          controller.enqueue(new Uint8Array(bytes.subarray(cut)));
+          return;
+        }
+        controller.close();
+      },
+    });
+    return new Response(body, { status: 200 });
+  });
+  return { fetch, release: () => release(), signals };
+}
+
+type Handler = (opts: { respond: (ok: boolean, payload?: unknown) => void }) => Promise<void>;
+
+/** The plugin's codex.runtime gateway methods, as the window calls them. */
+function gatewayMethods(overrides: Partial<CodexOnDemandDeps>) {
+  const methods = new Map<string, { handler: Handler; scope?: string }>();
+  const onDemand = registerCodexRuntime(
+    {
+      rootDir: undefined,
+      registerGatewayMethod: ((method: string, handler: Handler, opts?: { scope?: string }) => {
+        methods.set(method, { handler, scope: opts?.scope });
+      }) as never,
+    },
+    overrides,
+  );
+  const call = async (method: string) => {
+    let answer: unknown;
+    await methods.get(method)!.handler({ respond: (_ok, payload) => (answer = payload) });
+    return answer as Record<string, unknown>;
+  };
+  return { onDemand, methods, call };
 }
 
 function startOptions(): CodexAppServerStartOptions {
@@ -417,5 +488,183 @@ describe("Codex on demand", () => {
       expect(entry?.[1], asset.target).toBe(asset.integrity);
     }
     expect(parseCodexVersion("codex-cli 0.160.0\n")).toBe("0.160.0");
+  });
+  describe("while a Codex turn waits for the download", () => {
+    afterEach(() => {
+      setManagedCodexOnDemand(undefined);
+    });
+
+    function turn(
+      onDemand: ReturnType<typeof createCodexOnDemand>,
+      signal = new AbortController().signal,
+    ) {
+      const events: CodexTurnDownloadEvent["data"][] = [];
+      const done = prepareCodexForTurn({
+        startOptions: startOptions(),
+        signal,
+        emit: (event) => {
+          expect(event.stream).toBe("run_status");
+          events.push(event.data);
+        },
+        onDemand,
+        pending: (start) =>
+          isManagedCodexDownloadPending(start, {
+            platform: "darwin",
+            pluginRoot,
+            onDemand,
+            pathExists: noDesktopApps,
+          }),
+      });
+      return { events, done };
+    }
+
+    it("shows the download in the conversation in plain words, with its real size, updating as it goes", async () => {
+      // The words the chat shows, with the pinned size of the real download (not the unpacked size).
+      const pinned = CODEX_DOWNLOAD_ASSETS["darwin-arm64"];
+      expect(codexDownloadProgress(pinned, Math.ceil(pinned.bytes * 0.42)).message).toBe(
+        "Getting Codex ready (134 MB)… 42%",
+      );
+      const tarball = codexFixture();
+      const asset = fixtureAsset(tarball);
+      const gated = gatedFetch(tarball, Math.floor(tarball.length / 2));
+      const onDemand = createCodexOnDemand(
+        deps({ asset, fetch: gated.fetch as unknown as typeof globalThis.fetch }),
+      );
+
+      const { events, done } = turn(onDemand);
+      await vi.waitFor(() => expect(events.at(-1)?.percent ?? 0).toBeGreaterThan(0));
+      expect(events[0]).toMatchObject({
+        phase: "codex_download",
+        state: "downloading",
+        percent: 0,
+      });
+      const halfway = events.at(-1)!;
+      expect(halfway).toMatchObject({ state: "downloading", bytes: tarball.length });
+      expect(halfway.message).toBe(codexDownloadProgress(asset, halfway.received!).message);
+      expect(halfway.message).toMatch(/^Getting Codex ready \(\d+ MB\)… \d+%$/u);
+      // Settings and the chat read the same words from codex.runtime.
+      await expect(onDemand.status()).resolves.toMatchObject({
+        state: "downloading",
+        message: halfway.message,
+      });
+
+      gated.release();
+      await done;
+      expect(events.at(-1)).toMatchObject({ state: "ready", message: "Codex is ready." });
+      const percents = events.filter((e) => e.state === "downloading").map((e) => e.percent!);
+      expect(percents).toEqual([...percents].toSorted((a, b) => a - b));
+      expect(new Set(percents).size).toBe(percents.length);
+      // Ready: a later turn says nothing and downloads nothing.
+      const later = turn(onDemand);
+      await later.done;
+      expect(later.events).toEqual([]);
+      expect(gated.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("Cancel (codex.runtime.cancel) aborts the fetch, deletes the partial file, leaves Codex not downloaded and ends the turn with Cancelled", async () => {
+      const tarball = codexFixture();
+      const asset = fixtureAsset(tarball);
+      const gated = gatedFetch(tarball, Math.floor(tarball.length / 2));
+      const { onDemand, methods, call } = gatewayMethods(
+        deps({ asset, fetch: gated.fetch as unknown as typeof globalThis.fetch }),
+      );
+      expect(methods.get("codex.runtime.cancel")?.scope).toBe("operator.write");
+
+      const { events, done } = turn(onDemand);
+      const ended = done.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      await vi.waitFor(() => expect(events.at(-1)?.percent ?? 0).toBeGreaterThan(0));
+      const partial = (await readdir(path.join(stateDir, "tools", "codex"))).filter((entry) =>
+        entry.startsWith(".download-"),
+      );
+      expect(partial).toHaveLength(1);
+
+      const answer = await call("codex.runtime.cancel");
+      expect(answer).toMatchObject({
+        cancelled: true,
+        state: "download",
+        reason: "not-downloaded",
+      });
+      expect(gated.signals[0]?.aborted).toBe(true);
+      // The partial file is gone and nothing was installed.
+      expect(await readdir(path.join(stateDir, "tools", "codex"))).toEqual([]);
+      await expect(onDemand.installedLauncher()).resolves.toBeUndefined();
+      const error = await ended;
+      expect(error).toBeInstanceOf(CodexRuntimeUnavailableError);
+      expect(error).toMatchObject({ reason: "cancelled", message: "Cancelled" });
+      expect(events.at(-1)).toEqual({
+        phase: "codex_download",
+        state: "cancelled",
+        message: "Cancelled",
+      });
+      // Not a failure: codex.runtime still offers the download, and nothing runs now.
+      await expect(call("codex.runtime")).resolves.toMatchObject({ state: "download" });
+      await expect(call("codex.runtime.cancel")).resolves.toMatchObject({ cancelled: false });
+    });
+
+    it("stopping the only waiting turn stops the download too, and keeps nothing", async () => {
+      const tarball = codexFixture();
+      const gated = gatedFetch(tarball, 64);
+      const onDemand = createCodexOnDemand(
+        deps({
+          asset: fixtureAsset(tarball),
+          fetch: gated.fetch as unknown as typeof globalThis.fetch,
+        }),
+      );
+      const run = new AbortController();
+      const { events, done } = turn(onDemand, run.signal);
+      await vi.waitFor(() => expect(gated.signals).toHaveLength(1));
+      run.abort();
+      await expect(done).rejects.toMatchObject({ reason: "cancelled" });
+      await vi.waitFor(() => expect(gated.signals[0]?.aborted).toBe(true));
+      await vi.waitFor(async () =>
+        expect(await readdir(path.join(stateDir, "tools", "codex"))).toEqual([]),
+      );
+      expect(events.at(-1)).toMatchObject({ state: "cancelled" });
+      await expect(onDemand.status()).resolves.toMatchObject({ state: "download" });
+    });
+
+    it("offline: the turn ends with the reason, and Try again (codex.runtime.download) restarts the download", async () => {
+      const tarball = codexFixture();
+      const asset = fixtureAsset(tarball);
+      let online = false;
+      const fetch = vi.fn(async () => {
+        if (!online) {
+          throw new TypeError("fetch failed", {
+            cause: Object.assign(new Error("getaddrinfo ENOTFOUND registry.npmjs.org"), {
+              code: "ENOTFOUND",
+            }),
+          });
+        }
+        return new Response(new Uint8Array(tarball), { status: 200 });
+      });
+      const { onDemand, call } = gatewayMethods(
+        deps({ asset, fetch: fetch as unknown as typeof globalThis.fetch }),
+      );
+
+      const { events, done } = turn(onDemand);
+      await expect(done).rejects.toMatchObject({ reason: "offline" });
+      expect(events.at(-1)).toMatchObject({ state: "failed", reason: "offline" });
+      expect(events.at(-1)?.message).toMatch(
+        /looks offline \(ENOTFOUND\).*Connect to the internet and try again/u,
+      );
+      await expect(call("codex.runtime")).resolves.toMatchObject({
+        state: "unavailable",
+        reason: "offline",
+      });
+
+      online = true;
+      await call("codex.runtime.download");
+      await vi.waitFor(async () =>
+        expect(await call("codex.runtime")).toMatchObject({ state: "ready", source: "downloaded" }),
+      );
+      expect(fetch).toHaveBeenCalledTimes(2);
+      // The next turn finds Codex and starts without a download line.
+      const next = turn(onDemand);
+      await next.done;
+      expect(next.events).toEqual([]);
+    });
   });
 });

@@ -33,6 +33,7 @@ import { useApprovalDetails, useHelpers, useReactions, type ApprovalDetails } fr
 import { useMessageActions, type MessageChanges, type ReplyTarget } from "../../thread/useMessageActions";
 import { Icon } from "../../shell/icons";
 import { blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
+import { CodexLine, useCodexLine } from "./codex-line";
 import { HoverBar } from "./HoverBar";
 import { NoticeLine, TimeDivider, TypingLine } from "./lines";
 import { AgentReply, TimeLine, UserBubble } from "./Message";
@@ -197,7 +198,9 @@ export function ChatView(props: ChatViewProps) {
     onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast("Stopped " + h.name + ". " + name + " carries on without it."), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} /> : null;
 
   const view: View = { all, name, running, live, actionsFor, changes, reactions, apply, details, answer, grouped, times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast, room: props.room };
-  const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
+  // The Codex download line is drawn once, below the live run (screens/chat/codex-line.tsx), not as a run block.
+  const codex = useCodexLine({ engine, live, running, ended: props.ended, sessionKey: props.sessionKey, toast });
+  const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status" && !(b.kind === "notice" && b.codex)), history.length)) : [];
   // The run's token count (the engine's usage block), as Classic's live-run header shows it; once something visible arrives.
   const usage = running ? live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage") : undefined;
   const liveShows = live.some((b) => b.kind === "text" || b.kind === "step" || b.kind === "plan" || b.kind === "preamble" || (b.kind === "approval") || (b.kind === "thinking" && work.mode !== "normal"));
@@ -215,7 +218,8 @@ export function ChatView(props: ChatViewProps) {
         {pendingUser ? <UserBubble block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="delivered" />
         {running ? liveEntries.map((entry) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live />) : null}
-        {running && !liveShows && !waitingTwo.length ? <TypingLine name={name} /> : null}
+        {codex.view ? <CodexLine view={codex.view} onCancel={codex.cancel} onRetry={codex.retry} /> : null}
+        {running && !liveShows && !waitingTwo.length && codex.view?.state !== "downloading" ? <TypingLine name={name} /> : null}
         {running && liveShows && usage?.total ? <NoticeLine text={usage.total.toLocaleString() + " tokens so far"} testid="live-usage" /> : null}
         {running ? (props.steered ?? []).map((note) => <NoticeLine key={note.runId} text={"You steered " + name + ": “" + note.text + "”. It takes this at its next step."} testid="steered-note" />) : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />

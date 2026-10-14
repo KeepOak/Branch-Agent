@@ -94,7 +94,7 @@ export type Block =
   /** The end of a turn. `stopped`: you (or the engine) stopped it; the thread says so instead of "Done in". */
   | { kind: "done"; key: string; runId: string; durationMs?: number; stopped?: boolean }
   | { kind: "error"; key: string; runId?: string; message: string }
-  | { kind: "notice"; key: string; text: string; at?: number; topicKey?: string }
+  | { kind: "notice"; key: string; text: string; at?: number; topicKey?: string; codex?: CodexDownloadLine }
   | { kind: "status"; key: string; phase: string; attempt?: number; maxAttempts?: number };
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -367,6 +367,25 @@ function onLifecycle(b: Builder, event: RunEvent, approvals: ReadonlyMap<string,
 /** `run_status` phases that explain an account change in plain words and stay in the thread. */
 const NOTICE_PHASES = new Set(["account_switched", "account_limited"]);
 
+/** The engine's first-use Codex download as the waiting turn reports it (`run_status` phase "codex_download"). */
+export const CODEX_DOWNLOAD_PHASE = "codex_download";
+export type CodexDownloadLine = { state: "downloading" | "ready" | "failed" | "cancelled"; runId: string; percent?: number; reason?: string };
+
+function codexLine(event: RunEvent): Extract<Block, { kind: "notice" }> | null {
+  const state = str(event.data.state);
+  if (state !== "downloading" && state !== "ready" && state !== "failed" && state !== "cancelled") return null;
+  const percent = typeof event.data.percent === "number" ? event.data.percent : undefined;
+  const reason = str(event.data.reason);
+  return {
+    kind: "notice",
+    // One line per run, updated in place as the download goes on.
+    key: `${event.runId}:${CODEX_DOWNLOAD_PHASE}`,
+    text: str(event.data.message) || (state === "cancelled" ? "Cancelled" : ""),
+    codex: { state, runId: event.runId, ...(percent !== undefined ? { percent } : {}), ...(reason ? { reason } : {}) },
+    ...recordedAt(event.ts),
+  };
+}
+
 /** The run's startup phase (`run_status`), while nothing else has come after it. */
 function lastStatus(events: readonly RunEvent[]): Extract<Block, { kind: "status" }> | null {
   for (let i = events.length - 1; i >= 0; i -= 1) {
@@ -374,7 +393,7 @@ function lastStatus(events: readonly RunEvent[]): Extract<Block, { kind: "status
     if (e.stream === "assistant" || e.stream === "tool" || e.stream === "thinking") {
       return null;
     }
-    if (e.stream === "run_status" && str(e.data.phase) && !NOTICE_PHASES.has(str(e.data.phase))) {
+    if (e.stream === "run_status" && str(e.data.phase) && !NOTICE_PHASES.has(str(e.data.phase)) && str(e.data.phase) !== CODEX_DOWNLOAD_PHASE) {
       const retry = record(e.data.retry);
       return {
         kind: "status",
@@ -427,6 +446,13 @@ export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<s
       // "Claude account 1 hit its limit until Sat 2:00 AM. Moved to Claude account 2." stays after later events.
       b.text = null;
       b.blocks.push({ kind: "notice", key: `${event.runId}:${str(event.data.phase)}:${event.seq}`, text: str(event.data.message), ...recordedAt(event.ts) });
+    } else if (event.stream === "run_status" && str(event.data.phase) === CODEX_DOWNLOAD_PHASE) {
+      const line = codexLine(event);
+      if (line) {
+        const at = b.blocks.findIndex((block) => block.key === line.key);
+        if (at < 0) b.blocks.push(line);
+        else b.blocks[at] = line;
+      }
     } else if (event.stream === "lifecycle") {
       onLifecycle(b, event, approvals);
       ended ||= event.data.phase === "end" || event.data.phase === "error";
@@ -434,7 +460,11 @@ export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<s
   }
   // A wrapper's nested calls are the steps (the real command, its approval); the wrapper itself would be a second
   // row for the same command, and the finished turn (history.ts) doesn't have it either.
-  const blocks = b.wrappers.size ? b.blocks.filter((block) => block.kind !== "step" || !b.wrappers.has(block.key)) : b.blocks;
+  const wrapped = b.wrappers.size ? b.blocks.filter((block) => block.kind !== "step" || !b.wrappers.has(block.key)) : b.blocks;
+  // A Codex download that failed or was cancelled already says so on its own line (with Try again); the turn's
+  // error would only say it a second time.
+  const codexEnded = wrapped.some((block) => block.kind === "notice" && (block.codex?.state === "failed" || block.codex?.state === "cancelled"));
+  const blocks = codexEnded ? wrapped.filter((block) => block.kind !== "error") : wrapped;
   if (ended) {
     return settle(blocks);
   }

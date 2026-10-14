@@ -1,2 +1,3 @@
 engine:extensions/codex/src/app-server/on-demand.test.ts
 window:src/screens/settings/pages/accounts-live.test.tsx
+window:src/screens/chat/codex-line.test.tsx

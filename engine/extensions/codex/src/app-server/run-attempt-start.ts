@@ -1,7 +1,4 @@
-import {
-  embeddedAgentLog,
-  hasBeforeToolCallPolicy,
-} from "branch/plugin-sdk/agent-harness-runtime";
+import { embeddedAgentLog, hasBeforeToolCallPolicy } from "branch/plugin-sdk/agent-harness-runtime";
 import { resolveAgentConfig } from "branch/plugin-sdk/agent-scope-runtime";
 import { resolveCodexAppServerForModelProvider } from "./app-server-policy.js";
 import { startCodexAttemptThread } from "./attempt-startup.js";
@@ -14,6 +11,7 @@ import {
 } from "./run-attempt-lifecycle.js";
 import type { CodexAttemptResources } from "./run-attempt-resources.js";
 import { CodexThreadPolicyHandoffError } from "./thread-policy.js";
+import { prepareCodexForTurn } from "./turn-download.js";
 
 export async function startCodexAttemptRuntime(resources: CodexAttemptResources) {
   const {
@@ -80,6 +78,12 @@ export async function startCodexAttemptRuntime(resources: CodexAttemptResources)
     void emitCodexAppServerEvent(params, {
       stream: "codex_app_server.lifecycle",
       data: { phase: "startup" },
+    });
+    // A first-use download happens here, in view of the conversation and outside the startup timeout.
+    await prepareCodexForTurn({
+      startOptions: pluginAppServer.start,
+      signal: runAbortController.signal,
+      emit: (event) => emitCodexAppServerEvent(params, event),
     });
     const startupResult = await startCodexAttemptThread({
       assertCurrent: connection.assertCurrent,

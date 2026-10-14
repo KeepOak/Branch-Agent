@@ -15,27 +15,25 @@
  */
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { constants as fsConstants, createReadStream, createWriteStream } from "node:fs";
+import { constants as fsConstants, createWriteStream } from "node:fs";
 import {
   access,
   chmod as fsChmod,
   copyFile,
   mkdir,
-  open,
   readFile,
   readdir,
   rename,
   rm,
   writeFile,
-  type FileHandle,
 } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
-import { createGunzip } from "node:zlib";
 import { parse as parseSemver } from "semver";
 import { resolveCodexDownloadAsset, type CodexDownloadAsset } from "./on-demand-assets.js";
+import { extractPackageTarball } from "./on-demand-tar.js";
 import { MIN_SUPPORTED_CODEX_APP_SERVER_VERSION } from "./version.js";
 
 export type CodexRuntimeSource = "path" | "bundled" | "downloaded";
@@ -46,7 +44,8 @@ export type CodexRuntimeUnavailableReason =
   | "digest-mismatch"
   | "unsupported-platform"
   | "download-failed"
-  | "install-failed";
+  | "install-failed"
+  | "cancelled";
 
 export type CodexRuntimeStatus =
   | { state: "ready"; source: CodexRuntimeSource; command: string; version?: string }
@@ -54,7 +53,7 @@ export type CodexRuntimeStatus =
   | { state: "downloading"; version: string; bytes: number; received: number; message: string }
   | {
       state: "unavailable";
-      reason: Exclude<CodexRuntimeUnavailableReason, "not-downloaded">;
+      reason: Exclude<CodexRuntimeUnavailableReason, "not-downloaded" | "cancelled">;
       version?: string;
       bytes?: number;
       message: string;
@@ -99,8 +98,19 @@ export type CodexOnDemand = {
   findPathCommand(): Promise<{ command: string; version: string } | undefined>;
   /** The downloaded launcher when a verified copy is installed; never downloads. */
   installedLauncher(): Promise<string | undefined>;
-  /** The downloaded launcher, downloading and verifying it first when needed. */
-  ensureLauncher(): Promise<string>;
+  /**
+   * The downloaded launcher, downloading and verifying it first when needed.
+   * onProgress hears every received chunk of a running download. A caller's
+   * signal only lets that caller stop waiting; the download itself stops when
+   * the last waiter with a signal leaves and nobody asked for it without one.
+   */
+  ensureLauncher(options?: CodexEnsureLauncherOptions): Promise<string>;
+  /**
+   * Stops a running download: aborts the fetch, deletes the partial file and
+   * leaves Codex "not downloaded". Waiting turns end with "Cancelled".
+   * Resolves true once the download has stopped, false when none was running.
+   */
+  cancel(): Promise<boolean>;
   /** What Codex would run now, or why it cannot. Never downloads. */
   status(): Promise<CodexRuntimeStatus>;
   /** Folder the verified download lives in. */
@@ -122,7 +132,52 @@ const OFFLINE_CODES = new Set([
   "UND_ERR_SOCKET",
 ]);
 
-type DownloadProgress = { received: number };
+/** Progress of a running download, as a waiting turn shows it. */
+export type CodexDownloadProgress = {
+  received: number;
+  bytes: number;
+  percent: number;
+  message: string;
+};
+
+export type CodexEnsureLauncherOptions = {
+  signal?: AbortSignal;
+  onProgress?: (progress: CodexDownloadProgress) => void;
+};
+
+/** The only words a cancelled download ends with. */
+export const CODEX_DOWNLOAD_CANCELLED = "Cancelled";
+
+type DownloadProgress = { received: number; notify?: () => void };
+
+type InFlight = {
+  promise: Promise<string>;
+  progress: DownloadProgress;
+  controller: AbortController;
+  listeners: Set<(progress: CodexDownloadProgress) => void>;
+  /** Callers waiting with a signal; at zero (and none kept) the download stops. */
+  waiters: number;
+  /** Someone asked without a signal (Settings' Download now): only Cancel stops it. */
+  kept: boolean;
+};
+
+function cancelledError(): CodexRuntimeUnavailableError {
+  return new CodexRuntimeUnavailableError("cancelled", CODEX_DOWNLOAD_CANCELLED);
+}
+
+/** "Getting Codex ready (134 MB)… 42%": the real size of the download, in plain words. */
+export function codexDownloadProgress(
+  asset: Pick<CodexDownloadAsset, "bytes">,
+  received: number,
+): CodexDownloadProgress {
+  const percent = Math.max(0, Math.min(99, Math.floor((received / asset.bytes) * 100)));
+  return {
+    received,
+    bytes: asset.bytes,
+    percent,
+    message: `Getting Codex ready (${formatMegabytes(asset.bytes)})… ${percent}%`,
+  };
+}
 
 /** Builds the on-demand resolver. One download runs at a time; callers share it. */
 export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
@@ -138,7 +193,7 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
   let pathCache:
     | { key: string; at: number; found?: { command: string; version: string } }
     | undefined;
-  let inFlight: { promise: Promise<string>; progress: DownloadProgress } | undefined;
+  let inFlight: InFlight | undefined;
   let lastFailure: CodexRuntimeUnavailableError | undefined;
 
   const storeDir = () =>
@@ -187,7 +242,7 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
     }
   }
 
-  async function ensureLauncher() {
+  async function ensureLauncher(options: CodexEnsureLauncherOptions = {}) {
     const installed = await installedLauncher();
     if (installed) {
       return installed;
@@ -195,8 +250,23 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
     if (!asset) {
       throw unsupportedPlatformError(platform, arch);
     }
+    if (options.signal?.aborted) {
+      throw cancelledError();
+    }
     if (!inFlight) {
       const progress: DownloadProgress = { received: 0 };
+      const controller = new AbortController();
+      const listeners = new Set<(progress: CodexDownloadProgress) => void>();
+      progress.notify = () => {
+        const shown = codexDownloadProgress(asset, progress.received);
+        for (const listener of listeners) {
+          try {
+            listener(shown);
+          } catch {
+            // A listener that fails must not stop the download.
+          }
+        }
+      };
       const promise = downloadAndInstall({
         asset,
         dir: storeDir()!,
@@ -205,12 +275,18 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
         chmod,
         platform,
         progress,
+        signal: controller.signal,
       }).then(
         (launcher) => {
           lastFailure = undefined;
           return launcher;
         },
         (error: unknown) => {
+          if (controller.signal.aborted) {
+            // Cancelled: nothing was kept and Codex is simply not downloaded, not failed.
+            lastFailure = undefined;
+            throw cancelledError();
+          }
           lastFailure =
             error instanceof CodexRuntimeUnavailableError
               ? error
@@ -222,7 +298,14 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
           throw lastFailure;
         },
       );
-      const current = { promise, progress };
+      const current: InFlight = {
+        promise,
+        progress,
+        controller,
+        listeners,
+        waiters: 0,
+        kept: false,
+      };
       inFlight = current;
       const clear = () => {
         if (inFlight === current) {
@@ -231,7 +314,68 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
       };
       promise.then(clear, clear);
     }
-    return inFlight.promise;
+    return waitFor(inFlight, options);
+  }
+
+  function waitFor(current: InFlight, options: CodexEnsureLauncherOptions): Promise<string> {
+    const { signal, onProgress } = options;
+    if (onProgress) {
+      current.listeners.add(onProgress);
+    }
+    if (!signal) {
+      current.kept = true;
+    } else {
+      current.waiters += 1;
+    }
+    return new Promise<string>((resolve, reject) => {
+      let done = false;
+      const leave = () => {
+        if (onProgress) {
+          current.listeners.delete(onProgress);
+        }
+        signal?.removeEventListener("abort", onAbort);
+      };
+      const onAbort = () => {
+        if (done) {
+          return;
+        }
+        done = true;
+        leave();
+        current.waiters -= 1;
+        if (current.waiters <= 0 && !current.kept) {
+          current.controller.abort();
+        }
+        reject(cancelledError());
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      current.promise.then(
+        (launcher) => {
+          if (!done) {
+            done = true;
+            leave();
+            resolve(launcher);
+          }
+        },
+        (error: unknown) => {
+          if (!done) {
+            done = true;
+            leave();
+            reject(error);
+          }
+        },
+      );
+    });
+  }
+
+  async function cancel(): Promise<boolean> {
+    const current = inFlight;
+    if (!current) {
+      return false;
+    }
+    current.controller.abort();
+    // Resolve only once the fetch stopped and the partial file is gone.
+    await current.promise.catch(() => undefined);
+    return true;
   }
 
   async function status(): Promise<CodexRuntimeStatus> {
@@ -259,17 +403,21 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
         message: unsupportedPlatformError(platform, arch).message,
       };
     }
-    if (inFlight) {
-      const percent = Math.min(99, Math.floor((inFlight.progress.received / asset.bytes) * 100));
+    if (inFlight && !inFlight.controller.signal.aborted) {
+      const progress = codexDownloadProgress(asset, inFlight.progress.received);
       return {
         state: "downloading",
         version: asset.version,
         bytes: asset.bytes,
-        received: inFlight.progress.received,
-        message: `Downloading Codex ${asset.version} (${formatMegabytes(asset.bytes)}): ${percent}%.`,
+        received: progress.received,
+        message: progress.message,
       };
     }
-    if (lastFailure && lastFailure.reason !== "not-downloaded") {
+    if (
+      lastFailure &&
+      lastFailure.reason !== "not-downloaded" &&
+      lastFailure.reason !== "cancelled"
+    ) {
       return {
         state: "unavailable",
         reason: lastFailure.reason,
@@ -287,7 +435,7 @@ export function createCodexOnDemand(deps: CodexOnDemandDeps): CodexOnDemand {
     };
   }
 
-  return { findPathCommand, installedLauncher, ensureLauncher, status, storeDir };
+  return { findPathCommand, installedLauncher, ensureLauncher, cancel, status, storeDir };
 }
 
 /** Path of the copied launcher inside a store folder. */
@@ -404,6 +552,7 @@ type InstallParams = {
   chmod: (file: string, mode: number) => Promise<void>;
   platform: NodeJS.Platform;
   progress: DownloadProgress;
+  signal: AbortSignal;
 };
 
 async function downloadAndInstall(params: InstallParams): Promise<string> {
@@ -421,6 +570,7 @@ async function downloadAndInstall(params: InstallParams): Promise<string> {
   try {
     const tarball = path.join(work, "codex.tgz");
     const digest = await downloadTo(tarball, params);
+    params.signal.throwIfAborted();
     if (digest.sha256 !== asset.sha256 || digest.bytes !== asset.bytes) {
       throw new CodexRuntimeUnavailableError(
         "digest-mismatch",
@@ -486,8 +636,13 @@ async function downloadTo(
   const { asset } = params;
   let response: Response;
   try {
-    response = await params.fetch(asset.url, { signal: AbortSignal.timeout(30 * 60_000) });
+    response = await params.fetch(asset.url, {
+      signal: AbortSignal.any([params.signal, AbortSignal.timeout(30 * 60_000)]),
+    });
   } catch (error) {
+    if (params.signal.aborted) {
+      throw cancelledError();
+    }
     const code = networkCode(error);
     if (code && OFFLINE_CODES.has(code)) {
       throw offlineError(asset, code, error);
@@ -510,6 +665,7 @@ async function downloadTo(
     transform(chunk: Buffer, _encoding, callback) {
       bytes += chunk.length;
       params.progress.received = bytes;
+      params.progress.notify?.();
       if (bytes > asset.bytes) {
         callback(
           new CodexRuntimeUnavailableError(
@@ -528,8 +684,12 @@ async function downloadTo(
       Readable.fromWeb(response.body as WebReadableStream<Uint8Array>),
       counter,
       createWriteStream(file, { mode: 0o600 }),
+      { signal: params.signal },
     );
   } catch (error) {
+    if (params.signal.aborted) {
+      throw cancelledError();
+    }
     if (error instanceof CodexRuntimeUnavailableError) {
       throw error;
     }
@@ -554,171 +714,4 @@ async function pruneOtherVersions(parent: string, keep: string): Promise<void> {
   }
 }
 
-type TarEntry = {
-  remaining: number;
-  padding: number;
-  kind: "file" | "pax" | "longname" | "skip";
-  out?: FileHandle;
-  memory?: Buffer[];
-};
-
-/**
- * Unpacks an npm package tarball (entries under "package/") into root. Files are
- * written without execute bits; the paths that had them are returned so the
- * caller marks them executable. Links, devices and paths outside root are refused.
- */
-export async function extractPackageTarball(tarball: string, root: string): Promise<string[]> {
-  await mkdir(root, { recursive: true });
-  const executables: string[] = [];
-  let pending: Buffer = Buffer.alloc(0);
-  let entry: TarEntry | undefined;
-  let skip = 0;
-  let paxPath: string | undefined;
-  let longName: string | undefined;
-  let ended = false;
-
-  const finishEntry = async (current: TarEntry) => {
-    await current.out?.close();
-    if (current.kind === "pax" && current.memory) {
-      paxPath = parsePaxPath(Buffer.concat(current.memory).toString("utf8"));
-    } else if (current.kind === "longname" && current.memory) {
-      longName = Buffer.concat(current.memory).toString("utf8").replace(/\0.*$/su, "");
-    }
-    skip = current.padding;
-    entry = undefined;
-  };
-
-  try {
-    for await (const chunk of createReadStream(tarball).pipe(createGunzip())) {
-      pending = pending.length ? Buffer.concat([pending, chunk as Buffer]) : (chunk as Buffer);
-      while (!ended) {
-        if (entry) {
-          if (entry.remaining > 0) {
-            if (pending.length === 0) {
-              break;
-            }
-            const take = pending.subarray(0, Math.min(entry.remaining, pending.length));
-            pending = pending.subarray(take.length);
-            entry.remaining -= take.length;
-            if (entry.out) {
-              await entry.out.write(take);
-            } else if (entry.memory) {
-              entry.memory.push(Buffer.from(take));
-            }
-          }
-          if (entry.remaining === 0) {
-            await finishEntry(entry);
-          }
-          continue;
-        }
-        if (skip > 0) {
-          if (pending.length === 0) {
-            break;
-          }
-          const drop = Math.min(skip, pending.length);
-          pending = pending.subarray(drop);
-          skip -= drop;
-          continue;
-        }
-        if (pending.length < 512) {
-          break;
-        }
-        const header = pending.subarray(0, 512);
-        pending = pending.subarray(512);
-        if (header.every((byte) => byte === 0)) {
-          ended = true;
-          break;
-        }
-        const size = readOctal(header, 124, 12);
-        const padding = (512 - (size % 512)) % 512;
-        const type = String.fromCharCode(header[156] || 48);
-        if (type === "x") {
-          entry = { remaining: size, padding, kind: "pax", memory: [] };
-          continue;
-        }
-        if (type === "g") {
-          entry = { remaining: size, padding, kind: "skip" };
-          continue;
-        }
-        if (type === "L") {
-          entry = { remaining: size, padding, kind: "longname", memory: [] };
-          continue;
-        }
-        const name = paxPath ?? longName ?? readHeaderName(header);
-        paxPath = undefined;
-        longName = undefined;
-        const relative = packageRelativePath(name);
-        if (type === "5") {
-          await mkdir(path.join(root, relative), { recursive: true });
-          entry = { remaining: size, padding, kind: "skip" };
-          continue;
-        }
-        if (type !== "0" && type !== "7") {
-          throw new Error(`refusing tar entry ${name} of type ${JSON.stringify(type)}`);
-        }
-        const target = path.join(root, relative);
-        await mkdir(path.dirname(target), { recursive: true });
-        const out = await open(target, "w", 0o644);
-        if ((readOctal(header, 100, 8) & 0o111) !== 0) {
-          executables.push(target);
-        }
-        entry = { remaining: size, padding, kind: "file", out };
-      }
-      if (ended) {
-        break;
-      }
-    }
-  } finally {
-    await entry?.out?.close().catch(() => undefined);
-  }
-  if (entry && entry.remaining > 0) {
-    throw new Error("The Codex download ended in the middle of a file.");
-  }
-  return executables;
-}
-
-function readOctal(header: Buffer, offset: number, length: number): number {
-  const field = header.subarray(offset, offset + length);
-  if ((field[0] ?? 0) & 0x80) {
-    let value = 0;
-    for (let index = 1; index < field.length; index += 1) {
-      value = value * 256 + (field[index] ?? 0);
-    }
-    return value;
-  }
-  const text = field.toString("ascii").replace(/\0.*$/su, "").trim();
-  return text ? Number.parseInt(text, 8) : 0;
-}
-
-function readHeaderName(header: Buffer): string {
-  const name = header.subarray(0, 100).toString("utf8").replace(/\0.*$/su, "");
-  const magic = header.subarray(257, 262).toString("ascii");
-  const prefix =
-    magic === "ustar" ? header.subarray(345, 500).toString("utf8").replace(/\0.*$/su, "") : "";
-  return prefix ? prefix + "/" + name : name;
-}
-
-function parsePaxPath(text: string): string | undefined {
-  for (const line of text.split("\n")) {
-    const match = /^\d+ path=(.*)$/su.exec(line);
-    if (match) {
-      return match[1];
-    }
-  }
-  return undefined;
-}
-
-function packageRelativePath(name: string): string {
-  const normalized = path.posix.normalize(name.replace(/\\/gu, "/"));
-  const relative = normalized.startsWith("package/") ? normalized.slice("package/".length) : "";
-  if (
-    !relative ||
-    normalized.includes("\0") ||
-    relative === ".." ||
-    relative.startsWith("../") ||
-    path.posix.isAbsolute(relative)
-  ) {
-    throw new Error(`refusing tar entry outside the package: ${name}`);
-  }
-  return relative;
-}
+export { extractPackageTarball };

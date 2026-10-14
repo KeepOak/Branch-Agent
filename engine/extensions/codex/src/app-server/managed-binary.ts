@@ -129,6 +129,53 @@ export async function resolveManagedCodexAppServerStartOptions(
   };
 }
 
+/**
+ * Whether starting this managed Codex now would first download it: nothing on
+ * PATH, no bundled platform package, no verified download, and no desktop app
+ * that comes first. A waiting turn uses this to show the download in the chat.
+ */
+export async function isManagedCodexDownloadPending(
+  startOptions: CodexAppServerStartOptions,
+  options: Omit<ResolveManagedCodexAppServerOptions, "download"> = {},
+): Promise<boolean> {
+  if (startOptions.transport !== "stdio" || startOptions.commandSource !== "managed") {
+    return false;
+  }
+  const pluginRoot = options.pluginRoot ?? registeredCodexPlugin.root;
+  const onDemand =
+    options.onDemand === null ? undefined : (options.onDemand ?? registeredCodexOnDemand.provider);
+  if (!pluginRoot || !onDemand) {
+    return false;
+  }
+  const platform = options.platform ?? process.platform;
+  const managedCommandOrder = startOptions.managedCommandOrder ?? "package-first";
+  const pathExists = options.pathExists ?? commandPathExists;
+  if (managedCommandOrder === "desktop-first") {
+    for (const command of resolveMacOSDesktopCodexAppServerCommandCandidates(platform)) {
+      if (await pathExists(command, platform)) {
+        return false;
+      }
+    }
+  }
+  if (managedCommandOrder !== "package-only" && (await onDemand.findPathCommand())) {
+    return false;
+  }
+  const bundledReady =
+    options.bundledReady ??
+    ((launcher: string, launcherPlatform: NodeJS.Platform) =>
+      resolveManagedCodexNativeCommand(launcher, { platform: launcherPlatform }) !== undefined);
+  const bundled = resolveManagedCodexPackageEntrypoint(pluginRoot);
+  if (bundled && bundledReady(bundled, platform)) {
+    return false;
+  }
+  return (await onDemand.installedLauncher()) === undefined;
+}
+
+/** The on-demand Codex source the plugin registered, if any. */
+export function getManagedCodexOnDemand(): ManagedCodexOnDemand | undefined {
+  return registeredCodexOnDemand.provider;
+}
+
 /** Resolves the native artifact behind a successful managed launcher selection. */
 export function resolveManagedCodexNativeCommand(
   command: string,
