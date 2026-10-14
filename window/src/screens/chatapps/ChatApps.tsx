@@ -8,11 +8,10 @@ import { appRoute, bindingsOf } from "../../places/settings/set1/chatapps-who";
 import { useResource } from "../../places/settings/hooks";
 import { PairDialog } from "../../places/customize/pairing";
 import { Icon } from "../../shell/icons";
-import { ConnectDialog } from "../../places/settings/set1/chatapps-connect";
 import "../../places/settings/set1/chatapps.css";
 import { has } from "../../places/inbox/data";
 import { useLevel } from "../settings/SettingsFrame";
-import { CHAT_APPS, GROUPS, type ChatApp } from "./catalogue";
+import { CHAT_APPS, GROUPS, estimateOf, type ChatApp } from "./catalogue";
 import { More } from "./More";
 import { Pairing } from "./Pairing";
 import { connectedOf, Pill, toneOf, useCfg } from "./parts";
@@ -32,9 +31,6 @@ const ALSO = "Also in Branch";
 
 export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsProps) {
   const [query, setQuery] = useState("");
-  // Find another app: the engine's own setup with no app chosen, in Classic's generic dialog (ConnectDialog), which
-  // follows the channel the engine picks, WhatsApp's QR link included (Classic's All chat apps › Find another app).
-  const [another, setAnother] = useState(false);
   const [pairing, setPairing] = useState(false);
   const live = useChatApps(engine);
   const cfg = useCfg(engine);
@@ -59,7 +55,6 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
   const connected = connectedOf(live.status);
   const { trunks, defaultId } = trunksOf(agents.data);
   const trunkFor = (ch: string) => { const id = appRoute(bindingsOf({ ...cfg, loading: !cfg.ready }), ch) ?? defaultId; return trunks.find(t => t.id === id)?.name ?? "your Trunk"; };
-  const wizard = canAll(engine, ["wizard.start", "wizard.next", "wizard.cancel"]);
   return <section className="r1-chatapps g-clear" aria-label="Chat apps">
     {live.error && <p role="alert"><span className="g-label">{live.error}</span> <button type="button" onClick={() => void live.reload()} data-need="channels.status">Try again</button></p>}
     <div className="r1-ca-surface g-clear"><section aria-labelledby="r1-ca-your"><h2 id="r1-ca-your" className="g-label">Your chat apps</h2>
@@ -85,7 +80,7 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
           const locked = !on && offered && !admin;
           const enabled = Boolean(app.channel && action && offered && !locked);
           const reason = locked ? "Setting up " + app.name + " needs full access on this connection." : "Setting up " + app.name + " comes in a later update.";
-          const face = <><ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{on ? state?.running ? "Connected" : state?.word : app.estimate ?? "Coming in a later update"}</small></span><span className="r1-ca-action">{locked ? "Needs full access" : !enabled ? "Coming" : on ? "Manage" : "Set up"}</span></>;
+          const face = <><ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{on ? state?.running ? "Connected" : state?.word : app.estimate ?? estimateOf(app.id)}</small></span><span className="r1-ca-action">{locked ? "Needs full access" : !enabled ? "Coming" : on ? "Manage" : "Set up"}</span></>;
           // Full access is this connection's scope, not a missing call: the card stays greyed with its reason and names its calls.
           if (locked) return <button key={app.id} type="button" className="r1-ca-card g-frost" aria-disabled="true" title={reason} data-need={needs.join(" ")}>{face}</button>;
           // Every other card goes through <Coming> with the calls it makes (R1-10). web.login.* is never in the hello, so
@@ -97,8 +92,6 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
         })}</div></section> : null;
       })}
       {!shown.length && <p className="g-label" data-lines>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}
-      {onSetup && wizard ? <p className="r1-ca-acts"><button type="button" data-need="wizard.start wizard.next wizard.cancel" disabled={!admin} title={admin ? undefined : "Setting up a chat app needs full access on this connection."} onClick={() => setAnother(true)}>Find another app</button></p> : null}
-      {another ? <div className="r1-cw"><ConnectDialog engine={engine} app={null} onClose={(changed) => { setAnother(false); if (changed) void live.reload(); }} /></div> : null}
     </section>
     {/* preview: the "Your phone" tile after the app groups; Pair a phone opens the pairing code (device.pair.setupCode). */}
     <section className="r1-ca-phone" aria-label="Your phone">
