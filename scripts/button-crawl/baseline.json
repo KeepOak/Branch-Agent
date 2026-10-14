@@ -40,9 +40,6 @@
     "chat:agent:researcher:notes > Conversation menu :: Send to the board": [
       "toast-only"
     ],
-    "chat:agent:researcher:notes > Conversation menu :: Show Researcher’s window": [
-      "dead"
-    ],
     "chat:agent:researcher:notes > How threads show: Column :: Column": [
       "dead"
     ],
