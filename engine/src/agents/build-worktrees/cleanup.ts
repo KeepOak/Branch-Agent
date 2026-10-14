@@ -57,7 +57,11 @@ export type BuildWorktreeCleanupReport = {
   retrying: number;
   kept: Partial<Record<BuildWorktreeKeepReason, number>>;
   line: string;
+  /** Set only by a dry run, which changes nothing and writes no state. */
+  dryRun?: { wouldRemove: number; wouldFreeBytes: number };
 };
+
+type CleanupOptions = { dryRun: boolean; log: (line: string) => void };
 
 type RemovingEntry = { path: string; bytes: number; since: number };
 export type BuildWorktreeCleanupState = {
@@ -193,11 +197,14 @@ class BuildWorktreeCleanup {
   private freedBytes = 0;
   private readonly remoteHeads = new Map<string, Promise<Map<string, string> | null>>();
   private readonly originUrls = new Map<string, Promise<string | null>>();
+  private wouldRemove = 0;
+  private wouldFreeBytes = 0;
 
   constructor(
     private readonly deps: BuildWorktreeCleanupDeps,
     private readonly state: BuildWorktreeCleanupState,
     private readonly statePath: string,
+    private readonly options: CleanupOptions,
   ) {}
 
   private git(cwd: string, args: string[]) {
@@ -459,8 +466,19 @@ class BuildWorktreeCleanup {
    * busy worktree is simply kept), lets Git forget it, then deletes the moved folder. A file that is still
    * locked leaves the moved folder for the next run.
    */
-  private async remove(worktree: ListedWorktree, repository: Repository): Promise<boolean> {
+  private async remove(
+    worktree: ListedWorktree,
+    repository: Repository,
+    reason: string,
+  ): Promise<boolean> {
     const bytes = await this.deps.measureBytes(worktree.path).catch(() => 0);
+    const name = path.basename(worktree.path);
+    if (this.options.dryRun) {
+      this.wouldRemove += 1;
+      this.wouldFreeBytes += bytes;
+      this.options.log(`would remove ${name} (${reason}), frees ${formatFreedBytes(bytes)}`);
+      return true;
+    }
     const aside = path.join(
       path.dirname(worktree.path),
       REMOVING_PREFIX + path.basename(worktree.path) + "-" + this.deps.now(),
@@ -482,8 +500,10 @@ class BuildWorktreeCleanup {
       await this.deps.removeTree(toLongPathSafe(aside, this.deps.platform));
       this.state.removing = this.state.removing.filter((entry) => entry.path !== aside);
       this.freedBytes += bytes;
+      this.options.log(`removed ${name} (${reason}), freed ${formatFreedBytes(bytes)}`);
     } catch {
       // Retried on the next run; the moved folder is no longer a worktree.
+      this.options.log(`detached ${name} (${reason}); files still in use, retried next run`);
     }
     return true;
   }
@@ -538,7 +558,7 @@ class BuildWorktreeCleanup {
           processDirs,
         });
       }
-      if (pruneNeeded) {
+      if (pruneNeeded && !this.options.dryRun) {
         await this.git(repository.cwd, ["worktree", "prune"]);
       }
     }
@@ -561,6 +581,7 @@ class BuildWorktreeCleanup {
     if (
       context.lowDisk &&
       !inUse &&
+      !this.options.dryRun &&
       touched !== null &&
       this.deps.now() - touched >= NODE_MODULES_IDLE_MS
     ) {
@@ -588,16 +609,31 @@ class BuildWorktreeCleanup {
       this.keep("unpushed");
       return;
     }
-    if (!(await this.staleReason(worktree, repository, touched))) {
+    const reason = await this.staleReason(worktree, repository, touched);
+    if (!reason) {
       this.keep("active");
       return;
     }
-    await this.remove(worktree, repository);
+    await this.remove(worktree, repository, reason);
   }
 
   report(): BuildWorktreeCleanupReport {
     const retrying = this.state.removing.length;
     const counts = { removed: this.removed, freedBytes: this.freedBytes, retrying };
+    if (this.options.dryRun) {
+      const wouldRemove = this.wouldRemove;
+      const wouldFreeBytes = this.wouldFreeBytes;
+      const noun = wouldRemove === 1 ? "worktree" : "worktrees";
+      return {
+        at: this.deps.now(),
+        removed: 0,
+        freedBytes: 0,
+        retrying,
+        kept: { ...this.kept },
+        line: `dry run: would free ${formatFreedBytes(wouldFreeBytes)}, would remove ${wouldRemove} ${noun}`,
+        dryRun: { wouldRemove, wouldFreeBytes },
+      };
+    }
     return {
       at: this.deps.now(),
       ...counts,
@@ -620,7 +656,12 @@ export async function runBuildWorktreeCleanup(params: {
   statePath: string;
   deps: BuildWorktreeCleanupDeps;
   signal?: AbortSignal;
+  /** Reports what would be removed and changes nothing on disk or in state. */
+  dryRun?: boolean;
+  /** One line per removal (or per would-be removal in a dry run). */
+  log?: (line: string) => void;
 }): Promise<BuildWorktreeCleanupResult> {
+  const dryRun = params.dryRun === true;
   const roots: string[] = [];
   for (const root of params.roots) {
     const real = await realpathOrNull(root);
@@ -633,13 +674,18 @@ export async function runBuildWorktreeCleanup(params: {
     excludeDirs.push((await realpathOrNull(excluded)) ?? path.resolve(excluded));
   }
   const state = await readBuildWorktreeCleanupState(params.statePath);
-  const run = new BuildWorktreeCleanup(params.deps, state, params.statePath);
-  await run.finishRemoving(roots);
+  const options = { dryRun, log: params.log ?? (() => undefined) };
+  const run = new BuildWorktreeCleanup(params.deps, state, params.statePath, options);
+  if (!dryRun) {
+    await run.finishRemoving(roots);
+  }
   const repositories = await run.discover(roots);
   await run.sweep({ repositories, roots, excludeDirs, signal: params.signal });
   const report = run.report();
-  state.last = report;
-  await writeState(params.statePath, state);
+  if (!dryRun) {
+    state.last = report;
+    await writeState(params.statePath, state);
+  }
   return {
     report,
     repositories: repositories.map(({ commonDir, cwd }) => ({ commonDir, cwd })),
