@@ -26,7 +26,7 @@ import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
-import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from "./desktop-update";
+import { confirmDesktopUpdate, handOffDesktopUpdate, runsFromAppImage, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
@@ -94,6 +94,7 @@ const install: DesktopInstall | undefined = app.isPackaged ? {
   appDir: process.platform === "darwin" ? resolve(process.resourcesPath, "..", "..") : dirname(process.execPath),
   resourcesDir: process.resourcesPath, executable: process.execPath,
   electronVersion: process.versions.electron, nodePath: cfg.nodePath,
+  ...(runsFromAppImage() ? { appImage: process.env.APPIMAGE } : {}),
 } : undefined;
 
 /** Appends one line to the app's own data directory log. */
