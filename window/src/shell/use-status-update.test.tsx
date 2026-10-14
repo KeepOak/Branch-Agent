@@ -83,7 +83,7 @@ it.each(versionCases)("maps staged $latest against running $version (ready: $rea
   await mount(<Fixture version={version} />);
   expect(current?.latest).toBe(ready ? latest : null);
   expect(current?.installing).toBe(ready);
-  expect(current?.waiting).toBe(ready ? "Downloaded. Restart Branch when your work is ready." : null);
+  expect(current?.waiting).toBe(ready ? "Downloaded. It applies in place when no Trunk is working." : null);
 });
 
 function updateInfo(version: string, latest: string): UpdateInfo {

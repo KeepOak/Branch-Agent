@@ -32,7 +32,7 @@ export function WhatsNewHost({ session, ready, ...go }: Go & { session: SaplingS
   return open ? <Open session={session} ready={ready} {...go} onClose={() => setOpen(false)} /> : null;
 }
 
-function Open({ session, ready, onSettings, onSearch, onSetup, onNotice, onClose }: Go & { session: SaplingSession; ready: boolean; onClose: () => void }) {
+function Open({ session, ready, onSettings, onSearch, onSetup, onClose }: Go & { session: SaplingSession; ready: boolean; onClose: () => void }) {
   const version = useBranchVersion(session.gatewayUrl);
   const update = useUpdate(session, ready, version);
   const machine = useMachine(session, ready);
