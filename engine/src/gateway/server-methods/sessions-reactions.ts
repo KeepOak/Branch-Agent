@@ -7,6 +7,9 @@ import {
   validateSessionReactionsListParams,
   validateSessionReactionsSetParams,
   validateSessionContextSetParams,
+  validateSessionsMessagesDeleteParams,
+  validateSessionsMessagesPinParams,
+  type ErrorShape,
   type SessionReactionMirror,
 } from "../../../packages/gateway-protocol/src/index.js";
 import { resolveChannelAccount } from "../../channels/account-resolution.js";
@@ -46,11 +49,52 @@ import {
 import { gatewayClientSessionCreator } from "./gateway-client-identity.js";
 import { emitSessionsChanged } from "./session-change-event.js";
 import { withSessionReactionAccess } from "./sessions-reactions-access.js";
-import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
+import type { GatewayRequestContext, GatewayRequestHandlers, RespondFn } from "./types.js";
 import { defineValidatedGatewayHandler } from "./validation.js";
 
 function reactionScope(target: SessionSharingTarget) {
   return { agentId: target.agentId, sessionKey: target.storeKey, storePath: target.storePath };
+}
+
+/**
+ * Rewrites one user or assistant message in place in the active transcript. Answers the request
+ * itself when the message is unknown or changed underneath, and returns whether it committed.
+ */
+async function rewriteSessionMessage(params: {
+  target: SessionSharingTarget;
+  messageId: string;
+  assertCurrent: () => void;
+  respond: RespondFn;
+  rewrite: (message: Record<string, unknown>) => Record<string, unknown>;
+}): Promise<boolean> {
+  const { target, assertCurrent, respond } = params;
+  const anchor = readActiveTranscriptEntryAnchor({
+    agentId: target.agentId,
+    sessionId: target.entry.sessionId,
+    sessionKey: target.storeKey,
+    storePath: target.storePath,
+    entryId: params.messageId,
+  });
+  assertCurrent();
+  const refuse = (error: ErrorShape) => {
+    respond(false, undefined, error);
+    return false;
+  };
+  if (!anchor) {
+    return refuse(errorShape(ErrorCodes.INVALID_REQUEST, "unknown message"));
+  }
+  const changed = await rewriteTranscriptMessageAtAnchor(anchor, (value) => {
+    const message = asOptionalRecord(value);
+    if (!message || (message.role !== "user" && message.role !== "assistant")) {
+      return undefined;
+    }
+    return params.rewrite(message);
+  });
+  assertCurrent();
+  if (!changed) {
+    return refuse(errorShape(ErrorCodes.INVALID_REQUEST, "message changed; try again"));
+  }
+  return true;
 }
 
 /** A built-in agent may react only inside its host-owned active transcript. */
@@ -337,33 +381,79 @@ export const sessionReactionHandlers: GatewayRequestHandlers = {
       await withSessionReactionAccess(
         { ...params, client, context, respond, hasCurrentClientAuthority, write: true, contextChange: true },
         async ({ target, assertCurrent }) => {
-          const anchor = readActiveTranscriptEntryAnchor({
-            agentId: target.agentId,
-            sessionId: target.entry.sessionId,
-            sessionKey: target.storeKey,
-            storePath: target.storePath,
-            entryId: params.messageId,
+          const committed = await rewriteSessionMessage({
+            target,
+            messageId: params.messageId,
+            assertCurrent,
+            respond,
+            rewrite: (message) => {
+              const { excludeFromContext: _previous, ...rest } = message;
+              return params.exclude ? { ...rest, excludeFromContext: true } : rest;
+            },
           });
-          assertCurrent();
-          if (!anchor) {
-            respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown message"));
-            return;
-          }
-          const changed = await rewriteTranscriptMessageAtAnchor(anchor, (value) => {
-            const message = asOptionalRecord(value);
-            if (!message || (message.role !== "user" && message.role !== "assistant")) {
-              return undefined;
-            }
-            const { excludeFromContext: _previous, ...rest } = message;
-            return params.exclude ? { ...rest, excludeFromContext: true } : rest;
-          });
-          assertCurrent();
-          if (!changed) {
-            respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "message changed; try again"));
+          if (!committed) {
             return;
           }
           emitSessionsChanged(context, { sessionKey: target.canonicalKey, agentId: target.agentId, reason: "context" }, { accessChanged: false });
           respond(true, { messageId: params.messageId, excluded: params.exclude });
+        },
+      );
+    },
+  ),
+  // Pin state lives on the message itself, so chat.history returns it with the message and a
+  // branch or fork carries it along.
+  "sessions.messages.pin": defineValidatedGatewayHandler(
+    "sessions.messages.pin",
+    validateSessionsMessagesPinParams,
+    async ({ params, respond, client, context, hasCurrentClientAuthority }) => {
+      await withSessionReactionAccess(
+        { ...params, client, context, respond, hasCurrentClientAuthority, write: true, contextChange: true },
+        async ({ target, assertCurrent }) => {
+          const committed = await rewriteSessionMessage({
+            target,
+            messageId: params.messageId,
+            assertCurrent,
+            respond,
+            rewrite: (message) => {
+              const { pinned: _previous, ...rest } = message;
+              return params.pinned ? { ...rest, pinned: true } : rest;
+            },
+          });
+          if (!committed) {
+            return;
+          }
+          emitSessionsChanged(context, { sessionKey: target.canonicalKey, agentId: target.agentId, reason: "pin" }, { accessChanged: false });
+          respond(true, { messageId: params.messageId, pinned: params.pinned });
+        },
+      );
+    },
+  ),
+  // Deleting hides the message from chat.history (display: false) and from the model
+  // (excludeFromContext). The transcript entry stays, so replies, branches and rewind keep their
+  // parent chain.
+  "sessions.messages.delete": defineValidatedGatewayHandler(
+    "sessions.messages.delete",
+    validateSessionsMessagesDeleteParams,
+    async ({ params, respond, client, context, hasCurrentClientAuthority }) => {
+      await withSessionReactionAccess(
+        { ...params, client, context, respond, hasCurrentClientAuthority, write: true, contextChange: true },
+        async ({ target, assertCurrent }) => {
+          const deletedAt = Date.now();
+          const committed = await rewriteSessionMessage({
+            target,
+            messageId: params.messageId,
+            assertCurrent,
+            respond,
+            rewrite: (message) => {
+              const { pinned: _pinned, ...rest } = message;
+              return { ...rest, display: false, excludeFromContext: true, deletedAt };
+            },
+          });
+          if (!committed) {
+            return;
+          }
+          emitSessionsChanged(context, { sessionKey: target.canonicalKey, agentId: target.agentId, reason: "message-delete" }, { accessChanged: false });
+          respond(true, { messageId: params.messageId, deleted: true });
         },
       );
     },
