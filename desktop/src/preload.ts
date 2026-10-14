@@ -94,13 +94,19 @@ if (info) {
     reportUpdateNotice: (event: string, notice: AppliedUpdateNotice) => {
       ipcRenderer.send("branch-desktop:update-notice", event, notice);
     },
-    onAutoApplyProbe: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => {
+    onAutoApplyProbe: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean; workingTrunks?: number }>) => {
       const handler = (_event: Electron.IpcRendererEvent, id: number): void => {
         void listener().then(value => ipcRenderer.send("branch-desktop:auto-apply:result", id, value),
           error => ipcRenderer.send("branch-desktop:auto-apply:result", id, { error: String(error) }));
       };
       ipcRenderer.on("branch-desktop:auto-apply:probe", handler);
       return () => ipcRenderer.removeListener("branch-desktop:auto-apply:probe", handler);
+    },
+    /** The tray's Pause all work (Private #454 C): the window stops every live run, as its own Pause all does. */
+    onPauseAll: (listener: () => void) => {
+      const handler = (): void => listener();
+      ipcRenderer.on("branch-desktop:pause-all", handler);
+      return () => ipcRenderer.removeListener("branch-desktop:pause-all", handler);
     },
     // Windows only: the header's colours and height for the native window buttons drawn over its top-right.
     titleBar: process.platform === "win32"
