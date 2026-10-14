@@ -10,7 +10,7 @@ import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessT
 import { attachOrStartEngine, engineAnswers, restartStoppedServiceEngine, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
-import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, standbyReadyBudgetMs } from "./readiness-budget";
+import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, rollbackReadyBudgetMs, standbyReadyBudgetMs } from "./readiness-budget";
 import { readPreparedNormalProfile } from "./profile-migration";
 import { createGatewayCrashSupervisor, createServiceEngineWatch } from "./gateway-supervisor";
 import { serveWindow } from "./static-server";
@@ -18,7 +18,7 @@ import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
-import { canUndoComponentUpdate, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -80,6 +80,13 @@ const coldStartFile = (): string => join(cfg.dataDir, "cold-start.json");
 /** How long a standby that took over gets to answer /readyz: sized from the measured cold start; tests pin it. */
 function standbyReadyTimeoutMs(): number {
   return envMs(process.env.BRANCH_DESKTOP_STANDBY_READY_TIMEOUT_MS, standbyReadyBudgetMs(readColdStarts(coldStartFile())));
+}
+/**
+ * Private #967: how long an old engine that answered the rollback gets to serve again. It owns the state and restarts in
+ * place, draining its kept runs first, so the standby's budget is too short; a child that exits still fails at once.
+ */
+function rollbackReadyTimeoutMs(): number {
+  return envMs(process.env.BRANCH_DESKTOP_ROLLBACK_READY_TIMEOUT_MS, rollbackReadyBudgetMs(readColdStarts(coldStartFile()), READY_TIMEOUT_MS));
 }
 /** Private #951: agents still refused this long after a swap roll the update back; sized from the measured cold start, tests shorten it. */
 function admissionRollbackMs(): number {
@@ -637,7 +644,7 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
       // it never stepped down; an engine that answers neither but serves is an old build and is drained instead.
       const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
       if ((back === "ok" || back === "unanswered") &&
-        await priorServes(prior, back === "ok" ? standbyReadyTimeoutMs() : PRIOR_READY_CHECK_MS)) {
+        await priorServes(prior, back === "ok" ? rollbackReadyTimeoutMs() : PRIOR_READY_CHECK_MS)) {
         stopRetiring(prior);
         log(`update ${label}: the old engine did not step down in time; it kept serving; draining it instead`);
         return "drain";
@@ -702,10 +709,12 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
   // Rollback has reclaimed the state. The old engine must keep its full readiness budget without the retire timer.
   if (back === "ok") stopRetiring(prior);
-  if (back !== "ok" || !await priorServes(prior, standbyReadyTimeoutMs())) {
+  if (back !== "ok" || !await priorServes(prior, rollbackReadyTimeoutMs())) {
     notServing(prior);
     resumeSupervision();
-    throw new Error(`the update failed and the old engine could not take control back (${back}): ${message}`);
+    const failure = `the update failed and the old engine could not take control back (${back}): ${message}`;
+    log(`update ${label}: ${failure}`);
+    throw new Error(failure);
   }
   resumeSupervision();
   log(`update ${label}: the old engine took control back on port ${gatewayPort}`);
@@ -1179,6 +1188,11 @@ async function start(): Promise<void> {
     else log(`update notice ${event}`);
     if (event === "dismissed" || event === "expired") updateNotice = undefined;
   });
+  // Settings shows "Undo the last update" with its version line only while Undo can run (the previous engine's probation).
+  ipcMain.handle("branch-desktop:undo-availability", async e => {
+    if (!isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) throw new Error("Undo availability requires the owned served window");
+    return readUndoAvailability(cfg);
+  });
   ipcMain.on("branch-desktop:undo-update", e => {
     if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void undoLastUpdate();
   });
@@ -1516,6 +1530,8 @@ async function undoLastUpdate(automatic = false): Promise<void> {
     const window = automatic ? undefined : await probeWindowState();
     if (active && window && (active.activeRuns || active.totalActive || active.pendingReplies || window.pendingApprovals ||
         window.streaming || window.unsavedDraftFiles)) throw new Error("The previous version cannot take over while work is running");
+    // After the probation the previous engine is (or is about to be) pruned: Undo never runs past its deadline.
+    if (!await canUndoComponentUpdate(cfg)) throw new Error("The previous version is no longer available");
     if (!await prepareComponentUpdateUndo(cfg, dir => { servedWindowDir = dir; })) throw new Error("The previous version is no longer available");
     const previousVersion = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
     await swapEngineInPlace("previous version", true, lock);

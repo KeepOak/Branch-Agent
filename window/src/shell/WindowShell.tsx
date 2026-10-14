@@ -23,7 +23,7 @@ import { pageName } from "../places-nav/settings-nav";
 import { effectiveDark, readThemeChoice, setThemeChoice, toggleTheme, type ThemeChoice } from "../theme/theme";
 import { BannerView, raiseBanner } from "./Banner";
 import { bannerFor } from "./banner-news";
-import { useProblemBanners } from "./problem-banners";
+import { useDiskFullBanner, useProblemBanners } from "./problem-banners";
 import { askBeforeDelete, ConfirmCatalogDelete, ConfirmDelete } from "./ConfirmDelete";
 import { conversationActions } from "./conversation-actions";
 import { SessionUnreadPatchGuard } from "../connect/unread-guard";
@@ -982,6 +982,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   useMarkRead(request, openRow, route.kind === "chat" && ready, () => void list.refresh());
   const rowExtras = useRowExtras(openKey, level, useCallback((key: string) => lists.rows.find((r) => r.key === key)?.title || "a conversation", [lists.rows]));
   useBannerNews(session, route.kind === "chat" ? openKey : null, rowName, (key) => trunkName(lists.rows.find((r) => r.key === key)?.agentId));
+  useDiskFullBanner();
   useProblemBanners({
     session,
     phase: s.status.phase,
