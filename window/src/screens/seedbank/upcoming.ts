@@ -7,11 +7,8 @@ export type Upcoming = { id: string; name: string; where: string; what: string; 
 
 export const UPCOMING_COMING = "Arrives in a later update.";
 
-/** In the order a person meets them: a message, the list, Settings, setup, then the message box's + menu. */
+/** In the order a person meets them: the list, Settings, setup, then the message box's + menu. */
 export const UPCOMING: readonly Upcoming[] = [
-  { id: "message-link", name: "Link to one message", where: "Message menu", what: "Copy a link that opens the conversation at that message.", icon: "link", need: "sessions.messages.link" },
-  { id: "message-picture", name: "Share a message as a picture", where: "Message menu", what: "Turn a reply into an image to send anywhere.", icon: "camera", need: "sessions.messages.share" },
-  { id: "coding-app", name: "Continue in a coding app", where: "Message menu", what: "Carry a conversation into a coding app on this computer.", icon: "code", need: "sessions.handoff" },
   { id: "folders", name: "Your own folders", where: "The list", what: "Make folders of your own beside All, Unread and the rest.", icon: "folder", need: "sessions.folders.put" },
   { id: "make-default", name: "Make default from search", where: "Settings search", what: "Make a Trunk your default straight from a search result.", icon: "branch", need: "config.patch" },
   { id: "general-more", name: "More General settings", where: "Settings › General", what: "Pinned, Keyboard, Clipboard history, Quick ask, Controllers and Cover the screen.", icon: "gear", need: "config.patch" },
