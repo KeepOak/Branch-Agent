@@ -4,7 +4,7 @@
 // gallery and the theme editor, any accent colour, hold to preview the background, the pet and the pets you've had, each
 // Trunk's model and stage, how threads show, and the small model line. Every control names the engine call it makes, or
 // says data-local when it stays in this window.
-import { cloneElement, useEffect, useMemo, useState, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
+import { cloneElement, useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { canAll } from "../../../connect/capabilities";
 import { Coming } from "../../../glass/coming";
@@ -48,7 +48,7 @@ export function useFailure(): [string, (run: () => Promise<unknown>) => Promise<
   return [text, run, report];
 }
 
-const MODES: { v: ThemeChoice; label: string }[] = [{ v: "light", label: "Light" }, { v: "dark", label: "Dark" }, { v: "system", label: "Match this computer" }];
+const MODES: { v: ThemeChoice; label: string }[] = [{ v: "light", label: "Light" }, { v: "dark", label: "Dark" }, { v: "system", label: "Auto" }]; // preview: "one label everywhere: Light / Dark / Auto" (#1049)
 
 /** Light, dark or match this computer: the window's own switch (as the top bar's button), and themes.set {mode} for a
  *  signed-in person, as Classic's Light or dark. */
@@ -140,13 +140,11 @@ export function AccentColour({ engine }: SlotControlProps) {
   const need = lookCalls(look);
   return <>
     <Needs engine={engine} need={need} where="Accent colour">
-      <span className="r1s-own-ctl">
-        <select className="r1s-inp" aria-label="Accent colour" value={isHex(accent) ? accent.toLowerCase() : "theme"} onChange={(e) => set(e.target.value === "theme" ? null : e.target.value)}>
-          <option value="theme">The theme’s own</option>
-          {ACCENTS.map((a) => <option key={a} value={a}>{a.toUpperCase()}</option>)}
-          {own ? <option value={accent.toLowerCase()}>{accent.toUpperCase()} · your colour</option> : null}
-        </select>
-        <input className="r1s-well" type="color" aria-label="Any colour" value={isHex(accent) ? accent : SLATE[mode].accent} onChange={(e) => set(e.target.value.toLowerCase())} />
+      {/* preview accent6: the theme's own (A), the swatches, and a colour input for any colour (#1049). */}
+      <span className="r1s-own-ctl r1s-accs" role="group" aria-label="Accent colour">
+        <button type="button" className="r1s-acc r1s-acc-theme" aria-label="The theme’s own accent" aria-pressed={!isHex(accent)} onClick={() => set(null)}>A</button>
+        {ACCENTS.map((a) => <button key={a} type="button" className="r1s-acc" style={{ "--c": a } as CSSProperties} aria-label={"Accent " + a} aria-pressed={isHex(accent) && accent.toLowerCase() === a} onClick={() => set(a)} />)}
+        <label className="r1s-acc r1s-acc-pick" aria-label="Any colour" data-on={own || undefined}><input type="color" aria-label="Any colour" value={isHex(accent) ? accent : SLATE[mode].accent} onChange={(e) => set(e.target.value.toLowerCase())} /></label>
       </span>
     </Needs>
     <Failed text={failed} />

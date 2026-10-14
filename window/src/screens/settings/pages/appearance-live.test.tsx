@@ -146,4 +146,18 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(row("appearance.theme.pick")!.getAttribute("aria-disabled")).toBe("true");
     expect(undeclaredControls(host)).toEqual([]);
   });
+
+  it("#1049: Light / Dark / Auto, and the accent as the theme's own, swatches and any colour (preview accent6)", async () => {
+    const { request } = await mount();
+    const mode = row("appearance.theme.mode")!;
+    expect([...mode.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Light", "Dark", "Auto"]);
+    const acc = row("appearance.theme.accent")!;
+    expect(acc.querySelector("select")).toBeNull();
+    const swatches = [...acc.querySelectorAll<HTMLButtonElement>(".r1s-acc[aria-label^='Accent #']")];
+    expect(swatches.length).toBeGreaterThanOrEqual(6);
+    expect(acc.querySelector('[aria-label="The theme’s own accent"]')?.getAttribute("aria-pressed")).toBe("true");
+    await click(swatches[1]);
+    expect(swatches[1].getAttribute("aria-pressed")).toBe("true");
+    expect(request.mock.calls.length).toBeGreaterThan(0);
+  });
 });
