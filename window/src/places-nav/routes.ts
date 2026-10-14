@@ -2,7 +2,8 @@
 // one of the seven places, or a Settings page. The last route is kept on this computer and reopened at launch.
 import type { IconName } from "../shell/icons";
 
-export type PlaceId = "overview" | "canopy" | "inbox" | "automations" | "library" | "people" | "customize" | "office";
+/** Grove (office) and Seedbank open from the sidebar, so they are places without a sidebar row. */
+export type PlaceId = "overview" | "canopy" | "inbox" | "automations" | "library" | "people" | "customize" | "office" | "seedbank";
 
 export type Route =
   | { kind: "chat"; key: string | null }
@@ -23,7 +24,7 @@ export const PLACES: { id: PlaceId; name: string; icon: IconName }[] = [
 const KEY = "branch.route";
 
 export function isPlace(id: string): id is PlaceId {
-  return id === "office" || PLACES.some((p) => p.id === id);
+  return id === "office" || id === "seedbank" || PLACES.some((p) => p.id === id);
 }
 
 export function parseRoute(raw: string | null): Route | null {

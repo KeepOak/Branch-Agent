@@ -4,11 +4,12 @@ import { trunkAppearance } from "../../face/appearance";
 import { CharacterFace } from "../../face/CharacterFace";
 import { LOOKS, lookOf, type Roster } from "./model";
 import { Layer } from "./layer";
+import { Icon } from "../../shell/icons";
 
 const NAMES = ["Ash", "Elm", "Hazel", "Rowan", "Alder", "Willow", "Linden", "Birch", "Juniper", "Cedar"];
 export type TrunkChoice = { name: string; avatar: string };
 
-export function nextTrunkChoice(roster: Roster, previous?: TrunkChoice, fixedName?: string): TrunkChoice {
+function nextTrunkChoice(roster: Roster, previous?: TrunkChoice, fixedName?: string): TrunkChoice {
   const used = new Set(roster.agents.map((row) => row.name.toLowerCase()));
   const names = NAMES.filter((name) => !used.has(name.toLowerCase()) && name !== previous?.name);
   let fallback = roster.agents.length + 1;
@@ -20,15 +21,15 @@ export function nextTrunkChoice(roster: Roster, previous?: TrunkChoice, fixedNam
   return { name, avatar: `branch:${pool[Math.floor(Math.random() * pool.length)].id}` };
 }
 
-export function NewTrunkPreview({ roster, fixedName, busy, onConfirm, onClose }: { roster: Roster; fixedName?: string; busy?: boolean; onConfirm: (choice: TrunkChoice) => void; onClose: () => void }) {
+export function NewTrunkPreview({ roster, fixedName, busy, error, onConfirm, onClose }: { roster: Roster; fixedName?: string; busy?: boolean; error?: string | null; onConfirm: (choice: TrunkChoice) => void; onClose: () => void }) {
   const [choice, setChoice] = useState(() => nextTrunkChoice(roster, undefined, fixedName));
   const appearance = trunkAppearance(choice.avatar, choice.name);
   return <Layer><Dialog title="Add a Trunk" onClose={onClose} testid="new-trunk-preview" footer={<>
     <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-    <button type="button" className="btn pri" disabled={busy} onClick={() => onConfirm(choice)}>{busy ? "Making…" : "Make Trunk"}</button>
+    <button type="button" className="btn pri" disabled={busy} onClick={() => onConfirm(choice)}>{busy ? "Creating…" : "Create Trunk"}</button>
   </>}><div className="tk-big">
     {appearance && <CharacterFace appearance={appearance} size={84} label={choice.name} />}
-    <button type="button" className="btn sm" disabled={busy} onClick={() => setChoice(nextTrunkChoice(roster, choice, fixedName))}>Shuffle</button>
+    <button type="button" className="btn sm" disabled={busy} title={fixedName ? "Pick a different look" : "Pick a different name and look"} onClick={() => setChoice(nextTrunkChoice(roster, choice, fixedName))}><Icon name="dice" small />{fixedName ? "Random look" : "Random name"}</button>
     <label className="tk-field"><span className="tk-label">Name</span><input className="inp" value={choice.name} disabled={Boolean(fixedName) || busy} onChange={(event) => setChoice({ ...choice, name: event.target.value })} /></label>
-  </div></Dialog></Layer>;
+  </div>{error && <p role="alert" className="tk-error">{error}</p>}</Dialog></Layer>;
 }

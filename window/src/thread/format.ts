@@ -181,7 +181,7 @@ export function stepOutputFilename(title: string): string {
   return `${stem}-output.txt`;
 }
 
-export type DiffMark = "+" | "-" | " ";
+type DiffMark = "+" | "-" | " ";
 export type DiffLine = { mark: DiffMark; text: string };
 
 /** Unified-diff text → preview fileChangesPB18 rows (`[' ', t]`, `['+', t]`, `['-', t]`). */

@@ -130,8 +130,10 @@ describe("Overview screen", () => {
     const { host } = await render(request);
     const lockdownBtn = button(host, "Lockdown");
     expect(lockdownBtn?.disabled).toBe(false);
-    expect(lockdownBtn?.className).toContain("bad"); // Preview spec-v23 index.html:8759 button class when off
+    expect(lockdownBtn?.className).toBe("btn sm");
     await act(async () => lockdownBtn?.click());
+    expect(request.mock.calls.some(([m]) => m === "config.patch")).toBe(false);
+    await act(async () => button(host, "Turn Lockdown on")?.click());
     expect(request).toHaveBeenCalledWith("config.patch", { raw: '{"security":{"lockdown":true}}', baseHash: "h1" });
     const offBtn = button(host, "Turn Lockdown off");
     expect(offBtn).toBeTruthy();
@@ -179,5 +181,51 @@ describe("Overview screen", () => {
     const { host, openSettings } = await render();
     await act(async () => button(host, "change")!.click());
     expect(openSettings).toHaveBeenCalledWith("permissions");
+  });
+
+  it("shows a routine check-in and a display name without a chat-app id in Recent activity", async () => {
+    const sessions = [
+      { key: "agent:main:poll", agentId: "main", label: "[Branch Agent heartbeat poll]", updatedAt: NOW - 2e4 },
+      { key: "agent:main:chat", agentId: "main", label: "Alex River id:10001", updatedAt: NOW - 3e4 },
+    ];
+    const events = [
+      { kind: "agent_run", action: "agent.run.started", runId: "rp", agentId: "main", sessionKey: "agent:main:poll", occurredAt: NOW - 4e4 },
+      { kind: "agent_run", action: "agent.run.finished", runId: "rp", agentId: "main", sessionKey: "agent:main:poll", occurredAt: NOW - 2e4, status: "succeeded" },
+      { kind: "agent_run", action: "agent.run.started", runId: "rc", agentId: "main", sessionKey: "agent:main:chat", occurredAt: NOW - 5e4 },
+      { kind: "agent_run", action: "agent.run.finished", runId: "rc", agentId: "main", sessionKey: "agent:main:chat", occurredAt: NOW - 3e4, status: "succeeded" },
+    ];
+    const { host } = await render(vi.fn(async (method: string) => {
+      if (method === "sessions.list") return { sessions };
+      if (method === "audit.list") return { events };
+      return FX[method] ?? {};
+    }));
+    const recent = [...host.querySelectorAll(".ov-recent")].map(row => row.textContent);
+    expect(recent.some(text => text?.includes("Routine check-in"))).toBe(true);
+    expect(recent.some(text => text?.includes("Alex River"))).toBe(true);
+    expect(host.textContent).not.toMatch(/heartbeat poll/i);
+    expect(host.textContent).not.toMatch(/id:/i);
+    expect(host.textContent).not.toContain("10001");
+  });
+
+  it.each(["Fix the user id: field", "Why did the heartbeat poll fail?"])("preserves ordinary Recent activity title %s", async (title) => {
+    const sessions = [
+      { key: "agent:main:poll", agentId: "main", label: title, updatedAt: NOW - 2e4 },
+      { key: "agent:main:chat", agentId: "main", label: "Alex River id:10001", updatedAt: NOW - 3e4 },
+    ];
+    const events = [
+      { kind: "agent_run", action: "agent.run.started", runId: "rp", agentId: "main", sessionKey: "agent:main:poll", occurredAt: NOW - 4e4 },
+      { kind: "agent_run", action: "agent.run.finished", runId: "rp", agentId: "main", sessionKey: "agent:main:poll", occurredAt: NOW - 2e4, status: "succeeded" },
+      { kind: "agent_run", action: "agent.run.started", runId: "rc", agentId: "main", sessionKey: "agent:main:chat", occurredAt: NOW - 5e4 },
+      { kind: "agent_run", action: "agent.run.finished", runId: "rc", agentId: "main", sessionKey: "agent:main:chat", occurredAt: NOW - 3e4, status: "succeeded" },
+    ];
+    const { host } = await render(vi.fn(async (method: string) => {
+      if (method === "sessions.list") return { sessions };
+      if (method === "audit.list") return { events };
+      return FX[method] ?? {};
+    }));
+    const recent = [...host.querySelectorAll(".ov-recent")].map(row => row.textContent);
+    expect(recent.some(text => text?.includes(title))).toBe(true);
+    expect(recent.some(text => text?.includes("Alex River"))).toBe(true);
+    expect(host.textContent).not.toContain("10001");
   });
 });

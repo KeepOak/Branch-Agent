@@ -142,6 +142,24 @@ Within each tier, the first matching `bindings` entry wins.
 
 For `type: "acp"` entries, Branch Agent resolves by exact conversation identity (`match.channel` + account + `match.peer.id`) and does not use the route binding tier order above.
 
+### Per-agent toolsets
+
+Each agent can switch named toolsets on or off with `agents.entries.<id>.toolsets`. Omit a toolset, or set it `true`, to keep it on (the default). Set it `false` to remove that toolset's tools from the agent's offer. Switches only remove tools. They never add an allow, so profiles, Lockdown and exec approvals still apply.
+
+```json5
+{
+  agents: {
+    entries: {
+      notes: {
+        toolsets: { browser: false, computer: false, messaging: false },
+      },
+    },
+  },
+}
+```
+
+Toolsets: `browser`, `files`, `shell`, `computer`, `interface`, `web`, `memory`, `messaging`, `sessions`, `github`, `media`, `automation`, `skills`, `thinking`, `goals`, `secrets`. Always on: `message`, `ask_user`, `session_status`, `heartbeat_respond`, `structured_output`. Unknown names fail config validation. Plugin and MCP tools are not in any toolset and are not switched by these settings.
+
 ### Per-agent access profiles
 
 <Accordion title="Full access (no sandbox)">

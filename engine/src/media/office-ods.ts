@@ -1,4 +1,3 @@
-// Adapted from Kilo-Org/kilocode 6fd9b7b: packages/opencode/src/kilocode/tool/ods.ts.
 import { CFB } from "xlsx";
 
 function attribute(xml: string, name: string): string | undefined {

@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 
-export type QuestionOption = { label: string; description?: string };
+type QuestionOption = { label: string; description?: string };
 export type Question = {
   questionId: string;
   header: string;
@@ -17,7 +17,7 @@ export type Question = {
   url?: string;
   secretStore?: { name: string; kind: string; allowedHosts: string[] };
 };
-export type QuestionStatus = "pending" | "answered" | "cancelled" | "expired";
+type QuestionStatus = "pending" | "answered" | "cancelled" | "expired";
 export type QuestionRecord = {
   id: string;
   questions: Question[];
@@ -34,7 +34,7 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const STATUSES: QuestionStatus[] = ["pending", "answered", "cancelled", "expired"];
 
-export function parseQuestion(raw: unknown): Question | null {
+function parseQuestion(raw: unknown): Question | null {
   const v = rec(raw);
   const questionId = str(v.questionId);
   const question = str(v.question).trim();
