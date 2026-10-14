@@ -74,7 +74,7 @@ export function OtherAgents({ engine, row }: SlotControlProps) {
   const label = row.label ?? "Learn from other coding agents’ history on this computer";
   return <>
     <span className="r1s-own-ctl">
-      <Coming engine={engine} need="config: reading other coding agents' history as you go" unwired reason="The engine copies their memory in once instead of reading it as you go." where={label}>
+      <Coming engine={engine} need="config: reading other coding agents' history as you go" unwired reason="Learning from their history as you go comes in a later update." where={label}>
         <span className="r1s-own-ctl"><Toggle label={label} on={false} onChange={() => undefined} /></span>
       </Coming>
       <Needs engine={engine} need={["migrations.memory.plan", "migrations.memory.apply"]} where="Bring their memory in">
