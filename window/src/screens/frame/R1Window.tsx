@@ -86,7 +86,6 @@ export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
   autos: "advanced", // Automations, and Automations, steps and nudges
   browser: "computer", // Computer & browser: the screen and the browser
   coding: "computer", // Computer & browser: code and commits, repositories
-  remote: "gateway", // Keep Branch running, Reach, Exposure, From scripts
 };
 
 /**

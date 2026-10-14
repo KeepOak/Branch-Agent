@@ -12,6 +12,8 @@ import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { INSTRUCTIONS_ROWS } from "./instructions";
 import { AboutYou, Files } from "./instructions-live";
+import { REMOTE_ROWS } from "./remote";
+import { Activity, BrowserPage, GatewayAddress, Https, Infrastructure, LabelComputer, Lately, Origins, Ping, RestartEngine as RestartGateway, Risky, ScriptCode } from "./remote-live";
 import { GENERAL_PAGE } from "./general-live";
 import { SIGNINS_ROWS } from "./signins";
 import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
@@ -53,6 +55,24 @@ export const R1_PAGES: PageSlots = {
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
   instructions: { rows: INSTRUCTIONS_ROWS, controls: { "instructions.you.file": AboutYou, "instructions.project.files": Files } },
+  // Remote access: native R1 cards in the preview's order; Classic Gateway draws behind its rows (remote-live.tsx).
+  remote: {
+    rows: REMOTE_ROWS,
+    controls: {
+      "remote.reached.label": LabelComputer,
+      "remote.reached.browser": BrowserPage,
+      "remote.doing.lately": Lately,
+      "remote.doing.restart": RestartGateway,
+      "remote.connection.address": GatewayAddress,
+      "remote.connection.ping": Ping,
+      "remote.connection.activity": Activity,
+      "remote.connection.infra": Infrastructure,
+      "remote.exposure.https": Https,
+      "remote.exposure.origins": Origins,
+      "remote.exposure.risky": Risky,
+      ...Object.fromEntries(["send", "connect", "poll", "else", "several"].map((id) => [`remote.scripts.${id}`, ScriptCode])),
+    },
+  },
   // Sign-ins & keys: the preview's four cards; Classic's password manager and key store inside them.
   signins: { rows: SIGNINS_ROWS, controls: { "signins.where.block": SigninWhere, "signins.keys.block": SigninKeys } },
   // Updates & about: the preview's ten cards; Classic Updates' sections and the achievements badges inside them.
