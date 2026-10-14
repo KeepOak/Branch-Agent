@@ -10,7 +10,7 @@ import { CharacterFace } from "../face/CharacterFace";
 import { Face } from "../face/Face";
 import { trunkAppearance } from "../face/appearance";
 import { Icon } from "../shell/icons";
-import { LEVEL_LINES, SETUP_PAGES, levelFor, pageAtLevel, pageName, searchSettings, settingsGroups, settingsSections, sectionId, type Level, type SearchRow } from "./settings-nav";
+import { HIDDEN_PAGES, LEVEL_LINES, SETUP_PAGES, levelFor, pageAtLevel, pageName, searchSettings, settingsGroups, settingsSections, sectionId, type Level, type SearchRow } from "./settings-nav";
 import "./settings-frame.css";
 
 const LEVEL_KEY = "branch.level";
@@ -21,7 +21,6 @@ const LEVELS: { id: Level; name: string }[] = [
 ];
 const LV: Record<Level, Lv> = { regular: 0, advanced: 1, technical: 2 };
 /** Not allowed to change setup (§4.7.0): SETUP_PAGES' rows grey; these pages leave the nav. config.patch needs operator.admin. */
-const HIDDEN_PAGES = ["secrets", "gateway", "self"];
 
 export function readLevel(): Level {
   try {
