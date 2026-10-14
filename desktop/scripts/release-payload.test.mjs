@@ -120,7 +120,7 @@ test("the release payload no longer contains the Codex binary; the launcher stay
   assert.deepEqual(files.filter(isCodexPlatformPackageFile), []);
   assert(!files.some(path => /@openai\/codex-(?:darwin|linux|win32)-/u.test(path)), "no Codex platform package folder is left");
   assert(files.includes("node_modules/@openai/codex/bin/codex.js") && files.includes("node_modules/@openai/codex/package.json"),
-    "the small launcher stays; the engine points it at the downloaded platform package");
+    "the small launcher stays (source checkouts pair it with the bundled platform package)");
   const payload = await measurePayload(root);
   assert.equal(payload.categories["Codex CLI binary"], 0);
   assert.deepEqual(payloadBudgetProblems({ ...payload, categories: { ...payload.categories, "Dependency source maps": 0, "Dependency declarations": 0 } }), []);

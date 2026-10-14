@@ -63,9 +63,9 @@ async function deployEngine(pnpm, scratch, identity, macSigning) {
   // Dependency source maps and declarations: no packaged runtime loads them (~83 MB per installed engine).
   const pruned = await pruneProductionDependencies(deployment);
   console.log(`Removed ${pruned.files} dependency source maps and declarations (${(pruned.bytes / 1048576).toFixed(1)} MiB)`);
-  // Codex's platform package (~318 MiB) is fetched on first use, verified against its pinned SHA-256.
+  // Codex's platform package (~318 MiB) never ships: Codex turns use the Codex the person installs.
   const codex = await pruneCodexPlatformPackages(deployment);
-  console.log(`Removed the Codex platform package (${codex.packages.join(", ") || "none"}; ${(codex.bytes / 1048576).toFixed(1)} MiB); Codex downloads on first use`);
+  console.log(`Removed the Codex platform package (${codex.packages.join(", ") || "none"}; ${(codex.bytes / 1048576).toFixed(1)} MiB); Codex runs from the person's own install`);
   if (identity.platform === "darwin") {
     const binary = join(deployment, "cua-driver");
     await run("bash", [join(engineRoot, "scripts/stage-cua-driver-macos.sh"), binary]);

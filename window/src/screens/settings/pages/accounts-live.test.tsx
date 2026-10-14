@@ -183,32 +183,47 @@ describe("R1 Settings › Accounts draws every working Classic control", () => {
     expect(calls(request, "branch.setup.detect").length).toBeGreaterThan(before);
   });
 
-  it("Codex fetched on first use: the row names its Download state and reason, and Try again starts the download", async () => {
+  it("Codex not installed: the row reads Not found with the preview's line and Check again, and offers no download", async () => {
     const env = engineOf();
     const answer = env.request.getMockImplementation()!;
-    let runtime: Record<string, unknown> = { state: "unavailable", reason: "offline", version: "0.160.0", bytes: 134_311_083,
-      message: "Codex isn't downloaded yet and this computer looks offline (ENOTFOUND). Connect to the internet and try again." };
+    let detect: Record<string, unknown> = { candidates: [], unavailableCandidates: [{ id: "codex-cli", reason: "codex: command not found" }] };
     env.request.mockImplementation((async (method: string, params?: unknown) => {
       if (method === "config.get") return { hash: "h1", valid: true, config: { agents: { defaults: { model: { fallbacks: [] } } }, plugins: { entries: { codex: { enabled: true } } } } };
-      if (method === "codex.runtime") return runtime;
-      if (method === "codex.runtime.download") {
-        runtime = { state: "downloading", version: "0.160.0", bytes: 134_311_083, received: 0, message: "Downloading Codex 0.160.0 (134 MB): 0%." };
-        return runtime;
-      }
+      if (method === "branch.setup.detect") return detect;
+      // An engine from the first-use download design still answers these; the row must not use them.
+      if (method === "codex.runtime") return { state: "download", reason: "not-downloaded", version: "0.160.0", bytes: 134_311_083, message: "Codex 0.160.0 downloads the first time you use it (134 MB)." };
+      if (method === "codex.runtime.download") return { state: "downloading", received: 0, bytes: 134_311_083, message: "Downloading Codex 0.160.0 (134 MB): 0%." };
       return answer(method, params);
     }) as typeof answer);
     (env.engine as unknown as { features: { methods: string[] } }).features.methods = [...METHODS, "codex.runtime", "codex.runtime.download"];
     const { request } = await mount(vi.fn(), env);
     const codex = row("accounts.apps.codex")!;
-    expect(codex.textContent).toContain("Not downloaded");
-    expect(codex.textContent).toContain("looks offline (ENOTFOUND)");
-    await click(button(codex, "Try again"));
-    expect(calls(request, "codex.runtime.download")).toHaveLength(1);
-    expect(row("accounts.apps.codex")!.textContent).toContain("Downloading Codex 0.160.0 (134 MB)");
-    runtime = { state: "ready", source: "downloaded", command: "/state/tools/codex/0.160.0-darwin-arm64/node_modules/@openai/codex/bin/codex.js" };
-    await act(async () => { await new Promise((r) => setTimeout(r, 2100)); });
-    await settle();
-    expect(row("accounts.apps.codex")!.textContent).toContain("Models ready");
+    // Preview §4.7.8: CODE_PILL_PE18.none = Not found; "Install and sign in to ${c.name} on ${comp}, then check again."
+    expect(codex.querySelector(".r1s-item-t b")!.textContent).toBe("Not found");
+    expect(codex.querySelector(".r1s-item-t small")!.textContent).toBe("Install and sign in to Codex on this computer, then check again.");
+    expect(codex.textContent).not.toMatch(/download/i);
+    for (const gone of ["Download now", "Try again", "Cancel"]) expect(button(codex, gone)).toBeUndefined();
+    expect(calls(request, "codex.runtime")).toHaveLength(0);
+    expect(calls(request, "codex.runtime.download")).toHaveLength(0);
+    // Check again looks again; once Codex is installed and signed in, the row is ready.
+    detect = { candidates: [{ kind: "codex-cli", credentials: true }], unavailableCandidates: [] };
+    await click(button(row("accounts.apps.check"), "Check again"));
+    expect(row("accounts.apps.codex")!.querySelector(".r1s-item-t b")!.textContent).toBe("Models ready");
+  });
+
+  it("has no Codex download in the window: no download line, no download calls", async () => {
+    const { readFileSync, readdirSync, statSync } = await import("node:fs");
+    const { join, resolve } = await import("node:path");
+    const src = resolve(__dirname, "../../..");
+    const walk = (dir: string): string[] => readdirSync(dir).flatMap((name) => { const full = join(dir, name); return statSync(full).isDirectory() ? walk(full) : /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [full] : []; });
+    const files = walk(src);
+    expect(files.some((file) => file.endsWith("codex-line.tsx"))).toBe(false);
+    for (const file of files) {
+      const text = readFileSync(file, "utf8");
+      for (const banned of ["codex.runtime", "codex_download", "Getting Codex ready"]) {
+        expect(text.includes(banned), file + " mentions " + banned).toBe(false);
+      }
+    }
   });
 
   it("connects GitHub (tools.github.authorize.start) and refreshes it (tools.github.status)", async () => {

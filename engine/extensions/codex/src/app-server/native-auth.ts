@@ -39,10 +39,8 @@ export async function probeCodexNativeAuth(params: {
     ) {
       return undefined;
     }
-    // A sign-in check never starts the first-use Codex download.
     const start = await resolveManagedCodexAppServerStartOptions(options.start, {
       pluginRoot: params.pluginRoot,
-      download: false,
     });
     const env = resolveCodexAppServerSpawnEnv(start, params.env ?? process.env);
     const invocation = materializeWindowsSpawnProgram(

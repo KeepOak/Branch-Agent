@@ -27,7 +27,11 @@ import { createCodexAppServerConfig } from "./src/app-server/config-options.js";
 import { readCodexPluginConfig } from "./src/app-server/config-parsing.js";
 import { createCodexAppServerConnectionHealthService } from "./src/app-server/connection-health.js";
 import { createCodexDesktopGenerationService } from "./src/app-server/desktop-generation.js";
-import { setManagedCodexPluginRoot } from "./src/app-server/managed-binary.js";
+import { createInstalledCodex } from "./src/app-server/installed-codex.js";
+import {
+  setManagedCodexInstalled,
+  setManagedCodexPluginRoot,
+} from "./src/app-server/managed-binary.js";
 import {
   CODEX_MANAGED_THREAD_MAX_ENTRIES,
   CODEX_MANAGED_THREAD_NAMESPACE,
@@ -42,7 +46,6 @@ import {
 import { retireSharedCodexAppServerClientsBeforeDesktopGeneration } from "./src/app-server/shared-client-lifecycle.js";
 import { createCodexAppServerProcessReaperService } from "./src/app-server/transport-process-registration.js";
 import { codexNativeProfileRecoveryService } from "./src/auth-profile-health.js";
-import { registerCodexRuntime } from "./src/codex-runtime.js";
 import type { CodexPluginsConfigBlock } from "./src/command-plugin-config.js";
 import { createCodexCommand } from "./src/commands.js";
 import {
@@ -96,8 +99,8 @@ export default definePluginEntry({
     // Bundled modules may execute from a shared dist chunk, so import.meta.url
     // cannot identify the owning plugin package or its pinned dependencies.
     setManagedCodexPluginRoot(api.rootDir);
-    // Release builds fetch Codex on first use instead of shipping its platform package.
-    registerCodexRuntime(api);
+    // Release builds ship no Codex binary: turns use the Codex installed on this computer.
+    setManagedCodexInstalled(createInstalledCodex());
     api.registerProvider(codexProviderDiscovery);
     const resolveCurrentConfig = () =>
       api.runtime.config?.current ? (api.runtime.config.current() as BranchConfig) : undefined;

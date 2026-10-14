@@ -13,8 +13,8 @@ export function isDevelopmentOnlyDependencyFile(path) {
 
 /**
  * The Codex platform packages (@openai/codex-<os>-<arch>: codex, its code-mode and voice hosts, rg; ~318 MiB).
- * Releases ship only the small @openai/codex launcher; the engine fetches the platform package on first use,
- * verified against the SHA-256 pinned in engine/extensions/codex/src/app-server/on-demand-assets.ts.
+ * Releases ship only the small @openai/codex launcher; Codex turns use the Codex installed on the computer
+ * (engine/extensions/codex/src/app-server/installed-codex.ts). Nothing is downloaded.
  */
 export function isCodexPlatformPackageFile(path) {
   return /^node_modules\/(?:.+\/node_modules\/)?@openai\/codex-(?:darwin|linux|win32)-(?:arm64|x64)\//u.test(path);
@@ -84,7 +84,7 @@ export async function measurePayload(root) {
 }
 
 /**
- * The engine payload budget. Removed categories stay removed (Codex is fetched on first use). A bundled plugin's setup chunks stay small:
+ * The engine payload budget. Removed categories stay removed (Codex is the one the person installs). A bundled plugin's setup chunks stay small:
  * a relative import into engine source once copied the whole engine graph (67 MB) into one plugin.
  */
 export const PAYLOAD_BUDGET = { removed: ["Codex CLI binary", "Dependency source maps", "Dependency declarations"], setupChunkBytes: 16 * MiB };
