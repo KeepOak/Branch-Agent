@@ -899,7 +899,7 @@ const EVAL_ROWS: [string, string, string][] = [
 ];
 const GRADERS = ["Exact: matches, coverage of key words, tone", "Judge model: faithful, relevant, no made-up facts, rubric, whole conversations", "Right tools in the right order", "Was it really done (from the steps and screenshots)", "Before-and-after screenshots described", "Coding sessions: outcome and effort"];
 
-function TestModel() {
+export function TestModel() {
   return (
     <Sec title="Test the model you use" hint="Check your model against a ready-made test set." help="Run a ready-made set of tasks against the model you use now, see which it got right, what it cost, and whether anything that used to work has stopped.">
       <Ctl title="Test set" sub="Each task is checked the same way every time." off={NO_EVAL}>
@@ -910,7 +910,7 @@ function TestModel() {
   );
 }
 
-function Evals({ lv }: { lv: number }) {
+export function Evals({ lv }: { lv: number }) {
   const run = <Btn sm disabled title={NO_EVAL}>Run</Btn>;
   return (
     <Sec title="Evals" hint="Test sets you can run against your own model. Nothing runs by itself.">

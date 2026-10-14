@@ -12,6 +12,8 @@ import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { SIGNINS_ROWS } from "./signins";
 import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
+import { MODELS_ROWS } from "./models";
+import * as Mod from "./models-live";
 import { UPDATES_ROWS } from "./updates";
 import * as Up from "./updates-live";
 import { LEARNING_ROWS } from "./learning";
@@ -29,7 +31,6 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
   who: "people", notifications: "notifications", instructions: "instructions",
-  models: "models",
   permissions: "permissions",
   privacy: "usage",
   browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
@@ -49,6 +50,13 @@ export const R1_PAGES: PageSlots = {
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
   // Sign-ins & keys: the preview's four cards; Classic's password manager and key store inside them.
   signins: { rows: SIGNINS_ROWS, controls: { "signins.where.block": SigninWhere, "signins.keys.block": SigninKeys } },
+  // Models: the preview's tabs above its sixteen cards; Classic Models' sections inside them.
+  models: { rows: MODELS_ROWS, lead: Mod.ModelsLead, controls: {
+    "models.defaults.block": Mod.Defaults, "models.smaller.block": Mod.Smaller, "models.compare.block": Mod.Compare, "models.testing.block": Mod.Testing,
+    "models.mixtures.block": Mod.Mix, "models.decision.block": Mod.Decision, "models.media.block": Mod.Media, "models.finishing.block": Mod.Finishing,
+    "models.budgets.block": Mod.Budget, "models.retries.block": Mod.RetriesCard, "models.connection.block": Mod.Connection, "models.turns.block": Mod.Turns,
+    "models.try.block": Mod.Try, "models.attachments.block": Mod.AttachmentsCard, "models.each.block": Mod.Each,
+  } },
   // Updates & about: the preview's ten cards; Classic Updates' sections and the achievements badges inside them.
   updates: { rows: UPDATES_ROWS, controls: {
     "updates.updating.block": Up.Updating, "updates.devices.block": Up.Devices, "updates.before.block": Up.Before, "updates.reports.block": Up.Reports,

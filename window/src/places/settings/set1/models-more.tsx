@@ -48,7 +48,7 @@ export function ModelsSections({ m, tab }: { m: ModelsCtx; tab: string; openSett
 
 const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
 
-function Budgets({ m }: { m: ModelsCtx }) {
+export function Budgets({ m }: { m: ModelsCtx }) {
   const sub = (k: string) => m.cfg.get(m.shared("subagents", k));
   const a2a = m.cfg.get(["tools", "agentToAgent", "enabled"]);
   return (
@@ -64,7 +64,7 @@ function Budgets({ m }: { m: ModelsCtx }) {
   );
 }
 
-function SmallerJobs({ m }: { m: ModelsCtx }) {
+export function SmallerJobs({ m }: { m: ModelsCtx }) {
   const save = useSaveRunner();
   const side = refOf(m.ownOrShared("subagents", "model"));
   const utility = refOf(m.ownOrShared("utilityModel"));
@@ -86,7 +86,7 @@ function SmallerJobs({ m }: { m: ModelsCtx }) {
   );
 }
 
-function CompareModels() {
+export function CompareModels() {
   return (
     <Sec title="Compare models">
       <Ctl title="Model arena" sub="The same task to two models, you pick the better." help="The same task to two models, you pick the better. Ratings build up over time." off={NONE}><Btn sm>Open the arena</Btn></Ctl>
@@ -95,7 +95,7 @@ function CompareModels() {
   );
 }
 
-function Mixtures() {
+export function Mixtures() {
   return (
     <Sec title="Mixtures and savings">
       <Ctl title="See what it saved" sub="See round-by-round model and cache figures." help="Round-by-round figures for fewer rounds, the cache and mixing models on hard questions." off={NONE}><Btn sm>See the savings</Btn></Ctl>
@@ -106,7 +106,7 @@ function Mixtures() {
 }
 
 /** Decision models: agents.defaults.decisionModel ("" = none), from the engine's decision model list. */
-function DecisionModels({ m }: { m: ModelsCtx }) {
+export function DecisionModels({ m }: { m: ModelsCtx }) {
   const value = String(m.ownOrShared("decisionModel") ?? "");
   const opts: Opt[] = [{ id: "", label: "None" }, ...m.decisionModels.map((d) => ({ id: `${text(d.provider)}/${text(d.id)}`, label: visible(d.name) })), ...modelOpts(m.models)];
   return (
@@ -121,7 +121,7 @@ function DecisionModels({ m }: { m: ModelsCtx }) {
   );
 }
 
-function PicturesVideoMusic({ m }: { m: ModelsCtx }) {
+export function PicturesVideoMusic({ m }: { m: ModelsCtx }) {
   const media = (kind: string) => refOf(m.cfg.get(m.shared("mediaModels", kind)));
   const auto = [{ id: "", label: "Automatic: the first one that works" }];
   const pick = (kind: string, label: string) => {
@@ -155,7 +155,7 @@ const FINISH: [string, string, boolean][] = [
   ["Try several answers and keep the best", "At hard points it makes a few answers, checks each one (running the tests, say) and keeps the one that does best. Costs more.", false],
   ["Keep going while the plan has unticked steps", "If it stops with steps left, it’s reminded to carry on, unless you stopped it or it’s waiting for you.", true],
 ];
-function FinishingWell() {
+export function FinishingWell() {
   return (
     <Sec title="Finishing well">
       {FINISH.map(([t, s, on]) => <Ctl key={t} title={t} sub={s} off={NONE}><Switch checked={on} label={t} onChange={() => undefined} /></Ctl>)}
@@ -170,7 +170,7 @@ const PICKING: [string, string, boolean][] = [
   ["Offer newer models", "Once, when a newer model replaces the one you use.", true],
   ["Warn about models not made for tasks", "A small note when a picked model is weak at using tools.", true],
 ];
-function PickingModels({ m }: { m: ModelsCtx }) {
+export function PickingModels({ m }: { m: ModelsCtx }) {
   const allow = list(m.cfg.get(m.shared("modelPolicy", "allow")) as unknown[]).length;
   return (
     <Sec title="Picking models">
@@ -191,7 +191,7 @@ function PickingModels({ m }: { m: ModelsCtx }) {
   );
 }
 
-function ModelJobs({ m }: { m: ModelsCtx }) {
+export function ModelJobs({ m }: { m: ModelsCtx }) {
   return (
     <Sec title="Model jobs">
       <Ctl title="Looking at pictures" sub="Used when the main model can’t see.">

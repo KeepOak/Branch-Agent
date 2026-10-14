@@ -22,6 +22,8 @@ export type PageSlot = {
   rows?: Row[];
   /** Controls this page draws itself, by row id: each in place of that row's control, under its label and help. */
   controls?: Record<string, SlotControl>;
+  /** What a row page draws above its cards (the preview's page lead, as Models' tabs), with the frame's engine. */
+  lead?: (props: SlotPageProps) => ReactNode;
 };
 export type PageSlots = Partial<Record<PageId, PageSlot>>;
 
