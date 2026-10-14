@@ -7,7 +7,7 @@ import type { Codec, Control, Row, RowOption } from "../rows";
 
 type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[]; unit?: string; codec?: Codec };
 const slot = (id: string, card: string, label: string, calls: string[], extra: Extra = {}): Row =>
-  ({ id, page: "voice", card, label, level: 0, control: "custom", ...extra, source: { kind: "slot", calls, reason: `${label} comes with the R1 Voice & calls page.` } });
+  ({ id, page: "voice", card, label, level: 0, control: "custom", ...extra, source: { kind: "slot", calls, reason: `${label} comes in a later update.` } });
 const config = (id: string, card: string, label: string, path: string, control: Control, extra: Extra = {}): Row =>
   ({ id, page: "voice", card, label, level: 0, ownerLevel: true, control, ...extra, source: { kind: "config", path } });
 
@@ -25,6 +25,10 @@ const NEED: Record<string, string> = { [APP]: "desktop: the Branch app’s voice
 
 /** One greyed Classic row, as Classic describes it: its control, and why it is greyed (APP unless said). */
 type Grey = { t: string; sub?: string; c?: { sw: boolean } | { btn: string } | { seg: string[] } | { pick: string[] } | { field: string; unit?: string } | { area: string }; why?: string };
+/** A Coming row's reason is one plain sentence in the preview's words (R1-10): a reason that names how Branch works
+ *  inside becomes "<label> comes in a later update."; the call it waits for stays in `need`. */
+export const plainReason = (label: string, reason: string): string =>
+  /engine|gateway call|method|config|\b[a-z]+\.[a-z]+\b/i.test(reason) ? `${label} comes in a later update.` : reason;
 const slug = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 function grey(card: string, level: Level, why: string, rows: Grey[]): Row[] {
   return rows.map((g) => {
@@ -33,7 +37,7 @@ function grey(card: string, level: Level, why: string, rows: Grey[]): Row[] {
     const control: Control = !c ? "custom" : "sw" in c ? "toggle" : "seg" in c ? "segmented" : "pick" in c ? "select" : "field" in c ? (/^[\d.]+$/.test(c.field) || c.field === "" ? "number" : "text") : "area" in c ? "text" : "custom";
     const options = c && "seg" in c ? c.seg.map((v) => ({ v, label: v })) : c && "pick" in c ? c.pick.map((v) => ({ v, label: v })) : undefined;
     return { id: `voice.${slug(card)}.${slug(g.t)}`, page: "voice", card, label: g.t, level, control, ...(options ? { options } : {}), ...(c && "field" in c && c.unit ? { unit: c.unit } : {}),
-      ...(g.sub ? { help: g.sub } : {}), source: { kind: "coming", need: NEED[reason] ?? "engine: a setting for it", reason } } satisfies Row;
+      ...(g.sub ? { help: g.sub } : {}), source: { kind: "coming", need: NEED[reason] ?? "engine: a setting for it", reason: plainReason(g.t, reason) } } satisfies Row;
   });
 }
 const text: Codec = { read: (v) => (typeof v === "string" ? v : ""), write: (v) => (typeof v === "string" && v.trim() ? v.trim() : null) };

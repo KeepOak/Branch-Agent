@@ -102,7 +102,7 @@ export function AnswerAloud({ engine, row }: SlotControlProps) {
       <Choose label="Answer aloud" value={value} options={[{ v: "never", label: "Never" }, { v: "always", label: "Always" }]} disabled={!tts.data}
         onChange={(id) => void run(async () => { await engine.request(id === "never" ? "tts.disable" : "tts.enable", {}); await tts.reload(); })} />
     </Needs>
-    <Line>{tts.data?.auto === "tagged" ? "Now: only when a reply asks to be read out." : "“When I talk” waits for the engine to read aloud only after you talk."}</Line>
+    <Line>{tts.data?.auto === "tagged" ? "Now: only when a reply asks to be read out." : "Reading aloud only after you talk comes in a later update."}</Line>
     <Failed text={failed} />
   </>;
 }
