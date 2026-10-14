@@ -9,6 +9,7 @@ import {
   type FileMutationFingerprint,
 } from "../infra/file-descriptor.js";
 import { readSqliteIntegrityFileIdentity } from "../infra/sqlite-file-generation.js";
+import { createSqliteMaintenanceHold } from "../infra/sqlite-maintenance-deferral.js";
 import { withSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { createDeferredCore } from "../shared/deferred.js";
@@ -203,6 +204,8 @@ class AgentDatabaseStartupAdmission {
   private preparedSchemaHeaders?: PreparedSchemaHeaders;
   /** #967: deletion-journal reads that a slow disk is allowed to finish, shared across attempts. */
   private readonly journalReads = createSharedDeletionJournalReads(this.controller.signal);
+  /** #967: incremental vacuum waits while any agent is still pending. */
+  private readonly maintenance = createSqliteMaintenanceHold("agent database startup admission");
 
   get signal(): AbortSignal {
     return this.controller.signal;
@@ -352,6 +355,7 @@ class AgentDatabaseStartupAdmission {
         reason: statusReason,
       });
       this.pending.set(agentId, refusal);
+      this.maintenance.hold();
       refusals.push(refusal);
       log.warn(refusal.reason, { agentId, paths, repairHint: refusal.repairHint });
       const witnesses = paths.map((pathname) => {
@@ -746,6 +750,7 @@ class AgentDatabaseStartupAdmission {
             if (this.pending.get(agentId) === refusal) {
               this.pending.delete(agentId);
             }
+            this.maintenance.settle(this.pending.size);
           }
         };
         await prepare();
@@ -782,6 +787,7 @@ class AgentDatabaseStartupAdmission {
   stop(): Promise<void> {
     return (this.stopping ??= (async () => {
       this.stopped = true;
+      this.maintenance.settle(0);
       adoptedAdmissions.delete(this);
       this.preparedSchemaHeaders = undefined;
       this.controller.abort(new Error("Gateway stopped during agent database inspection"));
