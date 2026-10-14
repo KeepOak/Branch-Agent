@@ -77,7 +77,8 @@ describe("R1 Settings, the Coming contract", () => {
     expect(needs).toEqual(expect.arrayContaining(["config.patch", "chat.send"]));
     // Sections with no rows yet (General's Keyboard and the rest, #1049) name a real engine call, never a page/card label.
     const comingSections = () => comingControls().filter((entry) => entry.reason.endsWith("comes to this page in a later update."));
-    expect(comingControls().find((entry) => entry.where === "General › Keyboard")?.need).toEqual(["config.patch"]);
+    // General draws every card the preview has, each with its own rows (#1049): no General card is a whole-card Coming mark.
+    expect(comingControls().filter((entry) => entry.where.startsWith("General › "))).toEqual([]);
     await click(host.querySelector("[data-page='remote']")!);
     expect(comingSections().length).toBeGreaterThan(0);
     expect(comingSections().flatMap((entry) => entry.need).filter((need) => !/^[a-z][a-zA-Z]*(\.[a-zA-Z]+)+$/.test(need))).toEqual([]);

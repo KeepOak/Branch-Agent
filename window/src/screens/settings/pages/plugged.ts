@@ -10,6 +10,7 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { GENERAL_PAGE } from "./general-live";
 import { HISTORY_ROWS } from "./history";
 import {
   BackupNow, BackupOften, BackupSchedule, BackupWhere, CleanupAction, CleanupCode, DataFolder, EveryChange, ExportSettings, FillIn, ImportSettings, LastBackup,
@@ -115,4 +116,7 @@ export const R1_PAGES: PageSlots = {
       "accounts.tech.own-folder": OwnFolder,
     },
   },
+  // General draws its pinned rows, projects, Keyboard shortcuts, All conversations and the model for summaries itself
+  // (general-live.tsx).
+  general: GENERAL_PAGE,
 };
