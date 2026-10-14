@@ -21,8 +21,8 @@ import { useConversation } from "../../composer/useConversation";
 import { capitalize, composerChipLabel, currentModelRef, currentThinking } from "../../composer/model";
 import "./overview.css";
 
-export const PAUSE_ALL_GAP = "Needs the engine's pause-all method.";
-const MILESTONES_GAP = "Needs the engine's milestones method.";
+export const PAUSE_ALL_GAP = "Pause all Trunks comes in a later update.";
+const MILESTONES_GAP = "Milestones comes in a later update.";
 
 function ResourceStatus({ resource, label, retry }: { resource: Resource; label: string; retry: () => void }) {
   if (resource.error) return <div className="ov-error" role="alert"><p>Couldn't load {label}. {resource.error}</p><button type="button" className="btn sm" onClick={retry}>Try again</button></div>;
@@ -130,11 +130,13 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
     const key = `agent:${trunks.defaultId}:${trunks.mainKey}`;
     try {
       const result = record(await engine.request("chat.send", { sessionKey: key, message, idempotencyKey: crypto.randomUUID() }));
-      if (result.status === "error") throw new Error(text(result.error) || "The message was not sent.");
+      if (result.status === "error") throw new Error(text(result.error));
       openConversation(key);
       return true;
     } catch (error) {
-      notify(error instanceof Error ? error.message : String(error), { tone: "bad" });
+      // The engine's words only; an empty refusal leaves the text in the box, unsent.
+      const words = error instanceof Error ? error.message : String(error);
+      if (words) notify(words, { tone: "bad" });
       return false;
     }
   };
@@ -163,7 +165,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
       </Tile>
       <Tile title="Controls">
         <p>Mode: <b>{lockdown.on ? "Lockdown" : mode || "As each Trunk is set"}</b> · <button type="button" className="ov-link ov-inline" disabled={!openSettings || lockdown.on} onClick={() => openSettings?.("permissions")}>change</button></p>
-        <div className="ov-acts"><button type="button" className="btn sm" disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Lockdown"}</button><button type="button" className="btn sm" disabled title={shownWhy(PAUSE_ALL_GAP)}>{allPaused ? "Resume all Trunks" : "Pause all Trunks"}</button></div>
+        <div className="ov-acts"><button type="button" className="btn sm" disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "Lockdown comes in a later update."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Lockdown"}</button><button type="button" className="btn sm" disabled title={shownWhy(PAUSE_ALL_GAP)}>{allPaused ? "Resume all Trunks" : "Pause all Trunks"}</button></div>
       </Tile>
       <Tile title="Who is using Branch">
         {status("people", "people")}{status("presence", "live presence")}
