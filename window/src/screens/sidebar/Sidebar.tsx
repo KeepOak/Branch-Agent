@@ -38,7 +38,6 @@ import { SearchResultsView, useSearch } from "../../shell/Search";
 import { ShortcutsDialog } from "../../shell/ShortcutsDialog";
 import { useSelection } from "../../shell/sidebar-state";
 import { KeepLastDialog, tidy } from "../../shell/StatusLayer";
-import { readLevel } from "../../places-nav/SettingsFrame";
 import { batchEntries } from "./batch";
 import { useUpdate } from "../../shell/use-status";
 import { readThemeChoice, setThemeChoice, type ThemeChoice } from "../../theme/theme";
