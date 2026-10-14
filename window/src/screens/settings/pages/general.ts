@@ -150,9 +150,9 @@ export const GENERAL_ROWS: Row[] = [
   { id: "general.summaries.receipt", page: "general", card: SUMS, label: "A receipt for each thing left out", help: "Lists what was left out and why, and lets you bring any of it back.", level: 2, control: "toggle", source: no("summary receipts") },
 
   { id: "general.history-repair.before-call", page: "general", card: "History repair", label: "Repair the history before each call", help: "Fixes a broken tool call or a half-written answer before the model sees it.", level: 2, control: "toggle",
-    source: { kind: "coming", need: "config: a history-repair switch", reason: "Repairing the history before each call comes in a later update." } },
+    source: { kind: "coming", need: "config: a history-repair switch", reason: "History repair comes in a later update." } },
   { id: "general.history-repair.check", page: "general", card: "History repair", label: "Check the history now", help: "Looks for a broken tool call or a half-written answer, and fixes it before the next call.", level: 2, control: "custom",
-    source: slot(["engine: a history check"], "Checking the history comes in a later update.") },
+    source: slot(["engine: a history check"], "History repair comes in a later update.") },
 
   { id: "general.line.wait", page: "general", card: LINE, label: "Wait before sending what’s in line", help: "Quick messages sent together go as one.", level: 2, control: "number", unit: "ms", source: { kind: "config", path: "messages.inbound.debounceMs" } },
   { id: "general.line.cap", page: "general", card: LINE, label: "Most messages in line", level: 2, control: "number", source: { kind: "config", path: "messages.queue.cap" }, fallback: 20 },
@@ -167,5 +167,5 @@ export const GENERAL_ROWS: Row[] = [
   { id: "general.controllers.pad", page: "general", card: "Controllers", label: "Use a gamepad or macro pad", help: "Buttons answer and steer Trunks; a keypad’s lights show who needs you.", level: 1, control: "toggle", source: no("controllers") },
 
   { id: "general.cover.now", page: "general", card: "Cover the screen", label: "Cover now", help: "Covers every display and blocks input without sleeping, so Trunks, builds and remote sessions keep going. Any key or click brings it back.", level: 0, control: "custom",
-    source: slot(["desktop: covering the screen"], "Covering the screen comes in a later update.") },
+    source: slot(["desktop: covering the screen"], "Cover the screen comes in a later update.") },
 ];
