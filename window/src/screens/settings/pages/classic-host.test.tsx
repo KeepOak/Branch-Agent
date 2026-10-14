@@ -35,7 +35,15 @@ const drawn = (el: ParentNode) => ({
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
 it("re-hosts exactly these Classic pages", () => {
-  expect(REHOSTED).toEqual({ who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"], privacy: "usage", history: "backups", learning: ["self", "seasons"], remote: "gateway" });
+  expect(REHOSTED).toEqual({
+    who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
+    models: "models",
+    permissions: "permissions",
+    privacy: "usage",
+    history: "backups",
+    learning: ["self", "seasons"],
+    remote: "gateway",
+  });
 });
 
 for (const [page, classic] of Object.entries(REHOSTED)) {
@@ -75,6 +83,30 @@ it("keeps Classic Achievements on Updates & about, the R1 page an achievements l
   await settle();
   const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="updates"] .r1s-classic[data-classic="updates achievements"]')!;
   expect(hosted.textContent).toContain("Keep achievements quiet");
+});
+
+it("keeps Models' Local tab on the R1 Models page and sends its Accounts tab to the R1 Accounts page", async () => {
+  const onPage = vi.fn();
+  await act(async () => root.render(<SettingsFrame engine={engine()} page="models" pages={R1_PAGES} onPage={onPage} />));
+  await settle();
+  const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="models"] .r1s-classic[data-classic="models"]')!;
+  const tab = (name: string) => [...hosted.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => b.textContent === name)!;
+  expect([...hosted.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(["Accounts", "Default", "Local", "Second opinion (a second model checks answers)", "Media"]);
+  await act(async () => tab("Local").click());
+  await settle();
+  expect(onPage).not.toHaveBeenCalled();
+  expect(tab("Local").getAttribute("aria-selected")).toBe("true");
+  await act(async () => tab("Accounts").click());
+  expect(onPage.mock.calls).toEqual([["accounts"]]);
+});
+
+it("opens Browser & screen from Permissions' Open that switch, where R1 keeps the screen switch", async () => {
+  const onPage = vi.fn();
+  await act(async () => root.render(<SettingsFrame engine={engine()} page="permissions" pages={R1_PAGES} onPage={onPage} />));
+  await settle();
+  const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="permissions"] .r1s-classic[data-classic="permissions"]')!;
+  await act(async () => [...hosted.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Open that switch")!.click());
+  expect(onPage.mock.calls).toEqual([["browser"]]);
 });
 
 it("adds each re-hosted page's Classic rows to the R1 table, so R1 search finds them on their R1 page", () => {
