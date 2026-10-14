@@ -176,11 +176,7 @@ it("sends a page to R1 Settings only when the row table or a slot covers it and 
   expect(r1SettingsPage("accounts")).toBe(true);
   expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(true);
   expect(r1SettingsPage("chatapps")).toBe(true);
-<<<<<<< HEAD
-  for (const page of ["keys", "devices", "local"]) expect(r1SettingsPage(page)).toBe(false);
-=======
-  for (const page of ["keys", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
->>>>>>> trunk/r1-settings-rehost-6
+  for (const page of ["keys", "local"]) expect(r1SettingsPage(page)).toBe(false);
 });
 it("draws Models and Permissions as R1 pages, which re-host every Classic Models and Permissions control", async () => {
   const { R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
