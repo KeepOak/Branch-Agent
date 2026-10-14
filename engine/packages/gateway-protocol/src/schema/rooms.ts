@@ -78,7 +78,11 @@ export const RoomsRuleSetParamsSchema = closedObject({
   rule: Rule,
   trunksTalk: Type.Optional(Type.Boolean()),
 });
-export const RoomsArchiveParamsSchema = closedObject({ roomId: Id });
+/** Archives a room; `archived: false` brings an archived room back. */
+export const RoomsArchiveParamsSchema = closedObject({
+  roomId: Id,
+  archived: Type.Optional(Type.Boolean()),
+});
 const MergeRepo = Type.String({
   minLength: 3,
   maxLength: 100,
