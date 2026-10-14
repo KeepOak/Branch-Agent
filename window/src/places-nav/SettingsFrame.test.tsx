@@ -25,6 +25,21 @@ async function open(page: string, onPage = vi.fn()) {
   return onPage;
 }
 
+describe("settings frame heading", () => {
+  // QA 1014 item 8: a page the R1 window hands to this frame keeps the heading R1 names for it ("Remote access", not "Gateway").
+  it("draws the heading the host names", async () => {
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="gateway" heading="Remote access" backName="Sapling" engine={engine} onPage={() => {}} onBack={() => {}} />));
+    expect(document.querySelector("h1")?.textContent).toBe("Remote access");
+  });
+
+  it("keeps Classic's own heading when the host names none", async () => {
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="gateway" backName="Sapling" engine={engine} onPage={() => {}} onBack={() => {}} />));
+    expect(document.querySelector("h1")?.textContent).toBe("Gateway");
+  });
+});
+
 describe("settings frame level", () => {
   it("keeps the Helpers working count live across Settings and detail levels", async () => {
     const connection: WindowEngine = {
