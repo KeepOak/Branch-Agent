@@ -106,8 +106,6 @@ export const R1_PAGES: PageSlots = {
       "learning.runs.tasks": TasksAtOnce,
       "learning.runs.health": CheckBranch,
       "learning.runs.restart-now": RestartEngine,
-      "learning.runs.check": Command,
-      "learning.runs.repair": Command,
     },
   },
   appearance: {

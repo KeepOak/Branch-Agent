@@ -6,12 +6,9 @@ import type { Level } from "../nav";
 import type { Codec, Control, Row, RowOption } from "../rows";
 
 type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[]; unit?: string; codec?: Codec };
-/** A Coming row's reason is one plain sentence in the preview's words (R1-10): a reason that names how Branch works
- *  inside becomes "<label> comes in a later update."; the call it waits for stays in `need`. */
-export const plainReason = (label: string, reason: string): string =>
-  /engine|gateway call|method|config|\b[a-z]+\.[a-z]+\b/i.test(reason) ? `${label} comes in a later update.` : reason;
-const coming = (id: string, card: string, label: string, need: string, reason: string, extra: Extra = {}): Row =>
-  ({ id, page: "remote", card, label, level: 0, control: "custom", ...extra, source: { kind: "coming", need, reason: plainReason(label, reason) } });
+/** A Coming row says only that it comes later, in the row's own words (R1-10); the call it waits for stays in `need`. */
+const coming = (id: string, card: string, label: string, need: string, extra: Extra = {}): Row =>
+  ({ id, page: "remote", card, label, level: 0, control: "custom", ...extra, source: { kind: "coming", need, reason: `${label} comes in a later update.` } });
 const slot = (id: string, card: string, label: string, calls: string[], extra: Extra = {}): Row =>
   ({ id, page: "remote", card, label, level: 0, control: "custom", ...extra, source: { kind: "slot", calls, reason: `${label} comes in a later update.` } });
 const config = (id: string, card: string, label: string, path: string, control: Control, extra: Extra = {}): Row =>
@@ -30,8 +27,6 @@ export const SCRIPTS = "From scripts";
 export const NEVER = "Never break";
 
 const APP = "desktop: a setting of the Branch app";
-const APP_WHY = "Set by the Branch app on this computer.";
-const CONN_WHY = "This window’s connection is set by the Branch app; another computer is picked with the switcher at the top of the list.";
 const RL = "gateway.auth.rateLimit";
 /** A string key with a default when unset. */
 const str = (fallback: string): Codec => ({ read: (v) => (typeof v === "string" && v ? v : fallback), write: (v) => v });
@@ -53,13 +48,13 @@ export const SCRIPT_CODE: Record<string, string> = {
 
 export const REMOTE_ROWS: Row[] = [
   // Keep Branch running
-  coming("remote.keep.gateway", KEEP, "Gateway", APP, APP_WHY, { control: "segmented", options: [{ v: "off", label: "Off" }, { v: "when-needed", label: "When needed" }, { v: "on", label: "On" }],
+  coming("remote.keep.gateway", KEEP, "Gateway", APP, { control: "segmented", options: [{ v: "off", label: "Off" }, { v: "when-needed", label: "When needed" }, { v: "on", label: "On" }],
     help: "Recommended: On. Telegram, your phone and automations keep working when the window is closed." }),
   { id: "remote.keep.working", page: "remote", card: KEEP, label: "Keep working when the window closes", level: 0, ownerLevel: true, control: "toggle", help: "Trunks finish what they started.", source: { kind: "desktop", name: "keepWorking" } },
-  coming("remote.keep.carry-on", KEEP, "Carry on interrupted work by itself", "engine: a switch for carrying work on", "The engine carries safe steps on by itself; there is no switch for it.",
+  coming("remote.keep.carry-on", KEEP, "Carry on interrupted work by itself", "engine: a switch for carrying work on",
     { control: "toggle", help: "After a restart, safe steps carry on. Anything that sends or changes something asks you first." }),
-  coming("remote.keep.tray", KEEP, "Show the gateway in the tray", APP, APP_WHY, { control: "toggle", help: "A small Branch icon by the clock with Restart and Quit." }),
-  coming("remote.keep.quit", KEEP, "Ask before quitting while work runs", APP, APP_WHY, { control: "toggle", help: "Quit asks first while a Trunk is working. Off until you choose: Branch quits at once." }),
+  coming("remote.keep.tray", KEEP, "Show the gateway in the tray", APP, { control: "toggle", help: "A small Branch icon by the clock with Restart and Quit." }),
+  coming("remote.keep.quit", KEEP, "Ask before quitting while work runs", APP, { control: "toggle", help: "Quit asks first while a Trunk is working. Off until you choose: Branch quits at once." }),
 
   // Reach (Advanced; port, sign-in and the browser page are Technical)
   config("remote.reach.bind", REACH, "Who can reach the Gateway", "gateway.bind", "segmented", { level: 1, codec: str("loopback"),
@@ -69,9 +64,9 @@ export const REMOTE_ROWS: Row[] = [
   config("remote.reach.auth", REACH, "Sign-in", "gateway.auth.mode", "select", { level: 2, codec: str("token"),
     options: [{ v: "token", label: "Session key" }, { v: "password", label: "Password" }, { v: "trusted-proxy", label: "Trusted proxy" }, { v: "none", label: "None" }],
     help: "How people and apps prove who they are. Changing it restarts the Gateway." }),
-  coming("remote.reach.cloudflare", REACH, "Through Cloudflare", "engine: setting up a Cloudflare tunnel", "Needs a Cloudflare tunnel set up outside Branch.", { level: 1,
+  coming("remote.reach.cloudflare", REACH, "Through Cloudflare", "engine: setting up a Cloudflare tunnel", { level: 1,
     help: "A public https address with Cloudflare sign-in in front. The Gateway stays on this computer and no port opens." }),
-  coming("remote.reach.tailscale", REACH, "Tailscale", "engine: Tailscale’s state", "Branch can’t read Tailscale’s state from this engine.", { level: 1,
+  coming("remote.reach.tailscale", REACH, "Tailscale", "engine: Tailscale’s state", { level: 1,
     help: "Reach Branch from your other devices over Tailscale." }),
   config("remote.reach.tailscale-mode", REACH, "Tailscale access", "gateway.tailscale.mode", "segmented", { level: 1, codec: str("off"),
     options: [{ v: "off", label: "Off" }, { v: "serve", label: "My tailnet" }, { v: "funnel", label: "Public" }], help: "Branch doesn’t set Tailscale up." }),
@@ -89,7 +84,7 @@ export const REMOTE_ROWS: Row[] = [
   // What it has been doing
   slot("remote.doing.lately", DOING, "Lately", ["health", "system.info", "presence.query"], { help: "When it started, its last health check and what keeps working when the window is closed." }),
   slot("remote.doing.restart", DOING, "Restart the engine", ["gateway.restart.request"], { help: "Running work finishes first; the window reconnects by itself." }),
-  coming("remote.doing.terminal", DOING, "A terminal where the Gateway runs", "desktop: opening a terminal on the Gateway’s computer", "Open it from a conversation’s side panel (Terminal).",
+  coming("remote.doing.terminal", DOING, "A terminal where the Gateway runs", "desktop: opening a terminal on the Gateway’s computer",
     { level: 1, help: "Opens a terminal on the Gateway’s computer: in WSL here, or over SSH on another computer." }),
 
   // Another computer (Advanced; fingerprint, host key and proxy are Technical)
@@ -102,19 +97,19 @@ export const REMOTE_ROWS: Row[] = [
     help: "Pins a wss:// address. Left empty, Branch pins it on first use, once the system trusts the certificate." }),
   config("remote.another.host-key", ANOTHER, "Check the SSH host key", "gateway.remote.sshHostKeyPolicy", "segmented", { level: 2, codec: str("strict"),
     options: [{ v: "strict", label: "Strictly" }, { v: "openssh", label: "As my SSH settings say" }] }),
-  coming("remote.another.proxy", ANOTHER, "Sign in through a proxy", "window: editing gateway.remote.edgeAuth", "The proxy’s headers are set in Infrastructure settings.", { level: 2, control: "toggle",
+  coming("remote.another.proxy", ANOTHER, "Sign in through a proxy", "window: editing gateway.remote.edgeAuth", { level: 2, control: "toggle",
     help: "A sign-in proxy in front of that computer says who you are." }),
-  coming("remote.another.connect", ANOTHER, "Connect", "desktop: connecting to another computer", "Connects from the Branch app on your computer.", { level: 1 }),
+  coming("remote.another.connect", ANOTHER, "Connect", "desktop: connecting to another computer", { level: 1 }),
 
   // Connection (Technical)
   slot("remote.connection.address", CONNECTION, "Gateway address", ["config.get"], { level: 2, help: "Use wss:// behind HTTPS or Tailscale, and for any computer that isn’t this one." }),
-  coming("remote.connection.key", CONNECTION, "Session key or password", "desktop: this window’s connection", CONN_WHY, { level: 2, control: "secret",
+  coming("remote.connection.key", CONNECTION, "Session key or password", "desktop: this window’s connection", { level: 2, control: "secret",
     help: "The session key is kept for this window. Passwords are never stored. A phone setup code works here too." }),
   slot("remote.connection.ping", CONNECTION, "Gateway ping", ["health"], { level: 2, help: "Every 5 s while this page is open." }),
   slot("remote.connection.activity", CONNECTION, "Gateway activity", ["system.info"], { level: 2, help: "The Gateway’s own processor, memory and event-loop delay." }),
   config("remote.connection.reload", CONNECTION, "Apply settings changes", "gateway.reload.mode", "segmented", { level: 2, codec: str("hybrid"),
     options: [{ v: "hybrid", label: "Live" }, { v: "off", label: "Only on restart" }], help: "Live applies safe changes at once and restarts the Gateway when one needs it." }),
-  coming("remote.connection.join-only", CONNECTION, "Only join a running Gateway", APP, APP_WHY, { level: 2, control: "toggle",
+  coming("remote.connection.join-only", CONNECTION, "Only join a running Gateway", APP, { level: 2, control: "toggle",
     help: "For people who run the Gateway themselves. Off until you choose: nothing keeps Branch running when the window closes." }),
   slot("remote.connection.infra", CONNECTION, "Infrastructure settings", [], { level: 2,
     help: "Every setting for the Gateway, the browser, computers that join, finding computers nearby and the agent protocol." }),
@@ -138,7 +133,7 @@ export const REMOTE_ROWS: Row[] = [
     help: "So the terminal and this window can’t be locked out; browser pages are still limited." }),
 
   // App previews (Technical)
-  coming("remote.previews.reach", PREVIEWS, "Reach previews from other devices", "engine: preview server settings", "Needs the engine’s preview server settings.", { level: 2, control: "segmented",
+  coming("remote.previews.reach", PREVIEWS, "Reach previews from other devices", "engine: preview server settings", { level: 2, control: "segmented",
     options: [{ v: "here", label: "Directly" }, { v: "tailscale", label: "Private Tailscale" }, { v: "own", label: "My own address" }], help: "Previews show on this computer only." }),
 
   // From scripts (Technical)
@@ -149,6 +144,6 @@ export const REMOTE_ROWS: Row[] = [
   slot("remote.scripts.several", SCRIPTS, "Send to several chats", [], { level: 2, control: "text", help: "Each target gets it; any that fails is named." }),
 
   // Never break (Advanced)
-  coming("remote.never.canary", NEVER, "Canary, journal and rollback", "engine: a canary and change journal", "Needs the engine’s change journal.", { level: 1,
+  coming("remote.never.canary", NEVER, "Canary, journal and rollback", "engine: a canary and change journal", { level: 1,
     help: "Every change to how Branch runs is tried on a copy first; a bad one is rolled back by itself." }),
 ];
