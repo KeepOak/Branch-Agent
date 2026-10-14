@@ -60,7 +60,16 @@ export function FilterButton({ prefs, open, onOpen }: { prefs: ListPrefs; open: 
 /** What the popover can offer: the Trunks, the people and whether any conversation has an owner or a folder. */
 export type FilterFacts = { trunks: Trunk[]; people: ListPeople; owners: number; folders: boolean; level: Level; unreadTrunks: Set<string> };
 
-type Props = { at: MenuAnchor; prefs: ListPrefs; facts: FilterFacts; onChange: (p: ListPrefs) => void; onClose: () => void; onSettings: (page: string) => void };
+/** Display choices a host can leave out when its list can't honour them. */
+export type DisplayChoice = "group" | "hide" | "preview";
+
+type Props = {
+  at: MenuAnchor; prefs: ListPrefs; facts: FilterFacts; onChange: (p: ListPrefs) => void; onClose: () => void; onSettings: (page: string) => void;
+  /** What Reset returns to; the Classic defaults when not given. */
+  defaults?: ListPrefs;
+  /** Display choices this host leaves out; none when not given. */
+  omit?: readonly DisplayChoice[];
+};
 type Page = "people" | "trunk" | "group" | "sort" | "hide";
 
 function peopleWord(p: ListPrefs, people: ListPeople): string {
@@ -177,7 +186,7 @@ function Flyout({ at, children }: { at: { x: number; y: number }; children: Reac
 
 /** The Filter and sort popover (DESIGN-SPEC §4.1.1 Parity adds, the preview's filterHtmlPA18): "Filters" and, at
  *  Advanced, "Display"; each choice applies at once. Narrow windows get a bottom sheet with pages. */
-export function FilterSortPopover({ at, prefs, facts, onChange, onClose, onSettings }: Props) {
+export function FilterSortPopover({ at, prefs, facts, onChange, onClose, onSettings, defaults = DEFAULT_PREFS, omit = [] }: Props) {
   const [p, setP] = useState(prefs);
   const [page, setPage] = useState<{ id: Page; at: { x: number; y: number } } | null>(null);
   const narrow = innerWidth <= 760;
@@ -206,8 +215,8 @@ export function FilterSortPopover({ at, prefs, facts, onChange, onClose, onSetti
       <>
         <div className="ph fh">
           Filters
-          {anyDiffers(p) ? (
-            <button type="button" className="link fr" data-testid="filter-reset" onClick={() => set(DEFAULT_PREFS)}>
+          {(defaults === DEFAULT_PREFS ? anyDiffers(p) : (Object.keys(defaults) as (keyof ListPrefs)[]).some((k) => p[k] !== defaults[k])) ? (
+            <button type="button" className="link fr" data-testid="filter-reset" onClick={() => set(defaults)}>
               Reset
             </button>
           ) : null}
@@ -229,10 +238,10 @@ export function FilterSortPopover({ at, prefs, facts, onChange, onClose, onSetti
             </p>
             <hr />
             <div className="ph">Display</div>
-            <ChoiceRow page="group" label="Group by" value={word(GROUP, p.groupBy)} open={page?.id === "group"} onOpen={open} />
+            {omit.includes("group") ? null : <ChoiceRow page="group" label="Group by" value={word(GROUP, p.groupBy)} open={page?.id === "group"} onOpen={open} />}
             <ChoiceRow page="sort" label="Sort by" value={word(SORT, p.sortBy)} open={page?.id === "sort"} onOpen={open} />
-            <ChoiceRow page="hide" label="Hide empty groups" value={word(HIDE, p.hideEmpty)} open={page?.id === "hide"} onOpen={open} />
-            <SwitchRow title="Message preview" on={p.preview} set={(preview) => set({ preview })} testid="filter-preview" />
+            {omit.includes("hide") ? null : <ChoiceRow page="hide" label="Hide empty groups" value={word(HIDE, p.hideEmpty)} open={page?.id === "hide"} onOpen={open} />}
+            {omit.includes("preview") ? null : <SwitchRow title="Message preview" on={p.preview} set={(preview) => set({ preview })} testid="filter-preview" />}
           </>
         ) : null}
       </>
