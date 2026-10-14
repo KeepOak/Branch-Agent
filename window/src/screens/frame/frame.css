@@ -114,3 +114,8 @@
 .r1-topic-fold .topicsT5:not(.lay-tabs), .r1-content > .r1-topic-host .topicsT5:not(.lay-tabs) { position: static; width: 100%; }
 .r1-topic-fold > .r1-topic-host { width: 100%; }
 .r1-topic-host .dlg.g-clear .fld > span { display: inline-block; width: fit-content; padding: 2px 9px; border-radius: var(--r-pill); background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }
+
+/* A place fills the conversation column: its wrapper is a full-height column, so the Grove office (places/office) has the
+   height its stage draws into. */
+.r1-content > .enter11 { display: flex; flex-direction: column; min-height: 100%; }
+
