@@ -26,6 +26,8 @@ vi.mock("./api.js", () => ({
 
 vi.mock("./src/driver-artifacts.js", () => ({
   verifyInstalledCuaDriverArtifacts: artifactMocks.verify,
+  bundledCuaDriverReady: () => true,
+  setComputerUseOnDemand: () => undefined,
 }));
 
 import plugin from "./index.js";

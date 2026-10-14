@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { formatPayload, isDevelopmentOnlyDependencyFile, measurePayload, PAYLOAD_BUDGET, payloadBudgetProblems,
-  pruneProductionDependencies } from "./release-payload.mjs";
+import { formatPayload, isComputerUseDriverFile, isDevelopmentOnlyDependencyFile, measurePayload, PAYLOAD_BUDGET, payloadBudgetProblems,
+  pruneComputerUseDriver, pruneProductionDependencies } from "./release-payload.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +22,8 @@ const deploymentFiles = {
   "dist/extensions/reef/.setup/api-def.mjs": 30,
   "node_modules/@openai/codex-darwin-arm64/vendor/bin/codex": 1000,
   "node_modules/@trycua/cua-driver-darwin-arm64/libcua_driver_sdk.dylib": 200,
+  "node_modules/@ubjs/core/index.js": 6,
+  "dist/extensions/cua-computer/package.json": 1,
   "node_modules/zod/index.js": 80,
   "node_modules/zod/index.js.map": 90,
   "node_modules/zod/index.d.ts": 70,
@@ -79,32 +81,57 @@ test("the payload measure names each category and fails the budget for removed c
   assert.equal(before.total, Object.values(deploymentFiles).reduce((sum, bytes) => sum + bytes, 0));
   assert.deepEqual(before.categories, {
     "Codex CLI binary": 1000,
-    "Computer use (cua-driver, @trycua)": 500,
+    "Computer use (cua-driver, @trycua)": 506,
     "Dependency source maps": 150,
     "Dependency declarations": 85,
     "Other dependencies": 114,
     "Plugin private setup chunks": 730,
     "Control UI": 50,
     "Graft": 60,
-    "Other engine dist": 45,
+    "Other engine dist": 46,
     "Docs, skills and launchers": 30,
   });
   assert.deepEqual(before.setupChunks, { a2a: 700, reef: 30 });
   assert.deepEqual(payloadBudgetProblems(before), [
+    "Computer use (cua-driver, @trycua): 506 bytes shipped; this category is removed from releases",
     "Dependency source maps: 150 bytes shipped; this category is removed from releases",
     "Dependency declarations: 85 bytes shipped; this category is removed from releases",
   ]);
   assert.match(formatPayload(before), /^\| Engine payload \| MiB \|\n\|---\|---:\|\n\| Codex CLI binary \| 0\.0 \|/u);
 
   await pruneProductionDependencies(root);
+  await pruneComputerUseDriver(root);
   const after = await measurePayload(root);
-  assert.equal(after.total, before.total - 150 - 85);
+  assert.equal(after.total, before.total - 150 - 85 - 506);
+  assert.equal(after.categories["Computer use (cua-driver, @trycua)"], 0);
   assert.deepEqual(payloadBudgetProblems(after), []);
+});
+
+test("the release payload no longer contains the computer-use driver; its plugin and pins stay", async t => {
+  for (const path of ["cua-driver", "cua-driver.exe", "node_modules/@trycua/cua-driver/package.json", "node_modules/@trycua/cua-driver-win32-x64-msvc/cua_driver_sdk.dll",
+    "node_modules/@ubjs/node/lib.js", "node_modules/@ubjs/node-linux-x64-gnu/uniffi-runtime-napi.node", "node_modules/a/node_modules/@trycua/cua-driver/dist/index.js"]) {
+    assert.equal(isComputerUseDriverFile(path), true, path);
+  }
+  for (const path of ["dist/extensions/cua-computer/package.json", "dist/extensions/cua-computer/index.js", "docs/cua-driver.md", "node_modules/trycua/index.js"]) {
+    assert.equal(isComputerUseDriverFile(path), false, path);
+  }
+  const root = await fixture(t);
+  await mkdir(join(root, "node_modules/x/node_modules/@trycua/cua-driver"), { recursive: true });
+  await writeFile(join(root, "node_modules/x/node_modules/@trycua/cua-driver/package.json"), "xxxx");
+  assert.deepEqual(await pruneComputerUseDriver(root), {
+    removed: ["cua-driver", "node_modules/@trycua/cua-driver-darwin-arm64", "node_modules/@ubjs/core", "node_modules/x/node_modules/@trycua/cua-driver"],
+    files: 4, bytes: 300 + 200 + 6 + 4,
+  });
+  const left = await listFiles(root);
+  assert.equal(left.some(isComputerUseDriverFile), false);
+  assert(left.includes("dist/extensions/cua-computer/package.json"));
+  assert(PAYLOAD_BUDGET.removed.includes("Computer use (cua-driver, @trycua)"));
 });
 
 test("a plugin whose setup chunks copy the engine graph is over budget", async t => {
   const root = await fixture(t);
   await pruneProductionDependencies(root);
+  await pruneComputerUseDriver(root);
   const payload = await measurePayload(root);
   assert.deepEqual(payloadBudgetProblems(payload, { ...PAYLOAD_BUDGET, setupChunkBytes: 100 }), [
     "dist/extensions/a2a/.setup: 700 bytes, over the 100-byte plugin setup budget; import engine code through branch/plugin-sdk",
@@ -119,4 +146,7 @@ test("the release build prunes the engine deployment and enforces the payload bu
   const budget = source.indexOf("payloadBudgetProblems(payload)");
   const archive = source.indexOf("makeComponentRelease({");
   assert(deploy > 0 && prune > deploy && budget > prune && archive > budget, "Engine deploy, prune, budget and archive run in that order");
+  const computerUse = source.indexOf("pruneComputerUseDriver(deployment)");
+  assert(computerUse > deploy && budget > computerUse, "The computer-use driver is removed before the budget is checked");
+  assert(!source.includes("stage-cua-driver-macos.sh"), "Release builds no longer stage the computer-use driver");
 });

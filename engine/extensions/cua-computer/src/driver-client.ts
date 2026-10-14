@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { createLazyRuntimeMethodBinder } from "branch/plugin-sdk/lazy-runtime";
-import { verifyInstalledCuaDriverArtifacts } from "./driver-artifacts.js";
+import { pathToFileURL } from "node:url";
+import {
+  cuaDriverSdkEntry,
+  getComputerUseOnDemand,
+  resetCuaDriverVerification,
+  resolveCuaDriverSdk,
+  verifyInstalledCuaDriverArtifacts,
+} from "./driver-artifacts.js";
 
 type DriverClickButton = import("@trycua/cua-driver").ClickButton;
 type CuaDriverLike = import("@trycua/cua-driver").CuaDriverLike;
@@ -314,9 +321,27 @@ class DirectCuaDriverSession {
 }
 
 async function loadCuaDriverSdk(): Promise<CuaDriverSdk> {
-  const artifactVerification = verifyInstalledCuaDriverArtifacts();
+  let artifactVerification = verifyInstalledCuaDriverArtifacts();
+  const onDemand = getComputerUseOnDemand();
+  if (!artifactVerification.ok && artifactVerification.code === "COMPUTER_DRIVER_NOT_DOWNLOADED" && onDemand) {
+    // First use: download and verify the pinned driver. After a failure only
+    // Settings' Try again downloads again; this load reports the same reason.
+    try {
+      await onDemand.ensureInstalled();
+    } catch (error) {
+      throw new Error(`COMPUTER_DRIVER_NOT_DOWNLOADED: ${error instanceof Error ? error.message : String(error)}`, {
+        cause: error,
+      });
+    }
+    resetCuaDriverVerification();
+    artifactVerification = verifyInstalledCuaDriverArtifacts();
+  }
   if (!artifactVerification.ok) {
     throw new Error(artifactVerification.diagnostic);
+  }
+  const sdk = resolveCuaDriverSdk();
+  if (sdk?.source === "downloaded") {
+    return (await import(pathToFileURL(cuaDriverSdkEntry(sdk.manifestPath)).href)) as CuaDriverSdk;
   }
   return (await import("@trycua/cua-driver")) as CuaDriverSdk;
 }

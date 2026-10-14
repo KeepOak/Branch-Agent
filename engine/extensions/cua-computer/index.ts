@@ -4,6 +4,7 @@ import { buildPluginConfigSchema, definePluginEntry } from "branch/plugin-sdk/pl
 import { z } from "zod";
 import { registerCuaDriverDoctorChecks } from "./api.js";
 import { createCuaComputerProvider } from "./src/commands.js";
+import { registerComputerUseRuntime } from "./src/computer-runtime.js";
 import { verifyInstalledCuaDriverArtifacts } from "./src/driver-artifacts.js";
 import { createCuaComputerNodeInvokePolicy } from "./src/node-invoke-policy.js";
 
@@ -28,6 +29,9 @@ export default definePluginEntry({
       );
     }
     api.registerNodeInvokePolicy(createCuaComputerNodeInvokePolicy());
+    // Release builds fetch the driver the first time computer use is on; the
+    // window shows its state (computer.runtime) wherever computer use is turned on.
+    const onDemand = registerComputerUseRuntime(api);
     // Remote policy must not enable local native control. macOS retains its
     // app-gated default; Windows/Linux nodes still require plugin enablement.
     if (
@@ -38,9 +42,29 @@ export default definePluginEntry({
     }
     registerCuaDriverDoctorChecks();
     const artifactVerification = verifyInstalledCuaDriverArtifacts();
-    if (!artifactVerification.ok) {
+    if (!artifactVerification.ok && artifactVerification.code === "COMPUTER_DRIVER_NOT_DOWNLOADED") {
+      api.logger?.info?.(artifactVerification.diagnostic);
+    } else if (!artifactVerification.ok) {
       api.logger?.error(artifactVerification.diagnostic);
     }
-    registerComputerUseProvider(api, createCuaComputerProvider());
+    const provider = createCuaComputerProvider();
+    const enabled = normalizePluginsConfig(api.config.plugins).entries[api.id]?.enabled === true;
+    registerComputerUseProvider(
+      api,
+      process.platform === "darwin" && enabled
+        ? {
+            ...provider,
+            // The app starts the macOS driver, so the engine only fetches it: the first time computer use is
+            // on, while the node host starts. Windows and Linux fetch it when the driver first loads.
+            prepare: async (context) => {
+              void onDemand
+                .status()
+                .then((status) => (status.state === "download" ? onDemand.ensureInstalled() : undefined))
+                .catch(() => undefined);
+              await provider.prepare?.(context);
+            },
+          }
+        : provider,
+    );
   },
 });

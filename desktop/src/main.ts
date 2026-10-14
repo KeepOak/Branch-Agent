@@ -163,7 +163,9 @@ function handWindowToGateway(always = false): void {
   windowPort = gatewayPort;
   sendToBranchWindows("branch-desktop:engine-handoff", gatewayUrl());
 }
-const macComputerDriver = process.platform === "darwin" ? new MacComputerDriver(log) : undefined;
+// The engine downloads the driver into its state dir the first time computer use is on (#983).
+const macComputerDriver = process.platform === "darwin"
+  ? new MacComputerDriver(log, undefined, undefined, () => join(cfg.dataDir, "home", ".branch")) : undefined;
 const screenControlEnabled = () => macScreenControlEnabled(join(cfg.dataDir, "home", ".branch", "branch.json"));
 let server: Server | undefined;
 let win: BrowserWindow | undefined;
@@ -1235,15 +1237,19 @@ async function start(): Promise<void> {
   if (macComputerDriver) {
     let enabled = screenControlEnabled();
     let granted = enabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
+    let installed = enabled && macComputerDriver.installed(resolveEngineDir(cfg));
     const timer = setInterval(() => {
       if (updateLock.held) return;
       const nextEnabled = screenControlEnabled();
       const nextGranted = nextEnabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
-      if (nextEnabled !== enabled || nextGranted && !granted) {
+      // A first-use download that just finished: start the driver the same way turning computer use on does.
+      const nextInstalled = nextEnabled && macComputerDriver.installed(resolveEngineDir(cfg));
+      if (nextEnabled !== enabled || nextGranted && !granted || nextInstalled && !installed) {
         enabled = nextEnabled;
         granted = nextGranted;
+        installed = nextInstalled;
         void restartEngine();
-      } else { enabled = nextEnabled; granted = nextGranted; }
+      } else { enabled = nextEnabled; granted = nextGranted; installed = nextInstalled; }
     }, 3_000);
     timer.unref();
     app.once("will-quit", () => clearInterval(timer));
