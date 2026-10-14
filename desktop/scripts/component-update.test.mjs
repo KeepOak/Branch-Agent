@@ -1004,6 +1004,88 @@ test("startup reduces twenty legacy releases to current plus previous and remain
   assert.equal(logs.at(-1), "removed 0 old updates, freed 0.00 GB");
 }));
 
+async function probationReleases(cfg) {
+  const updates = join(cfg.dataDir, "updates");
+  const previous = join(updates, "release-previous-111aaa"), current = join(updates, "release-current-222bbb");
+  for (const folder of [previous, current]) {
+    await mkdir(join(folder, "engine"), { recursive: true });
+    await writeFile(join(folder, "engine", "branch.mjs"), "payload");
+    await writeFile(join(folder, ".release-complete"), "");
+  }
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), join(previous, "engine") + "\n");
+  const probation = confirmedAt => writeFile(join(cfg.dataDir, "component-update-probation.json"),
+    JSON.stringify({ previous: join(previous, "engine"), confirmedAt }));
+  return { previous, current, probation };
+}
+
+test("the previous engine is kept during its probation and pruned only after it ends", async () => fixture(async ({ cfg }) => {
+  assert.equal(source.PREVIOUS_ENGINE_PROBATION_MS, 3 * 24 * 60 * 60 * 1000);
+  const { previous, current, probation } = await probationReleases(cfg);
+  const logs = [];
+  for (const age of [0, 60_000, source.PREVIOUS_ENGINE_PROBATION_MS - 60_000]) {
+    await probation(Date.now() - age);
+    await source.pruneStartupUpdates(cfg, line => logs.push(line));
+    assert.equal(await exists(previous), true, `kept ${age} ms after confirmation`);
+  }
+  await probation(Date.now() - source.PREVIOUS_ENGINE_PROBATION_MS - 60_000);
+  await source.pruneStartupUpdates(cfg, line => logs.push(line));
+  assert.equal(await exists(previous), false, "removed once the probation ended");
+  assert.equal(await exists(current), true);
+  assert.ok(logs.includes("Update cleanup: the previous engine's probation ended; removing it"));
+  assert.equal(logs.at(-1), "removed 1 old updates, freed 0.00 GB");
+  // The receipt stays: a later startup never adopts some other older folder as a new previous engine.
+  await source.pruneStartupUpdates(cfg, line => logs.push(line));
+  assert.equal(await exists(current), true);
+  assert.equal(logs.at(-1), "removed 0 old updates, freed 0.00 GB");
+}));
+
+test("a previous engine with no probation of its own starts one and is kept", async () => fixture(async ({ cfg }) => {
+  const { previous } = await probationReleases(cfg);
+  const before = Date.now();
+  await source.pruneStartupUpdates(cfg, () => {});
+  assert.equal(await exists(previous), true);
+  const started = JSON.parse(await readFile(join(cfg.dataDir, "component-update-probation.json"), "utf8"));
+  assert.equal(started.previous, join(previous, "engine"));
+  assert.ok(started.confirmedAt >= before && started.confirmedAt <= Date.now());
+  // A probation for some other engine (written before an older desktop confirmed a newer one) does not count.
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({ previous: "/elsewhere/engine", confirmedAt: 0 }));
+  await source.pruneStartupUpdates(cfg, () => {});
+  assert.equal(await exists(previous), true);
+  // A clock set back before the confirmation keeps the engine.
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({ previous: join(previous, "engine"), confirmedAt: Date.now() + 86_400_000 }));
+  await source.pruneStartupUpdates(cfg, () => {});
+  assert.equal(await exists(previous), true);
+}));
+
+test("confirming an update starts its predecessor's probation", async () => fixture(async ({ cfg, request }) => {
+  const before = Date.now();
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg);
+  const probation = JSON.parse(await readFile(join(cfg.dataDir, "component-update-probation.json"), "utf8"));
+  assert.equal(probation.previous, cfg.engineDir);
+  assert.ok(probation.confirmedAt >= before && probation.confirmedAt <= Date.now());
+}));
+
+test("a running app removes the previous engine when its probation ends, never during it or mid-update", async () => fixture(async ({ cfg }) => {
+  const { previous, current } = await probationReleases(cfg);
+  const confirmedAt = Date.now();
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({ previous: join(previous, "engine"), confirmedAt }));
+  const logs = [];
+  assert.equal(await source.pruneEndedProbation(cfg, line => logs.push(line), confirmedAt + 60_000), false);
+  assert.equal(await source.pruneEndedProbation(cfg, line => logs.push(line), confirmedAt + source.PREVIOUS_ENGINE_PROBATION_MS - 1), false);
+  assert.equal(await exists(previous), true);
+  const journal = join(cfg.dataDir, "component-update-pending.json");
+  await writeFile(journal, JSON.stringify({ phase: "pending", version: "9.9.9", enginePrevious: join(current, "engine"), engineNext: join(current, "engine") }));
+  assert.equal(await source.pruneEndedProbation(cfg, line => logs.push(line), confirmedAt + source.PREVIOUS_ENGINE_PROBATION_MS + 1), false, "an update in flight prunes on its own confirmation");
+  assert.equal(await exists(previous), true);
+  await rm(journal);
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({ previous: join(previous, "engine"), confirmedAt: Date.now() - source.PREVIOUS_ENGINE_PROBATION_MS - 1 }));
+  assert.equal(await source.pruneEndedProbation(cfg, line => logs.push(line)), true);
+  assert.equal(await exists(previous), false);
+  assert.equal(await exists(current), true);
+  assert.equal(await source.pruneEndedProbation(cfg, line => logs.push(line)), false, "nothing left to remove");
+}));
 
 test("prune retains a process working directly in an old release folder", { skip: process.platform !== "linux" }, async () => fixture(async ({ cfg, request }) => {
   const folder = join(cfg.dataDir, "updates", "release-live-111aaa");
