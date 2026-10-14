@@ -2310,6 +2310,50 @@
       "zh-CN",
       "zh-TW"
     ],
+    "configHints.buildWorktreeRoots.help.v1-jehf9k-d8": [
+      "ar",
+      "de",
+      "es",
+      "fa",
+      "fr",
+      "hi",
+      "id",
+      "it",
+      "ja-JP",
+      "ko",
+      "nl",
+      "pl",
+      "pt-BR",
+      "ru",
+      "th",
+      "tr",
+      "uk",
+      "vi",
+      "zh-CN",
+      "zh-TW"
+    ],
+    "configHints.buildWorktreeRoots.label.v1-174ovsh-m": [
+      "ar",
+      "de",
+      "es",
+      "fa",
+      "fr",
+      "hi",
+      "id",
+      "it",
+      "ja-JP",
+      "ko",
+      "nl",
+      "pl",
+      "pt-BR",
+      "ru",
+      "th",
+      "tr",
+      "uk",
+      "vi",
+      "zh-CN",
+      "zh-TW"
+    ],
     "configHints.commands%2Emcp.help.v1-9o2cpb-2s": [
       "ar",
       "de",
@@ -3059,6 +3103,28 @@
       "zh-TW"
     ],
     "configHints.proxy.help.v1-8gve9z-5c": [
+      "ar",
+      "de",
+      "es",
+      "fa",
+      "fr",
+      "hi",
+      "id",
+      "it",
+      "ja-JP",
+      "ko",
+      "nl",
+      "pl",
+      "pt-BR",
+      "ru",
+      "th",
+      "tr",
+      "uk",
+      "vi",
+      "zh-CN",
+      "zh-TW"
+    ],
+    "configHints.session%2Emaintenance%2EpruneAfter.help.v1-9d6t6g-7x": [
       "ar",
       "de",
       "es",
@@ -7745,6 +7811,6 @@
       "zh-TW"
     ]
   },
-  "sourceHash": "423ae720d73bd6ca9b50f09a3f45aabaa3fb3c6d0c65e73a57e1eedc7381a305",
+  "sourceHash": "d6f5b633500c097ceced021a0a171d0ebc0bf1eb9c93cf6b49d78292ba48db14",
   "version": 1
 }
