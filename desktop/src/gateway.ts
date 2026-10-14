@@ -9,7 +9,7 @@ import type { DesktopConfig } from "./config";
 import { appendCappedLog, BRANCH_LOG_LIMITS, cappedLogStream } from "./log-rotation";
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
 import { recordEngine } from "./engine-records";
-import { engineServiceArgs, runEngineCli } from "./engine-service";
+import { engineServiceArgs, runEngineCli, type EngineServiceAction } from "./engine-service";
 import { HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 
 export function readToken(cfg: DesktopConfig): string {
@@ -86,11 +86,11 @@ export function engineEnvironment(cfg: DesktopConfig, legacyDevMode: boolean, po
 }
 
 /**
- * Runs one engine service command (`branch gateway install|start`, engine/src/daemon) for this app's engine, and
+ * Runs one engine service command (`branch gateway install|start|restart|stop`, engine/src/daemon) for this app's engine, and
  * before an install stores the app's gateway token in the engine config (from stdin, never on a command line), so
  * the service started at sign-in accepts the same token the window uses.
  */
-export async function runEngineServiceAction(cfg: DesktopConfig, engineDir: string, token: string, action: "install" | "start", log: (line: string) => void): Promise<void> {
+export async function runEngineServiceAction(cfg: DesktopConfig, engineDir: string, token: string, action: EngineServiceAction, log: (line: string) => void): Promise<void> {
   const profile = prepareNormalProfile(join(cfg.dataDir, "home"), undefined, log, join(engineDir, "docs", "reference", "templates"));
   if (profile.legacyDevMode) throw new Error("the legacy dev profile runs its engine inside the app");
   const env = engineEnvironment(cfg, false, cfg.gatewayPort, token);
