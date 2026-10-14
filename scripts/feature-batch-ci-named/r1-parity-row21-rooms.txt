@@ -9,4 +9,3 @@ window:src/screens/frame/glass48.test.tsx
 window:src/screens/frame/use-r1-room.test.tsx
 window:src/screens/onboarding/talk-window.test.tsx
 window:src/screens/settings/ask-trunk-window.test.tsx
-window:src/screens/sidebar/Sidebar.test.tsx
