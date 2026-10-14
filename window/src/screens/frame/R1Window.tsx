@@ -31,6 +31,7 @@ import { ApprovalsLayer } from "../approvals";
 import { useProblemBannerRows } from "../approvals/ProblemBanners";
 import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
+import { displayTrunkTitle } from "../../connect/trunk-name";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
 import { helloOk } from "../onboarding/model";
@@ -110,6 +111,13 @@ export function r1Window(search = location.search): boolean {
 }
 
 /** Live connection adapter. Screen ports replace these slots without changing Frame. */
+/** A Trunk's name for its main conversation, as a person reads it (the default Trunk reads as Sapling, not "main"); "" when none. */
+function mainTitle(rows: ReadonlyArray<{ title: string; isMain: boolean; agentId?: string }>, agentId: string | undefined): string {
+  if (!agentId) return "";
+  const main = rows.find(row => row.isMain && row.agentId === agentId);
+  return main ? displayTrunkTitle(main.title, agentId) : "";
+}
+
 export function R1Window({ session }: { session: SaplingSession }) {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const ready = snapshot.status.phase === "connected", engine = session.engine;
@@ -292,10 +300,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const markRequest = useCallback((method: string, params?: unknown) => session.request(method, params), [session]);
   const refreshList = useCallback(() => { void list.refresh(); }, [list]);
   useMarkRead(markRequest, current ?? null, ready && route.kind === "chat", refreshList);
-  const running = conversations.rows.filter(row => row.working).map(row => ({ key: row.key, title: row.title, line: row.preview, needsYou: row.needsYou }));
+  const running = conversations.rows.filter(row => row.working).map(row => ({ key: row.key, title: row.isMain && row.agentId ? displayTrunkTitle(row.title, row.agentId) : row.title, line: row.preview, needsYou: row.needsYou }));
   // The roaming pet's tip names the first Trunk waiting on a yes, as in Classic.
   const waitingRow = conversations.rows.find(row => (waiting.get(row.key) ?? 0) > 0);
-  const petWaiting = waitingRow ? conversations.rows.find(row => row.isMain && row.agentId === waitingRow.agentId)?.title || waitingRow.title : null;
+  const petWaiting = waitingRow ? mainTitle(conversations.rows, waitingRow.agentId) || waitingRow.title : null;
   const sidebar = <Sidebar session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
     currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} onTour={() => setTour("full")} error={conversations.error} />;
@@ -309,9 +317,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
     focus={helpersView.focus} onClose={() => setHelpersView(null)} onToast={setNotice} /></div> : main;
   // Problem and news banners (the Classic hooks), drawn in the approvals banner stack.
   const problems = useProblemBannerRows({ session, shownKey: route.kind === "chat" ? snapshot.sessionKey : null, machineName: machine?.name ?? "",
-    defaultName: conversations.rows.find(row => row.key === snapshot.mainKey)?.title || "your Trunk", onOpen: openConversation,
+    defaultName: mainTitle(conversations.rows, conversations.rows.find(row => row.key === snapshot.mainKey)?.agentId) || "your Trunk", onOpen: openConversation,
     titleOf: key => conversations.rows.find(row => row.key === key)?.title || "A conversation",
-    trunkOf: key => { const row = conversations.rows.find(r => r.key === key); return conversations.rows.find(r => r.isMain && r.agentId === row?.agentId)?.title || row?.title || "Your Trunk"; },
+    trunkOf: key => { const row = conversations.rows.find(r => r.key === key); return mainTitle(conversations.rows, row?.agentId) || row?.title || "Your Trunk"; },
     onOpenConnection: () => navigate({ kind: "settings", page: "devices" }),
     onAsk: text => { const key = snapshot.mainKey; if (!key) return; openConversation(key); void session.open(key).then(() => session.send(text)); } });
   // Talk beside (parity row 20): the default Trunk beside a place, as in Classic.
@@ -358,7 +366,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       else if (action === "palette" && document.activeElement === search.current) setFinding(true);
       else { search.current?.focus(); }
     }} />
-    {route.kind === "chat" && !stage && characterShown ? <R1Character name={current ? conversations.rows.find(row => row.isMain && row.agentId === current.agentId)?.title || snapshot.name : snapshot.name} snapshot={snapshot} waiting={snapshot.sessionKey ? waiting.get(snapshot.sessionKey) ?? 0 : 0}
+    {route.kind === "chat" && !stage && characterShown ? <R1Character name={current ? mainTitle(conversations.rows, current.agentId) || snapshot.name : snapshot.name} snapshot={snapshot} waiting={snapshot.sessionKey ? waiting.get(snapshot.sessionKey) ?? 0 : 0}
       onHide={() => setCharacterShown(false)} onShow={() => setCharacterShown(true)} onChangePet={() => navigate({ kind: "settings", page: "appearance" })}
       onOpenTrunk={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: current?.agentId ?? engine.agentId, view: "profile" } })); }} /> : null}
     </div>

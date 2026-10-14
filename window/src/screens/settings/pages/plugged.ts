@@ -12,6 +12,7 @@ import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { REMOTE_ROWS } from "./remote";
 import { Activity, BrowserPage, GatewayAddress, Https, Infrastructure, LabelComputer, Lately, Origins, Ping, RestartEngine as RestartGateway, Risky, ScriptCode } from "./remote-live";
+import { GENERAL_PAGE } from "./general-live";
 import { SIGNINS_ROWS } from "./signins";
 import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
 import { UPDATES_ROWS } from "./updates";
@@ -26,6 +27,7 @@ import {
   MediaAll, MediaFile, NeverDies, ReadDiary,
 } from "./history-live";
 import { DEVICES } from "./devices";
+import { DEVELOPER } from "./developer";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
@@ -124,6 +126,8 @@ export const R1_PAGES: PageSlots = {
   },
   // Devices: native R1 cards in the preview's order, from Classic Computer & browser's section data (devices.tsx).
   devices: DEVICES,
+  // Developer: native R1 cards in the preview's order, with the Classic Developer and Advanced sections behind them.
+  developer: DEVELOPER,
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,
@@ -165,4 +169,7 @@ export const R1_PAGES: PageSlots = {
       "accounts.tech.own-folder": OwnFolder,
     },
   },
+  // General draws its pinned rows, projects, Keyboard shortcuts, All conversations and the model for summaries itself
+  // (general-live.tsx).
+  general: GENERAL_PAGE,
 };
