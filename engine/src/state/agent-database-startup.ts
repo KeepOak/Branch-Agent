@@ -31,6 +31,7 @@ import {
   waitedForPreviousEngine,
   waitForStage,
 } from "./agent-database-startup.stages.js";
+import { createSharedDeletionJournalReads } from "./agent-database-startup.journal.js";
 import { readAgentDeletionJournalStatusInWorker } from "./agent-deletion-journal.read.js";
 import {
   type BranchStateReadTiming,
@@ -137,6 +138,12 @@ function preparationAttemptLimitMs(env: NodeJS.ProcessEnv): number {
     : DEFAULT_PREPARATION_ATTEMPT_MS;
 }
 
+/**
+ * #967: how many base attempt limits a shared deletion-journal read may run before it counts as
+ * stuck and the next attempt starts a fresh one (10 minutes at the default limit).
+ */
+const JOURNAL_READ_MAX_AGE_ATTEMPTS = 5;
+
 const DEFAULT_FIRST_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 60_000;
 /**
@@ -194,6 +201,8 @@ class AgentDatabaseStartupAdmission {
   /** The open still running for each agent, so a retry never opens an agent while its late open runs. */
   private readonly openings = new Map<string, OpeningRecord>();
   private preparedSchemaHeaders?: PreparedSchemaHeaders;
+  /** #967: deletion-journal reads that a slow disk is allowed to finish, shared across attempts. */
+  private readonly journalReads = createSharedDeletionJournalReads(this.controller.signal);
 
   get signal(): AbortSignal {
     return this.controller.signal;
@@ -390,6 +399,7 @@ class AgentDatabaseStartupAdmission {
             }
           };
           const assertNotDeleted = async (
+            phase: "before" | "after",
             signal: AbortSignal,
             onExpire: (error: StageTimeoutError) => void,
           ) => {
@@ -398,14 +408,21 @@ class AgentDatabaseStartupAdmission {
             const readStartedAt = Date.now();
             let deletion: Awaited<ReturnType<typeof readAgentDeletionJournalStatusInWorker>>;
             try {
-              deletion = await boundStage(
-                "deletion-journal read",
-                runWithBranchStateReadTiming(readTiming, () =>
-                  readAgentDeletionJournalStatusInWorker(agentId, { env }, signal),
-                ),
-                attemptLimitMs,
-                { signal, onExpire },
+              // #967: a read that is making progress on a slow disk is waited out, not failed at
+              // the attempt limit and started again; only a read past its maximum age is stuck.
+              const read = this.journalReads.read(
+                `${agentId}:${phase}`,
+                (readSignal) =>
+                  runWithBranchStateReadTiming(readTiming, () =>
+                    readAgentDeletionJournalStatusInWorker(agentId, { env }, readSignal),
+                  ),
+                JOURNAL_READ_MAX_AGE_ATTEMPTS * preparationAttemptLimitMs(env),
+                phase === "after",
               );
+              deletion = await boundStage("deletion-journal read", read.promise, read.remainingMs(), {
+                signal,
+                onExpire,
+              });
             } finally {
               const slow = describeSlowBranchStateRead(readTiming, Date.now() - readStartedAt);
               if (slow) {
@@ -432,7 +449,7 @@ class AgentDatabaseStartupAdmission {
             };
             return withSqliteReadOnlyWorkerScope(
               async () => {
-                await assertNotDeleted(signal, expire);
+                await assertNotDeleted("before", signal, expire);
                 await preparePendingAgentDatabase(
                   refusal,
                   { env, assertCurrent: assertAttemptCurrent },
@@ -513,13 +530,15 @@ class AgentDatabaseStartupAdmission {
                       timer.unref?.();
                       try {
                         await racePromiseWithAbortSignal(activation.prepareAgent(input), signal);
-                        await assertNotDeleted(signal, expire);
                       } finally {
                         clearTimeout(timer);
                       }
                     } finally {
                       completion.resolve();
                     }
+                    // #967: the final check reads the shared state database, not this agent's; on a
+                    // slow disk it must not hold every sibling's preparation behind it.
+                    await assertNotDeleted("after", signal, expire);
                   },
                 );
               },
