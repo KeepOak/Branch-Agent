@@ -4,7 +4,7 @@ import type { MenuItem } from "./Menu";
 import { openNewGroupChat } from "../rooms/NewGroupChat";
 import { requestCustomize } from "../places/customize/r1-request";
 
-type Ctx = { newWith: (agentId: string) => void; trunks: { id: string; name: string }[]; defaultId: string | null; newTrunk: () => void; openPlace: (p: PlaceId) => void; makeTrunk: () => void; quickAsk: () => void };
+type Ctx = { newWith: (agentId: string) => void; trunks: { id: string; name: string }[]; defaultId: string | null; newTrunk: () => void; openPlace: (p: PlaceId) => void;  quickAsk: () => void };
 
 /** A contact's configured main key owns every new topic. The first send creates and titles it atomically. */
 export async function createTopic(request: (method: string, params: unknown) => Promise<unknown>, agentId: string, mainKey: string, message: string, options: Record<string, unknown> = {}): Promise<string> {
@@ -30,7 +30,6 @@ export function newMenuItems(c: Ctx): MenuItem[] {
     { kind: "sub", label: "New Trunk", testid: "new-trunk", items: [
       { label: "Blank", sub: "Name it and start talking", run: c.newTrunk, testid: "new-trunk-blank" },
       { label: "Start from a template", sub: "Templates in Seedbank", run: () => { requestCustomize({ mode: "community" }); c.openPlace("customize"); }, testid: "new-trunk-from-job" },
-      { label: "Let Branch suggest…", sub: "Describe it; Branch proposes one", run: c.makeTrunk, testid: "new-make-trunk" },
     ] },
     { label: "New group chat", hint: "people, Trunks, agents", run: openNewGroupChat, testid: "new-group-chat" },
     { label: "New automation", run: () => c.openPlace("automations"), testid: "new-automation" },

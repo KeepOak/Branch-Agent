@@ -154,7 +154,6 @@ export function OfficePlace({ engine, openConversation, createTrunk }: PlaceProp
     <header className="pixel-office-head"><b>Grove</b><span>Your Trunks at their desks. Click one to open its chat; drag one to another desk.</span></header>
     {error ? <p role="alert">The office didn’t load. {error} <button type="button" onClick={() => setRetry(n => n + 1)}>Try again</button></p> : null}
     {layoutError ? <p role="alert">{layoutError}</p> : null}
-    {!data && !error ? <p role="status">Opening the office…</p> : null}
     <div className="pixel-office-stage" ref={host} />
   </section>;
 }
