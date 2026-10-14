@@ -1,2 +1,5 @@
 engine:src/agents/bash-tools.exec.hardline-floor.test.ts
 engine:src/infra/exec-hardline-floor.test.ts
+engine:src/infra/exec-hardline-floor.review-bypasses.test.ts
+engine:src/agents/bash-tools.process.hardline-floor.test.ts
+engine:src/agents/bash-tools.exec-approval-bypass.sandbox-floor.test.ts
