@@ -111,7 +111,7 @@ describe("Overview screen", () => {
     const text = host.textContent ?? "";
     expect(text).toContain("Telegram");
     expect(text).toContain("Last night,");
-    expect(text).toContain("Branch update ready");
+    expect(text).toContain("1.1.0 ready");
     expect(text).toContain("$1.70");
     expect([...host.querySelectorAll(".ov-brow")].map(r => r.textContent)).toEqual(["Rowan$1.10", "Elm$0.60"]);
     expect(text).toContain("1m 12s");
@@ -142,6 +142,7 @@ describe("Overview screen", () => {
     expect(PAUSE_ALL_GAP.startsWith("Needs the engine")).toBe(true);
     expect(visibleDevNotes(host)).toEqual([]);
     expect(host.querySelector(".ov-badges")).not.toBeNull();
+    expect(host.querySelector(".ov-badges")!.parentElement!.textContent).toContain("Coming");
   });
 
   it("does not recommend changing a gateway mode the window cannot read or set", async () => {
