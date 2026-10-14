@@ -17,6 +17,7 @@ import { PLACES, loadRoute, parseRoute, saveRoute, windowTitle, type PlaceId, ty
 import { SettingsFrame as ClassicSettingsFrame } from "../../places-nav/SettingsFrame";
 import { SettingsFrame } from "../settings";
 import { R1_PAGES } from "../settings/pages/plugged";
+import { placePages } from "../settings/pages/places-live";
 import { ROWS } from "../settings/rows";
 import { mergeRows, type PageSlots } from "../settings/slots";
 import type { Row } from "../settings/rows";
@@ -34,8 +35,10 @@ import { FindAnything } from "../find/FindAnything";
 import { ShortcutsDialog } from "../../shell/ShortcutsDialog";
 import { ConversationMenu } from "./ConversationMenu";
 import { R1Stage, R1StagePip } from "../stage/R1Stage";
+import { useR1Room } from "./use-r1-room";
 import { QuickAskHost } from "../quickask/QuickAskHost";
 import type { PipTarget, StageMode } from "../../stage/ComputerStage";
+import { CHANGES_NEED, R1Changes } from "../changes/R1Changes";
 import { R1Character, useR1CharacterShown } from "../character/R1Character";
 
 const FIND_ANYTHING_NAMES_ONLY = "Message search needs a newer Branch engine. Find anything lists names only.";
@@ -52,6 +55,22 @@ const placeTitle = (place: PlaceId) => place === "seedbank" ? "Seedbank" : place
  * (settings/pages/appearance-live.tsx, screens/chatapps, settings/pages/accounts-live.tsx; #976).
  */
 const KEEP_CLASSIC: ReadonlySet<string> = new Set<string>();
+
+/**
+ * R1 Settings page ids the Classic frame knows by another name, for a page R1 still hands to Classic: each goes to the
+ * Classic page whose sections it has, so it never falls back to Classic General. A row goes when its R1 page lands.
+ */
+export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
+  card: "people", // Your card: the person's own card on Classic People
+  trunks: "advanced", // Trunks, Trunks' model and Trunks and other agents
+  customize: "advanced", // Tools and skills, Skills, Plugins, What it can do
+  memory: "advanced", // Memory, Recall and memory files, Documents it reads
+  autos: "advanced", // Automations, and Automations, steps and nudges
+  browser: "computer", // Computer & browser: the screen and the browser
+  coding: "computer", // Computer & browser: code and commits, repositories
+  remote: "gateway", // Keep Branch running, Reach, Exposure, From scripts
+  learning: "self", // What Branch may change about itself, Learning, Working on its own code
+};
 
 /**
  * R1 Settings draws a page only once it has rows or its own slot and nothing working is left behind in Classic. Every
@@ -92,7 +111,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const [pip, setPip] = useState<PipTarget | null>(null);
   // The header button that opened the stage; closing the stage hands focus back to it.
   const stageOpener = useRef<string | null>(null);
-  const toggleStage = (mode: StageMode) => { setPip(null); stageOpener.current = mode; setStage(open => open === mode ? null : mode); };
+  const toggleStage = (mode: StageMode) => { setPip(null); setChanges(false); stageOpener.current = mode; setStage(open => open === mode ? null : mode); };
+  // The re-hosted Classic Changes view and pull request box (parity row 4), opened from •••; it takes the stage's place.
+  const [changes, setChanges] = useState(false);
+  const closeChanges = useCallback(() => setChanges(false), []);
   const closeStage = useCallback(() => setStage(null), []);
   const [history, setHistory] = useState({ index: 0, count: 1 });
   const entries = useRef<Route[]>([route]);
@@ -180,8 +202,14 @@ export function R1Window({ session }: { session: SaplingSession }) {
       catch (e) { setNotice(`Couldn’t ask your Trunk: ${e instanceof Error ? e.message : String(e)}`); }
     })();
   };
+  // Go to, Seedbank and All features draw R1 screens in the Settings frame and go through the latest navigate.
+  const goRef = useRef(navigate);
+  goRef.current = navigate;
+  const settingsPages = useMemo<PageSlots>(() => ({ ...R1_PAGES, ...placePages(next => goRef.current(next)) }), []);
   const rows = conversations.rows.filter(row => !row.system && !row.archived && !row.helper);
   const current = conversations.rows.find(row => row.key === snapshot.sessionKey);
+  // A room (group chat, or Trunks and people writing here): the Classic room hook, re-hosted (rooms/useShellRoom).
+  const room = useR1Room(session, ready, snapshot.sessionKey, current ?? null, snapshot.name, snapshot.history);
   const topics = current?.isMain ? conversations.rows.filter(row => row.agentId === current.agentId && row.key !== current.key && !row.isMain && !row.system && !row.archived && !row.helper).map(row => ({ key: row.key, title: row.title })) : [];
   const running = conversations.rows.filter(row => row.working).map(row => ({ key: row.key, title: row.title, line: row.preview, needsYou: row.needsYou }));
   // The roaming pet's tip names the first Trunk waiting on a yes, as in Classic.
@@ -190,11 +218,11 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const sidebar = <Sidebar session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
     currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} error={conversations.error} />;
-  const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
+  const main = route.kind === "settings" && !r1SettingsPage(route.page, settingsPages) ? <ClassicSettingsFrame page={CLASSIC_PAGE[route.page] ?? route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={settingsPages} places={SETTINGS_PLACES} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : changes ? <R1Changes key={snapshot.sessionKey ?? "none"} engine={engine} name={snapshot.name} onClose={closeChanges} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
     onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <ChatView
     name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
-    onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo}
+    onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo} room={room.thread}
   />;
   // Problem and news banners (the Classic hooks), drawn in the approvals banner stack.
   const problems = useProblemBannerRows({ session, shownKey: route.kind === "chat" ? snapshot.sessionKey : null, machineName: machine?.name ?? "",
@@ -217,7 +245,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     <div className="r1-ob-behind" inert={behind} aria-hidden={behind || undefined} style={{ display: "contents", visibility: behind ? "hidden" : undefined }}>
     <Frame sidebar={sidebar} main={main} beside={talk.beside} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
-      face: <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
+      face: room.header && route.kind === "chat" ? room.header.faces(24) : <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
         { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", pressed: stageShown && stage === "Computer", onClick: ready ? () => toggleStage("Computer") : undefined },
         { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", pressed: stageShown && stage === "Browser", onClick: ready ? () => toggleStage("Browser") : undefined },
@@ -225,7 +253,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
         { label: "More", icon: <Icon name="more" />, onClick: ready ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
       ] : talk.item ? [talk.item, ...DEFAULT_TOOLS] : undefined,
       canBack: history.index > 0, canForward: history.index < history.count - 1, onBack: () => { if (history.index > 0) window.history.back(); }, onForward: () => { if (history.index < history.count - 1) window.history.forward(); },
-    }} composer={route.kind === "chat" ? <Composer name={snapshot.name} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}
+    }} composer={route.kind === "chat" ? <Composer name={snapshot.name} placeholder={room.placeholder} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}
       petWaiting={petWaiting} lockdown={lockdown.on} onToggleLockdown={lockdown.supported ? () => void lockdown.toggle() : undefined}
       onSend={(text, extras, id) => { setReplyTo(null); void session.send(text, extras, id); }} onStop={() => void session.stopRun()} onToast={setNotice} onOpenConversation={openConversation} onOpen={target => {
       if (target === "settings/accounts/add") { sessionStorage.setItem("branch.openAddAccount", "1"); navigate({ kind: "settings", page: "accounts" }); }
@@ -258,9 +286,11 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {/* The approved ••• menu (Pin, Rename, Snooze, Archive, Send to the board, Export, View, Start over, Delete) and its dialogs. */}
     {route.kind === "chat" ? <ConversationMenu session={session} open={convMenu} anchor={convAnchor} onClose={() => setConvMenu(false)} sessionKey={snapshot.sessionKey}
       row={current ?? null} isDefault={Boolean(snapshot.sessionKey && snapshot.sessionKey === snapshot.mainKey)} list={list} name={snapshot.name || "Conversation"} history={snapshot.history}
-      work={work} onOpen={openConversation} mainKey={snapshot.mainKey} onPlace={place => navigate({ kind: "place", place })} /> : null}
+      work={work} onOpen={openConversation} mainKey={snapshot.mainKey} onPlace={place => navigate({ kind: "place", place })}
+      changesNeed={CHANGES_NEED} onChanges={() => { setStage(null); setPip(null); setChanges(true); setConvMenu(false); }} /> : null}
     {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details g-clear">
       <strong className="g-label">{identity?.name ?? snapshot.name}</strong>{agentLine ? <p className="g-label">{agentLine}</p> : null}
+      {room.header ? <p className="g-label" data-testid="room-members">{room.header.line}</p> : null}
       {route.kind === "chat" ? <button type="button" data-local="" onClick={() => { setCharacterShown(!characterShown); closeAgent(); }}>{characterShown ? "Hide the character" : "Show the character"}</button> : null}
       <button type="button" data-local="" onClick={closeAgent}>Close</button>
     </div></Popover>}
