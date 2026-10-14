@@ -7,12 +7,25 @@ import type { Entry, KindId } from "./catalog";
 export type Seed = { kind: Extract<KindId, "agents" | "skills" | "mcp" | "plugins">; name: string; by: string; ref: string };
 export const SEED_FORMAT = "branch.seed";
 
-/** The seed text for an entry, or null when its kind has no seed yet. */
-export function seedText(entry: Entry): string | null {
+const SEED_KINDS = ["agents", "skills", "mcp", "plugins"] as const;
+const seedRef = (entry: Entry): string | null => {
   const s = entry.source;
   const ref = s.type === "template" ? s.template.id : s.type === "skill" ? s.ref : s.type === "plugin" ? s.packageName : null;
-  if (!ref || (entry.kind !== "agents" && entry.kind !== "skills" && entry.kind !== "mcp" && entry.kind !== "plugins")) return null;
-  return JSON.stringify({ format: SEED_FORMAT, version: 1, kind: entry.kind, name: entry.name, by: entry.by, ref });
+  return ref && (SEED_KINDS as readonly string[]).includes(entry.kind) ? ref : null;
+};
+
+/** The .seed file for an entry (Download), or null when its kind has no seed yet. */
+export function seedText(entry: Entry): string | null {
+  const ref = seedRef(entry);
+  return ref ? JSON.stringify({ format: SEED_FORMAT, version: 1, kind: entry.kind, name: entry.name, by: entry.by, ref }) : null;
+}
+
+/** The short seed link Copy seed puts on the clipboard (preview: a link, never the raw file). It opens on this computer;
+ *  keepoak.com links come later. Null when its kind has no seed yet. */
+export const SEED_LINK = "branch://seed/";
+export function seedLink(entry: Entry): string | null {
+  const ref = seedRef(entry);
+  return ref ? SEED_LINK + entry.kind + "/" + encodeURIComponent(ref) : null;
 }
 
 export const SEED_LINK_COMING = "Seed links from keepoak.com arrive in a later update.";
@@ -25,6 +38,13 @@ export function parseSeed(text: string): Parsed {
   const t = text.trim();
   if (!t) return { ok: false, reason: NOT_A_SEED };
   if (/keepoak\.com\/s\//i.test(t)) return { ok: false, reason: SEED_LINK_COMING, coming: true };
+  const link = /^branch:\/\/seed\/([a-z]+)\/(\S+)$/i.exec(t);
+  if (link) {
+    if (!(SEED_KINDS as readonly string[]).includes(link[1])) return { ok: false, reason: "Adding this kind of seed comes in a later update.", coming: true };
+    let ref = link[2];
+    try { ref = decodeURIComponent(ref); } catch { return { ok: false, reason: NOT_A_SEED }; }
+    return { ok: true, seed: { kind: link[1] as Seed["kind"], ref, name: ref, by: "" } };
+  }
   if (!t.startsWith("{")) return { ok: false, reason: NOT_A_SEED };
   let value: unknown;
   try { value = JSON.parse(t); } catch { return { ok: false, reason: NOT_A_SEED }; }

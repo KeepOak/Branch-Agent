@@ -36,7 +36,18 @@ export function Sheet({ title, onClose, footer, children, wide }: { title: strin
 }
 
 type Safety = { scan: string; fp: string; hidden: boolean; secrets: string };
-type Detail = { text: string; summary: string; tools: string[]; safety: Safety | null; error: string | null; loading: boolean };
+/** What the engine's detail call says about an item, version and platforms included when it returns them. */
+export type Detail = { text: string; summary: string; tools: string[]; safety: Safety | null; error: string | null; loading: boolean; version?: string; changed?: string; os?: string };
+
+/** Version, What changed and Works on, from skills.detail or plugins.catalog.get, when they are there. */
+export function readFacts(raw: unknown): Pick<Detail, "version" | "changed" | "os"> {
+  const d = rec(raw), latest = rec(d.latestVersion), skill = rec(d.skill);
+  const version = str(d.version) || str(latest.version) || str(skill.version) || (typeof d.latestVersion === "string" ? d.latestVersion : "");
+  const changed = str(d.changelog) || str(latest.changelog) || str(skill.changelog);
+  const raw2 = d.platforms ?? d.os ?? skill.platforms;
+  const os = Array.isArray(raw2) ? raw2.filter((p): p is string => typeof p === "string").join(", ") : str(raw2);
+  return { ...(version ? { version } : {}), ...(changed ? { changed } : {}), ...(os ? { os } : {}) };
+}
 
 const ADDS: Record<string, (e: Entry, tools: number) => string> = {
   agents: e => "A new Trunk, “" + e.name + "”, with its face and job",
@@ -65,7 +76,7 @@ async function readSafety(entry: Entry, raw: unknown): Promise<Pick<Detail, "tex
     safety: { scan, fp: commit || (readme ? await fingerprint(readme) : "Not available"), hidden: hasHiddenInstructions(readme), secrets: hasSecrets(readme) ? "Found: it carries something that looks like a key." : keys ? "None inside. It asks for " + keys + " key" + (keys === 1 ? "" : "s") + "; Branch keeps them in the locker." : "None inside." } };
 }
 
-function useDetail(engine: WindowEngine, entry: Entry): Detail {
+export function useDetail(engine: WindowEngine, entry: Entry): Detail {
   const latest = useRef(entry);
   latest.current = entry;
   const [detail, setDetail] = useState<Detail>({ text: "", summary: entry.desc, tools: [], safety: null, error: null, loading: true });
@@ -73,7 +84,7 @@ function useDetail(engine: WindowEngine, entry: Entry): Detail {
     let live = true;
     const entry = latest.current, call = detailCall(entry);
     if (!call) { setDetail(d => ({ ...d, loading: false })); return; }
-    engine.request(call.method, call.params).then(raw => readSafety(entry, raw)).then(
+    engine.request(call.method, call.params).then(raw => readSafety(entry, raw).then(read => ({ ...read, ...readFacts(raw) }))).then(
       read => { if (live) setDetail({ ...read, error: null, loading: false }); },
       error => { if (live) setDetail(d => ({ ...d, error: errorText(error), loading: false })); });
     return () => { live = false; };
@@ -81,6 +92,7 @@ function useDetail(engine: WindowEngine, entry: Entry): Detail {
   return detail;
 }
 
+export const WHO_COMING = "Choosing Trunks for a connector or plugin comes in a later update.";
 export type AddResult = { notice: string };
 type Props = { entry: Entry; engine: WindowEngine; trunks: Trunk[]; onClose: () => void; onDone: (result: AddResult) => void };
 
@@ -156,7 +168,14 @@ export function InstallSheet({ entry, engine, trunks, onClose, onDone }: Props) 
         : <p className="sb-hint g-label" data-lines>{template ? "It asks before anything outside its job." : "Nothing beyond what the Trunk using it may already do."}</p>}
     </section>
     {s.type === "skill" && trunks.length > 0 && <section className="sb-sec"><h3 className="g-label">Who gets it</h3><div className="sb-who" data-local="">{trunks.map(t => <button key={t.id} type="button" className="sb-who-face" aria-pressed={who.has(t.id)} onClick={() => setWho(prev => { const next = new Set(prev); if (next.has(t.id)) next.delete(t.id); else next.add(t.id); return next; })}><Face size={26} label={t.name} /><span>{t.name}</span></button>)}</div></section>}
-    {s.type === "plugin" && <section className="sb-sec"><h3 className="g-label">Who gets it</h3><p className="sb-hint g-label" data-lines>Every Trunk. Choosing Trunks for a plugin comes in a later update.</p></section>}
+    {/* Connectors and plugins: the same faces (preview: Who gets it for every kind but Trunk and looks), Coming until the
+        engine can add one for some Trunks only; today it goes to every Trunk (#1049). */}
+    {s.type === "plugin" && trunks.length > 0 && <section className="sb-sec"><h3 className="g-label">Who gets it</h3>
+      <Coming need="plugins.install.agents" unwired reason={WHO_COMING} where={entry.name + " › Who gets it"}>
+        <div className="sb-who">{trunks.map(t => <button key={t.id} type="button" className="sb-who-face" aria-pressed="true"><Face size={32} label={t.name} /><span>{t.name}</span></button>)}</div>
+      </Coming>
+      <p className="sb-hint g-label" data-lines>{WHO_COMING}</p>
+    </section>}
     {consent && <p className="sb-note g-label" data-lines role="status">{consent.message}</p>}
     {error && <p className="sb-error g-label" data-lines role="alert">{error}</p>}
   </Sheet>;
