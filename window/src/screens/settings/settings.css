@@ -89,6 +89,7 @@
 .r1s-pictures { display: grid; gap: 8px; }
 .r1s-yours-pet { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: center; }
 .r1s-yours-pet > b, .r1s-yours-pet > small { grid-column: 1; justify-self: start; }
+.r1s-yours-pet > b { font-size: 14px; font-weight: 500; }
 .r1s-yours-pet > .r1s-ctl { grid-column: 2; grid-row: 1 / span 2; }
 .r1s-arts { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
 .r1s-art { display: grid; justify-items: center; align-content: start; gap: 6px; margin: 0; padding: 12px 8px 10px; border-radius: 14px; }
