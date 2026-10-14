@@ -15,6 +15,8 @@ import { FinishSetup } from "./Setup";
 import { ComingBody, OverviewBar, OverviewHero, UnlinkedBody, WIDGET_NAMES, WidgetCard, WidgetMark, useWidgetLayout, type WidgetId } from "./Dashboard";
 import { useConnectorLinks } from "./links";
 import { useFirstName } from "../../screens/chat/examples-greeting";
+import { useConversation } from "../../composer/useConversation";
+import { capitalize, composerChipLabel, currentModelRef, currentThinking } from "../../composer/model";
 import "./overview.css";
 
 export const PAUSE_ALL_GAP = "Needs the engine's pause-all method.";
@@ -107,6 +109,12 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   const recent = recentActivity(rows, runList);
   const me = useFirstName(engine, true);
   const links = useConnectorLinks(engine, trunks.defaultId);
+  // The hero's chip names the default Trunk's real model and effort (composer/model), as the composer does.
+  const conv = useConversation(engine, trunks.defaultId);
+  const currentRef = currentModelRef(conv.row, conv.defaults, conv.trunk?.model);
+  const currentModel = conv.models.find(m => m.ref === currentRef || m.id === currentRef);
+  const effort = currentThinking(conv.row, conv.defaults);
+  const chip = currentModel?.available ? `${currentModel.name}${effort ? ` · ${capitalize(effort)}` : ""}` : composerChipLabel(undefined, "", conv.modelsLoaded);
   const layout = useWidgetLayout();
   const [range, setRange] = useState("week");
   const [source, setSource] = useState("all");
@@ -168,7 +176,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   const gmailLinked = links.gmail === true;
   return <PlaceScroll>
     <div className="place wide-overview p34-place">
-      <OverviewHero name={defaultName} me={me} onSend={sendToDefault} />
+      <OverviewHero name={defaultName} me={me} chip={chip} onSend={sendToDefault} />
       <FinishSetup engine={engine} openSettings={openSettings} />
       <OverviewBar range={range} onRange={setRange} source={source} onSource={setSource} layout={layout} linked={linked} onAdd={toggleWidget} onLink={linkAccounts} />
       <div className="p34-grid">

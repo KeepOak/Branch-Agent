@@ -128,3 +128,6 @@
 .p34-link { padding: 0; border: 0; background: none; color: var(--accent); font: 500 13px var(--sans); white-space: nowrap; cursor: pointer; }
 .p34-old .ov-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
 @media (min-width: 900px) { .p34-old .ov-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.p34-chip { flex: none; padding: 4px 10px; border-radius: 999px; background: var(--fill); color: var(--ink-2); font: 500 12.5px var(--sans); white-space: nowrap; }
+.p34-bg-row { display: flex; justify-content: flex-end; }
+.p34-bg { padding: 4px 10px; border: 0; background: none; color: var(--ink-3); font: 500 12.5px var(--sans); cursor: default; }

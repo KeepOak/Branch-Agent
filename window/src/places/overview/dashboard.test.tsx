@@ -31,9 +31,9 @@ let root: Root | undefined;
 beforeEach(() => { localStorage.clear(); });
 afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
-async function render(overrides: Record<string, unknown> = {}) {
+async function render(overrides: Record<string, unknown> = {}, sessionKey: string | null = null) {
   const request = vi.fn(async (method: string) => (method in overrides ? overrides[method] : FX[method] ?? {}));
-  const engine = { request, sessionKey: null, scopes: ["operator.admin"], onEvent: () => () => undefined } as unknown as WindowEngine;
+  const engine = { request, sessionKey, scopes: ["operator.admin"], onEvent: () => () => undefined } as unknown as WindowEngine;
   const openConversation = vi.fn(), openSettings = vi.fn(), openPlace = vi.fn();
   const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
   await act(async () => root!.render(<OverviewPlace engine={engine} facts={{ running: 0, waiting: 0 }} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} level="regular" />));
@@ -139,6 +139,19 @@ describe("Overview as approved (P34)", () => {
     for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
     expect(request).toHaveBeenCalledWith("chat.send", expect.objectContaining({ sessionKey: "agent:main:main", message: "Plan my week" }));
     expect(openConversation).toHaveBeenCalledWith("agent:main:main");
+  });
+});
+
+describe("Overview hero", () => {
+  it("names the default Trunk's real model and effort in the chip, and has Change background as Coming", async () => {
+    const { host } = await render({
+      "agents.list": { defaultId: "main", mainKey: "main", agents: [{ id: "main", identity: { name: "Sapling" }, model: { primary: "openai/gpt-6.1-sol" } }] },
+      "models.list": { models: [{ id: "gpt-6.1-sol", provider: "openai", name: "GPT-6.1 Sol", available: true }] },
+      "sessions.list": { sessions: [], defaults: { thinkingDefault: "medium" } },
+    }, "agent:main:main");
+    expect(host.querySelector(".p34-chip")?.textContent).toBe("GPT-6.1 Sol · Medium");
+    expect(host.querySelector<HTMLButtonElement>(".p34-bg")?.textContent).toBe("Change background");
+    expect(host.querySelector<HTMLButtonElement>(".p34-bg")?.disabled).toBe(true);
   });
 });
 

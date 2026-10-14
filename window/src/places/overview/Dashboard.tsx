@@ -4,6 +4,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Icon } from "../../shell/icons";
 import { ToolLogo } from "../../setup/tool-logos";
+import { Coming } from "../../glass/coming";
 
 export type WidgetId = "github" | "gmail" | "branch" | "calendar" | "drive";
 export const WIDGET_NAMES: Record<WidgetId, string> = { github: "GitHub", gmail: "Gmail", branch: "Branch", calendar: "Google Calendar", drive: "Google Drive" };
@@ -106,7 +107,7 @@ export function UnlinkedBody({ id, onLink }: { id: "github" | "gmail"; onLink: (
 }
 
 /** The hero: a glass composer that sends to the default Trunk. */
-export function OverviewHero({ name, me, onSend }: { name: string; me: string; onSend: (text: string) => Promise<boolean> }) {
+export function OverviewHero({ name, me, chip, onSend }: { name: string; me: string; chip: string; onSend: (text: string) => Promise<boolean> }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = (event: FormEvent) => {
@@ -118,8 +119,14 @@ export function OverviewHero({ name, me, onSend }: { name: string; me: string; o
   };
   return (
     <section className="p34-hero">
+      <div className="p34-bg-row">
+        <Coming need="overview.background" reason="Choosing a picture for the Overview comes in a later update.">
+          <button type="button" className="p34-bg" disabled>Change background</button>
+        </Coming>
+      </div>
       <form className="p34-ask" onSubmit={submit}>
         <input className="inp" value={text} onChange={event => setText(event.target.value)} placeholder="Ask anything, or describe a change…" aria-label={`Ask ${name}`} autoComplete="off" />
+        {chip ? <span className="p34-chip">{chip}</span> : null}
         <button type="submit" className="p34-send" aria-label={`Send to ${name}`} disabled={!text.trim() || busy}><span className="p34-flip"><Icon name="down" /></span></button>
       </form>
       <p className="p34-to">Goes to {name}, your default Trunk.{me ? ` Good to see you, ${me}.` : ""}</p>
