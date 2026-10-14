@@ -9,7 +9,7 @@ import { comingControls } from "../../../glass/coming-registry";
 import { SettingsPage, SETTINGS_ROWS } from "../../../places/settings";
 import { KitProvider } from "../../../places/settings/kit";
 import { ROWS as COMPUTER_ROWS, partRows } from "../../../places/settings/set2/computer-more";
-import { PAGES, pageFor, sectionNeed } from "../nav";
+import { PAGES, sectionNeed } from "../nav";
 import { ROWS } from "../rows";
 import { searchSettings } from "../search";
 import { mergeRows } from "../slots";
@@ -38,7 +38,7 @@ const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50
 
 it("re-hosts exactly these Classic pages", () => {
   expect(REHOSTED).toEqual({
-    who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
+    who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets",
     browser: "computer-browser",
     coding: "computer-coding",
     models: "models",
@@ -68,14 +68,6 @@ it("keeps Sign-ins & keys empty without operator.admin, as Classic hides it, and
   const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="signins"] .r1s-classic[data-classic="secrets"]')!;
   expect(hosted.textContent).toContain(ADMIN_ONLY);
   expect(drawn(hosted)).toEqual({ sections: [], rows: [] });
-});
-
-it("keeps Classic Achievements on Updates & about, the R1 page an achievements link opens", async () => {
-  expect(pageFor("achievements")).toBe("updates");
-  await act(async () => root.render(<SettingsFrame engine={engine()} page="updates" pages={R1_PAGES} />));
-  await settle();
-  const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="updates"] .r1s-classic[data-classic="updates achievements"]')!;
-  expect(hosted.textContent).toContain("Keep achievements quiet");
 });
 
 it("splits Classic Computer & browser between Browser & screen, Coding and Devices, each of its sections on exactly one", () => {

@@ -65,7 +65,7 @@ export function specPage(page: PageId, plan: CardPlan): { rows: Row[]; controls:
 }
 
 /** The Classic block behind a bare row, at the frame's level, with Classic's save reporting under it. */
-function ClassicBlock({ engine, row, onPage, draw }: SlotControlProps & { draw: (c: Ctx) => ReactNode }) {
+export function ClassicBlock({ engine, row, onPage, draw }: SlotControlProps & { draw: (c: Ctx) => ReactNode }) {
   const [level] = useLevel(engine);
   const [failed, , report] = useFailure();
   const props: SettingsPageProps = { page: row.page, title: row.label ?? "", level: LEVEL_WORD[level], engine, openSettings: (id) => onPage?.(pageFor(id)) };

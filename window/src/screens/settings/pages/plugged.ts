@@ -10,6 +10,8 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { UPDATES_ROWS } from "./updates";
+import * as Up from "./updates-live";
 import { LEARNING_ROWS } from "./learning";
 import {
   CheckBranch, ClearReplayed, Command, ConnectedNow, DiaryModel, Fact, Learned, PeopleHere, ProcessNames, RestartEngine, TasksAtOnce, Weighing,
@@ -24,7 +26,7 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
+  who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets",
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -43,6 +45,12 @@ export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Updates & about: the preview's ten cards; Classic Updates' sections and the achievements badges inside them.
+  updates: { rows: UPDATES_ROWS, controls: {
+    "updates.updating.block": Up.Updating, "updates.devices.block": Up.Devices, "updates.before.block": Up.Before, "updates.reports.block": Up.Reports,
+    "updates.editors.block": Up.Editors, "updates.achievements.badges": Up.Badges, "updates.shortcuts.buttons": Up.ShortcutButtons,
+    "updates.about.block": Up.About, "updates.privacy.block": Up.Privacy, "updates.remove.block": Up.Remove,
+  } },
   // Learning & self-updates: native R1 cards in the preview's order; Classic About Branch and Seasons draw behind its
   // rows (learning-live.tsx).
   learning: {

@@ -201,6 +201,12 @@ export function R1Window({ session }: { session: SaplingSession }) {
     window.addEventListener("branch:navigate-place", openPlace);
     return () => window.removeEventListener("branch:navigate-place", openPlace);
   }, []);
+  // Settings › Updates & about › Show the welcome tour.
+  useEffect(() => {
+    const openTour = () => setTour("full");
+    window.addEventListener("branch:welcome-tour", openTour);
+    return () => window.removeEventListener("branch:welcome-tour", openTour);
+  }, []);
   // Escape closes the stage unless a menu, dialog, picker or popover is open: those take Escape first.
   const stageShown = Boolean(stage) && route.kind === "chat";
   useEffect(() => {
