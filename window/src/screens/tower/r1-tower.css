@@ -1,0 +1,25 @@
+/* The re-hosted Classic control tower inside the R1 frame (parity row 5). Clear glass per README item 48: the column
+   adds no fill and no divider of its own; its controls are frosted pills (.g-clear does that for every button) and its
+   loose text sits on small frosted pills built from the same --gp-* tokens. */
+.r1-tower { min-width: 0; min-height: 0; height: 100%; display: flex; flex-direction: column; padding-top: var(--hdr, 52px); box-sizing: border-box; }
+.r1-tower[data-in-main] { height: auto; min-height: 100%; padding: 0 var(--r1-gutter, 12px); }
+/* display: Classic hides the tower below 1100px (no room beside its conversation); R1 shows it in the main column there. */
+.r1-tower > .v23-tower { display: block; flex: 1 1 auto; height: auto; background: transparent; border: 0; overflow-y: auto; }
+.r1-tower[data-in-main] > .v23-tower { overflow: visible; max-width: 560px; width: 100%; margin-inline: auto; }
+.r1-tower .v23-tower section { border-top: 0; display: grid; gap: 4px; justify-items: start; }
+.r1-tower .v23-tower :is(.v23-tower-row, .v23-chatter, .v23-acct) { width: 100%; box-sizing: border-box; padding: 4px 9px; border-radius: 14px; }
+.r1-tower .v23-tower .v23-acct { grid-template-columns: minmax(0, 1fr); overflow: hidden; }
+.r1-tower .v23-tower .v23-acct > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1-tower .v23-tower :is(.v23-link, .v23-allow, .v23-deny, .ib) { padding: 3px 9px; border-radius: var(--r-pill, 999px); }
+.r1-tower .v23-tower :is(header b, h3, p, .v23-tower-health) {
+  width: fit-content; max-width: 100%; box-sizing: border-box; padding: 2px 9px; border-radius: var(--r-pill, 999px);
+  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
+  box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); }
+.r1-tower .v23-tower > header b { flex: 0 1 auto; margin-right: auto; }
+.r1-tower .v23-tower .v23-tower-health { margin: 2px 12px 8px; }
+/* glass.css gives every button in a .g-clear surface its own pill (the .g-clear :is(button, …):not(#g48) rule); a button
+   that is the text of a row pill, or a link inside a heading pill, shares that pill instead of stacking a second one. */
+.r1-tower .v23-tower :is(.v23-tower-row-text, h3 .v23-link, p .v23-link):not(#g48#g48) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.r1-tower .v23-tower :is(h3, p) .v23-link { padding: 0 0 0 4px; }
+/* the frame's side column for the tower beside the conversation */
+.r1-aside { min-width: 0; min-height: 0; overflow: hidden; }
