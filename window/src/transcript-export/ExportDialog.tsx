@@ -21,7 +21,7 @@ export function downloadTranscript(content: string, title: string, format: Trans
   try { link.click(); } finally { link.remove(); URL.revokeObjectURL(url); }
 }
 
-export function ExportDialog({ engine, sessionKey, title, onClose, initialFormat = "markdown" }: { engine: WindowEngine; sessionKey: string; title: string; onClose: () => void; initialFormat?: TranscriptExportFormat }) {
+export function ExportDialog({ engine, sessionKey, title, onClose, initialFormat = "markdown", clear }: { engine: WindowEngine; sessionKey: string; title: string; onClose: () => void; initialFormat?: TranscriptExportFormat; clear?: boolean }) {
   const [format, setFormat] = useState<TranscriptExportFormat>(initialFormat);
   const [includeToolDetails, setTools] = useState(true);
   const [includeTimestamps, setTimestamps] = useState(true);
@@ -50,11 +50,11 @@ export function ExportDialog({ engine, sessionKey, title, onClose, initialFormat
       if (!request.signal.aborted) setBusy(false);
     }
   };
-  return <Dialog title="Export conversation" onClose={close} testid="export-conversation" footer={<><button className="btn" onClick={close}>Not now</button><button className="btn primary" disabled={busy} onClick={() => void save()}>{busy ? "Reading conversation…" : "Save file"}</button></>}>
-    <p>Save this conversation as a file on this computer.</p>
-    <div className="export-fields"><label>Format <select aria-label="Export format" value={format} disabled={busy} onChange={e => setFormat(e.target.value as TranscriptExportFormat)}><option value="markdown">Markdown</option><option value="html">HTML</option><option value="replay">HTML replay</option></select></label>
-    <label><input type="checkbox" checked={includeToolDetails} disabled={busy} onChange={e => setTools(e.target.checked)} /> Include tool details</label>
-    <label><input type="checkbox" checked={includeTimestamps} disabled={busy} onChange={e => setTimestamps(e.target.checked)} /> Include timestamps</label></div>
-    {error && <p role="alert">{error}</p>}
+  return <Dialog title="Export conversation" onClose={close} testid="export-conversation" clear={clear} footer={<><button className="btn" onClick={close}>Not now</button><button className="btn primary" disabled={busy} onClick={() => void save()}>{busy ? "Reading conversation…" : "Save file"}</button></>}>
+    <p className={clear ? "g-label" : undefined}>Save this conversation as a file on this computer.</p>
+    <div className="export-fields"><label className={clear ? "g-label" : undefined}>Format <select aria-label="Export format" value={format} disabled={busy} onChange={e => setFormat(e.target.value as TranscriptExportFormat)}><option value="markdown">Markdown</option><option value="html">HTML</option><option value="replay">HTML replay</option></select></label>
+    <label className={clear ? "g-label" : undefined}><input type="checkbox" checked={includeToolDetails} disabled={busy} onChange={e => setTools(e.target.checked)} /> Include tool details</label>
+    <label className={clear ? "g-label" : undefined}><input type="checkbox" checked={includeTimestamps} disabled={busy} onChange={e => setTimestamps(e.target.checked)} /> Include timestamps</label></div>
+    {error && <p role="alert" className={clear ? "g-label" : undefined}>{error}</p>}
   </Dialog>;
 }
