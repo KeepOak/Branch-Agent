@@ -27,7 +27,8 @@ import type { Block } from "../../thread/model";
 import { ExportDialog } from "../../transcript-export/ExportDialog";
 import type { TranscriptExportFormat } from "../../transcript-export/render";
 import type { WorkMode } from "../chat/chat-logic";
-import { CONVERSATION_NEED, conversationMenu } from "./conversation-menu";
+import type { ShellRoom } from "../../rooms/useShellRoom";
+import { CONVERSATION_NEED, conversationMenu, roomRuleEntries } from "./conversation-menu";
 
 export type ConversationMenuProps = {
   session: SaplingSession;
@@ -49,6 +50,8 @@ export type ConversationMenuProps = {
   onOpen: (key: string) => void;
   mainKey: string | null;
   onPlace: (place: PlaceId) => void;
+  /** In a group chat, its rules (rooms/useShellRoom): the Group rules row. */
+  room?: ShellRoom["menu"];
   /** Parity row 4: opens the re-hosted Changes view (diff and pull request box) for this conversation's checkout. */
   onChanges?: () => void;
   /** The engine call the Changes view needs; the row is Coming without it. */
@@ -82,6 +85,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
   const removeRow = (gone: Conversation) => void actions.remove(gone).then(() => { if (p.mainKey && p.mainKey !== gone.key) p.onOpen(p.mainKey); });
   const items = conversationMenu({
     row, isDefault: p.isDefault, now, hasReply: Boolean(lastReply), work: { global: p.work.global, override: p.work.override }, ownWindowOff: ownWindowUnavailable(),
+    room: p.room ? { ruleWords: p.room.ruleWords, rules: roomRuleEntries(p.room.rules()) } : null,
     run: {
       pin: () => { if (row) void actions.pin(row); },
       rename: () => setOpen({ kind: "rename" }),
