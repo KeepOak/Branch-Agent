@@ -169,7 +169,7 @@ describeLaunchdIntegration("launchd integration", () => {
   const stdout = new PassThrough();
 
   it("real launchctl: node-host LaunchAgent stop/restart survives a co-located busy Gateway port (#124296)", async () => {
-    // Real-world proof for https://github.com/openclaw/openclaw/issues/124296:
+ // Real-world proof:
     // this drives actual `launchctl` LaunchAgents (no mocked port-inspection
     // or launchctl calls) to reproduce the reported false-positive
     // "gateway port is still busy" failure and confirm the fix resolves it.

@@ -188,7 +188,6 @@ type BranchPluginLifecycleApi = Partial<
 /**
  * Main registration API injected into native plugin entry files.
  * @experimental All plugin APIs are experimental. Pin and test Branch Agent host versions.
- * @see https://docs.openclaw.ai/plugins/sdk-overview#api-stability
  */
 export type BranchPluginApi = {
   id: string;
@@ -274,7 +273,7 @@ export type BranchPluginApi = {
   /**
    * Register a plugin-owned node feature command group under `branch nodes`.
    *
-   * This is equivalent to `registerCli(registrar, { parentPath: ["nodes"], ... })`
+   * This is equivalent to `registerCli(registrar, { parentPath: ["nodes"],... })`
    * and is intended for paired-node capabilities such as camera, screen, or Canvas.
    */
   registerNodeCliFeature: (
