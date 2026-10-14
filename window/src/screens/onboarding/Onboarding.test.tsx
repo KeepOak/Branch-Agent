@@ -277,18 +277,24 @@ describe("Your first Trunk (step 4)", () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
-  it("without a hello that worked, Meet them opens the first conversation empty and sends no greeting", async () => {
+  it("with examples and no hello, Meet them sends no greeting and hands the examples state to the first conversation", async () => {
     const { engine, request } = fakeEngine({
-      "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "Couldn't sign in to the AI service." },
+      "branch.setup.detect": { candidates: [] }, "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { status: "error", error: "Couldn't sign in to the AI service." },
       "trunks.template.create": (params: unknown) => ({ agentId: (params as { templateId: string }).templateId + "-1", name: "Made" }),
-    });
-    const { host, onDone } = await show(engine, { startAt: 3 });
+    }, [...ALL, "trunks.template.starters"]);
+    const { host, onDone } = await show(engine, { startAt: 1 });
+    await act(async () => button(host, "Try it with examples").click());
+    await flush();
+    await act(async () => button(host, "Continue").click());
+    await flush();
+    await act(async () => button(host, "Continue").click());
+    await flush();
     await act(async () => button(host, "Spend Saver").click());
     await act(async () => button(host, "Meet them").click());
     await flush();
     expect(calls(request, "chat.send")).toEqual([]);
     expect(host.querySelector("[role=alert]")).toBeNull();
-    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ sessionKey: "agent:spend-saver-1:main" }));
+    expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ sessionKey: "agent:spend-saver-1:main", state: expect.objectContaining({ examples: true }) }));
   });
 
   it("Start with the default Trunk makes nothing and greets in its main conversation", async () => {
