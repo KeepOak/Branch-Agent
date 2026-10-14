@@ -41,3 +41,8 @@
   .r1-frame[data-pane="true"] > .r1-pane-slot .pane-resizer-pn { display: none; }
   .r1-frame[data-pane="true"] > .r1-conversation > :is(.r1-scroll, .r1-composer-slot) { visibility: hidden; }
 }
+/* The tab row scrolls sideways, as the preview's .ptabs does, rather than moving tabs into More (R1 shows the preview's set). */
+.r1-pane .pane-tabs { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.r1-pane .pane-tabs::-webkit-scrollbar { display: none; }
+.r1-pane .pane-tabs .ptab-wrap-pn { flex: none; }
+

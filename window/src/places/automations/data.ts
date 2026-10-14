@@ -3,12 +3,14 @@
 import type { WindowEngine } from "../../connect/engine";
 import type { Trunk } from "./Proposal";
 import { paged, rec, rows, str, type Row } from "./runtime";
+import { trunkDisplayName } from "../../connect/trunk-name";
+import { isEngineJob } from "../../connect/engine-jobs";
 
 export type Scheduled = { jobs: Row[]; status: Row; trunks: Trunk[]; defaultId: string; runs: Map<string, JobRuns> };
 
 export async function loadTrunks(engine: WindowEngine): Promise<{ trunks: Trunk[]; defaultId: string }> {
   const r = rec(await engine.request("agents.list", {}));
-  const trunks = rows(r.agents).map(a => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) })).filter(t => t.id);
+  const trunks = rows(r.agents).map(a => ({ id: str(a.id), name: trunkDisplayName(a) })).filter(t => t.id);
   return { trunks, defaultId: str(r.defaultId) || trunks[0]?.id || "" };
 }
 
@@ -33,9 +35,11 @@ export async function loadScheduled(engine: WindowEngine): Promise<Scheduled> {
     loadTrunks(engine),
   ]);
   if (jobs.status === "rejected") throw jobs.reason;
-  const runs = await loadRecentRuns(engine, jobs.value);
+  // The person's automations only: the engine's own check-in, cleanup and review jobs are not listed (connect/engine-jobs).
+  const own = jobs.value.filter(j => !isEngineJob(j));
+  const runs = await loadRecentRuns(engine, own);
   const t = trunks.status === "fulfilled" ? trunks.value : { trunks: [], defaultId: engine.agentId ?? "" };
-  return { jobs: jobs.value, status: status.status === "fulfilled" ? rec(status.value) : {}, ...t, runs };
+  return { jobs: own, status: status.status === "fulfilled" ? rec(status.value) : {}, ...t, runs };
 }
 
 export async function loadModels(engine: WindowEngine): Promise<string[]> {

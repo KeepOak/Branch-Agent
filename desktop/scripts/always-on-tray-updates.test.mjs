@@ -393,7 +393,7 @@ const autoEnv = { ...updateEnv, BRANCH_DESKTOP_UPDATE_FREE_DISK: '0.9', BRANCH_D
 
 test('auto-apply in service mode reads the run count from the engine: the tick waits on the runs, no "activity check failed", no restart', async t => {
   await serviceApp(t, () => ({ pendingApprovals: 0, streaming: false, unsavedDraftFiles: false, workingTrunks: 2 }), async ({ cliCalls, standbys, serviceRuns, desktopLog }) => {
-    await eventually(() => /auto-apply: waiting for 2 active runs, 0 approvals; deferring 9\.9\.9 until Trunk work is idle/.test(desktopLog()), 15000);
+    await eventually(() => /auto-apply: waiting for 2 active runs, 0 approvals; no standby to hand off to for 9\.9\.9/.test(desktopLog()), 100000);
     assert.doesNotMatch(desktopLog(), /activity check failed/, 'the service engine answers the run count');
     assert.deepEqual(cliCalls(), []);
     assert.deepEqual(standbys(), []);

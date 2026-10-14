@@ -38,7 +38,8 @@ it("Updates page uses the Branch desktop component version", async () => {
   const engine = { gatewayUrl: "ws://127.0.0.1:19621", request: vi.fn(async () => ({ runtimeVersion: "2026.9.8" })), onEvent: () => () => {}, scopes: [], sessionKey: null } as WindowEngine;
   await act(async () => root.render(<UpdatesPage page="updates" title="Updates" level="regular" engine={engine} />));
   expect(host.textContent).toContain("Branch 0.4.4 · build a300a48d on this computer");
-  expect(host.textContent).toContain("You have Branch 0.4.4 · build a300a48d");
+  expect(host.textContent).toContain("Updates apply in place.");
+  expect(host.textContent).not.toContain("You have Branch");
   expect(host.textContent).not.toContain("2026.9.8");
 });
 
