@@ -1,0 +1,6 @@
+window:src/screens/frame/Frame.test.tsx
+window:src/screens/frame/R1Window.pane.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/frame/glass48.test.tsx
+window:src/stage/pane/MemoryTerminal.test.tsx
+window:src/stage/pane/tab-fit.test.ts

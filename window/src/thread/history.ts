@@ -106,6 +106,7 @@ function readMeta(m: Message): MessageMeta {
     ...(sender ? { sender } : {}),
     ...(readOwner(m) ? { owner: true } : {}),
     ...(m.excludeFromContext === true ? { excluded: true } : {}),
+    ...(m.pinned === true ? { pinned: true } : {}),
     ...(m.usage
       ? { usage: { input: num(usage.input), output: num(usage.output), total: num(usage.totalTokens), cost: num(cost.total) } }
       : {}),

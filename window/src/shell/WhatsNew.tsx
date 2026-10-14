@@ -24,15 +24,17 @@ type Props = {
   startOnReady?: boolean;
   desktopInstall?: boolean;
   computerName?: string;
+  /** The item 48 clear glass dialog (README 48), for the R1 window. */
+  clear?: boolean;
 };
 
-function Rows({ title, rows, close }: { title: string; rows: NewRow[]; close: () => void }) {
+function Rows({ title, rows, close, clear }: { title: string; rows: NewRow[]; close: () => void; clear?: boolean }) {
   if (!rows.length) {
     return null;
   }
   return (
     <div className="wn-g">
-      <h3>{title}</h3>
+      <h3 className={clear ? "g-label" : undefined}>{title}</h3>
       <div className="new13">
         {rows.map((r) => (
           <button key={r.title} type="button" className="new-row13" onClick={() => (close(), r.run())}>
@@ -71,7 +73,7 @@ export function WhatsNew(p: Props) {
     </>
   );
   return (
-    <Dialog title="What’s new" wide onClose={p.onClose} testid="whats-new" footer={footer}>
+    <Dialog title="What’s new" wide clear={p.clear} onClose={p.onClose} testid="whats-new" footer={footer}>
       {ready ? (
         <span className="seg wn-seg" role="radiogroup" aria-label="Version" style={{ gridTemplateColumns: "repeat(2, auto)", ["--i" as string]: on === "ready" ? 1 : 0, ["--n" as string]: 2 }}>
           <button type="button" role="radio" aria-checked={on === "installed"} onClick={() => setOn("installed")}>
@@ -82,11 +84,11 @@ export function WhatsNew(p: Props) {
           </button>
         </span>
       ) : null}
-      <p className="hint wn-hint">{on === "ready" && ready ? p.desktopInstall ? `What Branch ${versionParts(ready).short} brings. It installs when nothing is running and keeps a safety copy first.` : installOnComputer(p.computerName ?? "") : `What Branch ${versionParts(p.version).short} brought, and where each part lives.`}</p>
-      {showingReady && !notes.length ? <p className="hint">The update didn't say what it changes.</p> : null}
-      <Rows title="New" rows={groups.New} close={p.onClose} />
-      <Rows title="Better" rows={groups.Better} close={p.onClose} />
-      <Rows title="Fixed" rows={groups.Fixed} close={p.onClose} />
+      <p className={p.clear ? "hint wn-hint g-label" : "hint wn-hint"}>{on === "ready" && ready ? p.desktopInstall ? `What Branch ${versionParts(ready).short} brings. It installs when nothing is running and keeps a safety copy first.` : installOnComputer(p.computerName ?? "") : `What Branch ${versionParts(p.version).short} brought, and where each part lives.`}</p>
+      {showingReady && !notes.length ? <p className={p.clear ? "hint g-label" : "hint"}>The update didn't say what it changes.</p> : null}
+      <Rows title="New" rows={groups.New} close={p.onClose} clear={p.clear} />
+      <Rows title="Better" rows={groups.Better} close={p.onClose} clear={p.clear} />
+      <Rows title="Fixed" rows={groups.Fixed} close={p.onClose} clear={p.clear} />
     </Dialog>
   );
 }
