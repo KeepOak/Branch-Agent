@@ -12,7 +12,7 @@ const thread = (patch: Partial<Conversation> = {}): Conversation => ({
   createdAt: NOW, updatedAt: NOW, preview: "", working: false, kind: "direct", system: false, automation: false, totalTokens: 0, contextTokens: 0, ...patch,
 });
 const runs = (): ConversationMenuRun => ({
-  pin: vi.fn(), rename: vi.fn(), editTrunk: vi.fn(), snooze: vi.fn(), archive: vi.fn(), restore: vi.fn(), toBoard: vi.fn(), exportFile: vi.fn(), exportWebPage: vi.fn(),
+  pin: vi.fn(), rename: vi.fn(), editTrunk: vi.fn(), snooze: vi.fn(), archive: vi.fn(), restore: vi.fn(), toBoard: vi.fn(), share: vi.fn(), exportFile: vi.fn(), exportWebPage: vi.fn(),
   copyConversation: vi.fn(), map: vi.fn(), replay: vi.fn(), lookInside: vi.fn(), workMode: vi.fn(), list: vi.fn(), ownWindow: vi.fn(), startOver: vi.fn(), remove: vi.fn(),
 });
 const ctx = (patch: Partial<ConversationMenuContext> = {}): ConversationMenuContext => ({
@@ -22,8 +22,18 @@ const named = (rows: MenuEntry[], label: string) => rows.find(row => row.label =
 const all = (rows: MenuEntry[]): MenuEntry[] => rows.flatMap(row => [row, ...all(row.submenu ?? [])]);
 
 describe("the conversation ••• menu (owner-approved nine rows)", () => {
-  it("lists Pin, Rename, Snooze, Archive, Send to the board, Export, View, Start over and Delete, in that order", () => {
-    expect(conversationMenu(ctx()).map(row => row.label)).toEqual(["Pin to top", "Rename", "Snooze", "Archive", "Send to the board", "Export", "View", "Start over…", "Delete…"]);
+  it("Share… follows Send to the board, needs session.members.list and opens the Share dialog; before the first message it says why", () => {
+    const c = ctx();
+    const share = named(conversationMenu(c), "Share…");
+    expect(CONVERSATION_NEED.share).toBe("session.members.list");
+    expect(share.need).toBe(CONVERSATION_NEED.share);
+    share.onSelect!();
+    expect(c.run.share).toHaveBeenCalledTimes(1);
+    expect(named(conversationMenu(ctx({ row: null })), "Share…").off).toBeTruthy();
+  });
+
+  it("lists Pin, Rename, Snooze, Archive, Send to the board, Share…, Export, View, Start over and Delete, in that order", () => {
+    expect(conversationMenu(ctx()).map(row => row.label)).toEqual(["Pin to top", "Rename", "Snooze", "Archive", "Send to the board", "Share…", "Export", "View", "Start over…", "Delete…"]);
     expect(named(conversationMenu(ctx()), "Delete…").danger).toBe(true);
   });
 
@@ -99,7 +109,7 @@ describe("Group rules in a group chat (#974 row 21)", () => {
   it("adds Group rules after View only in a group chat, with the current rule on the right", () => {
     expect(conversationMenu(ctx()).some(row => row.label === "Group rules")).toBe(false);
     const rows = conversationMenu(ctx({ room: { ruleWords: "A lead Trunk decides", rules: [] } }));
-    expect(rows.map(row => row.label)).toEqual(["Pin to top", "Rename", "Snooze", "Archive", "Send to the board", "Export", "View", "Group rules", "Start over…", "Delete…"]);
+    expect(rows.map(row => row.label)).toEqual(["Pin to top", "Rename", "Snooze", "Archive", "Send to the board", "Share…", "Export", "View", "Group rules", "Start over…", "Delete…"]);
     expect(named(rows, "Group rules").hint).toBe("A lead Trunk decides");
   });
 
