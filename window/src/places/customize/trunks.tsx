@@ -41,13 +41,13 @@ type Props = Pick<PlaceProps, "engine" | "level" | "openSettings" | "startConver
 
 /** The ••• items the preview has that nothing stands behind yet (R1-10: one plain line each). */
 export const SETTINGS_MENU_COMING = {
-  pause: "Pausing a Trunk comes in a later update.",
-  watch: "Showing a Trunk how, once, comes in a later update.",
-  packages: "Packaging a Trunk comes in a later update.",
-  seed: "Copying a Trunk as a seed comes in a later update.",
-  download: "Downloading a Trunk’s seed comes in a later update.",
-  look: "Copying a Trunk’s look comes in a later update.",
-  share: "Sharing a Trunk to Seedbank comes in a later update.",
+  pause: "Pause comes in a later update.",
+  watch: "Show it how, once comes in a later update.",
+  packages: "Package comes in a later update.",
+  seed: "Copy seed comes in a later update.",
+  download: "Download seed comes in a later update.",
+  look: "Copy its look comes in a later update.",
+  share: "Share to Seedbank comes in a later update.",
 } as const;
 
 

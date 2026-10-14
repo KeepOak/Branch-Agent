@@ -6,7 +6,6 @@
 // buttons the preview has with nothing behind them yet are Coming in their own words (R1-10).
 import type { ReactElement } from "react";
 import { Coming } from "../../../glass/coming";
-import { COMING_REASON } from "../../../glass/coming-registry";
 import { TrunksTab } from "../../../places/customize/trunks";
 import { useResource, type Trunks } from "../../../places/library/data";
 import { pageFor } from "../nav";
@@ -43,7 +42,7 @@ function DefaultRow({ engine, item }: { engine: SlotPageProps["engine"]; item: (
       <b className="g-label" data-lv="Advanced">{item.label}</b>
       {item.help ? <small className="g-label" data-lines>{item.help}</small> : null}
       <div className="r1s-ctl">
-        <Coming engine={engine} need={item.need} unwired reason={COMING_REASON} where={item.label}>
+        <Coming engine={engine} need={item.need} unwired reason={`${item.label} comes in a later update.`} where={item.label}>
           {item.button ? <button type="button" className="r1s-btn">{item.button}</button> : <span className="r1s-own-ctl"><Toggle label={item.label} on={false} onChange={() => undefined} /></span>}
         </Coming>
       </div>
