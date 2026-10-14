@@ -1,0 +1,17 @@
+/* Find anything in the R1 window (README item 48): a clear dialog over the wallpaper. The window it covers steps aside while
+   it is open (R1Window), so there is no dimming scrim; the field, the group labels, every row and the key hints sit on
+   frosted pills with a 1px low-alpha outline (--gp-*). Reduce transparency gives solid pills from the same tokens. */
+.r1-find { display: contents; }
+.r1-find .palette-scrim:not(#g48) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.r1-find .palette:not(#g48) { background: transparent; box-shadow: none; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; overflow: visible; }
+.r1-find :is(.pal-field, .pal-row, .ph, .pal-note, .pal-none, .pal-foot > span):not(#g48) {
+  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
+  box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); }
+.r1-find .pal-field:not(#g48) { border: 0; border-radius: 18px; }
+.r1-find .pal-list:not(#g48) { padding: 8px 0 0; }
+.r1-find .pal-row:not(#g48) { margin: 0 0 4px; border-radius: 12px; }
+.r1-find .pal-row.sel:not(#g48), .r1-find .pal-row:hover:not(#g48) { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
+.r1-find .ph:not(#g48) { width: fit-content; margin: 8px 0 4px; padding: 2px 9px; border-radius: var(--r-pill); font-family: var(--sans); text-transform: none; letter-spacing: normal; font-size: 12px; }
+.r1-find :is(.pal-note, .pal-none):not(#g48) { width: fit-content; margin: 8px auto 0; padding: 4px 11px; border-radius: 14px; }
+.r1-find .pal-foot:not(#g48) { border: 0; padding: 8px 0 0; gap: 6px; }
+.r1-find .pal-foot > span:not(#g48) { padding: 2px 9px; border-radius: var(--r-pill); }

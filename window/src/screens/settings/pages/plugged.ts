@@ -12,7 +12,7 @@ import { classicSlot } from "./classic-host";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
-export const REHOSTED = { who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: "updates", privacy: "usage", history: "backups", learning: ["self", "seasons"], remote: "gateway", voice: "voice" } as const;
+export const REHOSTED = { who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"], privacy: "usage", history: "backups", learning: ["self", "seasons"], remote: "gateway", voice: "voice" } as const;
 
 export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic)])),

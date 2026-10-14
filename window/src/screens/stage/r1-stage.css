@@ -1,5 +1,8 @@
 /* The re-hosted Classic computer stage inside the R1 frame (parity row 1). Clear glass per README item 48: the
    wrapper adds no fill of its own, only layout, so the stage's own styles and the R1 glass tokens show through. */
-.r1-stage { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; padding: 0 var(--r1-gutter, 12px); }
+.r1-stage { position: relative; flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; padding: 0 var(--r1-gutter, 12px); }
+/* The × sits at the end of the stage's top row; the row keeps room for it. Inside .g-clear it takes the glass pill. */
+.r1-stage > .computer-stage .st7-top { padding-right: 52px; }
+.r1-stage-close { position: absolute; top: 8px; right: calc(var(--r1-gutter, 12px) + 12px); width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; color: inherit; font: inherit; }
 .r1-stage > .computer-stage { flex: 1 1 auto; min-height: 0; }
 .r1-stage-pip { display: contents; }
