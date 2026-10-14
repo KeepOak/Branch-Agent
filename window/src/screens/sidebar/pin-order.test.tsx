@@ -9,7 +9,7 @@ import { CapabilityProvider } from "../../connect/capabilities";
 import type { ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
 import type { SideRow } from "./model";
-import { orderPins } from "./pin-order";
+import { orderPins, pinAxis } from "./pin-order";
 import { Sidebar, type SidebarProps } from "./Sidebar";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span data-face={label} /> }));
@@ -56,7 +56,7 @@ async function render(saved: string[]) {
 }
 const tiles = () => [...host.querySelectorAll<HTMLElement>(".r1sb-pins [data-pin]")].map(tile => tile.dataset.pin);
 const tile = (id: string) => host.querySelector<HTMLElement>(`.r1sb-pins [data-pin="${id}"] .r1sb-pin-open`)!;
-const pointer = (type: string, x: number) => Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: 10, button: 0 }), { pointerId: 1, pointerType: "mouse" });
+const pointer = (type: string, x: number, y = 10) => Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }), { pointerId: 1, pointerType: "mouse" });
 
 async function drag(from: string, to: string) {
   vi.stubGlobal("CSS", { escape: (value: string) => value });
@@ -68,28 +68,59 @@ async function drag(from: string, to: string) {
 
 describe("R1 Pinned order (Classic use-pin-order re-hosted)", () => {
   it("lays the Pinned grid out in the saved order, the default first", async () => {
-    await render(["trunk:quill", "trunk:ledger", "trunk:scout"]);
-    expect(tiles()).toEqual(["trunk:sapling", "trunk:quill", "trunk:ledger", "trunk:scout"]);
+    await render(["agent:quill:main", "agent:ledger:main", "agent:scout:main"]);
+    expect(tiles()).toEqual(["agent:sapling:main", "agent:quill:main", "agent:ledger:main", "agent:scout:main"]);
   });
 
   it("saves the new order through users.prefs.set when a tile is dragged, and doesn't open it", async () => {
-    const { request, onOpen } = await render(["trunk:ledger", "trunk:scout", "trunk:quill"]);
-    await drag("trunk:quill", "trunk:ledger");
-    expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { [PIN_KEY]: ["trunk:ledger", "trunk:quill", "trunk:scout"] } });
-    expect(tiles()).toEqual(["trunk:sapling", "trunk:ledger", "trunk:quill", "trunk:scout"]);
+    const { request, onOpen } = await render(["agent:ledger:main", "agent:scout:main", "agent:quill:main"]);
+    await drag("agent:quill:main", "agent:ledger:main");
+    expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { [PIN_KEY]: ["agent:ledger:main", "agent:quill:main", "agent:scout:main"] } });
+    expect(tiles()).toEqual(["agent:sapling:main", "agent:ledger:main", "agent:quill:main", "agent:scout:main"]);
     expect(onOpen).not.toHaveBeenCalled();
   });
 
   it("keeps the default Trunk first: it doesn't drag, and nothing drops before it", async () => {
-    const { request } = await render(["trunk:ledger", "trunk:scout", "trunk:quill"]);
-    await drag("trunk:sapling", "trunk:scout");
-    await drag("trunk:quill", "trunk:sapling");
+    const { request } = await render(["agent:ledger:main", "agent:scout:main", "agent:quill:main"]);
+    await drag("agent:sapling:main", "agent:scout:main");
+    await drag("agent:quill:main", "agent:sapling:main");
     expect(request).not.toHaveBeenCalledWith("users.prefs.set", expect.anything());
-    expect(tiles()[0]).toBe("trunk:sapling");
+    expect(tiles()[0]).toBe("agent:sapling:main");
   });
 
   it("orders pins the saved order doesn't name after the ones it does", () => {
     const row = (id: string, isDefault = false) => ({ id, isDefault } as SideRow);
     expect(orderPins([row("a"), row("b"), row("home", true), row("c")], ["c", "a"]).map(pin => pin.id)).toEqual(["home", "c", "a", "b"]);
+  });
+
+  it("names pins by conversation key, so an order Classic saved still applies and a drag saves keys Classic reads", async () => {
+    const { request } = await render(["agent:scout:main", "trunk:ledger", "agent:quill:main"]);
+    expect(tiles()).toEqual(["agent:sapling:main", "agent:scout:main", "agent:quill:main", "agent:ledger:main"]);
+    await drag("agent:ledger:main", "agent:scout:main");
+    expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { [PIN_KEY]: ["agent:scout:main", "agent:ledger:main", "agent:quill:main"] } });
+  });
+
+  it("reads before and after by height when the collapsed rail stacks the pins in one column", () => {
+    const grid = document.body.appendChild(document.createElement("div"));
+    expect(pinAxis(null)).toBe("x");
+    grid.style.gridTemplateColumns = "repeat(2, minmax(0, 1fr))";
+    expect(pinAxis(grid)).toBe("x");
+    grid.style.gridTemplateColumns = "1fr";
+    expect(pinAxis(grid)).toBe("y");
+  });
+
+  it("drops above a pin in the rail when the pointer moves up over its top half", async () => {
+    const { request } = await render(["agent:ledger:main", "agent:scout:main", "agent:quill:main"]);
+    host.querySelector<HTMLElement>(".r1sb-pins")!.style.gridTemplateColumns = "1fr";
+    for (const [index, tile] of [...host.querySelectorAll<HTMLElement>(".r1sb-pins [data-pin]")].entries()) {
+      tile.getBoundingClientRect = () => ({ left: 0, right: 52, width: 52, top: index * 60, bottom: index * 60 + 52, height: 52, x: 0, y: index * 60, toJSON() {} }) as DOMRect;
+    }
+    vi.stubGlobal("CSS", { escape: (value: string) => value });
+    document.elementFromPoint = () => tile("agent:ledger:main");
+    const from = tile("agent:quill:main");
+    await act(async () => { from.dispatchEvent(pointer("pointerdown", 26, 200)); });
+    await act(async () => { from.dispatchEvent(pointer("pointermove", 26, 70)); });
+    await act(async () => { from.dispatchEvent(pointer("pointerup", 26, 70)); });
+    expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { [PIN_KEY]: ["agent:quill:main", "agent:ledger:main", "agent:scout:main"] } });
   });
 });

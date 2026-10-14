@@ -8,6 +8,7 @@ import { Coming } from "../../glass/coming";
 import { Face } from "../../face/Face";
 import { useSidebarPointerDrag, type DropZone, type SidebarDrop } from "../../shell/sidebar-drag";
 import { FOLDERS, folderCount, rowTime, type Folder, type SideRow } from "./model";
+import { pinAxis, pinKey } from "./pin-order";
 
 const svg = (body: ReactNode, size = 16) => <svg className="r1sb-i" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{body}</svg>;
 export const icons = {
@@ -73,7 +74,9 @@ const NO_ZONES: readonly DropZone[] = [];
 export function PinnedGrid({ rows, currentKey, handlers, onReorder }: { rows: SideRow[]; currentKey: string | null; handlers: RowHandlers; onReorder?: (drop: SidebarDrop) => void }) {
   const grid = useRef<HTMLDivElement | null>(null);
   const { ref: dragRef, ...drag } = useSidebarPointerDrag(drop => onReorder?.(drop), {
-    itemAttribute: "data-pin", ignoreSelector: ".r1sb-pin-more, [data-pin-fixed]", axis: "x", dropZones: PIN_ZONES,
+    itemAttribute: "data-pin", ignoreSelector: ".r1sb-pin-more, [data-pin-fixed]", dropZones: PIN_ZONES,
+    // Read at drag time: the collapsed rail stacks the tiles in one column (sidebar.css), so before and after go by height.
+    get axis() { return pinAxis(grid.current); },
     zonesFor: (_source, _target, element) => (element.hasAttribute("data-pin-fixed") ? NO_ZONES : PIN_ZONES),
     faceSelector: ".r1sb-pin-face", nameSelector: ".r1sb-pin-name",
   });
@@ -100,7 +103,7 @@ export function PinnedGrid({ rows, currentKey, handlers, onReorder }: { rows: Si
 
 function PinnedTile({ row, current, handlers }: { row: SideRow; current: boolean; handlers: RowHandlers }) {
   const tile = useRef<HTMLDivElement>(null), more = useRef<HTMLButtonElement>(null);
-  return <div className="r1sb-pin" role="listitem" data-pin={row.id} data-pin-fixed={row.isDefault ? "" : undefined} ref={tile}>
+  return <div className="r1sb-pin" role="listitem" data-pin={pinKey(row)} data-pin-fixed={row.isDefault ? "" : undefined} ref={tile}>
     <button type="button" className="r1sb-pin-open" data-local="" aria-current={current ? "true" : undefined} title={row.name}
       aria-label={`${row.name}, ${row.role}${row.unread ? ", unread" : ""}${row.working ? ", working" : ""}`}
       onClick={() => handlers.onOpen(row)} onContextMenu={event => { event.preventDefault(); handlers.onMenu(row, tile.current!); }}>

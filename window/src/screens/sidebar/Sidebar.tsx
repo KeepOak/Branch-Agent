@@ -41,7 +41,7 @@ import { readThemeChoice, setThemeChoice, type ThemeChoice } from "../../theme/t
 import { FIND_EVENT } from "../../thread/FindBar";
 import { buildSections, contactRows, personRows, type Folder, type Person, type SideRow } from "./model";
 import { FolderChip, icons, PinnedGrid, SectionHead, SideRowView, TopCapsules, type RowHandlers } from "./parts";
-import { orderPins } from "./pin-order";
+import { orderPins, pinKey } from "./pin-order";
 import { NEED, rowMenu } from "./row-menu";
 import "./sidebar.css";
 
@@ -252,7 +252,7 @@ export function Sidebar(p: SidebarProps) {
       {results}
       {searching ? null : <>
       {sections.pinned.length ? <section className="r1sb-sec" data-section="pinned"><SectionHead label="Pinned" /><PinnedGrid rows={orderPins(sections.pinned, pinOrder.order)} currentKey={p.currentKey} handlers={handlers}
-        onReorder={drop => void pinOrder.move(drop, orderPins(sections.pinned, pinOrder.order).filter(row => !row.isDefault).map(row => row.id))} /></section> : null}
+        onReorder={drop => void pinOrder.move(drop, orderPins(sections.pinned, pinOrder.order).filter(row => !row.isDefault).map(pinKey))} /></section> : null}
       {section("Trunks", sections.trunks, sections.trunks.some(row => row.unread) ? <Coming need={NEED.markRead}><button type="button" className="r1sb-mar" onClick={() => markAllRead(sections.trunks)}>Mark all read</button></Coming> : null)}
       {section("People", sections.people, <button type="button" className="r1sb-head-go" data-local="" aria-label="People settings" title="People" onClick={() => p.onSettings("people")}>{icons.chevron}</button>)}
       {section("Groups", sections.groups)}
