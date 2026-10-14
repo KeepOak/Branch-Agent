@@ -5,7 +5,7 @@
 // can't do it yet is a Coming row in the row's own words; a section that is a live list (computers, connections) is one
 // bare row whose control is Classic's list, drawn without Classic's heading (kit Headless).
 import { useEffect, useState, type ReactNode } from "react";
-import { KitProvider, Headless, useConfig } from "../../../places/settings/kit";
+import { KitProvider, Headless, SetupLock, useConfig } from "../../../places/settings/kit";
 import type { SettingsPageProps } from "../../../places/settings/index";
 import type { Ctx, SecSpec, Spec } from "../../../places/settings/set2/computer-more";
 import { Dialog } from "../../../shell/Dialog";
@@ -65,13 +65,16 @@ export function specPage(page: PageId, plan: CardPlan): { rows: Row[]; controls:
 }
 
 /** The Classic block behind a bare row, at the frame's level, with Classic's save reporting under it. */
-function ClassicBlock({ engine, row, onPage, draw }: SlotControlProps & { draw: (c: Ctx) => ReactNode }) {
+export function ClassicBlock({ engine, row, onPage, draw }: SlotControlProps & { draw: (c: Ctx) => ReactNode }) {
   const [level] = useLevel(engine);
   const [failed, , report] = useFailure();
   const props: SettingsPageProps = { page: row.page, title: row.label ?? "", level: LEVEL_WORD[level], engine, openSettings: (id) => onPage?.(pageFor(id)) };
   // Classic's row kit styles its rows inside .set-col; here it is a plain block in the R1 card, with no padding of its own.
   return <div className="set-col" data-classic-block="" style={{ display: "block", maxWidth: "none", margin: 0, padding: 0, minWidth: 0 }}>
-    <KitProvider level={level} report={report} scope={null}><Headless>{draw({ engine, lv: level, props })}</Headless></KitProvider>
+    <KitProvider level={level} report={report} scope={null}>
+      {/* As in Classic: a connection that may not change how Branch is set up sees these rows greyed. */}
+      <SetupLock locked={engine.scopes.length > 0 && !engine.scopes.includes("operator.admin")}><Headless>{draw({ engine, lv: level, props })}</Headless></SetupLock>
+    </KitProvider>
     <Failed text={failed} />
   </div>;
 }
