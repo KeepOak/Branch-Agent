@@ -1,5 +1,4 @@
-/** Validation cases adapted from OpenHands/OpenHands a8c05584ec6bb063a0857460b9cbff48e136919f,
- * __tests__/utils/automation-schedule.test.ts; Croner-specific parity cases added. */
+/** Validation cases with Croner-specific parity cases added. */
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { validateCronExpression } from "./cron-expression-validation.js";

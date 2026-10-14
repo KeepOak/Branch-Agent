@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/agent-command.live-model-switch.test.ts (atlas AGENT-LOOP-0001). Changed for Branch: apply DECISIONS.md item 127 using scripts/rebrand-map.json; extend scope/cache/plugin metadata fixtures with native exports used by Branch delivery and use a canonical scratch session for strict delivery; retain all assertions.
+// Changed for Branch: apply DECISIONS.md item 127 using scripts/rebrand-map.json; extend scope/cache/plugin metadata fixtures with native exports used by Branch delivery and use a canonical scratch session for strict delivery; retain all assertions.
 import fs from "node:fs/promises";
 /** Tests live model switching behavior in active agent command sessions. */
 import os from "node:os";

@@ -13,10 +13,12 @@ export function readSessionEntryInstanceId(
     database.db,
     getSessionKysely(database.db)
       .selectFrom("session_nodes")
-      .select(["current_session_id", "entry_json"])
+      .select(["current_session_id", "entry_json", "entry_valid"])
       .where("session_key", "=", sessionKey),
   );
-  if (!row?.entry_json) {
+  // A quarantined row (-1) proves no instance until doctor rewrites it, so owner,
+  // reaction, sharing and suggestion writes refuse it like a missing row.
+  if (!row?.entry_json || row.entry_valid === -1) {
     return undefined;
   }
   try {

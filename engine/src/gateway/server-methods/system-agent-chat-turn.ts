@@ -3,10 +3,12 @@ import type {
   SystemAgentChatResult,
 } from "../../../packages/gateway-protocol/src/index.js";
 import type { SystemAgentChatEngine } from "../../system-agent/chat-engine.js";
+import type { SystemAgentOperation } from "../../system-agent/operation-types.js";
 import { appendTranscriptTurn } from "../../system-agent/transcript-store.js";
 import type { GatewaySystemAgentSession } from "./shared-types.js";
 
 type SystemAgentChatReply = Awaited<ReturnType<SystemAgentChatEngine["handle"]>>;
+type SystemAgentChatProposal = NonNullable<SystemAgentChatResult["proposal"]>;
 type SystemAgentChatEngineInput = Pick<
   SystemAgentChatEngine,
   "answerWizard" | "cancelWizard" | "handle"
@@ -90,10 +92,34 @@ export async function runSystemAgentChatInput(params: {
     : await params.engine.handle(params.input.message);
 }
 
+/**
+ * The structured view of a staged create-agent request. Only fields the operation holds are returned; the
+ * operation does not decide tools, computer, permissions or talks-to, so they are never invented here.
+ */
+export function describeSystemAgentChatProposal(
+  operation: SystemAgentOperation,
+): SystemAgentChatProposal | undefined {
+  if (operation.kind !== "create-agent") {
+    return undefined;
+  }
+  return {
+    kind: "create-agent",
+    agentId: operation.agentId,
+    ...(operation.name ? { name: operation.name } : {}),
+    ...(operation.purpose ? { job: operation.purpose } : {}),
+    ...(operation.role ? { role: operation.role } : {}),
+  };
+}
+
 export function buildSystemAgentChatResult(params: {
   sessionId: string;
   reply: SystemAgentChatReply;
+  /** The operation staged for the owner's yes, if any: sets `needsApproval` and, for create-agent, `proposal`. */
+  pendingProposal?: { operation: SystemAgentOperation } | null;
 }): SystemAgentChatResult {
+  const proposal = params.pendingProposal
+    ? describeSystemAgentChatProposal(params.pendingProposal.operation)
+    : undefined;
   const action =
     params.reply.action === "open-tui"
       ? "open-agent"
@@ -123,6 +149,8 @@ export function buildSystemAgentChatResult(params: {
     ...(params.reply.wizardInputPending === true ? { wizardInputPending: true } : {}),
     ...(params.reply.question ? { question: params.reply.question } : {}),
     ...(params.reply.step ? { step: params.reply.step } : {}),
+    ...(params.pendingProposal ? { needsApproval: true } : {}),
+    ...(proposal ? { proposal } : {}),
   };
 }
 

@@ -11,7 +11,7 @@ import { ACTIVITY_WORD, activeProfiles, activityOf, deviceName, firstName, nameO
 import { Avatar, Empty, Glyph, Status } from "./ui";
 
 /** No engine method lets someone ask to join another person's run yet. */
-export const ASK_TO_JOIN_OFF = "Needs the engine's ask-to-join method.";
+const ASK_TO_JOIN_OFF = "Needs the engine's ask-to-join method.";
 const ONLINE = "Online";
 const SHARED_OWNER_TIP = "Connected with Branch’s key or a tunnel, not a personal sign-in.";
 

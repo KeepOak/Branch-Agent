@@ -6,7 +6,7 @@ export const isManagedAttachment = (item: Attachment): boolean => /^artifact_man
 
 /** Same artifacts.download flow as engine/ui/src/api/artifact-download.ts. The RPC authorizes one artifact;
  * its short-lived ticket, never the gateway credential, is what the media element receives. */
-export async function resolveAttachmentSource(engine: WindowEngine, item: Attachment): Promise<string> {
+async function resolveAttachmentSource(engine: WindowEngine, item: Attachment): Promise<string> {
   if (!engine.sessionKey || !engine.gatewayUrl) throw new Error("Attachment unavailable");
   const result = await engine.request<{
     url?: string; encoding?: string; data?: string; artifact?: { type?: string; mimeType?: string };

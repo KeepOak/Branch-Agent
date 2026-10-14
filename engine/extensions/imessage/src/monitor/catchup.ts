@@ -15,7 +15,7 @@ import {
 } from "../state-contract.js";
 
 // Legacy opt-in catchup replays missed chat.db rows through the live inbound
-// evaluation and dispatch path (openclaw/openclaw#78649).
+// evaluation and dispatch path.
 
 const DEFAULT_MAX_AGE_MINUTES = 120;
 const MAX_MAX_AGE_MINUTES = 12 * 60;

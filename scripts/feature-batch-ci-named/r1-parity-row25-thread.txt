@@ -1,0 +1,5 @@
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/frame/ThreadExtras.test.tsx
+window:src/screens/onboarding/talk-window.test.tsx
+window:src/screens/settings/ask-trunk-window.test.tsx
+window:src/thread/WhereChips.test.tsx

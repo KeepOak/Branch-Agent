@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/compaction.ts (atlas AGENT-LOOP-0099). Changed for Branch: OpenHands overflow scaling and R-1541 oldest-item recovery (AGENT-LOOP-0104); Hermes summary-input tool pruning protecting 40k recent tokens (AGENT-LOOP-0102); Goose middle-out tool response retry (AGENT-LOOP-0100); existing runtime adapters and owner-context safeguards; upstream assertions retained.
+// Changed for Branch: overflow scaling and R-1541 oldest-item recovery (AGENT-LOOP-0104); summary-input tool pruning protecting 40k recent tokens (AGENT-LOOP-0102); middle-out tool response retry (AGENT-LOOP-0100); existing runtime adapters and owner-context safeguards; upstream assertions retained.
 import {
   CompactionError,
   SummaryOutputBudgetError,

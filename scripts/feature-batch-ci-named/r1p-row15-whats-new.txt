@@ -1,0 +1,2 @@
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/updates/WhatsNewHost.test.tsx

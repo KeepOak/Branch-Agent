@@ -5,7 +5,7 @@ import { Icon } from "../../shell/icons";
 import { shownWhy } from "../../shell/shown-why";
 import { Empty } from "./ui";
 
-export const GROUPS_OFF = "Needs the engine's permission groups.";
+const GROUPS_OFF = "Needs the engine's permission groups.";
 
 export function GroupsTab() {
   return <>

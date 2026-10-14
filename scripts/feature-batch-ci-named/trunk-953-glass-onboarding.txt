@@ -1,0 +1,6 @@
+window:src/places/settings/account-login.test.tsx
+window:src/places/settings/set1/accounts.test.tsx
+window:src/places/settings/set1/add-account.test.ts
+window:src/screens/onboarding/Onboarding.test.tsx
+window:src/screens/onboarding/glass48.test.tsx
+window:src/setup/setup.test.tsx
