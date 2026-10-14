@@ -121,6 +121,27 @@ describe("rooms methods", () => {
       0,
     );
   });
+  it("unarchives a room through rooms.archive with archived false", async () => {
+    const { room } = await call("rooms.create", {
+      name: "Quotes",
+      members: [{ kind: "trunk", id: "scout", role: "lead" }],
+    });
+    await call("rooms.archive", { roomId: room.roomId });
+    expect((await call("rooms.list", {})).rooms).toEqual([]);
+    const back = await call("rooms.archive", { roomId: room.roomId, archived: false });
+    expect(back.room.archivedAt).toBeUndefined();
+    expect((await call("rooms.list", {})).rooms.map((row: { roomId: string }) => row.roomId)).toEqual([
+      room.roomId,
+    ]);
+    expect(broadcast).toHaveBeenLastCalledWith(
+      "rooms.changed",
+      expect.objectContaining({ roomId: room.roomId }),
+      expect.anything(),
+    );
+    await expect(call("rooms.archive", { roomId: "missing", archived: false })).rejects.toThrow(
+      "Room not found",
+    );
+  });
   it("creates a dropped contact room and records its added member through rooms methods", async () => {
     const { room } = await call("rooms.create", {
       name: "Scout and Ledger",
