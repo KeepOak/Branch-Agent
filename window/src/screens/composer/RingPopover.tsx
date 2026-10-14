@@ -1,6 +1,7 @@
 // The ring's popover (HANDOFF R1-04, preview ACTS.ringP17): This computer, Running, Context, then the protected Every
 // account list exactly as the status bar shows it (shell/StatusPopovers EveryAccount). Opening reads only what the
-// engine already reported; the context breakdown and the cost are read when the popover opens.
+// engine already reported; the context breakdown and the cost are read when the popover opens. Directly under This
+// computer, "Connect to another Branch…" opens the same Connect elsewhere dialog as Classic's machine menu (#974 row 17).
 import { useEffect, useState, type RefObject } from "react";
 import type { Conversation as ListRow } from "../../connect/conversations";
 import { num, rec, type WindowEngine } from "../../composer/engine";
@@ -8,6 +9,7 @@ import type { OpenTarget } from "../../composer/nav";
 import { Popover } from "../../glass/Popover";
 import { EveryAccount } from "../../shell/StatusPopovers";
 import { readRoom, type Limits, type Room } from "../../shell/status-data";
+import { ThisComputer } from "./ThisComputer";
 import type { ContextUse } from "./usage";
 
 export type RunningRow = { key: string; title: string; line: string; needsYou?: boolean };
@@ -42,12 +44,12 @@ export function RingPopover(p: Props) {
     return () => { live = false; };
   }, [p.engine, p.sessionKey, p.offline, total, size]);
   const others = p.running.filter((r) => r.key !== p.sessionKey);
+  // The same event Classic's machine menu dispatches; App listens for it and shows ConnectElsewhereDialog.
+  const connectElsewhere = () => { p.onClose(); window.dispatchEvent(new CustomEvent("branch:connect-elsewhere")); };
   return <Popover anchor={p.anchor} label="Usage, running and context" onClose={p.onClose} width={340} align="end" placement="above">
     <div className="r1c-menu r1c-ringpop">
-      <section className="r1c-sec">
-        <div className="c-pt">This computer</div>
-        <div className="r1c-line"><i className="r1c-dot" data-state={p.offline ? "off" : "on"} />{p.offline ? "Offline · reconnecting to Branch" : "Online · you are here"}</div>
-      </section>
+      <ThisComputer engine={p.engine} offline={p.offline} onOpen={(target) => { p.onClose(); p.onOpen(target); }} />
+      <button type="button" className="r1c-line r1c-run" data-local="" data-testid="ring-connect-elsewhere" onClick={connectElsewhere}>Connect to another Branch…</button>
       <section className="r1c-sec">
         <div className="c-pt">Running</div>
         {p.working ? <div className="r1c-line"><i className="r1c-dot" data-state="working" />{p.name} is working</div> : null}

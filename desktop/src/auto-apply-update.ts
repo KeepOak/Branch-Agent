@@ -1,3 +1,5 @@
+import { statfsSync } from "node:fs";
+
 /** Holds a staged release until the renderer's gateway snapshot stays idle long enough. */
 export interface UpdateActivity {
   activeRuns: number;
@@ -10,6 +12,51 @@ export const AUTO_APPLY_POLL_MS = 30_000;
 export const AUTO_APPLY_IDLE_MS = 60_000;
 export const AUTO_APPLY_RETRY_MS = 60_000;
 
+/**
+ * Private #951 cadence: on a machine running Trunk work, updates are batched. One applies at most this often, and only
+ * once the machine is idle, unless the release is a security fix.
+ */
+export const TRUNK_UPDATE_MIN_INTERVAL_MS = 60 * 60_000;
+/** A machine whose engine had a run in flight this recently counts as running Trunk work. */
+export const TRUNK_WORK_WINDOW_MS = 24 * 60 * 60_000;
+/** With no update pending, the engine's activity is sampled this often to notice Trunk work. */
+export const TRUNK_WORK_SAMPLE_MS = 5 * 60_000;
+/** Private #951 health rule: no update starts below these free fractions of disk and RAM, security fixes included. */
+export const UPDATE_MIN_FREE_DISK = 0.10;
+export const UPDATE_MIN_FREE_MEMORY = 0.20;
+
+/** Free fractions (0 to 1) of the disk holding Branch's data and of the machine's RAM. */
+export interface UpdateHealth {
+  diskFree: number;
+  memoryFree: number;
+}
+
+/**
+ * This host's free disk (the volume holding Branch's data) and free RAM as fractions. Tests pin either reading with
+ * BRANCH_DESKTOP_UPDATE_FREE_DISK or BRANCH_DESKTOP_UPDATE_FREE_MEMORY (a fraction from 0 to 1).
+ */
+export function readUpdateHealth(dataDir: string, availableMemoryBytes: number, totalMemoryBytes: number, env: NodeJS.ProcessEnv = process.env): UpdateHealth {
+  const pinned = (value: string | undefined): number | undefined => {
+    const fraction = Number(value);
+    return value && Number.isFinite(fraction) && fraction >= 0 && fraction <= 1 ? fraction : undefined;
+  };
+  let diskFree = pinned(env.BRANCH_DESKTOP_UPDATE_FREE_DISK);
+  if (diskFree === undefined) {
+    const disk = statfsSync(dataDir);
+    diskFree = disk.blocks > 0 ? disk.bavail / disk.blocks : 1;
+  }
+  const memoryFree = pinned(env.BRANCH_DESKTOP_UPDATE_FREE_MEMORY) ?? (totalMemoryBytes > 0 ? availableMemoryBytes / totalMemoryBytes : 1);
+  return { diskFree, memoryFree };
+}
+
+/** Why an update must not start on this host now, or undefined when it may. */
+export function updateHealthRefusal(health: UpdateHealth): string | undefined {
+  const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
+  if (health.diskFree < UPDATE_MIN_FREE_DISK) return `low disk: ${percent(health.diskFree)} free, under ${percent(UPDATE_MIN_FREE_DISK)}`;
+  if (health.memoryFree < UPDATE_MIN_FREE_MEMORY) return `low memory: ${percent(health.memoryFree)} free, under ${percent(UPDATE_MIN_FREE_MEMORY)}`;
+  return undefined;
+}
+
 export function createAutoApplyUpdate(options: {
   pendingVersion(): Promise<string | null>;
   enabled(): boolean;
@@ -17,6 +64,14 @@ export function createAutoApplyUpdate(options: {
   restart(version: string, handoffOnly: boolean): Promise<void>;
   /** A flagged standby can take over while the predecessor finishes admitted work. */
   seamlessHandoff?(): boolean;
+  /** Free disk and RAM now; an unhealthy host never starts an update (Private #951). */
+  health?(): UpdateHealth | Promise<UpdateHealth>;
+  /** A security fix skips the Trunk-work batching, never the health rule. */
+  securityFix?(version: string): boolean | Promise<boolean>;
+  /** Pins whether this machine runs Trunk work; by default it is any engine run seen in TRUNK_WORK_WINDOW_MS. */
+  trunkWork?(): boolean;
+  /** The engine's runs in flight, read now and then while nothing is pending (engine only, never the window). */
+  activeRuns?(): Promise<number>;
   onApplied?(version: string): void | Promise<void>;
   onFailure?(version: string): void;
   log(line: string): void;
@@ -35,9 +90,35 @@ export function createAutoApplyUpdate(options: {
   let stopped = false;
   let lastDecision = "";
   let timer: ReturnType<typeof setInterval> | undefined;
+  /** When an update last applied here, and when the engine last had a run in flight. */
+  let lastAppliedAt: number | undefined;
+  let lastRunSeenAt: number | undefined;
+  let lastSampleAt: number | undefined;
   const now = options.now ?? Date.now;
   const decision = (line: string) => {
     if (line !== lastDecision) { options.log(`auto-apply: ${line}`); lastDecision = line; }
+  };
+  const busy = (activity: UpdateActivity) => Boolean(activity.activeRuns || activity.pendingApprovals || activity.streaming || activity.unsavedDraftFiles);
+  /** Every activity read notes a run in flight, which marks this machine as running Trunk work. */
+  const readActivity = async (): Promise<UpdateActivity> => {
+    const activity = await options.activity();
+    lastSampleAt = now();
+    if (activity.activeRuns > 0) lastRunSeenAt = lastSampleAt;
+    return activity;
+  };
+  /** Notes runs in flight from the engine alone when it can, so a window that is not ready never blocks the update. */
+  const noteRuns = async (): Promise<void> => {
+    if (options.trunkWork) return;
+    if (!options.activeRuns) { await readActivity(); return; }
+    const runs = await options.activeRuns();
+    lastSampleAt = now();
+    if (runs > 0) lastRunSeenAt = lastSampleAt;
+  };
+  const runningTrunkWork = () => options.trunkWork?.() ?? (lastRunSeenAt !== undefined && now() - lastRunSeenAt < TRUNK_WORK_WINDOW_MS);
+  const applied = async (version: string) => {
+    lastAppliedAt = now();
+    await options.onApplied?.(version);
+    appliedVersion = version;
   };
   const tick = async () => {
     if (checking || restarting || stopped) return;
@@ -51,16 +132,36 @@ export function createAutoApplyUpdate(options: {
       if (!version || !options.enabled() || appliedVersion === version) {
         idleSince = undefined;
         if (version) decision("off; awaiting Restart");
+        // Nothing to apply: still notice Trunk work now and then, so the next update knows how to land.
+        if (!options.trunkWork && options.activeRuns && (lastSampleAt === undefined || now() - lastSampleAt >= TRUNK_WORK_SAMPLE_MS)) {
+          await noteRuns().catch(() => undefined);
+        }
         return;
       }
       if (now() < retryAfter) return;
-      if (options.seamlessHandoff?.() && failedVersion !== version) {
+      const health = await options.health?.();
+      const refusal = health && updateHealthRefusal(health);
+      if (refusal) {
+        idleSince = undefined;
+        decision(`not starting ${version}: ${refusal}`);
+        return;
+      }
+      const security = await options.securityFix?.(version) ?? false;
+      await noteRuns();
+      // Trunk work batches updates: hourly at most, and only once idle. A security fix lands as on any machine.
+      const batched = !security && runningTrunkWork();
+      if (batched && lastAppliedAt !== undefined && now() - lastAppliedAt < TRUNK_UPDATE_MIN_INTERVAL_MS) {
+        idleSince = undefined;
+        decision(`batching ${version} with Trunk work; the last update applied under an hour ago`);
+        return;
+      }
+      const handoff = Boolean(options.seamlessHandoff?.()) && failedVersion !== version;
+      if (handoff && !batched) {
         restarting = true;
-        decision(`prepared handoff for ${version}`);
+        decision(`prepared handoff for ${version}${security ? " (security fix)" : ""}`);
         try {
           await options.restart(version, true);
-          await options.onApplied?.(version);
-          appliedVersion = version;
+          await applied(version);
           restarting = false;
           return;
         } catch {
@@ -70,10 +171,10 @@ export function createAutoApplyUpdate(options: {
           decision(`handoff unavailable; falling back to idle drain for ${version}`);
         }
       }
-      const activity = await options.activity();
-      if (activity.activeRuns || activity.pendingApprovals || activity.streaming || activity.unsavedDraftFiles) {
+      const activity = await readActivity();
+      if (busy(activity)) {
         idleSince = undefined;
-        decision(`waiting for ${activity.activeRuns} active runs, ${activity.pendingApprovals} approvals${activity.streaming ? ", streaming reply" : ""}${activity.unsavedDraftFiles ? ", unsaved draft files" : ""}`);
+        decision(`waiting for ${activity.activeRuns} active runs, ${activity.pendingApprovals} approvals${activity.streaming ? ", streaming reply" : ""}${activity.unsavedDraftFiles ? ", unsaved draft files" : ""}${batched ? `; deferring ${version} until Trunk work is idle` : ""}`);
         return;
       }
       idleSince ??= now();
@@ -82,15 +183,23 @@ export function createAutoApplyUpdate(options: {
         return;
       }
       // A fresh gateway snapshot closes the gap after the hold timer and before relaunch.
-      const final = await options.activity();
-      if (final.activeRuns || final.pendingApprovals || final.streaming || final.unsavedDraftFiles || !options.enabled()) {
+      const final = await readActivity();
+      if (busy(final) || !options.enabled()) {
         idleSince = undefined;
         decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals`);
         return;
       }
       restarting = true;
+      // Batched and idle: the handoff still lands it without a stop; a failed handoff drains on the next idle tick.
+      if (batched && handoff) {
+        decision(`idle; handing off to ${version}`);
+        try { await options.restart(version, true); await applied(version); }
+        catch { failedVersion = version; idleSince = undefined; decision(`handoff unavailable; falling back to idle drain for ${version}`); }
+        finally { restarting = false; }
+        return;
+      }
       decision(`restarting for ${version}`);
-      try { await options.restart(version, false); await options.onApplied?.(version); appliedVersion = version; restarting = false; }
+      try { await options.restart(version, false); await applied(version); restarting = false; }
       catch (error) {
         restarting = false;
         retryAfter = now() + AUTO_APPLY_RETRY_MS;

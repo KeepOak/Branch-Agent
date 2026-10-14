@@ -10,7 +10,7 @@ import { chmod, copyFile, mkdir, mkdtemp, open, readdir, readFile, rm, stat, wri
 import { basename, dirname, join, relative } from "node:path";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
-import { appendCappedLog } from "./log-rotation";
+import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 import { downloadComponent, replaceFile } from "./component-update-files";
 import { trustedDownloadResponse, type ComponentRelease, type DesktopAsset } from "./component-update-manifest";
 import type { HelperPlan } from "./desktop-update-helper";
@@ -162,7 +162,7 @@ async function helperMissing(helperSource: string): Promise<boolean> {
 async function discardStagedUpdate(cfg: DesktopConfig, journal: DesktopJournal, reason: string): Promise<false> {
   await rm(journalFile(cfg), { force: true });
   // The log never blocks launch.
-  try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version} discarded: ${reason}; starting the current build\n`); } catch { /* ignore */ }
+  try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version} discarded: ${reason}; starting the current build\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
   return false;
 }
 

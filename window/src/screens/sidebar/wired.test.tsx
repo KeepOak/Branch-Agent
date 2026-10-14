@@ -72,6 +72,28 @@ const openArchivedRoomMenu = async () => {
 };
 
 describe("R1 sidebar, the wired-now entries (#977)", () => {
+  it("+ › Quick ask opens the R1 Quick ask box (branch:quick-ask), and is Coming without sessions.create", async () => {
+    const heard = vi.fn();
+    window.addEventListener("branch:quick-ask", heard);
+    await render([...WIRED, "sessions.create", "chat.send"]);
+    await click(host.querySelector('[aria-label="New, places and more"]'));
+    expect(row("Quick ask").getAttribute("aria-disabled")).toBeNull();
+    expect(row("Quick ask").dataset.need).toBe("sessions.create chat.send");
+    await click(row("Quick ask"));
+    expect(heard).toHaveBeenCalledOnce();
+    await closeMenus();
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await render(WIRED);
+    await click(host.querySelector('[aria-label="New, places and more"]'));
+    expect(undeclared()).toEqual([]);
+    expect(row("Quick ask").getAttribute("aria-disabled")).toBe("true");
+    expect(coming("Quick ask")?.need).toEqual(["sessions.create", "chat.send"]);
+    await click(row("Quick ask"));
+    expect(heard).toHaveBeenCalledOnce();
+    window.removeEventListener("branch:quick-ask", heard);
+  });
+
   it("has Branch make a Trunk through branch.chat's new-agent welcome", async () => {
     const { request } = await render(WIRED);
     await click(host.querySelector('[aria-label="New, places and more"]'));

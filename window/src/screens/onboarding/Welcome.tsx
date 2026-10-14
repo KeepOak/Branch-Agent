@@ -3,8 +3,7 @@ import { useEffect, useRef } from "react";
 import { KeeperMark } from "../../brand/KeeperMark";
 import { Icon as ComposerIcon } from "../../composer/icons";
 import { Icon } from "../../shell/icons";
-import { WAITS_FOR, WHERE, whereWord, type Where } from "./model";
-import { Unwired } from "./Unwired";
+import { WHERE, whereWord, type Where } from "./model";
 
 export function Welcome({ where, onChangeWhere }: { where: Where; onChangeWhere: () => void }) {
   return (
@@ -32,14 +31,14 @@ export function WhereSheet({ where, onPick, onClose }: { where: Where; onPick: (
       <div className="r1-ob-sheet" role="dialog" aria-modal="true" aria-label="Where Branch runs">
         <h2>Where Branch runs</h2>
         <div className="r1-ob-modes" role="radiogroup" aria-label="Where Branch runs">
-          {WHERE.map((w, i) => {
-            const button = <button key={w.id} type="button" ref={i === 0 ? first : undefined} className="r1-ob-mode" role="radio" aria-checked={where === w.id} {...(w.reason ? {} : { "data-local": true, onClick: () => onPick(w.id) })}>
+          {WHERE.map((w, i) => (
+            <button key={w.id} type="button" ref={i === 0 ? first : undefined} className="r1-ob-mode" role="radio" aria-checked={where === w.id} data-local onClick={() => onPick(w.id)}>
               <Icon name={w.icon} size={15} />
               <span><b>{w.name}</b><small>{w.line}</small></span>
-            </button>;
-            return w.reason && w.id !== "here" ? <Unwired key={w.id} need={WAITS_FOR[w.id]} reason={w.reason} where={w.name}>{button}</Unwired> : button;
-          })}
+            </button>
+          ))}
         </div>
+        <p className="r1-ob-hint">Another computer and a KeepOak computer are coming: Seedbank › Coming to Branch lists them.</p>
         <p className="r1-ob-hint">Restoring from a backup lives in Settings › History & backups.</p>
         <div className="r1-ob-sheet-foot"><button type="button" className="r1-ob-btn r1-ob-pri" data-local onClick={onClose}>Done</button></div>
       </div>

@@ -16,11 +16,20 @@ export class RotatingLog {
     this.size = existsSync(file) ? statSync(file).size : 0;
   }
 
+  /** Never throws. A failed rotation keeps appending to the live file; a failed write drops only this line. */
   append(line: string): void {
     const bytes = Buffer.byteLength(line) + 1;
-    if (this.size > 0 && this.size + bytes > this.maxBytes) this.rotate();
-    appendFileSync(this.file, `${line}\n`);
-    this.size += bytes;
+    try {
+      if (this.size > 0 && this.size + bytes > this.maxBytes) this.rotate();
+    } catch {
+      // Keep appending: a log over its cap beats lost lines. The next append retries the rotation.
+    }
+    try {
+      appendFileSync(this.file, `${line}\n`);
+      this.size += bytes;
+    } catch {
+      // A full disk drops this event; diagnostics must never stop the app.
+    }
   }
 
   /** The current file first, then the rotated files from newest to oldest. */
