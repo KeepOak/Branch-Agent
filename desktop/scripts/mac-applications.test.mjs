@@ -86,14 +86,15 @@ test("Applications directory prefers a writable system folder, then the home fol
   } finally { await rm(home, { recursive: true, force: true }); }
 });
 
-test("stamp names the bundle Branch and keeps the stable id, package type, and minimum system version", async () => {
+test("stamp shows the bundle as Branch and keeps the stable id, package type, and minimum system version", async () => {
   const { root, source, done } = await tempTree();
   try {
     await bundle(source);
     await mac.stampMacBundle(source);
     await mac.stampMacBundle(source);
     const stamped = await readFile(join(source, "Contents/Info.plist"), "utf8");
-    assert.equal(value(stamped, "CFBundleName"), "Branch");
+    // Electron looks its helpers up as "<CFBundleName> Helper.app"; only the display name is Branch.
+    assert.equal(value(stamped, "CFBundleName"), "Branch Agent");
     assert.equal(value(stamped, "CFBundleDisplayName"), "Branch");
     assert.equal(stamped.split("<key>CFBundleDisplayName</key>").length, 2);
     assert.equal(value(stamped, "CFBundlePackageType"), "APPL");
@@ -106,6 +107,24 @@ test("stamp names the bundle Branch and keeps the stable id, package type, and m
       name: "Branch Agent", executableName: "Branch Agent", appBundleId: "com.electron.branch-agent", icon: "/icons/branch.icns",
     });
   } finally { await done(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("stamp refuses a packaged bundle whose helper does not match CFBundleName, and accepts the matching one", async () => {
+  const { source, done } = await tempTree();
+  try {
+    await bundle(source);
+    const helpers = join(source, "Contents/Frameworks");
+    await mkdir(join(helpers, "Branch Helper.app/Contents/MacOS"), { recursive: true });
+    await writeFile(join(helpers, "Branch Helper.app/Contents/MacOS/Branch Helper"), "wrong-helper");
+    const before = await readFile(join(source, "Contents/Info.plist"), "utf8");
+    await assert.rejects(mac.stampMacBundle(source), /Missing bundle file: Branch Agent Helper/);
+    assert.equal(await readFile(join(source, "Contents/Info.plist"), "utf8"), before);
+    await mkdir(join(helpers, "Branch Agent Helper.app/Contents/MacOS"), { recursive: true });
+    await writeFile(join(helpers, "Branch Agent Helper.app/Contents/MacOS/Branch Agent Helper"), "helper");
+    await mac.stampMacBundle(source);
+    const stamped = await readFile(join(source, "Contents/Info.plist"), "utf8");
+    assert.equal(value(stamped, "CFBundleName"), mac.MAC_HELPER_PREFIX);
+  } finally { await done(); }
 });
 
 test("stamp refuses a bundle that is missing its executable or icon and leaves the plist unchanged", async () => {

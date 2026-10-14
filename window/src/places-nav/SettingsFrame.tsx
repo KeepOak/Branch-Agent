@@ -210,7 +210,10 @@ export function SettingsFrame({ page, backName, running, engine, onPage, onBack,
   }, [level, chosen]);
   const [query, setQuery] = useState("");
   const [searchRow, setSearchRow] = useState<SearchRow | undefined>();
-  const [scope, setScope] = useState<string | null>(null);
+  // The Trunk Settings was opened from: Regular shows its settings, and Advanced starts the picker on it.
+  const origin = engine.agentId ?? null;
+  const [scope, setScope] = useState<string | null>(origin);
+  useEffect(() => setScope(origin), [origin]);
   const [save, report] = useSaveState();
   const jump = useRowJump(page);
   // Before the engine says hello the scopes aren't known yet: nothing is greyed until they are.
@@ -234,7 +237,7 @@ export function SettingsFrame({ page, backName, running, engine, onPage, onBack,
     levelScroll.current = next === shown && scrollRef.current ? { page: shown, top: scrollRef.current.scrollTop } : null;
     setLevel(l);
     saveLevel(l);
-    if (l === "regular") setScope(null); // "Settings for" is an Advanced control; Regular shows the default Trunk's
+    if (l === "regular") setScope(origin); // "Settings for" is an Advanced control; Regular shows the originating Trunk's
     if (next !== page) onPage(next);
   };
   const go = useCallback((id: string, row?: SearchRow) => {
@@ -287,7 +290,7 @@ export function SettingsFrame({ page, backName, running, engine, onPage, onBack,
             ))}
           </nav>
           <FileProblem engine={engine} />
-          <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : null} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>
+          <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : origin} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>
             <SetupLock locked={!maySetup && SETUP_PAGES.includes(shown)}>
               <SettingsPage running={running} page={shown} title={heading ?? pageName(shown)} level={level} engine={engine} openSettings={go} searchSection={searchRow?.page === shown ? searchRow.sec : undefined} />
             </SetupLock>

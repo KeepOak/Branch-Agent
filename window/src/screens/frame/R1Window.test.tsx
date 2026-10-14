@@ -16,7 +16,7 @@ vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as
 // page's own rows, and Chat apps.
 vi.mock("../settings/pages/plugged", async () => {
   const { REHOSTED, R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, learning: R1_PAGES.learning, signins: R1_PAGES.signins, updates: R1_PAGES.updates, chatapps: { component: () => null } } };
+  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, instructions: R1_PAGES.instructions, learning: R1_PAGES.learning, remote: R1_PAGES.remote, signins: R1_PAGES.signins, updates: R1_PAGES.updates, voice: R1_PAGES.voice, developer: R1_PAGES.developer, chatapps: { component: () => null } } };
 });
 vi.mock("../settings", () => ({
   SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (
@@ -25,7 +25,8 @@ vi.mock("../settings", () => ({
     </div>
   ),
 }));
-vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: () => <p>Place content</p> }));
+const placeProps = vi.hoisted(() => ({ current: null as null | { createTrunk?: () => void } }));
+vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: (p: { createTrunk?: () => void }) => { placeProps.current = p; return <p>Place content</p>; } }));
 vi.mock("../../face/Face", () => ({ Face: () => <span /> }));
 vi.mock("../sidebar/Sidebar", () => ({ Sidebar: ({ ready, onSettings }: { ready: boolean; onSettings: (page: string) => void }) => <nav aria-label="Sidebar stub" data-ready={ready}><button type="button" aria-label="Settings" onClick={() => onSettings("appearance")} /></nav> }));
 vi.mock("../../places/settings/set1/appearance-store", () => ({ lookStore: () => ({ load: async () => undefined }) }));
@@ -95,7 +96,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("who,notifications,instructions,models,permissions,privacy,browser,coding,history,devices,learning,signins,updates,chatapps,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("who,notifications,models,permissions,privacy,browser,coding,history,devices,instructions,learning,remote,signins,updates,voice,developer,chatapps,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
@@ -163,11 +164,11 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
     card: "classic:people", goto: "r1:goto",
     general: "r1:general", appearance: "r1:appearance", notifications: "r1:notifications", who: "r1:who",
     trunks: "classic:advanced", instructions: "r1:instructions", customize: "classic:advanced", seedbank: "r1:seedbank", memory: "classic:advanced", autos: "classic:advanced",
-    voice: "classic:voice", chatapps: "r1:chatapps",
+    voice: "r1:voice", chatapps: "r1:chatapps",
     accounts: "r1:accounts", models: "r1:models",
     permissions: "r1:permissions", signins: "r1:signins", privacy: "r1:privacy",
-    devices: "r1:devices", browser: "r1:browser", coding: "r1:coding", remote: "classic:gateway",
-    history: "r1:history", learning: "r1:learning", updates: "r1:updates", features: "r1:features", developer: "classic:developer",
+    devices: "r1:devices", browser: "r1:browser", coding: "r1:coding", remote: "r1:remote",
+    history: "r1:history", learning: "r1:learning", updates: "r1:updates", features: "r1:features", developer: "r1:developer",
   });
 });
 it("sends a page to R1 Settings only when the row table or a slot covers it and Classic has nothing more", () => {
@@ -176,7 +177,7 @@ it("sends a page to R1 Settings only when the row table or a slot covers it and 
   expect(r1SettingsPage("accounts")).toBe(true);
   expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(true);
   expect(r1SettingsPage("chatapps")).toBe(true);
-  for (const page of ["keys", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
+  for (const page of ["keys", "local"]) expect(r1SettingsPage(page)).toBe(false);
 });
 it("draws Models and Permissions as R1 pages, which re-host every Classic Models and Permissions control", async () => {
   const { R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
@@ -274,4 +275,12 @@ it("puts Talk beside on a place's header and opens the Classic pane beside the p
   await act(async () => root.render(<R1Window session={session} />));
   expect(host.querySelector('.r1-header-right [aria-label^="Talk to"]')).toBeNull();
   expect(host.querySelector(".r1-beside")).toBeNull();
+});
+
+it("hands the Grove a createTrunk, so its Trunk button makes a random Trunk on R1 as the + menu's New Trunk does", async () => {
+  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "place", place: "office" }));
+  await act(async () => root.render(<R1Window session={session} />));
+  expect(placeProps.current?.createTrunk).toBeInstanceOf(Function);
 });

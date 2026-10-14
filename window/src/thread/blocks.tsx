@@ -24,7 +24,7 @@ import {
 import { Icon, ICONS, StepKindIcon } from "./icons";
 import { Markdown } from "./markdown";
 import { computerStepDetail, isComputerToolName, isScreenToolName } from "./computer-action-label";
-import { fullOutput, type Block, type FileChange } from "./model";
+import { fullOutput, type Attachment, type Block, type FileChange } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { withMentions } from "../rooms/RoomMessage";
 
@@ -65,11 +65,12 @@ export function UserMessage({ block, children }: { block: Of<"user">; children?:
 }
 
 /** Steered note (§4.2.2): what you told the Trunk while it worked, inside that turn (the preview's `.steered-b17`). */
-export function SteeredNote({ name, text }: { name: string; text: string }) {
+export function SteeredNote({ name, text, attachments }: { name: string; text: string; attachments?: Attachment[] }) {
   return (
     <div className="steered-note indent" role="note" data-testid="steered-note">
       <Icon d={ICONS.retry} size={14} />
       <span>You steered {name}: “{text}”. It takes this at its next step; nothing done so far is lost.</span>
+      {attachments?.length ? <Attachments items={attachments} mine /> : null}
     </div>
   );
 }
