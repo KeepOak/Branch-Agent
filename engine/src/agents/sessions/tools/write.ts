@@ -8,6 +8,7 @@ import { dirname } from "node:path";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { isMissingPathError } from "../../../infra/errors.js";
 import { captureAgentToolSourceExecutionGuard } from "../../agent-tool-source-execution-guard.js";
+import type { FileReadLedger } from "../../file-read-ledger.js";
 import { assertCompleteFileWriteContent } from "../../file-omission-guards.js";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
 import { getLanguageFromPath, highlightCode } from "../../modes/interactive/theme/theme.js";
@@ -76,6 +77,8 @@ const defaultWriteOperations: WriteOperations = {
 export interface WriteToolOptions {
   /** Custom operations for file writing. Default: local filesystem */
   operations?: WriteOperations;
+  /** Per-session read coverage; guards whole-file writes that would discard unread content. */
+  readLedger?: FileReadLedger;
 }
 
 type WriteToolPrecheck = {
@@ -421,6 +424,12 @@ export function createWriteToolDefinition(
             changed: false,
           } satisfies WriteToolDetails);
         }
+        options?.readLedger?.assertWholeFileWriteAllowed({
+          absolutePath,
+          newBytes: Buffer.byteLength(content, "utf8"),
+          existingBytes:
+            precheck.beforeStat?.type === "file" ? precheck.beforeStat.size : null,
+        });
         const details = await resolveWriteDetails({
           absolutePath,
           content,
@@ -451,6 +460,7 @@ export function createWriteToolDefinition(
             );
           }
           assertCurrent();
+          options?.readLedger?.recordWrite({ absolutePath, content });
           return successfulWriteResult(path, content, details);
         } catch (error: unknown) {
           assertCurrent();
