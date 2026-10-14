@@ -38,6 +38,7 @@ import { Row, type RowMenu } from "./Row";
 import { contextUse, ringSummary, tightest } from "./usage";
 import "../../composer/composer.css";
 import "./composer.css";
+import { ComposerPet } from "../pet/ComposerPet";
 
 export const VOICE_OFF = "Off until you choose: it uses the microphone. Turn it on in Settings › Voice.";
 export const IMPROVE_COMING = "This engine can’t improve a draft with your model.";
@@ -78,6 +79,8 @@ type Props = {
   /** The message being answered (the message menu's Reply, R1-03); it rides on the next send and then clears. */
   replyTo?: Reply | null;
   onClearReply?: () => void;
+  /** The first Trunk waiting on a yes, for the roaming pet's tip (QUEUE item 18). */
+  petWaiting?: string | null;
 };
 
 type Menu = RowMenu | "plus" | "ring" | null;
@@ -367,6 +370,7 @@ export function Composer(props: Props) {
       onRemoveFile={(id) => { draft.removeFile(id); box.current?.focus(); }} onShowText={(id) => { const f = draft.takeFile(id); if (f?.text) draft.setText(draft.text ? `${draft.text}\n${f.text}` : f.text); }}
       people={draft.people} onForget={draft.forget} onSteer={async (text) => { sendMessage({ text, picks: [] }, { queue: "steer" }); toast(`Steered ${trunkName}. It picks this up at its next step.`); return true; }} />
     {talking ? <VoiceScreen engine={engine} name={trunkName} onClose={() => setTalking(false)} /> : null}
+    <ComposerPet engine={engine} working={props.running.length > 0} waiting={props.petWaiting ?? null} />
     <form className="r1c-pill" data-text={hasDraft || undefined} data-temp={row.incognito === true || undefined} onSubmit={(e) => { e.preventDefault(); if (stopMode) onStop(); else submit(false); }}>
       {view ? <Drawer kind={view.kind} label={view.label} rows={view.rows} selected={Math.min(sel, view.rows.length - 1)} footer={view.footer} groupLabel={(i) => view.groups[i]} onHover={setSel} onPick={(i) => pick(view.picks[i])} /> : null}
       <button ref={plus} type="button" className="r1c-btn" data-local="" aria-label="Attach, mention a Trunk, skills" aria-haspopup="menu" aria-expanded={menu === "plus"} title="Add to the message" onClick={() => setMenu(menu === "plus" ? null : "plus")}><Icon name="plus" /></button>
