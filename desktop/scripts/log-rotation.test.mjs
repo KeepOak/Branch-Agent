@@ -101,6 +101,42 @@ test("the update helper's log is capped the same way, with five numbered archive
   }
 });
 
+test("a write error never throws out of the capped log, and the next write lands once the path is writable", async () => {
+  const { appendCappedLog, cappedLogStream } = await import(pathToFileURL(join(dist, "log-rotation.js")));
+  const root = await mkdtemp(join(tmpdir(), "desktop-log-error-"));
+  try {
+    const file = join(root, "gateway.log");
+    // A directory where the live log should be makes every append fail (EISDIR), as a full disk does.
+    await mkdir(file);
+    assert.doesNotThrow(() => appendCappedLog(file, "lost line\n", 1000));
+    const stream = cappedLogStream(file, 1000);
+    await new Promise((resolve, reject) => stream.write("lost chunk\n", error => (error ? reject(error) : resolve())));
+    await rm(file, { recursive: true });
+    appendCappedLog(file, "kept line\n", 1000);
+    assert.equal(await readFile(file, "utf8"), "kept line\n");
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
+
+test("a failed rotation keeps appending to the live log instead of throwing", async () => {
+  const { appendCappedLog } = await import(pathToFileURL(join(dist, "log-rotation.js")));
+  const root = await mkdtemp(join(tmpdir(), "desktop-log-rotfail-"));
+  try {
+    const file = join(root, "gateway.log");
+    await writeFile(file, "x".repeat(900));
+    // A directory in the oldest archive slot makes the rotation's rmSync throw, so the live file cannot roll.
+    await mkdir(join(root, "gateway.5.log"));
+    const line = `${"y".repeat(200)}\n`;
+    assert.doesNotThrow(() => appendCappedLog(file, line, 1000));
+    const text = await readFile(file, "utf8");
+    assert.equal(text.length, 900 + line.length, "the line went into the live file");
+    assert.ok(text.endsWith(line));
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+});
+
 test("a failed macOS Applications install is logged through the same cap", async () => {
   const { ensureMacApplicationsInstall } = await import(pathToFileURL(join(dist, "mac-applications.js")));
   const root = await mkdtemp(join(tmpdir(), "desktop-mac-log-"));

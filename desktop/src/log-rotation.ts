@@ -23,25 +23,31 @@ function rotate(file: string): void {
   if (existsSync(file)) renameSync(file, rotatedLogPath(file, 1));
 }
 
-/** Appends text. The live file rotates first when this write would take it past maxBytes. */
+/**
+ * Appends text. The live file rotates first when this write would take it past maxBytes. Never throws: a full disk,
+ * a missing directory or a failed rotation drops or keeps the line, and the app keeps running.
+ */
 export function appendCappedLog(file: string, text: string | Buffer, maxBytes = LOG_MAX_BYTES): void {
-  const size = existsSync(file) ? statSync(file).size : 0;
-  if (size > 0 && size + Buffer.byteLength(text) > maxBytes) {
-    // A failed rotation keeps appending to the live file: a log over its cap beats lost lines.
-    try { rotate(file); } catch { /* keep appending */ }
+  try {
+    const size = existsSync(file) ? statSync(file).size : 0;
+    if (size > 0 && size + Buffer.byteLength(text) > maxBytes) {
+      // A failed rotation keeps appending to the live file: a log over its cap beats lost lines.
+      try { rotate(file); } catch { /* keep appending */ }
+    }
+    appendFileSync(file, text);
+  } catch {
+    // This line is dropped; the next write tries again.
   }
-  appendFileSync(file, text);
 }
 
 /**
  * A writable for a child's output. Each chunk goes through appendCappedLog, which reopens the file by path, so a
- * rotation never leaves a stream writing into an archive.
+ * rotation never leaves a stream writing into an archive, and a write error never reaches the stream.
  */
 export function cappedLogStream(file: string, maxBytes = LOG_MAX_BYTES): Writable {
   return new Writable({
     write(chunk: Buffer, _encoding, callback) {
-      // A full disk must never stop the engine's output or the app.
-      try { appendCappedLog(file, chunk, maxBytes); } catch { /* the chunk is dropped */ }
+      appendCappedLog(file, chunk, maxBytes);
       callback();
     },
   });
