@@ -7,6 +7,7 @@ import { readLevel } from "../places-nav/SettingsFrame";
 import { Icon } from "./icons";
 import type { MenuItem } from "./Menu";
 import { notify } from "./notify";
+import { gigabytes, memoryTone } from "./memory-tone";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -19,8 +20,7 @@ export type Vitals = { memUsed: number; memTotal: number; cpus: number; load: nu
 /** The engine has no method that resumes a paused Trunk, so Resume stays greyed with this reason. */
 export const RESUME_MISSING = "Resuming a paused Trunk isn't available yet";
 
-const GB = 1024 ** 3;
-const gb = (b: number) => (b / GB).toFixed(1).replace(/\.0$/, "");
+const gb = gigabytes;
 
 /** Calls the engine has going now (voicecall.status with no id lists the active ones). */
 function useCalls(session: SaplingSession, ready: boolean): LiveCall[] {
@@ -114,7 +114,6 @@ type Props = {
   allPaused: boolean;
   gfx: boolean;
   onMenu: (e: MouseEvent<HTMLElement>, id: string, items: MenuItem[], label: string) => void;
-  onSettings: (page: string) => void;
 };
 
 /** Items that go after "N running", on the left. */
@@ -156,18 +155,18 @@ export function gfxTip(v: Vitals | null, level: string): string {
   return `${base}. Memory is nearly full (${gb(v.memUsed)} of ${gb(v.memTotal)} GB used): close apps you aren't using to free some.`;
 }
 
-/** The graphics and memory readout, after the spacer (§4.9.10). */
-export function StatusGfx(p: Props) {
+/** The graphics and memory readout, after the spacer (§4.9.10). Click opens its popover in place. */
+export function StatusGfx(p: Props & { onMemory: (e: MouseEvent<HTMLElement>) => void }) {
   const v = useVitals(p.session, p.ready && p.gfx);
   const level = readLevel();
   if (!p.gfx) return null;
-  const tight = v ? v.memUsed / v.memTotal > 0.9 : false;
+  const tone = v ? memoryTone(v.memUsed, v.memTotal) : "ok";
   const words = v ? `memory ${gb(v.memUsed)}/${gb(v.memTotal)} GB` : "—";
   const tip = gfxTip(v, level);
   return (
-    <button type="button" className="sb hide-sm hw" data-hide="gfx" title={tip} aria-label={tip} data-testid="sb-gfx" onClick={() => p.onSettings("local")}>
+    <button type="button" className="sb hide-sm hw" data-hide="gfx" title={tip} aria-label={tip} aria-haspopup="dialog" data-testid="sb-gfx" onClick={p.onMemory}>
       <Icon name="monitor" small />
-      <span>{tight ? <b className="warn-hw">{words}</b> : words}</span>
+      <span>{tone === "ok" ? words : <b className="warn-hw">{words}</b>}</span>
     </button>
   );
 }

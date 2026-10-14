@@ -1,0 +1,4 @@
+window:src/shell/memory-popover.test.tsx
+window:src/shell/memory-tone.test.ts
+window:src/shell/status-gateway.test.tsx
+window:src/shell/status-redesign.test.tsx
