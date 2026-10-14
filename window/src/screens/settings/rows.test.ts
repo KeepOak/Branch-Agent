@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { NAV, PAGES, TOP_PAGES, pageFor, pageShown, type PageId } from "./nav";
+import { NAV, PAGES, TOP_PAGES, pageFor, pageShown, r1PageFor, type PageId } from "./nav";
 import { APPEARANCE_ROWS as CLASSIC_APPEARANCE } from "../../places/settings/set1/appearance-rows";
 import { ASK_BEFORE_DELETE_KEY, agentsWork, askBeforeDeleting, checklistShown } from "./pages/general";
 import { ROWS, cardRows, hintFor, pageFirstLevel, rowLabel, rowLevel, type Row } from "./rows";
@@ -219,6 +219,13 @@ describe("settings nav", () => {
   it("sends old page ids to their new page", () => {
     const old: [string, PageId][] = [["people", "who"], ["gateway", "remote"], ["usage", "privacy"], ["seasons", "learning"], ["trunksP17", "trunks"], ["general", "general"], ["nope", "general"], ["__proto__", "general"]];
     for (const [from, to] of old) expect(pageFor(from)).toBe(to);
+  });
+
+  it("names the R1 page a route id belongs to, and leaves a Classic-only id as it is", () => {
+    expect(r1PageFor("gateway")).toBe("remote");
+    expect(r1PageFor("remote")).toBe("remote");
+    expect(r1PageFor("seasons")).toBe("learning");
+    expect(r1PageFor("computer-browser")).toBe("computer-browser");
   });
 
   it("shows Developer only at Technical", () => {
