@@ -863,3 +863,589 @@ function openConversationWindow(key: string): void {
     const current = [...conversationWindows].find(([, window]) => window === child)?.[0];
     if (current) { conversationWindows.delete(current); if (!quitting) saveConversationWindows(); }
   });
+  child.webContents.on("did-finish-load", () => offerWindowStatus(child));
+  if (place?.maximized) child.once("show", () => child.maximize());
+  trackWindowState(child, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds,
+    () => conversationStateFile([...conversationWindows].find(([, window]) => window === child)?.[0] ?? key));
+  child.setMenuBarVisibility(false);
+  lockDown(child);
+  if (!HIDDEN) child.once("ready-to-show", () => child.show());
+  void child.loadURL(url.toString()).catch((error: unknown) => {
+    log(`conversation window failed to load: ${String(error)}`);
+    child.destroy();
+  });
+}
+
+/** The window may only show the served window's origin; links open in the default browser. */
+function lockDown(w: BrowserWindow): void {
+  const origin = `http://127.0.0.1:${cfg.windowPort}`;
+  w.webContents.on("will-navigate", (e, url) => {
+    if (new URL(url).origin !== origin) e.preventDefault();
+  });
+  w.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("https://")) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+  session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+}
+
+const windowUrl = (): string => `http://127.0.0.1:${cfg.windowPort}/`;
+
+/**
+ * At a natural launch only: the helper swaps a staged desktop app in once this process has exited, then relaunches
+ * it. A running app never restarts itself for a desktop update.
+ */
+async function handOffDesktop(): Promise<boolean> {
+  if (!install) return false;
+  // A broken hand-off must never stop the app from starting on its current build.
+  const handed = await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), false)
+    .catch((error: unknown) => { log(`desktop update skipped: ${String(error)}`); return false; });
+  if (!handed) return false;
+  log("desktop update staged; handing off to the update helper and quitting");
+  return true;
+}
+
+async function start(): Promise<void> {
+  // A desktop update staged during the last run applies before anything starts.
+  if (await handOffDesktop()) { app.exit(0); return; }
+  token = readToken(cfg);
+  // Registered before any page loads: the preload asks for it synchronously.
+  ipcMain.on("branch-desktop:info", (e) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const served = Boolean(owner && branchWindows().includes(owner) && e.senderFrame === e.sender.mainFrame && e.sender.getURL().startsWith(windowUrl()));
+    if (served) windowPort = gatewayPort;
+    e.returnValue = served ? { gatewayUrl: gatewayUrl(), gatewayToken: token } : null;
+  });
+  // Diagnostics: the window's UI events go to ui-events.log, and a report bundles the recent logs.
+  const uiLog = new RotatingLog(join(cfg.dataDir, "ui-events.log"));
+  const fromServedWindow = (e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    return Boolean(owner && branchWindows().includes(owner) && e.senderFrame === e.sender.mainFrame && e.sender.getURL().startsWith(windowUrl()));
+  };
+  ipcMain.on("branch-desktop:ui-event", (e, raw: unknown) => {
+    if (!fromServedWindow(e)) return;
+    try {
+      const line = uiEventLine(raw, new Date().toISOString());
+      if (line) uiLog.append(line);
+    } catch {
+      // Diagnostics must never stop the app.
+    }
+  });
+  ipcMain.handle("branch-desktop:report-problem", async (e, minutes: unknown) => {
+    if (!fromServedWindow(e)) return { saved: false };
+    const span = typeof minutes === "number" && Number.isFinite(minutes) ? Math.min(240, Math.max(1, Math.round(minutes))) : 30;
+    const now = new Date();
+    const cutoff = now.getTime() - span * 60_000;
+    const ui = uiLog.paths().reverse().map((file) => readTail(file, REPORT_TAIL_BYTES)).join("\n");
+    const entries = [
+      { name: "desktop.log", text: readTail(join(cfg.dataDir, "desktop.log"), REPORT_TAIL_BYTES) },
+      { name: "gateway.log", text: readTail(join(cfg.dataDir, "gateway.log"), REPORT_TAIL_BYTES) },
+      { name: "ui-events.log", text: ui },
+    ].map((source) => ({ name: source.name, data: Buffer.from(`${recentLines(source.text, cutoff).join("\n")}\n`, "utf8") }));
+    entries.push({ name: "README.txt", data: Buffer.from(reportReadme(span, now.toISOString()), "utf8") });
+    const archive = zipStored(entries, now);
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    const options = {
+      defaultPath: `branch-problem-report-${now.toISOString().slice(0, 16).replace(/[:T]/g, "-")}.zip`,
+      filters: [{ name: "Zip archive", extensions: ["zip"] }],
+    };
+    const picked = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+    if (picked.canceled || !picked.filePath) return { saved: false };
+    writeFileSync(picked.filePath, archive);
+    return { saved: true, bytes: archive.length };
+  });
+  ipcMain.handle("branch-desktop:open-conversation", (e, key: unknown) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || (owner !== win && ![...conversationWindows.values()].includes(owner)) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a Branch window can open a conversation window");
+    }
+    if (typeof key !== "string" || !key.trim()) throw new Error("A conversation key is required");
+    openConversationWindow(key);
+  });
+  ipcMain.handle("branch-desktop:conversation-windows", (e) => {
+    if (!isOwnedComponentWindow(e, win?.webContents, windowUrl())) throw new Error("Only the main Branch window can list conversation windows");
+    return [...conversationWindows.keys()];
+  });
+  ipcMain.handle("branch-desktop:saved-conversation-windows", (e) => {
+    if (!isOwnedComponentWindow(e, win?.webContents, windowUrl())) throw new Error("Only the main Branch window can restore conversation windows");
+    return [...pendingSavedConversationKeys];
+  });
+  ipcMain.handle("branch-desktop:restore-conversation-windows", (e, valid: unknown, deferred: unknown = []) => {
+    if (!isOwnedComponentWindow(e, win?.webContents, windowUrl())) throw new Error("Only the main Branch window can restore conversation windows");
+    if (!Array.isArray(valid) || !valid.every((key) => typeof key === "string") || !Array.isArray(deferred) || !deferred.every((key) => typeof key === "string")) throw new Error("Invalid saved conversations");
+    const pending = new Set(pendingSavedConversationKeys);
+    const restore = valid.filter((key: string) => pending.has(key) && !conversationWindows.has(key));
+    const retry = deferred.filter((key: string) => pending.has(key) && !valid.includes(key));
+    const keep = new Set<string>([...restore, ...retry]);
+    for (const key of pendingSavedConversationKeys) {
+      if (!keep.has(key)) {
+        try { unlinkSync(join(cfg.dataDir, conversationStateFile(key))); } catch { /* no saved bounds */ }
+      }
+    }
+    pendingSavedConversationKeys = retry;
+    for (const key of restore) openConversationWindow(key);
+    saveConversationWindows();
+  });
+  ipcMain.handle("branch-desktop:forget-conversation-window", (e, key: unknown) => {
+    const contents = ownedWebContents(e.sender);
+    if (!contents || !isOwnedComponentWindow(e, contents, windowUrl())) throw new Error("Only a Branch window can forget a conversation window");
+    if (typeof key !== "string" || !key.trim()) throw new Error("A conversation key is required");
+    pendingSavedConversationKeys = pendingSavedConversationKeys.filter((saved) => saved !== key);
+    const child = conversationWindows.get(key);
+    if (child) {
+      conversationWindows.delete(key);
+      // Let a deleting pop-out receive its IPC answer before its renderer goes away.
+      setTimeout(() => { if (!child.isDestroyed()) child.destroy(); }, 0);
+    }
+    try { unlinkSync(join(cfg.dataDir, conversationStateFile(key))); } catch { /* no saved bounds */ }
+    saveConversationWindows();
+  });
+  ipcMain.handle("branch-desktop:open-main-route", (e, route: unknown) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a conversation window can open the main window");
+    }
+    if (!route || typeof route !== "object" || !["chat", "place", "settings"].includes(String((route as { kind?: unknown }).kind))) {
+      throw new Error("Invalid destination");
+    }
+    if (!win || win.isDestroyed()) throw new Error("The main window is not available");
+    if (win.isMinimized()) win.restore();
+    win.show(); win.focus();
+    win.webContents.send("branch-desktop:open-main-route", route);
+  });
+  ipcMain.handle("branch-desktop:close-conversation-window", (e) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a conversation window can close itself");
+    }
+    owner.close();
+  });
+  ipcMain.handle("branch-desktop:retarget-conversation-window", (e, key: unknown) => {
+    const owner = BrowserWindow.fromWebContents(e.sender);
+    if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(e, owner.webContents, windowUrl())) {
+      throw new Error("Only a conversation window can change its conversation");
+    }
+    if (typeof key !== "string" || !key.trim()) throw new Error("A conversation key is required");
+    const previous = [...conversationWindows].find(([, child]) => child === owner)?.[0];
+    if (!previous || previous === key) return;
+    const other = conversationWindows.get(key);
+    if (other && other !== owner && !other.isDestroyed()) throw new Error("That conversation already has a window");
+    conversationWindows.delete(previous);
+    conversationWindows.set(key, owner);
+    try { unlinkSync(join(cfg.dataDir, conversationStateFile(previous))); } catch { /* no saved bounds */ }
+    saveConversationWindows();
+  });
+  ipcMain.on("branch-desktop:restart-engine", e => { if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void restartEngine(); });
+  ipcMain.on("branch-desktop:dismiss-update-notice", e => {
+    if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) updateNotice = undefined;
+  });
+  ipcMain.on("branch-desktop:update-notice", (e, event: unknown, notice: unknown) => {
+    if (!isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) return;
+    if (event !== "shown" && event !== "dismissed" && event !== "expired" && event !== "undo") return;
+    const rec = notice && typeof notice === "object" ? notice as { version?: unknown; canUndo?: unknown } : {};
+    const version = typeof rec.version === "string" ? rec.version : "";
+    if (event === "shown") log(`update notice shown version=${version} canUndo=${rec.canUndo === true}`);
+    else log(`update notice ${event}`);
+    if (event === "dismissed" || event === "expired") updateNotice = undefined;
+  });
+  ipcMain.on("branch-desktop:undo-update", e => {
+    if (isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) void undoLastUpdate();
+  });
+  registerComponentUpdateIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), componentUpdates);
+  registerDesktopControlsIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), controls);
+  registerTitleBarIpc(ipcMain, () => win?.webContents, windowUrl(), (overlay) => win?.setTitleBarOverlay(overlay));
+  ipcMain.on("branch-desktop:title-bar", (event, value) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    if (!owner || ![...conversationWindows.values()].includes(owner) || !isOwnedComponentWindow(event, owner.webContents, windowUrl())) return;
+    const overlay = parseTitleBarOverlay(value);
+    if (overlay) owner.setTitleBarOverlay(overlay);
+  });
+  registerClipboardIpc(ipcMain, e => ownedWebContents(e.sender), windowUrl(), clipboard);
+  controls.apply();
+  win = createWindow();
+  await win.loadURL(STARTING);
+  log(`starting page shown after ${Date.now() - launchStarted} ms`);
+  const desktopVersion = await confirmDesktopUpdate(cfg);
+  if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
+  // Engines the last session started and left running (a crash mid-update): retire them before starting our own.
+  await retireRecordedEngines(cfg.dataDir, log);
+  // Always on: an engine service already serving the gateway port is attached to, never replaced.
+  for (const port of cfg.alwaysOn ? [cfg.windowPort] : [cfg.gatewayPort, cfg.windowPort]) {
+    if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
+  }
+  await refuseOrphanedEngine();
+  adoptGatewayPort(cfg.gatewayPort);
+  await recoverComponentUpdate(cfg);
+  if (!existsSync(join(cfg.windowDir, "index.html")) || !existsSync(join(cfg.dataDir, "engine-current.txt")) && !existsSync(join(cfg.engineDir, "branch.mjs"))) {
+    log("Installing verified GitHub components for first launch");
+    await refreshComponentUpdate(cfg, fetch, { desktop: install, underSwapGuard, log });
+  }
+  servedWindowDir = cfg.windowDir;
+  server = await serveWindow(() => servedWindowDir, cfg.windowPort);
+  await win.loadURL(windowUrl());
+  log(`window loaded after ${Date.now() - launchStarted} ms`);
+  if (await (cfg.alwaysOn ? attachServiceEngine() : bootSelectedEngine())) {
+    await win.loadURL(windowUrl());
+    log("Reloaded retained window after component rollback");
+  }
+  // Quit can run after the gateway becomes ready but before this startup continuation resumes.
+  if (quitting) return;
+  watchUpdates(win);
+  componentsReady = true;
+  if (pendingReleasePrune) runConfirmedReleasePrune();
+  else void pruneStartupUpdates(cfg, log);
+  autoApply.start();
+  stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, underSwapGuard, log,
+    onWithdrawal: version => {
+      withdrawnUpdateVersion = version;
+      engineUpdateReady = false;
+      sendToBranchWindows("branch-desktop:engine-update", "kept");
+    }, onStaged: () => {
+    offerStagedUpdate().catch(error => log(`Component update status: ${String(error)}`));
+  } });
+  if (macComputerDriver) {
+    let enabled = screenControlEnabled();
+    let granted = enabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
+    const timer = setInterval(() => {
+      if (updateLock.held) return;
+      const nextEnabled = screenControlEnabled();
+      const nextGranted = nextEnabled && macComputerDriver.permissionsGranted(resolveEngineDir(cfg));
+      if (nextEnabled !== enabled || nextGranted && !granted) {
+        enabled = nextEnabled;
+        granted = nextGranted;
+        void restartEngine();
+      } else { enabled = nextEnabled; granted = nextGranted; }
+    }, 3_000);
+    timer.unref();
+    app.once("will-quit", () => clearInterval(timer));
+  }
+}
+
+/**
+ * After an in-place update the engine can serve on a moved port. If the desktop crashed then, that engine is still
+ * running and holds the state: starting another one would wait on its lock, so say so plainly instead.
+ */
+async function refuseOrphanedEngine(): Promise<void> {
+  const read = (name: string) => { try { return Number(readFileSync(join(cfg.dataDir, name), "utf8").trim()); } catch { return 0; } };
+  const port = read("gateway-port"), pid = read("gateway.pid");
+  if (!Number.isInteger(port) || port <= 0 || port === cfg.gatewayPort || !Number.isInteger(pid) || pid <= 0) return;
+  let alive = false;
+  try { process.kill(pid, 0); alive = true; } catch (error) { alive = (error as NodeJS.ErrnoException).code === "EPERM"; }
+  if (!alive || await portIsFree(port)) return;
+  throw new Error(`Branch Agent's engine from the last session is still running (process ${pid} on port ${port}). End that process in Task Manager or Activity Monitor, or restart the computer, then open Branch Agent again.`);
+}
+
+/** True while the window talks to the per-user engine service rather than a child of this app. */
+let serviceEngine = false;
+const SERVICE_ENGINE_WATCH_MS = 5_000;
+
+/**
+ * Always on (Private #454 B): attach to the running service engine, or install and start it and then attach. Only a
+ * service that cannot be installed starts the engine inside the app (exactly one child, recorded for Settings).
+ * Resolves true when that child fallback rolled a failed update back, as bootSelectedEngine does.
+ */
+async function attachServiceEngine(): Promise<boolean> {
+  const stateDir = join(cfg.dataDir, "home", ".branch");
+  const showStorm = (message: string) => {
+    gatewayRecoveryError = message;
+    log(`engine service: ${message}`);
+    sendToBranchWindows("branch-desktop:gateway-recovery-failed", message);
+  };
+  // The engine paused its own service after a crash storm: say so once; opening the app starts it again.
+  const storm = takeCrashStormNotice(stateDir);
+  if (storm) showStorm(storm);
+  const engineDir = resolveEngineDir(cfg);
+  const probe = () => engineAnswers(cfg.gatewayPort);
+  let rolledBack = false;
+  const result = await attachOrStartEngine({
+    dataDir: cfg.dataDir,
+    probe,
+    installService: () => runEngineServiceAction(cfg, engineDir, token, "install", log),
+    startService: () => runEngineServiceAction(cfg, engineDir, token, "start", log),
+    waitForService: () => waitForEngineAnswer(probe, READY_TIMEOUT_MS),
+    spawnChild: async () => { rolledBack = await bootSelectedEngine(); },
+    log,
+  });
+  if (result.mode === "child") return rolledBack;
+  serviceEngine = true;
+  // publish-engine.sh never removes the folder named here, and the service runs from it.
+  writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}\n`);
+  adoptGatewayPort(cfg.gatewayPort);
+  gatewayRecoveryError = storm;
+  // The service manager restarts a crashed engine with backoff; the app only reports a storm that stopped it.
+  const timer = setInterval(() => {
+    const message = takeCrashStormNotice(stateDir);
+    if (message) showStorm(message);
+  }, SERVICE_ENGINE_WATCH_MS);
+  timer.unref();
+  app.once("will-quit", () => clearInterval(timer));
+  return false;
+}
+
+async function waitForGatewayPort(): Promise<void> {
+  for (let i = 0; i < 40 && !(await portIsFree(gatewayPort)); i++) await pause(250);
+}
+
+/** Starts the gateway, waits until it is ready, and watches its build for a newer one. */
+async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = true, prepared?: PreparedGateway, port = prepared?.port ?? gatewayPort,
+  options: { readyTimeoutMs?: number; keepOnConfirmFailure?: boolean } = {}): Promise<void> {
+  const started = Date.now();
+  if (macComputerDriver && !screenControlEnabled()) await macComputerDriver.stop();
+  const macComputerEndpoint = await (!prepared && screenControlEnabled() ? macComputerDriver?.start(engineDir) : undefined)?.catch(error => {
+    log(`Mac computer driver unavailable: ${describeDriverError(error)}`);
+    return undefined;
+  });
+  const spawned = Date.now();
+  const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);
+  if (prepared?.child.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.child.pid));
+  if (prepared) {
+    setEnginePriority(prepared.child, false);
+    // The old engine has released the state: the standby takes over only on this word (#411).
+    sendStandbyTakeOver(prepared.child);
+  }
+  gateway = child;
+  const observed = gatewaySupervisor.observe(child);
+  log(`gateway started from ${engineDir}, pid ${child.pid}, port ${port}`);
+  // publish-engine.sh never removes the folder named here.
+  writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
+`);
+  // Ready means listening on its own port and answering /readyz there; only then does the window follow it.
+  await waitForReady({ ...cfg, gatewayPort: port }, child, options.readyTimeoutMs ?? READY_TIMEOUT_MS);
+  // Only a confirmed engine moves the live port: a rollback reboots on the port the window already uses.
+  // A handoff's standby that is ready owns the state, channels and cron: a failed confirmation never rolls it back.
+  if (confirmUpdate) {
+    try {
+      pendingReleasePrune = await confirmComponentUpdate(cfg, error => log(`Confirmed update cleanup: ${String(error)}`), true, log);
+    } catch (error) {
+      if (!options.keepOnConfirmFailure) throw error;
+      log(`the new engine serves but its update could not be confirmed (${String(error)}); keeping it`);
+    }
+  }
+  adoptGatewayPort(port);
+  lastGoodEngineDir = engineDir;
+  readyGateway = child;
+  observed.ready();
+  gatewayRecoveryError = undefined;
+  log(`gateway ready after ${Date.now() - started} ms; launch elapsed ${Date.now() - launchStarted} ms`);
+  // A full start (not a warmed standby) is this host's cold start: it sizes the next handoff's readiness budgets.
+  if (!prepared) {
+    const coldStartMs = Date.now() - spawned;
+    try {
+      const samples = recordColdStart(coldStartFile(), coldStartMs);
+      log(`cold start ${coldStartMs} ms; handoff readiness budget ${standbyReadyBudgetMs(samples)} ms`);
+    } catch (error) { log(`cold start could not be recorded: ${String(error)}`); }
+  }
+  if (componentsReady && !admissionProbation) runConfirmedReleasePrune();
+  if (confirmUpdate) engineUpdateReady = false;
+  if (!quitting) watchEngine();
+}
+
+/** Watches the engine pointer and build from their current value (re-armed after a rejected candidate's rollback). */
+let engineWatchGeneration = 0;
+function watchEngine(): void {
+  const generation = ++engineWatchGeneration;
+  stopEngineWatch?.();
+  stopEngineWatch = watchEngineBuild(() => engineSignature(cfg), () => {
+    if (generation !== engineWatchGeneration || updateLock.purpose === "undo update") return;
+    // Undo's temporary pointer is not a new build.
+    log("new engine build found; offering Update");
+    void readComponentUpdateStatus(cfg).then(({ componentsPendingVersion }) => {
+      if (generation !== engineWatchGeneration || updateLock.purpose === "undo update") return;
+      if (componentsPendingVersion) return offerStagedUpdate();
+      if (withdrawnUpdateVersion) return;
+      engineUpdateReady = true;
+      sendToBranchWindows("branch-desktop:engine-update", "ready");
+    }).catch(error => log(`Engine build status: ${String(error)}`));
+  });
+}
+
+/** A failed newly published build restores the prior pointer/window before booting the retained engine. */
+async function bootSelectedEngine(prepared?: PreparedGateway): Promise<boolean> {
+  const selectedEngine = resolveEngineDir(cfg);
+  return bootSelectedEngineWithRollback({
+    boot: async () => {
+      const selected = prepared;
+      prepared = undefined;
+      if (!selected) return bootEngine(resolveEngineDir(cfg), true);
+      try { await bootEngine(resolveEngineDir(cfg), true, selected); }
+      catch (error) {
+        // Something else took the standby's spare port before the engine could bind it: not the release's fault.
+        const exited = selected.child.exitCode !== null || selected.child.signalCode !== null;
+        if (!exited || await portIsFree(selected.port)) throw error;
+        log(`standby port ${selected.port} was taken before the engine could bind it; starting on port ${gatewayPort}`);
+        await waitForGatewayPort();
+        if (quitting) throw error;
+        await bootEngine(resolveEngineDir(cfg), true);
+      }
+    },
+    stopFailedGateway: async () => { if (gateway) await stopFailedEngine(gateway); },
+    recordTimeout: () => recordComponentUpdateTimeout(cfg, selectedEngine),
+    rejectExited: () => rejectFailedComponentUpdate(cfg, selectedEngine),
+    rollback: () => rollbackComponentUpdate(cfg),
+    waitForPortRelease: waitForGatewayPort,
+    quitting: () => quitting,
+    log,
+  });
+}
+
+/** The window build the open window last loaded; the watcher never reloads onto the same build. */
+let shownWindowBuild: string | undefined;
+function watchUpdates(w: BrowserWindow): void {
+  shownWindowBuild = windowBuild(servedWindowDir);
+  stopWindowWatch = watchWindowBuild(cfg.windowDir, () => {
+    void readComponentUpdateStatus(cfg).then(({ publicationInProgress }) => {
+      // A staged engine/window pair activates together through the in-place swap.
+      if (publicationInProgress || updateLock.held) return;
+      // The window already shows this build (a staged pair was put back, or rolled back to the build it runs).
+      if (windowBuild(servedWindowDir) === shownWindowBuild) return;
+      log("new window build found; swapping it in");
+      void hotSwapWindow();
+    }).catch(error => log(`Window update status: ${String(error)}`));
+  });
+  // A reload re-runs the preload; show the bar again if an engine update is still waiting.
+  w.webContents.on("did-finish-load", () => { shownWindowBuild = windowBuild(servedWindowDir); offerWindowStatus(w); });
+}
+function offerWindowStatus(w: BrowserWindow): void {
+  if (w.isDestroyed() || !w.webContents.getURL().startsWith(windowUrl())) return;
+  if (engineUpdateReady) w.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
+  if (gatewayRecoveryError) w.webContents.send("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
+  if (updateNotice && updateNotice.expiresAt > Date.now()) w.webContents.send("branch-desktop:update-applied", updateNotice);
+}
+
+/**
+ * Undo owns the same lock as update, recovery and staged-release replacement, including its publication moves.
+ * `automatic`: the update's agents are still refused (Private #951), so it goes back even while other work runs; the
+ * swap hands that work over (or drains it) as any update does.
+ */
+async function undoLastUpdate(automatic = false): Promise<void> {
+  const lock = updateLock.acquire("undo update");
+  if (!lock) {
+    if (automatic) log(`automatic rollback skipped: ${updateLock.purpose} holds the update lock`);
+    sendToBranchWindows("branch-desktop:update-undo-failed", "An update is finishing, try again in a moment");
+    return;
+  }
+  try {
+    if (!gateway || !engineServing()) throw new Error("The engine is not ready to switch");
+    const active = automatic ? undefined : await gatewayActivity(gateway);
+    const window = automatic ? undefined : await probeWindowState();
+    if (active && window && (active.activeRuns || active.totalActive || active.pendingReplies || window.pendingApprovals ||
+        window.streaming || window.unsavedDraftFiles)) throw new Error("The previous version cannot take over while work is running");
+    if (!await prepareComponentUpdateUndo(cfg, dir => { servedWindowDir = dir; })) throw new Error("The previous version is no longer available");
+    const previousVersion = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+    await swapEngineInPlace("previous version", true, lock);
+    if ((await readComponentUpdateStatus(cfg)).currentVersion !== previousVersion) throw new Error("The previous version could not take over");
+    await confirmComponentUpdateUndo(cfg);
+    updateNotice = undefined;
+    sendToBranchWindows("branch-desktop:update-undone");
+  } catch (error) {
+    try { await rollbackComponentUpdateUndo(cfg); }
+    catch (rollbackError) { log(`update undo rollback failed: ${String(rollbackError)}`); }
+    if (!existsSync(servedWindowDir)) servedWindowDir = cfg.windowDir;
+    log(`update undo failed: ${String(error)}`);
+    sendToBranchWindows("branch-desktop:update-undo-failed", String(error));
+  } finally {
+    // Boot may have re-armed the watcher on Undo's temporary pointer; seed it from the final pointer.
+    if (stopEngineWatch) watchEngine();
+    await updateLock.release(lock);
+  }
+}
+
+/** The owner's Update click: applies a staged engine/window pair, or a rebuilt engine, in place. */
+async function restartEngine(): Promise<void> {
+  if (!gateway || !win || !componentsReady) return;
+  if (updateLock.held) {
+    if (updateLock.purpose === REPLACING && !updateClickQueued) {
+      // A newer release is replacing the staged one: the click is kept and runs right after, on the newer release.
+      updateClickQueued = true;
+      log("update requested while a newer release replaces the staged one; it runs right after");
+      sendToBranchWindows("branch-desktop:engine-update", "preparing");
+    }
+    return;
+  }
+  if (!engineServing()) {
+    // A crash restart wins: the click never cancels it. If recovery already gave up, the click retries it now.
+    log("update requested while the engine is restarting; recovery runs first");
+    gatewaySupervisor.recover(new Error("the engine was not running when Update was clicked"));
+    return;
+  }
+  const staged = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+  if (staged && staged === withdrawnUpdateVersion) {
+    log(`update requested for withdrawn release ${staged}; keeping the running engine`);
+    sendToBranchWindows("branch-desktop:engine-update", "kept");
+    return;
+  }
+  log(`update requested (${staged ?? "rebuilt engine"}); old engine pid ${gateway.pid}`);
+  try { await swapEngineInPlace(staged ?? "rebuilt engine", true); }
+  catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`update failed: ${msg}`);
+    if (!quitting && !engineRunning() && !HIDDEN) dialog.showErrorBox("Branch couldn't finish the update", msg);
+  }
+}
+
+/** Quitting stops an idle engine cleanly, so the next launch skips the stale-lease integrity pass. */
+let quitAfterCleanStop = false;
+function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
+  if (quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
+  event.preventDefault();
+  quitting = true;
+  quitAfterCleanStop = true;
+  gatewaySupervisor.close();
+  stopGatewayCleanly(gateway, 15_000).then(() => log("gateway stopped cleanly for quit"),
+    error => log(`quit: clean stop skipped: ${error instanceof Error ? error.message : String(error)}`)).finally(() => app.quit());
+  return true;
+}
+
+function shutdown(): void {
+  quitting = true;
+  admissionWatch?.abort();
+  // Quit is instant with the engine service: it keeps working and drains on its own timeline.
+  log(serviceEngine ? "quit; the engine service keeps running" : `quit; stopping gateway pid ${gateway?.pid}`);
+  gatewaySupervisor.close();
+  stopEngineWatch?.();
+  stopComponentWatch?.();
+  autoApply.stop();
+  stopWindowWatch?.();
+  controls.dispose();
+  stopCandidate();
+  stopWarmingStandby();
+  // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.
+  for (const child of retiring.keys()) stopGateway(child);
+  if (standby) stopGateway(standby.child);
+  standby = undefined;
+  if (gateway) stopGateway(gateway);
+  clearEngineRecords(cfg.dataDir);
+  void macComputerDriver?.stop();
+  server?.close();
+  // The next launch starts on the configured port; never leave a moved, dead port for the branch command to dial.
+  writeGatewayPortFile(cfg.gatewayPort);
+}
+
+if (!app.requestSingleInstanceLock()) {
+  log("another Branch Agent window is open; quitting");
+  app.quit();
+} else {
+  app.on("before-quit", () => { quitting = true; });
+  app.on("second-instance", () => {
+    if (win && !win.isDestroyed() && !HIDDEN) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+  });
+  app.on("activate", () => {
+    if (win && !win.isDestroyed() && !HIDDEN) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+  });
+  app.on("window-all-closed", () => app.quit());
+  app.on("will-quit", (event?: Electron.Event) => { if (!deferQuitForCleanStop(event)) shutdown(); });
+  app.whenReady().then(start).catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`could not start: ${msg}`);
+    if (!HIDDEN) dialog.showErrorBox("Branch Agent could not start", msg);
+    app.quit();
+  });
+}
