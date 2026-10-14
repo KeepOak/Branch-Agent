@@ -18,6 +18,12 @@ function ownName(agent: unknown): string {
   return str(rec(a.identity).name) || str(a.name);
 }
 
+/** A Trunk's title as a person reads it: the engine's id (the default Trunk is "main") and a name that is only the id read as
+ *  the Trunk's display name. Every place that shows a Trunk's main conversation uses this. */
+export function displayTrunkTitle(title: string, agentId: string): string {
+  return !title || title === agentId ? trunkDisplayName({ id: agentId }) : title;
+}
+
 /** An agents.list entry's display name: its own name, else the default Trunk's name, else the plain word "Trunk". */
 export function trunkDisplayName(agent: unknown): string {
   const name = ownName(agent);

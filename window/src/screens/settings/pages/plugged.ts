@@ -10,8 +10,11 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { GENERAL_PAGE } from "./general-live";
 import { SIGNINS_ROWS } from "./signins";
 import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
+import { UPDATES_ROWS } from "./updates";
+import * as Up from "./updates-live";
 import { LEARNING_ROWS } from "./learning";
 import {
   CheckBranch, ClearReplayed, Command, ConnectedNow, DiaryModel, Fact, Learned, PeopleHere, ProcessNames, RestartEngine, TasksAtOnce, Weighing,
@@ -22,11 +25,12 @@ import {
   MediaAll, MediaFile, NeverDies, ReadDiary,
 } from "./history-live";
 import { DEVICES } from "./devices";
+import { DEVELOPER } from "./developer";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  who: "people", notifications: "notifications", instructions: "instructions", updates: ["updates", "achievements"],
+  who: "people", notifications: "notifications", instructions: "instructions",
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -47,6 +51,12 @@ export const R1_PAGES: PageSlots = {
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
   // Sign-ins & keys: the preview's four cards; Classic's password manager and key store inside them.
   signins: { rows: SIGNINS_ROWS, controls: { "signins.where.block": SigninWhere, "signins.keys.block": SigninKeys } },
+  // Updates & about: the preview's ten cards; Classic Updates' sections and the achievements badges inside them.
+  updates: { rows: UPDATES_ROWS, controls: {
+    "updates.updating.block": Up.Updating, "updates.devices.block": Up.Devices, "updates.before.block": Up.Before, "updates.reports.block": Up.Reports,
+    "updates.editors.block": Up.Editors, "updates.achievements.badges": Up.Badges, "updates.shortcuts.buttons": Up.ShortcutButtons,
+    "updates.about.block": Up.About, "updates.privacy.block": Up.Privacy, "updates.remove.block": Up.Remove,
+  } },
   // Learning & self-updates: native R1 cards in the preview's order; Classic About Branch and Seasons draw behind its
   // rows (learning-live.tsx).
   learning: {
@@ -96,6 +106,8 @@ export const R1_PAGES: PageSlots = {
   },
   // Devices: native R1 cards in the preview's order, from Classic Computer & browser's section data (devices.tsx).
   devices: DEVICES,
+  // Developer: native R1 cards in the preview's order, with the Classic Developer and Advanced sections behind them.
+  developer: DEVELOPER,
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,
@@ -137,4 +149,7 @@ export const R1_PAGES: PageSlots = {
       "accounts.tech.own-folder": OwnFolder,
     },
   },
+  // General draws its pinned rows, projects, Keyboard shortcuts, All conversations and the model for summaries itself
+  // (general-live.tsx).
+  general: GENERAL_PAGE,
 };

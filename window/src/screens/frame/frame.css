@@ -113,7 +113,12 @@
 .r1-topic-fold > button { padding: 4px 12px; border: 0; border-radius: var(--r-pill); font: 500 var(--fs-13-5) var(--sans); }
 .r1-topic-fold .topicsT5:not(.lay-tabs), .r1-content > .r1-topic-host .topicsT5:not(.lay-tabs) { position: static; width: 100%; }
 .r1-topic-fold > .r1-topic-host { width: 100%; }
-.r1-topic-host .dlg.g-clear .fld > span { display: inline-block; width: fit-content; padding: 2px 9px; border-radius: var(--r-pill); background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }
+/* A field label in a clear dialog is text on the tinted glass (preview v17): no pill. */
+.r1-topic-host .dlg.g-clear .fld > span { display: inline-block; width: fit-content; padding: 0; background: none; box-shadow: none; color: var(--ink); }
+
+/* A place fills the conversation column: its wrapper is a full-height column, so the Grove office (places/office) has the
+   height its stage draws into. */
+.r1-content > .enter11 { display: flex; flex-direction: column; min-height: 100%; }
 
 /* R1's New topic (owner item 5): the round glass + leads the tabs strip; the sheet's icon and colour choices are round pills, the chosen one ringed. */
 .r1-topic-host .tpAddP17 { flex: none; width: 28px; height: 28px; margin: 2px 4px 2px 0; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }
