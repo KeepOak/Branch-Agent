@@ -1,0 +1,3 @@
+window:src/places/trunk/trunk.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/settings/pages/trunks-live.test.tsx

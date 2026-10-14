@@ -130,7 +130,7 @@ it("sends a page to R1 Settings only when the row table or a slot covers it and 
   expect(r1SettingsPage("accounts")).toBe(true);
   expect(r1SettingsPage("chatapps", { chatapps: { component: () => null } }, [])).toBe(true);
   expect(r1SettingsPage("chatapps")).toBe(true);
-  for (const page of ["keys", "devices", "trunks", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
+  for (const page of ["keys", "devices", "voice", "local"]) expect(r1SettingsPage(page)).toBe(false);
 });
 it("draws Models and Permissions as R1 pages, which re-host every Classic Models and Permissions control", async () => {
   const { R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
@@ -138,6 +138,11 @@ it("draws Models and Permissions as R1 pages, which re-host every Classic Models
   expect(r1SettingsPage("permissions", R1_PAGES)).toBe(true);
   expect(typeof R1_PAGES.models?.component).toBe("function");
   expect(typeof R1_PAGES.permissions?.component).toBe("function");
+});
+it("draws Trunks as the R1 page, the full Trunks page moved from Customize", async () => {
+  const { R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
+  expect(r1SettingsPage("trunks", R1_PAGES)).toBe(true);
+  expect(typeof R1_PAGES.trunks?.component).toBe("function");
 });
 it("opens the place a re-hosted Classic page asks for (branch:navigate-place), as the Classic window did", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
