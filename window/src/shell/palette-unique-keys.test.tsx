@@ -37,7 +37,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-function keyWarnings(spy: ReturnType<typeof vi.spyOn>): string[] {
+function keyWarnings(spy: { mock: { calls: unknown[][] } }): string[] {
   return spy.mock.calls.map((call) => call.map(String).join(" ")).filter((line) => line.includes("same key"));
 }
 
