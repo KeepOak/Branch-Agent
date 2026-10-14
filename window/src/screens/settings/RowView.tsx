@@ -101,6 +101,8 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
       );
       case "number": case "text": return <Field label={r.label} value={r.value} kind={row.control} unit={row.unit} disabled={off} onSave={save} />;
       case "secret": return <Field label={r.label} value={r.sensitive ? "" : r.value} kind="secret" disabled={off} placeholder={r.value ? "Saved" : undefined} onSave={save} />;
+      // Only Coming rows are buttons in the table: a button that does something is its page's own control (slots.ts).
+      case "button": return <button type="button" className="r1s-btn" disabled={off}>{row.button ?? r.label}</button>;
       default: return null;
     }
   })();

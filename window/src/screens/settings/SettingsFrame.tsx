@@ -117,11 +117,11 @@ function Results({ engine, hits, onOpen, onMakeDefault }: { engine: WindowEngine
 
 /** A card's rows: its regular rows, then the finer ones (Advanced and Technical) in a borderless "Fine-tune each part"
  *  group, as in the preview's .s36Fine. A card with no regular row shown draws its rows flat. */
-type RowHost = { engine: WindowEngine; hints: UiHints; controls?: Record<string, SlotControl>; onPage?: (page: PageId) => void };
+type RowHost = { engine: WindowEngine; hints: UiHints; controls?: Record<string, SlotControl>; onPage?: (page: PageId) => void; onAsk?: (text: string) => void };
 
 /** A row its page draws itself (slots.ts controls): the row's label, help and level tag, then the page's control in
  *  the control's place. A list-sized control (a "custom" row) takes the row's full width under its label. */
-function SlotRow({ engine, row, hints, control: Control, onPage }: RowHost & { row: Row; control: SlotControl }) {
+function SlotRow({ engine, row, hints, control: Control, onPage, onAsk }: RowHost & { row: Row; control: SlotControl }) {
   const level = rowLevel(row, hints);
   const tag = level > 0 ? LEVELS[level].label : undefined;
   const help = rowHelp(row, hints);
@@ -129,7 +129,7 @@ function SlotRow({ engine, row, hints, control: Control, onPage }: RowHost & { r
     <div id={`row-${row.id}`} className={`r1s-row${row.control === "custom" ? " r1s-stack" : ""}`} data-row={row.id} data-lv={tag} data-slot="">
       <b className="g-label" data-lv={tag}>{rowLabel(row, hints)}</b>
       {help ? <small className="g-label" data-lines>{help}</small> : null}
-      <div className="r1s-ctl r1s-own"><Control engine={engine} row={row} onPage={onPage} /></div>
+      <div className="r1s-ctl r1s-own"><Control engine={engine} row={row} onPage={onPage} onAsk={onAsk} /></div>
     </div>
   );
 }
@@ -203,15 +203,22 @@ export function SettingsFrame(props: SettingsFrameProps) {
   };
 
   const spec = PAGES[shownPage];
+  const ownCards = slots[shownPage]?.cards ?? {};
   const sections = spec.cards.flatMap((card) => {
     const all = rows.filter((r) => r.page === shownPage && r.card === card);
     const visible = cardRows(shownPage, card, level, hints, rows);
-    if (all.length && !visible.length) return [];
+    // A card the page draws itself shows from its level; its table rows (if any) follow it.
+    const drawn = ownCards[card];
+    const Own = drawn && (drawn.level ?? 0) <= level ? drawn.component : undefined;
+    if (drawn && !Own && !visible.length) return [];
+    if (!Own && all.length && !visible.length) return [];
     // General's sections with no rows yet are not drawn: they wait in Seedbank › Coming to Branch (R1-15).
-    if (!all.length && shownPage === "general") return [];
-    return [{ card, visible }];
+    if (!Own && !all.length && shownPage === "general") return [];
+    return [{ card, visible, Own }];
   });
-  const first = pageFirstLevel(shownPage, hints, rows);
+  const cardLevels = Object.values(ownCards).map((c) => c.level ?? 0);
+  const rowFirst = pageFirstLevel(shownPage, hints, rows);
+  const first = cardLevels.length ? (Math.min(...cardLevels, ...(rowFirst === null ? [] : [rowFirst])) as Level) : rowFirst;
   const loadFailed = typeof config === "string";
   const invalid = config && typeof config === "object" && config.valid === false ? configIssues(config.issues) : null;
   const levelLine = LEVELS[level].line;
@@ -246,7 +253,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </nav>
       </aside>
       <div className="r1s-page" ref={scroller}>
-        {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} /></div> : <>
+        {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} onAsk={props.onAsk} /></div> : <>
         <header className="r1s-head">
           <h1 className="g-label">{spec.title}</h1>
           <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" data-local="" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>
@@ -269,10 +276,11 @@ export function SettingsFrame(props: SettingsFrameProps) {
               {invalid.length ? <ul>{invalid.map((line, i) => <li key={i}>{line}</li>)}</ul> : null}
             </div>
           ) : null}
-          {sections.length ? sections.map(({ card, visible }) => (
-            <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title}>
+          {sections.length ? sections.map(({ card, visible, Own }) => (
+            <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title} data-card={card || undefined}>
               {card ? <h2 className="g-label">{card}</h2> : null}
-              {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} /> : (
+              {Own ? <div className="r1s-card-own"><Own engine={engine} onPage={(id) => go(id)} onAsk={props.onAsk} /></div> : null}
+              {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} onAsk={props.onAsk} /> : Own ? null : (
                 // A section with no rows in the table yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
                 <Coming engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
                   <div className="r1s-row">

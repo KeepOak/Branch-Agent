@@ -141,3 +141,30 @@
   .r1s-row:has(.r1s-seg) { grid-template-columns: minmax(0, 1fr); }
   .r1s-row:has(.r1s-seg) > .r1s-ctl { grid-row: auto; grid-column: 1; justify-self: start; max-width: 100%; overflow-x: auto; scrollbar-width: none; margin-top: 6px; }
 }
+
+/* A card a page draws itself (slots.ts cards): Customize's kinds hub sits in its card as the preview's two panes (kinds
+   on the left, the kind's list on the right, the chosen item's detail under them); connected agents are one block each. */
+.r1s-card-own { min-width: 0; padding: 6px 0; }
+.r1s-hub .cz { font-size: 13px; }
+.r1s-hub .t9 { grid-template-columns: 190px minmax(0, 1fr); }
+.r1s-hub .t9-detail { grid-column: 1 / -1; position: static; }
+/* The preview's kinds are a name and a count each. */
+.r1s-hub .t9-kind { align-items: center; padding: 8px 10px; }
+.r1s-hub .t9-kind > svg, .r1s-hub .t9-kind small { display: none; }
+.r1s-agent-rights { padding-left: 42px; }
+.r1s-lead { margin: 0 0 10px; }
+.r1s-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; }
+.r1s-dot[data-on] { background: var(--ok); }
+.r1s-agent { display: grid; gap: 2px; padding: 10px 0; }
+.r1s-agent + .r1s-agent { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.r1s-av { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 50%; font: 600 11.5px var(--sans); color: var(--ink-2); }
+.r1s-agent-trunks { margin: 0 0 0 42px; padding: 0; list-style: none; font-size: 12px; color: var(--ink-3); }
+.r1s-code { font: 12px var(--mono); color: var(--ink-2); overflow-wrap: anywhere; white-space: pre-wrap; max-width: 420px; }
+.r1s-codeline { justify-content: flex-end; }
+.r1s-list { justify-content: flex-end; }
+.r1s-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border-radius: 999px; font: 12px var(--mono); }
+@media (max-width: 760px) {
+  .r1s-hub .t9 { grid-template-columns: 1fr; }
+  .r1s-agent-trunks, .r1s-agent-rights { margin-left: 0; padding-left: 0; }
+  .r1s-code { max-width: 100%; }
+}

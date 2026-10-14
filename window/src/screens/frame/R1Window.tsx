@@ -76,7 +76,6 @@ const KEEP_CLASSIC: ReadonlySet<string> = new Set<string>();
 export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
   card: "people", // Your card: the person's own card on Classic People
   trunks: "advanced", // Trunks, Trunks' model and Trunks and other agents
-  customize: "advanced", // Tools and skills, Skills, Plugins, What it can do
   memory: "advanced", // Memory, Recall and memory files, Documents it reads
   autos: "advanced", // Automations, and Automations, steps and nudges
   browser: "computer", // Computer & browser: the screen and the browser

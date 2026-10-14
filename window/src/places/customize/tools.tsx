@@ -39,7 +39,10 @@ export type ToolsCtx = {
   openConversation: (key: string) => void;
 };
 
-export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGetting, openConversation }: { engine: WindowEngine; level: Level; trunks: Trunk[]; kind: Kind; setKind: (k: Kind) => void; getting: boolean; setGetting: (getting: boolean) => void; openConversation: (key: string) => void }) {
+/** Settings › Customize draws this hub too, with the approved preview's kinds order, names and "For:" (czP17). */
+type HubWords = { kinds?: Kind[]; names?: Partial<Record<Kind, string>>; whoseLabel?: string; everyLabel?: string };
+
+export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGetting, openConversation, kinds, names, whoseLabel = "Whose tools", everyLabel = "Every Trunk" }: { engine: WindowEngine; level: Level; trunks: Trunk[]; kind: Kind; setKind: (k: Kind) => void; getting: boolean; setGetting: (getting: boolean) => void; openConversation: (key: string) => void } & HubWords) {
   const [whose, setWhose] = useState<string | null>(null);
   const [adding, setAdding] = useState<Kind | null>(null);
   const scope = whose ? { agentId: whose } : {};
@@ -59,12 +62,12 @@ export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGet
   const close = () => setAdding(null);
   return <div className="t9" data-testid="tools">
     <nav className="t9-nav" aria-label="Kinds of tools">
-      <div className="cz-whose"><span className="cz-lh">Whose tools</span>
-        <div className="cz-chips">{[{ id: null, name: "Every Trunk" }, ...trunks.map(t => ({ id: t.id as string | null, name: trunkName(t) }))].map(o =>
+      <div className="cz-whose"><span className="cz-lh">{whoseLabel}</span>
+        <div className="cz-chips">{[{ id: null, name: everyLabel }, ...trunks.map(t => ({ id: t.id as string | null, name: trunkName(t) }))].map(o =>
           <button key={o.id ?? "*"} type="button" className="cz-chip" aria-pressed={whose === o.id} onClick={() => setWhose(o.id)}>{o.name}</button>)}</div>
       </div>
-      {KIND_LIST.map(k => <button key={k.id} type="button" className="t9-kind" data-kind={k.id} aria-current={k.id === kind} onClick={() => setKind(k.id)}>
-        <Glyph name={k.glyph} size={16} /><span><b>{k.id}</b><small>{k.line}</small></span>{counts[k.id] !== null && <em>{counts[k.id]}</em>}
+      {(kinds ? kinds.flatMap(id => KIND_LIST.filter(k => k.id === id)) : KIND_LIST).map(k => <button key={k.id} type="button" className="t9-kind" data-kind={k.id} aria-current={k.id === kind} onClick={() => setKind(k.id)}>
+        <Glyph name={k.glyph} size={16} /><span><b>{names?.[k.id] ?? k.id}</b><small>{k.line}</small></span>{counts[k.id] !== null && <em>{counts[k.id]}</em>}
       </button>)}
       {current.add && <button type="button" className="btn pri t9-addbtn" onClick={() => setAdding(kind)}><Icon name="plus" small />{current.add}</button>}
       <button type="button" className="btn ghost t9-addbtn" onClick={() => setGetting(true)}>Get capabilities</button>

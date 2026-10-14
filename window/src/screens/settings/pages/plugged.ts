@@ -9,6 +9,7 @@ import {
   GitHubExpires, GitHubPermissions, GitHubRow, HubCommand, OwnAccountList, OwnFolder, RestingNow, SelectAccounts, SignInSources, SignOut, TestIt, WhichNext,
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
+import { CUSTOMIZE_PAGE } from "./customize-live";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
@@ -33,6 +34,8 @@ export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Customize is a row page: the kinds hub, Saved prompts and Connected agents are its own cards (customize-live.tsx).
+  customize: CUSTOMIZE_PAGE,
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,
