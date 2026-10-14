@@ -38,16 +38,17 @@ it("Share as a picture and Continue in a coding app stay greyed with the preview
   await act(async () => root.render(<CapabilityProvider engine={offered}><HoverBar text="Hi" isReply actions={actions()} /></CapabilityProvider>));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const row = (label: string) => menuRows().find((b) => b.textContent === label)!;
-  expect(row("Share as a picture").getAttribute("aria-disabled")).toBe("true");
-  expect(row("Share as a picture").title).toBe("Sharing a message as a picture comes in a later update.");
-  expect(row("Continue in a coding app").getAttribute("aria-disabled")).toBe("true");
-  expect(row("Continue in a coding app").title).toBe("Carrying a conversation into a coding app on this computer needs the Branch app.");
+  expect(row("Share as a picture…").getAttribute("aria-disabled")).toBe("true");
+  expect(row("Share as a picture…").title).toBe("Sharing a message as a picture comes in a later update.");
+  expect(row("Continue in a coding app…").getAttribute("aria-disabled")).toBe("true");
+  expect(row("Continue in a coding app…").title).toBe("Carrying a conversation into a coding app on this computer needs the Branch app.");
   const labels = menuRows().map((b) => b.textContent);
   expect(labels).not.toContain("Link");
-  expect(labels.indexOf("Share as a picture")).toBe(labels.indexOf("Leave out of context") + 1);
-  expect(labels.indexOf("Continue in a coding app")).toBe(labels.indexOf("Share as a picture") + 1);
-  expect(labels.indexOf("Look inside")).toBe(labels.indexOf("Continue in a coding app") + 1);
-  expect(comingControls().some((c) => c.need.includes("sessions.handoff") && c.where === "Continue in a coding app")).toBe(true);
+  expect(labels.indexOf("Look inside")).toBe(labels.indexOf("Leave out of context") + 1);
+  expect(labels.indexOf("Share as a picture…")).toBe(labels.indexOf("Look inside") + 1);
+  expect(labels.indexOf("Continue in a coding app…")).toBe(labels.indexOf("Share as a picture…") + 1);
+  expect(labels.indexOf("Delete")).toBe(labels.indexOf("Continue in a coding app…") + 1);
+  expect(comingControls().some((c) => c.need.includes("sessions.handoff") && c.where === "Continue in a coding app…")).toBe(true);
 });
 
 it("#977: Pin, Unpin and Delete run their engine calls on an engine that has them", async () => {
@@ -81,7 +82,7 @@ it("••• opens the message menu with its time and model, and every row runs
   await act(async () => root.render(<CapabilityProvider engine={engine}><HoverBar text="**Hi** there" isReply actions={a} meta={{ timestamp: Date.now(), model: "openai/gpt-6.1-sol" }} /></CapabilityProvider>));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const labels = menuRows().map((b) => b.textContent);
-  expect(labels).toEqual(["Copy›", "Pin", "Try again", "Read aloud", "Branch from here", "Leave out of context", "Share as a picture", "Continue in a coding app", "Look inside", "Delete"]);
+  expect(labels).toEqual(["Copy›", "Pin", "Try again", "Read aloud", "Branch from here", "Leave out of context", "Look inside", "Share as a picture…", "Continue in a coding app…", "Delete"]);
   expect(document.querySelector(".r1c-menu-meta")!.textContent).toMatch(/·/);
   const row = (label: string) => menuRows().find((b) => b.textContent === label)!;
   for (const wired of ["Pin", "Delete"]) expect(row(wired).getAttribute("aria-disabled"), wired).toBeNull();

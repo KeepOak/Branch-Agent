@@ -1,6 +1,6 @@
 // The message hover bar (owner item 40, HANDOFF §2 #17): exactly three buttons, React, Reply and •••, in control
 // glass. ••• opens the message menu: its time and model, then Copy ›, Pin or Unpin, Edit or Try again, Read aloud,
-// Branch from here, Leave out of context, Share as a picture, Continue in a coding app, Look inside and Delete. The
+// Branch from here, Leave out of context, Look inside, Share as a picture…, Continue in a coding app… and Delete. The
 // last two are greyed with their reason until the window makes their calls (preview R1 message menu). Each row runs its
 // engine call (thread/useMessageActions) through <Coming need=…>, or shows Coming with its reason; nothing pretends.
 // Only Copy, its submenu and Look inside are local (data-local): they make no engine call.
@@ -81,9 +81,9 @@ export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: s
     {read ? <Row icon={read.reading ? "pause" : "play"} label={read.reading ? "Stop reading" : "Read aloud"} act={read} onDone={onClose} need={NEEDS.read} /> : null}
     <Row icon="branch" label="Branch from here" act={actions.branch} onDone={onClose} need={NEEDS.branch} />
     {actions.context ? <Row icon={actions.context.excluded ? "eye" : "eyeOff"} label={actions.context.excluded ? "Put back in context" : "Leave out of context"} act={actions.context} onDone={onClose} need={NEEDS.context} /> : null}
-    <SoonRow icon="camera" label="Share as a picture" soon={SOON.picture} />
-    <SoonRow icon="code" label="Continue in a coding app" soon={SOON.coding} />
     <Row icon="eye" label="Look inside" act={actions.inspect} onDone={onClose} />
+    <SoonRow icon="camera" label="Share as a picture…" soon={SOON.picture} />
+    <SoonRow icon="code" label="Continue in a coding app…" soon={SOON.coding} />
     {actions.remove ? <><div className="r1c-gap" /><Row icon="trash" label="Delete" act={actions.remove} onDone={onClose} danger need={NEEDS.remove} /></> : null}
   </div>;
 }
