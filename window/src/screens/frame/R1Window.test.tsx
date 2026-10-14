@@ -25,7 +25,8 @@ vi.mock("../settings", () => ({
     </div>
   ),
 }));
-vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: () => <p>Place content</p> }));
+const placeProps = vi.hoisted(() => ({ current: null as null | { createTrunk?: () => void } }));
+vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: (p: { createTrunk?: () => void }) => { placeProps.current = p; return <p>Place content</p>; } }));
 vi.mock("../../face/Face", () => ({ Face: () => <span /> }));
 vi.mock("../sidebar/Sidebar", () => ({ Sidebar: ({ ready, onSettings }: { ready: boolean; onSettings: (page: string) => void }) => <nav aria-label="Sidebar stub" data-ready={ready}><button type="button" aria-label="Settings" onClick={() => onSettings("appearance")} /></nav> }));
 vi.mock("../../places/settings/set1/appearance-store", () => ({ lookStore: () => ({ load: async () => undefined }) }));
@@ -274,4 +275,12 @@ it("puts Talk beside on a place's header and opens the Classic pane beside the p
   await act(async () => root.render(<R1Window session={session} />));
   expect(host.querySelector('.r1-header-right [aria-label^="Talk to"]')).toBeNull();
   expect(host.querySelector(".r1-beside")).toBeNull();
+});
+
+it("hands the Grove a createTrunk, so its Trunk button makes a random Trunk on R1 as the + menu's New Trunk does", async () => {
+  const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "place", place: "office" }));
+  await act(async () => root.render(<R1Window session={session} />));
+  expect(placeProps.current?.createTrunk).toBeInstanceOf(Function);
 });

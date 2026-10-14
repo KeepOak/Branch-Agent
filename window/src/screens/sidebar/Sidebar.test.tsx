@@ -49,7 +49,7 @@ function setup(responses: Record<string, unknown>, ready = true, over: Partial<S
   const engine = { request, features: { methods, events: [] } };
   const session = { request, onGatewayEvent: () => () => undefined, engine, gatewayUrl: "ws://127.0.0.1:1", open: vi.fn(async () => undefined), send: vi.fn() } as unknown as SaplingSession;
   const props: SidebarProps = {
-    session, ready, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
+    onNewTrunk: vi.fn(), session, ready, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
     sessions: [], mainKey: "main", currentKey: null, waiting: new Map(), searchRef: { current: null },
     onOpen: vi.fn(), onSettings: vi.fn(), onPlace: vi.fn(), ...over,
   };
