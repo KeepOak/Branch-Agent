@@ -65,8 +65,8 @@ it("draws Usage by account here: what Branch spent, each account, and the previe
   expect(usage.textContent).toContain("164 tasks");
   expect(labels("Usage by account")).toEqual(["The ring bottom right", "Offer to save progress at 95%", "Asking a service what is left", "Show usage in the tray"]);
   expect(labels("Linked accounts")).toEqual(["GitHub", "Gmail", "Google Calendar", "Google Drive"]);
-  // The GitHub access expiry is a value with no label of its own, as the preview shows it (Advanced).
-  expect(host.textContent).not.toContain("Access expires");
+  // The GitHub access expiry is a value on the GitHub row, as the preview shows it, not a row of its own.
+  expect(host.querySelector('[data-row="accounts.github.expires"]')).toBeNull();
   expect(labels("Your own accounts")).toContain("Your keepoak.com account");
 });
 

@@ -314,16 +314,28 @@ describe("Your first Trunk (step 4)", () => {
   });
 });
 
-describe("onboarding glass model (README item 48)", () => {
+describe("onboarding window (preview v17, tinted liquid glass)", () => {
   const css = readFileSync("src/screens/onboarding/onboarding.css", "utf8");
   const rule = (sel: string) => css.slice(css.indexOf(sel), css.indexOf("}", css.indexOf(sel)));
-  it("keeps the layer and the card clear, puts text and controls on 1px-outlined frosted pills, and hides the card under a sheet", () => {
-    expect(rule(".r1-ob {")).toContain("background: transparent");
-    expect(rule(".r1-ob {")).not.toContain("backdrop-filter");
-    expect(rule("  background: transparent; box-shadow: none;")).not.toContain("backdrop-filter");
-    expect(css).toContain("background: var(--gp-fill); -webkit-backdrop-filter: var(--gp-blur); backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge)");
-    for (const piece of [".r1-ob-body h1", ".r1-ob-lede", ".r1-ob-hint", ".r1-ob-pick", ".r1-ob-chip", ".r1-ob-text", ".r1-ob-row", ".r1-ob-mode"]) expect(css.slice(0, css.indexOf("background: var(--gp-fill)"))).toContain(piece);
+  it("is its own tinted window: a tinted layer, a tinted card on --bg, and no pill on the text", () => {
+    expect(rule(".r1-ob {")).toContain("background: color-mix(in srgb, var(--bg) 58%, transparent)");
+    expect(rule(".r1-ob {")).toContain("backdrop-filter: blur(26px) saturate(170%)");
+    expect(rule(".r1-ob-card {")).toContain("background: color-mix(in srgb, var(--bg) 74%, transparent)");
+    expect(rule(".r1-ob-card {")).toContain("backdrop-filter: blur(30px) saturate(180%)");
+    expect(rule(".r1-ob-card {")).toContain("inset 0 1px 0 var(--gw-hi)");
+    expect(rule(".r1-ob-card {")).toContain("0 30px 80px rgba(0,0,0,.24)");
+    for (const text of [".r1-ob-body h1 {", ".r1-ob-lede {", ".r1-ob-where {", ".r1-ob-hint {", ".r1-ob-none {", ".r1-ob-error {", ".r1-ob-later {", ".r1-ob-sheet h2 {", ".r1-ob-dots {"]) {
+      expect(rule(text), text).not.toMatch(/background|box-shadow|padding: [1-9]|border-radius/);
+    }
+    const chips = css.slice(css.indexOf(":is(.r1-ob-row"), css.indexOf("}", css.indexOf(":is(.r1-ob-row")));
+    expect(chips).toContain("background: var(--gw-chip)");
+    for (const text of [".r1-ob-lede", ".r1-ob-body h1", ".r1-ob-where", ".r1-ob-hint", ".r1-ob-none", ".r1-ob-sug > small", ".r1-ob-tpls > small", ".r1-ob-later", ".r1-ob-sheet h2", ".r1-ob-hello", ".r1-ob-sap"]) expect(chips, text).not.toContain(text);
+  });
+  it("keeps the reduce-transparency rule (layer, card and sheet turn solid --bg) and hides the card under a sheet", () => {
+    expect(css).toContain(':root[data-transparency="reduce"] :is(.r1-ob, .r1-ob-card, .r1-ob-sheet) { background: var(--bg);');
     expect(css).toContain(".r1-ob[data-sheet] > .r1-ob-card { visibility: hidden; }");
+    expect(css).toContain("body:has(> .r1-ob-dlg) .r1-ob > .r1-ob-card { visibility: hidden; }");
     expect(css).not.toMatch(/border-(top|bottom):\s*1px/);
+    expect(css).not.toMatch(/var\(--g[cfk]-|var\(--gp-fill\)/);
   });
 });

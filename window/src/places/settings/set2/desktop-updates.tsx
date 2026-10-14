@@ -110,7 +110,7 @@ function statusLine(status: ComponentUpdateStatus | null): string {
   if (!status) return "Reading desktop update status…";
   if (status.phase === "available") return "A Branch update is ready";
   if (status.phase === "current" || status.phase === "staged") return "Updates apply in place.";
-  if (status.phase === "checking") return "Checking for updates…";
+  if (status.phase === "checking") return "Checking…";
   if (status.phase === "staging") return "Downloading and checking the update…";
   return status.currentVersion ? `Branch ${versionParts(status.currentVersion).detail}` : "Check for updates";
 }
