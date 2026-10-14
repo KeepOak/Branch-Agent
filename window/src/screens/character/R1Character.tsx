@@ -11,11 +11,12 @@ const SHOWN_KEY = "branch.characterShown";
 /** Classic keeps the card 96px above its column's foot and 12px over the composer; the bounds box lines those up. */
 const PANEL_FOOT = 84;
 
+/** Off until the person turns it on in Settings › Appearance (the key is "1"; "0" or no key means hidden). */
 function readShown(): boolean {
   try {
-    return localStorage.getItem(SHOWN_KEY) !== "0";
+    return localStorage.getItem(SHOWN_KEY) === "1";
   } catch {
-    return true;
+    return false;
   }
 }
 
