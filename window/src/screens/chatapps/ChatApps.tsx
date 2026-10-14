@@ -6,6 +6,8 @@ import { ChatLogo } from "../../places/settings/set1/chatapps-logo";
 import { appOf, catalogue, trunksOf } from "../../places/settings/set1/chatapps-data";
 import { appRoute, bindingsOf } from "../../places/settings/set1/chatapps-who";
 import { useResource } from "../../places/settings/hooks";
+import { PairDialog } from "../../places/customize/pairing";
+import { Icon } from "../../shell/icons";
 import { ConnectDialog } from "../../places/settings/set1/chatapps-connect";
 import "../../places/settings/set1/chatapps.css";
 import { has } from "../../places/inbox/data";
@@ -33,6 +35,7 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
   // Find another app: the engine's own setup with no app chosen, in Classic's generic dialog (ConnectDialog), which
   // follows the channel the engine picks, WhatsApp's QR link included (Classic's All chat apps › Find another app).
   const [another, setAnother] = useState(false);
+  const [pairing, setPairing] = useState(false);
   const live = useChatApps(engine);
   const cfg = useCfg(engine);
   const [level] = useLevel(engine);
@@ -96,6 +99,14 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
       {!shown.length && <p className="g-label" data-lines>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}
       {onSetup && wizard ? <p className="r1-ca-acts"><button type="button" data-need="wizard.start wizard.next wizard.cancel" disabled={!admin} title={admin ? undefined : "Setting up a chat app needs full access on this connection."} onClick={() => setAnother(true)}>Find another app</button></p> : null}
       {another ? <div className="r1-cw"><ConnectDialog engine={engine} app={null} onClose={(changed) => { setAnother(false); if (changed) void live.reload(); }} /></div> : null}
+    </section>
+    {/* preview: the "Your phone" tile after the app groups; Pair a phone opens the pairing code (device.pair.setupCode). */}
+    <section className="r1-ca-phone" aria-label="Your phone">
+      <span className="r1-ca-app"><Icon name="phone" size={20} /><span className="g-label" data-lines><b>Your phone</b> <small>Answer approvals and talk to Trunks from the Branch app.</small></span>
+        <Coming engine={engine} need="device.pair.setupCode" reason="Pairing a phone comes in a later update." where="Chat apps › Pair a phone">
+          <button type="button" onClick={() => setPairing(true)}>Pair a phone</button>
+        </Coming></span>
+      {pairing ? <PairDialog engine={engine} close={() => setPairing(false)} /> : null}
     </section>
     </div>{renderAccess && <section aria-label="Who answers and who may message"><h2 className="g-label">Who answers</h2>{connected.length ? connected.map(c => <div key={c.state.id}>{renderAccess(c.app)}</div>) : <p className="r1-ca-hint g-label" data-lines>{live.loading ? "Checking your chat apps…" : "Connect a chat app above to choose who answers in it and who may message it."}</p>}</section>}
     {level >= 1 ? <More engine={engine} cfg={cfg} apps={connected.map(c => c.state)} all={engineApps} trunks={trunks} level={level} /> : null}
