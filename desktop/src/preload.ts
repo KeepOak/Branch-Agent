@@ -88,6 +88,9 @@ if (info) {
       stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
       /** The owner's Install now: the same owned-window restart the update bar's button sends. */
       install: () => ipcRenderer.send("branch-desktop:restart-engine"),
+      /** Whether the last update can still be undone, with its version line (the previous engine's probation, Private #983). */
+      undoAvailability: () => ipcRenderer.invoke("branch-desktop:undo-availability"),
+      undo: () => ipcRenderer.send("branch-desktop:undo-update"),
     },
     onUpdateApplied: (listener: (notice: AppliedUpdateNotice) => void) => subscribeApplied(listener),
     onUpdateUndone: (listener: () => void) => subscribeUndone(listener),
