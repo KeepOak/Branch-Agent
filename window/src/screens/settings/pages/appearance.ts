@@ -100,7 +100,8 @@ export const APPEARANCE_ROWS: Row[] = [
     fromClassic(`appearance.shown.${key.replace(/^show\./, "")}`, SHOWN, key)),
 
   // The list
-  slot("appearance.list.threads", "The list", "Threads show as", [], { help: "How a contact’s threads show beside its chat. A contact’s ⋯ › View can differ.", control: "custom" }),
+  slot("appearance.list.threads", "The list", "Threads show as", [], { help: "How a contact’s threads show beside its chat. A contact’s ⋯ › View can differ.", control: "segmented",
+    options: [{ v: "tabs", label: "Tabs" }, { v: "free", label: "Freedom Mode" }] }),
   { id: "appearance.list.ask-delete", page: "appearance", card: "The list", label: "Ask before deleting a conversation", help: "Removing a kept working copy always asks.", level: 1, control: "toggle",
     source: { kind: "look", key: "askDelete" }, fallback: true },
   fromClassic("appearance.list.headlines", "The list", "headlines"),

@@ -111,11 +111,13 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(calls(request, "agents.update")).toContainEqual({ agentId: "main", model: "anthropic/big" });
   });
 
-  it("shows Tabs above the chat for threads, even when a removed layout was saved", async () => {
+  it("offers Tabs and Freedom Mode for threads, and a saved removed layout reads as Tabs", async () => {
     localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "side", width: 88, per: {} }));
     await mount();
-    expect(row("appearance.list.threads")!.textContent).toContain("Tabs above the chat");
-    expect(row("appearance.list.threads")!.querySelectorAll("button")).toHaveLength(0);
+    const labels = [...row("appearance.list.threads")!.querySelectorAll("button")].map((b) => b.textContent);
+    expect(labels).toEqual(["Tabs", "Freedom Mode"]);
+    await click([...row("appearance.list.threads")!.querySelectorAll("button")].find((b) => b.textContent === "Freedom Mode")!);
+    expect(JSON.parse(localStorage.getItem("branch-topics-t5")!).layout).toBe("free");
   });
 
   it("shows the small model and opens Models to change it", async () => {
