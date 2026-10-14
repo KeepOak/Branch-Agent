@@ -17,11 +17,13 @@ export type FrameProps = {
   /** The side panel beside the conversation (parity row 2); none while it is closed. */
   pane?: ReactNode;
   header: Omit<HeaderProps, "onToggleSidebar">; navigationKey?: string; onShortcut?: (action: "settings" | "nextConversation" | "palette" | "focusSearch") => void;
+  /** A pane beside the page (Talk beside), docked at the right or the bottom of the conversation column; size in px. */
+  beside?: { node: ReactNode; dock: "right" | "bottom"; size: number };
 };
 /** jsdom and some embedded webviews have no matchMedia; treat a missing query as a wide window. */
 function narrowQuery(): MediaQueryList | null { return typeof matchMedia === "function" ? matchMedia("(max-width: 760px)") : null; }
 function readWide() { try { return localStorage.getItem("branch.r1.sidebar") !== "rail"; } catch { return true; } }
-export function Frame({ sidebar, main, composer, topics, notice, pane, header, navigationKey, onShortcut }: FrameProps) {
+export function Frame({ sidebar, main, composer, topics, notice, pane, header, navigationKey, onShortcut, beside }: FrameProps) {
   const [wide, setWide] = useState(readWide), [drawer, setDrawer] = useState(false);
   const [narrow, setNarrow] = useState(() => narrowQuery()?.matches ?? false);
   const scroll = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null), side = useRef<HTMLElement>(null);
@@ -72,10 +74,11 @@ export function Frame({ sidebar, main, composer, topics, notice, pane, header, n
       <Region>{sidebar}</Region>
     </aside>
     {topics && <section className="r1-topics" aria-label="Topics"><Region>{topics}</Region></section>}
-    <section className="r1-conversation" aria-label="Conversation">
+    <section className="r1-conversation" aria-label="Conversation" data-beside={beside?.dock} style={beside ? { ["--r1-beside" as string]: `${beside.size}px` } : undefined}>
       <Header {...header} onToggleSidebar={toggle} />
       <div className="r1-scroll edge-fade" ref={scroll}><div ref={content} className="r1-content"><Region>{notice && <div className="r1-notice g-label" role="status">{notice}</div>}{main}</Region></div></div>
       {composer && <div className="r1-composer-slot"><Region>{composer}</Region></div>}
+      {beside && <div className="r1-beside"><Region>{beside.node}</Region></div>}
     </section>
     {pane && <div className="r1-pane-slot"><Region>{pane}</Region></div>}
   </div>;
