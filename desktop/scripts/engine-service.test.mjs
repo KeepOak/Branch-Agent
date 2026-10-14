@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
@@ -140,4 +140,45 @@ test('the engine crash-storm marker is shown once', t => {
   writeFileSync(join(dir, 'gateway-restart-storm.json'), JSON.stringify({ message: 'paused; run branch doctor --fix' }));
   assert.equal(takeCrashStormNotice(dir), 'paused; run branch doctor --fix');
   assert.equal(takeCrashStormNotice(dir), undefined);
+});
+
+// #1053: a custom setup that the engine refuses the service to is said once in Settings, in the engine's plain words.
+const ENGINE_SKIP = 'gateway install failed: Gateway install blocked: Error: service management skipped: non-default state dir or config path. Rerun with HOME set to the OS account home, BRANCH_HOME either unset or pointing at that same home, and BRANCH_STATE_DIR and BRANCH_CONFIG_PATH either unset or pointing at the canonical paths for that account home and profile to install or rewrite the gateway service.';
+
+test('a custom data folder the engine keeps off the service runs inside the app and says so once, plainly', async t => {
+  const dir = dataDir(t);
+  let children = 0;
+  const logged = [];
+  const result = await attachOrStartEngine({
+    dataDir: dir,
+    probe: async () => children > 0,
+    installService: async () => { throw Error(ENGINE_SKIP); },
+    startService: async () => assert.fail('a refused service is never started'),
+    waitForService: async () => assert.fail('a refused service is never waited on'),
+    spawnChild: async () => { children++; },
+    log: line => logged.push(line),
+    lockTimeoutMs: 5_000,
+  });
+  assert.equal(result.mode, 'child');
+  assert.equal(children, 1);
+  assert.match(logged.join('\n'), /Rerun with HOME/, 'the log keeps the engine\'s full answer');
+  assert.equal(takeChildModeNotice(dir), 'service management skipped: non-default state dir or config path');
+  assert.equal(takeChildModeNotice(dir), undefined, 'Settings says it once');
+});
+
+test('the plain service reason keeps an OS refusal as it is', () => {
+  assert.equal(service.plainServiceReason('gateway install failed: Access is denied.'), 'Access is denied');
+  assert.equal(service.plainServiceReason('the background service could not be installed'), 'the background service could not be installed');
+});
+
+test('a relative XDG_DATA_HOME or LOCALAPPDATA never moves the data folder off its standard place', t => {
+  const config = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'config.js'));
+  const saved = { BRANCH_DESKTOP_DATA: process.env.BRANCH_DESKTOP_DATA, XDG_DATA_HOME: process.env.XDG_DATA_HOME, LOCALAPPDATA: process.env.LOCALAPPDATA };
+  t.after(() => { for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  delete process.env.BRANCH_DESKTOP_DATA;
+  process.env.XDG_DATA_HOME = 'relative-share';
+  process.env.LOCALAPPDATA = 'relative-local';
+  const dir = config.defaultDataDirectory();
+  assert.ok(isAbsolute(dir), dir);
+  assert.ok(!dir.includes('relative-'), dir);
 });

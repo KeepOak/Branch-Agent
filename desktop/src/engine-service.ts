@@ -169,6 +169,22 @@ export function recordEngineMode(dataDir: string, mode: EngineMode, reason?: str
   writeEngineMode(dataDir, { mode, ...(reason ? { reason } : {}), at: new Date().toISOString(), ...(noticeShown ? { noticeShown } : {}) });
 }
 
+/**
+ * The engine's own reason for refusing the service, without the CLI wrapping (`gateway install failed:`,
+ * `Gateway install blocked:`, `Error:`) or the terminal repair steps that follow it (environment variables the app
+ * sets itself), so Settings says it plainly. A custom setup reads, for example, "service management skipped:
+ * non-default state dir or config path".
+ */
+export function plainServiceReason(reason: string): string {
+  let text = reason.trim();
+  for (let previous = ""; previous !== text;) {
+    previous = text;
+    text = text.replace(/^(?:gateway \w+ failed|Gateway install blocked|Error):\s*/, "");
+  }
+  const first = /^[^\n]*?[.!?](?=\s|$)/.exec(text)?.[0] ?? text.split("\n")[0] ?? text;
+  return first.replace(/[.!?]$/, "").trim() || reason.trim();
+}
+
 /** The reason the engine runs inside the app, the first time it is asked for; later calls return undefined. */
 export function takeChildModeNotice(dataDir: string): string | undefined {
   const record = readEngineMode(dataDir);
@@ -274,7 +290,7 @@ export async function attachOrStartEngine(steps: EngineAttachSteps): Promise<Eng
     if (await steps.probe()) return attached();
     const reason = installError instanceof Error ? installError.message : String(installError);
     steps.log(`engine: the background service could not be installed (${reason}); running the engine inside the app`);
-    recordEngineMode(steps.dataDir, "child", reason);
+    recordEngineMode(steps.dataDir, "child", plainServiceReason(reason));
     await steps.spawnChild();
     return { mode: "child", reason };
   } finally {

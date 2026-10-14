@@ -100,6 +100,60 @@ export function resolveNativeServiceProfileConflict(
   return profile === "gateway" || profile === "node" ? profile : null;
 }
 
+function absoluteEnvDir(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  // XDG and Windows folder variables only count when absolute; the fallback applies otherwise.
+  return trimmed && path.isAbsolute(trimmed) ? trimmed : undefined;
+}
+
+/**
+ * The desktop app's own data folders for an account (desktop/src/config.ts defaultDataDirectory):
+ * the app runs the engine with BRANCH_HOME set to `<data folder>/home`. The legacy ~/BranchApp folder
+ * is still picked up by the app, so it counts too.
+ */
+export function resolveDesktopAppDataDirs(
+  env: NodeJS.ProcessEnv,
+  accountHome: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  const dirs = [path.join(accountHome, "BranchApp")];
+  if (platform === "win32") {
+    const localAppData = absoluteEnvDir(env.LOCALAPPDATA);
+    if (localAppData) {
+      dirs.push(path.join(localAppData, "BranchAgent"));
+    }
+    dirs.push(path.join(accountHome, "AppData", "Local", "BranchAgent"));
+  } else if (platform === "darwin") {
+    dirs.push(path.join(accountHome, "Library", "Application Support", "BranchAgent"));
+  } else {
+    const dataHome = absoluteEnvDir(env.XDG_DATA_HOME);
+    if (dataHome) {
+      dirs.push(path.join(dataHome, "BranchAgent"));
+    }
+    dirs.push(path.join(accountHome, ".local", "share", "BranchAgent"));
+  }
+  return dirs;
+}
+
+/**
+ * Whether BRANCH_HOME is the desktop app's standard engine home for this account. Scratch test
+ * copies and hidden runs of the app never own the per-user service, and only the default profile
+ * belongs to the app.
+ */
+function isDesktopAppHome(
+  env: NodeJS.ProcessEnv,
+  effectiveHome: string,
+  accountHome: string,
+  platform: NodeJS.Platform,
+): boolean {
+  if (env.BRANCH_DESKTOP_TEST === "1" || env.BRANCH_DESKTOP_HIDDEN === "1" || isNamedProfile(env)) {
+    return false;
+  }
+  return resolveDesktopAppDataDirs(env, accountHome, platform).some(
+    (dataDir) => normalizePathForComparison(path.join(dataDir, "home")) === effectiveHome,
+  );
+}
+
 /** Whether host service management belongs to the active default install identity. */
 export function isDefaultInstallIdentity(
   env: NodeJS.ProcessEnv = process.env,
@@ -107,13 +161,20 @@ export function isDefaultInstallIdentity(
   platform: NodeJS.Platform = process.platform,
 ): boolean {
   const accountHome = resolveRequiredHomeDir({}, homedir);
+  const normalizedAccountHome = normalizePathForComparison(accountHome);
   // Native service paths use the process home independently of BRANCH_HOME.
   // A canonical runtime override must not hide a relocated service home.
   if (
-    normalizePathForComparison(resolveRequiredOsHomeDir(env, homedir)) !==
-      normalizePathForComparison(accountHome) ||
-    normalizePathForComparison(resolveRequiredHomeDir(env, homedir)) !==
-      normalizePathForComparison(accountHome)
+    normalizePathForComparison(resolveRequiredOsHomeDir(env, homedir)) !== normalizedAccountHome
+  ) {
+    return false;
+  }
+  // BRANCH_HOME is either the account home (a CLI install) or the desktop app's own engine home
+  // under its standard data folder (#1053); any other relocation is a custom copy.
+  const effectiveHome = normalizePathForComparison(resolveRequiredHomeDir(env, homedir));
+  if (
+    effectiveHome !== normalizedAccountHome &&
+    !isDesktopAppHome(env, effectiveHome, accountHome, platform)
   ) {
     return false;
   }
