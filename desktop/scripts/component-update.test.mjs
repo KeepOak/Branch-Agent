@@ -202,6 +202,16 @@ test("a replacement that fails part way puts the staged pair back; the served wi
   assert.match(logs.join("\n"), /0\.4\.3 stays staged/);
 }));
 
+test("a release published as a security fix is staged as one (Private #951)", async () => fixture(async ({ cfg, request, release }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  const status = await source.readComponentUpdateStatus(cfg);
+  assert.equal(status.componentsPendingVersion, "0.4.3");
+  assert.equal(status.componentsPendingSecurity, true);
+  const { security: _security, ...plain } = release;
+  assert.equal(parseComponentRelease(plain).security, undefined);
+  assert.throws(() => parseComponentRelease({ ...release, security: "yes" }), /security flag/);
+}, ({ release }) => { release.security = true; }));
+
 test("a replacement whose undo also fails rolls back to the running build, and says where the window now is", async () => fixture(async (context) => {
   const { cfg, request } = context;
   await source.refreshComponentUpdate(cfg, request);
@@ -472,7 +482,8 @@ test("actual desktop caller retains running engine and checks a failing engine b
   const require = createRequire(import.meta.url); const Module = require("node:module");
   const load = Module._load; const previousFetch = globalThis.fetch;
   const previousData = process.env.BRANCH_DESKTOP_DATA; const previousHidden = process.env.BRANCH_DESKTOP_HIDDEN;
-  const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() };
+  // The engine inside the app (alwaysOn false), the fallback these cases cover; no service is ever installed.
+  const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort(), alwaysOn: false };
   await mkdir(join(cfg.engineDir, "dist"), { recursive: true });
   await writeFile(join(cfg.engineDir, "dist", "build-info.json"), '{"version":"old"}');
   await writeFile(join(cfg.engineDir, "branch.mjs"), 'import http from "node:http"; process.on("message", m => { if(m.type?.startsWith("branch-desktop:")){ process.send({type:"branch-desktop:activity-result",id:m.id,idle:true,activeRuns:0,pendingReplies:0,totalActive:0}); if(m.type==="branch-desktop:stop-if-idle"||m.type==="branch-desktop:drain-stop")setTimeout(()=>process.exit(0),20); }}); setTimeout(()=>http.createServer((_req,res)=>res.writeHead(200).end()).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1"),1000);');
@@ -679,7 +690,8 @@ async function coldDesktopCaller(cfg, state, releaseRequest) {
   const main = join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js");
   const config = join(process.env.BRANCH_DESKTOP_TEST_DIST, "config.js");
   const electron = coldCallerElectron(state);
-  const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() };
+  // The engine inside the app (alwaysOn false), the fallback these cases cover; no service is ever installed.
+  const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort(), alwaysOn: false };
   state.gatewayPort = desktop.gatewayPort;
   await mkdir(join(cfg.engineDir, "dist"), { recursive: true });
   await writeFile(join(cfg.engineDir, "dist", "build-info.json"), '{"version":"retained"}');

@@ -23,6 +23,7 @@ import {
   trunkList,
   type TowerNeed,
 } from "./control-tower-data";
+import { activityRowLines } from "./activity-label";
 import { syncWaitingNotices } from "./notify";
 import { usagePollResult, type Limits } from "./status-data";
 import { whoItKnowsItems } from "./who-it-knows-menu";
@@ -218,10 +219,14 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
     </section>
     <section><h3>Working now <span>{working.length + jobs.length}</span></h3>
       {working.length || jobs.length ? <>
-        {working.map((row) => <button type="button" className="v23-tower-row" key={row.key} onClick={() => onOpen(row.key)}><Face size={26} label={trunkName(row.agentId)} /><span className="v23-tower-row-text"><b>{row.title || trunkName(row.agentId)}</b><small>{row.headline || row.preview || "Working"}</small></span><time className="v23-tower-time">{towerClock(row.updatedAt)}</time></button>)}
+        {working.map((row) => {
+          const line = activityRowLines(row.title, row.headline, row.preview);
+          return <button type="button" className="v23-tower-row" key={row.key} onClick={() => onOpen(row.key)}><Face size={26} label={trunkName(row.agentId)} /><span className="v23-tower-row-text"><b>{line.title || trunkName(row.agentId)}</b><small>{line.detail || "Working"}</small></span><time className="v23-tower-time">{towerClock(row.updatedAt)}</time></button>;
+        })}
         {jobs.map((row) => {
           const progress = jobProgress(row.headline, row.preview);
-          return <button type="button" className="v23-tower-row" key={row.key} onClick={() => onOpen(row.key)}><Face size={26} label={trunkName(row.agentId)} /><span className="v23-tower-row-text"><b>{row.title || trunkName(row.agentId)}</b><small>{trunkName(row.agentId)}{progress !== null ? ` · ${progress}%` : ""}</small></span>{progress !== null ? <span className="v23-tower-bar" aria-hidden="true"><i style={{ width: `${progress}%` }} /></span> : null}</button>;
+          const line = activityRowLines(row.title, row.headline, row.preview);
+          return <button type="button" className="v23-tower-row" key={row.key} onClick={() => onOpen(row.key)}><Face size={26} label={trunkName(row.agentId)} /><span className="v23-tower-row-text"><b>{line.title || trunkName(row.agentId)}</b><small>{trunkName(row.agentId)}{progress !== null ? ` · ${progress}%` : ""}</small></span>{progress !== null ? <span className="v23-tower-bar" aria-hidden="true"><i style={{ width: `${progress}%` }} /></span> : null}</button>;
         })}
       </> : <p>No Trunk is working right now.</p>}
     </section>

@@ -8,6 +8,7 @@ import { smokeProductionEngine } from "./production-engine-smoke.mjs";
 import { assertTrackedSourceClean } from "./release-source-freeze.mjs";
 import { assertHoistedDeployment, extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
 import { makeComponentRelease } from "./make-component-release.mjs";
+import { formatPayload, measurePayload, payloadBudgetProblems, pruneProductionDependencies } from "./release-payload.mjs";
 import { installLinuxLauncher } from "./linux-launcher.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { MAC_ADHOC_NOTICE, macSignCommand, macSigningPlan } from "./mac-release-signing.mjs";
@@ -59,6 +60,9 @@ async function deployEngine(pnpm, scratch, identity, macSigning) {
   const flags = await verifiedExceptionFlags("engine");
   await run(pnpm, productionDeployArguments(deployment, flags), engineRoot, productionDeployEnvironment(process.env));
   await assertHoistedDeployment(deployment);
+  // Dependency source maps and declarations: no packaged runtime loads them (~83 MB per installed engine).
+  const pruned = await pruneProductionDependencies(deployment);
+  console.log(`Removed ${pruned.files} dependency source maps and declarations (${(pruned.bytes / 1048576).toFixed(1)} MiB)`);
   if (identity.platform === "darwin") {
     const binary = join(deployment, "cua-driver");
     await run("bash", [join(engineRoot, "scripts/stage-cua-driver-macos.sh"), binary]);
@@ -70,6 +74,9 @@ async function deployEngine(pnpm, scratch, identity, macSigning) {
   for (const file of ["dist/extensions/codex/branch.plugin.json", "node_modules/@openai/codex/package.json", "node_modules/smol-toml/package.json"]) {
     assert((await stat(join(deployment, file))).isFile(), `Production deployment is missing ${file}`);
   }
+  const payload = await measurePayload(deployment);
+  console.log(formatPayload(payload));
+  assert.deepEqual(payloadBudgetProblems(payload), [], "Engine payload is over its size budget");
   return deployment;
 }
 

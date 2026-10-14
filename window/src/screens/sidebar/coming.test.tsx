@@ -38,7 +38,7 @@ const DATA: Record<string, unknown> = {
 };
 const ledger = { key: "agent:ledger:main", title: "Ledger", agentId: "ledger", pinned: false, archived: false, unread: true, snoozedUntil: null, createdAt: 1, updatedAt: 10, preview: "", working: false, kind: "direct", system: false, automation: false, totalTokens: 0, contextTokens: 0 };
 
-async function render(methods: string[]) {
+async function render(methods: string[], extra: Partial<SidebarProps> = {}) {
   // The reads still answer (a test engine), but the hello lists only `methods`.
   const request = vi.fn(async (method: string) => DATA[method] ?? {});
   const engine = { request, features: { methods, events: [] } };
@@ -46,7 +46,7 @@ async function render(methods: string[]) {
   const props: SidebarProps = {
     session, ready: true, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
     sessions: [ledger] as unknown as SidebarProps["sessions"], mainKey: "main", currentKey: null, waiting: new Map(), searchRef: { current: null },
-    onOpen: vi.fn(), onSettings: vi.fn(), onPlace: vi.fn(),
+    onOpen: vi.fn(), onSettings: vi.fn(), onPlace: vi.fn(), ...extra,
   };
   await act(async () => root.render(<CapabilityProvider engine={engine}><Sidebar {...props} /></CapabilityProvider>));
   await act(async () => undefined);
@@ -102,14 +102,14 @@ describe("R1 sidebar, the Coming contract", () => {
   });
 
   it("runs the same entries once the engine offers the calls, and keeps the unwired ones Coming with their method", async () => {
-    const { request } = await render(["sessions.patch", "sessions.patchMany", "contacts.topics", "contacts.markRead", "sessions.create", "sessions.delete", "rooms.archive", "rooms.create", "agents.create", "agents.update", "agents.delete", "chat.send", "chat.history", "sessions.compact", "sessions.groups.put"]);
+    const { request } = await render(["sessions.patch", "sessions.patchMany", "contacts.topics", "contacts.markRead", "sessions.create", "sessions.delete", "rooms.archive", "rooms.create", "agents.create", "agents.update", "agents.delete", "chat.send", "chat.history", "sessions.compact", "sessions.groups.list"]);
     expect(host.querySelector(".r1sb-mar")?.getAttribute("aria-disabled")).toBeNull();
     await click(host.querySelector('[aria-label="More for Ledger"]'));
     expect(row("Pin").getAttribute("aria-disabled")).toBeNull();
     expect(row("Pin").dataset.need).toBe("sessions.patch");
     await click(row("Move to"));
-    expect(row("Group…").getAttribute("aria-disabled")).toBe("true");
-    expect(comingControls()).toEqual(expect.arrayContaining([expect.objectContaining({ need: ["sessions.groups.put"], where: "Group…" })]));
+    expect(row("Group…").getAttribute("aria-disabled")).toBeNull();
+    expect(row("Group…").dataset.need).toBe("sessions.groups.list sessions.patch");
     await press(document.querySelector(".g-menu")!, "ArrowLeft");
     await click(row("Ledger"));
     expect(row("Pause").getAttribute("aria-disabled")).toBe("true");
@@ -117,5 +117,17 @@ describe("R1 sidebar, the Coming contract", () => {
     await press(document.querySelector(".g-menu")!, "ArrowLeft");
     await click(row("Pin"));
     expect(request).toHaveBeenCalledWith("sessions.patch", expect.objectContaining({ key: "agent:ledger:main", pinned: true }));
+  });
+
+  it("Guide › Take the full tour starts the window's walkthrough when the window offers it (parity row 14)", async () => {
+    const onTour = vi.fn();
+    await render([], { onTour });
+    await click(host.querySelector(".r1sb-me"));
+    await click(row("Guide"));
+    expect(undeclared()).toEqual([]);
+    expect(row("Take the full tour").hasAttribute("data-local")).toBe(true);
+    expect(row("Take the full tour").getAttribute("aria-disabled")).toBeNull();
+    await click(row("Take the full tour"));
+    expect(onTour).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,6 +1,8 @@
 name: Personal info PR scan
 
-# Title and body come from the event payload. Added lines come from the Files API.
+# Title and body come from the event payload. Added lines come from git: the scan
+# fetches refs/pull/N/merge (depth 2) and diffs its first parent against it. The
+# REST files API runs only when that ref is missing or does not match the event head.
 # The scan job is pull_request_target: it checks out the default branch only and
 # never checks out or executes pull-request code. Editing the description re-runs
 # the scan on the same head. Matcher unit tests run from the pull request.

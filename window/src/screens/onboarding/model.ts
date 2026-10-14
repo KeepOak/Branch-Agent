@@ -24,31 +24,39 @@ export const MODES: readonly Mode[] = (["ask", "auto", "plan", "read"] as const)
 });
 export const PLAN_FIRST_REASON = "Plan first comes in a later update.";
 
-/** Where Branch runs: this computer today; the other two are Coming (HANDOFF R1-07: system.info, others COMING). */
+/** Where Branch runs: this computer. Another computer and a KeepOak computer wait in Seedbank › Coming to Branch until
+ *  the engine can move Branch there (R1-15). */
 export type Where = "here" | "other" | "keepoak";
 export const WHERE: readonly { id: Where; name: string; line: string; icon: "monitor" | "globe" | "cloud"; reason?: string }[] = [
   { id: "here", name: "This computer", line: "Recommended. Everything stays here.", icon: "monitor" },
-  { id: "other", name: "Another computer", line: "Your Mac mini, a server or a NAS. Set up in Settings › Devices.", icon: "globe", reason: "Moving Branch to another computer comes in a later update." },
-  { id: "keepoak", name: "A KeepOak computer", line: "Always on, in the cloud. Set up in Settings › Devices.", icon: "cloud", reason: "KeepOak computers come in a later update." },
 ];
 export const whereWord = (w: Where) => (w === "here" ? "this computer" : w === "other" ? "another computer" : "a KeepOak computer");
 
-export const EXAMPLES_REASON = "Trying Branch with examples comes in a later update.";
+export const EXAMPLES_REASON = "This engine can’t show example Trunks.";
+
+/** An example Trunk from trunks.template.starters: its name and the line it introduces itself with. */
+export type Example = { id: string; name: string; pitch: string };
+export function readExamples(value: unknown): Example[] {
+  const v = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const offer = Array.isArray(v.offer) ? (v.offer as unknown[]) : [];
+  const str = (x: unknown) => (typeof x === "string" ? x : "");
+  return offer.flatMap((o) => {
+    const r = o && typeof o === "object" ? (o as Record<string, unknown>) : {};
+    const id = str(r.id), name = str(r.name);
+    return id && name ? [{ id, name, pitch: str(r.pitch) || str(r.description) }] : [];
+  });
+}
 
 /** The engine call each control the card doesn't wire yet waits for (R1-10). They render through <Coming unwired>
  *  (Unwired.tsx), so the dev list names the method. */
 export const WAITS_FOR = {
-  /** Moving Branch to another computer starts with that computer's pairing code. */
-  other: "device.pair.setupCode",
-  /** A KeepOak computer is a cloud environment. */
-  keepoak: "environments.create",
-  /** Example Trunks and replies, with no account. */
+  /** Example Trunks, with no account: the starter teammates the engine carries. */
   examples: "trunks.template.starters",
   /** A day-one template this engine doesn't carry yet. */
   template: "trunks.template.create",
   /** Plan first has no tools.exec.mode value yet (HANDOFF R1-04: COMING). */
   planFirst: "config.patch",
-  /** The same questions in a conversation named "Setting up Branch". */
+  /** The same questions in a conversation named "Setting up Branch" (sessions.create with its first message). */
   talk: "sessions.create",
 } as const;
 
@@ -59,16 +67,18 @@ export type OnboardingState = {
   step: number; where: Where; off: string[]; hello: Hello; mode: ModeId;
   /** Step 4: what the person typed, the suggested Trunks they picked, and the template chips they picked (template ids). */
   text: string; pick: string[]; tpl: string[];
+  /** Step 2: the person chose Try it with examples, which lets Continue go on without a hello. */
+  examples: boolean;
 };
 export const clampStep = (step: number) => Math.max(0, Math.min(LAST_STEP, Math.trunc(step) || 0));
-export const freshState = (step = 0): OnboardingState => ({ step: clampStep(step), where: "here", off: [], hello: null, mode: "ask", text: "", pick: [], tpl: [] });
+export const freshState = (step = 0): OnboardingState => ({ step: clampStep(step), where: "here", off: [], hello: null, mode: "ask", text: "", pick: [], tpl: [], examples: false });
 
 export const helloOk = (hello: Hello): boolean => typeof hello === "object" && hello !== null && hello.ok;
 
 /** The primary button: its words, and whether it may be pressed (preview `primary()`). */
 export function primary(s: OnboardingState, defaultName = ""): { label: string; ok: boolean; why?: string } {
   if (s.step === 0) return { label: "Get started", ok: true };
-  if (s.step === 1) return helloOk(s.hello) ? { label: "Continue", ok: true } : { label: "Continue", ok: false, why: "Say hello first." };
+  if (s.step === 1) return helloOk(s.hello) || s.examples ? { label: "Continue", ok: true } : { label: "Continue", ok: false, why: "Say hello first." };
   if (s.step === LAST_STEP) return picked(s).length ? { label: "Meet them", ok: true } : { label: `Start with ${defaultName || "your default Trunk"}`, ok: true };
   return { label: "Continue", ok: true };
 }

@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import { access, constants, cp, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { appendCappedLog } from "./log-rotation";
+import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 
 export const MAC_APP_NAME = "Branch";
 export const MAC_BUNDLE_FOLDER = "Branch.app";
@@ -136,7 +136,8 @@ async function defaultRegister(args: string[]): Promise<void> {
   await run(LSREGISTER, args);
 }
 
-async function defaultReadSignature(app: string): Promise<string | undefined> {
+/** An app's codesign report on macOS; undefined elsewhere and under tests. */
+export async function readMacSignature(app: string): Promise<string | undefined> {
   if (process.platform !== "darwin" || process.env.BRANCH_DESKTOP_TEST_DIST) return undefined;
   return new Promise(resolvePromise => {
     execFile("codesign", ["-d", "-r-", "--verbose=2", app], { windowsHide: true }, (_error, stdout, stderr) => resolvePromise(`${stderr}\n${stdout}`));
@@ -196,7 +197,7 @@ export async function installMacApp(source: string, options: InstallMacAppOption
     return destination;
   }
   if (await pathExists(destination)) {
-    const readSignature = options.readSignature ?? defaultReadSignature;
+    const readSignature = options.readSignature ?? readMacSignature;
     assertNoMacSigningDowngrade(await readSignature(destination), await readSignature(source));
   }
   const stageRoot = join(applicationsDir, `.Branch.install-${process.pid}`);
@@ -233,7 +234,7 @@ export async function ensureMacApplicationsInstall(appDir: string, logFile: stri
     await installMacApp(appDir, { runningAppDir: appDir });
   } catch (error) {
     try {
-      appendCappedLog(logFile, `${new Date().toISOString()} macOS Applications install failed: ${String(error)}\n`);
+      appendCappedLog(logFile, `${new Date().toISOString()} macOS Applications install failed: ${String(error)}\n`, BRANCH_LOG_LIMITS);
     } catch { /* a log failure must not block launch */ }
   }
 }
