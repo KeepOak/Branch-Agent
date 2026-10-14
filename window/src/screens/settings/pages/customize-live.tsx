@@ -7,6 +7,8 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Coming } from "../../../glass/coming";
+import { COMING_REASON } from "../../../glass/coming-registry";
+import { ASK_COMING } from "../SettingsFrame";
 import { useResource as usePlaceResource, type Trunks } from "../../../places/library/data";
 import { ToolsTab, type Kind } from "../../../places/customize/tools";
 import { configStore, pathKeys, type ConfigPath } from "../../../places/settings/config-store";
@@ -91,19 +93,17 @@ export function SavedPrompts({ engine, onAsk }: SlotPageProps) {
   const entries = list(lib.data?.entries).filter((e) => e.removed !== true);
   return (
     <div className="r1s-items" data-need="skills.library.list">
-      {lib.loading ? <small className="r1s-msg g-label">Reading your saved prompts…</small> : null}
       {lib.error ? <small className="r1s-msg r1s-bad g-label" role="status">{visible(lib.error)}</small> : null}
-      {!lib.loading && !lib.error && !entries.length ? <small className="r1s-msg g-label">No saved prompts yet.</small> : null}
       {entries.map((e) => {
         const slug = text(e.slug);
-        const off = e.enabled === false ? "Turned off in the library." : onAsk ? undefined : "Needs a model set up first.";
+        const off = onAsk ? undefined : ASK_COMING;
         return (
           <div key={text(e.skillId) || slug} className="r1s-row" data-row={`customize.prompts.${slug}`}>
             <b className="g-label">/{visible(slug)}</b>
             {e.description ? <small className="g-label" data-lines>{visible(e.description)}</small> : null}
             <div className="r1s-ctl">
               <Coming engine={engine} need="chat.send" unwired={Boolean(off)} reason={off}>
-                <button type="button" className="r1s-btn" onClick={() => onAsk?.(`/${slug}`)}>Try it</button>
+                <button type="button" className="r1s-btn" disabled={e.enabled === false} onClick={() => onAsk?.(`/${slug}`)}>Try it</button>
               </Coming>
             </div>
           </div>
@@ -151,23 +151,27 @@ function AgentCard({ engine, agent, trunks, sessions, nested, reload }: { engine
     void run(() => store.set(denyPath(trunk), nextDeny(current, agent.id, on, sessions)));
   };
   const set = (change: RecordValue) => void run(async () => { await engine.request("contacts.outside.set", { id: agent.id, ...change }); reload(); });
-  const seen = agent.revoked ? "Disconnected" : agent.online ? "Online now" : agent.lastSeenAt ? `Last seen ${new Date(agent.lastSeenAt).toLocaleString()}` : "Not seen yet";
+  // The preview's line: "Online · <where> · <what it is doing>", or "Offline since <day>" when it has gone quiet.
+  const online = agent.online && !agent.revoked;
+  const quiet = !online && agent.lastSeenAt ? `Offline since ${new Date(agent.lastSeenAt).toLocaleDateString(undefined, { weekday: "long" })}` : "";
+  const seen = [online ? "Online" : "Offline", agent.where, online ? agent.activity : quiet || agent.activity].filter(Boolean).join(" · ");
   const mayTalk = trunks.filter((t) => !denied(t.id)).map((t) => t.name);
+  const may = [mayTalk.length ? `May talk to ${mayTalk.join(", ")}` : "", agent.mayDriveWindow ? "may use this window" : ""].filter(Boolean).join(" · ");
   return (
     <div className="r1s-agent" data-testid="connected-agent" data-agent={agent.id} data-kind={agent.kind}>
       <div className="r1s-item">
         <span className="r1s-av g-frost" aria-hidden="true">{agent.name.slice(0, 2).toUpperCase()}</span>
         <span className="r1s-item-t g-label" data-lines>
           <b>{agentTitle(agent)}{isBranch ? " · Branch" : ""}</b>
-          <small>{[seen, agent.where, agent.activity, agent.version ? `version ${agent.version}` : ""].filter(Boolean).join(" · ")}</small>
-          <small>{mayTalk.length ? `May talk to ${mayTalk.join(", ")}` : "May talk to no Trunk"}{agent.mayDriveWindow ? " · may use this window" : ""}</small>
+          <small>{seen}</small>
+          {may ? <small>{may.charAt(0).toUpperCase() + may.slice(1)}</small> : null}
         </span>
       </div>
-      {nested.length ? <ul className="r1s-agent-trunks" aria-label={`${agent.name}'s Trunks`}>{nested.map((t) => <li key={t.id} data-agent={t.id}>{t.name} · {t.online && !agent.revoked ? "Online now" : "Not online"}</li>)}</ul> : null}
+      {nested.length ? <ul className="r1s-agent-trunks" aria-label={`${agent.name}'s Trunks`}>{nested.map((t) => <li key={t.id} data-agent={t.id}>{t.name} · {t.online && !agent.revoked ? "Online" : "Offline"}</li>)}</ul> : null}
       <div className="r1s-acts">
         {/* The preview's seed and sharing buttons wait for the engine to describe a connected agent as a seed. */}
         {["Copy seed", "Download", "Share"].map((b) => (
-          <Coming key={b} engine={engine} need="engine: a connected agent as a seed" unwired reason="Sharing a connected agent comes in a later update.">
+          <Coming key={b} engine={engine} need="engine: a connected agent as a seed" unwired reason={COMING_REASON}>
             <button type="button" className="r1s-btn">{b}</button>
           </Coming>
         ))}
@@ -178,20 +182,22 @@ function AgentCard({ engine, agent, trunks, sessions, nested, reload }: { engine
           </Needs>
         )}
       </div>
-      {rights ? <div className="r1s-agent-rights" role="group" aria-label={`What ${agent.name} may do`}>
+      {rights ? <div className="r1s-agent-rights" role="group" aria-label={`${agent.name}: what it may do`}>
+      <small className="r1s-msg g-label">Its own token. Nothing here affects other agents.</small>
+      <h3 className="g-label">Trunks it may talk to</h3>
       {trunks.map((t) => (
         <div key={t.id} className="r1s-row" data-row={`customize.agents.${agent.id}.${t.id}`}>
-          <b className="g-label">May message {t.name}</b>
-          <div className="r1s-ctl"><Needs engine={engine} need={["config.patch"]} where={`${agent.name} may message ${t.name}`}>
-            <span className="r1s-own-ctl"><Toggle label={`${agent.name} may message ${t.name}`} on={!denied(t.id)} disabled={!snap} onChange={(on) => allow(t.id, on)} /></span>
+          <b className="g-label">{t.name}</b>
+          <div className="r1s-ctl"><Needs engine={engine} need={["config.patch"]} where={`${agent.name} may talk to ${t.name}`}>
+            <span className="r1s-own-ctl"><Toggle label={`${agent.name} may talk to ${t.name}`} on={!denied(t.id)} disabled={!snap} onChange={(on) => allow(t.id, on)} /></span>
           </Needs></div>
         </div>
       ))}
       <div className="r1s-row" data-row={`customize.agents.${agent.id}.window`}>
-        <b className="g-label">May use your Branch window</b>
-        <small className="g-label" data-lines>Also needs Let agents use this window, above.</small>
-        <div className="r1s-ctl"><Needs engine={engine} need={["contacts.outside.set"]} where={`${agent.name} may use your Branch window`}>
-          <span className="r1s-own-ctl"><Toggle label={`${agent.name} may use your Branch window`} on={agent.mayDriveWindow} onChange={(on) => set({ mayDriveWindow: on })} /></span>
+        <b className="g-label">May use this window</b>
+        <small className="g-label" data-lines>Click and read Branch’s screens.</small>
+        <div className="r1s-ctl"><Needs engine={engine} need={["contacts.outside.set"]} where={`${agent.name} may use this window`}>
+          <span className="r1s-own-ctl"><Toggle label={`${agent.name} may use this window`} on={agent.mayDriveWindow} onChange={(on) => set({ mayDriveWindow: on })} /></span>
         </Needs></div>
       </div>
       </div> : null}
@@ -209,9 +215,10 @@ export function ConnectedAgents({ engine }: SlotPageProps) {
   const branches = new Set(agents.filter((a) => a.kind === "branch").map((a) => a.id));
   const isNested = (a: OutsideAgentRow) => a.kind === "trunk" && !!a.via && branches.has(a.via);
   const reload = () => void live.reload();
-  if (live.loading) return <small className="r1s-msg g-label">Reading connected agents…</small>;
+  if (live.loading) return null;
   if (live.error) return <small className="r1s-msg r1s-bad g-label" role="status">{visible(live.error)}</small>;
-  if (!agents.length) return <small className="r1s-msg g-label" data-lines>No agent is connected yet. Paste one of the lines below into it.</small>;
+  // The preview's Connect an agent line says what to do when none is connected.
+  if (!agents.length) return <small className="r1s-msg g-label" data-lines>Paste one line into the agent’s terminal. It asks you here before it connects.</small>;
   return (
     <div className="r1s-items" data-need="contacts.outside.list">
       {agents.filter((a) => !isNested(a)).map((a) => (
@@ -225,16 +232,15 @@ export function ConnectedAgents({ engine }: SlotPageProps) {
 /** Connect an agent: one row per line an agent's owner pastes once (Classic CONNECT_LINES), each with Copy. */
 export const CONNECT_ROWS: Row[] = CONNECT_LINES.map(([title], i) => ({
   id: `customize.connect.line-${i + 1}`, page: "customize", card: "Connect an agent", label: title, level: 0, control: "custom",
-  source: { kind: "slot", calls: [], reason: "Copying a connect line comes in a later update." },
+  source: { kind: "slot", calls: [], reason: COMING_REASON },
 }));
 function ConnectLine({ row }: SlotControlProps) {
   const line = CONNECT_LINES.find(([title]) => title === row.label)?.[1] ?? "";
-  const [copied, setCopied] = useState(false);
-  const copy = () => void navigator.clipboard?.writeText(line).then(() => setCopied(true), () => setCopied(false));
+  const copy = () => void navigator.clipboard?.writeText(line).catch(() => undefined);
   return (
     <span className="r1s-own-ctl r1s-codeline" data-local="">
       <code className="r1s-code">{line}</code>
-      <button type="button" className="r1s-btn" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
+      <button type="button" className="r1s-btn" onClick={copy}>Copy</button>
     </span>
   );
 }
@@ -274,7 +280,7 @@ export function WebSearchPick({ engine, row }: SlotControlProps) {
         {options.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
       </select>
     </Needs>
-    <Failed text={failed || (on ? "" : "Search is off.")} />
+    <Failed text={failed} />
   </>;
 }
 
@@ -342,10 +348,10 @@ export function pluginSwitch(id: string) {
     const label = row.label ?? id;
     const missing = !plugins.loading && !entry && saved === undefined;
     return <>
-      <Coming engine={engine} need={["plugins.list", "config.patch"]} unwired={missing} reason={missing ? "Its plugin isn’t installed in this engine." : undefined} where={label}>
+      <Coming engine={engine} need={["plugins.list", "config.patch"]} unwired={missing} reason={missing ? `${label} comes in a later update.` : undefined} where={label}>
         <span className="r1s-own-ctl"><Toggle label={label} on={typeof saved === "boolean" ? saved : entry?.enabled === true} disabled={!snap || missing} onChange={(on) => void run(() => store.set(["plugins", "entries", id, "enabled"], on))} /></span>
       </Coming>
-      <Failed text={missing ? "Its plugin isn’t installed in this engine." : failed} />
+      <Failed text={failed} />
     </>;
   };
 }

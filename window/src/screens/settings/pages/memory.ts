@@ -11,8 +11,6 @@ const MEMORY = "Memory";
 const RECALL = "Recall and memory files";
 const DOCS = "Documents it reads";
 const LIBRARY = "Library";
-/** Said on a row the engine always does, with no switch for it. */
-const ALWAYS = "Always on in this engine; there is no switch for it.";
 
 const no = (what: string, reason = NO_KEY) => ({ kind: "coming" as const, need: `config: ${what}`, reason });
 const opts = (...labels: string[]): RowOption[] => labels.map((l) => ({ v: l, label: l }));
@@ -29,19 +27,19 @@ export const MEMORY_ROWS: Row[] = [
   row({ id: "memory.memory.start-total", card: MEMORY, label: "All start files together", help: "All the files a Trunk reads first load up to this much together.", level: 1, control: "number", unit: "characters", fallback: 60_000,
     source: { kind: "config", path: "agents.defaults.bootstrapTotalMaxChars" } }),
   row({ id: "memory.memory.meaning", card: MEMORY, label: "Match by meaning", help: "Finds “invoice” when the fact says “bill”.", level: 1, control: "toggle", fallback: true, source: { kind: "config", path: "memory.search.store.vector.enabled" } }),
-  row({ id: "memory.memory.meaning-check", card: MEMORY, label: "Meaning search", help: "Whether meaning search answers, and where it runs.", level: 1, control: "custom", source: slot(["doctor.memory.status"], "Checking meaning search comes in a later update.") }),
+  row({ id: "memory.memory.meaning-check", card: MEMORY, label: "Meaning search", level: 1, control: "custom", source: slot(["doctor.memory.status"], "Checking meaning search comes in a later update.") }),
   row({ id: "memory.memory.provider", card: MEMORY, label: "Meaning search uses", help: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", level: 1, control: "select", options: PROVIDERS, fallback: "openai",
     source: { kind: "config", path: "memory.search.provider" } }),
   row({ id: "memory.memory.share", card: MEMORY, label: "Share memory between Trunks", help: "Off: each Trunk keeps its own. Off until you choose: it changes where your data goes.", level: 1, control: "toggle", source: no("a shared memory switch") }),
   row({ id: "memory.memory.ask", card: MEMORY, label: "Ask before remembering", help: "Off: a Trunk writes what is worth keeping as it works, and the conversation shows “Remembered”. On: it asks “Remember this?” first.", level: 1, control: "toggle", source: no("an ask-before-remembering switch") }),
   row({ id: "memory.memory.engine", card: MEMORY, label: "Memory engine", help: "One engine stores and searches memory. Choosing one turns the others off.", level: 2, control: "custom", source: slot(["plugins.list", "config.patch"], "Choosing the memory engine comes in a later update.") }),
   row({ id: "memory.memory.outside", card: MEMORY, label: "Outside memory", help: "Off until you choose: it changes where your data goes.", level: 1, control: "segmented", options: opts("None", "Mem0", "Honcho", "Hindsight"), fallback: "None",
-    source: no("an outside memory service", "This engine has none of these memory services.") }),
+    source: no("an outside memory service", "Outside memory comes in a later update.") }),
   row({ id: "memory.memory.git", card: MEMORY, label: "Keep a history in Git", help: "Every change to memory as a commit, on this computer.", level: 1, control: "toggle", source: no("a memory history switch") }),
   row({ id: "memory.memory.recall", card: MEMORY, label: "Recall before replying", help: "Before a reply about the past, a helper searches memory more deeply when the quick search found nothing strong. Off until you choose: it can add a model call before a reply.", level: 1, control: "toggle",
-    source: slot(["plugins.list", "config.patch"], "Its plugin isn’t installed in this engine.") }),
+    source: slot(["plugins.list", "config.patch"], "Recall before replying comes in a later update.") }),
   row({ id: "memory.memory.wiki", card: MEMORY, label: "Memory wiki", help: "Keeps what Trunks know as linked pages, each fact with where it came from, readable as Markdown. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", level: 1, control: "toggle",
-    source: slot(["plugins.list", "config.patch"], "Its plugin isn’t installed in this engine.") }),
+    source: slot(["plugins.list", "config.patch"], "The memory wiki comes in a later update.") }),
   row({ id: "memory.memory.tidy", card: MEMORY, label: "Tidy by meaning each night", help: "At 3 AM it merges facts that say the same thing in different words. Every merge is listed.", level: 1, control: "custom", source: slot([], "Last night’s tidy-up comes in a later update.") }),
   row({ id: "memory.memory.project-notes", card: MEMORY, label: "Project notes as files", help: "Each project keeps its memory as Markdown in its own folder, so you can read and edit it.", level: 1, control: "button", button: "Open", source: no("project notes as files") }),
   row({ id: "memory.memory.follow-ups", card: MEMORY, label: "Follow-ups made whole", help: "A short follow-up like “and July?” becomes a full question before it searches.", level: 1, control: "button", button: "Show one", source: no("whole follow-up questions") }),
@@ -69,8 +67,8 @@ export const MEMORY_ROWS: Row[] = [
   row({ id: "memory.recall.other-agents", card: RECALL, label: "Learn from other coding agents’ history on this computer", help: "Past sessions other coding tools left on disk come up when they matter. Off until you choose: it reads their files.", level: 1, control: "custom",
     source: slot(["migrations.memory.plan", "migrations.memory.apply"], "Bringing in other coding agents’ memory comes in a later update.") }),
   row({ id: "memory.recall.rings", card: RECALL, label: "Rings’ own instructions for this workspace", help: "Rings works the usual way. Make one to tell it what matters here.", level: 1, control: "button", button: "Make one", source: no("Rings instructions for a workspace") }),
-  row({ id: "memory.recall.recent", card: RECALL, label: "Prefer recent notes", help: "Newer notes win ties; a note’s weight halves every 30 days.", level: 2, control: "toggle", fallback: true, source: no("a recent-notes switch", ALWAYS) }),
-  row({ id: "memory.recall.vary", card: RECALL, label: "Vary the results", help: "Leaves out near-repeats so a search brings back different things.", level: 2, control: "toggle", fallback: true, source: no("a vary-results switch", ALWAYS) }),
+  row({ id: "memory.recall.recent", card: RECALL, label: "Prefer recent notes", help: "Newer notes win ties; a note’s weight halves every 30 days.", level: 2, control: "toggle", fallback: true, source: no("a recent-notes switch") }),
+  row({ id: "memory.recall.vary", card: RECALL, label: "Vary the results", help: "Leaves out near-repeats so a search brings back different things.", level: 2, control: "toggle", fallback: true, source: no("a vary-results switch") }),
   row({ id: "memory.recall.watch", card: RECALL, label: "Pick up edits to memory files", help: "Your own edits to the Markdown files are read back in; a file it can’t read is set aside, never deleted.", level: 2, control: "toggle", source: no("a memory file watch switch") }),
   row({ id: "memory.recall.score", card: RECALL, label: "Score memories by whether they helped", help: "After each answer, the memories it used are marked helped or not, and rank that way. Off until you choose: it adds a model call.", level: 2, control: "toggle", source: no("a memory scoring switch") }),
   row({ id: "memory.recall.git-copy", card: RECALL, label: "Also copy the history to", help: "A second Git address, such as a private repository. Empty: only on this computer. Needs Keep a history in Git.", level: 2, control: "text", source: no("a second Git address for memory") }),
