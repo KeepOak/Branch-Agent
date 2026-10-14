@@ -135,11 +135,14 @@ export function refreshSessionHandoffLeases(env: NodeJS.ProcessEnv = process.env
   }
 }
 
-function holderStillHolds({ file, lease }: Holder): boolean {
-  if (isSessionHandoffLeaseExpired(lease) || !isLeaseHolderAlive(lease.pid)) return false;
+function holderStillHolds(holder: Holder): boolean {
+  if (!isLeaseHolderAlive(holder.lease.pid)) return false;
   // A lease file that is there but unreadable for now still holds; its expiry bounds that.
-  const current = readHeldSessionHandoffLease(file);
-  return current === "busy" || current?.ownerId === lease.ownerId;
+  const current = readHeldSessionHandoffLease(holder.file);
+  // A holder renews its lease while the session's run is still in flight (Private #1038): follow the renewal.
+  if (current !== "busy" && current?.ownerId === holder.lease.ownerId) holder.lease = current;
+  if (isSessionHandoffLeaseExpired(holder.lease)) return false;
+  return current === "busy" || current?.ownerId === holder.lease.ownerId;
 }
 
 /** Drops holders that no longer hold the lane; frees the lane (and its waiters) once none is left. */

@@ -1,4 +1,4 @@
-// Written by Branch for AUTOMATION-0008 from openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3 cron startup/recovery contracts; not copied.
+// Covers cron startup/recovery contracts.
 import { describe, expect, it, vi } from "vitest";
 import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { readCronRunHistoryPageForTests } from "../run-history.test-support.js";
