@@ -140,7 +140,7 @@ export function PreviewVoice({ engine, row }: SlotControlProps) {
 const runsHere = (p: Provider) => /local|cli/i.test(p.id);
 /** Each service and whether it has a key; Add key opens Sign-ins & keys. */
 function KeyList({ providers, onPage }: { providers: Provider[]; onPage?: SlotControlProps["onPage"] }) {
-  if (!providers.length) return <Line>None installed.</Line>;
+  if (!providers.length) return null;
   return <ul className="r1s-items">{providers.map((p) => (
     <li key={p.id} className="r1s-item"><span className="r1s-item-t g-label">{p.label}</span>
       <small className="g-label">{runsHere(p) ? "On this computer" : p.configured ? "Ready" : "No key yet"}</small>
@@ -166,7 +166,6 @@ export function NamedVoices({ engine, row }: SlotControlProps) {
   const personas = list(tts.data?.personas);
   return <>
     <Needs engine={engine} need={["tts.status"]} where={row.label ?? ""}><Btn disabled={!personas.length} onClick={() => setOpen(true)}>{personas.length ? `See ${personas.length}` : "None yet"}</Btn></Needs>
-    {!personas.length ? <Line>Branch can’t add a named voice from here yet.</Line> : null}
     {open ? <Dialog title="Named voices" onClose={() => setOpen(false)}><ul className="r1s-items">{personas.map((p) => <li key={text(p.id)} className="r1s-item">
       <span className="r1s-item-t g-label">{visible(p.label ?? p.id)}</span><small className="g-label">{[p.description, p.provider].filter(Boolean).map(visible).join(" · ")}</small></li>)}</ul></Dialog> : null}
   </>;
@@ -191,7 +190,7 @@ export function LiveThrough({ engine, row }: SlotControlProps) {
         {options.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
       </select>
     </Needs>
-    <Line>{live.providers.some((p) => p.configured) ? "On because a live-voice service is connected." : "Turns on when a live-voice service is connected. Live voice on this computer comes later."}</Line>
+    <Line>{live.providers.some((p) => p.configured) ? "On because a live-voice service is connected." : "Turns on when a live-voice service is connected."}</Line>
     <Failed text={failed} />
   </>;
 }
@@ -262,11 +261,10 @@ export function LiveServices({ engine, row }: SlotControlProps) {
 export function TestCall({ engine, row }: SlotControlProps) {
   const cfg = useConfig(engine);
   const [failed, run] = useFailure();
-  const [note, setNote] = useState("");
   const on = cfg.get("plugins.entries.voice-call.enabled") === true;
   return <>
-    <Needs engine={engine} need={["voicecall.initiate"]} where={row.label ?? ""}><Btn disabled={!on} onClick={() => void run(async () => { await engine.request("voicecall.initiate", { message: "This is a test call from Branch.", mode: "notify" }); setNote("Calling."); })}>Call me</Btn></Needs>
-    {!on ? <Line>Turn on Phone calls first.</Line> : note ? <Line>{note}</Line> : null}
+    <Needs engine={engine} need={["voicecall.initiate"]} where={row.label ?? ""}><Btn disabled={!on} onClick={() => void run(async () => { await engine.request("voicecall.initiate", { message: "This is a test call from Branch.", mode: "notify" }); })}>Call me</Btn></Needs>
+    {!on ? <Line>Turn on Phone calls first.</Line> : null}
     <Failed text={failed} />
   </>;
 }

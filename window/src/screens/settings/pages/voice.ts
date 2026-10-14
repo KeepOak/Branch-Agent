@@ -18,26 +18,20 @@ export const LIVE = "Live voice";
 export const CALLS = "Calls & meetings";
 export const SERVICES = "Voice services";
 
-/** Classic's two reasons for a greyed Voice row (voice-kit.tsx). */
-const APP = "This runs in the Branch app on your computer.";
-const NO_KEY = "Branch has no setting for this yet.";
-const NEED: Record<string, string> = { [APP]: "desktop: the Branch app’s voice", [NO_KEY]: "engine: a setting for it" };
+/** What a greyed Classic Voice row waits for (kept in the row's need, never shown): the Branch app's voice, or a setting. */
+const APP = "desktop: the Branch app’s voice";
+const NO_KEY = "engine: a setting for it";
 
-/** One greyed Classic row, as Classic describes it: its control, and why it is greyed (APP unless said). */
+/** One greyed Classic row, as Classic describes it: its control, and what it waits for (the section's unless said). */
 type Grey = { t: string; sub?: string; c?: { sw: boolean } | { btn: string } | { seg: string[] } | { pick: string[] } | { field: string; unit?: string } | { area: string }; why?: string };
-/** A Coming row's reason is one plain sentence in the preview's words (R1-10): a reason that names how Branch works
- *  inside becomes "<label> comes in a later update."; the call it waits for stays in `need`. */
-export const plainReason = (label: string, reason: string): string =>
-  /engine|gateway call|method|config|\b[a-z]+\.[a-z]+\b/i.test(reason) ? `${label} comes in a later update.` : reason;
 const slug = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-function grey(card: string, level: Level, why: string, rows: Grey[]): Row[] {
+function grey(card: string, level: Level, need: string, rows: Grey[]): Row[] {
   return rows.map((g) => {
     const c = g.c;
-    const reason = g.why ?? why;
     const control: Control = !c ? "custom" : "sw" in c ? "toggle" : "seg" in c ? "segmented" : "pick" in c ? "select" : "field" in c ? (/^[\d.]+$/.test(c.field) || c.field === "" ? "number" : "text") : "area" in c ? "text" : "custom";
     const options = c && "seg" in c ? c.seg.map((v) => ({ v, label: v })) : c && "pick" in c ? c.pick.map((v) => ({ v, label: v })) : undefined;
     return { id: `voice.${slug(card)}.${slug(g.t)}`, page: "voice", card, label: g.t, level, control, ...(options ? { options } : {}), ...(c && "field" in c && c.unit ? { unit: c.unit } : {}),
-      ...(g.sub ? { help: g.sub } : {}), source: { kind: "coming", need: NEED[reason] ?? "engine: a setting for it", reason: plainReason(g.t, reason) } } satisfies Row;
+      ...(g.sub ? { help: g.sub } : {}), source: { kind: "coming", need: g.why ?? need, reason: `${g.t} comes in a later update.` } } satisfies Row;
   });
 }
 const text: Codec = { read: (v) => (typeof v === "string" ? v : ""), write: (v) => (typeof v === "string" && v.trim() ? v.trim() : null) };
@@ -135,8 +129,8 @@ export const VOICE_ROWS: Row[] = [
   slot("voice.speaking.preview", SPEAKING, "Preview", ["tts.speak"], { level: 1, help: "Plays “This is how replies will sound.”" }),
   slot("voice.speaking.services", SPEAKING, "Voice services", ["tts.providers"], { level: 1, help: "Each speaking service and whether it has a key. Keys live in Sign-ins & keys." }),
   slot("voice.speaking.named", SPEAKING, "Named voices", ["tts.status"], { level: 1, help: "A name for a voice that keeps sounding the same, whichever engine speaks." }),
-  ...grey(SPEAKING, 1, "Change it with /tts limit in a conversation for now.", [{ t: "Read in full up to", sub: "Longer replies are shortened before they are read.", c: { field: "", unit: "characters" } }]),
-  ...grey(SPEAKING, 1, "Change it with /tts summary in a conversation for now.", [{ t: "Shorten longer replies first", sub: "A longer reply is summarised before it is read out.", c: { sw: true } }]),
+  ...grey(SPEAKING, 1, "engine: a setting for the read-aloud limit", [{ t: "Read in full up to", sub: "Longer replies are shortened before they are read.", c: { field: "", unit: "characters" } }]),
+  ...grey(SPEAKING, 1, "engine: a setting for shortening replies", [{ t: "Shorten longer replies first", sub: "A longer reply is summarised before it is read out.", c: { sw: true } }]),
 
   // Live voice (Classic Live voice more, technical, more services)
   slot("voice.live.status", LIVE, "Live voice", ["talk.catalog"], { level: 1 }),
@@ -187,11 +181,11 @@ export const VOICE_ROWS: Row[] = [
     { t: "Recording", sub: "It always says first that it’s an AI assistant calling for you.", c: { seg: ["Only if they agree", "Never"] } },
   ]),
   slot("voice.calls.test", CALLS, "Test call", ["voicecall.initiate"], { level: 1, help: "Rings your own number with a short message, so you know calls work." }),
-  ...grey(CALLS, 1, "Branch lists only calls in progress yet.", [{ t: "Calls", sub: "Every call: who, when, how long and how it ended.", c: { btn: "See" } }]),
+  ...grey(CALLS, 1, "engine: a list of past calls", [{ t: "Calls", sub: "Every call: who, when, how long and how it ended.", c: { btn: "See" } }]),
   config("voice.calls.transcripts", CALLS, "Keep meeting transcripts", "transcripts.enabled", "toggle", { level: 1, codec: onUnlessOff,
     help: "Lets a Trunk save what’s said in a meeting. It records nothing by itself: “Meeting notes” and the places below decide when." }),
   slot("voice.calls.notes", CALLS, "Meeting notes", ["config.get", "config.patch"], { level: 1, help: "A Trunk joins Meet, Teams or Zoom as a guest and brings the notes back." }),
-  ...grey(CALLS, 1, "Branch can’t add a place from here yet.", [{ t: "Start notes by itself in", sub: "Empty until you add a place. A Trunk then keeps notes there by itself.", c: { btn: "Add a place" } }]),
+  ...grey(CALLS, 1, "window: adding a place for meeting notes", [{ t: "Start notes by itself in", sub: "Empty until you add a place. A Trunk then keeps notes there by itself.", c: { btn: "Add a place" } }]),
   ...grey(CALLS, 1, NO_KEY, [
     { t: "Meeting notes now", sub: "Whether saving is on, and the notes saved so far.", c: { btn: "Check again" } },
     { t: "Join from your calendar", sub: "It never joins a meeting by itself unless you pick the second.", c: { seg: ["Only when I ask", "Meetings I’m invited to"] } },
