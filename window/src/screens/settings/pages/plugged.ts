@@ -11,6 +11,8 @@ import {
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { GENERAL_PAGE } from "./general-live";
+import { SIGNINS_ROWS } from "./signins";
+import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
 import { LEARNING_ROWS } from "./learning";
 import {
   CheckBranch, ClearReplayed, Command, ConnectedNow, DiaryModel, Fact, Learned, PeopleHere, ProcessNames, RestartEngine, TasksAtOnce, Weighing,
@@ -25,7 +27,7 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
+  who: "people", notifications: "notifications", instructions: "instructions", updates: ["updates", "achievements"],
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -44,6 +46,8 @@ export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Sign-ins & keys: the preview's four cards; Classic's password manager and key store inside them.
+  signins: { rows: SIGNINS_ROWS, controls: { "signins.where.block": SigninWhere, "signins.keys.block": SigninKeys } },
   // Learning & self-updates: native R1 cards in the preview's order; Classic About Branch and Seasons draw behind its
   // rows (learning-live.tsx).
   learning: {
