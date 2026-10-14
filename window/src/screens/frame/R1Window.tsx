@@ -17,6 +17,7 @@ import { PLACES, loadRoute, parseRoute, saveRoute, windowTitle, type PlaceId, ty
 import { SettingsFrame as ClassicSettingsFrame } from "../../places-nav/SettingsFrame";
 import { SettingsFrame } from "../settings";
 import { R1_PAGES } from "../settings/pages/plugged";
+import { placePages } from "../settings/pages/places-live";
 import { ROWS } from "../settings/rows";
 import { mergeRows, type PageSlots } from "../settings/slots";
 import type { Row } from "../settings/rows";
@@ -54,6 +55,24 @@ const placeTitle = (place: PlaceId) => place === "seedbank" ? "Seedbank" : place
  * (settings/pages/appearance-live.tsx, screens/chatapps, settings/pages/accounts-live.tsx; #976).
  */
 const KEEP_CLASSIC: ReadonlySet<string> = new Set<string>();
+
+/**
+ * R1 Settings page ids the Classic frame knows by another name, for a page R1 still hands to Classic: each goes to the
+ * Classic page whose sections it has, so it never falls back to Classic General. A row goes when its R1 page lands.
+ */
+export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
+  card: "people", // Your card: the person's own card on Classic People
+  trunks: "advanced", // Trunks, Trunks' model and Trunks and other agents
+  customize: "advanced", // Tools and skills, Skills, Plugins, What it can do
+  memory: "advanced", // Memory, Recall and memory files, Documents it reads
+  autos: "advanced", // Automations, and Automations, steps and nudges
+  browser: "computer", // Computer & browser: the screen and the browser
+  coding: "computer", // Computer & browser: code and commits, repositories
+  privacy: "usage", // Your data, Keeping things, Moving in and out, Flagged replies
+  remote: "gateway", // Keep Branch running, Reach, Exposure, From scripts
+  history: "backups", // Where, when and media of backups
+  learning: "self", // What Branch may change about itself, Learning, Working on its own code
+};
 
 /**
  * R1 Settings draws a page only once it has rows or its own slot and nothing working is left behind in Classic. Every
@@ -185,6 +204,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
       catch (e) { setNotice(`Couldn’t ask your Trunk: ${e instanceof Error ? e.message : String(e)}`); }
     })();
   };
+  // Go to, Seedbank and All features draw R1 screens in the Settings frame and go through the latest navigate.
+  const goRef = useRef(navigate);
+  goRef.current = navigate;
+  const settingsPages = useMemo<PageSlots>(() => ({ ...R1_PAGES, ...placePages(next => goRef.current(next)) }), []);
   const rows = conversations.rows.filter(row => !row.system && !row.archived && !row.helper);
   const current = conversations.rows.find(row => row.key === snapshot.sessionKey);
   // A room (group chat, or Trunks and people writing here): the Classic room hook, re-hosted (rooms/useShellRoom).
@@ -197,7 +220,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const sidebar = <Sidebar session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
     currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} error={conversations.error} />;
-  const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : changes ? <R1Changes key={snapshot.sessionKey ?? "none"} engine={engine} name={snapshot.name} onClose={closeChanges} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
+  const main = route.kind === "settings" && !r1SettingsPage(route.page, settingsPages) ? <ClassicSettingsFrame page={CLASSIC_PAGE[route.page] ?? route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={settingsPages} places={SETTINGS_PLACES} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : changes ? <R1Changes key={snapshot.sessionKey ?? "none"} engine={engine} name={snapshot.name} onClose={closeChanges} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
     onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <ChatView
     name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
