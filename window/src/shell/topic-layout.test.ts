@@ -8,9 +8,9 @@ afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); });
 const save = (value: unknown) => localStorage.setItem(TOPIC_LAYOUT_KEY, JSON.stringify(value));
 
 describe("R1 thread layouts (owner item 47)", () => {
-  it("offers only Tabs above the chat", () => {
-    expect(Object.keys(r1TopicLayoutNames)).toEqual(["tabs"]);
-    expect(r1TopicLayoutNames.tabs).toBe("Tabs above the chat");
+  it("offers only Tabs above the chat and Freedom Mode", () => {
+    expect(Object.keys(r1TopicLayoutNames)).toEqual(["tabs", "free"]);
+    expect(r1TopicLayoutNames.free).toBe("Freedom Mode");
   });
 
   it("defaults to Tabs above the chat when nothing is saved", () => {
@@ -18,13 +18,17 @@ describe("R1 thread layouts (owner item 47)", () => {
     expect(r1TopicLayoutFor("trunk:oak")).toBe("tabs");
   });
 
-  it("maps every removed or damaged saved layout to Tabs, for the default and for a contact", () => {
+  it("keeps a saved Freedom Mode, and maps every removed or damaged saved layout to Tabs", () => {
+    save({ layout: "free", width: 0, per: {} });
+    expect(r1DefaultTopicLayout()).toBe("free");
+    expect(r1TopicLayoutFor("trunk:oak")).toBe("free");
     for (const layout of ["column", "rail", "side", "unknown", null, 7]) {
       save({ layout, width: 300, per: { "trunk:oak": layout } });
       expect(r1DefaultTopicLayout()).toBe("tabs");
       expect(r1TopicLayoutFor("trunk:oak")).toBe("tabs");
     }
     expect(r1LayoutOf("column")).toBe("tabs");
+    expect(r1LayoutOf("free")).toBe("free");
   });
 
   it("keeps Classic's reader unchanged, so Classic still reads its own four layouts", () => {
