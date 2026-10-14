@@ -89,7 +89,7 @@ export function AllConversations({ engine }: SlotControlProps) {
   const [open, setOpen] = useState(false);
   const [level] = useLevel(engine);
   return <>
-    <Needs engine={engine} need={["sessions.list"]} where="Open the table of conversations">
+    <Needs engine={engine} need={["sessions.list"]} where="Open the table">
       <button type="button" className="r1s-btn" onClick={() => setOpen(true)}>Open the table</button>
     </Needs>
     {open ? <KitProvider level={level} report={QUIET} scope={null}><ConvDialog engine={engine} lv={level} onClose={() => setOpen(false)} /></KitProvider> : null}

@@ -19,7 +19,7 @@ import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
-import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -733,19 +733,22 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   // Gone for good (its state lock released) before the old engine is asked to reclaim the state.
   await killGatewayAndWait(selected.child);
   const failedEngine = resolveEngineDir(cfg);
+  // The branch command, the next launch and crash recovery name the engine that runs again, not the failed standby.
+  if (lastGoodEngineDir) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`));
   try {
-    if (portClash) log(`update ${label}: standby port ${selected.port} was taken before the standby could bind it; the release stays eligible`);
+    // A retry of the build that already serves (its earlier confirmation failed) never rejects that build.
+    if (failedEngine === lastGoodEngineDir) log(`update ${label}: the standby ran the build that already serves; keeping it selected`);
+    else if (portClash) log(`update ${label}: standby port ${selected.port} was taken before the standby could bind it; the release stays eligible`);
     else if (error instanceof GatewayReadinessTimeoutError) {
       standbyFailures.set(label, STANDBY_ATTEMPTS);
       log(`update ${label}: handoff readiness budget expired; the next attempt uses the guarded swap`);
     }
     else await rejectFailedComponentUpdate(cfg, failedEngine);
   } catch (recordError) { log(`update ${label}: failure could not be recorded: ${String(recordError)}`); }
-  await rollbackComponentUpdate(cfg).catch(rollbackError => log(`update ${label}: component rollback: ${String(rollbackError)}`));
+  // Never back past the build that serves: a pending journal may name an older build than the one that runs.
+  await settleFailedComponentUpdate(cfg, lastGoodEngineDir).catch(rollbackError => log(`update ${label}: component rollback: ${String(rollbackError)}`));
   servedWindowDir = cfg.windowDir;
   gateway = prior;
-  // The branch command and the next launch name the engine that runs again, not the failed standby.
-  if (lastGoodEngineDir) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`));
   if (prior.pid !== undefined) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prior.pid)));
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
   // Rollback has reclaimed the state. The old engine must keep its full readiness budget without the retire timer.
