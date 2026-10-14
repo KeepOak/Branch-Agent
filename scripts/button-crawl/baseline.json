@@ -55,9 +55,6 @@
     "chat:agent:researcher:notes > Model, access and usage: Local model · As set :: Use Local model for Researcher from now on": [
       "toast-only"
     ],
-    "chat:agent:researcher:notes > This computer Online · you are here :: Connect to a Branch elsewhere…": [
-      "dead"
-    ],
     "chat:agent:researcher:notes > This computer Online · you are here :: This computer On this computer": [
       "dead"
     ],

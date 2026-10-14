@@ -1,0 +1,4 @@
+window:src/places/office/office-loading.test.tsx
+window:src/places/overview/overview.test.tsx
+window:src/places/overview/subscription-spend.test.ts
+window:src/shell/status-redesign.test.tsx

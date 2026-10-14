@@ -111,7 +111,7 @@ describe("Overview screen", () => {
     const text = host.textContent ?? "";
     expect(text).toContain("Telegram");
     expect(text).toContain("Last night,");
-    expect(text).toContain("Branch update ready");
+    expect(text).toContain("Ready, installs when your Trunks finish");
     expect(text).toContain("$1.70");
     expect([...host.querySelectorAll(".ov-brow")].map(r => r.textContent)).toEqual(["Rowan$1.10", "Elm$0.60"]);
     expect(text).toContain("1m 12s");
