@@ -8,6 +8,7 @@ import { ACCOUNTS_ROWS } from "./pages/accounts";
 import { APPEARANCE_ROWS } from "./pages/appearance";
 import { CUSTOMIZE_ROWS } from "./pages/customize";
 import { GENERAL_ROWS } from "./pages/general";
+import { MEMORY_ROWS } from "./pages/memory";
 
 export type RowSource =
   /** An engine config path: config.get, saved with config.patch through the window's one config store. */
@@ -92,7 +93,7 @@ export function rowLevel(row: Row, hints: UiHints): Level {
 }
 
 /** Every row of the R1 Settings pages. Pages add their list here. */
-export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS];
+export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...MEMORY_ROWS];
 
 /** The rows of one card at this level, in table order. A row above the level is hidden. */
 export function cardRows(page: PageId, card: string, level: Level, hints: UiHints, rows: Row[] = ROWS): Row[] {
