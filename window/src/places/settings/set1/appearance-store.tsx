@@ -16,7 +16,7 @@ import { accentVars, BUILTIN, DEFAULT_THEME, isHex, pairOfDefinition, varsOf, ty
 export const LOOK_PREF = "ui.window.look";
 const ENGINE_PREFS = { accent: "ui.accent", fontUi: "ui.fontUi", fontChat: "ui.fontChat", themeExtra: "ui.window.themeExtra" } as const;
 type EngineKey = keyof typeof ENGINE_PREFS;
-const DEVICE_KEYS = ["size"] as const;
+const DEVICE_KEYS = ["size", "width"] as const;
 /** A look key kept on this device only (text size), never sent to the engine. */
 export const isDeviceKey = (key: string): boolean => (DEVICE_KEYS as readonly string[]).includes(key);
 /** Where a look key's value is kept in the snapshot: this device, its own engine pref (accent, fonts), or the look. */
@@ -128,6 +128,9 @@ export function applyLook(s: Saved) {
     document.head.appendChild(style);
   }
   style.textContent = lookCss(s);
+  // Conversation width (preview Reading, this device only): Comfortable is the default measure.
+  const width = String(s.device.width ?? "comfortable");
+  if (width === "comfortable") root.removeAttribute("data-chat-width"); else root.setAttribute("data-chat-width", width);
   const size = String(s.device.size ?? "Regular");
   if (size === "Regular") root.removeAttribute("data-size"); else root.setAttribute("data-size", size);
   root.classList.toggle("contrast17", s.look.contrast === true);

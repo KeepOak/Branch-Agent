@@ -83,6 +83,9 @@
 /* a row its page draws itself (slots.ts controls): a list-sized control takes the row's width; its lines sit on pills */
 .r1s-row.r1s-stack > .r1s-own { justify-self: stretch; overflow: visible; display: grid; gap: 8px; }
 .r1s-row > .r1s-own:not(:has(.r1s-items, .r1s-item)) { flex-wrap: wrap; justify-content: flex-end; }
+.r1s-slider { display: inline-flex; align-items: center; gap: 8px; }
+.r1s-slider input[type="range"] { width: 160px; accent-color: var(--ink-2); }
+.r1s-slider .g-label { min-width: 36px; font: 12px var(--mono, monospace); color: var(--ink-3); text-align: right; }
 .r1s-own-ctl { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .r1s-items { display: grid; gap: 6px; }
 .r1s-item { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
