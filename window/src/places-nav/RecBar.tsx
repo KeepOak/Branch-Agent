@@ -63,7 +63,7 @@ export function RecBar({ engine }: { engine: WindowEngine }) {
   return (
     <div className="recbar" data-rec={kind}>
       <span className="mark mark-face rec-mark" aria-hidden="true" />
-      <span className="rec-t"><b>{copy.title}</b><span className="rec-tag">Recommended</span><small>{copy.body}</small></span>
+      <span className="rec-t"><b>{copy.title}</b><span className="rec">Recommended</span><small>{copy.body}</small></span>
       <button type="button" className="btn pri sm" onClick={() => void yes()}>Yes</button>
       <button type="button" className="btn sm" onClick={later}>Not now</button>
       <button type="button" className="btn ghost sm" onClick={never}>Don’t ask again</button>

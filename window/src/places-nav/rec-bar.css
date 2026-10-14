@@ -3,7 +3,7 @@
 .recbar .rec-t { flex:1; min-width:220px; }
 .recbar .rec-t b { font-weight:600; }
 .recbar .rec-t small { display:block; color:var(--ink-3); font-size:12px; }
-.recbar .rec-tag { color:color-mix(in srgb, var(--ok) 68%, var(--ink)); font-weight:600; margin-left:4px; }
+.recbar .rec { color:var(--ok); font-weight:600; margin-left:4px; }
 /* The face mark (preview .rec-mark): the Keeper mark drawn in ink on a brand-tint tile. */
 .recbar .rec-mark { position:relative; flex:none; width:30px; height:30px; border-radius:9px; background-color:var(--brand-tint); }
 .recbar .rec-mark::after { content:""; position:absolute; inset:6px; background:var(--ink-2); -webkit-mask:url(/keepoak-mark-mono-white-1024.png) center/contain no-repeat; mask:url(/keepoak-mark-mono-white-1024.png) center/contain no-repeat; }
