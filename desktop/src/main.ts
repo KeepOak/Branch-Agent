@@ -27,7 +27,7 @@ import { confirmDesktopUpdate, handOffDesktopUpdate, type DesktopInstall } from 
 import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
-import { appendCappedLog } from "./log-rotation";
+import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 import { readTail, recentLines, reportReadme } from "./diagnostics-report";
 import { zipStored } from "./diagnostics-zip";
 
@@ -97,7 +97,7 @@ const install: DesktopInstall | undefined = app.isPackaged ? {
 function log(line: string): void {
   try {
     appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} ${line}
-`);
+`, BRANCH_LOG_LIMITS);
   } catch {
     // logging must never stop the app
   }

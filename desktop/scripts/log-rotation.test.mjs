@@ -9,10 +9,12 @@ import test from "node:test";
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const { startGateway } = await import(pathToFileURL(join(dist, "gateway.js")));
+const { BRANCH_LOG_LIMITS } = await import(pathToFileURL(join(dist, "log-rotation.js")));
 
-// The default cap (100 MB) and the number of numbered archives kept.
-const CAP = 100 * 1024 * 1024;
-const ARCHIVES = 5;
+// Branch's desktop log cap (20 MB) and the number of numbered archives kept.
+const CAP = 20 * 1024 * 1024;
+const ARCHIVES = 2;
+const LIMITS = { maxBytes: 1000, archives: 2 };
 const ENGINE_BYTES = CAP + 1024 * 1024;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function eventually(predicate, ms = 30_000) {
@@ -53,17 +55,21 @@ test("the gateway log stays under its cap when the engine writes past it, and ke
   }
 });
 
-test("a capped log rotates at its cap and keeps exactly five numbered archives", async () => {
+test("Branch's desktop logs cap at 20 MB with two numbered archives", () => {
+  assert.deepEqual(BRANCH_LOG_LIMITS, { maxBytes: 20 * 1024 * 1024, archives: 2 });
+});
+
+test("a capped log rotates at its cap and keeps exactly two numbered archives", async () => {
   const { appendCappedLog } = await import(pathToFileURL(join(dist, "log-rotation.js")));
   const root = await mkdtemp(join(tmpdir(), "desktop-log-cap-"));
   try {
     const file = join(root, "gateway.log");
     const CAP_BYTES = 1000;
     for (let index = 0; index < 1000; index++) {
-      appendCappedLog(file, `${String(index).padStart(4, "0")} ${"y".repeat(99)}\n`, CAP_BYTES);
+      appendCappedLog(file, `${String(index).padStart(4, "0")} ${"y".repeat(99)}\n`, { maxBytes: CAP_BYTES, archives: 2 });
     }
     const names = (await readdir(root)).filter(isGatewayLog).sort();
-    assert.deepEqual(names, ["gateway.1.log", "gateway.2.log", "gateway.3.log", "gateway.4.log", "gateway.5.log", "gateway.log"]);
+    assert.deepEqual(names, ["gateway.1.log", "gateway.2.log", "gateway.log"]);
     for (const name of names) {
       const text = await readFile(join(root, name), "utf8");
       assert.ok(Buffer.byteLength(text) <= CAP_BYTES, `${name} is over the cap`);
@@ -75,7 +81,7 @@ test("a capped log rotates at its cap and keeps exactly five numbered archives",
   }
 });
 
-test("the update helper's log is capped the same way, with five numbered archives", async () => {
+test("the update helper's log is capped the same way, with two numbered archives", async () => {
   const { runHelper } = await import(pathToFileURL(join(dist, "desktop-update-helper.js")));
   const root = await mkdtemp(join(tmpdir(), "desktop-helper-log-"));
   try {
@@ -93,7 +99,7 @@ test("the update helper's log is capped the same way, with five numbered archive
       assert.equal(await runHelper(plan), "none");
     }
     const names = (await readdir(root)).filter(name => /^desktop(\.\d+)?\.log$/.test(name)).sort();
-    assert.deepEqual(names, ["desktop.1.log", "desktop.2.log", "desktop.3.log", "desktop.4.log", "desktop.5.log", "desktop.log"]);
+    assert.deepEqual(names, ["desktop.1.log", "desktop.2.log", "desktop.log"]);
     assert.ok(await sizeOf(log) < 1024 * 1024, "the live desktop.log holds only the newest line");
     assert.match(await readFile(log, "utf8"), /nothing staged or the app is still running/);
   } finally {
@@ -108,11 +114,11 @@ test("a write error never throws out of the capped log, and the next write lands
     const file = join(root, "gateway.log");
     // A directory where the live log should be makes every append fail (EISDIR), as a full disk does.
     await mkdir(file);
-    assert.doesNotThrow(() => appendCappedLog(file, "lost line\n", 1000));
-    const stream = cappedLogStream(file, 1000);
+    assert.doesNotThrow(() => appendCappedLog(file, "lost line\n", LIMITS));
+    const stream = cappedLogStream(file, LIMITS);
     await new Promise((resolve, reject) => stream.write("lost chunk\n", error => (error ? reject(error) : resolve())));
     await rm(file, { recursive: true });
-    appendCappedLog(file, "kept line\n", 1000);
+    appendCappedLog(file, "kept line\n", LIMITS);
     assert.equal(await readFile(file, "utf8"), "kept line\n");
   } finally {
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
@@ -126,9 +132,9 @@ test("a failed rotation keeps appending to the live log instead of throwing", as
     const file = join(root, "gateway.log");
     await writeFile(file, "x".repeat(900));
     // A directory in the oldest archive slot makes the rotation's rmSync throw, so the live file cannot roll.
-    await mkdir(join(root, "gateway.5.log"));
+    await mkdir(join(root, "gateway.2.log"));
     const line = `${"y".repeat(200)}\n`;
-    assert.doesNotThrow(() => appendCappedLog(file, line, 1000));
+    assert.doesNotThrow(() => appendCappedLog(file, line, LIMITS));
     const text = await readFile(file, "utf8");
     assert.equal(text.length, 900 + line.length, "the line went into the live file");
     assert.ok(text.endsWith(line));
