@@ -36,6 +36,10 @@ function useSaveState(): [SaveState, SaveReport] {
   return [state, report];
 }
 
+/** Classic page ids a hosted Classic page draws in place as its own tab, so choosing that tab stays on the R1 page:
+ *  Models' Local tab (Classic models, local and accounts share one tabbed page; Accounts opens the R1 Accounts page). */
+export const IN_PLACE: Readonly<Record<string, readonly string[]>> = { models: ["local"] };
+
 /** The Classic pages a hosted R1 page draws, in order. */
 export const classicList = (classic: string | readonly string[]): readonly string[] => (typeof classic === "string" ? [classic] : classic);
 
@@ -47,7 +51,8 @@ export function ClassicHost({ engine, page, classic, coming, onPage }: { engine:
   const [save, report] = useSaveState();
   // Before the engine says hello the scopes aren't known yet: nothing is greyed until they are (as in Classic).
   const maySetup = engine.scopes.length === 0 || engine.scopes.includes("operator.admin");
-  const open = useCallback((id: string) => onPage?.(pageFor(id)), [onPage]);
+  const inPlace = list.flatMap((id) => IN_PLACE[id] ?? []).join(" ");
+  const open = useCallback((id: string) => { if (!inPlace.split(" ").includes(id)) onPage?.(pageFor(id)); }, [onPage, inPlace]);
   const runSave = useCallback((run: () => Promise<unknown>) => {
     report.saving();
     run().then(report.saved, (error: unknown) => report.failed(errorText(error)));
