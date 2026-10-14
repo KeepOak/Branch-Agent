@@ -6,7 +6,8 @@ import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 
 import { totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { attachOrStartEngine, engineAnswers, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, standbyReadyBudgetMs } from "./readiness-budget";
@@ -1067,7 +1068,8 @@ async function start(): Promise<void> {
   if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
   // Engines the last session started and left running (a crash mid-update): retire them before starting our own.
   await retireRecordedEngines(cfg.dataDir, log);
-  for (const port of [cfg.gatewayPort, cfg.windowPort]) {
+  // Always on: an engine service already serving the gateway port is attached to, never replaced.
+  for (const port of cfg.alwaysOn ? [cfg.windowPort] : [cfg.gatewayPort, cfg.windowPort]) {
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
   }
   await refuseOrphanedEngine();
@@ -1081,7 +1083,7 @@ async function start(): Promise<void> {
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);
   await win.loadURL(windowUrl());
   log(`window loaded after ${Date.now() - launchStarted} ms`);
-  if (await bootSelectedEngine()) {
+  if (await (cfg.alwaysOn ? attachServiceEngine() : bootSelectedEngine())) {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
@@ -1130,6 +1132,53 @@ async function refuseOrphanedEngine(): Promise<void> {
   try { process.kill(pid, 0); alive = true; } catch (error) { alive = (error as NodeJS.ErrnoException).code === "EPERM"; }
   if (!alive || await portIsFree(port)) return;
   throw new Error(`Branch Agent's engine from the last session is still running (process ${pid} on port ${port}). End that process in Task Manager or Activity Monitor, or restart the computer, then open Branch Agent again.`);
+}
+
+/** True while the window talks to the per-user engine service rather than a child of this app. */
+let serviceEngine = false;
+const SERVICE_ENGINE_WATCH_MS = 5_000;
+
+/**
+ * Always on (Private #454 B): attach to the running service engine, or install and start it and then attach. Only a
+ * service that cannot be installed starts the engine inside the app (exactly one child, recorded for Settings).
+ * Resolves true when that child fallback rolled a failed update back, as bootSelectedEngine does.
+ */
+async function attachServiceEngine(): Promise<boolean> {
+  const stateDir = join(cfg.dataDir, "home", ".branch");
+  const showStorm = (message: string) => {
+    gatewayRecoveryError = message;
+    log(`engine service: ${message}`);
+    sendToBranchWindows("branch-desktop:gateway-recovery-failed", message);
+  };
+  // The engine paused its own service after a crash storm: say so once; opening the app starts it again.
+  const storm = takeCrashStormNotice(stateDir);
+  if (storm) showStorm(storm);
+  const engineDir = resolveEngineDir(cfg);
+  const probe = () => engineAnswers(cfg.gatewayPort);
+  let rolledBack = false;
+  const result = await attachOrStartEngine({
+    dataDir: cfg.dataDir,
+    probe,
+    installService: () => runEngineServiceAction(cfg, engineDir, token, "install", log),
+    startService: () => runEngineServiceAction(cfg, engineDir, token, "start", log),
+    waitForService: () => waitForEngineAnswer(probe, READY_TIMEOUT_MS),
+    spawnChild: async () => { rolledBack = await bootSelectedEngine(); },
+    log,
+  });
+  if (result.mode === "child") return rolledBack;
+  serviceEngine = true;
+  // publish-engine.sh never removes the folder named here, and the service runs from it.
+  writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}\n`);
+  adoptGatewayPort(cfg.gatewayPort);
+  gatewayRecoveryError = storm;
+  // The service manager restarts a crashed engine with backoff; the app only reports a storm that stopped it.
+  const timer = setInterval(() => {
+    const message = takeCrashStormNotice(stateDir);
+    if (message) showStorm(message);
+  }, SERVICE_ENGINE_WATCH_MS);
+  timer.unref();
+  app.once("will-quit", () => clearInterval(timer));
+  return false;
 }
 
 async function waitForGatewayPort(): Promise<void> {
@@ -1349,7 +1398,8 @@ function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
 function shutdown(): void {
   quitting = true;
   admissionWatch?.abort();
-  log(`quit; stopping gateway pid ${gateway?.pid}`);
+  // Quit is instant with the engine service: it keeps working and drains on its own timeline.
+  log(serviceEngine ? "quit; the engine service keeps running" : `quit; stopping gateway pid ${gateway?.pid}`);
   gatewaySupervisor.close();
   stopEngineWatch?.();
   stopComponentWatch?.();
