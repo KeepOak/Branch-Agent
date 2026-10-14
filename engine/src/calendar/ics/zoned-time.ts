@@ -1,5 +1,3 @@
-// Copied from elizaOS/eliza@3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf:plugins/plugin-calendar/src/internal/time.ts (atlas INTEGRATIONS-0069)
-
 /**
  * Timezone-aware date primitives for ICS ingestion: zoned date-part
  * extraction, offset lookup, and local-date arithmetic built on cached

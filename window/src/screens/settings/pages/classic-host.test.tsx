@@ -5,15 +5,17 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
+import { comingControls } from "../../../glass/coming-registry";
 import { SettingsPage, SETTINGS_ROWS } from "../../../places/settings";
 import { KitProvider } from "../../../places/settings/kit";
-import { pageFor } from "../nav";
+import { ROWS as COMPUTER_ROWS, partRows } from "../../../places/settings/set2/computer-more";
+import { PAGES, pageFor, sectionNeed } from "../nav";
 import { ROWS } from "../rows";
 import { searchSettings } from "../search";
 import { mergeRows } from "../slots";
-import { SettingsFrame } from "../SettingsFrame";
+import { SECTION_COMING, SettingsFrame } from "../SettingsFrame";
 import { ADMIN_ONLY, classicList } from "./classic-host";
-import { R1_PAGES, REHOSTED } from "./plugged";
+import { COMING, R1_PAGES, REHOSTED } from "./plugged";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root, host: HTMLDivElement;
@@ -37,6 +39,8 @@ const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50
 it("re-hosts exactly these Classic pages", () => {
   expect(REHOSTED).toEqual({
     who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
+    browser: "computer-browser",
+    coding: "computer-coding",
     models: "models",
     permissions: "permissions",
     privacy: "usage",
@@ -82,6 +86,50 @@ it("keeps Classic Achievements on Updates & about, the R1 page an achievements l
   await settle();
   const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="updates"] .r1s-classic[data-classic="updates achievements"]')!;
   expect(hosted.textContent).toContain("Keep achievements quiet");
+});
+
+it("splits Classic Computer & browser between Browser & screen, Coding and Devices, each of its sections on exactly one", () => {
+  const key = (r: { title: string; sec?: string }) => `${r.sec} › ${r.title}`;
+  const parts = (["browser", "coding", "devices"] as const).map((part) => partRows(part, part).map(key));
+  expect(parts.flat().sort()).toEqual(COMPUTER_ROWS.map(key).sort());
+  expect(parts[0]).toEqual(expect.arrayContaining(["The browser › The browser", "Using the screen › Using the screen", "Logbook › Logbook", "On a computer › See the screen and use the mouse"]));
+  expect(parts[1]).toEqual(expect.arrayContaining(["Git › Git", "Code and commits › Code and commits", "Code › Remember the shell"]));
+  expect(parts[2]).toEqual(expect.arrayContaining(["Cloud computers › Cloud computers", "Who is connected now › Who is connected now"]));
+});
+
+it("draws on Browser & screen and Coding only sections Classic Computer & browser draws, in its order, and Coding apps from Accounts", async () => {
+  await act(async () => root.render(<KitProvider level={2} report={{ saving() {}, saved() {}, failed() {} }} scope={null}><SettingsPage page="computer" title="Classic" level="technical" engine={engine()} /></KitProvider>));
+  await settle();
+  const classic = drawn(host).sections;
+  for (const page of ["browser", "coding"] as const) {
+    await act(async () => root.render(<SettingsFrame engine={engine()} page={page} pages={R1_PAGES} />));
+    await settle();
+    const hosted = drawn(host.querySelector(`.r1s-custom[data-slot="${page}"] .r1s-classic`)!).sections;
+    const own = hosted.filter((sec) => sec !== "Coding apps on this computer");
+    expect(own.length, page).toBeGreaterThan(0);
+    expect(classic.filter((sec) => own.includes(sec)), page).toEqual(own);
+    expect(hosted.includes("Coding apps on this computer"), page).toBe(page === "coding");
+  }
+  expect(host.querySelector('[data-sec="Coding apps on this computer"]')!.textContent).toContain("Codex");
+});
+
+it("draws each Browser & screen and Coding card no Classic control has yet as Coming, naming the call it waits for", async () => {
+  expect(COMING).toEqual({ browser: ["Sites", "Saved flows"], coding: ["Commands", "Files"] });
+  for (const [page, cards] of Object.entries(COMING) as [keyof typeof COMING, readonly string[]][]) {
+    const classic = classicList(REHOSTED[page]);
+    for (const card of cards) {
+      expect(PAGES[page].cards, page).toContain(card);
+      expect(SETTINGS_ROWS.some((r) => classic.includes(r.page) && (r.sec === card || r.group === card)), `${page}: ${card}`).toBe(false);
+    }
+    await act(async () => root.render(<SettingsFrame engine={engine()} page={page} pages={R1_PAGES} />));
+    await settle();
+    const shown = [...host.querySelectorAll<HTMLElement>(`.r1s-custom[data-slot="${page}"] .r1s-classic-coming`)];
+    expect(shown.map((s) => s.getAttribute("aria-label"))).toEqual(cards);
+    for (const s of shown) expect(s.querySelector("[data-coming]")!.getAttribute("data-coming")).toBe(SECTION_COMING(s.getAttribute("aria-label")!));
+    for (const card of cards) {
+      expect(comingControls()).toContainEqual(expect.objectContaining({ where: `${PAGES[page].title} › ${card}`, need: [sectionNeed(page, card)] }));
+    }
+  }
 });
 
 it("keeps Models' Local tab on the R1 Models page and sends its Accounts tab to the R1 Accounts page", async () => {
