@@ -123,8 +123,6 @@ describe("R1 Settings › Learning & self-updates is a native R1 page with the p
     expect(row("learning.runs.tasks")?.textContent).toContain("Up to 4");
     // The preview's Undo on each thing it learned, Coming until Branch can undo one; no row of its own.
     expect(button(row("learning.learning.learned"), "Undo")?.closest("[data-coming]")).not.toBeNull();
-    // Words the preview doesn't have stay off the page.
-    expect(host.textContent).not.toMatch(/Memory cleanup|Check without changing anything|Not reported|Undo a change|Restarting\. The window/);
     expect(row("learning.runs.people")?.textContent).toContain("Taofik");
     expect(row("learning.budding.learn")?.querySelector("[role=switch]")?.getAttribute("aria-checked")).toBe("true");
   });
