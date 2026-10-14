@@ -10,6 +10,8 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { SIGNINS_ROWS } from "./signins";
+import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
 import { UPDATES_ROWS } from "./updates";
 import * as Up from "./updates-live";
 import { LEARNING_ROWS } from "./learning";
@@ -26,7 +28,7 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets",
+  who: "people", notifications: "notifications", instructions: "instructions",
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -45,6 +47,8 @@ export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Sign-ins & keys: the preview's four cards; Classic's password manager and key store inside them.
+  signins: { rows: SIGNINS_ROWS, controls: { "signins.where.block": SigninWhere, "signins.keys.block": SigninKeys } },
   // Updates & about: the preview's ten cards; Classic Updates' sections and the achievements badges inside them.
   updates: { rows: UPDATES_ROWS, controls: {
     "updates.updating.block": Up.Updating, "updates.devices.block": Up.Devices, "updates.before.block": Up.Before, "updates.reports.block": Up.Reports,
