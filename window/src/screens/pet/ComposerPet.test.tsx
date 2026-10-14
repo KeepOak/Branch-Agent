@@ -46,7 +46,7 @@ describe("the roaming pet on the R1 composer's top edge (parity row 18, QUEUE it
     expect(css).toContain(".r1-pet-rim .keeper .petbox { bottom: 0; pointer-events: auto; }");
   });
 
-  it("shows nothing unless Appearance › Pet › Let it roam is on, or when the pet is None", async () => {
+  it("shows nothing unless a pet is picked and roaming is on, or when the pet is None", async () => {
     look.value = { id: "px-squirrel", name: "Hazel", roam: false };
     let host = await render(<ComposerPet engine={engine} working={false} waiting={null} />);
     expect(host.querySelector(".r1-pet-rim")).toBeNull();
