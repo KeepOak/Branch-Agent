@@ -4,7 +4,7 @@
 // the step that owns it; Meet them creates the picked Trunks and lands in the first conversation (finish.ts).
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { readListedTemplates, type ListedTemplate } from "../seedbank/templates";
-import { createPicked, greet, readDefaultTrunk, recordOnboarding, type DefaultTrunk, type Made } from "./finish";
+import { createPicked, greet, readDefaultTrunk, recordOnboarding, startSetupTalk, type DefaultTrunk, type Made } from "./finish";
 import { FirstTrunk } from "./FirstTrunk";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
@@ -13,7 +13,6 @@ import { errorText } from "../../places/settings/adapter";
 import { Models } from "./Models";
 import { ModeStep } from "./ModeStep";
 import { clampStep, freshState, LAST_STEP, MODES, picked, primary, STEPS, togglePick, WAITS_FOR, type OnboardingState } from "./model";
-import { Unwired } from "./Unwired";
 import { Welcome, WhereSheet } from "./Welcome";
 import "./onboarding.css";
 
@@ -22,8 +21,8 @@ export type OnboardingProps = {
   startAt?: number;
   /** Set up later (and Esc): the card closes; what was already saved stays saved. */
   onLater: (state: OnboardingState) => void;
-  /** Set up by talking: the same questions in a conversation named "Setting up Branch". */
-  onTalk?: () => void;
+  /** Set up by talking: the card started "Setting up Branch" (sessions.create) and hands over its key to open. */
+  onTalk?: (sessionKey: string) => void;
   /** Called after "How much it may do" saved, with the answers so far. */
   onAnswered?: (state: OnboardingState) => void;
   /** Meet them finished: the Trunks were made, setup was recorded and the first message went to `sessionKey`. */
@@ -51,6 +50,20 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   const [modeError, setModeError] = useState<string | null>(null);
   const [trunkError, setTrunkError] = useState<string | null>(null);
   const [made, setMade] = useState<Made[]>([]);
+  const [talking, setTalking] = useState(false), [talkError, setTalkError] = useState<string | null>(null);
+  const talk = async () => {
+    if (!onTalk || talking) return;
+    setTalking(true); setTalkError(null);
+    try {
+      const key = await startSetupTalk(engine);
+      // As Set up later does, so the card doesn't open again; the conversation asks the rest. A failed save only means
+      // the card comes back at the next launch.
+      await recordOnboarding(engine, s).catch(() => undefined);
+      onTalk(key);
+    }
+    catch (e) { setTalkError(`Couldn’t start that conversation. ${errorText(e)}`); }
+    finally { setTalking(false); }
+  };
   const go = useRef<HTMLButtonElement>(null);
   const set = (patch: Partial<OnboardingState>) => setS((cur) => ({ ...cur, ...patch }));
   const four = useStepFour(engine, s.step === LAST_STEP);
@@ -101,7 +114,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   const body = s.step === 0
     ? <Welcome where={s.where} onChangeWhere={() => setWhere(true)} />
     : s.step === 1
-      ? <Models engine={engine} off={s.off} onOff={(off) => set({ off })} hello={s.hello} onHello={(hello) => set({ hello })} />
+      ? <Models engine={engine} off={s.off} onOff={(off) => set({ off })} hello={s.hello} onHello={(hello) => set({ hello })} onExamples={(examples) => set({ examples })} />
       : s.step === 2
         ? <ModeStep mode={s.mode} onMode={(mode) => { set({ mode }); setModeError(null); }} error={modeError} />
         : <FirstTrunk s={s} listed={four.listed} defaultName={four.def?.name ?? ""} error={trunkError} onText={(text) => set({ text })} onPick={(id) => { setS((cur) => ({ ...cur, ...togglePick(cur, id) })); setTrunkError(null); }} />;
@@ -123,8 +136,9 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
           {s.step ? <button type="button" className="r1-ob-btn r1-ob-quiet" data-local onClick={() => set({ step: s.step - 1 })}>Back</button> : <span />}
           {s.step >= 2 ? <Coming need={need} where={p.label}>{primaryButton}</Coming> : primaryButton}
         </div>
+        {talkError ? <p className="r1-ob-error" role="alert">{talkError}</p> : null}
         <div className="r1-ob-later">
-          {s.step === 0 ? <>{onTalk ? <button type="button" className="r1-ob-link" data-local onClick={onTalk}>Set up by talking</button> : <Unwired need={WAITS_FOR.talk} reason="Setting up by talking comes in a later update." where="Set up by talking"><button type="button" className="r1-ob-link">Set up by talking</button></Unwired>}<span aria-hidden="true">·</span></> : null}
+          {s.step === 0 ? <><Coming need={WAITS_FOR.talk} unwired={!onTalk} reason={onTalk ? "This engine can’t start a conversation." : "Setting up by talking comes in a later update."} where="Set up by talking"><button type="button" className="r1-ob-link" disabled={talking} onClick={() => void talk()}>{talking ? "Starting…" : "Set up by talking"}</button></Coming><span aria-hidden="true">·</span></> : null}
           <button type="button" className="r1-ob-link" data-local onClick={() => onLater(s)}>Set up later</button>
         </div>
       </div>
