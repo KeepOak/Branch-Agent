@@ -481,7 +481,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     return () => { window.removeEventListener("branch:topic-layout-changed", sync); window.removeEventListener("storage", storage); };
   }, [topicContact?.id]);
   const [fullListFor, setFullListFor] = useState<string | null>(null);
-  const topicAutoRail = route.kind === "chat" && Boolean(topicContact && activeTopics.length) && innerWidth > 760 && (topicLayout === "column" || topicLayout === "rail") && fullListFor !== topicContact?.id;
+  const topicAutoRail = route.kind === "chat" && Boolean(topicContact && activeTopics.length) && innerWidth > 760 && topicLayout === "free" && fullListFor !== topicContact?.id;
   // Settings owns its navigation column; temporarily use the app icon rail without saving it.
   const [settingsListExpanded, setSettingsListExpanded] = useState(false);
   useEffect(() => { if (route.kind !== "settings") setSettingsListExpanded(false); }, [route.kind]);
@@ -1373,7 +1373,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           }}
           onLayout={(next) => {
             setTopicLayout(next);
-            if (next === "tabs" || next === "side") setPhoneTopicListFor(null);
+            if (next === "tabs") setPhoneTopicListFor(null);
           }}
           onPatch={async (topic, change) => {
             await patchTopicSession(request, topic, lists.rows.find((row) => row.key === topic.key)?.sessionId, change);
@@ -1619,7 +1619,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           selection.clear();
           setTopicReturnKey(null);
           const contact = contacts.find((candidate) => candidate.threadKey === key);
-          setPhoneTopicListFor(innerWidth <= 640 && contact?.topicCount && topicLayout !== "tabs" && topicLayout !== "side" ? contact.id : null);
+          setPhoneTopicListFor(innerWidth <= 640 && contact?.topicCount && topicLayout !== "tabs" ? contact.id : null);
           setFocusTopic(contact?.preview.kind === "topic" ? { key: contact.preview.topicKey, nonce: Date.now() } : null);
           openConversation(key);
         }}

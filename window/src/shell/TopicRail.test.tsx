@@ -15,6 +15,8 @@ let root: Root | undefined;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 const topic: Topic = { key: "agent:oak:trip", contactId: "trunk:oak", title: "Plan the Lisbon trip", status: "active", unread: true };
 const render = async (onPatch = vi.fn(async (_topic: Topic, _change: Record<string, unknown>) => {})) => {
+  // These rows are the column's, which Freedom Mode draws (the default is Tabs above the chat, owner item 47).
+  if (!localStorage.getItem("branch-topics-t5")) localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "free", width: 300, per: {} }));
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const onOpen = vi.fn();
   const updateTopic = async (item: Topic) => act(async () => root!.render(<TopicRail contactId="trunk:oak" contactName="Oak" contactKey="agent:oak:main" generalPreview="Reply" generalUpdatedAt={Date.now()} currentKey="agent:oak:main" items={[{ topic: item, preview: "Flights found", updatedAt: Date.now() }]} onOpen={onOpen} onAll={() => {}} onPatch={onPatch}/>));
@@ -47,7 +49,9 @@ describe("preview thread row", () => {
     await t.click("More for Portugal");
     await t.click("Close");
     expect(t.onPatch).toHaveBeenCalledWith({ ...topic, title: "Portugal", labelled: true }, { archived: true });
-    await t.click("How threads show: Column");
+    // Owner item 47: the only choices are Tabs above the chat and Freedom Mode.
+    await t.click("How threads show: Freedom Mode");
+    expect(t.host.textContent).not.toMatch(/Column|Emoji rail|Side tabs/);
     await t.click("Tabs above the chat");
     expect(JSON.parse(localStorage.getItem("branch-topics-t5")!)).toEqual({ layout: "tabs", width: 0, per: {} });
   });
@@ -66,6 +70,7 @@ describe("preview thread row", () => {
   });
 
   it("keeps General's who on General's last speaker when a child thread is open", async () => {
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "free", width: 300, per: {} }));
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     await act(async () => root!.render(<TopicRail contactId="trunk:oak" contactName="Oak" contactKey="agent:oak:main" generalPreview="Booked the hall" generalWho="You" generalUpdatedAt={Date.now()} currentKey={topic.key} items={[{ topic, preview: "Oak: Flights found", who: "Oak", updatedAt: Date.now() }]} onOpen={() => {}} onAll={() => {}} onPatch={async () => {}}/>));
     const general = [...host.querySelectorAll(".tpRowT5")].find((row) => row.querySelector("[aria-label=General]"));

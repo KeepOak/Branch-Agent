@@ -88,13 +88,13 @@ describe("P54 conversation header menu", () => {
   });
 
   it("keeps this contact's thread layout behind a click-only View row above Side panel", () => {
-    const items = conversationMenuItems(ctx("regular", true, { threadView: { contactName: "Researcher", layout: "column", set: () => undefined } }));
+    const items = conversationMenuItems(ctx("regular", true, { threadView: { contactName: "Researcher", layout: "free", set: () => undefined } }));
     const view = items.find((i) => i.kind === "sub" && i.label === "View") as Extract<MenuItem, { kind: "sub" }>;
     expect(view.hover).toBe(false);
     const labels = shape(items);
     expect(labels.indexOf("View ›") + 1).toBe(labels.indexOf("Side panel"));
     expect(labels).toContain("Open the browser");
-    expect(shape(view.items)).toEqual(["[Researcher’s threads show as]", "Column", "Emoji rail", "Side tabs", "Tabs above the chat"]);
+    expect(shape(view.items)).toEqual(["[Researcher’s threads show as]", "Tabs above the chat", "Freedom Mode"]);
   });
 });
 

@@ -123,10 +123,16 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(calls(request, "agents.update")).toContainEqual({ agentId: "main", model: "anthropic/big" });
   });
 
-  it("sets how threads show for every contact, in this window", async () => {
+  it("offers Threads show as Tabs (the default) and Freedom Mode only, and saved removed layouts fall back to Tabs (#1049)", async () => {
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "column", width: 300, per: { a: "rail", b: "free" } }));
+    expect(readTopicSettings()).toEqual({ layout: "tabs", width: 0, per: { a: "tabs", b: "free" } });
     await mount();
-    await click([...row("appearance.list.threads")!.querySelectorAll("button")].find((b) => b.textContent === "Side tabs")!);
-    expect(readTopicSettings().layout).toBe("side");
+    const seg = row("appearance.list.threads")!;
+    // preview: "Threads show as [*Tabs] [Freedom Mode]" (owner item 47).
+    expect([...seg.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Tabs", "Freedom Mode"]);
+    expect(seg.querySelector("[aria-checked=true]")?.textContent).toBe("Tabs");
+    await click([...seg.querySelectorAll("button")].find((b) => b.textContent === "Freedom Mode")!);
+    expect(readTopicSettings().layout).toBe("free");
   });
 
   it("shows the small model and opens Models to change it", async () => {

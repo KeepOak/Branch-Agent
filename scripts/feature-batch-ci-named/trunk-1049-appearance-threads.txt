@@ -1,0 +1,6 @@
+window:src/screens/settings/pages/appearance-live.test.tsx
+window:src/screens/frame/Topics.test.tsx
+window:src/shell/TopicRail.test.tsx
+window:src/shell/conversation-menu.test.ts
+window:src/shell/conversation-menu-view.test.tsx
+window:src/shell/WindowShell.topics.test.tsx

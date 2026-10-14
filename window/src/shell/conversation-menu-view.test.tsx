@@ -16,7 +16,7 @@ function items() {
   const ctx: ConversationMenuContext = {
     row, isMain: false, trunkName: "Researcher", ownTrunk: true, canRemoveTrunk: true, online: true,
     now: new Date(2026, 9, 1, 9, 0).getTime(), hasReply: true, talkOff: null, run,
-    threadView: { contactName: "Researcher", layout: "column", set: () => undefined },
+    threadView: { contactName: "Researcher", layout: "free", set: () => undefined },
   };
   return conversationMenuItems(ctx);
 }
@@ -70,6 +70,7 @@ describe("conversation ⋯ View layout", () => {
     await act(async () => viewRow(host)!.click());
     const flyout = host.querySelector("[role=menu][aria-label=View]");
     expect(flyout?.textContent).toContain("Researcher’s threads show as");
-    expect(flyout?.textContent).toContain("Column");
+    expect(flyout?.textContent).toContain("Freedom Mode");
+    expect(flyout?.textContent).not.toMatch(/Column|Emoji rail|Side tabs/);
   });
 });

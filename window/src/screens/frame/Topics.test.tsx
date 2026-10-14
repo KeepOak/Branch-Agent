@@ -24,7 +24,8 @@ const topics = [
 ];
 let root: Root, host: HTMLDivElement, narrow = false;
 beforeEach(() => {
-  localStorage.clear(); narrow = false;
+  // Most of these draw the column, so they start in Freedom Mode; the Tabs test sets its own layout.
+  localStorage.clear(); localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "free", width: 300, per: {} })); narrow = false;
   vi.stubGlobal("matchMedia", () => ({ matches: narrow, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
@@ -53,7 +54,8 @@ it("finds the Trunk whose threads show from its own conversation or one of its t
   expect(topicContactFor([...rows, conv("agent:ledger:other", { parentKey: "agent:scout:main" })], "agent:ledger:other")).toBeNull();
 });
 
-it("draws the Classic thread rail in the topics column on clear glass, with General and each thread", async () => {
+it("draws the Classic thread rail in the topics column on clear glass for Freedom Mode, with General and each thread", async () => {
+  localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "free", width: 300, per: {} }));
   const { Host, request } = setup();
   await act(async () => root.render(<Host />));
   await flush();
@@ -107,8 +109,8 @@ it("folds the threads into a Threads · N chip above the chat below 900 px", asy
   expect(above().querySelector(".r1-topic-host")?.textContent).toContain("Month-end close");
 });
 
-it("draws Tabs above the chat when that is the chosen layout", async () => {
-  localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "tabs", width: 0, per: {} }));
+it("draws Tabs above the chat by default, and for a saved removed layout (owner item 47)", async () => {
+  localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "rail", width: 64, per: { "trunk:ledger": "side" } }));
   const { Host } = setup();
   await act(async () => root.render(<Host />));
   await flush();
