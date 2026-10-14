@@ -251,7 +251,7 @@ export function LiveServices({ engine, row }: SlotControlProps) {
       <div className="r1s-own-ctl">{live.providers.length ? <ul className="r1s-items">{live.providers.map((p) => (
         <li key={p.id} className="r1s-item"><span className="r1s-item-t g-label">{p.label}</span><small className="g-label">{p.configured ? "Has a working key" : "Uses the key from Accounts or Voice services"}</small>
           <button type="button" className="r1s-link" disabled={live.chosen === p.id || cfg.loading} onClick={() => void run(() => chooseLive(cfg, p.id))}>{live.chosen === p.id ? "In use" : "Use"}</button></li>
-      ))}</ul> : <Line>{catalog.loading ? "Looking for live-voice services…" : "No live-voice service is installed."}</Line>}</div>
+      ))}</ul> : <Line>{catalog.loading ? "Checking…" : "No live-voice service is set up yet."}</Line>}</div>
     </Needs>
     <Failed text={failed} />
   </>;
