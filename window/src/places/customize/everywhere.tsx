@@ -1,4 +1,5 @@
-// Customize › Everywhere (preview 40-places.js, 70-surfaces.js): one tile per place you reach Branch from.
+// Settings › Devices & apps (once Customize › Everywhere; preview 40-places.js, 70-surfaces.js): one tile per place
+// you reach Branch from.
 // Connected states come from the engine's computers (node.list) and paired devices (device.pair.list), and the
 // chat apps from channels.status; Pair makes a code with device.pair.setupCode.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
@@ -34,7 +35,6 @@ export function EverywhereTab({ engine, openChannels }: { engine: WindowEngine; 
   const chats = Object.keys(accounts).filter(id => list(accounts[id]).some(a => a.connected === true)).map(id => str(labels[id]) || id);
   const names = (s: Seen[], fallback: string) => (s.length ? s.map(x => x.name).filter(Boolean).join(" and ") || fallback : fallback);
   return <div className="cz-page" data-testid="everywhere">
-    <p className="cz-lede">One Branch, everywhere you are.</p>
     <div className="cz-grid2">
       <Tile glyph="windows" title="Windows" line={names(win, "The Branch app on Windows")} on={win.length > 0 || /Windows/.test(here)} />
       <Tile glyph="laptop" title="Mac" line={mac.length ? names(mac, "") : "The same app on a Mac · menu bar icon with usage"} on={mac.length > 0 || /Macintosh/.test(here)} />

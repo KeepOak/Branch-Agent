@@ -15,7 +15,7 @@ import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { transport } from '../transport/index.js';
 
 /** Name of the office's own options (export / import / reset layout, sound, names, areas). */
-export const GROVE_OPTIONS = 'Grove options';
+const GROVE_OPTIONS = 'Grove options';
 
 export function BranchToolbar(p: {
   isEditMode: boolean;

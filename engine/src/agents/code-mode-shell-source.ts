@@ -1,11 +1,16 @@
 import { Script } from "node:vm";
+import { CODE_MODE_GLOBAL_NAMES } from "./code-mode-global-names.js";
 
 const JAVASCRIPT_EXPORT =
   /^export\s+(?:(?:abstract|as|async|class|const|declare|default|enum|function|import|interface|let|namespace|type|var)\b|[={*])/u;
 const JAVASCRIPT_KEYWORD =
   /^(?:abstract|as|async|await|break|case|catch|class|const|continue|debugger|declare|default|delete|do|else|enum|export|extends|false|finally|for|function|if|implements|import|in|instanceof|interface|let|namespace|new|null|of|private|protected|public|return|satisfies|static|super|switch|this|throw|true|try|typeof|undefined|var|void|while|with|yield)$/u;
-const JAVASCRIPT_GLOBAL =
-  /^(?:API|MCP|AggregateError|Array|ArrayBuffer|BigInt|BigInt64Array|BigUint64Array|Boolean|DataView|Date|Error|EvalError|Float32Array|Float64Array|Function|Infinity|Int16Array|Int32Array|Int8Array|Intl|JSON|Map|Math|NaN|Number|Object|Promise|Proxy|RangeError|ReferenceError|Reflect|RegExp|Set|String|Symbol|SyntaxError|TypeError|URIError|Uint16Array|Uint32Array|Uint8Array|Uint8ClampedArray|WeakMap|WeakSet|catalog|clearTimeout|console|decodeURI|decodeURIComponent|encodeURI|encodeURIComponent|eval|globalThis|isFinite|isNaN|json|nodes|parseFloat|parseInt|setTimeout|skills|text|yield_control)$/u;
+// `log` (swarm) stays out: it is also a common shell command.
+const JAVASCRIPT_GLOBALS: ReadonlySet<string> = new Set<string>([
+  ...CODE_MODE_GLOBAL_NAMES.javascript,
+  ...CODE_MODE_GLOBAL_NAMES.helpers,
+  ...CODE_MODE_GLOBAL_NAMES.namespaces,
+]);
 
 const SHELL_COMMAND =
   /^(?:\/(?:usr\/(?:local\/)?)?bin\/)?(alias|apt|awk|bash|bg|brew|builtin|bun|cargo|cat|cd|chmod|cmd|command|cp|curl|cut|date|declare|df|dir|docker|dotnet|du|echo|env|exec|exit|export|fg|file|find|getopts|git|go|gradle|grep|hash|head|help|hostname|id|java|javac|jobs|jq|kill|kubectl|ln|local|logout|ls|make|mkdir|mvn|mv|node|npm|npx|perl|php|pip|pip3|pnpm|poetry|popd|powershell|printf|ps|pushd|pwd|pwsh|pytest|python|python3|read|readonly|rg|rm|ruby|rustc|rustup|sed|set|sh|shift|sleep|sort|source|stat|sudo|swift|systemctl|tail|tar|tee|test|touch|trap|tree|type|ulimit|umask|uname|uniq|unset|unzip|uv|uvx|vitest|wait|wc|wget|which|whoami|xargs|yarn|zip|zsh)(?=$|[\s;&|<>])/u;
@@ -122,7 +127,7 @@ export function isShellLikeCodeModeSource(source: string): boolean {
     knownCommand ??
     (unknownCommand &&
     !JAVASCRIPT_KEYWORD.test(unknownCommand[1] ?? "") &&
-    !JAVASCRIPT_GLOBAL.test(unknownCommand[1] ?? "")
+    !JAVASCRIPT_GLOBALS.has(unknownCommand[1] ?? "")
       ? unknownCommand
       : null);
   if (!command && !SHELL_EXECUTABLE_PATH.test(commandSource)) {

@@ -4,6 +4,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { CHARACTERS, EXTRA, trunkAppearance } from "../../face/appearance";
 import { trunkNamesInUse } from "../../../../engine/src/agents/trunk-name-rule";
+import { trunkDisplayName } from "../../connect/trunk-name";
 
 export type Rec = Record<string, unknown>;
 export const rec = (v: unknown): Rec => (v && typeof v === "object" && !Array.isArray(v) ? (v as Rec) : {});
@@ -34,7 +35,7 @@ function readRow(a: Rec): TrunkRow {
   const identity = rec(a.identity);
   return {
     id: str(a.id),
-    name: str(identity.name) || str(a.name) || str(a.id),
+    name: trunkDisplayName(a),
     entryName: str(a.name),
     identityName: str(identity.name),
     theme: str(identity.theme),
@@ -61,9 +62,6 @@ export function readRoster(result: unknown): Roster {
 /** Every name the roster's Trunks answer to, compared the way agents.create and agents.update do. */
 export const rosterNamesInUse = (roster: Roster, exceptId?: string) =>
   trunkNamesInUse(roster.agents.map((row) => ({ id: row.id, name: row.entryName, identity: { name: row.identityName } })), exceptId);
-
-/** The conversation key of a Trunk's main conversation (agent:<id>:<mainKey>). */
-export const mainKeyOf = (roster: Roster, id: string) => `agent:${id}:${roster.mainKey}`;
 
 /* ---------- looks: only those with real art (face/appearance.tsx), plus the classic pebble ---------- */
 const LOOK_NAMES: Record<string, string> = {
@@ -104,7 +102,7 @@ export const entryOf = (snap: ConfigSnapshot, id: string): Rec => rec(rec(rec(sn
 export const agentDefaults = (snap: ConfigSnapshot): Rec => rec(rec(snap.config.agents).defaults);
 
 /** Builds { a: { b: value } } from "a.b" paths, as config.patch's merge patch takes it. */
-export function mergePatch(changes: Record<string, unknown>): Rec {
+function mergePatch(changes: Record<string, unknown>): Rec {
   const patch: Rec = {};
   for (const [path, value] of Object.entries(changes)) {
     const keys = path.split(".");

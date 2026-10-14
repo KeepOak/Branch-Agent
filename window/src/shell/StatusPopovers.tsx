@@ -116,7 +116,7 @@ function providerTitle(row: LimitRow): string {
 }
 
 /** Accounts grouped under their provider, providers in alphabetical order, accounts in the engine's order. */
-export function groupByProvider(rows: LimitRow[]): { title: string; rows: LimitRow[] }[] {
+function groupByProvider(rows: LimitRow[]): { title: string; rows: LimitRow[] }[] {
   const groups = new Map<string, { title: string; rows: LimitRow[] }>();
   for (const row of rows) {
     const title = providerTitle(row);
@@ -131,7 +131,18 @@ export function groupByProvider(rows: LimitRow[]): { title: string; rows: LimitR
  * Every account, grouped by provider. Opening never fetches: it shows the reading Branch already has, and only
  * "Check every account now" asks the providers again. Each provider says its "no reading" note once.
  */
-export function UsagePopover({ limits, request, onOpenUsage, onSignIn, ...base }: Base & { limits: Limits | null; request: Request; onOpenUsage: () => void; onSignIn?: (provider: string) => void }) {
+export function UsagePopover({ limits, request, onOpenUsage, onSignIn, ...base }: Base & EveryAccountProps) {
+  return (
+    <Popover at={{ x: 0, y: 0 }} label="Every account" testid="pop-usage" className="sp sp-wide usePopT5" {...base}>
+      <EveryAccount limits={limits} request={request} onOpenUsage={onOpenUsage} onSignIn={onSignIn} />
+    </Popover>
+  );
+}
+
+type EveryAccountProps = { limits: Limits | null; request: Request; onOpenUsage: () => void; onSignIn?: (provider: string) => void };
+
+/** The Every account list itself, shared by the status bar's popover and the composer's ring (R1-04). */
+export function EveryAccount({ limits, request, onOpenUsage, onSignIn }: EveryAccountProps) {
   const [checked, setChecked] = useState<Limits | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
@@ -152,7 +163,6 @@ export function UsagePopover({ limits, request, onOpenUsage, onSignIn, ...base }
       .finally(() => setChecking(false));
   }, [request]);
   return (
-    <Popover at={{ x: 0, y: 0 }} label="Every account" testid="pop-usage" className="sp sp-wide usePopT5" {...base}>
       <div className="lims">
         <div className="pt">Every account</div>
         {groups.map((group) => {
@@ -184,7 +194,6 @@ export function UsagePopover({ limits, request, onOpenUsage, onSignIn, ...base }
         <Item icon="retry" label={checking ? "Checking…" : "Check every account now"} testid="usage-check" onClick={() => check()} off={checking ? "Checking accounts now." : undefined} />
         <Item icon="gear" label="Accounts and usage…" testid="open-usage" onClick={onOpenUsage} />
       </div>
-    </Popover>
   );
 }
 
@@ -300,18 +309,17 @@ export function RunningPopover({ request, trunkName, working, onOpen, onAutomati
   );
 }
 
-type VersionProps = Base & { update: UpdateInfo | null; version: string; desktopPending?: string | null; autoApply?: boolean; desktopInstall?: boolean; computerName?: string; onWhatsNew: () => void; onInstall: () => void; onRemind: () => void };
+type VersionProps = Base & { update: UpdateInfo | null; version: string; desktopInstall?: boolean; computerName?: string; onWhatsNew: () => void; onRemind: () => void };
 
 /** §4.9.8 Version and update menu: what's ready, What's new, Install when idle, Remind me tomorrow. */
-export function VersionPopover({ update, version, desktopPending, autoApply, desktopInstall, computerName = "", onWhatsNew, onInstall, onRemind, ...base }: VersionProps) {
+export function VersionPopover({ update, version, desktopInstall, computerName = "", onWhatsNew, onRemind, ...base }: VersionProps) {
   const latest = version.trim() && update?.latest && isNewerBranchVersion(update.latest, version) ? update.latest : null;
   return (
     <Popover at={{ x: 0, y: 0 }} label="Version and updates" testid="pop-version" className="sp" {...base}>
-      {version.trim() && desktopPending && autoApply && isNewerBranchVersion(desktopPending, version) ? <><div className="pt">Update ready, applying when your Trunks finish</div><p className="pp">{branchVersionLabel(desktopPending)}</p></> : null}
       {latest ? (
         <>
           <div className="pt sp-title"><span>{branchVersionLabel(latest)} is ready</span><small>You have {branchVersionDetail(version)}</small></div>
-          <p className="pp">{desktopInstall ? update?.waiting ?? "Installs by itself when nothing is running." : installOnComputer(computerName)}</p>
+          <p className="pp">{desktopInstall ? "It applies by itself, in place, the next time no Trunk is working. A safety copy is kept first, and nothing restarts." : installOnComputer(computerName)}</p>
           {update?.notes.length ? (
             <ul className="steps-list sp-notes">
               {update.notes.map((n, i) => (
@@ -320,7 +328,6 @@ export function VersionPopover({ update, version, desktopPending, autoApply, des
             </ul>
           ) : null}
           <hr className="msep" />
-          {desktopInstall ? <Item icon="down" label="Install when idle" testid="ver-install" onClick={onInstall} off={update?.installing ? update.waiting ?? "Installing now." : undefined} /> : null}
           <Item icon="book" label="What’s new" testid="ver-whatsnew" onClick={onWhatsNew} />
           <Item icon="clock" label="Remind me tomorrow" testid="ver-remind" onClick={onRemind} />
         </>

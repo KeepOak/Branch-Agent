@@ -17,7 +17,7 @@ export const FIRST_JOB: Opt[] = [
   { label: "Files on this computer", line: "Downloads, Documents, the desktop" },
   { label: "Something else", line: "Tell me in your own words" },
 ];
-export const FOLLOW = [
+const FOLLOW = [
   "I’ll need to sign in to your mail and calendar. I’ll ask before I send or accept anything.",
   "I’ll read card statements and receipts. I’ll never pay or move money.",
   "I’ll use the web and the files you point me to.",

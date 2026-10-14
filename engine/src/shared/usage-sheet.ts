@@ -1,7 +1,5 @@
 // Owner's on-request 7/30/90-day sheet adapter. Uses the pinned source usage API,
 // CSV formatter and cache-completeness policy; creates no recurring file timer.
-// openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:
-// ui/src/lib/sessions/usage.ts, ui/src/pages/usage/cache-status.ts and query.ts.
 import { buildDailyCsv, buildSessionsCsv } from "./usage-csv.js";
 import type { SessionsUsageResult } from "./usage-types.js";
 

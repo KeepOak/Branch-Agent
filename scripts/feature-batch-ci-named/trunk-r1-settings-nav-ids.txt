@@ -1,0 +1,2 @@
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/settings/pages/places-live.test.tsx

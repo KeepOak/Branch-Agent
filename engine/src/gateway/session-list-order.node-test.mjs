@@ -8,7 +8,7 @@ const entry = (key, updatedAt, fields = {}) => [key, { sessionId: key, updatedAt
 const sort = (rows, limit, sortBy = "updatedAt", shouldYield) =>
   runSynchronousWork(sortAndLimitSessionEntries(rows, limit, sortBy, shouldYield));
 
-// Pinned-first and beyond-window cases adapted from deer-flow thread-list-model tests.
+// Pinned-first and beyond-window cases.
 test("pins precede newer recent sessions, including an epoch pin", () => {
   const recent = entry("agent:main:recent", 300);
   const pinned = entry("agent:main:pinned", 1, { pinnedAt: 0 });

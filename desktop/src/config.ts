@@ -28,6 +28,12 @@ export interface DesktopConfig {
    * default; set false to fall back to drain-first updates.
    */
   seamlessHandoff?: boolean;
+  /**
+   * Always on (Private #454): the engine runs as a per-user service (the engine's own `branch gateway install`), keeps
+   * working when the app quits, and the app only attaches to it; engine updates restart the service. On by default;
+   * false keeps the engine inside the app as before. A service that cannot be installed falls back to that by itself.
+   */
+  alwaysOn?: boolean;
 }
 
 function isFile(file: string): boolean {
@@ -58,6 +64,8 @@ const DEFAULTS: DesktopConfig = {
     ? join(RESOURCES, "node", process.platform === "win32" ? "node.exe" : "node") : process.execPath,
   gatewayPort: 19031,
   windowPort: 19032,
+  // Scratch test copies and hidden runs never install the per-user service: it would replace the owner's.
+  alwaysOn: process.env.BRANCH_DESKTOP_TEST !== "1" && process.env.BRANCH_DESKTOP_HIDDEN !== "1",
 };
 
 /** Never used: the old app's port and the owner's preview ports. */

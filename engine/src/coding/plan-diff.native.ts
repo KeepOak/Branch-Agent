@@ -1,4 +1,3 @@
-// Seven assertions/cases ported from pinned mastra plan-diff.test.ts.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { generatePlanDiff, shouldShowDiff } from "./plan-diff.js";
