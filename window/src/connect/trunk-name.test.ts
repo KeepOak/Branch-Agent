@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { DEFAULT_TRUNK_NAME, hasTrunkName, trunkDisplayName } from "./trunk-name";
+import { DEFAULT_TRUNK_NAME, trunkDisplayName } from "./trunk-name";
 
 it("shows the identity name, then the name, for a Trunk that has one", () => {
   expect(trunkDisplayName({ id: "scout", identity: { name: "Scout" } })).toBe("Scout");
@@ -14,10 +14,4 @@ it("never shows the default Trunk's id: a nameless main Trunk reads as Sapling",
 it("never shows another Trunk's id either", () => {
   expect(trunkDisplayName({ id: "office-3" })).toBe("Trunk");
   expect(trunkDisplayName(null)).toBe("Trunk");
-});
-
-it("a Trunk with no name of its own is not listed; the default is always listed", () => {
-  expect(hasTrunkName({ id: "office-3" })).toBe(false);
-  expect(hasTrunkName({ id: "main" })).toBe(true);
-  expect(hasTrunkName({ id: "scout", name: "Scout" })).toBe(true);
 });

@@ -5,7 +5,7 @@ import { ConversationList, type ConversationsSnapshot } from "../connect/convers
 import type { SaplingSession } from "../connect/session";
 import type { Contact } from "@branch/gateway-protocol";
 import { NO_PEOPLE, type ListPeople } from "./list-model";
-import { hasTrunkName, trunkDisplayName } from "../connect/trunk-name";
+import { trunkDisplayName } from "../connect/trunk-name";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -82,8 +82,7 @@ export function readTrunks(result: unknown): Trunks {
   const r = rec(result);
   // Only the engine's semantic system kind is hidden. Configured contacts (even
   // one named Branch or used as a bootstrap owner) remain ordinary agents.
-  // A Trunk with no name of its own is left out, so a placeholder never reaches the list (connect/trunk-name).
-  const agents = Array.isArray(r.agents) ? r.agents.map(rec).filter((a) => str(a.id) && a.kind !== "system" && (str(a.id) === str(r.defaultId) || hasTrunkName(a))) : [];
+  const agents = Array.isArray(r.agents) ? r.agents.map(rec).filter((a) => str(a.id) && a.kind !== "system") : [];
   const defaultId = str(r.defaultId) || null;
   const bootstrap = Array.isArray(r.agents)
     ? r.agents.map(rec).find((a) => a.kind === "system" && str(a.id) === defaultId)
