@@ -34,7 +34,11 @@ export function readSharing(raw: unknown, visibility: unknown): Sharing {
   };
 }
 
-type Props = { engine: WindowEngine; sessionKey: string; agentId?: string; sessionId?: string; title: string; publicLink: (token: string) => string; onCopy: (text: string) => void; onClose: () => void };
+/** clear: README item 48 glass (the R1 conversation menu): a clear dialog whose words sit on frosted pills. */
+type Props = { engine: WindowEngine; sessionKey: string; agentId?: string; sessionId?: string; title: string; publicLink: (token: string) => string; onCopy: (text: string) => void; onClose: () => void; clear?: boolean };
+
+/** On clear glass a run of words gets its own frosted pill (glass.css .g-label). */
+const onPill = (clear?: boolean) => (base?: string) => (clear ? [base, "g-label"].filter(Boolean).join(" ") : base);
 
 function useSharing(engine: WindowEngine, sessionKey: string, agentId?: string) {
   const [state, setState] = useState<Sharing | null>(null);
@@ -57,18 +61,19 @@ function useSharing(engine: WindowEngine, sessionKey: string, agentId?: string) 
   return { state, error, change };
 }
 
-export function ShareDialog({ engine, sessionKey, agentId, sessionId, title, publicLink, onCopy, onClose }: Props) {
+export function ShareDialog({ engine, sessionKey, agentId, sessionId, title, publicLink, onCopy, onClose, clear }: Props) {
+  const pill = onPill(clear);
   const { state, error, change } = useSharing(engine, sessionKey, agentId);
   const can = state?.canChange ?? false;
   const draft = state?.visibility === "draft";
   const levels = state ? VISIBILITY_WORDS.filter(([v]) => state.allowed.includes(v)) : [];
   const at = levels.findIndex(([v]) => v === state?.visibility);
   return (
-    <Dialog title={`Share ${title}`} wide onClose={onClose} footer={<button type="button" className="btn primary" onClick={onClose}>Done</button>} testid="share-dialog">
+    <Dialog title={`Share ${title}`} wide onClose={onClose} footer={<button type="button" className="btn primary" onClick={onClose}>Done</button>} testid="share-dialog" clear={clear}>
       {state ? (
         <div className="share-b">
           <div className="share-row">
-            <b>Everyone else on this Branch</b>
+            <b className={pill()}>Everyone else on this Branch</b>
             {/* The raised pill sits under the chosen level; with none chosen (a draft) it is hidden. */}
             <div className={at < 0 ? "seg share-none" : "seg"} role="radiogroup" aria-label="Everyone else on this Branch" style={{ ["--i" as string]: Math.max(at, 0), ["--n" as string]: levels.length || 1 }}>
               {levels.map(([v, words]) => (
@@ -76,19 +81,19 @@ export function ShareDialog({ engine, sessionKey, agentId, sessionId, title, pub
                   onClick={() => change("session.visibility.set", { visibility: v })}>{words}</button>
               ))}
             </div>
-            <small className="hint">The people below can still be added one by one.</small>
+            <small className={pill("hint")}>The people below can still be added one by one.</small>
           </div>
           {state.allowed.includes("draft") ? (
             <div className="share-row share-sw">
-              <span><b>Keep it a draft</b><small className="hint">Only you and the owner see it until you publish.</small></span>
+              <span><b className={pill()}>Keep it a draft</b><small className={pill("hint")}>Only you and the owner see it until you publish.</small></span>
               <Toggle label="Keep it a draft" on={draft} disabled={!can} onChange={(on) => change("session.visibility.set", { visibility: on ? "draft" : publishedVisibility(state.allowed) })} />
             </div>
           ) : null}
-          {state.owner ? <div className="share-row"><small className="hint">Owner</small><b>{state.owner.name}</b></div> : null}
-          <People state={state} can={can} change={change} />
-          <PublicLink token={state.publicToken} can={can && Boolean(sessionId)} link={publicLink} onCopy={onCopy}
+          {state.owner ? <div className="share-row"><small className={pill("hint")}>Owner</small><b className={pill()}>{state.owner.name}</b></div> : null}
+          <People state={state} can={can} change={change} clear={clear} />
+          <PublicLink clear={clear} token={state.publicToken} can={can && Boolean(sessionId)} link={publicLink} onCopy={onCopy}
             onSet={(enabled) => change("session.publicShare.set", { expectedSessionId: sessionId, enabled })} />
-          <p className="hint">They see who started it, who owns it, and who else is in it. Their drafts stay private until they send.</p>
+          <p className={pill("hint")} data-lines={clear ? "" : undefined}>They see who started it, who owns it, and who else is in it. Their drafts stay private until they send.</p>
         </div>
       ) : null}
       {error ? <p className="field-error" role="alert">{error}</p> : null}
@@ -96,8 +101,9 @@ export function ShareDialog({ engine, sessionKey, agentId, sessionId, title, pub
   );
 }
 
-function People({ state, can, change }: { state: Sharing; can: boolean; change: (m: string, p: Record<string, unknown>) => void }) {
-  if (!state.people.length) return <p className="hint">No one else is paired with this Branch yet.</p>;
+function People({ state, can, change, clear }: { state: Sharing; can: boolean; change: (m: string, p: Record<string, unknown>) => void; clear?: boolean }) {
+  const pill = onPill(clear);
+  if (!state.people.length) return <p className={pill("hint")}>No one else is paired with this Branch yet.</p>;
   return (
     <ul className="share-people">
       {state.people.map((p) => {
@@ -105,9 +111,9 @@ function People({ state, can, change }: { state: Sharing; can: boolean; change: 
         return (
           <li key={p.id}>
             <span className="share-av" aria-hidden="true">{p.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}</span>
-            <b>{p.name}</b>
+            <b>{clear ? <span className="g-label">{p.name}</span> : p.name}</b>
             <span className="share-sw">
-              <small>{member ? "In it" : "No"}</small>
+              <small className={pill()}>{member ? "In it" : "No"}</small>
               <Toggle label={`${p.name} is in this conversation`} on={member} disabled={!can}
                 onChange={(on) => change(on ? "session.members.add" : "session.members.remove", { identityId: p.id })} />
             </span>
@@ -118,11 +124,12 @@ function People({ state, can, change }: { state: Sharing; can: boolean; change: 
   );
 }
 
-function PublicLink({ token, can, link, onCopy, onSet }: { token: string | null; can: boolean; link: (t: string) => string; onCopy: (text: string) => void; onSet: (enabled: boolean) => void }) {
+function PublicLink({ token, can, link, onCopy, onSet, clear }: { token: string | null; can: boolean; link: (t: string) => string; onCopy: (text: string) => void; onSet: (enabled: boolean) => void; clear?: boolean }) {
+  const pill = onPill(clear);
   return (
     <div className="share-row">
-      <b>Public link</b>
-      <small className="hint">{token ? "Anyone with the link can read the conversation's text without signing in. Tools, thinking, files and widgets are left out." : "Only people with access can see it."}</small>
+      <b className={pill()}>Public link</b>
+      <small className={pill("hint")}>{token ? "Anyone with the link can read the conversation's text without signing in. Tools, thinking, files and widgets are left out." : "Only people with access can see it."}</small>
       <div className="card-buttons">
         {token ? <button type="button" className="btn sm" onClick={() => onCopy(link(token))}>Copy public link</button> : null}
         <button type="button" className="btn sm ghost" disabled={!can} onClick={() => onSet(!token)}>{token ? "Turn off the public link" : "Make a public link…"}</button>
