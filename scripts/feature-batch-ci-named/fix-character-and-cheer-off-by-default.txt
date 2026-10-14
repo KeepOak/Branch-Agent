@@ -1,0 +1,7 @@
+window:src/places/settings/set1/appearance.test.tsx
+window:src/places/settings/set2/achievements.test.tsx
+window:src/screens/frame/R1Window.character.test.tsx
+window:src/screens/settings/pages/appearance-live.test.tsx
+window:src/screens/settings/rows.test.ts
+window:src/shell/shown-defaults.test.tsx
+window:src/thread/Thread.cheer.test.tsx

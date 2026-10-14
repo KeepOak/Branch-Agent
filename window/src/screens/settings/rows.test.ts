@@ -182,6 +182,10 @@ describe("settings row table", () => {
     expect(at("appearance.reading.size")).toMatchObject({ control: "select", source: { kind: "look", key: "size" } });
     expect(at("appearance.background.behind")?.options?.map((o) => o.v)).not.toContain("own");
     expect(at("appearance.pet.name")?.codec?.write("  Hazel ")).toBeNull();
+    // No pet and no done cheer until the person picks one: the default is "none", picking it removes the choice.
+    expect([at("appearance.pet.pick")?.codec?.read(undefined), at("appearance.pet.pick")?.codec?.write("otter"), at("appearance.pet.pick")?.codec?.write("none")]).toEqual(["none", "otter", null]);
+    expect(at("appearance.characters.shown")).toMatchObject({ control: "toggle", source: { kind: "look", key: "agentShown" }, fallback: false });
+    expect(at("appearance.characters.cheer")).toMatchObject({ card: "Characters", label: "Celebrate when a task finishes", control: "toggle", source: { kind: "look", key: "cheer" }, fallback: false });
     // Each Classic card now draws rows: none of the page's Classic cards is empty at Technical.
     for (const card of ["Theme", "Background", "Reading", "The pet", "Characters", "What’s shown", "The list", "Window", "Tray", "Language"]) {
       expect(cardRows("appearance", card, 2, {}).length, card).toBeGreaterThan(0);

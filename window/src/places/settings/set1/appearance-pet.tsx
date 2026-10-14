@@ -25,7 +25,8 @@ export const PETS: Pet[] = [
   ...FRESH.map(([id, name]) => ({ id, name, still: `/assets/art17/pets/${id}.webp`, fresh: true })),
   ...Object.entries(PIXEL).map(([id, p]) => ({ id, name: p.name })),
 ];
-export const DEFAULT_PET = "px-squirrel";
+/** No pet until the person picks one in Settings › Appearance › Pet. */
+export const DEFAULT_PET = "none";
 
 /** A pixel pet as a small drawing (brand-free art colours from its pixel map). */
 export function PixelPet({ p }: { p: Px }) {

@@ -96,7 +96,7 @@ import { conversationNeedsYou } from "./conversation-more";
 import { ConversationMoreButton, HeaderRow, PlaceHead, TopBar } from "./TopBar";
 import { toggleListLayout, useLayout } from "./use-layout";
 import { usePinOrder } from "./use-pin-order";
-import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
+import { hideMenuItems, hideTarget, HIDEABLE, useCheerOn, usePetLook, useShown } from "./shown";
 import { StatusGfx, StatusLeftExtras } from "./StatusExtras";
 import { paneKeyFor, useShortcuts } from "./use-shortcuts";
 import { currentKeys, keyActions, readCustomKeys } from "./keymap";
@@ -252,13 +252,13 @@ function useThemeSync(setTheme: (t: ThemeChoice) => void): boolean {
   return systemDark;
 }
 
-/** Whether the character panel is shown; remembered across windows. */
+/** Whether the character panel is shown; off until turned on, and remembered across windows. */
 function useCharacterShown() {
   const [shown, setShown] = useState(() => {
     try {
-      return localStorage.getItem("branch.characterShown") !== "0";
+      return localStorage.getItem("branch.characterShown") === "1";
     } catch {
-      return true;
+      return false;
     }
   });
   useEffect(() => {
@@ -272,7 +272,7 @@ function useCharacterShown() {
     // Settings › Appearance changes the switch too ("branch:look-change"): follow it without a reload.
     const reread = () => {
       try {
-        setShown(localStorage.getItem("branch.characterShown") !== "0");
+        setShown(localStorage.getItem("branch.characterShown") === "1");
       } catch {
         // storage blocked: keep what this window shows
       }
@@ -1180,6 +1180,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       : null;
   const voiceReady = useVoiceCatalog(ready ? session.engine : undefined);
   const pet = usePetLook(session.engine);
+  const cheerOn = useCheerOn(session.engine);
   // Let it roam (Appearance › Pet) walks the pet along the chat instead of the card; one pet on screen at a time.
   const lanePet = pet.roam ? pet : { ...pet, id: "none" };
   // Stopping the roam brings the card back, with Undo; the pet's menu and the header face both use it (pet-roam.ts).
@@ -1398,6 +1399,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           lockdown={lockdown.on}
           {...areaProps}
           engine={showingAll ? undefined : session.engine}
+          cheerOn={cheerOn}
           sessionKey={showingAll ? null : s.sessionKey}
           findRequest={searchFind?.key === openKey ? searchFind : null}
           onFindRequestHandled={(nonce) => setSearchFind((current) => current?.nonce === nonce ? null : current)}

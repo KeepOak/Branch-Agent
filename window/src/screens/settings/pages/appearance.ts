@@ -87,8 +87,10 @@ export const APPEARANCE_ROWS: Row[] = [
 
   // Characters: Classic's Agents section and the Advanced Characters section.
   { id: "appearance.characters.shown", page: "appearance", card: CHAR, label: "Show the agent beside the conversation", help: "The Trunk’s character shows what it is doing.", level: 0, control: "toggle",
-    source: { kind: "look", key: "agentShown" }, fallback: true },
+    source: { kind: "look", key: "agentShown" }, fallback: false },
   fromClassic("appearance.characters.size", CHAR, "agentSize"),
+  { id: "appearance.characters.cheer", page: "appearance", card: CHAR, label: "Celebrate when a task finishes", help: "A small card with the Trunk’s face shows when a task is done.", level: 0, control: "toggle",
+    source: { kind: "look", key: "cheer" }, fallback: false },
   slot("appearance.characters.each-trunk", CHAR, "Each Trunk’s model and stage", ["agents.list", "models.list", "agents.update", "users.prefs.set"], { level: 1 }),
   fromClassic("appearance.characters.act", CHAR, "ch.act"),
   fromClassic("appearance.characters.move", CHAR, "ch.move"),

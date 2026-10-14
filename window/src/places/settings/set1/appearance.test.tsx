@@ -356,6 +356,15 @@ describe("Settings › Appearance", () => {
     expect(b.onEvent).toHaveBeenCalledTimes(1);
   });
 
+  it("the character and the done cheer are off until turned on, and the cheer switch saves", async () => {
+    const { engine, prefs } = engineOf();
+    await render(engine);
+    expect(sw("Show the agent beside the conversation").checked).toBe(false);
+    expect(sw("Celebrate when a task finishes").checked).toBe(false);
+    await act(async () => sw("Celebrate when a task finishes").click());
+    expect(prefs["ui.window.look"]).toMatchObject({ cheer: true });
+  });
+
   it("reads saved rows from the engine", async () => {
     const { engine } = engineOf({ prefs: { "ui.window.look": { "show.usage": false } } });
     await render(engine);

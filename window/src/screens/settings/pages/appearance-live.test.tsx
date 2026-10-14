@@ -103,7 +103,8 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     const sent = JSON.stringify(calls(request, "users.prefs.set"));
     expect(sent).toContain("otter");
     expect(sent).toContain("petsHad");
-    expect(row("appearance.pet.had")!.querySelector(".r1s-val")!.textContent).toMatch(/^2 of \d+/);
+    // No pet is the default now, so the one picked is the only pet had.
+    expect(row("appearance.pet.had")!.querySelector(".r1s-val")!.textContent).toMatch(/^1 of \d+/);
   });
 
   it("changes a Trunk's model with agents.update", async () => {
