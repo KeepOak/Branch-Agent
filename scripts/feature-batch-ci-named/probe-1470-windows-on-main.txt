@@ -1,0 +1,2 @@
+engine:extensions/acpx/src/codex-auth-bridge.test.ts
+engine:extensions/browser/src/browser/chrome-mcp.test.ts
