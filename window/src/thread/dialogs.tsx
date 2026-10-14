@@ -100,7 +100,7 @@ export function BranchDialog({ onClose, onBranch }: { onClose: () => void; onBra
 type Inspect = { meta?: MessageMeta; durationMs?: number; steps: number };
 
 /** "Look inside": what went into the Trunk's reply, all read from the engine. */
-export function LookInside({ inspect, onClose }: { inspect: Inspect; onClose: () => void }) {
+export function LookInside({ inspect, onClose, clear }: { inspect: Inspect; onClose: () => void; clear?: boolean }) {
   const { engine, name, toast } = useThread();
   const [context, setContext] = useState<number | null>(null);
   const [tools, setTools] = useState<string[] | null>(null);
@@ -125,11 +125,11 @@ export function LookInside({ inspect, onClose }: { inspect: Inspect; onClose: ()
   const record = JSON.stringify({ ...inspect, contextTokens: context, tools }, null, 2);
   const footer = <button type="button" className="btn" onClick={() => void copyText(record, toast)}>Copy the record</button>;
   return (
-    <Dialog title="Look inside" onClose={onClose} footer={footer} testid="look-inside">
-      <p className="lede">What went into {name}’s last reply.</p>
+    <Dialog title="Look inside" onClose={onClose} footer={footer} testid="look-inside" clear={clear}>
+      <p className={clear ? "lede g-label" : "lede"}>What went into {name}’s last reply.</p>
       <dl className="kv">
         {rows.filter(([, v]) => v).map(([k, v]) => (
-          <div key={k} className="kv-row"><dt>{k}</dt><dd>{v}</dd></div>
+          <div key={k} className={clear ? "kv-row g-frost" : "kv-row"}><dt>{k}</dt><dd>{v}</dd></div>
         ))}
       </dl>
     </Dialog>
