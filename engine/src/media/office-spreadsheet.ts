@@ -1,4 +1,3 @@
-// Adapted from Kilo-Org/kilocode 6fd9b7b: packages/opencode/src/kilocode/tool/xlsx.ts.
 import { extname } from "node:path";
 import { read, utils, type CellObject, type Range, type WorkBook, type WorkSheet } from "xlsx";
 import { hiddenOdsSheets } from "./office-ods.js";

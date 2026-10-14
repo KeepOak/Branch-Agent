@@ -1,7 +1,5 @@
-// Adapted from mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421
-// packages/core/src/processors/processors/token-cost-control.ts (atlas MODELS-ACCOUNTS-0080).
-// Mastra's observability storage becomes a CostMetricStore. Branch's store over
-// its recorded session usage is createSessionCostUsageStore in ./session-cost-store.ts.
+// Observability storage is represented by a CostMetricStore. Branch's store over
+// its recorded session usage is createSessionCostUsageStore in./session-cost-store.ts.
 
 /**
  * Cost scope determines what usage is tracked:

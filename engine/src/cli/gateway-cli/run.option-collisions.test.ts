@@ -1,4 +1,4 @@
-// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/cli/gateway-cli/run.option-collisions.test.ts (atlas OPS-0022). Changed for Branch: retain caller-owned host recovery coverage and isolate startup migrations and host ownership from CLI option fixtures.
+// Changed for Branch: retain caller-owned host recovery coverage and isolate startup migrations and host ownership from CLI option fixtures.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
