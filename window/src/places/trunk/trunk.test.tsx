@@ -220,6 +220,9 @@ describe("Customize › Trunks", () => {
     await act(async () => { row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })); });
     await click(byText("Remove Birch…"));
     expect(document.body.textContent).toContain("move to the Trash");
+    // The engine removes the Trunk itself for good, so the dialog must not promise otherwise.
+    expect(document.body.textContent).toContain("Branch can’t bring Birch back");
+    expect(document.body.textContent).not.toContain("nothing is deleted for good");
     await click(document.querySelector('[data-testid="trunk-remove"] .btn.bad'));
     expect(request).toHaveBeenCalledWith("agents.delete", { agentId: "birch" });
     expect(document.body.textContent).not.toContain("Undo");
