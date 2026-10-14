@@ -258,7 +258,8 @@ export function SettingsFrame(props: SettingsFrameProps) {
           }}>Learn more</button></p>
           {help ? (
             <div className="r1s-help g-clear" role="dialog" aria-label={`About ${spec.title}`}>
-              <h3 className="g-label">On this page</h3>
+              {/* A page with no sections (Go to) has no "On this page" list, as in the preview's s36Help. */}
+              {(Custom ? slotSecs.length : sections.length) ? <h3 className="g-label">On this page</h3> : null}
               <ul>{Custom ? slotSecs.map((t, i) => <li key={`${i}-${t}`}><button type="button" className="r1s-link" data-local="" onClick={() => {
                 setHelp(false);
                 [...(scroller.current?.querySelectorAll<HTMLElement>(".r1s-custom h2") ?? [])].find((h) => h.textContent?.trim() === t)?.scrollIntoView?.({ block: "start" });
