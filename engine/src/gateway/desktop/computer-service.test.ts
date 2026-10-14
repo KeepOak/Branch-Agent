@@ -185,7 +185,7 @@ describe("Gateway computer service", () => {
       ready.catch(() => {});
       return { ready, isCurrent: () => true, invoke: vi.fn(), close: vi.fn(async () => {}) };
     };
-    const reason = "The Mac computer driver couldn't start: X is not in the embedded safe allowlist";
+    const reason = "macOS asks you to allow this once, in System Settings.";
     const f = createFixture({ BRANCH_COMPUTER_DRIVER_REASON: reason });
     delete f.config.desktop;
     vi.mocked(startComputerHostProcess).mockImplementation(unavailable);

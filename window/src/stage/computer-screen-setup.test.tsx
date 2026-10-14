@@ -101,7 +101,7 @@ describe("computer screen setup", () => {
   });
   it("shows Coming with the app's reason while this computer's driver isn't ready, then the screen once it is", async () => {
     vi.useFakeTimers();
-    const driver: { reason?: string } = { reason: "The Mac computer driver couldn't start: X is not in the embedded safe allowlist" };
+    const driver: { reason?: string } = { reason: "macOS asks you to allow this once, in System Settings." };
     const { engine, request } = fixture(undefined, false, driver);
     await render(engine);
     await act(async () => screenButton()!.click());
@@ -118,7 +118,7 @@ describe("computer screen setup", () => {
     expect(document.querySelector(".stage-empty[data-coming]")).toBeNull();
     expect(document.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
   });
-  it("shows Computer control · Coming alone when the app gives an empty reason", async () => {
+  it("shows Computer control · Coming alone, with no reason sentence, when the driver fails to start", async () => {
     const { engine, request } = fixture(undefined, false, { reason: "" });
     await render(engine);
     await act(async () => screenButton()!.click());

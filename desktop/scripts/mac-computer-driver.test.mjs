@@ -148,6 +148,7 @@ test("a rejected embedded configuration surfaces the SDK's reason, not just its 
 
 test("the Coming reasons are the preview's copy: none for a missing driver, its permission line for permissions", () => {
   assert.equal(driverModule.DRIVER_NOT_PACKAGED, "");
+  assert.equal(driverModule.DRIVER_START_FAILED, "");
   assert.equal(driverModule.DRIVER_NEEDS_PERMISSION, "macOS asks you to allow this once, in System Settings.");
 });
 
@@ -175,8 +176,10 @@ test("the driver keeps a plain reason while it has no endpoint, and clears it on
     assert.equal(await driver.start(dir), undefined);
     assert.equal(driver.reason, "macOS asks you to allow this once, in System Settings.");
     granted = true;
-    await assert.rejects(driver.start(dir));
-    assert.equal(driver.reason, "The Mac computer driver couldn't start: X is not in the embedded safe allowlist");
+    const failure = await driver.start(dir).then(() => assert.fail("start should reject"), error => error);
+    // A driver that fails to start shows no reason sentence; its SDK reason stays for desktop.log only.
+    assert.equal(driver.reason, "");
+    assert.equal(driverModule.describeDriverError(failure), "X is not in the embedded safe allowlist");
     reject = false;
     assert.equal(JSON.parse(await driver.start(dir)).v, 2);
     assert.equal(driver.reason, undefined);
