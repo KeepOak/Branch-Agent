@@ -52,6 +52,9 @@ export type Row = {
   codec?: Codec;
   /** The value shown when nothing is stored and the schema has no default. */
   fallback?: unknown;
+  /** A slot row whose control is a list that names its own items (computers, connections): drawn without the row's own
+   *  label and help, which still name it for search and the level. */
+  bare?: true;
 };
 
 /** One config.schema uiHints entry. */
