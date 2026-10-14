@@ -69,7 +69,15 @@ export function keyboardLine(mac: boolean = onMac()): string {
   return `${shownInline(keys.palette, mac)} to find anything, ${shownInline(keys.newConversation, mac)} for a new conversation.`;
 }
 
-export const GENERAL_ROWS: Row[] = [
+/** R1-10: each Coming reason names its thing. A row left with the bare fallback gets "<its label> comes in a later
+ *  update.", in the preview's own words. */
+const named = (row: Row): Row => {
+  const src = row.source;
+  if ((src.kind === "coming" || src.kind === "slot") && src.reason === COMING_REASON) return { ...row, source: { ...src, reason: `${row.label} comes in a later update.` } };
+  return row;
+};
+
+const ROWS_AS_DRAWN: Row[] = [
   // Pinned: the rows you pinned, each with Go to it and Unpin (general-live.tsx); the card shows only when there are some.
   { id: "general.pinned.list", page: "general", card: "Pinned", label: "Pinned", level: 0, control: "custom", bare: true, source: slot(["users.prefs.set"]) },
 
@@ -169,3 +177,5 @@ export const GENERAL_ROWS: Row[] = [
   { id: "general.cover.now", page: "general", card: "Cover the screen", label: "Cover now", help: "Covers every display and blocks input without sleeping, so Trunks, builds and remote sessions keep going. Any key or click brings it back.", level: 0, control: "custom",
     source: slot(["desktop: covering the screen"], "Cover the screen comes in a later update.") },
 ];
+
+export const GENERAL_ROWS: Row[] = ROWS_AS_DRAWN.map(named);
