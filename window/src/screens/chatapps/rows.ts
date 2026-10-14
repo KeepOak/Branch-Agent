@@ -52,9 +52,11 @@ export const MORE_SECTIONS: Section[] = [...ADVANCED, ...TECH_A, DEPTH, ...LATER
 /** The approved cards below Who answers (preview Chat apps at Advanced; SETTINGS-PROPOSAL "Chat apps from 20 to 8"), in
  *  order, with the Classic sections each one gathers. Every Classic section is in exactly one card (#1049). */
 export const CARDS: readonly (readonly [string, readonly string[]])[] = [
+  // Its Advanced rows continue the Who answers card above (the page draws its heading).
+  ["Who answers", ["What the Trunk sees"]],
   ["Who may message", ["Lists of people"]],
   ["How replies look & arrive", ["Formatting in each app", "How replies arrive", "How replies are sent", "Live screen in chat apps"]],
-  ["Groups", ["Groups", "What the Trunk sees", "In every chat"]],
+  ["Groups", ["Groups", "In every chat"]],
   ["Commands", ["Commands in chat apps", "Commands from chat apps", "Chat commands and rules"]],
   ["Approvals & what Trunks may do", ["Approvals in chat apps", "What Trunks may do in chat apps"]],
   ["Each app", ["Staying connected", "Chat apps, technical", "Messages, every setting", "Each app, in depth"]],

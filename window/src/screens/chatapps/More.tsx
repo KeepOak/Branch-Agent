@@ -45,17 +45,20 @@ export function More(ctx: Ctx) {
         // The page's own rows that no Classic table has: drawn first in their card.
         const own = BASE_ROWS.filter((b) => b.card === card && !inTables.has(b.id) && b.level <= ctx.level);
         if (!secs.length && !own.length) return null;
+        const parts = secs.map((sec) => (
+          <div key={sec.title} className="r1-ca-part" data-sec={sec.title}>
+            {sec.hint ? <Hint>{sec.hint}</Hint> : null}
+            {sec.rows.filter((r) => (r.lv ?? sec.lv) <= ctx.level).map((r) => <Fragment key={r.id ?? r.t}>{draw(r)}</Fragment>)}
+            {sec.after ? <Hint>{sec.after}</Hint> : null}
+          </div>
+        ));
+        // Who answers is drawn above with its own heading; its Advanced rows follow it with none.
+        if (card === "Who answers") return <div key={card} className="r1-ca-sec r1-ca-cont" data-card={card} aria-label={card}>{parts}</div>;
         return (
           <section key={card} className="r1-ca-sec" data-card={card} aria-label={card}>
             <h2 className="g-label">{card}</h2>
             {own.map((b) => <ChatAppRow key={b.id} engine={ctx.engine} row={b} />)}
-            {secs.map((sec) => (
-              <div key={sec.title} className="r1-ca-part" data-sec={sec.title}>
-                {sec.hint ? <Hint>{sec.hint}</Hint> : null}
-                {sec.rows.filter((r) => (r.lv ?? sec.lv) <= ctx.level).map((r) => <Fragment key={r.id ?? r.t}>{draw(r)}</Fragment>)}
-                {sec.after ? <Hint>{sec.after}</Hint> : null}
-              </div>
-            ))}
+            {parts}
           </section>
         );
       })}

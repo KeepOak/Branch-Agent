@@ -191,6 +191,7 @@ it("#1049: Advanced and Technical draw the preview's approved cards, in order, o
     expect(cards, level).toEqual(APPROVED);
     const heads = [...host.querySelectorAll("h2")].map((h) => h.textContent);
     expect(heads.indexOf("Who answers")).toBe(heads.indexOf("Who may message") - 1);
+    expect(host.querySelector('.r1-ca-cont[data-card="Who answers"]')?.textContent).toContain("Photo albums as one message");
     for (const old of ["Commands in chat apps", "What the Trunk sees", "Staying connected", "Formatting in each app", "How replies arrive", "Chat apps", "Messages, every setting", "In every chat", "Quiet and limits"]) expect(heads, old).not.toContain(old);
     // The page's own rows sit in their card: Show typing under How replies, Typed commands under Commands.
     expect(host.querySelector('[data-card="How replies look & arrive"] [aria-label="Show typing"]')).not.toBeNull();
