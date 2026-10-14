@@ -224,6 +224,12 @@ test('PR bodies allow GitHub noreply identities and ordinary handles and package
   assert.deepEqual(runPreflight(withInput({ body: `${BODY}\n\n${NOREPLY}\n@owner @branch/tools` })), []);
 });
 
+test('PR body version pins are not email addresses', () => {
+  for (const pin of ['vitest@3.2.4', '@scope/pkg@1.2.3']) {
+    assert.deepEqual(runPreflight(withInput({ body: `${BODY}\n\nPinned ${pin}.` })), [], pin);
+  }
+});
+
 test('PR body email checks also run for API inputs without file changes', () => {
   const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files: [], commits: [], listText: null });
   const problems = runPreflight({ ...input, body: `${BODY}\n\ncontact: someone@example.org` });
