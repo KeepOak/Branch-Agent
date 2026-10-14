@@ -60,7 +60,7 @@ export function Access({ engine, app, inManage = false }: { engine: WindowEngine
       {WHO.map((w) => w.v === "workspace"
         ? <Coming key={w.v} need="users.list" unwired reason={WORKSPACE_COMING} where={app.name + " › Anyone in my workspace"}><option value={w.v} disabled>{w.label}</option></Coming>
         : <option key={w.v} value={w.v} disabled={w.v === "allowlist" && !named && policy !== "allowlist"}>{w.v === "allowlist" && !named ? "Only me · add yourself in Manage first" : w.label}</option>)}
-    </select></label><small className="g-label" data-lines>Everyone else gets no answer. Branch can’t tell who is in your workspace yet. Changing who may message keeps everyone already allowed. Changes save immediately.</small></> : null}
+    </select></label><small className="g-label" data-lines>Everyone else gets no answer.</small></> : null}
     {routes.reason && <p role="alert" className="g-label" data-lines>{routes.reason}</p>}{access.reason && <p role="alert" className="g-label" data-lines>{access.reason}</p>}{agents.error && <p role="alert" className="g-label" data-lines>{agents.error}</p>}
   </section>;
 }
