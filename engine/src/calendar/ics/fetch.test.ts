@@ -1,4 +1,3 @@
-// Copied from elizaOS/eliza@3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf:plugins/plugin-calendar/src/ics/fetch.test.ts (atlas INTEGRATIONS-0069)
 /**
  * ICS transport tests drive the real shared redirect/SSRF guard with an
  * injected wire so no test bypasses the policy layer it claims to cover.
