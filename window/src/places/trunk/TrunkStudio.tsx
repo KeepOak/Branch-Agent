@@ -1,8 +1,10 @@
 // "Have Branch make a Trunk" (preview 30-trunks mk-new): the words go to Branch's own assistant through branch.chat
 // with its "new-agent" welcome (engine/src/gateway/server-methods/system-agent.ts). It proposes; nothing is made until
-// you say yes, which the engine checks itself. Its replies, choices and yes/no show here.
+// you say yes, which the engine checks itself. Its replies, choices and yes/no show here. A reply that waits for yes is the
+// preview's "A new Trunk, proposed" card (mk10).
 import { useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { Coming } from "../../glass/coming";
 import { Dialog } from "../../shell/Dialog";
 import { canWrite, WRITE_WHY } from "./data";
 import { errorText, rec, str } from "./model";
@@ -10,6 +12,24 @@ import { Layer } from "./layer";
 import "./trunk.css";
 
 type Turn = { who: "you" | "branch"; text: string };
+
+/** Why "Change it first" is greyed: the editor cannot open on a Trunk that is not made yet. */
+const CHANGE_WHY = "Changing a Trunk before it is made comes in a later update.";
+
+/** The proposal card. The engine returns the proposal as the reply text, so the card shows that text; the Tools, Computer, May
+ * and Talks-to rows wait for the engine to return the staged proposal. */
+function ProposedCard({ text, busy, onMake, onNo }: { text: string; busy: boolean; onMake: () => void; onNo: () => void }) {
+  return <div className="tk-card" data-testid="trunk-proposed">
+    <div className="tk-card-h"><b>A new Trunk, proposed</b><span className="pill"><i />Waiting for you</span></div>
+    <div className="tk-say">{text}</div>
+    <div className="tk-opts">
+      <button type="button" className="btn pri sm" disabled={busy} onClick={onMake}>Make it</button>
+      <Coming need="agents.create" unwired reason={CHANGE_WHY}><button type="button" className="btn sm" disabled>Change it first</button></Coming>
+      <button type="button" className="btn ghost sm" disabled={busy} onClick={onNo}>No thanks</button>
+    </div>
+    <small className="tk-why">{CHANGE_WHY}</small>
+  </div>;
+}
 type Reply = { text: string; options: { label: string; reply: string }[]; approval: boolean; openAgent: string };
 
 function readReply(result: unknown): Reply {
@@ -52,9 +72,10 @@ export function TrunkStudio({ engine, onClose, onMade, openTrunk }: TrunkStudioP
   return (
     <Layer><Dialog title="Have Branch make a Trunk" onClose={onClose} footer={footer} testid="trunk-studio">
       <div className="tk-studio">
-        {turns.map((t, i) => t.who === "you" ? <p key={i} className="tk-hint">{t.text}</p> : <div key={i} className="tk-say">{t.text}</div>)}
-        {last && !busy && (last.options.length > 0 || last.approval) && <div className="tk-opts">
-          {last.approval && <><button type="button" className="btn pri sm" onClick={() => void send("Yes, make it.")}>Make it</button><button type="button" className="btn ghost sm" onClick={() => void send("No thanks.")}>No thanks</button></>}
+        {turns.map((t, i) => t.who === "you" ? <p key={i} className="tk-hint">{t.text}</p> : last?.approval && !busy && i === turns.length - 1
+          ? <ProposedCard key={i} text={t.text} busy={busy} onMake={() => void send("Yes, make it.")} onNo={() => void send("No thanks.")} />
+          : <div key={i} className="tk-say">{t.text}</div>)}
+        {last && !busy && last.options.length > 0 && <div className="tk-opts">
           {last.options.map((o) => <button key={o.label} type="button" className="btn sm" onClick={() => void send(o.reply)}>{o.label}</button>)}
         </div>}
         <label className="tk-field"><span className="tk-h">{first ? "What should it take on?" : "Your answer"}</span>

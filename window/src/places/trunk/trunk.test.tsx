@@ -328,6 +328,19 @@ describe("Trunk profile and studio", () => {
     expect(document.body.textContent).toContain("Here is my proposal.");
     expect(byText("Make it")).toBeTruthy();
   });
+  it("shows a waiting proposal as the proposed-Trunk card, with Change it first greyed and No thanks sending the answer", async () => {
+    const request = vi.fn(() => Promise.resolve({ sessionId: "s", reply: "Here is my proposal.", action: "none", needsApproval: true }));
+    await mount(<TrunkStudio engine={engine(request)} onClose={() => {}} />);
+    const box = document.querySelector("textarea")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(box, "Watch renewals"); box.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click(byText("Propose it"));
+    const card = document.querySelector('[data-testid="trunk-proposed"]');
+    expect(card?.textContent).toContain("A new Trunk, proposed");
+    expect(card?.textContent).toContain("Waiting for you");
+    expect(byText("Change it first").getAttribute("aria-disabled")).toBe("true");
+    await click(byText("No thanks"));
+    expect(request).toHaveBeenLastCalledWith("branch.chat", expect.objectContaining({ message: "No thanks." }));
+  });
 });
 
 describe("Trunk tools rows", () => {
