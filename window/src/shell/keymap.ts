@@ -119,6 +119,11 @@ export function shown(combo: string, mac: boolean): string[] {
   return combo.split(" ").map((k) => (mac && k === "Ctrl" ? "⌘" : mac && k === "Alt" ? "⌥" : k));
 }
 
+/** A side-panel key written the way the preview writes its side keys: "Ctrl+Alt+Shift+G" (the spaced form stays the stored combo). */
+export function plusLabel(combo: string, mac: boolean): string {
+  return shown(combo, mac).join("+");
+}
+
 /** Keys inside a sentence, matching the shortcuts dialog: "⌘K" or "⌘⇧K" on a Mac, "Ctrl K" elsewhere. */
 export function shownInline(combo: string, mac: boolean): string {
   return mac ? shown(combo, true).map((k) => (k === "Shift" ? "⇧" : k)).join("") : combo;
