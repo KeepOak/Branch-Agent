@@ -169,13 +169,18 @@ export function recordEngineMode(dataDir: string, mode: EngineMode, reason?: str
   writeEngineMode(dataDir, { mode, ...(reason ? { reason } : {}), at: new Date().toISOString(), ...(noticeShown ? { noticeShown } : {}) });
 }
 
+/** Settings › General › Starting up, when the engine keeps a custom copy off the per-user service (#1053). */
+export const CUSTOM_COPY_SERVICE_LINE = "Running inside the app: this copy isn't the standard install, so the background service stays off.";
+
 /**
- * The engine's own reason for refusing the service, without the CLI wrapping (`gateway install failed:`,
- * `Gateway install blocked:`, `Error:`) or the terminal repair steps that follow it (environment variables the app
- * sets itself), so Settings says it plainly. A custom setup reads, for example, "service management skipped:
- * non-default state dir or config path".
+ * The reason the service could not be installed, in plain words for Settings. The engine's own refusal of a custom
+ * setup ("service management skipped: non-default state dir or config path", with terminal repair steps for
+ * environment variables the app sets itself) is never shown: Settings says CUSTOM_COPY_SERVICE_LINE and the full
+ * engine answer stays in desktop.log. Any other refusal loses the CLI wrapping (`gateway install failed:`,
+ * `Gateway install blocked:`, `Error:`) and keeps its first sentence, such as the OS's "Access is denied".
  */
 export function plainServiceReason(reason: string): string {
+  if (reason === CUSTOM_COPY_SERVICE_LINE || /service management skipped|non-default (?:state dir|install)/i.test(reason)) return CUSTOM_COPY_SERVICE_LINE;
   let text = reason.trim();
   for (let previous = ""; previous !== text;) {
     previous = text;
@@ -185,12 +190,19 @@ export function plainServiceReason(reason: string): string {
   return first.replace(/[.!?]$/, "").trim() || reason.trim();
 }
 
+/** The Settings line for the engine running inside the app, from the reason takeChildModeNotice gives. */
+export function childModeSettingsLine(notice: string): string {
+  if (notice === CUSTOM_COPY_SERVICE_LINE) return `${notice} Quitting Branch stops your Trunks.`;
+  return `Branch runs inside the app on this computer because its background service couldn't be installed (${notice}). Quitting Branch stops your Trunks.`;
+}
+
 /** The reason the engine runs inside the app, the first time it is asked for; later calls return undefined. */
 export function takeChildModeNotice(dataDir: string): string | undefined {
   const record = readEngineMode(dataDir);
   if (record?.mode !== "child" || record.noticeShown) return undefined;
   writeEngineMode(dataDir, { ...record, noticeShown: true });
-  return record.reason ?? "the background service could not be installed";
+  // A record written by an earlier build may hold the engine's own words; Settings still says them plainly.
+  return record.reason ? plainServiceReason(record.reason) : "the background service could not be installed";
 }
 
 /**

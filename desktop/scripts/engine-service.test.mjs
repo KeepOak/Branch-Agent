@@ -142,7 +142,8 @@ test('the engine crash-storm marker is shown once', t => {
   assert.equal(takeCrashStormNotice(dir), undefined);
 });
 
-// #1053: a custom setup that the engine refuses the service to is said once in Settings, in the engine's plain words.
+// #1053: a custom setup that the engine refuses the service to is said once in Settings, in plain words; the engine's
+// own reason stays in desktop.log.
 const ENGINE_SKIP = 'gateway install failed: Gateway install blocked: Error: service management skipped: non-default state dir or config path. Rerun with HOME set to the OS account home, BRANCH_HOME either unset or pointing at that same home, and BRANCH_STATE_DIR and BRANCH_CONFIG_PATH either unset or pointing at the canonical paths for that account home and profile to install or rewrite the gateway service.';
 
 test('a custom data folder the engine keeps off the service runs inside the app and says so once, plainly', async t => {
@@ -162,13 +163,21 @@ test('a custom data folder the engine keeps off the service runs inside the app 
   assert.equal(result.mode, 'child');
   assert.equal(children, 1);
   assert.match(logged.join('\n'), /Rerun with HOME/, 'the log keeps the engine\'s full answer');
-  assert.equal(takeChildModeNotice(dir), 'service management skipped: non-default state dir or config path');
+  const notice = takeChildModeNotice(dir);
+  assert.equal(notice, "Running inside the app: this copy isn't the standard install, so the background service stays off.");
+  assert.equal(service.childModeSettingsLine(notice), "Running inside the app: this copy isn't the standard install, so the background service stays off. Quitting Branch stops your Trunks.");
+  assert.doesNotMatch(service.childModeSettingsLine(notice), /service management|non-default|state dir|config path|BRANCH_|Rerun/, 'Settings never shows the engine\'s reason');
   assert.equal(takeChildModeNotice(dir), undefined, 'Settings says it once');
+  // A record an earlier build wrote with the engine's own words is said plainly too.
+  recordEngineMode(dir, 'service');
+  recordEngineMode(dir, 'child', 'service management skipped: non-default state dir or config path');
+  assert.equal(takeChildModeNotice(dir), notice);
 });
 
 test('the plain service reason keeps an OS refusal as it is', () => {
   assert.equal(service.plainServiceReason('gateway install failed: Access is denied.'), 'Access is denied');
   assert.equal(service.plainServiceReason('the background service could not be installed'), 'the background service could not be installed');
+  assert.equal(service.childModeSettingsLine('Access is denied'), "Branch runs inside the app on this computer because its background service couldn't be installed (Access is denied). Quitting Branch stops your Trunks.");
 });
 
 test('a relative XDG_DATA_HOME or LOCALAPPDATA never moves the data folder off its standard place', t => {

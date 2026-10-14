@@ -51,11 +51,23 @@ function envHomedir(env: NodeJS.ProcessEnv): () => string {
 
 function normalizePathForComparison(candidate: string): string {
   const resolved = path.resolve(candidate);
-  try {
-    return fs.realpathSync.native(resolved);
-  } catch {
-    // Missing paths have no filesystem identity yet; exact resolution is the safe fallback.
-    return resolved;
+  // A path that does not exist yet (a fresh engine home) still sits under real folders: resolve the
+  // nearest existing ancestor and keep the missing tail, so a symlinked parent such as a data folder
+  // linked to another disk names the same place either way (#1053).
+  const missing: string[] = [];
+  let current = resolved;
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync.native(current), ...missing);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) {
+        // Nothing on the way exists; exact resolution is the safe fallback.
+        return resolved;
+      }
+      missing.unshift(path.basename(current));
+      current = parent;
+    }
   }
 }
 

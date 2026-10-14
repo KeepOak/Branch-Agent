@@ -126,6 +126,66 @@ describe("desktop app install identity (#1053)", () => {
     });
   });
 
+  it.each([
+    { name: "with its engine home already made", made: true },
+    { name: "before its engine home is made", made: false },
+  ])(
+    "gets the service when the standard data folder is a symlink to another disk, $name",
+    async ({ made }) => {
+      await withTestDir({ prefix: "branch-1053-datalink-" }, async (root) => {
+        // ~/Library/Application Support/BranchAgent -> <external volume>/BranchAgent/data, with HOME
+        // as the OS names it (no realpath; the temp root itself may sit under a symlink such as /var).
+        const accountHome = path.join(root, "Users", "test");
+        const realData = path.join(root, "Volumes", "External Disk", "BranchAgent", "data");
+        await fs.mkdir(path.join(accountHome, "Library", "Application Support"), {
+          recursive: true,
+        });
+        await fs.mkdir(made ? path.join(realData, "home", ".branch") : realData, {
+          recursive: true,
+        });
+        const standard = path.join(accountHome, "Library", "Application Support", "BranchAgent");
+        await fs.symlink(realData, standard, "dir");
+        const resolvedData = await fs.realpath(realData);
+        // (a) the app passes the symlink form, (b) the resolved form.
+        for (const dataDir of [standard, realData, resolvedData]) {
+          expect(
+            isDefaultInstallIdentity(appEnv(accountHome, dataDir), () => accountHome, "darwin"),
+          ).toBe(true);
+        }
+      });
+    },
+  );
+
+  it("gets the service when only a parent of the standard data folder is a symlink", async () => {
+    await withTestDir({ prefix: "branch-1053-parentlink-" }, async (root) => {
+      const accountHome = path.join(root, "Users", "test");
+      const realSupport = path.join(root, "Volumes", "External Disk", "Application Support");
+      await fs.mkdir(path.join(accountHome, "Library"), { recursive: true });
+      await fs.mkdir(realSupport, { recursive: true });
+      await fs.symlink(
+        realSupport,
+        path.join(accountHome, "Library", "Application Support"),
+        "dir",
+      );
+      const standard = path.join(accountHome, "Library", "Application Support", "BranchAgent");
+      const resolved = path.join(await fs.realpath(realSupport), "BranchAgent");
+      // Neither the data folder nor its engine home exists yet.
+      for (const dataDir of [standard, resolved]) {
+        expect(
+          isDefaultInstallIdentity(appEnv(accountHome, dataDir), () => accountHome, "darwin"),
+        ).toBe(true);
+      }
+      // A different folder on the same disk is still a custom copy.
+      expect(
+        isDefaultInstallIdentity(
+          appEnv(accountHome, path.join(root, "Volumes", "External Disk", "BranchAgent-copy")),
+          () => accountHome,
+          "darwin",
+        ),
+      ).toBe(false);
+    });
+  });
+
   it("lets the engine service commands through for the app's standard install", () => {
     const accountHome = os.userInfo().homedir;
     const dataDir =
