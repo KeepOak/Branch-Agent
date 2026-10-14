@@ -59,7 +59,6 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
   const trunkFor = (ch: string) => { const id = appRoute(bindingsOf({ ...cfg, loading: !cfg.ready }), ch) ?? defaultId; return trunks.find(t => t.id === id)?.name ?? "your Trunk"; };
   const wizard = canAll(engine, ["wizard.start", "wizard.next", "wizard.cancel"]);
   return <section className="r1-chatapps g-clear" aria-label="Chat apps">
-    <h1 className="g-label">Chat apps</h1><p className="r1-ca-lede g-label" data-lines>Telegram, WhatsApp, Slack and 71 more: who answers, who may message, and how replies arrive.</p>
     {live.error && <p role="alert"><span className="g-label">{live.error}</span> <button type="button" onClick={() => void live.reload()} data-need="channels.status">Try again</button></p>}
     <div className="r1-ca-surface g-clear"><section aria-labelledby="r1-ca-your"><h2 id="r1-ca-your" className="g-label">Your chat apps</h2>
       <p role="status" className="g-label">{live.loading ? "Checking your chat apps…" : !live.status ? "Chat app status is unavailable." : connected.length ? "Manage your connected apps below." : "No chat apps connected yet. Choose an app below to get started."}</p>

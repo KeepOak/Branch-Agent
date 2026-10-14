@@ -11,6 +11,7 @@ import { isPreparationPending, isPreparationStalled, PreparationRetry, preparati
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
+import { pendingApprovalsWithin } from "../connect/update-probe";
 import { useBranchVersion } from "../connect/branch-version";
 import { LOCAL_ADDRESS, readTargetName, saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
@@ -90,7 +91,6 @@ import { desktopControls } from "../connect/desktop-controls";
 import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
 import { useLockdown } from "./use-lockdown";
 import { LockdownBanner } from "./LockdownBanner";
-import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
 import { conversationNeedsYou } from "./conversation-more";
 import { ConversationMoreButton, HeaderRow, PlaceHead, TopBar } from "./TopBar";
@@ -326,19 +326,15 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   }, [dedicated]);
   // The desktop tray's live line and Pause all work (Private #454 C) read the live sessions list through this.
   const liveWork = useRef<{ list?: StatusContext["list"]; trunks: number; working: StatusContext["working"] }>({ trunks: 0, working: [] });
+  // The approvals this window shows, for the update probe to answer with when the gateway is slow (Private #1047).
+  const shownApprovals = useRef(0);
   useEffect(() => componentDesktop(session.gatewayUrl)?.onAutoApplyProbe?.(async () => {
-    const approvals = await Promise.all(["exec.approval.list", "plugin.approval.list", "branch.approval.list"].map(
-      method => session.request<unknown>(method, {}),
-    ));
-    const pendingApprovals = approvals.reduce<number>((count, result) => {
-      const items = Array.isArray(result) ? result : (result as { items?: unknown })?.items;
-      if (!Array.isArray(items)) throw new Error("Approval status is unavailable");
-      return count + items.length;
-    }, 0);
+    const pendingApprovals = await pendingApprovalsWithin(session, shownApprovals.current);
     return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles(),
       workingTrunks: liveWork.current.trunks };
   }), [session]);
   const { s, ready, lists, list, gatewayContacts, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  shownApprovals.current = pending.size;
   const workingRows = lists.rows.filter((r) => r.working);
   liveWork.current = { list, trunks: new Set(workingRows.map((r) => r.agentId)).size,
     working: workingRows.map((r) => ({ key: r.key, title: r.title || "", line: "", runIds: r.activeRunIds })) };
@@ -489,7 +485,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     return () => { window.removeEventListener("branch:topic-layout-changed", sync); window.removeEventListener("storage", storage); };
   }, [topicContact?.id]);
   const [fullListFor, setFullListFor] = useState<string | null>(null);
-  const topicAutoRail = route.kind === "chat" && Boolean(topicContact && activeTopics.length) && innerWidth > 760 && topicLayout === "free" && fullListFor !== topicContact?.id;
+  const topicAutoRail = route.kind === "chat" && Boolean(topicContact && activeTopics.length) && innerWidth > 760 && (topicLayout === "column" || topicLayout === "rail") && fullListFor !== topicContact?.id;
   // Settings owns its navigation column; temporarily use the app icon rail without saving it.
   const [settingsListExpanded, setSettingsListExpanded] = useState(false);
   useEffect(() => { if (route.kind !== "settings") setSettingsListExpanded(false); }, [route.kind]);
@@ -1381,7 +1377,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           }}
           onLayout={(next) => {
             setTopicLayout(next);
-            if (next === "tabs") setPhoneTopicListFor(null);
+            if (next === "tabs" || next === "side") setPhoneTopicListFor(null);
           }}
           onPatch={async (topic, change) => {
             await patchTopicSession(request, topic, lists.rows.find((row) => row.key === topic.key)?.sessionId, change);
@@ -1627,7 +1623,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           selection.clear();
           setTopicReturnKey(null);
           const contact = contacts.find((candidate) => candidate.threadKey === key);
-          setPhoneTopicListFor(innerWidth <= 640 && contact?.topicCount && topicLayout !== "tabs" ? contact.id : null);
+          setPhoneTopicListFor(innerWidth <= 640 && contact?.topicCount && topicLayout !== "tabs" && topicLayout !== "side" ? contact.id : null);
           setFocusTopic(contact?.preview.kind === "topic" ? { key: contact.preview.topicKey, nonce: Date.now() } : null);
           openConversation(key);
         }}
@@ -1905,7 +1901,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           startOnReady={guide === "news-ready"}
           installed={installedRows({ setup: () => firstRun.open(0), shortcuts: () => setOverlay({ kind: "shortcuts" }), palette: () => setOverlay({ kind: "palette" }), settings: openSettings })}
           onOpenUpdates={() => openSettings("updates")}
-          onInstall={() => void stageWindowUpdate(session.engine).catch((e: unknown) => notify(`Couldn't install the update: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" }))}
           onClose={() => setGuide(null)}
         />
       ) : null}

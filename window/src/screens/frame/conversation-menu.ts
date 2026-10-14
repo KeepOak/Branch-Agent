@@ -11,6 +11,7 @@ import type { MenuItem } from "../../shell/Menu";
 import { snoozeChoices, snoozeTime, wakeWords } from "../../shell/conversation-actions";
 import { menuIcon } from "../../shell/menu-icons";
 import { WORK_MODES, type WorkMode } from "../chat/chat-logic";
+import { r1TopicLayoutNames, type R1TopicLayout } from "../../shell/topic-layout";
 import { DEFAULT_AWAKE, DEFAULT_LISTED, FIRST_MESSAGE, TRUNK_LISTED } from "../sidebar/row-menu";
 
 /** The engine calls behind each entry (the Classic menu's rows, shell/ConversationMenu.tsx). */
@@ -72,6 +73,8 @@ export type ConversationMenuContext = {
   ownWindowOff: string | null;
   /** A group chat: its rule on the Group rules row and the Classic rule rows (rooms/useShellRoom's menu). */
   room?: { ruleWords: string | null; rules: MenuEntry[] } | null;
+  /** A Trunk with threads: this contact's own "Threads show as" (preview View › "<name>’s threads show as", item 47). */
+  threads?: { name: string; layout: R1TopicLayout; set: (layout: R1TopicLayout) => void } | null;
   run: ConversationMenuRun;
 };
 
@@ -131,6 +134,10 @@ function view(c: ConversationMenuContext): MenuEntry {
     { label: "Open its computer", icon: icon("monitor"), need: CONVERSATION_NEED.computer, off: COMPUTER_OFF },
     { label: "Open the browser", icon: icon("eye"), need: CONVERSATION_NEED.browser, off: BROWSER_OFF },
     c.ownWindowOff ? null : { label: "Open in its own window", icon: icon("panel"), local: true, onSelect: c.run.ownWindow },
+    // Only the two layouts the owner kept (item 47); the choice is this contact's own and stays on this device.
+    c.threads ? { label: `${c.threads.name}’s threads show as`, icon: icon("panel"), gap: true, submenu: (Object.keys(r1TopicLayoutNames) as R1TopicLayout[]).map(layout => ({
+      label: r1TopicLayoutNames[layout], local: true, toggle: c.threads!.layout === layout, onSelect: () => c.threads!.set(layout),
+    })) } : null,
   ]) };
 }
 

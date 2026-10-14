@@ -88,8 +88,6 @@ function session(openKey: string, topics: typeof trip[], history: HistoryLine[])
 
 async function show(openKey: string, topics: typeof trip[], history: HistoryLine[], narrow = true) {
   stubChrome(narrow);
-  // The thread column these check is Freedom Mode's (the default is Tabs above the chat, owner item 47).
-  if (!localStorage.getItem("branch-topics-t5")) localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "free", width: 300, per: {} }));
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root!.render(<WindowShell session={session(openKey, topics, history)} url="ws://127.0.0.1:19661" />));
