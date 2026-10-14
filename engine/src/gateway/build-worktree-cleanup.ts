@@ -96,6 +96,7 @@ export function startBuildWorktreeCleanup(params: {
       ? await params.run(input)
       : await runBuildWorktreeCleanup({
           ...input,
+          log: (line) => params.log.info("build worktree cleanup: " + line),
           deps: (
             await import("../agents/build-worktrees/cleanup.runtime.js")
           ).createBuildWorktreeCleanupDeps(),
