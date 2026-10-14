@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { SaplingSession } from "../../connect/session";
 import { useConversations, useMachine, usePendingApprovals } from "../../shell/engine-data";
 import { Frame } from "./Frame";
+import { DEFAULT_TOOLS } from "./Header";
+import { useTalkBeside } from "../talk/TalkBesideHost";
 import { ChatView } from "../chat/ChatView";
 import { WORK_MODES, useWorkMode } from "../chat/chat-logic";
 import type { ReplyTarget } from "../../thread/useMessageActions";
@@ -31,6 +33,7 @@ import { recordOnboarding } from "../onboarding/finish";
 import { WhatsNewHost } from "../updates/WhatsNewHost";
 import { R1Stage, R1StagePip } from "../stage/R1Stage";
 import type { PipTarget, StageMode } from "../../stage/ComputerStage";
+import { R1Character, useR1CharacterShown } from "../character/R1Character";
 
 const FIND_ANYTHING_COMING = "Find anything is not connected yet.";
 
@@ -82,10 +85,16 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const limits = useLimits(session, ready);
   const lockdown = useLockdown(engine, ready, session, true);
   const machine = useMachine(session, ready);
+  // The re-hosted Classic character panel (parity row 19), shown beside the conversation unless hidden.
+  const [characterShown, setCharacterShown] = useR1CharacterShown(engine);
   const [route, setRoute] = useState<Route>(loadRoute);
   // The re-hosted Classic computer stage (parity row 1): which side is open, and the small window it shrinks to.
   const [stage, setStage] = useState<StageMode | null>(null);
   const [pip, setPip] = useState<PipTarget | null>(null);
+  // The header button that opened the stage; closing the stage hands focus back to it.
+  const stageOpener = useRef<string | null>(null);
+  const toggleStage = (mode: StageMode) => { setPip(null); stageOpener.current = mode; setStage(open => open === mode ? null : mode); };
+  const closeStage = useCallback(() => setStage(null), []);
   const [history, setHistory] = useState({ index: 0, count: 1 });
   const entries = useRef<Route[]>([route]);
   const search = useRef<HTMLInputElement>(null);
@@ -130,6 +139,22 @@ export function R1Window({ session }: { session: SaplingSession }) {
     setHistory({ index, count: entries.current.length }); applyRoute(next);
   };
   useEffect(() => { if (ready) void lookStore(engine).load(); }, [ready, engine]);
+  // Escape closes the stage unless a menu, dialog, picker or popover is open: those take Escape first.
+  const stageShown = Boolean(stage) && route.kind === "chat";
+  useEffect(() => {
+    if (!stageShown) {
+      const opener = stageOpener.current; stageOpener.current = null;
+      if (opener) document.querySelector<HTMLElement>(`.r1-header-right [aria-label="${opener}"]`)?.focus();
+      return;
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], [aria-modal="true"], [aria-haspopup][aria-expanded="true"]')) return;
+      closeStage();
+    };
+    window.addEventListener("keydown", escape, true);
+    return () => window.removeEventListener("keydown", escape, true);
+  }, [stageShown, closeStage]);
   useEffect(() => {
     document.title = windowTitle(route.kind === "chat" ? snapshot.name : route.kind === "settings" ? "Settings" : placeTitle(route.place), waiting.size, !ready);
   }, [route, snapshot.name, waiting.size, ready]);
@@ -161,7 +186,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     currentKey={route.kind === "chat" ? snapshot.sessionKey : null} waiting={waiting} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} error={conversations.error} />;
   const main = route.kind === "settings" && !r1SettingsPage(route.page) ? <ClassicSettingsFrame page={CLASSIC_PAGE[route.page] ?? route.page} backName={snapshot.name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={R1_PAGES} places={SETTINGS_PLACES} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
-    onMode={setStage} onClose={() => setStage(null)} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <ChatView
+    onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <ChatView
     name={snapshot.name} history={snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo}
@@ -173,6 +198,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
     trunkOf: key => { const row = conversations.rows.find(r => r.key === key); return conversations.rows.find(r => r.isMain && r.agentId === row?.agentId)?.title || row?.title || "Your Trunk"; },
     onOpenConnection: () => navigate({ kind: "settings", page: "devices" }),
     onAsk: text => { const key = snapshot.mainKey; if (!key) return; openConversation(key); void session.open(key).then(() => session.send(text)); } });
+  // Talk beside (parity row 20): the default Trunk beside a place, as in Classic.
+  const talk = useTalkBeside({ shown: route.kind === "place", request: (method, params) => session.request(method, params), onEvent: listener => session.onGatewayEvent(listener), mainKey: snapshot.mainKey,
+    name: conversations.rows.find(row => row.key === snapshot.mainKey)?.title || "your Trunk", page: route.kind === "place" ? PLACES.find(p => p.id === route.place)?.name ?? placeTitle(route.place) : "", onFull: openConversation });
   // The agent details popover's second line: the error, the agent's emoji, or the loading line (none when there's no emoji).
   const agentLine = identityError ?? (identity ? identity.emoji ?? "" : "Loading agent details…");
   return <>
@@ -182,15 +210,15 @@ export function R1Window({ session }: { session: SaplingSession }) {
       onTalk={sessionKey => { firstRun.close(); navigate({ kind: "chat", key: sessionKey }); }} />}
     {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
     <div className="r1-ob-behind" inert={onboarding} aria-hidden={onboarding || undefined} style={{ display: "contents", visibility: onboarding ? "hidden" : undefined }}>
-    <Frame sidebar={sidebar} main={main} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
+    <Frame sidebar={sidebar} main={main} beside={talk.beside} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
-        { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", onClick: ready ? () => { setPip(null); setStage(open => open === "Computer" ? null : "Computer"); } : undefined },
-        { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", onClick: ready ? () => { setPip(null); setStage(open => open === "Browser" ? null : "Browser"); } : undefined },
+        { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", pressed: stageShown && stage === "Computer", onClick: ready ? () => toggleStage("Computer") : undefined },
+        { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", pressed: stageShown && stage === "Browser", onClick: ready ? () => toggleStage("Browser") : undefined },
         // ••• opens this window's conversation menu; each of its rows declares its own call.
         { label: "More", icon: <Icon name="more" />, onClick: ready ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
-      ] : undefined,
+      ] : talk.item ? [talk.item, ...DEFAULT_TOOLS] : undefined,
       canBack: history.index > 0, canForward: history.index < history.count - 1, onBack: () => { if (history.index > 0) window.history.back(); }, onForward: () => { if (history.index < history.count - 1) window.history.forward(); },
     }} composer={route.kind === "chat" ? <Composer name={snapshot.name} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}
       lockdown={lockdown.on} onToggleLockdown={lockdown.supported ? () => void lockdown.toggle() : undefined}
@@ -205,6 +233,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
       else if (document.activeElement === search.current) setNotice(`Coming · ${FIND_ANYTHING_COMING}`);
       else { search.current?.focus(); }
     }} />
+    {route.kind === "chat" && !stage && characterShown ? <R1Character name={current ? conversations.rows.find(row => row.isMain && row.agentId === current.agentId)?.title || snapshot.name : snapshot.name} snapshot={snapshot} waiting={snapshot.sessionKey ? waiting.get(snapshot.sessionKey) ?? 0 : 0}
+      onHide={() => setCharacterShown(false)} onShow={() => setCharacterShown(true)} onChangePet={() => navigate({ kind: "settings", page: "appearance" })}
+      onOpenTrunk={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: current?.agentId ?? engine.agentId, view: "profile" } })); }} /> : null}
     </div>
     {/* A second Ctrl K would open Find anything; it is a shortcut, not a control, so it registers hidden with the call it waits for. */}
     <Coming engine={engine} need="sessions.search" unwired hidden reason={FIND_ANYTHING_COMING} where="Find anything"><span /></Coming>
@@ -220,6 +251,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     </div></Popover>}
     {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details g-clear">
       <strong className="g-label">{identity?.name ?? snapshot.name}</strong>{agentLine ? <p className="g-label">{agentLine}</p> : null}
+      {route.kind === "chat" ? <button type="button" data-local="" onClick={() => { setCharacterShown(!characterShown); closeAgent(); }}>{characterShown ? "Hide the character" : "Show the character"}</button> : null}
       <button type="button" data-local="" onClick={closeAgent}>Close</button>
     </div></Popover>}
   </>;
