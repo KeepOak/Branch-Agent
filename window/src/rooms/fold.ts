@@ -10,7 +10,7 @@
 import type { Item } from "../thread/layout";
 import type { Block } from "../thread/model";
 
-export type TalkLine = { key: string; agentId: string | null; text: string };
+type TalkLine = { key: string; agentId: string | null; text: string };
 export type TalkItem = { type: "talk"; key: string; from: string; lines: TalkLine[]; withOwn: boolean };
 export type RoomItem = Item | TalkItem;
 

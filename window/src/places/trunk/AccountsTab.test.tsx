@@ -30,10 +30,10 @@ describe("Trunk Accounts", () => {
     </KitProvider>));
     expect([...host.querySelectorAll(".prow b")].map((item) => item.textContent)).toContain("Claude · one@example.test");
     expect([...host.querySelectorAll(".prow b")].map((item) => item.textContent)).toContain("Claude · two@example.test");
-    expect([...host.querySelectorAll("button")].filter((button) => button.textContent === "Add a Claude account")).toHaveLength(1);
+    expect([...host.querySelectorAll("button")].filter((button) => button.textContent === "Add an account")).toHaveLength(1);
   });
 
-  it("Add a Claude account selects setup-token after async provider discovery", async () => {
+  it("Add an account offers Claude setup-token after async provider discovery", async () => {
     let resolveDetect!: (value: unknown) => void;
     const detected = new Promise<unknown>((resolve) => { resolveDetect = resolve; });
     const request = vi.fn(async (method: string) => method === "models.authStatus"
@@ -44,10 +44,11 @@ describe("Trunk Accounts", () => {
     await act(async () => root.render(<KitProvider level={0} report={{ saving: vi.fn(), saved: vi.fn(), failed: vi.fn() }} scope={null}>
       <AccountsPage page="accounts" title="Accounts" level="regular" engine={engine} />
     </KitProvider>));
-    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Add a Claude account")!.click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Add an account")!.click());
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Which service is the new account with?");
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).not.toContain("Add key");
     await act(async () => resolveDetect({ manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] }));
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((button) => button.textContent?.includes("Claude"))!.click());
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Claude");
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Paste a token instead");
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).not.toContain("Add key");

@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/harness/compaction/summarization-prompts.ts (atlas AGENT-LOOP-0100). Changed for Branch: provenance and uncertainty take priority (R-1696).
+// Changed for Branch: provenance and uncertainty take priority (R-1696).
 /** Invariant shared by ordinary and branch compaction requests. */
 const SENDER_PROVENANCE_SUMMARIZATION_INSTRUCTIONS =
   "When a conversation line includes sender={...}, that JSON identifies the author of that user turn. The id is authoritative; name and username are readable labels only. Preserve attribution for material facts, preferences, instructions, decisions, and disagreements; never transfer them to another sender or an anonymous user. A user line without sender={...} is unattributed: preserve its facts as unattributed and do not assign them to a known sender.";

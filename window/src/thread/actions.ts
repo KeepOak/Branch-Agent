@@ -18,14 +18,14 @@ function target(engine: WindowEngine): Key {
 }
 
 /** Goes back to just before one of your messages (`sessions.rewind`); returns that message's words. */
-export async function rewindTo(engine: WindowEngine, entryId: string): Promise<string> {
+async function rewindTo(engine: WindowEngine, entryId: string): Promise<string> {
   const result = rec(await engine.request("sessions.rewind", { ...target(engine), entryId }));
   return str(result.editorText);
 }
 
 /** Sends words in the open conversation (`chat.send`), the way the composer does: through the window's own send
  *  when there is one, so your message sits over the new reply instead of after it. */
-export async function sendText(engine: WindowEngine, message: string): Promise<string> {
+async function sendText(engine: WindowEngine, message: string): Promise<string> {
   if (engine.send) {
     await engine.send(message);
     return "";

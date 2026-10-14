@@ -1,5 +1,4 @@
-/** Kilo-Org/kilocode@6fd9b7b29ce63b5a38176e45b738e94ed6167cfb
- * packages/opencode/src/kilocode/session/transcript.ts format(): adapted native entries. */
+/** Formats adapted native entries. */
 import type { TranscriptEntry } from "./resume-transcript-entries.js";
 
 export function formatContextTranscript(title: string, entries: readonly TranscriptEntry[],

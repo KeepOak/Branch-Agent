@@ -45,7 +45,7 @@ function fixVerdictSignal(snapshot: PrSnapshot, verdict: LatestVerdict): SignalD
     pr: snapshot.number,
     trunkId: snapshot.trunkId,
     contextKey: `signal:fix-verdict:${snapshot.number}`,
-    text: `Verdict FIX on PR #${snapshot.number} at ${sha} (verdict comment ${verdict.id}). Read that comment for the problems.`,
+    text: `Verdict FIX${verdict.reviewer ? ` from ${verdict.reviewer}` : ""} on PR #${snapshot.number} at ${sha} (verdict comment ${verdict.id}). Read that comment for the problems.`,
   };
 }
 

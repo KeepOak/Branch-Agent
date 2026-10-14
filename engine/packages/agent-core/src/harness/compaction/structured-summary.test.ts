@@ -1,4 +1,4 @@
-// From aaif-goose/goose@bab8ff641039c9cd3331121cd84a5c6045f365ca:crates/goose-context-management/src/structured.rs (atlas AGENT-LOOP-0100). All ten source tests ported to Vitest; provenance and lossless-render fallback assertions added.
+// Provenance and lossless-render fallback assertions added.
 import { describe, expect, it } from "vitest";
 import {
   applyStructuredSummary,
