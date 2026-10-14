@@ -14,7 +14,7 @@ import { ROWS } from "../rows";
 import { searchSettings } from "../search";
 import { mergeRows } from "../slots";
 import { SECTION_COMING, SettingsFrame } from "../SettingsFrame";
-import { ADMIN_ONLY, classicList } from "./classic-host";
+import { classicList } from "./classic-host";
 import { COMING, R1_PAGES, REHOSTED } from "./plugged";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

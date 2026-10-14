@@ -63,6 +63,7 @@ describe("R1 Settings › Sign-ins & keys is a native R1 page with the preview's
     expect(keys.textContent).toContain("OPENAI_API_KEY");
     expect(keys.textContent).toContain("Reload keys");
     expect(host.textContent).not.toContain("Keys, technical");
+    expect(undeclaredControls(host.querySelector(".r1s-col")!).filter((e) => !e.closest("[data-classic-block]"))).toEqual([]);
     await click([...keys.querySelectorAll("button")].find((b) => b.textContent === "Reload"));
     expect(request.mock.calls.some(([m]) => m === "secrets.reload")).toBe(true);
     const reasons = [...host.querySelectorAll<HTMLElement>("[data-coming]")].map((r) => (r.querySelector(".r1s-note")?.textContent ?? "").replace(r.querySelector(":scope > b")?.textContent ?? "\u0000", ""));
