@@ -178,7 +178,8 @@ function rowMenu(p: Props, roster: Roster, row: TrunkRow, setOpen: (o: Open) => 
 function settingsMenu(p: Props, roster: Roster, row: TrunkRow, setOpen: (o: Open) => void, setError: (e: string | null) => void, whoItKnows: () => void): MenuItem[] {
   const block = defaultBlock(roster, row.id), last = roster.agents.length <= 1, write = canWrite(p.engine);
   const toDefault = () => makeDefault(p.engine, roster, row.id).then(() => { notify(`${row.name} is now your default Trunk. Unrouted chats go to it.`); p.trunks.reload(); }, (e: unknown) => setError(errorText(e)));
-  const cannotRemove = row.id === roster.defaultId ? "The default Trunk cannot be removed." : last ? "Branch needs at least one Trunk." : write ? undefined : WRITE_WHY;
+  // The preview's own words for why the default Trunk (also the only one) stays: "<name> is your default Trunk."
+  const cannotRemove = row.id === roster.defaultId || last ? `${row.name} is your default Trunk.` : write ? undefined : WRITE_WHY;
   const soon = (label: string, why: string): MenuItem => ({ label, run: () => undefined, disabled: why });
   return [
     { label: "Change picture…", run: () => setOpen({ kind: "edit", id: row.id }) },
@@ -193,6 +194,6 @@ function settingsMenu(p: Props, roster: Roster, row: TrunkRow, setOpen: (o: Open
     soon("Copy its look", SETTINGS_MENU_COMING.look),
     soon("Share to Seedbank…", SETTINGS_MENU_COMING.share),
     { kind: "sep" },
-    { label: "Remove Trunk…", danger: true, testid: "trunk-row-remove", run: () => setOpen({ kind: "remove", id: row.id }), disabled: cannotRemove, sub: shownWhy(cannotRemove) },
+    { label: "Remove Trunk…", danger: true, testid: "trunk-row-remove", run: () => setOpen({ kind: "remove", id: row.id }), disabled: cannotRemove },
   ];
 }
