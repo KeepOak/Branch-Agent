@@ -63,13 +63,18 @@ vi.mock("./agent-deletion-journal.read.js", async (importOriginal) => {
         await new Promise<void>((resolve) => {
           globalThis.setTimeout(resolve, delayMs);
         });
-        // The worker transport fills these on a real read; the stub stands in for it.
+        // The read transport and the snapshot step fill these on a real read; the stub stands in.
         const timing = getBranchStateReadTiming();
         if (timing) {
-          timing.queueDepth = 2;
-          timing.holders = ["deletion-journal:builder-ash"];
-          timing.waitMs = 4_200;
-          timing.readMs = 800;
+          timing.validate = { waitMs: 500, readMs: 300, workerSpawned: true };
+          timing.snapshot = { ms: 2_000, bytes: 4_096 };
+          timing.query = {
+            queueDepth: 2,
+            holders: ["deletion-journal:builder-ash"],
+            waitMs: 1_500,
+            readMs: 800,
+            workerSpawned: false,
+          };
         }
       }
       return "absent" as const;
@@ -316,10 +321,18 @@ describe("agent database startup stages that could hang", () => {
       expect(fields).toMatchObject({
         agentId: "tk",
         readLabel: "deletion-journal:tk",
-        waitMs: 4200,
-        readMs: 800,
-        queueDepth: 2,
-        holders: ["deletion-journal:builder-ash"],
+        validateMs: 800,
+        validateWaitMs: 500,
+        validateSpawned: true,
+        snapshotMs: 2000,
+        snapshotBytes: 4096,
+        queryWaitMs: 1500,
+        queryReadMs: 800,
+        queryQueueDepth: 2,
+        queryHolders: ["deletion-journal:builder-ash"],
+        querySpawned: false,
+        // 6000 ms total less the 800 + 2000 + 2300 ms the phases account for.
+        otherMs: 900,
       });
       expect(fields.totalMs).toBeGreaterThanOrEqual(5000);
       await started.admitted("tk");
