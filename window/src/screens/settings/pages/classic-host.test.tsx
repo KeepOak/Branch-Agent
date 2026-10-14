@@ -45,7 +45,6 @@ it("re-hosts exactly these Classic pages", () => {
     permissions: "permissions",
     privacy: "usage",
     history: "backups",
-    learning: ["self", "seasons"],
   });
 });
 
@@ -70,14 +69,6 @@ it("keeps Sign-ins & keys empty without operator.admin, as Classic hides it, and
   const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="signins"] .r1s-classic[data-classic="secrets"]')!;
   expect(hosted.textContent).toContain(ADMIN_ONLY);
   expect(drawn(hosted)).toEqual({ sections: [], rows: [] });
-});
-
-it("opens old Seasons links on Learning & self-updates, the R1 page that draws Classic Memory cleanup", async () => {
-  expect(pageFor("seasons")).toBe("learning");
-  expect(classicList(REHOSTED.learning)).toContain("seasons");
-  await act(async () => root.render(<SettingsFrame engine={engine()} page={pageFor("seasons")} pages={R1_PAGES} />));
-  await settle();
-  expect(host.querySelector('.r1s-custom[data-slot="learning"] .r1s-classic[data-classic="self seasons"]')).not.toBeNull();
 });
 
 it("keeps Classic Achievements on Updates & about, the R1 page an achievements link opens", async () => {
