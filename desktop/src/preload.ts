@@ -9,7 +9,7 @@ interface DesktopInfo {
   gatewayToken: string;
 }
 
-type AppliedUpdateNotice = { version: string; canUndo: boolean; undoUntil?: number | null; expiresAt: number };
+type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt: number };
 type UpdateAppliedListener = (notice: AppliedUpdateNotice) => void;
 type UpdateUndoneListener = () => void;
 
@@ -88,7 +88,7 @@ if (info) {
       stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
       /** The owner's Install now: the same owned-window restart the update bar's button sends. */
       install: () => ipcRenderer.send("branch-desktop:restart-engine"),
-      /** Whether the last update can be undone and until when (the previous engine's probation, Private #983). */
+      /** Whether the last update can still be undone, with its version line (the previous engine's probation, Private #983). */
       undoAvailability: () => ipcRenderer.invoke("branch-desktop:undo-availability"),
       undo: () => ipcRenderer.send("branch-desktop:undo-update"),
     },

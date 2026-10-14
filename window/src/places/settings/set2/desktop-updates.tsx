@@ -3,11 +3,7 @@ import type { SettingsPageProps } from "../index";
 import { KeeperMark } from "../../../brand/KeeperMark";
 import { Btn, Ctl, Hint, Page, Sec, Status, Switch } from "../kit";
 import { useDesktopControls } from "../../../connect/desktop-controls";
-import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, MANUAL_UPDATE_UNSUPPORTED, UNDO_REMOVED, undoShown, undoUntilCopy, useDesktopComponentStatus, useDesktopUndoAvailability, type ComponentUpdates, type ComponentUpdateStatus, type EngineUpdateEvent } from "../../../connect/desktop-component-updates";
-
-/** The desktop drains running work for up to 330 s, then restarts; a silent desktop gets this long plus a 60 s margin. */
-export const INSTALL_NO_ANSWER_MS = 390_000;
-const NO_ANSWER_MESSAGE = "Branch didn’t confirm the update. It may still finish: check the version in a few minutes, or restart Branch.";
+import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, MANUAL_UPDATE_UNSUPPORTED, undoOpen, useDesktopComponentStatus, useDesktopUndoAvailability, type ComponentUpdates, type ComponentUpdateStatus, type EngineUpdateEvent, type UndoAvailability } from "../../../connect/desktop-component-updates";
 import { rec, str, useLive, type RecordValue } from "./common";
 import { WhatsNewRow } from "./whats-new-row";
 import { isNewerBranchVersion, runningBranchVersion, useBranchVersion, useShippedWindowVersion, versionParts } from "../../../connect/branch-version";
@@ -23,19 +19,13 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const auto = useDesktopControls();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [installRequested, setInstallRequested] = useState(false);
   const [outcome, setOutcome] = useState<EngineUpdateEvent | null>(null);
   const bar = outcome?.state ?? null;
-  const staged = data.status?.phase === "staged";
   useEffect(() => {
     const onState = (event: Event) => setOutcome((event as CustomEvent<EngineUpdateEvent>).detail);
     window.addEventListener(ENGINE_UPDATE_EVENT, onState);
     return () => window.removeEventListener(ENGINE_UPDATE_EVENT, onState);
   }, []);
-  // Every terminal outcome ends "Updating…": succeeded, postponed, failed, or no answer before the bound.
-  useEffect(() => { if (bar === "kept" || bar === "updated" || bar === "failed") setInstallRequested(false); }, [bar]);
-  useEffect(() => { if (!installRequested) return; const timer = setTimeout(() => setOutcome({ state: "failed", message: NO_ANSWER_MESSAGE }), INSTALL_NO_ANSWER_MS); return () => clearTimeout(timer); }, [installRequested]);
-  useEffect(() => { if (!staged) setInstallRequested(false); }, [staged]);
   const run = async (method: "check" | "stage") => {
     if (!bridge || busy) return;
     setBusy(true); setError(null);
@@ -48,11 +38,8 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const stagedWaiting = Boolean(data.status?.phase === "staged" && isNewerBranchVersion(data.status.pendingVersion ?? data.status.latestVersion, running));
   const autoApply = auto.state?.autoApplyUpdates !== false;
   const lede = running ? `Branch ${versionParts(running).detail} on this computer.` : "Updates for Branch on this computer.";
-  const install = bridge.install;
-  const requestInstall = () => { if (!install || installRequested) return; setOutcome(null); install(); setInstallRequested(true); };
-  const failed = !installRequested && bar === "failed";
-  const headline = installRequested ? (bar === "preparing" ? "Getting the update ready…" : "Updating Branch…")
-    : failed ? "The update didn’t finish"
+  const failed = bar === "failed";
+  const headline = failed ? "The update didn’t finish"
     : bar === "kept" ? "Update postponed; Branch kept the current version"
     : statusLine(data.status, stagedWaiting, autoApply);
   return <Page title={title} lede={lede}>
@@ -60,7 +47,6 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
     {error || data.error ? <Status tone="bad" title="Branch couldn’t update">{error || data.error}</Status> : null}
     <Status tone={failed ? "bad" : stagedWaiting ? "ok" : "idle"} title={headline}>
       {failed ? (outcome?.message || "Branch kept the current version.")
-        : stagedWaiting && installRequested ? "Running work carries on for up to about 6 minutes, then Branch restarts and picks up anything interrupted."
         : stagedWaiting ? "Downloaded and checked. Your conversations and settings stay in place."
         : running ? `You have Branch ${versionParts(running).detail}. Checks for a new verified Branch release.` : "Checks for a new verified Branch release."}
     </Status>
@@ -71,31 +57,30 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
       </Ctl>
       <Ctl title="Check for updates"><Btn sm disabled={busy} onClick={() => void run("check")}>{busy ? "Working…" : "Check now"}</Btn></Ctl>
       {data.status?.phase === "available" ? <Ctl title="Update available"><Btn disabled={busy} onClick={() => void run("stage")}>Download update</Btn></Ctl> : null}
-      {stagedWaiting && install ? <Ctl title="Ready update" sub="Running work carries on for up to about 6 minutes, then Branch restarts and picks up anything interrupted.">
-        <Btn pri sm disabled={installRequested} onClick={requestInstall}>{installRequested ? "Updating…" : "Update now"}</Btn>
-      </Ctl> : null}
-      {stagedWaiting ? <Hint>{autoApply
-        ? "Branch applies a ready update once every Trunk is idle. On a busy computer that can take a long time. Update now applies it without waiting for that."
-        : "Branch won’t apply a ready update until you choose. Update now applies it. Your conversations and settings stay in place."}</Hint>
-        : <Hint>Branch checks every 10 minutes.</Hint>}
+      {stagedWaiting ? null : <Hint>Branch checks every 10 minutes.</Hint>}
       <UndoLastUpdate gatewayUrl={engine.gatewayUrl} bridge={bridge} />
     </Sec>
     <Sec title="About"><WhatsNewRow /></Sec>
   </Page>;
 }
 
-/** Preview Settings › Updating "Undo the last update": offered with its deadline while the previous engine is kept,
- *  then a plain line that it was removed (Private #983). Never a button that cannot run. */
+/** The preview's version line under "Undo the last update": "0.19.4 installed Sep 20." (month and day in the owner's locale). */
+export function undoVersionLine(value: UndoAvailability | null, locale?: string | string[]): string | null {
+  if (!value?.version || value.installedAt == null) return null;
+  return `${versionParts(value.version).short} installed ${new Date(value.installedAt).toLocaleDateString(locale, { month: "short", day: "numeric" })}.`;
+}
+
+/** Preview Settings › Updating "Undo the last update": Undo, over the installed version's line. The row is there only while
+ *  Undo can run (the previous engine's 3-day probation, Private #983); after that, or once it is pruned, it goes. */
 function UndoLastUpdate({ gatewayUrl, bridge }: { gatewayUrl?: string; bridge: ComponentUpdates }) {
   const { value } = useDesktopUndoAvailability(gatewayUrl);
   const [undoing, setUndoing] = useState(false);
   useEffect(() => { if (!undoing) return; const timer = setTimeout(() => setUndoing(false), 60_000); return () => clearTimeout(timer); }, [undoing]);
-  const shown = undoShown(value);
-  if (shown === "none" || !bridge.undo) return null;
-  if (shown === "removed") return <Ctl title="Undo the last update" sub={UNDO_REMOVED} />;
+  const line = undoVersionLine(value);
   const undo = bridge.undo;
-  return <Ctl title="Undo the last update" sub={undoUntilCopy(value?.until ?? null)}>
-    <Btn sm disabled={undoing} onClick={() => { setUndoing(true); undo(); }}>{undoing ? "Undoing…" : "Undo update"}</Btn>
+  if (!undo || !undoOpen(value) || !line) return null;
+  return <Ctl title="Undo the last update" sub={line}>
+    <Btn sm disabled={undoing} onClick={() => { setUndoing(true); undo(); }}>Undo</Btn>
   </Ctl>;
 }
 

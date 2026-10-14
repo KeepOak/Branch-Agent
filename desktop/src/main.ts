@@ -223,8 +223,7 @@ let withdrawnUpdateVersion: string | undefined;
 let recoveryDeferred = false;
 /** A failed update left nothing serving: once recovery brings the previous build back, the bar says it was kept. */
 let keptNoticeAfterRecovery = false;
-/** `undoUntil`: the end of the previous engine's probation, after which Undo is gone (Private #983). */
-let updateNotice: { version: string; canUndo: boolean; undoUntil: number | null; expiresAt: number } | undefined;
+let updateNotice: { version: string; canUndo: boolean; expiresAt: number } | undefined;
 let lastNotifiedVersion: string | undefined;
 let lastPostponedVersion: string | undefined;
 let gatewayRecoveryError: string | undefined;
@@ -846,9 +845,9 @@ const autoApply = createAutoApplyUpdate({
   },
   onApplied: async version => {
     if (lastNotifiedVersion === version) return;
-    const undo = await readUndoAvailability(cfg);
+    const canUndo = await canUndoComponentUpdate(cfg);
     lastNotifiedVersion = version;
-    updateNotice = { version, canUndo: undo.available, undoUntil: undo.available ? undo.until : null, expiresAt: Date.now() + 10 * 60_000 };
+    updateNotice = { version, canUndo, expiresAt: Date.now() + 10 * 60_000 };
     sendToBranchWindows("branch-desktop:update-applied", updateNotice);
   },
   onFailure: version => {
@@ -1177,7 +1176,7 @@ async function start(): Promise<void> {
     else log(`update notice ${event}`);
     if (event === "dismissed" || event === "expired") updateNotice = undefined;
   });
-  // Settings shows Undo only while it can run, with its deadline; after that, that the previous version was removed.
+  // Settings shows "Undo the last update" with its version line only while Undo can run (the previous engine's probation).
   ipcMain.handle("branch-desktop:undo-availability", async e => {
     if (!isOwnedComponentWindow(e, ownedWebContents(e.sender), windowUrl())) throw new Error("Undo availability requires the owned served window");
     return readUndoAvailability(cfg);
@@ -1478,7 +1477,7 @@ async function undoLastUpdate(automatic = false): Promise<void> {
     if (active && window && (active.activeRuns || active.totalActive || active.pendingReplies || window.pendingApprovals ||
         window.streaming || window.unsavedDraftFiles)) throw new Error("The previous version cannot take over while work is running");
     // After the probation the previous engine is (or is about to be) pruned: Undo never runs past its deadline.
-    if (!await canUndoComponentUpdate(cfg)) throw new Error("The previous version was removed to save space");
+    if (!await canUndoComponentUpdate(cfg)) throw new Error("The previous version is no longer available");
     if (!await prepareComponentUpdateUndo(cfg, dir => { servedWindowDir = dir; })) throw new Error("The previous version is no longer available");
     const previousVersion = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
     await swapEngineInPlace("previous version", true, lock);

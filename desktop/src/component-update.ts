@@ -432,10 +432,14 @@ export async function confirmComponentUpdateUndo(cfg: DesktopConfig): Promise<vo
  * confirmation time plus PREVIOUS_ENGINE_PROBATION_MS); null only when the predecessor has no probation yet.
  * `removed`: this update had an Undo, but its window ended or the previous engine is gone, so it can no longer run.
  */
-export interface UndoAvailability { available: boolean; until: number | null; removed: boolean }
+/**
+ * The last update's Undo, for Settings' version line ("0.19.4 installed Sep 20."): `version` is the installed release and
+ * `installedAt` when it was confirmed; `until` ends the previous engine's probation, after which Undo cannot run.
+ */
+export interface UndoAvailability { available: boolean; until: number | null; removed: boolean; version: string | null; installedAt: number | null }
 
 export async function readUndoAvailability(cfg: DesktopConfig, now = Date.now()): Promise<UndoAvailability> {
-  const none: UndoAvailability = { available: false, until: null, removed: false };
+  const none: UndoAvailability = { available: false, until: null, removed: false, version: null, installedAt: null };
   const raw = await readOrEmpty(undoFile(cfg));
   if (!raw) return none;
   let undo: UndoReceipt;
@@ -443,10 +447,14 @@ export async function readUndoAvailability(cfg: DesktopConfig, now = Date.now())
   if (await readOrEmpty(versionFile(cfg)) !== undo.version ||
     await readOrEmpty(join(cfg.dataDir, "engine-current.txt")) !== undo.engineNext) return none;
   const probation = await readProbation(cfg);
-  const until = probation?.previous === undo.enginePrevious ? probation.confirmedAt + PREVIOUS_ENGINE_PROBATION_MS : null;
+  const confirmedAt = probation?.previous === undo.enginePrevious ? probation.confirmedAt : null;
+  const until = confirmedAt === null ? null : confirmedAt + PREVIOUS_ENGINE_PROBATION_MS;
+  // The receipt is written when the update is confirmed, so it dates an update confirmed before probation records existed.
+  const installedAt = confirmedAt ?? (await stat(undoFile(cfg)).catch(() => undefined))?.mtimeMs ?? null;
   const present = existsSync(undo.windowPrevious) && existsSync(undo.enginePrevious);
   const ended = until !== null && now >= until;
-  return present && !ended ? { available: true, until, removed: false } : { available: false, until, removed: true };
+  const line = { until, version: undo.version, installedAt };
+  return present && !ended ? { available: true, removed: false, ...line } : { available: false, removed: true, ...line };
 }
 
 export async function canUndoComponentUpdate(cfg: DesktopConfig, now = Date.now()): Promise<boolean> {
