@@ -16,7 +16,7 @@ function countItems(result: unknown): number {
  */
 export async function pendingApprovalsWithin(session: Pick<SaplingSession, "request">, shown: number): Promise<number> {
   const listed = Promise.all(APPROVAL_LISTS.map(method => session.request<unknown>(method, {})))
-    .then(results => results.reduce((count, result) => count + countItems(result), 0))
+    .then(results => results.reduce<number>((count, result) => count + countItems(result), 0))
     .catch(() => shown);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const bound = new Promise<number>(resolve => { timer = setTimeout(() => resolve(shown), APPROVAL_PROBE_MS); });

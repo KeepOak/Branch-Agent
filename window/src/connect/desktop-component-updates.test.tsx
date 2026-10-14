@@ -274,7 +274,7 @@ it("remote and browser release notices show where to install, without an Install
 function UpdateProbe({ gatewayUrl }: { gatewayUrl: string }) {
   const session = useMemo(() => ({ gatewayUrl, request, getSnapshot: () => ({ status: { phase: "connected", hello: { snapshot: {} } } }), onGatewayEvent: () => () => {} }) as unknown as SaplingSession, [gatewayUrl]);
   const update = useUpdate(session, true, "1.0");
-  return <VersionPopover update={update} version="1.0" above={{ left: 10, right: 200, top: 700, align: "left" }} onClose={() => {}} onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />;
+  return <VersionPopover update={update} version="1.0" above={{ left: 10, right: 200, top: 700, align: "left" }} onClose={() => {}} onWhatsNew={() => {}} onRemind={() => {}} />;
 }
 
 it("native shell status uses component status and legacy shell reports unsupported truthfully", async () => {
