@@ -148,7 +148,7 @@ function Running({ engine, lv }: Ctx) {
 }
 
 /** Read-only checks available from the window; terminal repairs belong in Advanced. */
-function CheckDialog({ engine, onClose }: Pick<SettingsPageProps, "engine"> & { onClose: () => void }) {
+export function CheckDialog({ engine, onClose }: Pick<SettingsPageProps, "engine"> & { onClose: () => void }) {
   const health = useLive<RecordValue>(engine, "health", { probe: false }, []);
   const memory = useLive<RecordValue>(engine, "doctor.memory.status", {}, []);
   const h = rec(health.data);
@@ -290,7 +290,7 @@ function HowItRuns({ engine, config, lv }: Ctx) {
   );
 }
 
-function clientName(p: RecordValue): string {
+export function clientName(p: RecordValue): string {
   return str(p.host) || str(rec(p.user).name) || str(p.mode) || str(p.clientId) || "A client";
 }
 

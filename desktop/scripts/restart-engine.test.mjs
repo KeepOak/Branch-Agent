@@ -153,7 +153,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     }
     if (fastSupervisor && name === "./gateway-supervisor") {
       const source = originalLoad.call(this, name, ...args);
-      return { createGatewayCrashSupervisor: options => source.createGatewayCrashSupervisor({ ...options,
+      return { ...source, createGatewayCrashSupervisor: options => source.createGatewayCrashSupervisor({ ...options,
         policy: typeof fastSupervisor === "object" ? fastSupervisor :
           { maxAttempts: 1, initialDelayMs: 10, maxDelayMs: 10, stableAfterMs: 60_000 } }) };
     }
@@ -1175,7 +1175,7 @@ for (const refusal of ["refuse-deactivate", "no-handoff"]) {
     process.env.BRANCH_DESKTOP_ROLLBACK_TIMEOUT_MS = "100";
   }));
 }
-test("an automatic update that arrives mid-run is deferred until idle, then hands off with one confirmed notice across reload (Private #951)", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
+test("an automatic update that arrives mid-run hands off at the next gap, with the run still going, and one confirmed notice survives reload (Private #951, #1047)", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
   const sent = idleWindow(runtime);
   const old = (await starts())[0];
   await writeFile(join(root, "busy-run"), "1");
@@ -1183,16 +1183,9 @@ test("an automatic update that arrives mid-run is deferred until idle, then hand
   await writeFile(join(root, "transcript.txt"), "");
   await stageFixtureUpdate(root); await writeFile(join(root, "release-ready"), "ready");
   offerStaged();
-  // A run in flight marks Trunk work: the update waits, however long the run takes.
-  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("auto-apply: waiting for 1 active runs, 0 approvals; deferring fixture-next until Trunk work is idle"), 30_000);
-  clock.skew = 5 * 61_000; offerStaged();
-  await pause(300);
-  assert.equal((await starts()).length, 1, "the update started while a run was in flight");
-  assert.equal(sent.some(([channel]) => channel === "branch-desktop:update-applied"), false);
-  // Idle: after the idle hold, the handoff lands it and the old engine still finishes what it kept.
-  await unlink(join(root, "busy"));
-  offerStaged();
+  // A run in flight marks Trunk work, but it is not a gap: the update waits for the 30 s gap with no turn streaming.
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("auto-apply: idle hold for fixture-next"), 30_000);
+  // At the gap the handoff lands it, and the old engine still finishes the run it kept.
   clock.skew = 7 * 61_000; offerStaged();
   await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-applied"), 30_000);
   const notice = sent.find(([channel]) => channel === "branch-desktop:update-applied")[1];
