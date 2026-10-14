@@ -15,7 +15,7 @@ export const UPCOMING: readonly Upcoming[] = [
   { id: "folders", name: "Your own folders", where: "The list", what: "Make folders of your own beside All, Unread and the rest.", icon: "folder", need: "sessions.folders.put" },
   { id: "make-default", name: "Make default from search", where: "Settings search", what: "Make a Trunk your default straight from a search result.", icon: "branch", need: "config.patch" },
   { id: "general-more", name: "More General settings", where: "Settings › General", what: "Pinned, Keyboard, Clipboard history, Quick ask, Controllers and Cover the screen.", icon: "gear", need: "config.patch" },
-  { id: "another-computer", name: "Run Branch on another computer", where: "Setup", what: "Your Mac mini, a server or a NAS, paired with a setup code.", icon: "globe", need: "device.pair.setupCode" },
+  { id: "another-computer", name: "Run Branch on another computer", where: "Setup", what: "Another computer you own or a home server, paired with a setup code.", icon: "globe", need: "device.pair.setupCode" },
   { id: "keepoak-computer", name: "A KeepOak computer", where: "Setup", what: "Branch always on, in the cloud.", icon: "cloud", need: "environments.create" },
   { id: "screenshot", name: "Screenshot", where: "+ menu", what: "Send what is on your screen.", icon: "camera", need: "desktop.observe" },
   { id: "teach", name: "Teach a task", where: "+ menu", what: "Show Branch a task once and it learns the steps.", icon: "eye", need: "desktop.observe" },

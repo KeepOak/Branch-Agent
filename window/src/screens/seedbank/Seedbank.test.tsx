@@ -237,6 +237,8 @@ describe("Seedbank", () => {
       "Check with me, coming", "Phone call, coming", "Join a meeting, coming",
     ]);
     expect(tiles.every(t => t.textContent?.includes("Coming"))).toBe(true);
+    expect(tiles[6].textContent).toContain("Another computer you own or a home server, paired with a setup code.");
+    expect(host.textContent).not.toMatch(/Mac mini|\bNAS\b/);
     expect(host.querySelector("[role=tab][aria-selected=true]")?.textContent).toBe("Coming to Branch");
     const listed = comingControls().filter(c => c.where.startsWith("Seedbank › Coming to Branch › "));
     expect(listed.map(c => c.need[0]).sort()).toEqual([
