@@ -64,6 +64,7 @@ async function reconcileStartupOrphans(
   database: BranchAgentDatabaseOptions,
   log: SessionStartupMigrationLogger,
   assertCurrent?: () => void,
+  sessionKeys?: ReadonlySet<string>,
 ) {
   const env = database.env ?? process.env;
   const statePath = resolveBranchStateSqlitePath(env);
@@ -107,6 +108,7 @@ async function reconcileStartupOrphans(
       let retained = 0;
       for (const { entry, sessionKey } of selected) {
         if (
+          (sessionKeys !== undefined && !sessionKeys.has(sessionKey)) ||
           !isSubagentSessionKey(sessionKey) ||
           isIncognitoSessionKey(sessionKey) ||
           !isUnsettledPredecessor(entry)
@@ -193,9 +195,12 @@ export async function runStartupSessionMigration(params: {
   cfg: BranchConfig;
   env?: NodeJS.ProcessEnv;
   agentIds?: ReadonlySet<string>;
+  sessionKeys?: ReadonlySet<string>;
   assertCurrent?: () => void;
   log: SessionStartupMigrationLogger;
   deps?: SessionMigrationDeps;
+  /** Receives each database whose transcript repair is deferred instead of run inline. */
+  deferTranscriptRepair?: (database: BranchAgentDatabaseOptions) => void;
 }): Promise<void> {
   let reconcile = params.deps?.reconcileSessionTranscriptIndexes;
   let reconciledSessions = 0;
@@ -205,7 +210,12 @@ export async function runStartupSessionMigration(params: {
     ...params,
     handoffDatabase: async (database) => {
       try {
-        const result = await reconcileStartupOrphans(database, params.log, params.assertCurrent);
+        const result = await reconcileStartupOrphans(
+          database,
+          params.log,
+          params.assertCurrent,
+          params.sessionKeys,
+        );
         interruptedSubagents += result?.interrupted ?? 0;
         retainedSubagents += result?.retained ?? 0;
       } catch (error) {
@@ -213,6 +223,10 @@ export async function runStartupSessionMigration(params: {
         params.log.warn(
           `session: retained startup orphans because ownership could not be verified: ${String(error)}`,
         );
+      }
+      if (params.deferTranscriptRepair) {
+        params.deferTranscriptRepair(database);
+        return;
       }
       reconcile ??= (await import("../config/sessions/session-transcript-reconcile.js"))
         .reconcileSessionTranscriptIndexes;
@@ -230,6 +244,31 @@ export async function runStartupSessionMigration(params: {
   if (reconciledSessions > 0) {
     params.log.info(
       `session: rebuilt ${reconciledSessions} transcript projection(s) before serving history`,
+    );
+  }
+}
+
+/** Rebuilds the transcript projections that runStartupSessionMigration deferred, one database at a time. */
+export async function runDeferredTranscriptRepair(params: {
+  databases: readonly BranchAgentDatabaseOptions[];
+  assertCurrent?: () => void;
+  log: SessionStartupMigrationLogger;
+  deps?: SessionMigrationDeps;
+}): Promise<void> {
+  const reconcile =
+    params.deps?.reconcileSessionTranscriptIndexes ??
+    (await import("../config/sessions/session-transcript-reconcile.js"))
+      .reconcileSessionTranscriptIndexes;
+  let rebuiltSessions = 0;
+  for (const database of params.databases) {
+    params.assertCurrent?.();
+    const result = await reconcile(database);
+    params.assertCurrent?.();
+    rebuiltSessions += result.reconciledSessions;
+  }
+  if (rebuiltSessions > 0) {
+    params.log.info(
+      `session: rebuilt ${rebuiltSessions} transcript projection(s) after agent admission`,
     );
   }
 }

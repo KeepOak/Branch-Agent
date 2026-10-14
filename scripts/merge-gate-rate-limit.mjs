@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { newestChecksByIdentity, workflowFromActionsRun } from './merge-gate-trusted.mjs';
 
 export const MAX_RATE_LIMIT_SLEEP_SECONDS = 120;
 export const DEFAULT_WAIT_BUDGET_SECONDS = 32 * 60;
@@ -271,8 +272,15 @@ export function evaluateOrdinaryChecks(checkRuns, {
   passConclusions = PASS_CONCLUSIONS,
   workflowsByCheckId = {},
   skipCommentWorkflowPath = VISUAL_TOUR_WORKFLOW_PATH,
+  sha,
+  prNumber,
+  baseRef,
 } = {}) {
-  const others = (checkRuns ?? []).filter((run) => {
+  const others = newestChecksByIdentity(checkRuns ?? [], workflowsByCheckId, {
+    sha,
+    prNumber,
+    baseRef,
+  }).filter((run) => {
     if (ignoreNames.has(run.name)) return false;
     if (run.name === COMMENT_JOB_NAME) {
       const workflow = workflowsByCheckId[run.id] ?? workflowsByCheckId[String(run.id)];
@@ -376,6 +384,20 @@ export function ghApiArgs(requestPath, {
   return args;
 }
 
+export const TRANSIENT_RETRY_LIMIT = 5;
+
+// A 5xx or a dropped connection is a GitHub-side blip, not a verdict on the PR.
+export function isTransientGitHubError(error) {
+  const status = httpStatusOf(error);
+  if (status != null && status >= 500 && status <= 599) return true;
+  return /ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|connection reset|timed out/i.test(errorText(error));
+}
+
+export function transientBackoffSeconds(retry, random = Math.random) {
+  const base = Math.min(MAX_RATE_LIMIT_SLEEP_SECONDS, 2 ** (retry + 2));
+  return Math.ceil(base * (0.5 + random() / 2));
+}
+
 export function withRateLimitRetry(fn, {
   sleep,
   now = Date.now,
@@ -388,11 +410,22 @@ export function withRateLimitRetry(fn, {
   log,
 } = {}) {
   const start = startedAt ?? now();
+  let transientRetries = 0;
   for (let retryAttempt = 0; ; retryAttempt += 1) {
     try {
       return fn();
     } catch (error) {
-      if (!isRateLimitError(error)) throw error;
+      if (!isRateLimitError(error)) {
+        const remaining = budgetSeconds - (now() - start) / 1000;
+        if (!isTransientGitHubError(error) || transientRetries >= TRANSIENT_RETRY_LIMIT || remaining < 1) {
+          throw error;
+        }
+        const transientWait = transientBackoffSeconds(transientRetries, random);
+        transientRetries += 1;
+        log?.(`GitHub API HTTP ${httpStatusOf(error) ?? 'unknown'} (transient); retrying in ${transientWait}s (${transientRetries}/${TRANSIENT_RETRY_LIMIT})`);
+        sleep(Math.min(transientWait, remaining));
+        continue;
+      }
       const remaining = budgetSeconds - (now() - start) / 1000;
       if (retryAttempt >= maxRetries || remaining < 1) throw error;
       let rateLimit = error.rateLimit ?? null;
@@ -543,6 +576,51 @@ export function resolveCommentWorkflows(repo, token, checkRuns, {
   return workflowsByCheckId;
 }
 
+export function resolveOrdinaryWorkflow(repo, token, checkRun, {
+  exec = execFileSync,
+  request,
+} = {}) {
+  const get = request ?? ((requestPath) => defaultRequest(repo, token, requestPath, { exec }));
+  const fromUrl = String(checkRun?.details_url ?? checkRun?.html_url ?? '').match(/\/actions\/runs\/(\d+)/);
+  let payload = null;
+  if (fromUrl) {
+    payload = get(`actions/runs/${fromUrl[1]}`);
+  } else if (checkRun?.check_suite?.id) {
+    payload = get(`actions/runs?check_suite_id=${checkRun.check_suite.id}&per_page=1`)?.workflow_runs?.[0];
+  } else {
+    return null;
+  }
+  const workflow = workflowFromActionsRun(payload);
+  return workflow?.path ? workflow : null;
+}
+
+export function resolveOrdinaryWorkflows(repo, token, checkRuns, {
+  exec = execFileSync,
+  request,
+  resolveWorkflow = resolveOrdinaryWorkflow,
+  cache,
+} = {}) {
+  const workflowsByCheckId = {};
+  for (const run of checkRuns ?? []) {
+    if (run?.id == null) continue;
+    if (cache?.has(run.id)) {
+      workflowsByCheckId[run.id] = cache.get(run.id);
+      continue;
+    }
+    let workflow = null;
+    try {
+      workflow = resolveWorkflow(repo, token, run, { exec, request });
+    } catch {
+      // Retry on the next poll. An unattributed check never collapses.
+      continue;
+    }
+    if (!workflow?.path) continue;
+    workflowsByCheckId[run.id] = workflow;
+    cache?.set(run.id, workflow);
+  }
+  return workflowsByCheckId;
+}
+
 export function fetchOrdinaryCheckRuns(repo, sha, token, plan = { mode: 'all' }, {
   exec = execFileSync,
   request,
@@ -566,6 +644,8 @@ export function pollOrdinaryGate({
   repo,
   sha,
   token,
+  prNumber,
+  baseRef,
   initialWait = 30,
   waitBudgetSeconds = DEFAULT_WAIT_BUDGET_SECONDS,
   maxPolls = 64,
@@ -577,9 +657,10 @@ export function pollOrdinaryGate({
   log = console.log,
   error = console.error,
   random = Math.random,
-  resolveWorkflows = resolveCommentWorkflows,
+  resolveWorkflows = resolveOrdinaryWorkflows,
 } = {}) {
   const startedAt = now();
+  const attributionCache = new Map();
   if (initialWait > 0) {
     sleep(Math.min(initialWait, waitBudgetSeconds));
   }
@@ -620,8 +701,13 @@ export function pollOrdinaryGate({
       return 1;
     }
 
-    const workflowsByCheckId = resolveWorkflows(repo, token, fetched);
-    const result = evaluateOrdinaryChecks(fetched, { workflowsByCheckId });
+    const workflowsByCheckId = resolveWorkflows(repo, token, fetched, { cache: attributionCache });
+    const result = evaluateOrdinaryChecks(fetched, {
+      workflowsByCheckId,
+      sha,
+      prNumber,
+      baseRef,
+    });
     last = result;
     if (result.failed.length) {
       error('Failed checks:');
@@ -697,6 +783,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     repo,
     sha,
     token,
+    prNumber: process.env.PR_NUMBER,
+    baseRef: process.env.BASE_REF,
     initialWait: Number(process.env.MERGE_GATE_INITIAL_WAIT ?? 30),
     waitBudgetSeconds: Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS),
     maxPolls: Number(process.env.MERGE_GATE_MAX_ATTEMPTS ?? 64),

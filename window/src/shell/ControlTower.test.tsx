@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../connect/conversations";
 import type { WindowEngine } from "../connect/engine";
 import { ControlTower } from "./ControlTower";
+import { resetWaitingNotices } from "./notify";
+import { readLimits } from "./status-data";
 
 vi.mock("../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span data-face={label} /> }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -14,6 +16,7 @@ beforeEach(() => {
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, media: "", addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() })));
 });
 afterEach(async () => {
+  resetWaitingNotices();
   if (root) await act(async () => root?.unmount());
   root = undefined;
   document.body.replaceChildren();
@@ -42,7 +45,7 @@ function conv(partial: Partial<Conversation> & Pick<Conversation, "key">): Conve
   };
 }
 
-function engine(answers: Record<string, unknown>): WindowEngine {
+function engine(answers: Record<string, unknown>, onEvent: WindowEngine["onEvent"] = () => () => undefined): WindowEngine {
   const request = vi.fn(async (method: string) => {
     if (method in answers) return answers[method];
     if (method === "exec.approval.list" || method === "plugin.approval.list" || method === "branch.approval.list") return [];
@@ -50,7 +53,7 @@ function engine(answers: Record<string, unknown>): WindowEngine {
   });
   return {
     request,
-    onEvent: () => () => undefined,
+    onEvent,
     sessionKey: "agent:ada:main",
     scopes: ["operator.admin"],
   } as unknown as WindowEngine;
@@ -187,6 +190,239 @@ describe("Control tower live sections", () => {
     expect([...host.querySelectorAll("button")].find((button) => button.textContent === "Who it knows")?.disabled).toBe(false);
     await act(async () => { [...host.querySelectorAll("button")].find((button) => button.textContent === "Check now")?.click(); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    expect(host.textContent).toContain("Couldn’t check accounts right now. Branch will try again.");
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("Couldn’t check accounts right now. Branch will try again.");
+    expect(host.querySelector(".v23-tower-health")?.textContent).not.toContain("Everything is running fine.");
+  });
+
+  it("does not say everything is running fine when usage.status has failed or not loaded yet", async () => {
+    let failUsage: (error: unknown) => void = () => undefined;
+    const pending = new Promise((_resolve, reject) => { failUsage = reject; });
+    const request = vi.fn(async (method: string) => {
+      if (method === "usage.status") return pending;
+      if (method === "cron.list") return live["cron.list"];
+      if (method === "config.get") return live["config.get"];
+      if (method === "agents.list") return live["agents.list"];
+      if (method === "audit.activity.list") return live["audit.activity.list"];
+      if (method === "exec.approval.list" || method === "plugin.approval.list" || method === "branch.approval.list") return [];
+      return {};
+    });
+    const session = { request, onEvent: () => () => undefined, sessionKey: "agent:ada:main", scopes: ["operator.admin"] } as unknown as WindowEngine;
+    const props = { engine: session, rows: [], needsCount: 0, trunkName: (id?: string) => id ?? "", onOpen: () => undefined, onInbox: () => undefined, onClose: () => undefined };
+    const host = await show(<ControlTower {...props} />);
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("Checking every account…");
+    expect(host.textContent).not.toContain("Everything is running fine.");
+    await act(async () => { failUsage(new Error("offline")); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("Couldn’t check accounts right now. Branch will try again.");
+    expect(host.textContent).not.toContain("Everything is running fine.");
+
+    if (root) await act(async () => root?.unmount());
+    root = undefined;
+    document.body.replaceChildren();
+    const healthy = await show(<ControlTower engine={engine(live)} rows={[]} needsCount={0} trunkName={(id) => id ?? ""} onOpen={() => undefined} onInbox={() => undefined} onClose={() => undefined} />);
+    expect(healthy.querySelector(".v23-tower-health")?.textContent).toBe("Everything is running fine.");
+  });
+
+  it("updates the health line when a later usage poll succeeds after a failed check", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "usage.status") throw new Error("offline");
+      if (method === "cron.list") return live["cron.list"];
+      if (method === "config.get") return live["config.get"];
+      if (method === "agents.list") return live["agents.list"];
+      if (method === "audit.activity.list") return live["audit.activity.list"];
+      if (method === "exec.approval.list" || method === "plugin.approval.list" || method === "branch.approval.list") return [];
+      return {};
+    });
+    const session = { request, onEvent: () => () => undefined, sessionKey: "agent:ada:main", scopes: ["operator.admin"] } as unknown as WindowEngine;
+    const host = await show(<ControlTower engine={session} rows={[]} needsCount={0} trunkName={(id) => id ?? ""} onOpen={() => undefined} onInbox={() => undefined} onClose={() => undefined} />);
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("Couldn’t check accounts right now. Branch will try again.");
+
+    const polled = readLimits(usage, NOW);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("branch:usage-checked", { detail: polled }));
+    });
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("Everything is running fine.");
+    expect(host.textContent).not.toContain("Couldn’t check accounts right now");
+  });
+
+  it("does not say everything is running fine when no accounts are connected", async () => {
+    const answers = { ...live, "usage.status": { updatedAt: NOW, providers: [] } };
+    const host = await show(<ControlTower engine={engine(answers)} rows={[]} needsCount={0} trunkName={(id) => id ?? ""} onOpen={() => undefined} onInbox={() => undefined} onClose={() => undefined} />);
+    expect(host.querySelector(".v23-tower-health")?.textContent).toBe("No accounts connected yet.");
+    expect(host.textContent).not.toContain("Everything is running fine.");
+  });
+
+  it("shows a finished run in Just finished without a reload", async () => {
+    const listeners: Array<(event: { event: string; payload?: unknown }) => void> = [];
+    const answers: Record<string, unknown> = { ...live, "audit.activity.list": { events: [] } };
+    const session = engine(answers, (fn) => {
+      listeners.push(fn);
+      return () => undefined;
+    });
+    const props = {
+      engine: session,
+      needsCount: 0,
+      trunkName: (id?: string) => (id === "ada" ? "Ada" : id ?? ""),
+      onOpen: () => undefined,
+      onInbox: () => undefined,
+      onClose: () => undefined,
+    };
+    const working = conv({ key: "agent:ada:task", title: "Tidy the Downloads folder", agentId: "ada", working: true });
+    const host = await show(<ControlTower {...props} rows={[working]} />);
+    expect(host.textContent).toContain("Nothing finished yet");
+    expect(host.textContent).toContain("Tidy the Downloads folder");
+
+    answers["audit.activity.list"] = {
+      events: [
+        { kind: "agent_run", runId: "r2", sessionKey: "agent:ada:task", agentId: "ada", action: "agent.run.started", occurredAt: NOW - 32_000 },
+        { kind: "agent_run", runId: "r2", sessionKey: "agent:ada:task", agentId: "ada", action: "agent.run.finished", occurredAt: NOW, status: "ok" },
+      ],
+    };
+    const finished = conv({ key: "agent:ada:task", title: "Tidy the Downloads folder", agentId: "ada", working: false, updatedAt: NOW });
+    await act(async () => {
+      root?.render(<ControlTower {...props} rows={[finished]} />);
+      for (const fn of listeners) fn({ event: "chat", payload: { state: "final", sessionKey: "agent:ada:task", runId: "r2" } });
+    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(host.textContent).not.toContain("Nothing finished yet");
+    expect(host.textContent).toContain("Tidy the Downloads folder");
+    expect(host.textContent).toContain("32s");
+  });
+
+  it("shows a waiting item that triggers the notification in Needs you without a reload, then clears both when handled", async () => {
+    const closed: string[] = [];
+    const opened: Array<{ title: string; body?: string; tag?: string }> = [];
+    class FakeNotice {
+      title: string;
+      body?: string;
+      tag?: string;
+      constructor(title: string, opts?: NotificationOptions) {
+        this.title = title;
+        this.body = typeof opts?.body === "string" ? opts.body : undefined;
+        this.tag = typeof opts?.tag === "string" ? opts.tag : undefined;
+        opened.push({ title: this.title, body: this.body, tag: this.tag });
+      }
+      close() { closed.push(this.tag ?? this.title); }
+      static permission: NotificationPermission = "granted";
+    }
+    vi.stubGlobal("Notification", FakeNotice);
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    const listeners: Array<(event: { event: string; payload?: unknown }) => void> = [];
+    const answers: Record<string, unknown> = {
+      ...live,
+      "question.list": { questions: [] },
+      "question.resolve": { status: "answered" },
+    };
+    const session = engine(answers, (fn) => {
+      listeners.push(fn);
+      return () => undefined;
+    });
+    const props = {
+      engine: session,
+      rows: [conv({ key: "agent:ada:wait", title: "Tidy the Downloads folder", agentId: "ada" })],
+      needsCount: 0,
+      trunkName: (id?: string) => (id === "ada" ? "Ada" : id ?? ""),
+      onOpen: () => undefined,
+      onInbox: () => undefined,
+      onClose: () => undefined,
+    };
+    const host = await show(<ControlTower {...props} />);
+    expect(host.textContent).toContain("Nothing is waiting for you");
+    expect(opened).toEqual([]);
+
+    const ask = {
+      id: "q-wait",
+      status: "pending",
+      agentId: "ada",
+      sessionKey: "agent:ada:wait",
+      questions: [{ questionId: "which", question: "Which folder first?", options: [{ label: "Downloads" }, { label: "Desktop" }] }],
+    };
+    await act(async () => {
+      for (const fn of listeners) fn({ event: "question.requested", payload: ask });
+    });
+    expect(host.textContent).toContain("Which folder first?");
+    expect(host.textContent).not.toContain("Nothing is waiting for you");
+    expect(opened).toEqual([{ title: "Ada", body: "is waiting for you", tag: "question:q-wait" }]);
+
+    await act(async () => { [...host.querySelectorAll("button")].find((button) => button.textContent === "Allow")?.click(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(session.request).toHaveBeenCalledWith("question.resolve", { id: "q-wait", answers: { answers: { which: ["Desktop"] } } });
+    expect(host.textContent).toContain("Nothing is waiting for you");
+    expect(host.textContent).not.toContain("Which folder first?");
+    expect(closed).toEqual(["question:q-wait"]);
+  });
+
+  it("shows a needsYou conversation in Needs you without a reload", async () => {
+    const props = {
+      engine: engine(live),
+      needsCount: 0,
+      trunkName: (id?: string) => (id === "ada" ? "Ada" : id ?? ""),
+      onOpen: () => undefined,
+      onInbox: () => undefined,
+      onClose: () => undefined,
+    };
+    const idle = conv({ key: "agent:ada:wait", title: "Tidy the Downloads folder", agentId: "ada" });
+    const host = await show(<ControlTower {...props} rows={[idle]} />);
+    expect(host.textContent).toContain("Nothing is waiting for you");
+    await act(async () => {
+      root?.render(<ControlTower {...props} rows={[{ ...idle, needsYou: true, headline: "Which folder first?" }]} />);
+    });
+    expect(host.textContent).toContain("Which folder first?");
+    expect(host.textContent).not.toContain("Nothing is waiting for you");
+  });
+
+  it("shows a routine check-in and a display name without a chat-app id in Working now", async () => {
+    const rows = [
+      conv({
+        key: "agent:ada:poll",
+        title: "[Branch Agent heartbeat poll]",
+        agentId: "ada",
+        working: true,
+        headline: "Alex River id:10001",
+      }),
+    ];
+    const host = await show(<ControlTower
+      engine={engine(live)}
+      rows={rows}
+      needsCount={0}
+      trunkName={(id) => id === "ada" ? "Ada" : id ?? ""}
+      onOpen={() => undefined}
+      onInbox={() => undefined}
+      onClose={() => undefined}
+    />);
+    const working = host.querySelector("section:nth-of-type(2)")?.textContent ?? "";
+    expect(working).toContain("Working now");
+    expect(working).toContain("Routine check-in");
+    expect(working).toContain("Alex River");
+    expect(working).not.toMatch(/heartbeat poll/i);
+    expect(working).not.toMatch(/id:/i);
+    expect(working).not.toContain("10001");
+  });
+
+  it.each(["Fix the user id: field", "Why did the heartbeat poll fail?"])("preserves ordinary Working now title %s", async (title) => {
+    const rows = [
+      conv({
+        key: "agent:ada:poll",
+        title,
+        agentId: "ada",
+        working: true,
+        headline: "Alex River id:10001",
+      }),
+    ];
+    const host = await show(<ControlTower
+      engine={engine(live)}
+      rows={rows}
+      needsCount={0}
+      trunkName={(id) => id === "ada" ? "Ada" : id ?? ""}
+      onOpen={() => undefined}
+      onInbox={() => undefined}
+      onClose={() => undefined}
+    />);
+    const working = host.querySelector("section:nth-of-type(2)")?.textContent ?? "";
+    expect(working).toContain("Working now");
+    expect(working).toContain(title);
+    expect(working).toContain("Alex River");
+    expect(working).not.toContain("10001");
   });
 });

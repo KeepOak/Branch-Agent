@@ -10,20 +10,20 @@ import { errorText, num, optStr, rec, recs, str, trunkName, useOperation, useRes
 import { useMenu } from "./memory";
 import { EmptyIcon, Grey, LibIcon, mapLimited, plural, Row, Section, TypeBadge, when } from "./parts";
 
-export const APPS_REASON = "Needs the engine’s apps list with publish and roll back.";
+const APPS_REASON = "Needs the engine’s apps list with publish and roll back.";
 const PAGE = 20;
 const DASH_PAGE = 24;
 
-export type SessionRow = { key: string; agentId?: string; label?: string; derivedTitle?: string; displayName?: string; updatedAt?: number | null; status?: string };
+type SessionRow = { key: string; agentId?: string; label?: string; derivedTitle?: string; displayName?: string; updatedAt?: number | null; status?: string };
 type Artifact = { id: string; title: string; type: string; mimeType?: string; sizeBytes?: number; sessionKey?: string; image?: { url: string }; download: { mode: "bytes" | "url" | "unsupported" } };
 type Widget = { name: string; sizeW: number; sizeH: number; title?: string };
 
 /** sessions.list rows that have a key; other fields read as missing. */
-export function sessionsOf(result: unknown): SessionRow[] {
+function sessionsOf(result: unknown): SessionRow[] {
   return recs(rec(result).sessions).filter(r => typeof r.key === "string" && r.key).map(r => ({ key: r.key as string, agentId: optStr(r.agentId), label: optStr(r.label), derivedTitle: optStr(r.derivedTitle), displayName: optStr(r.displayName), updatedAt: num(r.updatedAt) ?? null, status: optStr(r.status) }));
 }
 /** artifacts.list entries with an id and a title; a missing download reads as not downloadable. */
-export function artifactsOf(result: unknown): Artifact[] {
+function artifactsOf(result: unknown): Artifact[] {
   return recs(rec(result).artifacts).filter(a => typeof a.id === "string" && typeof a.title === "string").map(a => {
     const mode = rec(a.download).mode, url = optStr(rec(a.image).url);
     return { id: a.id as string, title: a.title as string, type: str(a.type), mimeType: optStr(a.mimeType), sizeBytes: num(a.sizeBytes), ...(url ? { image: { url } } : {}), download: { mode: mode === "bytes" || mode === "url" ? mode : "unsupported" } };
@@ -32,7 +32,7 @@ export function artifactsOf(result: unknown): Artifact[] {
 const pageOf = (result: unknown): SessionPage => { const r = rec(result); return { sessions: sessionsOf(r), totalCount: num(r.totalCount), hasMore: typeof r.hasMore === "boolean" ? r.hasMore : undefined, nextOffset: num(r.nextOffset) ?? null }; };
 
 const agentOf = (row: SessionRow) => row.agentId ?? /^agent:([^:]+):/.exec(row.key)?.[1] ?? "";
-export const sessionTitle = (row: SessionRow) => row.label || row.displayName || row.derivedTitle || row.key;
+const sessionTitle = (row: SessionRow) => row.label || row.displayName || row.derivedTitle || row.key;
 
 type Props = { engine: WindowEngine; trunks: Trunk[]; openConversation: (key: string) => void };
 

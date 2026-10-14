@@ -4,7 +4,8 @@ import type { Conversation } from "../connect/conversations";
 import { scheduleWords } from "../places/automations/model";
 import { agents, runMs, runs } from "../places/overview/engine";
 import { runLength } from "../places/overview/format";
-import { ageWords, clockWords, readLimits, type Limits } from "./status-data";
+import { ageWords, clockWords, plainJobName, readLimits, type Limits } from "./status-data";
+import { isEngineJob } from "../connect/engine-jobs";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -17,11 +18,13 @@ const WARM_LEFT = 40;
 
 export type HealthTone = "ok" | "warn" | "bad" | "";
 
-/** Plain-words health line from towerHtmlT5. */
-export function towerHealth(locked: boolean, checking: boolean, limits: Limits | null): { tone: HealthTone; text: string } {
+/** Preview towerHtmlT5: all-clear only after a real healthy usage.status with at least one account. */
+export function towerHealth(locked: boolean, checking: boolean, limits: Limits | null, failed = false): { tone: HealthTone; text: string } {
   if (locked) return { tone: "bad", text: "Lockdown is on. Trunks can only read." };
-  if (checking) return { tone: "", text: "Checking every account…" };
-  const low = (limits?.rows ?? []).some((row) => {
+  if (checking || (!failed && limits == null)) return { tone: "", text: "Checking every account…" };
+  if (failed || limits == null) return { tone: "warn", text: "Couldn’t check accounts right now. Branch will try again." };
+  if (limits.rows.length === 0) return { tone: "", text: "No accounts connected yet." };
+  const low = limits.rows.some((row) => {
     const five = row.windows.find((window) => /5-hour/i.test(window.name)) ?? row.windows[0];
     return Boolean(five && five.left <= NEARLY);
   });
@@ -46,7 +49,7 @@ export type TowerAccount = {
 };
 
 /** Preview's "5-hour" / "Week" from status-data's "This 5-hour window" / "This week". */
-export function shortWindow(name: string): string {
+function shortWindow(name: string): string {
   const hours = /(\d+)-hour/i.exec(name);
   if (hours) return `${hours[1]}-hour`;
   if (/week/i.test(name)) return "Week";
@@ -82,18 +85,18 @@ export function checkedLine(updatedAt: number, now = Date.now()): string {
 
 export type TowerComing = { id: string; name: string; when: string; trunkId: string };
 
-/** Next 3 enabled automations, soonest first (towerHtmlT5 Coming up). */
+/** Next 3 enabled automations, soonest first (towerHtmlT5 Coming up). The row's second line names the Trunk. */
 export function towerComingUp(jobs: unknown[], now = Date.now()): TowerComing[] {
   return jobs
     .map(rec)
-    .filter((job) => job.enabled !== false && num(rec(job.state).nextRunAtMs) > 0)
+    .filter((job) => !isEngineJob(job) && job.enabled !== false && num(rec(job.state).nextRunAtMs) > 0)
     .sort((a, b) => num(rec(a.state).nextRunAtMs) - num(rec(b.state).nextRunAtMs))
     .slice(0, 3)
     .map((job) => {
       const schedule = rec(job.schedule);
       return {
         id: str(job.id) || str(job.name),
-        name: str(job.displayName) || str(job.name) || str(job.id),
+        name: plainJobName(job),
         when: str(schedule.kind) ? scheduleWords(schedule) : dueFallback(num(rec(job.state).nextRunAtMs), now),
         trunkId: str(job.agentId),
       };
@@ -132,24 +135,125 @@ export function towerClock(at: number, now = Date.now()): string {
 
 export type TowerFinished = { key: string; title: string; agentId?: string; duration: string; when: string };
 
-/** Last four finished conversations, with run length and the time (towerHtmlT5 Just finished). */
-export function towerFinished(rows: Conversation[], audit: unknown, now = Date.now()): TowerFinished[] {
+/** Session keys that left Working now: that conversation's run just ended. */
+export function justEndedKeys(wasWorking: readonly string[], rows: Conversation[]): string[] {
+  const working = new Set(rows.filter((row) => row.working && !row.archived && !row.helper && !row.system).map((row) => row.key));
+  return wasWorking.filter((key) => !working.has(key));
+}
+
+function visibleFinished(row: Conversation | undefined): row is Conversation {
+  return Boolean(row && !row.archived && !row.helper && !row.system);
+}
+
+/** Last four finished runs, newest first, one per conversation (preview history / Overview recentActivity). */
+export function towerFinished(rows: Conversation[], audit: unknown, now = Date.now(), endedKeys: readonly string[] = []): TowerFinished[] {
   const runList = runs(audit);
-  return rows
-    .filter((row) => row.done && !row.archived && !row.helper && !row.system)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, 4)
-    .map((row) => {
-      const run = runList.find((item) => item.sessionKey === row.key);
-      const ms = run ? runMs(run) : undefined;
-      return {
-        key: row.key,
-        title: row.title,
-        agentId: row.agentId,
-        duration: ms !== undefined ? runLength(ms) : "",
-        when: towerClock(row.updatedAt, now),
-      };
+  const finishedRuns = [...runList].filter((run) => run.finishedAt !== undefined).sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0));
+  const seen = new Set<string>();
+  const out: TowerFinished[] = [];
+  const take = (row: Conversation, run?: (typeof runList)[number], at?: number) => {
+    if (!visibleFinished(row) || seen.has(row.key)) return;
+    seen.add(row.key);
+    const ms = run ? runMs(run) : undefined;
+    out.push({
+      key: row.key,
+      title: row.title,
+      agentId: row.agentId,
+      duration: ms !== undefined ? runLength(ms) : "",
+      when: towerClock(at ?? run?.finishedAt ?? row.updatedAt, now),
     });
+  };
+  for (const key of endedKeys) {
+    const row = rows.find((item) => item.key === key);
+    if (!row) continue;
+    take(row, finishedRuns.find((run) => run.sessionKey === key), row.updatedAt);
+    if (out.length >= 4) return out;
+  }
+  for (const run of finishedRuns) {
+    const row = rows.find((item) => item.key === run.sessionKey);
+    if (!row) continue;
+    take(row, run, run.finishedAt);
+    if (out.length >= 4) return out;
+  }
+  return out;
+}
+
+type TowerNeedKind = "approval" | "question" | "waiting";
+
+export type TowerNeed = {
+  id: string;
+  kind: TowerNeedKind;
+  title: string;
+  sub: string;
+  who: string;
+  sessionKey: string;
+  item?: Record<string, unknown>;
+};
+
+function questionLines(item: Record<string, unknown>): { title: string; header: string } {
+  const first = rec(Array.isArray(item.questions) ? item.questions[0] : undefined);
+  return {
+    title: str(first.question) || str(item.question) || "Needs your yes",
+    header: str(first.header) || str(item.command) || str(item.cmd),
+  };
+}
+
+/** Preview towerHtmlT5 needItems: approvals, pending asks, then other waiting rows. Never invents rows. */
+export function towerNeeds(
+  rows: Conversation[],
+  approvals: Record<string, unknown>[],
+  questions: Record<string, unknown>[],
+  trunkName: (id?: string) => string,
+): TowerNeed[] {
+  const used = new Set<string>();
+  const out: TowerNeed[] = [];
+  for (const item of approvals) {
+    const request = rec(item.request);
+    const sessionKey = str(request.sessionKey);
+    const who = trunkName(str(request.agentId));
+    const title = str(request.title) || str(request.commandPreview) || str(request.command) || str(request.description) || "A Trunk needs your answer";
+    const id = `approval:${str(item.kind)}:${str(item.id)}`;
+    if (sessionKey) used.add(sessionKey);
+    out.push({
+      id,
+      kind: "approval",
+      title,
+      sub: [who, str(request.description) || str(item.kind)].filter(Boolean).join(" · "),
+      who,
+      sessionKey,
+      item,
+    });
+  }
+  for (const item of questions) {
+    if (str(item.status) && str(item.status) !== "pending") continue;
+    const sessionKey = str(item.sessionKey);
+    const who = trunkName(str(item.agentId));
+    const { title, header } = questionLines(item);
+    const id = `question:${str(item.id)}`;
+    if (sessionKey) used.add(sessionKey);
+    out.push({
+      id,
+      kind: "question",
+      title,
+      sub: [who, header].filter(Boolean).join(" · "),
+      who,
+      sessionKey,
+      item,
+    });
+  }
+  for (const row of rows) {
+    if (!row.needsYou || row.archived || row.system || used.has(row.key)) continue;
+    const who = trunkName(row.agentId);
+    out.push({
+      id: `waiting:${row.key}`,
+      kind: "waiting",
+      title: row.headline || row.preview || row.title || "Waiting for your answer",
+      sub: who,
+      who,
+      sessionKey: row.key,
+    });
+  }
+  return out;
 }
 
 export type TowerChatter = { key: string; text: string };

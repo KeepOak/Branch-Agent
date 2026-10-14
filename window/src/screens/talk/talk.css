@@ -1,0 +1,15 @@
+/* Talk beside in R1 (the Classic pane, shell/TalkBeside.tsx, re-hosted): docked at the right of the conversation column
+   under the header, or as a band at its bottom. The page steps aside for it, so text never runs under the pane.
+   README item 48: the pane is clear glass, its words sit on pills. */
+.r1-beside { position: absolute; z-index: 5; top: var(--hdr); right: 0; bottom: 0; width: var(--r1-beside); display: flex; min-height: 0; }
+.r1-conversation[data-beside="bottom"] > .r1-beside { top: auto; left: 0; width: auto; height: var(--r1-beside); }
+.r1-conversation[data-beside="right"] > .r1-scroll { margin-right: var(--r1-beside); }
+.r1-conversation[data-beside="bottom"] > .r1-scroll { margin-bottom: var(--r1-beside); }
+.r1-beside .talk { flex: 1; width: auto; height: auto; border: 0; }
+.r1-beside .talk.g-clear .talk-head, .r1-beside .talk.g-clear .talk-foot { border: 0; }
+/* At phone widths the pane lies over the page, as in Classic; the page it covers steps aside. */
+@media (max-width: 760px) {
+  .r1-conversation[data-beside="right"] > .r1-beside { width: 100%; }
+  .r1-conversation[data-beside="right"] > .r1-scroll { margin-right: 0; visibility: hidden; }
+  .r1-beside .talk:not(.at-bottom) { position: relative; width: auto; box-shadow: none; }
+}

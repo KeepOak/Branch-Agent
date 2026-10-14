@@ -5,6 +5,9 @@ import type { BranchPluginToolContext } from "branch/plugin-sdk/plugin-entry";
 import { createTestPluginApi } from "branch/plugin-sdk/plugin-test-api";
 import { createPluginRecord, createPluginRegistry } from "branch/plugin-sdk/plugin-test-runtime";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildGatewayReloadPlan } from "../../src/gateway/config-reload-plan.js";
+import { createEmptyPluginRegistry } from "../../src/plugins/registry.js";
+import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../../src/plugins/runtime.js";
 import {
   browserPluginNodeHostCommands,
   browserPluginReload,
@@ -186,6 +189,7 @@ describe("browser plugin", () => {
         "browser.extraArgs",
         "browser.snapshotDefaults",
         "browser.tabCleanup",
+        "browser.idleTimeoutMinutes",
         "browser.allowSystemProfileImport",
       ],
     });
@@ -212,6 +216,24 @@ describe("browser plugin", () => {
     expect(typeof browserPluginNodeHostCommands[1]?.handle).toBe("function");
     expect(typeof browserPluginNodeHostCommands[1]?.watchAvailability).toBe("function");
     expect(browserSecurityAuditCollectors).toHaveLength(1);
+  });
+
+  it("keeps browser.idleTimeoutMinutes hot so saving it does not restart the Gateway", () => {
+    const registry = createEmptyPluginRegistry();
+    registry.reloads.push({
+      pluginId: "browser",
+      source: "test",
+      registration: browserPluginReload,
+    });
+    setActivePluginRegistry(registry);
+    try {
+      const plan = buildGatewayReloadPlan(["browser.idleTimeoutMinutes"]);
+      expect(plan.restartGateway).toBe(false);
+      expect(plan.restartReasons).toEqual([]);
+      expect(plan.hotReasons).toContain("browser.idleTimeoutMinutes");
+    } finally {
+      resetPluginRuntimeStateForTest();
+    }
   });
 
   it("bundles the browser automation skill with the plugin", () => {

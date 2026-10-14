@@ -56,8 +56,3 @@ export function useCodexPlan(engine: WindowEngine | undefined, agentId: string |
   }, [engine, agentId, wanted]);
   return plan;
 }
-
-/** Test seam: forget what codex.models answered. */
-export function forgetCodexPlans(): void {
-  cache.clear();
-}

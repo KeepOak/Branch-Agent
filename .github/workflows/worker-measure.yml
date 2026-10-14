@@ -1,0 +1,59 @@
+name: Local worker measurement
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/measure-worker*.mjs'
+      - 'engine/src/worker/worker-measure-report.test.ts'
+      - 'engine/src/worker/worker-fault-injection.test-support.ts'
+      - '.github/workflows/worker-measure.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-measure-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    name: Worker RSS on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    env:
+      CI: 'true'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@12.5.1
+      - name: Install frozen engine dependencies
+        run: node scripts/install-worktree.mjs engine
+      - name: Test report parsing and recommendations
+        working-directory: engine
+        run: node scripts/run-vitest.mjs run src/worker/worker-measure-report.test.ts
+      - name: Build the release worker entries
+        working-directory: engine
+        run: node --import ./scripts/tsx.mjs ../scripts/measure-worker.mjs build
+      - name: Measure one tiny turn and the idle worker
+        run: node scripts/measure-worker.mjs run worker-measure.json
+      - name: Save measured numbers
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: worker-measure-${{ matrix.os }}
+          path: worker-measure.json
+          if-no-files-found: error
+          retention-days: 7

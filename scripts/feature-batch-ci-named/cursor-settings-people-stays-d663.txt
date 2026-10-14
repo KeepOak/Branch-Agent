@@ -1,0 +1,3 @@
+window:src/places-nav/SettingsFrame.test.tsx
+window:src/places/settings/set1/people-more.test.tsx
+window:src/places/settings/set1/people.test.tsx

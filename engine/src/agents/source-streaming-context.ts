@@ -1,5 +1,4 @@
-// Adapted from elizaOS/eliza@3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf
-// packages/core/src/streaming-context.ts. Native authority remains caller-owned.
+// Native authority remains caller-owned.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type { TurnBudgetSnapshot } from "./source-turn-budget.js";

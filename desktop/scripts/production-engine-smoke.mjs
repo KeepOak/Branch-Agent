@@ -57,16 +57,26 @@ async function health(port, token, protocol, deadline) {
     assert(response.ok && response.payload?.ok === true && typeof response.payload.ts === "number", "Packaged engine failed authenticated non-model health");
   } finally { ws.close(); }
 }
-async function shutdown(child) {
+/**
+ * Stops the owned smoke child and proves it is gone. On Windows, `taskkill /T /F` exits non-zero when part of the
+ * tree has already exited while it walks it (a race, not a survivor), so its exit code is not the verdict: the wait
+ * below is, and a child that really survives still fails the assertion.
+ */
+export async function shutdown(child, { platform = process.platform, terminate = defaultTerminate, waitMs = 5000 } = {}) {
   if (child.exitCode !== null || child.signalCode !== null) return;
-  if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
-  else process.kill(-child.pid, "SIGTERM");
-  const end = Date.now() + 5000;
+  let refused;
+  try { terminate(child, platform, "SIGTERM"); } catch (error) { refused = error; }
+  const end = Date.now() + waitMs;
   while (child.exitCode === null && child.signalCode === null && Date.now() < end) await pause(50);
-  if (child.exitCode === null && child.signalCode === null && process.platform !== "win32") process.kill(-child.pid, "SIGKILL");
+  if (child.exitCode === null && child.signalCode === null && platform !== "win32") { try { terminate(child, platform, "SIGKILL"); } catch {} }
   const final = Date.now() + 1000;
   while (child.exitCode === null && child.signalCode === null && Date.now() < final) await pause(25);
-  assert(child.exitCode !== null || child.signalCode !== null, "Owned production smoke process survived shutdown");
+  assert(child.exitCode !== null || child.signalCode !== null,
+    `Owned production smoke process survived shutdown${refused ? ` (terminate failed: ${refused.message})` : ""}`);
+}
+function defaultTerminate(child, platform, signal) {
+  if (platform === "win32") execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10_000 });
+  else process.kill(-child.pid, signal);
 }
 export async function smokeProductionEngine(engine, nodePath, commit, protocol, { budgetMs = 150_000 } = {}) {
   assert(Number.isSafeInteger(budgetMs) && budgetMs > 0 && budgetMs <= 150_000, "Production smoke must finish within three minutes including shutdown");
@@ -86,6 +96,10 @@ export async function smokeProductionEngine(engine, nodePath, commit, protocol, 
     await health(port, token, protocol, deadline);
     await shutdown(child);
     return { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: Date.now() - started, runtime };
+  } catch (error) {
+    // Cleanup must not hide why the smoke failed.
+    if (child?.pid) await shutdown(child).catch(() => undefined);
+    throw error;
   } finally {
     if (child?.pid) await shutdown(child);
     await rm(root, { recursive: true, force: true });

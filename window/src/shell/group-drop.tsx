@@ -30,6 +30,7 @@ export function groupPlan(drop: SidebarDrop, contacts: readonly GroupContact[], 
   if (room) return !memberOf(person) ? null : hasMember(room, person) ? "duplicate" : "add";
   return memberOf(source) && memberOf(target) ? "new" : null;
 }
+
 export function groupHint(drop: SidebarDrop, contacts: readonly GroupContact[], rooms: readonly GroupRoom[]): string {
   if (drop.zone !== "onto") return "Move here";
   const plan = groupPlan(drop, contacts, rooms);
@@ -41,10 +42,10 @@ export function groupHint(drop: SidebarDrop, contacts: readonly GroupContact[], 
   return "";
 }
 
-export function useGroupRooms(session: SaplingSession, ready: boolean) {
+export function useGroupRooms(session: SaplingSession, ready: boolean, includeArchived = false) {
   const [rooms, setRooms] = useState<GroupRoom[]>([]);
   const [peerOnline, setPeerOnline] = useState<Map<string, boolean>>(new Map());
-  const reload = () => session.request<{ rooms: GroupRoom[] }>("rooms.list", {}).then((result) => setRooms(result.rooms), (error: unknown) => console.warn("rooms.list failed", error));
+  const reload = () => session.request<{ rooms: GroupRoom[] }>("rooms.list", includeArchived ? { includeArchived: true } : {}).then((result) => setRooms(result.rooms), (error: unknown) => console.warn("rooms.list failed", error));
   const reloadPeers = () => session.request<{ peers: { name: string; online?: boolean }[] }>("a2a.peers.list", {}).then(
     (result) => setPeerOnline(new Map(result.peers.filter((peer) => typeof peer.online === "boolean").map((peer) => [peer.name, peer.online!]))),
     () => undefined,
@@ -53,7 +54,7 @@ export function useGroupRooms(session: SaplingSession, ready: boolean) {
     if (!ready) { setRooms([]); setPeerOnline(new Map()); return; }
     void reload(); void reloadPeers();
     return session.onGatewayEvent((event) => { if (event === "rooms.changed") void reload(); else if (event === "contacts.changed") void reloadPeers(); });
-  }, [session, ready]);
+  }, [session, ready, includeArchived]);
   return { rooms, peerOnline, reload };
 }
 
@@ -73,8 +74,11 @@ export function roomContact(room: GroupRoom, contacts: readonly GatewayContact[]
   };
 }
 
+/** What the room's log adds to its lead conversation: notices (merge-feed sentences among them), and the Trunks' posts and replies that live only there. */
+const LOGGED = new Set(["created", "member.added", "message", "turn.replied", "merge", "merge.follow"]);
+
 export function useRoomNotices(session: SaplingSession, key: string | null, contacts: readonly GroupContact[]): Block[] {
-  const roomId = /^agent:[^:]+:room:([^:]+)$/.exec(key ?? "")?.[1];
+  const [, lead, roomId] = /^agent:([^:]+):room:([^:]+)$/.exec(key ?? "") ?? [];
   const [events, setEvents] = useState<{ seq: number; kind: string; actorId?: string; payload: unknown; createdAt: number }[]>([]);
   useEffect(() => {
     if (!roomId) { setEvents([]); return; }
@@ -87,7 +91,7 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
         do {
           const page: { events: typeof events; nextCursor?: number } = await session.request("rooms.log", { roomId, ...(cursor ? { cursor } : {}) });
           if (!live) return;
-          notices.push(...page.events.filter((event) => event.kind === "created" || event.kind === "member.added"));
+          notices.push(...page.events.filter((event) => LOGGED.has(event.kind)));
           cursor = page.nextCursor;
         } while (cursor);
         setEvents((current) => [...notices, ...current.filter((row) => !notices.some((saved) => saved.seq === row.seq))].sort((a, b) => a.seq - b.seq));
@@ -96,7 +100,7 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
     void load();
     const off = session.onGatewayEvent((event, payload) => {
       const value = payload as { roomId?: string; seq?: number; kind?: string; actorId?: string; payload?: unknown; createdAt?: number };
-      if (event === "rooms.event" && value?.roomId === roomId && typeof value.seq === "number" && (value.kind === "created" || value.kind === "member.added")) {
+      if (event === "rooms.event" && value?.roomId === roomId && typeof value.seq === "number" && LOGGED.has(value.kind ?? "")) {
         setEvents((current) => current.some((row) => row.seq === value.seq) ? current : [...current, { seq: value.seq!, kind: value.kind!, actorId: value.actorId, payload: value.payload, createdAt: value.createdAt ?? 0 }]);
       }
     });
@@ -106,13 +110,23 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
     const current = memberOf(contact);
     return current?.kind === member.kind && current.id === member.id;
   })?.name ?? member.id;
+  const isTrunk = (id: string | undefined) => Boolean(id) && (id === lead || contacts.some((contact) => contact.kind === "trunk" && memberOf(contact)?.id === id));
   return events.flatMap((event): Block[] => {
-    const data = event.payload as { members?: GroupMember[]; kind?: GroupMember["kind"]; id?: string; from?: string };
+    const data = event.payload as { members?: GroupMember[]; kind?: GroupMember["kind"]; id?: string; from?: string; text?: string };
+    // A Trunk's report to the room: its room_post ("message"), or the reply of a Trunk other than the lead (the lead's
+    // own replies are already in this conversation). An owner's or outside agent's post is in it already too.
+    const posted = event.kind === "message" || (event.kind === "turn.replied" && event.actorId !== lead);
+    if (posted && isTrunk(event.actorId) && data.text?.trim()) {
+      const sender = event.actorId === lead ? undefined : { kind: "trunk" as const, agentId: event.actorId!, posted: true };
+      return [{ kind: "text", key: `room:${roomId}:${event.seq}`, text: data.text, streaming: false, meta: { timestamp: event.createdAt, ...(sender ? { sender } : {}) } }];
+    }
     if (event.kind === "created") {
       const members = data.members ?? [];
       const shown = members.length > 2 ? members.slice(0, 2) : members;
       return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `You started a group with ${shown.map(named).join(" and ")}`, at: event.createdAt }];
     }
+    // The merge feed: one plain sentence per merge ("That's 107 merged: #1088 …."), and the line that says the room follows a repository.
+    if ((event.kind === "merge" || event.kind === "merge.follow") && data.text?.trim()) return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: data.text.trim(), at: event.createdAt }];
     if (event.kind === "member.added" && data.kind && data.id) return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `${event.actorId?.startsWith("a2a:") ? (data.from ?? event.actorId.slice(4)) : "You"} added ${named({ kind: data.kind, id: data.id })}`, at: event.createdAt }];
     return [];
   });
@@ -120,7 +134,7 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
 
 /** Keep untimed blocks attached to their preceding message while placing room events by recorded time. */
 export function mergeRoomNotices(history: readonly Block[], notices: readonly Block[]): Block[] {
-  const noticeAt = (block: Block) => block.kind === "notice" ? block.at ?? 0 : 0;
+  const noticeAt = (block: Block) => block.kind === "notice" ? block.at ?? 0 : block.kind === "text" ? block.meta?.timestamp ?? 0 : 0;
   const ordered = [...notices].sort((a, b) => noticeAt(a) - noticeAt(b));
   const merged: Block[] = [];
   let next = 0;
@@ -210,7 +224,7 @@ export function GroupDropPopover({ drop, contacts, rooms, defaultTrunk, session,
     </> : drop.kind === "new" && source && target ? <>
       <div className="group-drop-head"><RoomFaces picks={[source, target].map((contact) => contact.kind === "trunk" ? { kind: "trunk", name: contact.name } : { kind: "person", id: contact.id, name: contact.name })} size={28} /><b>New group</b></div>
       <label className="group-drop-field">Name <input ref={input} className="inp" maxLength={60} value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void create(drop.source, drop.target!); } }} /></label>
-      <button type="button" className="btn pri" disabled={busy || !name.trim()} onClick={() => void create(drop.source, drop.target!)}>New group with {source.name} and {target.name}</button>
+      <button type="button" className="btn pri" data-testid="start-group-with-these" disabled={busy || !name.trim()} onClick={() => void create(drop.source, drop.target!)}>New group with {source.name} and {target.name}</button>
       {[source, target].filter((c) => c.offline).map((c) => <p key={c.id} className="group-drop-note">{c.name} is offline. It joins when it’s back.</p>)}
       {rooms.length ? <><hr /><div className="ph">Add both to…</div>{rooms.map((candidate) => <button key={candidate.roomId} type="button" className="mi" disabled={busy || [source, target].every((c) => hasMember(candidate, c))} onClick={() => void add(candidate, [source, target])}>{candidate.name}{[source, target].every((c) => hasMember(candidate, c)) ? " · Already in this group" : ""}</button>)}</> : null}
       <hr /><button type="button" className="mi" onClick={onClose}>Cancel <kbd>Esc</kbd></button>

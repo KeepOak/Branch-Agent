@@ -18,6 +18,7 @@ import {
   formatAcpInheritedToolAllowError,
   formatAcpInheritedToolDenyError,
 } from "../inherited-tool-deny.js";
+import { isPerTaskModelChoiceEnabled, MODEL_CHOICE_PER_TASK_OFF_MESSAGE } from "../model-choice.js";
 import { optionalStringEnum, requesterProfileSchema } from "../schema/typebox.js";
 import { withParentExecutionIdentity } from "../subagents/spawn/execution-identity-spawn-context.js";
 import { resolveAcpSessionsSpawnImageAttachments } from "../subagents/spawn/subagent-attachments.js";
@@ -150,6 +151,7 @@ function createSessionsSpawnToolSchema(params: {
   threadAvailable: boolean;
   subagentThreadAvailable: boolean;
   swarmEnabled: boolean;
+  perTaskModelChoice: boolean;
 }) {
   const spawnModes = params.threadAvailable ? SUBAGENT_SPAWN_MODES : (["run"] as const);
   const schema = {
@@ -171,7 +173,8 @@ function createSessionsSpawnToolSchema(params: {
       { description: 'Runtime; visible=true and managed worktrees require "subagent".' },
     ),
     agentId: Type.Optional(Type.String()),
-    model: Type.Optional(Type.String()),
+    // "Pick the model per task" off: the Trunk can't name a model for a new task.
+    ...(params.perTaskModelChoice ? { model: Type.Optional(Type.String()) } : {}),
     runTimeoutSeconds: Type.Optional(
       Type.Integer({
         minimum: 0,
@@ -335,6 +338,7 @@ export function createSessionsSpawnTool(
     threadAvailable,
     subagentThreadAvailable: threadAvailability.subagent,
     swarmEnabled: swarmConfig.enabled,
+    perTaskModelChoice: isPerTaskModelChoiceEnabled(effectiveConfig),
   });
   const tool: AnyAgentTool = {
     label: "Sessions",
@@ -451,6 +455,13 @@ export function createSessionsSpawnTool(
         const streamTo = runtime === "acp" && params.streamTo === "parent" ? "parent" : undefined;
         const lightContext = params.lightContext === true;
         const roleContext = requestedAgentId ? { role: requestedAgentId } : {};
+        if (modelOverride !== undefined && !isPerTaskModelChoiceEnabled(effectiveConfig)) {
+          return jsonResult({
+            status: "forbidden",
+            error: MODEL_CHOICE_PER_TASK_OFF_MESSAGE,
+            ...roleContext,
+          });
+        }
         const expectedParentSessionKey = opts?.agentSessionKey?.trim();
         if (opts?.expectedParentSessionId && !expectedParentSessionKey) {
           throw new Error("Exact parent session access requires a session key");

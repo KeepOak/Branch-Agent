@@ -34,7 +34,7 @@ export type OutsideAgentRecord = OutsideAgent & {
   /** The paired device that said hello (a grafted Branch); unset for owner-level connections. */
   deviceId?: string;
 };
-/** Settings › Grafts: the master switch, disconnected agents, and who may drive the window. */
+/** Settings › Connected agents: the master switch, disconnected agents, and who may drive the window. */
 export type OutsideAgentSettings = {
   enabled: boolean;
   revoked: string[];
@@ -69,7 +69,7 @@ export function listOutsideAgents(env?: NodeJS.ProcessEnv): OutsideAgentRecord[]
     return Array.isArray(parsed)
       ? parsed.filter(
           (row): row is OutsideAgentRecord =>
-            !!row &&
+            Boolean(row) &&
             typeof row.id === "string" &&
             typeof row.name === "string" &&
             typeof row.lastSeenAt === "number",
@@ -81,6 +81,21 @@ export function listOutsideAgents(env?: NodeJS.ProcessEnv): OutsideAgentRecord[]
 }
 
 /**
+ * The ids and grafted-Trunk ids of every outside agent, and nothing else from the registry. Team memory uses this
+ * to keep outside Branches out of team membership without exposing device ids, activity or project folders.
+ */
+export function listOutsideAgentIdentityIds(env?: NodeJS.ProcessEnv): string[] {
+  const ids = new Set<string>();
+  for (const record of listOutsideAgents(env)) {
+    ids.add(record.id);
+    if (record.trunkId) {
+      ids.add(record.trunkId);
+    }
+  }
+  return [...ids].toSorted();
+}
+
+/**
  * The id this running client gets: its stable id, unless another process is online under it right now; then
  * the first free `<id>-2`, `<id>-3`, ... (an offline row, or one this same process holds, is free).
  */
@@ -89,7 +104,9 @@ export function assignOutsideAgentId(
   records: readonly OutsideAgentRecord[],
   now = Date.now(),
 ): string {
-  if (!agent.instance) return agent.id;
+  if (!agent.instance) {
+    return agent.id;
+  }
   const byId = new Map(records.map((row) => [row.id, row]));
   for (let n = 1; ; n++) {
     const id = n === 1 ? agent.id : `${agent.id.slice(0, 60)}-${n}`;
@@ -189,14 +206,16 @@ export function readOutsideAgentSettings(env?: NodeJS.ProcessEnv): OutsideAgentS
   }
 }
 
-/** Apply one change from Settings › Grafts and return the result. */
+/** Apply one change from Settings › Connected agents and return the result. */
 export function updateOutsideAgentSettings(
   change: { enabled?: boolean; id?: string; revoked?: boolean; mayDriveWindow?: boolean },
   env?: NodeJS.ProcessEnv,
 ): OutsideAgentSettings {
   const current = readOutsideAgentSettings(env);
   const toggle = (list: string[], on: boolean | undefined) => {
-    if (on === undefined || !change.id) return list;
+    if (on === undefined || !change.id) {
+      return list;
+    }
     const legacy = legacyOutsideId(change.id);
     // One session's choice turns a product-wide rule into per-session rules for its other sessions.
     const expanded =
@@ -232,10 +251,10 @@ export function outsideAgentRefusal(
   settings: OutsideAgentSettings = readOutsideAgentSettings(),
 ): string | undefined {
   if (!settings.enabled) {
-    return "Other agents are off in Settings › Grafts.";
+    return "Other agents are off in Settings › Connected agents.";
   }
   if (forms(agent.id).some((id) => settings.revoked.includes(id))) {
-    return `${agent.name} was disconnected in Settings › Grafts.`;
+    return `${agent.name} was disconnected in Settings › Connected agents.`;
   }
   return undefined;
 }
@@ -248,21 +267,30 @@ export function outsideAgentPeers(
   const taken = new Set(configured.map((peer) => peer.name));
   return records
     .filter((row) => !taken.has(row.id))
-    .map((row) => ({
-      name: row.id,
-      where: row.where ?? null,
-      ...(row.kind ? { kind: row.kind } : {}),
-      ...(row.via ? { via: row.via } : {}),
-      ...(row.avatar ? { avatar: row.avatar } : {}),
-      card: {
-        name: row.name,
-        description: row.version
-          ? `${row.name} ${row.version}, connected over MCP`
-          : `${row.name}, connected over MCP`,
-        skills: [],
-        fetchedAt: row.lastSeenAt,
-      },
-    }));
+    .map((row) => {
+      const peer: OutsidePeer = {
+        name: row.id,
+        where: row.where ?? null,
+        card: {
+          name: row.name,
+          description: row.version
+            ? `${row.name} ${row.version}, connected over MCP`
+            : `${row.name}, connected over MCP`,
+          skills: [],
+          fetchedAt: row.lastSeenAt,
+        },
+      };
+      if (row.kind) {
+        peer.kind = row.kind;
+      }
+      if (row.via) {
+        peer.via = row.via;
+      }
+      if (row.avatar) {
+        peer.avatar = row.avatar;
+      }
+      return peer;
+    });
 }
 
 /**
@@ -307,7 +335,9 @@ export function reclaimDeviceRow(
 ): OutsideAgentSettings | undefined {
   const settings = readOutsideAgentSettings(env);
   const row = records.find((candidate) => candidate.id === id);
-  if (!deviceId || !row || !releasedDeviceRow(row, settings)) return undefined;
+  if (!deviceId || !row || !releasedDeviceRow(row, settings)) {
+    return undefined;
+  }
   return updateOutsideAgentSettings({ id, revoked: false }, env);
 }
 
@@ -317,7 +347,9 @@ export function graftDeviceId(
   client: { connect?: { scopes?: readonly string[]; device?: { id?: string } } } | null | undefined,
 ): string | undefined {
   const scopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
-  if (scopes.includes("operator.admin")) return undefined;
+  if (scopes.includes("operator.admin")) {
+    return undefined;
+  }
   return client?.connect?.device?.id || undefined;
 }
 
@@ -328,7 +360,9 @@ export function graftSendRefusal(
   deviceId: string | undefined,
   records: readonly OutsideAgentRecord[] = listOutsideAgents(),
 ): string | undefined {
-  if (!deviceId || !records.some((row) => row.deviceId === deviceId)) return undefined;
+  if (!deviceId || !records.some((row) => row.deviceId === deviceId)) {
+    return undefined;
+  }
   const row = outsideId ? records.find((candidate) => candidate.id === outsideId) : undefined;
   return row?.deviceId === deviceId
     ? undefined
@@ -341,7 +375,9 @@ export function outsideAgentDeviceRows(
   records: readonly OutsideAgentRecord[],
 ): { deviceId: string; ids: string[] } | undefined {
   const deviceId = records.find((row) => row.id === id)?.deviceId;
-  if (!deviceId) return undefined;
+  if (!deviceId) {
+    return undefined;
+  }
   return { deviceId, ids: records.filter((row) => row.deviceId === deviceId).map((row) => row.id) };
 }
 

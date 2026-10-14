@@ -114,7 +114,8 @@ describe("Settings › Achievements", () => {
     await act(async () => petCard("px-squirrel").click());
     await act(async () => { await Promise.resolve(); });
     expect(prefs[LOOK_PREF]).toMatchObject({ petsHad: ["px-squirrel", "otter"] });
-    expect((prefs[LOOK_PREF] as Record<string, unknown>).pet).toBeUndefined();
+    // No pet is the default now, so picking Squirrel stores it as a real choice.
+    expect((prefs[LOOK_PREF] as Record<string, unknown>).pet).toBe("px-squirrel");
     expect(open).toHaveBeenCalledWith("appearance");
   });
 });

@@ -21,7 +21,7 @@ import "./developer.css";
 const LEDE = "For people building on Branch.";
 const titles = (rows: OffRow[]) => rows.map((r) => r[0]);
 
-const LINKS: OffRow[] = [["Link key", "Your own scripts add it to a branch:// link so it runs without asking first.", "branch:// links are opened by the Branch app.", "btn:Copy"]];
+export const LINKS: OffRow[] = [["Link key", "Your own scripts add it to a branch:// link so it runs without asking first.", "branch:// links are opened by the Branch app.", "btn:Copy"]];
 const BUILD_OFF: OffRow[] = [
   ["REST API", "Conversations, documents, Trunks and admin, with the reference.", ne("REST reference"), "btn:Open the reference"],
   ["Outside programs join Trunk-to-Trunk messages", "", ne("Trunk-to-Trunk message bridge"), "sw"],
@@ -41,8 +41,8 @@ const EDITORS_MORE: OffRow[] = [
   ["Rich tool steps for editors", "Kinds, file places, groups and diffs.", ne("agent protocol tool-step setting"), "sw"],
   ["Tidy each turn’s messages for the editor", "", ne("agent protocol message setting"), "sw"],
 ];
-const ASSISTANTS: OffRow[] = [
-  ["Branch as a connector", "Other assistants see your conversations, Trunks and folders as tools.", "Other assistants start it themselves with branch graft (Settings › Grafts).", "sw"],
+export const ASSISTANTS: OffRow[] = [
+  ["Branch as a connector", "Other assistants see your conversations, Trunks and folders as tools.", "Other assistants start it themselves with branch graft (Settings › Connected agents).", "sw"],
   ["Share your skills as a connector", "Other assistants can find and add your skills.", ne("skills connector"), "sw"],
   ["Share Branch’s browser", "Other assistants get Branch’s browser tools, sign-ins and saved steps.", ne("browser connector"), "sw"],
   ["Share skills, plugins and connectors with any assistant", "One address gives them what you assign, with your Google and Microsoft sign-ins kept here.", ne("shared connector address"), "sw"],
@@ -58,17 +58,17 @@ const ASSISTANTS: OffRow[] = [
   ["Sign in from GitHub Actions without a stored key", "GitHub’s own token is swapped for a short-lived one.", ne("token exchange"), "btn:Set up"],
   ["Example connectors", "A starting point to copy, and Branch’s docs as a connector for coding assistants.", ne("connector template"), "btn:Copy"],
 ];
-const CODE_MORE: OffRow[] = [
+export const CODE_MORE: OffRow[] = [
   ["Index code folders", "For finding code by meaning. Rebuilt when files change.", ne("code index")],
   ["Ask before indexing a folder", "A new folder waits for your yes.", ne("code index"), "sw"],
   ["Warn when too many tools are on", "", ne("tool count warning"), "sw"],
 ];
-const MORE_LINKS: OffRow[] = [["Open a video in a new chat", "Starts a conversation with that video’s page and captions loaded.", "branch:// links are opened by the Branch app.", "codecopy:branch://watch?v=<video id>"]];
+export const MORE_LINKS: OffRow[] = [["Open a video in a new chat", "Starts a conversation with that video’s page and captions loaded.", "branch:// links are opened by the Branch app.", "codecopy:branch://watch?v=<video id>"]];
 const AUTO_TECH: OffRow[] = [
   ["Flow search", "Tries four versions of a flow on examples and keeps the best. Off until you choose: it runs four versions, four times the cost.", ne("flow search"), "sw"],
   ["Loop a prompt", "Or /heartbeat for the check-in list.", ne("/loop command"), "code:/loop 10m check the build"],
 ];
-const SCRIPTS: OffRow[] = [
+export const SCRIPTS: OffRow[] = [
   ["Search over HTTP", "Ranked passages for a question, with the same sign-in as the local address.", ne("search address")],
   ["Share memory with other coding agents", "Point another coding agent at Branch and it gets the same memory. Off until you choose: it reads what they send.", ne("memory proxy"), "sw"],
   ["Automations from files", "Reads .branch/automations/*.md and keeps them in step; only the fields a file names are changed.", ne("automation files"), "sw"],
@@ -85,6 +85,16 @@ rowsOf("Help with code, more", titles(CODE_MORE));
 rowsOf("More branch:// links", titles(MORE_LINKS));
 rowsOf("Automations, technical", titles(AUTO_TECH));
 rowsOf("Memory and automations, for scripts", titles(SCRIPTS));
+
+/** What each Developer section reads: the config, system.info, the local port and address. */
+export function useDevCtx(props: SettingsPageProps): Ctx {
+  const config = useConfig(props.engine);
+  const sys = useLive<RecordValue>(props.engine, "system.info", {}, []);
+  const s = rec(sys.data);
+  const port = Number(config.get("gateway.port")) || Number(s.port) || DEFAULT_PORT;
+  const scheme = config.get("gateway.tls.enabled") === true ? "https" : "http";
+  return { ...props, config, sys: s, port, base: `${scheme}://127.0.0.1:${port}` };
+}
 
 export function DeveloperPage(props: SettingsPageProps) {
   const config = useConfig(props.engine);
@@ -146,7 +156,7 @@ function IdRow({ title, code }: { title: string; code: string }) {
   return code ? <CodeRow title={title} code={code} sub={PAIR} /> : <Ctl title={title} sub={PAIR} />;
 }
 
-function LocalAddress({ engine, config, port, base }: Ctx) {
+export function LocalAddress({ engine, config, port, base }: Ctx) {
   const id = useLive<RecordValue>(engine, "gateway.identity.get", {}, []);
   const ident = rec(id.data);
   const mode = str(config.get("gateway.auth.mode")) || "token";
@@ -178,7 +188,7 @@ function LocalAddress({ engine, config, port, base }: Ctx) {
   );
 }
 
-function HelpWithCode({ config }: Ctx) {
+export function HelpWithCode({ config }: Ctx) {
   const root = str(config.get("worktreeRoot"));
   const [edit, setEdit] = useState(false);
   return (
@@ -207,7 +217,7 @@ const KITS: [string, string, string, string?][] = [
   ["KeepOak cloud", "Your Trunks on keepoak.com, from your own code.", "", "There is no KeepOak kit yet."],
 ];
 
-function BuildOnBranch({ config }: Ctx) {
+export function BuildOnBranch({ config }: Ctx) {
   return (
     <Sec title="Build on Branch">
       <Plist>
@@ -226,7 +236,7 @@ function BuildOnBranch({ config }: Ctx) {
   );
 }
 
-function Editors({ config }: Ctx) {
+export function Editors({ config }: Ctx) {
   const acp = config.get("acp.enabled") !== false;
   return (
     <Sec title="Editors and other apps">
@@ -270,7 +280,7 @@ const RUN_OFF: OffRow[] = [
 ];
 rowsOf("Run without the window", ["Message", "Carry on", "Model", "Mode", "Folder", "Change one setting for this run", ...CHKS.map((c) => c[1]), ...titles(RUN_OFF), "Use Branch from an editor that speaks ACP", "Answer like the OpenAI Responses API", "Read other coding tools’ settings files"]);
 
-function RunWithout({ config, base }: Ctx) {
+export function RunWithout({ config, base }: Ctx) {
   const [o, setO] = useState<RunOpts>({ msg: "", model: "", cwd: "", stdin: false });
   const line = execLine(o);
   const set = (p: Partial<RunOpts>) => setO({ ...o, ...p });
@@ -303,7 +313,7 @@ function RunWithout({ config, base }: Ctx) {
       <h3 className="s2-h3">Kits</h3>
       <p className="hint">TypeScript, Python, Go, React, C and inside your own server: none of these kits is published yet. The gateway client is in Build on Branch, above.</p>
       <h3 className="s2-h3">Other agent programs on this computer</h3>
-      <p className="hint">Branch checks the usual places (programs, npm, pip, Homebrew) and can hand work to them as helpers.</p>
+      <p className="hint">Branch checks the usual places (programs, npm, pip, Homebrew) and can hand work to them as Trunks.</p>
       {shownWhy(ne("agent program finder")) ? <p className="hint s2developer-why">{shownWhy(ne("agent program finder"))}</p> : null}
     </Sec>
   );
@@ -328,7 +338,7 @@ const TERM_OFF: OffRow[] = [
 ];
 rowsOf("From a terminal", [...TERM.map((t) => t[0]), ...titles(TERM_OFF)]);
 
-function FromTerminal() {
+export function FromTerminal() {
   return (
     <Sec title="From a terminal" hint="Copy a command; each prints JSON with --json.">
       {TERM.map(([t, code, sub]) => <CodeRow key={t} title={t} code={code} sub={sub} />)}
@@ -362,7 +372,7 @@ export function toolSearchOn(v: unknown): boolean {
   return typeof o.enabled === "boolean" ? o.enabled : Object.keys(o).some((k) => k !== "enabled");
 }
 
-function ToolsTech({ engine, config, base }: Ctx) {
+export function ToolsTech({ engine, config, base }: Ctx) {
   const [dlg, setDlg] = useState<"" | "play" | "call">("");
   const cm = config.get("tools.codeMode");
   const exec = cm && typeof cm === "object" ? str((cm as Record<string, unknown>).executor) || "node" : "node";
@@ -413,7 +423,7 @@ function Flags({ config }: Ctx) {
   );
 }
 
-function SystemSec(ctx: Ctx) {
+export function SystemSec(ctx: Ctx) {
   const { config } = ctx;
   const otel = rec(config.get("diagnostics.otel"));
   const mdns = str(config.get("discovery.mdns.mode")) || "minimal";
@@ -473,7 +483,7 @@ const PLUGIN_CMDS: [string, string, string?][] = [
 ];
 rowsOf("Build on Branch", [...BUILD2_JUMP.map((r) => r[0]), "Events for your programs", ...titles(BUILD2_OFF2), "Send traces elsewhere", ...titles(BUILD2_OFF2B), "Watch model traffic", "Pages from plugins", ...titles(BUILD2_OFF3), ...PLUGIN_CMDS.map((c) => c[0])]);
 
-function BuildMore({ engine, config }: Ctx) {
+export function BuildMore({ engine, config }: Ctx) {
   const [events, setEvents] = useState(false);
   const [traffic, setTraffic] = useState(false);
   return (
@@ -514,7 +524,7 @@ function TrafficDialog({ onClose }: { onClose: () => void }) {
 
 rowsOf("Settings file", ["Settings file", "Load variables from your shell", "Give up after", "Last written by", "Upgrades already made to the file", "Settings from a conversation", "Temporary overrides from a conversation"]);
 
-function SettingsFileSec({ engine, config }: Ctx) {
+export function SettingsFileSec({ engine, config }: Ctx) {
   const [open, setOpen] = useState(false);
   const t = config.get("env.shellEnv.timeoutMs");
   const shell = config.get("env.shellEnv.enabled") === true;
@@ -543,7 +553,7 @@ function SettingsFileSec({ engine, config }: Ctx) {
 }
 
 rowsOf("Widgets", ["What widgets may run", "Widgets may load outside pages"]);
-function Widgets({ config }: Ctx) {
+export function Widgets({ config }: Ctx) {
   const mode = str(config.get("gateway.controlUi.embedSandbox")) || "scripts";
   return (
     <Sec title="Widgets">
@@ -563,7 +573,7 @@ const OTHER_OFF: OffRow[] = [
   ["Approvals show in the app that called", "When another app uses Branch’s tools, a risky step asks there.", ne("approval forwarding"), "sw"],
 ];
 rowsOf("Other programs and assistants", ["A chat address other apps understand", "Its address", ...titles(OTHER_OFF)]);
-function OtherPrograms({ config, base }: Ctx) {
+export function OtherPrograms({ config, base }: Ctx) {
   const on = config.get("gateway.http.endpoints.chatCompletions.enabled") === true;
   return (
     <Sec title="Other programs and assistants">

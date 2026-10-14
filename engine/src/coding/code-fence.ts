@@ -1,5 +1,3 @@
-// Ported from Aider-AI/aider@5dc9490bb35f9729ef2c95d00a19ccd30c26339c,
-// aider/coders/base_coder.py: all_fences and Coder.choose_fence (Apache-2.0).
 export type CodeFence = readonly [open: string, close: string];
 export const CODE_FENCES: readonly CodeFence[] = [
   ["```", "```"],

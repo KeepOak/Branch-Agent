@@ -96,7 +96,7 @@ export function timelineSummary(items: TimelineItem[], running: boolean, now = D
   };
 }
 
-export function duration(ms: number): string {
+function duration(ms: number): string {
   const s = Math.round(ms / 1000);
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);

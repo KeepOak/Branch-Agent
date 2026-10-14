@@ -2,6 +2,7 @@
 
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import { levenshteinDistance } from "../../../shared/levenshtein-distance.js";
+import { findSearchMatch } from "../../continue-search-match.js";
 import { assertLiteralFileEdits } from "../../file-omission-guards.js";
 import { normalizeToLF } from "../../line-endings.js";
 import {
@@ -279,6 +280,36 @@ function getCandidateHint(content: string, oldText: string): string {
   );
 }
 
+const LOOSE_MATCH_LABELS: Record<string, string> = {
+  trimmedMatch: "ignoring leading and trailing whitespace",
+  caseInsensitiveMatch: "ignoring letter case",
+  whitespaceIgnoredMatch: "ignoring all whitespace",
+};
+
+/**
+ * Locate the text with Continue's looser strategies (CODING-0002). The edit still
+ * fails: Branch never applies a loose match, it only tells the model where to copy from.
+ */
+function getLooseMatchHint(content: string, oldText: string): string {
+  if (content.length > EDIT_CANDIDATE_MAX_SCAN_CHARS) {
+    return "";
+  }
+  const match = findSearchMatch(content, oldText);
+  const label = match ? LOOSE_MATCH_LABELS[match.strategyName] : undefined;
+  if (!match || !label || match.startIndex === match.endIndex) {
+    return "";
+  }
+  // Only a unique location is a useful pointer.
+  if (findSearchMatch(content.slice(match.endIndex), oldText)) {
+    return "";
+  }
+  const startLine = content.slice(0, match.startIndex).split("\n").length;
+  const endLine =
+    startLine + content.slice(match.startIndex, match.endIndex).split("\n").length - 1;
+  const lines = startLine === endLine ? `line ${startLine}` : `lines ${startLine}-${endLine}`;
+  return `\nThe text matches ${lines} when ${label}. Copy oldText exactly from there.`;
+}
+
 function getNotFoundError(
   path: string,
   editIndex: number,
@@ -288,7 +319,7 @@ function getNotFoundError(
 ): Error {
   const prefix =
     totalEdits === 1 ? "Could not find the exact text" : `Could not find edits[${editIndex}]`;
-  const hint = getCandidateHint(content, oldText);
+  const hint = getLooseMatchHint(content, oldText) + getCandidateHint(content, oldText);
   return new Error(
     `${prefix} in ${path}. The old text must match exactly including all whitespace and newlines.${hint}`,
   );

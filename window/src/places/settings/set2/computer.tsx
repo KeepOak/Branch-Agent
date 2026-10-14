@@ -5,7 +5,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Hint, Page, Pill, Plist, Sec, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Hint, Page, Pill, Plist, Sec, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { Face } from "../../../face/Face";
@@ -13,9 +13,12 @@ import { Menu, type MenuItem } from "../../../shell/Menu";
 import { bytes, CallLine, CopyBtn, Kv, lvOf, rec, str, Tile, useCall, useLive, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import { ComputerMore, NewCloud, ROWS as MORE_ROWS } from "./computer-more";
+import { BuildCleanup } from "./computer-cleanup";
 import { Icon } from "../../../shell/icons";
 import { DesktopCtl } from "../desktop-ctl";
+import { useDesktopControls } from "../../../connect/desktop-controls";
 import { shownWhy } from "../../../shell/shown-why";
+import { trunkDisplayName } from "../../../connect/trunk-name";
 
 const PAIR_EVENTS = ["device.pair", "node.pair", "node"];
 const ALLOW_DELAY_MS = 1500;
@@ -76,9 +79,24 @@ export function ComputerPage(props: SettingsPageProps) {
       <Waiting {...props} lv={lv} />
       <Computers {...props} lv={lv} nodes={nodes} agents={rec(agents.data)} />
       <WhichTrunk {...props} nodes={list(rec(nodes.data).nodes)} agents={list(rec(agents.data).agents)} defaultId={rec(agents.data).defaultId} />
+      <BuildCleanup engine={props.engine} />
       <ComputerMore {...props} />
     </Page>
   );
+}
+
+/** One block of the top of the page, for the R1 Devices page's cards: the requests waiting for a yes, the computers
+ *  Trunks may use (with Keep this computer awake and Add a computer), which Trunk uses which, or the build folders. */
+export function ComputerBlock(props: SettingsPageProps & { part: "waiting" | "computers" | "which" | "build" }) {
+  const lv = lvOf(props.level);
+  const agents = useLive<RecordValue>(props.engine, "agents.list", {}, ["agents"]);
+  const nodes = useLive<RecordValue>(props.engine, "node.list", {}, PAIR_EVENTS);
+  const { reload } = nodes;
+  useEffect(() => { const again = () => void reload(); window.addEventListener("branch:computers-changed", again); return () => window.removeEventListener("branch:computers-changed", again); }, [reload]);
+  if (props.part === "waiting") return <Waiting {...props} lv={lv} />;
+  if (props.part === "computers") return <Computers {...props} lv={lv} nodes={nodes} agents={rec(agents.data)} />;
+  if (props.part === "build") return <BuildCleanup engine={props.engine} />;
+  return <WhichTrunk {...props} nodes={list(rec(nodes.data).nodes)} agents={list(rec(agents.data).agents)} defaultId={rec(agents.data).defaultId} />;
 }
 
 /** Waiting for your yes: Allow (on after 1.5 s, so a stray click can't allow) and Don't allow (asks first). */
@@ -139,7 +157,7 @@ type Node = RecordValue;
 
 /** Which Trunks are pinned to a computer (by node id or name). */
 function usersOf(node: Node, agents: RecordValue, cfgAgents: RecordValue[]): string[] {
-  const names = new Map(list(agents.agents).map((a) => [str(a.id), str(rec(a.identity).name) || str(a.name) || str(a.id)]));
+  const names = new Map(list(agents.agents).map((a) => [str(a.id), trunkDisplayName(a)]));
   const id = str(node.nodeId); const name = str(node.displayName);
   return cfgAgents.filter((a) => { const pin = str(rec(rec(a.tools).exec).node); return pin && (pin === id || pin === name); }).map((a) => names.get(str(a.id)) ?? str(a.id));
 }
@@ -156,56 +174,55 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
   const other = all.filter((n) => n.gatewayLocal !== true);
   const card = (n: Node) => <ComputerCard key={str(n.nodeId)} engine={engine} node={n} lv={lv} users={usersOf(n, agents, cfgAgents)} onChanged={() => void nodes.reload()} />;
   const local = rec(status.data);
+  // Screen control on this computer is enough to list it, even when computer.status
+  // is missing — the chat already calls that machine "This computer".
+  const screenOn = config.get("plugins.entries.cua-computer.enabled") === true;
+  const usableHere = Boolean(status.data) || screenOn;
+  const hereStatus: RecordValue = { ...local, available: local.available === true || screenOn };
   return (
     <Sec title="Computers they may use">
       {nodes.error ? <p className="hint s2-err" role="alert">{nodes.error}</p> : null}
       {lv >= 1 ? <FindRow find={find} onFind={setFind} onRefresh={() => { void nodes.reload(); void status.reload(); }} /> : null}
       {lv >= 1 && paired.length && !all.length ? <Hint>No computer matches.</Hint> : null}
-      {here.length || (status.data && !find.q) ? <div className="s2-grp">On this computer</div> : null}
+      {here.length || (usableHere && !find.q) ? <div className="s2-grp">On this computer</div> : null}
       <div className="s2-comps">
         {here.map(card)}
-        {status.data && !here.length && !find.q ? <ThisComputer status={local} /> : null}
+        {usableHere && !here.length && !find.q ? <ThisComputer status={hereStatus} /> : null}
       </div>
       {other.length ? <><div className="s2-grp">Your other computers</div><div className="s2-comps">{other.map(card)}</div></> : null}
-      {nodes.data && !all.length && !status.data ? <Hint>No computers are paired yet.</Hint> : null}
+      {nodes.data && !all.length && !usableHere && !config.loading ? <Hint>No computers are paired yet.</Hint> : null}
       <InTheCloud engine={engine} />
-      <DesktopCtl title="Keep this computer awake" sub="Keeps this computer awake while Trunks use it." help="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />
+      <KeepAwake />
       <Acts><Btn pri onClick={() => window.dispatchEvent(new CustomEvent("branch:add-computer"))}><Icon name="plus" small />Add a computer</Btn></Acts>
     </Sec>
   );
 }
 
-/** In the cloud: KeepOak's own card (greyed until keepoak.com has a sign-in) and a cloud computer from a profile the
- *  engine has (environments.list, environments.create). */
+/** Keep this computer awake: the Branch app's own switch. Not drawn where the app is absent, since nothing can change it there. */
+function KeepAwake() {
+  const desk = useDesktopControls();
+  if (desk.off) return null;
+  return <DesktopCtl title="Keep this computer awake while Trunks work" sub="Only while a Trunk is working, and only when plugged in." help="Held only while a Trunk has a live run and let go the moment it ends; on battery the computer sleeps as usual. Locking and signing out still work; Branch never unlocks it." name="keepAwake" />;
+}
+
+/** In the cloud: a cloud computer, offered only when the engine has a profile to start one from. */
 function InTheCloud({ engine }: Pick<SettingsPageProps, "engine">) {
   const envs = useLive<RecordValue>(engine, "environments.list", {}, ["node", "environments"]);
   const [open, setOpen] = useState(false);
   const profiles = list(rec(envs.data).profiles);
+  if (!profiles.length) return null;
   return (
     <>
       <div className="s2-grp">In the cloud</div>
-      <div className="s2-comps">
-        <div className="s2-comp s2cm-offc" data-row="KeepOak computer">
-          <Tile><Ico name="cloud" s /></Tile>
-          <span className="grow">
-            <b>KeepOak computer</b>
-            <small>Cloud · KeepOak</small>
-            <span className="s2-reach">A cloud computer whose machines run on your keepoak.com plan.</span>
-          </span>
-          <Btn sm disabled title={KEEPOAK_OFF}>Connect keepoak.com</Btn>
-        </div>
-      </div>
       <div className="s2cm-offer" role="note">
         <Tile><Ico name="cloud" s /></Tile>
         <span className="grow"><b>A cloud computer</b><small>A fresh machine for each conversation on your own cloud account or KeepOak, thrown away when its work stops. Off until you choose: the provider bills while machines run.</small></span>
-        <Btn sm disabled={!profiles.length} title={profiles.length ? undefined : NO_PROFILE} onClick={() => setOpen(true)}>Set one up</Btn>
+        <Btn sm onClick={() => setOpen(true)}>Set one up</Btn>
         {open ? <NewCloud engine={engine} profiles={profiles} onClose={(made) => { setOpen(false); if (made) void envs.reload(); }} /> : null}
       </div>
     </>
   );
 }
-const KEEPOAK_OFF = "keepoak.com has no sign-in Branch can use yet.";
-const NO_PROFILE = "Needs a cloud computer provider set up in this engine.";
 
 type Find = { q: string; sort: string; show: string };
 /** Advanced: find, sort and filter the computers. */
@@ -241,7 +258,7 @@ function ThisComputer({ status }: { status: RecordValue }) {
   const use = rec(status.computerUse);
   const ok = status.available === true;
   return (
-    <div className="s2-comp">
+    <div className="s2-comp" data-row="This computer">
       <Tile><Ico name="monitor" s /></Tile>
       <span className="grow">
         <b>This computer</b>
@@ -297,12 +314,15 @@ function Load({ node }: { node: Node }) {
   if (!s.cpuCount) return null;
   const load = Array.isArray(s.loadAverage) ? Number(s.loadAverage[0]).toFixed(1) : "";
   const total = Number(s.memoryTotalBytes) || 0;
-  const used = total - (Number(s.memoryFreeBytes) || 0);
+  const used = Math.max(0, total - (Number(s.memoryFreeBytes) || 0));
+  // "1.7 GB of 15.6 GB memory used", never "1.7 GB/15.6 GB": a slash read as "17 GB/15.6 GB" (CB3).
+  const mem = total ? `${bytes(used)} of ${bytes(total)} memory used` : "";
+  const disk = s.diskAvailableBytes !== undefined ? `${bytes(s.diskAvailableBytes)} disk free` : "";
   return (
-    <span className="s2-busy">
+    <span className="s2-busy s2-load">
       {load ? <span title={`Load average (1 min) on ${str(s.cpuCount)} cores`}>load {load}</span> : null}
-      {total ? <span>{load ? " · " : ""}{bytes(used)}/{bytes(total)} memory</span> : null}
-      {s.diskAvailableBytes !== undefined ? <span> · {bytes(s.diskAvailableBytes)} free</span> : null}
+      {mem ? <span>{load ? " · " : ""}{mem}</span> : null}
+      {disk ? <span>{load || mem ? " · " : ""}{disk}</span> : null}
     </span>
   );
 }
@@ -355,23 +375,45 @@ function RemoveDialog({ engine, node, onClose }: Pick<SettingsPageProps, "engine
   );
 }
 
-/** Which Trunk uses which: a Trunk pinned to a computer runs its commands there (agents.entries.<id>.tools.exec.node). */
+/** Which Trunk uses which: a summary row; the per-Trunk list opens in a dialog so the page stays short.
+ *  A Trunk pinned to a computer runs its commands there (agents.entries.<id>.tools.exec.node). */
 function WhichTrunk({ engine, nodes, agents, defaultId }: SettingsPageProps & { nodes: Node[]; agents: RecordValue[]; defaultId: unknown }) {
+  const [open, setOpen] = useState(false);
+  const config = useConfig(engine);
+  const entries = rec(config.get("agents.entries"));
+  if (!agents.length) return null;
+  const pinned = agents.filter((a) => pinnedNode(entries, str(a.id))).length;
+  const summary = pinned ? `${pinned} of ${agents.length} Trunks use a chosen computer` : "Every Trunk uses any computer that is ready";
+  return (
+    <Sec title="Which Trunk uses which">
+      <Ctl title={summary} sub="Set one Trunk to a computer when its work must run there. Other Trunks use any ready computer.">
+        <Btn sm onClick={() => setOpen(true)}>Change</Btn>
+      </Ctl>
+      {open ? <PinDialog engine={engine} nodes={nodes} agents={agents} defaultId={defaultId} onClose={() => setOpen(false)} /> : null}
+    </Sec>
+  );
+}
+
+function pinnedNode(entries: RecordValue, id: string): string {
+  return id in entries ? str(rec(rec(rec(entries[id]).tools).exec).node) : "";
+}
+
+function PinDialog({ engine, nodes, agents, defaultId, onClose }: Pick<SettingsPageProps, "engine"> & { nodes: Node[]; agents: RecordValue[]; defaultId: unknown; onClose: () => void }) {
   const config = useConfig(engine);
   const entries = rec(config.get("agents.entries"));
   const usable = nodes.filter((n) => n.approvalState !== "pending-approval" && n.approvalState !== "unapproved");
-  if (!agents.length) return null;
   const main = str(defaultId);
   const ordered = [...agents.filter((a) => str(a.id) !== main), ...agents.filter((a) => str(a.id) === main)];
   // One Trunk's own entry only (a hot-applied, single-Trunk change; null puts the default back).
   const pin = (agentId: string, nodeId: string | null) => void config.set(`agents.entries.${agentId}.tools.exec.node`, nodeId);
   return (
-    <Sec title="Which Trunk uses which" hint="A Trunk can use several computers side by side.">
+    <Dialog title="Which Trunk uses which" wide onClose={onClose} footer={<Btn pri onClick={onClose}>Done</Btn>}>
+      <p className="hint">A Trunk can use several computers side by side. A Trunk with no settings of its own follows the default.</p>
       <Plist>
         {ordered.map((a) => {
-          const id = str(a.id); const name = str(rec(a.identity).name) || str(a.name) || id;
-          const entry = id in entries ? rec(entries[id]) : undefined;
-          const pinned = str(rec(rec(entry?.tools).exec).node);
+          const id = str(a.id); const name = trunkDisplayName(a);
+          const hasEntry = id in entries;
+          const pinned = pinnedNode(entries, id);
           return (
             <div key={id} className="prow s2-percomp" data-row={name}>
               <Face size={32} label={name} />
@@ -380,7 +422,7 @@ function WhichTrunk({ engine, nodes, agents, defaultId }: SettingsPageProps & { 
                 <span className="s2-chips" role="group" aria-label={`Computers ${name} uses`}>
                   {usable.map((n) => {
                     const nid = str(n.nodeId); const on = pinned === nid || pinned === str(n.displayName);
-                    return <button key={nid} type="button" className="chip6" aria-pressed={on} disabled={!entry || config.loading} title={entry ? undefined : "This Trunk follows the default settings; give it its own settings first."} onClick={() => pin(id, on ? null : nid)}>{str(n.displayName) || nid}</button>;
+                    return <button key={nid} type="button" className="chip6" aria-pressed={on} disabled={!hasEntry || config.loading} title={hasEntry ? undefined : "This Trunk follows the default settings; give it its own settings first."} onClick={() => pin(id, on ? null : nid)}>{str(n.displayName) || nid}</button>;
                   })}
                 </span>
               </span>
@@ -388,6 +430,6 @@ function WhichTrunk({ engine, nodes, agents, defaultId }: SettingsPageProps & { 
           );
         })}
       </Plist>
-    </Sec>
+    </Dialog>
   );
 }

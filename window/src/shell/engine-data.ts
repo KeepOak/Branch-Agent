@@ -5,6 +5,7 @@ import { ConversationList, type ConversationsSnapshot } from "../connect/convers
 import type { SaplingSession } from "../connect/session";
 import type { Contact } from "@branch/gateway-protocol";
 import { NO_PEOPLE, type ListPeople } from "./list-model";
+import { trunkDisplayName } from "../connect/trunk-name";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -29,6 +30,12 @@ export function useConversations(session: SaplingSession, ready: boolean, mainKe
     };
   }, [list, session, ready]);
   const snap = useSyncExternalStore(list.subscribe, list.getSnapshot);
+  useEffect(() => {
+    if (!ready || !snap.loaded) return;
+    const keys = [...snap.rows].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8).map((row) => row.key);
+    // Fakes passed as a session in shell tests have no warmer. A real session always does.
+    if ("warmHistories" in session && typeof session.warmHistories === "function") session.warmHistories(keys);
+  }, [ready, snap, session]);
   return [ready ? snap : EMPTY_LIST, list];
 }
 
@@ -82,10 +89,10 @@ export function readTrunks(result: unknown): Trunks {
     : undefined;
   return {
     defaultId,
-    ...(bootstrap ? { bootstrapDefault: { id: str(bootstrap.id), name: str(rec(bootstrap.identity).name) || str(bootstrap.name) || str(bootstrap.id), isDefault: true } } : {}),
+    ...(bootstrap ? { bootstrapDefault: { id: str(bootstrap.id), name: trunkDisplayName(bootstrap), isDefault: true } } : {}),
     list: agents.map((a) => ({
       id: str(a.id),
-      name: str(rec(a.identity).name) || str(a.name) || str(a.id),
+      name: trunkDisplayName(a),
       isDefault: str(a.id) === defaultId || a.default === true,
       avatar: str(rec(a.identity).avatar) || str(a.avatar) || undefined,
       emoji: str(rec(a.identity).emoji) || undefined,
