@@ -7,7 +7,7 @@ import { Coming } from "../../glass/coming";
 import type { WindowEngine } from "../../connect/engine";
 import { GitHubConnection } from "../settings/github-connection";
 
-const COMPUTER_WHY = "Pinning a Trunk to this computer’s GitHub comes in a later update.";
+const COMPUTER_WHY = "This computer’s GitHub comes in a later update.";
 
 function DeviceCode({ conn }: { conn: GitHubConnection }) {
   const { device, expiresAt, phase } = conn.view;

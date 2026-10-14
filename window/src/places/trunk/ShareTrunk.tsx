@@ -26,8 +26,8 @@ export function templateFileName(name: string): string {
   return `${slug}.branch.trunk-template.json`;
 }
 
-const PEOPLE_WHY = "Sharing a Trunk with people comes in a later update.";
-const TEAM_WHY = "Sharing with the team comes in a later update.";
+const PEOPLE_WHY = "With people comes in a later update.";
+const TEAM_WHY = "Share with the team comes in a later update.";
 type Tab = "people" | "file" | "team";
 const TABS: [Tab, string][] = [["people", "With people"], ["file", "As a file"], ["team", "With the team"]];
 
