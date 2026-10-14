@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
 import type { Row } from "./rows";
-import { SECTION_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
+import { MAKE_DEFAULT_COMING, SECTION_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
 import type { PageSlots } from "./slots";
 import { NOTHING_MATCHES } from "./search";
 import { INVALID_CONFIG, NEEDS_ADMIN } from "./useRow";
@@ -58,13 +58,18 @@ describe("SettingsFrame", () => {
     expect($("[data-page=developer]")).toBeNull();
   });
 
-  it("puts one glass card per section, with no rule lines, and draws none of General's empty sections (R1-15)", async () => {
+  it("puts one glass card per section in the preview's order, with Coming for General's sections not wired yet (#1049)", async () => {
     await mount(engineOf().engine);
     const secs = $$(".r1s-sec");
-    expect(secs.map((s) => s.querySelector("h2")?.textContent)).toContain("Show agents’ work");
-    expect(secs.map((s) => s.querySelector("h2")?.textContent)).not.toContain("Waiting line");
-    expect(secs.map((s) => s.querySelector("h2")?.textContent)).not.toContain("Keyboard");
-    expect(secs.filter((s) => s.textContent?.includes(SECTION_COMING(s.querySelector("h2")?.textContent ?? "")))).toEqual([]);
+    const titles = secs.map((s) => s.querySelector("h2")?.textContent ?? "");
+    // preview.html PG.general: the card list, in order. Waiting line has only Advanced/Technical rows, so Regular skips it.
+    const PREVIEW_GENERAL = ["Pinned", "Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "History repair", "Waiting line", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"];
+    expect(titles).toEqual(PREVIEW_GENERAL.filter((t) => titles.includes(t)));
+    expect(titles).toEqual(expect.arrayContaining(["Pinned", "Show agents’ work", "Keyboard", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"]));
+    expect(titles).not.toContain("Waiting line");
+    const keyboard = secs.find((s) => s.querySelector("h2")?.textContent === "Keyboard")!;
+    expect(keyboard.querySelector("[data-coming]")?.getAttribute("aria-disabled")).toBe("true");
+    expect(keyboard.textContent).toContain(SECTION_COMING("Keyboard"));
   });
 
   it("shows higher rows inside their own section with an inline tag, and saves the level", async () => {
@@ -95,7 +100,7 @@ describe("SettingsFrame", () => {
     expect(work.querySelector(":scope > [data-row='general.work.mode']")).not.toBeNull();
   });
 
-  it("makes a Trunk the default from search with its own button, and draws none without a handler (R1-15)", async () => {
+  it("makes a Trunk the default from search with its own button, and shows it as Coming without a handler (#1049)", async () => {
     const onTrunk = vi.fn();
     const trunks = [{ id: "t1", name: "Juniper" }, { id: "t2", name: "Juno", isDefault: true }];
     await act(async () => root.render(<SettingsFrame engine={engineOf().engine} trunks={trunks} onTrunk={onTrunk} />));
@@ -113,7 +118,9 @@ describe("SettingsFrame", () => {
 
     await act(async () => root.render(<SettingsFrame engine={engineOf().engine} trunks={trunks} />));
     await type("Juniper");
-    expect($$(".r1s-mkdef")).toHaveLength(0);
+    const off = $(".r1s-mkdef");
+    expect(off.getAttribute("aria-disabled")).toBe("true");
+    expect(off.getAttribute("data-coming")).toBe(MAKE_DEFAULT_COMING);
     expect($("[data-hit='t1']")).not.toBeNull();
   });
 

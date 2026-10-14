@@ -75,16 +75,20 @@ describe("Onboarding", () => {
     expect(onLater).toHaveBeenCalledOnce();
   });
 
-  it("offers only this computer in Where Branch runs; the other two wait in Seedbank (R1-15)", async () => {
+  it("lists the preview's three places in Where Branch runs, the other two as Coming rows naming their calls (#1049)", async () => {
     const { engine } = fakeEngine({});
     const { host } = await show(engine);
     await act(async () => button(host, "Change").click());
     const radios = [...host.querySelectorAll(".r1-ob-sheet [role=radio]")] as HTMLButtonElement[];
-    expect(radios.map((r) => r.querySelector("b")?.textContent)).toEqual(["This computer"]);
-    expect(host.querySelectorAll(".r1-ob-sheet [aria-disabled=true]")).toHaveLength(0);
-    expect(comingControls().flatMap((c) => c.need)).not.toEqual(expect.arrayContaining(["device.pair.setupCode"]));
-    expect(comingControls().flatMap((c) => c.need)).not.toContain("environments.create");
-    expect(host.querySelector(".r1-ob-sheet")?.textContent).toContain("Seedbank › Coming to Branch");
+    // preview obWhereP37: This computer, Another computer, A KeepOak computer.
+    expect(radios.map((r) => r.querySelector("b")?.textContent)).toEqual(["This computer", "Another computer", "A KeepOak computer"]);
+    expect(radios.map((r) => r.getAttribute("aria-disabled"))).toEqual([null, "true", "true"]);
+    expect(comingControls().find((c) => c.where === "Another computer")?.need).toEqual(["device.pair.setupCode"]);
+    expect(comingControls().find((c) => c.where === "A KeepOak computer")?.need).toEqual(["environments.create"]);
+    expect(host.querySelector(".r1-ob-sheet")?.textContent).not.toContain("Seedbank");
+    expect(host.querySelector(".r1-ob-sheet")?.textContent).not.toMatch(/Mac mini|\bNAS\b/);
+    await act(async () => radios[1].click());
+    expect(host.querySelector(".r1-ob-sheet")).not.toBeNull();
     await act(async () => button(host, "Done").click());
     expect(host.textContent).toContain("Runs on this computer");
   });
