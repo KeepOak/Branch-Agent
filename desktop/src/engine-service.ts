@@ -80,6 +80,39 @@ export async function waitForEngineAnswer(probe: () => Promise<boolean>, timeout
   }
 }
 
+export interface ServiceRestartSteps {
+  /** The service engine answers /readyz on the gateway port. */
+  probe(): Promise<boolean>;
+  /** The engine stopped its own service after a crash storm (its marker was seen): the owner decides, not this loop. */
+  stormed(): boolean;
+  quitting(): boolean;
+  /** `branch gateway start` through the service manager. */
+  startService(): Promise<void>;
+  /** Resolves true once the service engine answers, false when it never does in time. */
+  waitForService(): Promise<boolean>;
+  log(line: string): void;
+}
+
+/**
+ * Brings a stopped engine service back through the service manager, never by starting a second engine in the app.
+ * An engine that answers again by itself, a crash storm the engine stopped itself for, and quit all leave it alone.
+ * Rejects when the started service does not answer, so the caller's backoff tries again.
+ */
+export async function restartStoppedServiceEngine(steps: ServiceRestartSteps): Promise<"answering" | "storm" | "quitting" | "restarted"> {
+  if (steps.quitting()) return "quitting";
+  if (await steps.probe()) return "answering";
+  if (steps.stormed()) {
+    steps.log("engine service: stopped after a crash storm; it starts again when Branch Agent is opened");
+    return "storm";
+  }
+  steps.log("engine service: not answering; starting it through the service manager");
+  await steps.startService();
+  if (steps.quitting()) return "quitting";
+  if (!await steps.waitForService()) throw new Error("the engine service was started but did not answer in time; see gateway.log");
+  steps.log("engine service: answering again after a restart");
+  return "restarted";
+}
+
 export type EngineMode = "service" | "child";
 interface EngineModeRecord { mode: EngineMode; reason?: string; at: string; noticeShown?: boolean }
 const modeFile = (dataDir: string): string => join(dataDir, "engine-mode.json");
