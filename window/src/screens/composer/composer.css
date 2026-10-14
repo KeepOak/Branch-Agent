@@ -1,0 +1,175 @@
+/* R1-04 Composer: measured from the approved preview (#composer, .ccRowP17, .pmP17, .ringPopP17) at 1440 and 390,
+   light and dark. No divider lines anywhere (spacers only).
+   Glass model (owner, final; Private docs/design/r1 README item 48): only the sidebar is frosted and tinted. The composer
+   sits on clear glass, so the pill, every row button, every note and every menu row is its own small frosted pill with a
+   1 px low-alpha outline. The + menu, the row's menus and the ring popover are clear glass. Pill fills are chosen so each
+   ink used on them passes 4.5:1 composited over pure white and pure black, so contrast holds over any wallpaper. */
+:root {
+  --r1c-p-fill: rgba(255,255,255,.76); --r1c-p-edge: rgba(0,0,0,.11); --r1c-p-on: rgba(0,0,0,.07); --r1c-p-ink2: rgb(56,62,69); --r1c-p-bad: #7f1d10;
+  --r1c-p-blur: blur(14px) saturate(170%);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --r1c-p-fill: rgba(20,23,27,.74); --r1c-p-edge: rgba(255,255,255,.15); --r1c-p-on: rgba(255,255,255,.06); --r1c-p-ink2: rgb(214,218,224); --r1c-p-bad: #ffcbc2; } }
+:root[data-theme="dark"] { --r1c-p-fill: rgba(20,23,27,.74); --r1c-p-edge: rgba(255,255,255,.15); --r1c-p-on: rgba(255,255,255,.06); --r1c-p-ink2: rgb(214,218,224); --r1c-p-bad: #ffcbc2; }
+:root.contrast17 { --r1c-p-fill: rgba(255,255,255,.9); --r1c-p-edge: rgba(0,0,0,.22); }
+:root.contrast17[data-theme="dark"] { --r1c-p-fill: rgba(16,18,22,.9); --r1c-p-edge: rgba(255,255,255,.28); }
+@media (prefers-color-scheme: dark) { :root.contrast17:not([data-theme="light"]) { --r1c-p-fill: rgba(16,18,22,.9); --r1c-p-edge: rgba(255,255,255,.28); } }
+/* Reduce transparency: solid pills and solid menus */
+:root[data-transparency="reduce"] { --r1c-p-fill: var(--raise); }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) { --r1c-p-fill: var(--raise); } }
+
+/* One frosted pill: the fill, the blur and a 1 px outline drawn inside; softer inks firm up to the pill's own ink. */
+.r1c-pill, .r1c-note, .r1c-quiet, .r1c-flag, .r1c-tile, .r1c-mi, .r1c-chip,
+.r1c-menu :is(.c-pt, .c-pp, .c-grp, .c-mi, .c-row, .c-search, .c-seg, .r1c-runs, .r1c-line, .r1c-ctx, .r1c-more .bars, .mi, .pt, .ph, .acctT5, .sp-note),
+.r1c-plugpop :is(.c-plug-h, .c-search, .c-ph, .c-tool, .c-librow, .c-plug-changed, .c-manage, .c-pp) {
+  background: var(--r1c-p-fill); backdrop-filter: var(--r1c-p-blur); -webkit-backdrop-filter: var(--r1c-p-blur);
+  border-color: transparent; box-shadow: inset 0 0 0 1px var(--r1c-p-edge);
+  --ink-2: var(--r1c-p-ink2); --ink-3: var(--r1c-p-ink2); --bad: var(--r1c-p-bad);
+}
+/* the chosen or open one: a light lift over the same frost, outline kept */
+:is(.r1c-quiet, .r1c-mi, .r1c-tile, .r1c-menu .c-mi, .r1c-ringpop .mi, button.r1c-run, .r1c-plugpop :is(.c-tool, .c-manage), .r1c-menu .c-seg button):is(:hover, :focus-visible, [aria-expanded="true"], [aria-checked="true"], [aria-selected="true"], .on) {
+  background: var(--r1c-p-fill); box-shadow: inset 0 0 0 1px var(--r1c-p-edge), inset 0 0 0 100vmax var(--r1c-p-on); outline: 0; }
+:root[data-transparency="reduce"] :is(.r1c-pill, .r1c-note, .r1c-quiet, .r1c-flag, .r1c-tile, .r1c-mi, .r1c-chip) { backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* Menus and the ring popover are clear glass: no fill, no blur, no shadow; their rows carry the frost */
+.g-popover:has(> .r1c-menu), .g-popover:has(> .r1c-plus) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border-color: transparent; }
+:root[data-transparency="reduce"] :is(.g-popover:has(> .r1c-menu), .g-popover:has(> .r1c-plus)) { background: var(--raise); box-shadow: inset 0 0 0 1px var(--r1c-p-edge); }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) :is(.g-popover:has(> .r1c-menu), .g-popover:has(> .r1c-plus)) { background: var(--raise); box-shadow: inset 0 0 0 1px var(--r1c-p-edge); } }
+/* ...and so is the tools menu, which is the classic composer's popover (composer/PlugMenu) */
+.c-pop.r1c-plugpop { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border-color: transparent; }
+:root[data-transparency="reduce"] .c-pop.r1c-plugpop { background: var(--raise); box-shadow: inset 0 0 0 1px var(--r1c-p-edge); }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .c-pop.r1c-plugpop { background: var(--raise); box-shadow: inset 0 0 0 1px var(--r1c-p-edge); } }
+.r1c-menu { display: grid; gap: 4px; }
+.r1c-menu :is(.c-pt, .c-pp, .c-grp, .r1c-runs, .r1c-line:not(button)) { width: fit-content; max-width: 100%; border-radius: 999px; }
+.r1c-menu :is(.c-pt, .c-grp) { padding: 2px 9px; margin: 6px 0 0; }
+.r1c-menu .c-pp { padding: 2px 9px; margin: 0; }
+.r1c-menu :is(.r1c-ctx, .r1c-more .bars) { border-radius: 14px; }
+.r1c { position: relative; max-width: none; padding-inline: max(0px, calc(2.2cqi - 16px)); }
+@container (max-width: 760px) { .r1c { margin-bottom: -4px; } }
+.r1c-note { width: fit-content; margin: 0 auto 6px; padding: 3px 12px; border-radius: 999px; max-width: min(100%, 680px); color: var(--ink-3); font-size: var(--fs-12-5); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1c-note.bad { color: var(--bad); }
+/* Improve my draft's Undo, inside its note (#977). */
+.r1c-undo { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
+
+/* The pill: 54 tall, radius 22, padding 8, gap 4 */
+.r1c-pill { position: relative; display: flex; align-items: flex-end; gap: 4px; min-height: 54px; padding: 8px; border-radius: var(--r-composer);
+  border: 1px solid transparent; transition: box-shadow .15s; }
+.r1c-pill[data-temp] { border-style: dashed; border-color: var(--r1c-p-edge); box-shadow: none; }
+.r1c-pill textarea { flex: 1; min-width: 0; align-self: center; height: auto; min-height: 35.75px; max-height: 160px; padding: 7px 6px; border: 0; outline: 0; resize: none;
+  background: transparent; color: var(--ink); font: inherit; font-size: 15px; line-height: 1.45; field-sizing: content; overflow-y: auto; }
+.r1c-pill textarea::placeholder { color: var(--ink-3); }
+.r1c-btn, .g-ring { position: relative; display: grid; place-items: center; flex: none; width: 34px; height: 34px; margin-block: 1px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--ink-3); cursor: pointer; transition: background-color .14s cubic-bezier(.2,.8,.2,1), color .14s cubic-bezier(.2,.8,.2,1); }
+.r1c-btn:hover:not([aria-disabled="true"]), .g-ring:hover { background: var(--fill); color: var(--ink); }
+.r1c-btn[aria-expanded="true"] { background: var(--fill); color: var(--ink); }
+.g-ring { color: var(--ink-2); }
+.g-ring svg { display: block; }
+.g-ring-n { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 999px; background: var(--btn); color: var(--on-btn);
+  font-size: 9.5px; font-weight: 600; line-height: 14px; text-align: center; box-shadow: 0 0 0 1.5px var(--bg); }
+.r1c-send { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: var(--btn); color: var(--on-btn); cursor: pointer;
+  animation: r1c-pop-in var(--spring-pop); transition: background-color .14s cubic-bezier(.2,.8,.2,1), opacity .14s; }
+.r1c-send:disabled { opacity: .35; cursor: default; }
+@keyframes r1c-pop-in { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+.r1c-flag { align-self: center; flex: none; padding: 2px 8px; border-radius: 999px; color: var(--ink-3); font-size: 11.5px; }
+.r1c-pill .c-drawer { left: -1px; right: -1px; }
+
+/* The row underneath: quiet 12.5 px text buttons, 24 tall, no background until hover */
+/* Inset 6 so each label's text lines up 14 px in from the pill, as in the preview; the right-edge mask only while it scrolls. */
+.r1c-row { display: flex; align-items: center; gap: 4px; min-height: 26px; margin: 4px 6px 0; overflow-x: auto; scrollbar-width: none; }
+/* data-overflow stays for the layout proof; no mask, since a mask would stop the row's pills frosting the wallpaper */
+.r1c-row::-webkit-scrollbar { display: none; }
+.r1c-grow { flex: 1; min-width: 8px; }
+.r1c-quiet { display: flex; align-items: center; gap: 3px; flex: none; height: 24px; padding: 0 8px; border: 0; border-radius: 999px; color: var(--ink-3);
+  font-size: var(--fs-12-5); line-height: 1; white-space: nowrap; cursor: pointer; transition: box-shadow .15s, color .15s; }
+.r1c-quiet:hover, .r1c-quiet[aria-expanded="true"] { color: var(--ink); }
+.r1c-quiet.r1c-to { color: var(--ink-2); }
+.r1c-quiet[data-tone="bad"] { color: var(--bad); }
+
+/* Floating menus: preview .pop padding 6 (the + menu 8), radius 14, 1 px edge */
+.g-popover:has(> .r1c-menu), .g-popover:has(> .r1c-plus) { border-width: 1px; }
+.g-popover:has(> .r1c-menu) { padding: 6px; }
+.r1c-menu .c-pt { color: var(--ink-3); font-size: var(--fs-12-5); font-weight: 600; letter-spacing: 0; }
+.r1c-menu .c-pp { color: var(--ink-2); font-size: var(--fs-12-5); }
+.r1c-menu .c-mi { padding: 8px 10px; gap: 10px; border-radius: var(--r-menu-row); font-size: var(--fs-13-5); }
+.r1c-menu .c-mi-t small { font-size: 12px; color: var(--ink-3); }
+.r1c-menu .c-mi-ic { color: var(--ink-3); }
+.r1c-menu .c-sep, .r1c-menu hr { height: 6px; margin: 0; border: 0; }
+.r1c-menu .c-grp { font: 600 var(--fs-12-5) var(--sans); letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+.r1c-menu .c-search { margin: 2px 2px 4px; border: 0; border-radius: 12px; }
+.r1c-model .c-scroll { max-height: min(40vh, 300px); }
+.r1c-model .c-settings > .c-row:has([aria-label="Thinking"]) { display: none; }
+.r1c-menu .c-seg, .r1c-seg .c-seg { padding: 2px; border-radius: var(--r-seg); }
+.r1c-menu .c-seg button { padding: 4px 11px; border-radius: var(--r-thumb); font-size: var(--fs-12-5); font-weight: 500; color: var(--ink-2); }
+.r1c-menu .c-seg button.on { color: var(--ink); }
+.r1c-seg { padding: 4px 8px 6px; }
+.r1c-runs { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; font-size: 12.5px; color: var(--ink-2); }
+.r1c-runs > i { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--ink-2); }
+.r1c-runs > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1c-runs b { color: var(--ink); font-weight: 600; }
+.r1c-chip { flex: none; height: 26px; padding: 0 11px; border: 0; border-radius: 999px; color: var(--ink); font-size: 12.5px; font-weight: 500; cursor: pointer; }
+
+/* The tools menu (composer/PlugMenu), opened from the row's permission menu: the same clear menu, with its header, search,
+   section names, rows, notes and actions on pills, and no rule lines */
+.c-pop.r1c-plugpop { padding: 6px; gap: 4px; }
+.r1c-plugpop :is(.c-plug-h, .c-ph, .c-pp) { width: fit-content; max-width: 100%; box-sizing: border-box; }
+.r1c-plugpop .c-plug-h { margin: 0; padding: 6px 12px; border-radius: 14px; }
+.r1c-plugpop .c-ph { gap: 10px; margin: 6px 0 2px; padding: 2px 9px; border-radius: 999px; }
+.r1c-plugpop .c-pp { margin: 2px 0; padding: 2px 9px; border-radius: 14px; }
+.r1c-plugpop .c-search { margin: 0; border: 0; border-radius: 12px; }
+.r1c-plugpop .c-plug-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-content: start; padding: 0; }
+.r1c-plugpop :is(.c-subtools, .c-lib) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.r1c-plugpop :is(.c-tool, .c-librow) { border-radius: 14px; }
+.r1c-plugpop .c-tool:hover { background: var(--r1c-p-fill); }
+.r1c-plugpop :is(.c-plug-changed, .c-plug-foot) { border-top: 0; }
+.r1c-plugpop .c-plug-changed { padding: 6px 12px; border-radius: 14px; }
+.r1c-plugpop .c-plug-foot { padding: 0; }
+.r1c-plugpop .c-manage { padding: 6px 12px; border-radius: 999px; }
+.r1c-plugpop :is(.c-librow, .c-plug-changed) .btn { border: 0; border-radius: 999px; background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--r1c-p-edge); }
+.r1c-plugpop :is(.c-librow, .c-plug-changed) .btn:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--r1c-p-edge), inset 0 0 0 100vmax var(--r1c-p-on); }
+
+/* The + menu: tiles (grid, gap 6, 56 tall, radius 14) and rows (min 32, 6×10, radius 10, 13.5 px); groups split by 6 px */
+.r1c-plus { display: grid; gap: 6px; }
+.r1c-tiles { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+.r1c-tile { display: grid; justify-items: center; align-content: center; gap: 4px; height: 56px; padding: 9px 4px 7px; border: 0; border-radius: var(--r-menu);
+  color: var(--ink-2); font-size: 12px; line-height: 18px; cursor: pointer; transition: transform var(--spring-press), box-shadow .15s; }
+.r1c-tile svg { color: var(--ink); }
+.r1c-tile:active { transform: scale(.96); }
+.r1c-group { display: grid; gap: 4px; }
+.r1c-mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 6px 10px; border: 0; border-radius: 999px;
+  color: var(--ink); font-size: var(--fs-13-5); line-height: 1.5; text-align: left; cursor: pointer; }
+.r1c-ico { display: grid; place-items: center; width: 20px; flex: none; color: var(--ink-2); }
+.r1c-mi-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1c-mi-r { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--ink-3); font-size: 12px; }
+.r1c-mi-r kbd { font: 400 11px var(--mono); color: var(--ink-3); background: none; box-shadow: none; }
+.r1c-hint { color: var(--ink-3); font-size: 12px; }
+.r1c-back { color: var(--ink-2); }
+
+/* The ring popover: min 320, max min(78vh, 640px), sections split by spacing */
+.r1c-ringpop { min-width: min(320px, calc(100vw - 32px)); max-height: min(78vh, 640px); overflow: auto; }
+.r1c-sec { display: grid; gap: 4px; padding: 2px 0 6px; margin-bottom: 6px; }
+.r1c-line { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 3px 12px; border: 0; border-radius: 999px; color: var(--ink); font-size: 13px; line-height: 1.5; text-align: left; }
+.r1c-line b { font-weight: 600; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1c-line small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-size: 10.8px; }
+button.r1c-run { cursor: pointer; }
+.r1c-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; translate: 0 -1px; background: var(--ink-3); }
+.r1c-dot[data-state="on"], .r1c-dot[data-state="working"] { background: var(--ok); }
+.r1c-dot[data-state="waiting"] { background: var(--warn); }
+.r1c-ctx { padding: 0 12px; border-radius: 14px; }
+.r1c-ctx summary { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 13px; cursor: pointer; list-style: none; }
+.r1c-ctx summary::-webkit-details-marker { display: none; }
+.r1c-bar { flex: 1; height: 4px; border-radius: 4px; background: var(--fill-2); overflow: hidden; }
+.r1c-bar i { display: block; height: 100%; border-radius: 4px; background: var(--ink-2); }
+.r1c-more { display: grid; gap: 4px; margin: 4px -12px 8px; }
+.r1c-more .bars { padding: 6px 10px 8px; }
+/* Every account is the status bar's protected list; only its frame is restyled here, to the popover's own rows. */
+.r1c-ringpop .lims { width: auto; padding: 0; grid-template-columns: minmax(0, 1fr); gap: 4px; background: transparent; }
+.r1c-ringpop .lims > .pt { width: fit-content; padding: 2px 9px; border-radius: 999px; color: var(--ink-3); font-size: var(--fs-12-5); font-weight: 600; letter-spacing: 0; }
+.r1c-ringpop .lims .ph { width: fit-content; padding: 2px 9px; border-radius: 999px; color: var(--ink-3); font-size: 12px; }
+.r1c-ringpop .acctT5 { margin: 0; width: 100%; padding: 6px 10px; border-radius: 14px; }
+.r1c-ringpop .lims hr { height: 6px; margin: 0; border: 0; }
+.r1c-ringpop .mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 6px 10px; border: 0; border-radius: 999px;
+  color: var(--ink); font-size: var(--fs-13-5); text-align: left; cursor: pointer; }
+.r1c-ringpop .mi:disabled { opacity: .45; cursor: default; }
+.r1c-ringpop .mi > .mi-label { flex: 1; }
+.r1c-ringpop .mi > svg { color: var(--ink-2); flex: none; }
+.r1c-ringpop .sp-note { width: fit-content; margin: 0; padding: 2px 9px; border-radius: 999px; color: var(--ink-3); font-size: 12px; }
+

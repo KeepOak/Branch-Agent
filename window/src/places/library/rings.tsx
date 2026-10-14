@@ -9,7 +9,7 @@ import { optStr, rec, useOperation, useResource } from "./data";
 import type { MemoryStatus } from "./memory-more";
 import { Grey, IcoTile, when } from "./parts";
 
-export const UNDO_NIGHT_REASON = "Needs the engine’s undo-last-night method for Rings.";
+const UNDO_NIGHT_REASON = "Needs the engine’s undo-last-night method for Rings.";
 
 type Props = { engine: WindowEngine; level: Level; scope: string; status: { data: MemoryStatus | null }; openSettings?: (page: string) => void };
 

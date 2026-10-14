@@ -30,6 +30,13 @@ import {
   registerBranchStateDatabaseLifecycleListener,
 } from "./branch-state-db-cache.js";
 import { captureCommand, requestBytes } from "./branch-state-read-request.js";
+import {
+  type BranchStateTaskTiming,
+  getBranchStateReadTiming,
+  listDispatchedBranchStateReads,
+  markBranchStateReadDispatched,
+  markBranchStateReadSettled,
+} from "./branch-state-read-timing.js";
 import type {
   BranchStateReadAuthority,
   BranchStateReadCommand,
@@ -336,6 +343,19 @@ function createReadTransport(
     const inContext = AsyncLocalStorage.snapshot();
     let task: ReadTask | undefined;
     const cleanup: { retire: boolean; error?: Error } = { retire: true };
+    const readTiming = getBranchStateReadTiming();
+    const taskTiming: BranchStateTaskTiming | undefined = readTiming ? {} : undefined;
+    if (readTiming && taskTiming) {
+      if (readCommand.type === "admit") {
+        readTiming.validate = taskTiming;
+      } else {
+        readTiming.query = taskTiming;
+      }
+    }
+    const slotToken = {};
+    let dispatchedAt: number | undefined;
+    let pollPool: ReadPool | undefined;
+    let workersBefore = 0;
     const completion = createRetainedOperation<BranchStateReadOutcome>(() => inContext(service));
     function service() {
       if (!task || completion.operation.read().status !== "pending") {
@@ -363,6 +383,13 @@ function createReadTransport(
       }
       // Native closes and quarantine cleanup can require exit even when the domain read succeeds.
       cleanup.retire = "error" in outcome || cleanup.error !== undefined;
+      if (taskTiming && dispatchedAt !== undefined) {
+        taskTiming.readMs = performance.now() - dispatchedAt;
+      }
+      if (taskTiming && pollPool) {
+        taskTiming.workerSpawned = pollPool.getSnapshot().workersCreated > workersBefore;
+      }
+      markBranchStateReadSettled(slotToken);
       completion.resolve(outcome);
     }
     try {
@@ -381,9 +408,23 @@ function createReadTransport(
         snapshotRoot,
         command: { ...readCommand },
       };
-      task = readPool(state, ownsAdmission()).startTask(
+      const enqueuedAt = performance.now();
+      const pool = readPool(state, ownsAdmission());
+      pollPool = pool;
+      const snapshot = pool.getSnapshot();
+      workersBefore = snapshot.workersCreated;
+      if (taskTiming) {
+        taskTiming.queueDepth = snapshot.pendingTasks;
+        taskTiming.holders = listDispatchedBranchStateReads();
+      }
+      task = pool.startTask(
         () => {
           authority.assertCurrent();
+          if (taskTiming && readTiming) {
+            dispatchedAt = performance.now();
+            taskTiming.waitMs = dispatchedAt - enqueuedAt;
+            markBranchStateReadDispatched(slotToken, readTiming.label);
+          }
           return request;
         },
         { signal: authority.signal, inputBytes: requestBytes(request) },

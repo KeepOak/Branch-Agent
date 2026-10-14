@@ -39,6 +39,7 @@ const GROUP_HINTS = [
   ["worktreeRoot", "Worktree Root", 105],
   ["worktreeAcceleration", "Worktree Acceleration", 106],
   ["worktreeMaxCount", "Maximum Managed Worktrees", 107],
+  ["buildWorktreeRoots", "Build Worktree Folders", 108],
   ["hooks", "Hooks", 110],
   ["ui", "UI", 120],
   ["browser", "Browser", 130],

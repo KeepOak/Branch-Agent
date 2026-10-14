@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestMatrix, harvestTestFiles, harvestTests, mainPushShardCounts, namedTests, planShards, plannedSlowestSeconds, setNamedListDir, pullRequestLinuxShardCount, resolvedShardCounts, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
+import { expectedShardSeconds, featureTestWeight, featureTestWeightKeys, firstShardReserveSeconds, harvestE2eError, harvestMatrix, harvestTestFiles, harvestTests, mainPushShardCounts, namedTests, planShards, plannedJobSeconds, plannedSlowestSeconds, overBudgetShards, setNamedListDir, pullRequestLinuxShardCount, resolvedShardCounts, runnerSetupSeconds, runnerTestScale, shardBudgetFor, shardBudgetSeconds, shardCountFor, shardOf, shardTests, touchedHarvestTests, touchedTests, windowsSmokeTests } from './feature-batch-ci-targets.mjs';
 import { featureBatchMatrix, validateFeatureBatchMatrix } from './feature-batch-ci-matrix.mjs';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -64,15 +64,27 @@ test('the workflow takes its matrix from the planner, and every planned shard fi
   assert.deepEqual(labels(push, 'windows-latest'), Array.from({ length: counts.windows }, (_, index) => `${index + 1}/${counts.windows}`));
   assert.deepEqual(labels(push, 'macos-latest'), Array.from({ length: counts.macos }, (_, index) => `${index + 1}/${counts.macos}`));
   for (const [os, total] of [['ubuntu', counts.ubuntu], ['windows', counts.windows], ['macos', counts.macos], ['ubuntu', counts.pullRequestLinux]]) {
-    const slowest = plannedSlowestSeconds(os, total);
-    assert.ok(slowest <= shardBudgetFor(os), `${os} shard is ${slowest}s, over the ${shardBudgetFor(os)}s budget`);
+    assert.deepEqual(overBudgetShards(os, total), [], `${os} ${total}: shards over the ${shardBudgetFor(os)}s budget`);
   }
 });
 
+test('pull requests start every planned shard in one wave; main pushes keep max-parallel 6', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/feature-batch-checks.yml', import.meta.url), 'utf8');
+  const cap = yaml.match(/max-parallel: \$\{\{ github\.event_name == 'pull_request' && (\d+) \|\| (\d+) \}\}/);
+  assert.ok(cap, 'feature-batch max-parallel must be set per event');
+  const [prCap, pushCap] = [Number(cap[1]), Number(cap[2])];
+  const pr = featureBatchMatrix({ event: 'pull_request' }).include;
+  assert.ok(prCap >= pr.length, `PR max-parallel ${prCap} is below the ${pr.length} planned PR jobs, so they would run in two waves`);
+  assert.equal(pushCap, 6);
+});
+
 test('macOS and Windows main-push shards keep ten percent budget headroom', () => {
+  // The only exception is a shard holding one engine file, which no shard count can split.
   const counts = resolvedShardCounts();
   for (const os of ['macos', 'windows']) {
-    const slowest = plannedSlowestSeconds(os, counts[os]);
+    const jobs = plannedJobSeconds(os, counts[os]);
+    const files = planShards(namedTests('engine'), counts[os]).files;
+    const slowest = Math.max(...jobs.filter((_, index) => files[index].length > 1));
     assert.ok(slowest <= shardBudgetSeconds * 0.9, `${os} shard is ${slowest}s, over the ${shardBudgetSeconds * 0.9}s headroom budget`);
   }
 });
@@ -83,8 +95,7 @@ test('a PR adding 60 unweighted engine tests still fits every planned shard budg
   const extraTests = Array.from({ length: 60 }, (_, index) => `src/pr-batch-${String(index + 1).padStart(2, '0')}.test.ts`);
   const counts = resolvedShardCounts({ extraTests });
   for (const os of ['ubuntu', 'windows', 'macos']) {
-    const slowest = plannedSlowestSeconds(os, counts[os], { extraTests });
-    assert.ok(slowest <= shardBudgetFor(os), `${os} shard is ${slowest}s with 60 extra tests, over the ${shardBudgetFor(os)}s budget`);
+    assert.deepEqual(overBudgetShards(os, counts[os], { extraTests }), [], `${os} with 60 extra tests: shards over the ${shardBudgetFor(os)}s budget`);
   }
 });
 
@@ -99,9 +110,54 @@ test('adding weight past the ceiling adds one shard and never fails', () => {
     count = shardCountFor('windows', { extraTests: added });
   }
   assert.equal(count, base + 1, 'the first increase should be exactly one shard');
-  assert.ok(plannedSlowestSeconds('windows', count, { extraTests: added }) <= shardBudgetFor('windows'));
+  assert.deepEqual(overBudgetShards('windows', count, { extraTests: added }), []);
   const windowsRows = featureBatchMatrix({ event: 'push', extraTests: added }).include.filter(row => row.os === 'windows-latest');
   assert.equal(windowsRows.length, base + 1);
+});
+
+test('the planned job time counts runner setup on top of the tests', () => {
+  for (const os of ['ubuntu', 'windows', 'macos']) {
+    const tests = expectedShardSeconds(12, { typecheck: os === 'ubuntu', scale: runnerTestScale[os] });
+    assert.deepEqual(plannedJobSeconds(os, 12), tests.map(seconds => seconds + runnerSetupSeconds[os]));
+    assert.ok(runnerSetupSeconds[os] >= 60, `${os} setup is at least a minute of checkout, install and build`);
+  }
+});
+
+test('every planned Linux shard job, setup included, fits ten minutes', () => {
+  // AGENTS.md rule 13: shards finish well inside the 15-minute cap. The budget is the whole job, not the tests.
+  assert.equal(shardBudgetSeconds, 10 * 60);
+  const counts = resolvedShardCounts();
+  for (const total of [counts.pullRequestLinux, counts.ubuntu]) {
+    for (const [index, seconds] of plannedJobSeconds('ubuntu', total).entries()) {
+      assert.ok(seconds <= shardBudgetSeconds, `ubuntu shard ${index + 1}/${total} plans ${seconds}s, over ${shardBudgetSeconds}s`);
+    }
+  }
+});
+
+test('the derived Linux count is the smallest that fits, with setup counted', () => {
+  // The old PR floor of ten shards fit a 12-minute test-only budget; its jobs ran 11 to 15 minutes.
+  const total = shardCountFor('ubuntu');
+  const tests = Math.max(...expectedShardSeconds(total - 1, { typecheck: true }));
+  assert.ok(plannedSlowestSeconds('ubuntu', total - 1) > shardBudgetSeconds, 'one shard fewer would be over budget');
+  assert.equal(plannedSlowestSeconds('ubuntu', total - 1), tests + runnerSetupSeconds.ubuntu);
+});
+
+test('a shard over the Windows or macOS budget holds one engine file, which no shard count can split', () => {
+  const counts = resolvedShardCounts();
+  const engine = namedTests('engine');
+  for (const os of ['windows', 'macos']) {
+    const files = planShards(engine, counts[os]).files;
+    plannedJobSeconds(os, counts[os]).forEach((seconds, index) => {
+      if (seconds <= shardBudgetFor(os)) return;
+      assert.equal(files[index].length, 1, `${os} shard ${index + 1}: ${files[index].join(', ')}`);
+      // One more shard would not make it faster: the file is still alone.
+      const more = planShards(engine, counts[os] + 1).files.find(part => part.includes(files[index][0]));
+      assert.deepEqual(more, files[index]);
+    });
+  }
+  // A Linux shard with several files over budget is never accepted.
+  assert.deepEqual(overBudgetShards('ubuntu', counts.pullRequestLinux), []);
+  assert.ok(overBudgetShards('ubuntu', 2).length > 0);
 });
 
 test('a malformed shard is an error, not a silent skip', () => {
@@ -151,7 +207,8 @@ test('a feature-batch matrix below the shard floors fails closed', () => {
   const real = featureBatchMatrix({ event: 'push' });
   const fewerWindows = { include: real.include.filter((row) => row.os !== 'windows-latest') };
   assert.throws(() => validateFeatureBatchMatrix(fewerWindows, 'push'), /windows-latest shard\(s\), below the floor/);
-  const fewerLinux = { include: real.include.slice(mainPushShardCounts.ubuntu - 1) };
+  const linux = real.include.filter((row) => row.os === 'ubuntu-latest');
+  const fewerLinux = { include: [...linux.slice(0, mainPushShardCounts.ubuntu - 1), ...real.include.filter((row) => row.os !== 'ubuntu-latest')] };
   assert.throws(() => validateFeatureBatchMatrix(fewerLinux, 'push'), /ubuntu-latest shard\(s\), below the floor/);
   assert.equal(validateFeatureBatchMatrix(real, 'push'), real);
 });

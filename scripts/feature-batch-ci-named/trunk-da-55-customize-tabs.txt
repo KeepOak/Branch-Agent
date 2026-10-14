@@ -1,0 +1,5 @@
+window:src/places-nav/SettingsFrame.test.tsx
+window:src/places-nav/settings-nav.test.ts
+window:src/places/customize/customize.test.tsx
+window:src/places/library/places.test.tsx
+window:src/places/settings/set2/devices-helpers.test.tsx
