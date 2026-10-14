@@ -10,7 +10,7 @@ vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
-vi.mock("../../places-nav/SettingsFrame", () => ({ SettingsFrame: () => null }));
+vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as const, SettingsFrame: () => null }));
 vi.mock("./pages/plugged", () => ({ R1_PAGES: {} }));
 vi.mock("./index", () => ({
   SettingsFrame: ({ page, onAsk }: { page?: string; onAsk?: (text: string) => void }) =>
