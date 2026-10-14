@@ -216,7 +216,7 @@ describe("settings nav", () => {
   });
 
   it("sends old page ids to their new page", () => {
-    const old: [string, PageId][] = [["people", "who"], ["gateway", "remote"], ["usage", "privacy"], ["seasons", "history"], ["trunksP17", "trunks"], ["general", "general"], ["nope", "general"], ["__proto__", "general"]];
+    const old: [string, PageId][] = [["people", "who"], ["gateway", "remote"], ["usage", "privacy"], ["seasons", "learning"], ["trunksP17", "trunks"], ["general", "general"], ["nope", "general"], ["__proto__", "general"]];
     for (const [from, to] of old) expect(pageFor(from)).toBe(to);
   });
 

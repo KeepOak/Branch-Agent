@@ -20,6 +20,7 @@ import "./usage.css";
 import { DesktopCtl } from "../desktop-ctl";
 import { formatMoney } from "../../../format/money";
 import { forgetDeletedConversationWindow } from "../../../shell/own-window";
+import { trunkDisplayName } from "../../../connect/trunk-name";
 
 /* ---------- figures ---------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -59,7 +60,7 @@ function useQuery(engine: WindowEngine, method: string, params: unknown) {
 /** Trunk names by id, from agents.list. */
 function useNames(engine: WindowEngine): Map<string, string> {
   const agents = useLive<RecordValue>(engine, "agents.list", {}, []);
-  return useMemo(() => new Map(list(rec(agents.data).agents).map((a) => [str(a.id), str(rec(a.identity).name) || str(a.name) || str(a.id)])), [agents.data]);
+  return useMemo(() => new Map(list(rec(agents.data).agents).map((a) => [str(a.id), trunkDisplayName(a)])), [agents.data]);
 }
 
 const CHANNEL: Record<string, string> = {

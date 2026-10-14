@@ -18,6 +18,7 @@ import { droppedFiles, engineKeyOf, FirstSendEcho, heldRuns, UnconfirmedSends } 
 import { failedAck, isRetryable, refusedOrUnsent, requestWithRetry } from "./send-errors";
 import { firstSendEcho, shouldKeepFirstSendEcho } from "../composer/sending";
 import { safeStorage } from "../composer/drafts";
+import { trunkDisplayName } from "./trunk-name";
 
 export type SessionSnapshot = {
   status: GatewayStatus;
@@ -1136,7 +1137,7 @@ function readAgentName(result: unknown): string {
   if (!agent) {
     return "";
   }
-  return str(rec(agent.identity).name) || str(agent.name) || str(agent.id);
+  return trunkDisplayName(agent);
 }
 
 /** A picture on the Trunk's computer, ready to show, or why it can't. */

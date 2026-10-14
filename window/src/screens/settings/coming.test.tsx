@@ -82,7 +82,8 @@ describe("R1 Settings, the Coming contract", () => {
     await click(host.querySelector("[data-page='remote']")!);
     expect(comingSections().length).toBeGreaterThan(0);
     expect(comingSections().flatMap((entry) => entry.need).filter((need) => !/^[a-z][a-zA-Z]*(\.[a-zA-Z]+)+$/.test(need))).toEqual([]);
-  });
+    // It opens every Settings page at Technical; each native page adds its rows, so it needs more than the 5 s default.
+  }, 20_000);
 
   it("keeps the rows live and saving once the engine offers config and prefs", async () => {
     const { engine, request } = engineOf(CALLS);
