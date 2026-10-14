@@ -12,6 +12,7 @@ import { usePicture } from "../../../places/settings/set1/people-mine";
 import { initials, profilesOf, type Profile } from "../../../places/settings/set1/people-data";
 import { openPlace } from "../../../places/settings/set2/common";
 import type { PageSlot, SlotPageProps } from "../slots";
+import { NO_PERSON } from "../useRow";
 import { Failed, Needs, useFailure } from "./appearance-live";
 
 const QUIET = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
@@ -31,15 +32,14 @@ function MyCard({ engine }: SlotPageProps) {
   const [edit, setEdit] = useState<string | null>(null);
   const draft = edit?.trim() ?? "";
   const save = () => { if (!me || !draft || draft === me.name) { setEdit(null); return; } void run(async () => { await engine.request("users.setDisplayName", { profileId: me.id, displayName: draft }); setEdit(null); await reload(); }); };
-  if (loading) return <small className="r1s-msg g-label">Reading your card…</small>;
-  if (!me) return <small className="r1s-msg g-label" data-lines>{error ? visible(error) : "Sign in as yourself on this Branch to have a card of your own."}</small>;
-  const role = me.owner ? "Owner" : me.role ?? "";
+  if (loading) return null;
+  if (!me) return <small className="r1s-msg g-label" data-lines>{error ? visible(error) : NO_PERSON}</small>;
   return (
     <div className="r1s-items">
       <div className="r1s-row" data-row="card.card.name">
         <span className="r1s-item">
           <span className="r1s-av g-frost" aria-hidden="true">{pic.url ? <img src={pic.url} alt="" /> : initials(me.name)}</span>
-          {edit === null ? <b className="g-label">{visible(me.name)}{role ? <small> · {role}</small> : null}</b> : (
+          {edit === null ? <b className="g-label">{visible(me.name)}</b> : (
             <input className="r1s-inp" autoFocus maxLength={256} value={edit} aria-label="Your name" onChange={(e) => setEdit(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setEdit(null); } }} />
           )}
