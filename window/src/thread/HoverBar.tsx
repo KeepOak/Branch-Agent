@@ -22,6 +22,10 @@ export type HoverActions = {
   inspect?: Act;
   branch?: Act;
   context?: Act & { excluded: boolean };
+  /** Pin or Unpin this message (sessions.messages.pin). */
+  pin?: Act & { pinned: boolean };
+  /** Delete this message, after a confirm (sessions.messages.delete). */
+  remove?: Act;
   startConversation?: Act;
   /** Read aloud / Stop reading on a reply (§4.2.6). */
   read?: Act & { reading: boolean };
