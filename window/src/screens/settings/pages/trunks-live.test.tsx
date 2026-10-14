@@ -72,6 +72,15 @@ it("puts the preview's ••• menu on each Trunk, with Who it knows, and grey
   expect(items.filter((b) => b.disabled).map((b) => b.textContent)).toEqual(["Pause", "Show it how, once", "Package…", "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…"]);
   for (const why of Object.values(SETTINGS_MENU_COMING)) expect(why).toMatch(/ comes in a later update\.$/);
   expect(visibleDevNotes(document.body)).toEqual([]);
+  // The default Trunk's Remove is greyed with the preview's own line.
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Oak"]')!.click());
+  const remove = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].find((b) => b.textContent === "Remove Trunk…")!;
+  expect(remove.disabled).toBe(true);
+  expect(remove.title).toBe("Oak is your default Trunk.");
+  expect(document.body.textContent).not.toMatch(/cannot be removed|at least one Trunk/);
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!.click());
   await act(async () => button("Share this Trunk…").click());
   await settle();
   expect(request).toHaveBeenCalledWith("trunks.template.export", { agentId: "birch" });
