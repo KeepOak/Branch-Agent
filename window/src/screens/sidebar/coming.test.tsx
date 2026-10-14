@@ -102,14 +102,14 @@ describe("R1 sidebar, the Coming contract", () => {
   });
 
   it("runs the same entries once the engine offers the calls, and keeps the unwired ones Coming with their method", async () => {
-    const { request } = await render(["sessions.patch", "sessions.patchMany", "contacts.topics", "contacts.markRead", "sessions.create", "sessions.delete", "rooms.archive", "rooms.create", "agents.create", "agents.update", "agents.delete", "chat.send", "chat.history", "sessions.compact", "sessions.groups.put"]);
+    const { request } = await render(["sessions.patch", "sessions.patchMany", "contacts.topics", "contacts.markRead", "sessions.create", "sessions.delete", "rooms.archive", "rooms.create", "agents.create", "agents.update", "agents.delete", "chat.send", "chat.history", "sessions.compact", "sessions.groups.list"]);
     expect(host.querySelector(".r1sb-mar")?.getAttribute("aria-disabled")).toBeNull();
     await click(host.querySelector('[aria-label="More for Ledger"]'));
     expect(row("Pin").getAttribute("aria-disabled")).toBeNull();
     expect(row("Pin").dataset.need).toBe("sessions.patch");
     await click(row("Move to"));
-    expect(row("Group…").getAttribute("aria-disabled")).toBe("true");
-    expect(comingControls()).toEqual(expect.arrayContaining([expect.objectContaining({ need: ["sessions.groups.put"], where: "Group…" })]));
+    expect(row("Group…").getAttribute("aria-disabled")).toBeNull();
+    expect(row("Group…").dataset.need).toBe("sessions.groups.list sessions.patch");
     await press(document.querySelector(".g-menu")!, "ArrowLeft");
     await click(row("Ledger"));
     expect(row("Pause").getAttribute("aria-disabled")).toBe("true");

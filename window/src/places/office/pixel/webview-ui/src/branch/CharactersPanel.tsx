@@ -1,40 +1,14 @@
-/**
- * Character customization (Branch addition; the look follows SweetSophia openclaw-pixel-agents
- * src/components/CharacterCustomizer.tsx — pick a body, tint it, see it live). For every Trunk and
- * grafted agent: its sprite (the Trunk looks from the app, the classic pebble in the Trunk's colour,
- * or one of upstream's six office workers), a hue shift (upstream's adjustSprite hue rotation), and
- * its desk. "Use app look" goes back to the look the Trunk has in the app.
- */
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
 import { Button } from '../components/ui/Button.js';
 import { Modal } from '../components/ui/Modal.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { getCachedSprite } from '../office/sprites/spriteCache.js';
 import { getSpritesFor } from '../office/sprites/spriteData.js';
-import { Direction } from '../office/types.js';
+import { Direction, type SpriteData } from '../office/types.js';
 import type { BranchServer } from './branchServer.js';
-import { TRUNK_LOOKS } from './trunkSprites.js';
-import type { BranchAgent } from './types.js';
-
-function SpriteThumb({ sprite, hueShift, scale = 2 }: { sprite: string; hueShift: number; scale?: number }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const c = ref.current;
-    if (!c) return;
-    const human = /^human:(\d)$/.exec(sprite);
-    const set = getSpritesFor(human ? undefined : sprite, human ? Number(human[1]) : 0, hueShift);
-    const frame = set.walk[Direction.DOWN][1];
-    const img = getCachedSprite(frame, scale);
-    c.width = img.width;
-    c.height = img.height;
-    const g = c.getContext('2d')!;
-    g.imageSmoothingEnabled = false;
-    g.clearRect(0, 0, c.width, c.height);
-    g.drawImage(img, 0, 0);
-  }, [sprite, hueShift, scale]);
-  return <canvas ref={ref} className="pa-thumb" />;
-}
+import { defaultSpriteKey, TRUNK_LOOKS } from './trunkSprites.js';
+import type { BranchAgent, Customization } from './types.js';
 
 interface Props {
   isOpen: boolean;
@@ -45,124 +19,225 @@ interface Props {
   onChanged: () => void;
 }
 
-export function CharactersPanel({ isOpen, onClose, server, officeState, agents, onChanged }: Props) {
-  const people = agents.filter((a) => a.kind !== 'group');
-  const [pick, setPick] = useState<string | null>(null);
-  const current = people.find((a) => a.id === pick) ?? people[0];
-  const [, bump] = useState(0);
-  if (!isOpen || !current) return null;
-  const c = server.customization(current.id);
-  if (!c) return null;
-  const options = [
-    `pebble:${current.shape ?? 0}:${current.eyes ?? 'round'}:${current.colorHint ?? '#56616B'}`,
-    ...TRUNK_LOOKS.map((l) => `look:${l.id}`),
-    ...[0, 1, 2, 3, 4, 5].map((n) => `human:${n}`),
+interface LookOption {
+  key: string;
+  label: string;
+}
+
+const WORKER_COUNT = 6;
+const HUMAN_PREFIX = 'human:';
+const PREVIEW_FRAME = 1;
+const HUE_MAX = 359;
+const HUE_HANDLE_WIDTH = 9;
+const GRAFTED_SUFFIX = ' · grafted (A2A)';
+const SELECTED = 'border-accent';
+const IDLE = 'border-transparent hover:bg-btn-bg';
+
+function previewFrame(sprite: string, hueShift: number): SpriteData {
+  const sprites = sprite.startsWith(HUMAN_PREFIX)
+    ? getSpritesFor(undefined, Number(sprite.slice(HUMAN_PREFIX.length)), hueShift)
+    : getSpritesFor(sprite, 0, hueShift);
+  return sprites.walk[Direction.DOWN][PREVIEW_FRAME];
+}
+
+function SpriteView({ frame, scale }: { frame: SpriteData; scale: number }) {
+  const draw = (canvas: HTMLCanvasElement | null) => {
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    ctx.drawImage(getCachedSprite(frame, scale), 0, 0);
+  };
+  return <canvas ref={draw} width={frame[0].length * scale} height={frame.length * scale} />;
+}
+
+function lookOf(server: BranchServer, agent: BranchAgent): Customization {
+  const custom = server.customization(agent.id);
+  return custom ?? { sprite: defaultSpriteKey(agent), hueShift: 0, seatId: null };
+}
+
+function lookOptions(agent: BranchAgent): LookOption[] {
+  const pebble = defaultSpriteKey({ shape: agent.shape, eyes: agent.eyes, colorHint: agent.colorHint });
+  const workers = Array.from({ length: WORKER_COUNT }, (_, i) => ({
+    key: `${HUMAN_PREFIX}${i}`,
+    label: `Office worker ${i + 1}`,
+  }));
+  return [
+    { key: pebble, label: 'Classic pebble' },
+    ...TRUNK_LOOKS.map((look) => ({ key: `look:${look.id}`, label: look.name })),
+    ...workers,
   ];
-  const nameOf = (o: string) =>
-    o.startsWith('look:')
-      ? (TRUNK_LOOKS.find((l) => `look:${l.id}` === o)?.name ?? o)
-      : o.startsWith('pebble:')
-        ? 'Classic pebble'
-        : `Office worker ${Number(o.slice(6)) + 1}`;
-  const change = (patch: Parameters<BranchServer['customize']>[1]) => {
+}
+
+function selectedOption(options: LookOption[], sprite: string): LookOption | undefined {
+  if (sprite.startsWith('pebble:')) return options[0];
+  return options.find((o) => o.key === sprite);
+}
+
+function seatOptions(officeState: OfficeState, ownSeat: string | null) {
+  return Array.from(officeState.seats, ([id, seat]) => {
+    const zone = officeState.seatZone(id) ?? 'Office';
+    const taken = seat.assigned && id !== ownSeat;
+    return { id, label: `${id} · ${zone}${taken ? ' (taken)' : ''}`, taken };
+  });
+}
+
+interface TileProps {
+  agent: BranchAgent;
+  selected: boolean;
+  server: BranchServer;
+  onPick: () => void;
+}
+
+function TrunkTile({ agent, selected, server, onPick }: TileProps) {
+  const look = lookOf(server, agent);
+  const frame = previewFrame(look.sprite, look.hueShift);
+  const box = `flex h-[82px] w-[60px] flex-col items-center border-2 pt-[4px] ${selected ? SELECTED : IDLE}`;
+  return (
+    <button type="button" title={agent.name} onClick={onPick} className={box}>
+      <SpriteView frame={frame} scale={2} />
+      <span className="mt-[3px] pr-[2px] text-[15.5px] leading-[16px] tracking-normal text-text">{agent.name}</span>
+    </button>
+  );
+}
+
+interface CellProps {
+  option: LookOption;
+  selected: boolean;
+  hue: number;
+  onPick: () => void;
+}
+
+function LookCell({ option, selected, hue, onPick }: CellProps) {
+  const frame = previewFrame(option.key, selected ? hue : 0);
+  const box = `flex w-[45px] items-center justify-center border-2 p-[2px] ${selected ? SELECTED : IDLE}`;
+  return (
+    <button type="button" title={option.label} onClick={onPick} className={box}>
+      <SpriteView frame={frame} scale={2} />
+    </button>
+  );
+}
+
+function HueRow({ hue, onHue }: { hue: number; onHue: (value: number) => void }) {
+  const share = hue / HUE_MAX;
+  const fill = `${share * 100}%`;
+  const handle = `calc((100% - ${HUE_HANDLE_WIDTH}px) * ${share})`;
+  return (
+    <div className="flex h-[19px] items-start pl-[8px] pr-[9px] text-xs">
+      <span className="mt-[2px] w-[70px] pl-[2px] leading-[16px] text-text-muted">Hue</span>
+      <div className="relative ml-[10px] mt-[3px] h-[16px] w-[165px] border-2 border-border bg-bg-dark">
+        <div className="absolute inset-y-0 left-0 bg-accent" style={{ width: fill }} />
+        <div className="absolute -top-[5px] h-[19px] bg-border" style={{ left: handle, width: HUE_HANDLE_WIDTH }}>
+          <div className="absolute inset-y-[2px] left-[3px] w-[5px] bg-text" />
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={HUE_MAX}
+          step={1}
+          value={hue}
+          onChange={(e) => onHue(Number(e.target.value))}
+          className="absolute inset-0 m-0 h-full w-full cursor-pointer opacity-0"
+          aria-label="Hue"
+        />
+      </div>
+      <span className="ml-[8px] mt-[2px] w-[40px] text-right leading-[16px] text-text">{hue}°</span>
+    </div>
+  );
+}
+
+function DeskRow({ officeState, seatId, onSeat }: { officeState: OfficeState; seatId: string | null; onSeat: (id: string) => void }) {
+  return (
+    <div className="flex h-[28px] items-start pl-[8px] pr-[9px] text-xs">
+      <span className="mt-[6px] w-[70px] pl-[2px] leading-[16px] text-text-muted">Desk</span>
+      <select
+        value={seatId ?? ''}
+        onChange={(e) => onSeat(e.target.value)}
+        className="ml-[10px] h-[28px] w-[213px] border-2 border-border bg-bg-dark px-[4px] text-xs text-text"
+      >
+        {seatOptions(officeState, seatId).map((o) => (
+          <option key={o.id} value={o.id} disabled={o.taken}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function LookGrid({ options, selected, hue, onPick }: { options: LookOption[]; selected?: LookOption; hue: number; onPick: (key: string) => void }) {
+  return (
+    <div className="grid max-h-[220px] gap-[4px] overflow-y-auto px-[2px]" style={{ gridTemplateColumns: 'repeat(6, 45px)' }}>
+      {options.map((o) => (
+        <LookCell key={o.key} option={o} selected={o === selected} hue={hue} onPick={() => onPick(o.key)} />
+      ))}
+    </div>
+  );
+}
+
+function DetailRow({ name, subtitle, frame }: { name: string; subtitle: string; frame: SpriteData }) {
+  return (
+    <div className="mt-[6px] flex h-[104px] items-center gap-[8px] pl-[10px]">
+      <SpriteView frame={frame} scale={4} />
+      <div className="flex flex-col pt-[2px]">
+        <span className="text-lg leading-[18px] text-accent-bright">{name}</span>
+        <span className="mt-[7px] text-xs leading-[16px] text-text-muted">{subtitle}</span>
+      </div>
+    </div>
+  );
+}
+
+function ActionRow({ onReset, onDone }: { onReset: () => void; onDone: () => void }) {
+  return (
+    <div className="mt-[13px] flex justify-end gap-[5.84px] pl-[8px] pr-[10.72px]">
+      <Button size="md" className="!h-[41px] !w-[115.91px] !px-0" onClick={onReset}>
+        Use app look
+      </Button>
+      <Button size="md" variant="accent" className="!h-[41px] !w-[59.09px] !px-0" onClick={onDone}>
+        Done
+      </Button>
+    </div>
+  );
+}
+
+export function CharactersPanel({ isOpen, onClose, server, officeState, agents, onChanged }: Props) {
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const trunks = agents.filter((a) => a.kind !== 'group');
+  const current = trunks.find((a) => a.id === pickedId) ?? trunks[0];
+  if (!isOpen || !current || server.customization(current.id) === null) return null;
+  const look = lookOf(server, current);
+  const options = lookOptions(current);
+  const selected = selectedOption(options, look.sprite);
+  const change = (patch: Partial<Customization>) => {
     server.customize(current.id, patch);
-    bump((n) => n + 1);
     onChanged();
   };
-  const seats = [...officeState.seats.values()];
-  const zone = (uid: string) => officeState.seatZone(uid) ?? 'Office';
-
+  const resetLook = () => {
+    server.resetLook(current.id);
+    onChanged();
+  };
+  const grafted = current.kind === 'grafted' ? GRAFTED_SUFFIX : '';
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Trunks" className="pa-panel">
-      <div className="flex gap-8 px-8 pb-6 flex-wrap pa-scroll" data-testid="trunk-list" style={{ maxWidth: 560 }}>
-        {people.map((a) => {
-          const ac = server.customization(a.id)!;
-          return (
-            <button
-              key={a.id}
-              type="button"
-              data-trunk={a.id}
-              onClick={() => setPick(a.id)}
-              className={`flex flex-col items-center gap-2 p-4 border-2 cursor-pointer bg-transparent ${a.id === current.id ? 'border-accent bg-active-bg' : 'border-transparent hover:bg-btn-bg'}`}
-            >
-              <SpriteThumb sprite={ac.sprite} hueShift={ac.hueShift} />
-              <span className="text-2xs leading-none">{a.name}</span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="px-10 pb-8 flex flex-col gap-6" style={{ maxWidth: 560 }}>
-        <div className="flex items-center gap-8">
-          <SpriteThumb sprite={c.sprite} hueShift={c.hueShift} scale={4} />
-          <div className="flex flex-col gap-2">
-            <span className="text-lg text-accent-bright leading-none">{current.name}</span>
-            <span className="text-xs text-text-muted leading-none">
-              {nameOf(c.sprite)}
-              {current.kind === 'grafted' ? ' · grafted (A2A)' : ''}
-            </span>
-          </div>
-        </div>
-        <span className="text-xs text-text-muted">Look</span>
-        <div className="grid gap-4 pa-scroll" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(44px, 1fr))', maxHeight: 220 }} data-testid="look-grid">
-          {options.map((o) => (
-            <button
-              key={o}
-              type="button"
-              title={nameOf(o)}
-              data-look={o}
-              onClick={() => change({ sprite: o })}
-              className={`flex items-center justify-center p-2 border-2 cursor-pointer bg-transparent ${o === c.sprite ? 'border-accent bg-active-bg' : 'border-transparent hover:bg-btn-bg'}`}
-            >
-              <SpriteThumb sprite={o} hueShift={o === c.sprite ? c.hueShift : 0} />
-            </button>
+    <Modal isOpen={isOpen} onClose={onClose} title="Trunks">
+      <div className="flex w-[310.921875px] flex-col pb-[8px]">
+        <div className="flex flex-wrap gap-[8px] pl-[8px]">
+          {trunks.map((agent) => (
+            <TrunkTile key={agent.id} agent={agent} selected={agent.id === current.id} server={server} onPick={() => setPickedId(agent.id)} />
           ))}
         </div>
-        <label className="flex items-center gap-8 text-xs">
-          <span className="text-text-muted w-[70px]">Hue</span>
-          <input
-            type="range"
-            min={0}
-            max={359}
-            value={c.hueShift}
-            data-testid="hue"
-            className="pixel-range flex-1"
-            style={{ '--range-fill': `${(c.hueShift / 359) * 100}%` } as React.CSSProperties}
-            onChange={(e) => change({ hueShift: Number(e.target.value) })}
-          />
-          <span className="w-[40px] text-right">{c.hueShift}°</span>
-        </label>
-        <label className="flex items-center gap-8 text-xs">
-          <span className="text-text-muted w-[70px]">Desk</span>
-          <select
-            value={c.seatId ?? ''}
-            data-testid="seat"
-            className="flex-1 bg-bg-dark text-text border-2 border-border py-2 px-4 text-xs"
-            onChange={(e) => change({ seatId: e.target.value || null })}
-          >
-            {seats.map((s) => (
-              <option key={s.uid} value={s.uid} disabled={s.assigned && s.uid !== c.seatId}>
-                {s.uid} · {zone(s.uid)}
-                {s.assigned && s.uid !== c.seatId ? ' (taken)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="text-2xs text-text-muted">You can also drag a Trunk onto a free desk in the office.</span>
-        <div className="flex gap-6 justify-end">
-          <Button
-            size="md"
-            onClick={() => {
-              server.resetLook(current.id);
-              bump((n) => n + 1);
-              onChanged();
-            }}
-          >
-            Use app look
-          </Button>
-          <Button size="md" variant="accent" onClick={onClose}>
-            Done
-          </Button>
+        <DetailRow name={current.name} subtitle={(selected?.label ?? look.sprite) + grafted} frame={previewFrame(look.sprite, look.hueShift)} />
+        <div className="mt-[11px] h-[16px] pl-[10px] text-xs leading-[16px] text-text-muted">Look</div>
+        <div className="mt-[12px] pl-[8px]">
+          <LookGrid options={options} selected={selected} hue={look.hueShift} onPick={(sprite) => change({ sprite })} />
         </div>
+        <div className="mt-[9px] h-[19px]">
+          <HueRow hue={look.hueShift} onHue={(hueShift) => change({ hueShift })} />
+        </div>
+        <div className="mt-[11px] h-[28px]">
+          <DeskRow officeState={officeState} seatId={look.seatId} onSeat={(seatId) => change({ seatId })} />
+        </div>
+        <div className="mt-[14px] relative top-[-1px] h-[9px] overflow-hidden pl-[10.75px] text-[15.8px] leading-[11px] tracking-[0.05px] text-text-muted">
+          You can also drag a Trunk onto a free desk in the office.
+        </div>
+        <ActionRow onReset={resetLook} onDone={onClose} />
       </div>
     </Modal>
   );
