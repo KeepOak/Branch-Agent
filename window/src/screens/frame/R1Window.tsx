@@ -30,6 +30,7 @@ import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
+import { WhatsNewHost } from "../updates/WhatsNewHost";
 import { R1Tour, type R1TourKind } from "../onboarding/R1Tour";
 import { useR1Topics } from "./Topics";
 import { useMarkRead } from "./use-mark-read";
@@ -312,6 +313,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       onShortcuts={() => setShortcuts(true)} onClose={() => setFinding(false)} />}
     {shortcuts && <ShortcutsDialog onClose={() => setShortcuts(false)} />}
     {lockdown.confirmation}
+    <WhatsNewHost session={session} ready={ready} onSettings={page => navigate({ kind: "settings", page })} onSearch={() => search.current?.focus()} onSetup={() => firstRun.open(0)} onNotice={setNotice} />
     <QuickAskHost session={session} ready={ready} list={list} onOpen={openConversation} onNotice={setNotice} />
     {pip && route.kind === "chat" && !stage ? <R1StagePip key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} computer={pip} blocks={[...snapshot.history, ...snapshot.live]} onOpen={() => { setStage(pip.kind === "browser" ? "Browser" : "Computer"); setPip(null); }} onClose={() => setPip(null)} /> : null}
     <Toasts />
