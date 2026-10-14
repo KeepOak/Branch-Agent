@@ -1,16 +1,20 @@
 // @vitest-environment jsdom
+// Settings › Trunks follows the approved preview (#1049, section D Trunks majors; preview.html PG trunksP17): one
+// "Start from a template" row instead of the job tiles, each row with only Edit and •••, the preview's ••• menu with Who
+// it knows in it, and at Advanced the "Defaults for every Trunk" and "Trunks’ own databases" cards; no "Groups and Grafted
+// agents" card.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
-import { TRUNK_MENU_COMING } from "../../../places/customize/trunks";
+import { SETTINGS_MENU_COMING } from "../../../places/customize/trunks";
 import { visibleDevNotes } from "../../../shell/shown-why.testing";
 import { ROWS } from "../rows";
 import { searchSettings } from "../search";
 import { mergeRows } from "../slots";
 import { SettingsFrame } from "../SettingsFrame";
 import { R1_PAGES } from "./plugged";
-import { TRUNK_ROWS, TRUNKS_COMING } from "./trunks-live";
+import { TRUNK_DEFAULTS, TRUNK_ROWS } from "./trunks-live";
 
 vi.mock("../../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span role="img" aria-label={label} /> }));
 vi.mock("../../../face/CharacterFace", () => ({ CharacterFace: ({ label }: { label?: string }) => <span role="img" aria-label={label} /> }));
@@ -28,58 +32,64 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 const ROSTER = { defaultId: "oak", mainKey: "main", agents: [{ id: "oak", identity: { name: "Oak", theme: "Helps" } }, { id: "birch", identity: { name: "Birch", theme: "Reads" } }] };
 const CONFIG = { hash: "h1", valid: true, config: { agents: { defaults: { userTimezone: "UTC" }, entries: { oak: { default: true } } } } };
 function engineOf() {
-  const request = vi.fn(async (method: string) => method === "agents.list" ? ROSTER : method === "config.get" ? CONFIG : method === "trunks.template.export" ? { ok: true } : {});
+  const request = vi.fn(async (method: string, _params: Record<string, unknown> = {}) => method === "agents.list" ? ROSTER : method === "config.get" ? CONFIG : method === "trunks.template.export" ? { ok: true } : {});
   const engine = { request, onEvent: () => () => undefined, sessionKey: "s", agentId: "oak", scopes: ["operator.admin"], features: { methods: ["agents.list", "config.get", "config.patch", "trunks.template.export"], events: [] } } as unknown as WindowEngine;
   return { engine, request };
 }
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 const button = (text: string) => [...document.querySelectorAll("button")].find((b) => b.textContent === text) as HTMLButtonElement;
-
-it("draws Settings › Trunks as the full Trunks page: every Trunk, A new Trunk, New group chat and the job templates", async () => {
-  const { engine } = engineOf();
-  await act(async () => root.render(<SettingsFrame engine={engine} page="trunks" pages={R1_PAGES} />));
+const cards = () => [...host.querySelectorAll<HTMLElement>(".r1s-custom .r1s-sec")].map((s) => s.querySelector(":scope > h2")?.textContent ?? "");
+async function mount(level: "regular" | "advanced" | "technical", onPage?: (page: string) => void) {
+  localStorage.setItem("branch.level", level);
+  const env = engineOf();
+  await act(async () => root.render(<SettingsFrame engine={env.engine} page="trunks" pages={R1_PAGES} onPage={onPage} />));
   await settle();
+  return env;
+}
+
+it("draws the preview's Trunks card: rows with Edit and •••, A new Trunk, New group chat and one template row", async () => {
+  const onPage = vi.fn();
+  await mount("regular", onPage);
   const page = host.querySelector<HTMLElement>('.r1s-custom[data-slot="trunks"]')!;
-  // The frame draws the title above the page (#1049); the page draws none of its own.
   expect([...host.querySelectorAll("h1")].map((h) => h.textContent)).toEqual(["Trunks"]);
-  expect(page.querySelector("h1")).toBeNull();
   expect([...page.querySelectorAll(".tk-row .tk-row-who")].map((b) => b.getAttribute("aria-label"))).toEqual(["Oak: profile", "Birch: profile"]);
+  expect([...page.querySelectorAll(".tk-row")].map((r) => [...r.querySelectorAll("button:not(.tk-row-who)")].map((b) => b.textContent || b.getAttribute("aria-label")))).toEqual([["Edit", "More for Oak"], ["Edit", "More for Birch"]]);
   expect(button("A new Trunk").disabled).toBe(false);
   expect(button("New group chat")).toBeTruthy();
-  expect(page.textContent).toContain("Start from a job");
-  expect(page.textContent).not.toContain("Defaults for every Trunk");
+  expect(page.textContent).not.toContain("Use this job");
+  expect(page.querySelector('[data-row="trunks.templates"] b')?.textContent).toBe("Start from a template");
+  await act(async () => button("Templates in Seedbank").click());
+  expect(onPage).toHaveBeenCalledWith("seedbank");
+  expect(cards()).toEqual([""]);
 });
 
-it("puts the approved ••• items on each Trunk: Share works, Pause, Show it how once and Package… are greyed naming their call", async () => {
-  const { engine, request } = engineOf();
-  await act(async () => root.render(<SettingsFrame engine={engine} page="trunks" pages={R1_PAGES} />));
-  await settle();
+it("puts the preview's ••• menu on each Trunk, with Who it knows, and greys what nothing stands behind yet", async () => {
+  const { request } = await mount("regular");
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="More for Birch"]')!.click());
   const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')];
-  expect(items.map((b) => b.textContent)).toEqual(["Pause Birch", "Make default", "Share this Trunk…", "Show it how once", "Package…", "Remove Birch…"]);
-  expect(items.filter((b) => b.disabled).map((b) => b.textContent)).toEqual(["Pause Birch", "Show it how once", "Package…"]);
-  expect(Object.values(TRUNK_MENU_COMING)).toEqual([
-    "Needs the engine’s pause for a Trunk (agents.pause, agents.resume).",
-    "Needs the engine to record a task you show it (trunks.watch).",
-    "Needs the engine’s Trunk packages (claws.packages).",
-  ]);
+  expect(items.map((b) => b.textContent)).toEqual(["Change picture…", "Pause", "Make default", "Share this Trunk…", "Who it knows", "Show it how, once", "Package…",
+    "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…", "Remove Trunk…"]);
+  expect(items.filter((b) => b.disabled).map((b) => b.textContent)).toEqual(["Pause", "Show it how, once", "Package…", "Copy seed", "Download seed", "Copy its look", "Share to Seedbank…"]);
+  for (const why of Object.values(SETTINGS_MENU_COMING)) expect(why).toMatch(/ comes in a later update\.$/);
   expect(visibleDevNotes(document.body)).toEqual([]);
   await act(async () => button("Share this Trunk…").click());
   await settle();
   expect(request).toHaveBeenCalledWith("trunks.template.export", { agentId: "birch" });
 });
 
-it("draws the defaults for every Trunk and both Coming rows at Technical, each naming its engine call", async () => {
-  localStorage.setItem("branch.level", "technical");
-  const { engine } = engineOf();
-  await act(async () => root.render(<SettingsFrame engine={engine} page="trunks" pages={R1_PAGES} />));
-  await settle();
-  const page = host.querySelector<HTMLElement>('.r1s-custom[data-slot="trunks"]')!;
-  expect(page.textContent).toContain("Defaults for every Trunk");
-  expect(page.textContent).toContain("Working folder");
-  expect(TRUNKS_COMING.map((c) => [c.card, c.need])).toEqual([["Groups and Grafted agents", "agents.setDefault"], ["Trunks’ own databases", "config.patch"]]);
-  const coming = [...page.querySelectorAll<HTMLElement>('[aria-disabled="true"][data-coming]')].map((el) => el.querySelector("b")?.textContent);
-  expect(coming).toEqual(TRUNKS_COMING.map((c) => c.label));
+it("draws Defaults for every Trunk and Trunks’ own databases at Advanced, and the folder defaults inside the Trunks card at Technical", async () => {
+  await mount("advanced");
+  expect(cards()).toEqual(["", "Defaults for every Trunk", "Trunks’ own databases"]);
+  const defaults = host.querySelector<HTMLElement>('.r1s-sec[aria-label="Defaults for every Trunk"]')!;
+  expect([...defaults.querySelectorAll(".r1s-row > b")].map((b) => b.textContent)).toEqual(TRUNK_DEFAULTS.map((d) => d.label));
+  expect(TRUNK_DEFAULTS.map((d) => d.label)).toEqual(["Projects pick up matching work", "Follow-up tasks", "Standing orders", "“From now on” for a specialist", "Share a Trunk", "Custom modes", "Agent marketplace", "Trunk packages"]);
+  expect(host.textContent).not.toContain("Groups and Grafted agents");
+  expect(host.textContent).not.toContain("Working folder");
+  await act(async () => root.unmount()); root = createRoot(host);
+  await mount("technical");
+  const first = host.querySelector<HTMLElement>(".r1s-trunks")!;
+  expect(first.textContent).toContain("Working folder");
+  expect(first.querySelector(".tk-h")).toBeNull();
 });
 
 it("adds the page's rows to the R1 table, so R1 search finds them on Settings › Trunks", () => {
@@ -87,4 +97,5 @@ it("adds the page's rows to the R1 table, so R1 search finds them on Settings �
   expect(merged.filter((r) => r.page === "trunks").map((r) => r.id)).toEqual(TRUNK_ROWS.map((r) => r.id));
   const hits = searchSettings("Working folder", { level: 2, hints: {}, rows: merged }).settings;
   expect(hits.filter((h) => h.kind === "row" && h.page === "trunks").map((h) => h.id)).toEqual(["trunks.defaults.cwd"]);
+  expect(searchSettings("template", { level: 0, hints: {}, rows: merged }).settings.map((h) => h.id)).toContain("trunks.templates.start");
 });
