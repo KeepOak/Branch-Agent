@@ -53,6 +53,15 @@ describe("R1 Settings › Coding is a native R1 page with the preview's cards", 
     expect(cards()).toEqual(ALL_CARDS);
     expect(host.querySelector('[data-classic], .r1s-custom')).toBeNull();
     expect([...host.querySelectorAll(".r1s-col h1, .r1s-col h2")].map((h) => h.textContent)).toEqual(ALL_CARDS);
+    // Separate copies and Branches Branch is keeping are plain rows as in the preview: label and line, the button beside them.
+    for (const [id, label] of [["coding.code.separate-copies", "Separate copies"], ["coding.code.branches-branch-is-keeping", "Branches Branch is keeping"]]) {
+      const row = card("Code").querySelector<HTMLElement>(`[data-row="${id}"]`)!;
+      expect(row.hasAttribute("data-bare"), id).toBe(false);
+      expect(row.classList.contains("r1s-stack"), id).toBe(false);
+      expect(row.querySelector(":scope > b")?.textContent).toBe(label);
+      expect(row.querySelector(".r1s-ctl button")?.textContent).toMatch(/^(See|None yet|See \d+)$/);
+      expect(row.querySelector(".ctl")).toBeNull();
+    }
     // Commands and Files carry Classic Advanced's own rows now, not a Coming card.
     for (const t of ["Commands", "Files"]) expect(card(t).querySelector(".r1s-classic-coming")).toBeNull();
     expect(card("Commands").querySelector("[data-classic-block]")).not.toBeNull();
