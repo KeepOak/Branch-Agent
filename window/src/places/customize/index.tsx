@@ -1,16 +1,15 @@
-// Customize (preview 40-places.js, 42-placesbp.js, 93-g3p.js, 94-g4p.js): Trunks, Tools, Specialists, Channels, Everywhere.
+// Customize (preview 40-places.js, 42-placesbp.js, 93-g3p.js, 94-g4p.js): Trunks, Tools, Chat apps. Helpers (once
+// "Specialists") and Devices & apps (once "Everywhere") live in Settings, where their names say what they hold.
 import { TrunksTab } from "./trunks";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { useResource, type Trunks } from "../library/data";
 import { KIND_LIST, ToolsTab, type Kind } from "./tools";
-import { SpecialistsTab } from "./specialists";
 import { ChannelsTab } from "./channels";
-import { EverywhereTab } from "./everywhere";
 import "../library/places.css";
 import "./customize.css";
 
-const TABS = ["Trunks", "Tools", "Specialists", "Chat apps", "Everywhere"];
+const TABS = ["Trunks", "Tools", "Chat apps"];
 const KINDS: string[] = KIND_LIST.map(k => k.id);
 /** "branch:place-tab" ({ place, tab }) opens a Customize tab, or Tools at one kind, from elsewhere in the window. */
 export function usePlaceTab(open: (tab: string, kind?: string, capabilities?: boolean) => void) {
@@ -44,7 +43,7 @@ function PlaceTabs({ value, onChange, trunkCount }: { value: string; onChange: (
     onKeyDown={e => move(e, i)} onClick={() => onChange(t)}>{t}</button>)}</div>;
 }
 
-export function CustomizePlace({ engine, facts, openConversation, openPlace, openSettings, startConversation, level }: PlaceProps) {
+export function CustomizePlace({ engine, openConversation, openPlace, openSettings, startConversation, level }: PlaceProps) {
   const [tab, setTab] = useState("Trunks");
   const [kind, setKind] = useState<Kind>("Connectors");
   const [getting, setGetting] = useState(false);
@@ -55,9 +54,7 @@ export function CustomizePlace({ engine, facts, openConversation, openPlace, ope
       {tab === "Trunks" && <TrunksTab engine={engine} level={level} trunks={trunks} openConversation={openConversation} openPlace={openPlace} openSettings={openSettings} startConversation={startConversation} />}</div>
     {tab !== "Trunks" && <div className="cz">
       {tab === "Chat apps" ? <ChannelsTab engine={engine} openSettings={openSettings} />
-      : tab === "Specialists" ? <SpecialistsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} facts={facts} openAgents={() => { setKind("Agents"); setTab("Tools"); }} />
-      : tab === "Tools" ? <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={getting} setGetting={setGetting} openConversation={openConversation} />
-      : <EverywhereTab engine={engine} openChannels={() => setTab("Chat apps")} />}
+      : <ToolsTab engine={engine} level={level} trunks={trunks.data?.agents ?? []} kind={kind} setKind={setKind} getting={getting} setGetting={setGetting} openConversation={openConversation} />}
     </div>}
   </PlaceFrame>;
 }

@@ -1,0 +1,1 @@
+window:src/screens/settings/glass48.test.tsx

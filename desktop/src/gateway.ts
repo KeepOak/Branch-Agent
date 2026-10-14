@@ -1,11 +1,12 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { appendFileSync, createWriteStream, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
+import { appendCappedLog, cappedLogStream } from "./log-rotation";
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
 import { recordEngine } from "./engine-records";
 import { HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
@@ -62,9 +63,9 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   // The profile check can refuse a standby; it runs before the log is opened so a refusal leaks nothing.
   const prepared = standby ? readPreparedNormalProfile(join(cfg.dataDir, "home")) : undefined;
   const logPath = join(cfg.dataDir, "gateway.log");
-  const log = createWriteStream(logPath, { flags: "a" });
+  const log = cappedLogStream(logPath);
   const profile = prepared ?? prepareNormalProfile(join(cfg.dataDir, "home"), undefined, (message) => {
-    if (message === "Profile migration start") appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`);
+    if (message === "Profile migration start") appendCappedLog(logPath, `${new Date().toISOString()} ${message}\n`);
     else log.write(message + "\n");
   }, join(engineDir, "docs", "reference", "templates"));
   if (profile.note) log.write(profile.note + "\n");

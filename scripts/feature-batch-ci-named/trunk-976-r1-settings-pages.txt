@@ -1,0 +1,8 @@
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/screens/settings/coming.test.tsx
+window:src/screens/settings/glass48.test.tsx
+window:src/screens/settings/pages/appearance-live.test.tsx
+window:src/screens/settings/rows.test.ts
+window:src/screens/settings/slots.test.ts
+window:src/screens/settings/useRow.test.tsx

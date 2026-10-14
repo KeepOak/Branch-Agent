@@ -6,6 +6,7 @@ import {
   recordAgentDatabaseAdmissions,
 } from "./agent-database-admission.js";
 import * as startup from "./agent-database-startup.js";
+import { getBranchStateReadTiming } from "./branch-state-read-timing.js";
 import {
   closeBranchAgentDatabasesAsync,
   closeBranchAgentDatabasesForTest,
@@ -18,7 +19,29 @@ const stalls = vi.hoisted(() => ({
   /** The next this-many journal reads never settle; the rest answer at once. */
   journalReadsToStall: 0,
   journalStalled: 0,
+  /** Journal reads answer after this many fake milliseconds, reporting worker-read timing. */
+  journalSlowMs: 0,
 }));
+// Info lines from the agent admission logger, captured for the slow-read report.
+const logs = vi.hoisted(() => ({ info: [] as Array<[string, Record<string, unknown>]> }));
+vi.mock("../logging/subsystem.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../logging/subsystem.js")>();
+  return {
+    ...actual,
+    createSubsystemLogger: (subsystem: string) => {
+      const logger = actual.createSubsystemLogger(subsystem);
+      const info = logger.info.bind(logger);
+      return Object.assign(logger, {
+        info: (message: string, fields?: Record<string, unknown>) => {
+          if (subsystem === "state/agent-admission") {
+            logs.info.push([message, fields ?? {}]);
+          }
+          info(message, fields);
+        },
+      });
+    },
+  };
+});
 // Permits held by the pools created in this file, to check that no permit leaks.
 const permits = vi.hoisted(() => ({ outstanding: 0, peak: 0 }));
 
@@ -33,6 +56,26 @@ vi.mock("./agent-deletion-journal.read.js", async (importOriginal) => {
         stalls.journalReadsToStall -= 1;
         stalls.journalStalled += 1;
         await new Promise<never>(() => {});
+      }
+      if (stalls.journalSlowMs > 0) {
+        const delayMs = stalls.journalSlowMs;
+        stalls.journalSlowMs = 0;
+        await new Promise<void>((resolve) => {
+          globalThis.setTimeout(resolve, delayMs);
+        });
+        // The read transport and the snapshot step fill these on a real read; the stub stands in.
+        const timing = getBranchStateReadTiming();
+        if (timing) {
+          timing.validate = { waitMs: 500, readMs: 300, workerSpawned: true };
+          timing.snapshot = { ms: 2_000, bytes: 4_096 };
+          timing.query = {
+            queueDepth: 2,
+            holders: ["deletion-journal:builder-ash"],
+            waitMs: 1_500,
+            readMs: 800,
+            workerSpawned: false,
+          };
+        }
       }
       return "absent" as const;
     },
@@ -102,6 +145,8 @@ async function closeDatabases() {
 beforeEach(() => {
   stalls.journalReadsToStall = 0;
   stalls.journalStalled = 0;
+  stalls.journalSlowMs = 0;
+  logs.info.length = 0;
   permits.outstanding = 0;
   permits.peak = 0;
 });
@@ -251,6 +296,46 @@ describe("agent database startup stages that could hang", () => {
       );
       await started.admitted("tk");
       expect(started.prepares.get("tk")).toHaveBeenCalledTimes(1);
+    } finally {
+      await started.stop();
+    }
+  });
+
+  it("logs the lane wait, read time, queue depth, and holders of a slow deletion-journal read", async () => {
+    const started = await startAdmission(
+      [{ agentId: "tk" }],
+      { BRANCH_AGENT_PREPARATION_ATTEMPT_MS: "10000" },
+      undefined,
+      () => {
+        stalls.journalSlowMs = 6_000;
+      },
+    );
+    try {
+      await runUntil(
+        () => logs.info.some(([message]) => message === "agent deletion-journal read was slow"),
+        "the slow deletion-journal read to be logged",
+      );
+      const [, fields] = logs.info.find(
+        ([message]) => message === "agent deletion-journal read was slow",
+)!;
+      expect(fields).toMatchObject({
+        agentId: "tk",
+        readLabel: "deletion-journal:tk",
+        validateMs: 800,
+        validateWaitMs: 500,
+        validateSpawned: true,
+        snapshotMs: 2000,
+        snapshotBytes: 4096,
+        queryWaitMs: 1500,
+        queryReadMs: 800,
+        queryQueueDepth: 2,
+        queryHolders: ["deletion-journal:builder-ash"],
+        querySpawned: false,
+        // 6000 ms total less the 800 + 2000 + 2300 ms the phases account for.
+        otherMs: 900,
+      });
+      expect(fields.totalMs).toBeGreaterThanOrEqual(5000);
+      await started.admitted("tk");
     } finally {
       await started.stop();
     }

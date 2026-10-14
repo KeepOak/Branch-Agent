@@ -74,7 +74,9 @@ if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))ret
 // retire-hangs: a stepped-down engine that never exits after its drain request (a blocked event loop).
 if(m.type==="branch-desktop:drain-stop"&&!(globalThis.fenced&&fs.existsSync(root+"/retire-hangs"))){Promise.resolve(globalThis.run).then(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");setTimeout(()=>process.exit(0),20);});}
 if(m.type==="branch-desktop:stop-if-idle"&&!fs.existsSync(root+"/busy"))setTimeout(()=>process.exit(0),20);});
-const listener=http.createServer((q,r)=>{r.writeHead(globalThis.rollbackReadyAt&&Date.now()<globalThis.rollbackReadyAt?503:globalThis.fenced&&fs.existsSync(root+"/fence-readyz")?503:starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end();});
+// refuse-agents: the staged engine listens and answers /readyz, but its agents stay refused (database inspection pending).
+const refusing=()=>fs.existsSync(root+"/refuse-agents")&&process.cwd().endsWith("staged-engine");
+const listener=http.createServer((q,r)=>{if(refusing()&&q.url==="/startupz"){r.writeHead(503,{"content-type":"application/json"}).end(JSON.stringify({ok:false,status:"starting",pendingReason:"agent-database-inspection"}));return;}const agents=refusing()?JSON.stringify({ready:true,failing:[],agentDatabases:[{agentId:"coordinator",code:"agent-database-inspection-pending"}]}):undefined;r.writeHead(globalThis.rollbackReadyAt&&Date.now()<globalThis.rollbackReadyAt?503:globalThis.fenced&&fs.existsSync(root+"/fence-readyz")?503:starts.length===1&&!fs.existsSync(root+"/hold-startup")||fs.existsSync(root+"/release-ready")?200:503).end(agents);});
 // As a standby since #411: it takes the state over only on its launcher's take-over message, then says so.
 if(process.env.BRANCH_GATEWAY_STANDBY==="1")process.on("message",m=>{if(m?.type!=="branch-desktop:take-over"||globalThis.tookOver)return;globalThis.tookOver=true;if(fs.existsSync(root+"/released-"+starts[0]))fs.writeFileSync(root+"/took-over-after-step-down-"+process.pid,"1");fs.writeFileSync(root+"/took-over-"+process.pid,JSON.stringify({oldEngineAlive:(()=>{try{process.kill(starts[0],0);return true;}catch{return false;}})()}));process.send?.({type:"branch-desktop:taking-over",pid:process.pid,port:Number(process.argv.at(-1))});});
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
@@ -245,6 +247,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     previousCandidateMin === undefined ? delete process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB : process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = previousCandidateMin;
     for (const name of ["READY", "STEP_DOWN", "TAKE_OVER", "STANDBY_READY", "ROLLBACK"]) delete process.env[`BRANCH_DESKTOP_${name}_TIMEOUT_MS`];
     delete process.env.BRANCH_DESKTOP_RETIRE_KILL_AFTER_MS;
+    delete process.env.BRANCH_DESKTOP_ADMISSION_ROLLBACK_MS;
     await rm(root, { recursive: true, force: true });
   }
 }
@@ -1231,6 +1234,38 @@ test("Undo's temporary engine pointer is never offered as a new update", () => f
   await pause(50);
   assert.equal((await log()).split("new engine build found; offering Update").length - 1, offersAfter);
 }, false, false, false, true, false, handoffOn(), true, true));
+test("Private #951: agents still refused after the probation roll the update back to the previous build automatically", () => fixture(async ({ root, runtime, offerStaged }) => {
+  const sent = idleWindow(runtime);
+  await stageFixtureUpdate(root, true);
+  await writeFile(join(root, "refuse-agents"), "1");
+  await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  // The new engine's listener binds and answers /readyz, so the swap itself succeeds...
+  await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:update-applied" && value.canUndo), 30_000);
+  await writeFile(join(root, "fail-standby"), "fail");
+  // ...but its agents are never admitted: no promotion, and the update goes back without a click.
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-undone"), 30_000);
+  const log = await readFile(join(root, "desktop.log"), "utf8");
+  assert.match(log, /agents still refused \d+ s after the swap \(coordinator\); rolling back to the previous build/);
+  assert.doesNotMatch(log, /promoting the new engine/);
+  assert.equal((await readFile(join(root, "component-update-version.txt"), "utf8")).trim(), "fixture-previous");
+  assert.equal(JSON.parse(await readFile(join(root, "component-update-undone.json"), "utf8")).version, "fixture-next");
+}, false, false, false, true, false, handoffOn({ ADMISSION_ROLLBACK_MS: 1500 })));
+test("Private #951: an update is promoted once its agents are admitted, not when its listener binds", () => fixture(async ({ root, runtime, offerStaged }) => {
+  const sent = idleWindow(runtime);
+  await stageFixtureUpdate(root, true);
+  await writeFile(join(root, "refuse-agents"), "1");
+  await writeFile(join(root, "release-ready"), "ready");
+  offerStaged();
+  await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-applied"), 30_000);
+  const log = () => readFile(join(root, "desktop.log"), "utf8");
+  await pause(300);
+  assert.doesNotMatch(await log(), /promoting the new engine/, "a bound listener alone promoted the update");
+  await unlink(join(root, "refuse-agents"));
+  await eventually(async () => /every agent admitted after \d+ s; promoting the new engine/.test(await log()), 30_000);
+  assert.equal(sent.some(([channel]) => channel === "branch-desktop:update-undone"), false);
+  assert.equal((await readFile(join(root, "component-update-version.txt"), "utf8")).trim(), "fixture-next");
+}, false, false, false, true, false, handoffOn({ ADMISSION_ROLLBACK_MS: 60000 })));
 test("Undo pins the outgoing window, excludes auto-apply, and explains a busy-lock click", () => fixture(async ({ root, runtime, offerStaged }) => {
   const sent = idleWindow(runtime), owner = runtime.window.webContents;
   await stageFixtureUpdate(root, true);

@@ -28,9 +28,15 @@ import {
   openingExpiry,
   recordStage,
   StageTimeoutError,
+  waitedForPreviousEngine,
   waitForStage,
 } from "./agent-database-startup.stages.js";
 import { readAgentDeletionJournalStatusInWorker } from "./agent-deletion-journal.read.js";
+import {
+  type BranchStateReadTiming,
+  describeSlowBranchStateRead,
+  runWithBranchStateReadTiming,
+} from "./branch-state-read-timing.js";
 import {
   AGENT_DATABASE_PREFLIGHT_CONCURRENCY,
   BRANCH_AGENT_SCHEMA_VERSION,
@@ -388,12 +394,24 @@ class AgentDatabaseStartupAdmission {
             onExpire: (error: StageTimeoutError) => void,
           ) => {
             assertCurrent();
-            const deletion = await boundStage(
-              "deletion-journal read",
-              readAgentDeletionJournalStatusInWorker(agentId, { env }, signal),
-              attemptLimitMs,
-              { signal, onExpire },
-            );
+            const readTiming: BranchStateReadTiming = { label: `deletion-journal:${agentId}` };
+            const readStartedAt = Date.now();
+            let deletion: Awaited<ReturnType<typeof readAgentDeletionJournalStatusInWorker>>;
+            try {
+              deletion = await boundStage(
+                "deletion-journal read",
+                runWithBranchStateReadTiming(readTiming, () =>
+                  readAgentDeletionJournalStatusInWorker(agentId, { env }, signal),
+                ),
+                attemptLimitMs,
+                { signal, onExpire },
+              );
+            } finally {
+              const slow = describeSlowBranchStateRead(readTiming, Date.now() - readStartedAt);
+              if (slow) {
+                log.info("agent deletion-journal read was slow", { agentId, ...slow });
+              }
+            }
             assertCurrent();
             if (deletion !== "absent") {
               throw new Error(`Agent ${agentId} was deleted during startup inspection`);
@@ -619,6 +637,12 @@ class AgentDatabaseStartupAdmission {
                     log.info("agent database startup preparation superseded; retrying", {
                       agentId,
                     });
+                    continue;
+                  }
+                  // #951: timed out against the previous engine's lock: wait on its release, retry uncounted.
+                  const held = { agentId, refusal, statusReason, signal: this.signal };
+                  if (await waitedForPreviousEngine(error, held)) {
+                    attemptLimitMs = preparationAttemptLimitMs(env);
                     continue;
                   }
                   failures += 1;

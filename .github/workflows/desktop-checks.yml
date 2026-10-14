@@ -67,6 +67,31 @@ jobs:
         run: node --test scripts/component-release-readiness.test.mjs
       - name: Check release publication order and public latest retries
         run: node --test scripts/publish-component-release.test.mjs
+      - name: Check the installer builder and its signing hooks
+        run: node --test scripts/release-installers.test.mjs scripts/release-signing.test.mjs
+      - name: Check the one-line install scripts against a fixture release
+        run: node --test scripts/install-scripts.test.mjs
+      - name: Lint install.sh with shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck -s sh install/install.sh
+      - name: Lint install.ps1 with PSScriptAnalyzer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        # PSScriptAnalyzer 1.23.0 pinned by digest (the PowerShell Gallery's own SHA-512 packageHash for that version,
+        # plus the SHA-256 of the same .nupkg). Checked before it is unpacked or imported.
+        env:
+          PSA_SHA256: b9969345f78251112fb75bdddc789be8689a343472a2e09762303aa03287afab
+        run: |
+          $nupkg = Join-Path $env:RUNNER_TEMP 'psscriptanalyzer.1.23.0.nupkg'
+          Invoke-WebRequest -Uri 'https://cdn.powershellgallery.com/packages/psscriptanalyzer.1.23.0.nupkg' -OutFile $nupkg
+          $actual = (Get-FileHash -Algorithm SHA256 -Path $nupkg).Hash.ToLowerInvariant()
+          if ($actual -ne $env:PSA_SHA256) { throw "PSScriptAnalyzer download does not match its pinned digest ($actual). Nothing was imported." }
+          $module = Join-Path $env:RUNNER_TEMP 'PSScriptAnalyzer'
+          Expand-Archive -Path $nupkg -DestinationPath $module -Force
+          Import-Module (Join-Path $module 'PSScriptAnalyzer.psd1') -Force
+          $issues = @(Invoke-ScriptAnalyzer -Path install/install.ps1 -Severity Warning,Error)
+          $issues | Format-Table -AutoSize | Out-String | Write-Output
+          if ($issues.Count -gt 0) { exit 1 }
       - name: Check updates, startup and owned process cleanup
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
@@ -84,11 +109,15 @@ jobs:
       - name: Check immutable release inventory and bootstrap targets
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
-        run: node --test scripts/brand-icons.test.mjs scripts/linux-launcher.test.mjs scripts/mac-applications.test.mjs scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs scripts/release-source-freeze.test.mjs scripts/release-production-layout.test.mjs
+        run: node --test scripts/brand-icons.test.mjs scripts/linux-launcher.test.mjs scripts/mac-applications.test.mjs scripts/mac-release-signing.test.mjs scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs scripts/release-source-freeze.test.mjs scripts/release-production-layout.test.mjs
       - name: Check the diagnostics log, redaction, problem report and archive
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
         run: node --test scripts/diagnostics.test.mjs
+      - name: Check the desktop log caps and rotation
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --test scripts/log-rotation.test.mjs
       - name: Check documentation merge command patterns
         working-directory: ${{ github.workspace }}
         run: node --test scripts/check-merge-command.test.mjs
