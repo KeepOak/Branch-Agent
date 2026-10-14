@@ -356,11 +356,30 @@ describe("Settings › Appearance", () => {
     expect(b.onEvent).toHaveBeenCalledTimes(1);
   });
 
+  it("the character and the done cheer are off until turned on, and the cheer switch saves", async () => {
+    const { engine, prefs } = engineOf();
+    await render(engine);
+    expect(sw("Show the agent beside the conversation").checked).toBe(false);
+    expect(sw("Celebrate when a task finishes").checked).toBe(false);
+    await act(async () => sw("Celebrate when a task finishes").click());
+    expect(prefs["ui.window.look"]).toMatchObject({ cheer: true });
+  });
+
+  it("picking a pet turns it on, and None turns it off", async () => {
+    const { engine, prefs } = engineOf();
+    await render(engine);
+    const pet = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".pets12 .pet-c12")].find((b) => b.querySelector("b")?.textContent === name)!;
+    await act(async () => pet("Otter").click());
+    expect(prefs["ui.window.look"]).toMatchObject({ pet: "otter", roam: true });
+    await act(async () => pet("None").click());
+    expect(prefs["ui.window.look"]).not.toHaveProperty("pet");
+    expect(prefs["ui.window.look"]).not.toHaveProperty("roam");
+  });
+
   it("reads saved rows from the engine", async () => {
     const { engine } = engineOf({ prefs: { "ui.window.look": { "show.usage": false } } });
     await render(engine);
     expect(sw("The usage ring").checked).toBe(false);
-    expect(sw("Let it roam").checked).toBe(false);
   });
 
   it("theme codes and engine palettes keep every colour", () => {
