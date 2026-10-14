@@ -5,11 +5,12 @@ import { useState } from "react";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
-import { Icon } from "../../shell/icons";
 import { Switch } from "../../shell/Popover";
 import { useResource } from "../library/data";
 import { Status } from "../library/ui";
-import { Dot, Grey, list, Pill, rec, Sec, str, type Rec } from "./common";
+import { Grey, list, Pill, rec, Sec, str, type Rec } from "./common";
+import { KindHead } from "./kind-chrome";
+import { TechRows } from "./tech-rows";
 import { CatalogDialog, ConsentDialog, usePluginAction } from "./catalog";
 import { Glyph } from "./glyphs";
 import type { ToolsCtx } from "./tools";
@@ -27,22 +28,27 @@ export function pluginCount(ctx: ToolsCtx): number | null {
 const FROM: Record<string, string> = { bundled: "Comes with Branch", clawhub: "The plugin catalog", npm: "A package", git: "A git repository", local: "A folder on this computer", workspace: "This Trunk’s folder", global: "Installed" };
 
 export function Plugins({ ctx }: { ctx: ToolsCtx }) {
-  const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<string | null>(null);
-  const q = query.trim().toLowerCase();
+  const q = ctx.query.trim().toLowerCase();
   const rows = readPlugins(ctx.plugins.data).filter(p => p.installed);
   const shown = rows.filter(p => !q || (p.name + " " + p.description).toLowerCase().includes(q));
   const plugin = shown.find(p => p.id === chosen) ?? shown[0];
+  const action = usePluginAction(ctx.engine);
   return <>
-    <div className="t9-list">
-      <label className="cz-search"><Icon name="search" small /><input type="search" aria-label="Search installed plugins" placeholder="Search installed plugins" value={query} onChange={e => setQuery(e.target.value)} /></label>
+    <KindHead ctx={ctx} kind="Plugins" count={`${rows.filter(p => p.enabled).length} of ${rows.length} on`}>
       <Status {...ctx.plugins} />
       {ctx.plugins.data != null && !shown.length && <EmptyLine icon={<Glyph name="puzzle" size={22} />}>{q ? "No installed plugin matches." : "No plugins installed yet."}</EmptyLine>}
-      {shown.map(p => <button key={p.id} type="button" className="t9-item" aria-current={p.id === plugin?.id} onClick={() => setChosen(p.id)}>
-        <span className="cz-tile"><Glyph name="puzzle" size={16} /></span><span className="grow"><b>{p.name}</b><small>{p.description || FROM[p.origin] || p.id}</small></span>
-        {p.state === "error" ? <Pill tone="bad" title={p.error}>Needs a look</Pill> : p.state === "needs-setup" ? <Pill tone="warn">Needs setting up</Pill> : <Dot on={p.enabled} />}
-      </button>)}
-    </div>
+      {shown.map(p => <div key={p.id} className="cz-rowline" role="listitem">
+        <button type="button" className="t9-item" aria-current={p.id === plugin?.id} onClick={() => setChosen(p.id)}>
+          <span className="cz-tile"><Glyph name="puzzle" size={16} /></span><span className="grow"><b>{p.name}</b><small>{p.description || FROM[p.origin] || p.id}</small></span>
+          {p.state === "error" ? <Pill tone="bad" title={p.error}>Needs a look</Pill> : p.state === "needs-setup" ? <Pill tone="warn">Needs setting up</Pill> : null}
+        </button>
+        <Switch label={`${p.name} on or off`} on={p.enabled} onChange={on => void action.run("toggle", "plugins.setEnabled", { pluginId: p.id, enabled: on }, ctx.plugins.reload)} />
+      </div>)}
+      <TechRows ctx={ctx} kind="Plugins" />
+      {action.error && <p role="alert" className="cz-error">{action.error}</p>}
+      <ConsentDialog action={action} done={ctx.plugins.reload} />
+    </KindHead>
     {plugin ? <PluginDetail key={plugin.id} ctx={ctx} plugin={plugin} /> : <div className="t9-detail cz-empty-detail" />}
   </>;
 }
@@ -52,6 +58,7 @@ function PluginDetail({ ctx, plugin }: { ctx: ToolsCtx; plugin: Plugin }) {
   const inspect = useResource<unknown>(ctx.engine, "plugins.inspect", { pluginId: plugin.id });
   const action = usePluginAction(ctx.engine);
   const [removing, setRemoving] = useState(false);
+  const [tab, setTab] = useState<"installed" | "settings">("installed");
   const reload = () => { ctx.plugins.reload(); inspect.reload(); };
   const declared = rec(rec(inspect.data).declared);
   const overview = rec(rec(inspect.data).overview);
@@ -60,6 +67,8 @@ function PluginDetail({ ctx, plugin }: { ctx: ToolsCtx; plugin: Plugin }) {
       <Switch label={`${plugin.name} on or off`} on={plugin.enabled} onChange={on => void action.run("toggle", "plugins.setEnabled", { pluginId: plugin.id, enabled: on }, reload)} /></div>
     {action.error && <p role="alert" className="cz-error">{action.error}</p>}
     {plugin.error && <div className="cz-card warn"><b>Needs a look</b><small>{plugin.error}</small></div>}
+    <div className="cz-tabs" role="tablist" aria-label="Plugin"><button type="button" role="tab" aria-selected={tab === "installed"} onClick={() => setTab("installed")}>Installed</button><button type="button" role="tab" aria-selected={tab === "settings"} onClick={() => setTab("settings")}>Plugin settings</button></div>
+    {tab === "settings" ? <PluginSettings /> : <>
     <Status {...inspect} />
     {inspect.data != null && <Sec title="In this pack">{PACK.map(([key, word]) => { const items = Array.isArray(declared[key]) ? (declared[key] as unknown[]).map(String) : []; return items.length ? <div key={key} className="cz-pack"><span>{word}</span><div>{items.map(i => <code key={i}>{i}</code>)}</div></div> : null; })}
       {PACK.every(([key]) => !(Array.isArray(declared[key]) && (declared[key] as unknown[]).length)) && <p className="cz-hint">It declares nothing for Trunks to use.</p>}</Sec>}
@@ -71,8 +80,30 @@ function PluginDetail({ ctx, plugin }: { ctx: ToolsCtx; plugin: Plugin }) {
     {removing && <Dialog title={`Remove ${plugin.name}?`} onClose={() => setRemoving(false)} footer={<><button type="button" className="btn ghost" onClick={() => setRemoving(false)}>Cancel</button><button type="button" className="btn bad" disabled={!!action.busy} onClick={() => void action.run("remove", "plugins.uninstall", { pluginId: plugin.id }, () => { setRemoving(false); ctx.plugins.reload(); })}>Remove</button></>}>
       <p className="dlg-p">Everything in it goes: its skills, connectors and tools.</p>{action.error && <p role="alert" className="cz-error">{action.error}</p>}
     </Dialog>}
+    </>}
     <ConsentDialog action={action} done={reload} />
   </div>;
+}
+
+/** Plugin settings (preview 38573, 28207): how it runs, where it is on, its start link, a test, and what it may do.
+ *  The engine has no per-plugin settings yet, so each control is Coming with its reason. */
+function PluginSettings() {
+  const ON_IN = ["Every folder", "Only folders you pick", "Every folder except some", "Only in conversations you attach it to"];
+  const PERMS = ["Add context to prompts", "Read conversation content", "Choose the model for its helpers"];
+  return <>
+    <Sec title="How it runs"><dl className="cz-kv"><dt>What it listens to</dt><dd>Not set</dd>
+      <dt>What it stores</dt><dd><Grey reason="Clearing what a plugin stores comes in a later update.">Clear</Grey></dd>
+      <dt>Where it runs</dt><dd>Not set</dd></dl></Sec>
+    <Sec title="On in"><div className="cz-seg-row">{ON_IN.map(o => <Grey key={o} className="btn sm" reason="Choosing where a plugin is on comes in a later update.">{o}</Grey>)}</div>
+      <small>Off: on wherever its Trunks work.</small></Sec>
+    <Sec title="A start link"><div className="cz-acts"><Grey reason="Copying a plugin’s start link comes in a later update.">Copy</Grey>
+      <Grey reason="Choosing who may use a start link comes in a later update.">Everyone</Grey><Grey reason="Choosing who may use a start link comes in a later update.">Owners only</Grey><Grey reason="Choosing who may use a start link comes in a later update.">Off</Grey></div></Sec>
+    <Sec title="Test against your tasks first"><div className="cz-line"><span>Runs a test set with and without it and compares, before you turn it on.</span><Grey reason="Running a plugin test set comes in a later update.">Run</Grey></div></Sec>
+    <Sec title="Permissions"><p className="cz-hint">Plugins from outside Branch may read conversations only after you allow it.</p>
+      {PERMS.map(p => <div key={p} className="cz-perm"><code>{p}</code><div className="cz-seg" role="radiogroup" aria-label={p}>
+        <Grey reason="Changing what a plugin may do comes in a later update.">Allowed</Grey><Grey reason="Changing what a plugin may do comes in a later update.">Never</Grey></div></div>)}
+    </Sec>
+  </>;
 }
 
 export function AddPlugin({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {

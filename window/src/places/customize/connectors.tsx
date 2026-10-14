@@ -10,8 +10,10 @@ import { shownWhy } from "../../shell/shown-why";
 import { Switch } from "../../shell/Popover";
 import { useResource } from "../library/data";
 import { Status } from "../library/ui";
-import { denyList, denyPatch, Dot, Grey, list, PermRow, rec, Sec, Seg, str, WhoChips, withItem, type Rec } from "./common";
+import { denyList, denyPatch, Grey, list, PermRow, rec, Sec, Seg, str, WhoChips, withItem, type Rec } from "./common";
 import { CatalogDialog } from "./catalog";
+import { KindHead } from "./kind-chrome";
+import { TechRows } from "./tech-rows";
 import { Glyph } from "./glyphs";
 import type { ToolsCtx } from "./tools";
 
@@ -82,19 +84,31 @@ export function Connectors({ ctx }: { ctx: ToolsCtx }) {
   const servers = config.data ? readServers(config.data.live, config.data.file) : [];
   const [chosen, setChosen] = useState<string | null>(null);
   const [reloaded, setReloaded] = useState(false);
-  const server = servers.find(s => s.name === chosen) ?? servers[0];
+  const q = ctx.query.trim().toLowerCase();
+  const shown = servers.filter(s => !q || `${s.name} ${s.line}`.toLowerCase().includes(q));
+  const server = shown.find(s => s.name === chosen) ?? shown[0];
+  const on = servers.filter(s => s.enabled && (!ctx.whose || mayUse(ctx, s.name, ctx.whose))).length;
+  const setEnabled = (name: string, enabled: boolean) => void config.patch({ mcp: { servers: { [name]: { enabled } } } });
   return <>
-    <div className="t9-list">
-      <Status {...config} />
-      {config.data && !servers.length && <EmptyLine icon={<Glyph name="puzzle" size={22} />}>No connectors yet.</EmptyLine>}
-      {servers.map(s => <button key={s.name} type="button" className="t9-item" aria-current={s.name === server?.name} onClick={() => setChosen(s.name)}>
-        <Mark server={s} size={32} />
-        <span className="grow"><b>{s.name}</b><small>{s.line}</small></span>
-        <Dot on={s.enabled && (!ctx.whose || mayUse(ctx, s.name, ctx.whose))} />
-      </button>)}
+    <KindHead ctx={ctx} kind="Connectors" count={`${on} of ${servers.length} on`}>
+      {ctx.toCommunity && <div className="cz-acts-top">
+        <button type="button" className="btn sm" onClick={() => ctx.toCommunity?.("mcp")}>Bring in from other apps</button>
+        <button type="button" className="btn sm" onClick={() => ctx.toCommunity?.("mcp")}>Public registry</button>
+        <button type="button" className="btn sm" onClick={() => ctx.openAdd("Connectors")}>Add your own server</button>
+      </div>}
       {config.data && <div className="cz-bar"><button type="button" className="btn ghost sm" disabled={config.loading} onClick={() => { config.reload(); setReloaded(true); }}>Reload connectors</button>
         {reloaded && !config.loading && <small role="status">Reloaded {servers.length} connectors from settings just now. Nothing restarted.</small>}</div>}
-    </div>
+      <Status {...config} />
+      {config.data && !servers.length && <EmptyLine icon={<Glyph name="puzzle" size={22} />}>No connectors yet.</EmptyLine>}
+      {shown.map(s => <div key={s.name} className="cz-rowline" role="listitem">
+        <button type="button" className="t9-item" aria-current={s.name === server?.name} onClick={() => setChosen(s.name)}>
+          <Mark server={s} size={32} />
+          <span className="grow"><b>{s.name}</b><small>{s.line}</small></span>
+        </button>
+        <Switch label={`${s.name} on or off`} on={s.enabled} onChange={next => setEnabled(s.name, next)} />
+      </div>)}
+      <TechRows ctx={ctx} kind="Connectors" />
+    </KindHead>
     {server ? <ConnectorDetail key={server.name} ctx={ctx} server={server} /> : <div className="t9-detail cz-empty-detail"><ConnectorActs /></div>}
   </>;
 }
@@ -119,6 +133,22 @@ function ConnectorDetail({ ctx, server }: { ctx: ToolsCtx; server: Server }) {
       <div className="cz-line"><span>Several calls at once</span><Switch label="Several calls at once" on={server.parallel} onChange={on => setServer({ supportsParallelToolCalls: on })} /></div>
       {!server.local && <div className="cz-line"><span>Check the server’s certificate</span><Switch label="Check the server’s certificate" on={server.sslVerify} onChange={on => setServer({ sslVerify: on })} /></div>}
     </Sec>}
+    {shows(level, "advanced") && <Sec title="Connection">
+      <div className="cz-line"><span>Only these tools<small>None picked: every tool.</small></span><Grey reason="Choosing which tools a connector may offer comes in a later update.">Choose</Grey></div>
+      <div className="cz-line"><span>Never these tools<small>Hidden tools are not offered at all.</small></span><Grey reason="Choosing tools a connector may never offer comes in a later update.">Choose</Grey></div>
+      <div className="cz-line"><span>Client certificate</span><Grey reason="Choosing a client certificate comes in a later update.">Choose a file</Grey></div>
+      <div className="cz-line"><span>Client key</span><Grey reason="Choosing a client key comes in a later update.">Choose a file</Grey></div>
+    </Sec>}
+    {shows(level, "technical") && <Sec title="What it offers"><p className="cz-hint">Resources a Trunk can read, and prompts it brings.</p></Sec>}
+    {shows(level, "technical") && <Sec title="How it runs">
+      <div className="cz-line"><span>Give up on a call after</span><Grey reason="Setting how long a call may wait comes in a later update.">Set</Grey></div>
+      <div className="cz-line"><span>Pick up new tools when the server changes them</span><Grey className="switch" reason="Picking up new tools comes in a later update."><span /></Grey></div>
+      <div className="cz-line"><span>Use the instructions it sends<small>Up to 512 characters, added to what the Trunk reads.</small></span><Grey reason="Editing the instructions a connector sends comes in a later update.">Edit</Grey></div>
+      <div className="cz-line"><span>Let it ask your model<small>For servers that need a model’s answer to work.</small></span><Grey className="switch" reason="Letting a connector ask a model comes in a later update."><span /></Grey></div>
+      <div className="cz-line"><span>Let it ask you questions<small>A card in the conversation with the fields it needs.</small></span><Grey className="switch" reason="Letting a connector ask questions comes in a later update."><span /></Grey></div>
+      <div className="cz-line"><span>Start automations from its events<small>Signed events only.</small></span><Grey className="switch" reason="Starting automations from a connector’s events comes in a later update."><span /></Grey></div>
+    </Sec>}
+    {shows(level, "technical") && <Sec title="Its settings"><p className="cz-hint">Edits save at once; the connection restarts the next time it is used.</p></Sec>}
     <ConnectorActs server={server} onRemove={() => setRemoving(true)} />
     {removing && <Dialog title={`Remove ${server.name}?`} onClose={() => setRemoving(false)} footer={<><button type="button" className="btn ghost" onClick={() => setRemoving(false)}>Cancel</button><button type="button" className="btn bad" disabled={config.busy} onClick={() => { void config.patch({ mcp: { servers: { [server.name]: null } } }).then(ok => ok && setRemoving(false)); }}>Remove</button></>}>
       <p className="dlg-p">Trunks stop using it. Its settings are taken out of Branch’s settings file.</p>{config.writeError && <p role="alert" className="cz-error">{config.writeError}</p>}

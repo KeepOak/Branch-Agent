@@ -62,11 +62,11 @@ const patches = (request: ReturnType<typeof vi.fn>) => request.mock.calls.filter
 describe("Tools, three panes", () => {
   it("lists the kinds with counts and the Whose tools chips, Connectors first", async () => {
     await open("Connectors");
-    expect([...host.querySelectorAll("[data-kind]")].map(k => k.getAttribute("data-kind"))).toEqual(["Connectors", "Skills", "Plugins", "Command-line tools", "Agents", "Toolsets", "Prompts"]);
+    expect([...host.querySelectorAll("[data-kind]")].map(k => k.getAttribute("data-kind"))).toEqual(["Toolsets", "Connectors", "Skills", "Plugins", "Command-line tools", "Agents", "Prompts"]);
     expect(host.querySelector('[data-kind="Connectors"] em')?.textContent).toBe("2");
     expect(host.querySelector('[data-kind="Skills"] em')?.textContent).toBe("1");
     expect([...host.querySelectorAll(".cz-whose .cz-chip")].map(c => c.textContent)).toEqual(["Every Trunk", "Sapling", "Oak"]);
-    expect(button("Add a server")).toBeTruthy();
+    expect(button("＋ Add")).toBeTruthy();
   });
   it("switches a connector off and limits which Trunks may use it, through config.patch", async () => {
     const request = await open("Connectors");
@@ -115,7 +115,7 @@ describe("Tools, three panes", () => {
   });
   it("installs from the connector catalogue with plugins.install", async () => {
     const request = await open("Connectors");
-    await click(button("Add a server"));
+    await click(button("＋ Add"));
     expect(request).toHaveBeenCalledWith("plugins.catalog.browse", { intent: "all", pageSize: 60 });
     await click(button("Install", host.querySelector('[data-testid="catalog"]')!));
     expect(request).toHaveBeenCalledWith("plugins.install", { source: "clawhub", packageName: "@linear/branch", enable: true });
@@ -131,8 +131,10 @@ describe("Tools › Skills", () => {
     expect(host.querySelectorAll(".t9-item")).toHaveLength(1);
     await click(host.querySelector('[aria-label="maps on or off"]'));
     expect(request).toHaveBeenCalledWith("skills.update", { skillKey: "maps", enabled: true });
+    await click(button("Suggested 1"));
     await click(button("Keep it"));
     expect(request).toHaveBeenCalledWith("skills.proposals.apply", { proposalId: "p1", expectedRevisionHash: "f".repeat(64) });
+    await click(button("Library"));
     expect(button("Look now")!.disabled).toBe(true);
   });
   it("installs what a skill needs and searches the skill library", async () => {
@@ -140,7 +142,7 @@ describe("Tools › Skills", () => {
     await click(button("Needs setup 1"));
     await click(button("Install ffmpeg"));
     expect(request).toHaveBeenCalledWith("skills.install", { name: "voice", installId: "brew" });
-    await click(button("Add a skill"));
+    await click(button("＋ Add"));
     const provs = [...document.querySelectorAll<HTMLElement>(".cz-provs .cz-prov")];
     for (const label of ["Choose a file", "Add from GitHub", "Draft it"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toMatch(/in a later update\.$/); }
     expect(provs.every(p => p.title === "")).toBe(true); expect(visibleDevNotes(document.body)).toEqual([]);
