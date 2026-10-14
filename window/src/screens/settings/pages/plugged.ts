@@ -13,6 +13,8 @@ import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { SIGNINS_ROWS } from "./signins";
 import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
 import { MODELS_ROWS } from "./models";
+import { PERMISSIONS_ROWS } from "./permissions";
+import * as Perm from "./permissions-live";
 import * as Mod from "./models-live";
 import { UPDATES_ROWS } from "./updates";
 import * as Up from "./updates-live";
@@ -31,7 +33,6 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
   who: "people", notifications: "notifications", instructions: "instructions",
-  permissions: "permissions",
   privacy: "usage",
   browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
   coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
@@ -56,6 +57,14 @@ export const R1_PAGES: PageSlots = {
     "models.mixtures.block": Mod.Mix, "models.decision.block": Mod.Decision, "models.media.block": Mod.Media, "models.finishing.block": Mod.Finishing,
     "models.budgets.block": Mod.Budget, "models.retries.block": Mod.RetriesCard, "models.connection.block": Mod.Connection, "models.turns.block": Mod.Turns,
     "models.try.block": Mod.Try, "models.attachments.block": Mod.AttachmentsCard, "models.each.block": Mod.Each,
+  } },
+  // Permissions: the preview's fourteen cards; Classic Permissions' sections inside them.
+  permissions: { rows: PERMISSIONS_ROWS, controls: {
+    "permissions.mode.block": Perm.Mode, "permissions.lockdown.block": Perm.Lockdown, "permissions.without.block": Perm.Without,
+    "permissions.rules.block": Perm.Rules, "permissions.commands.block": Perm.Commands, "permissions.checks.block": Perm.Checks,
+    "permissions.approvals.block": Perm.Approvals, "permissions.guards.block": Perm.Guards, "permissions.money.block": Perm.Money,
+    "permissions.connectors.block": Perm.Connectors, "permissions.isolation.block": Perm.Isolation, "permissions.network.block": Perm.Network,
+    "permissions.policy.block": Perm.Policy, "permissions.privacy.block": Perm.Privacy,
   } },
   // Updates & about: the preview's ten cards; Classic Updates' sections and the achievements badges inside them.
   updates: { rows: UPDATES_ROWS, controls: {

@@ -41,7 +41,6 @@ it("re-hosts exactly these Classic pages", () => {
     who: "people", notifications: "notifications", instructions: "instructions",
     browser: "computer-browser",
     coding: "computer-coding",
-    permissions: "permissions",
     privacy: "usage",
   });
 });
@@ -103,15 +102,6 @@ it("draws each Browser & screen and Coding card no Classic control has yet as Co
       expect(comingControls()).toContainEqual(expect.objectContaining({ where: `${PAGES[page].title} › ${card}`, need: [sectionNeed(page, card)] }));
     }
   }
-});
-
-it("opens Browser & screen from Permissions' Open that switch, where R1 keeps the screen switch", async () => {
-  const onPage = vi.fn();
-  await act(async () => root.render(<SettingsFrame engine={engine()} page="permissions" pages={R1_PAGES} onPage={onPage} />));
-  await settle();
-  const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="permissions"] .r1s-classic[data-classic="permissions"]')!;
-  await act(async () => [...hosted.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Open that switch")!.click());
-  expect(onPage.mock.calls).toEqual([["browser"]]);
 });
 
 it("adds each re-hosted page's Classic rows to the R1 table, so R1 search finds them on their R1 page", () => {

@@ -18,7 +18,7 @@ import "./set1.css";
 import "./permissions.css";
 
 const sw = (t: string, sub: string, on: boolean): Row => ({ k: "off", t, sub, c: { sw: on }, why: WHY.key });
-const WITHOUT: Section = { title: "Without asking, Trunks may…", lv: 0, rows: [
+export const WITHOUT: Section = { title: "Without asking, Trunks may…", lv: 0, rows: [
   sw("Read files in Documents and Downloads", "Reading never changes a file.", true),
   sw("Use the browser on this computer", "Signs in with your saved sign-ins. You can take over any time.", true),
   sw("Send email and messages", "Off means every message waits for your yes.", true),

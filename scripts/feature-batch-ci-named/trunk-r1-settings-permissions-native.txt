@@ -1,0 +1,5 @@
+window:src/screens/settings/pages/permissions-live.test.tsx
+window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/places/settings/set1/permissions.test.tsx
+window:src/places/settings/set1/permissions-platform.test.tsx
