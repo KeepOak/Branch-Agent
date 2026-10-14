@@ -79,6 +79,8 @@ type Props = {
   /** The message being answered (the message menu's Reply, R1-03); it rides on the next send and then clears. */
   replyTo?: Reply | null;
   onClearReply?: () => void;
+  /** In a room, the Classic room words (rooms/useShellRoom: "Message the group · @ to call a Trunk"). */
+  placeholder?: string;
   /** The first Trunk waiting on a yes, for the roaming pet's tip (QUEUE item 18). */
   petWaiting?: string | null;
 };
@@ -352,7 +354,7 @@ export function Composer(props: Props) {
   const runningCount = props.running.length;
   const summary = ringSummary(usage, runningCount, context);
   const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : noModel ? "Connect a model to start." : working && hasDraft ? sendTooltip(queueMode) : undefined;
-  const placeholder = noModel ? "Connect a model to start" : `Message ${name}`;
+  const placeholder = noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`;
   const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n));
 
   return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
