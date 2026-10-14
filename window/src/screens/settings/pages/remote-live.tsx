@@ -90,13 +90,11 @@ export function Lately({ engine, row }: SlotControlProps) {
 
 /** Restart the engine (gateway.restart.request): deferred until running work finishes when the engine says so. */
 export function RestartEngine({ engine, row }: SlotControlProps) {
-  const [note, setNote] = useState("");
   const [failed, run] = useFailure();
   const [busy, setBusy] = useState(false);
-  const go = () => { setBusy(true); void run(async () => { const r = record(await engine.request("gateway.restart.request", { reason: "settings" })); setNote(r.status === "deferred" ? "Restarting once the running work finishes." : "Restarting. The window reconnects by itself."); }).finally(() => setBusy(false)); };
+  const go = () => { setBusy(true); void run(() => engine.request("gateway.restart.request", { reason: "settings" })).finally(() => setBusy(false)); };
   return <>
     <Needs engine={engine} need={["gateway.restart.request"]} where={row.label ?? ""}><Btn disabled={busy} onClick={go}>Restart the engine</Btn></Needs>
-    {note ? <Line>{note}</Line> : null}
     <Failed text={failed} />
   </>;
 }
@@ -107,7 +105,7 @@ export function GatewayAddress({ engine }: SlotControlProps) {
   const sys = record(useLive<RecordValue>(engine, "system.info", {}, []).data);
   const address = engine.gatewayUrl?.replace(/[?#].*$/, "") || `ws://127.0.0.1:${Number(config.get("gateway.port")) || Number(sys.port) || DEFAULT_PORT}`;
   const auth = AUTH.find((a) => a.id === (str(config.get("gateway.auth.mode")) || "token"))?.label.toLowerCase() ?? "";
-  return <><code className="r1s-val">{address}</code><Line>{`Sign-in: ${auth}. This window’s connection is set by the Branch app.`}</Line></>;
+  return <><code className="r1s-val">{address}</code><Line>{`Sign-in: ${auth}.`}</Line></>;
 }
 
 /** Gateway ping: measured every 5 s while this page is open. */

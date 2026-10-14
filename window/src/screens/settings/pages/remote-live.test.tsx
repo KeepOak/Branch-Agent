@@ -118,7 +118,6 @@ describe("R1 Settings › Remote access is a native R1 page with the preview's c
     expect(row("remote.doing.lately")?.textContent).toContain("3 apps connected");
     await click(button(row("remote.doing.restart"), "Restart the engine"));
     expect(request.mock.calls.some(([m]) => m === "gateway.restart.request")).toBe(true);
-    expect(row("remote.doing.restart")?.textContent).toContain("Restarting once the running work finishes.");
     expect(row("remote.reach.bind")?.querySelector('[aria-checked="true"]')?.textContent).toBe("My network");
     expect(row("remote.exposure.origins")?.textContent).toContain("https://a.example.com");
     await click(button(row("remote.exposure.origins"), "Remove"));
