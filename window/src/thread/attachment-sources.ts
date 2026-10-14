@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Attachment } from "./model";
 
-export const isManagedAttachment = (item: Attachment): boolean => /^artifact_managed_(?:image|media)_/.test(item.artifactId ?? "");
+const isManagedAttachment = (item: Attachment): boolean => /^artifact_managed_(?:image|media)_/.test(item.artifactId ?? "");
 /** Managed artifacts, inbound media URIs, and canonical local upload paths need a ticket. Any other src
  * (gateway-relative /api or /__branch__ URLs, http(s), data:, blob:) renders directly, as before. */
 export const needsAttachmentSource = (item: Attachment): boolean => isManagedAttachment(item)
@@ -12,7 +12,7 @@ export const attachmentSourceKey = (item: Attachment): string => item.artifactId
 
 /** Same artifacts.download flow as engine/ui/src/api/artifact-download.ts. The RPC authorizes one artifact;
  * its short-lived ticket, never the gateway credential, is what the media element receives. */
-export async function resolveAttachmentSource(engine: WindowEngine, item: Attachment): Promise<string> {
+async function resolveAttachmentSource(engine: WindowEngine, item: Attachment): Promise<string> {
   if (!isManagedAttachment(item)) {
     const picture = await engine.mediaPicture?.(item.src ?? "");
     if (!picture || "error" in picture) throw new Error("Attachment unavailable");

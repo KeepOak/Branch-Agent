@@ -1,4 +1,4 @@
-// From mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421:packages/core/src/llm/model/model.loop.ts (atlas AGENT-LOOP-0026). Adapted SDK stream output to Branch events; tool execution remains in Branch's admitted loop.
+// SDK stream output adapted to Branch events; tool execution remains in Branch's admitted loop.
 import { calculateCost } from "../model-utils.js";
 import type {
   AssistantMessage,

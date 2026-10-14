@@ -118,3 +118,17 @@ test("served preload exposes only fixed parameter-free component IPC methods", a
   assert.deepEqual(calls, [["branch-desktop:component-update:status"], ["branch-desktop:component-update:check"], ["branch-desktop:component-update:stage"],
     ["branch-desktop:title-bar", overlay]]);
 });
+
+test("an update check or staging that runs out of disk reports the plain disk-full message instead of throwing", async () => fixture(async cfg => {
+  const { DISK_FULL_MESSAGE, diskIsFull, reportDiskWritable } = await import(pathToFileURL(join(dist, "disk-full.js")));
+  // ENOSPC is injected into staging; the real disk is never filled.
+  const controller = createComponentUpdateController(cfg, { stage: async () => { throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC", errno: -28, syscall: "write" }); } });
+  const result = await controller.stage();
+  assert.equal(result.phase, "error");
+  assert.equal(result.error, DISK_FULL_MESSAGE);
+  assert.equal(diskIsFull(), true);
+  reportDiskWritable();
+  const other = createComponentUpdateController(cfg, { stage: async () => { throw new Error("Owned lifecycle is occupied"); } });
+  assert.equal((await other.stage()).error, "Owned lifecycle is occupied", "other failures keep their own message");
+  assert.equal(diskIsFull(), false);
+}));

@@ -1,4 +1,4 @@
-// From aaif-goose/goose@bab8ff641039c9cd3331121cd84a5c6045f365ca:crates/goose-context-management/src/structured.rs and crates/goose-context-management/src/prompts/compaction_summary.md (atlas AGENT-LOOP-0100). Converted to TypeScript; provenance and uncertainty render before other sections (R-1696).
+// Converted to TypeScript; provenance and uncertainty render before other sections (R-1696).
 import { isRecord } from "@branch/normalization-core/record-coerce";
 
 const LIST_FIELDS = [

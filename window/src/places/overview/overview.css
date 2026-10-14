@@ -85,3 +85,12 @@
 .ov-pick:hover, .ov-pick[aria-pressed="true"] { background:var(--fill); }
 .ov-pick small { color:var(--ink-3); }
 .ov-badges { display:flex; gap:8px; flex-wrap:wrap; min-height:28px; } /* the artifact's badge strip; empty until the engine reports milestones */
+
+/* New teammates from a starter template (#463): one row per teammate with Start / Open / Stop. Spans two columns when there is room. */
+.ov-teammates { grid-column:span 2; }
+@media (max-width:640px) { .ov-teammates { grid-column:auto; } }
+.ov-mate { display:flex; align-items:center; gap:10px; padding:6px 0; flex-wrap:wrap; }
+.ov-mate + .ov-mate { border-top:1px solid var(--hair17); }
+.ov-mate small { font-size:12.5px; color:var(--ink-3); }
+.ov-mate .ov-mate-on { color:var(--ok); }
+.ov-mate .ov-grow { gap:2px; }

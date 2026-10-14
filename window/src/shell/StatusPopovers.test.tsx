@@ -129,23 +129,21 @@ describe("status popovers", () => {
     expect(rule(".aLeftT5")).toContain("flex: none");
   });
   it("Version: up to date has no install item", async () => {
-    const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "1.0.0", latest: null, notes: [], installing: false, waiting: null }} version="1.0.0" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);
+    const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "1.0.0", latest: null, notes: [], installing: false, waiting: null }} version="1.0.0" onWhatsNew={() => {}} onRemind={() => {}} />);
     expect(host.textContent).toContain("Branch is up to date.");
     expect(button(host, "Install when idle")).toBeUndefined();
   });
   it("Version: ready label keeps the build id out of the popover", async () => {
-    const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "0.4.4-build-current", latest: "0.4.5-build-next", notes: [], installing: false, waiting: null }} version="0.4.4-build-current" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);
+    const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "0.4.4-build-current", latest: "0.4.5-build-next", notes: [], installing: false, waiting: null }} version="0.4.4-build-current" onWhatsNew={() => {}} onRemind={() => {}} />);
     expect(host.textContent).toContain("Branch 0.4.5 is ready");
     expect(host.textContent).not.toContain("-build-next");
   });
-  it("Version: install when idle is only available in the desktop app", async () => {
+  it("Version: the desktop applies in place with no install control in the window", async () => {
     const update = { current: "1.0.0", latest: "1.1.0", notes: [], installing: false, waiting: null };
-    const install = vi.fn();
-    const host = await show(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" desktopInstall onWhatsNew={() => {}} onInstall={install} onRemind={() => {}} />);
-    expect(host.textContent).toContain("Installs by itself when nothing is running.");
-    await act(async () => button(host, "Install when idle").click());
-    expect(install).toHaveBeenCalledOnce();
-    await act(async () => root?.render(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" onWhatsNew={() => {}} onInstall={install} onRemind={() => {}} />));
+    const host = await show(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" desktopInstall onWhatsNew={() => {}} onRemind={() => {}} />);
+    expect(host.textContent).toContain("It applies by itself, in place, the next time no Trunk is working.");
+    expect(button(host, "Install when idle")).toBeUndefined();
+    await act(async () => root?.render(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" onWhatsNew={() => {}} onRemind={() => {}} />));
     expect(host.textContent).toContain("Ready to install on the computer running Branch: open Branch there to install it.");
     expect(button(host, "Install when idle")).toBeUndefined();
   });

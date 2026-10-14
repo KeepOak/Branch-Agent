@@ -10,7 +10,7 @@ import { CharacterFace } from "../face/CharacterFace";
 import { Face } from "../face/Face";
 import { trunkAppearance } from "../face/appearance";
 import { Icon } from "../shell/icons";
-import { LEVEL_LINES, levelFor, pageAtLevel, pageName, searchSettings, settingsGroups, settingsSections, sectionId, type Level, type SearchRow } from "./settings-nav";
+import { HIDDEN_PAGES, LEVEL_LINES, SETUP_PAGES, levelFor, pageAtLevel, pageName, searchSettings, settingsGroups, settingsSections, sectionId, type Level, type SearchRow } from "./settings-nav";
 import "./settings-frame.css";
 
 const LEVEL_KEY = "branch.level";
@@ -20,9 +20,7 @@ const LEVELS: { id: Level; name: string }[] = [
   { id: "technical", name: "Technical" },
 ];
 const LV: Record<Level, Lv> = { regular: 0, advanced: 1, technical: 2 };
-/** Not allowed to change setup (§4.7.0): these pages' rows grey; these pages leave the nav. config.patch needs operator.admin. */
-const SETUP_PAGES = ["general", "models", "local", "accounts", "chatapps", "permissions", "computer", "usage", "seasons", "updates", "advanced", "developer"];
-const HIDDEN_PAGES = ["secrets", "gateway", "self"];
+/** Not allowed to change setup (§4.7.0): SETUP_PAGES' rows grey; these pages leave the nav. config.patch needs operator.admin. */
 
 export function readLevel(): Level {
   try {
@@ -44,12 +42,16 @@ function saveLevel(level: Level): void {
 type Props = {
   page: string;
   backName: string;
+  /** Live working count already held by the shell. */
+  running?: number;
   engine: WindowEngine;
   onPage: (page: string) => void;
   onBack: () => void;
   /** Starts a conversation with the default Trunk ("Learn more"); absent while no model is set up. */
   onAsk?: (text: string) => void;
   askName?: string;
+  /** The heading the page shows, when the host names it (R1 names its pages in its own words). */
+  heading?: string;
 };
 
 /** The segmented "How much to show" control (§4.7.0, §5.2): Left and Right move the choice. */
@@ -197,7 +199,7 @@ function useRowJump(page: string) {
 
 /** The Settings frame (DESIGN-SPEC §4.7.0): the nav column with Back, search, "Settings for", page items, the save
  *  state and the level; one page on the right. */
-export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, askName }: Props) {
+export function SettingsFrame({ page, backName, running, engine, onPage, onBack, onAsk, askName, heading }: Props) {
   const [chosen, setLevel] = useState<Level>(readLevel);
   const level = levelFor(page, chosen); // opening a page this level hides raises the level
   useEffect(() => {
@@ -287,7 +289,7 @@ export function SettingsFrame({ page, backName, engine, onPage, onBack, onAsk, a
           <FileProblem engine={engine} />
           <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : null} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>
             <SetupLock locked={!maySetup && SETUP_PAGES.includes(shown)}>
-              <SettingsPage page={shown} title={pageName(shown)} level={level} engine={engine} openSettings={go} searchSection={searchRow?.page === shown ? searchRow.sec : undefined} />
+              <SettingsPage running={running} page={shown} title={heading ?? pageName(shown)} level={level} engine={engine} openSettings={go} searchSection={searchRow?.page === shown ? searchRow.sec : undefined} />
             </SetupLock>
           </KitProvider>
         </div>

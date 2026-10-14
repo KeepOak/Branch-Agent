@@ -7,13 +7,13 @@ import { useResource } from "../hooks";
 import { Btn, Ctl, Sec, Switch, useConfig, useScope } from "../kit";
 import { Logo } from "./service";
 
-type App = { kind: string; brand: string; name: string; plugin?: string };
-const APPS: App[] = [
+export type App = { kind: string; brand: string; name: string; plugin?: string };
+export const APPS: App[] = [
   { kind: "claude-cli", brand: "anthropic", name: "Claude Code" },
   { kind: "codex-cli", brand: "openai", name: "Codex", plugin: "codex" },
   { kind: "gemini-cli", brand: "google", name: "Gemini CLI" },
 ];
-type Found = { state: "ready" | "signin" | "missing"; reason?: string };
+export type Found = { state: "ready" | "signin" | "missing"; reason?: string };
 
 export function foundState(app: App, detect: RecordValue | undefined): Found {
   const hit = list(detect?.candidates).find((c) => c.kind === app.kind);
@@ -22,10 +22,11 @@ export function foundState(app: App, detect: RecordValue | undefined): Found {
   return { state: "missing", reason: gone ? visible(gone.reason) : undefined };
 }
 
-const PILL: Record<Found["state"], [string, string]> = { ready: ["ok", "Models ready"], signin: ["warn", "Sign-in needed"], missing: ["idle", "Not found"] };
+export const PILL: Record<Found["state"], [string, string]> = { ready: ["ok", "Models ready"], signin: ["warn", "Sign-in needed"], missing: ["idle", "Not found"] };
 
-function sub(app: App, f: Found, on: boolean): string {
-  if (f.state === "missing") return f.reason ?? `Install and sign in to ${app.name} on this computer, then check again.`;
+export function appSub(app: App, f: Found, on: boolean): string {
+  // §4.7.8: an app that isn't installed always reads the same; Codex turns fail with this sentence too.
+  if (f.state === "missing") return `Install and sign in to ${app.name} on this computer, then check again.`;
   if (f.state === "signin") return `Open ${app.name} and check its sign-in, then check again.`;
   return on ? `On because ${app.name} is connected on this computer.` : `${app.name} is connected on this computer. Turn it on to use its models.`;
 }
@@ -43,9 +44,9 @@ export function CodingApps({ engine }: { engine: WindowEngine }) {
         const [tone, word] = detect.loading ? ["idle", "Looking…"] : PILL[f.state];
         const pluginOn = app.plugin ? cfg.get(`plugins.entries.${app.plugin}.enabled`) === true : f.state === "ready";
         return (
-          <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={detect.loading ? "Looking on this computer…" : sub(app, f, pluginOn)}>
+          <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn)}>
             {app.plugin
-              ? <Switch checked={pluginOn} label={`Use ${app.name}`} disabled={cfg.loading} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
+              ? <Switch checked={f.state === "ready" && pluginOn} label={`Use ${app.name}`} disabled={cfg.loading || f.state !== "ready"} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
               : <span title={`Follows ${app.name}’s own sign-in on this computer.`}><Switch checked={pluginOn} label={`Use ${app.name}`} disabled onChange={() => undefined} /></span>}
           </Ctl>
         );

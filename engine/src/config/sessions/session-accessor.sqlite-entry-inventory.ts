@@ -41,6 +41,11 @@ export function readSessionEntryStore(
   );
   const store: Record<string, SessionEntry> = {};
   for (const row of rows) {
+    // Startup quarantine settles a damaged row as -1 without touching its bytes. Skip it
+    // like any unparseable row until doctor rewrites it; a "{}" placeholder parses to null.
+    if (row.entry_valid === -1 && row.entry_json !== "{}") {
+      continue;
+    }
     // Doctor lifecycle projection supplies its separately hydrated expected entry for rejected
     // raw rows; ordinary exact reads still fail loud before a write can replace one.
     const entry = parseSessionEntryJson(row);

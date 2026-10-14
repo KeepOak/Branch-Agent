@@ -11,11 +11,11 @@ export type Policy = { security?: string; ask?: string; askFallback?: string; au
 export type AllowEntry = { id?: string; pattern: string; source?: string; argPattern?: string; lastUsedAt?: number; commandText?: string; lastUsedCommand?: string; lastResolvedPath?: string };
 export type AgentPolicy = Policy & { allowlist?: AllowEntry[]; mcpTools?: unknown[] };
 export type ExecFile = { version: 1; socket?: { path?: string }; defaults?: Policy; agents?: Record<string, AgentPolicy> };
-export type Resolved = { security: string; ask: string; askFallback: string; autoAllowSkills: boolean };
-export type ExecSnapshot = { path: string; exists: boolean; hash: string; file: ExecFile; resolvedDefaults?: Resolved };
+type Resolved = { security: string; ask: string; askFallback: string; autoAllowSkills: boolean };
+type ExecSnapshot = { path: string; exists: boolean; hash: string; file: ExecFile; resolvedDefaults?: Resolved };
 
 /** Engine defaults when the engine leaves out resolvedDefaults (DEFAULT_SECURITY, DEFAULT_ASK, …). */
-export const ENGINE_DEFAULTS: Resolved = { security: "full", ask: "off", askFallback: "deny", autoAllowSkills: false };
+const ENGINE_DEFAULTS: Resolved = { security: "full", ask: "off", askFallback: "deny", autoAllowSkills: false };
 const CHANGED = /changed since last load|base hash/i;
 
 export type ApprovalsFile = {

@@ -1,5 +1,5 @@
-// Ported dump/data embedding cases from UI-TARS-desktop@2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a:
-// multimodal/tarko/agent-ui-builder/tests/builder.test.ts; controls exercise the pinned useReplay.ts semantics.
+// Copyright (c) 2025 Bytedance, Inc. and its affiliates.
+// SPDX-License-Identifier: Apache-2.0
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import type { Block } from "../thread/model";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -63,6 +63,39 @@ test("the UI event log rotates by size and keeps three files", () => {
   }
 });
 
+test("the UI event log drops a write error without throwing and writes again once the path is writable", () => {
+  const dir = mkdtempSync(join(tmpdir(), "branch-diag-error-"));
+  try {
+    const file = join(dir, "ui-events.log");
+    const log = new RotatingLog(file, 200, 3);
+    // A directory where the live log should be makes the append fail (EISDIR), as a full disk does.
+    mkdirSync(file);
+    assert.doesNotThrow(() => log.append('{"n":1}'));
+    rmSync(file, { recursive: true });
+    log.append('{"n":2}');
+    assert.equal(readFileSync(file, "utf8"), '{"n":2}\n');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the UI event log keeps appending to the live file when a rotation fails", () => {
+  const dir = mkdtempSync(join(tmpdir(), "branch-diag-rotfail-"));
+  try {
+    const file = join(dir, "ui-events.log");
+    const log = new RotatingLog(file, 200, 3);
+    log.append(`{"n":0,"pad":"${"x".repeat(150)}"}`);
+    // A directory in the oldest archive slot makes the rotation's rmSync throw.
+    mkdirSync(`${file}.2`);
+    assert.doesNotThrow(() => log.append(`{"n":1,"pad":"${"x".repeat(150)}"}`));
+    const text = readFileSync(file, "utf8");
+    assert.match(text, /"n":0/);
+    assert.match(text, /"n":1/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("the report keeps only lines in the requested window and redacts them", () => {
   const cutoff = Date.parse("2026-10-09T11:30:00.000Z");
   const text = [
@@ -103,4 +136,44 @@ test("the archive is a valid zip with the expected entries", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("the main-process guard turns an uncaught ENOSPC into the disk-full banner and leaves other errors to Electron's report", async () => {
+  const { EventEmitter } = await import("node:events");
+  const { DISK_FULL_MESSAGE, diskIsFull, installDiskFullGuard, onDiskFullChange, reportDiskWritable } = await dist("disk-full.js");
+  assert.equal(DISK_FULL_MESSAGE, "Your disk is full. Branch paused saving until you free space.");
+  const fakeProcess = new EventEmitter();
+  const reported = []; const seen = [];
+  const stop = onDiskFullChange(full => seen.push(full));
+  installDiskFullGuard(fakeProcess, error => reported.push(error.message));
+  try {
+    // ENOSPC is injected as an uncaught error; the real disk is never filled.
+    const enospc = Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
+    fakeProcess.emit("uncaughtException", enospc);
+    fakeProcess.emit("uncaughtException", new Error("wrapped", { cause: enospc }));
+    assert.deepEqual(reported, [], "no modal error box for a full disk");
+    assert.equal(diskIsFull(), true);
+    assert.deepEqual(seen, [true], "one banner, not one per failure");
+    fakeProcess.emit("uncaughtException", new Error("a real bug"));
+    assert.deepEqual(reported, ["a real bug"]);
+  } finally { stop(); reportDiskWritable(); }
+});
+
+test("while the disk is full, the free-space watch clears the banner once space comes back", async () => {
+  const { DISK_SPACE_BACK_BYTES, diskIsFull, reportDiskFull, watchDiskSpace } = await dist("disk-full.js");
+  let free = 0;
+  const checked = [];
+  const stop = watchDiskSpace("/data", { intervalMs: 5, statfs: dir => { checked.push(dir); return { bavail: free, bsize: 1 }; } });
+  try {
+    assert.equal(reportDiskFull(Object.assign(new Error("ENOSPC"), { code: "ENOSPC" })), true);
+    await new Promise(resolve => setTimeout(resolve, 40));
+    assert.ok(checked.length > 0, "the watch checks free space while full");
+    assert.equal(diskIsFull(), true, "still full with no space");
+    free = DISK_SPACE_BACK_BYTES;
+    for (let i = 0; i < 100 && diskIsFull(); i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(diskIsFull(), false, "space came back: saving resumed with no write and no restart");
+    const after = checked.length;
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(checked.length, after, "the watch stops once the disk has space");
+  } finally { stop(); }
 });

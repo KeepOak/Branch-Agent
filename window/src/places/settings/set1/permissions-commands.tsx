@@ -12,14 +12,14 @@ import { Btn, Ctl, Empty, Hint, Pick, Pill, Plist, Prow, Seg, Switch } from "../
 import type { Ctx } from "./permissions-rows";
 import { withAgent, withDefault, type AllowEntry, type ApprovalsFile } from "./permissions-file";
 
-export const RUN = [{ id: "deny", label: "None" }, { id: "allowlist", label: "Only listed ones" }, { id: "full", label: "Any" }];
+const RUN = [{ id: "deny", label: "None" }, { id: "allowlist", label: "Only listed ones" }, { id: "full", label: "Any" }];
 const ASK = [{ id: "off", label: "Never" }, { id: "on-miss", label: "When it isn’t listed" }, { id: "always", label: "Every time" }];
 const FALLBACK = [{ id: "deny", label: "Refuse" }, { id: "allowlist", label: "Only listed ones" }, { id: "full", label: "Run it" }];
 const UP = <svg className="i s" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 export const THIS_PC = "this";
 
-export const trunkName = (t: RecordValue): string => visible(record(t.identity).name ?? t.name ?? t.id);
-export const nodeName = (n: RecordValue): string => visible(n.displayName ?? n.nodeId);
+const trunkName = (t: RecordValue): string => visible(record(t.identity).name ?? t.name ?? t.id);
+const nodeName = (n: RecordValue): string => visible(n.displayName ?? n.nodeId);
 
 export function RulesFor({ x }: { x: Ctx }) {
   const opts = [{ id: THIS_PC, label: "This computer (the Gateway)" }, ...x.nodes.map((n) => ({ id: text(n.nodeId), label: nodeName(n) }))];

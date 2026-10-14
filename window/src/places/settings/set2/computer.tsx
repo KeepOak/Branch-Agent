@@ -13,10 +13,12 @@ import { Menu, type MenuItem } from "../../../shell/Menu";
 import { bytes, CallLine, CopyBtn, Kv, lvOf, rec, str, Tile, useCall, useLive, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import { ComputerMore, NewCloud, ROWS as MORE_ROWS } from "./computer-more";
+import { BuildCleanup } from "./computer-cleanup";
 import { Icon } from "../../../shell/icons";
 import { DesktopCtl } from "../desktop-ctl";
 import { useDesktopControls } from "../../../connect/desktop-controls";
 import { shownWhy } from "../../../shell/shown-why";
+import { trunkDisplayName } from "../../../connect/trunk-name";
 
 const PAIR_EVENTS = ["device.pair", "node.pair", "node"];
 const ALLOW_DELAY_MS = 1500;
@@ -77,9 +79,24 @@ export function ComputerPage(props: SettingsPageProps) {
       <Waiting {...props} lv={lv} />
       <Computers {...props} lv={lv} nodes={nodes} agents={rec(agents.data)} />
       <WhichTrunk {...props} nodes={list(rec(nodes.data).nodes)} agents={list(rec(agents.data).agents)} defaultId={rec(agents.data).defaultId} />
+      <BuildCleanup engine={props.engine} />
       <ComputerMore {...props} />
     </Page>
   );
+}
+
+/** One block of the top of the page, for the R1 Devices page's cards: the requests waiting for a yes, the computers
+ *  Trunks may use (with Keep this computer awake and Add a computer), which Trunk uses which, or the build folders. */
+export function ComputerBlock(props: SettingsPageProps & { part: "waiting" | "computers" | "which" | "build" }) {
+  const lv = lvOf(props.level);
+  const agents = useLive<RecordValue>(props.engine, "agents.list", {}, ["agents"]);
+  const nodes = useLive<RecordValue>(props.engine, "node.list", {}, PAIR_EVENTS);
+  const { reload } = nodes;
+  useEffect(() => { const again = () => void reload(); window.addEventListener("branch:computers-changed", again); return () => window.removeEventListener("branch:computers-changed", again); }, [reload]);
+  if (props.part === "waiting") return <Waiting {...props} lv={lv} />;
+  if (props.part === "computers") return <Computers {...props} lv={lv} nodes={nodes} agents={rec(agents.data)} />;
+  if (props.part === "build") return <BuildCleanup engine={props.engine} />;
+  return <WhichTrunk {...props} nodes={list(rec(nodes.data).nodes)} agents={list(rec(agents.data).agents)} defaultId={rec(agents.data).defaultId} />;
 }
 
 /** Waiting for your yes: Allow (on after 1.5 s, so a stray click can't allow) and Don't allow (asks first). */
@@ -140,7 +157,7 @@ type Node = RecordValue;
 
 /** Which Trunks are pinned to a computer (by node id or name). */
 function usersOf(node: Node, agents: RecordValue, cfgAgents: RecordValue[]): string[] {
-  const names = new Map(list(agents.agents).map((a) => [str(a.id), str(rec(a.identity).name) || str(a.name) || str(a.id)]));
+  const names = new Map(list(agents.agents).map((a) => [str(a.id), trunkDisplayName(a)]));
   const id = str(node.nodeId); const name = str(node.displayName);
   return cfgAgents.filter((a) => { const pin = str(rec(rec(a.tools).exec).node); return pin && (pin === id || pin === name); }).map((a) => names.get(str(a.id)) ?? str(a.id));
 }
@@ -185,7 +202,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
 function KeepAwake() {
   const desk = useDesktopControls();
   if (desk.off) return null;
-  return <DesktopCtl title="Keep this computer awake" sub="Keeps this computer awake while Trunks use it." help="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />;
+  return <DesktopCtl title="Keep this computer awake while Trunks work" sub="Only while a Trunk is working, and only when plugged in." help="Held only while a Trunk has a live run and let go the moment it ends; on battery the computer sleeps as usual. Locking and signing out still work; Branch never unlocks it." name="keepAwake" />;
 }
 
 /** In the cloud: a cloud computer, offered only when the engine has a profile to start one from. */
@@ -297,12 +314,15 @@ function Load({ node }: { node: Node }) {
   if (!s.cpuCount) return null;
   const load = Array.isArray(s.loadAverage) ? Number(s.loadAverage[0]).toFixed(1) : "";
   const total = Number(s.memoryTotalBytes) || 0;
-  const used = total - (Number(s.memoryFreeBytes) || 0);
+  const used = Math.max(0, total - (Number(s.memoryFreeBytes) || 0));
+  // "1.7 GB of 15.6 GB memory used", never "1.7 GB/15.6 GB": a slash read as "17 GB/15.6 GB" (CB3).
+  const mem = total ? `${bytes(used)} of ${bytes(total)} memory used` : "";
+  const disk = s.diskAvailableBytes !== undefined ? `${bytes(s.diskAvailableBytes)} disk free` : "";
   return (
-    <span className="s2-busy">
+    <span className="s2-busy s2-load">
       {load ? <span title={`Load average (1 min) on ${str(s.cpuCount)} cores`}>load {load}</span> : null}
-      {total ? <span>{load ? " · " : ""}{bytes(used)}/{bytes(total)} memory</span> : null}
-      {s.diskAvailableBytes !== undefined ? <span> · {bytes(s.diskAvailableBytes)} free</span> : null}
+      {mem ? <span>{load ? " · " : ""}{mem}</span> : null}
+      {disk ? <span>{load || mem ? " · " : ""}{disk}</span> : null}
     </span>
   );
 }
@@ -391,7 +411,7 @@ function PinDialog({ engine, nodes, agents, defaultId, onClose }: Pick<SettingsP
       <p className="hint">A Trunk can use several computers side by side. A Trunk with no settings of its own follows the default.</p>
       <Plist>
         {ordered.map((a) => {
-          const id = str(a.id); const name = str(rec(a.identity).name) || str(a.name) || id;
+          const id = str(a.id); const name = trunkDisplayName(a);
           const hasEntry = id in entries;
           const pinned = pinnedNode(entries, id);
           return (

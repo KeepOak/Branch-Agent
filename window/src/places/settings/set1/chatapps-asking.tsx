@@ -9,13 +9,13 @@ import { Btn, Ctl, Hint, Sec, useLevel, useSaveRunner } from "../kit";
 import { ChatLogo as Logo } from "./chatapps-logo";
 import { ago, type App } from "./chatapps-data";
 
-export type PairAccount = { channel: string; channelLabel: string; accountId: string; accountLabel?: string; notifySupported: boolean };
+type PairAccount = { channel: string; channelLabel: string; accountId: string; accountLabel?: string; notifySupported: boolean };
 export type PairRequest = { requestId: string; channel: string; channelLabel: string; accountId: string; accountLabel?: string; senderId: string; senderLabel: string; metadata?: Record<string, string>; createdAt: string; expiresAt: string; notifySupported: boolean };
 export type Pairing = { accounts: PairAccount[]; requests: PairRequest[]; commandOwnerConfigured: boolean; limits: { pendingPerAccount: number; ttlMs: number } };
 export type Filter = { app: string; acct: string };
 
 const until = (iso: string) => { const m = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60000)); return m < 60 ? `in ${m} min` : `in ${Math.round(m / 60)} h`; };
-export const reqLine = (r: PairRequest) => [visible(r.channelLabel), visible(r.accountLabel ?? r.accountId), `asked ${ago(Date.parse(r.createdAt))}`, `expires ${until(r.expiresAt)}`].join(" · ");
+const reqLine = (r: PairRequest) => [visible(r.channelLabel), visible(r.accountLabel ?? r.accountId), `asked ${ago(Date.parse(r.createdAt))}`, `expires ${until(r.expiresAt)}`].join(" · ");
 
 type Props = { engine: WindowEngine; apps: App[]; pairing?: Pairing; error?: string; reload: () => Promise<void>; filter: Filter; setFilter: (f: Filter) => void; trunkFor: (channel: string) => string };
 

@@ -8,7 +8,7 @@ export type Computer = { id: string; name: string; platform: string; connected: 
 export type TrunkData = { roster: Roster; snap: ConfigSnapshot; models: ModelChoice[]; computers: Computer[]; partial: string[] };
 
 /** Paired or connected computers from node.list (engine/src/gateway/server-methods/nodes.read.ts). */
-export function readComputers(result: unknown): Computer[] {
+function readComputers(result: unknown): Computer[] {
   const nodes = Array.isArray(rec(result).nodes) ? (rec(result).nodes as unknown[]).map(rec) : [];
   return nodes
     .filter((n) => str(n.nodeId) && (n.paired === true || n.connected === true))

@@ -191,6 +191,25 @@
   font-size: 14px;
 }
 /* The two ways in: the help icon in the top bar and the chat button by the gear, pressed while the pane is open */
+.owner {
+  flex-wrap: wrap;
+}
+.owner .talk-btn {
+  order: -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 8px;
+  font: inherit;
+  text-align: left;
+}
+.talk-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .talk-btn[aria-pressed="true"] {
   background: var(--fill-2);
 }
