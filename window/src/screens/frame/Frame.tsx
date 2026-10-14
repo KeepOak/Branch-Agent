@@ -87,7 +87,7 @@ export function Frame({ sidebar, main, composer, topics, notice, aside, pane, he
     onDoubleClick={() => drag.doubleClick(edge)} onKeyDown={(event) => drag.handleKey(edge, event)} />;
   return <div ref={frame} className="r1-frame" data-wide={wideNow} data-drawer={drawer} data-topics={Boolean(topics)} data-aside={Boolean(aside)} data-pane={Boolean(pane)}
     data-free={free} data-side-tier={free ? sideTier(sideW) : undefined} data-topic-tier={free && topicsW > 0 ? topicsTier(topicsW) : undefined} style={gridStyle}>
-    {narrow && drawer && <button className="r1-drawer-scrim" type="button" data-local="" aria-label="Close sidebar" onClick={close} />}
+    {narrow && drawer && <button className="r1-drawer-scrim" type="button" data-local="" aria-label="Hide the sidebar" onClick={close} />}
     <aside className="r1-sidebar" ref={side} aria-label="Sidebar" role={narrow ? "dialog" : undefined} aria-modal={narrow && drawer ? true : undefined} inert={narrow && !drawer} tabIndex={-1} onKeyDown={event => {
       if (!narrow || !drawer || event.key !== "Tab") return;
       const items = [...event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled),input,a,[tabindex='0']")];
@@ -96,7 +96,7 @@ export function Frame({ sidebar, main, composer, topics, notice, aside, pane, he
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }}>
-      <div className="r1-side-top"><button type="button" className="g-ctl" data-local="" onClick={toggle} aria-label={narrow ? "Close sidebar" : wideNow ? "Use sidebar rail" : "Expand sidebar"}><Icon name="menu" /></button></div>
+      <div className="r1-side-top"><button type="button" className="g-ctl" data-local="" onClick={toggle} aria-label={narrow ? (drawer ? "Hide the sidebar" : "Show the sidebar") : wideNow ? "Collapse sidebar" : "Expand sidebar"}><Icon name="menu" /></button></div>
       <Region>{sidebar}</Region>
     </aside>
     {topics && <section className="r1-topics" aria-label="Topics" style={free ? { overflowX: "hidden", minWidth: 0 } : undefined}><Region>{topics}</Region></section>}
