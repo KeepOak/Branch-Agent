@@ -24,11 +24,13 @@ export const MODES: readonly Mode[] = (["ask", "auto", "plan", "read"] as const)
 });
 export const PLAN_FIRST_REASON = "Plan first comes in a later update.";
 
-/** Where Branch runs: this computer. Another computer and a KeepOak computer wait in Seedbank › Coming to Branch until
- *  the engine can move Branch there (R1-15). */
+/** Where Branch runs (preview obWhereP37): this computer today; Another computer and A KeepOak computer are Coming rows
+ *  in the same sheet until the engine can move Branch there (HANDOFF R1-07, #1049). */
 export type Where = "here" | "other" | "keepoak";
 export const WHERE: readonly { id: Where; name: string; line: string; icon: "monitor" | "globe" | "cloud"; reason?: string }[] = [
   { id: "here", name: "This computer", line: "Recommended. Everything stays here.", icon: "monitor" },
+  { id: "other", name: "Another computer", line: "A computer you own or a home server. Set up in Settings › Devices.", icon: "globe", reason: "Moving Branch to another computer comes in a later update." },
+  { id: "keepoak", name: "A KeepOak computer", line: "Always on, in the cloud. Set up in Settings › Devices.", icon: "cloud", reason: "KeepOak computers come in a later update." },
 ];
 export const whereWord = (w: Where) => (w === "here" ? "this computer" : w === "other" ? "another computer" : "a KeepOak computer");
 
@@ -50,6 +52,10 @@ export function readExamples(value: unknown): Example[] {
 /** The engine call each control the card doesn't wire yet waits for (R1-10). They render through <Coming unwired>
  *  (Unwired.tsx), so the dev list names the method. */
 export const WAITS_FOR = {
+  /** Moving Branch to another computer starts with that computer's pairing code. */
+  other: "device.pair.setupCode",
+  /** A KeepOak computer is a cloud environment. */
+  keepoak: "environments.create",
   /** Example Trunks, with no account: the starter teammates the engine carries. */
   examples: "trunks.template.starters",
   /** A day-one template this engine doesn't carry yet. */
