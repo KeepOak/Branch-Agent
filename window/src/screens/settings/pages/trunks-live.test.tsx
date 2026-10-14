@@ -58,9 +58,9 @@ it("draws the preview's Trunks card: rows with Edit and •••, A new Trunk, 
   expect(button("New group chat")).toBeTruthy();
   expect(page.textContent).not.toContain("Use this job");
   expect(page.querySelector('[data-row="trunks.templates"] b')?.textContent).toBe("Start from a template");
+  expect(cards()).toEqual([""]);
   await act(async () => button("Templates in Seedbank").click());
   expect(onPage).toHaveBeenCalledWith("seedbank");
-  expect(cards()).toEqual([""]);
 });
 
 it("puts the preview's ••• menu on each Trunk, with Who it knows, and greys what nothing stands behind yet", async () => {
