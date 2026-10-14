@@ -826,6 +826,40 @@ describe("agents.update", () => {
     expect(mocks.writeConfigFile).not.toHaveBeenCalled();
   });
 
+  it("puts the losing rename's IDENTITY.md back when another rename takes the name first", async () => {
+    const before = "# IDENTITY.md\n\n- Name: Current Agent\n";
+    mocks.rootRead.mockResolvedValue({
+      buffer: Buffer.from(before),
+      realPath: "/workspace/test-agent/IDENTITY.md",
+      stat: { size: before.length, mtimeMs: 0 },
+    });
+    mocks.rootWrite.mockImplementationOnce(async () => {
+      const entries = (mocks.loadConfigReturn.agents as { entries: Record<string, unknown> })
+        .entries;
+      entries.oak = { name: "Maple" };
+    });
+
+    const respond = await call("agents.update", { agentId: "test-agent", name: "Maple" });
+
+    expectRespondErrorContaining(respond, TRUNK_NAME_TAKEN);
+    // The losing Trunk's config and identity file keep the old name; the winner keeps Maple.
+    expect(mocks.writeConfigFile).not.toHaveBeenCalled();
+    const writes = mocks.rootWrite.mock.calls.map(
+      ([params]) => params as { relativePath: string; data: string | Buffer },
+    );
+    expect(writes).toHaveLength(2);
+    expect(String(writes[0]?.data)).toContain("Maple");
+    expect(writes[1]).toMatchObject({ relativePath: "IDENTITY.md", data: before });
+    const entries = (
+      mocks.loadConfigReturn.agents as {
+        entries: Record<string, { name?: string; identity?: { name?: string } }>;
+      }
+    ).entries;
+    expect(entries["test-agent"]?.name).not.toBe("Maple");
+    expect(entries["test-agent"]?.identity?.name).not.toBe("Maple");
+    expect(entries.oak?.name).toBe("Maple");
+  });
+
   it("renames to a unique name, and its own current name may change case", async () => {
     mocks.loadConfigReturn = {
       agents: {

@@ -195,6 +195,37 @@ async function readWorkspaceFileContent(
   }
 }
 
+/** The workspace file's current text, or undefined when it is absent, read the way identity writes read it. */
+export async function readWorkspaceFileForRollback(
+  workspaceDir: string,
+  name: string,
+): Promise<string | undefined> {
+  return await readWorkspaceFileContent(workspaceDir, name);
+}
+
+/**
+ * Put back a workspace file that a rejected update had already rewritten. A file that was absent is removed again
+ * from a local workspace; a bridged workspace has no remove call, so there the next identity write replaces it.
+ */
+export async function restoreWorkspaceFile(params: {
+  workspaceDir: string;
+  name: string;
+  content: string | undefined;
+}): Promise<void> {
+  if (params.content !== undefined) {
+    await writeWorkspaceFileOrRespond({
+      respond: () => {},
+      workspaceDir: params.workspaceDir,
+      name: params.name,
+      content: params.content,
+    });
+    return;
+  }
+  if (!getAgentWorkspaceAccess(params.workspaceDir)) {
+    await fs.rm(path.join(params.workspaceDir, params.name), { force: true });
+  }
+}
+
 export async function buildIdentityMarkdownOrRespondUnsafe(params: {
   respond: RespondFn;
   workspaceDir: string;

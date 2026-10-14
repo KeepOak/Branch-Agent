@@ -116,6 +116,8 @@ import {
 import {
   agentFileHandlers,
   buildIdentityMarkdownOrRespondUnsafe,
+  readWorkspaceFileForRollback,
+  restoreWorkspaceFile,
   writeWorkspaceFileOrRespond,
 } from "./agents-files.js";
 import { agentListHandler } from "./agents-list.js";
@@ -571,6 +573,8 @@ export const agentsHandlers: GatewayRequestHandlers = {
       return;
     }
     const nextConfig = configured ? applyAgentConfig(cfg, agentConfigUpdate) : cfg;
+    // What IDENTITY.md held before this update rewrote it, so a rename the config lock refuses can put it back.
+    let identityRollback: { workspaceDir: string; content: string | undefined } | undefined;
 
     try {
       let ensuredWorkspace: Awaited<ReturnType<typeof ensureAgentWorkspace>> | undefined;
@@ -618,6 +622,10 @@ export const agentsHandlers: GatewayRequestHandlers = {
           return;
         }
         assertWorkspaceAccessCurrent();
+        const previousIdentity = await readWorkspaceFileForRollback(
+          identityWorkspaceDir,
+          DEFAULT_IDENTITY_FILENAME,
+        );
         if (
           !(await writeWorkspaceFileOrRespond({
             respond,
@@ -632,6 +640,7 @@ export const agentsHandlers: GatewayRequestHandlers = {
         // The write accepted these exact bytes. Settle their config projection,
         // without retiring workspace authority or admitting another upload.
         identityPublished = true;
+        identityRollback = { workspaceDir: identityWorkspaceDir, content: previousIdentity };
         assertWorkspaceAccessCurrent();
       }
 
@@ -646,6 +655,16 @@ export const agentsHandlers: GatewayRequestHandlers = {
         return;
       }
       if (error instanceof AgentNameRuleError) {
+        // Another rename took the name after the first check: the config keeps the old name, so IDENTITY.md does too.
+        if (identityRollback) {
+          try {
+            await restoreWorkspaceFile({ ...identityRollback, name: DEFAULT_IDENTITY_FILENAME });
+          } catch (restoreError) {
+            context.logGateway.warn(
+              `agent ${agentId} kept a refused name in IDENTITY.md: ${formatErrorMessage(restoreError)}`,
+            );
+          }
+        }
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, error.message));
         return;
       }
