@@ -3,6 +3,9 @@
 .r1-frame[data-topics="true"] { grid-template-columns: 292px 300px minmax(0, 1fr); }
 .r1-frame[data-topics="true"][data-wide="false"] { grid-template-columns: 68px 300px minmax(0, 1fr); }
 .r1-sidebar { min-width: 0; min-height: 0; height: 100%; padding: 8px 10px 12px; display: flex; flex-direction: column; background: color-mix(in srgb, var(--side) 80%, transparent); backdrop-filter: var(--gf-blur); -webkit-backdrop-filter: var(--gf-blur); }
+/* With a background, Appearance › See-through panels sets the sidebar's tint (README item 48; preview .has-bg .side:
+   100% - see), never below a floor that keeps its text readable on any picture (#1049). */
+:root[data-scene] .r1-sidebar { background: color-mix(in srgb, var(--side) max(var(--scene-panel, 75%), 55%), transparent); }
 .r1-side-top { height: 44px; flex: none; }
 .r1-side-top button, .r1-drawer-button { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border-radius: var(--r-pill); }
 .r1-topics { min-width: 0; overflow: auto; padding-top: var(--hdr); }

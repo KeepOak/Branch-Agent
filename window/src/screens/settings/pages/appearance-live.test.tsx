@@ -176,4 +176,25 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     const { APPEARANCE_ROWS } = await import("./appearance");
     expect(APPEARANCE_ROWS.find((r) => r.id === "appearance.theme.mode")!.options!.map((o) => o.label)).toEqual(["Light", "Dark", "Auto"]);
   });
+
+  it("#1049: What's shown has the status symbols and the preview's log and privacy rows; Make it yours has the preview's eight rows", async () => {
+    await mount();
+    expect([...row("appearance.shown.symbols")!.querySelectorAll(".r1s-symbol b")].map((b) => b.textContent)).toEqual(["This computer", "Gateway", "Room left", "Running", "Usage", "Branch version"]);
+    for (const id of ["activity-log", "who-ran", "counts", "stability"]) expect(row("appearance.shown." + id)!.querySelector('[role="switch"], input[type="checkbox"], button'), id).not.toBeNull();
+    expect([...row("appearance.shown.messages")!.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Off", "Direct messages", "All"]);
+    for (const id of ["notes", "crash"]) expect(row("appearance.shown." + id)!.getAttribute("aria-disabled"), id).toBe("true");
+    const yours = [...host.querySelectorAll('[data-row^="appearance.yours."]')].map((r) => r.querySelector("b")?.textContent);
+    expect(yours).toEqual(["Your pet", "This theme and background", "Got a seed?", "Your picture", "Overview background", "Chat background", "Trunk, group and topic pictures", "A pet of your own"]);
+    const button = (id: string, text: string) => [...row(id)!.querySelectorAll("button")].find((b) => b.textContent === text)!;
+    expect(button("appearance.yours.pet", "Copy seed").getAttribute("aria-disabled")).toBe("true");
+    expect(row("appearance.reading.size")!.textContent).toContain("Changes every screen. This device only.");
+    // Each opens its own Settings page (the frame then moves there).
+    const { PasteSeed, YourPicture, TrunkPictures } = await import("./appearance-yours");
+    for (const [Ctl, page] of [[PasteSeed, "seedbank"], [YourPicture, "card"], [TrunkPictures, "trunks"]] as const) {
+      const go = vi.fn();
+      await act(async () => root.render(<Ctl engine={{} as never} row={{} as never} onPage={go} />));
+      await click(host.querySelector("button")!);
+      expect(go).toHaveBeenCalledWith(page);
+    }
+  });
 });

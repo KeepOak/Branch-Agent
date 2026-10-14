@@ -40,6 +40,10 @@ const slot = (id: string, card: string, label: string, calls: string[], extra: P
 const DESKTOP_NEED = "desktop: a bridge control for this (Classic greys it: needs the Branch desktop app)";
 const CHAR = "Characters";
 const SHOWN = "What’s shown";
+const YOURS = "Make it yours";
+/** A What's shown row saved straight to the engine's config (preview "Seeing more"), Advanced unless said. */
+const config = (id: string, label: string, help: string, path: string, fallback: unknown, extra: Partial<Row> = {}): Row =>
+  ({ id, page: "appearance", card: SHOWN, label, help, level: 1, ownerLevel: true, control: "toggle", source: { kind: "config", path }, fallback, ...extra });
 
 export const APPEARANCE_ROWS: Row[] = [
   // Theme
@@ -66,7 +70,7 @@ export const APPEARANCE_ROWS: Row[] = [
   // Reading
   { id: "appearance.reading.width", page: "appearance", card: "Reading", label: "Conversation width", help: "Wide uses more of a big screen.", level: 0, control: "segmented",
     options: [{ v: "comfortable", label: "Comfortable" }, { v: "wide", label: "Wide" }, { v: "full", label: "Full" }], source: { kind: "look", key: "width" }, fallback: "comfortable" },
-  fromClassic("appearance.reading.size", "Reading", "size"),
+  fromClassic("appearance.reading.size", "Reading", "size", { help: "Changes every screen. This device only." }),
   fromClassic("appearance.reading.messages", "Reading", "msgLook"),
   fromClassic("appearance.reading.direction", "Reading", "dir"),
   fromClassic("appearance.reading.math", "Reading", "math"),
@@ -101,6 +105,19 @@ export const APPEARANCE_ROWS: Row[] = [
   // What's shown
   ...["show.usage", "show.gateway", "show.gfx", "show.projects", "show.live", "show.statusbar", "still", "scenery"].map((key) =>
     fromClassic(`appearance.shown.${key.replace(/^show\./, "")}`, SHOWN, key)),
+  // The preview's What's shown continues with the status symbols and "Seeing more" (preview 32594-32601).
+  slot("appearance.shown.symbols", SHOWN, "Status symbols", [], { bare: true }),
+  coming("appearance.shown.notes", SHOWN, "Keep progress notes", "engine: a setting that keeps a Trunk's progress notes", "Keeping progress notes comes in a later update.",
+    { help: "The short notes a Trunk writes between steps stay after it finishes. The ⋯ › View row overrides it for one window.", level: 1, control: "toggle" }),
+  config("appearance.shown.activity-log", "Keep an activity log", "Every step, kept for 30 days on this computer.", "logging.audit.enabled", true),
+  config("appearance.shown.who-ran", "Record who ran each task", "Keeps who started each run, from where, and what allowed it, for “What happened in this run”. Off until you choose: it records more about each person. Takes effect after the gateway restarts; records already kept stay readable until they are 30 days old.", "logging.audit.executionIdentity", false),
+  config("appearance.shown.messages", "Record messages", "Who sent what to whom and when, never the text. Takes effect after the gateway restarts.", "logging.audit.messages", "off",
+    { control: "segmented", options: [{ v: "off", label: "Off" }, { v: "direct", label: "Direct messages" }, { v: "all", label: "All" }] }),
+  coming("appearance.shown.crash", SHOWN, "Send crash reports", "engine: a crash reporter", "Sending crash reports comes in a later update.",
+    { help: "Only the error, never your conversations. Off until you choose: it sends the error outside this computer.", level: 1, control: "toggle" }),
+  config("appearance.shown.counts", "Share anonymous feature counts", "Counts only, never messages or names: once a day, with the update check, which chat apps and model services are on, how many plugins, and how many conversations were started. It stays off whenever DO_NOT_TRACK=1 is set on this computer. Off until you choose: it sends counts outside this computer.", "telemetry.enabled", false),
+  slot("appearance.shown.report", SHOWN, "Report for a bug", [], { level: 1, help: "A zip of status, health, recent log lines, the shape of your settings and the stability record. Passwords, keys and message text are left out. It stays on this computer until you share it. Not the same as “Send crash reports”, which sends only errors." }),
+  config("appearance.shown.stability", "Keep a stability record", "A small record of stalls and crashes, without message text, kept on this computer.", "diagnostics.enabled", true, { level: 2 }),
 
   // The list
   slot("appearance.list.threads", "The list", "Threads show as", [], { help: "How a contact’s threads show beside its chat. A contact’s ⋯ › View can differ.", control: "segmented",
@@ -114,7 +131,7 @@ export const APPEARANCE_ROWS: Row[] = [
   fromClassic("appearance.window.tabs", "Window", "tabs"),
   coming("appearance.window.layout", "Window", "Customize layout", "window: a layout editor", "Drag the edge of the list or the side panel to change its width.", { help: "Drag the list and the side panel to the widths you like." }),
   coming("appearance.window.kiosk", "Window", rowOf("kiosk").title, DESKTOP_NEED, rowOf("kiosk").off ?? "", { help: rowOf("kiosk").sub, level: 1, control: "toggle" }),
-  coming("appearance.window.frame", "Window", "Window frame", DESKTOP_NEED, "Branch’s own title bar or the system one needs the Branch desktop app.", { level: 2 }),
+  coming("appearance.window.frame", "Window", "Window frame", DESKTOP_NEED, "Choosing the window frame comes in a later update.", { level: 2, help: "Branch’s own title bar or the system one." }),
 
   // Tray
   coming("appearance.tray.menu", "Tray", "Tray menu", DESKTOP_NEED, "What Branch puts in the tray needs the Branch desktop app.", { help: "What Branch puts in the tray: its icon and menu." }),
@@ -123,6 +140,13 @@ export const APPEARANCE_ROWS: Row[] = [
   coming("appearance.language.pick", "Language", "Language", "engine: a language setting and translated words (English only today)", "Other languages come with the Branch app.", { help: "Dates and numbers follow it too.", control: "select",
     options: [{ v: "en", label: "English" }] }),
 
-  // Make it yours: Classic's Make your own theme.
-  coming("appearance.yours.make-theme", "Make it yours", "Make your own theme", "window: the theme editor opened from a row (themes.import)", "Making your own theme from here comes in a later update."),
+  // Make it yours (preview: Share your look, then Pictures around Branch). Making a theme stays in the Theme card.
+  slot("appearance.yours.pet", YOURS, "Your pet", [], { help: "A pet seed carries its sprite and every frame (idle, walk, cheer, notice, pat)." }),
+  slot("appearance.yours.theme", YOURS, "This theme and background", []),
+  slot("appearance.yours.paste", YOURS, "Got a seed?", []),
+  slot("appearance.yours.picture", YOURS, "Your picture", [], { help: "On your card, the avatar and Who is using Branch." }),
+  slot("appearance.yours.overview", YOURS, "Overview background", [], { help: "The picture behind the composer on Overview." }),
+  slot("appearance.yours.chat", YOURS, "Chat background", [], { help: "Behind the glass, in every conversation." }),
+  slot("appearance.yours.trunks", YOURS, "Trunk, group and topic pictures", [], { help: "Or ••• › Change picture in any conversation." }),
+  slot("appearance.yours.own-pet", YOURS, "A pet of your own", [], { help: "Your pets walk on the rim of the message box." }),
 ];
