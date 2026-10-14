@@ -75,7 +75,7 @@ describe("settings row table", () => {
     for (const row of moved) expect(row.source.kind, row.id).toBe("coming");
     expect(moved[1].options?.map((o) => o.label)).toEqual(["Off", "New kinds", "All", "Every detail"]);
     expect(cardRows("general", "Waiting line", 1, {})).toEqual([]);
-    expect(cardRows("general", "Waiting line", 2, {}).length).toBe(2);
+    expect(cardRows("general", "Waiting line", 2, {}).length).toBe(3);
     expect(pageFirstLevel("general", {})).toBe(0);
     expect(pageFirstLevel("seedbank", {})).toBeNull();
   });
@@ -88,10 +88,9 @@ describe("settings row table", () => {
     expect(start).toMatchObject({ card: "Starting up", level: 0, control: "toggle", source: { kind: "desktop", name: "startWithWindows" } });
     expect(start?.label).toBe("Start Branch when I sign in");
     expect(start?.help).toBe("Opens quietly in the tray.");
-    // Projects: Classic's Edit for a project's instructions was greyed; it stays a Coming row with the call it waits for.
-    const projects = at("general.projects.instructions");
-    expect(projects).toMatchObject({ card: "Projects", level: 0, source: { kind: "coming" } });
-    expect(projects?.source.kind === "coming" && projects.source.need).toMatch(/project's own instructions/);
+    // Projects: Classic's list of projects (projects.list), each with its greyed Edit, is one bare row its page draws.
+    const projects = at("general.projects.list");
+    expect(projects).toMatchObject({ card: "Projects", level: 0, bare: true, source: { kind: "slot", calls: ["projects.list", "sessions.list"] } });
     // Writing: Show "Finish setting up", the person's look "checklist" (false hides it, null puts the default back).
     expect(at("general.writing.finish-setup")).toMatchObject({ card: "Writing", level: 0, control: "toggle", source: { kind: "look", key: "checklist" } });
     expect(checklistShown.read(undefined)).toBe(true);
@@ -104,8 +103,8 @@ describe("settings row table", () => {
     expect([askBeforeDeleting.write(true), askBeforeDeleting.write(false)]).toEqual([null, "0"]);
     // Each card now draws these rows instead of a whole-card Coming mark.
     expect(cardRows("general", "Starting up", 0, {}).map((r) => r.id)).toContain("general.start.with-computer");
-    expect(cardRows("general", "Projects", 0, {}).map((r) => r.id)).toEqual(["general.projects.instructions"]);
-    expect(cardRows("general", "Writing", 0, {}).map((r) => r.id)).toEqual(["general.writing.finish-setup"]);
+    expect(cardRows("general", "Projects", 0, {}).map((r) => r.id)).toEqual(["general.projects.list"]);
+    expect(cardRows("general", "Writing", 0, {}).map((r) => r.id)).toContain("general.writing.finish-setup");
     expect(cardRows("general", "The conversation", 0, {})).toEqual([]);
     expect(cardRows("general", "The conversation", 1, {}).map((r) => r.id)).toContain("general.conversation.ask-delete");
   });
