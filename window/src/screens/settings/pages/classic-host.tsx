@@ -4,15 +4,16 @@
 // R1 search finds them and opens the page. A page moves to its own R1 rows later without losing anything on the way.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
+import { Coming } from "../../../glass/coming";
 import { SETTINGS_ROWS, SettingsPage } from "../../../places/settings";
 import { errorText, visible } from "../../../places/settings/adapter";
 import { KitProvider, SetupLock, type SaveReport } from "../../../places/settings/kit";
 import { usePins, type Pin } from "../../../places/settings/pins";
 import { HIDDEN_PAGES, SETUP_PAGES, pageName } from "../../../places-nav/settings-nav";
 import { Icon } from "../../../shell/icons";
-import { PAGES, pageFor, type PageId } from "../nav";
+import { PAGES, pageFor, sectionNeed, type PageId } from "../nav";
 import type { Row } from "../rows";
-import { useLevel } from "../SettingsFrame";
+import { SECTION_COMING, useLevel } from "../SettingsFrame";
 import type { PageSlot } from "../slots";
 import "./classic-host.css";
 
@@ -38,8 +39,9 @@ function useSaveState(): [SaveState, SaveReport] {
 /** The Classic pages a hosted R1 page draws, in order. */
 export const classicList = (classic: string | readonly string[]): readonly string[] => (typeof classic === "string" ? [classic] : classic);
 
-/** The Classic page `classic` (or pages, one after another), drawn as the R1 page `page`. */
-export function ClassicHost({ engine, page, classic, onPage }: { engine: WindowEngine; page: PageId; classic: string | readonly string[]; onPage?: (page: PageId) => void }) {
+/** The Classic page `classic` (or pages, one after another), drawn as the R1 page `page`. `coming` names the page's
+ *  cards no Classic control does yet: each is Coming after the Classic sections, naming the call it waits for. */
+export function ClassicHost({ engine, page, classic, coming, onPage }: { engine: WindowEngine; page: PageId; classic: string | readonly string[]; coming?: readonly string[]; onPage?: (page: PageId) => void }) {
   const list = classicList(classic);
   const [level] = useLevel(engine);
   const [save, report] = useSaveState();
@@ -74,6 +76,14 @@ export function ClassicHost({ engine, page, classic, onPage }: { engine: WindowE
             );
           })}
         </KitProvider>
+        {coming?.map((card) => (
+          <section key={card} className="sec r1s-classic-coming" aria-label={card}>
+            <h2>{card}</h2>
+            <Coming engine={engine} need={sectionNeed(page, card)} unwired reason={SECTION_COMING(card)} where={`${PAGES[page].title} › ${card}`}>
+              <div className="r1s-row"><b className="g-label">Coming</b><small className="r1s-note g-label" data-lines>{SECTION_COMING(card)}</small></div>
+            </Coming>
+          </section>
+        ))}
       </div>
     </div>
   );
@@ -93,10 +103,10 @@ export function classicRows(page: PageId, classic: string | readonly string[]): 
   });
 }
 
-/** A Settings slot that re-hosts the Classic page `classic` (or pages) as the R1 page `page`. */
-export function classicSlot(page: PageId, classic: string | readonly string[]): PageSlot {
+/** A Settings slot that re-hosts the Classic page `classic` (or pages) as the R1 page `page`, with its `coming` cards. */
+export function classicSlot(page: PageId, classic: string | readonly string[], coming?: readonly string[]): PageSlot {
   return {
-    component: ({ engine, onPage }) => <ClassicHost engine={engine} page={page} classic={classic} onPage={onPage} />,
+    component: ({ engine, onPage }) => <ClassicHost engine={engine} page={page} classic={classic} coming={coming} onPage={onPage} />,
     rows: classicRows(page, classic),
   };
 }

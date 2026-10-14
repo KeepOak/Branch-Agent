@@ -12,10 +12,21 @@ import { classicSlot } from "./classic-host";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
-export const REHOSTED = { who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"] } as const;
+export const REHOSTED = {
+  who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
+  browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
+  coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
+} as const;
+
+/** A re-hosted page's cards that no Classic control draws yet: Coming after its Classic sections, naming the call each
+ *  waits for (nav sectionNeed). */
+export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> = {
+  browser: ["Sites", "Saved flows"],
+  coding: ["Commands", "Files"],
+};
 
 export const R1_PAGES: PageSlots = {
-  ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic)])),
+  ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   appearance: {
     controls: {
