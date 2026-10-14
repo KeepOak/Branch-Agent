@@ -3,6 +3,7 @@
 export { AskCard, Decided, LOCKDOWN_WHY } from "./AskCard";
 export { AskDrop } from "./AskDrop";
 export { AskHistory } from "./AskHistory";
+export { AskGroup, groupable, useAskGroup } from "./AskGroup";
 export { ApprovalsLayer, LockNotice, LOCKDOWN_LINE } from "./ApprovalsLayer";
 export { Banners, type BannerItem } from "./Banners";
 export { askOfApproval, callFor, readAsk, settledOfApproval, settledText, type Ask, type AskKind, type Reply } from "./model";

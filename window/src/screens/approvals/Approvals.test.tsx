@@ -141,9 +141,9 @@ describe("R1-05 approvals", () => {
     const host = await render(engine, <AskHistory engine={engine} />);
     expect(host.textContent).toContain("✕ Declined");
     expect(host.textContent).toContain("Nightly backup");
-    await click(button(host, "Show more"));
+    await click(button(host, "Load more"));
     expect(request).toHaveBeenCalledWith("approval.history", { limit: 20, cursor: "c2" });
-    await click(button(host, "Take back"));
+    await click(button(host, "Revoke"));
     expect(request).toHaveBeenCalledWith("exec.approval.grants.revoke", { grantId: "g1" });
   });
 });

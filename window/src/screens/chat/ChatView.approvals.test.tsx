@@ -23,9 +23,9 @@ const flush = async () => { for (let i = 0; i < 6; i++) await act(async () => { 
 
 const METHODS = ["exec.approval.list", "exec.approval.resolve", "plugin.approval.list", "question.list"];
 /** The engine lists one pending exec approval for this conversation. `resolve` decides what an answer does. */
-function engineWith(resolve: (method: string) => Promise<unknown> | unknown) {
+function engineWith(resolve: (method: string) => Promise<unknown> | unknown, items: unknown[] = [pending]) {
   const request = vi.fn(async (method: string) => {
-    if (method === "exec.approval.list") return { approvals: [pending] };
+    if (method === "exec.approval.list") return { approvals: items };
     return resolve(method);
   });
   return { request, engine: { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", scopes: ["operator.admin"], features: { methods: METHODS, events: [] } } as unknown as WindowEngine };
@@ -110,4 +110,64 @@ it("an ask for this conversation with no approval block still gets its card at t
   const { engine } = engineWith(() => ({}));
   await show(engine, false, [{ kind: "user", key: "u1", text: "Run the tests." }]);
   expect(card()?.getAttribute("data-state")).toBe("waiting");
+});
+
+const second = {
+  id: "ap2", sessionKey: "agent:scout:main", agentId: "scout",
+  request: { command: "npm run lint", cwd: "/work/site", host: "gateway", sessionKey: "agent:scout:main", agentId: "scout", allowedDecisions: ["allow-once", "allow-always", "deny"] },
+};
+const twoBlocks: Block[] = [
+  { kind: "user", key: "u1", text: "Test and lint." },
+  { kind: "approval", key: "approval:ap1", approval: { id: "ap1", command: "npm test", state: "pending" } },
+  { kind: "approval", key: "approval:ap2", approval: { id: "ap2", command: "npm run lint", state: "pending" } },
+];
+const groupCard = () => host.querySelector<HTMLElement>('[data-testid="r1-ask-group"]');
+const groupRow = (id: string) => host.querySelector<HTMLElement>(`[data-testid="r1-ask-group-row"][data-approval="${id}"]`);
+const groupButton = (id: string, label: string) => [...groupRow(id)!.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === label) ?? null;
+
+it("two approvals in one conversation show as the preview's group card, with no single cards", async () => {
+  const { engine } = engineWith(() => ({}), [pending, second]);
+  await show(engine, false, twoBlocks);
+  expect(groupCard()).not.toBeNull();
+  expect(groupCard()!.querySelector(".r1-ask-q")!.textContent).toBe("Two things need you");
+  expect(groupCard()!.querySelector(".r1-ask-head .r1-ask-pill")!.textContent).toBe("Waiting for you");
+  expect(groupRow("ap1")!.textContent).toContain("npm test");
+  expect(groupRow("ap2")!.textContent).toContain("npm run lint");
+  expect(groupButton("ap1", "Yes")).not.toBeNull();
+  expect(groupButton("ap1", "No")).not.toBeNull();
+  expect(button("Yes to both")).not.toBeNull();
+  expect(host.querySelector('[data-testid="r1-ask"]')).toBeNull();
+});
+
+it("Yes on one row answers only that approval, and Yes to both answers each waiting one", async () => {
+  const { engine, request } = engineWith(() => ({}), [pending, second]);
+  await show(engine, false, twoBlocks);
+  await act(async () => groupButton("ap1", "Yes")!.click());
+  await flush();
+  expect(request).toHaveBeenCalledWith("exec.approval.resolve", expect.objectContaining({ id: "ap1", decision: "allow-once" }));
+  expect(request).not.toHaveBeenCalledWith("exec.approval.resolve", expect.objectContaining({ id: "ap2" }));
+  expect(groupRow("ap1")!.textContent).toContain("Allowed");
+  expect(groupRow("ap2")).not.toBeNull();
+  // The group keeps the answered row; the one left waiting is still answerable.
+  expect(groupButton("ap2", "Yes")).not.toBeNull();
+});
+
+it("Yes to both sends an allow-once for each waiting approval", async () => {
+  const { engine, request } = engineWith(() => ({}), [pending, second]);
+  await show(engine, false, twoBlocks);
+  await act(async () => button("Yes to both")!.click());
+  await flush();
+  expect(request).toHaveBeenCalledWith("exec.approval.resolve", expect.objectContaining({ id: "ap1", decision: "allow-once" }));
+  expect(request).toHaveBeenCalledWith("exec.approval.resolve", expect.objectContaining({ id: "ap2", decision: "allow-once" }));
+});
+
+it("under Lockdown the group's Yes buttons are disabled and No still works", async () => {
+  const { engine, request } = engineWith(() => ({}), [pending, second]);
+  await show(engine, true, twoBlocks);
+  expect(groupButton("ap1", "Yes")!.disabled).toBe(true);
+  expect(button("Yes to both")!.disabled).toBe(true);
+  expect(groupButton("ap1", "No")!.disabled).toBe(false);
+  await act(async () => groupButton("ap2", "No")!.click());
+  await flush();
+  expect(request).toHaveBeenCalledWith("exec.approval.resolve", expect.objectContaining({ id: "ap2", decision: "deny" }));
 });

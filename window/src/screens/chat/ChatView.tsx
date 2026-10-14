@@ -13,7 +13,7 @@ import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
 import { resolveApproval } from "../../thread/actions";
-import { AskCard, Decided, askOfApproval, settledOfApproval, type AskState, type Reply } from "../approvals";
+import { AskCard, AskGroup, Decided, askOfApproval, settledOfApproval, useAskGroup, type AskState, type Reply } from "../approvals";
 import { ComputerActivityCard } from "../../thread/ComputerActivityCard";
 import { turnDoneLines } from "../../thread/computer-card";
 import { copyText, ThreadContext, type ThreadContextValue } from "../../thread/context";
@@ -171,15 +171,19 @@ export function ChatView(props: ChatViewProps) {
     if (engine && (decision === "allow-always" || plugin)) resolveApproval(engine, id, decision, plugin).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e)));
     else if (decision !== "allow-always") props.onAnswer(id, decision);
   }, [details, engine, props, toast]);
-  // Asks for this conversation that have no approval block yet get their own card at the foot of the thread.
+  // What waits in this conversation: two or more approvals group into one card at the foot (preview ask2); the rest get
+  // their own card at the foot too, unless their approval block already draws it.
+  const here = asks.filter((s) => s.status !== "settled" && Boolean(props.sessionKey) && s.ask.sessionKey === props.sessionKey);
+  const members = useAskGroup(props.sessionKey ?? null, here);
+  const grouped = new Set(members);
   const blockIds = new Set(all.flatMap((b) => (b.kind === "approval" ? [b.approval.id] : [])));
-  const loose = asks.filter((s) => s.status !== "settled" && !blockIds.has(s.ask.id) && Boolean(props.sessionKey) && s.ask.sessionKey === props.sessionKey);
-  const waitingHere = loose.length > 0 || all.some((b) => b.kind === "approval" && b.approval.state === "pending");
+  const loose = here.filter((s) => !blockIds.has(s.ask.id) && !grouped.has(s.ask.id));
+  const waitingHere = here.length > 0 || all.some((b) => b.kind === "approval" && b.approval.state === "pending");
   const answerAsk = (id: string, reply: Reply) => props.onAsk?.(id, reply);
   const { actionsFor, dialog, changes } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, applyReaction: apply });
   const root = useRef<HTMLDivElement>(null);
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
-  const signature = history.length + ":" + live.length + ":" + liveText + ":" + (running ? 1 : 0) + ":" + loose.length + ":" + (props.queued?.length ?? 0);
+  const signature = history.length + ":" + live.length + ":" + liveText + ":" + (running ? 1 : 0) + ":" + here.length + ":" + (props.queued?.length ?? 0);
   const scroller = useFollow(root, signature, (pendingUser ?? "") + (ownLine.at(-1)?.id ?? ""), props.sessionKey ?? "");
   // Find in this conversation. A search result that opens here passes its words, and a new request starts a fresh bar.
   const [finding, setFinding] = useState<{ query?: string; nonce: number } | null>(null);
@@ -201,7 +205,7 @@ export function ChatView(props: ChatViewProps) {
   const helperChip = helpers.length && engine?.sessionKey ? <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenHelpers}
     onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast("Stopped " + h.name + ". " + name + " carries on without it."), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} /> : null;
 
-  const view: View = { all, name, running, live, actionsFor, changes, reactions, apply, asks: askCards, answerAsk, lockdown: Boolean(props.lockdown), times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast, room: props.room };
+  const view: View = { all, name, running, live, actionsFor, changes, reactions, apply, asks: askCards, grouped, answerAsk, lockdown: Boolean(props.lockdown), times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast, room: props.room };
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
   // The run's token count (the engine's usage block), as Classic's live-run header shows it; once something visible arrives.
   const usage = running ? live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage") : undefined;
@@ -224,6 +228,7 @@ export function ChatView(props: ChatViewProps) {
         {running && liveShows && usage?.total ? <NoticeLine text={usage.total.toLocaleString() + " tokens so far"} testid="live-usage" /> : null}
         {running ? (props.steered ?? []).map((note) => <NoticeLine key={note.runId} text={"You steered " + name + ": “" + note.text + "”. It takes this at its next step."} testid="steered-note" />) : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
+        {members.length ? <AskGroup members={members.flatMap((id) => askCards.get(id) ?? [])} name={name} lockdown={props.lockdown} onAnswer={answerAsk} /> : null}
         {loose.map((s) => <AskCard key={s.ask.id} state={s} name={name} onAnswer={answerAsk} lockdown={props.lockdown} scopes={engine?.scopes} />)}
         {helperChip}
         {suggestions.length ? <div className="r1c-chips r1c-suggest" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
@@ -244,6 +249,8 @@ type View = {
   reactions: ReturnType<typeof useReactions>["reactions"];
   apply: (id: string, raw: unknown) => void;
   asks: Map<string, AskState>;
+  /** The approvals drawn by the group card, not by their own block. */
+  grouped: Set<string>;
   answerAsk: (id: string, reply: Reply) => void;
   lockdown: boolean;
   times: "hover" | "always" | "never";
@@ -271,6 +278,7 @@ function postedFace(block: Extract<Block, { kind: "text" }>, view: View): ReactN
 function ApprovalBlock({ block, view }: { block: Extract<Block, { kind: "approval" }>; view: View }) {
   const state = view.asks.get(block.approval.id);
   const ask = askOfApproval(block.approval);
+  if (view.grouped.has(block.approval.id)) return null;
   let card: ReactNode = null;
   if (state) card = <AskCard state={state} name={view.name} onAnswer={view.answerAsk} lockdown={view.lockdown} scopes={view.engine?.scopes} />;
   else if (ask && block.approval.state !== "pending") card = <Decided ask={ask} how={settledOfApproval(block.approval)} name={view.name} />;
