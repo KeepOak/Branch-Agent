@@ -34,7 +34,14 @@ const GITHUB = ["tools.github.status", "tools.github.authorize.start", "tools.gi
 /** Said under each linked account in the preview. */
 const OVERVIEW = "Overview shows a card for each one you link.";
 
-export const ACCOUNTS_ROWS: Row[] = [
+/** R1-10: each Coming reason names its thing; the bare fallback becomes "<its label> comes in a later update.". */
+const named = (row: Row): Row => {
+  const src = row.source;
+  if ((src.kind === "coming" || src.kind === "slot") && src.reason === COMING_REASON) return { ...row, source: { ...src, reason: `${row.label} comes in a later update.` } };
+  return row;
+};
+
+const ROWS_AS_DRAWN: Row[] = [
   // Usage by account: what Branch spent (7 / 30 / 90 days, Open the report), what each account has left, then the rows.
   slot("accounts.usage.spend", USAGE, "What Branch spent", ["sessions.usage"], { bare: true }),
   slot("accounts.usage.list", USAGE, "Usage by account", ["usage.status", STATUS], { bare: true }),
@@ -48,8 +55,6 @@ export const ACCOUNTS_ROWS: Row[] = [
   // Linked accounts: GitHub (live, Classic's connection), then the three the preview lists, Coming.
   slot("accounts.github.connection", LINKED, "GitHub", GITHUB, { help: OVERVIEW }),
   slot("accounts.github.permissions", LINKED, "Permissions", ["tools.github.status"], { level: 1 }),
-  // The preview shows an expiry as a value, not as a row label: the row is bare, its label only for search.
-  slot("accounts.github.expires", LINKED, "Access expires", ["tools.github.status"], { level: 1, bare: true }),
   slot("accounts.linked.gmail", LINKED, "Gmail", ["engine: linking Gmail for Overview"], { help: OVERVIEW }, "Linking Gmail comes in a later update."),
   slot("accounts.linked.calendar", LINKED, "Google Calendar", ["engine: linking Google Calendar for Overview"], { help: `Coming to Overview. ${OVERVIEW}` }, "Linking Google Calendar comes in a later update."),
   slot("accounts.linked.drive", LINKED, "Google Drive", ["engine: linking Google Drive for Overview"], { help: OVERVIEW }, "Linking Google Drive comes in a later update."),
@@ -129,3 +134,5 @@ export const ACCOUNTS_ROWS: Row[] = [
   coming("accounts.terms.lines", "Terms", "Each service’s terms", "engine: each service's terms, listed", "Each service’s terms come in a later update.",
     { help: "Branch only signs in to a plan the way its service allows, and says so.", level: 1 }),
 ];
+
+export const ACCOUNTS_ROWS: Row[] = ROWS_AS_DRAWN.map(named);

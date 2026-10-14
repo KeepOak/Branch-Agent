@@ -6,7 +6,7 @@ import { CHAT_APP_ROWS, ChatAppsPage } from "../../chatapps";
 import type { PageSlots } from "../slots";
 import {
   AccountList, AddAccount, AddOwnAccount, KeepOakConnect, LinkButton, SaveProgressOffer, UsageList, UsageRing, UsageSpend, AnswerFirst, BranchIdentity, CheckApps, ClaudeCode, Codex, EachTrunkAccount, FallBackHere, FallbackKeys, GeminiCli,
-  GitHubExpires, GitHubPermissions, GitHubRow, HubCommand, OwnAccountList, OwnFolder, RestingNow, SelectAccounts, SignInSources, SignOut, TestIt, WhichNext,
+  GitHubPermissions, GitHubRow, HubCommand, OwnAccountList, OwnFolder, RestingNow, SelectAccounts, SignInSources, SignOut, TestIt, WhichNext,
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
@@ -137,7 +137,6 @@ export const R1_PAGES: PageSlots = {
       "accounts.sources.each": SignInSources,
       "accounts.github.connection": GitHubRow,
       "accounts.github.permissions": GitHubPermissions,
-      "accounts.github.expires": GitHubExpires,
       "accounts.more.each-trunk": EachTrunkAccount,
       "accounts.more.fallback-keys": FallbackKeys,
       "accounts.more.resting": RestingNow,

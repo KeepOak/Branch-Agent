@@ -541,11 +541,13 @@ export function GitHubRow({ engine }: SlotControlProps) {
   const loading = !view || view.phase === "loading";
   const sub = identity ? (identity.source === "agent-override" ? "This Trunk’s account" : identity.source === "system-configured" ? "Shared account" : "This computer’s account") + " · " + (identity.credentialKind === "managed-oauth" ? "GitHub sign-in" : identity.credentialKind === "managed-pat" ? "Managed token" : "Native sign-in") : loading ? "Reading connection…" : "Connect GitHub or refresh to try again.";
   const state = identity ? identity.credentialState.replaceAll("_", " ") : loading ? "Checking" : "Not connected";
+  // The access expiry is a value on this row, as the preview shows one ("Expires in 12 days"), not a row of its own.
+  const expires = identity && identity.accessExpiresAtMs !== null ? `Expires ${new Date(identity.accessExpiresAtMs).toLocaleString()}` : "";
   const adminWhy = admin ? undefined : "Only someone who may change Branch’s setup can connect or remove a shared account.";
   return <>
     <div className="r1s-item">
       <Logo id="github-copilot" size={22} />
-      <span className="r1s-item-t g-label" data-lines><b>{(identity?.account ? "@" + identity.account.login : "GitHub") + " · " + state}</b><small>{sub}</small></span>
+      <span className="r1s-item-t g-label" data-lines><b>{(identity?.account ? "@" + identity.account.login : "GitHub") + " · " + state}</b><small>{[sub, expires].filter(Boolean).join(" · ")}</small></span>
       <span className="r1s-acts">
         {view?.busy ? (
           <Needs engine={engine} need={["tools.github.authorize.cancel"]} where="Cancel sign-in">
@@ -584,14 +586,6 @@ export function GitHubPermissions({ engine }: SlotControlProps) {
   const identity = view?.status?.selected.identity;
   if (!identity) return <Val>{!view || view.phase === "loading" ? "Reading…" : "Not connected"}</Val>;
   return <span className="r1s-item-t g-label" data-lines><b>{identity.oauthScopes.length ? identity.oauthScopes.join(", ") : "No scopes reported"}</b><small>Repository access is not reported</small></span>;
-}
-
-/** Access expires: when the GitHub connection's access ends, and its refresh state. */
-export function GitHubExpires({ engine }: SlotControlProps) {
-  const { view } = useGitHub(engine);
-  const identity = view?.status?.selected.identity;
-  if (!identity) return <Val>{!view || view.phase === "loading" ? "Reading…" : "Not connected"}</Val>;
-  return <span className="r1s-item-t g-label" data-lines><b>{identity.accessExpiresAtMs === null ? "Not reported" : new Date(identity.accessExpiresAtMs).toLocaleString()}</b><small>Refresh: {identity.refreshState.replaceAll("_", " ")}</small></span>;
 }
 
 /** This Branch's identity (Technical): the engine's device id, shortened; the whole id is in the tooltip. */
