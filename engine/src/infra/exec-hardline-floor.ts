@@ -2,7 +2,9 @@
 // NousResearch/hermes-agent@18d125cc1bd9d0e26188ab49bb325427d5945fa2:tools/approval_floors.py (atlas SAFETY-0020)
 // Always-ask floor for catastrophic commands: a deliberately tiny list with no recovery path (root
 // wipe, raw block device writes, shutdown, fork bomb, kill -1, sudo -S password piping). The exec
-// tool turns a hit into a required human approval even in full access; sandboxed runs skip it.
+// tool turns a hit into a required human approval even in full access. Sandboxed runs skip it
+// unless the sandbox mounts host paths read-write. The regex rules below match command text;
+// exec-hardline-structural.ts then checks parsed segments, basenames and normalized paths.
 import fs from "node:fs";
 import os from "node:os";
 import { stripAnsi } from "../../packages/terminal-core/src/ansi.js";
@@ -15,6 +17,7 @@ import {
 } from "./exec-hardline-command-words.js";
 import { executionFlagPayloads, grepSafeDetectionVariant } from "./exec-hardline-payloads.js";
 import { shellBasename, spliceShell, type ShellEdit } from "./exec-hardline-shell-scan.js";
+import { detectStructuralHardline } from "./exec-hardline-structural.js";
 
 export type HardlineFinding = { description: string };
 
@@ -52,11 +55,14 @@ const HARDLINE_PATTERNS: ReadonlyArray<readonly [string, string]> = [
   ],
   [CMDPOS + String.raw`mkfs(\.[a-z0-9]+)?\b`, "format filesystem (mkfs)"],
   [
-    CMDPOS + String.raw`dd\b[^\n]*\bof=/dev/(sd|nvme|hd|mmcblk|vd|xvd)[a-z0-9]*`,
+    CMDPOS + String.raw`dd\b[^\n]*\bof=/dev/(sd|nvme|hd|mmcblk|vd|xvd|r?disk)[a-z0-9]*`,
     "dd to raw block device",
   ],
   // Positionless rules are matched against a quote-masked variant (see matchHardlinePatterns).
-  [String.raw`>\s*/dev/(sd|nvme|hd|mmcblk|vd|xvd)[a-z0-9]*\b`, "redirect to raw block device"],
+  [
+    String.raw`>\s*/dev/(sd|nvme|hd|mmcblk|vd|xvd|r?disk)[a-z0-9]*\b`,
+    "redirect to raw block device",
+  ],
   [String.raw`:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:`, "fork bomb"],
   [CMDPOS + String.raw`kill\s+(-[^\s]+\s+)*-1\b`, "kill all processes"],
   [CMDPOS + String.raw`(shutdown|reboot|halt|poweroff)\b`, "system shutdown/reboot"],
@@ -263,7 +269,7 @@ export function detectHardlineCommand(command: string): HardlineFinding | null {
       return { description };
     }
   }
-  return null;
+  return detectStructuralHardline(command);
 }
 
 /** An explicit sudo -S without a configured SUDO_PASSWORD is the model piping a guessed password. */
