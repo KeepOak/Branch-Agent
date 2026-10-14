@@ -61,7 +61,7 @@ function sharedRead(engine: WindowEngine, method: string, params: RecordValue = 
   if (!read) { read = new SharedRead(engine, method, params); byKey.set(id, read); }
   return read;
 }
-function useRead(engine: WindowEngine, method: string, params: RecordValue = {}) {
+export function useRead(engine: WindowEngine, method: string, params: RecordValue = {}) {
   const read = sharedRead(engine, method, params);
   // One subscription per read for as long as the row shows: a new one on every render would read again each time.
   const subscribe = useCallback((fn: () => void) => read.subscribe(fn), [read]);

@@ -1,4 +1,4 @@
-// From mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421:packages/core/src/llm/model/model.loop.ts (atlas AGENT-LOOP-0026). Adapted model invocation to Branch's registry, guarded fetch, and event protocol; Branch owns the agent/tool loop.
+// Model invocation adapted to Branch's registry, guarded fetch, and event protocol; Branch owns the agent/tool loop.
 import { createApiRegistry } from "../api-registry.js";
 import { getAiTransportHost } from "../host.js";
 import { createLlmRuntime } from "../stream.js";
