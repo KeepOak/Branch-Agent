@@ -202,6 +202,16 @@ test("a replacement that fails part way puts the staged pair back; the served wi
   assert.match(logs.join("\n"), /0\.4\.3 stays staged/);
 }));
 
+test("a release published as a security fix is staged as one (Private #951)", async () => fixture(async ({ cfg, request, release }) => {
+  await source.refreshComponentUpdate(cfg, request);
+  const status = await source.readComponentUpdateStatus(cfg);
+  assert.equal(status.componentsPendingVersion, "0.4.3");
+  assert.equal(status.componentsPendingSecurity, true);
+  const { security: _security, ...plain } = release;
+  assert.equal(parseComponentRelease(plain).security, undefined);
+  assert.throws(() => parseComponentRelease({ ...release, security: "yes" }), /security flag/);
+}, ({ release }) => { release.security = true; }));
+
 test("a replacement whose undo also fails rolls back to the running build, and says where the window now is", async () => fixture(async (context) => {
   const { cfg, request } = context;
   await source.refreshComponentUpdate(cfg, request);
@@ -472,7 +482,8 @@ test("actual desktop caller retains running engine and checks a failing engine b
   const require = createRequire(import.meta.url); const Module = require("node:module");
   const load = Module._load; const previousFetch = globalThis.fetch;
   const previousData = process.env.BRANCH_DESKTOP_DATA; const previousHidden = process.env.BRANCH_DESKTOP_HIDDEN;
-  const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() };
+  // The engine inside the app (alwaysOn false), the fallback these cases cover; no service is ever installed.
+  const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort(), alwaysOn: false };
   await mkdir(join(cfg.engineDir, "dist"), { recursive: true });
   await writeFile(join(cfg.engineDir, "dist", "build-info.json"), '{"version":"old"}');
   await writeFile(join(cfg.engineDir, "branch.mjs"), 'import http from "node:http"; process.on("message", m => { if(m.type?.startsWith("branch-desktop:")){ process.send({type:"branch-desktop:activity-result",id:m.id,idle:true,activeRuns:0,pendingReplies:0,totalActive:0}); if(m.type==="branch-desktop:stop-if-idle"||m.type==="branch-desktop:drain-stop")setTimeout(()=>process.exit(0),20); }}); setTimeout(()=>http.createServer((_req,res)=>res.writeHead(200).end()).listen(Number(process.argv[process.argv.indexOf("--port")+1]),"127.0.0.1"),1000);');
@@ -679,7 +690,8 @@ async function coldDesktopCaller(cfg, state, releaseRequest) {
   const main = join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js");
   const config = join(process.env.BRANCH_DESKTOP_TEST_DIST, "config.js");
   const electron = coldCallerElectron(state);
-  const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort() };
+  // The engine inside the app (alwaysOn false), the fallback these cases cover; no service is ever installed.
+  const desktop = { ...cfg, nodePath: process.execPath, gatewayPort: await freePort(), windowPort: await freePort(), alwaysOn: false };
   state.gatewayPort = desktop.gatewayPort;
   await mkdir(join(cfg.engineDir, "dist"), { recursive: true });
   await writeFile(join(cfg.engineDir, "dist", "build-info.json"), '{"version":"retained"}');
@@ -992,6 +1004,149 @@ test("startup reduces twenty legacy releases to current plus previous and remain
   assert.equal(logs.at(-1), "removed 0 old updates, freed 0.00 GB");
 }));
 
+async function probationReleases(cfg) {
+  const updates = join(cfg.dataDir, "updates");
+  const previous = join(updates, "release-previous-111aaa"), current = join(updates, "release-current-222bbb");
+  for (const folder of [previous, current]) {
+    await mkdir(join(folder, "engine"), { recursive: true });
+    await writeFile(join(folder, "engine", "branch.mjs"), "payload");
+    await writeFile(join(folder, ".release-complete"), "");
+  }
+  await writeFile(join(cfg.dataDir, "engine-current.txt"), join(current, "engine") + "\n");
+  await writeFile(join(cfg.dataDir, "component-update-previous.txt"), join(previous, "engine") + "\n");
+  const probation = confirmedAt => writeFile(join(cfg.dataDir, "component-update-probation.json"),
+    JSON.stringify({ previous: join(previous, "engine"), confirmedAt }));
+  return { previous, current, probation };
+}
+
+test("the previous engine is kept during its probation and pruned only after it ends", async () => fixture(async ({ cfg }) => {
+  assert.equal(source.PREVIOUS_ENGINE_PROBATION_MS, 3 * 24 * 60 * 60 * 1000);
+  const { previous, current, probation } = await probationReleases(cfg);
+  const logs = [];
+  for (const age of [0, 60_000, source.PREVIOUS_ENGINE_PROBATION_MS - 60_000]) {
+    await probation(Date.now() - age);
+    await source.pruneStartupUpdates(cfg, line => logs.push(line));
+    assert.equal(await exists(previous), true, `kept ${age} ms after confirmation`);
+  }
+  await probation(Date.now() - source.PREVIOUS_ENGINE_PROBATION_MS - 60_000);
+  await source.pruneStartupUpdates(cfg, line => logs.push(line));
+  assert.equal(await exists(previous), false, "removed once the probation ended");
+  assert.equal(await exists(current), true);
+  assert.ok(logs.includes("Update cleanup: the previous engine's probation ended; removing it"));
+  assert.equal(logs.at(-1), "removed 1 old updates, freed 0.00 GB");
+  // The receipt stays: a later startup never adopts some other older folder as a new previous engine.
+  await source.pruneStartupUpdates(cfg, line => logs.push(line));
+  assert.equal(await exists(current), true);
+  assert.equal(logs.at(-1), "removed 0 old updates, freed 0.00 GB");
+}));
+
+test("a previous engine with no probation of its own starts one and is kept", async () => fixture(async ({ cfg }) => {
+  const { previous } = await probationReleases(cfg);
+  const before = Date.now();
+  await source.pruneStartupUpdates(cfg, () => {});
+  assert.equal(await exists(previous), true);
+  const started = JSON.parse(await readFile(join(cfg.dataDir, "component-update-probation.json"), "utf8"));
+  assert.equal(started.previous, join(previous, "engine"));
+  assert.ok(started.confirmedAt >= before && started.confirmedAt <= Date.now());
+  // A probation for some other engine (written before an older desktop confirmed a newer one) does not count.
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({ previous: "/elsewhere/engine", confirmedAt: 0 }));
+  await source.pruneStartupUpdates(cfg, () => {});
+  assert.equal(await exists(previous), true);
+  // A clock set back before the confirmation keeps the engine.
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({ previous: join(previous, "engine"), confirmedAt: Date.now() + 86_400_000 }));
+  await source.pruneStartupUpdates(cfg, () => {});
+  assert.equal(await exists(previous), true);
+}));
+
+test("confirming an update starts its predecessor's probation", async () => fixture(async ({ cfg, request }) => {
+  const before = Date.now();
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg);
+  const probation = JSON.parse(await readFile(join(cfg.dataDir, "component-update-probation.json"), "utf8"));
+  assert.equal(probation.previous, cfg.engineDir);
+  assert.ok(probation.confirmedAt >= before && probation.confirmedAt <= Date.now());
+}));
+
+test("a running app removes the previous engine when its probation ends, never during it or mid-update", async () => fixture(async ({ cfg }) => {
+  const { previous, current } = await probationReleases(cfg);
+  const confirmedAt = Date.now();
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({ previous: join(previous, "engine"), confirmedAt }));
+  const logs = [];
+  assert.equal(await source.pruneEndedProbation(cfg, line => logs.push(line), confirmedAt + 60_000), false);
+  assert.equal(await source.pruneEndedProbation(cfg, line => logs.push(line), confirmedAt + source.PREVIOUS_ENGINE_PROBATION_MS - 1), false);
+  assert.equal(await exists(previous), true);
+  const journal = join(cfg.dataDir, "component-update-pending.json");
+  await writeFile(journal, JSON.stringify({ phase: "pending", version: "9.9.9", enginePrevious: join(current, "engine"), engineNext: join(current, "engine") }));
+  assert.equal(await source.pruneEndedProbation(cfg, line => logs.push(line), confirmedAt + source.PREVIOUS_ENGINE_PROBATION_MS + 1), false, "an update in flight prunes on its own confirmation");
+  assert.equal(await exists(previous), true);
+  await rm(journal);
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({ previous: join(previous, "engine"), confirmedAt: Date.now() - source.PREVIOUS_ENGINE_PROBATION_MS - 1 }));
+  assert.equal(await source.pruneEndedProbation(cfg, line => logs.push(line)), true);
+  assert.equal(await exists(previous), false);
+  assert.equal(await exists(current), true);
+  assert.equal(await source.pruneEndedProbation(cfg, line => logs.push(line)), false, "nothing left to remove");
+}));
+
+test("Undo reports the probation deadline while it can run, and removed once it ends or the engine is pruned", async () => fixture(async ({ cfg, request }) => {
+  const before = Date.now();
+  await source.refreshComponentUpdate(cfg, request);
+  await source.confirmComponentUpdate(cfg, undefined, true);
+  const { confirmedAt } = JSON.parse(await readFile(join(cfg.dataDir, "component-update-probation.json"), "utf8"));
+  assert.ok(confirmedAt >= before);
+  const until = confirmedAt + source.PREVIOUS_ENGINE_PROBATION_MS;
+  const version = (await source.readComponentUpdateStatus(cfg)).currentVersion;
+  assert.ok(version);
+  // During the probation: available, with the same deadline the pruning uses, and the version line's release and date.
+  assert.deepEqual(await source.readUndoAvailability(cfg, confirmedAt + 60_000), { available: true, until, removed: false, version, installedAt: confirmedAt });
+  assert.equal(await source.canUndoComponentUpdate(cfg, until - 1), true);
+  // At the deadline, before any prune: Undo can no longer run.
+  assert.deepEqual(await source.readUndoAvailability(cfg, until), { available: false, until, removed: true, version, installedAt: confirmedAt });
+  assert.equal(await source.canUndoComponentUpdate(cfg, until), false);
+  // Once the previous engine is gone, even inside the window (a clock moved back), it reports removed.
+  await rm(cfg.engineDir, { recursive: true, force: true });
+  assert.deepEqual(await source.readUndoAvailability(cfg, confirmedAt + 60_000), { available: false, until, removed: true, version, installedAt: confirmedAt });
+  assert.equal(await source.canUndoComponentUpdate(cfg), false);
+}, async ({ cfg }) => {
+  await mkdir(cfg.engineDir, { recursive: true });
+  await writeFile(join(cfg.dataDir, "component-update-version.txt"), "0.4.2\n");
+}));
+
+test("a running app's prune at the deadline leaves Undo reported as removed", async () => fixture(async ({ cfg }) => {
+  const { previous, current } = await probationReleases(cfg);
+  const confirmedAt = Date.now() - source.PREVIOUS_ENGINE_PROBATION_MS - 1;
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({ previous: join(previous, "engine"), confirmedAt }));
+  const windowPrevious = join(cfg.dataDir, "window-previous");
+  await mkdir(windowPrevious, { recursive: true });
+  await writeFile(join(cfg.dataDir, "component-update-version.txt"), "0.4.3\n");
+  await writeFile(join(cfg.dataDir, "component-update-undo.json"), JSON.stringify({ version: "0.4.3", previousVersion: "0.4.2",
+    enginePrevious: join(previous, "engine"), engineNext: join(current, "engine"), windowPrevious, identity: { version: "0.4.3" } }));
+  assert.equal(await source.pruneEndedProbation(cfg, () => {}), true);
+  assert.deepEqual(await source.readUndoAvailability(cfg), { available: false, until: confirmedAt + source.PREVIOUS_ENGINE_PROBATION_MS, removed: true, version: "0.4.3", installedAt: confirmedAt });
+  assert.equal(await source.canUndoComponentUpdate(cfg), false);
+}));
+
+test("no Undo receipt, or one for another update, reports nothing to undo", async () => fixture(async ({ cfg }) => {
+  const none = { available: false, until: null, removed: false, version: null, installedAt: null };
+  assert.deepEqual(await source.readUndoAvailability(cfg), none);
+  await writeFile(join(cfg.dataDir, "component-update-undo.json"), "{not json");
+  assert.deepEqual(await source.readUndoAvailability(cfg), none);
+}));
+
+test("an update confirmed before probation records is dated by its Undo receipt for the version line", async () => fixture(async ({ cfg }) => {
+  const { previous, current } = await probationReleases(cfg);
+  const windowPrevious = join(cfg.dataDir, "window-previous");
+  await mkdir(windowPrevious, { recursive: true });
+  await writeFile(join(cfg.dataDir, "component-update-version.txt"), "0.4.3\n");
+  const receipt = join(cfg.dataDir, "component-update-undo.json");
+  await writeFile(receipt, JSON.stringify({ version: "0.4.3", previousVersion: "0.4.2",
+    enginePrevious: join(previous, "engine"), engineNext: join(current, "engine"), windowPrevious, identity: { version: "0.4.3" } }));
+  const written = new Date(2026, 8, 20, 10, 0);
+  await utimes(receipt, written, written);
+  const undo = await source.readUndoAvailability(cfg);
+  assert.equal(undo.version, "0.4.3");
+  assert.equal(undo.installedAt, written.getTime());
+  assert.equal(undo.until, null);
+}));
 
 test("prune retains a process working directly in an old release folder", { skip: process.platform !== "linux" }, async () => fixture(async ({ cfg, request }) => {
   const folder = join(cfg.dataDir, "updates", "release-live-111aaa");

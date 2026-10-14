@@ -1,4 +1,4 @@
-// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/cli/gateway-cli/run.option-collisions.test.ts (atlas OPS-0022). Changed for Branch: retain caller-owned host recovery coverage and isolate startup migrations and host ownership from CLI option fixtures.
+// Changed for Branch: retain caller-owned host recovery coverage and isolate startup migrations and host ownership from CLI option fixtures.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -292,6 +292,8 @@ vi.mock("../../infra/restart-stale-pids.js", () => ({
 }));
 
 vi.mock("../../daemon/restart-storm.js", () => ({
+  GATEWAY_CRASH_STORM_EXIT_CODE: 78,
+  guardGatewayCrashStorm: async () => undefined,
   warnAboutGatewayRestartStorm: (env: NodeJS.ProcessEnv, warn: (message: string) => void) =>
     warnAboutGatewayRestartStorm(env, warn),
 }));
@@ -926,6 +928,19 @@ describe("gateway run option collisions", () => {
     expect(startGatewayServer).not.toHaveBeenCalled();
     expect(runtimeErrors.join("\n")).toContain("branch gateway run --dev");
     expect(runtimeErrors.join("\n")).toContain("--profile <name> with a free port");
+  });
+
+  it("refuses a plain start when a verified gateway already listens on the port", async () => {
+    findVerifiedGatewayListenerPidsOnPortSync.mockReturnValue([4242]);
+
+    await expect(runGatewayCli(["gateway", "run", "--allow-unconfigured"])).rejects.toThrow(
+      "__exit__:1",
+    );
+
+    expect(findVerifiedGatewayListenerPidsOnPortSync).toHaveBeenCalledWith(18789);
+    expect(forceFreePortAndWait).not.toHaveBeenCalled();
+    expect(startGatewayServer).not.toHaveBeenCalled();
+    expect(runtimeErrors.join("\n")).toContain("pid 4242");
   });
 
   it("reports restart storms before managed macOS Gateway startup", async () => {

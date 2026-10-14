@@ -1,15 +1,24 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Capsule, type CapsuleItem } from "../../glass/Capsule";
 import { GlassPill } from "../../glass/GlassPill";
+import type { WindowEngine } from "../../connect/engine";
 import { Icon } from "../../shell/icons";
 
 export type HeaderProps = {
   title: string; face?: ReactNode; onOpen?: () => void; onToggleSidebar: () => void;
   canBack?: boolean; canForward?: boolean; onBack?: () => void; onForward?: () => void;
   right?: CapsuleItem[]; pillRef?: React.RefObject<HTMLButtonElement | null>; hidden?: boolean;
+  /** The engine the pill and the tools check their calls against (R1-10); the CapabilityProvider's when absent. */
+  engine?: Pick<WindowEngine, "features"> | null;
 };
+/** The header's tools before a screen gives its own: what each will call (HANDOFF R1-02: ••• reads the git branch). */
+export const DEFAULT_TOOLS: CapsuleItem[] = [
+  { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "Computer controls are not connected yet." },
+  { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "Browser controls are not connected yet." },
+  { label: "More", icon: <Icon name="more" />, need: "sessions.github.status", coming: "Conversation actions are not connected yet." },
+];
 /** The pill is centred on this column, never on the viewport. */
-export function Header({ title, face, onOpen, onToggleSidebar, canBack, canForward, onBack, onForward, right, pillRef, hidden }: HeaderProps) {
+export function Header({ title, face, onOpen, onToggleSidebar, canBack, canForward, onBack, onForward, right, pillRef, hidden, engine }: HeaderProps) {
   const row = useRef<HTMLElement>(null), left = useRef<HTMLDivElement>(null), end = useRef<HTMLDivElement>(null), ownPill = useRef<HTMLButtonElement>(null);
   const button = pillRef ?? ownPill;
   const [geometry, setGeometry] = useState({ left: 0, width: 0, tight: false });
@@ -35,19 +44,16 @@ export function Header({ title, face, onOpen, onToggleSidebar, canBack, canForwa
   }, [title, button, hidden]);
   return <header className="r1-header" ref={row}>
     <div className="r1-header-left" ref={left}>
-      <button className="g-ctl r1-drawer-button" aria-label="Toggle sidebar" type="button" onClick={onToggleSidebar}><Icon name="menu" /></button>
+      <button className="g-frost r1-drawer-button" data-local="" aria-label="Toggle sidebar" type="button" onClick={onToggleSidebar}><Icon name="menu" /></button>
       <Capsule label="Conversation history" className="r1-history" items={[
         { label: "Back", icon: <span aria-hidden="true">‹</span>, onClick: onBack, disabled: !canBack },
         { label: "Forward", icon: <span aria-hidden="true">›</span>, onClick: onForward, disabled: !canForward },
       ]} />
     </div>
     {!hidden && <div className="r1-pill-position" style={{ left: geometry.left, width: geometry.width || undefined }}>
-      <GlassPill buttonRef={button} title={title} face={face} tight={geometry.tight} onOpen={onOpen} coming={onOpen ? undefined : "Agent details are not available yet."} />
+      <GlassPill buttonRef={button} title={title} face={face} tight={geometry.tight} onOpen={onOpen} engine={engine}
+        need="agent.identity.get" coming={onOpen ? "This engine can’t show agent details." : "Agent details are not available yet."} />
     </div>}
-    <div className="r1-header-right" ref={end}><Capsule label="Conversation tools" items={right ?? [
-      { label: "Computer", icon: <Icon name="monitor" />, coming: "Computer controls are not connected yet." },
-      { label: "Browser", icon: <Icon name="globe" />, coming: "Browser controls are not connected yet." },
-      { label: "More", icon: <Icon name="more" />, coming: "Conversation actions are not connected yet." },
-    ]} /></div>
+    <div className="r1-header-right" ref={end}><Capsule label="Conversation tools" engine={engine} items={right ?? DEFAULT_TOOLS} /></div>
   </header>;
 }

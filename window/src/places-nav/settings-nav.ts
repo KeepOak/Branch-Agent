@@ -53,6 +53,15 @@ const BASE: SettingsGroup[] = [
   },
 ];
 
+/** Pages that change setup (§4.7.0): config.patch needs operator.admin, so without it their rows grey. */
+export const SETUP_PAGES: readonly string[] = [
+  "general", "models", "local", "accounts", "chatapps", "permissions", "computer", "usage", "seasons", "updates", "advanced", "developer",
+  "computer-browser", "computer-coding", // Computer & browser's parts (set2/computer-parts.tsx), set up like the whole page.
+];
+
+/** Pages that hold keys or run the engine: without operator.admin they leave the nav (Classic) or say why (R1). */
+export const HIDDEN_PAGES: string[] = ["secrets", "gateway", "self"];
+
 export const LEVEL_LINES: Record<Level, string> = {
   regular: "The essentials, in plain words.",
   advanced: "Every feature and the fine controls.",

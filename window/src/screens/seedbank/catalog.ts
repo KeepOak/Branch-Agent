@@ -14,7 +14,8 @@ const num = (v: unknown): number | undefined => (typeof v === "number" && Number
 export type KindId = "agents" | "groves" | "graftsets" | "skills" | "mcp" | "plugins" | "clis" | "toolsets" | "looks" | "adapters";
 export type Kind = { id: KindId; label: string; one: string; coming?: string };
 
-/** The kind chips, in the preview's order. A kind with `coming` has no engine call yet. */
+/** The kind chips, exactly the preview's (preview.html mkKinds: All · Agents · … · Adapters). A kind with `coming` has no
+ *  engine call yet. Features that are not Seedbank items are Coming rows in their own screens, never a kind here (#1049). */
 export const KINDS: readonly Kind[] = [
   { id: "agents", label: "Agents", one: "agent" },
   { id: "groves", label: "Grove layouts", one: "Grove layout", coming: "Grove layouts arrive in Seedbank in a later update." },

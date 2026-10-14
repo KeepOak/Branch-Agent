@@ -6,6 +6,7 @@ describe("routes", () => {
     expect(parseRoute('{"kind":"chat","key":"agent:dev:main"}')).toEqual({ kind: "chat", key: "agent:dev:main" });
     expect(parseRoute('{"kind":"place","place":"inbox"}')).toEqual({ kind: "place", place: "inbox" });
     expect(parseRoute('{"kind":"place","place":"nowhere"}')).toBeNull();
+    expect(parseRoute('{"kind":"place","place":"seedbank"}')).toEqual({ kind: "place", place: "seedbank" });
     expect(parseRoute('{"kind":"settings","page":"models"}')).toEqual({ kind: "settings", page: "models" });
     expect(parseRoute("{not json")).toBeNull();
     expect(parseRoute(null)).toBeNull();

@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { KeeperMark } from "../../brand/KeeperMark";
 import { Icon as ComposerIcon } from "../../composer/icons";
 import { Icon } from "../../shell/icons";
-import { unwired, WHERE, whereWord, type Where } from "./model";
+import { WHERE, WHERE_LATER, whereWord, type Where } from "./model";
 
 export function Welcome({ where, onChangeWhere }: { where: Where; onChangeWhere: () => void }) {
   return (
@@ -18,6 +18,7 @@ export function Welcome({ where, onChangeWhere }: { where: Where; onChangeWhere:
       <p className="r1-ob-lede">Agents that work on your computer: Trunks that each take one job off your plate.</p>
       <p className="r1-ob-promise"><ComposerIcon name="lock" size={15} /><span>It asks before it sends, deletes, spends or installs anything.</span></p>
       <p className="r1-ob-where">Runs on <b>{whereWord(where)}</b> · <button type="button" className="r1-ob-link" data-local onClick={onChangeWhere}>Change</button></p>
+      {where !== "here" ? <p className="r1-ob-hint" role="status">{WHERE_LATER}</p> : null}
     </>
   );
 }
@@ -32,7 +33,7 @@ export function WhereSheet({ where, onPick, onClose }: { where: Where; onPick: (
         <h2>Where Branch runs</h2>
         <div className="r1-ob-modes" role="radiogroup" aria-label="Where Branch runs">
           {WHERE.map((w, i) => (
-            <button key={w.id} type="button" ref={i === 0 ? first : undefined} className="r1-ob-mode" role="radio" aria-checked={where === w.id} {...(w.reason ? unwired(w.reason) : { "data-local": true, onClick: () => onPick(w.id) })}>
+            <button key={w.id} type="button" ref={i === 0 ? first : undefined} className="r1-ob-mode" role="radio" aria-checked={where === w.id} data-local onClick={() => onPick(w.id)}>
               <Icon name={w.icon} size={15} />
               <span><b>{w.name}</b><small>{w.line}</small></span>
             </button>

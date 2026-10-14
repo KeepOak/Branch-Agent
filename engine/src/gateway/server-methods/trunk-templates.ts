@@ -22,6 +22,13 @@ import { resolveBundledSkillsDir } from "../../skills/loading/bundled-dir.js";
 import { exportTrunkTemplate } from "../../trunks/trunk-template-export.js";
 import { bindReadyChannels, screenImportedTemplate } from "../../trunks/trunk-template-import.js";
 import {
+  answersSection,
+  fillAnswerSlots,
+  isValidTimeZone,
+  machineTimeZone,
+  resolveFirstRunAnswers,
+} from "../../trunks/trunk-template-first-run.js";
+import {
   decodeTrunkTemplateLink,
   encodeTrunkTemplateLink,
   TRUNK_TEMPLATE_LIMIT_BYTES,
@@ -37,6 +44,7 @@ import {
 } from "../../trunks/trunk-template.js";
 import { agentsHandlers } from "./agents.js";
 import { cronHandlers } from "./cron.js";
+import { createFirstRunHandlers, saveFirstRunState, type StarterOffer } from "./trunk-template-first-run.js";
 import type { GatewayRequestHandlerOptions } from "./shared-types.js";
 import type { GatewayRequestHandlers, RespondFn } from "./types.js";
 import { assertValidParams } from "./validation.js";
@@ -271,6 +279,33 @@ async function catalogEntries(
   return entries.filter((entry): entry is TrunkTemplateCatalogEntry => entry !== undefined);
 }
 
+/** Bundled templates that declare both a first-run contract and a starter offer, as the Chief offers them. */
+export async function listBundledStarters(): Promise<StarterOffer[]> {
+  const root = resolveBundledSkillsDir();
+  const dir = root && path.join(root, "trunk-templates");
+  const names = dir ? await readdir(dir).catch(() => [] as string[]) : [];
+  const offers = await Promise.all(
+    names.filter((name) => name.endsWith(TEMPLATE_SUFFIX)).toSorted().map(async (name): Promise<StarterOffer | undefined> => {
+      const text = await readFile(path.join(dir ?? "", name), "utf8").catch(() => undefined);
+      const parsed = text === undefined ? undefined : parseTemplateText(text);
+      const template = parsed?.ok ? parsed.template : undefined;
+      if (!template?.firstRun || !template.starter) {
+        return undefined;
+      }
+      return {
+        id: name.slice(0, -TEMPLATE_SUFFIX.length),
+        name: template.name,
+        description: template.description,
+        pitch: template.starter.pitch,
+        questions: template.firstRun.questions,
+        routines: (template.automations ?? []).map((routine) => ({ name: routine.name, cron: routine.cron })),
+        starter: template.starter,
+      };
+    }),
+  );
+  return offers.filter((offer): offer is StarterOffer => offer !== undefined);
+}
+
 /** Bundled templates first, then the ones imported on this computer. Unreadable files are left out. */
 export async function listTrunkTemplateCatalog(): Promise<TrunkTemplateCatalogEntry[]> {
   const bundledRoot = resolveBundledSkillsDir();
@@ -302,6 +337,9 @@ function scrub(text: string): string {
 
 export type AddedRoutine = { id: string; name: string };
 
+/** The owner's first-run answers and timezone, applied to a first-run template's persona and routines. */
+type FirstRunSetup = { answers: Record<string, string>; timezone: string };
+
 /**
  * Adds each routine through cron.add, turned off, so nothing runs until the owner approves it in
  * Automations. A routine cron.add refuses becomes a warning; the Trunk is kept either way.
@@ -310,6 +348,7 @@ async function addRoutinesTurnedOff(
   options: GatewayRequestHandlerOptions,
   agentId: string,
   template: TrunkTemplate,
+  setup?: FirstRunSetup,
 ): Promise<{ routines: AddedRoutine[]; warnings: string[] }> {
   const add = cronHandlers["cron.add"];
   const routines: AddedRoutine[] = [];
@@ -324,10 +363,10 @@ async function addRoutinesTurnedOff(
         name: routine.name,
         agentId,
         enabled: false,
-        schedule: { kind: "cron", expr: routine.cron },
+        schedule: { kind: "cron", expr: routine.cron, ...(setup ? { tz: setup.timezone } : {}) },
         sessionTarget: "isolated",
         wakeMode: "now",
-        payload: { kind: "agentTurn", message: routine.prompt },
+        payload: { kind: "agentTurn", message: setup ? fillAnswerSlots(routine.prompt, setup.answers) : routine.prompt },
       };
       try {
         await add({
@@ -381,7 +420,8 @@ async function applyTemplateSettings(
     .filter((slug): slug is string => slug !== undefined);
   const installed = installedSkillSlugs(slugs, workspaceDir);
   const toolsets = { ...template.toolsets };
-  if (Object.keys(toolsets).length > 0 || slugs.length > 0) {
+  const denyTools = template.denyTools ?? [];
+  if (Object.keys(toolsets).length > 0 || slugs.length > 0 || denyTools.length > 0) {
     await mutateConfigFileWithRetry({
       afterWrite: { mode: "auto" },
       mutate: (draft) => {
@@ -390,6 +430,10 @@ async function applyTemplateSettings(
         const entry = (entries[agentId] ??= {});
         if (Object.keys(toolsets).length > 0) {
           entry.toolsets = toolsets;
+        }
+        if (denyTools.length > 0) {
+          const tools = (entry.tools ??= {});
+          tools.deny = [...new Set([...(tools.deny ?? []), ...denyTools])];
         }
         const defaultSkills = agents.defaults?.skills;
         if (slugs.length > 0 && Array.isArray(defaultSkills)) {
@@ -401,10 +445,11 @@ async function applyTemplateSettings(
   return uninstalledSkillWarnings(template, installed);
 }
 
-async function writePersona(workspaceDir: string, template: TrunkTemplate): Promise<void> {
+async function writePersona(workspaceDir: string, template: TrunkTemplate, setup?: FirstRunSetup): Promise<void> {
   await mkdir(workspaceDir, { recursive: true });
-  if (template.persona.agentsMd) {
-    await writeFile(path.join(workspaceDir, "AGENTS.md"), template.persona.agentsMd, "utf8");
+  const answers = template.firstRun && setup ? answersSection(template.firstRun, setup.answers, setup.timezone) : "";
+  if (template.persona.agentsMd || answers) {
+    await writeFile(path.join(workspaceDir, "AGENTS.md"), template.persona.agentsMd + answers, "utf8");
   }
   if (template.persona.soulMd) {
     await writeFile(path.join(workspaceDir, "SOUL.md"), template.persona.soulMd, "utf8");
@@ -444,6 +489,13 @@ async function createTrunkFromTemplate(
     return;
   }
   const { template } = screened;
+  const { firstRun } = template;
+  const timezone = typeof params.timezone === "string" ? params.timezone : machineTimeZone();
+  if (firstRun && !isValidTimeZone(timezone)) {
+    respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "\"" + timezone + "\" is not a timezone. Use a name such as America/New_York or UTC."));
+    return;
+  }
+  const setup: FirstRunSetup | undefined = firstRun ? { answers: resolveFirstRunAnswers(firstRun, params.answers as Record<string, unknown> | undefined), timezone } : undefined;
   const createHandler = agentsHandlers["agents.create"];
   if (!createHandler) {
     respond(
@@ -475,13 +527,28 @@ async function createTrunkFromTemplate(
   const workspace = outcome.workspace ?? "";
   let settingsWarnings: string[];
   try {
-    await writePersona(workspace, template);
+    await writePersona(workspace, template, setup);
     settingsWarnings = await applyTemplateSettings(outcome.agentId, template, workspace);
   } catch (error) {
     respond(false, undefined, settingsFailureShape(outcome.agentId, workspace, error));
     return;
   }
-  const added = await addRoutinesTurnedOff(options, outcome.agentId, template);
+  const added = await addRoutinesTurnedOff(options, outcome.agentId, template, setup);
+  const name = typeof params.name === "string" ? params.name : template.name;
+  if (firstRun && setup) {
+    await saveFirstRunState({
+      agentId: outcome.agentId,
+      name,
+      templateName: template.name,
+      routineIds: added.routines.map((routine) => routine.id),
+      result: firstRun.result,
+      answers: setup.answers,
+      timezone: setup.timezone,
+      createdAt: Date.now(),
+    }).catch((error: unknown) => {
+      added.warnings.push("The Overview card could not be saved: " + scrub(messageOf(error)));
+    });
+  }
   const channels = await bindReadyChannels(
     options.context.getRuntimeConfig(),
     outcome.agentId,
@@ -500,8 +567,9 @@ async function createTrunkFromTemplate(
     {
       ok: true,
       agentId: outcome.agentId,
-      name: params.name ?? template.name,
+      name,
       workspace,
+      ...(firstRun && setup ? { firstRun: { ...setup, started: false, result: firstRun.result } } : {}),
       ...(saved.id ? { templateId: saved.id } : {}),
       routines: added.routines,
       connections: channels.connections,
@@ -571,6 +639,7 @@ async function listTrunkRoutines(
 }
 
 export const trunkTemplatesHandlers: GatewayRequestHandlers = {
+  ...createFirstRunHandlers({ listRoutines: listTrunkRoutines, listStarters: listBundledStarters }),
   "trunks.template.list": async (options) => {
     const respond = onceRespond(options.respond);
     if (

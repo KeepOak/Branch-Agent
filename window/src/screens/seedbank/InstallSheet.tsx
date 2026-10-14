@@ -9,7 +9,7 @@ import { useLayer } from "../../glass/Popover";
 import { Face } from "../../face/Face";
 import { kindOf, type Entry, type Rec } from "./catalog";
 import { ItemIcon, Soon } from "./parts";
-import { fingerprint, hasHiddenInstructions, hasSecrets, parseSeed } from "./seed";
+import { fingerprint, hasHiddenInstructions, hasSecrets } from "./seed";
 import { addCall, detailCall, type Trunk } from "./useSeedbank";
 
 const rec = (v: unknown): Rec => (v && typeof v === "object" && !Array.isArray(v) ? v as Rec : {});
@@ -27,8 +27,8 @@ export function Sheet({ title, onClose, footer, children, wide }: { title: strin
   }, []);
   return createPortal(<div className="sb-sheet-wrap">
     <button type="button" className="sb-scrim" aria-label="Close" data-local="" tabIndex={-1} onClick={onClose} />
-    <div className="g-float sb-sheet" data-wide={wide || undefined} role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}>
-      <h2 className="sb-sheet-title">{title}</h2>
+    <div className="g-clear sb-sheet" data-wide={wide || undefined} role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}>
+      <h2 className="sb-sheet-title g-label">{title}</h2>
       <div className="sb-sheet-body">{children}</div>
       <div className="sb-sheet-foot">{footer}</div>
     </div>
@@ -139,36 +139,36 @@ export function InstallSheet({ entry, engine, trunks, onClose, onDone }: Props) 
 
   return <Sheet title={(entry.installed ? "" : "Add ") + entry.name + (entry.installed ? "" : "?")} onClose={onClose} footer={footer} wide>
     <div className="sb-preview">{template
-      ? <div className="sb-look"><Face size={72} label={entry.name} pebbleLook={{ colour: s.template.colour }} /><b>{entry.name}</b><small>{entry.desc}</small></div>
-      : detail.tools.length ? <p className="sb-tools">{detail.tools.map(t => <code key={t}>{t}</code>)}</p>
-      : <div className="sb-look"><ItemIcon entry={entry} size={52} /><small>{detail.summary || entry.desc}</small></div>}</div>
-    <div className="sb-meta"><span className="sb-pill">{kind.label}</span><span>by {entry.by}</span></div>
-    <section className="sb-sec"><h3>What it adds</h3><p>{(ADDS[entry.kind] ?? (() => "Something new"))(entry, detail.tools.length)}</p></section>
-    <section className="sb-sec"><h3>Safety check</h3><dl className="sb-kv">
+      ? <div className="sb-look"><Face size={72} label={entry.name} pebbleLook={{ colour: s.template.colour }} /><b className="g-label">{entry.name}</b>{entry.desc && <small className="g-label" data-lines>{entry.desc}</small>}</div>
+      : detail.tools.length ? <p className="sb-tools">{detail.tools.map(t => <code key={t} className="g-label">{t}</code>)}</p>
+      : <div className="sb-look"><ItemIcon entry={entry} size={52} />{(detail.summary || entry.desc) && <small className="g-label" data-lines>{detail.summary || entry.desc}</small>}</div>}</div>
+    <div className="sb-meta"><span className="sb-pill g-label">{kind.label}</span><span className="g-label">by {entry.by}</span></div>
+    <section className="sb-sec"><h3 className="g-label">What it adds</h3><p className="g-label" data-lines>{(ADDS[entry.kind] ?? (() => "Something new"))(entry, detail.tools.length)}</p></section>
+    <section className="sb-sec"><h3 className="g-label">Safety check</h3><dl className="sb-kv g-frost">
       <dt>Scan</dt><dd>{safety.scan}</dd>
       <dt>Fingerprint</dt><dd><code>{safety.fp}</code></dd>
       <dt>Hidden instructions</dt><dd data-bad={safety.hidden || undefined}>{safety.hidden ? "Found: it tries to change a Trunk’s instructions. Don’t add it." : template ? "None: Branch wrote it." : detail.loading ? "Checking…" : detail.text ? "None found." : "Nothing to read yet."}</dd>
       <dt>Secrets</dt><dd>{safety.secrets}</dd>
-    </dl>{detail.error && <p className="sb-note">The details didn’t load: {detail.error}</p>}</section>
-    <section className="sb-sec"><h3>What it may do</h3>
-      {template && s.permissions.length ? <ul className="sb-may">{s.permissions.map(p => <li key={p}>{p}</li>)}</ul>
-        : detail.tools.length ? <div className="sb-may">{detail.tools.map(t => <div key={t} className="sb-may-row"><code>{t}</code><Soon className="sb-seg" need="tools.policy.set" reason="Choosing per tool comes in a later update." label={"What " + t + " may do"}>Allowed · Ask first · Never</Soon></div>)}</div>
-        : <p className="sb-hint">{template ? "It asks before anything outside its job." : "Nothing beyond what the Trunk using it may already do."}</p>}
+    </dl>{detail.error && <p className="sb-note g-label" data-lines>The details didn’t load: {detail.error}</p>}</section>
+    <section className="sb-sec"><h3 className="g-label">What it may do</h3>
+      {template && s.permissions.length ? <ul className="sb-may g-frost">{s.permissions.map(p => <li key={p}>{p}</li>)}</ul>
+        : detail.tools.length ? <div className="sb-may">{detail.tools.map(t => <div key={t} className="sb-may-row"><code className="g-label">{t}</code><Soon className="sb-seg" need="tools.policy.set" reason="Choosing per tool comes in a later update." label={"What " + t + " may do"}>Allowed · Ask first · Never</Soon></div>)}</div>
+        : <p className="sb-hint g-label" data-lines>{template ? "It asks before anything outside its job." : "Nothing beyond what the Trunk using it may already do."}</p>}
     </section>
-    {s.type === "skill" && trunks.length > 0 && <section className="sb-sec"><h3>Who gets it</h3><div className="sb-who" data-local="">{trunks.map(t => <button key={t.id} type="button" className="sb-who-face" aria-pressed={who.has(t.id)} onClick={() => setWho(prev => { const next = new Set(prev); if (next.has(t.id)) next.delete(t.id); else next.add(t.id); return next; })}><Face size={26} label={t.name} /><span>{t.name}</span></button>)}</div></section>}
-    {s.type === "plugin" && <section className="sb-sec"><h3>Who gets it</h3><p className="sb-hint">Every Trunk. Choosing Trunks for a plugin comes in a later update.</p></section>}
-    {consent && <p className="sb-note" role="status">{consent.message}</p>}
-    {error && <p className="sb-error" role="alert">{error}</p>}
+    {s.type === "skill" && trunks.length > 0 && <section className="sb-sec"><h3 className="g-label">Who gets it</h3><div className="sb-who" data-local="">{trunks.map(t => <button key={t.id} type="button" className="sb-who-face" aria-pressed={who.has(t.id)} onClick={() => setWho(prev => { const next = new Set(prev); if (next.has(t.id)) next.delete(t.id); else next.add(t.id); return next; })}><Face size={26} label={t.name} /><span>{t.name}</span></button>)}</div></section>}
+    {s.type === "plugin" && <section className="sb-sec"><h3 className="g-label">Who gets it</h3><p className="sb-hint g-label" data-lines>Every Trunk. Choosing Trunks for a plugin comes in a later update.</p></section>}
+    {consent && <p className="sb-note g-label" data-lines role="status">{consent.message}</p>}
+    {error && <p className="sb-error g-label" data-lines role="alert">{error}</p>}
   </Sheet>;
 }
 
-/** "＋ Paste a seed": a seed's text or a keepoak.com link. Links aren't local yet, so they say Coming. */
+/** "＋ Paste a seed": a seed's text, a team file or a keepoak.com link. The caller reads it and says why it can't. */
 export function PasteSheet({ onClose, onSeed, initial = "" }: { onClose: () => void; onSeed: (text: string) => string | null; initial?: string }) {
   const [text, setText] = useState(initial), [error, setError] = useState<string | null>(null);
-  const open = () => { const parsed = parseSeed(text); if (!parsed.ok) { setError(parsed.reason); return; } const failed = onSeed(text); if (failed) setError(failed); };
+  const open = () => { const failed = onSeed(text); if (failed) setError(failed); };
   return <Sheet title="Paste a seed" onClose={onClose} footer={<><button type="button" className="sb-btn" data-local="" onClick={onClose}>Cancel</button><button type="button" className="sb-btn" data-primary="" data-local="" onClick={open}>Open</button></>}>
-    <p className="sb-hint">Paste a seed’s text. ⌘V anywhere on this page works too, and you can drop a .seed file on the window.</p>
+    <p className="sb-hint g-label" data-lines>Paste a seed’s text. ⌘V anywhere on this page works too, and you can drop a .seed file on the window.</p>
     <textarea className="sb-input" rows={3} aria-label="Seed link or text" placeholder="Paste a seed" value={text} data-local="" onChange={e => { setText(e.target.value); setError(null); }} />
-    {error && <p className="sb-error" role="alert">{error}</p>}
+    {error && <p className="sb-error g-label" data-lines role="alert">{error}</p>}
   </Sheet>;
 }

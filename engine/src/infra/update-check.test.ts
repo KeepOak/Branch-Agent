@@ -1,4 +1,4 @@
-// From openclaw/openclaw@c83f02659ff9e181f81d12959970261fcaaa1d07:src/infra/update-check.test.ts (atlas OPS-0043). Changed for Branch: route registry fixtures through the rename map to the installed Branch package (DECISIONS.md item 127).
+// Changed for Branch: route registry fixtures through the rename map to the installed Branch package (DECISIONS.md item 127).
 // Covers update version resolution, Git install labels, and registry fetch helpers.
 import fs from "node:fs/promises";
 import http from "node:http";

@@ -296,6 +296,69 @@ describe("build worktree cleanup", () => {
     expect(report.freedBytes).toBeGreaterThanOrEqual(8192);
     expect(report.removed).toBe(0);
   });
+
+  it("dry run reports what it would remove and changes nothing", async () => {
+    const merged = addWorktree("card-dry-merged");
+    const lines: string[] = [];
+
+    const { report } = await runBuildWorktreeCleanup({
+      roots: [root],
+      statePath,
+      deps: deps({}, ["card-dry-merged"]),
+      dryRun: true,
+      log: (line) => lines.push(line),
+    });
+
+    expect(fs.existsSync(merged)).toBe(true);
+    expect(listedWorktrees()).toContain(merged);
+    expect(fs.existsSync(statePath)).toBe(false);
+    expect(report.removed).toBe(0);
+    expect(report.dryRun?.wouldRemove).toBe(1);
+    expect(report.line).toMatch(/^dry run: would free .+, would remove 1 worktree$/);
+    expect(lines).toEqual([
+      expect.stringMatching(/^would remove card-dry-merged \(pull request merged\), frees /),
+    ]);
+  });
+
+  it("logs one line per real removal", async () => {
+    addWorktree("card-log-merged");
+    const lines: string[] = [];
+
+    await runBuildWorktreeCleanup({
+      roots: [root],
+      statePath,
+      deps: deps({}, ["card-log-merged"]),
+      log: (line) => lines.push(line),
+    });
+
+    expect(lines).toEqual([
+      expect.stringMatching(/^removed card-log-merged \(pull request merged\), freed /),
+    ]);
+  });
+
+  it("never follows a node_modules link into another folder, even when it removes the worktree", async () => {
+    const outside = path.join(temp, "shared-modules");
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, "keep.js"), "shared");
+    // node_modules is ignored by the fixture repo; the link is then a plain ignored entry for this worktree.
+    fs.appendFileSync(path.join(repo, ".git", "info", "exclude"), "node_modules\n");
+    const merged = addWorktree("card-link-merged");
+    fs.symlinkSync(outside, path.join(merged, "node_modules"), "dir");
+
+    const { report } = await run(
+      deps(
+        {
+          now: () => Date.now() + 3 * HOUR,
+          diskSpace: () => ({ availableBytes: 100, totalBytes: 1000 }),
+        },
+        ["card-link-merged"],
+      ),
+    );
+
+    expect(fs.existsSync(path.join(outside, "keep.js"))).toBe(true);
+    expect(fs.existsSync(merged)).toBe(false);
+    expect(report.removed).toBe(1);
+  });
 });
 
 describe("processes holding a worktree", () => {

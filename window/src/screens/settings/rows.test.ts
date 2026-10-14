@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { NAV, PAGES, TOP_PAGES, pageFor, pageShown, type PageId } from "./nav";
-import { agentsWork } from "./pages/general";
+import { APPEARANCE_ROWS as CLASSIC_APPEARANCE } from "../../places/settings/set1/appearance-rows";
+import { ASK_BEFORE_DELETE_KEY, agentsWork, askBeforeDeleting, checklistShown } from "./pages/general";
 import { ROWS, cardRows, hintFor, pageFirstLevel, rowLabel, rowLevel, type Row } from "./rows";
 
 /** The keys the engine keeps in its schema history but that do nothing (engine/src/config/dead-config-keys.test.ts). */
@@ -79,6 +80,122 @@ describe("settings row table", () => {
     expect(pageFirstLevel("seedbank", {})).toBeNull();
   });
 
+  it("keeps Classic General's four controls, each on its card and on the key Classic uses (#952)", () => {
+    const at = (id: string) => ROWS.find((r) => r.id === id);
+    // Starting up: "Start Branch when I sign in" (Private #454 F), which opens quietly in the tray: the desktop app's
+    // startWithWindows switch.
+    const start = at("general.start.with-computer");
+    expect(start).toMatchObject({ card: "Starting up", level: 0, control: "toggle", source: { kind: "desktop", name: "startWithWindows" } });
+    expect(start?.label).toBe("Start Branch when I sign in");
+    expect(start?.help).toBe("Opens quietly in the tray.");
+    // Projects: Classic's Edit for a project's instructions was greyed; it stays a Coming row with the call it waits for.
+    const projects = at("general.projects.instructions");
+    expect(projects).toMatchObject({ card: "Projects", level: 0, source: { kind: "coming" } });
+    expect(projects?.source.kind === "coming" && projects.source.need).toMatch(/project's own instructions/);
+    // Writing: Show "Finish setting up", the person's look "checklist" (false hides it, null puts the default back).
+    expect(at("general.writing.finish-setup")).toMatchObject({ card: "Writing", level: 0, control: "toggle", source: { kind: "look", key: "checklist" } });
+    expect(checklistShown.read(undefined)).toBe(true);
+    expect(checklistShown.read(false)).toBe(false);
+    expect([checklistShown.write(true), checklistShown.write(false)]).toEqual([null, false]);
+    // The conversation (Advanced): Ask before deleting, the device key the delete dialog reads ("0" = don't ask).
+    expect(ASK_BEFORE_DELETE_KEY).toBe("branch.askBeforeDelete");
+    expect(at("general.conversation.ask-delete")).toMatchObject({ card: "The conversation", level: 1, control: "toggle", source: { kind: "device", key: ASK_BEFORE_DELETE_KEY } });
+    expect([askBeforeDeleting.read(null), askBeforeDeleting.read("0")]).toEqual([true, false]);
+    expect([askBeforeDeleting.write(true), askBeforeDeleting.write(false)]).toEqual([null, "0"]);
+    // Each card now draws these rows instead of a whole-card Coming mark.
+    expect(cardRows("general", "Starting up", 0, {}).map((r) => r.id)).toContain("general.start.with-computer");
+    expect(cardRows("general", "Projects", 0, {}).map((r) => r.id)).toEqual(["general.projects.instructions"]);
+    expect(cardRows("general", "Writing", 0, {}).map((r) => r.id)).toEqual(["general.writing.finish-setup"]);
+    expect(cardRows("general", "The conversation", 0, {})).toEqual([]);
+    expect(cardRows("general", "The conversation", 1, {}).map((r) => r.id)).toContain("general.conversation.ask-delete");
+  });
+
+  it("keeps every Classic Accounts control on the R1 Accounts page, drawn by the page or Coming with its need (#952, #976)", () => {
+    const page = ROWS.filter((r) => r.page === "accounts");
+    const labels = new Set(page.map((r) => r.label));
+    // Each control Classic's Accounts page draws (accounts.tsx, accounts-more.tsx, accounts-select.tsx, coding-apps.tsx,
+    // own-accounts.tsx, GitHubSettings.tsx), by its title or button.
+    const classic = [
+      "Add an account", "Test it", "Answer first", "Rename", "Which Trunks use it", "Sign out", "Select accounts", "Pause",
+      "Move to the next account in the list", "Fall back to this computer", "Each service’s terms", "Which account goes next",
+      "Your own accounts", "Add your own account", "Claude Code", "Codex", "Gemini CLI", "Check again", "Where each sign-in comes from",
+      "GitHub", "Permissions", "Access expires", "Connect your keepoak.com account",
+      "Which account each Trunk uses", "Helpers keep their account", "Pick by what the task needs", "Fallback keys", "Resting now",
+      "Which sign-in each request used", "Organisation", "A customer’s ChatGPT account on a KeepOak computer",
+      "A command that makes a sign-in", "On a build server, sign in with", "Accept sign-ins from your editor", "This Branch’s identity",
+      "Sign-ins through the Gateway", "Settings from another Branch", "Keep service settings in step on my devices",
+      "Use a model from a hub for one run", "Region", "Install a service’s package when needed", "Each account keeps its own folder",
+      "Point your coding apps at Branch",
+    ];
+    for (const title of classic) expect(labels.has(title), title).toBe(true);
+    // Each working control is a row the page draws (accounts-live.tsx), naming the calls it makes; what Classic greys
+    // names the call it waits for.
+    const at = (id: string) => page.find((r) => r.id === id);
+    for (const row of page) {
+      expect(["slot", "coming"], row.id).toContain(row.source.kind);
+      if (row.source.kind === "coming") expect(row.source.need, row.id).toMatch(/^(window|engine): /);
+    }
+    expect(at("accounts.apps.codex")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["config.patch"]) });
+    expect(at("accounts.order.sign-out")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["models.authLogout"]) });
+    expect(at("accounts.order.answer-first")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["models.authOrderSet"]) });
+    expect(at("accounts.order.test")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["models.probe"]) });
+    for (const id of ["accounts.order.rename", "accounts.order.pause", "accounts.keepoak.connect"]) expect(at(id)?.source.kind, id).toBe("coming");
+    // Classic's levels: Terms and Accounts, more at Advanced; Which goes next, the sources and Accounts, technical at Technical.
+    expect(cardRows("accounts", "Accounts, more", 0, {})).toEqual([]);
+    expect(cardRows("accounts", "Accounts, more", 1, {}).length).toBeGreaterThan(0);
+    expect(cardRows("accounts", "Accounts, technical", 1, {})).toEqual([]);
+    for (const card of ["Order Branch uses them in", "When one runs out", "Which account goes next", "Your own accounts", "Coding apps on this computer",
+      "Where each sign-in comes from", "Terms", "GitHub", "keepoak.com", "Accounts, more", "Accounts, technical"]) {
+      expect(cardRows("accounts", card, 2, {}).length, card).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps every Classic Appearance control on the R1 Appearance page, on the key Classic uses (#952)", () => {
+    const page = ROWS.filter((r) => r.page === "appearance");
+    const labels = new Set(page.map((r) => r.label));
+    // Classic draws these as pictures or a gallery tile, not a control; Light or dark is Classic's "Match this computer" mirrors.
+    const notControls = new Set(["Pictures around Branch"]);
+    const renamed: Record<string, string> = { "Match this computer": "Light or dark" };
+    const classic = CLASSIC_APPEARANCE.map((e) => e.title).filter((t) => !notControls.has(t));
+    expect(classic.length).toBeGreaterThan(40);
+    for (const title of classic) expect(labels.has(renamed[title] ?? title), title).toBe(true);
+    // Every one of Classic's look keys is a row on the same key (or Coming, where Classic greys it).
+    const lookKeys = ["reduceTransparency", "contrast", "agentSize", "bg", "season", "size", "petSounds", "show.usage", "show.gateway", "show.gfx", "show.projects", "show.live",
+      "show.statusbar", "still", "scenery", "msgLook", "dir", "math", "scroll", "codeCol", "tabs", "ch.act", "ch.move", "ch.touch", "ch.cap", "headlines",
+      "accent", "scene", "scrim", "see", "fontUi", "fontChat", "pet", "petName", "agentShown", "askDelete"];
+    const wired = new Set(page.flatMap((r) => (r.source.kind === "look" ? [r.source.key] : [])));
+    for (const key of lookKeys) expect(wired.has(key), key).toBe(true);
+    // Classic greys these: they stay Coming rows with the call they wait for, never a whole-card placeholder.
+    const at = (id: string) => page.find((r) => r.id === id);
+    for (const id of ["appearance.reading.editor-theme", "appearance.window.kiosk", "appearance.window.frame", "appearance.tray.menu", "appearance.language.pick"]) {
+      expect(at(id)?.source.kind, id).toBe("coming");
+    }
+    // Classic's controls with more than a key are drawn by the page itself (#976), each naming the calls it makes.
+    for (const id of ["appearance.theme.mode", "appearance.theme.pick", "appearance.background.preview", "appearance.pet.had", "appearance.characters.each-trunk", "appearance.list.threads", "appearance.list.small-model"]) {
+      expect(at(id)?.source.kind, id).toBe("slot");
+    }
+    // Back to the default removes the choice, as Classic's SpecRow does; the theme's own accent and font are no choice.
+    const contrast = at("appearance.theme.contrast");
+    expect(contrast).toMatchObject({ card: "Theme", control: "toggle", source: { kind: "look", key: "contrast" } });
+    expect([contrast?.codec?.read(undefined), contrast?.codec?.write(false), contrast?.codec?.write(true)]).toEqual([false, null, true]);
+    const accent = at("appearance.theme.accent");
+    expect([accent?.codec?.read(null), accent?.codec?.write("theme"), accent?.codec?.write("#2f8f5b")]).toEqual(["theme", null, "#2f8f5b"]);
+    expect(at("appearance.reading.size")).toMatchObject({ control: "select", source: { kind: "look", key: "size" } });
+    expect(at("appearance.background.behind")?.options?.map((o) => o.v)).not.toContain("own");
+    expect(at("appearance.pet.name")?.codec?.write("  Hazel ")).toBeNull();
+    // No pet and no done cheer until the person picks one: the default is "none", picking it removes the choice.
+    expect([at("appearance.pet.pick")?.codec?.read(undefined), at("appearance.pet.pick")?.codec?.write("otter"), at("appearance.pet.pick")?.codec?.write("none")]).toEqual(["none", "otter", null]);
+    // There is no Let it roam switch: picking a pet turns it on, so the roam row is gone from the page.
+    expect(at("appearance.pet.roam")).toBeUndefined();
+    expect(at("appearance.characters.shown")).toMatchObject({ control: "toggle", source: { kind: "look", key: "agentShown" }, fallback: false });
+    expect(at("appearance.characters.cheer")).toMatchObject({ card: "Characters", label: "Celebrate when a task finishes", control: "toggle", source: { kind: "look", key: "cheer" }, fallback: false });
+    // Each Classic card now draws rows: none of the page's Classic cards is empty at Technical.
+    for (const card of ["Theme", "Background", "Reading", "The pet", "Characters", "What’s shown", "The list", "Window", "Tray", "Language"]) {
+      expect(cardRows("appearance", card, 2, {}).length, card).toBeGreaterThan(0);
+    }
+    expect(cardRows("appearance", "Theme", 0, {}).map((r) => r.id)).toContain("appearance.theme.contrast");
+  });
+
   it("maps Show agents’ work to the two engine defaults and back", () => {
     expect(agentsWork.read(undefined)).toBe("normal");
     expect(agentsWork.read({ reasoningDefault: "on" })).toBe("thinking");
@@ -96,7 +213,7 @@ describe("settings nav", () => {
   });
 
   it("sends old page ids to their new page", () => {
-    const old: [string, PageId][] = [["people", "who"], ["gateway", "remote"], ["usage", "privacy"], ["seasons", "history"], ["trunksP17", "trunks"], ["general", "general"], ["nope", "general"], ["__proto__", "general"]];
+    const old: [string, PageId][] = [["people", "who"], ["gateway", "remote"], ["usage", "privacy"], ["seasons", "learning"], ["trunksP17", "trunks"], ["general", "general"], ["nope", "general"], ["__proto__", "general"]];
     for (const [from, to] of old) expect(pageFor(from)).toBe(to);
   });
 

@@ -4,8 +4,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
+import { PAGES } from "./nav";
 import type { Row } from "./rows";
-import { SECTION_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
+import { MAKE_DEFAULT_COMING, SECTION_COMING, SettingsFrame, type SettingsFrameProps } from "./SettingsFrame";
 import type { PageSlots } from "./slots";
 import { NOTHING_MATCHES } from "./search";
 import { INVALID_CONFIG, NEEDS_ADMIN } from "./useRow";
@@ -58,11 +59,15 @@ describe("SettingsFrame", () => {
     expect($("[data-page=developer]")).toBeNull();
   });
 
-  it("puts one glass card per section, with no rule lines, and Coming for sections not wired yet", async () => {
+  it("puts one glass card per section in the preview's order, with Coming for General's sections not wired yet (#1049)", async () => {
     await mount(engineOf().engine);
     const secs = $$(".r1s-sec");
-    expect(secs.map((s) => s.querySelector("h2")?.textContent)).toContain("Show agents’ work");
-    expect(secs.map((s) => s.querySelector("h2")?.textContent)).not.toContain("Waiting line");
+    const titles = secs.map((s) => s.querySelector("h2")?.textContent ?? "");
+    // preview.html PG.general: the card list, in order. Waiting line has only Advanced/Technical rows, so Regular skips it.
+    const PREVIEW_GENERAL = ["Pinned", "Show agents’ work", "Starting up", "Projects", "Keyboard", "Writing", "The conversation", "Summaries of older turns", "History repair", "Waiting line", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"];
+    expect(titles).toEqual(PREVIEW_GENERAL.filter((t) => titles.includes(t)));
+    expect(titles).toEqual(expect.arrayContaining(["Pinned", "Show agents’ work", "Keyboard", "Clipboard history", "Quick ask", "Controllers", "Cover the screen"]));
+    expect(titles).not.toContain("Waiting line");
     const keyboard = secs.find((s) => s.querySelector("h2")?.textContent === "Keyboard")!;
     expect(keyboard.querySelector("[data-coming]")?.getAttribute("aria-disabled")).toBe("true");
     expect(keyboard.textContent).toContain(SECTION_COMING("Keyboard"));
@@ -96,7 +101,7 @@ describe("SettingsFrame", () => {
     expect(work.querySelector(":scope > [data-row='general.work.mode']")).not.toBeNull();
   });
 
-  it("makes a Trunk the default from search with its own button, and shows it as Coming without a handler", async () => {
+  it("makes a Trunk the default from search with its own button, and shows it as Coming without a handler (#1049)", async () => {
     const onTrunk = vi.fn();
     const trunks = [{ id: "t1", name: "Juniper" }, { id: "t2", name: "Juno", isDefault: true }];
     await act(async () => root.render(<SettingsFrame engine={engineOf().engine} trunks={trunks} onTrunk={onTrunk} />));
@@ -116,7 +121,8 @@ describe("SettingsFrame", () => {
     await type("Juniper");
     const off = $(".r1s-mkdef");
     expect(off.getAttribute("aria-disabled")).toBe("true");
-    expect(off.getAttribute("data-coming")).toBeTruthy();
+    expect(off.getAttribute("data-coming")).toBe(MAKE_DEFAULT_COMING);
+    expect($("[data-hit='t1']")).not.toBeNull();
   });
 
   it("saves Show agents’ work as the two engine defaults in one patch", async () => {
@@ -270,5 +276,42 @@ describe("SettingsFrame custom pages", () => {
     expect(String(errors[0])).toContain('Settings row id "general.work.show" is used twice');
     expect(el.querySelector(".r1set")).toBeNull();
     await act(async () => other.unmount());
+  });
+});
+
+describe("SettingsFrame header on slot pages (#1049)", () => {
+  it("draws the frame's title, the approved lede and Learn more above every slot page, with its sections in On this page", async () => {
+    const pages: PageSlots = {
+      goto: { component: () => <div><section><h2>Places</h2></section><section><h2>Recent</h2></section></div> },
+      seedbank: { component: () => <div><h2>Agents</h2></div> },
+    };
+    for (const [id, sections] of [["goto", ["Places", "Recent"]], ["seedbank", ["Agents"]]] as const) {
+      await act(async () => root.render(<SettingsFrame engine={engineOf().engine} page={id} pages={pages} />));
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+      // One title on the page, the frame's, with preview PG's lede and a Learn more.
+      expect([...host.querySelectorAll("h1")].map((h) => h.textContent)).toEqual([PAGES[id].title]);
+      expect(host.querySelector(".r1s-head .r1s-lede")?.textContent).toContain(PAGES[id].lede);
+      const learn = host.querySelector<HTMLButtonElement>(".r1s-head .r1s-learn")!;
+      expect(learn.textContent).toBe("Learn more");
+      await act(async () => learn.click());
+      const sheet = host.querySelector(".r1s-help")!;
+      expect(sheet.getAttribute("aria-label")).toBe(`About ${PAGES[id].title}`);
+      expect([...sheet.querySelectorAll("li button")].map((b) => b.textContent)).toEqual([...sections]);
+      expect([...sheet.querySelectorAll(".r1s-btn")].map((b) => b.textContent)).toContain("Ask a Trunk");
+      await act(async () => learn.click());
+    }
+  });
+
+  it("offers Trunks with Make default and New Trunk, and features, when the host passes them", async () => {
+    const onTrunk = vi.fn(), onOpenFeature = vi.fn();
+    await act(async () => root.render(<SettingsFrame engine={engineOf().engine} trunks={[{ id: "t1", name: "Newt" }]} features={[{ id: "F-1", name: "New tab page", description: "Coming" }]} onTrunk={onTrunk} onOpenFeature={onOpenFeature} />));
+    const input = host.querySelector<HTMLInputElement>(".r1s-search input")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "New"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    const group = (name: string) => host.querySelector(`[role=group][aria-label="${name}"]`);
+    expect([...group("Trunks")!.querySelectorAll(".r1s-res b")].map((b) => b.textContent)).toEqual(["Newt", "New Trunk"]);
+    expect(group("Trunks")!.querySelector(".r1s-mkdef")?.textContent).toBe("Make default");
+    expect(group("Features")!.textContent).toContain("New tab page");
+    await act(async () => group("Features")!.querySelector<HTMLButtonElement>(".r1s-res")!.click());
+    expect(onOpenFeature).toHaveBeenCalledWith("F-1");
   });
 });

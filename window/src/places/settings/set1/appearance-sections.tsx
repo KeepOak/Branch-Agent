@@ -28,10 +28,14 @@ export function SpecRow({ r, look, disabled }: { r: RowSpec; look: Look; disable
 export function AgentsSec({ look }: { look: Look }) {
   const save = useSaveRunner();
   const shown = look.val("agentShown", shellShown()) === true;
+  const cheer = look.val("cheer", false) === true;
   return (
     <Sec title="Agents">
       <Ctl title="Show the agent beside the conversation" sub="The Trunk’s character shows what it is doing." help="It acts out what the Trunk is doing: thinking, searching, reading, working, waiting for you, celebrating, resting.">
         <Switch checked={shown} label="Show the agent beside the conversation" onChange={(on) => void save(() => look.store.set("agentShown", on))} />
+      </Ctl>
+      <Ctl title="Celebrate when a task finishes" sub="A small card with the Trunk’s face shows when a task is done." help="Off until you turn it on. It never shows for a run you stopped or one that failed.">
+        <Switch checked={cheer} label="Celebrate when a task finishes" onChange={(on) => void save(() => look.store.set("cheer", on))} />
       </Ctl>
       <SpecRow r={rowOf("agentSize")} look={look} />
     </Sec>
@@ -39,9 +43,9 @@ export function AgentsSec({ look }: { look: Look }) {
 }
 function shellShown(): boolean {
   try {
-    return localStorage.getItem("branch.characterShown") !== "0";
+    return localStorage.getItem("branch.characterShown") === "1";
   } catch {
-    return true; // storage blocked: the shell shows it
+    return false; // storage blocked: the character stays hidden
   }
 }
 
@@ -49,7 +53,7 @@ const GROVE: [string, string, string | null][] = [["auto", "By the season", null
 const PAINTED: [string, string][] = [["summer", "Summer Meadow"], ["rain", "Rainy Forest"], ["lake", "Mountain Lake"], ["blossom", "Blossoming Grove"], ["canyon", "Desert Canyon"], ["snownight", "Snowy Night"], ["bamboo", "Bamboo Grove"], ["hills", "Sunflower Hills"]];
 const QUIET: [string, string, string][] = [["night17-lake", "Still lake at night", "lake-night"], ["night17-highland", "Moonlit highland", "highland-moon"], ["day17-sea", "Morning sea", "sea-morning"], ["day17-meadow", "Meadow afternoon", "meadow-afternoon"], ["glow17-amber", "Amber glass", "glow-amber"], ["season17-snow", "First snow", "first-snow"]];
 /** The painted scenes: id, name, picture (none for "By the season", which shows the four groves), and whether it is new. */
-const SCENES: { id: string; name: string; file: string | null; fresh?: boolean }[] = [
+export const SCENES: { id: string; name: string; file: string | null; fresh?: boolean }[] = [
   ...GROVE.map(([id, name, file]) => ({ id, name, file })),
   ...PAINTED.map(([id, name]) => ({ id, name, file: `/assets/bg/grove-${id}.webp` })),
   ...QUIET.map(([id, name, f]) => ({ id, name, file: `/assets/art17/bg/${f}.webp`, fresh: true })),
@@ -125,7 +129,7 @@ function RangeRow({ look, k, def, max, title, label, sub, off }: { look: Look; k
   );
 }
 
-const FONTS: Opt[] = [["theme", "The theme’s own"], ["geist", "Geist"], ["instrument-sans", "Instrument Sans"], ["dm-sans", "DM Sans"], ["ibm-plex-sans", "IBM Plex Sans"], ["space-grotesk", "Space Grotesk"],
+export const FONTS: Opt[] = [["theme", "The theme’s own"], ["geist", "Geist"], ["instrument-sans", "Instrument Sans"], ["dm-sans", "DM Sans"], ["ibm-plex-sans", "IBM Plex Sans"], ["space-grotesk", "Space Grotesk"],
   ["atkinson-hyperlegible", "Atkinson Hyperlegible · Distinct shapes for easy reading"], ["fraunces", "Fraunces"], ["lora", "Lora"], ["jetbrains-mono", "JetBrains Mono"], ["system", "System · No web font"]].map(([id, label]) => ({ id, label }));
 
 export function ReadingSec({ look }: { look: Look }) {

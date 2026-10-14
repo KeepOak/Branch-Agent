@@ -564,20 +564,102 @@ export function touchedHarvestTests(lane, changedFiles) {
   return harvestTests(lane).filter(file => changed.has(file) || listed.has(file));
 }
 
-// The pilot added roughly 4.7 minutes to two named shards (about 11 files each).
-// Four files per PR shard stay below ten minutes; eight nightly files retain
-// headroom under fifteen minutes while extending the GitHub matrix growth ceiling.
-export const harvestFilesPerShard = { pr: 4, nightly: 8 };
+// Harvest shards are sized by expected time, not by file count. Seconds per engine file are rounded up from
+// the 2026-10-12 nightly job logs (job 114946830895 and job 114946831063). Files without a timing weigh
+// harvestUnlistedFileSeconds, the mean of the timed files without the 120 s timeout hang. Refresh this table
+// from CI logs when shard times drift.
+export const harvestFileSeconds = {
+  'extensions/agentsapi/agentsapi-harness.persistence.harvest.test.ts': 57,
+  'extensions/codex/src/conversation-binding.test.ts': 12,
+  'extensions/copilot/harness.harvest.test.ts': 17,
+  'extensions/copilot/src/attempt.harvest.test.ts': 4,
+  'extensions/copilot/src/attempt.test.ts': 4,
+  'extensions/discord/src/monitor/threading.auto-thread.test.ts': 40,
+  'extensions/matrix/src/matrix/device-health.test.ts': 1,
+  'extensions/qa-channel/src/outbound.test.ts': 1,
+  'extensions/slack/src/monitor/events/interactions.test.ts': 2,
+  'extensions/team-reports/src/aggregate.test.ts': 1,
+  'extensions/telegram/src/polling-session.test.ts': 119,
+  'extensions/telegram/src/webhook.admission.test.ts': 110,
+  'extensions/telegram/src/webhook.callback-guards.test.ts': 141,
+  'extensions/telegram/src/webhook.dispatch.test.ts': 40,
+  'extensions/telegram/src/webhook.registration.test.ts': 70,
+  'extensions/telegram/src/webhook.topic-lanes.test.ts': 124,
+  'extensions/typesafe/src/transport.test.ts': 1,
+  'packages/agent-core/src/agent-loop.harvest.test.ts': 1,
+  'src/agents/agent-command.live-model-switch.harvest.test.ts': 80,
+  'src/agents/agent-command.live-model-switch.test.ts': 59,
+  'src/agents/embedded-agent-runner/compact.hooks.test.ts': 66,
+  'src/agents/embedded-agent-runner/compact.hooks.upstream-main.test.ts': 65,
+  'src/agents/embedded-agent-runner/lanes.harvest.test.ts': 1,
+  'src/channels/plugins/outbound/presentation-delivery.test.ts': 1,
+  'src/gateway/server-channels.test.ts': 3,
+  'src/plugin-sdk/channel-inbound.test.ts': 121,
+};
+export const harvestUnlistedFileSeconds = 20;
+// Whole-job budgets. Runner setup (runnerSetupSeconds.ubuntu) counts against each budget, so the tests get
+// the rest. PRs target six minutes and nightly runs ten, both under the 10 and 15 minute job timeouts.
+export const harvestShardBudgetSeconds = { pr: 6 * 60, nightly: 10 * 60 };
+export const harvestMaxShards = 64;
+
+export function harvestFileSecondsFor(file) {
+  return harvestFileSeconds[file] ?? harvestUnlistedFileSeconds;
+}
+
+function packHarvestShards(files, total) {
+  const bins = Array.from({ length: total }, () => ({ files: [], load: 0 }));
+  const ranked = [...files].sort((a, b) => harvestFileSecondsFor(b) - harvestFileSecondsFor(a) || (a < b ? -1 : 1));
+  for (const file of ranked) {
+    let lightest = bins[0];
+    for (const bin of bins) if (bin.load < lightest.load) lightest = bin;
+    lightest.files.push(file);
+    lightest.load += harvestFileSecondsFor(file);
+  }
+  return bins.map(bin => ({ files: bin.files.sort(), load: bin.load }));
+}
+
+/** Smallest shard count whose every shard fits the scope budget. Longest file first, onto the lightest shard.
+ *  Each shard holds at least one file: an empty shard would select nothing, and vitest then runs the whole lane. */
+export function planHarvestShards(files, scope) {
+  if (!files.length) return [];
+  const budget = harvestShardBudgetSeconds[scope] - runnerSetupSeconds.ubuntu;
+  const totalSeconds = files.reduce((sum, file) => sum + harvestFileSecondsFor(file), 0);
+  const ceiling = Math.min(files.length, harvestMaxShards);
+  for (let total = Math.max(1, Math.ceil(totalSeconds / budget)); total <= ceiling; total++) {
+    const bins = packHarvestShards(files, total);
+    if (bins.every(bin => bin.load <= budget)) return bins.map(bin => bin.files);
+  }
+  throw new Error(`Harvest cannot fit ${files.length} file(s) into ${harvestMaxShards} ${scope} shards within the ${budget}s test budget; split the slowest file`);
+}
+
+function harvestLaneFiles(lane, changedFiles) {
+  return changedFiles ? touchedHarvestTests(lane, changedFiles) : harvestTests(lane);
+}
+
 export function harvestMatrix(changedFiles) {
+  const scope = changedFiles ? 'pr' : 'nightly';
   const matrix = [];
   for (const lane of ['engine', 'window']) {
-    const files = changedFiles ? touchedHarvestTests(lane, changedFiles) : harvestTests(lane);
-    const total = Math.ceil(files.length / harvestFilesPerShard[changedFiles ? 'pr' : 'nightly']);
+    const total = planHarvestShards(harvestLaneFiles(lane, changedFiles), scope).length;
     for (let index = 0; index < total; index++) {
       matrix.push({ lane, shard: `${index + 1}/${total}` });
     }
   }
   return matrix;
+}
+
+/** The files one Harvest job runs. The job recomputes the same plan the matrix was built from, and refuses a
+ *  shard count that does not match it, so a stale or mismatched matrix fails instead of running the wrong files. */
+export function harvestShardFiles(lane, shardValue, changedFiles) {
+  const scope = changedFiles ? 'pr' : 'nightly';
+  const plan = planHarvestShards(harvestLaneFiles(lane, changedFiles), scope);
+  const shard = shardOf(shardValue);
+  if (shard.total !== plan.length) {
+    throw new Error(`Harvest ${lane} shard ${shardValue} does not match the ${plan.length}-shard plan`);
+  }
+  const files = plan[shard.index];
+  if (!files?.length) throw new Error(`Harvest ${lane} shard ${shardValue} has no files`);
+  return files;
 }
 
 export function capabilityTests() {

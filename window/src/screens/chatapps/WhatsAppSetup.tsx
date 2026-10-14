@@ -35,7 +35,7 @@ export function WhatsAppSetup({ engine, app, onClose }: { engine: WindowEngine; 
     return () => { live = false; clearTimeout(timer); wake?.(); };
   }, [engine, attempt]);
   return <WizardFrame app={app} steps={["Link", "Save"]} active={link.linked ? 1 : 0} onClose={() => onClose(link.linked)}>
-    {link.linked ? <><p>WhatsApp is linked.</p><Access engine={engine} app={app} /><button type="button" data-local="close" onClick={() => onClose(true)}>Done</button></> : <><p>Open WhatsApp on your phone → Settings → Linked devices → Link a device.</p>{link.qr ? <img className="r1-cw-qr" src={link.qr} width={220} height={220} alt="WhatsApp link code" /> : !link.error && <p role="status">Getting your link code…</p>}{link.message && <p role="status">{link.message}</p>}</>}
-    {link.error && <><p role="alert">{link.error}</p><button type="button" data-need="web.login.start" onClick={() => { setLink({ linked: false }); setAttempt(a => a + 1); }}>Try again</button></>}
+    {link.linked ? <><p className="g-label">WhatsApp is linked.</p><Access engine={engine} app={app} /><button type="button" data-local="close" onClick={() => onClose(true)}>Done</button></> : <><p className="g-label" data-lines>Open WhatsApp on your phone → Settings → Linked devices → Link a device.</p>{link.qr ? <img className="r1-cw-qr" src={link.qr} width={220} height={220} alt="WhatsApp link code" /> : !link.error && <p role="status" className="g-label">Getting your link code…</p>}{link.message && <p role="status" className="g-label" data-lines>{link.message}</p>}</>}
+    {link.error && <><p role="alert" className="g-label" data-lines>{link.error}</p><button type="button" data-need="web.login.start" onClick={() => { setLink({ linked: false }); setAttempt(a => a + 1); }}>Try again</button></>}
   </WizardFrame>;
 }

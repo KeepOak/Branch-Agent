@@ -20,6 +20,7 @@ import "./usage.css";
 import { DesktopCtl } from "../desktop-ctl";
 import { formatMoney } from "../../../format/money";
 import { forgetDeletedConversationWindow } from "../../../shell/own-window";
+import { trunkDisplayName } from "../../../connect/trunk-name";
 
 /* ---------- figures ---------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -59,7 +60,7 @@ function useQuery(engine: WindowEngine, method: string, params: unknown) {
 /** Trunk names by id, from agents.list. */
 function useNames(engine: WindowEngine): Map<string, string> {
   const agents = useLive<RecordValue>(engine, "agents.list", {}, []);
-  return useMemo(() => new Map(list(rec(agents.data).agents).map((a) => [str(a.id), str(rec(a.identity).name) || str(a.name) || str(a.id)])), [agents.data]);
+  return useMemo(() => new Map(list(rec(agents.data).agents).map((a) => [str(a.id), trunkDisplayName(a)])), [agents.data]);
 }
 
 const CHANNEL: Record<string, string> = {
@@ -1112,7 +1113,7 @@ function KeepingMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
       <Ctl title="Tidy the list" sub={str(g("mode")) === "warn" ? "Branch only tells you what it would tidy." : "Idle conversations leave the list; search still finds them."}>
         <Seg label="Tidy the list" value={str(g("mode")) === "warn" ? "warn" : "enforce"} options={[{ id: "enforce", label: "Do it" }, { id: "warn", label: "Only warn" }]} disabled={config.loading} onChange={(v) => void config.set(`${M}.mode`, v)} />
       </Ctl>
-      <Ctl title="Archive conversations idle for" sub="They leave the list; search still finds them."><Num label="Archive conversations idle for" unit="days" min={1} placeholder="30" value={asNum(daysFrom(g("pruneAfter") ?? ""))} onCommit={(v) => void config.set(`${M}.pruneAfter`, v === null ? null : `${v}d`)} /></Ctl>
+      <Ctl title="Archive conversations idle for" sub="They leave the list; search still finds them. Unset keeps them forever."><Num label="Archive conversations idle for" unit="days" min={1} value={asNum(daysFrom(g("pruneAfter") ?? ""))} onCommit={(v) => void config.set(`${M}.pruneAfter`, v === null ? null : `${v}d`)} /></Ctl>
       <Ctl title="Most conversations in the list" sub="The oldest idle ones are archived first past this."><Num label="Most conversations in the list" min={1} placeholder="5000" value={asNum(str(g("maxEntries")))} onCommit={(v) => void config.set(`${M}.maxEntries`, v === null ? null : Math.round(v))} /></Ctl>
       <Ctl title="Space for conversations, per Trunk" sub="Past 80%, the oldest archived transcripts are removed first."><Num label="Space for conversations, per Trunk" unit="GB" min={1} placeholder="10" value={asNum(gbFrom(g("maxDiskBytes") ?? ""))} onCommit={(v) => void config.set(`${M}.maxDiskBytes`, v === null ? null : `${v}gb`)} /></Ctl>
       <Ctl title="Try a tidy-up" sub="Lists what would be archived or removed, changing nothing." off={NO_DRY}><Btn sm>Show me</Btn></Ctl>
@@ -1183,7 +1184,7 @@ const SESSKEYS: Key[] = [
   ["session.resetByType", "The same, per kind of chat (direct, group, thread).", "json", null, "{}"],
   ["session.resetByChannel", "The same, per chat app.", "json", null, "{}"],
   ["session.maintenance.mode", "Tidy the list, or only warn.", "sel", ["enforce", "warn"], "enforce"],
-  ["session.maintenance.pruneAfter", "Time before an untouched conversation is archived.", "txt", null, "30d"],
+  ["session.maintenance.pruneAfter", "Time before an untouched conversation is archived.", "txt", null, "Forever"],
   ["session.maintenance.archiveDashboardAfter", "Time before an idle conversation in this window is archived.", "txt", null, "7d"],
   ["session.maintenance.maxEntries", "Most conversations in the list.", "num", null, "5000"],
   ["session.maintenance.preserveRecent", "Conversations active within this time are never tidied.", "txt", null, "unset"],

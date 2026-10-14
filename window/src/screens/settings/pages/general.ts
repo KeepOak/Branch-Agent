@@ -1,11 +1,18 @@
 // Settings › General: the rows of the R1 General page that have an engine key or a person's pref behind them. Keys and
-// copy follow the Classic General page (places/settings/set1/general*.tsx), whose rows are wired and tested; cards with
-// their own component (Pinned, Starting up, Projects, Keyboard) are drawn by the page, not by this table.
+// copy follow the Classic General page (places/settings/set1/general*.tsx), whose rows are wired and tested. Starting up,
+// Projects, Writing and Ask before deleting carry Classic's four controls on the same keys (#952).
 import { ttlMinutes } from "../../../places/settings/set1/general-summaries";
+import { platformName } from "../../../setup/steps-later";
 import type { Codec, Row } from "../rows";
 
 const onOff: Codec = { read: (v) => (v ?? "off") !== "off", write: (on) => (on ? "on" : "off") };
 const notFalse: Codec = { read: (v) => v !== false, write: (on) => on === true };
+/** Overview's "Finish setting up" checklist, the look's "checklist": shown unless it is false; on puts the default back. */
+export const checklistShown: Codec = { read: (v) => v !== false, write: (on) => (on ? null : false) };
+/** The delete dialog's own key on this device ("Don't ask me again" writes "0"); on removes it, as Classic does. */
+export const askBeforeDeleting: Codec = { read: (v) => v !== "0", write: (on) => (on ? null : "0") };
+/** The device key the delete dialog reads (shell/ConfirmDelete.tsx). */
+export const ASK_BEFORE_DELETE_KEY = "branch.askBeforeDelete";
 
 /** Normal hides thoughts and steps, Thinking shows the thinking, Verbose shows every step too. Two engine defaults,
  *  saved together as one merge into agents.defaults (sibling keys stay as they are). */
@@ -17,6 +24,26 @@ export const agentsWork: Codec = {
   },
   write: (mode) => ({ reasoningDefault: mode === "normal" ? "off" : "on", verboseDefault: mode === "verbose" ? "on" : "off" }),
 };
+
+/**
+ * Always on (Private #454 F): how Branch keeps working, in plain words, on the desktop app's switches. Defaults on,
+ * except keeping awake on battery and, on Linux only, keeping working when nobody is signed in.
+ */
+export function startingUpRows(platform: string = platformName()): Row[] {
+  const card = "Starting up";
+  return [
+    { id: "general.start.keep-working", page: "general", card, label: "Keep working when Branch is closed", help: "Your Trunks keep going after you close the window. Off: closing Branch stops them.", level: 0, control: "toggle",
+      source: { kind: "desktop", name: "keepWorking" }, fallback: true },
+    { id: "general.start.with-computer", page: "general", card, label: "Start Branch when I sign in", help: "Opens quietly in the tray.", level: 0, control: "toggle",
+      source: { kind: "desktop", name: "startWithWindows" }, fallback: true },
+    { id: "general.start.keep-awake", page: "general", card, label: "Keep this computer awake while Trunks work", help: "Only while a Trunk is working, and only when plugged in. The screen can still lock.", level: 0, control: "toggle",
+      source: { kind: "desktop", name: "keepAwake" }, fallback: true },
+    { id: "general.start.keep-awake-battery", page: "general", card, label: "Also on battery", help: "Keeps it awake while a Trunk works on battery too.", level: 1, control: "toggle",
+      source: { kind: "desktop", name: "keepAwakeOnBattery" }, fallback: false },
+    ...(platform === "Linux" ? [{ id: "general.start.signed-out", page: "general", card, label: "Keep working when nobody is signed in", help: "Your Trunks start after a restart, before anyone signs in.", level: 0, control: "toggle",
+      source: { kind: "desktop", name: "keepWorkingSignedOut" }, fallback: false } satisfies Row] : []),
+  ];
+}
 
 const WORK = "Show agents’ work";
 const CONVO = "The conversation";
@@ -43,6 +70,14 @@ export const GENERAL_ROWS: Row[] = [
   { id: "general.work.chat-thinking", page: "general", card: WORK, label: "Show thinking in chats", help: "Off until you choose: it posts the model’s reasoning.", level: 1, control: "toggle",
     source: { kind: "coming", need: "config: a thinking switch for every chat app", reason: "Showing the thinking in chat apps comes in a later update." } },
 
+  ...startingUpRows(),
+
+  { id: "general.projects.instructions", page: "general", card: "Projects", label: "Project instructions", help: "What a Trunk reads first when it works in one of your projects.", level: 0, control: "custom",
+    source: { kind: "coming", need: "engine: a method to read and save a project's own instructions (projects.list only lists projects)", reason: "Editing a project’s own instructions from here comes in a later update." } },
+
+  { id: "general.writing.finish-setup", page: "general", card: "Writing", label: "Show “Finish setting up”", help: "The checklist on Overview until every step is done.", level: 0, control: "toggle",
+    source: { kind: "look", key: "checklist" }, codec: checklistShown },
+
   { id: "general.conversation.vim", page: "general", card: CONVO, label: "Vim keys in the message box", help: "Normal and insert modes, for people who type that way.", level: 1, control: "toggle", source: { kind: "pref", key: "conversation.vimKeys" }, fallback: false },
   { id: "general.conversation.times", page: "general", card: CONVO, label: "Message times", help: "When a message was sent, and when a task started and ended.", level: 1, control: "segmented",
     options: [{ v: "hover", label: "On hover" }, { v: "always", label: "Always" }, { v: "never", label: "Never" }], source: { kind: "pref", key: "conversation.messageTimes" }, fallback: "hover" },
@@ -51,6 +86,8 @@ export const GENERAL_ROWS: Row[] = [
     source: { kind: "config", path: "messages.queue.mode" }, fallback: "steer" },
   { id: "general.conversation.send", page: "general", card: CONVO, label: "Send with", help: "Enter sends and Shift Enter adds a line, or the other way round.", level: 1, control: "segmented",
     options: [{ v: "enter", label: "Enter" }, { v: "ctrl", label: "Ctrl Enter" }], source: { kind: "pref", key: "conversation.sendWith" }, fallback: "enter" },
+  { id: "general.conversation.ask-delete", page: "general", card: CONVO, label: "Ask before deleting a conversation", help: "Applies to deleting from the list. Kept on this device.", level: 1, control: "toggle",
+    source: { kind: "device", key: ASK_BEFORE_DELETE_KEY }, codec: askBeforeDeleting },
 
   { id: "general.summaries.on", page: "general", card: SUMS, label: "Summarise older turns by themselves", help: "Keeps long conversations fast. The summary card shows what was kept.", level: 1, control: "toggle", source: { kind: "config", path: `${C}.enabled` }, codec: notFalse },
   { id: "general.summaries.keep", page: "general", card: SUMS, label: "Always keep the latest", help: "The newest part of the conversation, kept word for word.", level: 1, control: "number", unit: "tokens", source: { kind: "config", path: `${C}.keepRecentTokens` }, fallback: 20_000 },

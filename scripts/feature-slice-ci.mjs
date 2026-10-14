@@ -10,6 +10,9 @@ import { assertLocalModules, engineRoot, gitHead, preparePnpm, publishWindowDepe
   toolingRoot, verifiedExceptionFlags, windowRoot } from './feature-batch-ci-runtime.mjs';
 
 const nodeHeap = '--max-old-space-size=1024';
+// The strict window build type-checks the whole R1 renderer in one tsc process; 1 GB stopped being enough
+// once R1 landed (heap out-of-memory on #1363, #1367, #1373). Hosted runners have 16 GB.
+const windowTscHeap = '--max-old-space-size=3072';
 const baseEnv = { ...process.env, NODE_OPTIONS: nodeHeap, TSX_DISABLE_CACHE: '1',
   TSX_TSCONFIG_PATH: path.join(engineRoot, 'tsconfig.json'), GOMEMLIMIT: '2GiB', GOMAXPROCS: '2',
   // Cold hosted Mac source graphs can exceed 150s; the owner still joins before the outer 330s deadline.
@@ -231,7 +234,7 @@ async function windowChecks(selected, pnpm, scratch, receipt, env) {
     [nodeHeap, '--import', './scripts/tsx.mjs', 'scripts/build-workspace-package.mts', name],
     engineRoot, env, scratch, receipt, `canonical-${name}-build`);
   // Use both original renderer project profiles. Build-info caches live in owned node_modules.
-  await execute(process.execPath, [nodeHeap, path.join(windowRoot, 'node_modules/typescript/bin/tsc'),
+  await execute(process.execPath, [windowTscHeap, path.join(windowRoot, 'node_modules/typescript/bin/tsc'),
     '--build', path.join(windowRoot, 'tsconfig.json'), '--verbose'], windowRoot, env, scratch, receipt, 'strict-window');
   const files = selected.flatMap(slice => slice.vitest);
   const config = path.join(scratch, 'window-vitest.config.mjs');

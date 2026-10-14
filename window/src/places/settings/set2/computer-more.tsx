@@ -119,7 +119,7 @@ const CODE_COMMITS: SecSpec = { t: "Code and commits", lv: 0, rows: [
 
 const NETWORK_MORE: SecSpec = { t: "Network, more", group: "Network", lv: 1, rows: [
   { t: "Its computer joins a private network", sub: "So a Trunk’s computer reaches your private machines without opening them to the internet.", k: "seg", opts: [{ v: "off", l: "Off" }, { v: "tailscale", l: "Tailscale" }, { v: "netbird", l: "NetBird" }], off: "Needs the engine to join a Trunk’s computer to a private network." },
-  { t: "Previews on your other computers", sub: "See a preview server running on taofik-ai, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Needs the engine to forward preview servers from other computers." },
+  { t: "Previews on your other computers", sub: "See a preview server running on another of your computers, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Previews on your other computers comes in a later update." },
 ] };
 
 const ON_MORE: SecSpec = { t: "On a computer, more", group: "On a computer", showHeading: false, lv: 1, rows: [
@@ -217,10 +217,12 @@ const LIMITS_TECH: SecSpec = { t: "Limits, technical", group: "Limits", lv: 2, r
   { t: "Limits for commands", sub: "On Windows, commands run inside a job with a memory and processor ceiling.", k: "btn", btn: "Show limits", off: "Needs the engine to report the limits it puts on commands." },
 ] };
 
-export function ComputerMore(props: SettingsPageProps) {
+/** The sections drawn below the top of the page: all of them, or only one part's (computer-parts.tsx). */
+export function ComputerMore(props: SettingsPageProps & { part?: ComputerPart }) {
   const lv = lvOf(props.level);
   const c: Ctx = { engine: props.engine, lv, props };
-  return <>{SECTIONS.filter((s) => s.lv <= lv).map((s) => <SecView key={s.t} s={s} c={c} />)}</>;
+  const { part } = props;
+  return <>{SECTIONS.filter((s) => s.lv <= lv && (!part || partOf(s) === part)).map((s) => <SecView key={s.t} s={s} c={c} />)}</>;
 }
 
 /** A section shows only when it has a live row or a live body; a section of greyed rows is not drawn at all. */
@@ -886,8 +888,22 @@ const SECTIONS: SecSpec[] = [
   ON_MORE, USING_MORE, PHONES_SMALL, MORE_PLACES, USING_TECH, WHERE_MORE, SCRIPTS, SEALED_TECH, LIMITS_TECH,
 ];
 
-export const ROWS: RowEntry[] = SECTIONS.flatMap((s) => [
-  { page: "computer", title: s.t, sec: s.t, group: s.group ?? s.t, lv: s.lv },
-  ...(s.rows ?? []).filter((r) => r.k !== "hint").map((r) => ({ page: "computer", title: r.t, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, r.lv ?? 0) as Lv })),
-  ...(s.titles ?? []).map(([title, lv]) => ({ page: "computer", title, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, lv) as Lv })),
+/** The sections the R1 Devices page draws on its cards (screens/settings/pages/devices.ts). */
+export const DEVICE_SECS = { CLOUD, LET_TRUNKS, PHONES_LENT, EVERYTHING, WHO, LENT_TECH, ALLOWING, NETWORK_MORE, TECHNICAL, PHONES_SMALL, MORE_PLACES, WHERE_MORE, SCRIPTS, SEALED_TECH, LIMITS_TECH };
+
+/** The parts the page splits into where Settings has a page for each: Browser & screen, Coding, and the rest (Devices). */
+export type ComputerPart = "browser" | "coding" | "devices";
+const BROWSER_PART: ReadonlySet<SecSpec> = new Set([ON_COMPUTER, ON_MORE, USING_SCREEN, USING_MORE, USING_TECH, SCREEN_TECH, LOGBOOK, BROWSER_BASIC, ...BROWSER_MORE, ...BROWSER_TECH]);
+const CODING_PART: ReadonlySet<SecSpec> = new Set([CODE_COMMITS, ...CODE_SECS, CODE_TECH]);
+/** The part a section belongs to. */
+export const partOf = (s: SecSpec): ComputerPart => (BROWSER_PART.has(s) ? "browser" : CODING_PART.has(s) ? "coding" : "devices");
+
+const rowsOf = (secs: readonly SecSpec[], page: string): RowEntry[] => secs.flatMap((s) => [
+  { page, title: s.t, sec: s.t, group: s.group ?? s.t, lv: s.lv },
+  ...(s.rows ?? []).filter((r) => r.k !== "hint").map((r) => ({ page, title: r.t, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, r.lv ?? 0) as Lv })),
+  ...(s.titles ?? []).map(([title, lv]) => ({ page, title, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, lv) as Lv })),
 ]);
+
+export const ROWS: RowEntry[] = rowsOf(SECTIONS, "computer");
+/** One part's rows, on the page id that draws only that part. */
+export const partRows = (part: ComputerPart, page: string): RowEntry[] => rowsOf(SECTIONS.filter((s) => partOf(s) === part), page);

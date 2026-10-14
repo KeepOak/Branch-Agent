@@ -1,21 +1,19 @@
-// Seedbank's pieces (preview item 28: .mkRowP17, .mkCardP17, .mkAddP17, .mkSeedP17, item 45 Adapters tiles).
-import { useEffect, useId, type ReactNode } from "react";
+// Seedbank's pieces (preview item 28: .mkRowP17, .mkCardP17, .mkAddP17, .mkSeedP17, and item 45 Adapters tiles).
+import { type ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
-import { registerComing } from "../../glass/coming-registry";
 import { Glyph } from "../../places/customize/glyphs";
 import { Icon } from "../../shell/icons";
 import { kindOf, shortCount, type Entry } from "./catalog";
 import { seedText } from "./seed";
 import { addCall } from "./useSeedbank";
 
-/** A control whose engine call doesn't exist anywhere yet: the Coming look and reason, registered for the dev check. */
+/** A control Seedbank doesn't wire yet: drawn through <Coming unwired>, so it has the Coming look and reason, swallows
+ *  every click, key and pointer event, and is listed by the call it waits for, even on an engine that offers it (R1-10). */
 export function Soon({ need, reason, className, label, children }: { need: string; reason: string; className?: string; label?: string; children: ReactNode }) {
-  const id = useId();
   const where = label ?? (typeof children === "string" ? children : need);
-  useEffect(() => registerComing(id, { need: [need], missing: [need], reason, where, hidden: false }), [id, need, reason, where]);
-  return <button type="button" className={className} aria-disabled="true" aria-label={label} data-coming={reason} title={reason} style={{ opacity: 0.55, cursor: "not-allowed" }} onClick={event => event.preventDefault()}>{children}</button>;
+  return <Coming need={need} unwired reason={reason} where={where}><button type="button" className={className} aria-label={label}>{children}</button></Coming>;
 }
 
 const GLYPH = { skills: "bolt", mcp: "plug", plugins: "puzzle" } as const;
@@ -63,7 +61,7 @@ type RowProps = { entry: Entry; engine: WindowEngine; onOpen: (entry: Entry) => 
 export function Row({ entry, engine, onOpen, onAdd, onNotice }: RowProps) {
   return <div className="sb-row" data-testid="sb-row" data-id={entry.id}>
     <ItemIcon entry={entry} size={36} />
-    <span className="sb-rt">
+    <span className="sb-rt g-frost">
       <b><button type="button" className="sb-name" data-local="" onClick={() => onOpen(entry)}>{entry.name}</button> <small>by {entry.by}</small><Badges entry={entry} /></b>
       {entry.desc && <span className="sb-desc" title={entry.desc}>{entry.desc}</span>}
       <Counts entry={entry} />
@@ -77,8 +75,8 @@ export function Card({ entry, engine, onOpen, onAdd, onNotice }: RowProps) {
   return <div className="sb-card" data-testid="sb-card">
     <ItemIcon entry={entry} size={52} />
     <b><button type="button" className="sb-name" data-local="" onClick={() => onOpen(entry)}>{entry.name}</button></b>
-    <small>by {entry.by} · {kindOf(entry.kind).one}</small>
-    <Counts entry={entry} />
+    <small className="g-label">by {entry.by} · {kindOf(entry.kind).one}</small>
+    {entry.downloads !== undefined && <span className="g-label"><Counts entry={entry} /></span>}
     <span className="sb-card-acts"><SeedIcons entry={entry} onNotice={onNotice} /><AddPill entry={entry} engine={engine} onAdd={onAdd} /></span>
   </div>;
 }
@@ -96,12 +94,12 @@ export const ADAPTERS_COMING = "Adapters arrive after release.";
 /** Item 45: six slot tiles, each "Using: Default" and Coming. No install buttons. */
 export function Adapters({ brief }: { brief: boolean }) {
   return <>
-    <p className="sb-lead">Change how any part of Branch behaves: swap how Telegram replies, or the whole window.{brief ? "" : " Each part has a slot; an adapter fills it, tried first in shadow, one tap to switch back, and it rolls back on its own if it misbehaves."}</p>
+    <p className="sb-lead g-label" data-lines>Change how any part of Branch behaves: swap how Telegram replies, or the whole window.{brief ? "" : " Each part has a slot; an adapter fills it, tried first in shadow, one tap to switch back, and it rolls back on its own if it misbehaves."}</p>
     <div className="sb-adapters">{(brief ? ADAPTER_SLOTS.slice(0, 3) : ADAPTER_SLOTS).map(a => <div key={a.slot} className="sb-card sb-adapter" role="group" aria-label={a.name + " adapter, coming"}>
       <span className="sb-tile" aria-hidden="true" style={{ width: 36, height: 36 }}><Icon name={a.icon} size={18} /></span>
-      <b>{a.name}</b><small className="sb-slot">{a.slot}</small><p>{a.what}</p>
-      <span className="sb-using">Using: Default</span>
-      <span className="sb-coming"><span className="sb-pill">Coming</span><small>{ADAPTERS_COMING}</small></span>
+      <b className="g-label">{a.name}</b><small className="sb-slot g-label">{a.slot}</small><p className="g-label" data-lines>{a.what}</p>
+      <span className="sb-using g-label">Using: Default</span>
+      <span className="sb-coming"><span className="sb-pill g-label">Coming</span><small className="g-label">{ADAPTERS_COMING}</small></span>
     </div>)}</div>
   </>;
 }

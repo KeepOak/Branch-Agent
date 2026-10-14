@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createFollowUps, registerTrunksCli, templateSourceFromArg } from "./trunks-cli.js";
+import { createFollowUps, parseAnswerOptions, registerTrunksCli, templateSourceFromArg } from "./trunks-cli.js";
 
 const callGatewayFromCli = vi.hoisted(() => vi.fn());
 vi.mock("./gateway-rpc.js", () => ({ callGatewayFromCli }));
@@ -157,5 +157,47 @@ describe("branch trunks share and import", () => {
     await program.parseAsync(cli("templates"));
     expect(callGatewayFromCli).toHaveBeenCalledWith("trunks.template.list", expect.any(Object), {}, { scopes: ["operator.read"] });
     expect(output).toHaveBeenCalledWith("imported:night-shift\tNight Shift (imported · 2 routines) - Overnight\n");
+  });
+});
+
+describe("first-run starters from the CLI", () => {
+  it("passes repeated --answer id=value options and --timezone to the create", async () => {
+    const { program } = createProgram({ agentId: "night", firstRun: { timezone: "UTC", started: false }, routines: [{ id: "j1", name: "Morning digest" }] });
+    await program.parseAsync(cli("create", "--from-template", "night-shift", "--answer", "topics=AI chips", "--answer", "watch=", "--timezone", "UTC"));
+    expect(callGatewayFromCli.mock.calls[0]?.[0]).toBe("trunks.template.create");
+    expect(callGatewayFromCli.mock.calls[0]?.[2]).toEqual({
+      templateId: "night-shift",
+      answers: { topics: "AI chips", watch: "" },
+      timezone: "UTC",
+    });
+  });
+
+  it("refuses an --answer without an equals sign", () => {
+    expect(() => parseAnswerOptions(["topics"])).toThrow("id=value");
+  });
+
+  it("tells the owner the routines wait for Start instead of Automations", () => {
+    const lines = createFollowUps({ agentId: "night", firstRun: { timezone: "Europe/Berlin", started: false }, routines: [{ id: "j1", name: "Morning digest" }] });
+    expect(lines).toEqual(["Its routines are paused and run in Europe/Berlin once you start it: branch trunks start night"]);
+  });
+
+  it("lists the starter offer with each question's default", async () => {
+    const { output, program } = createProgram({
+      timezone: "UTC",
+      offer: [{ id: "night-shift", name: "Night Shift", pitch: "Digest every morning.", questions: [{ id: "topics", prompt: "Which topics?", default: "Tech" }] }],
+    });
+    await program.parseAsync(cli("starters", "--agent", "main", "--goal", "news"));
+    expect(callGatewayFromCli.mock.calls[0]?.[2]).toEqual({ agentId: "main", goal: "news" });
+    const text = output.mock.calls.map((args) => String(args[0])).join("");
+    expect(text).toContain("night-shift\tDigest every morning.");
+    expect(text).toContain("topics: Which topics? (default: Tech)");
+  });
+
+  it("starts a teammate through trunks.template.start and prints its card", async () => {
+    const { output, program } = createProgram({ card: { name: "Night Shift", started: true, summary: "Digest." }, warnings: [] });
+    await program.parseAsync(cli("start", "night"));
+    expect(callGatewayFromCli.mock.calls[0]?.[0]).toBe("trunks.template.start");
+    expect(callGatewayFromCli.mock.calls[0]?.[2]).toEqual({ agentId: "night" });
+    expect(output.mock.calls.map((args) => String(args[0])).join("")).toContain("Night Shift is started. Digest.");
   });
 });

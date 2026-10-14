@@ -600,7 +600,18 @@ if (shouldWriteCodexApiKeyAuth) {
 const env = {
   ...process.env,
   CODEX_HOME: codexHome,
-};`,
+};
+// Release builds ship no Codex binary. Point codex-acp at the Codex installed on this
+// computer (the first codex on PATH) unless CODEX_PATH is already chosen.
+if (!env.CODEX_PATH) {
+  const codexName = process.platform === "win32" ? "codex.exe" : "codex";
+  for (const dir of (env.PATH || env.Path || "").split(path.delimiter)) {
+    if (dir && path.isAbsolute(dir) && existsSync(path.join(dir, codexName))) {
+      env.CODEX_PATH = path.join(dir, codexName);
+      break;
+    }
+  }
+}`,
     envConfigSetup: `function isCodexConfigObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
