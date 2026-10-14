@@ -113,7 +113,12 @@
 .r1-topic-fold > button { padding: 4px 12px; border: 0; border-radius: var(--r-pill); font: 500 var(--fs-13-5) var(--sans); }
 .r1-topic-fold .topicsT5:not(.lay-tabs), .r1-content > .r1-topic-host .topicsT5:not(.lay-tabs) { position: static; width: 100%; }
 .r1-topic-fold > .r1-topic-host { width: 100%; }
-.r1-topic-host .dlg.g-clear .fld > span { display: inline-block; width: fit-content; padding: 2px 9px; border-radius: var(--r-pill); background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }
+/* A field label in a clear dialog is text on the tinted glass (preview v17): no pill. */
+.r1-topic-host .dlg.g-clear .fld > span { display: inline-block; width: fit-content; padding: 0; background: none; box-shadow: none; color: var(--ink); }
+
+/* A place fills the conversation column: its wrapper is a full-height column, so the Grove office (places/office) has the
+   height its stage draws into. */
+.r1-content > .enter11 { display: flex; flex-direction: column; min-height: 100%; }
 
 /* R1's New topic (owner item 5): the round glass + leads the tabs strip; the sheet's icon and colour choices are round pills, the chosen one ringed. */
 .r1-topic-host .tpAddP17 { flex: none; width: 28px; height: 28px; margin: 2px 4px 2px 0; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }
@@ -122,3 +127,19 @@
 .r1-topic-host .tpPickGridP17 > button { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); font-size: 16px; }
 .r1-topic-host .tpPickGridP17 > button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--ink); }
 .r1-topic-host .tpPickGridP17 > .tpSwatchP17 { width: 22px; height: 22px; background: var(--c); }
+
+/* Freedom Mode (owner item 6): the sidebar and the threads column resize on their edges. Each edge has an 8 px handle that shows
+   its line on hover and focus; a closed threads column leaves a handle at the sidebar's edge to open it again. The grid's columns
+   are set inline by Frame, so these rules only draw the handles and the content tiers (data-side-tier, data-topic-tier). */
+.r1-free-handle { position: absolute; top: 0; bottom: 0; width: 8px; z-index: 6; cursor: col-resize; touch-action: none; outline: none; }
+.r1-free-handle:hover, .r1-free-handle:focus-visible { background: linear-gradient(to right, transparent 3px, var(--gp-edge) 3px, var(--gp-edge) 5px, transparent 5px); }
+.r1-free-handle.r1-free-open { width: 10px; }
+.r1-topics .r1-topic-host .topicsT5.lay-column { position: static; width: 100%; }
+.r1-topic-host .tpHeadT5 > .tpAddP17 { margin: 0 0 0 auto; }
+/* Topic content tiers: 1 is the face and dot only, 2 the name and time, 3 two preview lines, 4 three lines. */
+.r1-frame[data-topic-tier="1"] .r1-topic-host .tpGoT5, .r1-frame[data-topic-tier="1"] .r1-topic-host .tpMoreT5, .r1-frame[data-topic-tier="1"] .r1-topic-host .tpAddP17 { display: none; }
+.r1-frame[data-topic-tier="2"] .r1-topic-host .tpL2T5, .r1-frame[data-topic-tier="2"] .r1-topic-host .tpMoreT5 { display: none; }
+.r1-frame[data-topic-tier="3"] .r1-topic-host .tpL2T5 > span, .r1-frame[data-topic-tier="4"] .r1-topic-host .tpL2T5 > span { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; }
+.r1-frame[data-topic-tier="3"] .r1-topic-host .tpL2T5 > span { -webkit-line-clamp: 2; }
+.r1-frame[data-topic-tier="4"] .r1-topic-host .tpL2T5 > span { -webkit-line-clamp: 3; }
+

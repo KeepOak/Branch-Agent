@@ -62,21 +62,19 @@ describe("walkthrough (§4.8.2)", () => {
 describe("What's new (§4.8.3)", () => {
   it("rows open their place; a waiting version lists the engine's notes and installs", async () => {
     const go = { setup: vi.fn(), shortcuts: vi.fn(), palette: vi.fn(), settings: vi.fn() };
-    const install = vi.fn();
-    const host = await show(<WhatsNew version="1.0" update={{ current: "1.0", latest: "1.1", notes: ["Faster start"], installing: false, waiting: null }} desktopInstall installed={installedRows(go)} onOpenUpdates={() => {}} onInstall={install} onClose={() => {}} />);
+    const host = await show(<WhatsNew version="1.0" update={{ current: "1.0", latest: "1.1", notes: ["Faster start"], installing: false, waiting: null }} desktopInstall installed={installedRows(go)} onOpenUpdates={() => {}} onClose={() => {}} />);
     const row = [...host.ownerDocument.querySelectorAll<HTMLButtonElement>(".new-row13")].find((b) => b.textContent?.includes("Setup and the walkthrough"));
     await act(async () => row?.click());
     expect(go.setup).toHaveBeenCalled();
     const ready = [...host.ownerDocument.querySelectorAll<HTMLButtonElement>(".wn-seg button")][1];
     await act(async () => ready.click());
     expect(host.ownerDocument.body.textContent).toContain("Faster start");
-    await act(async () => host.ownerDocument.querySelector<HTMLButtonElement>('[data-testid="wn-install"]')?.click());
-    expect(install).toHaveBeenCalled();
+    expect(host.ownerDocument.querySelector('[data-testid="wn-install"]')).toBeNull();
   });
   it("remote and browser What's new has no install action", async () => {
     const install = vi.fn();
     const go = { setup: vi.fn(), shortcuts: vi.fn(), palette: vi.fn(), settings: vi.fn() };
-    const host = await show(<WhatsNew version="1.0" update={{ current: "1.0", latest: "1.1", notes: [], installing: false, waiting: null }} computerName="Desk" startOnReady installed={installedRows(go)} onOpenUpdates={() => {}} onInstall={install} onClose={() => {}} />);
+    const host = await show(<WhatsNew version="1.0" update={{ current: "1.0", latest: "1.1", notes: [], installing: false, waiting: null }} computerName="Desk" startOnReady installed={installedRows(go)} onOpenUpdates={() => {}} onClose={() => {}} />);
     expect(host.ownerDocument.body.textContent).toContain("Ready to install on Desk: open Branch there to install it.");
     expect(host.ownerDocument.querySelector('[data-testid="wn-install"]')).toBeNull();
     expect(install).not.toHaveBeenCalled();

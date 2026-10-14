@@ -8,7 +8,7 @@ import { RunStreams, readRunEvent } from "./stream-order";
 import { storedOperatorToken } from "./device-token-store";
 import { withOwner } from "./agent-owner";
 import { withSafeVisibility } from "./safe-visibility";
-import { projectRun, type Approval, type Block } from "../thread/model";
+import { projectRun, settleRunBlocks, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
 import { sanitizeBlocks } from "../thread/tool-output-display";
 import { isPreparationPending, isPreparationStalled, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
@@ -18,6 +18,7 @@ import { droppedFiles, engineKeyOf, FirstSendEcho, heldRuns, UnconfirmedSends } 
 import { failedAck, isRetryable, refusedOrUnsent, requestWithRetry } from "./send-errors";
 import { firstSendEcho, shouldKeepFirstSendEcho } from "../composer/sending";
 import { safeStorage } from "../composer/drafts";
+import { trunkDisplayName } from "./trunk-name";
 
 export type SessionSnapshot = {
   status: GatewayStatus;
@@ -114,6 +115,8 @@ export class SaplingSession {
   private readonly runs = new RunStreams();
   private readonly approvals = new Map<string, Approval>();
   private readonly finished = new Set<string>();
+  /** Prevent a history response from settling a run whose newer events arrived during the read. */
+  private runRevision = 0;
   /** Runs that were stopped (Stop, or the engine's "aborted"): their turn says "Stopped", never "Done". */
   private readonly stoppedRuns = new Set<string>();
   /** Messages this window sent, by run id (= the idempotency key, engine chat-send-session.ts): their text, and
@@ -614,6 +617,8 @@ export class SaplingSession {
     const gen = (this.historyReadGen.get(sessionKey) ?? 0) + 1;
     this.historyReadGen.set(sessionKey, gen);
     const epoch = this.historyEpoch;
+    const liveAtRead = this.snapshot.liveRunId;
+    const revisionAtRead = this.runRevision;
     // The approval ledger only dresses the steps; when it fails (right after a rewind it answered "approval not
     // found") the history still shows, without a raw notice that never clears.
     const [history, ledger] = await Promise.all([
@@ -646,18 +651,29 @@ export class SaplingSession {
     this.set({
       history: blocks,
       historyReady: true,
+      ...(!this.snapshot.liveRunId && !inFlightRunId ? { live: [] } : {}),
       // The notice a failed read left goes once a read works; any other notice (a refused steer, an approval) stays.
       ...(staleNotice && this.snapshot.error === staleNotice ? { error: null } : {}),
       queued: mergeQueued(this.snapshot.queued, h.pendingInputs, sessionKey, true, this.shownRuns()),
       lastActivityAt: typeof info.lastActivityAt === "number" ? info.lastActivityAt : null,
       ...(inFlightRunId ? { liveRunId: inFlightRunId, liveStartedAt: runStart(inFlight) } : {}),
       ...(historyHasEcho && this.snapshot.pendingUser === echo?.text ? { pendingUser: null } : {}),
-      ...(!inFlightRunId && echo && !historyHasEcho ? { pendingUser: echo.text, liveRunId: this.snapshot.liveRunId ?? echo.runId, liveStartedAt: this.snapshot.liveStartedAt ?? Date.now() } : {}),
+      ...(!inFlightRunId && echo && !historyHasEcho && !this.finished.has(echo.runId) ? { pendingUser: echo.text, liveRunId: this.snapshot.liveRunId ?? echo.runId, liveStartedAt: this.snapshot.liveStartedAt ?? Date.now() } : {}),
     });
     if (inFlightRunId) {
       this.adoptInFlight(inFlightRunId, str(inFlight.text), inFlight);
     }
     this.settleRead(sessionKey, blocks, h.pendingInputs, inFlightId);
+    // A terminal event can be missed or name the runtime's run rather than the send id. A completed
+    // transcript plus an authoritative idle snapshot settles only that same, unchanged live turn.
+    const lastUser = blocks.findLastIndex((block) => block.kind === "user");
+    const user = blocks[lastUser];
+    const completed = blocks.slice(lastUser + 1).some((block) => block.kind === "done" &&
+      (block.runId === liveAtRead || (user?.kind === "user" && user.meta?.runKey === liveAtRead)));
+    if (!inFlightId && liveAtRead && this.snapshot.liveRunId === liveAtRead &&
+        revisionAtRead === this.runRevision && completed && !this.finished.has(liveAtRead)) {
+      void this.finishRun(liveAtRead);
+    }
   }
 
   /**
@@ -748,7 +764,7 @@ export class SaplingSession {
       // A turn can end with only this (a dispatch that failed before its run reported): end the live run with it,
       // so your message is kept as Not sent instead of the thread waiting on "Thinking it over".
       const phase = str(payload.phase);
-      const runId = str(payload.runId);
+      const runId = str(payload.clientRunId) || str(payload.runId);
       if ((phase === "error" || phase === "end") && runId && runId === this.snapshot.liveRunId && !this.finished.has(runId)) {
         void this.finishRun(runId, phase === "error" ? str(payload.error) || str(payload.errorMessage) || "It stopped before it started." : "");
       }
@@ -775,6 +791,7 @@ export class SaplingSession {
       return;
     }
     if (this.runs.accept(event) === "stale") return;
+    this.runRevision += 1;
     // Only a run with no live run before it becomes the live one; your send's turn is matched by its run id (the
     // idempotency key) alone, so another client's or a scheduled run can never take over your message.
     if (!this.snapshot.liveRunId) {
@@ -839,7 +856,8 @@ export class SaplingSession {
     if (this.liveRefreshTimer) clearTimeout(this.liveRefreshTimer);
     this.liveRefreshTimer = null;
     const runId = this.snapshot.liveRunId;
-    this.set({ live: runId ? withWaitingApprovals(sanitizeBlocks(projectRun(this.runs.events(runId), this.approvals)), this.approvals, runId) : [] });
+    if (!runId) return; // A completed run's output stays until history replaces it.
+    this.set({ live: withWaitingApprovals(sanitizeBlocks(projectRun(this.runs.events(runId), this.approvals)), this.approvals, runId) });
   }
 
   private scheduleLiveRefresh(): void {
@@ -867,9 +885,16 @@ export class SaplingSession {
   private async loadQueued(): Promise<void> {
     const sessionKey = this.snapshot.sessionKey;
     if (!sessionKey) return;
+    const liveAtRead = this.snapshot.liveRunId;
+    const revisionAtRead = this.runRevision;
     const history = await this.gateway.request("chat.history", { sessionKey, limit: 1 }).catch(() => null);
     if (!history || sessionKey !== this.snapshot.sessionKey) return;
     this.set({ queued: mergeQueued(this.snapshot.queued, rec(history).pendingInputs, sessionKey, false, this.shownRuns()) });
+    if (liveAtRead && this.snapshot.liveRunId === liveAtRead && this.liveSeen &&
+        revisionAtRead === this.runRevision && !str(rec(rec(history).inFlightRun).runId)) {
+      // Reconcile the complete transcript instead of leaving an idle session behind working dots.
+      void this.loadHistory().catch(() => undefined);
+    }
   }
 
   /** The run ended: the engine's history becomes the record, replacing the live view in one step. `failure` is why
@@ -879,6 +904,13 @@ export class SaplingSession {
       return;
     }
     this.finished.add(runId);
+    // Stop presenting work as soon as the terminal event arrives; history/approval reads can be slow.
+    // Keep live blocks until the record lands, but never keep the working controls active behind it.
+    const liveBeforeRead = this.snapshot.liveRunId === runId;
+    if (liveBeforeRead) {
+      this.refreshLive(); // Flush any throttled final delta before retiring the working controls.
+      this.set({ liveRunId: null, liveStartedAt: null, live: settleRunBlocks(this.snapshot.live) });
+    }
     let read = false;
     try {
       await this.loadHistory();
@@ -886,11 +918,11 @@ export class SaplingSession {
       // stand down: wait for the newest so the turn's own history is in before the live view goes.
       read = await this.settledRead();
     } catch {
-      // The live view still goes; whether the message was kept waits for a read that works.
+      // Retain the completed output until a successful read can replace it.
     } finally {
       this.releaseRetiring(runId);
       this.runs.drop(runId);
-      const wasLive = this.snapshot.liveRunId === runId;
+      const wasLive = liveBeforeRead && this.snapshot.liveRunId === null;
       const outcome: RunEnd["outcome"] = this.stoppedRuns.has(runId) ? "stopped" : failure ? "failed" : absorbed ? "absorbed" : "done";
       const own = this.ownSends.get(runId);
       if (wasLive && own?.shown && failure) {
@@ -910,7 +942,7 @@ export class SaplingSession {
       this.set({
         // Only a run that finished plays "Done" (header, agent window, cheer); a stopped or failed one, or one whose
         // input another turn took in, does not.
-        ...(wasLive ? { liveRunId: null, liveStartedAt: null, live: [], pendingUser: keepEcho && own ? own.text : null, doneAt: outcome === "done" && !keepEcho ? Date.now() : null, ended: { runId, outcome, at: Date.now() } } : {}),
+        ...(wasLive ? { liveRunId: null, liveStartedAt: null, ...(read ? { live: [] } : {}), pendingUser: keepEcho && own ? own.text : null, doneAt: outcome === "done" && !keepEcho ? Date.now() : null, ended: { runId, outcome, at: Date.now() } } : {}),
         // Your send, taken into another turn that is still running: that turn's history has your message, so your
         // own bubble goes now instead of drawing it twice. Only when the bubble is that send's: someone else's run,
         // or a queued send of yours (not drawn) taken in, leaves the bubble alone.
@@ -1136,7 +1168,7 @@ function readAgentName(result: unknown): string {
   if (!agent) {
     return "";
   }
-  return str(rec(agent.identity).name) || str(agent.name) || str(agent.id);
+  return trunkDisplayName(agent);
 }
 
 /** A picture on the Trunk's computer, ready to show, or why it can't. */

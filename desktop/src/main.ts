@@ -19,7 +19,7 @@ import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
-import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
@@ -338,6 +338,21 @@ async function probeWindowState(): Promise<WindowState> {
     unsavedDraftFiles: states.some(s => s.unsavedDraftFiles), ...(counts.length ? { workingTrunks: Math.max(...counts) } : {}) };
 }
 
+let windowSilentLogged = false;
+/** A window that answers the activity check, and one that does not, are both logged once per change (Private #1047). */
+function answered(state: WindowState): WindowState {
+  windowSilentLogged = false;
+  return state;
+}
+/** An unanswered window check is unknown, not busy: the engine's own activity decides, so a silent window never blocks an update. */
+function windowSilent(error: unknown): undefined {
+  if (!windowSilentLogged) {
+    windowSilentLogged = true;
+    log(`auto-apply: no window answered the activity check (${error instanceof Error ? error.message : String(error)}); using the engine's own activity`);
+  }
+  return undefined;
+}
+
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const windowBuild = (dir: string): string => { try { return readFileSync(join(dir, "branch-build.txt"), "utf8").trim(); } catch { return ""; } };
 const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === null && gateway.signalCode === null);
@@ -354,7 +369,7 @@ const engineServing = (): boolean => engineRunning() && gateway === readyGateway
  * engine's state lock means the standby can only bind and become ready after the old engine has released state.
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
-async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false): Promise<void> {
+async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false, drain = false): Promise<void> {
   if (serviceEngine) return swapServiceEngineInPlace(label, explicit, held, handoffOnly);
   // `held`: the caller (Undo) already holds the update lock and keeps it; otherwise the swap takes it.
   if (!gateway || !win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
@@ -404,7 +419,8 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     const stopped = Date.now();
     if (handoff === "drain") {
       try {
-        if (explicit) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
+        // Drain: the owner's click, or an auto-apply past its cap at a gap. Otherwise the old engine stops only while idle.
+        if (explicit || drain) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
         else await stopGatewayCleanly(priorGateway);
       } catch (error) {
         resumeSupervision();
@@ -717,19 +733,22 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   // Gone for good (its state lock released) before the old engine is asked to reclaim the state.
   await killGatewayAndWait(selected.child);
   const failedEngine = resolveEngineDir(cfg);
+  // The branch command, the next launch and crash recovery name the engine that runs again, not the failed standby.
+  if (lastGoodEngineDir) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`));
   try {
-    if (portClash) log(`update ${label}: standby port ${selected.port} was taken before the standby could bind it; the release stays eligible`);
+    // A retry of the build that already serves (its earlier confirmation failed) never rejects that build.
+    if (failedEngine === lastGoodEngineDir) log(`update ${label}: the standby ran the build that already serves; keeping it selected`);
+    else if (portClash) log(`update ${label}: standby port ${selected.port} was taken before the standby could bind it; the release stays eligible`);
     else if (error instanceof GatewayReadinessTimeoutError) {
       standbyFailures.set(label, STANDBY_ATTEMPTS);
       log(`update ${label}: handoff readiness budget expired; the next attempt uses the guarded swap`);
     }
     else await rejectFailedComponentUpdate(cfg, failedEngine);
   } catch (recordError) { log(`update ${label}: failure could not be recorded: ${String(recordError)}`); }
-  await rollbackComponentUpdate(cfg).catch(rollbackError => log(`update ${label}: component rollback: ${String(rollbackError)}`));
+  // Never back past the build that serves: a pending journal may name an older build than the one that runs.
+  await settleFailedComponentUpdate(cfg, lastGoodEngineDir).catch(rollbackError => log(`update ${label}: component rollback: ${String(rollbackError)}`));
   servedWindowDir = cfg.windowDir;
   gateway = prior;
-  // The branch command and the next launch name the engine that runs again, not the failed standby.
-  if (lastGoodEngineDir) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`));
   if (prior.pid !== undefined) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prior.pid)));
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
   // Rollback has reclaimed the state. The old engine must keep its full readiness budget without the retire timer.
@@ -871,13 +890,13 @@ const autoApply = createAutoApplyUpdate({
     }
     if (!gateway) throw new Error("The gateway is not running");
     // The approval RPCs themselves count as gateway work; sample after they settle.
-    const window = await probeWindowState();
+    const window = await probeWindowState().then(answered, windowSilent);
     const engine = await gatewayActivity(gateway);
-    return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
-      streaming: engine.pendingReplies > 0 || window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
+    return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window?.pendingApprovals ?? 0,
+      streaming: engine.pendingReplies > 0 || Boolean(window?.streaming), unsavedDraftFiles: window?.unsavedDraftFiles ?? false };
   },
-  restart: async (version, handoffOnly) => {
-    await swapEngineInPlace(version, false, undefined, handoffOnly);
+  restart: async (version, handoffOnly, drain) => {
+    await swapEngineInPlace(version, false, undefined, handoffOnly, drain);
     if ((await readComponentUpdateStatus(cfg)).currentVersion !== version) throw new Error("The new release was not confirmed");
   },
   onApplied: async version => {

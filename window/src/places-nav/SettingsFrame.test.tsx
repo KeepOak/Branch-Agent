@@ -25,7 +25,40 @@ async function open(page: string, onPage = vi.fn()) {
   return onPage;
 }
 
+describe("settings frame heading", () => {
+  // QA 1014 item 8: a page the R1 window hands to this frame keeps the heading R1 names for it ("Remote access", not "Gateway").
+  it("draws the heading the host names", async () => {
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="gateway" heading="Remote access" backName="Sapling" engine={engine} onPage={() => {}} onBack={() => {}} />));
+    expect(document.querySelector("h1")?.textContent).toBe("Remote access");
+  });
+
+  it("keeps Classic's own heading when the host names none", async () => {
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="gateway" backName="Sapling" engine={engine} onPage={() => {}} onBack={() => {}} />));
+    expect(document.querySelector("h1")?.textContent).toBe("Gateway");
+  });
+});
+
 describe("settings frame level", () => {
+  it("follows the originating Trunk at every detail level", async () => {
+    const request = vi.fn(async (method: string) => method === "agents.list" ? { defaultId: "main", agents: [{ id: "main", name: "Default" }, { id: "writer", name: "Writer" }] } : {});
+    const scoped = { ...engine, agentId: "writer", request } as WindowEngine;
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="instructions" backName="Writer" engine={scoped} onPage={() => {}} onBack={() => {}} />));
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click());
+    // Regular: no "Settings for" picker, and the page reads the Trunk Settings was opened from.
+    expect(document.querySelector('[aria-label="Settings for"]')).toBeNull();
+    expect(request).toHaveBeenCalledWith("agents.files.list", { agentId: "writer" });
+    expect(request).not.toHaveBeenCalledWith("agents.files.list", { agentId: "main" });
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="advanced"]')!.click());
+    expect(document.querySelector<HTMLSelectElement>('[aria-label="Settings for"]')?.value).toBe("writer");
+    request.mockClear();
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click());
+    expect(document.querySelector('[aria-label="Settings for"]')).toBeNull();
+    expect(request).not.toHaveBeenCalledWith("agents.files.list", { agentId: "main" });
+  });
+
   it("keeps the Helpers working count live across Settings and detail levels", async () => {
     const connection: WindowEngine = {
       ...engine,
