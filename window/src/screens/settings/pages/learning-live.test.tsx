@@ -101,6 +101,15 @@ describe("R1 Settings › Learning & self-updates is a native R1 page with the p
       "What Rings is weighing", "Time zone for the night window", "Model that writes the diary", "Where Rings writes what it keeps", "Keep reports out of memory"]);
   });
 
+  it("says why each Coming row waits in one plain sentence, never naming how Branch works inside", async () => {
+    await mount();
+    await setLevel("Technical");
+    // The row's own label is the preview's words (Restarting its own engine), so only the rest of the sentence is checked.
+    const reasons = [...host.querySelectorAll<HTMLElement>("[data-coming]")].map((r) => (r.querySelector(".r1s-note")?.textContent ?? "").replace(r.querySelector(":scope > b")?.textContent ?? "\u0000", ""));
+    expect(reasons.length).toBeGreaterThan(10);
+    for (const r of reasons) expect(r, r).not.toMatch(/engine|gateway call|method|config|\b[a-z]+\.[a-z]+\b/i);
+  });
+
   it("keeps every working Classic control live, declared, and on Classic's engine calls", async () => {
     const { request } = await mount();
     await setLevel("Technical");

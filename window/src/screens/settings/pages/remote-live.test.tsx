@@ -100,6 +100,15 @@ describe("R1 Settings › Remote access is a native R1 page with the preview's c
     expect(host.textContent).not.toMatch(/Chat apps, (more|even more|in depth)/);
   });
 
+  it("says why each Coming row waits in one plain sentence, never naming how Branch works inside", async () => {
+    await mount();
+    await setLevel("Technical");
+    // The row's own label is the preview's words, so only the rest of the sentence is checked.
+    const reasons = [...host.querySelectorAll<HTMLElement>("[data-coming]")].map((r) => (r.querySelector(".r1s-note")?.textContent ?? "").replace(r.querySelector(":scope > b")?.textContent ?? "\u0000", ""));
+    expect(reasons.length).toBeGreaterThan(8);
+    for (const r of reasons) expect(r, r).not.toMatch(/engine|gateway call|method|config|\b[a-z]+\.[a-z]+\b/i);
+  });
+
   it("keeps every working Classic control live, declared, and on Classic's engine calls", async () => {
     const { request } = await mount();
     await setLevel("Technical");
