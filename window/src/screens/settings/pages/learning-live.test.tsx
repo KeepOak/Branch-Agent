@@ -30,7 +30,7 @@ const PREVIEW_REGULAR: Record<string, string[]> = {
   // the preview's switches, then its list of what it learned with Undo on each
   Learning: ["Look back after each task", "Model for looking back", "Wait until the computer is idle", "Tell me what it learned", "Fix a skill as soon as it’s found wrong",
     "Learn from your reactions and corrections", "Think again after a thumbs-down", "Remember what worked", "Turn repeated instructions into rules", "Make a rule from a mistake",
-    "A Trunk may edit its own persona", "What it learned", "Undo a change"],
+    "A Trunk may edit its own persona", "What it learned"],
   Gardener: ["Look after skills", "Look at skills now"],
   Budding: ["Learn what a Trunk can’t do yet", "Highest step it may take"],
   "Keeping a change": ["Keep a change only if it does better by", "Use paid models at night"],
@@ -38,7 +38,7 @@ const PREVIEW_REGULAR: Record<string, string[]> = {
 /** Working Classic controls the preview's Learning page doesn't list, kept on their own rows (Advanced). */
 const EXTRA: Record<string, string[]> = {
   "What Branch may change about itself": ["Let agents use this window"],
-  "How the engine runs": ["Check Branch", "Restart the engine", "Set up the Gateway again", "Check without changing anything", "Check and repair"],
+  "How the engine runs": ["Check and fix", "Restart the engine", "Set up the Gateway again"],
 };
 
 const METHODS = ["config.get", "config.patch", "config.schema", "config.schema.lookup", "users.prefs.get", "users.prefs.set", "doctor.memory.status", "doctor.memory.resetGroundedShortTerm",
@@ -49,7 +49,7 @@ function engineOf() {
     if (method === "config.schema") return { schema: {}, uiHints: {} };
     if (method === "config.schema.lookup") return { reloadKind: "hot" };
     if (method === "users.prefs.get") return { status: "ok", entries: {} };
-    if (method === "doctor.memory.status") return { rings: { shortTermEntries: [{ snippet: "Dana wants reports by the 5th", path: "memory/notes.md", startLine: 3 }], promotedEntries: [{ snippet: "Keep summaries short", promotedAt: "2026-10-13T09:00:00Z" }] } };
+    if (method === "doctor.memory.status") return { rings: { shortTermEntries: [{ snippet: "Dana wants reports by the 5th", path: "memory/notes.md", startLine: 3 }], promotedEntries: [{ snippet: "Dana wants expense reports by the 5th", promotedAt: "2026-10-13T09:00:00Z" }] } };
     if (method === "doctor.memory.resetGroundedShortTerm") return { removedShortTermEntries: 2 };
     if (method === "skills.proposals.list") return { proposals: [{ id: "p1", title: "Skip receipts already filed", status: "applied", updatedAt: "2026-10-14T09:00:00Z" }] };
     if (method === "models.list") return { models: [{ provider: "openai", id: "gpt", name: "GPT" }] };
@@ -121,6 +121,10 @@ describe("R1 Settings › Learning & self-updates is a native R1 page with the p
     await click(button(row("learning.runs.restart-now"), "Restart the engine"));
     expect(request.mock.calls.some(([m]) => m === "gateway.restart.request")).toBe(true);
     expect(row("learning.runs.tasks")?.textContent).toContain("Up to 4");
+    // The preview's Undo on each thing it learned, Coming until Branch can undo one; no row of its own.
+    expect(button(row("learning.learning.learned"), "Undo")?.closest("[data-coming]")).not.toBeNull();
+    // Words the preview doesn't have stay off the page.
+    expect(host.textContent).not.toMatch(/Memory cleanup|Check without changing anything|Not reported|Undo a change|Restarting\. The window/);
     expect(row("learning.runs.people")?.textContent).toContain("Taofik");
     expect(row("learning.budding.learn")?.querySelector("[role=switch]")?.getAttribute("aria-checked")).toBe("true");
   });

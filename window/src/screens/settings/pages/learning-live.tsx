@@ -5,6 +5,7 @@
 // (gateway.restart.request). The facts Classic states are drawn as values.
 import { useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
+import { Coming } from "../../../glass/coming";
 import { list, record, type RecordValue } from "../../../places/settings/adapter";
 import { useConfig } from "../../../places/settings/kit";
 import { span, str, useLive, when } from "../../../places/settings/set2/common";
@@ -54,7 +55,8 @@ export function Learned({ engine, row }: SlotControlProps) {
             {all.map((c) => (
               <li key={c.id} className="r1s-item">
                 <span className="r1s-item-t g-label">{c.text}</span>
-                <small className="g-label">{c.who === "rings" ? "Memory cleanup" : "Skill learning"} · {when(c.at)}{c.note ? ` · ${c.note}` : ""}</small>
+                <small className="g-label">{when(c.at)}{c.note ? ` · ${c.note}` : ""}</small>
+                <Coming engine={engine} need="engine: undoing a learned change" unwired reason="Undoing a change comes in a later update." where="Undo"><button type="button" className="r1s-link" disabled>Undo</button></Coming>
               </li>
             ))}
           </ul>
@@ -115,7 +117,7 @@ export function DiaryModel({ engine, row }: SlotControlProps) {
 /** Process names: the engine's process as the system shows it. */
 export function ProcessNames({ engine }: SlotControlProps) {
   const sys = record(useLive<RecordValue>(engine, "system.info", {}, []).data);
-  return <Val>{sys.pid ? `node · process ${str(sys.pid)}` : "Not reported"}</Val>;
+  return <Val>{sys.pid ? `node · process ${str(sys.pid)}` : ""}</Val>;
 }
 
 /** Connected now: windows, terminals, phones and chat apps on this engine (system-presence), with See them. */
@@ -151,24 +153,22 @@ export function TasksAtOnce({ engine }: SlotControlProps) {
   return <Val>{typeof max === "number" ? `Up to ${max}` : "As many as this computer allows"}</Val>;
 }
 
-/** Check Branch: Classic's read-only check of the engine, chat apps and memory search. */
+/** Check and fix: Classic's read-only check of the engine, chat apps and memory search. */
 export function CheckBranch({ engine, row }: SlotControlProps) {
   const [open, setOpen] = useState(false);
   return <>
-    <Needs engine={engine} need={["health"]} where={row.label ?? ""}><Btn onClick={() => setOpen(true)}>Check Branch</Btn></Needs>
+    <Needs engine={engine} need={["health"]} where={row.label ?? ""}><Btn onClick={() => setOpen(true)}>Check and fix</Btn></Needs>
     {open ? <CheckDialog engine={engine} onClose={() => setOpen(false)} /> : null}
   </>;
 }
 
 /** Restart the engine (gateway.restart.request); the window reconnects by itself. */
 export function RestartEngine({ engine, row }: SlotControlProps) {
-  const [note, setNote] = useState("");
   const [failed, run] = useFailure();
   const [busy, setBusy] = useState(false);
-  const go = () => { setBusy(true); void run(async () => { await engine.request("gateway.restart.request", { reason: "settings" }); setNote("Restarting. The window reconnects by itself."); }).finally(() => setBusy(false)); };
+  const go = () => { setBusy(true); void run(() => engine.request("gateway.restart.request", { reason: "settings" })).finally(() => setBusy(false)); };
   return <>
     <Needs engine={engine} need={["gateway.restart.request"]} where={row.label ?? ""}><Btn disabled={busy} onClick={go}>Restart the engine</Btn></Needs>
-    {note ? <Line>{note}</Line> : null}
     <Failed text={failed} />
   </>;
 }
