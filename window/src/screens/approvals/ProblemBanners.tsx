@@ -9,7 +9,7 @@ import { Coming } from "../../glass/coming";
 import { clearBanner, currentBanner, raiseBanner, subscribeBanner, type ShownBanner } from "../../shell/Banner";
 import { bannerFor } from "../../shell/banner-news";
 import { Icon } from "../../shell/icons";
-import { useProblemBanners } from "../../shell/problem-banners";
+import { useDiskFullBanner, useProblemBanners } from "../../shell/problem-banners";
 import type { BannerItem } from "./Banners";
 
 type Props = {
@@ -37,6 +37,7 @@ export function bannerItem(banner: ShownBanner, onOpen: (sessionKey: string) => 
     id,
     title: banner.count > 1 ? `${banner.title} ×${banner.count}` : banner.title,
     body: banner.text,
+    sticky: banner.sticky,
     face: banner.trunkName ? <Face size={28} label={banner.trunkName} /> : <span className="r1-banner-icon" data-icon={banner.icon ?? "bell"}><Icon name={banner.icon ?? "bell"} size={16} /></span>,
     // A chat app banner's "Ask <Trunk>" sends a message, so it waits for chat.send; "Open connection" only moves
     // around this window.
@@ -65,6 +66,7 @@ export function useProblemBannerRows({ session, shownKey, machineName, defaultNa
     if (news) raiseBanner(news);
   }), [session]);
   useProblemBanners({ session, phase, machineName, defaultName, openConnection: onOpenConnection, askDefault: onAsk });
+  useDiskFullBanner();
   const banner = useSyncExternalStore(subscribeBanner, currentBanner);
   const items = useMemo(() => (banner ? [bannerItem(banner, onOpen)] : []), [banner, onOpen]);
   return useMemo(() => ({ items, dismiss: (id: string) => { if (id.startsWith(PREFIX)) clearBanner(Number(id.slice(PREFIX.length).split(":")[0])); } }), [items]);

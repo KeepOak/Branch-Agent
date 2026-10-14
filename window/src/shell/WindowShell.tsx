@@ -23,7 +23,7 @@ import { pageName } from "../places-nav/settings-nav";
 import { effectiveDark, readThemeChoice, setThemeChoice, toggleTheme, type ThemeChoice } from "../theme/theme";
 import { BannerView, raiseBanner } from "./Banner";
 import { bannerFor } from "./banner-news";
-import { useProblemBanners } from "./problem-banners";
+import { useDiskFullBanner, useProblemBanners } from "./problem-banners";
 import { askBeforeDelete, ConfirmCatalogDelete, ConfirmDelete } from "./ConfirmDelete";
 import { conversationActions } from "./conversation-actions";
 import { SessionUnreadPatchGuard } from "../connect/unread-guard";
@@ -345,6 +345,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   useEffect(() => componentDesktop(session.gatewayUrl)?.onPauseAll?.(() => {
     const live = liveWork.current;
     if (live.list) void pauseAll({ session, list: live.list, working: live.working });
+  }), [session]);
+  // With the window closed, a Trunk's "done" also reaches a paired phone through the engine's push service (Private
+  // #454 D). Approvals already reach it from the engine itself. A computer without a paired phone sends nothing.
+  useEffect(() => componentDesktop(session.gatewayUrl)?.onPhonePush?.((notice) => {
+    void session.request<{ nodes?: { nodeId?: unknown; platform?: unknown }[] }>("node.list", {}).then(async (listed) => {
+      const phones = (listed?.nodes ?? []).filter((node) => typeof node.nodeId === "string" && /ios|iphone|ipad/i.test(String(node.platform ?? "")));
+      await Promise.all(phones.map((node) => session.request("push.test", { nodeId: node.nodeId, title: notice.title, body: notice.body }).catch(() => undefined)));
+    }, () => undefined);
   }), [session]);
   const lockdown = useLockdown(session.engine, ready, session);
   const toggleLockdown = () => void lockdown.toggle().catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
@@ -982,6 +990,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   useMarkRead(request, openRow, route.kind === "chat" && ready, () => void list.refresh());
   const rowExtras = useRowExtras(openKey, level, useCallback((key: string) => lists.rows.find((r) => r.key === key)?.title || "a conversation", [lists.rows]));
   useBannerNews(session, route.kind === "chat" ? openKey : null, rowName, (key) => trunkName(lists.rows.find((r) => r.key === key)?.agentId));
+  useDiskFullBanner();
   useProblemBanners({
     session,
     phase: s.status.phase,
