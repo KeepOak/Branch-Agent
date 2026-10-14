@@ -1,10 +1,10 @@
+window:src/rooms/room-thread.test.tsx
 window:src/screens/chat/ChatView.room.test.tsx
-window:src/screens/frame/use-r1-room.test.tsx
 window:src/screens/chat/ChatView.test.tsx
 window:src/screens/composer/Composer.test.tsx
-window:src/screens/frame/R1Window.test.tsx
 window:src/screens/frame/R1Window.stage.test.tsx
+window:src/screens/frame/R1Window.test.tsx
 window:src/screens/frame/glass48.test.tsx
+window:src/screens/frame/use-r1-room.test.tsx
 window:src/screens/onboarding/talk-window.test.tsx
 window:src/screens/settings/ask-trunk-window.test.tsx
-window:src/rooms/room-thread.test.tsx
