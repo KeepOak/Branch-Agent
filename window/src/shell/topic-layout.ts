@@ -35,11 +35,11 @@ export function setDefaultTopicLayout(layout: TopicLayout, currentContactId?: st
 }
 
 /**
- * R1 offers only the layouts the owner kept (item 47). Classic keeps the four above.
- * Tabs above the chat is the default; anything else saved reads as Tabs.
+ * R1 offers only the two layouts the owner kept (item 47): Tabs above the chat (the default) and Freedom Mode (owner item 6).
+ * Classic keeps the four above. Anything else saved reads as Tabs.
  */
-export type R1TopicLayout = "tabs";
-export const r1TopicLayoutNames: Record<R1TopicLayout, string> = { tabs: "Tabs above the chat" };
+export type R1TopicLayout = "tabs" | "free";
+export const r1TopicLayoutNames: Record<R1TopicLayout, string> = { tabs: "Tabs above the chat", free: "Freedom Mode" };
 
 function storedTopicValue(): { layout?: unknown; per?: Record<string, unknown> } {
   try {
@@ -50,8 +50,8 @@ function storedTopicValue(): { layout?: unknown; per?: Record<string, unknown> }
 }
 
 /** Any saved layout R1 does not offer (column, rail, side, a damaged value) reads as Tabs above the chat. */
-export function r1LayoutOf(_saved: unknown): R1TopicLayout {
-  return "tabs";
+export function r1LayoutOf(saved: unknown): R1TopicLayout {
+  return saved === "free" ? "free" : "tabs";
 }
 
 /** The R1 default layout, as Settings shows it. */
@@ -70,5 +70,7 @@ export function r1TopicLayoutFor(contactId: string): R1TopicLayout {
 export function setR1TopicLayout(layout: R1TopicLayout, currentContactId?: string) {
   const per: Record<string, TopicLayout> = { ...(storedTopicValue().per ?? {}) as Record<string, TopicLayout> };
   if (currentContactId) delete per[currentContactId];
-  saveTopicSettings({ layout, width: topicLayoutDefaults.tabs, per });
+  // Written directly: Classic's TopicLayout does not include Freedom Mode, and Classic reads an unknown layout as its default.
+  localStorage.setItem(TOPIC_LAYOUT_KEY, JSON.stringify({ layout, width: topicLayoutDefaults.tabs, per }));
+  window.dispatchEvent(new Event("branch:topic-layout-changed"));
 }

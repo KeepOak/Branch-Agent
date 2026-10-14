@@ -5,6 +5,7 @@ import { availability, noteUnknownMethod, useCapabilityVersion } from "../../con
 import type { WindowEngine } from "../../connect/engine";
 import { useResource } from "../../places/library/data";
 import { pluginEntries, skillEntries, templateEntries, themeEntries, type Entry, type Rec } from "./catalog";
+import { trunkDisplayName } from "../../connect/trunk-name";
 
 const rec = (v: unknown): Rec => (v && typeof v === "object" && !Array.isArray(v) ? v as Rec : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -21,7 +22,7 @@ function useSettled(value: string, ms: number): string {
 export type Trunk = { id: string; name: string };
 export function readTrunks(result: unknown): Trunk[] {
   const agents = rec(result).agents;
-  return (Array.isArray(agents) ? agents.map(rec) : []).flatMap(a => (str(a.id) ? [{ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) }] : []));
+  return (Array.isArray(agents) ? agents.map(rec) : []).flatMap(a => (str(a.id) ? [{ id: str(a.id), name: trunkDisplayName(a) }] : []));
 }
 
 export function useSeedbank(engine: WindowEngine, query: string) {
