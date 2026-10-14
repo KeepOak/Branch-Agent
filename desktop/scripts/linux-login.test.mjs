@@ -45,7 +45,7 @@ async function fixture(run) {
   } };
   const mocks = {
     electron: "export const nativeImage = {}, powerSaveBlocker = {}, shell = {};",
-    "./desktop-controls": "export const branchShim = null, branchShShim = null, editUserPath = null, pathHas = null, ringBitmap = null;",
+    "./desktop-controls": "export const branchShim = null, branchShShim = null, branchPosixShim = null, editUserPath = null, pathHas = null, posixBranchCommand = () => null, ringBitmap = null;",
     "./resident-window": "export const menuBarIcon = null;",
     "node:child_process": `export const { execFile, execFileSync } = globalThis[${JSON.stringify(bridge)}];`,
   };
