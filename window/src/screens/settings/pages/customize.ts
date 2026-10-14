@@ -26,7 +26,14 @@ const slot = (calls: string[], reason: string) => ({ kind: "slot" as const, call
 type Base = Pick<Row, "id" | "card" | "level" | "control" | "source"> & Partial<Row>;
 const row = (r: Base): Row => ({ page: "customize", ...r });
 
-export const CUSTOMIZE_ROWS: Row[] = [
+/** R1-10: each Coming reason names its thing; the bare fallback becomes "<its label> comes in a later update.". */
+const named = (row: Row): Row => {
+  const src = row.source;
+  if ((src.kind === "coming" || src.kind === "slot") && src.reason === COMING_REASON) return { ...row, source: { ...src, reason: `${row.label} comes in a later update.` } };
+  return row;
+};
+
+const ROWS_AS_DRAWN: Row[] = [
   // The kinds hub is the page's own card (customize-live.tsx); at Technical three more skill rows follow it.
   row({ id: "customize.hub.pinned", card: HUB, label: "Pinned skills", help: "Load these in every conversation, before any others.", level: 2, control: "button", button: "Open", source: no("a list of skills loaded in every conversation") }),
   row({ id: "customize.hub.signed", card: HUB, label: "Signed packages only", help: "Refuse skills whose package isn’t signed.", level: 2, control: "button", button: "Open", source: no("a signed-packages-only switch") }),
@@ -111,3 +118,5 @@ export const CUSTOMIZE_ROWS: Row[] = [
   row({ id: "customize.another.pair", card: ANOTHER, label: "Pair with Branch on another computer", help: "Found on your network or Tailscale. Pair once; after that they meet as contacts.", level: 0, control: "custom",
     source: slot(["device.pair.setupCode", "graft.join"], "Pairing with another Branch comes in a later update.") }),
 ];
+
+export const CUSTOMIZE_ROWS: Row[] = ROWS_AS_DRAWN.map(named);
