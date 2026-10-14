@@ -224,3 +224,6 @@ button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
   background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
 .r1sb-pop.r1sb-person { gap: 4px; }
 .r1sb-pop .r1sb-upd-ban { margin-bottom: 0; }
+/* Move to › Group…: the existing groups as chips above the name field. */
+.r1sb-groups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.r1sb-groups [aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); }

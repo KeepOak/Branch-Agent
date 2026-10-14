@@ -14,6 +14,7 @@ import { Popover } from "../../glass/Popover";
 import type { PlaceId } from "../../places-nav/routes";
 import { PairDialog } from "../../places/customize/pairing";
 import { createReadyTrunk } from "../../places/trunk/api";
+import { TrunkStudio } from "../../places/trunk/TrunkStudio";
 import { RemoveTrunkDialog } from "../../places/trunk/RemoveTrunk";
 import { NewGroupChatHost, openNewGroupChat } from "../../rooms/NewGroupChat";
 import { ConfirmDelete, askBeforeDelete } from "../../shell/ConfirmDelete";
@@ -107,7 +108,8 @@ export function Sidebar(p: SidebarProps) {
   const request = useMemo(() => <T,>(method: string, params?: unknown) => session.request<T>(method, params), [session]);
   const [gatewayContacts, refreshContacts, contactsLoaded] = useContacts(session, ready);
   const trunks = useTrunks(session, ready);
-  const rooms = useGroupRooms(session, ready);
+  // Archived groups too: they sit in the Archived bin, where Unarchive brings them back.
+  const rooms = useGroupRooms(session, ready, true);
   const people = usePeople(session, ready);
   const { projects } = useProjects(session, ready);
   const person = usePersonName(session, ready);
@@ -124,7 +126,7 @@ export function Sidebar(p: SidebarProps) {
   const [menu, setMenu] = useState<SideRow | null>(null), menuAnchor = useRef<HTMLElement | null>(null);
   const [plusOpen, setPlusOpen] = useState(false), plusRef = useRef<HTMLButtonElement>(null);
   const [personOpen, setPersonOpen] = useState(false), meRef = useRef<HTMLButtonElement>(null);
-  const [dialog, setDialog] = useState<null | { kind: "rename"; row: SideRow } | { kind: "delete"; row: Conversation } | { kind: "remove"; agentId: string; name: string } | { kind: "shortcuts" | "apps" | "pair" }>(null);
+  const [dialog, setDialog] = useState<null | { kind: "rename"; row: SideRow } | { kind: "group"; key: string; name: string } | { kind: "studio" } | { kind: "delete"; row: Conversation } | { kind: "remove"; agentId: string; name: string } | { kind: "shortcuts" | "apps" | "pair" }>(null);
   const [theme, setTheme] = useState<ThemeChoice>(readThemeChoice);
   const [installing, setInstalling] = useState(false);
 
@@ -174,7 +176,9 @@ export function Sidebar(p: SidebarProps) {
     pin: contact => void pinContact(contact, p.sessions, actions, request, refreshContacts),
     markRead: contact => void markContactRead(contact, request).then(refreshContacts, (error: unknown) => notify(`Couldn't mark it read: ${reason(error)}.`, { tone: "bad" })),
     archiveRoom: contact => void session.request("rooms.archive", { roomId: contact.roomId }).then(() => rooms.reload(), (error: unknown) => notify(`Couldn't archive ${contact.name}: ${reason(error)}`, { tone: "bad" })),
+    unarchiveRoom: contact => void session.request("rooms.archive", { roomId: contact.roomId, archived: false }).then(() => rooms.reload(), (error: unknown) => notify(`Couldn't unarchive ${contact.name}: ${reason(error)}`, { tone: "bad" })),
     rename: row => setDialog({ kind: "rename", row }),
+    moveToGroup: (key, name) => setDialog({ kind: "group", key, name }),
     moveToProject: (key, projectId) => void moveContactToProject(session, key, projectId).then(refreshContacts, (error: unknown) => notify(`Couldn't move it: ${reason(error)}`, { tone: "bad" })),
     newConversation,
     copyLink: key => void copyText(conversationLink(key)),
@@ -194,7 +198,8 @@ export function Sidebar(p: SidebarProps) {
       : [{ label: "with a Trunk", off: "Make a Trunk first." }] },
     { label: "New Trunk", icon: menuIcon("plus"), hint: "random character", need: ["agents.create", NEED.create], onSelect: () => void newTrunk() },
     { label: "New group", icon: menuIcon("users"), need: "rooms.create", onSelect: () => openNewGroupChat() },
-    { label: "Have Branch make a Trunk", icon: menuIcon("spark"), need: "agents.create", off: "Having Branch make a Trunk comes in a later update." },
+    // Branch's own assistant proposes the Trunk (branch.chat, "new-agent") and makes it only once you say yes.
+    { label: "Have Branch make a Trunk", icon: menuIcon("spark"), need: "branch.chat", onSelect: () => setDialog({ kind: "studio" }) },
     { label: "New automation", icon: menuIcon("clock"), local: true, onSelect: () => p.onPlace("automations") },
     { label: narrow ? "Close the list" : "Collapse the list to faces", icon: menuIcon("panel"), hint: "Ctrl B", gap: true, local: true, onSelect: toggleRail },
   ];
@@ -296,6 +301,12 @@ export function Sidebar(p: SidebarProps) {
         sidebar's own box, and a dialog would open squeezed into the list. */}
     {dialog ? createPortal(<>
     {dialog?.kind === "rename" ? <RenameDialog row={dialog.row} onClose={() => setDialog(null)} onSave={label => { if (dialog.row.row) void actions.rename(dialog.row.row, label).then(refreshContacts); setDialog(null); }} /> : null}
+    {dialog?.kind === "group" ? <GroupDialog request={request} name={dialog.name} onClose={() => setDialog(null)} onMove={group => {
+      const key = dialog.key;
+      setDialog(null);
+      void request("sessions.patch", { key, category: group }).then(() => { refreshContacts(); notify(`Moved to ${group}.`); }, (error: unknown) => notify(`Couldn't move it: ${reason(error)}`, { tone: "bad" }));
+    }} /> : null}
+    {dialog?.kind === "studio" ? <TrunkStudio engine={engine} onClose={() => setDialog(null)} onMade={refreshContacts} openTrunk={agentId => p.onOpen(contacts.find(contact => contact.id === `trunk:${agentId}`)?.threadKey ?? `agent:${agentId}:main`)} /> : null}
     {dialog?.kind === "delete" ? <ConfirmDelete clear row={dialog.row} onCancel={() => setDialog(null)} onDelete={() => { const row = dialog.row; setDialog(null); void actions.remove(row).then(refreshContacts); }} /> : null}
     {dialog?.kind === "remove" ? <RemoveTrunkDialog clear engine={engine} agentId={dialog.agentId} name={dialog.name} onClose={() => setDialog(null)} /> : null}
     {dialog?.kind === "shortcuts" ? <ShortcutsDialog onClose={() => setDialog(null)} defaultName={trunks.list.find(trunk => trunk.isDefault)?.name} /> : null}
@@ -304,6 +315,32 @@ export function Sidebar(p: SidebarProps) {
     </>, document.body) : null}
     <NewGroupChatHost engine={ready ? engine : undefined} onOpen={p.onOpen} />
   </div>;
+}
+
+/** Move to › Group…: pick one of the session groups (sessions.groups.list) or name a new one; the move is sessions.patch
+ * with that category, and a new name joins the group list on its own. */
+function GroupDialog({ request, name, onClose, onMove }: { request: <T>(method: string, params?: unknown) => Promise<T>; name: string; onClose: () => void; onMove: (group: string) => void }) {
+  const [groups, setGroups] = useState<string[]>([]);
+  const [value, setValue] = useState("");
+  useEffect(() => {
+    let live = true;
+    void request<{ groups?: { name: string }[] }>("sessions.groups.list", {}).then(
+      result => { if (live) setGroups((result.groups ?? []).map(group => group.name)); },
+      () => undefined,
+    );
+    return () => { live = false; };
+  }, [request]);
+  const group = value.trim();
+  const move = () => { if (group) onMove(group); };
+  return <Dialog title={`Move ${name} to a group`} onClose={onClose} testid="move-group" clear footer={<>
+    <button type="button" className="btn ghost" data-local="" onClick={onClose}>Cancel</button>
+    <Coming need={NEED.groupMove}><button type="button" className="btn" data-solid="" disabled={!group} onClick={move}>Move</button></Coming>
+  </>}>
+    {groups.length ? <div className="r1sb-groups" role="group" aria-label="Groups">
+      {groups.map(choice => <button key={choice} type="button" className="btn ghost" data-local="" aria-pressed={choice === group} onClick={() => setValue(choice)}><span>{choice}</span></button>)}
+    </div> : null}
+    <input className="inp" data-local="" aria-label="Group name" placeholder={groups.length ? "Or a new group" : "Group name"} value={value} autoFocus onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === "Enter") move(); }} />
+  </Dialog>;
 }
 
 function RenameDialog({ row, onClose, onSave }: { row: SideRow; onClose: () => void; onSave: (label: string) => void }) {
