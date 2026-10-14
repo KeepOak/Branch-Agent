@@ -69,7 +69,6 @@ export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
   browser: "computer", // Computer & browser: the screen and the browser
   coding: "computer", // Computer & browser: code and commits, repositories
   remote: "gateway", // Keep Branch running, Reach, Exposure, From scripts
-  learning: "self", // What Branch may change about itself, Learning, Working on its own code
 };
 
 /**
