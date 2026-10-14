@@ -53,6 +53,9 @@ const BASE: SettingsGroup[] = [
   },
 ];
 
+/** Pages that change setup (§4.7.0): config.patch needs operator.admin, so without it their rows grey. */
+export const SETUP_PAGES: readonly string[] = ["general", "models", "local", "accounts", "chatapps", "permissions", "computer", "usage", "seasons", "updates", "advanced", "developer"];
+
 export const LEVEL_LINES: Record<Level, string> = {
   regular: "The essentials, in plain words.",
   advanced: "Every feature and the fine controls.",
