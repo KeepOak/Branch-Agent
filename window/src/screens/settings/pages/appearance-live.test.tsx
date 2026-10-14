@@ -133,6 +133,12 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(seg.querySelector("[aria-checked=true]")?.textContent).toBe("Tabs");
     await click([...seg.querySelectorAll("button")].find((b) => b.textContent === "Freedom Mode")!);
     expect(readTopicSettings().layout).toBe("free");
+    // preview The list card (Advanced and up), in order: Ask before deleting, Headlines, Small model (Technical), Threads show as.
+    const list = seg.closest("section")!;
+    expect([...list.querySelectorAll("[data-row]")].map((r) => r.getAttribute("data-row"))).toEqual([
+      "appearance.list.ask-delete", "appearance.list.headlines", "appearance.list.small-model", "appearance.list.threads"]);
+    await click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === "Regular")!);
+    expect(row("appearance.list.threads")).toBeNull();
   });
 
   it("shows the small model and opens Models to change it", async () => {
