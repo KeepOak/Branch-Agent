@@ -16,6 +16,7 @@ import { ComingBody, OverviewBar, OverviewHero, UnlinkedBody, WIDGET_NAMES, Widg
 import { useConnectorLinks } from "./links";
 import { useFirstName } from "../../screens/chat/examples-greeting";
 import { useConversation } from "../../composer/useConversation";
+import { RecBar } from "../../places-nav/RecBar";
 import { capitalize, composerChipLabel, currentModelRef, currentThinking } from "../../composer/model";
 import "./overview.css";
 
@@ -178,6 +179,7 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   const gmailLinked = links.gmail === true;
   return <PlaceScroll>
     <div className="place wide-overview p34-place">
+      <RecBar engine={engine} />
       <OverviewHero name={defaultName} me={me} chip={chip} onSend={sendToDefault} />
       <FinishSetup engine={engine} openSettings={openSettings} />
       <OverviewBar range={range} onRange={setRange} source={source} onSource={setSource} layout={layout} linked={linked} onAdd={toggleWidget} onLink={linkAccounts} />

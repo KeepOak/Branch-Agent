@@ -19,7 +19,7 @@ import { DEFAULT_PET, PETS, petsHad, pickPet } from "../../../places/settings/se
 import { sceneFile, useLook } from "../../../places/settings/set1/appearance-store";
 import { localId, Swatch, themeGroup, themeName, ThemesDialog, useThemes, type Extra } from "../../../places/settings/set1/appearance-themes";
 import { useThemeChoice, useTrunk } from "../../../places/settings/set1/appearance-top";
-import { r1DefaultTopicLayout, setR1TopicLayout, TOPIC_LAYOUT_KEY } from "../../../shell/topic-layout";
+import { r1DefaultTopicLayout, r1TopicLayoutNames, setR1TopicLayout, TOPIC_LAYOUT_KEY, type R1TopicLayout } from "../../../shell/topic-layout";
 import { setThemeChoice, type ThemeChoice } from "../../../theme/theme";
 import { Segmented } from "../RowView";
 import type { SlotControlProps } from "../slots";
@@ -238,10 +238,9 @@ export function EachTrunk({ engine }: SlotControlProps) {
   </>;
 }
 
-const FREEDOM_WAIT = "Freedom Mode comes in a later update.";
+const LAYOUTS = (Object.entries(r1TopicLayoutNames) as [R1TopicLayout, string][]).map(([v, label]) => ({ v, label: label === "Tabs above the chat" ? "Tabs" : label }));
 
-/** How a contact's threads show beside its chat, for every contact without its own (kept in this window). Tabs is live; the
- *  preview's second option, Freedom Mode, is drawn Coming until its layout ships. */
+/** How a contact's threads show beside its chat, for every contact without its own (kept in this window). */
 export function ThreadsShowAs({ row }: SlotControlProps) {
   const [layout, setLayout] = useState(r1DefaultTopicLayout);
   useEffect(() => {
@@ -252,12 +251,7 @@ export function ThreadsShowAs({ row }: SlotControlProps) {
     return () => { window.removeEventListener("branch:topic-layout-changed", sync); window.removeEventListener("storage", storage); };
   }, []);
   return <div className="r1s-own-ctl" data-local="">
-    <div className="r1s-seg g-frost" role="radiogroup" aria-label={row.label ?? "Threads show as"}>
-      <button type="button" role="radio" aria-checked={layout === "tabs"} onClick={() => { setR1TopicLayout("tabs"); setLayout("tabs"); }}>Tabs</button>
-      <Coming need="threads.freedom" unwired reason={FREEDOM_WAIT}>
-        <button type="button" role="radio" aria-checked={false}>Freedom Mode</button>
-      </Coming>
-    </div>
+    <Segmented label={row.label ?? "Threads show as"} value={layout} options={LAYOUTS} onChange={(v) => { setR1TopicLayout(v as R1TopicLayout); setLayout(v as R1TopicLayout); }} />
   </div>;
 }
 
