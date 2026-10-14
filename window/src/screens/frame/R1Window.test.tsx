@@ -94,7 +94,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("who,notifications,instructions,signins,updates,models,permissions,privacy,browser,coding,devices,developer,chatapps,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("who,notifications,instructions,signins,updates,models,permissions,privacy,history,browser,coding,devices,developer,chatapps,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
@@ -175,7 +175,7 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
     accounts: "r1:accounts", models: "r1:models",
     permissions: "r1:permissions", signins: "r1:signins", privacy: "r1:privacy",
     devices: "r1:devices", browser: "r1:browser", coding: "r1:coding", remote: "classic:gateway",
-    history: "classic:backups", learning: "classic:self", updates: "r1:updates", features: "r1:features", developer: "r1:developer",
+    history: "r1:history", learning: "classic:self", updates: "r1:updates", features: "r1:features", developer: "r1:developer",
   });
 });
 it("sends a page to R1 Settings only when the row table or a slot covers it and Classic has nothing more", () => {

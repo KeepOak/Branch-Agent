@@ -192,7 +192,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
 function KeepAwake() {
   const desk = useDesktopControls();
   if (desk.off) return null;
-  return <DesktopCtl title="Keep this computer awake" sub="Keeps this computer awake while Trunks use it." help="Stays awake between tasks while Trunks may use it. Locking and signing out still work; Branch never unlocks it. Off until you choose: it stops this computer sleeping on its power plan." name="keepAwake" />;
+  return <DesktopCtl title="Keep this computer awake while Trunks work" sub="Only while a Trunk is working, and only when plugged in." help="Held only while a Trunk has a live run and let go the moment it ends; on battery the computer sleeps as usual. Locking and signing out still work; Branch never unlocks it." name="keepAwake" />;
 }
 
 /** In the cloud: a cloud computer, offered only when the engine has a profile to start one from. */

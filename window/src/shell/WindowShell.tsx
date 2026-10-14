@@ -23,7 +23,7 @@ import { pageName } from "../places-nav/settings-nav";
 import { effectiveDark, readThemeChoice, setThemeChoice, toggleTheme, type ThemeChoice } from "../theme/theme";
 import { BannerView, raiseBanner } from "./Banner";
 import { bannerFor } from "./banner-news";
-import { useProblemBanners } from "./problem-banners";
+import { useDiskFullBanner, useProblemBanners } from "./problem-banners";
 import { askBeforeDelete, ConfirmCatalogDelete, ConfirmDelete } from "./ConfirmDelete";
 import { conversationActions } from "./conversation-actions";
 import { SessionUnreadPatchGuard } from "../connect/unread-guard";
@@ -96,7 +96,7 @@ import { conversationNeedsYou } from "./conversation-more";
 import { ConversationMoreButton, HeaderRow, PlaceHead, TopBar } from "./TopBar";
 import { toggleListLayout, useLayout } from "./use-layout";
 import { usePinOrder } from "./use-pin-order";
-import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
+import { hideMenuItems, hideTarget, HIDEABLE, useCheerOn, usePetLook, useShown } from "./shown";
 import { StatusGfx, StatusLeftExtras } from "./StatusExtras";
 import { paneKeyFor, useShortcuts } from "./use-shortcuts";
 import { currentKeys, keyActions, readCustomKeys } from "./keymap";
@@ -252,13 +252,13 @@ function useThemeSync(setTheme: (t: ThemeChoice) => void): boolean {
   return systemDark;
 }
 
-/** Whether the character panel is shown; remembered across windows. */
+/** Whether the character panel is shown; off until turned on, and remembered across windows. */
 function useCharacterShown() {
   const [shown, setShown] = useState(() => {
     try {
-      return localStorage.getItem("branch.characterShown") !== "0";
+      return localStorage.getItem("branch.characterShown") === "1";
     } catch {
-      return true;
+      return false;
     }
   });
   useEffect(() => {
@@ -272,7 +272,7 @@ function useCharacterShown() {
     // Settings › Appearance changes the switch too ("branch:look-change"): follow it without a reload.
     const reread = () => {
       try {
-        setShown(localStorage.getItem("branch.characterShown") !== "0");
+        setShown(localStorage.getItem("branch.characterShown") === "1");
       } catch {
         // storage blocked: keep what this window shows
       }
@@ -345,6 +345,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   useEffect(() => componentDesktop(session.gatewayUrl)?.onPauseAll?.(() => {
     const live = liveWork.current;
     if (live.list) void pauseAll({ session, list: live.list, working: live.working });
+  }), [session]);
+  // With the window closed, a Trunk's "done" also reaches a paired phone through the engine's push service (Private
+  // #454 D). Approvals already reach it from the engine itself. A computer without a paired phone sends nothing.
+  useEffect(() => componentDesktop(session.gatewayUrl)?.onPhonePush?.((notice) => {
+    void session.request<{ nodes?: { nodeId?: unknown; platform?: unknown }[] }>("node.list", {}).then(async (listed) => {
+      const phones = (listed?.nodes ?? []).filter((node) => typeof node.nodeId === "string" && /ios|iphone|ipad/i.test(String(node.platform ?? "")));
+      await Promise.all(phones.map((node) => session.request("push.test", { nodeId: node.nodeId, title: notice.title, body: notice.body }).catch(() => undefined)));
+    }, () => undefined);
   }), [session]);
   const lockdown = useLockdown(session.engine, ready, session);
   const toggleLockdown = () => void lockdown.toggle().catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
@@ -982,6 +990,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   useMarkRead(request, openRow, route.kind === "chat" && ready, () => void list.refresh());
   const rowExtras = useRowExtras(openKey, level, useCallback((key: string) => lists.rows.find((r) => r.key === key)?.title || "a conversation", [lists.rows]));
   useBannerNews(session, route.kind === "chat" ? openKey : null, rowName, (key) => trunkName(lists.rows.find((r) => r.key === key)?.agentId));
+  useDiskFullBanner();
   useProblemBanners({
     session,
     phase: s.status.phase,
@@ -1180,7 +1189,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       : null;
   const voiceReady = useVoiceCatalog(ready ? session.engine : undefined);
   const pet = usePetLook(session.engine);
-  // Let it roam (Appearance › Pet) walks the pet along the chat instead of the card; one pet on screen at a time.
+  const cheerOn = useCheerOn(session.engine);
+  // A picked pet (Appearance › Pet) roams the chat instead of the card; one pet on screen at a time.
   const lanePet = pet.roam ? pet : { ...pet, id: "none" };
   // Stopping the roam brings the card back, with Undo; the pet's menu and the header face both use it (pet-roam.ts).
   const roamSetting = lookStore(session.engine);
@@ -1398,6 +1408,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           lockdown={lockdown.on}
           {...areaProps}
           engine={showingAll ? undefined : session.engine}
+          cheerOn={cheerOn}
           sessionKey={showingAll ? null : s.sessionKey}
           findRequest={searchFind?.key === openKey ? searchFind : null}
           onFindRequestHandled={(nonce) => setSearchFind((current) => current?.nonce === nonce ? null : current)}

@@ -18,6 +18,7 @@ export const REHOSTED = {
   models: "models",
   permissions: "permissions",
   privacy: "usage",
+  history: "backups",
   browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
   coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
   devices: ["computer-devices", "devices"], // Computer & browser's computers and connections, then Devices & apps' tiles
