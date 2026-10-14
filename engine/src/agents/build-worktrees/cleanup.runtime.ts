@@ -71,11 +71,16 @@ export async function listProcessWorkingDirectories(
   return await lsofWorkingDirectories();
 }
 
-/** Merged or closed through the gh CLI when it is installed and signed in; null otherwise. */
-export async function readPullRequestStateWithGh(input: {
+export type PullRequestHead = { state: PullRequestState; headSha: string | null };
+
+/**
+ * The branch's pull request state through the gh CLI, with the head commit of the PR that state came from.
+ * Open wins over merged, which wins over closed. Null when gh is missing, signed out, or nothing matches.
+ */
+export async function readPullRequestHeadWithGh(input: {
   originUrl: string;
   branch: string;
-}): Promise<PullRequestState | null> {
+}): Promise<PullRequestHead | null> {
   const repository = parseGitHubRepository(input.originUrl);
   if (!repository) {
     return null;
@@ -95,28 +100,37 @@ export async function readPullRequestStateWithGh(input: {
         "--limit",
         "5",
         "--json",
-        "state",
+        "state,headRefOid",
       ],
       { timeoutMs: GH_TIMEOUT_MS, env: { ...process.env, GH_PROMPT_DISABLED: "1" } },
     );
     if (result.code !== 0) {
       return null;
     }
-    const states = new Set(
-      (JSON.parse(result.stdout) as { state?: string }[]).map((pr) =>
-        String(pr.state ?? "").toLowerCase(),
-      ),
+    const pulls = (JSON.parse(result.stdout) as { state?: string; headRefOid?: string }[]).map(
+      (pr) => ({
+        state: String(pr.state ?? "").toLowerCase(),
+        headSha: pr.headRefOid ? pr.headRefOid : null,
+      }),
     );
-    if (states.has("open")) {
-      return "open";
+    for (const state of ["open", "merged", "closed"] as const) {
+      const match = pulls.find((pr) => pr.state === state);
+      if (match) {
+        return { state, headSha: match.headSha };
+      }
     }
-    if (states.has("merged")) {
-      return "merged";
-    }
-    return states.has("closed") ? "closed" : null;
+    return null;
   } catch {
     return null;
   }
+}
+
+/** Merged, closed or open through the gh CLI when it is installed and signed in; null otherwise. */
+export async function readPullRequestStateWithGh(input: {
+  originUrl: string;
+  branch: string;
+}): Promise<PullRequestState | null> {
+  return (await readPullRequestHeadWithGh(input))?.state ?? null;
 }
 
 export function createBuildWorktreeCleanupDeps(): BuildWorktreeCleanupDeps {

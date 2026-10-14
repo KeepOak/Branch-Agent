@@ -252,11 +252,21 @@ function removalBackoff(error: unknown, attempt: number): number | undefined {
 }
 
 /** Blocking wait one snapshot's synchronous removal may spend in total, shared by all its paths. */
-export type SyncRemovalBudget = { remainingMs: number };
+export type SyncRemovalBudget = {
+  remainingMs: number;
+  /** Blocks the calling thread for ms. Injectable so tests can observe each wait without real time. */
+  sleepSync: (ms: number) => void;
+};
 const syncRemovalBudgetMs = removalBackoffMs.reduce((total, wait) => total + wait, 0);
 
-export function createSyncRemovalBudget(): SyncRemovalBudget {
-  return { remainingMs: syncRemovalBudgetMs };
+function sleepBlocking(ms: number): void {
+  Atomics.wait(removalBackoffCell, 0, 0, ms);
+}
+
+export function createSyncRemovalBudget(
+  sleepSync: (ms: number) => void = sleepBlocking,
+): SyncRemovalBudget {
+  return { remainingMs: syncRemovalBudgetMs, sleepSync };
 }
 
 /**
@@ -276,7 +286,7 @@ function removeSnapshotPathSync(target: string, budget: SyncRemovalBudget): void
         throw error;
       }
       budget.remainingMs -= wait;
-      Atomics.wait(removalBackoffCell, 0, 0, wait);
+      budget.sleepSync(wait);
     }
   }
 }

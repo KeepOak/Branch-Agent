@@ -13,6 +13,7 @@ import { componentDesktop } from "../../../connect/desktop-component-updates";
 import { DesktopUpdatesPage } from "./desktop-updates";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { KeeperMark } from "../../../brand/KeeperMark";
+import { WhatsNewRow } from "./whats-new-row";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -280,6 +281,7 @@ export function About() {
   return (
     <Sec title="About">
       <KeeperMark />
+      <WhatsNewRow />
       <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off="The list comes with the Branch app on your computer."><Btn sm disabled>Show</Btn></Ctl>
       <small className="about-credit">Based on OpenClaw</small>
     </Sec>

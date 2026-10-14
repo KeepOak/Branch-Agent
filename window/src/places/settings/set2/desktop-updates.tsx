@@ -9,6 +9,7 @@ import { componentDesktop, DESKTOP_CHECKS_HOURLY, ENGINE_UPDATE_EVENT, MANUAL_UP
 export const INSTALL_NO_ANSWER_MS = 390_000;
 const NO_ANSWER_MESSAGE = "Branch didn’t confirm the update. It may still finish: check the version in a few minutes, or restart Branch.";
 import { rec, str, useLive, type RecordValue } from "./common";
+import { WhatsNewRow } from "./whats-new-row";
 import { isNewerBranchVersion, runningBranchVersion, useBranchVersion, useShippedWindowVersion, versionParts } from "../../../connect/branch-version";
 
 const OS: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "Linux" };
@@ -78,6 +79,7 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
         : "Branch won’t apply a ready update until you choose. Update now applies it. Your conversations and settings stay in place."}</Hint>
         : <Hint>Branch checks every 10 minutes.</Hint>}
     </Sec>
+    <Sec title="About"><WhatsNewRow /></Sec>
   </Page>;
 }
 
