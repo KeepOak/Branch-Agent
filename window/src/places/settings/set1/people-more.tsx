@@ -61,7 +61,7 @@ const STATUS: Record<string, [string, "ok" | "warn" | "bad" | "idle" | "work"]> 
   timed_out: ["Timed out", "warn"], blocked: ["Blocked", "warn"], unknown: ["Unknown", "idle"],
 };
 
-function RecordsDialog({ engine, trunks, onClose }: { engine: WindowEngine; trunks: Map<string, string>; onClose: () => void }) {
+export function RecordsDialog({ engine, trunks, onClose }: { engine: WindowEngine; trunks: Map<string, string>; onClose: () => void }) {
   const res = useResource(engine, "audit.list", { limit: 20 });
   const events = list(record(res.data).events);
   return (

@@ -10,6 +10,8 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { WHO_ROWS } from "./who";
+import { PeopleButtons, SignedRecords } from "./who-live";
 import { HISTORY_ROWS } from "./history";
 import {
   BackupNow, BackupOften, BackupSchedule, BackupWhere, CleanupAction, CleanupCode, DataFolder, EveryChange, ExportSettings, FillIn, ImportSettings, LastBackup,
@@ -20,7 +22,7 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
+  notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -39,6 +41,8 @@ export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Who uses Branch: the preview's three cards; the list of people stays in the People place.
+  who: { rows: WHO_ROWS, controls: { "who.people.open": PeopleButtons, "who.records.signed": SignedRecords } },
   // History & backups: native R1 cards in the preview's order; Classic Backups, the overnight cleanup and Your settings
   // draw behind its rows (history-live.tsx).
   history: {
