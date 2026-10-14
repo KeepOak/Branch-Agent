@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../../connect/conversations";
 import type { MenuEntry } from "../../glass/Menu";
 import { DEFAULT_AWAKE, DEFAULT_LISTED, TRUNK_LISTED } from "../sidebar/row-menu";
-import { conversationMenu, CONVERSATION_NEED, WORK_AS, type ConversationMenuContext, type ConversationMenuRun } from "./conversation-menu";
+import { ROOM_REASONS } from "../../rooms/room-menu";
+import { roomRulesItems } from "../../rooms/room-rules";
+import { conversationMenu, CONVERSATION_NEED, ROOM_RULE_NEED, roomRuleEntries, WORK_AS, type ConversationMenuContext, type ConversationMenuRun } from "./conversation-menu";
 
 const NOW = new Date(2026, 9, 13, 12, 0, 0).getTime();
 const thread = (patch: Partial<Conversation> = {}): Conversation => ({
@@ -90,5 +92,39 @@ describe("the conversation ••• menu (owner-approved nine rows)", () => {
     const view = named(conversationMenu(ctx({ hasReply: false, ownWindowOff: "No windows here." })), "View").submenu!;
     expect(named(view, "Look inside the last reply").off).toBe("There's no reply to look inside yet.");
     expect(view.some(row => row.label === "Open in its own window")).toBe(false);
+  });
+});
+
+describe("Group rules in a group chat (#974 row 21)", () => {
+  it("adds Group rules after View only in a group chat, with the current rule on the right", () => {
+    expect(conversationMenu(ctx()).some(row => row.label === "Group rules")).toBe(false);
+    const rows = conversationMenu(ctx({ room: { ruleWords: "A lead Trunk decides", rules: [] } }));
+    expect(rows.map(row => row.label)).toEqual(["Pin to top", "Rename", "Snooze", "Archive", "Send to the board", "Export", "View", "Group rules", "Start over…", "Delete…"]);
+    expect(named(rows, "Group rules").hint).toBe("A lead Trunk decides");
+  });
+
+  it("re-hosts a Branch group's Who answers rows: lead runs through rooms.rule.set, the others keep their reasons", () => {
+    const choose = vi.fn();
+    const rules = roomRuleEntries(roomRulesItems({ chatApp: false, branchGroup: true, rule: "lead", choose }));
+    expect(rules.map(row => row.label)).toEqual(["A lead Trunk decides", "Everyone, every time", "Only those you @mention"]);
+    const lead = named(rules, "A lead Trunk decides");
+    expect(lead).toMatchObject({ need: ROOM_RULE_NEED.lead, toggle: true });
+    lead.onSelect!();
+    expect(choose).toHaveBeenCalledWith("lead");
+    expect(named(rules, "Everyone, every time")).toMatchObject({ local: true, off: ROOM_REASONS.everyone });
+    expect(named(rules, "Only those you @mention")).toMatchObject({ local: true, off: ROOM_REASONS.mentions });
+  });
+
+  it("re-hosts a chat-app group's rows: Everyone and @mention set its activation through sessions.patch", () => {
+    const choose = vi.fn();
+    const rules = roomRuleEntries(roomRulesItems({ chatApp: true, rule: "mention", choose }));
+    expect(named(rules, "A lead Trunk decides")).toMatchObject({ local: true, off: ROOM_REASONS.lead });
+    expect(named(rules, "Only those you @mention")).toMatchObject({ need: ROOM_RULE_NEED.activation, toggle: true });
+    expect(named(rules, "Everyone, every time").toggle).toBe(false);
+    named(rules, "Everyone, every time").onSelect!();
+    expect(choose).toHaveBeenCalledWith("always");
+    for (const row of all(conversationMenu(ctx({ room: { ruleWords: null, rules } })))) {
+      expect(Boolean(row.submenu || row.local || row.need || row.off), row.label).toBe(true);
+    }
   });
 });
