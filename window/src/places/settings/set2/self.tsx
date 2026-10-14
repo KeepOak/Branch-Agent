@@ -23,7 +23,7 @@ const COSTS_NOTE = "Needs the engine to count what each skill, connector and age
 const NO_ROLLBACK = "Rolling back a change needs the engine’s roll back.";
 const NO_SETTING = "Needs an engine setting for it.";
 const APP = "Runs in the Branch app on your computer.";
-const SOURCE: Record<string, string> = { "system-agent": "Branch", doctor: "Check and fix", "config-rpc": "Settings", cli: "The terminal", "plugin-install": "A plugin install", external: "Edited outside Branch", unknown: "" };
+export const SOURCE: Record<string, string> = { "system-agent": "Branch", doctor: "Check and fix", "config-rpc": "Settings", cli: "The terminal", "plugin-install": "A plugin install", external: "Edited outside Branch", unknown: "" };
 
 /** A greyed switch row: title, sub-line, the reason, and the level it shows from. */
 type Off = [title: string, sub: string, why: string, lv?: number];
@@ -70,6 +70,7 @@ const RUNS_LATER: Off[] = [
 const rows = (sec: string, lv: number, titles: string[]): [string, string, number][] => titles.map((t) => [t, sec, lv]);
 export const ROWS: RowEntry[] = [
   ["Set up the Gateway again", "", 0],
+  ...rows("Terminal checks", 1, ["Check without changing anything", "Check and repair"]),
   ...rows("What Branch may change about itself", 0, ["Its own settings", "Loosening what it may do", "The gateway’s timings", "Restarting its own engine", "Its own program and your saved work", "Work on its own code in a separate copy"]),
   ["Type branch in any terminal", "", 1],
   ["Let agents use this window", "", 1],
@@ -122,44 +123,47 @@ function Running({ engine, lv }: Ctx) {
   const health = useLive<RecordValue>(engine, "health", { probe: false }, ["health"]);
   const sys = rec(useLive<RecordValue>(engine, "system.info", {}, []).data);
   const restart = useCall();
-  const [check, setCheck] = useState<"" | "fix" | "only">("");
+  const [check, setCheck] = useState(false);
   const up = span(sys.uptimeMs);
   const facts = lv >= 2 ? [version ? `Branch ${versionParts(version).detail}` : "", sys.pid ? `process ${str(sys.pid)}` : "", rec(sys.processMemory).rssBytes ? bytes(rec(sys.processMemory).rssBytes) : ""].filter(Boolean) : [];
   return (
     <>
-      {health.error ? <Status tone="bad" title="The engine isn’t answering">{health.error}</Status>
+      {health.error ? <Status tone="bad" title="The engine isn’t answering">Branch couldn’t connect. Try Check Branch again in a moment.</Status>
         : health.data ? <Status title={`Running${up ? ` · up ${up}` : ""}`}>{facts.length ? `${facts.join(" · ")}. ` : ""}The gateway watches the engine and starts it again if it stops.</Status> : null}
       <Acts>
-        <Btn onClick={() => setCheck("fix")}><Icon name="check" small />Check and fix</Btn>
-        {lv >= 1 ? <Btn ghost onClick={() => setCheck("only")}>Check only</Btn> : null}
+        <Btn onClick={() => setCheck(true)}><Icon name="check" small />Check Branch</Btn>
         <Btn disabled={restart.busy} onClick={() => void restart.run(() => engine.request<RecordValue>("gateway.restart.request", { reason: "settings" }), () => "Restarting. The window reconnects by itself.")}><Icon name="retry" small />Restart the engine</Btn>
         <Btn ghost onClick={() => window.location.reload()}>Reload without dropping work</Btn>
       </Acts>
       <CallLine call={restart} />
       <Ctl title="Set up the Gateway again" sub="Install or reconfigure the Gateway on this computer." help="Install or reconfigure the Gateway on this computer. Your conversations and settings stay." off="Runs in the Branch app’s setup."><Btn sm>Open setup</Btn></Ctl>
-      {check ? <CheckDialog engine={engine} only={check === "only"} onClose={() => setCheck("")} /> : null}
+      {lv >= 1 ? <Sec title="Terminal checks">
+        <p className="hint">Run these on the computer hosting Branch. The repair command can change your settings.</p>
+        <CodeRow title="Check without changing anything" code="branch doctor" />
+        <CodeRow title="Check and repair" code="branch doctor --fix" />
+      </Sec> : null}
+      {check ? <CheckDialog engine={engine} onClose={() => setCheck(false)} /> : null}
     </>
   );
 }
 
-/** Check and fix: the checks the engine answers from here (health with probes, memory), and the doctor command. Check only leaves out --fix. */
-function CheckDialog({ engine, only, onClose }: Pick<SettingsPageProps, "engine"> & { only: boolean; onClose: () => void }) {
-  // No probes: sending a real request to each account waits for "Check and fix with real calls".
+/** Read-only checks available from the window; terminal repairs belong in Advanced. */
+export function CheckDialog({ engine, onClose }: Pick<SettingsPageProps, "engine"> & { onClose: () => void }) {
   const health = useLive<RecordValue>(engine, "health", { probe: false }, []);
   const memory = useLive<RecordValue>(engine, "doctor.memory.status", {}, []);
   const h = rec(health.data);
   const channels = Object.entries(rec(h.channels)).map(([id, v]) => [str(rec(h.channelLabels)[id]) || id, rec(v)] as const);
   const embed = rec(rec(memory.data).embedding);
+  const engineResult = health.loading ? "Checking Branch…" : health.error ? "Branch couldn’t be checked. Close this window and try again." : h.ok === true ? "Branch is responding." : h.ok === false ? "Branch needs attention." : "Branch did not report a result.";
+  const memoryResult = memory.loading ? "Checking memory search…" : memory.error ? "Memory search couldn’t be checked." : embed.checked === false ? "Memory search was not checked." : embed.ok === true ? "Memory search is working." : embed.ok === false ? "Memory search needs attention." : "Memory search did not report a result.";
   return (
-    <Dialog title={only ? "Check only" : "Check and fix"} wide onClose={onClose}>
-      {health.loading && !health.data ? <p>Checking…</p> : null}
-      <ol className="s2-tl">
-        <li className={health.error ? "bad" : "ok"}><span>The engine<small>{health.error ?? (typeof h.durationMs === "number" ? `Answered in ${h.durationMs} ms` : "Answered")}</small></span></li>
-        {channels.map(([name, c]) => <li key={name} className={c.lastError ? "bad" : "ok"}><span>{name}<small>{c.lastError ? str(c.lastError) : c.connected === true ? "Working" : c.configured === false ? "Not set up" : "Not connected"}</small></span></li>)}
-        {memory.data ? <li className={embed.ok === false ? "bad" : "ok"}><span>Memory search<small>{embed.ok === false ? str(embed.error) : "Working"}</small></span></li> : null}
+    <Dialog title="Check Branch" wide onClose={onClose}>
+      <p className="hint">Checks Branch and memory search without changing your settings or sending messages to your accounts.</p>
+      <ol className="s2-tl" aria-live="polite">
+        <li className={health.error || h.ok === false ? "bad" : !health.loading && h.ok === true ? "ok" : ""}><span>Branch<small>{engineResult}</small></span></li>
+        {channels.map(([name, c]) => <li key={name} className={c.lastError ? "bad" : c.connected === true ? "ok" : ""}><span>{name}<small>{c.lastError ? "Needs attention. Check this app in Chat apps." : c.connected === true ? "Connected" : c.configured === false ? "Not set up" : "Not connected"}</small></span></li>)}
+        <li className={memory.error || embed.ok === false && embed.checked !== false ? "bad" : !memory.loading && embed.ok === true && embed.checked !== false ? "ok" : ""}><span>Memory search<small>{memoryResult}</small></span></li>
       </ol>
-      <p className="hint">{only ? "The full check runs on the Gateway’s computer and changes nothing:" : "The full check, with fixes, runs on the Gateway’s computer:"}</p>
-      {only ? <CodeRow title="Check everything" code="branch doctor" /> : <CodeRow title="Check and fix everything" code="branch doctor --fix" />}
     </Dialog>
   );
 }
@@ -286,7 +290,7 @@ function HowItRuns({ engine, config, lv }: Ctx) {
   );
 }
 
-function clientName(p: RecordValue): string {
+export function clientName(p: RecordValue): string {
   return str(p.host) || str(rec(p.user).name) || str(p.mode) || str(p.clientId) || "A client";
 }
 
@@ -315,14 +319,7 @@ function Connected({ engine }: Pick<SettingsPageProps, "engine">) {
 function YourSettings({ engine, config }: Ctx) {
   const [incoming, setIncoming] = useState<{ name: string; raw: string } | null>(null);
   const sys = rec(useLive<RecordValue>(engine, "system.info", {}, []).data);
-  const exportFile = () => {
-    const blob = new Blob([JSON.stringify(config.cfg, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "branch-settings.json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
+  const exportFile = () => exportSettings(config.cfg);
   return (
     <Sec title="Your settings">
       <Ctl title="Export" sub="Every setting as one file. Keys and passwords are left out."><Btn sm disabled={config.loading} onClick={exportFile}>Export</Btn></Ctl>
@@ -345,13 +342,23 @@ function YourSettings({ engine, config }: Ctx) {
   );
 }
 
+/** Saves every setting as branch-settings.json (the engine leaves keys out of config.get). */
+export function exportSettings(cfg: RecordValue): void {
+  const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "branch-settings.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function flat(value: unknown, path = ""): [string, string][] {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return [[path, JSON.stringify(value)]];
   return Object.entries(value as RecordValue).flatMap(([k, v]) => flat(v, path ? `${path}.${k}` : k));
 }
 
 /** Import: every top-level key that differs is listed; applying patches only those keys against the loaded revision. */
-function ImportDialog({ config, file, onClose }: Pick<SettingsPageProps, "engine"> & { config: ReturnType<typeof useConfig>; file: { name: string; raw: string }; onClose: () => void }) {
+export function ImportDialog({ config, file, onClose }: Pick<SettingsPageProps, "engine"> & { config: ReturnType<typeof useConfig>; file: { name: string; raw: string }; onClose: () => void }) {
   const call = useCall();
   let parsed: RecordValue | null = null;
   try { parsed = rec(JSON.parse(file.raw)); } catch (e) { parsed = null; void e; }

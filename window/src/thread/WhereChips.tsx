@@ -19,10 +19,9 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export const BROWSE_OFF = "Picking a folder on your computer needs the desktop app, which doesn't offer it yet. Paste its path above.";
-export const NOT_GIT = "This folder isn’t a Git project";
-export const COMPUTER_WHY = "The computer that runs its commands and code.";
-export const folderWhy = (trunkName: string) => `Where it reads and saves files. Until you pick one, it uses ${trunkName}’s files.`;
+const NOT_GIT = "This folder isn’t a Git project";
+const COMPUTER_WHY = "The computer that runs its commands and code.";
+const folderWhy = (trunkName: string) => `Where it reads and saves files. Until you pick one, it uses ${trunkName}’s files.`;
 
 const isPath = (q: string) => /^([a-zA-Z]:[\\/]|\/|~[\\/])/.test(q.trim());
 const isGit = (q: string) => /^(https?:\/\/|git@)\S+$/.test(q.trim());
@@ -173,10 +172,6 @@ function FolderPop({ at, trunkName, projects, onClose, start }: { at: MenuAnchor
         </button>
       )) : <p className="pp">No projects match.</p>}
       <hr />
-      <button type="button" className="mi" disabled title={BROWSE_OFF}>
-        <Icon name="folder" small />
-        <span className="mi-t">Browse folders…</span>
-      </button>
       <button type="button" className="mi" onClick={() => void start({ worktree: true, worktreeSource: "empty" })}>
         <Icon name="plus" small />
         <span className="mi-t">New empty folder</span>

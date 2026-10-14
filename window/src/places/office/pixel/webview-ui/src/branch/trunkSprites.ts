@@ -22,8 +22,8 @@ const CW = META.cellW;
 const CH = META.cellH;
 
 export const TRUNK_LOOKS = META.looks;
-export const PEBBLE_EYES = META.pebble.eyes;
-export const PEBBLE_SHAPES = META.pebble.shapes;
+const PEBBLE_EYES = META.pebble.eyes;
+const PEBBLE_SHAPES = META.pebble.shapes;
 
 let sheets: Record<string, DecodedPng> = {};
 

@@ -83,7 +83,7 @@ it.each(versionCases)("maps staged $latest against running $version (ready: $rea
   await mount(<Fixture version={version} />);
   expect(current?.latest).toBe(ready ? latest : null);
   expect(current?.installing).toBe(ready);
-  expect(current?.waiting).toBe(ready ? "Downloaded. Restart Branch when your work is ready." : null);
+  expect(current?.waiting).toBe(ready ? "Downloaded. It applies in place when no Trunk is working." : null);
 });
 
 function updateInfo(version: string, latest: string): UpdateInfo {
@@ -92,19 +92,21 @@ function updateInfo(version: string, latest: string): UpdateInfo {
 const noop = () => {};
 
 it.each(versionCases)("renders version popover for $latest against $version (ready: $ready)", async ({ version, latest, ready }) => {
-  await mount(<VersionPopover version={version} update={updateInfo(version, latest)} desktopPending={latest} autoApply desktopInstall
-    above={{ left: 0, right: 100, top: 100, align: "left" }} onClose={noop} onWhatsNew={noop} onInstall={noop} onRemind={noop} />);
-  expect(Boolean(document.querySelector('[data-testid="ver-install"]'))).toBe(ready);
+  await mount(<VersionPopover version={version} update={updateInfo(version, latest)} desktopInstall
+    above={{ left: 0, right: 100, top: 100, align: "left" }} onClose={noop} onWhatsNew={noop} onRemind={noop} />);
+  // The window has no install control and no update banner: updates apply in place and Settings is the only control.
+  expect(document.querySelector('[data-testid="ver-install"]')).toBeNull();
   expect(Boolean(document.querySelector('[data-testid="ver-remind"]'))).toBe(ready);
   expect(document.body.textContent?.includes("is ready")).toBe(ready);
-  expect(document.body.textContent?.includes("Update ready, applying")).toBe(ready);
+  expect(document.body.textContent?.includes("Update ready, applying")).toBe(false);
+  expect(document.body.textContent?.includes("Install when idle")).toBe(false);
   if (ready) expect(document.body.textContent).toContain("Branch 1.4.3 is ready");
 });
 
 it.each(versionCases)("renders What's new for $latest against $version (ready: $ready)", async ({ version, latest, ready }) => {
   await mount(<WhatsNew version={version} update={updateInfo(version, latest)} installed={{ New: [], Better: [], Fixed: [] }}
-    startOnReady desktopInstall onClose={noop} onOpenUpdates={noop} onInstall={noop} />);
-  expect(Boolean(document.querySelector('[data-testid="wn-install"]'))).toBe(ready);
+    startOnReady desktopInstall onClose={noop} onOpenUpdates={noop} />);
+  expect(document.querySelector('[data-testid="wn-install"]')).toBeNull();
   expect(document.body.textContent?.includes("· ready")).toBe(ready);
   expect(document.body.textContent?.includes("The update didn't say what it changes.")).toBe(ready);
   if (ready) expect(document.body.textContent).toContain("Branch 1.4.3 · ready");
@@ -113,11 +115,9 @@ it.each(versionCases)("renders What's new for $latest against $version (ready: $
 it("removes ready actions when the running version catches up while What's new stays open", async () => {
   const view = (version: string) => <WhatsNew version={version} update={updateInfo(version, "1.4.3")}
     installed={{ New: [{ icon: "check", title: "Installed change", line: "Available now", run: noop }], Better: [], Fixed: [] }}
-    startOnReady desktopInstall onClose={noop} onOpenUpdates={noop} onInstall={noop} />;
+    startOnReady desktopInstall onClose={noop} onOpenUpdates={noop} />;
   await mount(view("1.4.2"));
-  expect(document.querySelector('[data-testid="wn-install"]')).not.toBeNull();
   await act(async () => root?.render(view("1.4.3")));
-  expect(document.querySelector('[data-testid="wn-install"]')).toBeNull();
   expect(document.body.textContent).not.toContain("· ready");
   expect(document.body.textContent).not.toContain("The update didn't say what it changes.");
   expect(document.body.textContent).toContain("Installed change");

@@ -1,6 +1,4 @@
-// Adapted from elizaOS/eliza plugins/plugin-agent-orchestrator/src/evaluators/sub-agent-failure.ts
-// Source commit: 3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf.
-// Unicode normalization wrapper: packages/core/src/utils/unicode.ts at the same commit.
+// Unicode normalization wrapper.
 /// <reference lib="es2024.string" />
 
 /**
