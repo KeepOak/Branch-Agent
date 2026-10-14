@@ -130,6 +130,11 @@ const OLD_IDS: Record<string, PageId> = {
   featuresP17: "features", local: "devices",
 };
 
+/** The R1 page a route id belongs to: a new or old id on its page, or the id itself when R1 has no page for it (a Classic page). */
+export function r1PageFor(id: string): string {
+  return Object.hasOwn(PAGES, id) || Object.hasOwn(OLD_IDS, id) ? pageFor(id) : id;
+}
+
 /** The page a link or saved id opens: a new id as is, an old id on its new page, anything else on General. */
 export function pageFor(id: string | null | undefined): PageId {
   if (id && Object.hasOwn(PAGES, id)) return id as PageId;
