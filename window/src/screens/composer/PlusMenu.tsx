@@ -55,7 +55,7 @@ export const PLUS_COMING = {
   screenshot: "Taking a screenshot needs the Branch app on your computer.",
   teach: "Teaching a task by showing it comes in a later update.",
   office: "Writing a doc, sheet or slides comes in a later update.",
-  branch: "Branching from the end of a conversation comes in a later update. Use Branch from here on a message.",
+  branch: "Branching from the end of a conversation comes in a later update.",
   temporary: "Temporary chats come in a later update.",
   checkWithMe: "Check with me comes in a later update.",
   phone: "Phone calls come in a later update.",
