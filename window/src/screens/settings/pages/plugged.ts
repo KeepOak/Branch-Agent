@@ -10,6 +10,8 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { REMOTE_ROWS } from "./remote";
+import { Activity, BrowserPage, GatewayAddress, Https, Infrastructure, LabelComputer, Lately, Origins, Ping, RestartEngine as RestartGateway, Risky, ScriptCode } from "./remote-live";
 import { GENERAL_PAGE } from "./general-live";
 import { SIGNINS_ROWS } from "./signins";
 import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
@@ -49,6 +51,24 @@ export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Remote access: native R1 cards in the preview's order; Classic Gateway draws behind its rows (remote-live.tsx).
+  remote: {
+    rows: REMOTE_ROWS,
+    controls: {
+      "remote.reached.label": LabelComputer,
+      "remote.reached.browser": BrowserPage,
+      "remote.doing.lately": Lately,
+      "remote.doing.restart": RestartGateway,
+      "remote.connection.address": GatewayAddress,
+      "remote.connection.ping": Ping,
+      "remote.connection.activity": Activity,
+      "remote.connection.infra": Infrastructure,
+      "remote.exposure.https": Https,
+      "remote.exposure.origins": Origins,
+      "remote.exposure.risky": Risky,
+      ...Object.fromEntries(["send", "connect", "poll", "else", "several"].map((id) => [`remote.scripts.${id}`, ScriptCode])),
+    },
+  },
   // Sign-ins & keys: the preview's four cards; Classic's password manager and key store inside them.
   signins: { rows: SIGNINS_ROWS, controls: { "signins.where.block": SigninWhere, "signins.keys.block": SigninKeys } },
   // Updates & about: the preview's ten cards; Classic Updates' sections and the achievements badges inside them.

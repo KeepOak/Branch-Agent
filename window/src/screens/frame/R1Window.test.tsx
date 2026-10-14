@@ -16,7 +16,7 @@ vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as
 // page's own rows, and Chat apps.
 vi.mock("../settings/pages/plugged", async () => {
   const { REHOSTED, R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, learning: R1_PAGES.learning, signins: R1_PAGES.signins, updates: R1_PAGES.updates, developer: R1_PAGES.developer, chatapps: { component: () => null } } };
+  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, learning: R1_PAGES.learning, remote: R1_PAGES.remote, signins: R1_PAGES.signins, updates: R1_PAGES.updates, developer: R1_PAGES.developer, chatapps: { component: () => null } } };
 });
 vi.mock("../settings", () => ({
   SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (
@@ -95,7 +95,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("who,notifications,instructions,models,permissions,privacy,browser,coding,history,devices,learning,signins,updates,developer,chatapps,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("who,notifications,instructions,models,permissions,privacy,browser,coding,history,devices,learning,remote,signins,updates,developer,chatapps,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
@@ -166,7 +166,7 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
     voice: "classic:voice", chatapps: "r1:chatapps",
     accounts: "r1:accounts", models: "r1:models",
     permissions: "r1:permissions", signins: "r1:signins", privacy: "r1:privacy",
-    devices: "r1:devices", browser: "r1:browser", coding: "r1:coding", remote: "classic:gateway",
+    devices: "r1:devices", browser: "r1:browser", coding: "r1:coding", remote: "r1:remote",
     history: "r1:history", learning: "r1:learning", updates: "r1:updates", features: "r1:features", developer: "r1:developer",
   });
 });
