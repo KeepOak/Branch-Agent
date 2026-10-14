@@ -262,7 +262,7 @@ describe("computer use on demand", () => {
     expect(await readdir(path.join(stateDir, "tools", "computer-use"))).toEqual([]);
     await expect(onDemand.status()).resolves.toMatchObject({ state: "unavailable", reason: "digest-mismatch" });
 
-    // An availability probe does not fetch a refused archive again; Try again does.
+    // The next use does not fetch a refused archive again; an explicit retry does.
     const calls = fetch.mock.calls.length;
     await expect(onDemand.ensureInstalled()).rejects.toMatchObject({ reason: "digest-mismatch" });
     expect(fetch.mock.calls.length).toBe(calls);
@@ -296,7 +296,7 @@ describe("computer use on demand", () => {
     await expect(onDemand.ensureInstalled()).rejects.toMatchObject({ reason: "offline" });
     const status = await onDemand.status();
     expect(status).toMatchObject({ state: "unavailable", reason: "offline", bytes: download.bytes });
-    expect(status.state === "unavailable" && status.message).toMatch(/looks offline \(ENOTFOUND\).*Connect to the internet and try again/u);
+    expect(status.state === "unavailable" && status.message).toMatch(/looks offline \(ENOTFOUND\).*Connect to the internet: it tries again the next time computer use is used/u);
     expect(await readdir(path.join(stateDir, "tools", "computer-use"))).toEqual([]);
   });
 
@@ -331,7 +331,25 @@ describe("computer use on demand", () => {
     gated.release();
   });
 
-  it("Try again after a failure downloads again and becomes ready", async () => {
+  it("the next use after an offline failure downloads again and becomes ready", async () => {
+    const archives = fixtureArchives();
+    const download = fixtureDownload(archives);
+    let offline = true;
+    const serve = servingFetch(download, archives);
+    const fetch = vi.fn(async (url: string | URL | Request) => {
+      if (offline) {
+        throw new TypeError("fetch failed", { cause: { code: "EAI_AGAIN" } });
+      }
+      return serve(url);
+    });
+    const onDemand = createComputerUseOnDemand({ stateDir: () => stateDir, platform: "darwin", arch: "arm64", fetch, chmod: async () => undefined, download });
+    await expect(onDemand.ensureInstalled()).rejects.toMatchObject({ reason: "offline" });
+    offline = false;
+    await expect(onDemand.ensureInstalled()).resolves.toBe(onDemand.storeDir());
+    await expect(onDemand.status()).resolves.toMatchObject({ state: "ready", source: "downloaded" });
+  });
+
+  it("an explicit retry after a failure downloads again and becomes ready", async () => {
     const archives = fixtureArchives();
     const download = fixtureDownload(archives);
     let offline = true;

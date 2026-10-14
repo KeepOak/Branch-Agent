@@ -29,8 +29,8 @@ export default definePluginEntry({
       );
     }
     api.registerNodeInvokePolicy(createCuaComputerNodeInvokePolicy());
-    // Release builds fetch the driver the first time computer use is on; the
-    // window shows its state (computer.runtime) wherever computer use is turned on.
+    // Release builds fetch the driver the first time computer use is on;
+    // computer.runtime reports its state.
     const onDemand = registerComputerUseRuntime(api);
     // Remote policy must not enable local native control. macOS retains its
     // app-gated default; Windows/Linux nodes still require plugin enablement.

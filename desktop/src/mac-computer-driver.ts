@@ -175,7 +175,7 @@ export class MacComputerDriver {
     if (!pins || !stateDir) return { state: "not-downloaded", reason: `Mac computer driver is not packaged in ${engineDir}` };
     const root = macDriverStore(stateDir, pins.version, this.arch);
     if (!existsSync(join(root, "computer-use-install.json"))) {
-      return { state: "not-downloaded", reason: `Mac computer driver ${pins.version} is not downloaded yet; Settings › Computer & browser downloads it` };
+      return { state: "not-downloaded", reason: `Mac computer driver ${pins.version} is not downloaded yet; the engine downloads it the first time computer use is on` };
     }
     const files = this.storeFiles(root, pins);
     const key = this.storeKey(root, files.map(([file]) => file));

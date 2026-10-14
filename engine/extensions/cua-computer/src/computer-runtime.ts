@@ -1,8 +1,8 @@
 /**
- * Computer-use availability for the Branch Agent window: whether the CUA Driver
- * is bundled or downloaded, or the Download / downloading / unavailable state
- * with its reason, a way to start the first-use download (turning computer use
- * on starts it), and Cancel / Try again.
+ * Computer-use availability over the gateway: whether the CUA Driver is
+ * bundled or downloaded, or the download / downloading / unavailable state
+ * with its reason, a way to start the first-use download (using computer use
+ * starts it), and cancel / retry.
  */
 import type { BranchPluginApi } from "branch/plugin-sdk/plugin-entry";
 import { resolveStateDir } from "branch/plugin-sdk/state-paths";
@@ -37,7 +37,7 @@ export function registerComputerUseRuntime(
     async ({ respond }) => {
       const before = await onDemand.status();
       if (before.state === "download" || before.state === "unavailable") {
-        // Download now and Try again: the download continues after this reply and
+        // Download now, or retry after a failure: the download continues after this reply and
         // computer.runtime reports its progress or the reason it stopped.
         void onDemand.ensureInstalled({ retry: true }).catch(() => undefined);
       }

@@ -88,8 +88,9 @@ export type ComputerUseEnsureOptions = {
   signal?: AbortSignal;
   onProgress?: (progress: ComputerUseDownloadProgress) => void;
   /**
-   * After a failed download, only an explicit Try again downloads again: a
-   * refused digest must not be fetched over and over by availability probes.
+   * A refused download (its digest did not match the pins) is not fetched
+   * again on its own; retry: true fetches it anyway. Any other failure
+   * (offline, a failed download) tries again on the next use.
    */
   retry?: boolean;
 };
@@ -148,7 +149,7 @@ function formatMegabytes(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1_000_000))} MB`;
 }
 
-const RETRY = "Try again from Settings › Computer & browser.";
+const RETRY = "It tries again the next time computer use is used.";
 
 /** "Getting computer use ready (62 MB)… 42%". */
 export function computerUseDownloadProgress(
@@ -243,7 +244,7 @@ export function createComputerUseOnDemand(deps: ComputerUseOnDemandDeps): Comput
     if (options.signal?.aborted) {
       throw cancelledError();
     }
-    if (!inFlight && lastFailure && options.retry !== true) {
+    if (!inFlight && lastFailure?.reason === "digest-mismatch" && options.retry !== true) {
       throw lastFailure;
     }
     if (!inFlight) {
@@ -462,7 +463,7 @@ async function downloadAndInstall(params: InstallParams): Promise<string> {
       if (digest.sha256 !== part.sha256 || digest.bytes !== part.bytes) {
         throw new ComputerUseUnavailableError(
           "digest-mismatch",
-          `The computer-use download was refused: ${part.name} ${part.version} has SHA-256 ${digest.sha256} (${digest.bytes} bytes), not the digest pinned for ${download.target}. Nothing was installed or run. ${RETRY}`,
+          `The computer-use download was refused: ${part.name} ${part.version} has SHA-256 ${digest.sha256} (${digest.bytes} bytes), not the digest pinned for ${download.target}. Nothing was installed or run.`,
         );
       }
       archives.push({ part, file });
@@ -488,7 +489,7 @@ async function downloadAndInstall(params: InstallParams): Promise<string> {
       if (actual !== part.fileSha256) {
         throw new ComputerUseUnavailableError(
           "digest-mismatch",
-          `The computer-use download was refused: ${part.file} inside the verified archive does not match its pinned SHA-256. Nothing was installed or run. ${RETRY}`,
+          `The computer-use download was refused: ${part.file} inside the verified archive does not match its pinned SHA-256. Nothing was installed or run.`,
         );
       }
       await params.chmod(driver, 0o755);
@@ -535,7 +536,7 @@ export async function sha256File(file: string): Promise<string> {
 function offlineError(download: ComputerUseDownload, code: string, cause: unknown) {
   return new ComputerUseUnavailableError(
     "offline",
-    `Computer use isn't downloaded yet and this computer looks offline (${code}). It needs a one-time download (${formatMegabytes(download.bytes)}). Connect to the internet and try again.`,
+    `Computer use isn't downloaded yet and this computer looks offline (${code}). It needs a one-time download (${formatMegabytes(download.bytes)}). Connect to the internet: it tries again the next time computer use is used.`,
     { cause },
   );
 }
@@ -582,7 +583,7 @@ async function downloadTo(
         callback(
           new ComputerUseUnavailableError(
             "digest-mismatch",
-            `The computer-use download was refused: ${part.name} ${part.version} is larger than its pinned ${part.bytes} bytes. Nothing was installed or run. ${RETRY}`,
+            `The computer-use download was refused: ${part.name} ${part.version} is larger than its pinned ${part.bytes} bytes. Nothing was installed or run.`,
           ),
         );
         return;

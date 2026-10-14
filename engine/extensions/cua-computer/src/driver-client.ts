@@ -324,8 +324,8 @@ async function loadCuaDriverSdk(): Promise<CuaDriverSdk> {
   let artifactVerification = verifyInstalledCuaDriverArtifacts();
   const onDemand = getComputerUseOnDemand();
   if (!artifactVerification.ok && artifactVerification.code === "COMPUTER_DRIVER_NOT_DOWNLOADED" && onDemand) {
-    // First use: download and verify the pinned driver. After a failure only
-    // Settings' Try again downloads again; this load reports the same reason.
+    // First use: download and verify the pinned driver. A failed download tries
+    // again on the next use; a refused one reports the same reason.
     try {
       await onDemand.ensureInstalled();
     } catch (error) {

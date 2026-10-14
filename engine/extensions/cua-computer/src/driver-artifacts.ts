@@ -155,7 +155,7 @@ export function verifyInstalledCuaDriverArtifacts(): CuaDriverArtifactVerificati
   });
   if (!verification.ok && verification.code === "COMPUTER_DRIVER_PACKAGE_MISSING" && !resolveCuaDriverSdk()) {
     // Release builds no longer bundle the driver: it is not downloaded yet, not broken.
-    const fixHint = "Turn on computer use in Settings › Computer & browser to download it, or use Try again there.";
+    const fixHint = "It downloads the first time computer use is used, while this computer is online.";
     return {
       ok: false,
       code: "COMPUTER_DRIVER_NOT_DOWNLOADED",
