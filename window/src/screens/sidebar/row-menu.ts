@@ -32,6 +32,9 @@ export type RowMenuContext = {
   ask: (key: string) => void;
   editTrunk: (agentId: string) => void;
   tidy: (row: Conversation) => void;
+  /** Advanced and Technical: Tidy up also offers Keep only the last 400 lines (Classic row menu). */
+  advanced?: boolean;
+  keepLast?: (row: Conversation) => void;
   removeTrunk: (agentId: string, name: string) => void;
   confirmDelete: (row: Conversation) => void;
 };
@@ -125,7 +128,10 @@ export function rowMenu(row: SideRow, c: RowMenuContext): { tiles: MenuEntry[]; 
       { label: "What can it do?", icon: icon("info"), need: NEED.ask, onSelect: () => c.ask(key) },
       { label: "Pause", icon: icon("pause"), need: NEED.pause, off: PAUSE_OFF },
       { label: "Edit Trunk…", icon: icon("sliders"), local: true, onSelect: () => c.editTrunk(agentId) },
-      thread ? { label: "Tidy up", icon: icon("spark"), submenu: [{ label: "Tidy up this conversation", need: NEED.tidy, onSelect: () => c.tidy(thread) }] } : { label: "Tidy up", icon: icon("spark"), off: FIRST_MESSAGE },
+      thread ? { label: "Tidy up", icon: icon("spark"), submenu: present([
+        { label: "Tidy up this conversation", need: NEED.tidy, onSelect: () => c.tidy(thread) },
+        c.advanced && c.keepLast ? { label: "Keep only the last 400 lines…", need: NEED.tidy, onSelect: () => c.keepLast?.(thread) } : null,
+      ]) } : { label: "Tidy up", icon: icon("spark"), off: FIRST_MESSAGE },
       row.isDefault ? null : { label: `Remove ${row.name}…`, icon: icon("trash"), danger: true, gap: true, need: NEED.removeTrunk, onSelect: () => c.removeTrunk(agentId, row.name) },
     ]) } : null,
     !row.isDefault && thread ? { label: "Delete conversation…", letter: "d", icon: icon("trash"), danger: true, gap: true, need: NEED.delete, onSelect: () => c.confirmDelete(thread) } : null,
