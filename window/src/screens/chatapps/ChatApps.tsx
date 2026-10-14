@@ -10,7 +10,7 @@ import { ConnectDialog } from "../../places/settings/set1/chatapps-connect";
 import "../../places/settings/set1/chatapps.css";
 import { has } from "../../places/inbox/data";
 import { useLevel } from "../settings/SettingsFrame";
-import { CHAT_APPS, GROUPS, type ChatApp } from "./catalogue";
+import { CHAT_APPS, GROUPS, estimateOf, type ChatApp } from "./catalogue";
 import { More } from "./More";
 import { Pairing } from "./Pairing";
 import { ChatAppSettings } from "./Settings";
@@ -83,7 +83,7 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
           const locked = !on && offered && !admin;
           const enabled = Boolean(app.channel && action && offered && !locked);
           const reason = locked ? "Setting up " + app.name + " needs full access on this connection." : "Setting up " + app.name + " comes in a later update.";
-          const face = <><ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{on ? state?.running ? "Connected" : state?.word : app.estimate ?? "Coming in a later update"}</small></span><span className="r1-ca-action">{locked ? "Needs full access" : !enabled ? "Coming" : on ? "Manage" : "Set up"}</span></>;
+          const face = <><ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{on ? state?.running ? "Connected" : state?.word : app.estimate ?? estimateOf(app.id)}</small></span><span className="r1-ca-action">{locked ? "Needs full access" : !enabled ? "Coming" : on ? "Manage" : "Set up"}</span></>;
           // Full access is this connection's scope, not a missing call: the card stays greyed with its reason and names its calls.
           if (locked) return <button key={app.id} type="button" className="r1-ca-card g-frost" aria-disabled="true" title={reason} data-need={needs.join(" ")}>{face}</button>;
           // Every other card goes through <Coming> with the calls it makes (R1-10). web.login.* is never in the hello, so
