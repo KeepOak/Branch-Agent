@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/lanes.test.ts (atlas AGENT-LOOP-0001). Changed for Branch: apply DECISIONS.md item 127 using scripts/rebrand-map.json; retain the complete pinned suite alongside native coverage.
+// Changed for Branch: apply DECISIONS.md item 127 using scripts/rebrand-map.json; retain the complete pinned suite alongside native coverage.
 // Coverage for global and per-session command lane normalization.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
@@ -24,7 +24,6 @@ describe("resolveGlobalLane", () => {
   it("maps cron lane to cron-nested lane to prevent deadlocks", () => {
     // When cron jobs trigger nested agent runs, the outer execution holds the
     // cron lane slot. Inner work must use a separate lane to avoid deadlock.
-    // See: https://github.com/openclaw/openclaw/issues/44805
     for (const lane of ["cron", "  cron  "]) {
       expect(resolveGlobalLane(lane)).toBe(CommandLane.CronNested);
     }
