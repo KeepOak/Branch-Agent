@@ -38,7 +38,7 @@ const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50
 
 it("re-hosts exactly these Classic pages", () => {
   expect(REHOSTED).toEqual({
-    who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
+    who: "people", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
     browser: "computer-browser",
     coding: "computer-coding",
     models: "models",

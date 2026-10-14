@@ -10,6 +10,8 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { NOTIFICATIONS_ROWS } from "./notifications";
+import * as Notify from "./notifications-live";
 import { HISTORY_ROWS } from "./history";
 import {
   BackupNow, BackupOften, BackupSchedule, BackupWhere, CleanupAction, CleanupCode, DataFolder, EveryChange, ExportSettings, FillIn, ImportSettings, LastBackup,
@@ -19,7 +21,7 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  who: "people", notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
+  who: "people", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -38,6 +40,25 @@ export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Notifications: native R1 cards in the preview's order; Classic Notifications' calls behind its rows (notifications-live.tsx).
+  notifications: {
+    rows: NOTIFICATIONS_ROWS,
+    controls: {
+      "notifications.tell.here": Notify.NoticesHere,
+      ...Object.fromEntries(["approvalRequested", "agentQuestion", "agentFinished", "scheduledTaskFailed", "humanMentioned"].flatMap((k) => [
+        [`notifications.tell.${k}`, Notify.Category], [`notifications.pc.${k}`, Notify.DeviceCategory]])),
+      "notifications.tell.trunks": Notify.OnlyTrunks,
+      "notifications.tell.locked": Notify.LockedScreen,
+      "notifications.tell.test": Notify.SendTest,
+      "notifications.quiet.hours": Notify.QuietHours,
+      "notifications.quiet.zone": Notify.QuietZone,
+      "notifications.pc.name": Notify.DeviceName,
+      "notifications.pc.locked": Notify.DeviceLocked,
+      "notifications.pc.quiet": Notify.DeviceQuiet,
+      "notifications.pc.trunks": Notify.DeviceTrunks,
+      "notifications.push.browser": Notify.PushBrowser,
+    },
+  },
   // History & backups: native R1 cards in the preview's order; Classic Backups, the overnight cleanup and Your settings
   // draw behind its rows (history-live.tsx).
   history: {
