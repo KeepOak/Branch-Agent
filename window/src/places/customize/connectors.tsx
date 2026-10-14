@@ -8,7 +8,7 @@ import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
 import { shownWhy } from "../../shell/shown-why";
 import { Switch } from "../../shell/Popover";
-import { useResource } from "../library/data";
+import { trunkName, useResource } from "../library/data";
 import { Status } from "../library/ui";
 import { denyList, denyPatch, Grey, list, PermRow, rec, Sec, Seg, str, WhoChips, withItem, type Rec } from "./common";
 import { CatalogDialog } from "./catalog";
@@ -127,29 +127,42 @@ function ConnectorDetail({ ctx, server }: { ctx: ToolsCtx; server: Server }) {
     </div>
     {config.writeError && <p role="alert" className="cz-error">{config.writeError}</p>}
     {scoped ? <div className="cz-line"><span>{scoped.identity?.name || scoped.name || scoped.id} may use it</span><Switch label={`${scoped.id} may use ${server.name}`} on={mayUse(ctx, server.name, scoped.id)} onChange={on => setWho(scoped.id, on)} /></div>
-      : <Sec title="Which Trunks may use it"><WhoChips trunks={trunks} may={id => mayUse(ctx, server.name, id)} toggle={config.busy ? undefined : setWho} reason="Saving…" /></Sec>}
+      : <Sec title="Who may use it"><WhoChips trunks={trunks} may={id => mayUse(ctx, server.name, id)} toggle={config.busy ? undefined : setWho} reason="Saving…" /></Sec>}
     <ConnectorTools ctx={ctx} server={server} />
-    {shows(level, "advanced") && <Sec title="Connection">
-      <div className="cz-line"><span>Several calls at once</span><Switch label="Several calls at once" on={server.parallel} onChange={on => setServer({ supportsParallelToolCalls: on })} /></div>
-      {!server.local && <div className="cz-line"><span>Check the server’s certificate</span><Switch label="Check the server’s certificate" on={server.sslVerify} onChange={on => setServer({ sslVerify: on })} /></div>}
-    </Sec>}
-    {shows(level, "advanced") && <Sec title="Connection">
-      <div className="cz-line"><span>Only these tools<small>None picked: every tool.</small></span><Grey reason="Choosing which tools a connector may offer comes in a later update.">Choose</Grey></div>
-      <div className="cz-line"><span>Never these tools<small>Hidden tools are not offered at all.</small></span><Grey reason="Choosing tools a connector may never offer comes in a later update.">Choose</Grey></div>
-      <div className="cz-line"><span>Client certificate</span><Grey reason="Choosing a client certificate comes in a later update.">Choose a file</Grey></div>
-      <div className="cz-line"><span>Client key</span><Grey reason="Choosing a client key comes in a later update.">Choose a file</Grey></div>
-    </Sec>}
-    {shows(level, "technical") && <Sec title="What it offers"><p className="cz-hint">Resources a Trunk can read, and prompts it brings.</p></Sec>}
-    {shows(level, "technical") && <Sec title="How it runs">
-      <div className="cz-line"><span>Give up on a call after</span><Grey reason="Setting how long a call may wait comes in a later update.">Set</Grey></div>
-      <div className="cz-line"><span>Pick up new tools when the server changes them</span><Grey className="switch" reason="Picking up new tools comes in a later update."><span /></Grey></div>
-      <div className="cz-line"><span>Use the instructions it sends<small>Up to 512 characters, added to what the Trunk reads.</small></span><Grey reason="Editing the instructions a connector sends comes in a later update.">Edit</Grey></div>
-      <div className="cz-line"><span>Let it ask your model<small>For servers that need a model’s answer to work.</small></span><Grey className="switch" reason="Letting a connector ask a model comes in a later update."><span /></Grey></div>
-      <div className="cz-line"><span>Let it ask you questions<small>A card in the conversation with the fields it needs.</small></span><Grey className="switch" reason="Letting a connector ask questions comes in a later update."><span /></Grey></div>
-      <div className="cz-line"><span>Start automations from its events<small>Signed events only.</small></span><Grey className="switch" reason="Starting automations from a connector’s events comes in a later update."><span /></Grey></div>
-    </Sec>}
-    {shows(level, "technical") && <Sec title="Its settings"><p className="cz-hint">Edits save at once; the connection restarts the next time it is used.</p></Sec>}
-    <ConnectorActs server={server} onRemove={() => setRemoving(true)} />
+    <Sec title="Set it up">
+      {shows(level, "advanced") && <>
+        <h3 className="cz-h3">Connection</h3>
+        <div className="cz-line"><span>Several calls at once</span><Switch label="Several calls at once" on={server.parallel} onChange={on => setServer({ supportsParallelToolCalls: on })} /></div>
+        {!server.local && <div className="cz-line"><span>Check the server’s certificate</span><Switch label="Check the server’s certificate" on={server.sslVerify} onChange={on => setServer({ sslVerify: on })} /></div>}
+        <div className="cz-line"><span>Only these tools<small>None picked: every tool.</small></span><Grey reason="Choosing which tools a connector may offer comes in a later update.">Choose</Grey></div>
+        <div className="cz-line"><span>Never these tools<small>Hidden tools are not offered at all.</small></span><Grey reason="Choosing tools a connector may never offer comes in a later update.">Choose</Grey></div>
+        <div className="cz-line"><span>Client certificate</span><Grey reason="Choosing a client certificate comes in a later update.">Choose a file</Grey></div>
+        <div className="cz-line"><span>Client key</span><Grey reason="Choosing a client key comes in a later update.">Choose a file</Grey></div>
+      </>}
+      {shows(level, "technical") && <>
+        <h3 className="cz-h3">Its settings</h3>
+        <p className="cz-hint">Edits save at once; the connection restarts the next time it is used.</p>
+        <div className="cz-line"><span>Accounts<small>Connecting an account to a connector comes in a later update.</small></span><Grey reason="Connecting an account to a connector comes in a later update.">Change</Grey></div>
+        <h3 className="cz-h3">Where these are used</h3>
+        {trunks.map(t => <div key={t.id} className="cz-line"><span>{trunkName(t)}</span><span className="cz-tag">{server.enabled && mayUse(ctx, server.name, t.id) ? "Working" : "Off"}</span></div>)}
+        <h3 className="cz-h3">What it offers</h3>
+        <p className="cz-hint">Resources a Trunk can read, and prompts it brings.</p>
+        <h3 className="cz-h3">How it runs</h3>
+        <div className="cz-line"><span>Give up on a call after</span><Grey reason="Setting how long a call may wait comes in a later update.">Set</Grey></div>
+        <div className="cz-line"><span>Pick up new tools when the server changes them</span><Grey className="switch" reason="Picking up new tools comes in a later update."><span /></Grey></div>
+        <div className="cz-line"><span>Use the instructions it sends<small>Up to 512 characters, added to what the Trunk reads.</small></span><Grey reason="Editing the instructions a connector sends comes in a later update.">Edit</Grey></div>
+        <div className="cz-line"><span>Let it ask your model<small>For servers that need a model’s answer to work.</small></span><Grey className="switch" reason="Letting a connector ask a model comes in a later update."><span /></Grey></div>
+        <div className="cz-line"><span>Let it ask you questions<small>A card in the conversation with the fields it needs.</small></span><Grey className="switch" reason="Letting a connector ask questions comes in a later update."><span /></Grey></div>
+        <div className="cz-line"><span>Start automations from its events<small>Signed events only.</small></span><Grey className="switch" reason="Starting automations from a connector’s events comes in a later update."><span /></Grey></div>
+      </>}
+    </Sec>
+    <Sec title="Safety check"><dl className="cz-kv"><dt>Preflight</dt><dd>Not checked yet</dd><dt>Malware scan</dt><dd>Not checked yet</dd><dt>Fingerprint</dt><dd>Not checked yet</dd><dt>Hidden instructions</dt><dd>Not checked yet</dd></dl></Sec>
+    <Sec title="Version & updates"><div className="cz-acts"><Grey reason={UPDATE_WHY}>Check for updates</Grey></div></Sec>
+    <Sec title="Actions"><div className="cz-acts">
+      <Grey reason="Copying a connector’s seed comes in a later update.">Copy seed</Grey><Grey reason="Downloading a connector comes in a later update.">Download</Grey>
+      <Grey reason="Copying a connector to another Trunk comes in a later update.">Copy to another Trunk</Grey><Grey reason={TEST_WHY}>Test it</Grey>
+      <span className="cz-grow" /><button type="button" className="btn ghost sm" onClick={() => setRemoving(true)}>Remove</button>
+    </div></Sec>
     {removing && <Dialog title={`Remove ${server.name}?`} onClose={() => setRemoving(false)} footer={<><button type="button" className="btn ghost" onClick={() => setRemoving(false)}>Cancel</button><button type="button" className="btn bad" disabled={config.busy} onClick={() => { void config.patch({ mcp: { servers: { [server.name]: null } } }).then(ok => ok && setRemoving(false)); }}>Remove</button></>}>
       <p className="dlg-p">Trunks stop using it. Its settings are taken out of Branch’s settings file.</p>{config.writeError && <p role="alert" className="cz-error">{config.writeError}</p>}
     </Dialog>}
@@ -166,7 +179,7 @@ function ConnectorTools({ ctx, server }: { ctx: ToolsCtx; server: Server }) {
     const next = withItem(server.exclude, tool, never);
     void ctx.config.patch({ mcp: { servers: { [server.name]: { toolFilter: { exclude: next } } } } }, [`mcp.servers.${server.name}.toolFilter.exclude`]);
   };
-  return <Sec title="What each tool may do">
+  return <Sec title="What it may do"><h3 className="cz-h3">What each tool may do</h3>
     {!sessionKey ? <p className="cz-hint">Open a conversation to see what it offers.</p> : <Status {...effective} />}
     {effective.data != null && !names.length && <p className="cz-hint">It hasn’t offered any tools in this conversation.</p>}
     {names.map(t => <PermRow key={t} name={t} value={server.exclude.includes(t) ? "never" : "allowed"} disabled={ctx.config.busy} change={v => setPerm(t, v === "never")} />)}

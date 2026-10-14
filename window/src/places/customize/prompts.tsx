@@ -1,6 +1,7 @@
 // Customize › Prompts (R1, preview 44908 and 44977): the saved prompts. A saved prompt is a skill in the library with a
 // slash name (skills.library.list, the list Settings › Instructions reads). Use puts its command into the composer.
 import { Status } from "../library/ui";
+import { COMING_REASON } from "../../glass/coming-registry";
 import { Grey, list, rec, str } from "./common";
 import { Glyph } from "./glyphs";
 import { KindHead } from "./kind-chrome";
@@ -25,7 +26,7 @@ export function Prompts({ ctx }: { ctx: ToolsCtx }) {
         <span className="grow"><b>/{p.slug}</b>{p.description && <small>{p.description}</small>}</span>
         <button type="button" className="icon-btn" aria-label={`Copy /${p.slug} as a seed`} title="Copy seed" onClick={() => void navigator.clipboard?.writeText(`/${p.slug}`)}>⧉</button>
         {handoff?.ready !== false && handoff ? <button type="button" className="btn sm" onClick={() => handoff.use(`/${p.slug} `)}>Use</button>
-          : handoff && <Grey reason="Starting a conversation needs a Trunk first.">Use</Grey>}
+          : handoff && <Grey reason={COMING_REASON}>Use</Grey>}
       </div>)}
     </div>
   </KindHead>;

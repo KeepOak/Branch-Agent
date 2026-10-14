@@ -14,6 +14,7 @@ import { Status } from "../library/ui";
 import { agentEntry, denyList, denyPatch, Dot, Grey, list, PermRow, Pill, rec, Sec, Seg, str, WhoChips, withItem } from "./common";
 import { Glyph } from "./glyphs";
 import { KindHead } from "./kind-chrome";
+import { AgentsTeamwork } from "./agent-teamwork";
 import type { ToolsCtx } from "./tools";
 
 // ---- Command-line tools ----
@@ -77,9 +78,14 @@ function CliDetail({ ctx, bin }: { ctx: ToolsCtx; bin: Bin }) {
   const ask = str(rec(agents[scopeKey]).ask) || str(rec(rec(approvals.data).resolvedDefaults).ask);
   return <div className="t9-detail" data-testid="cli-detail">
     <div className="t9-dh"><span className="cz-tile big"><Glyph name="terminal" /></span><span className="grow"><b>{bin.name}</b><small>{bin.present ? "On this computer" : "Not found on this computer"}</small></span></div>
-    <Sec title="Commands"><Status {...approvals} />{approvals.data != null && <dl className="cz-kv cz-box"><dt>Allowed</dt><dd>{allowed.length ? allowed.map(a => <code key={a}>{a}</code>) : "None yet"}</dd><dt>Asks first</dt><dd>{ASKS[ask] ?? "As the conversation’s mode says"}</dd></dl>}</Sec>
-    <div className="cz-line"><span>Ask before each command<small>The conversation’s mode still applies.</small></span><button type="button" role="switch" aria-checked={false} aria-label="Ask before each command" className="switch" disabled title="Needs a per-program ask setting in the engine." /></div>
-    <Sec title="Used by"><p className="cz-hint">{bin.skills.join(", ")}</p></Sec>
+    <Sec title="Who may use it"><div className="cz-line"><span>Which Trunks may run this command</span><Grey reason="Choosing which Trunks may run a command comes in a later update.">Choose</Grey></div></Sec>
+    <Sec title="What it may do"><h3 className="cz-h3">Commands</h3><Status {...approvals} />{approvals.data != null && <dl className="cz-kv cz-box"><dt>Allowed</dt><dd>{allowed.length ? allowed.map(a => <code key={a}>{a}</code>) : "None yet"}</dd><dt>Asks first</dt><dd>{ASKS[ask] ?? "As the conversation’s mode says"}</dd></dl>}
+      <div className="cz-line"><span>Ask before each command<small>The conversation’s mode still applies.</small></span><Grey className="switch" reason="Asking before each command comes in a later update."><span /></Grey></div></Sec>
+    <Sec title="Set it up"><h3 className="cz-h3">Used by</h3><p className="cz-hint">{bin.skills.join(", ")}</p></Sec>
+    <Sec title="Safety check"><dl className="cz-kv"><dt>Preflight</dt><dd>Not checked yet</dd><dt>Malware scan</dt><dd>Not checked yet</dd><dt>Fingerprint</dt><dd>Not checked yet</dd><dt>Hidden instructions</dt><dd>Not checked yet</dd></dl></Sec>
+    <Sec title="Version & updates"><dl className="cz-kv"><dt>Came from</dt><dd>This computer</dd></dl>
+      <div className="cz-acts"><Grey reason="Checking a program for updates comes in a later update.">Check for updates</Grey><Grey reason="Putting an older version back comes in a later update.">Put an older version back</Grey></div></Sec>
+    <Sec title="Actions"><div className="cz-acts"><Grey reason="Copying a program’s seed comes in a later update.">Copy seed</Grey><Grey reason="Downloading a program comes in a later update.">Download</Grey><Grey reason="Copying a program to another Trunk comes in a later update.">Copy to another Trunk</Grey><Grey reason="Testing a program comes in a later update.">Test it</Grey></div></Sec>
   </div>;
 }
 
@@ -134,6 +140,7 @@ export function Agents({ ctx }: { ctx: ToolsCtx }) {
         <span className="cz-tile"><Glyph name="terminal" size={16} /></span><span className="grow"><b>{a.name}</b><small>ACP · {a.runtimeId}</small></span>
         {a.installation === "missing" ? <Pill tone="warn">Not installed</Pill> : <Dot on={a.enabled} />}
       </button>)}
+      <AgentsTeamwork ctx={ctx} />
       {shows(ctx.level, "technical") && <><h3 className="cz-h3">Use Branch as an MCP server <span className="cz-tag">Technical</span></h3>
         <div className="cz-line"><span>Other apps may call your Trunks over MCP</span><Grey className="switch" reason="Letting other apps call your Trunks over MCP comes in a later update."><span /></Grey></div></>}
     </KindHead>
@@ -141,8 +148,13 @@ export function Agents({ ctx }: { ctx: ToolsCtx }) {
       <div className="t9-dh"><span className="cz-tile big"><Glyph name="terminal" /></span><span className="grow"><b>{agent.name}</b><small>ACP · {agent.runtimeId}{agent.installation === "missing" ? " · not installed on this computer" : ""}</small></span>
         <Switch label={`${agent.name} on or off`} on={agent.enabled} onChange={on => { void ctx.config.patch({ plugins: { entries: { acpx: { config: { nativeAgents: { [agent.id]: on } } } } } }).then(ok => ok && ctx.agents.reload()); }} /></div>
       {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
-      <Sec title="Rules"><dl className="cz-kv cz-box"><dt>Runs as</dt><dd><code>{agent.runtimeId}</code></dd></dl></Sec>
-      <div className="cz-acts"><Grey reason="Testing an agent from here comes in a later update.">Test it</Grey><Grey reason="Checking an agent for updates comes in a later update.">Check for updates</Grey></div>
+      <Sec title="Who may use it"><div className="cz-line"><span>Which Trunks may talk to this agent</span><Grey reason="Choosing which Trunks may talk to an agent comes in a later update.">Choose</Grey></div></Sec>
+      <Sec title="What it may do"><div className="cz-line"><span>What it may be asked</span><Grey reason="Choosing what an agent may be asked comes in a later update.">Choose</Grey></div></Sec>
+      <Sec title="Set it up"><h3 className="cz-h3">Rules</h3><dl className="cz-kv cz-box"><dt>Runs as</dt><dd><code>{agent.runtimeId}</code></dd></dl>
+        <div className="cz-line"><span>Tasks it sends in</span><Grey reason="Choosing what an agent gets with its tasks comes in a later update.">Choose</Grey></div></Sec>
+      <Sec title="Safety check"><dl className="cz-kv"><dt>Preflight</dt><dd>Not checked yet</dd><dt>Malware scan</dt><dd>Not checked yet</dd><dt>Fingerprint</dt><dd>Not checked yet</dd><dt>Hidden instructions</dt><dd>Not checked yet</dd></dl></Sec>
+      <Sec title="Version & updates"><div className="cz-acts"><Grey reason="Checking an agent for updates comes in a later update.">Check for updates</Grey><Grey reason="Putting an older version back comes in a later update.">Put an older version back</Grey></div></Sec>
+      <Sec title="Actions"><div className="cz-acts"><Grey reason="Copying an agent’s seed comes in a later update.">Copy seed</Grey><Grey reason="Downloading an agent comes in a later update.">Download</Grey><Grey reason="Copying an agent to another Trunk comes in a later update.">Copy to another Trunk</Grey><Grey reason="Testing an agent from here comes in a later update.">Test it</Grey></div></Sec>
     </div> : <div className="t9-detail cz-empty-detail" />}
   </>;
 }

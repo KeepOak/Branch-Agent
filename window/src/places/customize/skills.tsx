@@ -25,7 +25,7 @@ export function readSkillRows(result: unknown): Skill[] {
     const m = rec(s.missing);
     return {
       key: str(s.skillKey) || str(s.name), name: displayName(str(s.name)), rawName: str(s.name), description: str(s.description),
-      source: s.bundled === true ? "Built in" : str(s.source) === "workspace" ? "In this Trunk’s folder" : "Installed",
+      source: s.bundled === true ? "Built in" : str(s.source) === "workspace" ? "This project" : "Installed",
       disabled: s.disabled === true, eligible: s.eligible !== false,
       missing: [...strings(m.bins).map(b => `the ${b} program`), ...strings(m.anyBins).map(b => `the ${b} program`), ...strings(m.env).map(e => `the ${e} key`), ...strings(m.config).map(c => `the ${c} setting`), ...strings(m.os).map(o => `${o}`)],
       installs: list(s.install).map(i => ({ id: str(i.id), label: str(i.label) || str(i.id) })).filter(i => i.id),
@@ -85,7 +85,7 @@ function SkillList({ ctx, tabs, count, rows }: { ctx: ToolsCtx; tabs: ReactNode;
   const op = useOperation(ctx.engine);
   const q = ctx.query.trim().toLowerCase();
   // The engine has no team source yet, so "The team’s" shows nothing rather than a guess.
-  const inScope = (r: Skill) => (scope === "all" ? true : scope === "mine" ? r.source !== "Built in" : scope === "folder" ? r.source === "In this Trunk’s folder" : false);
+  const inScope = (r: Skill) => (scope === "all" ? true : scope === "mine" ? r.source !== "Built in" : scope === "folder" ? r.source === "This project" : false);
   const shown = rows.filter(r => inScope(r) && (st === "all" || stOf(r) === st) && (!q || (r.name + " " + r.description).toLowerCase().includes(q)));
   const skill = shown.find(r => r.key === chosen) ?? shown[0];
   const scopeName = SCOPES.find(x => x.id === scope)?.name ?? "All";
@@ -111,7 +111,7 @@ function SkillList({ ctx, tabs, count, rows }: { ctx: ToolsCtx; tabs: ReactNode;
         <button type="button" className="t9-item" aria-current={r.key === skill?.key} onClick={() => setChosen(r.key)}>
           <span className="cz-tile"><Glyph name="bolt" size={16} /></span><span className="grow"><b>{r.name}</b><small>{r.source}{r.description ? " · " + r.description : ""}</small></span>
           {stOf(r) === "setup" && <Pill tone="warn" title={r.missing.length ? "Needs " + r.missing.join(", ") : undefined}>Needs setup</Pill>}
-          {r.source === "In this Trunk’s folder" && <span className="cz-tag">This project</span>}
+          {r.source === "This project" && <span className="cz-tag">This project</span>}
         </button>
         <Switch label={`${r.name} on or off`} on={!r.disabled} onChange={on => void op.run("skills.update", { skillKey: r.key, enabled: on }, ctx.skills.reload)} />
       </div>)}

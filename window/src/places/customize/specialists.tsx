@@ -12,8 +12,8 @@ import { Glyph } from "./glyphs";
 
 const NO_DEFINITIONS = "Needs the engine's specialist definitions.";
 const NO_PATTERN = "Needs the engine's teamwork setting.";
-type Pattern = { id: string; title: string; line: string; dots: [number, number][]; lines: [number, number, number, number][] };
-const PATTERNS: Pattern[] = [
+export type Pattern = { id: string; title: string; line: string; dots: [number, number][]; lines: [number, number, number, number][] };
+export const PATTERNS: Pattern[] = [
   { id: "single", title: "One at a time", line: "A Trunk calls a specialist, waits, carries on.", dots: [[26, 8], [26, 26], [26, 44]], lines: [[26, 12, 26, 22], [26, 30, 26, 40]] },
   { id: "super", title: "A lead and helpers", line: "One Trunk plans and hands out the parts.", dots: [[26, 8], [12, 40], [26, 40], [40, 40]], lines: [[26, 12, 12, 36], [26, 12, 26, 36], [26, 12, 40, 36]] },
   { id: "swarm", title: "Swarm", line: "Equals pass the work to whoever fits best.", dots: [[10, 12], [42, 12], [26, 40]], lines: [[14, 12, 38, 12], [12, 16, 24, 36], [40, 16, 28, 36]] },
@@ -47,7 +47,7 @@ export function SpecialistsTab({ engine, level, trunks, running, openAgents }: {
 
 /** "N Trunks on N computers · N working now", from the engine's Trunks and computers and the shell's running count
  *  (the working line is left out where that count isn't known). */
-function Fleet({ engine, trunks, running }: { engine: PlaceProps["engine"]; trunks: Trunk[]; running?: number }) {
+export function Fleet({ engine, trunks, running }: { engine: PlaceProps["engine"]; trunks: Trunk[]; running?: number }) {
   const nodes = useResource<unknown>(engine, "node.list");
   const connected = list(rec(nodes.data).nodes).filter(n => n.connected !== false);
   const computers = Math.max(1, connected.length);

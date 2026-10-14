@@ -16,7 +16,7 @@ const BASE: Record<string, unknown> = {
   "skills.status": { skills: [{ name: "web", skillKey: "web", description: "Search", disabled: false, eligible: true, requirements: {}, missing: {} }] },
   "skills.gardener.status": { lastSuccessAtMs: null, counts: { active: 1, stale: 0, archived: 0 }, skills: [] },
   "skills.proposals.list": { proposals: [] },
-  "skills.library.list": { entries: [{ slug: "weekly", description: "Weekly review of the week", skillId: "s1" }, { slug: "old", removed: true }] },
+  "skills.library.list": { entries: [{ slug: "weekly", description: "Weekly review", skillId: "s1" }, { slug: "old", removed: true }] },
   "plugins.list": { plugins: [] },
   "acpx.agents.list": { agents: [] },
   "tools.catalog": { groups: [] },
@@ -99,7 +99,7 @@ describe("Customize (R1): the place", () => {
     await open("technical", { ready: false, use: vi.fn() });
     await click(host.querySelector("[data-kind=Prompts]"));
     const use = button("Use", host);
-    expect(use?.getAttribute("data-coming")).toBe("Starting a conversation needs a Trunk first.");
+    expect(use?.getAttribute("data-coming")).toBe("Coming in a later update.");
     expect(use?.getAttribute("aria-disabled")).toBe("true");
   });
 
@@ -216,6 +216,38 @@ describe("Customize (R1): the place", () => {
     expect(lastRequest).toHaveBeenCalledWith("plugins.setEnabled", { pluginId: "pack", enabled: false });
   });
 
+
+  it("draws Specialists, How Trunks work together and the rest of the Agents kind in the preview's copy", async () => {
+    await open("regular");
+    await click(host.querySelector('[data-kind="Agents"]'));
+    const heads = [...host.querySelectorAll("[data-kind-list=Agents] h3")].map(h => h.textContent);
+    expect(heads).toEqual(["Connected agents", "Specialists", "How Trunks work together", "Other coding agents", "Built in", "Let specialists argue it out"]);
+    expect(host.textContent).toContain("The pattern a room or a big task uses. Branch picks one; you can choose.");
+    expect(host.textContent).toContain("Helpers a Trunk calls in for one job, then lets go.");
+    expect(host.textContent).toContain("Any task, with the Trunk’s own tools · comes with Branch, can’t be edited");
+    expect(host.querySelector('[data-coming="The pattern a room or a big task uses. Branch picks one; you can choose."]')).toBeNull();
+  });
+  it("orders the connector sheet as the preview does: who, what, set it up, safety, version, actions", async () => {
+    await open("technical", undefined, { "config.get": { hash: "h1", sourceConfig: { mcp: { servers: { gh: { url: "https://x.test" } } } }, runtimeConfig: { mcp: { servers: { gh: { url: "https://x.test" } } } } } });
+    await click(host.querySelector('[data-kind="Connectors"]'));
+    const titles = [...host.querySelectorAll("[data-testid=connector-detail] .cz-sec h2")].map(h => h.textContent);
+    expect(titles).toEqual(["Who may use it", "What it may do", "Set it up", "Safety check", "Version & updates", "Actions"]);
+    expect(host.textContent).toContain("Where these are used");
+    expect(host.textContent).toContain("Accounts");
+  });
+  it("orders the command-line tool sheet as the preview does", async () => {
+    await open("regular", undefined, { "skills.status": { skills: [{ name: "gh", skillKey: "gh", description: "GitHub", disabled: false, eligible: true, requirements: { bins: ["gh"] }, missing: {} }] } });
+    await click(host.querySelector('[data-kind="Command-line tools"]'));
+    const titles = [...host.querySelectorAll("[data-testid=cli-detail] .cz-sec h2")].map(h => h.textContent);
+    expect(titles).toEqual(["Who may use it", "What it may do", "Set it up", "Safety check", "Version & updates", "Actions"]);
+  });
+  it("orders the installed plugin sheet as the preview does", async () => {
+    const plugins = { "plugins.list": { plugins: [{ id: "pack", name: "Pack", installed: true, enabled: true, state: "ok", origin: "clawhub" }] }, "plugins.inspect": { ok: true, declared: { skills: ["a"] }, overview: {} } };
+    await open("regular", undefined, plugins);
+    await click(host.querySelector('[data-kind="Plugins"]'));
+    const titles = [...host.querySelectorAll("[data-testid=plugin-detail] .cz-sec h2")].map(h => h.textContent);
+    expect(titles).toEqual(["Set it up", "Safety check", "Version & updates", "Actions"]);
+  });
 });
 
 /** The Community kind the last request named (a listener set up once for the file). */

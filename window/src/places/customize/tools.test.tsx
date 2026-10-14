@@ -109,8 +109,7 @@ describe("Tools, three panes", () => {
     expect(button("Test it")!.title).toBe("This connector cannot be tested yet.");
     expect(button("Check for updates")!.disabled).toBe(true);
     expect(button("Check for updates")!.title).toBe("This connector cannot be checked for updates yet.");
-    expect(host.textContent).toContain("This connector cannot be tested yet.");
-    expect(host.textContent).toContain("This connector cannot be checked for updates yet.");
+    expect(host.querySelector('[data-coming="This connector cannot be tested yet."]')).toBeTruthy();
     expect(visibleDevNotes(host.querySelector(".cz-acts")!)).toEqual([]);
   });
   it("installs from the connector catalogue with plugins.install", async () => {
@@ -183,6 +182,6 @@ describe("Tools › Plugins, Agents, Toolsets, Command-line tools", () => {
     await open("Command-line tools");
     expect([...host.querySelectorAll(".t9-item b")].map(b => b.textContent)).toEqual(["curl", "ffmpeg"]);
     expect(host.textContent).toContain("Not found");
-    expect((host.querySelector('[aria-label="Ask before each command"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(host.querySelector('[data-coming="Asking before each command comes in a later update."]')).toBeTruthy();
   });
 });

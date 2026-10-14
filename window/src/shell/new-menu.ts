@@ -29,7 +29,7 @@ export function newMenuItems(c: Ctx): MenuItem[] {
     // One way in to making a Trunk (UI audit N3); its first step picks how.
     { kind: "sub", label: "New Trunk", testid: "new-trunk", items: [
       { label: "Blank", sub: "Name it and start talking", run: c.newTrunk, testid: "new-trunk-blank" },
-      { label: "From a job…", sub: "Start from a template in Seedbank", run: () => { requestCustomize({ mode: "community" }); c.openPlace("customize"); }, testid: "new-trunk-from-job" },
+      { label: "From a job…", run: () => { requestCustomize({ mode: "community" }); c.openPlace("customize"); }, testid: "new-trunk-from-job" },
       { label: "Let Branch suggest…", sub: "Describe it; Branch proposes one", run: c.makeTrunk, testid: "new-make-trunk" },
     ] },
     { label: "New group chat", hint: "people, Trunks, agents", run: openNewGroupChat, testid: "new-group-chat" },
