@@ -13,6 +13,7 @@ import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
 import { resolveApproval } from "../../thread/actions";
+import { EXAMPLES_GREETING_KEY, useExamplesHistory } from "./examples-greeting";
 import { ApprovalCard, ApprovalGroup } from "../../thread/ApprovalCard";
 import { ComputerActivityCard } from "../../thread/ComputerActivityCard";
 import { turnDoneLines } from "../../thread/computer-card";
@@ -73,6 +74,8 @@ export type ChatViewProps = {
   onReply?: (target: ReplyTarget) => void;
   /** Who else writes here (rooms/useShellRoom): their rows, the talked-it-through fold and the room line (§4.2.4). */
   room?: ThreadRoom;
+  /** An examples conversation with no messages yet: why this Trunk is here (examples-greeting.ts). */
+  examplesWhy?: string;
 };
 
 function entryTime(entry: RoomEntry): number | undefined {
@@ -149,7 +152,9 @@ function Starters({ engine, onStart }: { engine?: WindowEngine; onStart: (text: 
 }
 
 export function ChatView(props: ChatViewProps) {
-  const { name, history, live, pendingUser, running, engine, onToast } = props;
+  const { name, live, pendingUser, running, engine, onToast } = props;
+  // In an examples conversation the empty history shows the Trunk's introduction instead (examples-greeting.ts).
+  const history = useExamplesHistory({ history: props.history, live, why: props.examplesWhy, historyReady: props.historyReady !== false, name, engine });
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
   const prefs = useConversationPrefs(engine);
   const work = useWorkMode(engine, props.sessionKey);
@@ -282,7 +287,7 @@ function EntryView({ entry, view, live }: { entry: Entry; view: View; live: bool
     case "text": {
       const entryId = block.meta?.entryId;
       if (entryId && view.changes.gone.has(entryId)) return null;
-      const actions = live ? null : view.actionsFor(view.all, index);
+      const actions = live || block.key === EXAMPLES_GREETING_KEY ? null : view.actionsFor(view.all, index);
       const pinned = (entryId ? view.changes.pinned.get(entryId) : undefined) ?? block.meta?.pinned === true;
       const chips = entryId ? view.reactions.get(entryId) ?? [] : [];
       const isReply = block.kind === "text";

@@ -12,6 +12,12 @@ import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { WHO_ROWS } from "./who";
 import { Everyone, PeopleButtons, SignedRecords } from "./who-live";
+import { SIGNINS_ROWS } from "./signins";
+import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
+import { LEARNING_ROWS } from "./learning";
+import {
+  CheckBranch, ClearReplayed, Command, ConnectedNow, DiaryModel, Fact, Learned, PeopleHere, ProcessNames, RestartEngine, TasksAtOnce, Weighing,
+} from "./learning-live";
 import { HISTORY_ROWS } from "./history";
 import {
   BackupNow, BackupOften, BackupSchedule, BackupWhere, CleanupAction, CleanupCode, DataFolder, EveryChange, ExportSettings, FillIn, ImportSettings, LastBackup,
@@ -22,7 +28,7 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  notifications: "notifications", instructions: "instructions", signins: "secrets", updates: ["updates", "achievements"],
+  notifications: "notifications", instructions: "instructions", updates: ["updates", "achievements"],
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -43,6 +49,30 @@ export const R1_PAGES: PageSlots = {
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
   // Who uses Branch: the preview's three cards, with Classic's list of everyone at the top of People.
   who: { rows: WHO_ROWS, controls: { "who.people.everyone": Everyone, "who.people.open": PeopleButtons, "who.records.signed": SignedRecords } },
+  // Sign-ins & keys: the preview's four cards; Classic's password manager and key store inside them.
+  signins: { rows: SIGNINS_ROWS, controls: { "signins.where.block": SigninWhere, "signins.keys.block": SigninKeys } },
+  // Learning & self-updates: native R1 cards in the preview's order; Classic About Branch and Seasons draw behind its
+  // rows (learning-live.tsx).
+  learning: {
+    rows: LEARNING_ROWS,
+    controls: {
+      "learning.may.program": Fact,
+      "learning.learning.learned": Learned,
+      "learning.learning.adopts": Fact,
+      "learning.code.pull-requests": Fact,
+      "learning.code.reaching": Fact,
+      "learning.gardener.clear": ClearReplayed,
+      "learning.gardener.weighing": Weighing,
+      "learning.gardener.model": DiaryModel,
+      "learning.runs.start-stop": Command,
+      "learning.runs.process": ProcessNames,
+      "learning.runs.connected": ConnectedNow,
+      "learning.runs.people": PeopleHere,
+      "learning.runs.tasks": TasksAtOnce,
+      "learning.runs.health": CheckBranch,
+      "learning.runs.restart-now": RestartEngine,
+    },
+  },
   // History & backups: native R1 cards in the preview's order; Classic Backups, the overnight cleanup and Your settings
   // draw behind its rows (history-live.tsx).
   history: {
