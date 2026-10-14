@@ -120,7 +120,7 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(radios.map((b) => b.textContent)).toEqual(["Tabs", "Freedom Mode"]);
     expect(radios[0]!.getAttribute("aria-checked")).toBe("true");
     expect(radios[1]!.getAttribute("aria-checked")).toBe("false");
-    expect(radios[1]!.closest("[title], [data-tip]")?.getAttribute("title") ?? radios[1]!.getAttribute("title") ?? "").toContain("comes in the next update");
+    expect(radios[1]!.closest("[title], [data-tip]")?.getAttribute("title") ?? radios[1]!.getAttribute("title") ?? "").toContain("comes in a later update");
     await click(radios[0]!);
     expect(JSON.parse(localStorage.getItem("branch-topics-t5")!).layout).toBe("tabs");
   });

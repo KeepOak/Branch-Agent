@@ -243,7 +243,7 @@ export function EachTrunk({ engine }: SlotControlProps) {
   </>;
 }
 
-const FREEDOM_WAIT = "Freedom Mode comes in the next update.";
+const FREEDOM_WAIT = "Freedom Mode comes in a later update.";
 
 /** How a contact's threads show beside its chat, for every contact without its own (kept in this window). Tabs is live; the
  *  preview's second option, Freedom Mode, is drawn Coming until its layout ships. */
