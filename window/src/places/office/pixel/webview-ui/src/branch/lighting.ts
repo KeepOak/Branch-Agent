@@ -44,8 +44,12 @@ function addRectPath(ctx: CanvasRenderingContext2D, rects: Rect[]): void {
   for (const r of rects) ctx.rect(r.x, r.y, r.size, r.size);
 }
 
+function rgba(rgb: string, alpha: number): string {
+  return `rgba(${rgb}, ${alpha})`;
+}
+
 function drawVeil(ctx: CanvasRenderingContext2D, rects: Rect[], phase: LightPhase): void {
-  ctx.fillStyle = `rgba(${phase.veilRgb}, ${phase.veilAlpha})`;
+  ctx.fillStyle = rgba(phase.veilRgb, phase.veilAlpha);
   addRectPath(ctx, rects);
   ctx.fill();
 }
@@ -61,8 +65,8 @@ function glowCentres(office: OfficeState, offsetX: number, offsetY: number, zoom
 
 function drawGlow(ctx: CanvasRenderingContext2D, cx: number, cy: number, radius: number, alpha: number): void {
   const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-  gradient.addColorStop(0, `rgba(${GLOW_RGB}, ${alpha})`);
-  gradient.addColorStop(1, `rgba(${GLOW_RGB}, 0)`);
+  gradient.addColorStop(0, rgba(GLOW_RGB, alpha));
+  gradient.addColorStop(1, rgba(GLOW_RGB, 0));
   ctx.fillStyle = gradient;
   ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
 }

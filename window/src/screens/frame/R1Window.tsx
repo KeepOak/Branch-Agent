@@ -35,6 +35,7 @@ import { DEFAULT_PANE_TAB, type PaneTab } from "../../stage/SidePane";
 import { paneKeyFor, shortcutFor } from "../../shell/use-shortcuts";
 import { currentKeys, keyActions, readCustomKeys } from "../../shell/keymap";
 import { availability } from "../../connect/capabilities";
+import { R1Character, useR1CharacterShown } from "../character/R1Character";
 
 const FIND_ANYTHING_COMING = "Find anything is not connected yet.";
 
@@ -86,6 +87,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const limits = useLimits(session, ready);
   const lockdown = useLockdown(engine, ready, session, true);
   const machine = useMachine(session, ready);
+  // The re-hosted Classic character panel (parity row 19), shown beside the conversation unless hidden.
+  const [characterShown, setCharacterShown] = useR1CharacterShown(engine);
   const [route, setRoute] = useState<Route>(loadRoute);
   // The re-hosted Classic computer stage (parity row 1): which side is open, and the small window it shrinks to.
   const [stage, setStage] = useState<StageMode | null>(null);
@@ -254,6 +257,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
       else if (document.activeElement === search.current) setNotice(`Coming · ${FIND_ANYTHING_COMING}`);
       else { search.current?.focus(); }
     }} />
+    {route.kind === "chat" && !stage && characterShown ? <R1Character name={current ? conversations.rows.find(row => row.isMain && row.agentId === current.agentId)?.title || snapshot.name : snapshot.name} snapshot={snapshot} waiting={snapshot.sessionKey ? waiting.get(snapshot.sessionKey) ?? 0 : 0}
+      onHide={() => setCharacterShown(false)} onShow={() => setCharacterShown(true)} onChangePet={() => navigate({ kind: "settings", page: "appearance" })}
+      onOpenTrunk={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: current?.agentId ?? engine.agentId, view: "profile" } })); }} /> : null}
     </div>
     {/* A second Ctrl K would open Find anything; it is a shortcut, not a control, so it registers hidden with the call it waits for. */}
     <Coming engine={engine} need="sessions.search" unwired hidden reason={FIND_ANYTHING_COMING} where="Find anything"><span /></Coming>
@@ -268,6 +274,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     </div></Popover>}
     {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details g-clear">
       <strong className="g-label">{identity?.name ?? snapshot.name}</strong>{agentLine ? <p className="g-label">{agentLine}</p> : null}
+      {route.kind === "chat" ? <button type="button" data-local="" onClick={() => { setCharacterShown(!characterShown); closeAgent(); }}>{characterShown ? "Hide the character" : "Show the character"}</button> : null}
       <button type="button" data-local="" onClick={closeAgent}>Close</button>
     </div></Popover>}
   </>;
