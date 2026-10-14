@@ -67,7 +67,7 @@ export function Manage({ engine, app, onClose, onSetup }: { engine: WindowEngine
   return <div className="r1-cw"><Dialog title={"Manage " + app.name} onClose={onClose} clear>
     <p role="status" className="g-label" data-lines>{live.loading ? "Checking connection…" : state.sub}</p>
     {state.accounts.length > 1 && <label><span className="g-label">Account</span><select aria-label="Account" value={account?.accountId ?? ""} onChange={e => { setAccountId(e.target.value); setConfirm(false); }} data-local="account">{state.accounts.map(a => <option key={a.accountId} value={a.accountId}>{a.name ?? a.accountId}</option>)}</select></label>}
-    <Access engine={engine} app={app} />
+    <Access engine={engine} app={app} inManage />
     {policy === "pairing" || policy === "allowlist" ? <Approved app={app} state={state} cfg={cfg} base={base} /> : null}
     {policy === "pairing" && pairing ? <Pairing engine={engine} snapshot={pairing} reload={live.reload} level={level} /> : null}
     {ch === "telegram" && <><h3 className="g-label">Behaviour</h3><ChatAppRow engine={engine} row={TELEGRAM_ADAPTER} />
