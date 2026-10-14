@@ -112,7 +112,7 @@ export function GatewayAddress({ engine }: SlotControlProps) {
 export function Ping({ engine }: SlotControlProps) {
   const { pings, missed } = usePing(engine);
   const sorted = [...pings].sort((a, b) => a - b);
-  return <><Val>{pings.length ? `${Math.round(pings[pings.length - 1])} ms` : "Measuring…"}</Val>
+  return <><Val>{pings.length ? `${Math.round(pings[pings.length - 1])} ms` : "Connect to see the ping."}</Val>
     <Line>{kv([["Average", pings.length ? `${Math.round(pings.reduce((a, b) => a + b, 0) / pings.length)} ms` : ""], ["p50", pct(sorted, 50)], ["p95", pct(sorted, 95)], ["p99", pct(sorted, 99)]])}{` · kept ${pings.length}/100${missed ? ` · ${missed} missed` : ""}`}</Line></>;
 }
 
@@ -125,7 +125,7 @@ export function Activity({ engine }: SlotControlProps) {
   return <Line>{kv([["Processor", typeof loop.cpuCoreRatio === "number" ? `${Math.round(Number(loop.cpuCoreRatio) * 100)}%` : ""], ["Memory", bytes(mem.rssBytes)],
     ["Event-loop delay", typeof loop.delayP99Ms === "number" ? `${Math.round(Number(loop.delayP99Ms))} ms` : ""], ["This computer", sys.uptimeMs ? `up ${span(sys.uptimeMs)}` : ""],
     ["Cores", sys.cpuCount ? str(sys.cpuCount) : ""], ["Disk", sys.diskTotalBytes ? `${bytes(sys.diskAvailableBytes)} free of ${bytes(sys.diskTotalBytes)}` : ""],
-    ["Node", sys.nodeVersion ? `${str(sys.nodeVersion)} · process ${str(sys.pid)}` : ""]]) || "Waiting for the gateway…"}</Line>;
+    ["Node", sys.nodeVersion ? `${str(sys.nodeVersion)} · process ${str(sys.pid)}` : ""]]) || "Connect to see Gateway activity."}</Line>;
 }
 
 /** Infrastructure settings: every engine setting lives on Developer. */
@@ -165,7 +165,7 @@ export function Origins({ engine, row }: SlotControlProps) {
         <ul className="r1s-items">{origins.length ? origins.map((o) => <li key={o} className="r1s-item"><span className="r1s-item-t g-label">{o}</span>
           <button type="button" className="r1s-link" aria-label={`Remove ${o}`} onClick={() => void run(() => config.set("gateway.controlUi.allowedOrigins", origins.filter((x) => x !== o)))}>Remove</button></li>) : <li className="r1s-item"><small className="g-label">None.</small></li>}</ul>
         <span className="r1s-acts">
-          <input className="r1s-inp" aria-label="Allowed browser addresses: add" placeholder="https://branch.example.com" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
+          <input className="r1s-inp" aria-label="Allowed browser addresses" placeholder="https://branch.example.com" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
           <button type="button" className="r1s-btn" onClick={add}>Add</button>
         </span>
       </div>

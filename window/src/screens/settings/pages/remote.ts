@@ -5,7 +5,7 @@
 import type { Level } from "../nav";
 import type { Codec, Control, Row, RowOption } from "../rows";
 
-type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[]; unit?: string; codec?: Codec };
+type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[]; unit?: string; codec?: Codec; bare?: true };
 /** A Coming row says only that it comes later, in the row's own words (R1-10); the call it waits for stays in `need`. */
 const coming = (id: string, card: string, label: string, need: string, extra: Extra = {}): Row =>
   ({ id, page: "remote", card, label, level: 0, control: "custom", ...extra, source: { kind: "coming", need, reason: `${label} comes in a later update.` } });
@@ -59,7 +59,7 @@ export const REMOTE_ROWS: Row[] = [
   // Reach (Advanced; port, sign-in and the browser page are Technical)
   config("remote.reach.bind", REACH, "Who can reach the Gateway", "gateway.bind", "segmented", { level: 1, codec: str("loopback"),
     options: [{ v: "loopback", label: "This computer" }, { v: "lan", label: "My network" }, { v: "tailnet", label: "Tailscale" }, { v: "custom", label: "One address" }, { v: "auto", label: "Automatic" }] }),
-  config("remote.reach.address", REACH, "The address", "gateway.customBindHost", "text", { level: 1, codec: text, help: "Used when Who can reach the Gateway is One address." }),
+  config("remote.reach.address", REACH, "The address", "gateway.customBindHost", "text", { level: 1, codec: text, help: "Listens on one address you type." }),
   config("remote.reach.port", REACH, "Port", "gateway.port", "number", { level: 2, help: "One port for the window, phones and chat apps." }),
   config("remote.reach.auth", REACH, "Sign-in", "gateway.auth.mode", "select", { level: 2, codec: str("token"),
     options: [{ v: "token", label: "Session key" }, { v: "password", label: "Password" }, { v: "trusted-proxy", label: "Trusted proxy" }, { v: "none", label: "None" }],
@@ -82,16 +82,16 @@ export const REMOTE_ROWS: Row[] = [
     help: "Empty means the root of the local address. Changing it restarts the gateway." }),
 
   // What it has been doing
-  slot("remote.doing.lately", DOING, "Lately", ["health", "system.info", "presence.query"], { help: "When it started, its last health check and what keeps working when the window is closed." }),
-  slot("remote.doing.restart", DOING, "Restart the engine", ["gateway.restart.request"], { help: "Running work finishes first; the window reconnects by itself." }),
+  slot("remote.doing.lately", DOING, DOING, ["health", "system.info", "presence.query"], { bare: true }),
+  slot("remote.doing.restart", DOING, "Restart the engine", ["gateway.restart.request"]),
   coming("remote.doing.terminal", DOING, "A terminal where the Gateway runs", "desktop: opening a terminal on the Gateway’s computer",
-    { level: 1, help: "Opens a terminal on the Gateway’s computer: in WSL here, or over SSH on another computer." }),
+    { level: 1, help: "Opens a terminal on the Gateway’s computer: in WSL on this PC, or over SSH on another computer." }),
 
   // Another computer (Advanced; fingerprint, host key and proxy are Technical)
   config("remote.another.how", ANOTHER, "How to reach it", "gateway.remote.transport", "segmented", { level: 1,
     codec: { read: (v) => (v === "ssh" ? "ssh" : "direct"), write: (v) => v }, options: [{ v: "direct", label: "Tailscale or my network" }, { v: "ssh", label: "Over SSH" }] }),
   config("remote.another.url", ANOTHER, "Its address", "gateway.remote.url", "text", { level: 1, codec: text, help: "For Tailscale or my network. Use wss:// when it sits behind HTTPS or Tailscale Serve." }),
-  config("remote.another.ssh", ANOTHER, "SSH address", "gateway.remote.sshTarget", "text", { level: 1, codec: text, help: "For Over SSH, such as you@desk-pc. Branch opens and keeps the tunnel itself." }),
+  config("remote.another.ssh", ANOTHER, "SSH address", "gateway.remote.sshTarget", "text", { level: 1, codec: text, help: "you@desk-pc or you@desk-pc:2222" }),
   config("remote.another.key", ANOTHER, "Its gateway key", "gateway.remote.token", "secret", { level: 1, help: "A password works too. It is kept in Branch’s settings and never shown here again." }),
   config("remote.another.fingerprint", ANOTHER, "Certificate fingerprint", "gateway.remote.tlsFingerprint", "text", { level: 2, codec: text,
     help: "Pins a wss:// address. Left empty, Branch pins it on first use, once the system trusts the certificate." }),
@@ -106,7 +106,7 @@ export const REMOTE_ROWS: Row[] = [
   coming("remote.connection.key", CONNECTION, "Session key or password", "desktop: this window’s connection", { level: 2, control: "secret",
     help: "The session key is kept for this window. Passwords are never stored. A phone setup code works here too." }),
   slot("remote.connection.ping", CONNECTION, "Gateway ping", ["health"], { level: 2, help: "Every 5 s while this page is open." }),
-  slot("remote.connection.activity", CONNECTION, "Gateway activity", ["system.info"], { level: 2, help: "The Gateway’s own processor, memory and event-loop delay." }),
+  slot("remote.connection.activity", CONNECTION, "Gateway activity", ["system.info"], { level: 2, help: "The Gateway’s own processor, memory and event-loop delay · every 5 s while this page is open" }),
   config("remote.connection.reload", CONNECTION, "Apply settings changes", "gateway.reload.mode", "segmented", { level: 2, codec: str("hybrid"),
     options: [{ v: "hybrid", label: "Live" }, { v: "off", label: "Only on restart" }], help: "Live applies safe changes at once and restarts the Gateway when one needs it." }),
   coming("remote.connection.join-only", CONNECTION, "Only join a running Gateway", APP, { level: 2, control: "toggle",
