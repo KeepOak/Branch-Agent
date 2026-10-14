@@ -13,6 +13,11 @@ import { CUSTOMIZE_PAGE } from "./customize-live";
 import { MEMORY_PAGE } from "./memory-live";
 import { AUTOS_PAGE } from "./autos-live";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { HISTORY_ROWS } from "./history";
+import {
+  BackupNow, BackupOften, BackupSchedule, BackupWhere, CleanupAction, CleanupCode, DataFolder, EveryChange, ExportSettings, FillIn, ImportSettings, LastBackup,
+  MediaAll, MediaFile, NeverDies, ReadDiary,
+} from "./history-live";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
@@ -21,7 +26,6 @@ export const REHOSTED = {
   models: "models",
   permissions: "permissions",
   privacy: "usage",
-  history: "backups",
   browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
   coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
 } as const;
@@ -43,6 +47,31 @@ export const R1_PAGES: PageSlots = {
   memory: MEMORY_PAGE,
   // Automations is a row page; where alerts go and the Edit windows are its own (autos-live.tsx).
   autos: AUTOS_PAGE,
+  // History & backups: native R1 cards in the preview's order; Classic Backups, the overnight cleanup and Your settings
+  // draw behind its rows (history-live.tsx).
+  history: {
+    rows: HISTORY_ROWS,
+    controls: {
+      "history.backups.schedule": BackupSchedule,
+      "history.backups.often": BackupOften,
+      "history.backups.where": BackupWhere,
+      "history.backups.now": BackupNow,
+      "history.backups.last": LastBackup,
+      "history.backups.media-file": MediaFile,
+      "history.backups.media-all": MediaAll,
+      "history.snapshots.diary": ReadDiary,
+      "history.snapshots.fill": FillIn,
+      ...Object.fromEntries(["code-keep", "code-explain", "code-dry", "code-folder", "code-sessions"].map((id) => [`history.snapshots.${id}`, CleanupCode])),
+      ...Object.fromEntries(["fill-notes", "reset", "dedupe", "repair"].map((id) => [`history.snapshots.${id}`, CleanupAction])),
+      "history.undo.stops": NeverDies,
+      "history.undo.crashing": NeverDies,
+      "history.undo.last-good": NeverDies,
+      "history.undo.changes": EveryChange,
+      "history.copy.export": ExportSettings,
+      "history.copy.import": ImportSettings,
+      "history.copy.data": DataFolder,
+    },
+  },
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,
