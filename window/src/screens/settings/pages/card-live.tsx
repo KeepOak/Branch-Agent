@@ -12,7 +12,6 @@ import { usePicture } from "../../../places/settings/set1/people-mine";
 import { initials, profilesOf, type Profile } from "../../../places/settings/set1/people-data";
 import { openPlace } from "../../../places/settings/set2/common";
 import type { PageSlot, SlotPageProps } from "../slots";
-import { NO_PERSON } from "../useRow";
 import { Failed, Needs, useFailure } from "./appearance-live";
 
 const QUIET = { saving: () => undefined, saved: () => undefined, failed: () => undefined };
@@ -33,7 +32,8 @@ function MyCard({ engine }: SlotPageProps) {
   const draft = edit?.trim() ?? "";
   const save = () => { if (!me || !draft || draft === me.name) { setEdit(null); return; } void run(async () => { await engine.request("users.setDisplayName", { profileId: me.id, displayName: draft }); setEdit(null); await reload(); }); };
   if (loading) return null;
-  if (!me) return <small className="r1s-msg g-label" data-lines>{error ? visible(error) : NO_PERSON}</small>;
+  // Without a signed-in person there is no card to draw; a failed read shows what went wrong.
+  if (!me) return error ? <small className="r1s-msg r1s-bad g-label" data-lines role="status">{visible(error)}</small> : null;
   return (
     <div className="r1s-items">
       <div className="r1s-row" data-row="card.card.name">
