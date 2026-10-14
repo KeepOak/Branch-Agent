@@ -155,6 +155,12 @@ export async function finishGatewayStartup(params: {
       activateGatewayAgentDatabaseStartup({
         admission: databaseStartupAdmission,
         preparationReady: databasePreparationReady.promise,
+        waitForPostReadyWork: params.waitForPostReadyWork,
+        trackDeferredWork: (run) => {
+          runtime.connectionWork.track(run).catch((error: unknown) => {
+            log.warn(`deferred transcript repair failed: ${String(error)}`);
+          });
+        },
         getConfig: getRuntimeConfig,
         getPluginRegistry: () => pluginRuntime.registry,
         getPluginMetadataSnapshot,
@@ -376,6 +382,8 @@ export async function finishGatewayStartup(params: {
                   if (lifecycle.closePreludeStarted) {
                     return null;
                   }
+                  // Plugins are attached; worker recovery awaits admission.
+                  databasePreparationReady.resolve();
                   return await workerPlacementRuntime.startRuntime({
                     isClosePreludeStarted: () => lifecycle.closePreludeStarted,
                     // Close must see the drain handle before reconciliation can yield.
@@ -723,7 +731,7 @@ export async function finishGatewayStartup(params: {
         retryDelayMs: RETAINED_PLUGIN_CLEANUP_DELAY_MS,
         isClosing: () => lifecycle.closePreludeStarted,
         isBusy: () => getActiveGatewayRootWorkCount({ excludeCurrent: true }) > 0,
-        repeatDelayMs: 15 * 60_000,
+        repeatDelayMs: 5 * 60_000,
         run: async () => {
           const { reclaimAbandonedSqliteSnapshotsAsync } =
             await import("../infra/sqlite-snapshot-staging.js");

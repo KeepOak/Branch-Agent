@@ -1,5 +1,6 @@
 import type { DesktopConfig } from "./config";
 import { componentReleaseRejected, readComponentManifest, readComponentUpdateStatus, refreshComponentUpdate } from "./component-update";
+import { DISK_FULL_MESSAGE, reportDiskFull } from "./disk-full";
 
 export interface ComponentUpdateStatus {
   phase: "unchecked" | "checking" | "available" | "current" | "staging" | "staged" | "error";
@@ -39,7 +40,9 @@ export function createComponentUpdateController(cfg: DesktopConfig, options: {
     activeKind = kind;
     state = { ...state, phase: kind, error: null };
     flight = work().then(status, error => {
-      state = { ...state, phase: "error", error: error instanceof Error ? error.message : String(error) };
+      // A check or staging that ran out of disk says so plainly, and the disk-full banner shows.
+      const message = reportDiskFull(error) ? DISK_FULL_MESSAGE : error instanceof Error ? error.message : String(error);
+      state = { ...state, phase: "error", error: message };
       return { ...state };
     }).finally(() => { flight = undefined; activeKind = undefined; });
     return flight;

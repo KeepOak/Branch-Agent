@@ -1,4 +1,4 @@
-/** Six unchanged arithmetic cases copied from pinned Eliza calculate.test.ts. */
+/** Six unchanged arithmetic cases. */
 import { describe, expect, it } from "vitest";
 import { evaluateArithmetic } from "./arithmetic.js";
 

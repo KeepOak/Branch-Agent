@@ -8,6 +8,7 @@ import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
+import { currentKeys, keyActions, onMac, readCustomKeys, shownInline } from "../../../shell/keymap";
 import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Status, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
 import { PinnedSection } from "../pins";
 import { NEEDS_NEWER_APP, useDesktopControls } from "../../../connect/desktop-controls";
@@ -42,11 +43,18 @@ function StartingUp() {
   const desk = useDesktopControls();
   const why = desk.off === NEEDS_NEWER_APP ? START_NEEDS_UPDATE : desk.off;
   const start = `Start with ${OS()}`;
+  const signedOut = "Keep working when nobody is signed in";
   return (
     <Sec title="Starting up">
       <Ctl title={start} sub="Opens quietly in the tray." off={why}>
         <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={start} onChange={(on) => void desk.set("startWithWindows", on)} />
       </Ctl>
+      {/* Always on (Private #454 F), Linux with the engine service only: the app says so by sending the switch. */}
+      {desk.state?.keepWorkingSignedOut !== undefined ? (
+        <Ctl title={signedOut} sub="Your Trunks start after a restart, before anyone signs in." off={why}>
+          <Switch checked={desk.state.keepWorkingSignedOut} disabled={desk.busy !== null} label={signedOut} onChange={(on) => void desk.set("keepWorkingSignedOut", on)} />
+        </Ctl>
+      ) : null}
       {desk.state && desk.error ? <small className="why-k" role="alert">{visible(desk.error)}</small> : null}
     </Sec>
   );
@@ -77,12 +85,18 @@ function ProjectRow({ engine, project }: { engine: SettingsPageProps["engine"]; 
   );
 }
 
+/** The two most-used shortcuts in a sentence, written the way the Show all dialog writes them on this computer. */
+function keyboardSub(mac: boolean): string {
+  const keys = currentKeys(keyActions(""), readCustomKeys());
+  return `${shownInline(keys.palette, mac)} to find anything, ${shownInline(keys.newConversation, mac)} for a new conversation.`;
+}
+
 function Keyboard() {
   const [open, setOpen] = useState(false);
   return (
     <>
       <Sec title="Keyboard">
-        <Ctl title="Keyboard shortcuts" sub="Ctrl K to find anything, Ctrl N for a new conversation.">
+        <Ctl title="Keyboard shortcuts" sub={keyboardSub(onMac())}>
           <Btn sm onClick={() => setOpen(true)}>Show all</Btn>
         </Ctl>
       </Sec>

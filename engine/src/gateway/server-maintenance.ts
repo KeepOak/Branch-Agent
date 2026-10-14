@@ -34,6 +34,7 @@ import {
 import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
 import { registerSkillUsageTracking } from "../skills/workshop/gardener.js";
 import { pruneExpiredArtifactDownloads } from "./artifact-download-grants.js";
+import { startBuildWorktreeCleanup } from "./build-worktree-cleanup.js";
 import {
   abortChatRunById,
   type ChatAbortControllerEntry,
@@ -289,6 +290,12 @@ export function startGatewayMaintenanceTimers(params: {
       }
     },
     onError: (message) => params.logHealth.error(`managed worktree cleanup failed: ${message}`),
+  });
+  // Hand-made build worktrees under the build checkout roots: every 30 minutes and after each merge.
+  const buildWorktreeCleanup = startBuildWorktreeCleanup({
+    scheduler: params.scheduler,
+    getRuntimeConfig: params.getRuntimeConfig,
+    log: params.logHealth,
   });
 
   // Queue tombstone expiry and reference-aware media GC share one maintenance
@@ -586,6 +593,7 @@ export function startGatewayMaintenanceTimers(params: {
       periodicTasksStopPromise = Promise.allSettled([
         scheduler.stop(),
         worktreeMaintenance.stop(),
+        buildWorktreeCleanup.stop(),
         signalWakePoller.stop(),
         sessionColdStorageMaintenance.stop(),
         stopMediaCleanup(),

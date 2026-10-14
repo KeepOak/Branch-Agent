@@ -28,6 +28,7 @@ on:
       - Merge gate trusted
       - Non-merge-commit landing
       - OpenClaw wording
+      - Personal info PR scan
       - Priority capability checks
       - Seedbank plugin distribution
       - Visual tour
@@ -37,15 +38,16 @@ on:
 permissions:
   actions: write
 
-concurrency:
-  # One recheck per head at a time; a newer event supersedes an older one, which sees the same or newer runs.
-  group: merge-gate-recheck-${{ github.event.workflow_run.head_sha }}
-  cancel-in-progress: true
-
 jobs:
   recheck:
-    # The recheck's own completion must not start another recheck (it would loop).
-    if: (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'pull_request_target') && github.event.workflow_run.name != 'Merge gate recheck'
+    # The recheck's own completion must not start another recheck (it would loop). A content check that did not
+    # succeed never needs a listing (the script skips it), so it does not start this job. Concurrency is set on
+    # the job, not the workflow: a skipped job never joins the group, so it cannot cancel a recheck that is settling.
+    if: (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'pull_request_target') && github.event.workflow_run.name != 'Merge gate recheck' && (github.event.workflow_run.name == 'Merge gate' || github.event.workflow_run.name == 'Merge gate trusted' || github.event.workflow_run.conclusion == 'success')
+    # One recheck per head at a time; a newer event supersedes an older one, which sees the same or newer runs.
+    concurrency:
+      group: merge-gate-recheck-${{ github.event.workflow_run.head_sha }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -60,6 +62,15 @@ jobs:
         with:
           node-version: '24.19.0'
           package-manager-cache: false
+      - name: Read the core API budget before this job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUDGET_LABEL: merge-gate-recheck
+        run: node scripts/github-api-budget.mjs before
+      - name: Let a burst of completions settle
+        # The concurrency group above cancels the run still waiting here when a newer completion for this SHA
+        # arrives. A burst of N completions therefore reaches the listing once, not N times.
+        run: sleep 30
       - name: Rerun each merge gate that ended unsuccessfully for this commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -70,3 +81,9 @@ jobs:
           TRIGGER_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           TRIGGER_NAME: ${{ github.event.workflow_run.name }}
         run: node scripts/merge-gate-recheck.mjs
+      - name: Log the core API budget this job used
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUDGET_LABEL: merge-gate-recheck
+        run: node scripts/github-api-budget.mjs after

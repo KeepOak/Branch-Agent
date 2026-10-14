@@ -13,8 +13,8 @@ import type { ColorValue } from '../components/ui/types.js';
 import type { OfficeLayout, PlacedFurniture, TileType as TileTypeVal } from '../office/types.js';
 import { TileType } from '../office/types.js';
 
-export const AREA_OFFICE = 'Office';
-export const AREA_GUESTS = 'Guests';
+const AREA_OFFICE = 'Office';
+const AREA_GUESTS = 'Guests';
 export const AREA_MEETING = 'Meeting';
 export const MEETING_TABLE_UID = 'meeting-table';
 /** Rows from one desk row to the next: desk (2) + an aisle wide enough for name plates and bubbles. */

@@ -94,7 +94,7 @@ describe("Stop", () => {
     const container = await mount(<Thread name="Juniper" history={kept} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} onStart={() => {}} />);
     expect(container.querySelector('[data-testid="run-stopped"]')?.textContent).toBe("StoppedWhat it did so far is kept.");
     expect(container.querySelector('[data-testid="run-done"]')).toBeNull();
-    expect([...container.querySelectorAll('[data-testid="suggestion-row"] button')].map((b) => b.textContent)).toEqual(["Carry on"]);
+    expect([...container.querySelectorAll('[data-testid="suggestion-row"] button')].map((b) => b.getAttribute("aria-label"))).toEqual(["Reply: Carry on"]);
   });
 
   it("does not name gateway-injected as the model, or play Done after a stop", () => {
