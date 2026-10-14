@@ -10,6 +10,8 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { VOICE_ROWS } from "./voice";
+import * as Voice from "./voice-controls";
 import { REMOTE_ROWS } from "./remote";
 import { Activity, BrowserPage, GatewayAddress, Https, Infrastructure, LabelComputer, Lately, Origins, Ping, RestartEngine as RestartGateway, Risky, ScriptCode } from "./remote-live";
 import { LEARNING_ROWS } from "./learning";
@@ -27,7 +29,6 @@ export const REHOSTED = {
   history: "backups",
   browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
   coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
-  voice: "voice",
 } as const;
 
 /** A re-hosted page's cards that no Classic control draws yet: Coming after its Classic sections, naming the call each
@@ -41,6 +42,32 @@ export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Voice & calls: native R1 cards in the preview's order; Classic Voice draws behind its rows (voice-controls.tsx).
+  voice: {
+    rows: VOICE_ROWS,
+    controls: {
+      "voice.speaking.voice": Voice.VoicePick,
+      "voice.listening.wake-words": Voice.WakeWords,
+      "voice.listening.aloud": Voice.AnswerAloud,
+      "voice.speaking.engine": Voice.SpeakingEngine,
+      "voice.speaking.preview": Voice.PreviewVoice,
+      "voice.speaking.services": Voice.SpeakServices,
+      "voice.speaking.named": Voice.NamedVoices,
+      "voice.live.status": Voice.LiveStatus,
+      "voice.live.through": Voice.LiveThrough,
+      "voice.live.model": Voice.LiveModel,
+      "voice.live.speaker": Voice.LiveSpeaker,
+      "voice.live.gateway": Voice.LiveGateway,
+      "voice.live.who": Voice.LiveWho,
+      "voice.live.services": Voice.LiveServices,
+      "voice.calls.test": Voice.TestCall,
+      "voice.calls.notes": Voice.MeetingNotes,
+      "voice.services.all": Voice.AllVoiceSettings,
+      "voice.services.listening": Voice.ListeningEngine,
+      "voice.services.listen-keys": Voice.ListenServices,
+      ...Object.fromEntries(["file", "status", "call-setup", "call-speak", "during", "tail", "latency", "expose"].map((id) => [`voice.services.${id}`, Voice.VoiceCode])),
+    },
+  },
   // Remote access: native R1 cards in the preview's order; Classic Gateway draws behind its rows (remote-live.tsx).
   remote: {
     rows: REMOTE_ROWS,
