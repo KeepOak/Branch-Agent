@@ -292,6 +292,8 @@ vi.mock("../../infra/restart-stale-pids.js", () => ({
 }));
 
 vi.mock("../../daemon/restart-storm.js", () => ({
+  GATEWAY_CRASH_STORM_EXIT_CODE: 78,
+  guardGatewayCrashStorm: async () => undefined,
   warnAboutGatewayRestartStorm: (env: NodeJS.ProcessEnv, warn: (message: string) => void) =>
     warnAboutGatewayRestartStorm(env, warn),
 }));

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -58,6 +58,39 @@ test("the UI event log rotates by size and keeps three files", () => {
     assert.ok(existsSync(`${file}.1`) && existsSync(`${file}.2`));
     assert.equal(existsSync(`${file}.3`), false);
     for (const path of files) assert.ok(readFileSync(path, "utf8").length <= 200 + 60, `${path} stays near the bound`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the UI event log drops a write error without throwing and writes again once the path is writable", () => {
+  const dir = mkdtempSync(join(tmpdir(), "branch-diag-error-"));
+  try {
+    const file = join(dir, "ui-events.log");
+    const log = new RotatingLog(file, 200, 3);
+    // A directory where the live log should be makes the append fail (EISDIR), as a full disk does.
+    mkdirSync(file);
+    assert.doesNotThrow(() => log.append('{"n":1}'));
+    rmSync(file, { recursive: true });
+    log.append('{"n":2}');
+    assert.equal(readFileSync(file, "utf8"), '{"n":2}\n');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the UI event log keeps appending to the live file when a rotation fails", () => {
+  const dir = mkdtempSync(join(tmpdir(), "branch-diag-rotfail-"));
+  try {
+    const file = join(dir, "ui-events.log");
+    const log = new RotatingLog(file, 200, 3);
+    log.append(`{"n":0,"pad":"${"x".repeat(150)}"}`);
+    // A directory in the oldest archive slot makes the rotation's rmSync throw.
+    mkdirSync(`${file}.2`);
+    assert.doesNotThrow(() => log.append(`{"n":1,"pad":"${"x".repeat(150)}"}`));
+    const text = readFileSync(file, "utf8");
+    assert.match(text, /"n":0/);
+    assert.match(text, /"n":1/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

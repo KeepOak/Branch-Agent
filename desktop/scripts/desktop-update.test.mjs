@@ -318,10 +318,10 @@ test("a helper that is not executable discards the staged record and the app kee
   assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.5 discarded: the update helper could not start: /);
 }));
 
-test("the discard line goes through the same 100 MB cap as desktop.log", () => fixture(async ({ cfg, install }) => {
+test("the discard line goes through the same 20 MB cap as desktop.log", () => fixture(async ({ cfg, install }) => {
   const log = join(cfg.dataDir, "desktop.log");
   await writeFile(log, "");
-  await truncate(log, 100 * 1024 * 1024 + 1);
+  await truncate(log, 20 * 1024 * 1024 + 1);
   const journal = join(cfg.dataDir, "desktop-update-pending.json");
   await writeFile(journal, JSON.stringify({ version: "0.4.5", sha256: "a".repeat(64), kind: "asar", phase: "staged",
     staged: join(cfg.dataDir, "updates", "desktop-0.4.5-gone00", "payload", `app${desktopUpdate.STAGED_ASAR}`), target: join(install.resourcesDir, "app.asar") }));
