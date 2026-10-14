@@ -510,6 +510,23 @@ test("an update with no seamlessHandoff key hands over while the old run finishe
   delete cfg.seamlessHandoff;
   await writeFile(file, JSON.stringify(cfg));
 }));
+test("a slow measured cold start sizes the handoff readiness budget instead of a flat 120 s (Private #951)", () => fixture(async ({ root, starts, restart }) => {
+  // The launch measured its own cold start and kept it beside the slow one this host recorded before.
+  const { samplesMs } = JSON.parse(await readFile(join(root, "cold-start.json"), "utf8"));
+  assert.equal(samplesMs.length, 2);
+  assert.equal(samplesMs[0], 130_000);
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /cold start \d+ ms; handoff readiness budget 195000 ms/);
+  await writeFile(join(root, "release-ready"), "ready");
+  await writeFile(join(root, "standby-binds-after-release"), "1");
+  restart();
+  await eventually(() => swapped(root), 30_000);
+  // 130 s with headroom, not the old flat 120 s that a 130 s cold start would overrun.
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /standby readiness budget 195000 ms/);
+  assert.equal(alive((await starts())[1]), true);
+}, false, false, false, true, false, async root => {
+  await handoffOn()(root);
+  await writeFile(join(root, "cold-start.json"), JSON.stringify({ samplesMs: [130_000] }));
+}));
 test("an update with seamlessHandoff false drains before the standby takes over", () => fixture(async ({ root, starts, restart }) => {
   assert.equal(JSON.parse(await readFile(join(root, "desktop.json"), "utf8")).seamlessHandoff, false);
   const old = (await starts())[0];
