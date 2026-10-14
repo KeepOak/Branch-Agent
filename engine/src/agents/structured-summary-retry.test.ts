@@ -1,4 +1,4 @@
-// From aaif-goose/goose@bab8ff641039c9cd3331121cd84a5c6045f365ca:crates/goose-context-management/src/summarize.rs (atlas AGENT-LOOP-0100). Both source tests ported; successful middle-out retry and cancellation assertions added.
+// Successful middle-out retry and cancellation assertions added.
 import { expect, it, vi } from "vitest";
 import type { AgentMessage } from "./runtime/index.js";
 import {

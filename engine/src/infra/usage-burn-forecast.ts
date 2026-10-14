@@ -1,5 +1,4 @@
-// Ported from ypollak2/llm-router@e4644871b4d434887b6dfe1cac6be9a3c166561a
-// src/llm_router/forecast.py. Uses existing owner-scoped daily cost data.
+// Uses existing owner-scoped daily cost data.
 export type BurnForecast = Readonly<{
   projectedMonthlyUsd: number;
   daysToLimit: number;

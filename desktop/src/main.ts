@@ -33,6 +33,7 @@ import { RotatingLog, uiEventLine } from "./diagnostics-log";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 import { readTail, recentLines, reportReadme } from "./diagnostics-report";
 import { zipStored } from "./diagnostics-zip";
+import { DISK_FULL_MESSAGE, diskIsFull, installDiskFullGuard, onDiskFullChange, reportDiskFull, saveUnlessDiskFull, watchDiskSpace } from "./disk-full";
 
 /** How much of each log the report reads from the end. The time window then keeps only recent lines. */
 const REPORT_TAIL_BYTES = 4 * 1024 * 1024;
@@ -111,6 +112,13 @@ function log(line: string): void {
 }
 const launchStarted = Date.now();
 log(`launch v${app.getVersion()} pid ${process.pid}`);
+// Private #1036: a full disk pauses saving behind one banner and never raises Electron's modal error box, which also
+// blocked a normal quit. Any other uncaught error is still reported the way Electron reports it.
+installDiskFullGuard(process, error => {
+  const detail = error.stack ?? String(error);
+  log(`uncaught main-process error: ${detail}`);
+  if (!HIDDEN) dialog.showErrorBox("A JavaScript error occurred in the main process", `Uncaught Exception:\n${detail}`);
+});
 
 // Own profile and lock, apart from the old installed Branch Agent app.
 app.setPath("userData", join(cfg.dataDir, "electron"));
@@ -143,7 +151,7 @@ let lastGoodEngineDir: string | undefined;
 function writeGatewayPortFile(port: number): void {
   const file = join(cfg.dataDir, "gateway-port");
   try { writeFileSync(`${file}.tmp`, String(port)); renameSync(`${file}.tmp`, file); }
-  catch (error) { log(`gateway-port could not be recorded: ${String(error)}`); }
+  catch (error) { reportDiskFull(error); log(`gateway-port could not be recorded: ${String(error)}`); }
 }
 function adoptGatewayPort(port: number): void {
   gatewayPort = port;
@@ -168,12 +176,18 @@ const ownedWebContents = (sender: unknown) => {
   const owner = BrowserWindow.fromWebContents(sender as Electron.WebContents);
   return owner && branchWindows().includes(owner) ? owner.webContents : undefined;
 };
+// One plain banner while the disk is full; it goes away when a write lands again or space comes back.
+onDiskFullChange(full => {
+  log(full ? "the disk is full: saving paused" : "disk space is back: saving resumed");
+  sendToBranchWindows(full ? "branch-desktop:disk-full" : "branch-desktop:disk-ok", DISK_FULL_MESSAGE);
+});
+watchDiskSpace(cfg.dataDir);
 let quitting = false;
 const conversationWindowFile = join(cfg.dataDir, "conversation-windows.json");
 const conversationStateFile = (key: string): string => `conversation-window-${createHash("sha256").update(key).digest("hex").slice(0, 20)}.json`;
 let pendingSavedConversationKeys = savedConversationKeys();
 function saveConversationWindows(): void {
-  try { writeFileSync(conversationWindowFile, JSON.stringify([...new Set([...pendingSavedConversationKeys, ...conversationWindows.keys()])])); } catch { /* a window remains usable without persistence */ }
+  try { writeFileSync(conversationWindowFile, JSON.stringify([...new Set([...pendingSavedConversationKeys, ...conversationWindows.keys()])])); } catch (error) { reportDiskFull(error); /* a window remains usable without persistence */ }
   if (win && !win.isDestroyed()) win.webContents.send("branch-desktop:conversation-windows", [...conversationWindows.keys()]);
 }
 function savedConversationKeys(): string[] {
@@ -460,7 +474,7 @@ async function swapServiceEngineInPlace(label: string, explicit: boolean, held?:
         if (explicit) sendToBranchWindows("branch-desktop:engine-update", "updating");
         await runEngineServiceAction(cfg, engineDir, token, "restart", log);
         // publish-engine.sh and the release cleanup never remove the folder named here, and the service runs from it.
-        writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}\n`);
+        saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}\n`));
       },
       waitForReady: () => waitForEngineAnswer(probe, READY_TIMEOUT_MS),
       confirm: async () => { pendingReleasePrune = await confirmComponentUpdate(cfg, error => log(`Confirmed update cleanup: ${String(error)}`), true, log); },
@@ -681,8 +695,8 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   servedWindowDir = cfg.windowDir;
   gateway = prior;
   // The branch command and the next launch name the engine that runs again, not the failed standby.
-  if (lastGoodEngineDir) writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`);
-  if (prior.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prior.pid));
+  if (lastGoodEngineDir) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${lastGoodEngineDir}\n`));
+  if (prior.pid !== undefined) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prior.pid)));
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
   // Rollback has reclaimed the state. The old engine must keep its full readiness budget without the retire timer.
   if (back === "ok") stopRetiring(prior);
@@ -1292,7 +1306,7 @@ async function attachServiceEngine(): Promise<boolean> {
   // publish-engine.sh never removes the folder named here, and the service runs from it. An engine that was already
   // running keeps its record: after a window-only update the service still runs the folder it started from.
   const running = result.via === "attached" ? serviceEngineDir() : engineDir;
-  writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${running}\n`);
+  saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${running}\n`));
   lastGoodEngineDir = running;
   adoptGatewayPort(cfg.gatewayPort);
   // Engine updates restart the service (Private #454 E): watch for a newer engine as the child path does, and offer
@@ -1328,7 +1342,8 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   });
   const spawned = Date.now();
   const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint);
-  if (prepared?.child.pid !== undefined) writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prepared.child.pid));
+  const preparedPid = prepared?.child.pid;
+  if (preparedPid !== undefined) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(preparedPid)));
   if (prepared) {
     setEnginePriority(prepared.child, false);
     // The old engine has released the state: the standby takes over only on this word (#411).
@@ -1338,8 +1353,8 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   const observed = gatewaySupervisor.observe(child);
   log(`gateway started from ${engineDir}, pid ${child.pid}, port ${port}`);
   // publish-engine.sh never removes the folder named here.
-  writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
-`);
+  saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "engine-running.txt"), `${engineDir}
+`));
   // Ready means listening on its own port and answering /readyz there; only then does the window follow it.
   await waitForReady({ ...cfg, gatewayPort: port }, child, options.readyTimeoutMs ?? READY_TIMEOUT_MS);
   // Only a confirmed engine moves the live port: a rollback reboots on the port the window already uses.
@@ -1440,6 +1455,7 @@ function offerWindowStatus(w: BrowserWindow): void {
   if (w.isDestroyed() || !w.webContents.getURL().startsWith(windowUrl())) return;
   if (engineUpdateReady) w.webContents.send("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
   if (gatewayRecoveryError) w.webContents.send("branch-desktop:gateway-recovery-failed", gatewayRecoveryError);
+  if (diskIsFull()) w.webContents.send("branch-desktop:disk-full", DISK_FULL_MESSAGE);
   if (updateNotice && updateNotice.expiresAt > Date.now()) w.webContents.send("branch-desktop:update-applied", updateNotice);
 }
 
@@ -1653,7 +1669,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on("window-all-closed", () => app.quit());
   app.on("will-quit", (event?: Electron.Event) => { if (!deferQuitForCleanStop(event)) shutdown(); });
   app.whenReady().then(start).catch((err: unknown) => {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = reportDiskFull(err) ? DISK_FULL_MESSAGE : err instanceof Error ? err.message : String(err);
     log(`could not start: ${msg}`);
     if (!HIDDEN) dialog.showErrorBox("Branch Agent could not start", msg);
     app.quit();
