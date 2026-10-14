@@ -11,11 +11,11 @@ let root: Root, host: HTMLDivElement;
 beforeEach(() => { host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
-it("draws Go to with its title and every place, and each opens that place", async () => {
+it("draws Go to's places with no title of its own (the frame draws it, #1049), and each opens that place", async () => {
   const go = vi.fn();
   const GoTo = placePages(go).goto!.component!;
   await act(async () => root.render(<GoTo engine={{} as WindowEngine} />));
-  expect(host.querySelector("h1")?.textContent).toBe("Go to");
+  expect(host.querySelector("h1")).toBeNull();
   const buttons = [...host.querySelectorAll<HTMLButtonElement>("button[data-place]")];
   expect(buttons.map((b) => b.dataset.place)).toEqual(PLACES.map((p) => p.id));
   for (const button of buttons) await act(async () => button.click());

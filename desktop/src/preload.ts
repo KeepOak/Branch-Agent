@@ -111,6 +111,15 @@ if (info) {
       ipcRenderer.on("branch-desktop:pause-all", handler);
       return () => ipcRenderer.removeListener("branch-desktop:pause-all", handler);
     },
+    /** A closed-window "done" notice for a paired phone (Private #454 D): the window sends it through the engine's push service. */
+    onPhonePush: (listener: (notice: { title: string; body: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, notice: unknown): void => {
+        const value = notice as { title?: unknown; body?: unknown } | null;
+        if (typeof value?.title === "string" && typeof value.body === "string") listener({ title: value.title, body: value.body });
+      };
+      ipcRenderer.on("branch-desktop:phone-push", handler);
+      return () => ipcRenderer.removeListener("branch-desktop:phone-push", handler);
+    },
     // Windows only: the header's colours and height for the native window buttons drawn over its top-right.
     titleBar: process.platform === "win32"
       ? { set: (overlay: { color: string; symbolColor: string; height: number }) => ipcRenderer.send("branch-desktop:title-bar", overlay) }

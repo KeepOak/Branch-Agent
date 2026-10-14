@@ -4,6 +4,7 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { Avatar, InitialsFace } from "../../glass/Avatar";
 import { GroupCluster } from "../../glass/GroupCluster";
+import { Coming } from "../../glass/coming";
 import { Face } from "../../face/Face";
 import { useSidebarPointerDrag, type DropZone, type SidebarDrop } from "../../shell/sidebar-drag";
 import { FOLDERS, folderCount, rowTime, type Folder, type SideRow } from "./model";
@@ -121,6 +122,8 @@ export function SectionHead({ label, children }: { label: string; children?: Rea
 }
 
 /** The folder chip: one chip at rest; a click springs every folder open over glass. Hidden while searching. */
+export const NEW_FOLDER_COMING = "Your own folders come in a later update.";
+
 export function FolderChip({ rows, folder, onFolder, open, onOpen }: { rows: SideRow[]; folder: Folder; onFolder: (folder: Folder) => void; open: boolean; onOpen: (open: boolean) => void }) {
   return <div className="r1sb-fold" data-open={open || undefined} role="tablist" aria-label="Folders"
     onKeyDown={event => { if (event.key === "Escape" && open) { event.stopPropagation(); onOpen(false); } }}>
@@ -132,7 +135,10 @@ export function FolderChip({ rows, folder, onFolder, open, onOpen }: { rows: Sid
         {item.label}{count && (open || selected) ? <b>{count}</b> : null}
       </button>;
     })}
-    {/* Your own folders (sessions.folders.put) wait in Seedbank › Coming to Branch until the engine has them (R1-15). */}
+    {/* Your own folders (preview foldP11 "New folder" chip): Coming here until the engine has sessions.folders.put (#1049). */}
+    <Coming need="sessions.folders.put" unwired reason={NEW_FOLDER_COMING} where="Sidebar › New folder">
+      <button type="button" className="r1sb-chip r1sb-chip-add" aria-label="New folder" tabIndex={open ? 0 : -1}>{svg(<path d="M12 5v14M5 12h14" />, 13)}</button>
+    </Coming>
   </div>;
 }
 
