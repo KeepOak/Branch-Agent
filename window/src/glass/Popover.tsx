@@ -31,7 +31,8 @@ export function Popover({ anchor, onClose, label, children, width = 340, align =
     const node = ref.current, opener = anchor.current;
     if (!node || !opener) return;
     const update = () => setPosition(place(opener.getBoundingClientRect(), { w: width, h: node.scrollHeight }, window.innerWidth, window.innerHeight, { align, prefer: placement }));
-    const observer = new ResizeObserver(update); observer.observe(opener); observer.observe(node);
+    // Its content too: a menu opening a submenu in place grows inside the clamped box, which alone wouldn't resize.
+    const observer = new ResizeObserver(update); observer.observe(opener); observer.observe(node); if (node.firstElementChild) observer.observe(node.firstElementChild);
     window.addEventListener("resize", update); window.addEventListener("scroll", update, true); update();
     return () => { observer.disconnect(); window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); };
   }, [anchor, width, align, placement]);
