@@ -15,6 +15,7 @@ describe("engine readers", () => {
         { id: "x", name: "Other", isDefault: false },
       ],
     });
+    expect(readTrunks({ defaultId: "dev", agents: [{ id: "dev", identity: { name: "Sapling" } }, { id: "unnamed-7" }] }).list.map((t) => t.id)).toEqual(["dev"]);
     expect(readTrunks({ defaultId: "main", agents: [{ id: "main", kind: "system" }] })).toEqual({
       defaultId: "main", list: [], bootstrapDefault: { id: "main", name: "Sapling", isDefault: true },
     });

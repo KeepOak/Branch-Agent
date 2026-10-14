@@ -59,7 +59,7 @@ it("requires first-contact creation before setup/chat and retries failed default
 
 it("does not mistake system workers for user contact Trunks", () => {
   expect(readTrunks({ defaultId: "bootstrap", agents: [{ id: "bootstrap", kind: "system" }, { id: "helper", kind: "system" }] }).list).toEqual([]);
-  expect(readTrunks({ defaultId: "branch", agents: [{ id: "branch", kind: "agent" }, { id: "helper", kind: "system" }, { id: "legacy" }, {}] }).list.map(a => a.id)).toEqual(["branch", "legacy"]);
+  expect(readTrunks({ defaultId: "branch", agents: [{ id: "branch", kind: "agent" }, { id: "helper", kind: "system" }, { id: "legacy", identity: { name: "Legacy" } }, { id: "nameless" }, {}] }).list.map(a => a.id)).toEqual(["branch", "legacy"]);
 });
 
 it("offers the existing Trunk when a name is taken instead of showing the raw engine error", async () => {
