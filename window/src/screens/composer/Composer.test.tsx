@@ -8,6 +8,7 @@ import type { WindowEngine } from "../../composer/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import type { Limits } from "../../shell/status-data";
 import { Composer } from "./Composer";
+import { PlusMenu } from "./PlusMenu";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
@@ -108,25 +109,34 @@ describe("R1-04 composer", () => {
     expect(request).toHaveBeenCalledWith("chat.send", expect.objectContaining({ sessionKey: "agent:scout:t1", message: "Hello topic" }));
   });
 
-  it("opens the + menu in the preview's order, with its unwired items as Coming rows in place (#1049)", async () => {
+  it("opens the + menu in the preview's order, with its unwired items registered as hidden Coming items in place (#1049)", async () => {
     const { host } = await mount();
     await act(async () => host.querySelector<HTMLButtonElement>(".r1c-pill [aria-label^='Attach']")!.click());
     // preview POPS.plusmenu: Files, Photo, Screenshot, Folder ›; Teach a task, Make a picture, Write a doc, sheet or slides,
     // Set a goal, Skills & saved prompts; Add from, Call; Run as a background job, Branch from here, Temporary chat, Check with me.
-    expect([...document.querySelectorAll(".r1c-tile")].map((t) => t.textContent)).toEqual(["Files", "Photo", "Screenshot", "Folder ›"]);
+    // The preview's menu has "nothing greyed out" and shows Screenshot only when it can: the unwired items are hidden here
+    // and listed, in place and in order, in the Coming report.
+    expect([...document.querySelectorAll(".r1c-tile")].map((t) => t.textContent)).toEqual(["Files", "Photo", "Folder ›"]);
     const rows = [...document.querySelectorAll(".r1c-plus .r1c-mi-t")].map((t) => t.textContent);
-    expect(rows).toEqual(["Teach a task", "Make a picture", "Write a doc, sheet or slides", "Set a goal", "Skills & saved prompts", "Add from", "Call",
-      "Run as a background job", "Branch from here", "Temporary chat", "Check with me"]);
-    const off = [...document.querySelectorAll(".r1c-plus [aria-disabled='true']")].map((b) => b.textContent);
-    expect(off).toEqual(["Screenshot", "Teach a task", "Write a doc, sheet or slides", "Branch from here", "Temporary chatOff", "Check with meOff"]);
+    expect(rows.filter((r) => r !== "Call")).toEqual(["Make a picture", "Set a goal", "Skills & saved prompts", "Add from", "Run as a background job"]);
+    expect(document.querySelectorAll(".r1c-plus [aria-disabled='true']")).toHaveLength(0);
     expect(comingControls().filter((c) => c.where.startsWith("+ menu ›")).map((c) => [c.where, c.need[0], c.hidden])).toEqual([
-      ["+ menu › Screenshot", "desktop.observe", false], ["+ menu › Teach a task", "desktop.observe", false], ["+ menu › Write a doc, sheet or slides", "agents.documents.create", false],
-      ["+ menu › Branch from here", "sessions.fork", false], ["+ menu › Temporary chat", "sessions.patch", false], ["+ menu › Check with me", "sessions.patch", false],
+      ["+ menu › Screenshot", "desktop.observe", true], ["+ menu › Teach a task", "desktop.observe", true], ["+ menu › Write a doc, sheet or slides", "agents.documents.create", true],
+      ["+ menu › Branch from here", "sessions.fork", true], ["+ menu › Temporary chat", "sessions.patch", true], ["+ menu › Check with me", "sessions.patch", true],
     ]);
+  });
+
+  it("lists Phone call and Join a meeting as hidden Coming items under + › Call (#1049)", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    const anchor = { current: host };
+    root = createRoot(host);
+    const noop = () => {};
+    await act(async () => root?.render(<PlusMenu anchor={anchor} onClose={noop} hasModel voiceLive onFiles={noop} onPhoto={noop} onFolder={noop} onPicture={noop} onInsert={noop} onBackground={noop} onOpen={noop} onCall={noop} />));
     await act(async () => button("Call")!.click());
-    const call = [...document.querySelectorAll(".r1c-plus .r1c-mi-t")].map((t) => t.textContent);
-    expect(call).toEqual(expect.arrayContaining(["Phone call…", "Join a meeting…"]));
-    expect([...document.querySelectorAll(".r1c-plus [aria-disabled='true']")].map((b) => b.textContent)).toEqual(["Phone call…", "Join a meeting…"]);
+    expect([...document.querySelectorAll(".r1c-plus .r1c-mi-t")].map((t) => t.textContent)).toEqual(["Call", "Voice call"]);
+    expect(comingControls().filter((c) => /Phone|meeting/.test(c.where)).map((c) => [c.where, c.need[0], c.hidden])).toEqual([
+      ["+ menu › Phone call…", "voicecall.initiate", true], ["+ menu › Join a meeting…", "voicecall.start", true],
+    ]);
   });
 
   it("opens the ring popover with This computer, Running, Context and Every account", async () => {

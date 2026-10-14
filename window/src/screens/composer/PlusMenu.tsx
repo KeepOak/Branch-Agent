@@ -1,8 +1,9 @@
 // The + menu (HANDOFF R1-04, owner item 29; preview POPS.plusmenu): the tiles and the rows under them, with submenus
 // that replace the content behind a back row, in the preview's order. The items this window can't do yet (Screenshot,
 // Teach a task, Write a doc, Branch from here, Temporary chat, Check with me, Phone call, Join a meeting) are Coming
-// rows in their preview places, each naming the engine call it waits for (#1049). A folded Improve my draft is drawn
-// when the engine has its call, else hidden and listed as Coming.
+// items in their preview places, each naming the engine call it waits for (#1049). The preview's + menu has "nothing
+// greyed out" and shows Screenshot only when it can, so they are hidden there (the owner's documented exception to the
+// greyed Coming look) and listed in the dev Coming report; they show the moment the window wires them.
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Icon, type IconName } from "../../composer/icons";
 import type { OpenTarget } from "../../composer/nav";
@@ -63,9 +64,9 @@ export const PLUS_COMING = {
 
 type Later = keyof typeof PLUS_NEED;
 
-/** A Coming item: drawn greyed in its preview place with its one-line reason, naming the call it waits for. */
+/** A Coming item in its preview place: hidden (+ menu exception), registered with its reason and the call it waits for. */
 function LaterItem({ id, icon, label, hint, toggle }: { id: Later; icon: IconName; label: string; hint?: ReactNode; toggle?: boolean }) {
-  return <Coming need={PLUS_NEED[id]} unwired reason={PLUS_COMING[id]} where={"+ menu › " + label}>
+  return <Coming hidden need={PLUS_NEED[id]} unwired reason={PLUS_COMING[id]} where={"+ menu › " + label}>
     <button type="button" className="r1c-mi" role={toggle ? "menuitemcheckbox" : "menuitem"} aria-checked={toggle ? false : undefined}>
       <span className="r1c-ico"><Icon name={icon} /></span>
       <span className="r1c-mi-t">{label}</span>
@@ -104,7 +105,7 @@ export function PlusMenu(p: Props) {
         <div className="r1c-tiles">
           <Tile icon="file" label="Files" onClick={run(p.onFiles)} />
           <Tile icon="camera" label="Photo" onClick={run(p.onPhoto)} />
-          <Coming need={PLUS_NEED.screenshot} unwired reason={PLUS_COMING.screenshot} where="+ menu › Screenshot">
+          <Coming hidden need={PLUS_NEED.screenshot} unwired reason={PLUS_COMING.screenshot} where="+ menu › Screenshot">
             <button type="button" className="r1c-tile" role="menuitem"><Icon name="eye" /><span>Screenshot</span></button>
           </Coming>
           <Tile icon="folder" label="Folder ›" onClick={() => setView("folder")} />
@@ -120,7 +121,7 @@ export function PlusMenu(p: Props) {
         </div>
         <div className="r1c-group">
           <Item icon="plus" label="Add from" sub onClick={() => setView("add")} />
-          <Item icon="call" label="Call" sub onClick={() => setView("call")} />
+          {p.voiceLive || p.onVoiceNote ? <Item icon="call" label="Call" sub onClick={() => setView("call")} /> : null}
         </div>
         <div className="r1c-group">
           <Item icon="clock" label="Run as a background job" hint={<kbd>/bg</kbd>} onClick={run(p.onBackground)} />
