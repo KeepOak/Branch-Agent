@@ -25,7 +25,8 @@ export function foundState(app: App, detect: RecordValue | undefined): Found {
 export const PILL: Record<Found["state"], [string, string]> = { ready: ["ok", "Models ready"], signin: ["warn", "Sign-in needed"], missing: ["idle", "Not found"] };
 
 export function appSub(app: App, f: Found, on: boolean): string {
-  if (f.state === "missing") return f.reason ?? `Install and sign in to ${app.name} on this computer, then check again.`;
+  // §4.7.8: an app that isn't installed always reads the same; Codex turns fail with this sentence too.
+  if (f.state === "missing") return `Install and sign in to ${app.name} on this computer, then check again.`;
   if (f.state === "signin") return `Open ${app.name} and check its sign-in, then check again.`;
   return on ? `On because ${app.name} is connected on this computer.` : `${app.name} is connected on this computer. Turn it on to use its models.`;
 }
@@ -45,7 +46,7 @@ export function CodingApps({ engine }: { engine: WindowEngine }) {
         return (
           <Ctl key={app.kind} id={app.name} title={<>{app.name}{app.kind === "claude-cli" && claude?.accountEmail ? ` · ${text(claude.accountEmail)}` : ""}<span className={`pill ${tone}`}><i />{word}</span></>} icon={<Logo id={app.brand} size={22} />} sub={detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn)}>
             {app.plugin
-              ? <Switch checked={pluginOn} label={`Use ${app.name}`} disabled={cfg.loading} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
+              ? <Switch checked={f.state === "ready" && pluginOn} label={`Use ${app.name}`} disabled={cfg.loading || f.state !== "ready"} onChange={(v) => void cfg.set(`plugins.entries.${app.plugin}.enabled`, v)} />
               : <span title={`Follows ${app.name}’s own sign-in on this computer.`}><Switch checked={pluginOn} label={`Use ${app.name}`} disabled onChange={() => undefined} /></span>}
           </Ctl>
         );

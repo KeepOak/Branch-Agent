@@ -23,7 +23,7 @@ const COSTS_NOTE = "Needs the engine to count what each skill, connector and age
 const NO_ROLLBACK = "Rolling back a change needs the engine’s roll back.";
 const NO_SETTING = "Needs an engine setting for it.";
 const APP = "Runs in the Branch app on your computer.";
-const SOURCE: Record<string, string> = { "system-agent": "Branch", doctor: "Check and fix", "config-rpc": "Settings", cli: "The terminal", "plugin-install": "A plugin install", external: "Edited outside Branch", unknown: "" };
+export const SOURCE: Record<string, string> = { "system-agent": "Branch", doctor: "Check and fix", "config-rpc": "Settings", cli: "The terminal", "plugin-install": "A plugin install", external: "Edited outside Branch", unknown: "" };
 
 /** A greyed switch row: title, sub-line, the reason, and the level it shows from. */
 type Off = [title: string, sub: string, why: string, lv?: number];
@@ -319,14 +319,7 @@ function Connected({ engine }: Pick<SettingsPageProps, "engine">) {
 function YourSettings({ engine, config }: Ctx) {
   const [incoming, setIncoming] = useState<{ name: string; raw: string } | null>(null);
   const sys = rec(useLive<RecordValue>(engine, "system.info", {}, []).data);
-  const exportFile = () => {
-    const blob = new Blob([JSON.stringify(config.cfg, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "branch-settings.json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
+  const exportFile = () => exportSettings(config.cfg);
   return (
     <Sec title="Your settings">
       <Ctl title="Export" sub="Every setting as one file. Keys and passwords are left out."><Btn sm disabled={config.loading} onClick={exportFile}>Export</Btn></Ctl>
@@ -349,13 +342,23 @@ function YourSettings({ engine, config }: Ctx) {
   );
 }
 
+/** Saves every setting as branch-settings.json (the engine leaves keys out of config.get). */
+export function exportSettings(cfg: RecordValue): void {
+  const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "branch-settings.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function flat(value: unknown, path = ""): [string, string][] {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return [[path, JSON.stringify(value)]];
   return Object.entries(value as RecordValue).flatMap(([k, v]) => flat(v, path ? `${path}.${k}` : k));
 }
 
 /** Import: every top-level key that differs is listed; applying patches only those keys against the loaded revision. */
-function ImportDialog({ config, file, onClose }: Pick<SettingsPageProps, "engine"> & { config: ReturnType<typeof useConfig>; file: { name: string; raw: string }; onClose: () => void }) {
+export function ImportDialog({ config, file, onClose }: Pick<SettingsPageProps, "engine"> & { config: ReturnType<typeof useConfig>; file: { name: string; raw: string }; onClose: () => void }) {
   const call = useCall();
   let parsed: RecordValue | null = null;
   try { parsed = rec(JSON.parse(file.raw)); } catch (e) { parsed = null; void e; }

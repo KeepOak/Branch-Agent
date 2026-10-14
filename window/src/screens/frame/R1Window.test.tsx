@@ -12,10 +12,11 @@ vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="M
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null, useUpdate: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
 vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as const, SettingsFrame: ({ page, onPage }: { page: string; onPage: (page: string) => void }) => <div data-testid="classic-settings" data-page={page}>Classic settings<button type="button" onClick={() => onPage("general")}>General</button></div> }));
-// One stub slot per page the real R1 Settings re-hosts from Classic (plugged.ts REHOSTED), plus Chat apps.
+// One stub slot per page the real R1 Settings re-hosts from Classic (plugged.ts REHOSTED), the native History & backups
+// page's own rows, and Chat apps.
 vi.mock("../settings/pages/plugged", async () => {
   const { REHOSTED, R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), remote: R1_PAGES.remote, learning: R1_PAGES.learning, chatapps: { component: () => null } } };
+  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, remote: R1_PAGES.remote, learning: R1_PAGES.learning, chatapps: { component: () => null } } };
 });
 vi.mock("../settings", () => ({
   SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (
@@ -94,7 +95,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("who,notifications,instructions,signins,updates,models,permissions,privacy,history,browser,coding,remote,learning,chatapps,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("who,notifications,instructions,signins,updates,models,permissions,privacy,browser,coding,history,remote,learning,chatapps,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
