@@ -85,6 +85,9 @@
 .r1-content > .r1-topic-host { max-width: 760px; margin: 0 auto 8px; }
 .r1-topic-host .tpRowT5 { margin: 2px 6px; background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); }
 .r1-topic-host .tpRowT5.curT5 { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
+/* Why two #g48 ids (glass/glass.css explains the ladder): glass.css's pill rule for controls inside a clear surface
+   (.g-clear :is(button, …):not([data-solid], [role="switch"], #g48)) carries one id plus an attribute list; the row's own
+   buttons must stay bare so the row's pill is the only one, so this rule carries two ids and wins by specificity. */
 .r1-topic-host .tpRowT5 :is(button, .tpGoT5):not(#g48#g48) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
 .r1-topic-host .tpResT5 { background: transparent; border: 0; }
 /* The rail's Classic menus and emoji picker: clear glass, each row on its pill, no rules between groups. */
