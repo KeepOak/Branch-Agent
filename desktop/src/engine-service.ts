@@ -12,8 +12,12 @@ export function engineServiceArgs(action: EngineServiceAction | "token", port?: 
   if (action === "install") return ["branch.mjs", "gateway", "install", "--port", String(port), "--json"];
   if (action === "start") return ["branch.mjs", "gateway", "start", "--json"];
   // An update (Private #454 E): run from the new engine, the restart rewrites the service definition to it and the
-  // service manager restarts it; --force drains admitted work within the shutdown budget instead of waiting on it.
-  if (action === "restart") return ["branch.mjs", "gateway", "restart", "--force", "--json"];
+  // service manager restarts it. Never --force: the app only gets here once the engine reports no running work
+  // (service-update.ts serviceWorkRefusal), and --force would begin the restart at once and cut off work that just
+  // started. Not --safe either: --safe asks the RUNNING gateway to restart itself over RPC
+  // (engine/src/cli/daemon-cli/lifecycle-safe-restart.ts), which skips the definition rewrite, so the service would
+  // come back on the old engine. --force stays only on Stop Branch completely, after its warning.
+  if (action === "restart") return ["branch.mjs", "gateway", "restart", "--json"];
   // Stop Branch completely (C): the app is not a terminal, so the stop is confirmed with --force; the definition
   // stays, so the service starts again at the next sign-in (and the app starts it at its next launch).
   if (action === "stop") return ["branch.mjs", "gateway", "stop", "--force", "--json"];

@@ -15,7 +15,7 @@ if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact deskto
 const require = createRequire(import.meta.url), Module = require('node:module');
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 const { readEngineLiveState, stopBranchCompletely, trayLabel, trayMenu } = require(join(dist, 'tray-status.js'));
-const { sameEngineBuild, updateServiceEngine } = require(join(dist, 'service-update.js'));
+const { sameEngineBuild, updateServiceEngine, TRUNKS_STILL_WORKING } = require(join(dist, 'service-update.js'));
 const { engineServiceArgs } = require(join(dist, 'engine-service.js'));
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -105,17 +105,26 @@ if (args[0] === "gateway" && args.includes("--dev")) {
  * The real main.js with alwaysOn and an engine service already serving: a loopback stand-in on the gateway port that
  * stops answering /readyz while the "service" runs a folder named engine-broken.
  */
-async function serviceApp(t, work, run, env = {}) {
+async function serviceApp(t, work, run, env = {}, setup = () => undefined) {
   const root = tempDir(t, 'branch-always-on-app-');
   const windowDir = join(root, 'window'), profile = join(root, 'profile');
   for (const dir of [windowDir, profile]) mkdirSync(dir, { recursive: true });
   const engine = fakeEngine(root, 'engine', 'service');
   writeFileSync(join(windowDir, 'index.html'), '<html>fixture</html>');
   const runs = () => { try { return readFileSync(join(root, 'service-runs.txt'), 'utf8'); } catch { return 'engine'; } };
-  const gatewayPort = await listen(t, (req, res) => { res.statusCode = req.url === '/readyz' && runs() !== 'engine-broken' ? 200 : 503; res.end(); });
+  const gatewayPort = await listen(t, (req, res) => {
+    // A fake Trunk run: it answers its first line now and finishes later, unless the service restarted under it.
+    if (req.url === '/run') {
+      res.write('working');
+      setTimeout(() => { if (runs() === 'engine') res.end(' done'); else res.destroy(); }, 600);
+      return;
+    }
+    res.statusCode = req.url === '/readyz' && runs() !== 'engine-broken' ? 200 : 503; res.end();
+  });
   const windowPort = await freePort();
   writeFileSync(join(root, 'desktop.json'), JSON.stringify({ dataDir: root, engineDir: engine, windowDir, nodePath: process.execPath,
     gatewayPort, windowPort, alwaysOn: true }));
+  setup(root);
   const vars = { BRANCH_DESKTOP_DATA: root, BRANCH_DESKTOP_HIDDEN: '0', BRANCH_DESKTOP_ENGINE_PROFILE: profile, ...env };
   const saved = Object.fromEntries(Object.keys(vars).map(key => [key, process.env[key]]));
   Object.assign(process.env, vars);
@@ -265,7 +274,7 @@ test('an engine update with the service restarts it through the service manager,
   assert.equal(state.serviceRuns, fresh);
   assert.equal(state.engines, 1, 'exactly one engine after the update');
   assert.ok(state.maxEngines <= 2, 'only the scratch standby ever ran beside the service engine');
-  assert.deepEqual(engineServiceArgs('restart'), ['branch.mjs', 'gateway', 'restart', '--force', '--json']);
+  assert.deepEqual(engineServiceArgs('restart'), ['branch.mjs', 'gateway', 'restart', '--json']);
   assert.deepEqual(engineServiceArgs('stop'), ['branch.mjs', 'gateway', 'stop', '--force', '--json']);
 });
 
@@ -304,7 +313,7 @@ test('the app updates the service engine: standby beside it, then gateway restar
     const fresh = publish('engine-v2', 'v2');
     clickUpdate();
     await eventually(() => desktopLog().includes('service update: the engine service runs the new engine'), 15000);
-    assert.deepEqual(cliCalls(), ['gateway restart --force --json @engine-v2']);
+    assert.deepEqual(cliCalls(), ['gateway restart --json @engine-v2']);
     assert.equal(serviceRuns(), 'engine-v2');
     assert.equal(runningRecord(), fresh);
     assert.equal(standbys().length, 1, 'the new engine warmed once as a standby first');
@@ -318,7 +327,7 @@ test('the app rolls the service back when the new engine fails readiness', async
     publish('engine-broken', 'v2');
     clickUpdate();
     await eventually(() => desktopLog().includes('rolled back; the engine service runs the previous engine'), 15000);
-    assert.deepEqual(cliCalls(), ['gateway restart --force --json @engine-broken', 'gateway restart --force --json @engine']);
+    assert.deepEqual(cliCalls(), ['gateway restart --json @engine-broken', 'gateway restart --json @engine']);
     assert.equal(serviceRuns(), 'engine');
     assert.equal(runningRecord(), join(root, 'engine'));
     assert.doesNotMatch(desktopLog(), /gateway started from/);
@@ -334,4 +343,71 @@ test('the app applies a window-only update without touching the engine service',
     assert.deepEqual(standbys(), []);
     assert.equal(runningRecord(), join(root, 'engine'), 'the service still runs the folder it started from');
   }, updateEnv);
+});
+
+// FIX on 65c355d (Private #454 E with #1038's rule): an update restart never cuts off running Trunk work.
+
+test('the update restart never forces: no --force (it would cut off work) and no --safe (it skips the definition rewrite); Stop completely keeps --force', () => {
+  const restart = engineServiceArgs('restart');
+  assert.equal(restart.includes('--force'), false, 'the update restart never begins at once over running work');
+  assert.equal(restart.includes('--safe'), false, '--safe restarts the running engine over RPC and keeps the old service definition');
+  assert.deepEqual(restart.slice(1, 3), ['gateway', 'restart']);
+  assert.deepEqual(engineServiceArgs('stop'), ['branch.mjs', 'gateway', 'stop', '--force', '--json']);
+});
+
+test('a busy engine refuses the service update before the standby and before any restart, and after a standby that warmed while work started', async t => {
+  const busy = { activeRuns: 1, pendingApprovals: 0, streaming: false };
+  const idleWork = { activeRuns: 0, pendingApprovals: 0, streaming: false };
+  for (const work of [busy, { ...idleWork, pendingApprovals: 1 }, { ...idleWork, streaming: true }]) {
+    const { state, steps, engineDir, old } = fakeServiceManager(t);
+    await assert.rejects(updateServiceEngine({ ...steps(engineDir('engine-new', 'v2')), workRunning: async () => work }), { message: TRUNKS_STILL_WORKING });
+    assert.deepEqual(state.calls, [], 'no standby, no restart, nothing rejected or rolled back');
+    assert.equal(state.serviceRuns, old);
+  }
+  // Idle when the update starts, busy once the standby warmed: the restart still never runs.
+  const { state, steps, engineDir, old } = fakeServiceManager(t);
+  const reads = [idleWork, busy];
+  await assert.rejects(updateServiceEngine({ ...steps(engineDir('engine-new', 'v2')), workRunning: async () => reads.shift() ?? busy }), { message: TRUNKS_STILL_WORKING });
+  assert.deepEqual(state.calls, ['standby']);
+  assert.deepEqual(state.restarts, []);
+  assert.equal(state.serviceRuns, old);
+});
+
+test('a running Trunk run survives an Update click in service mode: refused, no gateway CLI call, the run still answers', async t => {
+  await serviceApp(t, () => ({ pendingApprovals: 0, streaming: true, unsavedDraftFiles: false, workingTrunks: 1 }), async ({ gatewayPort, clickUpdate, publish, cliCalls, standbys, serviceRuns, dialogs, desktopLog }) => {
+    const run = originalFetch(`http://127.0.0.1:${gatewayPort}/run`).then(r => r.text());
+    publish('engine-v2', 'v2');
+    clickUpdate();
+    await eventually(() => desktopLog().includes(`update failed: ${TRUNKS_STILL_WORKING}`), 15000);
+    assert.match(desktopLog(), /service update: waiting for 1 active runs, 0 approvals, streaming reply before the update; the engine service was not touched/);
+    assert.deepEqual(cliCalls(), [], 'no gateway restart (or any service) CLI call');
+    assert.deepEqual(standbys(), [], 'not even a standby');
+    assert.equal(serviceRuns(), 'engine');
+    assert.deepEqual(dialogs.filter(d => d[0] === 'error').map(d => d[2]), [TRUNKS_STILL_WORKING]);
+    assert.equal(await run, 'working done', 'the fake Trunk run finished on the engine it started on');
+  }, updateEnv);
+});
+
+const pending = root => writeFileSync(join(root, 'component-update-pending.json'), JSON.stringify({ phase: 'pending', version: '9.9.9' }));
+const autoEnv = { ...updateEnv, BRANCH_DESKTOP_UPDATE_FREE_DISK: '0.9', BRANCH_DESKTOP_UPDATE_FREE_MEMORY: '0.9' };
+
+test('auto-apply in service mode reads the run count from the engine: the tick waits on the runs, no "activity check failed", no restart', async t => {
+  await serviceApp(t, () => ({ pendingApprovals: 0, streaming: false, unsavedDraftFiles: false, workingTrunks: 2 }), async ({ cliCalls, standbys, serviceRuns, desktopLog }) => {
+    await eventually(() => /auto-apply: waiting for 2 active runs, 0 approvals; deferring 9\.9\.9 until Trunk work is idle/.test(desktopLog()), 15000);
+    assert.doesNotMatch(desktopLog(), /activity check failed/, 'the service engine answers the run count');
+    assert.deepEqual(cliCalls(), []);
+    assert.deepEqual(standbys(), []);
+    assert.equal(serviceRuns(), 'engine');
+  }, autoEnv, pending);
+});
+
+test('auto-apply in service mode: the handoff attempt makes no restart call and falls back to the idle drain', async t => {
+  await serviceApp(t, idle, async ({ cliCalls, standbys, serviceRuns, desktopLog }) => {
+    await eventually(() => /auto-apply: handoff unavailable; falling back to idle drain for 9\.9\.9/.test(desktopLog()), 15000);
+    await eventually(() => /auto-apply: idle hold for 9\.9\.9/.test(desktopLog()), 15000);
+    assert.doesNotMatch(desktopLog(), /activity check failed/);
+    assert.deepEqual(cliCalls(), [], 'the handoff attempt made no gateway restart call');
+    assert.deepEqual(standbys(), [], 'nor warmed a standby');
+    assert.equal(serviceRuns(), 'engine');
+  }, autoEnv, pending);
 });

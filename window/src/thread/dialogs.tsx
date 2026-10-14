@@ -47,6 +47,31 @@ export function EditDialog({ text, onClose, onSend }: { text: string; onClose: (
   );
 }
 
+/** Delete one message: it asks first, because the message leaves the conversation and the model's context. */
+export function DeleteDialog({ onClose, onDelete }: { onClose: () => void; onDelete: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const remove = () => {
+    setBusy(true);
+    onDelete().then(onClose, (e: unknown) => {
+      setBusy(false);
+      setError(e instanceof Error ? e.message : String(e));
+    });
+  };
+  const footer = (
+    <>
+      <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+      <button type="button" className="btn bad" data-action="confirm-delete" disabled={busy} onClick={remove}>Delete</button>
+    </>
+  );
+  return (
+    <Dialog title="Delete this message?" onClose={onClose} footer={footer} testid="delete-dialog">
+      <p className="hint">It leaves this conversation, and the agent stops reading it.</p>
+      {error ? <p className="field-error">{error}</p> : null}
+    </Dialog>
+  );
+}
+
 function useModels(engine?: WindowEngine): string[] {
   const [models, setModels] = useState<string[]>([]);
   useEffect(() => {
