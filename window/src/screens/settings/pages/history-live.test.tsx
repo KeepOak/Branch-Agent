@@ -100,6 +100,15 @@ describe("R1 Settings › History & backups is a native R1 page with the preview
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
   });
 
+  it("says why each Coming row waits in one plain sentence, never naming how Branch works inside", async () => {
+    await mount();
+    await setLevel("Technical");
+    const reasons = [...host.querySelectorAll<HTMLElement>("[data-coming] .r1s-note")].map((n) => n.textContent ?? "");
+    expect(reasons.length).toBeGreaterThan(5);
+    for (const r of reasons) expect(r, r).not.toMatch(/engine|gateway call|method|config|\b[a-z]+\.[a-z]+\b/i);
+    expect(host.textContent).not.toContain("comes with the R1");
+  });
+
   it("keeps every working Classic control live, declared, and on Classic's engine calls", async () => {
     const { request } = await mount();
     await setLevel("Technical");
