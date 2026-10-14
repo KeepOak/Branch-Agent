@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Dialog } from "./Dialog";
 import { Icon } from "./icons";
-import { checkCombo, comboOf, currentKeys, keyActions, PANE_ACTIONS, readCustomKeys, saveCustomKeys, shown, type ActionId, type KeyAction } from "./keymap";
+import { checkCombo, comboOf, currentKeys, keyActions, PANE_ACTIONS, plusLabel, readCustomKeys, saveCustomKeys, shown, type ActionId, type KeyAction } from "./keymap";
 import { notify } from "./notify";
 import "./shortcuts.css";
 
@@ -71,11 +71,11 @@ function KeyRow({ a, keys, custom, listening, mac, onListen, onReset }: RowProps
   return (
     <div className="k-row15">
       <span>{a.name}</span>
-      <button type="button" className={listening === a.id ? "k-set15 listen15" : "k-set15"} data-testid={`key-${a.id}`} aria-label={`${a.name}: ${keys[a.id]}. Change`} disabled={Boolean(a.off)} title={a.off} onClick={() => onListen(listening === a.id ? null : a.id)}>
+      <button type="button" className={listening === a.id ? "k-set15 listen15" : "k-set15"} data-testid={`key-${a.id}`} aria-label={`${a.name}: ${PANE_ACTIONS.includes(a.id) ? plusLabel(keys[a.id], mac) : keys[a.id]}. Change`} disabled={Boolean(a.off)} title={a.off} onClick={() => onListen(listening === a.id ? null : a.id)}>
         {listening === a.id ? <em>Press the keys…</em> : <Kbds keys={keys[a.id].split(" ")} mac={mac} />}
       </button>
       {custom[a.id] ? (
-        <button type="button" className="ib sm" aria-label={`Put back ${a.keys}`} title={`Put back ${a.keys}`} onClick={() => onReset(a.id)}>
+        <button type="button" className="ib sm" aria-label={`Put back ${PANE_ACTIONS.includes(a.id) ? plusLabel(a.keys, mac) : a.keys}`} title={`Put back ${PANE_ACTIONS.includes(a.id) ? plusLabel(a.keys, mac) : a.keys}`} onClick={() => onReset(a.id)}>
           <Icon name="x" size={13} />
         </button>
       ) : (
@@ -118,7 +118,7 @@ export function ShortcutsDialog({ onClose, defaultName = "Sapling" }: { onClose:
         return;
       }
       set({ ...custom, [listening]: combo === action?.keys ? undefined : combo });
-      notify(`${action?.name}: ${shown(combo, mac).join(" ")}.`);
+      notify(`${action?.name}: ${action && PANE_ACTIONS.includes(action.id) ? plusLabel(combo, mac) : shown(combo, mac).join(" ")}.`);
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);

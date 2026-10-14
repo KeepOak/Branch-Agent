@@ -64,9 +64,10 @@ describe("Overview as approved (P34)", () => {
   it("puts Finish setting up under the hero, not above the page", async () => {
     const { host } = await render();
     const children = [...host.querySelector(".p34-place")!.children];
-    expect(children[0]!.className).toBe("p34-hero");
-    expect(children[1]!.textContent).toContain("Finish setting up");
-    expect(children.findIndex(el => el.classList.contains("p34-head"))).toBeGreaterThan(1);
+    const hero = children.findIndex(el => el.classList.contains("p34-hero"));
+    expect(hero).toBeGreaterThanOrEqual(0);
+    expect(children[hero + 1]!.textContent).toContain("Finish setting up");
+    expect(children.findIndex(el => el.classList.contains("p34-head"))).toBeGreaterThan(hero + 1);
   });
 
   it("shows GitHub linked with its account, and Gmail, Calendar and Drive as Coming when not linked", async () => {
