@@ -15,7 +15,7 @@ afterEach(async () => {
 });
 const screenButton = () => [...document.querySelectorAll("button")].find((button) => button.textContent === "See the screen and use the mouse");
 const frame = { format: "png", base64: "iVBORw0KGgo=" };
-function fixture(snapshot: () => Promise<unknown> = async () => ({ payload: frame }), patchError = false) {
+function fixture(snapshot: () => Promise<unknown> = async () => ({ payload: frame }), patchError = false, driver: { reason?: string } = {}) {
   let enabled = false;
   const request = vi.fn(async (method: string, params: unknown) => {
     if (method === "sessions.describe") return { session: { key: "agent:scout:one" } };
@@ -26,7 +26,10 @@ function fixture(snapshot: () => Promise<unknown> = async () => ({ payload: fram
       enabled = true;
       return { ok: true };
     }
-    if (method === "computer.status") return { available: enabled, computerUse: { provider: { generation: "driver-one" } } };
+    if (method === "computer.status") {
+      if (driver.reason) return { configured: true, available: false, error: "COMPUTER_DRIVER_UNAVAILABLE: the Gateway desktop provider is unavailable", reason: driver.reason };
+      return { available: enabled, computerUse: { provider: { generation: "driver-one" } } };
+    }
     if (method === "computer.invoke") {
       return (params as { command: string }).command === "screen.snapshot" ? snapshot() : { payload: { ok: true } };
     }
@@ -95,5 +98,24 @@ describe("computer screen setup", () => {
     expect(document.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,frame2");
     const commands = request.mock.calls.filter(([method]) => method === "computer.invoke").map(([, params]) => (params as { command: string }).command);
     expect(commands).toEqual(["screen.snapshot", "computer.act", "screen.snapshot", "computer.act"]);
+  });
+  it("shows Coming with the app's reason while this computer's driver isn't ready, then the screen once it is", async () => {
+    vi.useFakeTimers();
+    const driver: { reason?: string } = { reason: "The Mac computer driver couldn't start: X is not in the embedded safe allowlist" };
+    const { engine, request } = fixture(undefined, false, driver);
+    await render(engine);
+    await act(async () => screenButton()!.click());
+    const coming = document.querySelector(".stage-empty[data-coming]");
+    expect(coming?.textContent).toContain("Computer control · Coming");
+    expect(coming?.textContent).toContain(driver.reason);
+    expect(coming?.querySelector("button")).toBeNull();
+    expect(document.body.textContent).not.toContain("Couldn't show this computer's screen");
+    expect(request.mock.calls.some(([method]) => method === "computer.invoke")).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(document.querySelector(".stage-empty[data-coming]")).not.toBeNull();
+    driver.reason = undefined;
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(document.querySelector(".stage-empty[data-coming]")).toBeNull();
+    expect(document.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
   });
 });

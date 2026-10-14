@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 
-type Status = { available?: boolean; computerUse?: { provider: { generation: string } } };
+type Status = { available?: boolean; reason?: string; computerUse?: { provider: { generation: string } } };
 type Frame = { format: "png" | "jpeg"; base64: string };
 const MESSAGE = "Couldn't show this computer's screen. Check that screen access is on and try again.";
 
@@ -10,11 +10,14 @@ const MESSAGE = "Couldn't show this computer's screen. Check that screen access 
 export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: WindowEngine; retry: number; onLive: (live: boolean) => void; onRetry: () => void }) {
   const [image, setImage] = useState("");
   const [error, setError] = useState("");
+  // The desktop app's reason this computer's own driver isn't ready: Coming (R1-10) until it is, polling as before.
+  const [coming, setComing] = useState("");
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     setImage("");
     setError("");
+    setComing("");
     onLive(false);
     const capture = async () => {
       let generation: string | undefined;
@@ -22,6 +25,14 @@ export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: Windo
       try {
         const status = await engine.request<Status>("computer.status", {});
         if (!live) return;
+        if (!status.available && status.reason) {
+          setImage("");
+          setError("");
+          setComing(status.reason);
+          onLive(false);
+          return;
+        }
+        setComing("");
         generation = status.computerUse?.provider.generation;
         if (!status.available || !generation) throw new Error("Screen unavailable");
         const result = await engine.request<{ payload: Frame }>("computer.invoke", {
@@ -52,6 +63,7 @@ export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: Windo
   }, [engine, retry, onLive]);
   return <div className="st7-wrap"><div className="st7-screen live-st">
     {image ? <img className="native-screen" src={image} alt="Live screen of this computer" /> : null}
-    {!image || error ? <div className="stage-empty"><b>{error || "Connecting to this computer's screen…"}</b>{error ? <button type="button" className="btn" onClick={onRetry}>Try again</button> : null}</div> : null}
+    {coming ? <div className="stage-empty" data-coming={coming}><b>Computer control · Coming</b><p>{coming}</p></div>
+      : !image || error ? <div className="stage-empty"><b>{error || "Connecting to this computer's screen…"}</b>{error ? <button type="button" className="btn" onClick={onRetry}>Try again</button> : null}</div> : null}
   </div></div>;
 }

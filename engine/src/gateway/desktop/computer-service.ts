@@ -26,7 +26,16 @@ export type GatewayComputerStatus = {
   available: boolean;
   computerUse?: ComputerUseCapabilityDescriptor;
   error?: string;
+  /** One plain line from the desktop app on why this machine's own driver isn't ready (the pane's Coming reason). */
+  reason?: string;
 };
+
+/** Set by the desktop app when it starts the Gateway without a native driver endpoint. */
+const DRIVER_REASON_ENV = "BRANCH_COMPUTER_DRIVER_REASON";
+function appDriverReason(env: NodeJS.ProcessEnv): string | undefined {
+  const reason = env[DRIVER_REASON_ENV]?.trim();
+  return reason && reason.length <= 300 ? reason : undefined;
+}
 type ComputerInvokeRequest = ComputerInvokeParams & {
   owner: string;
   signal?: AbortSignal;
@@ -69,6 +78,8 @@ export function createGatewayComputerService(options: {
   getConfig(): BranchConfig;
   getPluginRegistry(): PluginRegistry;
   hostDesktopService?: HostDesktopService;
+  /** Tests only; defaults to this process's environment. */
+  env?: NodeJS.ProcessEnv;
 }): GatewayComputerService {
   let current: HostRuntime | undefined;
   let stopped = false;
@@ -271,11 +282,13 @@ export function createGatewayComputerService(options: {
           ? { configured: true, available: true, computerUse: await runtime.prepared }
           : { configured: false, available: false };
       } catch (error) {
-        return {
-          configured,
-          available: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
+        const message = error instanceof Error ? error.message : String(error);
+        const reason =
+          configuredDesktopTarget() === "native" &&
+          message.startsWith("COMPUTER_DRIVER_UNAVAILABLE:")
+            ? appDriverReason(options.env ?? process.env)
+            : undefined;
+        return { configured, available: false, error: message, ...(reason ? { reason } : {}) };
       }
     },
     async invoke(request) {

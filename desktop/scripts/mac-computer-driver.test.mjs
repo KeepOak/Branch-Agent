@@ -5,7 +5,8 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { MacComputerDriver, describeDriverError, macScreenControlEnabled } from "../dist/mac-computer-driver.js";
+import * as driverModule from "../dist/mac-computer-driver.js";
+const { MacComputerDriver, describeDriverError, macScreenControlEnabled } = driverModule;
 
 test("Mac screen control remains off until explicitly enabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "branch-mac-screen-setting-"));
@@ -142,5 +143,37 @@ test("a rejected embedded configuration surfaces the SDK's reason, not just its 
     assert.ok(error, "start should reject when the SDK rejects the configuration");
     assert.equal(describeDriverError(error), "rejected for test");
     assert.equal(describeDriverError(new Error("plain")), "Error: plain");
+  } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("the driver keeps a plain reason while it has no endpoint, and clears it once ready", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-why-"));
+  let granted = false;
+  let reject = true;
+  const sdk = {
+    currentMacOsPermissionStatus: () => ({ accessibility: granted, screenRecording: granted }),
+    requestMacOSPermissions: () => ({ accessibility: granted, screenRecording: granted }),
+    hasRequiredMacOSPermissions: status => status.accessibility && status.screenRecording,
+    EmbeddedPermissionMode: { Standard: 0 },
+    EmbeddedCuaDriverHost: {
+      withOptions(options) {
+        if (reject) throw Object.assign(new Error("EmbeddedDriverError.Configuration"), { inner: { reason: "X is not in the embedded safe allowlist" } });
+        return allowlistedSdk([]).EmbeddedCuaDriverHost.withOptions(options);
+      },
+    },
+  };
+  const driver = new MacComputerDriver(() => {}, () => sdk, () => "ai.branch.mac");
+  try {
+    assert.equal(await driver.start(dir), undefined);
+    assert.equal(driver.reason, driverModule.DRIVER_NOT_PACKAGED);
+    await writeFile(join(dir, "cua-driver"), "fixture");
+    assert.equal(await driver.start(dir), undefined);
+    assert.equal(driver.reason, driverModule.DRIVER_NEEDS_PERMISSION);
+    granted = true;
+    await assert.rejects(driver.start(dir));
+    assert.equal(driver.reason, "The Mac computer driver couldn't start: X is not in the embedded safe allowlist");
+    reject = false;
+    assert.equal(JSON.parse(await driver.start(dir)).v, 2);
+    assert.equal(driver.reason, undefined);
   } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
 });

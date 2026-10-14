@@ -107,7 +107,7 @@ export async function runEngineLinger(cfg: DesktopConfig, engineDir: string, tok
 }
 
 /** `port` defaults to the configured one; an update's standby passes its own spare port without changing the config. */
-export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort, macComputerEndpoint?: string): ChildProcess {
+export function startGateway(cfg: DesktopConfig, engineDir: string, token: string, standby = false, port = cfg.gatewayPort, macComputerEndpoint?: string, macComputerReason?: string): ChildProcess {
   // The profile check can refuse a standby; it runs before the log is opened so a refusal leaks nothing.
   const prepared = standby ? readPreparedNormalProfile(join(cfg.dataDir, "home")) : undefined;
   const logPath = join(cfg.dataDir, "gateway.log");
@@ -122,6 +122,8 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
     BRANCH_GATEWAY_STANDBY: standby ? "1" : undefined,
     // Only Electron's Mac host can give the Gateway this app-owned daemon lease.
     BRANCH_CUA_DRIVER_ENDPOINT: macComputerEndpoint,
+    // Without an endpoint, the one plain line the computer pane shows as its Coming reason.
+    BRANCH_COMPUTER_DRIVER_REASON: macComputerEndpoint ? undefined : macComputerReason,
   };
   const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];
   const child = spawn(cfg.nodePath, args, {

@@ -25,7 +25,7 @@ afterEach(async () => {
   }
 });
 
-function createFixture() {
+function createFixture(env?: NodeJS.ProcessEnv) {
   const config: BranchConfig = {
     desktop: { host: { enabled: true, managed: true } },
     plugins: { entries: { fixture: { enabled: true } } },
@@ -145,6 +145,7 @@ function createFixture() {
     getConfig: () => config,
     getPluginRegistry: () => registry,
     hostDesktopService: desktop,
+    ...(env ? { env } : {}),
   });
   cleanups.push(async () => {
     physicalClose.mockResolvedValue();
@@ -176,6 +177,36 @@ function createFixture() {
 }
 
 describe("Gateway computer service", () => {
+  it("names the desktop app's reason when this machine's own driver is not ready", async () => {
+    const unavailable = () => {
+      const ready = Promise.reject(
+        new Error("COMPUTER_DRIVER_UNAVAILABLE: the Gateway desktop provider is unavailable"),
+      );
+      ready.catch(() => {});
+      return { ready, isCurrent: () => true, invoke: vi.fn(), close: vi.fn(async () => {}) };
+    };
+    const reason = "The Mac computer driver couldn't start: X is not in the embedded safe allowlist";
+    const f = createFixture({ BRANCH_COMPUTER_DRIVER_REASON: reason });
+    delete f.config.desktop;
+    vi.mocked(startComputerHostProcess).mockImplementation(unavailable);
+    expect(await f.service.status()).toEqual({
+      configured: true,
+      available: false,
+      error: "COMPUTER_DRIVER_UNAVAILABLE: the Gateway desktop provider is unavailable",
+      reason,
+    });
+
+    const plain = createFixture({});
+    delete plain.config.desktop;
+    vi.mocked(startComputerHostProcess).mockImplementation(unavailable);
+    expect(await plain.service.status()).not.toHaveProperty("reason");
+
+    // A managed desktop is not this machine's own driver: its errors keep no app reason.
+    const managed = createFixture({ BRANCH_COMPUTER_DRIVER_REASON: reason });
+    vi.mocked(startComputerHostProcess).mockImplementation(unavailable);
+    expect(await managed.service.status()).not.toHaveProperty("reason");
+  });
+
   it.each(["native target", "managed target", "desktop", "helper"] as const)(
     "fences stale %s input and joins cleanup before concurrent discovery",
     async (source) => {
