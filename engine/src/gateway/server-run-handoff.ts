@@ -215,12 +215,13 @@ export function createGatewayRunHandoff(params: {
     if (!handoffLeases) {
       return { deadlineElapsed: false, expiresAt: undefined };
     }
-    const expiresAt = handoffLeases.expiresAt;
+    const leases = handoffLeases;
     const deadlineElapsed = await Promise.race([
-      handoffLeases.released.then(() => false),
-      handoffLeases.deadline,
+      leases.released.then(() => false),
+      leases.deadline,
     ]);
-    return { deadlineElapsed, expiresAt };
+    // Read after the wait: a kept run's lease is renewed while it works (Private #1038).
+    return { deadlineElapsed, expiresAt: leases.expiresAt };
   };
   return {
     deactivate,

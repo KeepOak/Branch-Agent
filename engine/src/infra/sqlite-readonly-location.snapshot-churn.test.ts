@@ -5,6 +5,7 @@ import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
   adoptPreparedLocation,
   cleanupSnapshotOperations,
+  createSyncRemovalBudget,
   deferredSnapshotRemovalPolicy,
   removeTempDirectory,
   retireSqliteSnapshotPayload,
@@ -225,18 +226,21 @@ it("caps the blocking wait of one snapshot removal across all its paths", () => 
     }
     return syncRemove(target, options);
   });
+  // The injected sleep records each blocking wait instead of blocking, so the totals are exact on any machine.
+  const waitsMs: number[] = [];
+  const budget = createSyncRemovalBudget((ms) => {
+    waitsMs.push(ms);
+  });
+  const capMs = budget.remainingMs;
   const retirement = { payload, retire: () => {} } as unknown as Parameters<
     typeof retireSqliteSnapshotPayload
   >[0];
-  const started = performance.now();
-  // One call retires one snapshot's payload, so the default per-call budget applies to all three paths.
-  try {
-    retireSqliteSnapshotPayload(retirement);
-  } catch {
-    // The budget ran out on a held path; the failure is handed to the deferred retry.
-  }
-  const elapsedMs = performance.now() - started;
-  expect(elapsedMs).toBeLessThan(1_000);
+  // One call retires one snapshot's payload, so one budget covers all three paths. The first path spends the
+  // whole budget, so the second held path fails at once and the third is never attempted.
+  expect(() => retireSqliteSnapshotPayload(retirement, budget)).toThrow("EBUSY");
+  const totalWaitMs = waitsMs.reduce((total, wait) => total + wait, 0);
+  expect(totalWaitMs).toBeLessThanOrEqual(capMs);
+  expect(attemptsByPath.get(payload[2])).toBeUndefined();
 });
 
 it("reclaims an orphaned snapshot older than ten minutes but spares one with an active reader", () => {
