@@ -28,6 +28,11 @@ export interface DesktopConfig {
    * default; set false to fall back to drain-first updates.
    */
   seamlessHandoff?: boolean;
+  /**
+   * Always on (Private #454): the engine runs as a per-user service (the engine's own `branch gateway install`), keeps
+   * working when the app quits, and the app only attaches to it. Off until engine updates restart the service too.
+   */
+  alwaysOn?: boolean;
 }
 
 function isFile(file: string): boolean {
