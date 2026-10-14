@@ -253,19 +253,30 @@ export function removeOutsideRoomMembers(ids: readonly string[]): Room[] {
     { operationLabel: "rooms.members.disconnect" },
   );
 }
-export function archiveRoom(roomId: string): Room {
+export function archiveRoom(roomId: string, archived = true): Room {
   return runBranchStateWriteTransaction(
     ({ db }) => {
-      db.prepare("UPDATE rooms SET archived_at=coalesce(archived_at, ?) WHERE room_id=?").run(
-        Date.now(),
-        roomId,
-      );
-      const row = roomRow(db, roomId);
-      if (!row) throw new Error("Room not found");
-      return mapRoom(db, row);
+      const current = roomRow(db, roomId);
+      if (!current) throw new Error("Room not found");
+      if (archived) {
+        db.prepare("UPDATE rooms SET archived_at=coalesce(archived_at, ?) WHERE room_id=?").run(
+          Date.now(),
+          roomId,
+        );
+      } else if (current.archived_at !== null) {
+        // Bringing a room back counts against the same cap as making one.
+        const count = (
+          db.prepare("SELECT count(*) AS count FROM rooms WHERE archived_at IS NULL").get() as {
+            count: number;
+          }
+        ).count;
+        if (count >= MAX_ACTIVE_ROOMS) throw new Error("Too many active rooms");
+        db.prepare("UPDATE rooms SET archived_at=NULL WHERE room_id=?").run(roomId);
+      }
+      return mapRoom(db, roomRow(db, roomId)!);
     },
     {},
-    { operationLabel: "rooms.archive" },
+    { operationLabel: archived ? "rooms.archive" : "rooms.unarchive" },
   );
 }
 export function appendRoomEvent(

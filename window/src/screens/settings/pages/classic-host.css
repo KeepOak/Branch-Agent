@@ -6,6 +6,7 @@
 .r1s-classic .set-col h1 { margin-top: 0; font-size: 26px; letter-spacing: -.025em; }
 .r1s-classic .sec { background: transparent; box-shadow: none; }
 .r1s-classic-save { margin: 0 0 8px; }
+.r1s-classic-part + .r1s-classic-part { margin-top: 40px; }
 .r1s-classic-save.bad { color: var(--bad); }
 @media (max-width: 760px) {
   .r1s-classic .set-col { padding: 16px 16px 48px; }
