@@ -338,6 +338,21 @@ async function probeWindowState(): Promise<WindowState> {
     unsavedDraftFiles: states.some(s => s.unsavedDraftFiles), ...(counts.length ? { workingTrunks: Math.max(...counts) } : {}) };
 }
 
+let windowSilentLogged = false;
+/** A window that answers the activity check, and one that does not, are both logged once per change (Private #1047). */
+function answered(state: WindowState): WindowState {
+  windowSilentLogged = false;
+  return state;
+}
+/** An unanswered window check is unknown, not busy: the engine's own activity decides, so a silent window never blocks an update. */
+function windowSilent(error: unknown): undefined {
+  if (!windowSilentLogged) {
+    windowSilentLogged = true;
+    log(`auto-apply: no window answered the activity check (${error instanceof Error ? error.message : String(error)}); using the engine's own activity`);
+  }
+  return undefined;
+}
+
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const windowBuild = (dir: string): string => { try { return readFileSync(join(dir, "branch-build.txt"), "utf8").trim(); } catch { return ""; } };
 const engineRunning = (): boolean => Boolean(gateway && gateway.exitCode === null && gateway.signalCode === null);
@@ -354,7 +369,7 @@ const engineServing = (): boolean => engineRunning() && gateway === readyGateway
  * engine's state lock means the standby can only bind and become ready after the old engine has released state.
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
-async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false): Promise<void> {
+async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false, drain = false): Promise<void> {
   if (serviceEngine) return swapServiceEngineInPlace(label, explicit, held, handoffOnly);
   // `held`: the caller (Undo) already holds the update lock and keeps it; otherwise the swap takes it.
   if (!gateway || !win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
@@ -404,7 +419,8 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
     const stopped = Date.now();
     if (handoff === "drain") {
       try {
-        if (explicit) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
+        // Drain: the owner's click, or an auto-apply past its cap at a gap. Otherwise the old engine stops only while idle.
+        if (explicit || drain) log(`update ${label}: old engine ${await drainStopGateway(priorGateway)}`);
         else await stopGatewayCleanly(priorGateway);
       } catch (error) {
         resumeSupervision();
@@ -871,13 +887,13 @@ const autoApply = createAutoApplyUpdate({
     }
     if (!gateway) throw new Error("The gateway is not running");
     // The approval RPCs themselves count as gateway work; sample after they settle.
-    const window = await probeWindowState();
+    const window = await probeWindowState().then(answered, windowSilent);
     const engine = await gatewayActivity(gateway);
-    return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
-      streaming: engine.pendingReplies > 0 || window.streaming, unsavedDraftFiles: window.unsavedDraftFiles };
+    return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window?.pendingApprovals ?? 0,
+      streaming: engine.pendingReplies > 0 || Boolean(window?.streaming), unsavedDraftFiles: window?.unsavedDraftFiles ?? false };
   },
-  restart: async (version, handoffOnly) => {
-    await swapEngineInPlace(version, false, undefined, handoffOnly);
+  restart: async (version, handoffOnly, drain) => {
+    await swapEngineInPlace(version, false, undefined, handoffOnly, drain);
     if ((await readComponentUpdateStatus(cfg)).currentVersion !== version) throw new Error("The new release was not confirmed");
   },
   onApplied: async version => {
