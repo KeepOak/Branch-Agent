@@ -4,6 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Conversation, ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
+import { roomRulesItems } from "../../rooms/room-rules";
+import type { ShellRoom } from "../../rooms/useShellRoom";
 import type { Block } from "../../thread/model";
 import { ConversationMenu } from "./ConversationMenu";
 
@@ -22,10 +24,10 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 
-function setup() {
+function setup(room?: ShellRoom["menu"]) {
   const request = vi.fn(async (method: string) => (method === "sessions.branches.list" ? { branches: [] } : {}));
   const reload = vi.fn(async () => undefined);
-  const engine = { request, onEvent: () => () => undefined, features: { methods: ["sessions.patch", "sessions.reset", "sessions.delete", "sessions.branches.list", "chat.history"], events: [] } };
+  const engine = { request, onEvent: () => () => undefined, features: { methods: ["sessions.patch", "sessions.reset", "sessions.delete", "sessions.branches.list", "chat.history", "rooms.rule.set"], events: [] } };
   const session = { engine, request, reload, getSnapshot: () => ({ sessionKey: row.key }) } as unknown as SaplingSession;
   const list = { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [row] }) } as unknown as ConversationList;
   const onOpen = vi.fn();
@@ -33,7 +35,7 @@ function setup() {
     const anchor = useRef<HTMLButtonElement>(null);
     return <><button ref={anchor} type="button">More</button>
       <ConversationMenu session={session} open anchor={anchor} onClose={() => undefined} sessionKey={row.key} row={row} isDefault={false} list={list} name="Ledger" history={history}
-        work={{ global: "normal", override: null, setOverride: async () => undefined }} onOpen={onOpen} mainKey="agent:ledger:main" onPlace={() => undefined} /></>;
+        work={{ global: "normal", override: null, setOverride: async () => undefined }} onOpen={onOpen} mainKey="agent:ledger:main" onPlace={() => undefined} room={room} /></>;
   }
   return { request, reload, onOpen, Host };
 }
@@ -93,4 +95,16 @@ it("Pin to top pins through sessions.patch, and Delete… asks, deletes and retu
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   expect(request).toHaveBeenCalledWith("sessions.delete", { key: row.key, agentId: "ledger", deleteTranscript: true });
   expect(onOpen).toHaveBeenCalledWith("agent:ledger:main");
+});
+
+it("in a group chat, Group rules › Who answers re-hosts the Classic rule rows, and choosing the lead runs the room's choice", async () => {
+  const choose = vi.fn();
+  const { Host } = setup({ ruleWords: "A lead Trunk decides", rules: () => roomRulesItems({ chatApp: false, branchGroup: true, rule: null, choose }) });
+  await act(async () => root.render(<Host />));
+  expect(rowNamed("Group rules").textContent).toContain("A lead Trunk decides");
+  await click(rowNamed("Group rules"));
+  expect([...document.querySelectorAll(".g-menu .g-menu-label")].map((el) => el.firstChild?.textContent)).toEqual(["Group rules", "A lead Trunk decides", "Everyone, every time", "Only those you @mention"]);
+  expect(rowNamed("Everyone, every time").getAttribute("aria-disabled")).toBe("true");
+  await click(rowNamed("A lead Trunk decides"));
+  expect(choose).toHaveBeenCalledWith("lead");
 });
