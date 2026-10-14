@@ -5,6 +5,7 @@
 // rows are wired and tested. A row the engine has no key for is Coming, naming what it waits for. Rows whose control does
 // more than one key are drawn by the page (memory-live.tsx), named here as "slot" rows.
 import type { Row, RowOption } from "../rows";
+import { COMING_REASON } from "../../../glass/coming-registry";
 import { NO_KEY } from "./customize";
 
 const MEMORY = "Memory";
@@ -21,7 +22,14 @@ const PROVIDERS: RowOption[] = [["openai", "OpenAI"], ["gemini", "Gemini"], ["vo
 type Base = Pick<Row, "id" | "card" | "level" | "control" | "source"> & Partial<Row>;
 const row = (r: Base): Row => ({ page: "memory", ...r });
 
-export const MEMORY_ROWS: Row[] = [
+/** R1-10: each Coming reason names its thing; the bare fallback becomes "<its label> comes in a later update.". */
+const named = (row: Row): Row => {
+  const src = row.source;
+  if ((src.kind === "coming" || src.kind === "slot") && src.reason === COMING_REASON) return { ...row, source: { ...src, reason: `${row.label} comes in a later update.` } };
+  return row;
+};
+
+const ROWS_AS_DRAWN: Row[] = [
   row({ id: "memory.memory.start", card: MEMORY, label: "How much memory loads at the start", help: "The whole memory file is kept. Only the copy loaded at the start is trimmed, and Branch says when it is.", level: 1, control: "number", unit: "characters", fallback: 20_000,
     source: { kind: "config", path: "agents.defaults.bootstrapMaxChars" } }),
   row({ id: "memory.memory.start-total", card: MEMORY, label: "All start files together", help: "All the files a Trunk reads first load up to this much together.", level: 1, control: "number", unit: "characters", fallback: 60_000,
@@ -96,3 +104,5 @@ export const MEMORY_ROWS: Row[] = [
   row({ id: "memory.library.versions", card: LIBRARY, label: "Keep versions of what Trunks make", help: "Every file in Made for you keeps its versions and a checksum.", level: 1, control: "toggle", source: no("a versions switch") }),
   row({ id: "memory.library.rewrite", card: LIBRARY, label: "Rewrite short notes", help: "Clearer, shorter, fixed or more formal.", level: 1, control: "custom", source: slot([], "Rewriting notes from here comes in a later update.") }),
 ];
+
+export const MEMORY_ROWS: Row[] = ROWS_AS_DRAWN.map(named);
