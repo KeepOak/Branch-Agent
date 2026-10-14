@@ -83,6 +83,14 @@ export const ALLOWLIST = [
     file: /(^|\/)(?:fixtures|__fixtures__|test-helpers|test-support|testdata)\/|\.(?:test|spec|fixture)\.(?:[cm]?[jt]sx?|mjs|mts)$/i,
   },
   {
+    // Credit files must name the upstream projects they credit: MIT and Apache-2.0
+    // require the copyright and attribution notices to travel with copies. This is
+    // a file-specific list of exact paths, not a directory skip.
+    id: 'credit-files',
+    why: 'Credit files name the upstream projects they credit, which the licences require',
+    file: /^(?:NOTICE|third_party\/[^/]+\/LICENSE|docs\/upstream\/COPIED\.csv|docs\/upstream\/copied\/[^/]+\.csv)$/,
+  },
+  {
     id: 'this-check',
     why: 'This check, its tests, and the workflow must name OpenClaw to describe what they block',
     file: /^(?:scripts\/check-openclaw-wording(?:\.test)?\.mjs|\.github\/workflows\/openclaw-wording-checks\.yml)$/,
