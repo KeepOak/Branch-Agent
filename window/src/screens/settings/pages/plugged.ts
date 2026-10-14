@@ -12,6 +12,12 @@ import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { INSTRUCTIONS_ROWS } from "./instructions";
 import { AboutYou, Files } from "./instructions-live";
+import { SIGNINS_ROWS } from "./signins";
+import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
+import { LEARNING_ROWS } from "./learning";
+import {
+  CheckBranch, ClearReplayed, Command, ConnectedNow, DiaryModel, Fact, Learned, PeopleHere, ProcessNames, RestartEngine, TasksAtOnce, Weighing,
+} from "./learning-live";
 import { HISTORY_ROWS } from "./history";
 import {
   BackupNow, BackupOften, BackupSchedule, BackupWhere, CleanupAction, CleanupCode, DataFolder, EveryChange, ExportSettings, FillIn, ImportSettings, LastBackup,
@@ -22,7 +28,7 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  who: "people", notifications: "notifications", signins: "secrets", updates: ["updates", "achievements"],
+  who: "people", notifications: "notifications", updates: ["updates", "achievements"],
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -43,6 +49,30 @@ export const R1_PAGES: PageSlots = {
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
   instructions: { rows: INSTRUCTIONS_ROWS, controls: { "instructions.you.file": AboutYou, "instructions.project.files": Files } },
+  // Sign-ins & keys: the preview's four cards; Classic's password manager and key store inside them.
+  signins: { rows: SIGNINS_ROWS, controls: { "signins.where.block": SigninWhere, "signins.keys.block": SigninKeys } },
+  // Learning & self-updates: native R1 cards in the preview's order; Classic About Branch and Seasons draw behind its
+  // rows (learning-live.tsx).
+  learning: {
+    rows: LEARNING_ROWS,
+    controls: {
+      "learning.may.program": Fact,
+      "learning.learning.learned": Learned,
+      "learning.learning.adopts": Fact,
+      "learning.code.pull-requests": Fact,
+      "learning.code.reaching": Fact,
+      "learning.gardener.clear": ClearReplayed,
+      "learning.gardener.weighing": Weighing,
+      "learning.gardener.model": DiaryModel,
+      "learning.runs.start-stop": Command,
+      "learning.runs.process": ProcessNames,
+      "learning.runs.connected": ConnectedNow,
+      "learning.runs.people": PeopleHere,
+      "learning.runs.tasks": TasksAtOnce,
+      "learning.runs.health": CheckBranch,
+      "learning.runs.restart-now": RestartEngine,
+    },
+  },
   // History & backups: native R1 cards in the preview's order; Classic Backups, the overnight cleanup and Your settings
   // draw behind its rows (history-live.tsx).
   history: {
