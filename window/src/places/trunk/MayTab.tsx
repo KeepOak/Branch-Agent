@@ -1,12 +1,10 @@
 // Trunk editor › What it may do (preview 30-trunks mayHTMLC18, 31-trunksp mayMorePC18 at Advanced).
 // Each row writes the Trunk's own config entry; rows the engine has no setting for are drawn greyed with the reason.
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+// The greyed reasons in this file say what is still missing, shown in plain words under each row.
 import { useState, type ReactNode } from "react";
 import { useResource } from "../settings/hooks";
-import { shownWhy } from "../../shell/shown-why";
 import type { ModelChoice } from "../../composer/model";
 import type { WindowEngine } from "../../connect/engine";
-import { GitHubSettings } from "../settings/GitHubSettings";
 import { Menu, type MenuAnchor } from "../../shell/Menu";
 import { Segmented, Switch } from "../../shell/Popover";
 import { Icon } from "../../shell/icons";
@@ -14,11 +12,13 @@ import { shows, type Level } from "../../places-nav/level";
 import type { Draft } from "./api";
 import type { May } from "./may";
 
-const SEND_WHY = "Needs the engine’s per-Trunk setting for asking before it sends.";
-const NOTES_WHY = "Each Trunk keeps its notes in its own folder; the engine has no setting to share them.";
+const SEND_WHY = "Asking before this Trunk sends email comes in a later update.";
+const NOTES_WHY = "Keeping this Trunk’s notes apart comes in a later update.";
+/** The preview’s reason for the "Its own" choice. */
+const GITHUB_OWN_WHY = "Connecting GitHub for one Trunk happens in the Branch app on your computer.";
 
 function Row({ title, hint, children, off }: { title: string; hint: string; children: ReactNode; off?: string }) {
-  return <div className={off ? "tk-ctl off" : "tk-ctl"} title={shownWhy(off)}><b>{title}</b><span className="tk-right">{children}</span><small>{shownWhy(off) || hint}</small></div>;
+  return <div className={off ? "tk-ctl off" : "tk-ctl"}><b>{title}</b><span className="tk-right">{children}</span><small>{hint}</small>{off ? <small className="tk-why">{off}</small> : null}</div>;
 }
 
 const modelName = (models: ModelChoice[], ref: string) => models.find((m) => m.ref === ref)?.name || ref.split("/").pop() || ref;
@@ -55,7 +55,7 @@ function Fallbacks({ draft, models, setMay }: { draft: Draft; models: ModelChoic
   );
 }
 
-function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: WindowEngine; agentId: string; name: string; draft: Draft; models: ModelChoice[]; setMay: (m: Partial<May>) => void }) {
+function Advanced({ name, draft, models, setMay }: { name: string; draft: Draft; models: ModelChoice[]; setMay: (m: Partial<May>) => void }) {
   return (
     <>
       <Row title="Model for decisions" hint={`Small yes-or-no, pick-one and score calls inside ${name}’s work. None means it makes no such calls; its main model is never used for them.`}>
@@ -67,10 +67,11 @@ function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: Wi
         </select>
       </Row>
       <Fallbacks draft={draft} models={models} setMay={setMay} />
-      <div className="kit-page">
-        <p className="tk-hint">GitHub connection changes save immediately for {name}, even if you cancel this editor. Other changes use Save below.</p>
-        <GitHubSettings engine={engine} agentId={agentId} />
-      </div>
+      <Row title="GitHub account for new work" hint="Which GitHub account this Trunk’s new work signs in with." off={GITHUB_OWN_WHY}>
+        <span className="tk-seg" role="group" aria-label="GitHub account for new work">
+          {["Same as Branch", "This computer’s GitHub", "Its own"].map((l) => <button key={l} type="button" disabled>{l}</button>)}
+        </span>
+      </Row>
     </>
   );
 }
@@ -96,7 +97,7 @@ export function MayTab({ engine, agentId, name, draft, models, level, set, openS
       </Row>
       <Row title="Spend money" hint="Never, whatever mode Branch is in."><span className="tk-fixed">Never</span></Row>
       <ModelPick draft={draft} models={models} setModel={(model) => set({ model })} openSettings={openSettings} />
-      {shows(level, "advanced") && <Advanced engine={engine} agentId={agentId} name={name} draft={draft} models={models} setMay={setMay} />}
+      {shows(level, "advanced") && <Advanced name={name} draft={draft} models={models} setMay={setMay} />}
       <Row title="Keep its own notes" hint="Separate from other Trunks’ memory." off={NOTES_WHY}>
         <button type="button" role="switch" aria-checked={true} aria-label="Keep its own notes" className="switch" disabled />
       </Row>

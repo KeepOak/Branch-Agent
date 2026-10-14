@@ -1,0 +1,3 @@
+window:src/places/trunk/ShareTrunk.test.tsx
+window:src/places/trunk/trunk.test.tsx
+window:src/places/trunk/new-trunk-r1.test.ts

@@ -2,8 +2,12 @@
 // Name, What it's for, and the pebble's Colour, Shape and Eyes.
 import { useState } from "react";
 import { Face } from "../../face/Face";
+import { Coming } from "../../glass/coming";
 import { EMOJI, LOOKS } from "./model";
 import type { Draft } from "./api";
+
+/** A photo as the face has no engine call yet, so the file field stays greyed with its reason. */
+const PHOTO_WHY = "A photo for a Trunk comes in a later update.";
 
 export const COLOURS = ["#2F8C86", "#1785AF", "#8A5AA8", "#5E8C4A", "#4F6FA8", "#C9982E", "#B84A6B", "#56616B"];
 export const SHAPES = ["Circle", "Stone", "Leaf", "Acorn", "Shield"];
@@ -86,6 +90,10 @@ export function LookTab({ draft, set }: { draft: Draft; set: (d: Partial<Draft>)
         <label className="tk-field"><span className="tk-label">Name</span><input className="inp" value={draft.name} onChange={(e) => set({ name: e.target.value })} /></label>
         <label className="tk-field"><span className="tk-label">What it’s for</span><input className="inp" value={draft.theme} onChange={(e) => set({ theme: e.target.value })} /></label>
       </div>
+      <label className="tk-field"><span className="tk-label">A photo instead of a face</span>
+        <Coming need="agents.update" unwired reason={PHOTO_WHY}><input type="file" accept="image/*" disabled /></Coming>
+        <small className="tk-why">{PHOTO_WHY}</small>
+      </label>
       <PebbleFields draft={draft} set={set} />
     </div>
   );

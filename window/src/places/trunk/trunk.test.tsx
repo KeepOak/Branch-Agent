@@ -97,7 +97,7 @@ describe("Trunk editor", () => {
     expect(fields).toHaveLength(3);
     for (const f of fields) { expect(f.title).toBe(""); expect([...f.querySelectorAll("button")].every((b) => !b.disabled)).toBe(true); }
     for (const s of document.querySelectorAll<HTMLButtonElement>(".tk-shape")) expect(s.title).toBe(s.getAttribute("aria-label"));
-    expect(document.querySelector(".tk-why")).toBeNull();
+    expect([...document.querySelectorAll(".tk-why")].map((n) => n.textContent)).toEqual(["A photo for a Trunk comes in a later update."]);
     expect(byText("Shuffle").disabled).toBe(false); expect(byText("Shuffle").title).toBe("");
     expect(visibleDevNotes(document.body)).toEqual([]);
   });
@@ -301,7 +301,8 @@ describe("Trunk profile and studio", () => {
   it("opens the shared Remove confirmation from a non-default profile", async () => {
     const request = fake({ "sessions.list": { sessions: [] } });
     await mount(<TrunkProfile engine={engine(request)} agentId="birch" level="regular" onClose={() => {}} />);
-    await click(byText("Remove Birch…"));
+    await click(document.querySelector('[aria-label="More for Birch"]'));
+    await click(byText("Remove Trunk…"));
     expect(document.querySelector('[data-testid="trunk-remove"]')).toBeTruthy();
     await click(document.querySelector('[data-testid="trunk-remove"] .btn.bad'));
     expect(request).toHaveBeenCalledWith("agents.delete", { agentId: "birch" });
@@ -314,7 +315,7 @@ describe("Trunk profile and studio", () => {
     expect(document.body.textContent).toContain("ID birch");
     await click(document.querySelector('[aria-label="Morning on or off"]'));
     expect(request).toHaveBeenCalledWith("cron.update", { id: "j1", patch: { enabled: false } });
-    expect(byText("Pause Birch").disabled).toBe(true);
+    expect(byText("Pause Birch").getAttribute("aria-disabled")).toBe("true");
   });
   it("asks Branch through branch.chat and shows its reply", async () => {
     const request = vi.fn(() => Promise.resolve({ sessionId: "s", reply: "Here is my proposal.", action: "none", needsApproval: true }));

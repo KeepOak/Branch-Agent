@@ -37,7 +37,7 @@ export function RemoveTrunkDialog({ engine, agentId, name, onClose, onRemoved, c
   </>;
   return (
     <Layer><Dialog title={`Remove ${name}?`} onClose={onClose} footer={footer} testid="trunk-remove" clear={clear}>
-      <p className={clear ? "tk-hint tk-plain g-label" : "tk-hint tk-plain"} data-lines={clear ? "" : undefined}>{name} and its conversations will be removed. Its files move to the Trash on this computer, and its automations stop. Branch cannot undo this removal.</p>
+      <p className={clear ? "tk-hint tk-plain g-label" : "tk-hint tk-plain"} data-lines={clear ? "" : undefined}>{name}’s conversations and files move to the Trash; nothing is deleted for good. Its automations stop.</p>
       {error && <p className={clear ? "tk-error g-label" : "tk-error"} data-lines={clear ? "" : undefined} role="alert">{error}</p>}
     </Dialog></Layer>
   );
