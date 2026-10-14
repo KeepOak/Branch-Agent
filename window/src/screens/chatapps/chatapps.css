@@ -1,0 +1,81 @@
+.r1-chatapps { color: var(--ink); max-width: 1040px; margin: 0 auto; padding: 24px 28px 40px; font: 14px/1.5 var(--sans, system-ui); }
+/* Item 48 (README 48): the page and its panel are clear glass (.g-clear); headings, lines of text, cards and controls sit on frosted
+   pills (.g-label, .g-frost, glass/glass.css). Nothing here paints its own fill. */
+.r1-chatapps h1 { font-size: 24px; margin: 0 0 6px; letter-spacing: -.025em; }
+.r1-ca-lede { color: var(--ink-3); margin: 0 0 24px; }
+.r1-chatapps h2 { font-size: 14px; margin: 24px 0 10px; }
+.r1-ca-search { display: flex; align-items: center; gap: 8px; border-radius: var(--r-pill); padding: 8px 12px; }
+.r1-ca-search input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; outline: none; }
+.r1-ca-search:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.r1-ca-group { margin: 14px 0 2px; }
+.r1-ca-group h3 { margin: 0 0 8px; font: 600 12.5px/1.4 var(--sans, system-ui); color: var(--ink-3); }
+.r1-ca-group h3 span { margin-left: 5px; font-weight: 400; }
+.r1-ca-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 8px; }
+.r1-ca-card { box-sizing: border-box; border: 0; cursor: pointer; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; border-radius: 12px; padding: 9px 10px; text-align: left; color: var(--ink); font: inherit; min-width: 0; }
+.r1-ca-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.r1-ca-card[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.r1-ca-text { display: grid; min-width: 0; }
+.r1-ca-text b { font-size: 13px; overflow-wrap: anywhere; }
+.r1-ca-text small { font-size: 11.5px; color: var(--ink-3); line-height: 1.35; }
+.r1-ca-action { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+@media (max-width: 600px) { .r1-chatapps { padding: 18px 16px 28px; } }
+.r1-ca-pairing h3 { font-size: 13px; }
+.r1-ca-request { display: flex; gap: 12px; align-items: center; margin: 8px 0; }
+.r1-ca-request > span { flex: 1; display: grid; }
+.r1-ca-request small, .r1-ca-hint { color: var(--ink-3); font-size: 12px; }
+.r1-ca-pairing button { border-radius: var(--r-pill); padding: 6px 12px; }
+.r1-ca-code { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.r1-ca-code label { display: grid; gap: 6px; }
+.r1-ca-code input, .r1-ca-code select { min-width: 0; max-width: 100%; padding: 8px 12px; border: 0; border-radius: 12px; color: var(--ink); font: inherit; }
+.r1-ca-confirm { padding: 12px; border-radius: 12px; margin: 8px 0; }
+.r1-ca-setting { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 0; }
+.r1-ca-setting > span:first-child { display: grid; flex: 0 1 auto; min-width: 160px; margin-right: auto; }
+.r1-ca-setting small { color: var(--ink-3); font-size: 12px; }
+.r1-ca-setting select, .r1-ca-setting input[type="number"] { max-width: 100%; padding: 8px 12px; border: 0; border-radius: 12px; color: var(--ink); }
+.r1-ca-setting input[type="number"] { width: 100px; }
+.r1-ca-access { display: grid; gap: 12px; padding: 12px 0; }
+.r1-ca-access label { display: grid; justify-items: start; gap: 6px; }
+.r1-ca-access select { max-width: 100%; padding: 8px 12px; border: 0; border-radius: 12px; color: var(--ink); font: inherit; }
+.r1-ca-access small { color: var(--ink-3); }
+.r1-ca-surface { padding: 16px 0; }
+.r1-ca-surface > section:first-child > h2 { margin-top: 0; color: var(--ink-3); font-size: 13px; }
+.r1-ca-surface .r1-ca-search { border-radius: var(--r-pill); }
+/* Ported Classic controls (README rule 6), in the item 48 look: rows use the Settings row (r1s-row), text sits on pills. */
+.r1-ca-connected { display: grid; gap: 6px; margin: 4px 0 12px; }
+.r1-ca-app { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 6px 0; }
+.r1-ca-app > span.g-label:not(.r1-ca-pill) { flex: 1 1 200px; min-width: 0; }
+.r1-ca-app small, .r1-ca-request small, .r1-ca-chat small { color: var(--ink-3); font-size: 12px; }
+.r1-ca-pill { font-size: 11.5px; flex: none; }
+.r1-ca-pill[data-tone="ok"] { color: var(--ok, var(--ink)); }
+.r1-ca-pill[data-tone="bad"] { color: var(--bad, var(--ink)); }
+.r1-ca-pairing h3 span { font-weight: 400; margin-left: 4px; }
+.r1-ca-details { flex-basis: 100%; order: 3; }
+.r1-ca-details summary { cursor: pointer; font-size: 12px; }
+.r1-ca-request { flex-wrap: wrap; }
+.r1-ca-facts { display: grid; gap: 4px; margin: 6px 0; }
+.r1-ca-facts > div { display: flex; gap: 8px; flex-wrap: wrap; }
+.r1-ca-facts dt, .r1-ca-facts dd { margin: 0; font-size: 12px; }
+.r1-ca-check { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0; }
+.r1-ca-chats { display: grid; gap: 6px; }
+.r1-ca-chat { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.r1-ca-chat > span { flex: 1 1 180px; min-width: 0; }
+.r1-ca-chat select, .r1-ca-add select, .r1-ca-add input, .r1-ca-line select { max-width: 100%; padding: 8px 12px; border: 0; border-radius: 12px; color: var(--ink); font: inherit; }
+.r1-ca-more { display: grid; gap: 8px; margin-top: 16px; }
+.r1-ca-sec { padding: 4px 0 8px; }
+.r1-ca-line { padding: 8px 0; }
+.r1-ca-list { display: grid; gap: 2px; }
+.r1-ca-editor { display: grid; gap: 8px; padding: 8px 0 12px; }
+.r1-ca-person, .r1-ca-group-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.r1-ca-person > span:first-child, .r1-ca-group-row > span:first-child { flex: 1 1 180px; min-width: 0; }
+.r1-ca-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.r1-ca-add input { flex: 1 1 160px; min-width: 0; }
+.r1-ca-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.r1-ca-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.r1-ca-lines { width: 100%; min-height: 64px; box-sizing: border-box; }
+.r1-ca-code-line { font: 12px/1.5 var(--mono, ui-monospace, monospace); overflow-wrap: anywhere; }
+.r1-ca-fold { margin: 6px 0; }
+.r1-ca-fold > summary { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 12px; cursor: pointer; list-style: none; }
+.r1-ca-fold > summary::-webkit-details-marker { display: none; }
+.r1-ca-appmore h3, .r1-ca-editor h3 { font-size: 13px; margin: 14px 0 6px; }
+.r1-ca-danger { display: grid; gap: 8px; margin-top: 16px; }
+.r1-chatapps button, .r1-cw button { border-radius: var(--r-pill); padding: 6px 12px; }

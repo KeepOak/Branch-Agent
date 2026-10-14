@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, renameSync, rmSync, statSync } from "node:fs";
+import { reportDiskFull } from "./disk-full";
 
 /** The UI event log is bounded to three files of 5 MB: the current file and two rotated copies. */
 export const UI_LOG_MAX_BYTES = 5 * 1024 * 1024;
@@ -16,11 +17,21 @@ export class RotatingLog {
     this.size = existsSync(file) ? statSync(file).size : 0;
   }
 
+  /** Never throws. A failed rotation keeps appending to the live file; a failed write drops only this line. */
   append(line: string): void {
     const bytes = Buffer.byteLength(line) + 1;
-    if (this.size > 0 && this.size + bytes > this.maxBytes) this.rotate();
-    appendFileSync(this.file, `${line}\n`);
-    this.size += bytes;
+    try {
+      if (this.size > 0 && this.size + bytes > this.maxBytes) this.rotate();
+    } catch {
+      // Keep appending: a log over its cap beats lost lines. The next append retries the rotation.
+    }
+    try {
+      appendFileSync(this.file, `${line}\n`);
+      this.size += bytes;
+    } catch (error) {
+      // A full disk drops this event and shows the disk-full banner; diagnostics must never stop the app.
+      reportDiskFull(error);
+    }
   }
 
   /** The current file first, then the rotated files from newest to oldest. */

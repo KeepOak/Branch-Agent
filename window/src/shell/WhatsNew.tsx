@@ -9,7 +9,7 @@ import { Icon, type IconName } from "./icons";
 import type { UpdateInfo } from "./status-data";
 import "./whats-new.css";
 
-export type NewRow = { icon: IconName; title: string; line: string; run: () => void };
+type NewRow = { icon: IconName; title: string; line: string; run: () => void };
 export type NewGroups = { New: NewRow[]; Better: NewRow[]; Fixed: NewRow[] };
 
 type Props = {
@@ -18,21 +18,22 @@ type Props = {
   /** Rows for the installed version, by group. */
   installed: NewGroups;
   onOpenUpdates: () => void;
-  onInstall: () => void;
   onClose: () => void;
   /** Open on the waiting version (the version menu's "What's new"). */
   startOnReady?: boolean;
   desktopInstall?: boolean;
   computerName?: string;
+  /** The item 48 clear glass dialog (README 48), for the R1 window. */
+  clear?: boolean;
 };
 
-function Rows({ title, rows, close }: { title: string; rows: NewRow[]; close: () => void }) {
+function Rows({ title, rows, close, clear }: { title: string; rows: NewRow[]; close: () => void; clear?: boolean }) {
   if (!rows.length) {
     return null;
   }
   return (
     <div className="wn-g">
-      <h3>{title}</h3>
+      <h3 className={clear ? "g-label" : undefined}>{title}</h3>
       <div className="new13">
         {rows.map((r, i) => (
           // Update notes can repeat a line, so the title alone is not a unique key.
@@ -61,18 +62,13 @@ export function WhatsNew(p: Props) {
   const groups = showingReady ? waiting : p.installed;
   const footer = (
     <>
-      {showingReady && p.desktopInstall ? (
-        <button type="button" className="btn" data-testid="wn-install" disabled={p.update?.installing} onClick={() => (p.onClose(), p.onInstall())}>
-          Install when idle
-        </button>
-      ) : null}
       <button type="button" className="btn primary" onClick={p.onClose}>
         Done
       </button>
     </>
   );
   return (
-    <Dialog title="What’s new" wide onClose={p.onClose} testid="whats-new" footer={footer}>
+    <Dialog title="What’s new" wide clear={p.clear} onClose={p.onClose} testid="whats-new" footer={footer}>
       {ready ? (
         <span className="seg wn-seg" role="radiogroup" aria-label="Version" style={{ gridTemplateColumns: "repeat(2, auto)", ["--i" as string]: on === "ready" ? 1 : 0, ["--n" as string]: 2 }}>
           <button type="button" role="radio" aria-checked={on === "installed"} onClick={() => setOn("installed")}>
@@ -83,11 +79,11 @@ export function WhatsNew(p: Props) {
           </button>
         </span>
       ) : null}
-      <p className="hint wn-hint">{on === "ready" && ready ? p.desktopInstall ? `What Branch ${versionParts(ready).short} brings. It installs when nothing is running and keeps a safety copy first.` : installOnComputer(p.computerName ?? "") : `What Branch ${versionParts(p.version).short} brought, and where each part lives.`}</p>
-      {showingReady && !notes.length ? <p className="hint">The update didn't say what it changes.</p> : null}
-      <Rows title="New" rows={groups.New} close={p.onClose} />
-      <Rows title="Better" rows={groups.Better} close={p.onClose} />
-      <Rows title="Fixed" rows={groups.Fixed} close={p.onClose} />
+      <p className={p.clear ? "hint wn-hint g-label" : "hint wn-hint"}>{on === "ready" && ready ? p.desktopInstall ? `What Branch ${versionParts(ready).short} brings. It applies by itself, in place, when no Trunk is working, and keeps a safety copy first.` : installOnComputer(p.computerName ?? "") : `What Branch ${versionParts(p.version).short} brought, and where each part lives.`}</p>
+      {showingReady && !notes.length ? <p className={p.clear ? "hint g-label" : "hint"}>The update didn't say what it changes.</p> : null}
+      <Rows title="New" rows={groups.New} close={p.onClose} clear={p.clear} />
+      <Rows title="Better" rows={groups.Better} close={p.onClose} clear={p.clear} />
+      <Rows title="Fixed" rows={groups.Fixed} close={p.onClose} clear={p.clear} />
     </Dialog>
   );
 }

@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/run/overflow-context-recovery.ts (atlas AGENT-LOOP-0103). Changed for Branch: classify raw Cline provider signals before flattening; retain existing transcript and side-effect fences.
+// Changed for Branch: classify raw provider signals before flattening; retain existing transcript and side-effect fences.
 
 import { isContextOverflow } from "@branch/ai/internal/runtime";
 import { isProviderRefusalAssistantError } from "@branch/llm-core/diagnostics";

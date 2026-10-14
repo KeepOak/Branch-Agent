@@ -1,4 +1,4 @@
-// Written by Branch for AGENT-LOOP-0104 from OpenHands/software-agent-sdk@0a9abc87641ad7ffe02e2dadf5e2cb3976b35217:openhands-sdk/openhands/sdk/context/condenser/llm_summarizing_condenser.py. Behaviour tests cover source retry bounds and R-1541; the cited live-model c02 integration is not represented as passing by these fixtures.
+// Behaviour tests cover source retry bounds and R-1541; the cited live-model c02 integration is not represented as passing by these fixtures.
 
 import type { AgentMessage, StreamFn } from "branch/plugin-sdk/agent-core";
 import { createAssistantMessageEventStream, type Model } from "branch/plugin-sdk/llm";

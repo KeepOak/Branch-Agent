@@ -8,7 +8,10 @@ const spawnProductionBoundaryFiles = [
   "src/agents/subagents/spawn/subagent-spawn.production-boundary.test.ts",
 ];
 // Runs on the main thread in the gateway database-workers shard, not in the worker-thread core shard.
-const mainThreadStartupFiles = ["src/agents/prepared-model-runtime.startup-replacement.test.ts"];
+const mainThreadStartupFiles = [
+  "src/agents/prepared-model-runtime.startup-replacement.test.ts",
+  "src/agents/prepared-model-runtime.transcript-repair.test.ts",
+];
 
 // These suites mock shared runtime, network, or plugin modules and cannot
 // share the non-isolated core worker without leaking module state.
