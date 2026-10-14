@@ -30,6 +30,7 @@ import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
 import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
+import { useMarkRead } from "./use-mark-read";
 import { FindAnything } from "../find/FindAnything";
 import { ShortcutsDialog } from "../../shell/ShortcutsDialog";
 import { ConversationMenu } from "./ConversationMenu";
@@ -190,6 +191,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
   // A room (group chat, or Trunks and people writing here): the Classic room hook, re-hosted (rooms/useShellRoom).
   const room = useR1Room(session, ready, snapshot.sessionKey, current ?? null, snapshot.name, snapshot.history);
   const topics = current?.isMain ? conversations.rows.filter(row => row.agentId === current.agentId && row.key !== current.key && !row.isMain && !row.system && !row.archived && !row.helper).map(row => ({ key: row.key, title: row.title })) : [];
+  // Opening a conversation clears its unread flag once per unread episode (Classic read-on-open, connect/unread-guard.ts).
+  const markRequest = useCallback((method: string, params?: unknown) => session.request(method, params), [session]);
+  const refreshList = useCallback(() => { void list.refresh(); }, [list]);
+  useMarkRead(markRequest, current ?? null, ready && route.kind === "chat", refreshList);
   const running = conversations.rows.filter(row => row.working).map(row => ({ key: row.key, title: row.title, line: row.preview, needsYou: row.needsYou }));
   // The roaming pet's tip names the first Trunk waiting on a yes, as in Classic.
   const waitingRow = conversations.rows.find(row => (waiting.get(row.key) ?? 0) > 0);
