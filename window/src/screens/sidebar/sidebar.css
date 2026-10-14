@@ -93,6 +93,8 @@ button.r1sb-cap:hover { color: var(--ink); }
 .r1sb-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 10px; row-gap: 1px; align-items: center; width: 100%; min-height: 57px; padding: 8px 10px; box-sizing: border-box;
   border: 0; border-radius: var(--r-row, 12px); background: transparent; color: var(--ink); text-align: left; font-size: 14px; line-height: 1.5; }
 .r1sb-row:hover { background: var(--gk-chip); }
+/* A row picked with Alt or Shift (select several): the selected lift with an accent ring. */
+.r1sb-rw[data-picked] .r1sb-row { background: var(--gk-on); box-shadow: inset 0 0 0 1.5px var(--accent), inset 0 1px 0 var(--gf-hi); }
 .r1sb-row[data-one] { grid-template-rows: auto; min-height: 44px; padding-block: 6px; }
 .r1sb-face { grid-row: 1 / span 2; display: grid; place-items: center; width: 40px; height: 40px; }
 .r1sb-row[data-one] .r1sb-face { grid-row: 1; }
@@ -225,3 +227,53 @@ button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
 /* Move to › Group…: the existing groups as chips above the name field. */
 .r1sb-groups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .r1sb-groups [aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); }
+
+/* Filter and sort (the Classic button and popover re-hosted): a capsule after +, gone in the rail, while searching and
+   while the folders are open. The popover is clear glass over the window (item 48): its heads, rows, switches and the
+   Status control sit on frosted pills with the 1px --gp outline; Reduce transparency gives solid pills. */
+.r1sb-filt { flex: none; display: inline-flex; }
+.r1sb-filt > .filt:not(#g48) { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; opacity: 1; border-radius: var(--r-pill); color: var(--ink-3);
+  background: var(--gc-fill); backdrop-filter: var(--gc-blur); -webkit-backdrop-filter: var(--gc-blur); border: .5px solid var(--gc-edge); box-shadow: inset 0 1px 0 var(--gc-hi), var(--gc-sh-sm); }
+.r1sb-filt > .filt:hover:not(#g48), .r1sb-filt > .filt.on:not(#g48) { color: var(--ink); }
+.r1sb-filt .filt-dot:not(#g48) { top: 5px; right: 5px; width: 7px; height: 7px; background: var(--accent); box-shadow: 0 0 0 2px var(--side, var(--bg)); }
+.r1sb[data-fold-open] .r1sb-filt { opacity: 0; pointer-events: none; }
+@media (min-width: 761px) { .r1-frame[data-wide="false"] .r1sb-filt { display: none; } }
+.r1sb-clear { padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-decoration: underline; cursor: pointer; }
+.r1-fs { display: contents; }
+/* The Classic popover's own layout (shell/rows.css, which the R1 window doesn't load), scoped to this host. */
+.r1-fs .pop.fp { width: 330px; max-width: min(340px, calc(100% - 16px)); padding: 6px; }
+.r1-fs .pop.fp .row-in .seg { flex-wrap: nowrap; white-space: nowrap; display: inline-flex; height: auto; gap: 2px; padding: 2px; border-radius: 10px; }
+.r1-fs .pop.fp .seg::before { display: none; }
+.r1-fs .pop.fp .seg button { height: 26px; padding: 0 7px; border-radius: 8px; font-size: 12.5px; line-height: 1.5; font-weight: 400; color: var(--ink-2); }
+.r1-fs .pop.fp .seg button[aria-checked="true"] { background: var(--raise); box-shadow: var(--gk-sh-thumb); color: var(--ink); font-weight: 600; }
+.r1-fs .pop.fp .fh { display: flex; align-items: center; }
+.r1-fs .pop.fp .fr { margin-left: auto; font: 500 12px var(--sans); text-transform: none; letter-spacing: 0; }
+.r1-fs .pop .fsw:not(#g48) { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 7px 10px; align-items: center; }
+.r1-fs .pop .fsw b { font-weight: 500; font-size: 13.5px; }
+.r1-fs .pop .fsw small { grid-column: 1 / -1; font-size: 12px; color: var(--ink-3); }
+.r1-fs .pop .mi.fch .r { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: 12px; }
+.r1-fs .pop.fly { z-index: 62; min-width: 200px; }
+.r1-fs .pop .mi .tick { width: 15px; display: inline-grid; place-items: center; flex: none; }
+.r1-fs .pop.sheet { left: 8px !important; right: 8px !important; max-width: none; width: auto; top: auto !important; bottom: 8px; border-radius: 18px 18px 14px 14px; }
+.r1-fs .fpq { padding: 4px 8px; }
+.r1-fs .fpq .inp { width: 100%; height: 32px; }
+.r1-fs .who-dot.fpf { width: 22px; height: 22px; font-size: 10.5px; margin-right: 6px; }
+.r1-fs .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 4px; padding: 6px 8px 8px; }
+.r1-fs .tf { position: relative; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background-color: transparent; cursor: pointer; }
+.r1-fs .tf:hover { background: var(--gp-on); }
+.r1-fs .tf[aria-pressed="true"] { background: var(--gp-on); box-shadow: inset 0 0 0 1.5px var(--ink-2); }
+.r1-fs .tf .unread { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.r1-fs .pop:not(#g48) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.r1-fs .pop :is(.ph, .mi, .row-in, .fsw, .hint, .fpq, .tgrid):not(#g48) {
+  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
+  box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); }
+.r1-fs .pop :is(.mi, .row-in, .fsw):not(#g48) { margin: 0 0 4px; border-radius: 14px; }
+.r1-fs .pop .mi:is(:hover, :focus-visible):not(#g48), .r1-fs .pop .mi.fch[aria-expanded="true"]:not(#g48) { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
+.r1-fs .pop .ph:not(#g48) { width: fit-content; margin: 4px 0; padding: 2px 9px; border-radius: var(--r-pill); text-transform: none; letter-spacing: normal; font: 500 12px var(--sans); }
+.r1-fs .pop.fp .ph.fh:not(#g48) { display: flex; gap: 10px; }
+.r1-fs .pop .row-in:not(#g48) { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 12px; }
+.r1-fs .pop :is(.hint, .fpq, .tgrid):not(#g48) { border-radius: 14px; }
+.r1-fs .pop .hint.fw:not(#g48) { width: fit-content; margin: 0 0 4px; padding: 3px 10px; }
+.r1-fs .pop hr:not(#g48) { border: 0; height: 6px; margin: 0; }
+.r1-fs .pop .switch:not(#g48) { box-shadow: inset 0 0 0 1px var(--gp-edge); }
+:root[data-transparency="reduce"] .r1-fs .pop :is(.ph, .mi, .row-in, .fsw, .hint, .fpq, .tgrid) { background: var(--raise, var(--bg)); backdrop-filter: none; -webkit-backdrop-filter: none; }

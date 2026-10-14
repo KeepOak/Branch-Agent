@@ -1,0 +1,6 @@
+window:src/screens/composer/Composer.test.tsx
+window:src/screens/composer/glass48.test.tsx
+window:src/screens/composer/this-computer.test.tsx
+window:src/screens/frame/R1Window.stage.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/frame/coming.test.tsx

@@ -1,7 +1,7 @@
 // The R1 sidebar's pieces (HANDOFF R1-02), ported from the preview's `sideR2`, `foldP11`, `contactsLookT5`, `renderSide`
 // rows and the owner row. Layout and glass live in sidebar.css; data comes in as SideRows (model.ts). Every control here
 // only opens, filters or navigates, so it says data-local (R1-10); the calls live in the menus (row-menu.ts).
-import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { Avatar, InitialsFace } from "../../glass/Avatar";
 import { GroupCluster } from "../../glass/GroupCluster";
 import { Face } from "../../face/Face";
@@ -40,18 +40,19 @@ export function RowFace({ row, size }: { row: SideRow; size: number }) {
   return <Avatar size={size} ring="side" status={status} face={<InitialsFace name={row.name} kind={row.kind === "grafted" ? "grafted" : "person"} />} />;
 }
 
-export type RowHandlers = { onOpen: (row: SideRow) => void; onMenu: (row: SideRow, anchor: HTMLElement) => void };
+/** onOpen gets the click, so Alt or Shift can pick the row instead of opening it (select several). */
+export type RowHandlers = { onOpen: (row: SideRow, event?: MouseEvent<HTMLElement>) => void; onMenu: (row: SideRow, anchor: HTMLElement) => void };
 
 /** A two-line row: name and time, then the preview. Hover shows only •••. */
-export function SideRowView({ row, current, now, handlers }: { row: SideRow; current: boolean; now: number; handlers: RowHandlers }) {
+export function SideRowView({ row, current, now, handlers, picked = false }: { row: SideRow; current: boolean; now: number; handlers: RowHandlers; picked?: boolean }) {
   const wrap = useRef<HTMLDivElement>(null), more = useRef<HTMLButtonElement>(null);
   const menu = Boolean(row.contact);
   const time = rowTime(row.at, now);
-  const label = [row.name, row.unread ? "unread" : "", row.waiting ? "waiting for you" : "", row.working ? "working" : ""].filter(Boolean).join(", ");
-  return <div className="r1sb-rw" ref={wrap} data-kind={row.kind} data-current={current || undefined}>
+  const label = [row.name, picked ? "selected" : "", row.unread ? "unread" : "", row.waiting ? "waiting for you" : "", row.working ? "working" : ""].filter(Boolean).join(", ");
+  return <div className="r1sb-rw" ref={wrap} data-kind={row.kind} data-current={current || undefined} data-picked={picked || undefined}>
     <button type="button" className="r1sb-row" data-local="" aria-current={current ? "true" : undefined} aria-label={label} title={row.name}
       data-one={row.preview ? undefined : ""} data-offline={row.offline || undefined}
-      onClick={() => handlers.onOpen(row)}
+      onClick={event => handlers.onOpen(row, event)}
       onContextMenu={event => { if (!menu) return; event.preventDefault(); handlers.onMenu(row, wrap.current!); }}
       onKeyDown={event => { if (menu && event.key === "F10" && event.shiftKey) { event.preventDefault(); handlers.onMenu(row, more.current ?? wrap.current!); } }}>
       <span className="r1sb-face"><RowFace row={row} size={40} /></span>

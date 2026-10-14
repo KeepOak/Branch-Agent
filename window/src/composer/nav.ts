@@ -6,6 +6,7 @@ export type OpenTarget =
   | "settings/permissions"
   | "settings/voice"
   | "settings/usage"
+  | "settings/browser"
   | "customize/tools"
   | "local-model-setup";
 
