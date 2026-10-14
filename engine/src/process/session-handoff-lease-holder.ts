@@ -8,9 +8,11 @@ import { GatewayDrainingError } from "./gateway-work-admission.js";
 import { clearOwnSessionHandoffHold, noteOwnSessionHandoffHold } from "./session-handoff-lease-gate.js";
 import {
   removeSessionHandoffLease,
+  renewSessionHandoffLease,
   resolveSessionHandoffLeaseDir,
   SESSION_HANDOFF_LEASE_MAX_AGE_MS,
   SESSION_HANDOFF_LEASE_MAX_WAIT_MS,
+  SESSION_HANDOFF_LEASE_RENEW_MS,
   SESSION_LANE_PREFIX,
   type SessionHandoffLease,
   sessionHandoffLeaseExpiresAt,
@@ -23,12 +25,15 @@ export type SessionHandoffLeaseHold = {
   /** Resolves once every kept session was released (and `hasPendingWork` reports none). */
   readonly released: Promise<void>;
   /**
-   * Resolves true SESSION_HANDOFF_LEASE_MAX_WAIT_MS (330 s) after the hold started while it still holds (a kept
-   * session, or `hasPendingWork`), or false once it was released. At true the caller must stop the work it still runs in kept sessions (stop or
-   * exit the process) before `expiresAt`, when successors run those sessions regardless.
+   * Resolves true while it still holds (a kept session, or `hasPendingWork`) once its leases are about to expire
+   * (DEADLINE_MARGIN_MS before `expiresAt`), or false once it was released. A session whose run is still in flight
+   * has its lease renewed (Private #1038), so that is the lease's hard cap unless renewal fails; with only
+   * `hasPendingWork` left it is SESSION_HANDOFF_LEASE_MAX_WAIT_MS (330 s) after the hold started. At true the
+   * caller must stop the work it still runs in kept sessions (stop or exit the process) before `expiresAt`, when
+   * successors run those sessions regardless.
    */
   readonly deadline: Promise<boolean>;
-  /** When successors run the kept sessions regardless: the hold's start + SESSION_HANDOFF_LEASE_MAX_AGE_MS. */
+  /** When successors run the kept sessions regardless: the earliest expiry of the leases held now. */
   readonly expiresAt: number;
   /**
    * Stops leasing new sessions; from then on work for a session this hold does not keep is refused with
@@ -40,6 +45,8 @@ export type SessionHandoffLeaseHold = {
 };
 
 const POLL_MS = 100;
+/** The deadline fires this long before the leases expire, so the holder can stop its work in time. */
+const DEADLINE_MARGIN_MS = SESSION_HANDOFF_LEASE_MAX_AGE_MS - SESSION_HANDOFF_LEASE_MAX_WAIT_MS;
 /** The longest wait between attempts to remove a lease file something else keeps open. */
 const STUCK_RETRY_MAX_MS = 5_000;
 
@@ -91,7 +98,6 @@ export function holdSessionHandoffLeases(
     resolveDeadline = resolve;
   });
   let timer: ReturnType<typeof setInterval> | undefined;
-  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   let unregisterEnqueue: (() => void) | undefined;
   let sealed = false;
   let finished = false;
@@ -136,9 +142,7 @@ export function holdSessionHandoffLeases(
   };
   const stopTimers = () => {
     if (timer) clearInterval(timer);
-    if (deadlineTimer) clearTimeout(deadlineTimer);
     timer = undefined;
-    deadlineTimer = undefined;
     if (stuck.size === 0) {
       process.off("exit", releaseAtExit);
       return;
@@ -178,12 +182,30 @@ export function holdSessionHandoffLeases(
       return true;
     }
   };
+  /** Renews each kept session whose run is still in flight, so its lease outlives a long run (Private #1038). */
+  const renewBusy = (now: number) => {
+    for (const [lane, kept] of held) {
+      if (now - (kept.lease.renewedAt ?? kept.lease.acquiredAt) < SESSION_HANDOFF_LEASE_RENEW_MS) continue;
+      const renewed = renewSessionHandoffLease(kept.file, kept.lease, now);
+      if (renewed) held.set(lane, { file: kept.file, lease: renewed });
+    }
+  };
+  const expiresAt = () =>
+    held.size > 0
+      ? Math.min(...[...held.values()].map(({ lease: written }) => sessionHandoffLeaseExpiresAt(written)))
+      : holdStartedAt + SESSION_HANDOFF_LEASE_MAX_AGE_MS;
   const poll = () => {
     for (const lane of [...held.keys()]) {
       if (!stillBusy(lane)) releaseLane(lane);
     }
     retryStuck();
-    if (held.size === 0 && !pendingWork()) finish();
+    if (held.size === 0 && !pendingWork()) {
+      finish();
+      return;
+    }
+    const now = Date.now();
+    renewBusy(now);
+    if (now >= expiresAt() - DEADLINE_MARGIN_MS) resolveDeadline(true);
   };
   const onEnqueue = (lane: string) => {
     if (held.has(lane)) return;
@@ -207,17 +229,13 @@ export function holdSessionHandoffLeases(
   process.once("exit", releaseAtExit);
   // Kept referenced: the stepping-down engine stays up until it has released every session it kept.
   timer = setInterval(poll, POLL_MS);
-  deadlineTimer = setTimeout(() => resolveDeadline(true), SESSION_HANDOFF_LEASE_MAX_WAIT_MS);
   poll();
   return {
     lanes,
     released,
     deadline,
     get expiresAt() {
-      return Math.min(
-        holdStartedAt + SESSION_HANDOFF_LEASE_MAX_AGE_MS,
-        ...[...held.values()].map(({ lease: written }) => sessionHandoffLeaseExpiresAt(written)),
-      );
+      return expiresAt();
     },
     seal: () => {
       sealed = true;
