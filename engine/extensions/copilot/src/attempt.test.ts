@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/copilot/src/attempt.test.ts (atlas AGENT-LOOP-0023). Changed for Branch: apply scripts/rebrand-map.json and assert the existing Branch system-prompt identity.
+// Changed for Branch: apply scripts/rebrand-map.json and assert the existing Branch system-prompt identity.
 // Copilot tests cover attempt plugin behavior.
 import fsp from "node:fs/promises";
 import { tmpdir } from "node:os";

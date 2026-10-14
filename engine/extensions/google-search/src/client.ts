@@ -1,6 +1,3 @@
-// Adapted from danny-avila/LibreChat at f10b1d91f1eee3a2c82d5247bf620351486b7c1b,
-// api/app/clients/tools/structured/GoogleSearch.js.
-
 export type SearchRequest = <T>(
   url: string,
   init: RequestInit,

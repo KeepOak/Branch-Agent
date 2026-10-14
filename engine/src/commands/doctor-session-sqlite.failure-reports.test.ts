@@ -458,7 +458,7 @@ describe("runDoctorSessionSqlite", () => {
       ).toMatchObject({ issue: { ...issue, status: "attempted" }, status: "existing" });
       const receiptJson = fs.readFileSync(manifestPath, "utf8");
       expect(receiptJson).not.toContain(`stable sanitized report v${manifestVersion}`);
-      expect(receiptJson).not.toContain("github.com/openclaw/openclaw/issues/");
+      expect(receiptJson).not.toContain("github.com/KeepOak/Branch-Agent/issues/");
       expect(receiptJson).not.toContain("branch doctor");
       expect(receiptJson).not.toContain('"body"');
       expect(receiptJson).not.toContain("?body=");

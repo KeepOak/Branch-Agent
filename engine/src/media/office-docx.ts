@@ -1,4 +1,3 @@
-// Adapted from Kilo-Org/kilocode 6fd9b7b: packages/opencode/src/kilocode/tool/read-docx.ts.
 import mammoth from "mammoth";
 
 export async function extractDocxText(filePath: string, buffer: Buffer): Promise<string> {

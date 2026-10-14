@@ -17,7 +17,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
 /** A number box with its unit; commas are fine, empty puts the engine's default back. */
-export function Num({ value, unit, label, onSave, placeholder, disabled }: {
+function Num({ value, unit, label, onSave, placeholder, disabled }: {
   value: number | undefined; unit?: string; label: string; onSave?: (n: number | null) => void; placeholder?: string; disabled?: boolean;
 }) {
   const report = useSaved();

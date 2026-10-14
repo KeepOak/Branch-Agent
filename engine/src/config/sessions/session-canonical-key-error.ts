@@ -5,3 +5,14 @@ export class SessionCanonicalKeyMigrationRequiredError extends Error {
     this.name = "SessionCanonicalKeyMigrationRequiredError";
   }
 }
+
+/**
+ * The row's own stored bytes fail validation. Startup may quarantine only this class;
+ * non-canonical keys keep refusing so doctor's canonical-key migration handles them.
+ */
+export class SessionRowRepairRequiredError extends SessionCanonicalKeyMigrationRequiredError {
+  readonly repair = "row" as const;
+  constructor(sessionKey: string) {
+    super(`invalid persisted session row requires repair for ${sessionKey}`);
+  }
+}

@@ -11,3 +11,6 @@ dist/
 
 __pycache__/
 frame-qa-output/
+
+# macOS AppleDouble metadata
+._*

@@ -1,7 +1,7 @@
 import type { OfficeLayout } from '../office/types.js';
 import type { Storage } from './storage.js';
 
-export type BranchState = 'working' | 'reading' | 'waiting' | 'needs_you' | 'resting' | 'offline';
+type BranchState = 'working' | 'reading' | 'waiting' | 'needs_you' | 'resting' | 'offline';
 
 export interface BranchSubagent {
   id: string;

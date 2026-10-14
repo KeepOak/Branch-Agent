@@ -14,7 +14,7 @@ import {
 
 const filename = fileURLToPath(import.meta.url);
 const helper = path.resolve(path.dirname(filename), "../../../lib/branch-e2e-instance.sh");
-const syntheticUrl = "https://github.com/openclaw/openclaw/issues/999999999";
+const syntheticUrl = "https://github.com/KeepOak/Branch-Agent/issues/999999999";
 const menu = "Choose the next action for this failed update";
 const submit = "Submit this sanitized report to openclaw/openclaw now?";
 const status = "Check whether this report was submitted to openclaw/openclaw?";
@@ -131,7 +131,7 @@ async function fakeGh(cell, callsFile, args) {
     "--include",
     "--method",
     "POST",
-    "repos/branch/branch/issues",
+    "repos/KeepOak/Branch-Agent/issues",
     "--input",
     "-",
     "--jq",

@@ -95,7 +95,7 @@ export function deadControl(d: Dead, label: string): ReactNode {
   return null;
 }
 
-export function RowView({ r, x }: { r: Row; x: Ctx }) {
+function RowView({ r, x }: { r: Row; x: Ctx }) {
   const c = x.cfg;
   if (r.when && !r.when(c)) return null;
   switch (r.k) {

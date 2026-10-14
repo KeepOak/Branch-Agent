@@ -41,8 +41,8 @@ export function SetupLock({ locked, children }: { locked: boolean; children: Rea
   return <LockContext.Provider value={locked}>{children}</LockContext.Provider>;
 }
 
-/** Runs a save and reports it: "Saved" for 2 s, or the engine's error on the frame line. Resolves false on failure. */
-export function useSaveRunner(): (save: () => Promise<unknown>) => Promise<boolean> {
+/** An action may supply a plain failure message while keeping technical details in the console. */
+export function useSaveRunner(failureMessage?: string): (save: () => Promise<unknown>) => Promise<boolean> {
   const report = useSaved();
   return useCallback(async (save: () => Promise<unknown>) => {
     report.saving();
@@ -51,10 +51,11 @@ export function useSaveRunner(): (save: () => Promise<unknown>) => Promise<boole
       report.saved();
       return true;
     } catch (error) {
-      report.failed(errorText(error));
+      console.warn("Settings save failed:", error);
+      report.failed(failureMessage ?? errorText(error));
       return false;
     }
-  }, [report]);
+  }, [report, failureMessage]);
 }
 
 /** The engine config for rows: get(path) reads it; set(path, value) saves that one path at once (null = back to default).
@@ -83,8 +84,17 @@ function useHelpEntry(key: string, label: string, help?: string): void {
   }, [help, key, label, register]);
 }
 
+const HeadlessContext = createContext(false);
+/** Inside an R1 card, a whole Classic page draws only its body. */
+export const useHeadless = (): boolean => useContext(HeadlessContext);
+
 /** A page head with one help affordance and the original ask action inside it. */
 export function Page({ title, lede, help, children, top }: { title: string; lede: ReactNode; help?: string; children?: ReactNode; top?: ReactNode }) {
+  if (useContext(HeadlessContext)) return <>{top}{children}</>;
+  return <PageWithHead title={title} lede={lede} help={help} top={top}>{children}</PageWithHead>;
+}
+
+function PageWithHead({ title, lede, help, children, top }: { title: string; lede: ReactNode; help?: string; children?: ReactNode; top?: ReactNode }) {
   const { ask, askName } = useContext(KitContext);
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<Record<string, HelpEntry>>({});
@@ -141,13 +151,21 @@ export function Page({ title, lede, help, children, top }: { title: string; lede
   );
 }
 
+/** Inside an R1 Settings row that uses a Classic block as its control: the R1 card is the section, so a Classic section
+ *  inside draws only its hint and rows, with no heading or box of its own. */
+export function Headless({ children }: { children: ReactNode }) {
+  return <HeadlessContext.Provider value={true}>{children}</HeadlessContext.Provider>;
+}
+
 /** A section: sentence-case heading, an optional hint and its rows. */
 export function Sec({ title, group, showHeading = true, hint, help, right, children, id, personal }: { title: string; group?: string; showHeading?: boolean; hint?: ReactNode; help?: string; right?: ReactNode; children?: ReactNode; id?: string; personal?: boolean }) {
+  const headless = useContext(HeadlessContext);
   const locked = useContext(LockContext);
   const helpKey = useId();
   useHelpEntry(helpKey, title, help);
   const heading = group ?? title;
   if (personal && locked) return <SetupLock locked={false}><Sec title={title} group={group} showHeading={showHeading} hint={hint} help={help} right={right} id={id}>{children}</Sec></SetupLock>;
+  if (headless) return <>{hint ? <p className="hint">{hint}</p> : null}{children}</>;
   return (
     <div className="sec" data-sec={title || undefined} id={id}>
       {showHeading && (title || right) ? <h2 tabIndex={-1}>{heading}{right}</h2> : null}
