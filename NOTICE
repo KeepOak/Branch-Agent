@@ -19,13 +19,12 @@ commit. Each project's license text is in third_party/<name>/LICENSE, copied
 from the pinned commit.
 
 Files that were not MIT-licensed
------------------------------
+--------------------------------
 
 Every file this notice listed as not yet MIT has been rewritten clean-room or
 removed (PR #1382; the follow-up Discord fix is PR #1383). None remains.
 
 Apache License, Version 2.0 sources
------------------------------------
 -----------------------------------
 
 - openai/codex @ cc31e374fc15cd616fca19c07d55f9fa7e6d7e31
@@ -116,6 +115,9 @@ Bundled components (credits folded in from the former THIRD_PARTY_NOTICES.md)
 
 - Simple Icons (engine/ui/public/cloud-provider-icons/), CC0 1.0 Universal.
   third_party/simple-icons/LICENSE.
+- Micro 5 font (window/src/places/office/pixel/ font assets), Copyright 2023 The
+  Soft Type Project Authors, SIL Open Font License 1.1. Upstream
+  https://github.com/scfried/soft-type-micro. third_party/micro-5/LICENSE.
 
 - Mermaid renderer bundle (engine/packages/mermaid-renderer/native/): bundled
   upstream packages (Mermaid, Chevrotain, KaTeX, d3 modules, cytoscape,
