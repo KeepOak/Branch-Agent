@@ -51,18 +51,21 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
   const install = bridge.install;
   const requestInstall = () => { if (!install || installRequested) return; setOutcome(null); install(); setInstallRequested(true); };
   const failed = !installRequested && bar === "failed";
+  const pendingLabel = versionParts(data.status?.pendingVersion ?? data.status?.latestVersion ?? "").detail;
   const headline = installRequested ? (bar === "preparing" ? "Getting the update ready…" : "Updating Branch…")
     : failed ? "The update didn’t finish"
     : bar === "kept" ? "Update postponed; Branch kept the current version"
-    : statusLine(data.status, stagedWaiting, autoApply);
+    : stagedWaiting ? `${pendingLabel} is staged`
+    : statusLine(data.status);
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
     {error || data.error ? <Status tone="bad" title="Branch couldn’t update">{error || data.error}</Status> : null}
     <Status tone={failed ? "bad" : stagedWaiting ? "ok" : "idle"} title={headline}>
       {failed ? (outcome?.message || "Branch kept the current version.")
-        : stagedWaiting && installRequested ? "Running work carries on for up to about 6 minutes, then Branch restarts and picks up anything interrupted."
-        : stagedWaiting ? "Downloaded and checked. Your conversations and settings stay in place."
-        : running ? `You have Branch ${versionParts(running).detail}. Checks for a new verified Branch release.` : "Checks for a new verified Branch release."}
+        : stagedWaiting && installRequested ? "Running work moves across to the new engine. Your conversations and settings stay in place."
+        : stagedWaiting ? "It applies by itself, in place, the next time no Trunk is working. A safety copy is kept first, and nothing restarts."
+        : running ? `Branch ${versionParts(running).detail}. The window refreshes itself, running work moves across to the new engine, and nothing restarts. You only see a small “Updated” note. The desktop shell updates the next time you open Branch.`
+        : "Checks for a new verified Branch release."}
     </Status>
     <Sec title="Updating">
       <Ctl title="Apply updates automatically" off={auto.off}>
@@ -71,12 +74,12 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
       </Ctl>
       <Ctl title="Check for updates"><Btn sm disabled={busy} onClick={() => void run("check")}>{busy ? "Working…" : "Check now"}</Btn></Ctl>
       {data.status?.phase === "available" ? <Ctl title="Update available"><Btn disabled={busy} onClick={() => void run("stage")}>Download update</Btn></Ctl> : null}
-      {stagedWaiting && install ? <Ctl title="Ready update" sub="Running work carries on for up to about 6 minutes, then Branch restarts and picks up anything interrupted.">
-        <Btn pri sm disabled={installRequested} onClick={requestInstall}>{installRequested ? "Updating…" : "Update now"}</Btn>
+      {stagedWaiting && install ? <Ctl title="Staged update" sub="Applies in place. A safety copy is kept first, and nothing restarts.">
+        <Btn pri sm disabled={installRequested} onClick={requestInstall}>{installRequested ? "Updating…" : "Apply now, in place"}</Btn>
       </Ctl> : null}
       {stagedWaiting ? <Hint>{autoApply
-        ? "Branch applies a ready update once every Trunk is idle. On a busy computer that can take a long time. Update now applies it without waiting for that."
-        : "Branch won’t apply a ready update until you choose. Update now applies it. Your conversations and settings stay in place."}</Hint>
+        ? "Branch applies it by itself the next time no Trunk is working."
+        : "Branch won’t apply a staged update until you choose. Apply now, in place applies it."}</Hint>
         : <Hint>Branch checks every 10 minutes.</Hint>}
     </Sec>
     <Sec title="About"><WhatsNewRow /></Sec>
@@ -102,11 +105,10 @@ function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title
   </Page>;
 }
 
-function statusLine(status: ComponentUpdateStatus | null, stagedWaiting: boolean, autoApply: boolean): string {
+function statusLine(status: ComponentUpdateStatus | null): string {
   if (!status) return "Reading desktop update status…";
-  if (stagedWaiting) return autoApply ? "Update ready, applying when your Trunks finish" : "An update is ready";
   if (status.phase === "available") return "A Branch update is ready";
-  if (status.phase === "current" || status.phase === "staged") return "Branch is up to date.";
+  if (status.phase === "current" || status.phase === "staged") return "Updates apply in place.";
   if (status.phase === "checking") return "Checking for updates…";
   if (status.phase === "staging") return "Downloading and checking the update…";
   return status.currentVersion ? `Branch ${versionParts(status.currentVersion).detail}` : "Check for updates";

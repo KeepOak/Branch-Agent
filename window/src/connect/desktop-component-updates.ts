@@ -22,6 +22,8 @@ export type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt
 export type UpdateNoticeEvent = "shown" | "dismissed" | "expired" | "undo";
 /** Preview T0 (`updT5` in design/spec-v23/index.html): a normal toast after an in-place update. */
 export const UPDATED_IN_PLACE = "Updated in place. Nothing restarted.";
+/** The R1 toast when the owner's or an auto update was postponed (Private #1047: update toasts live in the window's toast layer). */
+export const UPDATE_POSTPONED = "Update postponed; Branch kept the current version";
 /** Preview T0 (`updT5`): wait this long and try again while setup (`.ob-main, .ob9`) is on screen. */
 export const UPDATE_TOAST_SETUP_WAIT_MS = 5000;
 type Desktop = { gatewayUrl?: string; getGatewayUrl?: () => string; componentUpdates?: ComponentUpdates; unavailableReason?: string;
@@ -176,6 +178,10 @@ export function useDesktopAppliedUpdateNotice(): void {
     const stopUndone = desktop?.onUpdateUndone?.(() => {
       dismissInPlaceToast();
     });
-    return () => { stopApplied?.(); stopUndone?.(); };
+    const onEngineState = (event: Event) => {
+      if ((event as CustomEvent<EngineUpdateEvent>).detail?.state === "kept") notify(UPDATE_POSTPONED);
+    };
+    window.addEventListener(ENGINE_UPDATE_EVENT, onEngineState);
+    return () => { stopApplied?.(); stopUndone?.(); window.removeEventListener(ENGINE_UPDATE_EVENT, onEngineState); };
   }, []);
 }
