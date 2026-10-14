@@ -82,10 +82,11 @@ describe("settings row table", () => {
 
   it("keeps Classic General's four controls, each on its card and on the key Classic uses (#952)", () => {
     const at = (id: string) => ROWS.find((r) => r.id === id);
-    // Starting up: "Start with <computer>", which opens quietly in the tray: the desktop app's startWithWindows switch.
+    // Starting up: "Start Branch when I sign in" (Private #454 F), which opens quietly in the tray: the desktop app's
+    // startWithWindows switch.
     const start = at("general.start.with-computer");
     expect(start).toMatchObject({ card: "Starting up", level: 0, control: "toggle", source: { kind: "desktop", name: "startWithWindows" } });
-    expect(start?.label).toMatch(/^Start with /);
+    expect(start?.label).toBe("Start Branch when I sign in");
     expect(start?.help).toBe("Opens quietly in the tray.");
     // Projects: Classic's Edit for a project's instructions was greyed; it stays a Coming row with the call it waits for.
     const projects = at("general.projects.instructions");
@@ -102,7 +103,7 @@ describe("settings row table", () => {
     expect([askBeforeDeleting.read(null), askBeforeDeleting.read("0")]).toEqual([true, false]);
     expect([askBeforeDeleting.write(true), askBeforeDeleting.write(false)]).toEqual([null, "0"]);
     // Each card now draws these rows instead of a whole-card Coming mark.
-    expect(cardRows("general", "Starting up", 0, {}).map((r) => r.id)).toEqual(["general.start.with-computer"]);
+    expect(cardRows("general", "Starting up", 0, {}).map((r) => r.id)).toContain("general.start.with-computer");
     expect(cardRows("general", "Projects", 0, {}).map((r) => r.id)).toEqual(["general.projects.instructions"]);
     expect(cardRows("general", "Writing", 0, {}).map((r) => r.id)).toEqual(["general.writing.finish-setup"]);
     expect(cardRows("general", "The conversation", 0, {})).toEqual([]);

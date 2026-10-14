@@ -346,6 +346,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const live = liveWork.current;
     if (live.list) void pauseAll({ session, list: live.list, working: live.working });
   }), [session]);
+  // With the window closed, a Trunk's "done" also reaches a paired phone through the engine's push service (Private
+  // #454 D). Approvals already reach it from the engine itself. A computer without a paired phone sends nothing.
+  useEffect(() => componentDesktop(session.gatewayUrl)?.onPhonePush?.((notice) => {
+    void session.request<{ nodes?: { nodeId?: unknown; platform?: unknown }[] }>("node.list", {}).then(async (listed) => {
+      const phones = (listed?.nodes ?? []).filter((node) => typeof node.nodeId === "string" && /ios|iphone|ipad/i.test(String(node.platform ?? "")));
+      await Promise.all(phones.map((node) => session.request("push.test", { nodeId: node.nodeId, title: notice.title, body: notice.body }).catch(() => undefined)));
+    }, () => undefined);
+  }), [session]);
   const lockdown = useLockdown(session.engine, ready, session);
   const toggleLockdown = () => void lockdown.toggle().catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
   const groupRooms = useGroupRooms(session, ready);

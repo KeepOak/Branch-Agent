@@ -28,6 +28,8 @@ type Desktop = { gatewayUrl?: string; getGatewayUrl?: () => string; componentUpd
   onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean; workingTrunks?: number }>) => () => void;
   /** The tray's Pause all work (Private #454 C); older desktop builds lack it. */
   onPauseAll?: (listener: () => void) => () => void;
+  /** A closed-window "done" notice for a paired phone (Private #454 D); older desktop builds lack it. */
+  onPhonePush?: (listener: (notice: { title: string; body: string }) => void) => () => void;
   onUpdateApplied?: (listener: (notice: AppliedUpdateNotice) => void) => () => void;
   onUpdateUndone?: (listener: () => void) => () => void;
   reportUpdateNotice?: (event: UpdateNoticeEvent, notice: AppliedUpdateNotice) => void };
