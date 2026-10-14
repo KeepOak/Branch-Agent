@@ -25,6 +25,8 @@ export type BashSandboxConfig = {
   validateWorkdir?: SandboxBackendHandle["validateWorkdir"];
   discardPreparedWorkdir?: SandboxBackendHandle["discardPreparedWorkdir"];
   workdirRoots?: readonly string[];
+  /** Host paths are mounted read-write (rw workspace or docker binds), so the exec floor stays on. */
+  hostPathsWritable?: boolean;
   /** Approved read-only skill mounts that may be selected as an exec workdir. */
   readOnlyWorkspaceSkillMounts?: readonly BashSandboxWorkdirMount[];
   env?: Record<string, string>;

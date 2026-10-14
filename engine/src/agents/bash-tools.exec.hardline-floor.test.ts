@@ -131,6 +131,31 @@ describe.runIf(process.platform !== "win32")("exec always-ask floor", () => {
     expect(JSON.stringify(request)).toContain('"ask":"always"');
   });
 
+  it("asks before a sandbox run when the sandbox mounts host paths read-write", async () => {
+    const calls = mockApprovalGateway("deny");
+    // Throws instead of building a spec, so nothing can start even if the floor were skipped.
+    const buildExecSpec = vi.fn(async () => {
+      throw new Error("sandbox spawn reached");
+    });
+    const tool = createExecTool({
+      host: "sandbox",
+      mode: "full",
+      sandbox: {
+        containerName: "floor-test",
+        workspaceDir: tempRoot,
+        containerWorkdir: "/workspace",
+        hostPathsWritable: true,
+        buildExecSpec,
+      },
+    });
+
+    await expect(tool.execute("call-floor-sandbox-rw", { command: FLOOR_COMMAND })).rejects.toThrow(
+      /exec denied/,
+    );
+    expect(calls).toEqual(["exec.approval.request", "exec.approval.waitDecision"]);
+    expect(buildExecSpec).not.toHaveBeenCalled();
+  });
+
   it("keeps quoted prose about catastrophic commands unprompted in full mode", async () => {
     mockApprovalGateway("deny");
     const tool = createExecTool({ host: "gateway", mode: "full", pathPrepend: [binDir] });
