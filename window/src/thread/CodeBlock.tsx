@@ -4,7 +4,7 @@ import { highlight } from "./highlight";
 import { Icon, ICONS } from "./icons";
 
 /** Lines shown before "Show <n> more lines" (§4.2.2 Parity adds "Code block"). */
-export const CODE_PREVIEW_LINES = 7;
+const CODE_PREVIEW_LINES = 7;
 
 const LANGS: Record<string, string> = {
   sh: "Shell", bash: "Shell", shell: "Shell", zsh: "Shell", powershell: "PowerShell", ps1: "PowerShell",

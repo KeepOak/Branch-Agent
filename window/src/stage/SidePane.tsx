@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "../thread/model";
 import type { ProgressCard } from "../thread/PlanCard";
@@ -22,7 +22,7 @@ import "./stage.css";
 import "./pane/pane.css";
 
 /** Preview §4.5.8 / paneTabsPC18 order, then Conversations only when that tab is open. */
-export const PANE_TABS = ["Activity", "Dashboard", "Preview", "Timeline", "Branches", "Plan", "Files", "Memory", "Terminal", "Side chat", "Changes", "Conversations"] as const;
+const PANE_TABS = ["Activity", "Dashboard", "Preview", "Timeline", "Branches", "Plan", "Files", "Memory", "Terminal", "Side chat", "Changes", "Conversations"] as const;
 export type PaneTab = (typeof PANE_TABS)[number];
 /** Preview S.paneW, --pane-w and double-click reset (design/spec-v23). */
 export const DEFAULT_PANE_WIDTH = 352;
@@ -106,10 +106,13 @@ type Props = {
   /** Reads the conversation again after switching paths. */
   onReload?: () => void;
   contactTopics?: { items: TopicListItem[]; name: string; onOpen: (key: string) => void };
+  /** A host that checks each tab's engine call first (the R1 frame, R1-10): what to draw instead of a tab this engine
+   *  can't show, or null to draw the tab. Classic passes nothing and every tab draws as before. */
+  gate?: (tab: PaneTab) => ReactNode | null;
 };
 
 /** The side panel: its tabs, + Add a tab, Focus, Minimize, Layout and a resizer, over each tab's engine data. */
-export function SidePane({ engine, name, blocks, running, card, cardError, tab, focusHelpers, onTab, onClose, toast, title, onReload, contactTopics }: Props) {
+export function SidePane({ engine, name, blocks, running, card, cardError, tab, focusHelpers, onTab, onClose, toast, title, onReload, contactTopics, gate }: Props) {
   const [prefs, setPrefs] = useState<Prefs>(readPrefs);
   const [focus, setFocus] = useState(false);
   const [menu, setMenu] = useState<{ at: MenuAnchor; items: MenuItem[]; label: string } | null>(null);
@@ -197,6 +200,8 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
     ? { "--pane-h": `${prefs.width < 160 ? 300 : Math.min(prefs.width, 600)}px` }
     : { "--pane-w": `${prefs.width}px`, minWidth: prefs.width }) as unknown as CSSProperties;
   const steps = planSteps(card);
+  const held = gate?.(current) ?? null;
+  const terminalHeld = current === "Terminal" ? held : gate?.("Terminal") ?? null;
   const at = (e: React.MouseEvent<HTMLElement>, right = false): MenuAnchor => {
     const r = e.currentTarget.getBoundingClientRect();
     return { x: right ? r.right - 220 : r.left, y: r.bottom + 6 };
@@ -276,6 +281,8 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
                 {error}
               </p>
             ) : null}
+            {held}
+            {held ? null : <>
             {current === "Activity" ? <ActivityTab engine={engine} name={name} blocks={blocks} running={running} level={level} focusHelpers={focusHelpers} onError={fail} /> : null}
             {current === "Conversations" && contactTopics ? <ContactTopicsPane {...contactTopics} /> : null}
             {current === "Dashboard" ? <DashboardTab engine={engine} name={name} level={level} /> : null}
@@ -287,10 +294,11 @@ export function SidePane({ engine, name, blocks, running, card, cardError, tab, 
             {current === "Memory" ? <MemoryTab engine={engine} blocks={blocks} name={name} /> : null}
             {current === "Side chat" ? <SideChatTab engine={engine} name={name} /> : null}
             {current === "Changes" ? <ChangesTab engine={engine} /> : null}
+            </>}
             {/* The terminal stays mounted while the pane is open so a shell you opened keeps its output. */}
-            <div hidden={current !== "Terminal"} className="pane-keep-pn">
+            {terminalHeld ? null : <div hidden={current !== "Terminal"} className="pane-keep-pn">
               <TerminalTab engine={engine} blocks={blocks} name={name} onError={fail} />
-            </div>
+            </div>}
           </div>
         )}
         {menu ? <Menu at={menu.at} items={menu.items} label={menu.label} onClose={() => setMenu(null)} /> : null}

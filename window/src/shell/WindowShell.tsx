@@ -78,6 +78,7 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { QuickAsk } from "./QuickAsk";
 import { NewProjectDialog, useProjects } from "./Projects";
 import { Sidebar, type TalkEntry } from "./Sidebar";
+import { topBarTalk } from "./talk-entry";
 import { TalkBeside, useTalkLayout } from "./TalkBeside";
 import { StatusBar, type StatusItem } from "./StatusBar";
 import { KeepLastDialog, remindedToday, StatusPopover, statusAnchor, tidy } from "./StatusLayer";
@@ -1396,7 +1397,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           loadingEarlier={segments.loading}
           earlierError={segments.error}
           preparationError={s.error}
-          onStartupReady={() => session.retryOpen()}
           advancedDiagnostics={level !== "regular"}
           onLoadEarlier={segments.loadEarlier}
           onOpenSession={(key) => { if (showingAll) setAllTopics(null); openTopic(key); }}
@@ -1472,7 +1472,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </>
     );
   } else {
-    main = <SettingsFrame page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} askName={defaultName} />;
+    main = <SettingsFrame running={running} page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} askName={defaultName} />;
   }
   const talkEntry: TalkEntry | null =
     route.kind === "chat" ? null : { name: defaultName, keys: currentKeys(keyActions(defaultName), readCustomKeys()).talkBeside, open: talk.open, onToggle: () => setTalk({ open: !talk.open }) };
@@ -1532,7 +1532,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onCharacter={onCharacterButton}
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}
-        ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : talkEntry}
+        ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : topBarTalk(talkEntry, { dedicated, focus: layout.focus, narrow: isNarrow, slideOpen, hidden: layout.hidden })}
         onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar

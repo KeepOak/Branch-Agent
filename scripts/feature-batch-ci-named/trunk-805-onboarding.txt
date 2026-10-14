@@ -1,0 +1,3 @@
+window:src/glass/coming.test.tsx
+window:src/screens/onboarding/Onboarding.test.tsx
+window:src/screens/onboarding/glass48.test.tsx

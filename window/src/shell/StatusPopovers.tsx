@@ -116,7 +116,7 @@ function providerTitle(row: LimitRow): string {
 }
 
 /** Accounts grouped under their provider, providers in alphabetical order, accounts in the engine's order. */
-export function groupByProvider(rows: LimitRow[]): { title: string; rows: LimitRow[] }[] {
+function groupByProvider(rows: LimitRow[]): { title: string; rows: LimitRow[] }[] {
   const groups = new Map<string, { title: string; rows: LimitRow[] }>();
   for (const row of rows) {
     const title = providerTitle(row);
@@ -131,7 +131,18 @@ export function groupByProvider(rows: LimitRow[]): { title: string; rows: LimitR
  * Every account, grouped by provider. Opening never fetches: it shows the reading Branch already has, and only
  * "Check every account now" asks the providers again. Each provider says its "no reading" note once.
  */
-export function UsagePopover({ limits, request, onOpenUsage, onSignIn, ...base }: Base & { limits: Limits | null; request: Request; onOpenUsage: () => void; onSignIn?: (provider: string) => void }) {
+export function UsagePopover({ limits, request, onOpenUsage, onSignIn, ...base }: Base & EveryAccountProps) {
+  return (
+    <Popover at={{ x: 0, y: 0 }} label="Every account" testid="pop-usage" className="sp sp-wide usePopT5" {...base}>
+      <EveryAccount limits={limits} request={request} onOpenUsage={onOpenUsage} onSignIn={onSignIn} />
+    </Popover>
+  );
+}
+
+type EveryAccountProps = { limits: Limits | null; request: Request; onOpenUsage: () => void; onSignIn?: (provider: string) => void };
+
+/** The Every account list itself, shared by the status bar's popover and the composer's ring (R1-04). */
+export function EveryAccount({ limits, request, onOpenUsage, onSignIn }: EveryAccountProps) {
   const [checked, setChecked] = useState<Limits | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
@@ -152,7 +163,6 @@ export function UsagePopover({ limits, request, onOpenUsage, onSignIn, ...base }
       .finally(() => setChecking(false));
   }, [request]);
   return (
-    <Popover at={{ x: 0, y: 0 }} label="Every account" testid="pop-usage" className="sp sp-wide usePopT5" {...base}>
       <div className="lims">
         <div className="pt">Every account</div>
         {groups.map((group) => {
@@ -184,7 +194,6 @@ export function UsagePopover({ limits, request, onOpenUsage, onSignIn, ...base }
         <Item icon="retry" label={checking ? "Checking…" : "Check every account now"} testid="usage-check" onClick={() => check()} off={checking ? "Checking accounts now." : undefined} />
         <Item icon="gear" label="Accounts and usage…" testid="open-usage" onClick={onOpenUsage} />
       </div>
-    </Popover>
   );
 }
 

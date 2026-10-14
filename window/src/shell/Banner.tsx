@@ -18,9 +18,9 @@ export type BannerNews = {
   icon?: "alert" | "chat";
   action?: { label: string; run: () => void };
 };
-export type Banner = BannerNews & { id: number; at: number; count: number };
+type Banner = BannerNews & { id: number; at: number; count: number };
 
-export const BANNER_MS = 9000;
+const BANNER_MS = 9000;
 let current: Banner | null = null;
 let nextId = 1;
 const listeners = new Set<() => void>();
@@ -48,6 +48,11 @@ const subscribe = (l: () => void) => {
   return () => listeners.delete(l);
 };
 const snapshot = () => current;
+
+/** The banner store, for a window that draws it with its own shell (screens/approvals/ProblemBanners.tsx). */
+export type ShownBanner = Banner;
+export const subscribeBanner = subscribe;
+export const currentBanner = snapshot;
 
 export function BannerView({ onOpen, setupOpen = false }: { onOpen: (sessionKey: string) => void; setupOpen?: boolean }) {
   const banner = useSyncExternalStore(subscribe, snapshot);

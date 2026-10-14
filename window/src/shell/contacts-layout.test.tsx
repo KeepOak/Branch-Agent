@@ -37,6 +37,21 @@ async function show(rail = false) {
 }
 
 describe("contacts layout", () => {
+  it("labels the footer Ask action with the current Trunk and toggles the pane", async () => {
+    const onToggle = vi.fn();
+    const host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    for (const [name, open] of [["C3-PO", false], ["Sapling", true]] as const) {
+      await act(async () => root!.render(<Sidebar {...props()} talk={{ name, open, keys: "Ctrl Shift H", onToggle }} />));
+      const button = host.querySelector<HTMLButtonElement>('[data-testid="talk-beside-button"]')!;
+      expect(button.textContent).toBe(`Ask ${name}`);
+      expect(button.getAttribute("aria-label")).toBe(`Ask ${name}`);
+      expect(button.title).toContain("Ctrl Shift H");
+      expect(button.getAttribute("aria-pressed")).toBe(String(open));
+      await act(async () => button.click());
+    }
+    expect(onToggle).toHaveBeenCalledTimes(2);
+  });
   it("registers touchmove as non-passive on the sidebar list", async () => {
     const add = vi.spyOn(HTMLElement.prototype, "addEventListener");
     const host = await show();
