@@ -18,7 +18,7 @@ const composing = (event: KeyboardEvent) => event.isComposing || event.keyCode =
  * Shared keyboard lifecycle for dialogs, menus and popovers. Only the top layer handles Escape, and only after the
  * event bubbles past React: an inner field that handles Escape itself (preventDefault or stopPropagation) wins.
  * Without `onClose` the layer keeps focus and Tab handling but leaves Escape alone (the remote desktop while driving).
- * Prior art: OpenClaw's ui/src/components/modal-dialog.ts (initial focus, return focus that skips inert or disabled targets).
+ * Prior art: the upstream ui/src/components/modal-dialog.ts (initial focus, return focus that skips inert or disabled targets).
  */
 export function useOverlayFocus(ref: RefObject<HTMLElement | null>, onClose: (() => void) | undefined, options: { modal?: boolean; trigger?: HTMLElement | null; initial?: string } = {}) {
   const latest = useRef({ onClose, options });
