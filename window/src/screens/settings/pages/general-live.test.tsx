@@ -87,11 +87,11 @@ it("keeps Classic General's working controls: projects, Keyboard shortcuts and t
 
 it("opens a pinned row's page and unpins it", async () => {
   const onPage = vi.fn();
-  const { engine, request } = engineOf({ pins: [["appearance", "Theme", 0]] });
+  const { engine } = engineOf({ pins: [["appearance", "Theme", 0]] });
   await mount(engine, "regular", onPage);
   const pinned = host.querySelector<HTMLElement>('.r1s-sec[aria-label="Pinned"]')!;
   await act(async () => { [...pinned.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Go to it")!.click(); });
   expect(onPage).toHaveBeenCalledWith("appearance");
   await act(async () => { [...pinned.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Unpin")!.click(); await new Promise((r) => setTimeout(r, 0)); });
-  expect(request.mock.calls.some(([m]) => m === "users.prefs.set")).toBe(true);
+  expect(cards()).not.toContain("Pinned");
 });
