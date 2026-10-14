@@ -19,6 +19,8 @@ export const REHOSTED = {
   permissions: "permissions",
   browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
   coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
+  devices: ["computer-devices", "devices"], // Computer & browser's computers and connections, then Devices & apps' tiles
+  developer: "developer",
 } as const;
 
 /** A re-hosted page's cards that no Classic control draws yet: Coming after its Classic sections, naming the call each
@@ -26,6 +28,7 @@ export const REHOSTED = {
 export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> = {
   browser: ["Sites", "Saved flows"],
   coding: ["Commands", "Files"],
+  developer: ["Logs", "Docker", "Hooks", "Network", "Health", "Everything else"],
 };
 
 export const R1_PAGES: PageSlots = {

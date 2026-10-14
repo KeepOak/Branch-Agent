@@ -57,6 +57,7 @@ const BASE: SettingsGroup[] = [
 export const SETUP_PAGES: readonly string[] = [
   "general", "models", "local", "accounts", "chatapps", "permissions", "computer", "usage", "seasons", "updates", "advanced", "developer",
   "computer-browser", "computer-coding", // Computer & browser's parts (set2/computer-parts.tsx), set up like the whole page.
+  "computer-devices",
 ];
 
 /** Pages that hold keys or run the engine: without operator.admin they leave the nav (Classic) or say why (R1). */

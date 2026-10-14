@@ -1,12 +1,13 @@
 // Settings › Computer & browser, one part at a time, for the Settings that gives each part its own page: Browser &
-// screen draws the screen, browser and Logbook sections, and Coding draws Accounts' coding apps and the code and git
-// sections. Same sections, same rows and same controls as Computer & browser (computer-more.tsx); the full page stays
+// screen draws the screen, browser and Logbook sections, Coding draws Accounts' coding apps and the code and git
+// sections, and Devices draws the rest (requests, computers, which Trunk uses which, connections, lending, cloud). Same sections, same rows and same controls as Computer & browser (computer-more.tsx); the full page stays
 // as it is. These pages are not in this window's own list, so its search keeps finding each row once, on Computer &
 // browser.
 import type { SettingsPageProps } from "../index";
 import { Page, type RowEntry } from "../kit";
 import { CodingApps } from "../set1/coding-apps";
 import { ACCOUNTS_ROWS } from "../set1/rows";
+import { ComputerPage, topRows } from "./computer";
 import { ComputerMore, partRows } from "./computer-more";
 
 export function ComputerBrowserPage(props: SettingsPageProps) {
@@ -26,6 +27,10 @@ export function ComputerCodingPage(props: SettingsPageProps) {
   );
 }
 
+export function ComputerDevicesPage(props: SettingsPageProps) {
+  return <ComputerPage {...props} part="devices" />;
+}
+
 const CODING_APPS = ACCOUNTS_ROWS.filter((r) => r.sec === "Coding apps on this computer").map((r): RowEntry => ({ ...r, page: "computer-coding" }));
 
-export const ROWS: RowEntry[] = [...partRows("browser", "computer-browser"), ...CODING_APPS, ...partRows("coding", "computer-coding")];
+export const ROWS: RowEntry[] = [...partRows("browser", "computer-browser"), ...CODING_APPS, ...partRows("coding", "computer-coding"), ...topRows("computer-devices"), ...partRows("devices", "computer-devices")];

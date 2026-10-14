@@ -124,6 +124,15 @@ it("draws Settings › Browser & screen and Coding as R1 pages, not Classic Gene
     expect(REHOSTED[page], page).toBe(`computer-${page}`);
   }
 });
+it("draws Settings › Devices and Developer as R1 pages, not the Classic frame, with every Classic control they had", async () => {
+  const { R1_PAGES, REHOSTED } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
+  for (const page of ["devices", "developer"] as const) {
+    expect(r1SettingsPage(page, R1_PAGES), page).toBe(true);
+    expect(typeof R1_PAGES[page]?.component, page).toBe("function");
+  }
+  expect(REHOSTED.devices).toEqual(["computer-devices", "devices"]);
+  expect(REHOSTED.developer).toBe("developer");
+});
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
