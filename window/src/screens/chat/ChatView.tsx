@@ -30,7 +30,8 @@ import { QueuedMessages, useOwnWaitingLine } from "../../thread/QueuedMessages";
 import { Rail } from "../../thread/Rail";
 import { suggestionsFor } from "../../thread/suggestions";
 import { useApprovalDetails, useHelpers, useReactions, type ApprovalDetails } from "../../thread/useEngineData";
-import { useMessageActions, type ReplyTarget } from "../../thread/useMessageActions";
+import { useMessageActions, type MessageChanges, type ReplyTarget } from "../../thread/useMessageActions";
+import { Icon } from "../../shell/icons";
 import { blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
 import { HoverBar } from "./HoverBar";
 import { NoticeLine, TimeDivider, TypingLine } from "./lines";
@@ -170,7 +171,7 @@ export function ChatView(props: ChatViewProps) {
   }, [details, engine, props, toast]);
   const waitingTwo = [...all.filter((b): b is Extract<Block, { kind: "approval" }> => b.kind === "approval").map((b) => b.approval), ...extras].filter((a) => a.state === "pending");
   const grouped = new Set(waitingTwo.length === 2 ? waitingTwo.map((a) => a.id) : []);
-  const { actionsFor, dialog } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, applyReaction: apply });
+  const { actionsFor, dialog, changes } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, applyReaction: apply });
   const root = useRef<HTMLDivElement>(null);
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
   const signature = history.length + ":" + live.length + ":" + liveText + ":" + (running ? 1 : 0) + ":" + extras.length + ":" + (props.queued?.length ?? 0);
@@ -195,7 +196,7 @@ export function ChatView(props: ChatViewProps) {
   const helperChip = helpers.length && engine?.sessionKey ? <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenHelpers}
     onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast("Stopped " + h.name + ". " + name + " carries on without it."), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} /> : null;
 
-  const view: View = { all, name, running, live, actionsFor, reactions, apply, details, answer, grouped, times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast, room: props.room };
+  const view: View = { all, name, running, live, actionsFor, changes, reactions, apply, details, answer, grouped, times: prefs.messageTimes, mode: work.mode, lastUser, engine, onOpenSession: props.onOpenSession, toast, room: props.room };
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
   // The run's token count (the engine's usage block), as Classic's live-run header shows it; once something visible arrives.
   const usage = running ? live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage") : undefined;
@@ -234,6 +235,8 @@ export function ChatView(props: ChatViewProps) {
 type View = {
   all: Block[]; live: Block[]; name: string; running: boolean; lastUser: number; mode: WorkMode;
   actionsFor: ReturnType<typeof useMessageActions>["actionsFor"];
+  /** Pins set and messages deleted here, shown at once before the next history read. */
+  changes: MessageChanges;
   reactions: ReturnType<typeof useReactions>["reactions"];
   apply: (id: string, raw: unknown) => void;
   details: Map<string, ApprovalDetails>;
@@ -277,19 +280,22 @@ function EntryView({ entry, view, live }: { entry: Entry; view: View; live: bool
   switch (block.kind) {
     case "user":
     case "text": {
-      const actions = live ? null : view.actionsFor(view.all, index);
       const entryId = block.meta?.entryId;
+      if (entryId && view.changes.gone.has(entryId)) return null;
+      const actions = live ? null : view.actionsFor(view.all, index);
+      const pinned = (entryId ? view.changes.pinned.get(entryId) : undefined) ?? block.meta?.pinned === true;
       const chips = entryId ? view.reactions.get(entryId) ?? [] : [];
       const isReply = block.kind === "text";
       const other = block.kind === "user" ? otherSender(block, view.room) : null;
       const bar = actions ? <HoverBar text={block.text} isReply={isReply} actions={actions} meta={block.meta} /> : null;
       const after = <>
+        {pinned ? <div className="r1c-pin-line" data-testid="pinned-mark"><Icon name="pin" size={12} />Pinned</div> : null}
         {block.meta?.excluded && actions?.context ? <div className="r1c-out-line">Left out of context · <Coming need={PUT_BACK.need} reason={PUT_BACK.reason} where="Put back"><button type="button" className="r1c-link" aria-disabled={actions.context.disabled ? "true" : undefined} title={actions.context.disabled ?? undefined} onClick={() => { if (!actions.context?.disabled) actions.context?.run(); }}>Put back</button></Coming></div> : null}
         {live ? null : <TimeLine at={block.meta?.timestamp} model={isReply ? block.meta?.model : undefined} mine={!isReply && !other} mode={view.times} />}
         <ReactionChips list={chips} onToggle={(emoji, remove) => { if (actions && !actions.reactDisabled) actions.react(emoji, remove); }} />
       </>;
       const posted = block.kind === "text" ? postedFace(block, view) : null;
-      return <div data-block-key={block.key}>{block.kind === "user"
+      return <div data-block-key={block.key} data-pinned={pinned || undefined}>{block.kind === "user"
         ? other
           ? <div className="r1c-row r1c-room"><RoomMessage sender={other} text={block.text} attachments={block.attachments} entryId={block.meta?.entryId} where={other.kind === "agent" ? view.room?.whereRuns(other.id) ?? null : null} online={other.kind === "agent" && view.room?.isOnline?.(other.id) === true}>{bar}</RoomMessage>{after}</div>
           : <UserBubble block={block} bar={bar} after={after} />
