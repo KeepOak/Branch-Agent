@@ -21,7 +21,6 @@ const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
 const LEVEL_KEY = "branch.level";
 export const SECTION_COMING = (card: string) => `${card} comes to this page in a later update.`;
 export const ASK_COMING = "Asking a Trunk from Settings comes in a later update.";
-const MAKE_DEFAULT_COMING = "Making a Trunk the default from Settings comes in a later update.";
 const FINE = "Fine-tune each part";
 const NO_SLOTS: PageSlots = {};
 
@@ -97,14 +96,15 @@ function Results({ engine, hits, onOpen, onMakeDefault }: { engine: WindowEngine
                 <span><b data-lv={hit.kind === "row" && hit.level > 0 ? LEVELS[hit.level].label : undefined}>{hit.label}</b>{"sub" in hit && hit.sub ? <small>{hit.sub}</small> : null}</span>
               </button>
             );
-            if (hit.kind !== "trunk" || !hit.actions.includes("makeDefault")) return button;
+            // Without a host that makes it, Make default is not drawn: it waits in Seedbank › Coming to Branch (R1-15).
+            if (hit.kind !== "trunk" || !hit.actions.includes("makeDefault") || !onMakeDefault) return button;
             // Make default is its own button beside the Trunk, so it never reads as part of opening it.
             return (
               <div key={`${hit.kind}:${hit.id}`} className="r1s-hit">
                 {button}
-                {/* Make default is a config.patch of the default agent (HANDOFF R1-06); without a host that makes it, Coming. */}
-                <Coming engine={engine} need="config.patch" unwired={!onMakeDefault} reason={onMakeDefault ? undefined : MAKE_DEFAULT_COMING}>
-                  <button type="button" className="r1s-link r1s-mkdef" onClick={() => onMakeDefault?.(hit.id)}>Make default</button>
+                {/* Make default is a config.patch of the default agent (HANDOFF R1-06). */}
+                <Coming engine={engine} need="config.patch">
+                  <button type="button" className="r1s-link r1s-mkdef" onClick={() => onMakeDefault(hit.id)}>Make default</button>
                 </Coming>
               </div>
             );
@@ -207,6 +207,8 @@ export function SettingsFrame(props: SettingsFrameProps) {
     const all = rows.filter((r) => r.page === shownPage && r.card === card);
     const visible = cardRows(shownPage, card, level, hints, rows);
     if (all.length && !visible.length) return [];
+    // General's sections with no rows yet are not drawn: they wait in Seedbank › Coming to Branch (R1-15).
+    if (!all.length && shownPage === "general") return [];
     return [{ card, visible }];
   });
   const first = pageFirstLevel(shownPage, hints, rows);
@@ -244,7 +246,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </nav>
       </aside>
       <div className="r1s-page" ref={scroller}>
-        {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} /></div> : <>
+        {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} /></div> : <>
         <header className="r1s-head">
           <h1 className="g-label">{spec.title}</h1>
           <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" data-local="" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>

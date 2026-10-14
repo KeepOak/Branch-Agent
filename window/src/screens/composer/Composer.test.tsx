@@ -108,7 +108,7 @@ describe("R1-04 composer", () => {
     expect(request).toHaveBeenCalledWith("chat.send", expect.objectContaining({ sessionKey: "agent:scout:t1", message: "Hello topic" }));
   });
 
-  it("opens the + menu with tiles and rows, hiding unwired items but listing them as Coming", async () => {
+  it("opens the + menu with tiles and rows, and no unwired items: they wait in Seedbank › Coming to Branch (R1-15)", async () => {
     const { host } = await mount();
     await act(async () => host.querySelector<HTMLButtonElement>(".r1c-pill [aria-label^='Attach']")!.click());
     expect([...document.querySelectorAll(".r1c-tile")].map((t) => t.textContent)).toEqual(["Files", "Photo", "Folder ›"]);
@@ -116,6 +116,7 @@ describe("R1-04 composer", () => {
     expect(rows).toEqual(expect.arrayContaining(["Make a picture", "Set a goal", "Skills & saved prompts", "Add from", "Run as a background job"]));
     expect(rows).not.toContain("Teach a task");
     expect(document.querySelectorAll(".r1c-plus [aria-disabled='true']")).toHaveLength(0);
+    expect(comingControls().filter((c) => c.where.startsWith("+ menu ›")).map((c) => c.where)).toEqual([]);
   });
 
   it("opens the ring popover with This computer, Running, Context and Every account", async () => {
@@ -169,10 +170,7 @@ describe("R1-04 composer", () => {
     const needOf = (where: string) => coming.find((c) => c.where === where)?.need;
     expect(needOf("Improve my draft")).toEqual(["sessions.companion.ask"]);
     expect(needOf("Dictate into the box")).toEqual(["talk.catalog"]);
-    expect(needOf("+ menu › Screenshot")).toEqual(["desktop.observe"]);
-    expect(needOf("+ menu › Write a doc, sheet or slides")).toEqual(["agents.documents.create"]);
-    expect(needOf("+ menu › Branch from here")).toEqual(["sessions.fork"]);
-    expect(needOf("+ menu › Temporary chat")).toEqual(["sessions.patch"]);
+    expect(coming.filter((c) => c.where.startsWith("+ menu ›")).map((c) => c.where)).toEqual([]);
   });
 
   it("registers nothing as Coming that it draws as live", async () => {
