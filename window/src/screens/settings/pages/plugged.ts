@@ -18,10 +18,19 @@ export const REHOSTED = {
   models: "models",
   permissions: "permissions",
   privacy: "usage",
+  browser: "computer-browser", // Computer & browser's screen and browser sections (set2/computer-parts.tsx)
+  coding: "computer-coding", // Accounts' coding apps and Computer & browser's code and git sections
 } as const;
 
+/** A re-hosted page's cards that no Classic control draws yet: Coming after its Classic sections, naming the call each
+ *  waits for (nav sectionNeed). */
+export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> = {
+  browser: ["Sites", "Saved flows"],
+  coding: ["Commands", "Files"],
+};
+
 export const R1_PAGES: PageSlots = {
-  ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic)])),
+  ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
   appearance: {

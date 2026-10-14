@@ -42,6 +42,7 @@ import { R1Stage, R1StagePip } from "../stage/R1Stage";
 import { useR1Room } from "./use-r1-room";
 import { QuickAskHost } from "../quickask/QuickAskHost";
 import type { PipTarget, StageMode } from "../../stage/ComputerStage";
+import { R1HelpersPanel } from "../helpers/R1HelpersPanel";
 import { R1Tower, readTowerOn, saveTowerOn, useTowerNarrow } from "../tower/R1Tower";
 import { useNeedsCount } from "../../places/inbox";
 import { R1SidePane, PANE_TAB_NEEDS } from "../pane/R1SidePane";
@@ -121,6 +122,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
   // The re-hosted Classic computer stage (parity row 1): which side is open, and the small window it shrinks to.
   const [stage, setStage] = useState<StageMode | null>(null);
   const [pip, setPip] = useState<PipTarget | null>(null);
+  // The re-hosted Classic helpers view (parity row 3): open for one conversation; each chip press scrolls to its helpers.
+  const [helpersView, setHelpersView] = useState<{ key: string | null; focus: number } | null>(null);
+  const helpersOpen = helpersView !== null && helpersView.key === snapshot.sessionKey;
   // The re-hosted Classic control tower (parity row 5): beside the conversation, or in its place on a narrow window.
   const [tower, setTower] = useState(readTowerOn);
   const towerNarrow = useTowerNarrow();
@@ -297,8 +301,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
     onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "computer" })} onPip={small => { setPip(small); setStage(null); }} /> : <>{threads.above}<ChatView
     name={snapshot.name} history={threads.history ?? snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
-    onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo} room={room.thread}
+    onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo} onOpenHelpers={() => setHelpersView(open => ({ key: snapshot.sessionKey, focus: (open?.focus ?? 0) + 1 }))} room={room.thread}
   /></>;
+  const shown = route.kind === "chat" && !stage && helpersOpen ? <div className="r1-with-helpers">{main}<R1HelpersPanel key={snapshot.sessionKey ?? "none"} engine={engine} name={snapshot.name} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
+    focus={helpersView.focus} onClose={() => setHelpersView(null)} onToast={setNotice} /></div> : main;
   // Problem and news banners (the Classic hooks), drawn in the approvals banner stack.
   const problems = useProblemBannerRows({ session, shownKey: route.kind === "chat" ? snapshot.sessionKey : null, machineName: machine?.name ?? "",
     defaultName: conversations.rows.find(row => row.key === snapshot.mainKey)?.title || "your Trunk", onOpen: openConversation,
@@ -319,7 +325,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {tour ? <R1Tour kind={tour} defaultName={conversations.rows.find(row => row.key === snapshot.mainKey)?.title || "your Trunk"} onClose={() => setTour(null)} /> : null}
     {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
     <div className="r1-ob-behind" inert={behind} aria-hidden={behind || undefined} style={{ display: "contents", visibility: behind ? "hidden" : undefined }}>
-    <Frame sidebar={sidebar} main={main} topics={route.kind === "chat" ? threads.column ?? undefined : undefined} aside={towerNarrow ? undefined : towerView} beside={talk.beside} pane={pane && ready && route.kind === "chat" ? <R1SidePane key={snapshot.sessionKey ?? "none"} engine={engine} name={snapshot.name} title={snapshot.name || "Conversation"}
+    <Frame sidebar={sidebar} main={shown} topics={route.kind === "chat" ? threads.column ?? undefined : undefined} aside={towerNarrow ? undefined : towerView} beside={talk.beside} pane={pane && ready && route.kind === "chat" ? <R1SidePane key={snapshot.sessionKey ?? "none"} engine={engine} name={snapshot.name} title={snapshot.name || "Conversation"}
       blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={setNotice} onReload={() => void session.reload()} /> : undefined} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? snapshot.name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: room.header && route.kind === "chat" ? room.header.faces(24) : <Face size={24} label={snapshot.name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,

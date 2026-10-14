@@ -122,6 +122,14 @@ it("draws Sign-ins & keys as the R1 page, so Accounts › Add a key opens it in 
   expect(host.querySelector("button")!.textContent).toBe("Add a key");
   expect(onPage.mock.calls).toEqual([["signins"]]);
 });
+it("draws Settings › Browser & screen and Coding as R1 pages, not Classic General, with Computer & browser's controls", async () => {
+  const { R1_PAGES, REHOSTED } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
+  for (const page of ["browser", "coding"] as const) {
+    expect(r1SettingsPage(page, R1_PAGES), page).toBe(true);
+    expect(typeof R1_PAGES[page]?.component, page).toBe("function");
+    expect(REHOSTED[page], page).toBe(`computer-${page}`);
+  }
+});
 it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so working settings never read Coming", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
