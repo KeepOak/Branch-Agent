@@ -6,14 +6,14 @@ import { ChatLogo } from "../../places/settings/set1/chatapps-logo";
 import { appOf, catalogue, trunksOf } from "../../places/settings/set1/chatapps-data";
 import { appRoute, bindingsOf } from "../../places/settings/set1/chatapps-who";
 import { useResource } from "../../places/settings/hooks";
-import { ConnectDialog } from "../../places/settings/set1/chatapps-connect";
+import { PairDialog } from "../../places/customize/pairing";
+import { Icon } from "../../shell/icons";
 import "../../places/settings/set1/chatapps.css";
 import { has } from "../../places/inbox/data";
 import { useLevel } from "../settings/SettingsFrame";
 import { CHAT_APPS, GROUPS, estimateOf, type ChatApp } from "./catalogue";
 import { More } from "./More";
 import { Pairing } from "./Pairing";
-import { ChatAppSettings } from "./Settings";
 import { connectedOf, Pill, toneOf, useCfg } from "./parts";
 import { useChatApps } from "./useChatApps";
 import "../../glass/glass.css";
@@ -31,9 +31,7 @@ const ALSO = "Also in Branch";
 
 export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsProps) {
   const [query, setQuery] = useState("");
-  // Find another app: the engine's own setup with no app chosen, in Classic's generic dialog (ConnectDialog), which
-  // follows the channel the engine picks, WhatsApp's QR link included (Classic's All chat apps › Find another app).
-  const [another, setAnother] = useState(false);
+  const [pairing, setPairing] = useState(false);
   const live = useChatApps(engine);
   const cfg = useCfg(engine);
   const [level] = useLevel(engine);
@@ -57,11 +55,10 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
   const connected = connectedOf(live.status);
   const { trunks, defaultId } = trunksOf(agents.data);
   const trunkFor = (ch: string) => { const id = appRoute(bindingsOf({ ...cfg, loading: !cfg.ready }), ch) ?? defaultId; return trunks.find(t => t.id === id)?.name ?? "your Trunk"; };
-  const wizard = canAll(engine, ["wizard.start", "wizard.next", "wizard.cancel"]);
   return <section className="r1-chatapps g-clear" aria-label="Chat apps">
     {live.error && <p role="alert"><span className="g-label">{live.error}</span> <button type="button" onClick={() => void live.reload()} data-need="channels.status">Try again</button></p>}
     <div className="r1-ca-surface g-clear"><section aria-labelledby="r1-ca-your"><h2 id="r1-ca-your" className="g-label">Your chat apps</h2>
-      <p role="status" className="g-label">{live.loading ? "Checking your chat apps…" : !live.status ? "Chat app status is unavailable." : connected.length ? "Manage your connected apps below." : "No chat apps connected yet. Choose an app below to get started."}</p>
+      <p role="status" className="g-label">{live.loading ? "Checking…" : !live.status ? "Talk to Branch from other apps. Each chat app reaches the Trunk you choose; with the gateway on, they work while Branch is closed." : connected.length ? "Talk to Branch from other apps. Each chat app reaches the Trunk you choose; with the gateway on, they work while Branch is closed." : "No chat app is connected yet."}</p>
       {connected.length ? <div className="r1-ca-connected" role="list" aria-label="Connected chat apps">{connected.map(({ app, state }) => (
         <div key={state.id} role="listitem" className="r1-ca-app"><ChatLogo id={state.id} name={state.name} size={32} /><span className="g-label" data-lines><b>{state.name}</b> <small>{state.sub}</small></span>
           <Pill tone={toneOf(state.tone)}>{state.word}</Pill>
@@ -95,10 +92,16 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
         })}</div></section> : null;
       })}
       {!shown.length && <p className="g-label" data-lines>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}
-      {onSetup && wizard ? <p className="r1-ca-acts"><button type="button" data-need="wizard.start wizard.next wizard.cancel" disabled={!admin} title={admin ? undefined : "Setting up a chat app needs full access on this connection."} onClick={() => setAnother(true)}>Find another app</button></p> : null}
-      {another ? <div className="r1-cw"><ConnectDialog engine={engine} app={null} onClose={(changed) => { setAnother(false); if (changed) void live.reload(); }} /></div> : null}
     </section>
-    </div>{renderAccess && <section aria-label="Who answers and who may message"><h2 className="g-label">Who answers</h2>{connected.length ? connected.map(c => <div key={c.state.id}>{renderAccess(c.app)}</div>) : <p className="r1-ca-hint g-label" data-lines>{live.loading ? "Checking your chat apps…" : "Connect a chat app above to choose who answers in it and who may message it."}</p>}</section>}<ChatAppSettings engine={engine} />
+    {/* preview: the "Your phone" tile after the app groups; Pair a phone opens the pairing code (device.pair.setupCode). */}
+    <section className="r1-ca-phone" aria-label="Your phone">
+      <span className="r1-ca-app"><Icon name="phone" size={20} /><span className="g-label" data-lines><b>Your phone</b> <small>Answer approvals and talk to Trunks from the Branch app.</small></span>
+        <Coming engine={engine} need="device.pair.setupCode" reason="Pairing a phone comes in a later update." where="Chat apps › Pair a phone">
+          <button type="button" onClick={() => setPairing(true)}>Pair a phone</button>
+        </Coming></span>
+      {pairing ? <PairDialog engine={engine} close={() => setPairing(false)} /> : null}
+    </section>
+    </div>{renderAccess && <section aria-label="Who answers and who may message"><h2 className="g-label">Who answers</h2>{connected.length ? connected.map(c => <div key={c.state.id}>{renderAccess(c.app)}</div>) : <p className="r1-ca-hint g-label" data-lines>{live.loading ? "Checking…" : "No chat app is connected yet."}</p>}</section>}
     {level >= 1 ? <More engine={engine} cfg={cfg} apps={connected.map(c => c.state)} all={engineApps} trunks={trunks} level={level} /> : null}
   </section>;
 }

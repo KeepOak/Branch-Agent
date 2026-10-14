@@ -5,6 +5,7 @@ import { scheduleWords } from "../places/automations/model";
 import { agents, runMs, runs } from "../places/overview/engine";
 import { runLength } from "../places/overview/format";
 import { ageWords, clockWords, plainJobName, readLimits, type Limits } from "./status-data";
+import { isEngineJob } from "../connect/engine-jobs";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -88,7 +89,7 @@ export type TowerComing = { id: string; name: string; when: string; trunkId: str
 export function towerComingUp(jobs: unknown[], now = Date.now()): TowerComing[] {
   return jobs
     .map(rec)
-    .filter((job) => job.enabled !== false && num(rec(job.state).nextRunAtMs) > 0)
+    .filter((job) => !isEngineJob(job) && job.enabled !== false && num(rec(job.state).nextRunAtMs) > 0)
     .sort((a, b) => num(rec(a.state).nextRunAtMs) - num(rec(b.state).nextRunAtMs))
     .slice(0, 3)
     .map((job) => {
