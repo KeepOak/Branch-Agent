@@ -396,15 +396,26 @@ it.each(["sync", "async"] as const)(
 
 it("reclaims one oversized abandoned snapshot per pass without starving the next pass", () => {
   const { cache } = createFixture();
+  // The pass budget is 4 GiB. Each payload reports just over half of it, so the second directory
+  // exceeds what remains. The sizes are reported through lstat, not written, to keep the test small.
+  const oversized = 2 * 1024 * 1024 * 1024 + 1;
   const abandoned = Array.from({ length: 2 }, () => {
     const directory = createSqliteSnapshotStagingDirectorySync(cache);
     const payload = path.join(directory, "database.sqlite");
     fs.closeSync(fs.openSync(payload, "w", 0o600));
-    fs.truncateSync(payload, 512 * 1024 * 1024 + 1);
     releaseSnapshotTempDirectory(directory);
     ageSnapshotTree(directory);
     return directory;
   });
+  const realLstat = fs.lstatSync;
+  vi.spyOn(fs, "lstatSync").mockImplementation(((target, options) => {
+    const stat = realLstat(target, options);
+    const pathname = String(target);
+    if (!abandoned.some((directory) => pathname === path.join(directory, "database.sqlite"))) {
+      return stat;
+    }
+    return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { size: oversized });
+  }) as typeof fs.lstatSync);
   const reports: string[] = [];
   try {
     for (const _ of reclaimAbandonedSqliteSnapshots(cache, (message) => {
@@ -413,9 +424,12 @@ it("reclaims one oversized abandoned snapshot per pass without starving the next
       // Drain the bounded reclamation pass.
     }
     expect(abandoned.filter((directory) => fs.existsSync(directory))).toHaveLength(1);
-    expect(reports).toContain(
-      `Reclaimed ${512 * 1024 * 1024 + 1} bytes of interrupted SQLite snapshot data.`,
-    );
+    expect(reports).toContain(`Reclaimed ${oversized} bytes of interrupted SQLite snapshot data.`);
+    // The first pass touched the survivor's token files, which moves its mtime into the grace period.
+    const survivor = abandoned.find((directory) => fs.existsSync(directory));
+    if (survivor) {
+      ageSnapshotTree(survivor);
+    }
     for (const _ of reclaimAbandonedSqliteSnapshots(cache, () => {})) {
       // A new pass must make progress on the remaining oversized directory.
     }

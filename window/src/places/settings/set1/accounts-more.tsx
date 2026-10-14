@@ -28,22 +28,31 @@ export function AccountsMore(props: Props) {
 }
 
 const NEXT = [{ id: "order", label: "In order" }, { id: "turns", label: "Take turns" }, { id: "random", label: "At random", off: NO_KEY }, { id: "least", label: "Least used", off: NO_KEY }];
+
+/** A service's "which goes next": an explicit order, or none so the engine takes turns (models.authOrderSet). */
+export const nextModeOf = (p: Provider): "order" | "turns" => (p.profileOrder?.length ? "order" : "turns");
+export const nextSub = (p: Provider): string =>
+  p.profileOrderLocked ? "The order is set in the settings file." : nextModeOf(p) === "order" ? "The first account with allowance left, as listed above." : "Each turn goes to the account used longest ago.";
+export async function setNextMode(engine: WindowEngine, p: Provider, mode: string, agent: { agentId?: string }): Promise<void> {
+  const ids = p.profiles.map((a) => a.profileId);
+  await engine.request("models.authOrderSet", { provider: p.authProvider ?? p.provider, ...(mode === "order" ? { profileIds: ids } : {}), ...agent });
+}
+
 function WhichNext({ engine, providers, reload, agent }: Props) {
   const save = useSaveRunner();
   const many = providers.filter((p) => p.profiles.length > 0);
   const set = (p: Provider, mode: string) => void save(async () => {
-    const ids = p.profiles.map((a) => a.profileId);
-    await engine.request("models.authOrderSet", { provider: p.authProvider ?? p.provider, ...(mode === "order" ? { profileIds: ids } : {}), ...agent });
+    await setNextMode(engine, p, mode, agent);
     await reload();
   });
   return (
     <Sec title="Which account goes next" showHeading={false} group="When one runs out" hint="Accounts that run out or lose sign-in are skipped until ready." help="Whatever the order, an account that runs out, refuses payment or loses its sign-in is skipped until its window refills. Only accounts you own are used.">
       {many.length ? null : <Empty>No account yet.</Empty>}
       {many.map((p) => {
-        const mode = p.profileOrder?.length ? "order" : "turns";
+        const mode = nextModeOf(p);
         return (
           <Ctl key={p.provider} title={serviceName(p.provider, p.displayName)} icon={<Logo id={p.provider} size={22} />} id={serviceName(p.provider, p.displayName)}
-            sub={p.profileOrderLocked ? "The order is set in the settings file." : mode === "order" ? "The first account with allowance left, as listed above." : "Each turn goes to the account used longest ago."}>
+            sub={nextSub(p)}>
             <Seg label={`Which ${serviceName(p.provider, p.displayName)} account goes next`} value={mode} options={NEXT} disabled={Boolean(p.profileOrderLocked)} onChange={(m) => set(p, m)} />
           </Ctl>
         );
@@ -54,7 +63,7 @@ function WhichNext({ engine, providers, reload, agent }: Props) {
 
 function AccountsAdvanced({ engine, all, openSettings }: Props) {
   const trunks = useResource<RecordValue>(engine, "agents.list", {});
-  const resting = all.filter((a) => a.a.status === "cooldown" || /cooldown|rate/i.test(text(a.a.reasonCode ?? "")));
+  const resting = restingOf(all);
   return (
     <Sec title="Accounts, more" showHeading={false} group="Accounts">
       <Ctl title="Which account each Trunk uses" sub="A Trunk with its own account follows that account’s order and limits." help="A Trunk with its own account follows that account’s order and limits. Helpers keep the one their Trunk had." />
@@ -70,38 +79,56 @@ function AccountsAdvanced({ engine, all, openSettings }: Props) {
   );
 }
 
+/** Accounts resting after a limit (cooldown), for "Resting now". */
+export const restingOf = (all: Account[]): Account[] => all.filter((a) => a.a.status === "cooldown" || /cooldown|rate/i.test(text(a.a.reasonCode ?? "")));
+
+/** A Trunk's account choices ("<provider>|<profileId>") and the one it uses first, from that Trunk's models.authStatus. */
+export function trunkChoices(providers: Provider[]): { options: { id: string; label: string }[]; value: string } {
+  const options = providers.flatMap((p) => p.profiles.map((a, i) => ({ id: `${p.provider}|${a.profileId}`, label: accountName({ p, a, n: i + 1 }) })));
+  const own = providers.find((p) => (p as Provider & { profileOrderStored?: boolean }).profileOrderStored && p.profileOrder?.length);
+  return { options, value: own ? `${own.provider}|${own.profileOrder?.[0]}` : "" };
+}
+
+/** Saves a Trunk's own account: that account first in the Trunk's order, other services' own orders cleared; "" clears
+ *  it, so the Trunk uses anyone's (models.authOrderSet with agentId). */
+export async function setTrunkAccount(engine: WindowEngine, id: string, providers: Provider[], v: string): Promise<void> {
+  const own = providers.find((p) => (p as Provider & { profileOrderStored?: boolean }).profileOrderStored && p.profileOrder?.length);
+  const [prov, profile] = v.split("|");
+  const clear = providers.filter((p) => (p as Provider & { profileOrderStored?: boolean }).profileOrderStored && p.provider !== prov);
+  for (const p of clear) await engine.request("models.authOrderSet", { provider: p.authProvider ?? p.provider, agentId: id });
+  if (prov) {
+    const p = providers.find((x) => x.provider === prov);
+    const rest = (p?.profiles ?? []).map((a) => a.profileId).filter((x) => x !== profile);
+    await engine.request("models.authOrderSet", { provider: p?.authProvider ?? prov, profileIds: [profile, ...rest], agentId: id });
+  } else if (own) {
+    await engine.request("models.authOrderSet", { provider: own.authProvider ?? own.provider, agentId: id });
+  }
+}
+
 /** One Trunk's account: "Anyone’s" (no order of its own), or one account it uses first (that Trunk's own order). */
 function TrunkAccount({ engine, trunk }: { engine: WindowEngine; trunk: RecordValue }) {
   const id = text(trunk.id);
   const status = useResource<RecordValue>(engine, "models.authStatus", { agentId: id });
   const save = useSaveRunner();
   const providers = providersOf(status.data?.providers);
-  const options = providers.flatMap((p) => p.profiles.map((a, i) => ({ id: `${p.provider}|${a.profileId}`, label: accountName({ p, a, n: i + 1 }) })));
-  const own = providers.find((p) => (p as Provider & { profileOrderStored?: boolean }).profileOrderStored && p.profileOrder?.length);
-  const value = own ? `${own.provider}|${own.profileOrder?.[0]}` : "";
+  const { options, value } = trunkChoices(providers);
   const name = visible(record(trunk.identity).name ?? trunk.name ?? id);
   const pick = (v: string) => void save(async () => {
-    const [prov, profile] = v.split("|");
-    const clear = providers.filter((p) => (p as Provider & { profileOrderStored?: boolean }).profileOrderStored && p.provider !== prov);
-    for (const p of clear) await engine.request("models.authOrderSet", { provider: p.authProvider ?? p.provider, agentId: id });
-    if (prov) {
-      const p = providers.find((x) => x.provider === prov);
-      const rest = (p?.profiles ?? []).map((a) => a.profileId).filter((x) => x !== profile);
-      await engine.request("models.authOrderSet", { provider: p?.authProvider ?? prov, profileIds: [profile, ...rest], agentId: id });
-    } else if (own) {
-      await engine.request("models.authOrderSet", { provider: own.authProvider ?? own.provider, agentId: id });
-    }
+    await setTrunkAccount(engine, id, providers, v);
     await status.reload();
   });
   return <Ctl title={name}><Pick label={name} value={value} options={[{ id: "", label: "Anyone’s" }, ...options]} disabled={status.loading} onChange={pick} /></Ctl>;
 }
 
+/** Where a service's sign-ins come from: browser sign-ins, keys, and where a key is read from. */
+export function sourceLine(p: Provider): string {
+  const by = (kind: string) => p.profiles.filter((a) => (kind === "key" ? a.type === "api_key" : a.type !== "api_key")).length;
+  const env = (p as Provider & { apiKey?: { source?: string; envVar?: string } }).apiKey;
+  return [by("signin") ? `Browser sign-ins: ${by("signin")}` : "", by("key") ? `Keys: ${by("key")}` : "", env?.envVar ? `From ${env.envVar}` : env?.source === "config" ? "From the settings file" : ""].filter(Boolean).join(" · ") || "Not set up";
+}
+
 function Sources({ providers, agent }: { providers: Provider[]; agent: { agentId?: string } }) {
-  const line = (p: Provider) => {
-    const by = (kind: string) => p.profiles.filter((a) => (kind === "key" ? a.type === "api_key" : a.type !== "api_key")).length;
-    const env = (p as Provider & { apiKey?: { source?: string; envVar?: string } }).apiKey;
-    return [by("signin") ? `Browser sign-ins: ${by("signin")}` : "", by("key") ? `Keys: ${by("key")}` : "", env?.envVar ? `From ${env.envVar}` : env?.source === "config" ? "From the settings file" : ""].filter(Boolean).join(" · ") || "Not set up";
-  };
+  const line = sourceLine;
   return (
     <Sec title="Where each sign-in comes from" group="Accounts" hint={agent.agentId ? "This Trunk’s own sign-ins." : "Every Trunk."}>
       {providers.length ? null : <Empty>No service set up yet.</Empty>}
@@ -111,7 +138,7 @@ function Sources({ providers, agent }: { providers: Provider[]; agent: { agentId
 }
 
 /** The engine's device id, shortened for the row; the whole id is in the tooltip. */
-function shortId(id: string): string {
+export function shortId(id: string): string {
   return id.length > 22 ? `${id.slice(0, 16)}…${id.slice(-3)}` : id;
 }
 

@@ -73,10 +73,6 @@ theme	window/src/places/library/library.css	-weight: 600; box-shadow: 0 1px 2px 
 theme	window/src/places/office/pixel/webview-ui/src/branch/branchLayout.ts	{ label: AREA_GUESTS, color: '#48dbfb' },
 theme	window/src/places/office/pixel/webview-ui/src/branch/branchLayout.ts	{ label: AREA_MEETING, color: '#1dd1a1' },
 theme	window/src/places/office/pixel/webview-ui/src/branch/branchLayout.ts	{ label: AREA_OFFICE, color: '#feca57' },
-theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	const MIDDAY = 'rgba(255, 255, 240, 0.03)';
-theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	const NIGHT = 'rgba(10, 10, 50, 0.30)';
-theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	g.addColorStop(0, `rgba(${GLOW}, ${strength})`);
-theme	window/src/places/office/pixel/webview-ui/src/branch/lighting.ts	g.addColorStop(1, `rgba(${GLOW}, 0)`);
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	.86); color: #1c1a16; border-color: rgba(0, 0, 0, 0.18); }
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	.pa-name-three { font-family: Consolas, monospace; font-weight: 700; font-size: .9em;
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	: rgba(255, 252, 244, 0.86); color: #1c1a16; border-color: rgba(0, 0, 0, 0.18);
@@ -86,7 +82,6 @@ theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	color: #1c
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	color: #fff;
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	color: #fff;
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	eme='light'] .pa-name { background: rgba(255, 252, 244, 0.86); color: #1c1a16
-theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	font-family: 'FS Pixel Sans', sans-serif;
 theme	window/src/places/office/pixel/webview-ui/src/branch/office.css	theme='light'] .text-white { color: #fff; }
 theme	window/src/places/office/pixel/webview-ui/src/branch/trunkSprites.ts	orHint ?? '') ? agent.colorHint! : '#56616B';
 theme	window/src/places/office/pixel/webview-ui/src/constants.ts	'#00ffff 50%, #0000ff 66.7%, #ff00ff 83.3%,

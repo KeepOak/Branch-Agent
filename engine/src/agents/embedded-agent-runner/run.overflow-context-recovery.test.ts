@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/run.overflow-context-recovery.test.ts (atlas AGENT-LOOP-0103). Changed for Branch: existing recovery assertions retained; Cline gateway raw-error and authoritative status cases added.
+// Changed for Branch: existing recovery assertions retained; gateway raw-error and authoritative status cases added.
 
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

@@ -3,7 +3,7 @@ import type { AgentState } from "./agentState";
 import { SHEET } from "./painter";
 import { FacePlayer } from "./player";
 import "./face.css";
-import { useTrunkAppearance, useTrunkPebbleLook, useTrunkEmojiFace, completePebbleLook, type PebbleLook } from "./appearance";
+import { useTrunkAppearance, useTrunkPebbleLook, useTrunkEmojiFace, completePebbleLook, mergePebbleLook, type PebbleLook } from "./appearance";
 import { CharacterFace } from "./CharacterFace";
 import { useLookPrefs, type LookPrefs } from "./look-prefs";
 
@@ -44,12 +44,13 @@ function useThemeRepaint(player: FacePlayer | null): void {
       return;
     }
     const repaint = () => player.repaint();
-    const scheme = window.matchMedia("(prefers-color-scheme: dark)");
-    scheme.addEventListener("change", repaint);
+    // Hosts without matchMedia (jsdom, some embedded webviews) still repaint on theme attribute changes.
+    const scheme = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+    scheme?.addEventListener("change", repaint);
     const observer = new MutationObserver(repaint);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
     return () => {
-      scheme.removeEventListener("change", repaint);
+      scheme?.removeEventListener("change", repaint);
       observer.disconnect();
     };
   }, [player]);
@@ -71,7 +72,7 @@ export function Face(props: Props) {
   const appearance = useTrunkAppearance(props.label);
   const contextLook = useTrunkPebbleLook(props.label);
   // Every pebble gets its colour, shape and eyes, falling back to the name's nature look (never the grey placeholder).
-  const pebbleLook = completePebbleLook(props.pebbleLook ?? contextLook, props.label, props.where);
+  const pebbleLook = completePebbleLook(mergePebbleLook(props.pebbleLook, contextLook), props.label, props.where);
   const emoji = useTrunkEmojiFace(props.label);
   const look = useLookPrefs();
   const shown = { ...props, state: shownState(props.state ?? "idle", look), reactive: Boolean(props.reactive) && look.reactsToTouch };

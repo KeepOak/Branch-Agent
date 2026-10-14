@@ -1,0 +1,6 @@
+window:src/glass/coming.test.tsx
+window:src/glass/primitives.test.tsx
+window:src/screens/frame/Frame.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/frame/coming.test.tsx
+window:src/screens/frame/glass48.test.tsx

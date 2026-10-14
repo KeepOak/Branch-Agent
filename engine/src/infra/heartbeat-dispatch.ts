@@ -592,6 +592,11 @@ export async function deliverHeartbeatDispatch(
         ...policy.prepared.inspectedSystemEventsToConsume,
         ...policy.prepared.deferredGenericEvents,
       ].map((event) => event.id);
+      // Ambient app-only polls have no queued completion. Their admitted run
+      // owns the publication identity, using the same generation-fenced writer.
+      if (occurrenceIds.length === 0) {
+        occurrenceIds.push(`heartbeat-poll:${runSessionKey}:${startedAt}`);
+      }
       if (!occurrenceIds.every((id): id is string => typeof id === "string" && id.length > 0)) {
         policy.deliveryReason = "exec completion occurrence identity unavailable";
         return { visibleReplySent: false };
@@ -608,7 +613,7 @@ export async function deliverHeartbeatDispatch(
         signal,
       });
       if (!committed.ok) {
-        policy.deliveryReason = committed.reason;
+        policy.deliveryError = committed.reason;
       }
       // Settlement consumes only captured occurrences, and only after the
       // canonical transcript owner accepts this generation's write or replay.

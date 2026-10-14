@@ -33,6 +33,7 @@ import {
   ToolInputError,
   type AnyAgentTool,
 } from "./common.js";
+import { withSkillNameArgument } from "./skill-workshop-tool-args.js";
 import {
   executeSkillCollectionHistory,
   executeSkillCollectionRestore,
@@ -155,7 +156,7 @@ export function createSkillWorkshopTool(options: SkillWorkshopToolOptions): AnyA
     options.proposalMutationBudget.readSkillHashes = readSkillHashes;
     options.proposalMutationBudget.preparedSkillPatches = preparedSkillPatches;
   }
-  return {
+  return withSkillNameArgument({
     label: "Skill Workshop",
     name: "skill_workshop",
     displaySummary: "Propose or improve a reusable skill",
@@ -564,5 +565,5 @@ export function createSkillWorkshopTool(options: SkillWorkshopToolOptions): AnyA
         throw error;
       }
     },
-  };
+  });
 }

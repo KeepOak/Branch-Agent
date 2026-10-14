@@ -4,7 +4,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, useHeadless, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { CallLine, CodeRow, Kv, Tile, day, lvOf, openPlace, rec, str, useCall, useLive, when, type RecordValue } from "./common";
@@ -13,6 +13,7 @@ import { componentDesktop } from "../../../connect/desktop-component-updates";
 import { DesktopUpdatesPage } from "./desktop-updates";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { KeeperMark } from "../../../brand/KeeperMark";
+import { WhatsNewRow } from "./whats-new-row";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -52,6 +53,36 @@ export function UpdatesPage(props: SettingsPageProps) {
   return componentDesktop(props.engine.gatewayUrl) ? <DesktopUpdatesPage {...props} /> : <GatewayUpdatesPage {...props} />;
 }
 
+/** One card's worth of the page, for the R1 Updates & about page (screens/settings/pages/updates.ts). In the Branch app
+ *  the Updating card is the app's own updater. */
+export function UpdatesBlock(props: SettingsPageProps & { part: "updating" | "devices" | "before" | "reports" | "editors" | "about" | "privacy" | "remove" }) {
+  const { part } = props;
+  if (part === "devices") return <Devices lv={lvOf(props.level)} />;
+  if (part === "before") return <BeforeInstall />;
+  if (part === "reports") return <Reports />;
+  if (part === "editors") return <Editors gatewayUrl={props.engine.gatewayUrl} />;
+  if (part === "about") return <About />;
+  if (part === "privacy") return <Privacy openSettings={props.openSettings} />;
+  if (part === "remove") return <RemoveBranch />;
+  return componentDesktop(props.engine.gatewayUrl) ? <DesktopUpdatesPage {...props} /> : <GatewayUpdating {...props} />;
+}
+
+function GatewayUpdating(props: SettingsPageProps) {
+  const status = useLive<RecordValue>(props.engine, "update.status", {}, UPDATE_EVENTS);
+  const info = useLive<RecordValue>(props.engine, "status", {}, []);
+  const sys = useLive<RecordValue>(props.engine, "system.info", {}, []);
+  const version = useBranchVersion(props.engine.gatewayUrl);
+  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
+  return <>
+    {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
+    {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
+    {status.data ? <Waiting {...props} data={data} version={version} /> : null}
+    {status.data ? <Updating {...props} data={data} /> : null}
+    {lvOf(props.level) >= 1 ? <HelpMore {...props} data={data} version={version} /> : null}
+    {lvOf(props.level) >= 2 ? <Technical data={data} version={version} /> : null}
+  </>;
+}
+
 function GatewayUpdatesPage(props: SettingsPageProps) {
   const status = useLive<RecordValue>(props.engine, "update.status", {}, UPDATE_EVENTS);
   const info = useLive<RecordValue>(props.engine, "status", {}, []);
@@ -62,8 +93,8 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
   const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
   return (
     <Page title={props.title} lede={lede}>
-      {status.error ? <Status tone="bad" title="Branch couldn’t read its update status">{status.error}</Status> : null}
-      {status.loading && !status.data ? <Hint>Checking for updates…</Hint> : null}
+      {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
+      {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
       {status.data ? <Waiting {...props} data={data} version={version} /> : null}
       {status.data ? <Updating {...props} data={data} /> : null}
       <Devices lv={lvOf(props.level)} />
@@ -280,6 +311,7 @@ export function About() {
   return (
     <Sec title="About">
       <KeeperMark />
+      <WhatsNewRow />
       <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off="The list comes with the Branch app on your computer."><Btn sm disabled>Show</Btn></Ctl>
       <small className="about-credit">Based on OpenClaw</small>
     </Sec>
@@ -307,10 +339,11 @@ function Editors({ gatewayUrl }: { gatewayUrl?: string }) {
 }
 
 function RemoveBranch() {
+  const headless = useHeadless();
   const parts: [string, string][] = [["The app", ""], ["Programs it downloaded to run models", ""], ["Models on this computer", ""], ["The Gateway’s Linux system (WSL)", "Its WSL system, disk image and start-up entry."]];
   return (
-    <div className="sec s2-danger" data-sec="Remove Branch">
-      <h2>Remove Branch</h2>
+    <div className={headless ? "s2-danger" : "sec s2-danger"} data-sec="Remove Branch">
+      {headless ? null : <h2>Remove Branch</h2>}
       <div className="rows">
         {parts.map(([t, s]) => <Prow key={t} title={t} sub={s || undefined}><span className="s2-meta">Removed</span></Prow>)}
         <Ctl title="Keep my conversations and settings" sub="Branch finds them again if you install it later." off="The uninstaller asks."><Switch label="Keep my conversations and settings" checked onChange={() => undefined} /></Ctl>
