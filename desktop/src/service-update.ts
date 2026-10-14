@@ -9,6 +9,25 @@ import { join } from "node:path";
 
 export type StandbyResult = "ready" | "exited" | "slow";
 
+/** What the engine is doing when an update wants to restart its service: the activity auto-apply reads. */
+export interface ServiceWork { activeRuns: number; pendingApprovals: number; streaming: boolean }
+
+/** The plain refusal an update gives while Trunk work runs (the owner's Update click shows it as is). */
+export const TRUNKS_STILL_WORKING = "Trunks are still working. Update when they finish.";
+
+/**
+ * Private #1038's idle rule, applied to the service: a restart never cuts off running Trunk work. Idle means no
+ * active run of any kind (main session, helper, queue job or cron run), no pending approval and no streaming reply.
+ */
+export function serviceWorkRefusal(work: ServiceWork): string | undefined {
+  return work.activeRuns > 0 || work.pendingApprovals > 0 || work.streaming ? TRUNKS_STILL_WORKING : undefined;
+}
+
+/** desktop.log names what blocked the update, in the words auto-apply uses ("waiting for 2 active runs, 0 approvals"). */
+export function serviceWorkLine(work: ServiceWork): string {
+  return `waiting for ${work.activeRuns} active runs, ${work.pendingApprovals} approvals${work.streaming ? ", streaming reply" : ""}`;
+}
+
 export interface ServiceUpdateSteps {
   /** The engine folder the service runs now (engine-running.txt) and the one the update selected. */
   runningEngineDir: string;
@@ -18,6 +37,11 @@ export interface ServiceUpdateSteps {
    * again before anything is restarted. "exited": the build cannot start; nothing was touched.
    */
   warmStandby(): Promise<StandbyResult>;
+  /**
+   * The engine's live work, read before the standby and again right before the restart. While any runs, the update
+   * refuses with TRUNKS_STILL_WORKING and makes no service call. Missing only where nothing can run (tests).
+   */
+  workRunning?(): Promise<ServiceWork>;
   /** `branch gateway restart` run from `engineDir`: the service now runs that engine. */
   restartService(engineDir: string): Promise<void>;
   /** The restarted service engine answers /readyz on the gateway port within the readiness budget. */
@@ -56,6 +80,17 @@ export async function updateServiceEngine(steps: ServiceUpdateSteps): Promise<Se
     log("service update: the engine build is unchanged; the engine service was not touched");
     return "window-only";
   }
+  // Read the work first: a busy engine refuses before any standby or service call, and again after the standby
+  // warmed, so work that started meanwhile is never cut off either.
+  const refuseWhileWorking = async (when: string): Promise<void> => {
+    if (!steps.workRunning) return;
+    const work = await steps.workRunning();
+    const refusal = serviceWorkRefusal(work);
+    if (!refusal) return;
+    log(`service update: ${serviceWorkLine(work)} ${when}; the engine service was not touched`);
+    throw new Error(refusal);
+  };
+  await refuseWhileWorking("before the update");
   const standby = await steps.warmStandby();
   if (standby === "exited") {
     await steps.reject();
@@ -63,6 +98,7 @@ export async function updateServiceEngine(steps: ServiceUpdateSteps): Promise<Se
     log("service update: the new engine could not start beside the running one; nothing was restarted");
     return "kept";
   }
+  await refuseWhileWorking("after the standby");
   log(`service update: standby ${standby}; restarting the engine service on ${selected}`);
   let failure: unknown;
   try {

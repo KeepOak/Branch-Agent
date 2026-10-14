@@ -17,7 +17,7 @@ import { serveWindow } from "./static-server";
 import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
-import { sameEngineBuild, updateServiceEngine } from "./service-update";
+import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
 import { canUndoComponentUpdate, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, watchComponentUpdates } from "./component-update";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
@@ -303,7 +303,7 @@ const engineServing = (): boolean => engineRunning() && gateway === readyGateway
  * A staged desktop app is never applied here; it waits for the next natural launch.
  */
 async function swapEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false): Promise<void> {
-  if (serviceEngine) return swapServiceEngineInPlace(label, explicit, held);
+  if (serviceEngine) return swapServiceEngineInPlace(label, explicit, held, handoffOnly);
   // `held`: the caller (Undo) already holds the update lock and keeps it; otherwise the swap takes it.
   if (!gateway || !win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
   // A crash restart always runs first: an update never cancels it, and never starts with no engine serving.
@@ -426,7 +426,10 @@ function serviceEngineDir(): string {
  * and a new engine that is not ready in time is rolled back (the release recorded as failed, the pointers restored,
  * the service restarted on the previous engine). A release that changed only the window never touches the engine.
  */
-async function swapServiceEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle): Promise<void> {
+async function swapServiceEngineInPlace(label: string, explicit: boolean, held?: UpdateLockHandle, handoffOnly = false): Promise<void> {
+  // A service restart is never a seamless handoff: auto-apply's handoff attempt fails here, before the service is
+  // touched, and falls back to its idle drain (Private #1038: an update never cuts off running Trunk work).
+  if (handoffOnly) throw new Error("The engine service has no seamless handoff; the update waits until Trunk work is idle");
   if (!win || (held ? !updateLock.holds(held) : updateLock.held)) throw new Error("The desktop is not ready to update");
   const lock = held ?? updateLock.acquire(`update ${label}`)!;
   admissionWatch?.abort();
@@ -440,6 +443,8 @@ async function swapServiceEngineInPlace(label: string, explicit: boolean, held?:
     const result = await updateServiceEngine({
       runningEngineDir: running,
       selectedEngineDir: selected,
+      // Runs, approvals or a streaming reply refuse the update with no service call (the Update click and the drain).
+      workRunning: serviceWork,
       warmStandby: async () => {
         // The machine-load rule: a second engine only when there is room for it; otherwise the restart with its rollback.
         const { bytes, measure } = availableMemory();
@@ -776,6 +781,8 @@ const autoApply = createAutoApplyUpdate({
   health: () => readUpdateHealth(cfg.dataDir, availableMemory().bytes, totalmem()),
   // Runs in flight mark a machine running Trunk work, whose updates are batched (hourly at most, only when idle).
   activeRuns: async () => {
+    // The service engine has no app channel: its runs come from the same read as `activity` (Private #454 E).
+    if (serviceEngine) return (await engineActivity()).activeRuns;
     if (!gateway) throw new Error("The gateway is not running");
     const engine = await gatewayActivity(gateway);
     return Math.max(engine.activeRuns, engine.totalActive);
@@ -1488,6 +1495,14 @@ async function engineActivity(): Promise<{ activeRuns: number; totalActive: numb
   const window = await probeWindowState();
   const runs = window.workingTrunks ?? (window.streaming ? 1 : 0);
   return { activeRuns: runs, totalActive: runs, pendingReplies: 0 };
+}
+
+/** The service engine's live work, read before any update restarts the service (Private #1038's idle rule). */
+async function serviceWork(): Promise<ServiceWork> {
+  const window = await probeWindowState();
+  const engine = await engineActivity();
+  return { activeRuns: Math.max(engine.activeRuns, engine.totalActive), pendingApprovals: window.pendingApprovals,
+    streaming: engine.pendingReplies > 0 || window.streaming };
 }
 
 /** The engine's live state for the tray, from the engine calls the app already makes. */
