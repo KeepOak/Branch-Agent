@@ -775,6 +775,31 @@ test("a standby that is ready keeps the state when only its update record fails:
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-handoff").map(([, url]) => url), [`ws://127.0.0.1:${standby.port}`]);
   assert.match(await readFile(join(root, "desktop.log"), "utf8"), /its update could not be confirmed .*keeping it/);
 }, false, false, false, true, false, handoffOn()));
+test("a failed update after a kept, unconfirmed one leaves the serving build selected, never the older one (Private #1048)", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { engineDir, stagedEngine } = await stageFixtureUpdate(root, true);
+  const first = (await starts())[0];
+  // The staged build takes over, but its update cannot be confirmed: it serves, and its journal stays pending.
+  await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "fail-confirm"), "1");
+  restart();
+  await eventually(() => swapped(root), 40_000);
+  await eventually(() => !alive(first), 20_000);
+  assert.equal((await readFile(join(root, "engine-current.txt"), "utf8")).trim(), stagedEngine);
+  const serving = (await starts()).at(-1);
+  // The next attempt's standby never binds (it waits on a release that already happened), so it misses its budget and
+  // the serving build takes control back.
+  for (const name of [`released-${first}`, `drained-${first}`]) await rm(join(root, name), { force: true });
+  await writeFile(join(root, "standby-exits-after-release"), "1");
+  sent.length = 0;
+  restart();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 40_000);
+  assert.equal(alive(serving), true, "the serving build was stopped");
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /the old engine took control back/);
+  // Every restart, the next launch and the branch command read these: they name the build that serves, not the older one.
+  assert.equal((await readFile(join(root, "engine-running.txt"), "utf8")).trim(), stagedEngine);
+  assert.notEqual((await readFile(join(root, "engine-current.txt"), "utf8")).trim(), engineDir, "the pointer went back past the serving build");
+  assert.equal((await readFile(join(root, "engine-current.txt"), "utf8")).trim(), stagedEngine);
+}, false, false, false, true, false, handoffOn({ STANDBY_READY_TIMEOUT_MS: 3000 })));
 test("a stepped-down engine still alive past its lease deadline is killed; a second update meanwhile uses the guarded swap", () => fixture(async ({ root, starts, restart }) => {
   const old = (await starts())[0];
   await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "retire-hangs"), "1");
