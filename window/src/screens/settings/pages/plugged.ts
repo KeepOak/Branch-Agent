@@ -12,6 +12,7 @@ import { classicSlot } from "./classic-host";
 import { CUSTOMIZE_PAGE } from "./customize-live";
 import { MEMORY_PAGE } from "./memory-live";
 import { AUTOS_PAGE } from "./autos-live";
+import { CARD_PAGE } from "./card-live";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
@@ -42,6 +43,8 @@ export const R1_PAGES: PageSlots = {
   memory: MEMORY_PAGE,
   // Automations is a row page; where alerts go and the Edit windows are its own (autos-live.tsx).
   autos: AUTOS_PAGE,
+  // Your card is one card the page draws itself (card-live.tsx), on Classic People's own card logic.
+  card: CARD_PAGE,
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,

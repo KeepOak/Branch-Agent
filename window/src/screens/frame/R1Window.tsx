@@ -74,7 +74,6 @@ const KEEP_CLASSIC: ReadonlySet<string> = new Set<string>();
  * Classic page whose sections it has, so it never falls back to Classic General. A row goes when its R1 page lands.
  */
 export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
-  card: "people", // Your card: the person's own card on Classic People
   trunks: "advanced", // Trunks, Trunks' model and Trunks and other agents
   browser: "computer", // Computer & browser: the screen and the browser
   coding: "computer", // Computer & browser: code and commits, repositories
@@ -89,7 +88,8 @@ export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
  */
 export function r1SettingsPage(page: string, pages: PageSlots = R1_PAGES, rows: readonly Row[] = mergeRows(ROWS, pages)): boolean {
   if (KEEP_CLASSIC.has(page)) return false;
-  return Boolean((pages as Record<string, { component?: unknown } | undefined>)[page]?.component) || rows.some(row => row.page === page);
+  const slot = (pages as Record<string, { component?: unknown; cards?: Record<string, unknown> } | undefined>)[page];
+  return Boolean(slot?.component) || Object.keys(slot?.cards ?? {}).length > 0 || rows.some(row => row.page === page);
 }
 
 /**
