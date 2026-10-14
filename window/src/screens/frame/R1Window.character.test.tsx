@@ -23,7 +23,8 @@ const ROWS = [
   { key: "agent:scout:main", agentId: "scout", title: "Scout", isMain: true },
   { key: "agent:scout:topic", agentId: "scout", title: "September report", isMain: false },
 ];
-vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: ROWS }], usePendingApprovals: () => pending.map, useMachine: () => null }));
+vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: ROWS }], usePendingApprovals: () => pending.map, useMachine: () => null, useTrunks: () => ({ list: [], defaultId: null }), useListPeople: () => ({ selfId: null, names: new Map() }) }));
+vi.mock("../../shell/group-drop", async (real) => ({ ...(await real<object>()), useGroupRooms: () => ({ rooms: [], peerOnline: new Map(), reload: async () => undefined }) }));
 vi.mock("../approvals/ProblemBanners", () => ({ useProblemBannerRows: () => undefined }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root, host: HTMLDivElement;
