@@ -409,6 +409,9 @@ function buildCommonServiceEnvironment(
     NODE_USE_SYSTEM_CA: startupTlsEnv.NODE_USE_SYSTEM_CA,
     BRANCH_STATE_DIR: env.BRANCH_STATE_DIR,
     BRANCH_CONFIG_PATH: env.BRANCH_CONFIG_PATH,
+    // The desktop app keeps its engine home apart from the OS home; a service started at sign-in
+    // must resolve the same workspace and state as the app that installed it.
+    BRANCH_HOME: env.BRANCH_HOME,
     ...readServiceProxyEnvironment(env),
     ...(minimalPath ? { PATH: minimalPath } : {}),
   };

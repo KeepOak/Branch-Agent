@@ -4,6 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Conversation, ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
+import { roomRulesItems } from "../../rooms/room-rules";
+import type { ShellRoom } from "../../rooms/useShellRoom";
 import type { Block } from "../../thread/model";
 import { ConversationMenu } from "./ConversationMenu";
 
@@ -22,10 +24,16 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 
-function setup() {
-  const request = vi.fn(async (method: string) => (method === "sessions.branches.list" ? { branches: [] } : {}));
+function setup(room?: ShellRoom["menu"]) {
+  const answers: Record<string, unknown> = {
+    "sessions.branches.list": { branches: [] },
+    "session.members.list": { role: "owner", allowedVisibilities: ["read-only", "suggest", "shared", "draft"], owner: { id: "me", displayName: "Sam" },
+      identities: [{ id: "me", displayName: "Sam" }, { id: "ada", displayName: "Ada Lovelace" }], members: [] },
+    "sessions.describe": { session: { visibility: "read-only" } },
+  };
+  const request = vi.fn(async (method: string) => answers[method] ?? {});
   const reload = vi.fn(async () => undefined);
-  const engine = { request, onEvent: () => () => undefined, features: { methods: ["sessions.patch", "sessions.reset", "sessions.delete", "sessions.branches.list", "chat.history"], events: [] } };
+  const engine = { request, onEvent: () => () => undefined, features: { methods: ["sessions.patch", "sessions.reset", "sessions.delete", "sessions.branches.list", "chat.history", "rooms.rule.set", "session.members.list", "session.visibility.set"], events: [] } };
   const session = { engine, request, reload, getSnapshot: () => ({ sessionKey: row.key }) } as unknown as SaplingSession;
   const list = { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [row] }) } as unknown as ConversationList;
   const onOpen = vi.fn();
@@ -33,7 +41,7 @@ function setup() {
     const anchor = useRef<HTMLButtonElement>(null);
     return <><button ref={anchor} type="button">More</button>
       <ConversationMenu session={session} open anchor={anchor} onClose={() => undefined} sessionKey={row.key} row={row} isDefault={false} list={list} name="Ledger" history={history}
-        work={{ global: "normal", override: null, setOverride: async () => undefined }} onOpen={onOpen} mainKey="agent:ledger:main" onPlace={() => undefined} /></>;
+        work={{ global: "normal", override: null, setOverride: async () => undefined }} onOpen={onOpen} mainKey="agent:ledger:main" onPlace={() => undefined} room={room} /></>;
   }
   return { request, reload, onOpen, Host };
 }
@@ -45,7 +53,7 @@ it("opens the approved nine rows on clear glass, every row on its own pill", asy
   await act(async () => root.render(<Host />));
   const menu = document.querySelector(".g-popover > .r1c-conv")!;
   expect(menu.classList).toContain("g-clear");
-  expect([...menu.querySelectorAll(".g-menu-label")].map((el) => el.firstChild?.textContent)).toEqual(["Pin to top", "Rename", "Snooze", "Archive", "Send to the board", "Export", "View", "Start over…", "Delete…"]);
+  expect([...menu.querySelectorAll(".g-menu-label")].map((el) => el.firstChild?.textContent)).toEqual(["Pin to top", "Rename", "Snooze", "Archive", "Send to the board", "Share…", "Export", "View", "Start over…", "Delete…"]);
 });
 
 it("Start over… opens the Classic dialog as clear glass and resets the conversation through sessions.reset", async () => {
@@ -80,6 +88,21 @@ it("View › Map reads the conversation's paths through sessions.branches.list",
   expect(request).toHaveBeenCalledWith("sessions.branches.list", { sessionKey: row.key, agentId: "ledger" });
 });
 
+it("Share… opens the Classic Share dialog as clear glass, and choosing a level sets it through session.visibility.set", async () => {
+  const { Host, request } = setup();
+  await act(async () => root.render(<Host />));
+  await click(rowNamed("Share…"));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const dialog = document.querySelector<HTMLElement>('[data-testid="share-dialog"]')!;
+  expect(dialog.classList).toContain("g-clear");
+  expect(request).toHaveBeenCalledWith("session.members.list", { sessionKey: row.key, agentId: "ledger" });
+  expect(dialog.textContent).toContain("Ada Lovelace");
+  expect(dialog.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe("May read it");
+  expect([...dialog.querySelectorAll(".hint")].every((el) => el.classList.contains("g-label"))).toBe(true);
+  await click([...dialog.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find((b) => b.textContent === "May write in it")!);
+  expect(request).toHaveBeenCalledWith("session.visibility.set", { sessionKey: row.key, agentId: "ledger", visibility: "shared" });
+});
+
 it("Pin to top pins through sessions.patch, and Delete… asks, deletes and returns to the default conversation", async () => {
   const { Host, request, onOpen } = setup();
   await act(async () => root.render(<Host />));
@@ -93,4 +116,16 @@ it("Pin to top pins through sessions.patch, and Delete… asks, deletes and retu
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   expect(request).toHaveBeenCalledWith("sessions.delete", { key: row.key, agentId: "ledger", deleteTranscript: true });
   expect(onOpen).toHaveBeenCalledWith("agent:ledger:main");
+});
+
+it("in a group chat, Group rules › Who answers re-hosts the Classic rule rows, and choosing the lead runs the room's choice", async () => {
+  const choose = vi.fn();
+  const { Host } = setup({ ruleWords: "A lead Trunk decides", rules: () => roomRulesItems({ chatApp: false, branchGroup: true, rule: null, choose }) });
+  await act(async () => root.render(<Host />));
+  expect(rowNamed("Group rules").textContent).toContain("A lead Trunk decides");
+  await click(rowNamed("Group rules"));
+  expect([...document.querySelectorAll(".g-menu .g-menu-label")].map((el) => el.firstChild?.textContent)).toEqual(["Group rules", "A lead Trunk decides", "Everyone, every time", "Only those you @mention"]);
+  expect(rowNamed("Everyone, every time").getAttribute("aria-disabled")).toBe("true");
+  await click(rowNamed("A lead Trunk decides"));
+  expect(choose).toHaveBeenCalledWith("lead");
 });

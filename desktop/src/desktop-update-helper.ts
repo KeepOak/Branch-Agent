@@ -17,7 +17,7 @@ export interface HelperPlan {
   relaunch: { command: string; fallback?: string; args: string[] };
   confirmTimeoutMs: number;
 }
-interface Journal { version: string; sha256: string; kind: "asar" | "runtime"; staged: string; target: string; phase: string; heldUntil?: number }
+interface Journal { version: string; sha256: string; kind: "asar" | "runtime" | "appimage"; staged: string; target: string; phase: string; heldUntil?: number }
 /** After a swap that found the app in use, starts leave the update staged this long (Restart retries at once). */
 const RETRY_AFTER_MS = 60 * 60 * 1000;
 
@@ -99,7 +99,8 @@ async function restoreAsarNames(folder: string): Promise<void> {
 /** Old copy aside, new copy in. On failure the old copy is put back and the update stays staged. */
 async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (line: string) => void): Promise<boolean> {
   await rm(previous, { recursive: true, force: true });
-  if (journal.kind === "runtime") await restoreAsarNames(journal.staged);
+  // A staged copy that has gone missing fails at the move below, which puts the old copy back.
+  if (journal.kind === "runtime" && existsSync(journal.staged)) await restoreAsarNames(journal.staged);
   await writeJournal(plan.journal, { ...journal, phase: "applying" });
   try { await move(journal.target, previous); } catch (error) {
     await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
@@ -125,26 +126,31 @@ async function rollback(plan: HelperPlan, journal: Journal, previous: string, pi
   await rm(plan.journal, { force: true });
 }
 
-// The desktop's log cap (src/log-rotation.ts), repeated here because this file runs alone: the live file rotates
-// when the next line would pass 100 MB, and five numbered archives are kept as desktop.1.log to desktop.5.log.
-const LOG_MAX_BYTES = 100 * 1024 * 1024;
-const LOG_ROTATED_FILES = 5;
+// Branch's desktop log limits (BRANCH_LOG_LIMITS in src/log-rotation.ts), repeated here because this file runs alone:
+// the live file rotates when the next line would pass 20 MB, and two numbered archives are kept as desktop.1.log and desktop.2.log.
+const LOG_MAX_BYTES = 20 * 1024 * 1024;
+const LOG_ROTATED_FILES = 2;
 function rotatedLogPath(file: string, index: number): string {
   const ext = extname(file);
   return `${file.slice(0, file.length - ext.length)}.${index}${ext}`;
 }
+/** Never throws: a full disk drops the line, and the update swap carries on. */
 function appendCappedLog(file: string, text: string): void {
-  const size = existsSync(file) ? statSync(file).size : 0;
-  if (size > 0 && size + Buffer.byteLength(text) > LOG_MAX_BYTES) {
-    try {
-      rmSync(rotatedLogPath(file, LOG_ROTATED_FILES), { force: true });
-      for (let index = LOG_ROTATED_FILES - 1; index >= 1; index -= 1) {
-        if (existsSync(rotatedLogPath(file, index))) renameSync(rotatedLogPath(file, index), rotatedLogPath(file, index + 1));
-      }
-      renameSync(file, rotatedLogPath(file, 1));
-    } catch { /* keep appending: a log over its cap beats lost lines */ }
+  try {
+    const size = existsSync(file) ? statSync(file).size : 0;
+    if (size > 0 && size + Buffer.byteLength(text) > LOG_MAX_BYTES) {
+      try {
+        rmSync(rotatedLogPath(file, LOG_ROTATED_FILES), { force: true });
+        for (let index = LOG_ROTATED_FILES - 1; index >= 1; index -= 1) {
+          if (existsSync(rotatedLogPath(file, index))) renameSync(rotatedLogPath(file, index), rotatedLogPath(file, index + 1));
+        }
+        renameSync(file, rotatedLogPath(file, 1));
+      } catch { /* keep appending: a log over its cap beats lost lines */ }
+    }
+    appendFileSync(file, text);
+  } catch {
+    // This line is dropped; the next write tries again.
   }
-  appendFileSync(file, text);
 }
 
 export async function runHelper(plan: HelperPlan): Promise<"applied" | "kept" | "rolled-back" | "none"> {

@@ -2,6 +2,10 @@
 .r1-frame[data-wide="false"] { grid-template-columns: 68px minmax(0, 1fr); }
 .r1-frame[data-topics="true"] { grid-template-columns: 292px 300px minmax(0, 1fr); }
 .r1-frame[data-topics="true"][data-wide="false"] { grid-template-columns: 68px 300px minmax(0, 1fr); }
+.r1-frame[data-aside="true"] { grid-template-columns: 292px minmax(0, 1fr) 316px; }
+.r1-frame[data-aside="true"][data-wide="false"] { grid-template-columns: 68px minmax(0, 1fr) 316px; }
+.r1-frame[data-aside="true"][data-topics="true"] { grid-template-columns: 292px 300px minmax(0, 1fr) 316px; }
+.r1-frame[data-aside="true"][data-topics="true"][data-wide="false"] { grid-template-columns: 68px 300px minmax(0, 1fr) 316px; }
 .r1-sidebar { min-width: 0; min-height: 0; height: 100%; padding: 8px 10px 12px; display: flex; flex-direction: column; background: color-mix(in srgb, var(--side) 80%, transparent); backdrop-filter: var(--gf-blur); -webkit-backdrop-filter: var(--gf-blur); }
 .r1-side-top { height: 44px; flex: none; }
 .r1-side-top button, .r1-drawer-button { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border-radius: var(--r-pill); }
@@ -68,3 +72,49 @@
 @container (max-width: 360px) { .r1-header-right .g-capsule button:not(:last-child) { display: none; } .g-pill[data-tight] { padding-inline: 4px; } }
 
 .r1-sidebar-footer > button { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--r-pill); }
+
+/* Classic thread pieces over the composer (ThreadExtras): the done cheer and "Where it works". Clear glass (README item 48):
+   the cheer is one frosted pill that never takes clicks; the chips sit on their own pills. */
+.r1-composer-slot { position: relative; }
+.r1-thread-extras { max-width: 760px; margin-inline: auto; }
+.r1-cheer .cheer { position: absolute; left: 50%; bottom: calc(100% + 8px); z-index: 110; display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px;
+  border-radius: 18px; background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge);
+  color: var(--ink); pointer-events: none; transform: translateX(-50%); animation: r1-cheer-in 450ms cubic-bezier(.3, 1.4, .5, 1); }
+.r1-cheer .cheer.leaving { opacity: 0; transform: translate(-50%, 12px); transition: opacity 450ms ease-in, transform 450ms ease-in; }
+@keyframes r1-cheer-in { from { opacity: 0; transform: translate(-50%, 16px); } }
+.r1-cheer .cheer-text { display: flex; flex-direction: column; }
+.r1-cheer .cheer-text b { font-size: 14px; }
+.r1-cheer .cheer-text small { font-size: 12.5px; color: var(--gp-ink-2); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .r1-cheer .cheer { animation: none; } }
+.r1-where { padding: 0 4px 8px; }
+.r1-where .where-err { width: fit-content; padding: 2px 9px; border-radius: var(--r-pill); background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); }
+
+/* The topics (Classic TopicRail, re-hosted): clear glass like every surface but the sidebar (README item 48). The column keeps the
+   rail's own box but drops its fill and divider; each control sits on its pill (.g-clear), and the header words sit on pills too. */
+.r1-topics { position: relative; }
+.r1-topic-host .topicsT5 { background: transparent; border: 0; }
+.r1-topics .r1-topic-host .topicsT5:not(.lay-tabs) { top: var(--hdr); }
+.r1-topic-host .tpRowT5 { border-radius: var(--r-menu-row); }
+.r1-topic-host .tpHeadT5 > :is(b, small), .r1-topic-host .tpErrorT5, .r1-topic-host .emoPickT5 p {
+  width: fit-content; padding: 2px 9px; border-radius: var(--r-pill); background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
+  box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }
+.r1-content > .r1-topic-host { max-width: 760px; margin: 0 auto 8px; }
+.r1-topic-host .tpRowT5 { margin: 2px 6px; background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); }
+.r1-topic-host .tpRowT5.curT5 { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
+/* Why two #g48 ids (glass/glass.css explains the ladder): glass.css's pill rule for controls inside a clear surface
+   (.g-clear :is(button, …):not([data-solid], [role="switch"], #g48)) carries one id plus an attribute list; the row's own
+   buttons must stay bare so the row's pill is the only one, so this rule carries two ids and wins by specificity. */
+.r1-topic-host .tpRowT5 :is(button, .tpGoT5):not(#g48#g48) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.r1-topic-host .tpResT5 { background: transparent; border: 0; }
+/* The rail's Classic menus and emoji picker: clear glass, each row on its pill, no rules between groups. */
+.r1-topic-host .pop { position: fixed; z-index: 100; display: flex; flex-direction: column; gap: 4px; min-width: 220px; max-width: min(340px, calc(100vw - 16px)); max-height: min(460px, calc(100vh - 16px)); overflow-y: auto; padding: 6px; }
+.r1-topic-host .mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 6px 10px; border: 0; border-radius: var(--r-menu-row); font-size: var(--fs-13-5); text-align: left; color: var(--ink); }
+.r1-topic-host .mi > span:first-child, .r1-topic-host .mi > .mi-label { flex: 1; }
+.r1-topic-host .msep { display: none; }
+.r1-topic-host .ph { width: fit-content; padding: 2px 9px; border-radius: var(--r-pill); background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); font-size: var(--fs-11-5); color: var(--ink); }
+/* Below 900 px the threads fold into one chip above the chat (owner item 46); it opens the rail as a list. */
+.r1-topic-fold { max-width: 760px; margin: 0 auto 8px; display: grid; justify-items: start; gap: 6px; }
+.r1-topic-fold > button { padding: 4px 12px; border: 0; border-radius: var(--r-pill); font: 500 var(--fs-13-5) var(--sans); }
+.r1-topic-fold .topicsT5:not(.lay-tabs), .r1-content > .r1-topic-host .topicsT5:not(.lay-tabs) { position: static; width: 100%; }
+.r1-topic-fold > .r1-topic-host { width: 100%; }
+.r1-topic-host .dlg.g-clear .fld > span { display: inline-block; width: fit-content; padding: 2px 9px; border-radius: var(--r-pill); background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); }

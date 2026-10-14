@@ -5,8 +5,7 @@ import { mboxParser } from "mbox-parser";
 import slugifyPackage from "slugify";
 const slugify = slugifyPackage.default;
 
-// Port of Mintplex-Labs/anything-llm@4bff9da55539978a2a144d4cbda2cdfd87153597
-// collector/processSingleFile/convert/asMbox.js. Storage and upload cleanup stay
+// Storage and upload cleanup stay
 // with the caller: parsing a supplied buffer never deletes the owner's source.
 export type MboxDocument = {
   id: string;

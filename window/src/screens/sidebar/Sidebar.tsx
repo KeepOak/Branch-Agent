@@ -38,7 +38,7 @@ import { SearchResultsView, useSearch } from "../../shell/Search";
 import { ShortcutsDialog } from "../../shell/ShortcutsDialog";
 import { useSelection } from "../../shell/sidebar-state";
 import { KeepLastDialog, tidy } from "../../shell/StatusLayer";
-import { readLevel } from "../../places-nav/SettingsFrame";
+import { usePinOrder } from "../../shell/use-pin-order";
 import { batchEntries } from "./batch";
 import { useUpdate } from "../../shell/use-status";
 import { readThemeChoice, setThemeChoice, type ThemeChoice } from "../../theme/theme";
@@ -46,6 +46,7 @@ import { FIND_EVENT } from "../../thread/FindBar";
 import { filterFacts, filterSideRows, R1FilterSort, readR1Prefs, saveR1Prefs, sortSections } from "./filter";
 import { buildSections, contactRows, personRows, type Folder, type Person, type SideRow } from "./model";
 import { FolderChip, icons, PinnedGrid, SectionHead, SideRowView, TopCapsules, type RowHandlers } from "./parts";
+import { orderPins, pinKey } from "./pin-order";
 import { NEED, rowMenu } from "./row-menu";
 import { QUICK_ASK_EVENT, QUICK_ASK_NEED } from "../quickask/QuickAskHost";
 import "./sidebar.css";
@@ -63,6 +64,8 @@ export type SidebarProps = {
   onOpen: (key: string) => void;
   onSettings: (page: string) => void;
   onPlace: (place: PlaceId) => void;
+  /** Guide › Take the full tour (ONBOARDING-PROPOSAL): the window runs the walkthrough. Without it the row stays greyed. */
+  onTour?: () => void;
   /** Why the conversation list couldn't load (useConversations().error); shown at the top of the list. */
   error?: string | null;
 };
@@ -119,6 +122,7 @@ export function Sidebar(p: SidebarProps) {
   const rooms = useGroupRooms(session, ready, true);
   const people = usePeople(session, ready);
   const { projects } = useProjects(session, ready);
+  const pinOrder = usePinOrder(session, ready);
   const person = usePersonName(session, ready);
   const update = useUpdate(session, ready, useBranchVersion(session.gatewayUrl));
   const actions = useMemo(() => conversationActions(request, p.list, () => p.currentKey), [request, p.list, p.currentKey]);
@@ -243,8 +247,9 @@ export function Sidebar(p: SidebarProps) {
     { label: "Get the apps", icon: menuIcon("monitor"), local: true, onSelect: () => setDialog({ kind: "apps" }) },
     { label: "Guide", icon: menuIcon("info"), submenu: guideMenuItems(() => undefined, url => { window.open(url, "_blank", "noopener"); }).map(item => {
       const entry = item as { label: string; hint?: string; run: () => void };
-      // The walkthrough is the window's own tour (HANDOFF R1-07, no engine call): local, greyed until R1-07 brings it.
-      return entry.label === "Walkthrough" ? { label: entry.label, local: true, off: "The walkthrough returns with the new setup." } : { label: entry.label, hint: entry.hint, local: true, onSelect: entry.run };
+      // The walkthrough is the window's own tour (HANDOFF R1-07, no engine call): local, Guide › Take the full tour.
+      if (entry.label === "Walkthrough") return p.onTour ? { label: "Take the full tour", local: true, onSelect: p.onTour } : { label: entry.label, local: true, off: "The walkthrough returns with the new setup." };
+      return { label: entry.label, hint: entry.hint, local: true, onSelect: entry.run };
     }) },
     { label: "About Branch", icon: menuIcon("info"), local: true, onSelect: () => p.onSettings("updates") },
     { label: "Lock Branch", icon: menuIcon("lock"), gap: true, local: true, onSelect: () => p.onSettings("permissions") },
@@ -282,7 +287,8 @@ export function Sidebar(p: SidebarProps) {
       {p.error ? <p className="r1sb-error" role="alert">{p.error}</p> : null}
       {results}
       {searching ? null : <>
-      {sections.pinned.length ? <section className="r1sb-sec" data-section="pinned"><SectionHead label="Pinned" /><PinnedGrid rows={sections.pinned} currentKey={p.currentKey} handlers={handlers} /></section> : null}
+      {sections.pinned.length ? <section className="r1sb-sec" data-section="pinned"><SectionHead label="Pinned" /><PinnedGrid rows={orderPins(sections.pinned, pinOrder.order)} currentKey={p.currentKey} handlers={handlers}
+        onReorder={drop => void pinOrder.move(drop, orderPins(sections.pinned, pinOrder.order).filter(row => !row.isDefault).map(pinKey))} /></section> : null}
       {section("Trunks", sections.trunks, sections.trunks.some(row => row.unread) ? <Coming need={NEED.markRead}><button type="button" className="r1sb-mar" onClick={() => markAllRead(sections.trunks)}>Mark all read</button></Coming> : null)}
       {section("People", sections.people, <button type="button" className="r1sb-head-go" data-local="" aria-label="People settings" title="People" onClick={() => p.onSettings("people")}>{icons.chevron}</button>)}
       {section("Groups", sections.groups)}
