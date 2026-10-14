@@ -1,3 +1,4 @@
+import { useOverlayFocus } from "../overlays/useOverlayFocus";
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserView, NO_MARKUP, type BrowserPhase } from "./BrowserView";
@@ -206,7 +207,10 @@ export type PipTarget = { kind: "computer" | "browser"; id: string; name: string
 
 /** A conversation's computer and browser, full size beside the one main conversation and composer. */
 export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], running = false, card = null, onMode, onClose, onChooseComputer, onPip, initialComputer = null, initialControl = false }: Props) {
+  const panel = useRef<HTMLElement>(null);
   const [control, setControl] = useState(initialControl);
+  // While driving, Escape belongs to the remote machine (desktop-client forwards it through noVNC).
+  useOverlayFocus(panel, control ? undefined : onClose);
   const [retry, setRetry] = useState(0);
   const [tick, setTick] = useState(0);
   const [picked, setPicked] = useState<string | "grid" | null>(initialComputer);
@@ -281,7 +285,7 @@ export function ComputerStage({ engine, gatewayUrl, name, mode, blocks = [], run
     });
   const title = `${name}’s ${browser ? "browser" : "computer"}`;
   return (
-    <section className="stage7 computer-stage" aria-label={title}>
+    <section ref={panel} tabIndex={-1} className="stage7 computer-stage" aria-label={title}>
       <div className="st7-top">
         <button type="button" className="st7-back" onClick={onClose}>
           <SIcon name="back" small />

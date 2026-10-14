@@ -1,5 +1,6 @@
-import { useState, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { Face } from "../face/Face";
+import { useOverlayFocus } from "../overlays/useOverlayFocus";
 import type { TopicListItem } from "./contact-topics";
 import "./v23-layout.css";
 
@@ -25,6 +26,24 @@ export function shouldShowThreadColumn(p: {
   return p.chat && !p.focus && !p.stage && !p.draft && Boolean(p.generalKey) && !p.topicRow;
 }
 
+/** "How threads show": Escape or a click outside closes it and focus returns to its button. */
+function ThreadsMenu({ visible, onPick, onClose }: { visible: boolean; onPick: (visible: boolean) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const trigger = useOverlayFocus(ref, onClose);
+  const closeRef = useRef(onClose);
+  useLayoutEffect(() => { closeRef.current = onClose; });
+  useEffect(() => {
+    // The opening button toggles the menu on its own click.
+    const away = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node) && !trigger?.contains(e.target as Node)) closeRef.current(); };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [trigger]);
+  return <div ref={ref} className="v23-threads-menu" role="menu" aria-label="Threads show as" tabIndex={-1}>
+    <button type="button" role="menuitemradio" aria-checked={visible} onClick={() => onPick(true)}>Column</button>
+    <button type="button" role="menuitemradio" aria-checked={!visible} onClick={() => onPick(false)}>Hidden</button>
+  </div>;
+}
+
 /** The preview's per-contact threads, separate from the Control tower. */
 export function ThreadColumn({ name, generalKey, openKey, items, onOpen, onMenu }: Props) {
   const [expanded, setExpanded] = useState(true);
@@ -35,10 +54,7 @@ export function ThreadColumn({ name, generalKey, openKey, items, onOpen, onMenu 
     <div className="v23-threads-head">
       <button type="button" className="v23-layout-button" aria-label={`How threads show: ${visible ? "Column" : "Hidden"}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>◫</button>
       <strong>{name}</strong><small>{threads.length + 1} {threads.length ? "conversations" : "conversation"}</small>
-      {menu ? <div className="v23-threads-menu" role="menu" aria-label="Threads show as">
-        <button type="button" role="menuitemradio" aria-checked={visible} onClick={() => { setVisible(true); setMenu(false); }}>Column</button>
-        <button type="button" role="menuitemradio" aria-checked={!visible} onClick={() => { setVisible(false); setMenu(false); }}>Hidden</button>
-      </div> : null}
+      {menu ? <ThreadsMenu visible={visible} onPick={(next) => { setVisible(next); setMenu(false); }} onClose={() => setMenu(false)} /> : null}
     </div>
     {visible ? <>
       <button type="button" className={`v23-thread-row${openKey === generalKey ? " current" : ""}`} aria-current={openKey === generalKey} onClick={() => onOpen(generalKey)}>

@@ -1,6 +1,7 @@
 // The picture viewer (DESIGN-SPEC §4.2.6 Parity adds "Picture viewer", "Picture viewer keys"): a dark scrim,
 // the picture centred, and a toolbar. + and − zoom, 0 resets, Left and Right move, Escape closes.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useOverlayFocus } from "../overlays/useOverlayFocus";
 import { useThread } from "./context";
 import { Icon, ICONS } from "./icons";
 import type { Attachment } from "./model";
@@ -31,11 +32,14 @@ export function PictureViewer({ items, start, onClose }: { items: Attachment[]; 
   const [at, setAt] = useState(start);
   const [zoom, setZoom] = useState(1);
   const item = items[at];
+  const panel = useRef<HTMLDivElement>(null);
+  // Escape, focus in, modal Tab and focus back to the opened picture come from the shared overlay lifecycle.
+  useOverlayFocus(panel, onClose, { modal: true });
   const go = (d: number) => {
     setAt((i) => (i + d + items.length) % items.length);
     setZoom(1);
   };
-  useKeys({ Escape: onClose, ArrowLeft: () => go(-1), ArrowRight: () => go(1), "+": () => setZoom((z) => z * STEP), "=": () => setZoom((z) => z * STEP), "-": () => setZoom((z) => z / STEP), "0": () => setZoom(1) });
+  useKeys({ ArrowLeft: () => go(-1), ArrowRight: () => go(1), "+": () => setZoom((z) => z * STEP), "=": () => setZoom((z) => z * STEP), "-": () => setZoom((z) => z / STEP), "0": () => setZoom(1) });
   if (!item?.src) return null;
   const copy = () =>
     copyPicture(item.src ?? "").then(
@@ -48,7 +52,7 @@ export function PictureViewer({ items, start, onClose }: { items: Attachment[]; 
     </button>
   );
   return (
-    <div className="viewer" role="dialog" aria-modal="true" aria-label={item.name} data-testid="picture-viewer">
+    <div ref={panel} className="viewer" role="dialog" aria-modal="true" aria-label={item.name} data-testid="picture-viewer" tabIndex={-1}>
       <div className="viewer-bar">
         {items.length > 1 ? tool("Previous picture", "M15 6l-6 6 6 6", () => go(-1)) : null}
         {items.length > 1 ? <span className="viewer-count">{`${at + 1} / ${items.length}`}</span> : null}

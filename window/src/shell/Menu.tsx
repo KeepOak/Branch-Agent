@@ -1,3 +1,4 @@
+import { useOverlayFocus } from "../overlays/useOverlayFocus";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { shownWhy } from "./shown-why";
 import "./menu.css";
@@ -42,12 +43,10 @@ function moveFocus(el: HTMLElement | null, step: number) {
 
 export function Menu({ at, items, onClose, label, testid, upward }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const trigger = useOverlayFocus(ref, onClose);
   const [sub, setSub] = useState<{ index: number; at: MenuAnchor } | null>(null);
   const pos = useFitInWindow(ref, at, upward);
   useEffect(() => {
-    const back = document.activeElement as HTMLElement | null;
-    const trigger = back && back !== document.body ? back : null;
-    focusables(ref.current)[0]?.focus();
     const away = (e: PointerEvent) => {
       // The button that opened the menu toggles it on its own click (§5.4 behaviour 1).
       if (!(e.target as Element).closest?.(".pop") && !trigger?.contains(e.target as Node)) {
@@ -57,13 +56,8 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
     document.addEventListener("pointerdown", away, true);
     return () => {
       document.removeEventListener("pointerdown", away, true);
-      // Focus returns to the opener unless what the menu ran already moved it (for example a rename field).
-      const now = document.activeElement;
-      if (!now || now === document.body || ref.current?.contains(now)) {
-        back?.focus?.();
-      }
     };
-  }, [onClose]);
+  }, [onClose, trigger]);
 
   const openSub = (index: number, button: HTMLElement) => {
     const r = button.getBoundingClientRect();
@@ -77,7 +71,7 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
       e.preventDefault();
       const list = focusables(ref.current);
       (e.key === "Home" ? list[0] : list.at(-1))?.focus();
-    } else if (e.key === "Escape" || e.key === "ArrowLeft") {
+    } else if (e.key === "ArrowLeft") {
       e.preventDefault();
       e.stopPropagation();
       onClose();
@@ -92,7 +86,7 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
   };
   return (
     <>
-      <div ref={ref} className="pop menu in17" role="menu" aria-label={label} data-testid={testid} style={{ left: pos.x, top: pos.y }} onKeyDown={onKey}>
+      <div ref={ref} className="pop menu in17" role="menu" tabIndex={-1} aria-label={label} data-testid={testid} style={{ left: pos.x, top: pos.y }} onKeyDown={onKey}>
         {items.map((it, i) => renderItem(it, i, onClose, openSub, sub?.index === i))}
       </div>
       {sub ? <SubMenu parent={items[sub.index]} at={sub.at} onClose={() => setSub(null)} onDone={onClose} /> : null}

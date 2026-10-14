@@ -1,3 +1,4 @@
+import { useOverlayFocus } from "../overlays/useOverlayFocus";
 // A glass menu anchored above its composer button (DESIGN-SPEC §5.4): Escape and a click outside close it,
 // the button toggles it, and it animates in only on a fresh open (§6.6 rule 3).
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -13,6 +14,7 @@ type Props = {
 
 export function Popover({ anchor, onClose, label, className, align = "left", children }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  useOverlayFocus(ref, onClose, { trigger: anchor.current, initial: "input:not([type=hidden])" });
   const [pos, setPos] = useState<{ left?: number; right?: number; top?: number }>({});
 
   useLayoutEffect(() => {
@@ -51,37 +53,19 @@ export function Popover({ anchor, onClose, label, className, align = "left", chi
     }
   }
 
-  // Focus moves into the menu when it opens (§5.4).
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || el.contains(document.activeElement)) return;
-    // The preview's openPop focuses the menu's search field, else its first item.
-    const target = el.querySelector<HTMLElement>("input:not([type=hidden])") ?? el.querySelector<HTMLElement>("[data-mi]:not([disabled]), button:not([disabled])");
-    target?.focus();
-  }, []);
-
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       const t = e.target as Node;
       if (!ref.current?.contains(t) && !anchor.current?.contains(t)) onClose();
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        anchor.current?.focus();
-      }
-    };
     document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("keydown", onKey);
     };
   }, [anchor, onClose]);
 
   return (
-    <div ref={ref} className={`c-pop in17 ${className ?? ""}`} role="dialog" aria-label={label} style={pos} onKeyDown={(event) => {
+    <div ref={ref} className={`c-pop in17 ${className ?? ""}`} role="dialog" tabIndex={-1} aria-label={label} style={pos} onKeyDown={(event) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
       if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
       const buttons = [...ref.current?.querySelectorAll<HTMLButtonElement>("button:not([disabled])") ?? []].filter((button) => button.offsetParent !== null || button.getClientRects().length > 0);

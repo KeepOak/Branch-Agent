@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ComputerStage, SLOW_CONNECT_MS } from "./ComputerStage";
 import { StageConversation } from "./StageConversation";
@@ -64,6 +64,39 @@ const environment = {
 };
 const observed = { wsPath: "/desktop/one", control: false, transport: "rfb", expiresAtMs: 1000 };
 describe("conversation computer lifecycle", () => {
+  it("closes the full-size computer with Escape and restores its trigger", async () => {
+    const trigger = document.body.appendChild(document.createElement("button"));
+    trigger.textContent = "Computer, full size";
+    trigger.focus();
+    container = document.body.appendChild(document.createElement("div"));
+    root = createRoot(container);
+    const owner = engine(vi.fn(async () => ({ session: { key: "agent:scout:one" } })) as WindowEngine["request"]);
+    function Example() {
+      const [open, setOpen] = useState(true);
+      return open ? <ComputerStage engine={owner} gatewayUrl="ws://gateway.invalid" name="Scout" mode="Computer" onMode={() => {}} onClose={() => setOpen(false)} onChooseComputer={() => {}} /> : null;
+    }
+    await act(async () => root!.render(<Example />));
+    expect(container.querySelector(".computer-stage")?.contains(document.activeElement)).toBe(true);
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(container.querySelector(".computer-stage")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+  it("leaves Escape to the remote machine while driving", async () => {
+    container = document.body.appendChild(document.createElement("div"));
+    root = createRoot(container);
+    const onClose = vi.fn();
+    const remote = vi.fn();
+    window.addEventListener("keydown", remote);
+    const owner = engine(vi.fn(async () => ({ session: { key: "agent:scout:one" } })) as WindowEngine["request"]);
+    await act(async () => root!.render(<ComputerStage engine={owner} gatewayUrl="ws://gateway.invalid" name="Scout" mode="Computer" initialControl onMode={() => {}} onClose={onClose} onChooseComputer={() => {}} />));
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    await act(async () => container.querySelector(".computer-stage")!.dispatchEvent(escape));
+    window.removeEventListener("keydown", remote);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(escape.defaultPrevented).toBe(false);
+    expect(remote).toHaveBeenCalledOnce();
+    expect(container.querySelector(".computer-stage")).not.toBeNull();
+  });
   it("keeps the main composer in the stage column at 900 px", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 900 });
     container = document.createElement("div");

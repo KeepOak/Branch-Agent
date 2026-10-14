@@ -1,3 +1,4 @@
+import { useOverlayFocus } from "../overlays/useOverlayFocus";
 // "Take a photo" (DESIGN-SPEC §4.3.2 Parity adds, row composer-take-photo; OpenClaw
 // ui/src/pages/chat/components/chat-camera-capture.ts): a live preview, Capture, then Retake or Use photo.
 // The camera starts when the dialog opens and stops when you capture or close it. The photo joins the draft.
@@ -16,6 +17,8 @@ function cameraError(error: unknown): string {
 }
 
 export function PhotoDialog({ onClose, onUse, onUpload }: Props) {
+  const panel = useRef<HTMLDivElement>(null);
+  useOverlayFocus(panel, onClose, { modal: true });
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [photo, setPhoto] = useState<Blob | null>(null);
@@ -79,7 +82,7 @@ export function PhotoDialog({ onClose, onUse, onUpload }: Props) {
 
   return (
     <div className="c-scrim" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="c-dlg" role="dialog" aria-modal="true" aria-label="Take a photo" onKeyDown={(e) => e.key === "Escape" && close()}>
+      <div ref={panel} tabIndex={-1} className="c-dlg" role="dialog" aria-modal="true" aria-label="Take a photo">
         <div className="c-dlg-h">
           <h2>Take a photo</h2>
           <button type="button" className="c-x lg" aria-label="Close" onClick={close}><Icon name="x" /></button>
@@ -107,6 +110,8 @@ export function PhotoDialog({ onClose, onUse, onUpload }: Props) {
 /** "Make a picture" (+ menu): describe it, and the words go to the Trunk as "Make a picture: <words>", which it
  *  answers with its picture tool when one is set up (the preview's img-go sends the same words). */
 export function PictureDialog({ onClose, onMake }: { onClose: () => void; onMake: (words: string) => void }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useOverlayFocus(panel, onClose, { modal: true });
   const [words, setWords] = useState("");
   const make = () => {
     const q = words.trim();
@@ -116,7 +121,7 @@ export function PictureDialog({ onClose, onMake }: { onClose: () => void; onMake
   };
   return (
     <div className="c-scrim" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="c-dlg" role="dialog" aria-modal="true" aria-label="Make a picture" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+      <div ref={panel} tabIndex={-1} className="c-dlg" role="dialog" aria-modal="true" aria-label="Make a picture">
         <div className="c-dlg-h">
           <h2>Make a picture</h2>
           <button type="button" className="c-x lg" aria-label="Close" onClick={onClose}><Icon name="x" /></button>

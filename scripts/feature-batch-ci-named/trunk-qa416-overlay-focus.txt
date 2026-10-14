@@ -1,0 +1,2 @@
+window:src/overlays/useOverlayFocus.test.tsx
+window:src/stage/ComputerStage.test.tsx
