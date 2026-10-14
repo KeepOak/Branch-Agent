@@ -11,15 +11,37 @@ export type ComponentUpdates = {
   status(): Promise<ComponentUpdateStatus>;
   check(): Promise<ComponentUpdateStatus>;
   stage(): Promise<ComponentUpdateStatus>;
+  /** Older desktop builds have no Install now; the page hides the button without it. */
+  install?: () => void;
+  /** Whether the last update can still be undone, with its version line; older desktop builds lack it and offer no Undo here. */
+  undoAvailability?: () => Promise<UndoAvailability>;
+  undo?: () => void;
 };
+/** From the desktop: `until` is the end of the previous engine's probation (confirmation + 3 days, Private #983);
+ *  `version` and `installedAt` are the installed release and when it was confirmed, for the version line. */
+export type UndoAvailability = { available: boolean; until: number | null; removed: boolean; version?: string | null; installedAt?: number | null };
+/** Undo is offered only while it can still run: never past the probation's end or after the previous engine is pruned. */
+export function undoOpen(value: UndoAvailability | null, now = Date.now()): boolean {
+  return Boolean(value?.available && (value.until == null || now < value.until));
+}
+/** The desktop update bar's states, published by the preload as this window event (same wording as the bar). */
+export type EngineUpdateState = "ready" | "auto-wait" | "preparing" | "restarting" | "updating" | "updated" | "kept" | "failed";
+export type EngineUpdateEvent = { state: EngineUpdateState; message?: string };
+export const ENGINE_UPDATE_EVENT = "branch:update-state";
 export type AppliedUpdateNotice = { version: string; canUndo: boolean; expiresAt: number };
 export type UpdateNoticeEvent = "shown" | "dismissed" | "expired" | "undo";
 /** Preview T0 (`updT5` in design/spec-v23/index.html): a normal toast after an in-place update. */
 export const UPDATED_IN_PLACE = "Updated in place. Nothing restarted.";
+/** The R1 toast when the owner's or an auto update was postponed (Private #1047: update toasts live in the window's toast layer). */
+export const UPDATE_POSTPONED = "Update postponed; Branch kept the current version";
 /** Preview T0 (`updT5`): wait this long and try again while setup (`.ob-main, .ob9`) is on screen. */
 export const UPDATE_TOAST_SETUP_WAIT_MS = 5000;
 type Desktop = { gatewayUrl?: string; getGatewayUrl?: () => string; componentUpdates?: ComponentUpdates; unavailableReason?: string;
-  onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => () => void;
+  onAutoApplyProbe?: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean; workingTrunks?: number }>) => () => void;
+  /** The tray's Pause all work (Private #454 C); older desktop builds lack it. */
+  onPauseAll?: (listener: () => void) => () => void;
+  /** A closed-window "done" notice for a paired phone (Private #454 D); older desktop builds lack it. */
+  onPhonePush?: (listener: (notice: { title: string; body: string }) => void) => () => void;
   onUpdateApplied?: (listener: (notice: AppliedUpdateNotice) => void) => () => void;
   onUpdateUndone?: (listener: () => void) => () => void;
   reportUpdateNotice?: (event: UpdateNoticeEvent, notice: AppliedUpdateNotice) => void };
@@ -118,6 +140,22 @@ export function useDesktopComponentStatus(gatewayUrl?: string): {
   return { status, error, setStatus: value => { setStatus(value); setError(value.error); } };
 }
 
+/** The last update's Undo, read from the desktop and re-read every minute (so Undo goes once its probation ends). */
+export function useDesktopUndoAvailability(gatewayUrl?: string): { value: UndoAvailability | null; reload: () => void } {
+  const bridge = componentDesktop(gatewayUrl)?.componentUpdates;
+  const [value, setValue] = useState<UndoAvailability | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const read = bridge?.undoAvailability;
+    if (!read) return;
+    let live = true;
+    void read().then(next => { if (live) setValue(next); }, () => { if (live) setValue(null); });
+    const timer = setTimeout(() => setTick(n => n + 1), 60_000);
+    return () => { live = false; clearTimeout(timer); };
+  }, [bridge, tick]);
+  return { value, reload: () => setTick(n => n + 1) };
+}
+
 function desktopBridge(): Desktop | undefined {
   return (window as unknown as { branchDesktop?: Desktop }).branchDesktop;
 }
@@ -168,6 +206,10 @@ export function useDesktopAppliedUpdateNotice(): void {
     const stopUndone = desktop?.onUpdateUndone?.(() => {
       dismissInPlaceToast();
     });
-    return () => { stopApplied?.(); stopUndone?.(); };
+    const onEngineState = (event: Event) => {
+      if ((event as CustomEvent<EngineUpdateEvent>).detail?.state === "kept") notify(UPDATE_POSTPONED);
+    };
+    window.addEventListener(ENGINE_UPDATE_EVENT, onEngineState);
+    return () => { stopApplied?.(); stopUndone?.(); window.removeEventListener(ENGINE_UPDATE_EVENT, onEngineState); };
   }, []);
 }

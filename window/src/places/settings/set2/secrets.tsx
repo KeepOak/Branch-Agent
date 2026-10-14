@@ -51,6 +51,20 @@ export function SecretsPage(props: SettingsPageProps) {
 
 type Config = ReturnType<typeof useConfig>;
 
+/** One block of the page, for the R1 Sign-ins & keys page's cards: where passwords come from, or the keys Branch holds
+ *  (with the technical rows at Technical). */
+export function SecretsBlock(props: SettingsPageProps & { part: "where" | "keys" }) {
+  const lv = lvOf(props.level);
+  const config = useConfig(props.engine);
+  const store = useLive<RecordValue>(props.engine, "secrets.store.list", {}, ["secrets"]);
+  const onePassword = rec(rec(config.get("secrets.providers")).onepassword).source === "exec";
+  if (props.part === "where") return <Where engine={props.engine} onePassword={onePassword} config={config} />;
+  return <>
+    <Keys engine={props.engine} lv={lv} store={store} />
+    {lv >= 2 ? <KeysTechnical engine={props.engine} store={store} config={config} /> : null}
+  </>;
+}
+
 /** Where passwords come from: 1Password through its plugin's secret provider; the others have no engine plugin. */
 function Where({ onePassword, config }: Pick<SettingsPageProps, "engine"> & { onePassword: boolean; config: Config }) {
   const choose = async (id: string) => {

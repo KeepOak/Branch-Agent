@@ -1,5 +1,6 @@
 import { paceLines } from "../canopy/pace";
 import type { WindowEngine } from "../../connect/engine";
+import { trunkDisplayName } from "../../connect/trunk-name";
 
 export type Tile = "sessions" | "health" | "computer" | "spend" | "people" | "presence" | "agents" | "backup" | "update" | "runs";
 export type Resource = { value?: unknown; loading: boolean; error?: string; updatedAt?: number };
@@ -139,7 +140,7 @@ export function agents(value: unknown): { defaultId: string; mainKey: string; li
   const v = record(value);
   return {
     defaultId: text(v.defaultId), mainKey: text(v.mainKey) || "main",
-    list: records(v.agents).filter(a => text(a.id)).map(a => ({ id: text(a.id), name: text(record(a.identity).name) || text(a.name) || text(a.id), mode: text(a.defaultPermissionMode) })),
+    list: records(v.agents).filter(a => text(a.id)).map(a => ({ id: text(a.id), name: trunkDisplayName(a), mode: text(a.defaultPermissionMode) })),
   };
 }
 export const agentName = (list: Agent[], id: string): string => list.find(a => a.id === id)?.name || id || "Trunk";

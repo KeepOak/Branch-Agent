@@ -24,7 +24,7 @@ const entry = (to: string, updatedAt: number, threadId?: string): SessionEntry =
 });
 
 // Regression matrix for the generic opt-in case-preservation registry
-// (openclaw/openclaw#75670 — Matrix room ids; #82853 — Signal groups).
+//.
 // Synthetic mixed-case opaque IDs: a room id with an embedded ":server" and a
 // case-sensitive thread event id, mirroring the Matrix spec.
 const ROOM_A = "!MixedRoomAbCdEf:example.org";
@@ -204,7 +204,7 @@ describe("normalizeSessionKeyPreservingOpaquePeerIds (store canonicalization)", 
   });
 
   it("trims whitespace inside a preserved Signal segment (matches legacy behavior)", () => {
-    // Malformed key edge: the legacy peerId.trim() path trimmed the segment; keep parity.
+    // Malformed key edge: the legacy peerId.trim path trimmed the segment; keep parity.
     expect(normalizeSessionKeyPreservingOpaquePeerIds("agent:ops:signal:group: AbC123= ")).toBe(
       "agent:ops:signal:group:AbC123=",
     );

@@ -13,7 +13,7 @@ export type PersonLine = Person & { shared?: boolean };
 const COUNT_TIP = "Conversations they can open, and how many are working now. Helpers, automations and Branch’s own conversations are not counted.";
 const SHARED_TIP = "Connected with the Gateway’s key, not a personal sign-in.";
 
-export function theirs(person: PersonLine, rows: Session[]): Session[] {
+function theirs(person: PersonLine, rows: Session[]): Session[] {
   return rows.filter(row => countable(row) && (person.shared ? !row.human : row.ownerId === person.id));
 }
 

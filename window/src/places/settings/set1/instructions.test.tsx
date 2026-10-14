@@ -76,6 +76,28 @@ describe("Settings › Instructions & personality", () => {
     expect(request).toHaveBeenCalledWith("agents.files.set", { agentId: "main", name: "IDENTITY.md", content: "# Me\n", expectedMissing: true });
   });
 
+  it("keeps save failures plain, preserves the draft, and allows retry", async () => {
+    const detail = new Error("agents.files.set: EACCES /private/workspace");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let fail = true;
+    const { engine } = engineOf({ "agents.files.set": () => { if (fail) throw detail; return { ok: true }; } });
+    try {
+      await render(engine);
+      await act(async () => button(row("Its name"), "Write").click());
+      const dlg = document.querySelector<HTMLElement>('[data-testid="instruction-file"]')!;
+      await type(dlg.querySelector("textarea")!, "My unsaved instructions");
+      await act(async () => button(dlg, "Save").click());
+      expect(dlg.querySelector('[role="alert"]')?.textContent).toContain("Could not save your instructions");
+      expect(dlg.textContent).not.toMatch(/agents.files.set|EACCES|private/);
+      expect(dlg.querySelector("textarea")!.value).toBe("My unsaved instructions");
+      expect(report.failed).toHaveBeenLastCalledWith(expect.stringContaining("Your edits are still here"));
+      expect(warn).toHaveBeenCalledWith(expect.any(String), detail);
+      fail = false;
+      await act(async () => button(dlg, "Save").click());
+      expect(document.querySelector('[data-testid="instruction-file"]')).toBeNull();
+    } finally { warn.mockRestore(); }
+  });
+
   async function staleSave(change: () => void) {
     let refused = false;
     const { engine, request } = engineOf({

@@ -1,0 +1,4 @@
+window:src/glass/coming.test.tsx
+window:src/screens/sidebar/Sidebar.test.tsx
+window:src/screens/sidebar/coming.test.tsx
+window:src/screens/sidebar/glass48.test.tsx

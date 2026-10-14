@@ -1,5 +1,6 @@
 // Owns process-local agent run context, ownership, and projection state.
 import { randomUUID } from "node:crypto";
+import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { registerListener } from "../shared/listeners.js";
 import { recordAgentEventRouting } from "./agent-event-execution-context.js";
 import {
@@ -533,6 +534,23 @@ export function getActiveAgentRunContextCount(): number {
     }
   }
   return count;
+}
+
+/**
+ * Private #1038: helper (subagent) runs still working. A helper can be live in the subagent registry (queued for a
+ * slot, between model calls, or waiting on its own helpers) with no execution claim counted above, so the update
+ * idle check called such a machine idle. The subagent registry registers its counter when it loads.
+ */
+const activeSubagentRuns = resolveGlobalSingleton(Symbol.for("branch.activeSubagentRunCounter"), () => ({
+  count: undefined as (() => number) | undefined,
+}));
+
+export function registerActiveSubagentRunCounter(count: () => number): void {
+  activeSubagentRuns.count = count;
+}
+
+export function getActiveSubagentRunCount(): number {
+  return activeSubagentRuns.count?.() ?? 0;
 }
 
 /** Live display projection also includes a producer's active-session marker. */
