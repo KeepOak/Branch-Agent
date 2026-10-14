@@ -137,4 +137,15 @@ describe("Group rules in a group chat (#974 row 21)", () => {
       expect(Boolean(row.submenu || row.local || row.need || row.off), row.label).toBe(true);
     }
   });
+
+it("#1049: View offers this Trunk's own Threads show as, with only Tabs above the chat and Freedom Mode (preview item 47)", () => {
+  const set = vi.fn();
+  const view = conversationMenu(ctx({ threads: { name: "Oak", layout: "free", set } })).find((e) => e.label === "View")!;
+  const threads = view.submenu!.find((e) => e.label === "Oak’s threads show as")!;
+  expect(threads.submenu!.map((e) => [e.label, e.toggle])).toEqual([["Tabs above the chat", false], ["Freedom Mode", true]]);
+  threads.submenu![0].onSelect!();
+  expect(set).toHaveBeenCalledWith("tabs");
+  const none = conversationMenu(ctx()).find((e) => e.label === "View")!;
+  expect(none.submenu!.some((e) => /threads show as/.test(e.label))).toBe(false);
+});
 });

@@ -1,0 +1,5 @@
+window:src/shell/topic-layout.test.ts
+window:src/screens/frame/conversation-menu.test.ts
+window:src/screens/frame/ConversationMenu.test.tsx
+window:src/screens/frame/Topics.test.tsx
+window:src/screens/frame/R1Window.test.tsx

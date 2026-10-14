@@ -89,7 +89,7 @@ export type R1TopicsProps = {
 };
 
 /** What the window draws: the rail in the topics column or above the chat, and the All stream while it shows. */
-export function useR1Topics(p: R1TopicsProps): { column: ReactNode; above: ReactNode; history: Block[] | null; layout: R1TopicLayout } {
+export function useR1Topics(p: R1TopicsProps): { column: ReactNode; above: ReactNode; history: Block[] | null; layout: R1TopicLayout; contact: { id: string; name: string } | null } {
   const contact = topicContactFor(p.rows, p.currentKey, p.mainSuffix);
   const contactId = contact?.id ?? null;
   const { topics, reload } = useTopics(p.session, p.ready, contactId);
@@ -116,7 +116,8 @@ export function useR1Topics(p: R1TopicsProps): { column: ReactNode; above: React
       (error: unknown) => { if (live) { console.warn("All threads failed to load", error); setAll(null); } });
     return () => { live = false; };
   }, [all, contact, showingAll, items, p.rows, p.session]);
-  if (!contact || !topics.length) return { column: null, above: null, history: null, layout };
+  if (!contact || !topics.length) return { column: null, above: null, history: null, layout, contact: null };
+  const who = { id: contact.id, name: contact.name };
   const general = p.rows.find((row) => row.key === contact.key);
   const agentId = contact.id.replace(/^trunk:/, "");
   const request = (method: string, params: unknown) => p.session.request(method, params);
@@ -133,10 +134,10 @@ export function useR1Topics(p: R1TopicsProps): { column: ReactNode; above: React
       reload();
     }} /></div>;
   const history = showingAll ? all?.history ?? [] : null;
-  if (layout === "tabs") return { column: null, above: rail, history, layout };
-  if (!narrow) return { column: rail, above: null, history, layout };
+  if (layout === "tabs") return { column: null, above: rail, history, layout, contact: who };
+  if (!narrow) return { column: rail, above: null, history, layout, contact: who };
   const count = topics.length + 1;
-  return { column: null, history, layout, above: <div className="r1-topic-fold">
+  return { column: null, history, layout, contact: who, above: <div className="r1-topic-fold">
     <button type="button" className="g-frost" data-local="" aria-expanded={foldOpen} onClick={() => setFoldOpen((open) => !open)}>Threads · {count}</button>
     {foldOpen ? rail : null}
   </div> };

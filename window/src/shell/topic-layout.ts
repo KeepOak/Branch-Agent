@@ -66,6 +66,14 @@ export function r1TopicLayoutFor(contactId: string): R1TopicLayout {
   return r1LayoutOf(contactId in per ? per[contactId] : stored.layout);
 }
 
+/** One contact's own R1 layout (its ⋯ › View, preview "<name>’s threads show as" with data-per). */
+export function setR1ContactTopicLayout(contactId: string, layout: R1TopicLayout) {
+  const stored = storedTopicValue();
+  const per = { ...(stored.per ?? {}), [contactId]: layout };
+  localStorage.setItem(TOPIC_LAYOUT_KEY, JSON.stringify({ layout: stored.layout ?? "tabs", width: topicLayoutDefaults.tabs, per }));
+  window.dispatchEvent(new Event("branch:topic-layout-changed"));
+}
+
 /** The R1 default (Settings and the rail's menu). The current contact's own choice is dropped so the default applies to it. */
 export function setR1TopicLayout(layout: R1TopicLayout, currentContactId?: string) {
   const per: Record<string, TopicLayout> = { ...(storedTopicValue().per ?? {}) as Record<string, TopicLayout> };

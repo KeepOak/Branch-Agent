@@ -20,6 +20,7 @@ import { notify } from "../../shell/notify";
 import { openConversationWindow, ownWindowUnavailable } from "../../shell/own-window";
 import { publicShareLink } from "../../shell/ConversationMenu";
 import { ReplayDialog } from "../../shell/Replay";
+import type { R1TopicLayout } from "../../shell/topic-layout";
 import { ShareDialog } from "../../shell/ShareDialog";
 import { copyMarkdown } from "../../shell/row-actions";
 import { copyText, ThreadContext } from "../../thread/context";
@@ -54,6 +55,8 @@ export type ConversationMenuProps = {
   onPlace: (place: PlaceId) => void;
   /** In a group chat, its rules (rooms/useShellRoom): the Group rules row. */
   room?: ShellRoom["menu"];
+  /** The open Trunk's own "Threads show as" (View), when it has threads. */
+  threads?: { name: string; layout: R1TopicLayout; set: (layout: R1TopicLayout) => void } | null;
   /** Parity row 4: opens the re-hosted Changes view (diff and pull request box) for this conversation's checkout. */
   onChanges?: () => void;
   /** The engine call the Changes view needs; the row is Coming without it. */
@@ -88,6 +91,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
   const items = conversationMenu({
     row, isDefault: p.isDefault, now, hasReply: Boolean(lastReply), work: { global: p.work.global, override: p.work.override }, ownWindowOff: ownWindowUnavailable(),
     room: p.room ? { ruleWords: p.room.ruleWords, rules: roomRuleEntries(p.room.rules()) } : null,
+    threads: p.threads ?? null,
     run: {
       pin: () => { if (row) void actions.pin(row); },
       rename: () => setOpen({ kind: "rename" }),
