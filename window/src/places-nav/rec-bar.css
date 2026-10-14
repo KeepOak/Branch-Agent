@@ -1,0 +1,7 @@
+/* The recommendation bar (preview .recbar): one question above a place's h1, Yes / Not now / Don't ask again. */
+.recbar { display:flex; align-items:center; gap:10px; margin:0 0 16px; padding:9px 10px 9px 12px; border:1px solid var(--line); border-radius:14px; background:var(--raise); font-size:13px; flex-wrap:wrap; }
+.recbar .rec-t { flex:1; min-width:220px; }
+.recbar .rec-t b { font-weight:600; }
+.recbar .rec-t small { display:block; color:var(--ink-3); font-size:12px; }
+.recbar .rec-tag { color:color-mix(in srgb, var(--ok) 68%, var(--ink)); font-weight:600; margin-left:4px; }
+.recbar .rec-tile { flex:none; display:grid; place-items:center; width:30px; height:30px; border-radius:9px; background:var(--brand-tint); color:var(--ink-2); }
