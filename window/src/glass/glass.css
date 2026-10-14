@@ -114,3 +114,15 @@
 .dlg.g-clear .dlg-h > h2 { flex: 0 1 auto; margin-right: auto; }
 :root[data-transparency="reduce"] .g-clear:not(#g48#g48) { background: var(--bg); }
 @media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .g-clear:not(#g48#g48) { background: var(--bg); } }
+
+/* Window glass (preview v17, .scrim > .dlg): a clear dialog is tinted liquid glass over its scrim, not clear. Its words sit
+   straight on the glass with no pill (the title, the lines and the checkbox labels); its controls keep their chips, and Delete
+   stays solid. Menus, toasts, the walkthrough and side panels stay clear. Reduce transparency makes the dialog solid --bg. */
+/* The scrim only dims behind a clear dialog. Its own blur would make the dialog's blur see nothing, so the glass blurs the page. */
+.scrim:has(> .dlg.g-clear:not(#g48)) { backdrop-filter: none; -webkit-backdrop-filter: none; }
+.scrim > .dlg.g-clear:not(#g48) { background: color-mix(in srgb, var(--bg) 74%, transparent); background-image: none; border-color: transparent;
+  -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+  box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi), 0 30px 80px rgba(0,0,0,.24); }
+.scrim > .dlg.g-clear :is(.g-label, .g-label[data-lines]):not(#g48) { width: auto; max-width: none; padding: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root[data-transparency="reduce"] .scrim > .dlg.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .scrim > .dlg.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
