@@ -157,8 +157,8 @@ describe("R1 sidebar", () => {
     await click(host.querySelector(".r1sb-upd"));
     expect(props.onSettings).toHaveBeenCalledWith("updates");
     await click(host.querySelector('[aria-label="New, places and more"]'));
-    expect(text(".g-menu-row .g-menu-label")).toEqual(["New conversation", "New Trunk", "New group", "Have Branch make a Trunk", "New automation", "Collapse the list to faces"]);
-    expect(text(".g-menu-row .g-menu-end small")).toEqual(["random character", "Ctrl B"]);
+    expect(text(".g-menu-row .g-menu-label")).toEqual(["New conversation", "New Trunk", "New group", "Have Branch make a Trunk", "New automation", "Quick ask", "Collapse the list to faces"]);
+    expect(text(".g-menu-row .g-menu-end small")).toEqual(["random character", "Ctrl Shift Space", "Ctrl B"]);
   });
 
   it("opens the person menu with the update banner on top and no Settings row", async () => {
