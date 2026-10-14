@@ -35,44 +35,18 @@ async function open(tab: string, fx: Record<string, unknown> = {}, level: Level 
   await act(async () => { await Promise.resolve(); });
   return request;
 }
-const button = (text: string, scope: ParentNode = host) => [...scope.querySelectorAll("button")].find(b => b.textContent?.trim() === text);
-const click = async (el: Element | null | undefined) => { expect(el).toBeTruthy(); await act(async () => { (el as HTMLElement).click(); }); await act(async () => { await Promise.resolve(); }); };
 
-describe("Customize › Chat apps", () => {
-  it("lists chat apps from the channel plugins and channels.status, without starting a probe", async () => {
-    const request = await open("Chat apps");
-    expect(request).toHaveBeenCalledWith("channels.status", { probe: false });
-    const cards = [...host.querySelectorAll(".cz-ch")].map(c => c.querySelector(".grow > b")?.textContent);
-    expect(cards).toEqual(["Telegram", "Discord", "Slack", "IRC"]);
-    expect(host.textContent).toContain("Configured · not running");
-    expect(host.textContent).toContain("Connected · reaches Branch");
-    expect((host.querySelector('input[aria-label="Search chat apps"]') as HTMLInputElement).placeholder).toBe("Search 4 chat apps");
-    await click(button("Work chat"));
-    expect(host.textContent).toContain("No chat apps yet.");
-  });
-  it("starts, pauses and signs out an account, and switches an app's plugin on", async () => {
-    const request = await open("Chat apps");
-    await click([...host.querySelectorAll(".cz-ch")].find(c => c.textContent?.includes("Telegram")));
-    expect(host.querySelector('[data-testid="channel"]')?.getAttribute("aria-label")).toBe("Manage Telegram");
-    await click(button("Start"));
-    expect(request).toHaveBeenCalledWith("channels.start", { channel: "telegram", accountId: "default" });
-    await click(button("Disconnect"));
-    expect(request).toHaveBeenCalledWith("channels.logout", { channel: "telegram", accountId: "default" });
-    await click(button("Done"));
-    await click([...host.querySelectorAll(".cz-ch")].find(c => c.textContent?.includes("Discord")));
-    await click(button("Pause"));
-    expect(request).toHaveBeenCalledWith("channels.stop", { channel: "discord", accountId: "default" });
-    await click(button("Done"));
-    await click([...host.querySelectorAll(".cz-ch")].find(c => c.textContent?.includes("Slack")));
-    await click(button("Switch it on"));
-    expect(request).toHaveBeenCalledWith("plugins.setEnabled", { pluginId: "slack", enabled: true });
-  });
-  it("makes a pairing code from the phone tile", async () => {
-    const request = await open("Chat apps", { "device.pair.setupCode": { setupId: "s1", setupCode: "ABCD-EFGH", qrDataUrl: "data:image/png;base64,AA==", gatewayUrl: "ws://x", auth: "token", urlSource: "lan" } });
-    await click(button("Pair a phone"));
-    await click(button("Make the code"));
-    expect(request).toHaveBeenCalledWith("device.pair.setupCode", { includeQr: true });
-    expect(host.textContent).toContain("ABCD-EFGH");
+describe("Customize › Chat apps (#1049)", () => {
+  it("has no Chat apps tab: asking for it opens Settings › Chat apps", async () => {
+    const openSettings = vi.fn();
+    host = document.createElement("div"); document.body.append(host);
+    root = createRoot(host);
+    const engine = { request: async (method: string) => BASE[method] ?? { ok: true }, onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as unknown as WindowEngine;
+    await act(async () => { root!.render(<CustomizePlace engine={engine} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} openSettings={openSettings} level={"regular" as Level} />); });
+    await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Chat apps" } })); });
+    expect(openSettings).toHaveBeenCalledWith("chatapps");
+    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Trunks", "Tools"]);
+    expect(host.querySelector(".cz-chgrid")).toBeNull();
   });
 });
 
@@ -84,9 +58,9 @@ describe("Customize tabs", () => {
     expect(trunksTab.getAttribute("data-count")).toBe("2");
     expect(trunksTab.getAttribute("aria-label")).toBe("Trunks, 2");
   });
-  it("has only Trunks, Tools and Chat apps: Specialists and Everywhere moved to Settings (DA-55)", async () => {
+  it("has only Trunks and Tools: Specialists, Everywhere and Chat apps live in Settings (DA-55, #1049)", async () => {
     await open("Specialists");
-    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Trunks", "Tools", "Chat apps"]);
+    expect([...host.querySelectorAll('[aria-label="Customize"] [role="tab"]')].map(t => t.textContent)).toEqual(["Trunks", "Tools"]);
     expect(host.querySelector('[aria-label="Customize"] [aria-selected="true"]')?.textContent).toBe("Trunks");
     expect(host.querySelector('[data-testid="specialists"]')).toBeNull();
     await act(async () => { dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Everywhere" } })); });

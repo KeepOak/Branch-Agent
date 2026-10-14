@@ -58,7 +58,7 @@ export function FinishSetup({ engine, openSettings }: { engine: WindowEngine; op
   const steps: Step[] = [
     { key: "model", label: "A model account", run: () => openSettings?.("accounts") },
     { key: "phone", label: "Your phone", run: () => setOpen("pair") },
-    { key: "chat", label: "A chat app", run: () => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "customize", tab: "Chat apps" } })) },
+    { key: "chat", label: "A chat app", run: () => openSettings?.("chatapps") },
     { key: "interest", label: "What you want help with", run: () => setOpen("interest") },
     { key: "madeYours", label: "Make it yours", run: () => openSettings?.("appearance") },
   ];
