@@ -31,7 +31,7 @@ it("keeps all 74 real catalogue entries visible and only wires the R1 four", asy
   const coming = host.querySelector<HTMLButtonElement>('.r1-ca-card[aria-disabled="true"]')!;
   await act(async () => coming.click());
   expect(setup).toHaveBeenCalledTimes(1);
-  expect(host.textContent).toContain("No chat apps connected yet");
+  expect(host.textContent).toContain("No chat app is connected yet.");
   expect(host.textContent).not.toContain("Sapling answers");
 });
 it("does not advertise setup when the gateway lacks the methods", async () => {
