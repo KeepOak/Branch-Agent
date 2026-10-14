@@ -106,7 +106,7 @@ export const LEARNING_ROWS: Row[] = [
   toggle("learning.learning.look-back", LEARNING, LEARN_REGULAR[0][1], LOOP, LEARN_REGULAR[0][2]),
   coming("learning.learning.model", LEARNING, "Model for looking back", LOOP, { control: "select", options: [{ v: "", label: "Same as the Trunk" }], help: "A cheaper model keeps the cost down." }),
   ...LEARN_REGULAR.slice(1).map(([id, label, help]) => toggle(`learning.learning.${id}`, LEARNING, label, LOOP, help)),
-  slot("learning.learning.learned", LEARNING, "What it learned", ["skills.proposals.list", "doctor.memory.status"], { help: "What it kept and learned, newest first." }),
+  slot("learning.learning.learned", LEARNING, "What it learned", ["skills.proposals.list", "doctor.memory.status"], { help: "What it kept and left out" }),
   ...LEARN_MORE.map(([id, label, help]) => toggle(`learning.learning.${id}`, LEARNING, label, LOOP, help, 1)),
   slot("learning.learning.adopts", LEARNING, "What it adopts", [], { control: "toggle", level: 1, help: "A change is kept only if the tests show it does better, not because a model says so." }),
   coming("learning.learning.overnight", LEARNING, "Learn overnight on", LOOP, { level: 1, control: "select",
@@ -126,7 +126,7 @@ export const LEARNING_ROWS: Row[] = [
   toggle("learning.gardener.look-after", GARDENER, "Look after skills", RETIRED, "Rests skills unused for 14 days and sets them aside at 30. Nothing is deleted, and built-in skills are never touched."),
   coming("learning.gardener.look-now", GARDENER, "Look at skills now", RETIRED),
   coming("learning.gardener.rest", GARDENER, "Rest a skill after", RETIRED, { level: 1, control: "number", unit: "days", help: "Unused this long, a skill rests: it stays installed but isn’t offered." }),
-  coming("learning.gardener.aside", GARDENER, "Set it aside after", RETIRED, { level: 1, control: "number", unit: "days", help: "Set-aside skills move to Customize › Skills › Set aside." }),
+  coming("learning.gardener.aside", GARDENER, "Set it aside after", RETIRED, { level: 1, control: "number", unit: "days", help: "Set-aside skills move to Customize › Tools › Skills › Set aside." }),
   coming("learning.gardener.costs", GARDENER, "What each night costs", "engine: a record of each night’s model use",
     { level: 1, help: "Each night’s model use: free on this computer, or the plan it used when paid models are allowed." }),
   slot("learning.gardener.clear", GARDENER, "Clear replayed notes", ["doctor.memory.resetGroundedShortTerm"], { control: "toggle", level: 1,
@@ -155,8 +155,7 @@ export const LEARNING_ROWS: Row[] = [
     "Rings uses your usual model while you sleep. Off: it uses only the model on this computer."),
 
   // Extras fetched when first used (Advanced)
-  coming("learning.extras.list", EXTRAS, "Extras fetched when first used", "engine: the list of fetched extras", { level: 1,
-    help: "Speech, office files and connector kits fetched the first time they were used." }),
+  coming("learning.extras.list", EXTRAS, "Extras fetched when first used", "engine: the list of fetched extras", { level: 1 }),
 
   // How the engine runs (Advanced; the terminal and process rows are Technical)
   coming("learning.runs.as", RUNS, "Runs as", "engine: how it was started", { level: 1, help: "The same way on every system: systemd on Linux, launchd on a Mac, a task on Windows." }),
@@ -164,7 +163,7 @@ export const LEARNING_ROWS: Row[] = [
   coming("learning.runs.socket", RUNS, "Control socket", "engine: its control socket", { level: 2, help: "Only programs on this computer can use it." }),
   coming("learning.runs.status-files", RUNS, "Status files", "engine: its status files", { level: 2, help: "Other programs read these to tell whether Branch runs." }),
   slot("learning.runs.process", RUNS, "Process names", ["system.info"], { control: "toggle", level: 2, help: "How they show in Task Manager and ps." }),
-  slot("learning.runs.connected", RUNS, "Connected now", ["system-presence"], { control: "toggle", level: 1, help: "Windows, terminals, phones and chat apps on this engine." }),
+  slot("learning.runs.connected", RUNS, "Connected now", ["system-presence"], { control: "toggle", level: 1 }),
   slot("learning.runs.people", RUNS, "People on this engine", ["users.list"], { control: "toggle", level: 1, help: "One engine serves everyone’s profile; each starts and stops on its own." }),
   coming("learning.runs.freezes", RUNS, "If it freezes", "engine: an outside watchdog", { level: 1, help: "A watchdog outside the engine notices a stuck start, a frozen loop or a hung shutdown." }),
   ...RUN_SWITCHES.map(([id, label, help]) => toggle(`learning.runs.${id}`, RUNS, label, SETTING, help, 1)),
