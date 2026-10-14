@@ -3,15 +3,16 @@ import type { Level } from "../settings/nav";
 import type { Row as ClassicRow, Section } from "../../places/settings/set1/chatapps-kit";
 import { ADVANCED, DEPTH, LATER, TECH_A } from "../../places/settings/set1/chatapps-tables";
 
-/** The rows the page draws at every level, in its own cards. */
+/** The rows the page draws in its own cards. The preview shows them from Advanced (Hold up to from Technical); Regular
+ *  ends after Who answers (#1049). */
 export const BASE_ROWS: Row[] = [
-  { id: "chatapps.replies.typing", page: "chatapps", card: "How replies look & arrive", label: "Show typing", level: 0, control: "select", source: { kind: "config", path: "agents.defaults.typingMode" }, options: [{ v: "instant", label: "Right away" }, { v: "thinking", label: "While thinking" }, { v: "message", label: "When it writes" }, { v: "never", label: "Never" }] },
-  { id: "chatapps.replies.parts", page: "chatapps", card: "How replies look & arrive", label: "Long replies", level: 0, control: "select", source: { kind: "config", path: "agents.defaults.blockStreamingDefault" }, options: [{ v: "on", label: "In parts" }, { v: "off", label: "All at once" }] },
-  { id: "chatapps.groups.policy", page: "chatapps", card: "Groups", label: "Groups, for every app", help: "An app’s own choice wins.", level: 0, control: "select", source: { kind: "config", path: "channels.defaults.groupPolicy" }, options: [{ v: "allowlist", label: "Groups I approve" }, { v: "open", label: "Any group" }, { v: "disabled", label: "No groups" }] },
-  { id: "chatapps.commands.native", page: "chatapps", card: "Commands", label: "Commands in the app’s menu", level: 0, control: "select", source: { kind: "config", path: "commands.native" }, options: [{ v: "auto", label: "Auto" }, { v: true, label: "On" }, { v: false, label: "Off" }] },
-  { id: "chatapps.commands.text", page: "chatapps", card: "Commands", label: "Typed commands", level: 0, control: "toggle", source: { kind: "config", path: "commands.text" } },
-  { id: "chatapps.approvals.enabled", page: "chatapps", card: "Approvals & what Trunks may do", label: "Send command approvals to chat apps", level: 0, control: "toggle", source: { kind: "config", path: "approvals.exec.enabled" } },
-  { id: "chatapps.limits.queue", page: "chatapps", card: "Limits & quiet", label: "Hold up to", unit: "messages", level: 0, control: "number", source: { kind: "config", path: "messages.queue.cap" } },
+  { id: "chatapps.replies.typing", page: "chatapps", card: "How replies look & arrive", label: "Show typing", level: 1, control: "select", source: { kind: "config", path: "agents.defaults.typingMode" }, options: [{ v: "instant", label: "Right away" }, { v: "thinking", label: "While thinking" }, { v: "message", label: "When it writes" }, { v: "never", label: "Never" }] },
+  { id: "chatapps.replies.parts", page: "chatapps", card: "How replies look & arrive", label: "Long replies", level: 1, control: "select", source: { kind: "config", path: "agents.defaults.blockStreamingDefault" }, options: [{ v: "on", label: "In parts" }, { v: "off", label: "All at once" }] },
+  { id: "chatapps.groups.policy", page: "chatapps", card: "Groups", label: "Groups, for every app", help: "An app’s own choice wins.", level: 1, control: "select", source: { kind: "config", path: "channels.defaults.groupPolicy" }, options: [{ v: "allowlist", label: "Groups I approve" }, { v: "open", label: "Any group" }, { v: "disabled", label: "No groups" }] },
+  { id: "chatapps.commands.native", page: "chatapps", card: "Commands", label: "Commands in the app’s menu", level: 1, control: "select", source: { kind: "config", path: "commands.native" }, options: [{ v: "auto", label: "Auto" }, { v: true, label: "On" }, { v: false, label: "Off" }] },
+  { id: "chatapps.commands.text", page: "chatapps", card: "Commands", label: "Typed commands", level: 1, control: "toggle", source: { kind: "config", path: "commands.text" } },
+  { id: "chatapps.approvals.enabled", page: "chatapps", card: "Approvals & what Trunks may do", label: "Send command approvals to chat apps", level: 1, control: "toggle", source: { kind: "config", path: "approvals.exec.enabled" } },
+  { id: "chatapps.limits.queue", page: "chatapps", card: "Limits & quiet", label: "Hold up to", unit: "messages", level: 2, control: "number", source: { kind: "config", path: "messages.queue.cap" } },
 ];
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -59,4 +60,4 @@ for (const sec of MORE_SECTIONS) for (const r of sec.rows) {
 
 /** Public row descriptors, merged into Settings navigation (and search) by stable id. */
 export const CHAT_APP_ROWS: Row[] = [...BASE_ROWS, ...MORE_ROWS.values()];
-export const TELEGRAM_ADAPTER: Row = { id: "chatapps.telegram.adapter", page: "chatapps", card: "Behaviour", label: "Default adapter", level: 0, control: "custom", source: { kind: "coming", need: "channel.adapters", reason: "Adapters arrive after release." } };
+export const TELEGRAM_ADAPTER: Row = { id: "chatapps.telegram.adapter", page: "chatapps", card: "Behaviour", label: "Default adapter", level: 1, control: "custom", source: { kind: "coming", need: "channel.adapters", reason: "Adapters arrive after release." } };

@@ -98,7 +98,7 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
       {onSetup && wizard ? <p className="r1-ca-acts"><button type="button" data-need="wizard.start wizard.next wizard.cancel" disabled={!admin} title={admin ? undefined : "Setting up a chat app needs full access on this connection."} onClick={() => setAnother(true)}>Find another app</button></p> : null}
       {another ? <div className="r1-cw"><ConnectDialog engine={engine} app={null} onClose={(changed) => { setAnother(false); if (changed) void live.reload(); }} /></div> : null}
     </section>
-    </div>{renderAccess && <section aria-label="Who answers and who may message"><h2 className="g-label">Who answers</h2>{connected.length ? connected.map(c => <div key={c.state.id}>{renderAccess(c.app)}</div>) : <p className="r1-ca-hint g-label" data-lines>{live.loading ? "Checking your chat apps…" : "Connect a chat app above to choose who answers in it and who may message it."}</p>}</section>}<ChatAppSettings engine={engine} />
+    </div>{renderAccess && <section aria-label="Who answers and who may message"><h2 className="g-label">Who answers</h2>{connected.length ? connected.map(c => <div key={c.state.id}>{renderAccess(c.app)}</div>) : <p className="r1-ca-hint g-label" data-lines>{live.loading ? "Checking your chat apps…" : "Connect a chat app above to choose who answers in it and who may message it."}</p>}</section>}<ChatAppSettings engine={engine} level={level} />
     {level >= 1 ? <More engine={engine} cfg={cfg} apps={connected.map(c => c.state)} all={engineApps} trunks={trunks} level={level} /> : null}
   </section>;
 }

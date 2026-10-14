@@ -165,3 +165,18 @@ it("opens the watchdog log (logs.tail) and turns the watch off on every connecte
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   expect(request.mock.calls.some(([m]) => m === "logs.tail")).toBe(true);
 });
+
+it("#1049: at Regular the page ends after Who answers; the setting cards and Who may message start at Advanced", async () => {
+  const { host } = await render("regular");
+  const heads = () => [...host.querySelectorAll("h2")].map((h) => h.textContent);
+  // preview Chat apps at Regular: Your chat apps, the app groups, Who answers.
+  expect(heads()).not.toEqual(expect.arrayContaining(["How replies look & arrive"]));
+  for (const card of ["How replies look & arrive", "Groups", "Commands", "Approvals & what Trunks may do", "Limits & quiet"]) expect(heads(), card).not.toContain(card);
+  expect(host.querySelector('[aria-label^="Who may message"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Show typing"]')).toBeNull();
+  await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = "";
+  const adv = await render("advanced");
+  expect(adv.host.querySelector('[aria-label="Show typing"]')).not.toBeNull();
+  expect(adv.host.querySelector('[aria-label^="Who may message"]')).not.toBeNull();
+  expect(adv.host.querySelector('[aria-label="Hold up to"]')).toBeNull();
+});
