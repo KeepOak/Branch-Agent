@@ -32,6 +32,7 @@ import { Onboarding } from "../onboarding";
 import { recordOnboarding } from "../onboarding/finish";
 import { ConversationMenu } from "./ConversationMenu";
 import { R1Stage, R1StagePip } from "../stage/R1Stage";
+import { QuickAskHost } from "../quickask/QuickAskHost";
 import type { PipTarget, StageMode } from "../../stage/ComputerStage";
 import { R1Character, useR1CharacterShown } from "../character/R1Character";
 
@@ -236,6 +237,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {/* A second Ctrl K would open Find anything; it is a shortcut, not a control, so it registers hidden with the call it waits for. */}
     <Coming engine={engine} need="sessions.search" unwired hidden reason={FIND_ANYTHING_COMING} where="Find anything"><span /></Coming>
     {lockdown.confirmation}
+    <QuickAskHost session={session} ready={ready} list={list} onOpen={openConversation} onNotice={setNotice} />
     {pip && route.kind === "chat" && !stage ? <R1StagePip key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={snapshot.name} computer={pip} blocks={[...snapshot.history, ...snapshot.live]} onOpen={() => { setStage(pip.kind === "browser" ? "Browser" : "Computer"); setPip(null); }} onClose={() => setPip(null)} /> : null}
     <Toasts />
     <ApprovalsLayer engine={engine} ready={ready} more={problems} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
