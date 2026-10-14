@@ -3,8 +3,10 @@
 // It re-hosts the Classic menu's actions (shell/conversation-menu.ts, shell/ConversationMenu.tsx) on R1's glass Menu: each
 // entry names the engine call it makes, so an engine without it shows Coming; entries that only open or move are local.
 // Rows the R1 window can't run yet (Split, Side panel, its computer and browser) say why instead of pretending.
+// In a group chat, Group rules › sits after View: the Classic room rules (rooms/room-rules.tsx), "Who answers" (#974 row 21).
 import type { Conversation } from "../../connect/conversations";
 import type { MenuEntry } from "../../glass/Menu";
+import type { MenuItem } from "../../shell/Menu";
 import { snoozeChoices, snoozeTime, wakeWords } from "../../shell/conversation-actions";
 import { menuIcon } from "../../shell/menu-icons";
 import { WORK_MODES, type WorkMode } from "../chat/chat-logic";
@@ -65,8 +67,23 @@ export type ConversationMenuContext = {
   work: { global: WorkMode; override: WorkMode | null };
   /** Why this window can't open a conversation in its own window, or null when it can. The row is hidden then. */
   ownWindowOff: string | null;
+  /** A group chat: its rule on the Group rules row and the Classic rule rows (rooms/useShellRoom's menu). */
+  room?: { ruleWords: string | null; rules: MenuEntry[] } | null;
   run: ConversationMenuRun;
 };
+
+/** The engine call behind each Who answers choice: a lead Trunk is rooms.rule.set, the chat-app rules sessions.patch. */
+export const ROOM_RULE_NEED = { lead: "rooms.rule.set", activation: "sessions.patch" } as const;
+const LEAD = "A lead Trunk decides";
+
+/** The Classic room rules menu (rooms/room-rules.tsx) as glass menu rows: each choice a checked row, a greyed one keeps its reason. */
+export function roomRuleEntries(items: readonly MenuItem[]): MenuEntry[] {
+  return items.flatMap((item): MenuEntry[] => {
+    if (item.kind !== undefined && item.kind !== "item") return [];
+    if (item.disabled) return [{ label: item.label, local: true, off: item.disabled }];
+    return [{ label: item.label, hint: item.sub, toggle: Boolean(item.checked), need: item.label === LEAD ? ROOM_RULE_NEED.lead : ROOM_RULE_NEED.activation, onSelect: item.run }];
+  });
+}
 
 const icon = (name: Parameters<typeof menuIcon>[0]) => menuIcon(name);
 const present = (entries: (MenuEntry | null)[]): MenuEntry[] => entries.filter((entry): entry is MenuEntry => entry !== null);
@@ -114,13 +131,13 @@ function view(c: ConversationMenuContext): MenuEntry {
   ]) };
 }
 
-/** The approved nine rows, in the approved order. */
+/** The approved nine rows, in the approved order; a group chat adds Group rules after View. */
 export function conversationMenu(c: ConversationMenuContext): MenuEntry[] {
   const row = c.row;
   const deleteRow: MenuEntry = c.isDefault ? { label: "Delete…", icon: icon("trash"), danger: true, off: DEFAULT_LISTED }
     : row ? { label: "Delete…", icon: icon("trash"), danger: true, need: CONVERSATION_NEED.delete, onSelect: c.run.remove }
       : { label: "Delete…", icon: icon("trash"), danger: true, off: FIRST_MESSAGE };
-  return [
+  return present([
     row ? { label: row.pinned ? "Unpin" : "Pin to top", icon: icon("pin"), need: CONVERSATION_NEED.patch, onSelect: c.run.pin } : { label: "Pin to top", icon: icon("pin"), off: FIRST_MESSAGE },
     !row ? { label: "Rename", icon: icon("edit"), off: FIRST_MESSAGE }
       : row.isMain ? { label: "Rename", icon: icon("edit"), hint: "in Edit Trunk", local: true, onSelect: c.run.editTrunk }
@@ -134,7 +151,8 @@ export function conversationMenu(c: ConversationMenuContext): MenuEntry[] {
       { label: "Copy conversation", icon: icon("copy"), need: CONVERSATION_NEED.history, onSelect: c.run.copyConversation },
     ] },
     view(c),
+    c.room ? { label: "Group rules", icon: icon("sliders"), ...(c.room.ruleWords ? { hint: c.room.ruleWords } : {}), submenu: c.room.rules } : null,
     { label: "Start over…", icon: icon("retry"), gap: true, need: CONVERSATION_NEED.reset, onSelect: c.run.startOver },
     deleteRow,
-  ];
+  ]);
 }
