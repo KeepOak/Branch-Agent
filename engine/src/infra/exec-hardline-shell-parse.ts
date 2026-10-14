@@ -28,7 +28,7 @@ function findBacktickEnd(text: string, start: number): number {
 
 function skipDouble(text: string, start: number): number {
   for (let j = start + 1; j < text.length; j++) {
-    const ch = text[j];
+    const ch = text.charAt(j);
     if (ch === "\\") {
       j++;
     } else if (ch === '"') {
@@ -45,7 +45,7 @@ function skipDouble(text: string, start: number): number {
 function matchParen(text: string, open: number): number {
   let depth = 0;
   for (let i = open; i < text.length; i++) {
-    const ch = text[i];
+    const ch = text.charAt(i);
     if (ch === "\\") {
       i++;
     } else if (ch === "'") {
@@ -205,7 +205,7 @@ export function parseShell(text: string): { segments: Segment[]; substitutions: 
     word.quoted = true;
     word.started = true;
     for (let j = start + 1; j < text.length; j++) {
-      const ch = text[j];
+      const ch = text.charAt(j);
       if (ch === "\\") {
         const esc = text[j + 1];
         if (esc !== undefined && '"\\$\x60'.includes(esc)) {
@@ -247,10 +247,10 @@ export function parseShell(text: string): { segments: Segment[]; substitutions: 
   };
 
   for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
+    const ch = text.charAt(i);
     if (ch === "\\") {
       if (text[i + 1] !== "\n" && i + 1 < text.length) {
-        word.add(text[i + 1]);
+        word.add(text.charAt(i + 1));
       }
       i++;
     } else if (ch === "'") {

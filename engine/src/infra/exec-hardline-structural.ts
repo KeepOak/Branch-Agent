@@ -172,6 +172,14 @@ function describeTarget(target: TargetClass): string | null {
   }
 }
 
+function valueAt(list: readonly Word[], index: number): string {
+  return list[index]?.value ?? "";
+}
+
+function literalAt(list: readonly Word[], index: number): string {
+  return list[index]?.literal ?? "";
+}
+
 function finding(description: string | null): StructuralFinding | null {
   return description ? { description } : null;
 }
@@ -181,7 +189,7 @@ type Stripped = { words: Word[] } | { split: string };
 function skipFlags(words: Word[], k: number, withArg: ReadonlySet<string>): number {
   let i = k;
   while (i < words.length) {
-    const value = words[i].value;
+    const value = valueAt(words, i);
     if (value === "--") {
       return i + 1;
     }
@@ -198,7 +206,7 @@ function stripWrappers(words: Word[]): Stripped {
   let k = 0;
   while (k < words.length) {
     const word = words[k];
-    if (word.unresolved) {
+    if (!word || word.unresolved) {
       break;
     }
     const value = word.value;
@@ -222,7 +230,7 @@ function stripWrappers(words: Word[]): Stripped {
     } else if (name === "env") {
       k++;
       while (k < words.length) {
-        const flag = words[k].value;
+        const flag = valueAt(words, k);
         if (flag === "--") {
           k++;
           break;
@@ -296,7 +304,7 @@ function checkRm(args: Word[]): StructuralFinding | null {
 function checkShell(args: Word[], seg: Segment | null, depth: number): StructuralFinding | null {
   let script = false;
   for (let i = 0; i < args.length; i++) {
-    const value = args[i].value;
+    const value = valueAt(args, i);
     if (/^-[A-Za-z]*c[A-Za-z]*$/.test(value)) {
       return analyzeCommand(args[i + 1]?.literal ?? "", depth + 1);
     }
@@ -365,10 +373,10 @@ function interpreterPayloads(name: string, args: Word[]): string[] | null {
   const flagged = (re: RegExp, longNames: string[] = []): string[] => {
     const out: string[] = [];
     for (let i = 0; i < args.length; i++) {
-      const value = args[i].value;
+      const value = valueAt(args, i);
       const eq = longNames.find((long) => value.startsWith(long + "="));
       if (eq) {
-        out.push(args[i].literal.slice(eq.length + 1));
+        out.push(literalAt(args, i).slice(eq.length + 1));
       } else if (re.test(value) || longNames.includes(value)) {
         out.push(args[i + 1]?.literal ?? "");
         i++;
@@ -399,13 +407,13 @@ function interpreterPayloads(name: string, args: Word[]): string[] | null {
   }
   if (["awk", "gawk", "mawk", "nawk"].includes(name)) {
     let i = 0;
-    while (i < args.length && args[i].value.startsWith("-")) {
-      if (args[i].value === "-f") {
+    while (i < args.length && valueAt(args, i).startsWith("-")) {
+      if (valueAt(args, i) === "-f") {
         return [];
       }
-      i += /^-[Fvf]$/.test(args[i].value) ? 2 : 1;
+      i += /^-[Fvf]$/.test(valueAt(args, i)) ? 2 : 1;
     }
-    return args[i] ? [args[i].literal] : [];
+    return i < args.length ? [literalAt(args, i)] : [];
   }
   return null;
 }
@@ -424,26 +432,32 @@ function checkInterpreter(payloads: string[], seg: Segment | null): StructuralFi
 
 function checkFind(args: Word[], depth: number): StructuralFinding | null {
   let i = 0;
-  while (i < args.length && /^-(?:[HLP]|D|O\d*)$/.test(args[i].value)) {
-    i += args[i].value === "-D" ? 2 : 1;
+  while (i < args.length && /^-(?:[HLP]|D|O\d*)$/.test(valueAt(args, i))) {
+    i += valueAt(args, i) === "-D" ? 2 : 1;
   }
   const starts: Word[] = [];
-  while (i < args.length && !/^[-(!,]/.test(args[i].value)) {
-    starts.push(args[i++]);
+  while (i < args.length && !/^[-(!,]/.test(valueAt(args, i))) {
+    const start = args[i++];
+    if (start) {
+      starts.push(start);
+    }
   }
   const startTargets = starts.map(classifyTarget).filter((t) => t !== null);
   const unsafeStart = startTargets.length > 0;
   for (; i < args.length; i++) {
-    const value = args[i].value;
+    const value = valueAt(args, i);
     if (value === "-delete" && unsafeStart) {
-      return finding(describeTarget(startTargets[0]));
+      return finding(describeTarget(startTargets[0] ?? null));
     }
     if (!["-exec", "-execdir", "-ok", "-okdir"].includes(value)) {
       continue;
     }
     const cmd: Word[] = [];
-    for (i++; i < args.length && args[i].value !== ";" && args[i].value !== "+"; i++) {
+    for (i++; i < args.length && valueAt(args, i) !== ";" && valueAt(args, i) !== "+"; i++) {
       const word = args[i];
+      if (!word) {
+        break;
+      }
       cmd.push(
         unsafeStart && word.value.includes("{}")
           ? { ...word, value: UNRESOLVED, unresolved: true }
@@ -461,12 +475,12 @@ function checkFind(args: Word[], depth: number): StructuralFinding | null {
 function checkXargs(args: Word[], depth: number): StructuralFinding | null {
   const withArg = new Set(["-I", "-n", "-P", "-L", "-s", "-d", "-E", "-a"]);
   let i = 0;
-  while (i < args.length && args[i].value.startsWith("-")) {
-    if (args[i].value === "--") {
+  while (i < args.length && valueAt(args, i).startsWith("-")) {
+    if (valueAt(args, i) === "--") {
       i++;
       break;
     }
-    i += withArg.has(args[i].value) ? 2 : 1;
+    i += withArg.has(valueAt(args, i)) ? 2 : 1;
   }
   const cmd = args.slice(i);
   if (cmd.length === 0) {
