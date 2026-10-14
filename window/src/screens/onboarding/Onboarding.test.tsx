@@ -323,7 +323,7 @@ describe("onboarding window (preview v17, tinted liquid glass)", () => {
     expect(rule(".r1-ob-card {")).toContain("background: color-mix(in srgb, var(--bg) 74%, transparent)");
     expect(rule(".r1-ob-card {")).toContain("backdrop-filter: blur(30px) saturate(180%)");
     expect(rule(".r1-ob-card {")).toContain("inset 0 1px 0 var(--gw-hi)");
-    expect(rule(".r1-ob-card {")).toContain("var(--gw-dlg-sh)");
+    expect(rule(".r1-ob-card {")).toContain("0 30px 80px rgba(0,0,0,.24)");
     for (const text of [".r1-ob-body h1 {", ".r1-ob-lede {", ".r1-ob-where {", ".r1-ob-hint {", ".r1-ob-none {", ".r1-ob-error {", ".r1-ob-later {", ".r1-ob-sheet h2 {", ".r1-ob-dots {"]) {
       expect(rule(text), text).not.toMatch(/background|box-shadow|padding: [1-9]|border-radius/);
     }
