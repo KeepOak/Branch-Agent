@@ -1,4 +1,5 @@
-// Runs by itself under plain Node (copied out of app.asar): only Node built-ins, no other desktop modules.
+// Runs by itself under plain Node (copied out of app.asar): only Node built-ins, no other desktop modules. The one
+// exception is windows-launcher.mjs, which the app copies beside it and which only the Windows layout loads.
 // Waits for the desktop app to exit, swaps the staged copy in (or, on Windows, lands it in a fresh version folder
 // and switches current.txt), relaunches it and waits for the new app to confirm its start (it removes the journal).
 // No confirmation in time: stop the new app by its PID, put the previous copy back, remember the release as rejected
@@ -39,8 +40,6 @@ const RETRY_AFTER_MS = 60 * 60 * 1000;
 export const WINDOWS_POINTER = "current.txt";
 /** Previous version folder name, so prune can keep one rollback copy. */
 export const WINDOWS_PREVIOUS = "previous.txt";
-/** Cmd stub that reads current.txt and starts that folder's Branch Agent.exe. */
-export const WINDOWS_LAUNCHER = "Branch Agent.cmd";
 const VERSION_FOLDER = /^app-[A-Za-z0-9._-]+$/;
 
 export function sanitizeWindowsVersion(version: string): string {
@@ -66,20 +65,16 @@ export function usesWindowsVersionedLayout(platform: NodeJS.Platform | undefined
   return (platform ?? process.platform) === "win32" && !appImage;
 }
 
-export function windowsLauncherScript(): string {
-  return [
-    "@echo off",
-    "setlocal EnableDelayedExpansion",
-    'set "ROOT=%~dp0"',
-    'set "VER="',
-    `if exist "%ROOT%${WINDOWS_POINTER}" set /p VER=<"%ROOT%${WINDOWS_POINTER}"`,
-    'if defined VER if exist "%ROOT%!VER!\\Branch Agent.exe" (',
-    '  start "" "%ROOT%!VER!\\Branch Agent.exe" %*',
-    "  exit /b 0",
-    ")",
-    'if exist "%ROOT%Branch Agent.exe" start "" "%ROOT%Branch Agent.exe" %*',
-    "",
-  ].join("\r\n");
+type WindowsLauncher = typeof import("./windows-launcher.mjs");
+/**
+ * The shared launcher module, copied beside this helper by the app (dist/ beside it in tests). Loaded only for the
+ * Windows layout, and never required: without it the swap still lands and the shortcuts keep their old target.
+ */
+async function loadWindowsLauncher(log: (line: string) => void): Promise<WindowsLauncher | undefined> {
+  try { return await import("./windows-launcher.mjs"); } catch (error) {
+    log(`windows launcher module unavailable (${String(error)}); the cmd stub and shortcuts are left as they are`);
+    return undefined;
+  }
 }
 
 function versioned(journal: Journal): boolean {
@@ -148,13 +143,17 @@ function launch(plan: HelperPlan, journal?: Journal): number | undefined {
   return child.pid;
 }
 
-/** Windows caches executable icons by shortcut. Re-save only links that already target this app. */
-function refreshWindowsIcon(plan: HelperPlan, log: (line: string) => void, journal?: Journal): void {
+/**
+ * Windows caches executable icons by shortcut. Re-save only links that already target this app, pointing them at the
+ * stable launcher at the install root when it is there (a version folder can be pruned; the launcher stays).
+ */
+function refreshWindowsIcon(plan: HelperPlan, log: (line: string) => void, journal?: Journal, launcher?: WindowsLauncher): void {
   if (process.platform !== "win32" || process.env.BRANCH_DESKTOP_TEST_DIST) return;
-  const exe = (journal && pointedWindowsExe(journal)) || plan.relaunch.command;
+  const stable = launcher && journal?.installRoot ? join(journal.installRoot, launcher.WINDOWS_LAUNCHER_EXE) : undefined;
+  const exe = (stable && existsSync(stable) ? stable : undefined) || (journal && pointedWindowsExe(journal)) || plan.relaunch.command;
   const quoted = exe.replaceAll("'", "''");
   const root = (journal?.installRoot ?? "").replaceAll("'", "''");
-  const script = `$exe='${quoted}'; $root='${root}'; $shell=New-Object -ComObject WScript.Shell; foreach($dir in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))) { if(!$dir) { continue }; $path=Join-Path $dir 'Branch Agent.lnk'; if(!(Test-Path -LiteralPath $path)) { continue }; $link=$shell.CreateShortcut($path); $target=$link.TargetPath; $ours=$target -ieq $exe; if($root -and $target) { try { $ours=$ours -or ([IO.Path]::GetFullPath($target).StartsWith([IO.Path]::GetFullPath($root).TrimEnd('\\')+'\\',[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($target) -ieq 'Branch Agent.exe') } catch {} }; if($ours) { $link.TargetPath=$exe; $link.WorkingDirectory=[IO.Path]::GetDirectoryName($exe); $link.IconLocation="$exe,0"; $link.Save() } }`;
+  const script = `$exe='${quoted}'; $root='${root}'; $shell=New-Object -ComObject WScript.Shell; foreach($dir in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'),(Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar'))) { if(!$dir) { continue }; $path=Join-Path $dir 'Branch Agent.lnk'; if(!(Test-Path -LiteralPath $path)) { continue }; $link=$shell.CreateShortcut($path); $target=$link.TargetPath; $ours=$target -ieq $exe; if($root -and $target) { try { $ours=$ours -or ([IO.Path]::GetFullPath($target).StartsWith([IO.Path]::GetFullPath($root).TrimEnd('\\')+'\\',[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($target) -ieq 'Branch Agent.exe') } catch {} }; if($ours) { $link.TargetPath=$exe; $link.WorkingDirectory=[IO.Path]::GetDirectoryName($exe); $link.IconLocation="$exe,0"; $link.Save() } }`;
   const errors: string[] = [];
   try { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { windowsHide: true, stdio: "ignore", timeout: 15_000 }); }
   catch (error) { errors.push(`shortcuts: ${String(error)}`); }
@@ -272,7 +271,7 @@ async function writePrevious(root: string, folder: string, fs: HelperFs): Promis
  * Windows: land the update in a fresh version folder and switch current.txt. Never rename or delete the live
  * folder, which an orphan process can hold with Access denied.
  */
-async function swapVersioned(plan: HelperPlan, journal: Journal, log: (line: string) => void, fs: HelperFs): Promise<boolean> {
+async function swapVersioned(plan: HelperPlan, journal: Journal, log: (line: string) => void, fs: HelperFs, launcher?: WindowsLauncher): Promise<boolean> {
   const root = journal.installRoot!;
   await writeJournal(plan.journal, { ...journal, phase: "applying" });
   const keep = async (line: string): Promise<false> => {
@@ -306,10 +305,12 @@ async function swapVersioned(plan: HelperPlan, journal: Journal, log: (line: str
   try {
     await writePointer(root, destName, fs);
     await writePrevious(root, journal.previousFolder ?? "", fs);
-    await writeFile(join(root, WINDOWS_LAUNCHER), windowsLauncherScript());
   } catch (error) {
     return keep(`could not switch the current-version pointer (${String(error)}); kept staged`);
   }
+  // The cmd stub is a convenience for terminals; the new version is already in place, so a failure here only logs.
+  if (launcher) await writeFile(join(root, launcher.WINDOWS_LAUNCHER), launcher.windowsLauncherScript())
+    .catch((error: unknown) => log(`desktop update ${journal.version}: could not write ${launcher.WINDOWS_LAUNCHER} (${String(error)})`));
   log(`desktop update ${journal.version}: version folder ${destName}; left the live folder in place`);
   const { heldUntil: _retry, ...applied } = journal;
   await writeJournal(plan.journal, { ...applied, versionFolder: destName, phase: "applied" });
@@ -421,14 +422,15 @@ export async function runHelper(plan: HelperPlan, fs: HelperFs = nodeHelperFs): 
     return "none";
   }
   const previous = `${journal.target}.previous`;
-  const placed = versioned(journal) ? await swapVersioned(plan, journal, log, fs) : await swap(plan, journal, previous, log, fs);
+  const launcher = versioned(journal) ? await loadWindowsLauncher(log) : undefined;
+  const placed = versioned(journal) ? await swapVersioned(plan, journal, log, fs, launcher) : await swap(plan, journal, previous, log, fs);
   if (!placed) { launch(plan, journal); return "kept"; }
   log(`desktop update ${journal.version}: ${journal.kind} swapped in; relaunching`);
   registerLaunchedMacApp(journal.target, log);
   const pid = launch(plan, journal);
   for (const end = Date.now() + plan.confirmTimeoutMs; Date.now() < end; await sleep(250)) {
     if (!existsSync(plan.journal)) {
-      if (journal.kind === "runtime" || versioned(journal)) refreshWindowsIcon(plan, log, journal);
+      if (journal.kind === "runtime" || versioned(journal)) refreshWindowsIcon(plan, log, journal, launcher);
       log(`desktop update ${journal.version}: confirmed by the new app`); return "applied";
     }
   }

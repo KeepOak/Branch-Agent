@@ -23,6 +23,42 @@ export function signingReady(env = process.env) {
   return missingSigningSecrets(env).length === 0;
 }
 
+// After decode, Gradle needs the keystore path plus the three remaining secrets.
+// ANDROID_KEYSTORE_B64 is not an assemble input; requiring it here dropped release
+// signing on the CI build step that never received that secret.
+export const GRADLE_SIGNING_INPUT_NAMES = [
+  'ANDROID_KEYSTORE_PATH',
+  'ANDROID_KEYSTORE_PASSWORD',
+  'ANDROID_KEY_PASSWORD',
+  'ANDROID_KEY_ALIAS',
+];
+
+export function missingGradleSigningInputs(env = process.env) {
+  return GRADLE_SIGNING_INPUT_NAMES.filter((name) => !String(env[name] ?? '').trim());
+}
+
+export function gradleSigningReady(env = process.env) {
+  return missingGradleSigningInputs(env).length === 0;
+}
+
+export function requireReleaseSigning(env = process.env) {
+  return String(env.REQUIRE_ANDROID_RELEASE_SIGNING ?? '').trim() === '1'
+    || String(env.GITHUB_ACTIONS ?? '') === 'true';
+}
+
+export const ANDROID_DEBUG_SIGNER = 'CN=Android Debug';
+
+export function isDebugSigner(certText) {
+  return String(certText ?? '').includes(ANDROID_DEBUG_SIGNER);
+}
+
+export function assertNotDebugSigner(certText) {
+  if (isDebugSigner(certText)) {
+    throw new Error('Release APK is signed with the Android Debug certificate');
+  }
+  return true;
+}
+
 export function releaseVersion({ tag, runNumber, fallbackVersion } = {}) {
   const raw = String(tag ?? '').trim();
   if (raw) return raw.replace(/^v/i, '');
@@ -95,7 +131,10 @@ export const GRADLE_SIGNING_KEY_PASSWORD_ENV = 'ORG_GRADLE_PROJECT_android.injec
 export const GRADLE_SIGNING_KEY_ALIAS_ENV = 'ORG_GRADLE_PROJECT_android.injected.signing.key.alias';
 
 export function gradleSigningEnv(env = process.env) {
-  if (!signingReady(env) || !env.ANDROID_KEYSTORE_PATH) return {};
+  if (!gradleSigningReady(env)) {
+    if (requireReleaseSigning(env)) throw new Error(missingSigningError(missingGradleSigningInputs(env)));
+    return {};
+  }
   return {
     [GRADLE_SIGNING_STORE_PASSWORD_ENV]: env.ANDROID_KEYSTORE_PASSWORD,
     [GRADLE_SIGNING_KEY_PASSWORD_ENV]: env.ANDROID_KEY_PASSWORD,
@@ -123,8 +162,12 @@ export function gradleAssembleArgs(env = process.env) {
     versionCode: env.ANDROID_VERSION_CODE,
     versionName: env.ANDROID_VERSION_NAME,
   })];
-  if (signingReady(env) && env.ANDROID_KEYSTORE_PATH) {
+  if (gradleSigningReady(env)) {
     args.push(...gradleSigningArgs({ keystorePath: env.ANDROID_KEYSTORE_PATH }));
+    return args;
+  }
+  if (requireReleaseSigning(env)) {
+    throw new Error(missingSigningError(missingGradleSigningInputs(env)));
   }
   return args;
 }
@@ -150,9 +193,9 @@ export function writeAppJsonReleaseMeta(appJsonPath, env = process.env) {
   return true;
 }
 
-export function unsignedWarning(missing) {
-  const names = missing.length ? missing.join(', ') : SIGNING_SECRET_NAMES.join(', ');
-  return `Signing secrets are missing (${names}). Building a debug-signed APK and uploading it as a workflow artifact only. It will not be attached to the GitHub release.`;
+export function missingSigningError(missing) {
+  const names = (missing?.length ? missing : SIGNING_SECRET_NAMES).join(', ');
+  return `Release signing is not configured (${names}). The job must fail and never fall back to debug signing.`;
 }
 
 export function releasePlan({
@@ -250,9 +293,7 @@ function main() {
     env,
   });
   if (!plan.signed) {
-    const message = unsignedWarning(plan.missing);
-    process.stderr.write(`::warning::${message}\n`);
-    if (env.GITHUB_STEP_SUMMARY) writeFileSync(env.GITHUB_STEP_SUMMARY, `## Unsigned Android APK\n\n${message}\n`, { flag: 'a' });
+    throw new Error(missingSigningError(plan.missing));
   }
   if (process.argv.includes('--json')) {
     process.stdout.write(`${JSON.stringify(plan)}\n`);

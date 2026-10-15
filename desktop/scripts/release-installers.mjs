@@ -14,6 +14,10 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installerAssetName, recordInstaller } from "./release-inventory.mjs";
 import { createSigner, statusLine } from "./release-signing.mjs";
+import { WINDOWS_APP_USER_MODEL_ID, WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION,
+  WINDOWS_LAUNCHER_REVISION_FILE, WINDOWS_POINTER, windowsLauncherScript } from "./windows-launcher.mjs";
+
+export { windowsLauncherScript };
 
 /** Stable across releases so an installer upgrades the same per-user install. Never change it. */
 export const WINDOWS_APP_ID = "{{6F0B6A43-3C1E-4D8B-9A57-2E4B1C9D7F10}";
@@ -99,29 +103,35 @@ export function windowsInstallerFolderName(version) {
   return `app-${safe}`;
 }
 
-/** Cmd stub the Start-menu shortcut can keep pointing at; it reads current.txt. */
-export function windowsLauncherScript() {
-  return [
-    "@echo off",
-    "setlocal EnableDelayedExpansion",
-    'set "ROOT=%~dp0"',
-    'set "VER="',
-    'if exist "%ROOT%current.txt" set /p VER=<"%ROOT%current.txt"',
-    'if defined VER if exist "%ROOT%!VER!\\Branch Agent.exe" (',
-    '  start "" "%ROOT%!VER!\\Branch Agent.exe" %*',
-    "  exit /b 0",
-    ")",
-    'if exist "%ROOT%Branch Agent.exe" start "" "%ROOT%Branch Agent.exe" %*',
-    "",
-  ].join("\r\n");
+/**
+ * The install root the Inno Setup package copies into {app}: the package in its version folder, current.txt naming it,
+ * the stable launcher every shortcut opens (from the package's resources/, so updates carry the same one) and the
+ * cmd stub, both from windows-launcher.mjs. signApp signs the launcher at the root.
+ */
+export function layoutWindowsInstallRoot({ payload, root, version, signApp = () => undefined }) {
+  const folder = windowsInstallerFolderName(version);
+  const app = join(root, folder);
+  mkdirSync(app, { recursive: true });
+  for (const name of readdirSync(payload)) renameSync(join(payload, name), join(app, name));
+  const bundled = join(app, "resources", WINDOWS_LAUNCHER_RESOURCE);
+  if (!existsSync(bundled)) throw new Error(`The Windows package has no resources/${WINDOWS_LAUNCHER_RESOURCE} (the Start-menu launcher)`);
+  copyFileSync(bundled, join(root, WINDOWS_LAUNCHER_EXE));
+  signApp(join(root, WINDOWS_LAUNCHER_EXE));
+  writeFileSync(join(root, WINDOWS_LAUNCHER_REVISION_FILE), `${WINDOWS_LAUNCHER_REVISION}\n`);
+  writeFileSync(join(root, WINDOWS_POINTER), `${folder}\n`);
+  writeFileSync(join(root, WINDOWS_LAUNCHER), windowsLauncherScript());
+  return folder;
 }
 
 /**
  * Per-user install under %LOCALAPPDATA%\Programs. Each build lives in a version folder; current.txt is the pointer
- * the launcher reads. The uninstaller lives outside {app} so leftover {app}.previous from older swaps still goes.
+ * the launcher reads. Shortcuts open the launcher at the root, which outlives every version folder, and carry the
+ * app's AppUserModelID so a pinned window opens it too. The uninstaller lives outside {app} so leftover
+ * {app}.previous from older swaps still goes.
  */
-export function innoSetupScript({ version, source, out, folder = windowsInstallerFolderName(version) }) {
-  const exe = `{app}\\${folder}\\Branch Agent.exe`;
+export function innoSetupScript({ version, source, out }) {
+  const exe = `{app}\\${WINDOWS_LAUNCHER_EXE}`;
+  const shortcut = `Filename: "${exe}"; WorkingDir: "{app}"; AppUserModelID: "${WINDOWS_APP_USER_MODEL_ID}"`;
   return [
     "[Setup]",
     `AppId=${WINDOWS_APP_ID}`,
@@ -154,8 +164,8 @@ export function innoSetupScript({ version, source, out, folder = windowsInstalle
     `Source: "${iss(source)}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs`,
     "",
     "[Icons]",
-    `Name: "{autoprograms}\\Branch Agent"; Filename: "${exe}"`,
-    `Name: "{autodesktop}\\Branch Agent"; Filename: "${exe}"; Tasks: desktopicon`,
+    `Name: "{autoprograms}\\Branch Agent"; ${shortcut}`,
+    `Name: "{autodesktop}\\Branch Agent"; ${shortcut}; Tasks: desktopicon`,
     "",
     "[Run]",
     `Filename: "${exe}"; Description: "Open Branch Agent"; Flags: nowait postinstall skipifsilent`,
@@ -209,15 +219,10 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     if (target === "win32-x64") {
       if (!existsSync(join(payload, "Branch Agent.exe"))) throw new Error("The Windows package has no Branch Agent.exe at its root");
       signer.signApp(join(payload, "Branch Agent.exe"));
-      const folder = windowsInstallerFolderName(version);
       const root = join(work, "install-root");
-      const app = join(root, folder);
-      mkdirSync(app, { recursive: true });
-      for (const name of readdirSync(payload)) renameSync(join(payload, name), join(app, name));
-      writeFileSync(join(root, "current.txt"), `${folder}\n`);
-      writeFileSync(join(root, "Branch Agent.cmd"), windowsLauncherScript());
+      layoutWindowsInstallRoot({ payload, root, version, signApp: file => signer.signApp(file) });
       const script = join(work, "branch-agent.iss");
-      writeFileSync(script, "\ufeff" + innoSetupScript({ version, source: root, folder, out: resolve(out) }));
+      writeFileSync(script, "\ufeff" + innoSetupScript({ version, source: root, out: resolve(out) }));
       run(innoCompiler(), ["/Qp", script]);
     } else if (target === "linux-x64") {
       const appDir = assembleAppDir(payload, join(work, "Branch-Agent.AppDir"));

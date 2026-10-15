@@ -100,6 +100,7 @@ describe('published Android APK assets', () => {
     expect(workflow).toContain('versioncode_name');
     expect(workflow).toContain('ANDROID_VERSION_CODE');
     expect(workflow).toMatch(/SIGNED" == "true"[\s\S]*--sha256/);
+    expect(workflow).toMatch(/Reject a debug-signed APK[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
     expect(workflow).not.toMatch(/-unsigned\.apk[\s\S]*gh release upload/);
     expect(workflow).toMatch(/attach_release == 'true'[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
 
