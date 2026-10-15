@@ -231,9 +231,7 @@ export async function prepareCodexAttemptConnection({ params, options }: CodexRu
       bindingIdentity = physicalIdentity;
     }
   }
-  let modelExecution:
-    | ReturnType<NonNullable<typeof params.hostCapabilities.bindModelExecution>>
-    | undefined;
+  let modelExecution: ReturnType<NonNullable<typeof params.hostCapabilities.bindModelExecution>>;
   const assertModelExecutionCurrent = () => modelExecution?.assertCurrent();
   const { binding: admittedBinding, authority: bindingAuthority } =
     await resolveCodexSessionBinding({
@@ -310,11 +308,13 @@ export async function prepareCodexAttemptConnection({ params, options }: CodexRu
       ? startupAuthProfileCandidate
       : params.authProfileStore
         ? resolveCodexAppServerAuthProfileId({
+            modelId: params.modelId,
             authProfileId: startupAuthProfileCandidate,
             store: params.authProfileStore,
             config: params.config,
           })
         : resolveCodexAppServerAuthProfileIdForAgent({
+            modelId: params.modelId,
             authProfileId: startupAuthProfileCandidate,
             agentDir,
             config: params.config,

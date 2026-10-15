@@ -84,5 +84,50 @@ export function coerceProfileUsageStats(raw: unknown): ProfileUsageStats | undef
   setStat("failureCounts", normalizeFailureCounts(raw.failureCounts));
   setStat("lastFailureAt", asFiniteNumber(raw.lastFailureAt));
   setStat("lastProbeAt", asFiniteNumber(raw.lastProbeAt));
+  if (isRecord(raw.modelAccess)) {
+    const checks: NonNullable<ProfileUsageStats["modelAccess"]> = {};
+    for (const [model, check] of Object.entries(raw.modelAccess)) {
+      if (
+        !isRecord(check) ||
+        typeof check.usable !== "boolean" ||
+        typeof check.checkedAt !== "number" ||
+        !Number.isFinite(check.checkedAt) ||
+        typeof check.reason !== "string"
+      ) {
+        continue;
+      }
+      checks[model] = { usable: check.usable, checkedAt: check.checkedAt, reason: check.reason };
+    }
+    setStat("modelAccess", checks);
+  }
+  if (isRecord(raw.subscriptionUsage) && Array.isArray(raw.subscriptionUsage.windows)) {
+    const checkedAt = asFiniteNumber(raw.subscriptionUsage.checkedAt);
+    if (checkedAt !== undefined) {
+      const windows = raw.subscriptionUsage.windows.flatMap((window) => {
+        if (
+          !isRecord(window) ||
+          typeof window.label !== "string" ||
+          typeof window.usedPercent !== "number" ||
+          !Number.isFinite(window.usedPercent)
+        ) {
+          return [];
+        }
+        return [
+          {
+            label: window.label,
+            usedPercent: window.usedPercent,
+            ...(asFiniteNumber(window.resetAt) !== undefined
+              ? { resetAt: window.resetAt as number }
+              : {}),
+          },
+        ];
+      });
+      setStat("subscriptionUsage", {
+        checkedAt,
+        windows,
+        plan: normalizeOptionalString(raw.subscriptionUsage.plan),
+      });
+    }
+  }
   return Object.keys(stats).length > 0 ? stats : undefined;
 }

@@ -614,3 +614,23 @@ describe("buildProbeTargets", () => {
     });
   });
 });
+
+it("self-checks excluded subscription logins without probing API keys", async () => {
+  mockStore = {
+    version: 1,
+    order: { anthropic: ["anthropic:old"] },
+    profiles: {
+      "anthropic:old": { type: "token", provider: "anthropic", token: "fixture-old" },
+      "anthropic:new": { type: "token", provider: "anthropic", token: "fixture-new" },
+      "anthropic:key": { type: "api_key", provider: "anthropic", key: "fixture-key" },
+    },
+  };
+  mockAgentStore = undefined;
+  resolveAuthProfileEligibilityMock.mockReturnValue({ eligible: true, reasonCode: "ok" });
+  const result = await plan({ options: { subscriptionSelfCheck: true, maxTokens: 1 } });
+  expect(result.targets.map((target) => target.profileId)).toEqual([
+    "anthropic:old",
+    "anthropic:new",
+  ]);
+  expect(result.results).toEqual([]);
+});

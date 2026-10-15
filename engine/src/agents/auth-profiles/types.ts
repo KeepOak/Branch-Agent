@@ -99,6 +99,13 @@ export type AuthProfileBlockedSource = "codex_rate_limits" | "wham" | "provider_
 
 /** Per-profile usage statistics for round-robin and cooldown tracking */
 export type ProfileUsageStats = {
+  /** Real subscription checks, keyed by provider/model (never by plan guesses). */
+  modelAccess?: Record<string, { checkedAt: number; usable: boolean; reason: string }>;
+  subscriptionUsage?: {
+    checkedAt: number;
+    plan?: string;
+    windows: Array<{ label: string; usedPercent: number; resetAt?: number }>;
+  };
   lastUsed?: number;
   blockedUntil?: number;
   blockedReason?: AuthProfileBlockedReason;

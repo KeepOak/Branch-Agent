@@ -3,6 +3,8 @@
 // Branch's state folder and only the gateway writes it: each read-modify-write is synchronous, so two Trunks that
 // finish together can never claim the same job. Same storage pattern as gateway/contacts/graft-work.ts.
 import { randomUUID } from "node:crypto";
+import { getRuntimeConfig } from "../config/config.js";
+import { agentHasUsableModel } from "../infra/account-model-check.js";
 import { isClaimThreadLive, probeWorking, waitForTrunkIdle } from "./trunk-queue-probe.js";
 import {
   claimMayRelease,
@@ -572,6 +574,9 @@ async function claimAndDispatch(
     return undefined;
   }
   if (!(await waitForTrunkIdle(params.gateway, params.agentId, params.idleWaitMs ?? 0))) {
+    return undefined;
+  }
+  if (!agentHasUsableModel(getRuntimeConfig(), params.agentId, now())) {
     return undefined;
   }
   const item = claimNextQueueItem(params.agentId, params.env, now());

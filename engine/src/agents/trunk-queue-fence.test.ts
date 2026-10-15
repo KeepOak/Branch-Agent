@@ -1,9 +1,10 @@
+vi.mock("../infra/account-model-check.js", () => ({ agentHasUsableModel: () => true }));
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addQueueItem,
   claimNextQueueItem,

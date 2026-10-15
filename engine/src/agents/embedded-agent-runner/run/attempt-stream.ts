@@ -9,6 +9,7 @@ import {
   assertOperatorModelAllowed,
   readRunOperatorAuthority,
 } from "../../admitted-run-context.js";
+import { wrapAnthropicUsageCapture } from "../../auth-profiles/anthropic-usage.js";
 import { shouldAllowProviderOwnedThinkingReplay } from "../../embedded-agent-helpers/turns.js";
 import { wrapStreamFnModelSwitchInstructions } from "../../model-switch-instructions.js";
 import { wrapStreamFnTextTransforms } from "../../plugin-text-transforms.js";
@@ -400,6 +401,11 @@ export function installEmbeddedAttemptStreamGuards(
   let diagnosticModelCallSeq = 0;
   let modelResponseTerminal = false;
   session.agent.streamFn = wrapStreamFnWithProviderResponseMetadata(session.agent.streamFn);
+  session.agent.streamFn = wrapAnthropicUsageCapture(
+    session.agent.streamFn,
+    attempt.agentDir,
+    attempt.authProfileId,
+  );
   session.agent.streamFn = wrapStreamFnWithDiagnosticModelCallEvents(session.agent.streamFn, {
     config: attempt.config,
     runId: attempt.runId,

@@ -1,3 +1,4 @@
+vi.mock("../infra/account-model-check.js", () => ({ agentHasUsableModel: () => true }));
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

@@ -1279,3 +1279,20 @@ describe("prepareAgentRuntimeAuthPlan", () => {
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
+
+it("does not let a user pin bypass a known subscription-model refusal", () => {
+  const store = authStore({ free: openAITokenProfile("fixture") });
+  store.usageStats = {
+    free: {
+      modelAccess: { "openai/gpt-5.5": { checkedAt: Date.now(), usable: false, reason: "format" } },
+    },
+  };
+  expect(() =>
+    prepareAuthFixture({
+      ...openAIChatGptAuthFixture,
+      authProfileStore: store,
+      sessionAuthProfileId: "free",
+      sessionAuthProfileSource: "user",
+    }),
+  ).toThrow();
+});

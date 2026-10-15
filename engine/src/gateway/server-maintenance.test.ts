@@ -979,3 +979,24 @@ describe("startGatewayMaintenanceTimers", () => {
     await stopMaintenanceTimers(timers);
   });
 });
+
+const subscriptionCheck = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("../infra/account-model-check.js", () => ({ checkAccountModels: subscriptionCheck }));
+it("checks subscription models at startup and every three hours, stopping with maintenance", async () => {
+  subscriptionCheck.mockClear();
+  const clock = createGatewaySchedulerClock();
+  const { startGatewayMaintenanceTimers } = await import("./server-maintenance.js");
+  const deps = createMaintenanceTimerDeps();
+  deps.scheduler = createTestGatewayScheduler(clock.clock);
+  const timers = startGatewayMaintenanceTimers(deps);
+  try {
+    await clock.advanceBy(0);
+    expect(subscriptionCheck).toHaveBeenCalledTimes(1);
+    await clock.advanceBy(3 * 60 * 60_000);
+    expect(subscriptionCheck).toHaveBeenCalledTimes(2);
+  } finally {
+    await stopMaintenanceTimers(timers);
+  }
+  await clock.advanceBy(3 * 60 * 60_000);
+  expect(subscriptionCheck).toHaveBeenCalledTimes(2);
+});

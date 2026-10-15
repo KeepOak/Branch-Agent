@@ -145,10 +145,24 @@ export function startGatewayMaintenanceTimers(params: {
       run,
     });
   };
-  schedulePeriodic("model-upgrade-probe", 24 * 60 * 60_000, async () => {
-    const { runDailyModelUpgradeProbe } = await import("../infra/model-upgrade-probe.js");
-    await runDailyModelUpgradeProbe();
-  }, true);
+  schedulePeriodic(
+    "account-model-check",
+    3 * 60 * 60_000,
+    async () => {
+      const { checkAccountModels } = await import("../infra/account-model-check.js");
+      await checkAccountModels(params.getRuntimeConfig(), { force: true });
+    },
+    true,
+  );
+  schedulePeriodic(
+    "model-upgrade-probe",
+    24 * 60 * 60_000,
+    async () => {
+      const { runDailyModelUpgradeProbe } = await import("../infra/model-upgrade-probe.js");
+      await runDailyModelUpgradeProbe();
+    },
+    true,
+  );
   let periodicTasksStopPromise: Promise<void> | undefined;
   setBroadcastHealthUpdate((snap: HealthSummary) => {
     params.broadcast("health", snap, {

@@ -1,7 +1,8 @@
+vi.mock("../infra/account-model-check.js", () => ({ agentHasUsableModel: () => true }));
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../config/types.branch.js";
 import { onTrunkRunLifecycle } from "../gateway/server-methods/trunk-queue.js";
 import { isQueueEligibleTrunk, isTrunkStartupStalled } from "./trunk-queue-policy.js";
