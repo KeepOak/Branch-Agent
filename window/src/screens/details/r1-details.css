@@ -11,7 +11,7 @@
 .r1-details-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 4px; }
 .r1-details-tabs { display: flex; justify-content: center; gap: 4px; padding: 3px; border-radius: 999px; background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); align-self: center; }
 .r1-details-tabs [role="tab"] { padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; background: transparent; box-shadow: none; }
-.r1-details-tabs [role="tab"][aria-selected="true"] { background: var(--raise, #fff); box-shadow: 0 1px 3px rgba(0,0,0,.12); font-weight: 600; }
+.r1-details-tabs [role="tab"][aria-selected="true"] { background: var(--raise); box-shadow: inset 0 0 0 1px var(--gp-edge); font-weight: 600; }
 .r1-details-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; align-content: start; gap: 10px; }
 .r1-details-body .tk-sec { margin: 0; }
 .r1-details-empty, .r1-details-bad { margin: 0; font-size: 13px; }
