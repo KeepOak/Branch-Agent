@@ -1,5 +1,5 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "../thread/model";
 import type { Level } from "../places-nav/settings-nav";
@@ -9,7 +9,9 @@ import { BrowserScreencastClient, type BrowserScreencastFrame } from "./browser-
 import { browserCall, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBrowserRequest, type BrowserRoute, type LiveTab } from "./browser-route";
 import { BrowserTools } from "./BrowserTools";
 import { SIcon } from "./stage-icons";
-import { editingKey, forwardedKey, resolveBrowserInput } from "./browser-input";
+import { resolveBrowserInput, scrollAtPoint } from "./browser-input";
+import { DriveSurface, type RemoteAction } from "./DriveSurface";
+import { toRemote } from "./remote-map";
 
 /** The page area's size, reported once it settles, so the Trunk's page can be sized to the pane. */
 const FIT_DELAY_MS = 300;
@@ -42,53 +44,14 @@ function useFitReporter(box: RefObject<HTMLElement | null>, onFit?: (size: { wid
   }, [box, onFit]);
 }
 
-/** Text from a soft or hardware keyboard reaches the page as text, never as one key press per character. */
-function useTypingField(field: RefObject<HTMLTextAreaElement | null>, live: RefObject<{ interact: boolean; send: (body: Record<string, unknown>) => void }>) {
-  useEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    const beforeInput = (event: Event) => {
-      const input = event as InputEvent;
-      if (!live.current?.interact || input.isComposing || input.inputType === "insertFromComposition") {
-        if (input.inputType === "insertFromComposition") input.preventDefault();
-        return;
-      }
-      input.preventDefault();
-      if (input.inputType === "insertText" && input.data) live.current.send({ kind: "insertText", text: input.data });
-      else if (input.inputType !== "insertFromPaste") {
-        const key = editingKey(input.inputType);
-        if (key) live.current.send({ kind: "press", key });
-      }
-    };
-    const composed = (event: Event) => {
-      const text = (event as CompositionEvent).data;
-      if (text && live.current?.interact) live.current.send({ kind: "insertText", text });
-      el.value = "";
-    };
-    el.addEventListener("beforeinput", beforeInput);
-    el.addEventListener("compositionend", composed);
-    return () => {
-      el.removeEventListener("beforeinput", beforeInput);
-      el.removeEventListener("compositionend", composed);
-    };
-  }, [field, live]);
-}
-
-
+/** The page's CSS pixel under a client point on the fitted screencast frame, or null in the letterbox bands. */
 export function browserRemotePoint(
   rect: { left: number; top: number; width: number; height: number },
   image: { width: number; height: number; cssWidth: number; cssHeight: number },
   x: number,
   y: number,
 ) {
-  const scale = Math.min(rect.width / image.width, rect.height / image.height);
-  if (!Number.isFinite(scale) || scale <= 0) return null;
-  const left = rect.left + (rect.width - image.width * scale) / 2,
-    top = rect.top + (rect.height - image.height * scale) / 2;
-  const px = (x - left) / (image.width * scale),
-    py = (y - top) / (image.height * scale);
-  if (px < 0 || py < 0 || px > 1 || py > 1) return null;
-  return { x: Math.round(px * image.cssWidth), y: Math.round(py * image.cssHeight) };
+  return toRemote({ x, y }, rect, image, { width: image.cssWidth, height: image.cssHeight });
 }
 
 export type BrowserPhase = "loading" | "empty" | "connected" | "error";
@@ -122,11 +85,10 @@ function useBrowser(engine: WindowEngine, route: BrowserRoute | null, tick: numb
 type ViewState = { owner: WindowEngine; selection: string; phase: BrowserPhase; url?: string; title?: string; message?: string };
 
 /** The live picture of one tab (POST /screencast) on a canvas; clicks and keys go to /act only while `interact`. */
-function Screencast({ engine, gatewayUrl, entry, interact, onState, onFit }: { engine: WindowEngine; gatewayUrl: string; entry: BrowserPresentation | null; interact: boolean; onState: (s: Omit<ViewState, "owner" | "selection">) => void; onFit?: (size: { width: number; height: number }) => void }) {
+function Screencast({ engine, gatewayUrl, entry, interact, driving = "", onState, onFit }: { engine: WindowEngine; gatewayUrl: string; entry: BrowserPresentation | null; interact: boolean; driving?: string; onState: (s: Omit<ViewState, "owner" | "selection">) => void; onFit?: (size: { width: number; height: number }) => void }) {
   const selection = entry ? `${routeKey(entry.tab)}:${entry.tab.targetId}:${entry.revision}` : "";
   const canvas = useRef<HTMLCanvasElement>(null);
   const box = useRef<HTMLDivElement>(null);
-  const field = useRef<HTMLTextAreaElement>(null);
   useFitReporter(box, onFit);
   const metrics = useRef<{ width: number; height: number; cssWidth: number; cssHeight: number } | null>(null);
   const generation = useRef(0);
@@ -257,45 +219,38 @@ function Screencast({ engine, gatewayUrl, entry, interact, onState, onFit }: { e
         },
       );
   };
-  const live = useRef({ interact, send: act });
-  live.current = { interact, send: act };
-  useTypingField(field, live);
-  const typeKey = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    const key = forwardedKey({ key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode });
-    if (!interact || !key) return;
-    e.preventDefault();
-    act({ kind: "press", key });
+  // What you do while you have the page, through the same /act route the Trunk uses (BrowserActRequest).
+  const drive = (action: RemoteAction) => {
+    switch (action.kind) {
+      case "click":
+        act({ kind: "clickCoords", x: action.x, y: action.y, ...(action.button === "right" ? { button: "right" } : {}) });
+        return;
+      case "type":
+        act({ kind: "insertText", text: action.text });
+        return;
+      case "key":
+        act({ kind: "press", key: action.key });
+        return;
+      case "scroll":
+        act({ kind: "evaluate", fn: scrollAtPoint(action.x, action.y, action.dx, action.dy) });
+        return;
+      default:
+        // The route has no pointer move or coordinate drag, so hover and drag stay on this side.
+        return;
+    }
   };
   return (
     <div className="br-page-st" ref={box}>
-      <canvas
-        ref={canvas}
-        aria-label="Live browser page"
-        onClick={(e) => {
-          if (!interact || !metrics.current) return;
-          const point = browserRemotePoint(e.currentTarget.getBoundingClientRect(), metrics.current, e.clientX, e.clientY);
-          if (point) {
-            field.current?.focus({ preventScroll: true });
-            act({ kind: "clickCoords", ...point });
-          }
-        }}
-      />
-      <textarea
-        ref={field}
-        className="br-input-st"
-        aria-label="Type into the page"
-        tabIndex={interact ? 0 : -1}
-        autoComplete="off"
-        autoCorrect="off"
-        spellCheck={false}
-        onKeyDown={typeKey}
-        onPaste={(e) => {
-          if (!interact) return;
-          e.preventDefault();
-          const text = e.clipboardData.getData("text/plain");
-          if (text) act({ kind: "insertText", text });
-        }}
-      />
+      <DriveSurface
+        active={interact && current.phase === "connected"}
+        frame={() => (metrics.current ? { width: metrics.current.width, height: metrics.current.height } : null)}
+        remote={() => (metrics.current ? { width: metrics.current.cssWidth, height: metrics.current.cssHeight } : null)}
+        send={drive}
+        typingLabel="Type into the page"
+      >
+        <canvas ref={canvas} aria-label="Live browser page" />
+      </DriveSurface>
+      {interact && driving && current.phase === "connected" ? <span className="drive-st">{driving}</span> : null}
       {current.phase === "loading" || current.phase === "error" ? (
         <div className="blank-st">
           <SIcon name="globe" />
@@ -337,6 +292,8 @@ type Props = {
   running?: boolean;
   /** You have the page: clicks and keys go to it. */
   control?: boolean;
+  /** The line on the page while you drive it. */
+  driving?: string;
   onControl?: (control: boolean) => void;
   level?: Level;
   onState: (phase: BrowserPhase, title?: string) => void;
@@ -362,7 +319,7 @@ export function BrowserMini({ engine, gatewayUrl, blocks }: { engine: WindowEngi
   );
 }
 
-export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", onState }: Props) {
+export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, driving = "", onControl, level = "regular", onState }: Props) {
   const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
   // Before the first tool call, use only Branch's managed browser, never the user's Chrome.
   const route = useMemo<BrowserRoute>(() => routeOf(entries) ?? { target: "host", profile: "branch" }, [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -515,7 +472,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     <small>Type a website or a search above and press Enter. Then ask {name} to read, compare or work on the page, or click and type yourself.</small>
     <small>Branch's browser is separate from your personal browser.</small>
   </Blank>;
-  else page = <Screencast key={entry ? `${routeKey(route)}:${tab.targetId}` : "none"} engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={control} onState={onView} onFit={fitPage} />;
+  else page = <Screencast key={entry ? `${routeKey(route)}:${tab.targetId}` : "none"} engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={control} driving={driving} onState={onView} onFit={fitPage} />;
   const showChrome = Boolean(engine.sessionKey);
   return (
     <div className="browser-st">
