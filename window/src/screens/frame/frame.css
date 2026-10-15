@@ -11,6 +11,18 @@
 .r1-header-left { position: absolute; left: 12px; top: 9px; display: flex; align-items: center; gap: 6px; }
 .r1-header-right { position: absolute; right: 8px; top: 8px; }
 .r1-header :is(button, .g-capsule) { pointer-events: auto; }
+/* One scroll edge under the floating header, for every column that scrolls beneath it (conversation, places, Settings; audit F5).
+   At rest the band is hidden: .r1-scroll starts its content below the header. Once it has scrolled (useEdgeFade sets data-top),
+   a solid --bg band covers the header and fades out over 28px below it, so no text reads through a pill. The band sits in the
+   header's stacking context (z -1), so the pills stay on top. Beside a right-docked pane it stops at the pane's edge. */
+.r1-header::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: calc(var(--hdr) + 28px); z-index: -1; pointer-events: none;
+  background: linear-gradient(to bottom, var(--bg) var(--hdr), transparent); opacity: 0; transition: opacity var(--fade); }
+.r1-conversation:has(> .r1-scroll[data-top]) > .r1-header::before { opacity: 1; }
+.r1-conversation[data-beside="right"] > .r1-header::before { right: var(--r1-beside); }
+/* Once stuck in the conversation column, the thread bar stops below the scroll edge's fade (hdr + 28px), not on the header row. */
+:root:not(#sg#sg#sg#sg) .r1-content > .r1-topic-host { top: calc(var(--hdr) + 36px); }
+:root[data-transparency="reduce"] .r1-header::before { background: var(--bg); }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .r1-header::before { background: var(--bg); } }
 /* README item 48: the header sits on the clear conversation, so its drawer button, history and tools capsules and the title pill
    are frosted pills (.g-frost); only the sidebar is frosted glass. */
 .r1-header .r1-history { height: 34px; gap: 0; }
