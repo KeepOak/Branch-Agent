@@ -100,7 +100,8 @@ export function readSessionStoreSummaryReadOnly(
                 // Raw updates clear entry_valid. Preserve listing's warm-row semantics:
                 // skip unreadable JSON/retained placeholders, but include readable pending rows.
                 const stored = storedRows.get(sessionKey);
-                if (!stored) {
+                // -1 rows are retained placeholders or quarantined rows; neither is listed.
+                if (!stored || entryValid === -1) {
                   continue;
                 }
                 const { current_session_id: _currentSessionId, ...listRow } = stored;

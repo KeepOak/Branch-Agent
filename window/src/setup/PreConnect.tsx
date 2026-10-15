@@ -7,7 +7,7 @@ import { isLocalTarget, readPreConnect, readTargetName, savePreConnect } from ".
 import { SetupShell } from "./SetupShell";
 import { WelcomeHero } from "./SetupBrand";
 import { RemoteForm, WelcomeBody, WhereBody } from "./steps-early";
-import type { Where } from "./setup-model";
+import { FIRST_RUN_STEP_NAMES, type Where } from "./setup-model";
 
 export type PreConnectState =
   | { kind: "address" }
@@ -75,11 +75,12 @@ export function PreConnect({ local, address, state, busy, startAtWhere, onConnec
   const form = <RemoteForm key={where} address={url} busy={busy} problem={null} onConnect={connect} />;
   return (
     <SetupShell
-      step={step}
-      reach={promise ? 1 : 0}
-      reachReason={promise ? "Connect to a Branch first." : "Tick the promise on Welcome first."}
-      done={(i) => i < step}
-      onStep={(i) => i <= 1 && setStep(i)}
+      steps={FIRST_RUN_STEP_NAMES}
+      step={0}
+      reach={0}
+      reachReason="Connect to a Branch first."
+      done={() => false}
+      onStep={() => undefined}
       onSkip={null}
       title={step === 0 ? "Hi, I’m Branch." : "Where should Branch run?"}
       lede={step === 0 ? "An assistant that lives on this computer, with Trunks that each take one job. This takes about three minutes; you can change everything later." : "The engine and the gateway live here. You can talk to it from anywhere."}

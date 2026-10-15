@@ -178,6 +178,15 @@ test('allowlist is explicit: every rule has an id and a why', () => {
   }
 });
 
+test('the recheck workflow name line is allowlisted; the same words anywhere else still fail', () => {
+  const workflow = '.github/workflows/merge-gate-recheck.yml';
+  assert.deepEqual(checkAddedDiff(added(workflow, 30, '      - OpenClaw wording')), []);
+  // The allowance covers the name line only, not other text in the same workflow...
+  assert.equal(checkAddedDiff(added(workflow, 31, 'echo "Welcome to OpenClaw"')).length, 1);
+  // ...and not the same name line in any other file.
+  assert.equal(checkAddedDiff(added('.github/workflows/other.yml', 30, '      - OpenClaw wording')).length, 1);
+});
+
 test('failure message tells the agent what to write instead', () => {
   const hits = checkAddedDiff(added('engine/src/prompts.ts', 4, 'Read https://docs.openclaw.ai/gateway'));
   const message = formatFailure(hits);
@@ -240,4 +249,13 @@ test('allowlistRule covers an npm scope and rejects the same word in prose', () 
   assert.equal(allowlistRule('engine/src/a.ts', 'dep @openclaw/crabline', pkg)?.id, 'npm-scope');
   const prose = findCandidateSpans('Welcome to OpenClaw')[0];
   assert.equal(allowlistRule('engine/src/a.ts', 'Welcome to OpenClaw', prose), null);
+});
+
+test('credit files may name upstream projects; the allowance is file-specific, not a directory skip', () => {
+  assert.equal(checkAddedDiff(added('NOTICE', 9, 'openclaw/openclaw @ 57e0aaa1c190')).length, 0);
+  assert.equal(checkAddedDiff(added('third_party/mastra/LICENSE', 2, 'Welcome to OpenClaw')).length, 0);
+  assert.equal(checkAddedDiff(added('docs/upstream/COPIED.csv', 2, 'x,y,openclaw/openclaw,57e0,z,d')).length, 0);
+  assert.equal(checkAddedDiff(added('docs/upstream/copied/chore-root-license.csv', 2, 'openclaw/openclaw')).length, 0);
+  assert.equal(checkAddedDiff(added('docs/upstream/notes.md', 2, 'Welcome to OpenClaw')).length, 1);
+  assert.equal(checkAddedDiff(added('docs/upstream/copied/nested/x.csv', 2, 'Welcome to OpenClaw')).length, 1);
 });

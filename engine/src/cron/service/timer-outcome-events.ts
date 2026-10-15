@@ -150,7 +150,7 @@ export async function emitMissingRequestedCronRunTerminal(
       action: "finished",
       job,
       status: quiet ? "skipped" : result.status,
-      completionStatus: quiet ? "failed" : result.completionStatus,
+      completionStatus: quiet ? "unknown" : result.completionStatus,
       error: quiet ? "queued manual run skipped: trigger condition not met" : result.error,
       deliveryError: result.deliveryState.error,
       deliverySuppressionReason: result.deliveryState.deliverySuppressionReason,

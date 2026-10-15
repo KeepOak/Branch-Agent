@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { BranchConfig } from "branch/plugin-sdk/config-contracts";
 import { readProviderJsonResponse } from "branch/plugin-sdk/provider-http";
+import { createAgentToAgentPolicy } from "branch/plugin-sdk/session-visibility";
 import {
   fetchWithSsrFGuard,
   ssrfPolicyFromHttpBaseUrlAllowedOrigin,
 } from "branch/plugin-sdk/ssrf-runtime";
 import { z } from "zod";
-import { createAgentToAgentPolicy } from "../../../src/plugin-sdk/session-visibility.js";
 import { resolveA2aChannelAccount } from "./accounts.js";
 
 const A2A_OUTBOUND_TIMEOUT_MS = 30_000;
