@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { GuestBrowser } from "./GuestBrowser";
@@ -34,6 +34,7 @@ const render = async (props: Partial<Parameters<typeof GuestBrowser>[0]> = {}) =
 };
 
 const find = <T extends Element>(selector: string) => container.querySelector<T>(selector);
+const openWindowButton = () => [...container.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === "Open in a window");
 
 describe("owner's browser pane", () => {
   it("starts empty with the back, forward and reload buttons off", async () => {
@@ -86,6 +87,37 @@ describe("owner's browser pane", () => {
     await act(async () => take.click());
     expect(access.state("agent:main:one").access).toBe("owner-control");
     expect(container.textContent).toContain("Hand back to Scout");
+  });
+
+  it("greys Open in a window with its reason when the desktop has no pop-out method, and a click does nothing", async () => {
+    const onOpenTab = vi.fn(() => () => {});
+    await render({ bridge: { local: true, openPopout: null, onOpenTab }, startUrl: "https://example.com/" });
+    const button = openWindowButton();
+    expect(button).toBeDefined();
+    expect(button!.disabled).toBe(true);
+    expect(button!.title).toBe("Open in a window comes in a later update.");
+    expect(button!.getAttribute("data-coming")).toBe("Open in a window comes in a later update.");
+    await act(async () => button!.click());
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("opens the page in a window through the desktop's method when it has one", async () => {
+    const openPopout = vi.fn(async () => undefined);
+    await render({ bridge: { local: true, openPopout, onOpenTab: () => () => {} }, startUrl: "https://example.com/" });
+    const button = openWindowButton()!;
+    expect(button.disabled).toBe(false);
+    expect(button.title).toBe("");
+    await act(async () => button.click());
+    expect(openPopout).toHaveBeenCalledWith("https://example.com/");
+  });
+
+  it("says so when the desktop's pop-out fails", async () => {
+    const openPopout = vi.fn(async () => {
+      throw new Error("no window");
+    });
+    await render({ bridge: { local: true, openPopout, onOpenTab: () => () => {} }, startUrl: "https://example.com/" });
+    await act(async () => openWindowButton()!.click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("The window didn't open.");
   });
 
   it("hides the pop-out button in the pop-out window", async () => {

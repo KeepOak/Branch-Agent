@@ -48,7 +48,7 @@ export function useGuestPane({ startUrl, engine, sessionKey = null, access = sha
     lastPopup.current = { url: safe, at: now };
     openTab(safe);
   }, [openTab]);
-  useEffect(() => bridge?.onOpenTab(popup), [bridge, popup]);
+  useEffect(() => bridge?.onOpenTab?.(popup), [bridge, popup]);
 
   useGuestHost({
     engine,

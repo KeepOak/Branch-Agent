@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // The R1 browser route: the header's browser stage is R1Stage in Browser mode, which hosts ComputerStage. Its browser
-// view is BrowserPanes, so the owner's switch must show there whenever the desktop bridge exists.
+// view is BrowserPanes, so the owner's switch must show there whenever the desktop bridge exists. The Trunk's browser is
+// the default on every start; Your browser opens only when the owner picks it.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -72,33 +73,78 @@ async function mountBrowserRoute() {
 
 const switchOf = () => container?.querySelector<HTMLElement>('[role="group"][aria-label="Which browser"]');
 
+const full = () => ({ openPopout: vi.fn(async () => undefined), onOpenTab: vi.fn(() => () => {}) });
+const switchButtons = () => [...switchOf()!.querySelectorAll<HTMLButtonElement>("button")];
+const yourPane = () => container?.querySelector<HTMLElement>('section.guest-pane[aria-label="Your browser"]');
+
 describe("R1 browser route", () => {
-  it("shows Your browser and Trunk's browser when the desktop bridge exists, Your browser by default on a local gateway", async () => {
-    desktop.branchDesktop = { browserGuest: { local: true, openPopout: async () => undefined, onOpenTab: () => () => {} } };
+  it("shows Your browser and Trunk's browser when the desktop bridge exists, Trunk's browser by default even on a local gateway", async () => {
+    desktop.branchDesktop = { browserGuest: { local: true, ...full() } };
     await mountBrowserRoute();
 
     const group = switchOf();
     expect(group).not.toBeNull();
-    const buttons = [...group!.querySelectorAll("button")];
+    const buttons = switchButtons();
     expect(buttons.map((button) => button.textContent)).toEqual(["Your browser", "Trunk's browser"]);
-    expect(buttons[0]!.getAttribute("aria-pressed")).toBe("true");
-    expect(buttons[1]!.getAttribute("aria-pressed")).toBe("false");
+    expect(buttons[0]!.getAttribute("aria-pressed")).toBe("false");
+    expect(buttons[1]!.getAttribute("aria-pressed")).toBe("true");
+    expect(container!.querySelector('.guest-slot')?.getAttribute("data-shown")).toBe("false");
+    expect(yourPane()?.getAttribute("data-visible")).toBe("false");
+  });
+
+  it("opens Your browser when the owner picks it, and goes back to Trunk's browser", async () => {
+    const bridge = { local: true, ...full() };
+    desktop.branchDesktop = { browserGuest: bridge };
+    await mountBrowserRoute();
+
+    await act(async () => switchButtons()[0]!.click());
+    expect(switchButtons()[0]!.getAttribute("aria-pressed")).toBe("true");
+    expect(switchButtons()[1]!.getAttribute("aria-pressed")).toBe("false");
+    expect(container!.querySelector('.guest-slot')?.getAttribute("data-shown")).toBe("true");
+    expect(yourPane()?.getAttribute("data-visible")).toBe("true");
+    expect(bridge.onOpenTab).toHaveBeenCalled();
+
+    await act(async () => switchButtons()[1]!.click());
+    expect(switchButtons()[1]!.getAttribute("aria-pressed")).toBe("true");
+    expect(yourPane()?.getAttribute("data-visible")).toBe("false");
+  });
+
+  it("starts on Trunk's browser again on a fresh start after the owner picked Your browser", async () => {
+    desktop.branchDesktop = { browserGuest: { local: true, ...full() } };
+    await mountBrowserRoute();
+    await act(async () => switchButtons()[0]!.click());
+    expect(switchButtons()[0]!.getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => root!.unmount());
+    root = undefined;
+    container?.remove();
+    await mountBrowserRoute();
+    expect(switchButtons()[0]!.getAttribute("aria-pressed")).toBe("false");
+    expect(switchButtons()[1]!.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("defaults to Trunk's browser on a remote gateway, and still shows the switch", async () => {
-    desktop.branchDesktop = { browserGuest: { local: false, openPopout: async () => undefined, onOpenTab: () => () => {} } };
+    desktop.branchDesktop = { browserGuest: { local: false, ...full() } };
     await mountBrowserRoute();
 
-    const buttons = [...switchOf()!.querySelectorAll("button")];
+    const buttons = switchButtons();
     expect(buttons[0]!.getAttribute("aria-pressed")).toBe("false");
     expect(buttons[1]!.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("shows the switch whenever the bridge object exists, even when its methods are not visible to the page", async () => {
+  it("shows the switch whenever the bridge object exists; without its methods Your browser is greyed with its reason and Trunk's browser stays selected", async () => {
     desktop.branchDesktop = { browserGuest: { local: true } };
     await mountBrowserRoute();
     expect(switchOf()).not.toBeNull();
-    expect(switchOf()!.querySelectorAll("button")[0]!.getAttribute("aria-pressed")).toBe("true");
+    const [yours, trunks] = switchButtons();
+    expect(trunks!.getAttribute("aria-pressed")).toBe("true");
+    expect(yours!.getAttribute("aria-pressed")).toBe("false");
+    expect(yours!.disabled).toBe(true);
+    expect(yours!.title).toBe("Your browser comes in a later update.");
+
+    await act(async () => yours!.click());
+    expect(switchButtons()[1]!.getAttribute("aria-pressed")).toBe("true");
+    expect(yourPane()).toBeNull();
   });
 
   it("shows no switch in a plain web page", async () => {

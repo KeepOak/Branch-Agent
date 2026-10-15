@@ -14,13 +14,20 @@ describe("guestBridge", () => {
     expect(guestBridge()).toBeNull();
   });
 
-  it("exists whenever the desktop exposes the browser object, even without its methods", () => {
+  it("exists whenever the desktop exposes the browser object, and reports a missing method as null, not a no-op", () => {
     desktop.branchDesktop = { browserGuest: { local: true } };
     const bridge = guestBridge();
     expect(bridge).not.toBeNull();
     expect(bridge?.local).toBe(true);
-    expect(() => bridge?.openPopout("https://keepoak.com/")).not.toThrow();
-    expect(bridge?.onOpenTab(() => {})).toEqual(expect.any(Function));
+    expect(bridge?.openPopout).toBeNull();
+    expect(bridge?.onOpenTab).toBeNull();
+  });
+
+  it("detects each method on its own", () => {
+    desktop.branchDesktop = { browserGuest: { local: true, onOpenTab: () => () => {}, openPopout: "not a function" } };
+    const bridge = guestBridge();
+    expect(bridge?.openPopout).toBeNull();
+    expect(bridge?.onOpenTab).toEqual(expect.any(Function));
   });
 
   it("reads local as false unless the desktop says true", () => {
@@ -35,8 +42,8 @@ describe("guestBridge", () => {
     desktop.branchDesktop = { browserGuest: raw };
     const first = guestBridge();
     expect(guestBridge()).toBe(first);
-    void first?.openPopout("https://keepoak.com/");
-    first?.onOpenTab(() => {});
+    void first?.openPopout?.("https://keepoak.com/");
+    first?.onOpenTab?.(() => {});
     expect(openPopout).toHaveBeenCalledWith("https://keepoak.com/");
     expect(onOpenTab).toHaveBeenCalledOnce();
   });

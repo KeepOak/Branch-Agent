@@ -25,6 +25,9 @@ export type GuestBrowserProps = {
   access?: GuestAccessStore;
 };
 
+/** Why "Open in a window" is greyed when the desktop has no pop-out method. */
+export const OPEN_WINDOW_WHY = "Open in a window comes in a later update.";
+
 export function GuestBrowser({ engine, sessionKey = null, trunkName = "Trunk", bridge, startUrl, full = false, visible = true, access }: GuestBrowserProps) {
   const pane = useGuestPane({ startUrl, engine, sessionKey, access, bridge });
   const { tabs, active } = pane;
@@ -53,9 +56,13 @@ export function GuestBrowser({ engine, sessionKey = null, trunkName = "Trunk", b
       () => setReader("The page's text couldn't be read."),
     );
   };
+  const popout = bridge?.openPopout ?? null;
   const openWindow = () => {
-    if (!bridge || !active?.url) return;
-    bridge.openPopout(active.url).catch(() => setNotice("The window didn't open."));
+    if (!popout || !active?.url) return;
+    const url = active.url;
+    Promise.resolve()
+      .then(() => popout(url))
+      .catch(() => setNotice("The window didn't open."));
   };
   const consentOwner = sessionKey ? pane.access : null;
 
@@ -73,7 +80,17 @@ export function GuestBrowser({ engine, sessionKey = null, trunkName = "Trunk", b
         <GuestAddressBar url={activeUrl} inputRef={inputRef} onSubmit={pane.go} />
         <button type="button" className="btn ghost sm" aria-pressed={reader !== null} disabled={!active} onClick={toggleReader}>Reader</button>
         {full ? null : (
-          <button type="button" className="btn ghost sm" data-keep-draft="" disabled={!bridge || !active} onClick={openWindow}>Open in a window</button>
+          <button
+            type="button"
+            className="btn ghost sm"
+            data-keep-draft=""
+            disabled={!popout || !active}
+            title={popout ? undefined : OPEN_WINDOW_WHY}
+            data-coming={popout ? undefined : OPEN_WINDOW_WHY}
+            onClick={openWindow}
+          >
+            Open in a window
+          </button>
         )}
       </div>
       <GuestTabStrip tabs={tabs.tabs} activeId={tabs.activeId} onActivate={pane.activate} onClose={pane.closeTab} onNew={() => pane.openTab("")} />
