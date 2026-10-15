@@ -13,7 +13,7 @@ function openAccountsSettings(): void {
 }
 
 /** agents.entries.<id>.useOwnerAccounts (engine/src/config/zod-schema.agent-entry-base.ts): unset means on. */
-function OwnerAccountsSwitch({ engine, agentId, onChanged }: { engine: WindowEngine; agentId: string; onChanged: () => Promise<void> }) {
+function OwnerAccountsSwitch({ engine, agentId, onChanged }: { engine: WindowEngine; agentId: string; onChanged: () => Promise<unknown> }) {
   const config = useResource<unknown>(engine, "config.get", {});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();

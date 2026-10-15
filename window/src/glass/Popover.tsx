@@ -19,8 +19,10 @@ export function useLayer(open: boolean, close: () => void) {
     return () => { const index = layers.indexOf(layer); if (index >= 0) layers.splice(index, 1); if (!layers.length) document.removeEventListener("keydown", escape, true); };
   }, [open]);
 }
-export function Popover({ anchor, onClose, label, children, width = 340, align = "start", placement = "below" }: {
+export function Popover({ anchor, onClose, label, children, width = 340, align = "start", placement = "below", closeOnScroll = false }: {
   anchor: RefObject<HTMLElement | null>; onClose: () => void; label: string; children: ReactNode; width?: number; align?: "start" | "end"; placement?: "above" | "below";
+  /** Closes when the page under it scrolls. A scroll inside the popover itself does not close it. */
+  closeOnScroll?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const latestClose = useRef(onClose);
@@ -36,6 +38,12 @@ export function Popover({ anchor, onClose, label, children, width = 340, align =
     window.addEventListener("resize", update); window.addEventListener("scroll", update, true); update();
     return () => { observer.disconnect(); window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); };
   }, [anchor, width, align, placement]);
+  useEffect(() => {
+    if (!closeOnScroll) return;
+    const scrolled = (event: Event) => { if (!ref.current?.contains(event.target as Node)) latestClose.current(); };
+    window.addEventListener("scroll", scrolled, true);
+    return () => window.removeEventListener("scroll", scrolled, true);
+  }, [closeOnScroll]);
   useEffect(() => {
     const opener = anchor.current;
     (ref.current?.querySelector<HTMLElement>("input,button:not(:disabled),[tabindex='0']") ?? ref.current)?.focus();
