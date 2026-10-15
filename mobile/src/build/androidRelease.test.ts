@@ -29,7 +29,30 @@ function planFromCli(env: NodeJS.Dict<string>) {
     cwd: mobileRoot,
     encoding: 'utf8',
     env: { ...process.env, ...env },
+    stdio: ['ignore', 'pipe', 'pipe'],
   }));
+}
+
+function callResult(name: string, ...args: unknown[]) {
+  const source = `import * as m from ${JSON.stringify(helper)};
+    try { console.log(JSON.stringify({ ok: true, value: m[${JSON.stringify(name)}](...${JSON.stringify(args)}) })); }
+    catch (error) { console.log(JSON.stringify({ ok: false, message: String(error.message) })); }`;
+  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', source], { encoding: 'utf8' }));
+}
+
+function planCliResult(env: NodeJS.Dict<string>) {
+  try {
+    const stdout = execFileSync(process.execPath, [helper, '--json'], {
+      cwd: mobileRoot,
+      encoding: 'utf8',
+      env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return { ok: true, stdout };
+  } catch (error) {
+    const err = error as { stdout?: string; stderr?: string; status?: number };
+    return { ok: false, stdout: String(err.stdout ?? ''), stderr: String(err.stderr ?? ''), status: err.status };
+  }
 }
 
 describe('Android release version and signing plan', () => {
@@ -59,13 +82,15 @@ describe('Android release version and signing plan', () => {
     expect(unsigned.attachRelease).toBe(false);
     expect(unsigned.signed).toBe(false);
     expect(unsigned.apkName).toBe('branch-android-0.4.4-build-abc-unsigned.apk');
-    expect(call('unsignedWarning', unsigned.missing)).toMatch(/will not be attached to the GitHub release/);
+    expect(call('missingSigningError', unsigned.missing)).toMatch(/must fail and never fall back to debug signing/);
     const signed = call('releasePlan', { tag: 'v0.4.4-build-abc', runNumber: 4, env: secrets });
     expect(signed.attachRelease).toBe(true);
     expect(signed.apkName).toBe('branch-android-0.4.4-build-abc.apk');
     expect(signed.sha256Name).toBe('branch-android-0.4.4-build-abc.apk.sha256');
+    expect(signed.versioncodeName).toBe('branch-android-0.4.4-build-abc.apk.versioncode.4');
     expect(signed.versionCode).toBe(4);
     expect(unsigned.sha256Name).toBe('');
+    expect(unsigned.versioncodeName).toBe('');
   });
 
   it('passes PKCS12 signing to gradle only when the keystore path and secrets are set', () => {
@@ -86,6 +111,40 @@ describe('Android release version and signing plan', () => {
     expect(signingEnv[call('GRADLE_SIGNING_STORE_PASSWORD_ENV')]).toBe('store-secret');
     expect(signingEnv[call('GRADLE_SIGNING_KEY_PASSWORD_ENV')]).toBe('key-secret');
     expect(signingEnv[call('GRADLE_SIGNING_KEY_ALIAS_ENV')]).toBe('branch');
+  });
+
+  it('injects PKCS12 signing from the decoded keystore path even when ANDROID_KEYSTORE_B64 is absent', () => {
+    const env = {
+      ANDROID_KEYSTORE_PATH: '/tmp/android-release.p12',
+      ANDROID_KEYSTORE_PASSWORD: secrets.ANDROID_KEYSTORE_PASSWORD,
+      ANDROID_KEY_PASSWORD: secrets.ANDROID_KEY_PASSWORD,
+      ANDROID_KEY_ALIAS: secrets.ANDROID_KEY_ALIAS,
+      ANDROID_VERSION_CODE: '4',
+      ANDROID_VERSION_NAME: '0.4.4',
+    };
+    const args: string[] = call('gradleAssembleArgs', env);
+    expect(args).toContain('-Pandroid.injected.signing.store.file=/tmp/android-release.p12');
+    expect(args).toContain('-Pandroid.injected.signing.store.type=PKCS12');
+    expect(call('gradleSigningEnv', env)[call('GRADLE_SIGNING_STORE_PASSWORD_ENV')]).toBe('store-secret');
+    expect(call('signingReady', env)).toBe(false);
+    expect(call('gradleSigningReady', env)).toBe(true);
+  });
+
+  it('fails assemble when release signing is required and the decoded keystore is missing', () => {
+    const required = { REQUIRE_ANDROID_RELEASE_SIGNING: '1', ANDROID_VERSION_CODE: '4' };
+    const failed = callResult('gradleAssembleArgs', required);
+    expect(failed.ok).toBe(false);
+    expect(failed.message).toMatch(/must fail and never fall back to debug signing/);
+    expect(failed.message).toContain('ANDROID_KEYSTORE_PATH');
+    expect(callResult('gradleSigningEnv', required).ok).toBe(false);
+  });
+
+  it('rejects a debug signer certificate and accepts any other signer text', () => {
+    expect(call('ANDROID_DEBUG_SIGNER')).toBe('CN=Android Debug');
+    expect(call('isDebugSigner', 'Signer: CN=Android Debug, OU=Android, O=Android')).toBe(true);
+    expect(call('isDebugSigner', 'Signer: CN=KeepOak, OU=Branch')).toBe(false);
+    expect(callResult('assertNotDebugSigner', 'CN=Android Debug').ok).toBe(false);
+    expect(callResult('assertNotDebugSigner', 'CN=KeepOak').ok).toBe(true);
   });
 
   it('never puts a signing password or key alias on any gradle command line', () => {
@@ -126,8 +185,9 @@ describe('Android release version and signing plan', () => {
       versionCode: 9,
       apkName: 'branch-android-0.4.4-build-abc.apk',
       sha256Name: 'branch-android-0.4.4-build-abc.apk.sha256',
+      versioncodeName: 'branch-android-0.4.4-build-abc.apk.versioncode.9',
     });
-    const unsigned = planFromCli({
+    const unsigned = planCliResult({
       RELEASE_TAG: 'v0.4.4-build-abc',
       GITHUB_RUN_NUMBER: '9',
       ANDROID_KEYSTORE_B64: '',
@@ -135,9 +195,9 @@ describe('Android release version and signing plan', () => {
       ANDROID_KEY_PASSWORD: '',
       ANDROID_KEY_ALIAS: '',
     });
-    expect(unsigned.attachRelease).toBe(false);
-    expect(unsigned.apkName).toContain('-unsigned.apk');
-    expect(unsigned.sha256Name).toBe('');
+    expect(unsigned.ok).toBe(false);
+    expect(unsigned.stderr).toMatch(/must fail and never fall back to debug signing/);
+    expect(unsigned.stdout).toBe('');
   });
 
   it('writes branch-android-<version>.apk.sha256 containing the APK hex SHA-256', () => {
@@ -151,6 +211,7 @@ describe('Android release version and signing plan', () => {
       const sidecar = JSON.parse(execFileSync(process.execPath, [helper, '--sha256', apkPath, '--json'], {
         cwd: mobileRoot,
         encoding: 'utf8',
+        env: { ...process.env, ANDROID_VERSION_CODE: '' },
       }));
       expect(sidecar).toEqual({
         path: `${apkPath}.sha256`,
@@ -159,6 +220,13 @@ describe('Android release version and signing plan', () => {
       });
       expect(readFileSync(sidecar.path, 'utf8')).toBe(`${expected}  ${apkName}\n`);
       expect(sidecar.hex).toMatch(/^[a-f0-9]{64}$/);
+      const withCode = JSON.parse(execFileSync(process.execPath, [helper, '--sha256', apkPath, '--json'], {
+        cwd: mobileRoot,
+        encoding: 'utf8',
+        env: { ...process.env, ANDROID_VERSION_CODE: '13' },
+      }));
+      expect(withCode.versioncode_name).toBe(`${apkName}.versioncode.13`);
+      expect(readFileSync(withCode.versioncode_path, 'utf8')).toBe('13\n');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -174,18 +242,31 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).not.toMatch(/merge-gate/);
   });
 
-  it('decodes the PKCS12 keystore to the runner temp dir and skips a missing secret without failing', () => {
+  it('decodes the PKCS12 keystore and fails when the secret is missing or empty', () => {
     expect(workflow).toContain('secrets.ANDROID_KEYSTORE_B64');
     expect(workflow).toContain('secrets.ANDROID_KEYSTORE_PASSWORD');
     expect(workflow).toContain('secrets.ANDROID_KEY_PASSWORD');
     expect(workflow).toContain('secrets.ANDROID_KEY_ALIAS');
     expect(workflow).toContain('RUNNER_TEMP');
     expect(workflow).toContain('base64 -d');
-    expect(workflow).toMatch(/if: steps\.plan\.outputs\.signed == 'true'/);
+    expect(workflow).toContain('Release keystore secret is missing or empty');
+    expect(workflow).not.toMatch(/if: steps\.plan\.outputs\.signed == 'true'/);
     expect(workflow).not.toMatch(/ANDROID_KEYSTORE_PASSWORD: ['"][^$'"]+/);
   });
 
-  it('uploads every APK as an artifact, and attaches only a signed APK to the GitHub release', () => {
+  it('passes every signing secret into the Gradle build and never uploads a debug-signed APK', () => {
+    expect(workflow).toMatch(
+      /Build the Android APK[\s\S]*ANDROID_KEYSTORE_B64: \$\{\{\s*secrets\.ANDROID_KEYSTORE_B64\s*\}\}[\s\S]*npm run build:android/,
+    );
+    expect(workflow).toContain('REQUIRE_ANDROID_RELEASE_SIGNING');
+    expect(workflow).toContain('ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}');
+    expect(workflow).toMatch(/apksigner verify --print-certs[\s\S]*actions\/upload-artifact/);
+    expect(workflow).not.toMatch(/actions\/upload-artifact[\s\S]*apksigner verify --print-certs/);
+    expect(workflow).toContain('CN=Android Debug');
+    expect(workflow).not.toContain('Unsigned Android APK');
+  });
+
+  it('uploads the APK as an artifact after the signer check, and attaches only a signed APK to the GitHub release', () => {
     expect(workflow).toMatch(/actions\/upload-artifact@[0-9a-f]{40}/);
     expect(workflow).toContain('scripts/android-release.mjs');
     expect(workflow).toContain('apk_name');
@@ -196,13 +277,27 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('persist-credentials: false');
   });
 
-  it('writes a hex SHA-256 sidecar and attaches it only with a signed APK', () => {
+  it('writes a hex SHA-256 sidecar and attaches it with the signed APK', () => {
     expect(workflow).toContain('--sha256');
     expect(workflow).toContain('SHA256_NAME');
     expect(workflow).toContain('${APK_NAME}.sha256');
-    expect(workflow).toMatch(/SIGNED" == "true"[\s\S]*--sha256/);
+    expect(workflow).toMatch(/--sha256[\s\S]*Reject a debug-signed APK/);
     expect(workflow).toMatch(/attach_release == 'true'[\s\S]*SHA256_PATH[\s\S]*gh release upload/);
     expect(workflow).not.toMatch(/--sha256[\s\S]*attach_release == 'false'/);
+  });
+
+  it('attaches branch-android-<version>.apk.versioncode.<runNumber> with a signed APK', () => {
+    expect(call('versionCodeFileName', 'branch-android-0.4.4-build-abc.apk', 13)).toBe(
+      'branch-android-0.4.4-build-abc.apk.versioncode.13',
+    );
+    expect(workflow).toContain('VERSIONCODE_NAME');
+    expect(workflow).toContain('ANDROID_VERSION_CODE');
+    expect(workflow).toMatch(/Stage the APK[\s\S]*ANDROID_VERSION_CODE[\s\S]*SIGNED" == "true"[\s\S]*--sha256/);
+    expect(workflow).toMatch(/Reject a debug-signed APK[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
+    expect(workflow).toMatch(/apksigner verify --print-certs[\s\S]*actions\/upload-artifact/);
+    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
+    expect(workflow).toContain('${APK_NAME}.versioncode.');
+    expect(workflow).not.toMatch(/-unsigned\.apk[\s\S]*gh release upload/);
   });
 });
 

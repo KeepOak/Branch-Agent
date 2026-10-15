@@ -46,6 +46,7 @@ const short = (date: string) => dayOf(date).toLocaleDateString(undefined, { mont
 /** One engine read that can be switched off (params null) and keeps its last answer while it reloads. */
 function useQuery(engine: WindowEngine, method: string, params: unknown) {
   const key = params === null ? "" : JSON.stringify(params);
+  const [attempt, setAttempt] = useState(0);
   const [st, setSt] = useState<{ data?: RecordValue; error?: string; loading: boolean }>({ loading: key !== "" });
   useEffect(() => {
     if (!key) { setSt({ loading: false }); return; }
@@ -58,8 +59,8 @@ function useQuery(engine: WindowEngine, method: string, params: unknown) {
       (e: unknown) => { stop(); if (live) setSt({ error: errorText(e), loading: false }); },
     );
     return () => { live = false; stop(); };
-  }, [engine, method, key]);
-  return st;
+  }, [engine, method, key, attempt]);
+  return { ...st, reload: () => setAttempt((n) => n + 1) };
 }
 
 /** Trunk names by id, from agents.list. */
@@ -332,7 +333,7 @@ function ReportDialog({ engine, lv, days, names, onClose }: { engine: WindowEngi
       <ReportTop s={s} set={set} lv={lv} />
       {lv >= 1 ? <ReportFilters s={s} set={set} names={names} creators={list(rec(period.data).creatorOptions)} all={all} /> : null}
       {lv >= 2 ? <QueryBox s={s} set={set} /> : null}
-      {error ? <p className="s2usage-err" role="alert">{error}</p> : null}
+      {error ? <p className="s2usage-err" role="alert">{error} <Btn sm onClick={() => { period.reload(); picked.reload(); }}>Try again</Btn></p> : null}
       {waiting ? <p className="hint">Pick both dates.</p> : null}
       {counting ? <p className="hint">Counting…</p> : null}
       {period.data && !waiting && (!sel || picked.data) ? <ReportBody s={s} set={set} lv={lv} data={data} all={all} year={rec(year.data)} names={names} filtered={Boolean(sel || s.agent || s.creator)} engine={engine} /> : null}

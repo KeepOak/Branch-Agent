@@ -23,6 +23,42 @@ export function signingReady(env = process.env) {
   return missingSigningSecrets(env).length === 0;
 }
 
+// After decode, Gradle needs the keystore path plus the three remaining secrets.
+// ANDROID_KEYSTORE_B64 is not an assemble input; requiring it here dropped release
+// signing on the CI build step that never received that secret.
+export const GRADLE_SIGNING_INPUT_NAMES = [
+  'ANDROID_KEYSTORE_PATH',
+  'ANDROID_KEYSTORE_PASSWORD',
+  'ANDROID_KEY_PASSWORD',
+  'ANDROID_KEY_ALIAS',
+];
+
+export function missingGradleSigningInputs(env = process.env) {
+  return GRADLE_SIGNING_INPUT_NAMES.filter((name) => !String(env[name] ?? '').trim());
+}
+
+export function gradleSigningReady(env = process.env) {
+  return missingGradleSigningInputs(env).length === 0;
+}
+
+export function requireReleaseSigning(env = process.env) {
+  return String(env.REQUIRE_ANDROID_RELEASE_SIGNING ?? '').trim() === '1'
+    || String(env.GITHUB_ACTIONS ?? '') === 'true';
+}
+
+export const ANDROID_DEBUG_SIGNER = 'CN=Android Debug';
+
+export function isDebugSigner(certText) {
+  return String(certText ?? '').includes(ANDROID_DEBUG_SIGNER);
+}
+
+export function assertNotDebugSigner(certText) {
+  if (isDebugSigner(certText)) {
+    throw new Error('Release APK is signed with the Android Debug certificate');
+  }
+  return true;
+}
+
 export function releaseVersion({ tag, runNumber, fallbackVersion } = {}) {
   const raw = String(tag ?? '').trim();
   if (raw) return raw.replace(/^v/i, '');
@@ -48,6 +84,11 @@ export function sha256FileName(apkName) {
   return `${apkName}.sha256`;
 }
 
+// Sibling of the APK: the workflow run number baked in as Android versionCode.
+export function versionCodeFileName(apkName, code) {
+  return `${apkName}.versioncode.${code}`;
+}
+
 export function hexSha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -63,6 +104,22 @@ export function writeSha256Sidecar(apkPath, apkName = path.basename(apkPath)) {
   return { path: sidecarPath, name: sha256FileName(apkName), hex };
 }
 
+export function writeVersionCodeSidecar(apkPath, code, apkName = path.basename(apkPath)) {
+  const n = Number(code);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error('versionCode sidecar needs a positive workflow run number');
+  }
+  const name = versionCodeFileName(apkName, n);
+  const sidecarPath = path.join(path.dirname(apkPath), name);
+  writeFileSync(sidecarPath, `${n}\n`);
+  return { path: sidecarPath, name, versionCode: n };
+}
+
+function versionCodeFromEnv(env = process.env) {
+  const n = Number(env.ANDROID_VERSION_CODE);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
 export function shouldAttachToRelease({ signed, releaseTag } = {}) {
   return Boolean(signed && String(releaseTag ?? '').trim());
 }
@@ -74,7 +131,10 @@ export const GRADLE_SIGNING_KEY_PASSWORD_ENV = 'ORG_GRADLE_PROJECT_android.injec
 export const GRADLE_SIGNING_KEY_ALIAS_ENV = 'ORG_GRADLE_PROJECT_android.injected.signing.key.alias';
 
 export function gradleSigningEnv(env = process.env) {
-  if (!signingReady(env) || !env.ANDROID_KEYSTORE_PATH) return {};
+  if (!gradleSigningReady(env)) {
+    if (requireReleaseSigning(env)) throw new Error(missingSigningError(missingGradleSigningInputs(env)));
+    return {};
+  }
   return {
     [GRADLE_SIGNING_STORE_PASSWORD_ENV]: env.ANDROID_KEYSTORE_PASSWORD,
     [GRADLE_SIGNING_KEY_PASSWORD_ENV]: env.ANDROID_KEY_PASSWORD,
@@ -102,8 +162,12 @@ export function gradleAssembleArgs(env = process.env) {
     versionCode: env.ANDROID_VERSION_CODE,
     versionName: env.ANDROID_VERSION_NAME,
   })];
-  if (signingReady(env) && env.ANDROID_KEYSTORE_PATH) {
+  if (gradleSigningReady(env)) {
     args.push(...gradleSigningArgs({ keystorePath: env.ANDROID_KEYSTORE_PATH }));
+    return args;
+  }
+  if (requireReleaseSigning(env)) {
+    throw new Error(missingSigningError(missingGradleSigningInputs(env)));
   }
   return args;
 }
@@ -129,9 +193,9 @@ export function writeAppJsonReleaseMeta(appJsonPath, env = process.env) {
   return true;
 }
 
-export function unsignedWarning(missing) {
-  const names = missing.length ? missing.join(', ') : SIGNING_SECRET_NAMES.join(', ');
-  return `Signing secrets are missing (${names}). Building a debug-signed APK and uploading it as a workflow artifact only. It will not be attached to the GitHub release.`;
+export function missingSigningError(missing) {
+  const names = (missing?.length ? missing : SIGNING_SECRET_NAMES).join(', ');
+  return `Release signing is not configured (${names}). The job must fail and never fall back to debug signing.`;
 }
 
 export function releasePlan({
@@ -153,6 +217,7 @@ export function releasePlan({
     versionCode: code,
     apkName,
     sha256Name: signed ? sha256FileName(apkName) : '',
+    versioncodeName: signed ? versionCodeFileName(apkName, code) : '',
     artifactName: apkName.replace(/\.apk$/i, ''),
     attachRelease: shouldAttachToRelease({ signed, releaseTag }),
     releaseTag,
@@ -170,6 +235,7 @@ function printGithubOutput(plan) {
     version_code: String(plan.versionCode),
     apk_name: plan.apkName,
     sha256_name: plan.sha256Name,
+    versioncode_name: plan.versioncodeName,
     artifact_name: plan.artifactName,
     attach_release: plan.attachRelease ? 'true' : 'false',
     release_tag: plan.releaseTag,
@@ -186,6 +252,10 @@ function printSha256Output(sidecar) {
     sha256_name: sidecar.name,
     sha256_hex: sidecar.hex,
   };
+  if (sidecar.versioncode_path) {
+    rows.versioncode_path = sidecar.versioncode_path;
+    rows.versioncode_name = sidecar.versioncode_name;
+  }
   if (process.argv.includes('--json')) {
     process.stdout.write(`${JSON.stringify(sidecar)}\n`);
     return;
@@ -200,7 +270,18 @@ function main() {
   if (shaIndex !== -1) {
     const apkPath = process.argv[shaIndex + 1];
     if (!apkPath) throw new Error('pass the staged APK path after --sha256');
-    printSha256Output(writeSha256Sidecar(apkPath));
+    const sha = writeSha256Sidecar(apkPath);
+    const code = versionCodeFromEnv();
+    if (code == null) {
+      printSha256Output(sha);
+      return;
+    }
+    const versioncode = writeVersionCodeSidecar(apkPath, code);
+    printSha256Output({
+      ...sha,
+      versioncode_path: versioncode.path,
+      versioncode_name: versioncode.name,
+    });
     return;
   }
 
@@ -212,9 +293,7 @@ function main() {
     env,
   });
   if (!plan.signed) {
-    const message = unsignedWarning(plan.missing);
-    process.stderr.write(`::warning::${message}\n`);
-    if (env.GITHUB_STEP_SUMMARY) writeFileSync(env.GITHUB_STEP_SUMMARY, `## Unsigned Android APK\n\n${message}\n`, { flag: 'a' });
+    throw new Error(missingSigningError(plan.missing));
   }
   if (process.argv.includes('--json')) {
     process.stdout.write(`${JSON.stringify(plan)}\n`);

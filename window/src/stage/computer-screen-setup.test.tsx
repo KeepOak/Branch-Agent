@@ -62,7 +62,8 @@ describe("computer screen setup", () => {
     expect(request.mock.calls.some(([method]) => method === "sessions.dispatch" || method === "sessions.move")).toBe(false);
     const close = request.mock.calls.find(([method, params]) => method === "computer.invoke" && (params as { params: { action?: string } }).params.action === "__close_execution");
     expect(close).toBeDefined();
-    expect(document.body.textContent).not.toContain("Take over");
+    // This computer's own screen can be taken over too (take-control.test.tsx drives it).
+    expect(document.body.textContent).toContain("Take over");
     expect(document.querySelector(".st7-pick")?.textContent).toContain("This computer (viewing)");
   });
   it("keeps the switch available after a refused save with a plain message", async () => {

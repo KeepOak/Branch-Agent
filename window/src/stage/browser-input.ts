@@ -99,3 +99,14 @@ export function editingKey(inputType: string): string | null {
       return null;
   }
 }
+
+const int = (n: number) => (Number.isFinite(n) ? Math.round(n) : 0);
+
+/**
+ * The page script that scrolls what is under a point by (dx, dy) CSS pixels: the nearest scrollable box there, else
+ * the page. The browser route has no wheel input, so a scroll goes as this evaluate, the way Back and Reload do.
+ */
+export function scrollAtPoint(x: number, y: number, dx: number, dy: number): string {
+  const [px, py, sx, sy] = [int(x), int(y), int(dx), int(dy)];
+  return `() => { let n = document.elementFromPoint(${px}, ${py}); while (n && n !== document.body && n !== document.documentElement) { const s = getComputedStyle(n); const canY = ${sy} !== 0 && /(auto|scroll|overlay)/.test(s.overflowY) && n.scrollHeight > n.clientHeight; const canX = ${sx} !== 0 && /(auto|scroll|overlay)/.test(s.overflowX) && n.scrollWidth > n.clientWidth; if (canY || canX) { n.scrollBy(${sx}, ${sy}); return true; } n = n.parentElement; } window.scrollBy(${sx}, ${sy}); return true; }`;
+}
