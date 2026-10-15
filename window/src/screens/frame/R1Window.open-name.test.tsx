@@ -39,14 +39,18 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 
 /** A connected session whose open conversation changes on open(), as the real one does. Its own name is the default Trunk's. */
-function liveSession(sessionKey: string, topics: unknown[] = []) {
+function liveSession(sessionKey: string, initial: unknown[] = []) {
+  let topics = initial;
   let snapshot = { status: { phase: "connected" }, name: "Juniper", sessionKey, mainKey: "agent:juniper:main", history: [], live: [], queued: [], liveRunId: null, doneAt: null, lastActivityAt: null };
   const listeners = new Set<() => void>();
   const request = vi.fn(async (method: string) => (method === "contacts.topics" ? { topics } : {}));
   const engine = { agentId: "juniper", sessionKey, scopes: ["operator.admin"], features: { methods: ["agent.identity.get"], events: [] }, request, onEvent: () => () => undefined };
   const open = vi.fn(async (key: string) => { snapshot = { ...snapshot, sessionKey: key }; listeners.forEach((listener) => listener()); });
-  const session = { subscribe: (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener); }, getSnapshot: () => snapshot, open, request, onGatewayEvent: () => () => undefined, engine } as unknown as SaplingSession;
-  return { session, open, request };
+  const events = new Set<(event: string) => void>();
+  const onGatewayEvent = (listener: (event: string) => void) => { events.add(listener); return () => events.delete(listener); };
+  const session = { subscribe: (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener); }, getSnapshot: () => snapshot, open, request, onGatewayEvent, engine } as unknown as SaplingSession;
+  const emit = (event: string) => events.forEach((listener) => listener(event));
+  return { session, open, request, emit, setTopics: (next: unknown[]) => { topics = next; } };
 }
 const title = () => host.querySelector(".g-pill-title")?.textContent;
 const composer = () => document.querySelector("textarea")?.getAttribute("aria-label") ?? null;
@@ -99,6 +103,18 @@ it("opens a grafted agent with no conversation as its own empty state: no defaul
   expect(sidebar.props!.currentKey).toBe("a2a:claude-code");
 });
 
+it("opens a grafted agent's first conversation as soon as it starts", async () => {
+  const { session, open, emit, setTopics } = liveSession("agent:juniper:main");
+  await act(async () => root.render(<R1Window session={session} />));
+  await act(async () => sidebar.props!.onOpen("a2a:claude-code"));
+  expect(host.querySelector('[data-testid="grafted-empty"]')).not.toBeNull();
+  const first = "agent:juniper:a2a:claude-code:direct:claude-code:1";
+  setTopics([{ key: first, contactId: "a2a:claude-code", title: "First", labelled: false, anchor: { threadKey: "a2a:claude-code", at: 5 }, status: "active", unread: false }]);
+  await act(async () => emit("contacts.changed"));
+  expect(open).toHaveBeenCalledWith(first);
+  expect(host.querySelector('[data-testid="grafted-empty"]')).toBeNull();
+});
+
 it("opens a grafted agent's most recent conversation in place of its contact key, also when the window reopens on it", async () => {
   const newest = "agent:juniper:a2a:claude-code:direct:claude-code:2";
   const topics = [
@@ -113,6 +129,8 @@ it("opens a grafted agent's most recent conversation in place of its contact key
   expect(open).not.toHaveBeenCalledWith("a2a:claude-code");
   expect(window.history.state.r1Route).toEqual({ kind: "chat", key: newest });
   expect(title()).toBe("Claude Code");
-  expect(composer()).toBe("Message Claude Code");
+  // Its Trunk runs that conversation and answers what you type, so the composer and the thread name the Trunk.
+  expect(composer()).toBe("Message Juniper");
+  expect(host.querySelector('[data-testid="chat"]')?.textContent).toBe("Juniper");
   expect(sidebar.props!.currentKey).toBe("a2a:claude-code");
 });
