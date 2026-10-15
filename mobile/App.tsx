@@ -9,6 +9,7 @@ import { headline } from './src/approvals/approvalWords';
 import { testApprovalsOn } from './src/approvals/testApproval';
 import { useTestApproval } from './src/approvals/useTestApproval';
 import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
+import { AgentList } from './src/agents/agentList';
 import { appIdentity, type AppIdentity } from './src/build/appIdentity';
 import { Conversation } from './src/chat/conversation';
 import { ChatList, type ChatRow } from './src/chats/chatList';
@@ -18,6 +19,7 @@ import { createDeviceSession } from './src/pairing/createDeviceSession';
 import type { PairingSession } from './src/pairing/pairingSession';
 import type { SetupPayload } from './src/pairing/setupCode';
 import { usePairingState } from './src/pairing/usePairingState';
+import { AgentsScreen } from './src/screens/AgentsScreen';
 import { ApprovalScreen } from './src/screens/ApprovalScreen';
 import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
@@ -41,6 +43,7 @@ type PairedRoute =
   | { name: 'chats' }
   | { name: 'computers' }
   | { name: 'computer'; from?: 'settings' }
+  | { name: 'agents' }
   | { name: 'chat'; row: ChatRow }
   | { name: 'approvals'; focus?: string }
   | { name: 'settings' };
@@ -85,21 +88,25 @@ function Shell({
   const state = usePairingState(session);
   const [route, setRoute] = useState<Route>('welcome');
   const [pairedRoute, setPairedRoute] = useState<PairedRoute>(CHATS);
-  // One list for the whole session, so going to Computers or Your computer and back doesn't reload it.
+  // One list for the whole session, so going to Computers, Agents or Your computer and back doesn't reload it.
   const [chats] = useState(() => new ChatList(session));
   const chatList = useSyncExternalStore(chats.subscribe, chats.getSnapshot);
+  const [agents] = useState(() => new AgentList(session));
+  const agentList = useSyncExternalStore(agents.subscribe, agents.getSnapshot);
   const [computers] = useState(() => new ComputerList(session));
   const computerList = useSyncExternalStore(computers.subscribe, computers.getSnapshot);
   const [searchMessages] = useState(() => messageSearcher((method, params) => session.request(method, params)));
 
   useEffect(() => {
     chats.attach();
+    agents.attach();
     computers.attach();
     return () => {
       chats.dispose();
+      agents.dispose();
       computers.dispose();
     };
-  }, [chats, computers]);
+  }, [chats, agents, computers]);
 
   // Approvals are followed for the whole session, on every screen, so a notification can go out while
   // Branch is in the background and its buttons can answer.
@@ -144,15 +151,16 @@ function Shell({
     if (state.step !== 'loading') void SplashScreen.hideAsync().catch(() => undefined);
     if (state.step === 'unpaired') {
       chats.reset();
+      agents.reset();
       computers.reset();
       inbox.reset();
       setPairedRoute(CHATS);
       return;
     }
     setRoute('welcome');
-  }, [state.step, chats, computers, inbox]);
+  }, [state.step, chats, agents, computers, inbox]);
 
-  // Android's back gesture leaves Computers, Your computer, Settings, a chat or Approvals for Chats, like the on-screen back button.
+  // Android's back gesture leaves Computers, Agents, Your computer, Settings, a chat or Approvals for Chats, like the on-screen back button.
   useEffect(() => {
     if (state.step !== 'paired' || pairedRoute.name === 'chats') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -219,6 +227,8 @@ function Shell({
             backTo={fromSettings ? 'Settings' : 'Chats'}
           />
         );
+      } else if (pairedRoute.name === 'agents') {
+        screen = <AgentsScreen list={agentList} online={state.online} onRefresh={() => agents.refresh()} onBack={() => setPairedRoute(CHATS)} />;
       } else if (pairedRoute.name === 'settings') {
         screen = (
           <SettingsScreen
@@ -266,6 +276,7 @@ function Shell({
             searchMessages={searchMessages}
             onRefresh={() => chats.refresh()}
             onComputer={() => setPairedRoute({ name: 'computers' })}
+            onAgents={() => setPairedRoute({ name: 'agents' })}
             onSettings={() => setPairedRoute({ name: 'settings' })}
             onOpen={(row) => setPairedRoute({ name: 'chat', row })}
             needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
