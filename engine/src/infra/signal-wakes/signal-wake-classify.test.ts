@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   failingCheckNames,
+  formatBranchVerdictComment,
   isTrustedAssociation,
   latestBranchVerdict,
   parseBranchVerdict,
@@ -41,11 +42,54 @@ describe("parseBranchVerdict", () => {
     });
   });
 
+  it("reads the reviewing Trunk id from reviewer= on the verdict line", () => {
+    expect(
+      parseBranchVerdict(`branch-verdict: MERGE head=${SHA} reviewer=builder-ash\n- ok`),
+    ).toEqual({
+      verdict: "MERGE",
+      headSha: SHA,
+      reviewer: "builder-ash",
+    });
+    expect(parseBranchVerdict(`branch-verdict: FIX head=${SHA} reviewer=Builder Ash`)).toEqual({
+      verdict: "FIX",
+      headSha: SHA,
+    });
+  });
+
   it("rejects a verdict-looking line that is not the first line, a short sha, or a PASS word", () => {
     expect(parseBranchVerdict(`Review\nbranch-verdict: FIX head=${SHA}`)).toBeUndefined();
     expect(parseBranchVerdict("branch-verdict: FIX head=abc1234")).toBeUndefined();
     expect(parseBranchVerdict("FIX\n- missing test")).toBeUndefined();
     expect(parseBranchVerdict("PASS")).toBeUndefined();
+  });
+});
+
+describe("formatBranchVerdictComment", () => {
+  it("puts the reviewing Trunk id in the verdict line, and the parser reads it back", () => {
+    const body = formatBranchVerdictComment({
+      verdict: "MERGE",
+      headSha: SHA,
+      reviewer: "builder-birch",
+      body: "CI green.\n\n1. No fixes.",
+    });
+    expect(body.split("\n")[0]).toBe(`branch-verdict: MERGE head=${SHA} reviewer=builder-birch`);
+    expect(body).toContain("CI green.\n\n1. No fixes.");
+    expect(parseBranchVerdict(body)).toEqual({
+      verdict: "MERGE",
+      headSha: SHA,
+      reviewer: "builder-birch",
+    });
+  });
+
+  it("refuses a short sha or a reviewer the parser could not read back", () => {
+    const input = { verdict: "FIX" as const, headSha: SHA, reviewer: "builder-birch", body: "" };
+    expect(() => formatBranchVerdictComment({ ...input, headSha: "abc1234" })).toThrow(
+      /40-character/,
+    );
+    expect(() => formatBranchVerdictComment({ ...input, reviewer: "Builder Birch" })).toThrow(
+      /Trunk id/,
+    );
+    expect(() => formatBranchVerdictComment({ ...input, reviewer: "" })).toThrow(/Trunk id/);
   });
 });
 

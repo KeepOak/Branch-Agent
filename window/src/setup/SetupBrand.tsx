@@ -23,8 +23,8 @@ export function SetupBrand() {
 
 export function WelcomeHero() {
   return (
-    <div className="ob-stage11">
-      <KeeperMark size={180} />
+    <div className="ob-stage11" aria-hidden="true" data-testid="setup-welcome-mark">
+      <KeeperMark size={96} />
     </div>
   );
 }

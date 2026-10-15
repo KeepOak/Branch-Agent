@@ -10,6 +10,7 @@ import { Dialog } from "../shell/Dialog";
 import { A2A_CHANNEL } from "./sender";
 import "./rooms.css";
 import { shownWhy } from "../shell/shown-why";
+import { trunkDisplayName } from "../connect/trunk-name";
 
 /** Both entry points (the + new menu and Customize › Trunks) open the dialog with this window event.
  *  A sidebar drop can pass the two chats so the dialog opens with them already filled in. */
@@ -26,12 +27,11 @@ export function readGroupPrefill(event: Event): NewGroupPrefill | undefined {
   return name || trunk || people?.length ? { ...(name ? { name } : {}), ...(trunk ? { trunk } : {}), ...(people?.length ? { people } : {}) } : undefined;
 }
 
-const NO_METHOD = "needs an engine method Branch doesn't have yet.";
 export const GROUP_REASONS = {
-  secondTrunk: `A second Trunk in one conversation ${NO_METHOD}`,
-  agent: `Adding an agent on another computer to a conversation ${NO_METHOD}`,
-  whoAnswers: `Choosing who answers in a group chat ${NO_METHOD}`,
-  talk: `Letting Trunks talk to each other in one group chat ${NO_METHOD}`,
+  secondTrunk: "Choose one Trunk for this group chat.",
+  agent: "Agents on other computers can’t join from here yet.",
+  whoAnswers: "You can’t change who answers from here yet.",
+  talk: "Trunks can’t talk to each other in this group chat yet.",
 } as const;
 
 type Option = { id: string; name: string };
@@ -43,7 +43,7 @@ const list = (v: unknown): Rec[] => (Array.isArray(v) ? v.map(rec) : []);
 /** The Trunks (agents.list), the other people (users.list without users.self) and the A2A peers (config). */
 export function readChoices(agents: unknown, users: unknown, self: unknown, config: unknown) {
   const selfId = str(rec(rec(self).profile).id);
-  const trunks = list(rec(agents).agents).map((a): Option => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) })).filter((t) => t.id);
+  const trunks = list(rec(agents).agents).map((a): Option => ({ id: str(a.id), name: trunkDisplayName(a) })).filter((t) => t.id);
   const people = list(rec(users).profiles).filter((p) => str(p.id) && str(p.id) !== selfId && !str(p.mergedInto)).map((p): Option => ({ id: str(p.id), name: str(p.displayName) || str(list(p.emails)[0]) || str(p.id) }));
   const peers = Object.keys(rec(rec(rec(rec(config).config).channels)[A2A_CHANNEL]).peers ?? {}).map((name): Option => ({ id: name, name }));
   return { trunks, people, peers, defaultId: str(rec(agents).defaultId) };
@@ -68,9 +68,11 @@ export async function startGroupChat(engine: WindowEngine, p: { name: string; tr
   return key;
 }
 
-function Chip({ label, on, disabled, onClick }: { label: string; on: boolean; disabled?: string; onClick: () => void }) {
+/** A people chip toggles (aria-pressed). A Trunk chip is one choice of several: a radio, so the chosen Trunk reads as checked. */
+function Chip({ label, on, disabled, onClick, radio = false }: { label: string; on: boolean; disabled?: string; onClick: () => void; radio?: boolean }) {
+  const state = radio ? { role: "radio", "aria-checked": on } : { "aria-pressed": on };
   return (
-    <button type="button" className="rm-chip" aria-pressed={on} disabled={Boolean(disabled)} title={shownWhy(disabled)} onClick={onClick}>
+    <button type="button" className="rm-chip" {...state} disabled={Boolean(disabled)} title={shownWhy(disabled)} onClick={onClick}>
       {label}
     </button>
   );
@@ -85,7 +87,10 @@ function useChoices(engine: WindowEngine): { choices: Choices | null; error: str
     const quiet = (p: Promise<unknown>) => p.catch(() => ({}));
     Promise.all([engine.request("agents.list", {}), quiet(engine.request("users.list", {})), quiet(engine.request("users.self", {})), quiet(engine.request("config.get", {}))]).then(
       ([a, u, s, c]) => live && setState({ choices: readChoices(a, u, s, c), error: null }),
-      (e: unknown) => live && setState({ choices: null, error: e instanceof Error ? e.message : String(e) }),
+      (e: unknown) => {
+        console.warn("Could not load group chat choices:", e);
+        if (live) setState({ choices: null, error: "Could not load the Trunks. Close this dialog and try again." });
+      },
     );
     return () => {
       live = false;
@@ -120,7 +125,10 @@ export function NewGroupChat({ engine, onClose, onOpen, prefill }: { engine: Win
       onClose();
       onOpen(key);
     } catch (e) {
-      setFail(e instanceof Error ? e.message : String(e));
+      console.warn("Could not start group chat:", e);
+      setFail(progress.current.key
+        ? "The conversation was created, but some people couldn’t be added. Try again to finish adding them."
+        : "Could not start the group chat. Try again.");
       setBusy(false);
     } finally {
       starting.current = false;
@@ -143,8 +151,8 @@ export function NewGroupChat({ engine, onClose, onOpen, prefill }: { engine: Win
       {choices ? (
         <>
           <div className="rm-fld">
-            <span>Trunks · one to six</span>
-            <span className="rm-chips">{choices.trunks.map((t) => <Chip key={t.id} label={t.name} on={t.id === picked} disabled={lockedReason} onClick={() => setTrunk(t.id)} />)}</span>
+            <span>Trunk</span>
+            <span className="rm-chips" role="radiogroup" aria-label="Trunk">{choices.trunks.map((t) => <Chip key={t.id} label={t.name} on={t.id === picked} radio disabled={lockedReason} onClick={() => setTrunk(t.id)} />)}</span>
             {choices.trunks.length > 1 ? <small className="rm-hint">{GROUP_REASONS.secondTrunk}</small> : null}
           </div>
           <div className="rm-fld">

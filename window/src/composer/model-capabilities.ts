@@ -3,13 +3,13 @@ import { list, rec, str, type Rec } from "./engine";
 
 const SOURCES = ["env", "agent", "defaults", "model", "provider", "implicit", "session", "session-key"] as const;
 const REASONS = ["missing-auth", "auth-failed", "cooldown", "unsupported-runtime"] as const;
-export type RuntimeSource = typeof SOURCES[number];
+type RuntimeSource = typeof SOURCES[number];
 export type AvailabilityReason = typeof REASONS[number];
-export type RuntimeInfo = { id: string; source: RuntimeSource; fallback?: "branch" | "none" };
+type RuntimeInfo = { id: string; source: RuntimeSource; fallback?: "branch" | "none" };
 type Choice = { id: string; label: string };
 type ContextChoice = Choice & { contextWindow: number };
 
-export type RuntimeCapabilities = {
+type RuntimeCapabilities = {
   available?: boolean;
   unavailableReason?: AvailabilityReason;
   unavailableUntil?: number;
@@ -23,7 +23,7 @@ export type RuntimeCapabilities = {
   contextWindowDefault?: string;
   serviceTiers: string[];
 };
-export type RuntimeChoice = RuntimeCapabilities & { agentRuntime: RuntimeInfo };
+type RuntimeChoice = RuntimeCapabilities & { agentRuntime: RuntimeInfo };
 export type ModelRuntimeMetadata = RuntimeCapabilities & { agentRuntime?: RuntimeInfo; runtimeChoices: RuntimeChoice[] };
 
 function readRuntime(value: unknown): RuntimeInfo | undefined {

@@ -1,15 +1,32 @@
-// Accounts › Order (Advanced): "Select several", then move the ticked accounts to the top (models.authOrderSet per
+// Accounts › Order (Advanced): "Select accounts", then move the ticked accounts to the top (models.authOrderSet per
 // service, since each service keeps its own order) or sign out of them (models.authLogout per service).
 import type { WindowEngine } from "../../../connect/engine";
 import { Btn, useSaveRunner } from "../kit";
 import type { Account } from "./accounts";
 import "./accounts.css";
 
-const PAUSE_OFF = "Branch can’t pause an account yet.";
-const key = (acc: Account) => `${acc.p.provider}/${acc.a.profileId}`;
+export const PAUSE_OFF = "Branch can’t pause an account yet.";
+export const key = (acc: Account) => `${acc.p.provider}/${acc.a.profileId}`;
+
+/** Move to the top: each service's ticked accounts first, in its own order (models.authOrderSet per service). */
+export async function moveToTop(engine: WindowEngine, all: Account[], chosen: Account[], agent: { agentId?: string }): Promise<void> {
+  for (const p of [...new Set(chosen.map((acc) => acc.p))]) {
+    const ids = all.filter((x) => x.p === p).map((x) => x.a.profileId);
+    const first = chosen.filter((x) => x.p === p).map((x) => x.a.profileId);
+    await engine.request("models.authOrderSet", { provider: p.authProvider ?? p.provider, profileIds: [...first, ...ids.filter((id) => !first.includes(id))], ...agent });
+  }
+}
+
+/** Sign out of the ticked accounts Branch can sign out (models.authLogout per service). */
+export async function signOutAll(engine: WindowEngine, chosen: Account[], agent: { agentId?: string }): Promise<void> {
+  const leaving = chosen.filter((acc) => acc.a.logoutSupported);
+  for (const p of [...new Set(leaving.map((acc) => acc.p))]) {
+    await engine.request("models.authLogout", { provider: p.authProvider ?? p.provider, profileIds: leaving.filter((x) => x.p === p).map((x) => x.a.profileId), ...agent });
+  }
+}
 
 export function SelectLink({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return <button type="button" className="link-acc" onClick={onToggle}>{on ? "Done" : "Select several"}</button>;
+  return <Btn sm aria-pressed={on} onClick={onToggle}>{on ? "Done selecting" : "Select accounts"}</Btn>;
 }
 
 export function SelectBox({ acc, name, picked, onPick }: { acc: Account; name: string; picked: string[]; onPick: (next: string[]) => void }) {
@@ -17,25 +34,15 @@ export function SelectBox({ acc, name, picked, onPick }: { acc: Account; name: s
   return <input type="checkbox" className="chk-acc" aria-label={`Select ${name}`} checked={on} onChange={(e) => onPick(e.target.checked ? [...picked, key(acc)] : picked.filter((k) => k !== key(acc)))} />;
 }
 
-type BulkProps = { engine: WindowEngine; all: Account[]; picked: string[]; agent: { agentId?: string }; reload: () => Promise<void>; done: () => void };
+type BulkProps = { engine: WindowEngine; all: Account[]; picked: string[]; agent: { agentId?: string }; reload: () => Promise<unknown>; done: () => void };
 export function BulkBar({ engine, all, picked, agent, reload, done }: BulkProps) {
   const save = useSaveRunner();
   const chosen = all.filter((acc) => picked.includes(key(acc)));
   const providers = [...new Set(chosen.map((acc) => acc.p))];
   const leaving = chosen.filter((acc) => acc.a.logoutSupported);
   const run = (work: () => Promise<void>) => void save(async () => { await work(); await reload(); }).then((ok) => { if (ok) done(); });
-  const toTop = () => run(async () => {
-    for (const p of providers) {
-      const ids = all.filter((x) => x.p === p).map((x) => x.a.profileId);
-      const first = chosen.filter((x) => x.p === p).map((x) => x.a.profileId);
-      await engine.request("models.authOrderSet", { provider: p.authProvider ?? p.provider, profileIds: [...first, ...ids.filter((id) => !first.includes(id))], ...agent });
-    }
-  });
-  const signOut = () => run(async () => {
-    for (const p of [...new Set(leaving.map((acc) => acc.p))]) {
-      await engine.request("models.authLogout", { provider: p.authProvider ?? p.provider, profileIds: leaving.filter((x) => x.p === p).map((x) => x.a.profileId), ...agent });
-    }
-  });
+  const toTop = () => run(() => moveToTop(engine, all, chosen, agent));
+  const signOut = () => run(() => signOutAll(engine, chosen, agent));
   const n = chosen.length;
   const locked = providers.some((p) => p.profileOrderLocked);
   return (

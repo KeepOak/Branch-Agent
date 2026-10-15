@@ -61,13 +61,13 @@ export function failedLine(config: Config): string {
 }
 
 /** Leaf paths of a config object, as key lists (keys may hold dots), with their values. Arrays stay whole. */
-export function leaves(value: unknown, path: string[] = []): [string[], unknown][] {
+function leaves(value: unknown, path: string[] = []): [string[], unknown][] {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return path.length ? [[path, value]] : [];
   const entries = Object.entries(value as RecordValue);
   if (!entries.length && path.length) return [[path, value]];
   return entries.flatMap(([k, v]) => leaves(v, [...path, k]));
 }
-export function shown(v: unknown): string {
+function shown(v: unknown): string {
   if (v === HIDDEN) return "••••••••";
   if (typeof v === "string") return v;
   return JSON.stringify(v) ?? "";
@@ -134,7 +134,7 @@ export function runsFrom(events: RecordValue[]): Run[] {
   }
   return [...runs.values()].sort((a, b) => b.start - a.start);
 }
-export function secs(ms: number | undefined): string {
+function secs(ms: number | undefined): string {
   if (ms === undefined || !Number.isFinite(ms)) return "";
   if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`;
   return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
@@ -298,7 +298,7 @@ function LookInto() {
   return (
     <Ctl title={t} sub="Sapling looks into it in your conversation." off={ask ? undefined : "Needs a model set up first."}>
       <input className="inp" aria-label="What went wrong" placeholder="Replies stopped after lunch" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") go(); }} />
-      <Btn sm onClick={go}>Look into it</Btn>
+      <Btn sm disabled={!text.trim()} onClick={go}>Look into it</Btn>
     </Ctl>
   );
 }

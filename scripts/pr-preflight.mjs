@@ -13,7 +13,7 @@ import {
   changedFilesFromPrFiles,
   coverageFromPrFiles,
   evaluateGateChangeReview,
-  fetchFileText,
+  fetchFileTextsBatch,
   fetchPrBody,
   fetchPrFiles,
   gateApiBudget,
@@ -354,9 +354,10 @@ function apiInputFromEnv(env) {
   const body = fetchPrBody(repo, prNumber, token);
   const files = fetchPrFiles(repo, prNumber, token);
   const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
-  const listText = fetchFileText(repo, headSha, token, namedListPathFor(headBranch));
-  const desktopWorkflow = fetchFileText(repo, headSha, token, '.github/workflows/desktop-checks.yml');
-  return { ...inputFromApi({ headBranch, headSha, files, commits, listText, desktopWorkflow }), body };
+  const namedList = namedListPathFor(headBranch);
+  const desktop = '.github/workflows/desktop-checks.yml';
+  const heads = fetchFileTextsBatch(repo, headSha, token, [namedList, desktop]);
+  return { ...inputFromApi({ headBranch, headSha, files, commits, listText: heads[namedList], desktopWorkflow: heads[desktop] }), body };
 }
 
 // Exported so tests can drive the real CLI wiring against a temporary repository.

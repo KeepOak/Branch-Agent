@@ -1,7 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import { readPullRequestHeadWithGh } from "../agents/build-worktrees/cleanup.runtime.js";
 import { WorktreeGcProgress } from "../agents/worktrees/gc-progress.js";
 import { createManagedWorktreeOwnerPolicy } from "../agents/worktrees/owner-protection.js";
+import { createPullRequestRetirementCheck } from "../agents/worktrees/pr-retirement.js";
 import { managedWorktrees, WORKTREE_GC_INTERVAL_MS } from "../agents/worktrees/service.js";
 import type {
   ManagedWorktreeGcReceipt,
@@ -100,6 +102,9 @@ export function startWorktreeMaintenance(params: {
                       retryDeferred,
                       signal: scheduler.signal,
                       commitGuard: assertCurrent,
+                      pullRequestRetired: createPullRequestRetirementCheck({
+                        pullRequestState: readPullRequestHeadWithGh,
+                      }),
                       checkpoint: async (progress) => {
                         Object.assign(current, progress);
                         assertCurrent();

@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:ui/src/lib/nodes/index.ts (atlas OPS-0133). Changed for Branch: kept only the Ed25519 device identity and signing; the issued device token is kept by device-token-store.ts; the pure-JS SHA-512 fallback is dropped because the window always runs on a secure origin (127.0.0.1).
+// Changed for Branch: kept only the Ed25519 device identity and signing; the issued device token is kept by device-token-store.ts; the pure-JS SHA-512 fallback is dropped because the window always runs on a secure origin (127.0.0.1).
 import { etc, getPublicKeyAsync, signAsync, utils } from "@noble/ed25519";
 import type { GatewayBrowserDeviceIdentity } from "@branch/gateway-client/browser";
 
