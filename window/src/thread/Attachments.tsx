@@ -6,7 +6,7 @@ import { Icon, ICONS } from "./icons";
 import type { Attachment } from "./model";
 import { PictureViewer } from "./PictureViewer";
 import { useThread } from "./context";
-import { isManagedAttachment, useAttachmentSources } from "./attachment-sources";
+import { attachmentSourceKey, needsAttachmentSource, useAttachmentSources } from "./attachment-sources";
 
 function sizeText(bytes?: number): string {
   if (!bytes) return "";
@@ -126,24 +126,28 @@ export function Attachments({ items, mine = false, onError, onLoad }: { items: A
   const resolved = useAttachmentSources(items, engine);
   const { sources } = resolved;
   const [open, setOpen] = useState<number | null>(null);
+  const originals = new Map<Attachment, Attachment>();
   const ready = items.flatMap((item) => {
-    if (!isManagedAttachment(item)) return [item];
-    const source = sources[item.artifactId!];
-    return source && "src" in source ? [{ ...item, src: source.src, kept: true }] : [];
+    if (!needsAttachmentSource(item)) return [item];
+    const source = sources[attachmentSourceKey(item)];
+    if (!source || !("src" in source)) return [];
+    const picture = { ...item, src: source.src, kept: true };
+    originals.set(picture, item);
+    return [picture];
   });
   const pictures = ready.filter((a) => a.kind === "image" && a.kept);
-  const failed = (item: Attachment) => { if (isManagedAttachment(item)) resolved.failed(item.artifactId!); else onError?.(); };
-  const loaded = (item: Attachment) => { if (isManagedAttachment(item)) resolved.loaded(item.artifactId!); else onLoad?.(); };
+  const failed = (item: Attachment) => { const original = originals.get(item); if (original) resolved.failed(attachmentSourceKey(original)); else onError?.(); };
+  const loaded = (item: Attachment) => { const original = originals.get(item); if (original) resolved.loaded(attachmentSourceKey(original)); else onLoad?.(); };
   return (
     <div className={mine ? "attachments mine" : "attachments"}>
-      {items.filter(isManagedAttachment).map((item, i) => {
-        const source = sources[item.artifactId!];
+      {items.filter(needsAttachmentSource).map((item, i) => {
+        const source = sources[attachmentSourceKey(item)];
         if (source && "src" in source) return null;
         if (!source) return <span key={`loading${i}`} role="status">Loading {item.name}…</span>;
         return <span key={`gone${i}`} className="file-chip gone" data-testid="attachment-unavailable">
           <span className="file-tile">{extension(item)}</span>
           <span className="file-text"><b>{item.name}</b><small>Attachment unavailable</small></span>
-          <button type="button" className="btn ghost sm" onClick={() => resolved.retry(item.artifactId!)}>Try again</button>
+          <button type="button" className="btn ghost sm" onClick={() => resolved.retry(attachmentSourceKey(item))}>Try again</button>
         </span>;
       })}
       {pictures.map((p, i) => (

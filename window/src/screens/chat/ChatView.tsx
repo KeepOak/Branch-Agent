@@ -275,7 +275,7 @@ function EntryView({ entry, view, live }: { entry: Entry; view: View; live: bool
     return <div className="r1c-row r1c-b" data-block-key={entry.steps[0]?.key} data-block-keys={entry.steps.map((s) => s.key).join(" ")}>
       <div className="r1c-gut" data-working={(live && view.running) || undefined}>{entry.face ? faceFor(view, live) : null}</div>
       <div className="r1c-body">
-        <StepsList steps={entry.steps} thoughts={entry.thoughts} live={live} run={entry.run} mode={view.mode} />
+        <StepsList steps={entry.steps} thoughts={entry.thoughts} live={live} mode={view.mode} />
         {computer ? <ComputerActivityCard blocks={[...entry.steps, ...turnDoneLines(entry.steps, view.all)]} running={view.running} name={view.name} engine={view.engine} gatewayUrl={view.engine?.gatewayUrl} onWatch={() => undefined} /> : null}
       </div>
     </div>;
