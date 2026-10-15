@@ -71,7 +71,7 @@ describe("update failure report receipt recovery", () => {
     "recovers a committed %s receipt after its writer loses the acknowledgement",
     async (status) => {
       const { prepared, submit } = await prepareFailedReport(`attempt-${status}-lost-ack`);
-      const issueUrl = "https://github.com/openclaw/openclaw/issues/123";
+      const issueUrl = "https://github.com/KeepOak/Branch-Agent/issues/123";
       const createIssue =
         status === "created" ? mockCreatedIssue(issueUrl) : mockFallbackIssue(prepared.url);
       const finalizeReceipt = vi.fn(
@@ -107,7 +107,7 @@ describe("update failure report receipt recovery", () => {
 
   it("keeps a post-create persistence outage pending without replaying transport", async () => {
     const { submit } = await prepareFailedReport("attempt-created-persistence-outage");
-    const issueUrl = "https://github.com/openclaw/openclaw/issues/123";
+    const issueUrl = "https://github.com/KeepOak/Branch-Agent/issues/123";
     const createIssue = mockCreatedIssue(issueUrl);
 
     const first = await submit({
@@ -158,7 +158,9 @@ describe("update failure report receipt recovery", () => {
       "attempt-retryable-cleanup-interruption",
     );
     const first = await submit({ createIssue: mockRetryableNoStartIssue() });
-    const secondCreateIssue = mockCreatedIssue("https://github.com/openclaw/openclaw/issues/123");
+    const secondCreateIssue = mockCreatedIssue(
+      "https://github.com/KeepOak/Branch-Agent/issues/123",
+    );
     const rm = vi
       .spyOn(fs, "rm")
       .mockRejectedValueOnce(new Error("simulated retryable cleanup interruption"));
@@ -183,7 +185,7 @@ describe("update failure report receipt recovery", () => {
 
     expect(third).toMatchObject({
       status: "created",
-      url: "https://github.com/openclaw/openclaw/issues/123",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/123",
     });
     expect(secondCreateIssue).toHaveBeenCalledOnce();
     expect(third.savedReportPath).not.toBe(first.savedReportPath);
@@ -193,7 +195,7 @@ describe("update failure report receipt recovery", () => {
   it("keeps a retryable artifact when a later submission is stale", async () => {
     const { prepared, receipt, submit } = await prepareFailedReport("attempt-retryable-stale");
     const first = await submit({ createIssue: mockRetryableNoStartIssue() });
-    const staleCreateIssue = mockCreatedIssue("https://github.com/openclaw/openclaw/issues/123");
+    const staleCreateIssue = mockCreatedIssue("https://github.com/KeepOak/Branch-Agent/issues/123");
 
     const stale = await submit({
       createIssue: staleCreateIssue,
@@ -227,7 +229,7 @@ describe("update failure report receipt recovery", () => {
     await fs.mkdir(path.dirname(expiredReportPath), { recursive: true });
     await fs.writeFile(expiredReportPath, prepared.body, { mode: 0o600 });
     nowMs += 10 * 60_000;
-    const createIssue = mockCreatedIssue("https://github.com/openclaw/openclaw/issues/123");
+    const createIssue = mockCreatedIssue("https://github.com/KeepOak/Branch-Agent/issues/123");
     const rm = vi
       .spyOn(fs, "rm")
       .mockRejectedValueOnce(new Error("simulated expired cleanup interruption"));
@@ -281,7 +283,7 @@ describe("update failure report receipt recovery", () => {
     }
 
     const created = await submit({
-      createIssue: mockCreatedIssue("https://github.com/openclaw/openclaw/issues/123"),
+      createIssue: mockCreatedIssue("https://github.com/KeepOak/Branch-Agent/issues/123"),
     });
     now.mockRestore();
 
@@ -300,7 +302,7 @@ describe("update failure report receipt recovery", () => {
     const { prepared, receipt, submit } = await prepareFailedReport(
       "attempt-created-reconcile-restart",
     );
-    const issueUrl = "https://github.com/openclaw/openclaw/issues/123";
+    const issueUrl = "https://github.com/KeepOak/Branch-Agent/issues/123";
     const createIssue = mockCreatedIssue(issueUrl);
 
     const submitted = await submit({
@@ -327,7 +329,7 @@ describe("update failure report receipt recovery", () => {
 
   it("keeps an unreconciled restart pending without replaying issue creation", async () => {
     const { submit } = await prepareFailedReport("attempt-created-reconcile-miss");
-    const createIssue = mockCreatedIssue("https://github.com/openclaw/openclaw/issues/123");
+    const createIssue = mockCreatedIssue("https://github.com/KeepOak/Branch-Agent/issues/123");
 
     await submit({
       createIssue,
@@ -345,7 +347,7 @@ describe("update failure report receipt recovery", () => {
 
   it("stops restart reconciliation when client authority expires before lookup", async () => {
     const { receipt, submit } = await prepareFailedReport("attempt-created-reconcile-revoked");
-    const createIssue = mockCreatedIssue("https://github.com/openclaw/openclaw/issues/123");
+    const createIssue = mockCreatedIssue("https://github.com/KeepOak/Branch-Agent/issues/123");
 
     await submit({
       createIssue,
@@ -360,7 +362,7 @@ describe("update failure report receipt recovery", () => {
         lookupCalls += 1;
         return {
           status: "created" as const,
-          url: "https://github.com/openclaw/openclaw/issues/123",
+          url: "https://github.com/KeepOak/Branch-Agent/issues/123",
         };
       },
     );
@@ -382,7 +384,7 @@ describe("update failure report receipt recovery", () => {
 
   it("returns the created URL when post-transport receipt reads are also unavailable", async () => {
     const { submit } = await prepareFailedReport("attempt-created-read-outage");
-    const issueUrl = "https://github.com/openclaw/openclaw/issues/123";
+    const issueUrl = "https://github.com/KeepOak/Branch-Agent/issues/123";
     const createIssue = mockCreatedIssue(issueUrl);
     const readReceipt = vi
       .fn(readUpdateFailureReportReceipt)
@@ -407,7 +409,7 @@ describe("update failure report receipt recovery", () => {
     const { prepared, receipt, submit } = await prepareFailedReport(
       "attempt-created-cleanup-reconnect",
     );
-    const issueUrl = "https://github.com/openclaw/openclaw/issues/123";
+    const issueUrl = "https://github.com/KeepOak/Branch-Agent/issues/123";
     const createIssue = mockCreatedIssue(issueUrl);
     const realRm = fs.rm.bind(fs);
     let observedReceipt: ReturnType<typeof readUpdateFailureReportReceipt> | undefined;
@@ -518,7 +520,18 @@ describe("update failure report receipt recovery", () => {
   it.each([
     { cleanup: "pending" as const, reservationId: "owner", status: "created" as const },
     {
-      fallbackUrl: "https://evil.example/branch/branch/issues/new",
+      fallbackUrl: "https://evil.example/KeepOak/Branch-Agent/issues/new",
+      reservationId: "owner",
+      status: "fallback" as const,
+    },
+    {
+      cleanup: "pending" as const,
+      reservationId: "owner",
+      status: "created" as const,
+      url: "https://github.com/openclaw/openclaw/issues/123",
+    },
+    {
+      fallbackUrl: "https://github.com/openclaw/openclaw/issues/new?title=update",
       reservationId: "owner",
       status: "fallback" as const,
     },
@@ -588,7 +601,7 @@ describe("update failure report receipt recovery", () => {
     const legacyReceipt = {
       reservationId: "legacy-owner",
       status: "created",
-      url: "https://github.com/openclaw/openclaw/issues/123",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/123",
     };
     executeSqliteQuerySync(
       db,
@@ -606,7 +619,7 @@ describe("update failure report receipt recovery", () => {
         })
         .where("sentinel_key", "=", key),
     );
-    const createIssue = mockCreatedIssue("https://github.com/openclaw/openclaw/issues/124");
+    const createIssue = mockCreatedIssue("https://github.com/KeepOak/Branch-Agent/issues/124");
 
     const result = await submit({ createIssue });
 

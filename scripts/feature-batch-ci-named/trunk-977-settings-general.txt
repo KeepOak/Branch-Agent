@@ -1,0 +1,4 @@
+window:src/glass/coming.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/screens/settings/coming.test.tsx
+window:src/screens/settings/search.test.ts

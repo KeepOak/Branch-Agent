@@ -14,10 +14,10 @@ type Tell = TellRow & { sub: string; key: CategoryKey };
 
 export const TELL: Tell[] = [
   { title: "A Trunk needs a yes", sub: "Shows on this computer and your phone.", key: "approvalRequested" },
-  { title: "A Trunk asks you something", sub: "A question it can’t go on without. Off until you turn it on.", key: "agentQuestion" },
+  { title: "A Trunk asks you something", sub: "A question it can’t go on without.", key: "agentQuestion" },
   { title: "A long task finishes", sub: "When a Trunk finishes its work.", key: "agentFinished" },
-  { title: "An automation fails", sub: "When a scheduled job can’t finish. Off until you turn it on.", key: "scheduledTaskFailed" },
-  { title: "Someone mentions you", sub: "When someone picks you with @ in a conversation you share. Off until you turn it on.", key: "humanMentioned" },
+  { title: "An automation fails", sub: "When a scheduled job can’t finish.", key: "scheduledTaskFailed" },
+  { title: "Someone mentions you", sub: "When someone picks you with @ in a conversation you share.", key: "humanMentioned" },
 ];
 
 const HOURS = ["6 PM", "7 PM", "8 PM", "9 PM", "10 PM", "11 PM", "12 AM", "1 AM", "5 AM", "6 AM", "7 AM", "8 AM", "9 AM"];

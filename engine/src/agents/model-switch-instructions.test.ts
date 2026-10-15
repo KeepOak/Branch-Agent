@@ -1,4 +1,4 @@
-// From openai/codex@cc31e374fc15cd616fca19c07d55f9fa7e6d7e31:codex-rs/core/src/context/world_state/model_tests.rs (atlas AGENT-LOOP-0098). Converted to Vitest with empty-instruction and authoritative-snapshot regressions.
+// Converted to Vitest with empty-instruction and authoritative-snapshot regressions.
 import { describe, expect, it } from "vitest";
 import {
   renderModelInstructionsDiff,

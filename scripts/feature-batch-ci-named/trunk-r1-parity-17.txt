@@ -1,0 +1,4 @@
+window:src/screens/composer/ring-connect-elsewhere.test.tsx
+window:src/screens/composer/this-computer.test.tsx
+window:src/shell/ConnectElsewhereDialog.test.tsx
+window:src/shell/status-redesign.test.tsx
