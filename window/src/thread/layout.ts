@@ -40,6 +40,8 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
   let held: Item[] = [];
   let replied = false;
   let faced = false;
+  // In a group chat, another Trunk's post (from the room's log) starts its own run under its own name and face.
+  let speaker: string | null = null;
   // A user message (or a later step from another run) must not join the fold that just closed.
   let sealSteps = false;
   blocks.forEach((block, i) => {
@@ -48,6 +50,15 @@ export function layout(blocks: readonly Block[], offset = 0): Item[] {
       replied = false;
       faced = false;
       sealSteps = true;
+    }
+    if (block.kind === "text") {
+      const sender = block.meta?.sender;
+      const from = sender?.kind === "trunk" && sender.posted ? sender.agentId : null;
+      if (replied && from !== speaker) {
+        replied = false;
+        faced = false;
+      }
+      speaker = from;
     }
     if (block.kind === "steer" && items.at(-1)?.type === "steps") {
       held.push({ type: "block", block, index: offset + i, firstReply: false, face: false });

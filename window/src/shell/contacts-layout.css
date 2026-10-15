@@ -7,21 +7,21 @@
 .frame:not(.rail) .side .row:not(.child) .rc { grid-column: 3; grid-row: 1; flex-direction: row; align-items: center; }
 .frame:not(.rail) .side .row:not(.child) .row-preview { grid-column: 2 / 4; grid-row: 2; margin: 0; font-size: 12.5px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .side .row:not(.child).current { background: color-mix(in srgb, var(--accent) 12%, var(--side)); box-shadow: none; }
-.pin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 2px 4px 6px; }
-.pin-tile { position: relative; min-width: 0; }
+.pin-grid { display: flex; flex-wrap: nowrap; gap: 6px; padding: 8px 10px 10px; overflow-x: auto; scrollbar-width: thin; }
+.pin-tile { position: relative; flex: 0 0 auto; }
 .pin-new { animation: pin-in 250ms ease both; }
 @keyframes pin-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .pin-new { animation: none; } }
-.pin-open { width: 100%; border: 0; background: transparent; color: var(--ink); cursor: pointer; display: grid; justify-items: center; gap: 3px; padding: 8px 4px; border-radius: 14px; text-align: center; }
+.pin-open { border: 0; background: transparent; color: var(--ink); cursor: pointer; display: grid; place-items: center; padding: 2px; border-radius: 50%; }
 .pin-open:hover { background: var(--fill); }
-.pin-open[aria-current="true"] { background: color-mix(in srgb, var(--accent) 12%, var(--side)); }
-.pin-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.pin-face { position: relative; width: 60px; height: 60px; display: grid; place-items: center; overflow: visible; }
-.pin-face .pebble, .pin-face .emoji-pebble { max-width: 100%; max-height: 100%; }
-.pin-unread { position: absolute; top: 2px; right: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--side); }
-.pin-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
-.pin-role { box-sizing: border-box; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 7px; border-radius: 999px; background: var(--fill); color: var(--ink-3); font-size: 10.5px; }
-.pin-more { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); opacity: 0; cursor: pointer; }
+.pin-open[aria-current="true"] { box-shadow: 0 0 0 2px var(--accent); }
+.pin-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pin-face { position: relative; width: 44px; height: 44px; display: grid; place-items: center; overflow: visible; }
+.pin-face .pebble, .pin-face .emoji-pebble, .pin-face .rm-av, .pin-face .rm-stack { max-width: 100%; max-height: 100%; border-radius: 50%; }
+.pin-unread { position: absolute; top: 0; right: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--side); }
+.pin-plus { position: absolute; right: -2px; bottom: -2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--raise); color: var(--ink); box-shadow: 0 0 0 1px var(--side); font: 650 9px/16px var(--sans); text-align: center; }
+.pin-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.pin-more { position: absolute; top: -4px; right: -4px; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ink-3); opacity: 0; cursor: pointer; }
 .pin-tile:hover .pin-more, .pin-more:focus-visible { opacity: 1; background: var(--raise); }
 .pin-drop-before { box-shadow: inset 3px 0 var(--accent); }
 .pin-drop-after { box-shadow: inset -3px 0 var(--accent); }
