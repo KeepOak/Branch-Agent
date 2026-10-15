@@ -43,7 +43,7 @@
   /* 1px base so Tailwind spacing maps directly to pixels (pixel-art project) */
   --spacing: 1px;
 
-  --font-pixel: 'FS Pixel Sans', sans-serif;
+  --font-pixel: 'Micro 5', sans-serif;
 
   /* Text sizes (pixel-art scale, base = 22px) */
   --text-*: initial;
@@ -226,7 +226,7 @@
 .pa-root *::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .pa-root canvas { image-rendering: pixelated; }
 .pa-name {
-  font-family: 'FS Pixel Sans', sans-serif;
+  @apply font-pixel;
   color: #fff;
   background: rgba(16, 16, 28, 0.72);
   padding: 2px 5px 3px;

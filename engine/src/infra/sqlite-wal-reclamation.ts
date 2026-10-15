@@ -2,6 +2,7 @@ import { performance } from "node:perf_hooks";
 import type { DatabaseSync } from "node:sqlite";
 import { runWithSqliteBusyTimeout } from "./sqlite-busy-timeout.js";
 import { isSqliteLockError } from "./sqlite-error-diagnostics.js";
+import { isSqliteMaintenanceDeferred } from "./sqlite-maintenance-deferral.js";
 import { runSqliteImmediateTransactionSync } from "./sqlite-transaction.js";
 import type {
   SqliteWalCheckpointMode,
@@ -102,6 +103,11 @@ export function reclaimSqliteWalFreePages(
     result.freePagesBefore = before;
     result.remainingFreePages = before;
     if (!Number.isSafeInteger(before) || before <= 0) {
+      return result;
+    }
+    if (isSqliteMaintenanceDeferred()) {
+      // #967: agents are being admitted; never contend for their write lock. Same outcome as a
+      // vacuum that found the lock busy: no pages reclaimed, the caller retries later.
       return result;
     }
     const pages = Math.min(vacuumPageBudgets.get(database) ?? 8, before, options.maxPages ?? 512);

@@ -79,3 +79,4 @@
   .settings .set-nav .set-destinations .set-item { width: auto; }
   .settings .set-nav:has(.set-destinations) .set-level { position: static; box-shadow: none; }
 }
+.set-col .set-more { margin: 0 0 16px; color: var(--ink-2); }

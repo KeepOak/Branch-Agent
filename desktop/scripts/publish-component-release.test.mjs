@@ -5,7 +5,7 @@ import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { makeComponentRelease } from "./make-component-release.mjs";
-import { writeReleaseInventory } from "./release-inventory.mjs";
+import { fileDigest, writeReleaseInventory } from "./release-inventory.mjs";
 import { PUBLIC_LATEST_BUDGET_MS, publicLatestDelayMs, publishRelease } from "./publish-component-release.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -38,7 +38,7 @@ async function fixture(body) {
       const output = join(root, platform); await mkdir(output);
       const desktop = { app: asar, electronVersion: "44.5.1", runtime: app };
       const manifest = await makeComponentRelease({ version, sourceCommit: commit, tag, engine, window, desktop, output, platform, arch });
-      const identity = { commit, version, platform, arch, electronVersion: "44.5.1", runtime: {
+      const identity = { commit, version, platform, arch, electronVersion: "44.5.1", ...(platform === "darwin" ? { signing: "identity" } : {}), runtime: {
         electronVersion: "44.5.1", electron: { sha256: "b".repeat(64), bytes: 1 },
         node: { version: "v24.19.0", platform, arch, sha256: "c".repeat(64) } }, smoke: { commit, ready: true, authenticatedHealth: true, exited: true, elapsedMs: 10, runtime: { version: "v24.19.0", platform, arch }, source: "verified-component-archive", archiveSha256: manifest.components.engine.sha256, archiveBytes: manifest.components.engine.bytes, expandedBytes: manifest.components.engine.expandedBytes } };
       await writeReleaseInventory(output, identity); await cp(output, assets, { recursive: true });
@@ -230,3 +230,45 @@ test("desktop checks run the publication order test by name", async () => {
   const workflow = await readFile(join(here, "../../.github/workflows/desktop-checks.yml"), "utf8");
   assert.match(workflow, /^\s+run: node --test scripts\/publish-component-release\.test\.mjs\s*$/m);
 });
+
+const installerNames = { "win32-x64": `Branch-Agent-Setup-${version}-win32-x64.exe`, "darwin-arm64": `Branch-Agent-${version}-darwin-arm64.dmg`,
+  "linux-x64": `Branch-Agent-${version}-linux-x64.AppImage` };
+async function listInstaller(assets, target, { place = true, listed } = {}) {
+  const name = installerNames[target], file = join(assets, name);
+  await writeFile(file, `unsigned ${target} installer`);
+  const digest = listed ?? await fileDigest(file);
+  if (!place) await rm(file);
+  const proofFile = join(assets, `release-proof-${target}.json`);
+  const proof = JSON.parse(await readFile(proofFile, "utf8"));
+  proof.installers = { [name]: digest };
+  await writeFile(proofFile, JSON.stringify(proof, null, 2) + "\n");
+}
+
+test("listed installers, the Linux AppImage included, are uploaded as release assets and listed in SHA256SUMS", () => fixture(async assets => {
+  await listInstaller(assets, "win32-x64"); await listInstaller(assets, "darwin-arm64"); await listInstaller(assets, "linux-x64");
+  const remote = githubMock(assets);
+  await publishRelease(assets, commit, version, remote.request, remote.download, { sleep: remote.sleep, now: remote.now });
+  const created = remote.calls.find(args => args[1] === "create");
+  const uploaded = created.slice(3, created.indexOf("--repo")).map(file => basename(file));
+  for (const name of Object.values(installerNames)) assert(uploaded.includes(name), `${name} was not uploaded`);
+  assert(!uploaded.some(name => /linux-x64\.deb$/.test(name)));
+  const sums = await readFile(join(assets, "SHA256SUMS"), "utf8");
+  for (const name of Object.values(installerNames)) assert.match(sums, new RegExp(`^${(await fileDigest(join(assets, name))).sha256}  ${name.replace(/\./g, "\\.")}$`, "m"));
+  // The one-line install scripts ship with every release, so releases/latest/download/install.sh is stable.
+  for (const name of ["install.sh", "install.ps1"]) {
+    assert(uploaded.includes(name), `${name} was not uploaded`);
+    const source = await fileDigest(fileURLToPath(new URL(`../install/${name}`, import.meta.url)));
+    assert.match(sums, new RegExp(`^${source.sha256}  ${name.replace(/\./g, "\\.")}$`, "m"));
+  }
+  assert.equal(remote.latest(), tag);
+}));
+
+for (const [label, options, expected] of [
+  ["a missing installer", { place: false }, /Missing listed installer/],
+  ["a mismatched installer", { listed: { sha256: "f".repeat(64), bytes: 1 } }, /Installer digest mismatch/],
+]) test(`publication refuses ${label} before creating the release`, () => fixture(async assets => {
+  await listInstaller(assets, "win32-x64", options);
+  const remote = githubMock(assets);
+  await assert.rejects(publishRelease(assets, commit, version, remote.request, remote.download), expected);
+  assert(!remote.calls.some(args => args[1] === "create" || args[1] === "edit"));
+}));

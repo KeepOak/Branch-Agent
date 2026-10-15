@@ -1,0 +1,4 @@
+engine:src/gateway/server-methods/trunk-templates.test.ts
+engine:src/trunks/day-one-home-desk.test.ts
+engine:src/trunks/trunk-template.test.ts
+window:src/screens/seedbank/catalog.test.ts

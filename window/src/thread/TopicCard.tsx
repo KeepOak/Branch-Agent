@@ -31,7 +31,7 @@ const WORKING_BAR = 40;
 type JobState = "working" | "needs" | "done" | "stuck" | "moved" | "open";
 
 /** Prefer the later `state` field; otherwise map `topic.status`. Never surface raw `active`. */
-export function jobStateOf(update: TopicUpdate): JobState {
+function jobStateOf(update: TopicUpdate): JobState {
   if (update.state) return update.state;
   if (update.topic.status === "working") return "working";
   if (update.topic.status === "waiting") return "needs";

@@ -1,8 +1,10 @@
+// Changed for Branch: file reports on the Branch-owned KeepOak/Branch-Agent repository, never the upstream tracker.
 import type { DatabaseSync } from "node:sqlite";
 import { safeParseJson } from "@branch/normalization-core";
 import { isRecord as isPlainRecord } from "@branch/normalization-core/record-coerce";
 import type { DB as BranchStateKyselyDatabase } from "../state/branch-state-db.generated.js";
 import { sha256Hex } from "./crypto-digest.js";
+import { GITHUB_CREATED_ISSUE_PATH_RE, GITHUB_NEW_ISSUE_PATH_RE } from "./github-issue-target.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "./kysely-sync.js";
 import {
   buildRestartSentinelRow,
@@ -74,14 +76,14 @@ function isValidTerminalReceipt(receipt: UpdateFailureReportReceipt): boolean {
     return (
       receipt.cleanup === "pending" &&
       receipt.fallbackUrl === undefined &&
-      isCanonicalGithubUrl(receipt.url, /^\/branch\/branch\/issues\/\d+$/u, false)
+      isCanonicalGithubUrl(receipt.url, GITHUB_CREATED_ISSUE_PATH_RE, false)
     );
   }
   if (receipt.status === "fallback") {
     return (
       receipt.cleanup === undefined &&
       receipt.url === undefined &&
-      isCanonicalGithubUrl(receipt.fallbackUrl, /^\/branch\/branch\/issues\/new$/u, true)
+      isCanonicalGithubUrl(receipt.fallbackUrl, GITHUB_NEW_ISSUE_PATH_RE, true)
     );
   }
   return (
@@ -133,9 +135,9 @@ function parseReceipt(sentinel: RestartSentinel | null): UpdateFailureReportRece
       (typeof value.sweepSinceMs !== "number" || !Number.isFinite(value.sweepSinceMs))) ||
     (value.sweepOwnerId !== undefined && value.artifactSweep !== "pending") ||
     (value.status === "created" &&
-      !isCanonicalGithubUrl(value.url, /^\/branch\/branch\/issues\/\d+$/u, false)) ||
+      !isCanonicalGithubUrl(value.url, GITHUB_CREATED_ISSUE_PATH_RE, false)) ||
     (value.status === "fallback" &&
-      !isCanonicalGithubUrl(value.fallbackUrl, /^\/branch\/branch\/issues\/new$/u, true)) ||
+      !isCanonicalGithubUrl(value.fallbackUrl, GITHUB_NEW_ISSUE_PATH_RE, true)) ||
     (value.cleanup !== undefined && value.status !== "created" && value.status !== "retryable") ||
     (value.status !== "created" && value.url !== undefined) ||
     (value.status !== "fallback" && value.fallbackUrl !== undefined)

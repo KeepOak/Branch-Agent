@@ -1,4 +1,3 @@
-// Ported from JohnRiceML/clawport-ui@40db84d69b793048a9f738db57fe6e5db9751df3 lib/costs.ts.
 // Statistical analysis only: costs come from Branch's real accounting, not source price fallbacks.
 export type RunCost = {
   ts: number; jobId: string; model: string; provider: string;
