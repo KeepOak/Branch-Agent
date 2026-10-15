@@ -23,8 +23,8 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 const PREVIEW_CARDS = ["Talking", "Listening", "Speaking back", "Live voice", "Calls & meetings", "Voice services"];
 /** The preview's rows at Regular, and the first rows of each card at Technical, in order. */
 const REGULAR: Record<string, string[]> = {
-  Talking: ["Listening", "Push-to-talk key", "Microphone", "Test the microphone"],
-  "Speaking back": ["Voice", "Dictation in the message box"],
+  // Talking's Regular rows and Dictation wait for a later update: Regular shows only what works (they show from Advanced).
+  "Speaking back": ["Voice"],
 };
 const TECH_FIRST: Record<string, string[]> = {
   Talking: ["Listening", "Push-to-talk key", "Microphone", "Test the microphone", "Answer approvals by voice", "Talking over it stops it", "Hold the microphone to dictate",
@@ -116,5 +116,24 @@ describe("R1 Settings › Voice & calls is a native R1 page with the preview's c
     await click(button(row("voice.calls.test"), "Call me"));
     expect(request.mock.calls.some(([m]) => m === "voicecall.initiate")).toBe(true);
     expect(row("voice.talking.keep-voice-ready")?.getAttribute("data-coming")).toBeTruthy();
+  });
+
+  it("says a missing voice service in plain words when Preview fails, with a way to Voice services", async () => {
+    const { request } = await mount();
+    const base = request.getMockImplementation()!;
+    request.mockImplementation(async (method: string, params?: unknown) => {
+      if (method === "tts.speak") throw new Error("TTS conversion failed: : no provider registered");
+      return base(method, params);
+    });
+    await setLevel("Advanced");
+    await click(button(row("voice.speaking.preview"), "Preview"));
+    const said = row("voice.speaking.preview")?.textContent ?? "";
+    expect(said).toContain("Add a voice service to hear a preview.");
+    expect(said).not.toMatch(/TTS|provider registered|conversion failed/);
+    const services = row("voice.speaking.services")!;
+    services.scrollIntoView = vi.fn();
+    await click(button(row("voice.speaking.preview"), "Voice services"));
+    expect(services.scrollIntoView).toHaveBeenCalled();
+    expect(services.hasAttribute("data-flash")).toBe(true);
   });
 });

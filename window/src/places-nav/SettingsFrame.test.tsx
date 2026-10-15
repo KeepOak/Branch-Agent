@@ -99,6 +99,23 @@ describe("settings frame level", () => {
     expect(onPage).not.toHaveBeenCalledWith("general");
   });
 
+  it("in a host that keeps the level (R1), opening an Advanced page at Regular never changes or saves the level", async () => {
+    localStorage.setItem("branch.level", "regular");
+    const onPage = vi.fn();
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame keepLevel page="advanced" backName="Sapling" engine={engine} onPage={onPage} onBack={() => {}} />));
+    expect(document.querySelector('[data-level="regular"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(localStorage.getItem("branch.level")).toBe("regular");
+    // What Regular shows, and one line that offers Advanced: choosing it is the person's own change.
+    const more = document.querySelector<HTMLElement>(".set-more");
+    expect(more?.textContent).toContain("More in Advanced.");
+    await act(async () => more!.querySelector("button")!.click());
+    expect(document.querySelector('[data-level="advanced"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(localStorage.getItem("branch.level")).toBe("advanced");
+    expect(document.querySelector(".set-more")).toBeNull();
+    expect(onPage).not.toHaveBeenCalled();
+  });
+
   it("lowering the level by hand still moves a hidden page to General", async () => {
     localStorage.setItem("branch.level", "advanced");
     const onPage = await open("advanced");

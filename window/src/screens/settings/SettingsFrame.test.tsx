@@ -227,7 +227,7 @@ describe("SettingsFrame", () => {
 });
 
 describe("SettingsFrame custom pages", () => {
-  const extra = (id: string, label: string, level: 0 | 1 | 2 = 0): Row => ({ id, page: "chatapps", card: "Commands", label, level, ownerLevel: true, control: "toggle", source: { kind: "coming", need: "x", reason: "x" } });
+  const extra = (id: string, label: string, level: 0 | 1 | 2 = 0): Row => ({ id, page: "chatapps", card: "Commands", label, level, ownerLevel: true, control: "toggle", source: { kind: "slot", calls: [], reason: "x" } }); // drawn by its page, as Chat apps rows are
   async function mountSlots(engine: WindowEngine, pages: PageSlots, extras: Partial<SettingsFrameProps> = {}) {
     await act(async () => root.render(<SettingsFrame engine={engine} pages={pages} {...extras} />));
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });

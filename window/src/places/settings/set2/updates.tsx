@@ -14,6 +14,7 @@ import { DesktopUpdatesPage } from "./desktop-updates";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { KeeperMark } from "../../../brand/KeeperMark";
 import { WhatsNewRow } from "./whats-new-row";
+import { showsInternals, versionLabel } from "../internals";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -60,7 +61,7 @@ export function UpdatesBlock(props: SettingsPageProps & { part: "updating" | "de
   if (part === "devices") return <Devices lv={lvOf(props.level)} />;
   if (part === "before") return <BeforeInstall />;
   if (part === "reports") return <Reports />;
-  if (part === "editors") return <Editors gatewayUrl={props.engine.gatewayUrl} />;
+  if (part === "editors") return <Editors gatewayUrl={props.engine.gatewayUrl} technical={showsInternals(props.level)} />;
   if (part === "about") return <About />;
   if (part === "privacy") return <Privacy openSettings={props.openSettings} />;
   if (part === "remove") return <RemoveBranch />;
@@ -102,7 +103,7 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
       <RemoveBranch />
       <Reports />
       <BeforeInstall />
-      {lvOf(props.level) >= 1 ? <Editors gatewayUrl={props.engine.gatewayUrl} /> : null}
+      {lvOf(props.level) >= 1 ? <Editors gatewayUrl={props.engine.gatewayUrl} technical={showsInternals(props.level)} /> : null}
       <Privacy openSettings={props.openSettings} />
       {lvOf(props.level) >= 1 ? <HelpMore {...props} data={data} version={version} /> : null}
       {lvOf(props.level) >= 2 ? <Technical data={data} version={version} /> : null}
@@ -131,7 +132,7 @@ function useNow(on: boolean): number {
   return now;
 }
 
-function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; version: string }) {
+function Waiting({ engine, data, version, level }: SettingsPageProps & { data: Data; version: string }) {
   const [dialog, setDialog] = useState<"" | "notes" | "report">("");
   const call = useCall();
   const hold = useCall();
@@ -172,7 +173,7 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       ) : latest ? (
         <Status title="A Branch update is ready">It waits for running tasks, up to the update deadline, and keeps a safety copy first.</Status>
       ) : (
-        <Status title="Branch is up to date.">{version ? `You have Branch ${versionParts(version).detail}.` : "You have the newest version."}</Status>
+        <Status title="Branch is up to date.">{version ? `You have Branch ${versionLabel(version, level)}.` : "You have the newest version."}</Status>
       )}
       {latest && !str(active.runId) ? (
         <Acts>
@@ -195,7 +196,7 @@ function NotesDialog({ available, version, onClose, onInstall }: { available: Re
   const behind = typeof available.commitsBehind === "number" ? available.commitsBehind : undefined;
   return (
     <Dialog title="What’s new" wide onClose={onClose} footer={<><Btn ghost disabled title={NO_SKIP}>Skip this version</Btn><Btn pri onClick={onInstall}>Install update</Btn></>}>
-      <p className="hint">{version ? `What this update changes from Branch ${versionParts(version).detail}.` : "What this Branch update changes."}</p>
+      <p className="hint">{version ? `What this update changes from Branch ${versionParts(version).short}.` : "What this Branch update changes."}</p>
       {commits.length ? (
         <div className="rows">{commits.map((c) => <Prow key={str(c.sha)} title={str(c.subject)} sub={str(c.sha).slice(0, 7)} />)}</div>
       ) : <p className="hint">The engine has no release notes for this version yet.</p>}
@@ -320,7 +321,7 @@ export function About() {
 
 const NOT_PUBLISHED = "The Branch add-on for it isn’t published yet.";
 /** In your editors and notes (Advanced): add-ons that aren't published yet, greyed with why. */
-function Editors({ gatewayUrl }: { gatewayUrl?: string }) {
+function Editors({ gatewayUrl, technical }: { gatewayUrl?: string; technical?: boolean }) {
   const origin = gatewayUrl ? gatewayUrl.replace(/^ws/, "http").replace(/\/+$/, "") : "";
   const rows: [string, string, string][] = [
     ["VS Code", "Marketplace", "Send the selection or files to a Trunk; Quick edit with Ctrl Shift I."],
@@ -332,7 +333,7 @@ function Editors({ gatewayUrl }: { gatewayUrl?: string }) {
     <Sec title="In your editors and notes" group="Branch on your other devices">
       {rows.map(([title, store, sub]) => <Ctl key={title} title={title} sub={sub} off={NOT_PUBLISHED}><Btn sm disabled>{store}</Btn></Ctl>)}
       <Ctl title="Folders to keep in sync" sub="Obsidian folders the Trunks read, refreshed as they change." off="Needs the Obsidian add-on."><input className="inp" aria-label="Folders to keep in sync" disabled /></Ctl>
-      <Ctl title="Search with Branch from your browser" sub="Add it as a search engine; what you type opens a new conversation." off="Opening a conversation from a browser search needs the Branch app."><code className="s2-code">{`${origin}/?q=%s`}</code></Ctl>
+      <Ctl title="Search with Branch from your browser" sub="Add it as a search engine; what you type opens a new conversation." off="Opening a conversation from a browser search needs the Branch app.">{technical ? <code className="s2-code">{`${origin}/?q=%s`}</code> : null}</Ctl>
       <Ctl title="Install from a terminal" off="The Branch installer isn’t published yet." />
     </Sec>
   );
@@ -340,7 +341,7 @@ function Editors({ gatewayUrl }: { gatewayUrl?: string }) {
 
 function RemoveBranch() {
   const headless = useHeadless();
-  const parts: [string, string][] = [["The app", ""], ["Programs it downloaded to run models", ""], ["Models on this computer", ""], ["The Gateway’s Linux system (WSL)", "Its WSL system, disk image and start-up entry."]];
+  const parts: [string, string][] = [["The app", ""], ["Programs it downloaded to run models", ""], ["Models on this computer", ""], ["Branch’s Linux system (WSL)", "Its WSL system, disk image and start-up entry."]];
   return (
     <div className={headless ? "s2-danger" : "sec s2-danger"} data-sec="Remove Branch">
       {headless ? null : <h2>Remove Branch</h2>}

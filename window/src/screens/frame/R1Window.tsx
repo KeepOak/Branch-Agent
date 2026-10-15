@@ -88,12 +88,33 @@ const KEEP_CLASSIC: ReadonlySet<string> = new Set<string>();
 export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
   card: "people", // Your card: the person's own card on Classic People
   trunks: "advanced", // Trunks, Trunks' model and Trunks and other agents
-  customize: "advanced", // Tools and skills, Skills, Plugins, What it can do
-  memory: "advanced", // Memory, Recall and memory files, Documents it reads
-  autos: "advanced", // Automations, and Automations, steps and nudges
   browser: "computer", // Computer & browser: the screen and the browser
   coding: "computer", // Computer & browser: code and commits, repositories
 };
+
+/**
+ * Settings pages that are a place: Settings › Customize, Automations and Memory & documents open the place that has
+ * their controls (Memory & documents opens Library on its Memory tab), never a Settings page of their own.
+ */
+export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {
+  customize: { place: "customize" },
+  autos: { place: "automations" },
+  memory: { place: "library", tab: "memory" },
+};
+
+/** The route a link, a saved route or a nav item really opens: a Settings page that is a place (by its id or an old id
+ *  for it) opens that place; every other route is itself. */
+export function resolveRoute(route: Route): Route {
+  if (route.kind !== "settings") return route;
+  const target = SETTINGS_PLACE[r1PageFor(route.page)];
+  return target ? { kind: "place", place: target.place } : route;
+}
+
+/** The tab a Settings page that is a place opens on, told to the place after it shows (as WindowShell does). */
+function openPlaceTab(route: Route): void {
+  const target = route.kind === "settings" ? SETTINGS_PLACE[r1PageFor(route.page)] : undefined;
+  if (target?.tab) setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: target.place, tab: target.tab } })), 0);
+}
 
 /**
  * R1 Settings draws a page only once it has rows or its own slot and nothing working is left behind in Classic. Every
@@ -135,7 +156,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const machine = useMachine(session, ready);
   // The re-hosted Classic character panel (parity row 19), shown beside the conversation unless hidden.
   const [characterShown, setCharacterShown] = useR1CharacterShown(engine);
-  const [route, setRoute] = useState<Route>(loadRoute);
+  const [route, setRoute] = useState<Route>(() => resolveRoute(loadRoute()));
   const trunks = useTrunks(session, ready);
   const contactsState = useContacts(session, ready);
   const graftedNames = useMemo(() => new Map(contactsState[0].filter(contact => contact.kind === "outside").map(contact => [contact.id, contact.name])), [contactsState]);
@@ -200,7 +221,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
     window.history.replaceState({ ...window.history.state, r1Index: 0, r1Route: entries.current[0] }, "");
     const pop = (event: PopStateEvent) => {
       const index = event.state?.r1Index;
-      const next = parseRoute(JSON.stringify(event.state?.r1Route));
+      const saved = parseRoute(JSON.stringify(event.state?.r1Route));
+      const next = saved && resolveRoute(saved);
       if (typeof index !== "number" || index < 0 || index >= entries.current.length || !next) return;
       setHistory({ index, count: entries.current.length }); applyRoute(next);
     };
@@ -208,7 +230,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
     return () => window.removeEventListener("popstate", pop);
     // This window owns only entries created during this mount; it never navigates outside them.
   }, [applyRoute]);
-  const navigate = (next: Route) => {
+  const navigate = (asked: Route) => {
+    const next = resolveRoute(asked);
+    openPlaceTab(asked);
     if (JSON.stringify(next) === JSON.stringify(route)) return;
     const index = history.index + 1;
     entries.current = [...entries.current.slice(0, index), next];
@@ -356,7 +380,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const sidebar = <Sidebar onNewTrunk={() => void newTrunk()} session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
     currentKey={route.kind === "chat" ? graftedKey ?? graftedContactOf(snapshot.sessionKey) ?? snapshot.sessionKey : null} waiting={waiting} contacts={contactsState} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} onTour={() => setTour("full")} error={conversations.error} />;
-  const main = route.kind === "settings" && !r1SettingsPage(route.page, settingsPages) ? <ClassicSettingsFrame page={CLASSIC_PAGE[route.page] ?? route.page} heading={(R1_PAGE_SPECS as Record<string, { title: string } | undefined>)[r1PageFor(route.page)]?.title} backName={name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={settingsPages} places={SETTINGS_PLACES} {...settingsSearch} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : graftedKey ? <GraftedEmpty name={name} state={graftedNone?.key === graftedKey ? (graftedNone.error ? "error" : "none") : "looking"} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} createTrunk={() => void newTrunk()} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : changes ? <R1Changes key={snapshot.sessionKey ?? "none"} engine={engine} name={name} onClose={closeChanges} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
+  const main = route.kind === "settings" && !r1SettingsPage(route.page, settingsPages) ? <ClassicSettingsFrame keepLevel page={CLASSIC_PAGE[route.page] ?? route.page} heading={(R1_PAGE_SPECS as Record<string, { title: string } | undefined>)[r1PageFor(route.page)]?.title} backName={name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={settingsPages} places={SETTINGS_PLACES} {...settingsSearch} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : graftedKey ? <GraftedEmpty name={name} state={graftedNone?.key === graftedKey ? (graftedNone.error ? "error" : "none") : "looking"} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} createTrunk={() => void newTrunk()} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : changes ? <R1Changes key={snapshot.sessionKey ?? "none"} engine={engine} name={name} onClose={closeChanges} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
     onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "devices" })} onPip={small => { setPip(small); setStage(null); }} /> : <>{threads.above}<ChatView
     name={speaker} history={threads.history ?? snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} examplesWhy={examples?.key === snapshot.sessionKey ? examples.why : undefined} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}

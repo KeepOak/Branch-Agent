@@ -55,8 +55,10 @@ describe("R1 Settings › Instructions & personality is a native R1 page with th
     expect(host.querySelector(".r1s-custom, .r1s-classic, [data-classic]")).toBeNull();
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Instructions & personality");
     expect(host.querySelector(".r1s-lede")?.textContent).toContain(PAGES.instructions.lede);
-    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS.slice(0, 4));
+    // Kits and How replies are written have only rows that wait for a later update at Regular: they show from Advanced.
+    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS.slice(0, 2));
     expect(host.textContent).not.toContain("Saved prompts");
+    expect(host.textContent).not.toContain("later update");
   });
 
   it("keeps the files each Trunk reads, with whose files and the editor, inside Project instructions", async () => {

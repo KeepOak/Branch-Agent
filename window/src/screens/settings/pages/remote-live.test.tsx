@@ -84,9 +84,12 @@ describe("R1 Settings › Remote access is a native R1 page with the preview's c
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Remote access");
     expect(host.querySelector(".r1s-lede")?.textContent).toContain(PAGES.remote.lede);
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(["Keep Branch running", "What it has been doing"]);
-    expect(labels(card("Keep Branch running")).filter((l) => !EXTRA["Keep Branch running"].includes(l))).toEqual(PREVIEW["Keep Branch running"]);
+    // The preview's own rows on this card wait for a later update: Regular shows only what works, Advanced shows them too.
+    expect(labels(card("Keep Branch running")).filter((l) => !EXTRA["Keep Branch running"].includes(l))).toEqual([]);
     await click(button(host, "Learn more"));
     expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(["Keep Branch running", "What it has been doing"]);
+    await setLevel("Advanced");
+    expect(labels(card("Keep Branch running")).filter((l) => !EXTRA["Keep Branch running"].includes(l))).toEqual(PREVIEW["Keep Branch running"]);
   });
 
   it("draws all eleven preview cards at Technical, in order, each with the preview's rows, and no chat-app sections", async () => {

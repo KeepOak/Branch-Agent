@@ -52,7 +52,9 @@ describe("R1 Settings › Sign-ins & keys is a native R1 page with the preview's
     await mount();
     expect(host.querySelector(".r1s-custom, .r1s-classic, [data-classic]")).toBeNull();
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Sign-ins & keys");
-    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(["Branch may fill", "Narrow keys"]);
+    // Both Regular cards wait for a later update, so Regular has nothing yet and offers Advanced, where they show.
+    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual([]);
+    expect(host.querySelector(".r1s-empty")?.textContent).toContain("These settings show at Advanced.");
   });
 
   it("draws all four cards at Technical, with the keys and the technical rows inside Keys Branch holds and no Classic heading", async () => {
