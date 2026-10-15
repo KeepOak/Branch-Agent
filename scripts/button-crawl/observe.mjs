@@ -3,6 +3,16 @@
 
 export const SLOW_MS = 300;
 
+// Text that changes with time alone: a clock, an elapsed or countdown timer, a relative age. A menu or dialog whose only
+// change is this text did not do anything, so the classifier strips it before it compares the open overlay.
+const CLOCK = /\b\d{1,2}:\d{2}(?::\d{2})?(?:\s?[AP]M)?\b/gi;
+const ELAPSED = /\b\d+(?:\.\d+)?\s?(?:ms|s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?)\b(?:\s+ago)?/gi;
+
+/** The overlay text with its time-only parts removed, so a ticking clock or timer compares equal. */
+export function stableText(text) {
+  return String(text || '').replace(CLOCK, '').replace(ELAPSED, '').replace(/\s+/g, ' ').trim();
+}
+
 export const GATED_PROBLEMS = [
   'dead',
   'toast-only',
@@ -52,7 +62,13 @@ export function classifyClick({ before, after, elapsedMs = 0, consoleErrors = []
   const scrolled = after.jump === true && (after.scroll ?? '') !== (before.scroll ?? '') && after.scroll !== undefined;
   // A saved setting is a result even when the menu that changed it closes: the engine kept the new value.
   const settingSaved = (after.configRevision ?? '') !== (before.configRevision ?? '') && after.configRevision !== undefined;
-  const real = routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || textChanged || focusChanged || hashChanged || chromeChanged || windowOpened || scrolled || settingSaved;
+  // A change inside a menu or dialog that stays open (a sub-view, a popover result) and a typed field are results. A menu
+  // that closes is not: its before/after digests differ only because it is gone.
+  const overlayChanged = Boolean(before.overlay) && Boolean(after.overlay) && stableText(before.overlay) !== stableText(after.overlay);
+  const valuesChanged = (before.values ?? '') !== (after.values ?? '') && after.values !== undefined;
+  // The side layout (Collapse the list, a side panel) is a result. An empty value is a window with no R1 frame.
+  const frameChanged = Boolean(after.frame) && before.frame !== after.frame;
+  const real = frameChanged || overlayChanged || valuesChanged || routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || textChanged || focusChanged || hashChanged || chromeChanged || windowOpened || scrolled || settingSaved;
 
   if (!real && !after.alreadyCurrent) {
     if (toastChanged) problems.push('toast-only');
@@ -64,7 +80,7 @@ export function classifyClick({ before, after, elapsedMs = 0, consoleErrors = []
   if (after.blank && !before.blank) problems.push('blank');
   if (routeChanged && after.blank) problems.push('empty-route');
   // A smooth scroll to a section takes longer than a click should; only other results are timed.
-  const changedBesidesScroll = routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || textChanged || focusChanged || hashChanged || chromeChanged || windowOpened || settingSaved;
+  const changedBesidesScroll = frameChanged || overlayChanged || valuesChanged || routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || textChanged || focusChanged || hashChanged || chromeChanged || windowOpened || settingSaved;
   if (changedBesidesScroll && elapsedMs > SLOW_MS) problems.push('slow');
   if (consoleErrors.filter((line) => !isNoise(line)).length) problems.push('console-error');
   // failedCalls stay on the click record. They block only when they also surface as a console error.

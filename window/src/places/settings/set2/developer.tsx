@@ -460,8 +460,8 @@ function jump(sel: string): void {
 }
 /** [title, sub, button, where it jumps] */
 const BUILD2_JUMP: [string, string, string, string][] = [
-  ["Build on Branch", "Kits for JavaScript and Python, an OpenAPI description, and a mode without the window.", "See them", '[data-sec="Build on Branch"]'],
-  ["The branch command", "Everything in the window from a terminal, with JSON output for scripts.", "See examples", '[data-sec="From a terminal"]'],
+  ["Build on Branch", "Kits for JavaScript and Python, an OpenAPI description, and a mode without the window.", "See them", '[data-sec="Build on Branch"], section[aria-label="Build on Branch"]'],
+  ["The branch command", "Everything in the window from a terminal, with JSON output for scripts.", "See examples", '[data-sec="From a terminal"], section[aria-label="From a terminal"]'],
 ];
 const BUILD2_OFF2: OffRow[] = [
   ["Keys for scripts and phones", "Short-lived keys that can only do what you tick.", ne("scoped keys"), "btn:Make a key"],
