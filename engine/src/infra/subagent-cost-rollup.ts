@@ -1,5 +1,4 @@
-// Ported from RooCodeInc/Roo-Code@b867ec9145750d0ae1ff7f02d35406e9bf2a0b16
-// src/core/webview/aggregateTaskCosts.ts. The callback supplies scoped own costs
+// The callback supplies scoped own costs
 // and direct child identities; it must not supply already-aggregated costs.
 export interface SubagentCostHistory {
   totalCost?: number | null;

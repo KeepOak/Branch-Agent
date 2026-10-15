@@ -84,7 +84,7 @@ export type ConversationMenuContext = {
 };
 
 const NO_METHOD = "needs an engine method Branch doesn't have yet.";
-export const OFF_REASONS = {
+const OFF_REASONS = {
   pause: `Pausing a Trunk ${NO_METHOD}`,
   teach: `Showing it how ${NO_METHOD}`,
   makeDefault: `Changing the default Trunk ${NO_METHOD}`,

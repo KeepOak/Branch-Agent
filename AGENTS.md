@@ -59,6 +59,8 @@ Rules for coding agents (and people) working in this repository. [`CONTRIBUTING.
 
 18. **Preflight before every push and every PR body edit:** write the draft body to a file outside the repo, then run `node scripts/pr-preflight.mjs --body <that file>` (add `--cloud-agent` when you are a cloud agent). It runs the gate checks that need no CI: commit emails, the cloud-agent trailer (with `--cloud-agent`), the SELF-CHECK block and its Final head, the named-test list and desktop test coverage (the gate's own rules), UI proof, protected gate-file changes (passes only with the reviewer marker for this head), and personal paths or email addresses in added lines (test files are exempt). The window-clean scan and the shard-budget test run only when their inputs changed. Locally it also checks a clean working tree. The trusted gate runs the subset that needs no checkout. It prints one line per problem with the fix. Fix every line and rerun until it prints `preflight: ok`. A body edit after a push needs a rerun too, because the gates read the body they see.
 
+17. **No personal machine details.** Never put machine names, hostnames, personal paths, account emails or secrets in the public repo, its pull requests or issues. The personal-info PR scan fails when the title, body or added lines include them; editing the description re-runs it.
+
 ## Common tasks
 
 ### Install dependencies

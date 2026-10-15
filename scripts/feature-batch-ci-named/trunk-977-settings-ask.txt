@@ -1,0 +1,5 @@
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/screens/settings/ask-trunk-window.test.tsx
+window:src/screens/settings/ask-trunk.test.tsx
+window:src/screens/settings/coming.test.tsx

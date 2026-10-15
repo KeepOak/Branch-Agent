@@ -153,6 +153,8 @@ type ServiceOptions = {
 type ManagedWorktreeGcParams = WorktreeCleanupOwnerPolicy &
   WorktreeMutationGuard & {
     checkpoint?: (progress: ManagedWorktreeGcResult) => Promise<void>;
+    /** True when the record's pull request merged or closed and the checkout holds nothing unpushed. */
+    pullRequestRetired?: (record: ManagedWorktreeRecord) => Promise<boolean>;
   };
 
 type WorktreeMutationGuard = Pick<CreateManagedWorktreeParams, "signal" | "commitGuard"> & {
@@ -1409,7 +1411,13 @@ export class ManagedWorktreeService {
         retiredOwner =
           record.ownerId !== undefined &&
           params.shouldRemoveOwner?.(record.ownerKind, record.ownerId) === true;
-        if (retiredOwner || now - record.lastActiveAt > IDLE_GC_MS) {
+        const idleExpired = now - record.lastActiveAt > IDLE_GC_MS;
+        // Read-only check: a clean worktree whose pull request merged or closed skips the idle window.
+        const prRetired =
+          !retiredOwner &&
+          !idleExpired &&
+          (await params.pullRequestRetired?.(record).catch(() => false)) === true;
+        if (retiredOwner || idleExpired || prRetired) {
           // Capacity eviction and idle cleanup share one decision per record per pass.
           if (!progress.start(record.id)) {
             continue;
@@ -1419,7 +1427,8 @@ export class ManagedWorktreeService {
             progress.protect("idle", record.id, protection);
             continue;
           }
-          await remove(record, retiredOwner ? "owner-gc" : "idle-gc", retiredOwner);
+          const reason = retiredOwner ? "owner-gc" : prRetired ? "pr-retired" : "idle-gc";
+          await remove(record, reason, retiredOwner);
           result.removed.push(record.id);
         }
       } catch (error) {

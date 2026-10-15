@@ -1,4 +1,4 @@
-// Orders a run's `agent` events the way docs/gateway/clients.md asks at openclaw/openclaw@57e0aaa1c190
+// Orders a run's `agent` events the way docs/gateway/clients.md asks
 // ("Reconcile subsequent agent events by payload.runId and payload.seq"): each run keeps its own
 // sequence, an already-seen or lower seq is ignored, and a forward gap is reported so the caller
 // can reload the authoritative history.

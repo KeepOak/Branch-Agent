@@ -35,6 +35,7 @@ export function readDiskEvictableArchivedSessionBatchInDatabase(
       .select(["archived_at", "current_session_id", "entry_json", "session_key", "updated_at"])
       .select(sessionEntrySnapshotColumns)
       .where("archived_at", "is not", null)
+      .where("entry_valid", "is not", -1)
       .orderBy("archived_at", "asc")
       .orderBy("session_key", "asc")
       .limit(DISK_EVICTABLE_ARCHIVE_BATCH_SIZE);

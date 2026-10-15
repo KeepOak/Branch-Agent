@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 
 /** Canonical observations make object key order irrelevant without storing probe content.
- * Adapted to the existing script-trigger ledger from Hermes cron/monitor.py's
- * probe/fingerprint/change-decision pattern (AUTOMATION-0028).
+ * Adapted to the existing script-trigger ledger: probe/fingerprint/change-decision pattern.
  */
 function canonicalObservation(value: unknown, ancestors = new Set<object>()): string {
   if (value === null || typeof value === "string" || typeof value === "boolean") {

@@ -11,17 +11,17 @@ import { CodeDialog, InviteDialog, LinkEmailDialog, MergeDialog, RoleSeg } from 
 import { Avatar, Section, Seg, Status, copyText } from "./ui";
 
 type Res = ReturnType<typeof useResource<unknown>>;
-export const MAY = ["Look things up", "Use web pages", "Write files", "Run commands", "Send messages", "Spend money", "Change how Branch is set up"];
-export const MAY_OFF = "Needs the engine's per-person permissions.";
+const MAY = ["Look things up", "Use web pages", "Write files", "Run commands", "Send messages", "Spend money", "Change how Branch is set up"];
+const MAY_OFF = "Needs the engine's per-person permissions.";
 export const PIN_OFF = "Needs the engine's PIN store.";
-export const SWITCH_OFF = "Needs the engine's profile switch.";
-export const SIGN_OUT_OFF = "Needs the engine's sign-out-everywhere method.";
-export const REMOVE_OFF = "Needs the engine's remove-a-person method.";
+const SWITCH_OFF = "Needs the engine's profile switch.";
+const SIGN_OUT_OFF = "Needs the engine's sign-out-everywhere method.";
+const REMOVE_OFF = "Needs the engine's remove-a-person method.";
 const HOW = { this: "On this computer", device: "On their own device" } as const;
 type How = keyof typeof HOW;
 
 /** The role as the preview words it: "Owner", "Adult", "Child" (engine role ids are lower-case keys). */
-export const roleWord = (p: Profile) => p.id === OWNER_ID ? "Owner" : p.role ? p.role.charAt(0).toUpperCase() + p.role.slice(1) : "No role";
+const roleWord = (p: Profile) => p.id === OWNER_ID ? "Owner" : p.role ? p.role.charAt(0).toUpperCase() + p.role.slice(1) : "No role";
 /** Connected from another device puts someone under "On their own device"; anyone else, connected here or not
  *  connected now, is under the preview's "On this computer". */
 const howOf = (p: Profile, conns: Presence[]): How => p.id !== OWNER_ID && reachOf(presenceOf(conns, p.id)) === "device" ? "device" : "this";

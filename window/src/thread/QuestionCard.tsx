@@ -46,7 +46,7 @@ export function DockQuestion({ record, trunkName, onResolve }: { record: Questio
   );
 }
 
-export function QuestionCard({ record, trunkName, onResolve }: { record: QuestionRecord; trunkName: string; onResolve: Resolve }) {
+function QuestionCard({ record, trunkName, onResolve }: { record: QuestionRecord; trunkName: string; onResolve: Resolve }) {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [at, setAt] = useState(0);
   const [busy, setBusy] = useState(false);

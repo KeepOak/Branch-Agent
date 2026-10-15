@@ -1,4 +1,3 @@
-// Adapted from Kilo-Org/kilocode 6fd9b7b: packages/opencode/src/kilocode/tool/read-extract.ts.
 import { extname } from "node:path";
 
 export type OfficeContent =

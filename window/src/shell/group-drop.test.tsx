@@ -10,7 +10,7 @@ import { Sidebar, type SidebarProps } from "./Sidebar";
 import { buildContactSections, projectContact } from "./contacts-model";
 import { readPrefs } from "./FilterSort";
 import { rowMenuItems } from "./row-menu";
-import { GroupDropPopover, createDroppedGroup, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useRoomNotices, type GroupContact, type GroupRoom } from "./group-drop";
+import { GroupDropPopover, createDroppedGroup, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useGroupRooms, useRoomNotices, type GroupContact, type GroupRoom } from "./group-drop";
 import type { SidebarDrop } from "./sidebar-drag";
 
 vi.mock("../face/Face", () => ({ Face: ({ size }: { size: number }) => <span style={{ width: size, height: size }} /> }));
@@ -98,6 +98,26 @@ describe("drag to group", () => {
     ];
     expect(mergeRoomNotices(history, notices).map((block) => block.key)).toEqual(["room:r1:1", "first", "reply", "room:r1:2", "second"]);
     expect(notices[1]).toMatchObject({ text: "You added Hermes", at: 300 });
+  });
+  it("shows the merge feed: the follow line and one sentence per merge, from the log and live", async () => {
+    const request = vi.fn(async () => ({ events: [
+      { seq: 1, kind: "merge.follow", actorId: "merge-feed", payload: { repo: "KeepOak/Branch-Agent", base: "main", text: "Following merges to KeepOak/Branch-Agent main" }, createdAt: 100 },
+      { seq: 2, kind: "merge", actorId: "merge-feed", payload: { count: 1, number: 1088, text: "That's 1 merged: #1088 fix(ci): list the workflows." }, createdAt: 200 },
+    ] }));
+    let emit: ((event: string, payload: unknown) => void) | undefined;
+    const session = { request, onGatewayEvent: (handler: typeof emit) => { emit = handler; return () => {}; } } as unknown as SaplingSession;
+    const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+    let notices: Block[] = [];
+    function Probe() { notices = useRoomNotices(session, contacts[3]!.threadKey, contacts); return null; }
+    await act(async () => root!.render(<Probe />));
+    expect(notices).toEqual([
+      { kind: "notice", key: "room:r1:1", text: "Following merges to KeepOak/Branch-Agent main", at: 100 },
+      { kind: "notice", key: "room:r1:2", text: "That's 1 merged: #1088 fix(ci): list the workflows.", at: 200 },
+    ]);
+    await act(async () => emit?.("rooms.event", { roomId: "r1", seq: 3, kind: "merge", actorId: "merge-feed", payload: { count: 2, number: 1107, text: "That's 2 merged: #1107 feat(rooms): merge feed." }, createdAt: 300 }));
+    expect(notices.at(-1)).toEqual({ kind: "notice", key: "room:r1:3", text: "That's 2 merged: #1107 feat(rooms): merge feed.", at: 300 });
+    await act(async () => emit?.("rooms.event", { roomId: "other", seq: 4, kind: "merge", payload: { text: "That's 9 merged: #1 elsewhere." }, createdAt: 400 }));
+    expect(notices).toHaveLength(3);
   });
   it("adds the room's Trunk posts and other Trunks' replies from its log as their reports, nothing already in the conversation", async () => {
     const piper = contact("piper", "Piper", "trunk");
@@ -308,5 +328,26 @@ describe("drag to group", () => {
     expect(scroll.scrollTop).toBeLessThan(80);
     await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(document.getElementById("sidebar-drag-ghost")).toBeNull();
+  });
+});
+
+describe("useGroupRooms", () => {
+  it("reads peers once per burst of contacts.changed, not once per event", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = vi.fn(async (method: string) => (method === "rooms.list" ? { rooms: [] } : { peers: [] }));
+      let emit: (event: string) => void = () => {};
+      const session = { request, onGatewayEvent: (handler: typeof emit) => { emit = handler; return () => {}; } } as unknown as SaplingSession;
+      function Probe() { useGroupRooms(session, true); return null; }
+      const host = document.body.appendChild(document.createElement("div"));
+      root = createRoot(host);
+      await act(async () => root!.render(<Probe />));
+      const peers = () => request.mock.calls.filter(([method]) => method === "a2a.peers.list").length;
+      expect(peers()).toBe(1);
+      await act(async () => { for (let i = 0; i < 10; i++) emit("contacts.changed"); });
+      expect(peers()).toBe(1);
+      await act(async () => { vi.advanceTimersByTime(2_000); });
+      expect(peers()).toBe(2);
+    } finally { vi.useRealTimers(); }
   });
 });

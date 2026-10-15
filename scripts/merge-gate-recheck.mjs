@@ -66,6 +66,13 @@ export function recheckPlan({ trigger, runs }) {
   });
 }
 
+// Decided from the trigger alone, so no listing is needed. Same outcome recheckPlan gives for these cases.
+export function triggerSkipReason(trigger) {
+  if (trigger.kind === 'content') return trigger.conclusion !== 'success' ? 'the triggering check did not succeed' : null;
+  if (trigger.kind === 'gate') return !trigger.name && trigger.attempt >= 2 ? 'a rerun of a gate is not rerun again' : null;
+  return 'unknown trigger';
+}
+
 function listRuns(repo, sha) {
   const out = execFileSync('gh', ['run', 'list', '-R', repo, '--commit', sha, '--limit', '200',
     '--json', 'databaseId,workflowName,status,conclusion,createdAt'], { encoding: 'utf8', env: process.env });
@@ -78,6 +85,11 @@ function listRuns(repo, sha) {
 export function runRecheck({
   repo, sha, trigger, currentRunId, list = listRuns, rerun = rerunGate, log = console.log, error = console.error,
 }) {
+  const skipReason = triggerSkipReason(trigger);
+  if (skipReason) {
+    for (const gate of GATE_NAMES) log(`${gate}: skip (${skipReason})`);
+    return 0;
+  }
   let plan;
   try {
     const runs = list(repo, sha).filter((run) => String(run.id) !== String(currentRunId ?? ''));
