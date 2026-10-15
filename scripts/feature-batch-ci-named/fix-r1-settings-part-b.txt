@@ -1,0 +1,13 @@
+window:src/places-nav/TrunkHost.test.ts
+window:src/places/customize/everywhere.test.tsx
+window:src/places/settings/internals.test.ts
+window:src/places/settings/set1/models-defaults.test.tsx
+window:src/places/settings/set2/achievements.test.tsx
+window:src/places/settings/set2/devices-helpers.test.tsx
+window:src/places/settings/stall.test.tsx
+window:src/screens/features/FeaturesPage.test.tsx
+window:src/screens/features/atlas.test.ts
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/screens/settings/coming.test.tsx
+window:src/screens/settings/pages/history-changes.test.ts
+window:src/shell/join-names.test.ts
