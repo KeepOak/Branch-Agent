@@ -10,6 +10,9 @@ export type SidebarDragOptions = {
   zonesFor?: (source: string, target: string, element: HTMLElement) => readonly DropZone[];
   hint?: (drop: SidebarDrop) => string;
   onLongPress?: (source: string) => void;
+  /** Where the drag ghost finds the item's face and name; the Classic list's classes when not given. */
+  faceSelector?: string;
+  nameSelector?: string;
 };
 
 /** Divide an item's projected length equally among its allowed drop zones. */
@@ -83,9 +86,10 @@ export function useSidebarPointerDrag(onDrop: (drop: SidebarDrop) => void, optio
       ghost.innerHTML = '<span class="sidebar-drag-face"></span><span class="sidebar-drag-words"><strong></strong><small></small></span>';
       const source = document.querySelector(`[${options.itemAttribute}="${CSS.escape(drag.source)}"]`);
       source?.classList.add("sidebar-drag-source");
-      const face = source?.querySelector(".pin-face, .row-av")?.cloneNode(true);
+      const face = source?.querySelector(options.faceSelector ?? ".pin-face, .row-av")?.cloneNode(true);
       if (face) ghost.querySelector(".sidebar-drag-face")!.appendChild(face);
-      ghost.querySelector("strong")!.textContent = document.querySelector(`[${options.itemAttribute}="${CSS.escape(drag.source)}"] .pin-name, [${options.itemAttribute}="${CSS.escape(drag.source)}"] .row-name`)?.textContent ?? "";
+      const nameAt = (options.nameSelector ?? ".pin-name, .row-name").split(",").map((part) => `[${options.itemAttribute}="${CSS.escape(drag.source)}"] ${part.trim()}`).join(", ");
+      ghost.querySelector("strong")!.textContent = document.querySelector(nameAt)?.textContent ?? "";
       document.body.appendChild(ghost);
       document.body.classList.add("sidebar-dragging");
     }

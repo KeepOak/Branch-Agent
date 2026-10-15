@@ -10,7 +10,7 @@ export const ORCHARD_COLUMNS = ["To sort", "To do", "Doing", "To check", "Done",
 export const ORCHARD_NEEDS = "Needs the engine’s Orchard board store.";
 
 /** Opens Canopy on its Cards tab (places listen for "branch:place-tab"). */
-export function openCanopyCards(openPlace: (place: PlaceId) => void) {
+function openCanopyCards(openPlace: (place: PlaceId) => void) {
   openPlace("canopy");
   setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "canopy", tab: "Cards" } })), 0);
 }

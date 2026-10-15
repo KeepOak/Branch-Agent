@@ -1,4 +1,3 @@
-// Behavior ported from Kilo-Org/kilocode 6fd9b7b: test/kilocode/read-{docx,xlsx}.test.ts.
 import fs from "node:fs/promises";
 import path from "node:path";
 import JSZip from "jszip";

@@ -1,5 +1,7 @@
 import { resolveAgentDir } from "../agents/agent-scope-config.js";
 import { resolveAuthProfileDatabasePath } from "../agents/auth-profiles/sqlite.js";
+import { PreparedModelRuntimePublicationSupersededError } from "../agents/prepared-model-runtime.errors.js";
+import type { BranchAgentDatabaseOptions } from "../state/branch-agent-db.js";
 import type { PreparedModelRuntimeInput } from "../agents/prepared-model-runtime.js";
 import { resolveConfiguredAgentDatabaseTargets } from "../config/sessions/targets.js";
 import type { BranchConfig } from "../config/types.branch.js";
@@ -82,6 +84,38 @@ export async function replaceStartupAgentModelPreparation(
   const { replacePreparedModelRuntimeAgentBuilds } =
     await import("../agents/prepared-model-runtime.js");
   return replacePreparedModelRuntimeAgentBuilds(resolveAgentDir(cfg, agentId, env), reason);
+}
+
+/** Consecutive superseded publications an attempt republishes before it fails as superseded. */
+export const MAX_STARTUP_PUBLICATION_SKIPS = 8;
+
+/**
+ * Runs one startup model publication, republishing it each time a newer refresh, reload, or
+ * metadata read supersedes it. The agent's config and secrets are checked before each republish, so
+ * a change there fails the attempt with its own superseded error. Too many skips in a row also fail
+ * it as superseded; the attempt's watchdog still bounds the time.
+ */
+export async function publishStartupModelsUntilUnskipped(params: {
+  publishOnce: (onSkipped: () => void) => Promise<void>;
+  assertCurrent: () => void;
+  onRepublish: () => void;
+}): Promise<void> {
+  for (let skips = 1; ; skips += 1) {
+    let skipped = false;
+    await params.publishOnce(() => {
+      skipped = true;
+    });
+    if (!skipped) {
+      return;
+    }
+    params.assertCurrent();
+    if (skips >= MAX_STARTUP_PUBLICATION_SKIPS) {
+      throw new AgentDatabasePreparationSupersededError(
+        `startup model publication was superseded ${skips} times in a row`,
+      );
+    }
+    params.onRepublish();
+  }
 }
 
 /**
@@ -169,6 +203,10 @@ export function formatCoveringWaitOutcome(params: {
 export function activateGatewayAgentDatabaseStartup(params: {
   admission: ReturnType<typeof getAgentDatabaseStartupAdmission>;
   preparationReady: Promise<void>;
+  /** Resolves when post-ready startup work may run; a deferred transcript repair waits for it. */
+  waitForPostReadyWork: () => Promise<void>;
+  /** Runs a deferred transcript repair as tracked Gateway work (the Gateway's connection-scoped tracker). */
+  trackDeferredWork: (run: () => Promise<void>) => void;
   getConfig: () => BranchConfig;
   getPluginRegistry: () => PluginRegistry;
   getPluginMetadataSnapshot: () => PluginMetadataSnapshot | undefined;
@@ -319,6 +357,8 @@ export function activateGatewayAgentDatabaseStartup(params: {
         };
         const agentIds = new Set([agentId]);
         assertPreparationCurrent();
+        // Transcript repair waits until the agent is admitted, so it does not hold admission.
+        const deferredRepairs: BranchAgentDatabaseOptions[] = [];
         await withAgentDatabasePreparationGuard(assertPreparationCurrent, async () => {
           await runStartupSessionMigration({
             cfg,
@@ -326,6 +366,7 @@ export function activateGatewayAgentDatabaseStartup(params: {
             agentIds,
             assertCurrent: assertPreparationCurrent,
             log: params.log,
+            deferTranscriptRepair: (database) => deferredRepairs.push(database),
           });
           assertPreparationCurrent();
           const pluginMetadataSnapshot = params.getPluginMetadataSnapshot();
@@ -339,17 +380,31 @@ export function activateGatewayAgentDatabaseStartup(params: {
               );
             }
             preparedInput = undefined;
-            await runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
-              withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
-                refreshPreparedModelRuntimeSnapshots(cfg, {
-                  agentIds,
-                  catalogMode: "static",
-                  allowGatewaySubagentBinding: true,
-                  ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
-                  isPublicationCurrent,
-                }),
-              ),
-            );
+            await publishStartupModelsUntilUnskipped({
+              assertCurrent: assertPreparationCurrent,
+              onRepublish: () =>
+                params.log.info(
+                  `agent ${agentId} startup model publication was superseded; publishing it again`,
+                ),
+              publishOnce: (onSkipped) =>
+                runStartupModelPublication(assertPreparationCurrent, (isPublicationCurrent) =>
+                  withPluginRuntimeRegistryScope(params.getPluginRegistry(), () =>
+                    refreshPreparedModelRuntimeSnapshots(cfg, {
+                      agentIds,
+                      catalogMode: "static",
+                      allowGatewaySubagentBinding: true,
+                      ...(pluginMetadataSnapshot ? { pluginMetadataSnapshot } : {}),
+                      isPublicationCurrent,
+                      onPublicationSkipped: onSkipped,
+                    }).catch((error: unknown) => {
+                      if (!(error instanceof PreparedModelRuntimePublicationSupersededError)) {
+                        throw error;
+                      }
+                      onSkipped();
+                    }),
+                  ),
+                ),
+            });
             preparedInput = listConfiguredOwnerInputs(cfg, undefined, true).find(
               (input) => input.agentId === agentId,
             );
@@ -374,6 +429,22 @@ export function activateGatewayAgentDatabaseStartup(params: {
           }
           assertPreparationCurrent();
         });
+        if (deferredRepairs.length > 0) {
+          params.trackDeferredWork(async () => {
+            await params.waitForPostReadyWork();
+            const { runDeferredTranscriptRepair } =
+              await import("./server-startup-session-migration.js");
+            await runDeferredTranscriptRepair({
+              databases: deferredRepairs,
+              assertCurrent: () => {
+                if (!params.isCurrent()) {
+                  throw new Error("transcript repair stopped: the Gateway is closing");
+                }
+              },
+              log: params.log,
+            });
+          });
+        }
       }),
   });
 }

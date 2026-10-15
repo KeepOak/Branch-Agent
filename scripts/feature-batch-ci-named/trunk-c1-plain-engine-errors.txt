@@ -1,0 +1,3 @@
+engine:src/agents/system-prompt.plain-errors.test.ts
+engine:src/agents/tools/sessions-resolution.test.ts
+engine:src/gateway/operator-cli-message-input.test.ts

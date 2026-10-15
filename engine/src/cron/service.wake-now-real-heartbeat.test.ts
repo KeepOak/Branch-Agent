@@ -341,8 +341,10 @@ describe("main cron with the real heartbeat runner", () => {
   it("settles a busy routeless monitor without delaying restart", async () => {
     vi.useFakeTimers();
     const sandbox = makeSandbox();
+    // A custom prompt gives the scratch-less monitor work, so it reaches the busy guard
+    // instead of the idle no-signal skip.
     const cfg: BranchConfig = {
-      agents: { defaults: { workspace: sandbox.dir } },
+      agents: { defaults: { workspace: sandbox.dir, heartbeat: { prompt: "Check the build." } } },
       session: { store: sandbox.sessionStorePath },
     };
     const getReply = vi.fn().mockResolvedValue({ text: "unexpected heartbeat" });
