@@ -51,7 +51,11 @@ export function recordTrunkJobTransition(event: TrunkJobTransition): void {
     };
     for (const room of listRooms(false)) {
       if (isEnabledTrunk(room, event.trunkId)) {
-        appendRoomEvent(room.roomId, "job", event.trunkId, payload);
+        try {
+          appendRoomEvent(room.roomId, "job", event.trunkId, payload);
+        } catch (error) {
+          log.warn(`trunk job room event not recorded for room ${room.roomId}: ${String(error)}`);
+        }
       }
     }
   } catch (error) {
