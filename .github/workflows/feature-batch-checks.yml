@@ -80,11 +80,13 @@ jobs:
     # The cap stays at 15 minutes. Shard counts are derived from the test weights in
     # scripts/feature-batch-ci-targets.mjs (shardCountFor), with the floors kept as minimums.
     # Pull requests: Linux shards, plus the touched Windows tests. Main and nightly: Linux, Windows and macOS.
-    # Extra jobs add setup cost and queue time; max-parallel stays 6.
+    # Pull requests run every shard at once (one wave), so the slowest shard sets the wall-clock, not two waves.
+    # The PR cap must stay at or above the PR matrix size (checked in scripts/feature-batch-ci-shard.test.mjs).
+    # Main and nightly keep max-parallel 6: extra jobs there add setup cost and queue time, not PR wait.
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: ${{ github.event_name == 'pull_request' && 20 || 6 }}
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       CI: 'true'

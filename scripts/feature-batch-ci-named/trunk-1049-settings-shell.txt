@@ -1,0 +1,6 @@
+window:src/screens/frame/settings-search.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/screens/settings/pages/trunks-live.test.tsx
+window:src/screens/settings/pages/places-live.test.tsx
+window:src/screens/settings/ask-trunk.test.tsx
+window:src/screens/frame/R1Window.test.tsx

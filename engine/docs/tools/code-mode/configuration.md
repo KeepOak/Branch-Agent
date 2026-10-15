@@ -50,7 +50,17 @@ agent-run and tool deadlines continue running during required waits.
 The model-facing `exec` description includes the effective limit. Blocking guest
 computation that exhausts the budget fails with `timeout`. Unfinished tool calls
 can instead return `waiting`, so a later `wait` can resume them with a fresh call
-budget. Headless continuations also honor the exact worker-admission budget after
+budget.
+
+A single `exec` or `wait` call can replace this budget with `timeoutSeconds`
+(up to 3600). Use it for long commands such as a test suite shard:
+`exec({ timeoutSeconds: 1200, code: ... })` keeps the call open for up to 20
+minutes, and a bridged shell `exec` inside it waits that long before
+backgrounding, so the command's output and exit status return in the same call.
+A `wait` with `timeoutSeconds` sets the budget for that wait and later waits on
+the same run. When an interactive call times out, its error names the budget
+and includes the last 40 output lines of each tool call that was still running,
+so agents can see how far the work got instead of re-running it blind. Headless continuations also honor the exact worker-admission budget after
 queueing and initialization, alongside their configured slice limit and single
 headless wall-clock deadline. A checkpoint does not reset that wall deadline.
 When the shell `exec` tool is available, use it for heavier computation

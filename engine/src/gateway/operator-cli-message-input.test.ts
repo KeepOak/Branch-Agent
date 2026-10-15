@@ -63,4 +63,11 @@ describe("operator CLI message input", () => {
       expect(readConfig).toHaveBeenCalledTimes(configReads);
     },
   );
+
+  it("asks the agent to report the refusal in plain words (C1)", async () => {
+    vi.stubEnv("BRANCH_SHELL", "exec");
+    await expect(callGatewayCli(input({ method: "chat.send" }))).rejects.toThrow(
+      /say in plain words that the message was not sent from a shell command; do not quote this error/,
+    );
+  });
 });

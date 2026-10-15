@@ -1,4 +1,4 @@
-// From OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f:src/utils/transcript-export/index.test.ts (atlas SESSIONS-0047). Ported message/tool/export cases to Branch blocks.
+// Ported message/tool/export cases to Branch blocks.
 import { describe, expect, it } from "vitest";
 import { eventsToHtml, eventsToMarkdown } from "./render";
 import type { Block } from "../thread/model";
