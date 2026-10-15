@@ -6,7 +6,7 @@ export const CHAT_MIN_BESIDE = 600;
  *  sheet over the thread instead. */
 export const STAGE_MIN_BESIDE = 600;
 /** The share of the window the stage takes when there is room for more (the preview's 58vw). */
-export const STAGE_SHARE = 0.58;
+const STAGE_SHARE = 0.58;
 
 export type StageFit = { mode: "beside"; width: number } | { mode: "sheet" };
 

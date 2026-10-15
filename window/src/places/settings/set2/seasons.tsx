@@ -97,7 +97,7 @@ function RingsSec({ engine, config, agent }: Ctx) {
   );
 }
 
-function DiaryDialog({ engine, agent, onClose }: Pick<SettingsPageProps, "engine"> & { agent: string; onClose: () => void }) {
+export function DiaryDialog({ engine, agent, onClose }: Pick<SettingsPageProps, "engine"> & { agent: string; onClose: () => void }) {
   const diary = useLive<RecordValue>(engine, "doctor.memory.dreamDiary", agent ? { agentId: agent } : {}, []);
   const d = rec(diary.data);
   return (
@@ -126,7 +126,7 @@ function Budding({ config }: Ctx) {
 }
 
 type Change = { id: string; who: "rings" | "budding"; text: string; at: number; note?: string };
-function changes(rings: RecordValue, proposals: RecordValue[]): Change[] {
+export function changes(rings: RecordValue, proposals: RecordValue[]): Change[] {
   const kept = list(rings.promotedEntries).map((e, i): Change => ({ id: `r${i}`, who: "rings", text: `Kept “${str(e.snippet) || str(e.key)}” for good`, at: Date.parse(str(e.promotedAt) || str(e.lastRecalledAt)) || 0 }));
   const learned = proposals.map((p): Change => ({ id: str(p.id), who: "budding", text: p.status === "applied" ? `Learned “${str(p.title)}”, as a skill` : `Suggested “${str(p.title)}” (${str(p.status)})`, at: Date.parse(str(p.updatedAt)) || 0, note: str(p.skillName) }));
   return [...kept, ...learned].sort((a, b) => b.at - a.at);
@@ -188,7 +188,7 @@ function More({ engine, config, agent, status, reload }: Ctx) {
   );
 }
 
-function WeighDialog({ status, onClose }: { status: RecordValue; onClose: () => void }) {
+export function WeighDialog({ status, onClose }: { status: RecordValue; onClose: () => void }) {
   const entries = list(status.shortTermEntries);
   return (
     <Dialog title="Notes it is weighing" wide onClose={onClose}>
@@ -221,7 +221,7 @@ function ByHand({ engine, agent, lv }: Ctx & { lv: number }) {
 }
 
 /** Fill in from past conversations: memory.sessionBackfill.preview, then apply; rollback removes them all. */
-function BackfillDialog({ engine, agent, onClose }: Pick<SettingsPageProps, "engine"> & { agent: string; onClose: () => void }) {
+export function BackfillDialog({ engine, agent, onClose }: Pick<SettingsPageProps, "engine"> & { agent: string; onClose: () => void }) {
   const [days, setDays] = useState(7);
   const [preview, setPreview] = useState<RecordValue | null>(null);
   const call = useCall();

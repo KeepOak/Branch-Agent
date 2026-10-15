@@ -22,9 +22,6 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const CATALOGS = ["anthropic", "codex", "opencode"];
 const catalogPath = (id: string) => `plugins.entries.${id}.config.sessionCatalog.enabled`;
 
-export type { Found };
-export { readFound };
-
 const names = (found: Found[]) => (found.length > 1 ? `${found.slice(0, -1).map((f) => f.label).join(", ")} and ${found[found.length - 1].label}` : (found[0]?.label ?? ""));
 
 function Tile({ icon, title, pill, line, children, className }: { icon: IconName; title: string; pill?: string; line: ReactNode; children?: ReactNode; className?: string }) {

@@ -53,6 +53,8 @@ const EXTRA_GATED_SESSION_WRITES = new Set([
   "sessions.patchMany",
   "session.reactions.set",
   "session.context.set",
+  "sessions.messages.pin",
+  "sessions.messages.delete",
   "sessions.groups.rename",
   "sessions.groups.delete",
 ]);

@@ -29,9 +29,21 @@ export function sessionKeyName(key: string): string {
   return words && !/^[0-9a-f]+$/i.test(words) ? words : "Thread";
 }
 
-/** The title to show: a raw session key becomes a readable name, anything else is shown as written. */
+/** The words of a topic title without the ids it was filed under: "[#948] [R1-06 part 2] Settings" reads "Settings". */
+export function plainTopicTitle(name: string): string {
+  return String(name ?? "")
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/(^|\s)#\d+\b/g, " ")
+    .replace(/\bR\d+-\d+\b(\s+part\s+\d+)?/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s:·|–—-]+|[\s:·|–—-]+$/g, "")
+    .trim();
+}
+
+/** The title to show: a raw session key becomes a readable name, and an id-only title falls back to "Thread". */
 export function readableTitle(name: string): string {
-  return isRawSessionKey(name) ? sessionKeyName(name.trim()) : name;
+  if (isRawSessionKey(name)) return sessionKeyName(name.trim());
+  return plainTopicTitle(name) || "Thread";
 }
 
 /** Six hex characters that identify a key, so two threads with the same readable name can be told apart. */

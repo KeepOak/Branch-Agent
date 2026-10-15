@@ -8,6 +8,8 @@ import { SetupBrand, StepPose } from "./SetupBrand";
 import "./setup.css";
 
 type Props = {
+  /** The rail's step names; the full setup has eleven, the R1 pre-connect screens draw the preview's four. */
+  steps?: readonly string[];
   step: number;
   /** The furthest step the rail lets the person jump to (later ones are disabled). */
   reach: number;
@@ -23,12 +25,12 @@ type Props = {
   children: ReactNode;
 };
 
-function Rail({ step, reach, reachReason, done, onStep, onSkip }: Pick<Props, "step" | "reach" | "reachReason" | "done" | "onStep" | "onSkip">) {
+function Rail({ steps = STEPS, step, reach, reachReason, done, onStep, onSkip }: Pick<Props, "steps" | "step" | "reach" | "reachReason" | "done" | "onStep" | "onSkip">) {
   return (
     <aside className="ob-rail">
       <SetupBrand />
       <ol>
-        {STEPS.map((name, i) => (
+        {steps.map((name, i) => (
           <li key={name} className={i === step ? "now" : done(i) ? "done" : ""}>
             <button type="button" disabled={i > reach} title={i > reach ? reachReason : undefined} aria-current={i === step ? "step" : undefined} onClick={() => onStep(i)}>
               <em>{done(i) && i !== step ? <Icon name="check" size={12} /> : i + 1}</em>

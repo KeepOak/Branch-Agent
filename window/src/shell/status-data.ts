@@ -3,6 +3,7 @@
 // sessions.usage with includeContextWeight (config/sessions/session-system-prompt-report.ts, the way the Control UI's
 // usage/view-details.ts splits it), sessions.usage.timeseries, cron.list and update.status (gateway-protocol config.ts).
 import { readMeasuredPercent } from "./limit-window-reading";
+import { isEngineJob } from "../connect/engine-jobs";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -276,13 +277,14 @@ export function plainJobName(job: Record<string, unknown>, trunkName?: (id?: str
 export function comingUp(jobs: unknown[], now = Date.now(), trunkName?: (id?: string) => string): { name: string; when: string }[] {
   return jobs
     .map(rec)
-    .filter((j) => j.enabled !== false && num(rec(j.state).nextRunAtMs) > 0)
+    .filter((j) => !isEngineJob(j) && j.enabled !== false && num(rec(j.state).nextRunAtMs) > 0)
     .sort((a, b) => num(rec(a.state).nextRunAtMs) - num(rec(b.state).nextRunAtMs))
     .slice(0, 8)
     .map((j) => ({ name: plainJobName(j, trunkName), when: dueWords(num(rec(j.state).nextRunAtMs), now) }));
 }
 
-export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; statusMessage?: string };
+/** `ready`: the update is downloaded and checked, and applies by itself (`waiting` says when). It never spins. */
+export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; ready?: boolean; statusMessage?: string };
 
 /** "3 days, 4 hours" (§4.9.3 "Up <uptime>"). */
 export function uptimeWords(ms: number): string {

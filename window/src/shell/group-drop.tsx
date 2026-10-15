@@ -7,6 +7,8 @@ import { RoomFaces } from "../rooms/RoomFaces";
 import { openNewGroupChat } from "../rooms/NewGroupChat";
 import type { SidebarDrop } from "./sidebar-drag";
 import "./group-drop.css";
+import { joinNames } from "./join-names";
+import { coalesce } from "./coalesce";
 
 export type GroupMember = { kind: "trunk" | "person" | "a2a"; id: string; role?: "lead" | "member" };
 export type GroupRoom = { roomId: string; name: string; lead?: string; rule?: "lead" | "everyone" | "mentions"; createdAt: number; archivedAt?: number; members: GroupMember[] };
@@ -42,10 +44,10 @@ export function groupHint(drop: SidebarDrop, contacts: readonly GroupContact[], 
   return "";
 }
 
-export function useGroupRooms(session: SaplingSession, ready: boolean) {
+export function useGroupRooms(session: SaplingSession, ready: boolean, includeArchived = false) {
   const [rooms, setRooms] = useState<GroupRoom[]>([]);
   const [peerOnline, setPeerOnline] = useState<Map<string, boolean>>(new Map());
-  const reload = () => session.request<{ rooms: GroupRoom[] }>("rooms.list", {}).then((result) => setRooms(result.rooms), (error: unknown) => console.warn("rooms.list failed", error));
+  const reload = () => session.request<{ rooms: GroupRoom[] }>("rooms.list", includeArchived ? { includeArchived: true } : {}).then((result) => setRooms(result.rooms), (error: unknown) => console.warn("rooms.list failed", error));
   const reloadPeers = () => session.request<{ peers: { name: string; online?: boolean }[] }>("a2a.peers.list", {}).then(
     (result) => setPeerOnline(new Map(result.peers.filter((peer) => typeof peer.online === "boolean").map((peer) => [peer.name, peer.online!]))),
     () => undefined,
@@ -53,8 +55,11 @@ export function useGroupRooms(session: SaplingSession, ready: boolean) {
   useEffect(() => {
     if (!ready) { setRooms([]); setPeerOnline(new Map()); return; }
     void reload(); void reloadPeers();
-    return session.onGatewayEvent((event) => { if (event === "rooms.changed") void reload(); else if (event === "contacts.changed") void reloadPeers(); });
-  }, [session, ready]);
+    // contacts.changed arrives about once a second while a Trunk works; online dots need no more than one read per burst.
+    const peersSoon = coalesce(() => void reloadPeers(), 2_000);
+    const off = session.onGatewayEvent((event) => { if (event === "rooms.changed") void reload(); else if (event === "contacts.changed") peersSoon(); });
+    return () => { off(); peersSoon.cancel(); };
+  }, [session, ready, includeArchived]);
   return { rooms, peerOnline, reload };
 }
 
@@ -74,8 +79,8 @@ export function roomContact(room: GroupRoom, contacts: readonly GatewayContact[]
   };
 }
 
-/** What the room's log adds to its lead conversation: notices, and the Trunks' posts and replies that live only there. */
-const LOGGED = new Set(["created", "member.added", "message", "turn.replied"]);
+/** What the room's log adds to its lead conversation: notices (merge-feed sentences among them), and the Trunks' posts and replies that live only there. */
+const LOGGED = new Set(["created", "member.added", "message", "turn.replied", "merge", "merge.follow"]);
 
 export function useRoomNotices(session: SaplingSession, key: string | null, contacts: readonly GroupContact[]): Block[] {
   const [, lead, roomId] = /^agent:([^:]+):room:([^:]+)$/.exec(key ?? "") ?? [];
@@ -123,8 +128,10 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
     if (event.kind === "created") {
       const members = data.members ?? [];
       const shown = members.length > 2 ? members.slice(0, 2) : members;
-      return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `You started a group with ${shown.map(named).join(" and ")}`, at: event.createdAt }];
+      return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `You started a group with ${joinNames(shown.map(named))}`, at: event.createdAt }];
     }
+    // The merge feed: one plain sentence per merge ("That's 107 merged: #1088 …."), and the line that says the room follows a repository.
+    if ((event.kind === "merge" || event.kind === "merge.follow") && data.text?.trim()) return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: data.text.trim(), at: event.createdAt }];
     if (event.kind === "member.added" && data.kind && data.id) return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `${event.actorId?.startsWith("a2a:") ? (data.from ?? event.actorId.slice(4)) : "You"} added ${named({ kind: data.kind, id: data.id })}`, at: event.createdAt }];
     return [];
   });

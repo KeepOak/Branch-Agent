@@ -3,7 +3,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
 import { mayChanges, type May } from "./may";
-import { avatarFor, patchConfig, readConfig, readRoster, rec, str, type ConfigSnapshot, type Roster, type TrunkRow } from "./model";
+import { avatarFor, patchConfig, readConfig, readRoster, rec, str, type ConfigSnapshot, type Roster } from "./model";
 
 export type Draft = { name: string; theme: string; look: string; emoji: string; colour: string; shape: string; eyes: string; model: string; may: May };
 
@@ -27,7 +27,7 @@ export function updateParams(id: string, was: Draft, now: Draft): Record<string,
 }
 
 /** The config.patch paths for the rest of the editor: what it's for, a cleared emoji, what it may do, its computers. */
-export function configChanges(snap: ConfigSnapshot, id: string, was: Draft, now: Draft): Record<string, unknown> {
+function configChanges(snap: ConfigSnapshot, id: string, was: Draft, now: Draft): Record<string, unknown> {
   const out = mayChanges(snap, id, was.may, now.may, now.model);
   if (now.theme.trim() !== was.theme) out[`agents.entries.${id}.identity.theme`] = now.theme.trim() || null;
   if (!now.emoji && was.emoji) out[`agents.entries.${id}.identity.emoji`] = null;
@@ -106,4 +106,3 @@ export async function makeDefault(engine: WindowEngine, roster: Roster, id: stri
 export async function loadRoster(engine: WindowEngine): Promise<Roster> {
   return readRoster(await engine.request("agents.list", {}));
 }
-export const rowOf = (roster: Roster | null, id: string): TrunkRow | undefined => roster?.agents.find((a) => a.id === id);

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Publishes a new engine to the app the way OpenClaw installs: a packaged copy (pnpm deploy --prod of the built
 # engine; no src/, so Node's compile cache is on) in its own folder, then points engine-current.txt at it.
-# The open app notices within about 15 seconds and shows "An update is ready — Restart"; it never restarts by itself.
+# The open app notices within about 15 seconds and applies the update in place at the next gap, with no Update button (Private #1047).
 # The running engine's folder is never touched; older unused copies are removed.
 #   bash desktop/scripts/publish-engine.sh [worktree] [dataDir]
 # Defaults: the foundation worktree, C:/Users/you/BranchApp. The engine must already be built (pnpm build).
