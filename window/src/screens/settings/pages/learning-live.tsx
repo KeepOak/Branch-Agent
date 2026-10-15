@@ -3,6 +3,7 @@
 // (skills.proposals.list, doctor.memory.status), the overnight cleanup's notes (doctor.memory.*), the diary's model
 // (models.list, config), who is connected (system-presence, users.list), Check Branch (health) and Restart the engine
 // (gateway.restart.request). The facts Classic states are drawn as values.
+import { RestartEngine } from "./remote-live";
 import { useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Coming } from "../../../glass/coming";
@@ -162,13 +163,5 @@ export function CheckBranch({ engine, row }: SlotControlProps) {
   </>;
 }
 
-/** Restart the engine (gateway.restart.request); the window reconnects by itself. */
-export function RestartEngine({ engine, row }: SlotControlProps) {
-  const [failed, run] = useFailure();
-  const [busy, setBusy] = useState(false);
-  const go = () => { setBusy(true); void run(() => engine.request("gateway.restart.request", { reason: "settings" })).finally(() => setBusy(false)); };
-  return <>
-    <Needs engine={engine} need={["gateway.restart.request"]} where={row.label ?? ""}><Btn disabled={busy} onClick={go}>Restart the engine</Btn></Needs>
-    <Failed text={failed} />
-  </>;
-}
+/** The restart control is one copy, shared with Remote access (remote-live.tsx). */
+export { RestartEngine };

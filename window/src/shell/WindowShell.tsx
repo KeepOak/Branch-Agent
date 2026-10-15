@@ -131,6 +131,7 @@ import { useFirstRun } from "../setup/use-first-run";
 import { useNeedsCount } from "../places/inbox";
 import { TrunkStudio } from "../places/trunk";
 import "./preview.css";
+import { coalesce } from "./coalesce";
 
 /** The clock for row times; it also ticks just after a "Done" so the header goes back to ready (§4.2.5). */
 function useNow(doneAt: number | null): number {
@@ -509,8 +510,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       } catch (error) { if (live) console.warn("contacts.topics failed", error); }
     };
     void load();
-    const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") void load(); });
-    return () => { live = false; off(); };
+    const loadSoon = coalesce(() => void load(), 3_000);
+    const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") loadSoon(); });
+    return () => { live = false; off(); loadSoon.cancel(); };
   }, [session, ready, topicContact?.id]);
   useEffect(() => {
     if (!ready || !topicContact || !activeTopics.length) { setTopicWho({}); return; }

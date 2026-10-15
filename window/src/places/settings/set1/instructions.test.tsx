@@ -60,6 +60,18 @@ describe("Settings › Instructions & personality", () => {
     expect(row("Who your assistant is").querySelector<HTMLInputElement>('input[aria-label="Read SOUL.md"]')!.checked).toBe(true);
   });
 
+  it("picking another Trunk in Whose files moves the pressed chip to it", async () => {
+    const { engine } = engineOf();
+    await render(engine);
+    const chips = () => [...host.querySelectorAll<HTMLButtonElement>(".if-chips .chip6")];
+    const pressed = () => chips().filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.textContent);
+    expect(pressed()).toEqual(["Every Trunk"]);
+    const second = chips().find((b) => b.textContent === "Second")!;
+    await act(async () => second.click());
+    await act(async () => undefined);
+    expect(pressed()).toEqual(["Second"]);
+  });
+
   it("saves an edited file with the hash it read, and a new one as expected missing", async () => {
     const { engine, request } = engineOf();
     await render(engine);

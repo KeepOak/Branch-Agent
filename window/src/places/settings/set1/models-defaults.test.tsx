@@ -70,9 +70,9 @@ describe("global model fallback note", () => {
     window.addEventListener("branch:open-trunk", capture);
     try {
       await act(async () => notes()[0].querySelectorAll<HTMLButtonElement>("button")[1].click());
+      // The Trunk's own model lives on its editor's "What it may do" tab, opened over Models: People is not opened.
       expect(events).toEqual([
-        ["branch:navigate-place", { place: "people" }],
-        ["branch:open-trunk", { agentId: "writer", view: "edit" }],
+        ["branch:open-trunk", { agentId: "writer", view: "edit", tab: "may" }],
       ]);
       expect(request.mock.calls.some(([method]) => method === "config.patch")).toBe(false);
     } finally {

@@ -23,7 +23,7 @@ type StatusFacts = {
 type Props = StatusFacts & {
   open: StatusItem | null;
   onItem: (item: StatusItem, e: MouseEvent<HTMLElement>) => void;
-  /** Appearance › What's shown › The gateway in the status bar (on unless switched off). */
+  /** Appearance › What's shown › Whether Branch is running, in the status bar (on unless switched off). */
   gatewayShown?: boolean;
   usageShown?: boolean;
   /** Paused Trunks and live calls (after "N running"), and the graphics readout (after the spacer). */
