@@ -82,8 +82,19 @@ it.each(versionCases)("maps staged $latest against running $version (ready: $rea
   } };
   await mount(<Fixture version={version} />);
   expect(current?.latest).toBe(ready ? latest : null);
-  expect(current?.installing).toBe(ready);
-  expect(current?.waiting).toBe(ready ? "Downloaded. It applies in place when no Trunk is working." : null);
+  // A downloaded update waits for its gap: it is never "installing" (the chip must not spin while it waits).
+  expect(current?.installing).toBe(false);
+  expect(current?.ready).toBe(ready);
+  expect(current?.waiting).toBe(ready ? "Update ready. It applies when no Trunk is working" : null);
+});
+
+it("says the update applies at the next start when auto-apply is off", async () => {
+  (window as { branchDesktop?: unknown }).branchDesktop = { gatewayUrl: session.gatewayUrl, componentUpdates: {
+    status: async () => ({ phase: "staged", currentVersion: "1.4.2", latestVersion: "1.4.3", pendingVersion: "1.4.3", checkedAt: 1, error: null, applyWhenIdle: false }),
+  } };
+  await mount(<Fixture version="1.4.2" />);
+  expect(current?.ready).toBe(true);
+  expect(current?.waiting).toBe("Update ready. It applies the next time Branch starts.");
 });
 
 function updateInfo(version: string, latest: string): UpdateInfo {

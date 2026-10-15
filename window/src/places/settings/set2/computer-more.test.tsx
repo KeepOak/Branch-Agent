@@ -181,6 +181,18 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     expect(patches(request)).toContainEqual({ agents: { entries: { scout: { tools: { exec: { node: "n1" } } } } } });
   });
 
+  it("Most spares at once: Save stays off until the number changes", async () => {
+    const { engine } = engineWith({ ...CONFIG, "config.get": { hash: "h", valid: true, config: { cloudWorkers: { preparedPool: { maxTotal: 3 } } } } });
+    await show(engine, "advanced");
+    const save = () => [...row("Most spares at once")!.querySelectorAll("button")].find((b) => b.textContent === "Save") as HTMLButtonElement;
+    const input = row("Most spares at once")!.querySelector("input") as HTMLInputElement;
+    expect(save().disabled).toBe(true);
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "3"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(save().disabled).toBe(true);
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "5"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(save().disabled).toBe(false);
+  });
+
   it("saves Most spares at once with Save and adds an extra folder from its dialog", async () => {
     const { engine, request } = engineWith(CONFIG);
     await show(engine, "advanced");

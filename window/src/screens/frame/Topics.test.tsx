@@ -53,6 +53,12 @@ it("finds the Trunk whose threads show from its own conversation or one of its t
   expect(topicContactFor([...rows, conv("agent:ledger:other", { parentKey: "agent:scout:main" })], "agent:ledger:other")).toBeNull();
 });
 
+it("names the Trunk by the name the window shows, never its id", () => {
+  const untitled = [conv("agent:juniper:main", { agentId: "juniper", title: "" }), conv("agent:juniper:t1", { agentId: "juniper", parentKey: "agent:juniper:main" })];
+  expect(topicContactFor(untitled, "agent:juniper:t1", "main", "Juniper")?.name).toBe("Juniper");
+  expect(topicContactFor(untitled, "agent:juniper:t1")?.name).toBe("juniper");
+});
+
 it("draws the threads above the chat as Tabs by default, on clear glass, with General and each thread", async () => {
   const { Host, request } = setup();
   await act(async () => root.render(<Host />));

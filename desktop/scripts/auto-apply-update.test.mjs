@@ -238,3 +238,18 @@ test("update health reads the data volume and RAM, and tests can pin either", ()
   assert.deepEqual(readUpdateHealth(process.cwd(), 4, 16, { BRANCH_DESKTOP_UPDATE_FREE_DISK: "0.05", BRANCH_DESKTOP_UPDATE_FREE_MEMORY: "0.1" }),
     { diskFree: 0.05, memoryFree: 0.1 });
 });
+
+test("a pending update that keeps being replaced by newer releases still lands once it has waited the cap", async () => {
+  // Releases every two hours while a run is always in flight (no standby). The cap counts from the first pending
+  // release, so the update lands at the cap instead of waiting for a gap that never comes.
+  const f = fixture();
+  f.setActivity({ activeRuns: 1 });
+  const step = AUTO_APPLY_POLL_MS, release = 2 * 60 * 60_000;
+  for (let t = 0, n = 0; t <= AUTO_APPLY_PENDING_CAP_MS + 2 * AUTO_APPLY_GAP_MS; t += step) {
+    if (t % release === 0) f.setVersion(`0.4.4-build-${n++}`);
+    await f.controller.tick();
+    f.advance(step);
+  }
+  assert.ok(f.restarts.length >= 1, "the capped update drained at a gap");
+  assert.match(f.restarts[0], /^0\.4\.4-build-\d+$/);
+});
