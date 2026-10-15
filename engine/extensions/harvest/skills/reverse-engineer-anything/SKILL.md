@@ -20,11 +20,14 @@ readiness or provider commands.
 ## Connect only when needed
 
 In Branch Agent this skill ships inside the Harvest plugin, and the same plugin
-registers the REA MCP server (`rea-agents@6.4.0`, stdio over `npx`). Call each
+registers the REA MCP server. The server is the locked `rea-agents` 6.4.0
+install under `rea-pin`, started with `node` on
+`rea-pin/node_modules/rea-agents/scripts/rea.mjs`. Call each
 tool as `rea__<tool>`, for example `rea__open_binary`. Nothing else needs
 registering: never run `rea-agents setup`, `rea setup`, or `branch mcp add rea`.
 Setup would add a second `mcp.servers.rea` entry that replaces the plugin's
-server and its pinned version.
+server and its pinned version. Do not start the server with `npx -y` or an
+unpinned package name.
 
 The enabled server advertises its tools directly. A tool it does not advertise
 is not available in this session.
@@ -157,7 +160,8 @@ analysis-profile digest or canonical procedure address. Select its returned
 Evidence ID for the next view instead of requesting the complete bundle.
 `retention: "complete-record"` means the whole record is stored; native
 value-flow truncation and unknown metadata remain separate. For an exported
-portable bundle, use `npx -y rea-agents@6.4.0 inspect-evidence-bundle` with JSON containing `path`,
+portable bundle, use `node` on the locked `rea-pin/node_modules/rea-agents/scripts/rea.mjs`
+with `inspect-evidence-bundle` and JSON containing `path`,
 `detail: "summary"` and the same `filters`. Reading that file still requires
 validating its full contents within the local memory budget.
 
@@ -174,20 +178,35 @@ Evidence IDs, preserve limitations and incomplete coverage, and never imply
 that static analysis observed execution. Runtime requests execute the declared
 target and lifecycle; do not broaden the target or action beyond those fields.
 
-Within the user's requested investigation, call static analysis tools
-directly. Branch asks before a tool runs a command, drives an app, or
-overwrites a file. A yes covers that one call only. Put the exact command,
-app, device, or output path in the call so the user can see it:
+Within the user's requested investigation, call REA tools that only read
+evidence already in the session directly. Branch asks before any REA tool that
+runs a command, drives an app, writes or overwrites a file, or otherwise
+changes state. A yes covers that one call only. Put the exact command, app,
+device, or output path in the call so the user can see it. The ask-first tools
+are:
 
-- `rea__capture_process_scenario` (runs a command under a PTY);
-- `rea__capture_browser_scenario`, `rea__capture_electron_scenario` and
-  `rea__capture_native_ui_scenario` (launch or drive an application);
-- `rea__observe_native_calls` (launches a process under a debugger);
-- `rea__install_adb_package`, `rea__uninstall_adb_package`, `rea__push_adb_file`,
-  `rea__start_adb_app`, `rea__start_adb_activity` and `rea__stop_adb_app` (change a connected
-  Android device);
-- `rea__export_evidence_bundle` or `rea__close_binary` with an output path that already
-  exists (overwrites a file).
+`rea__annotate_native_function`, `rea__capture_adb_screen`, `rea__capture_browser_scenario`,
+`rea__capture_electron_scenario`, `rea__capture_native_ui_scenario`,
+`rea__capture_process_scenario`, `rea__close_binary`, `rea__collect_adb_bugreport`,
+`rea__decode_android_resources`, `rea__demangle_swift`, `rea__export_evidence_bundle`,
+`rea__export_web_scripts`, `rea__extract_artifact`, `rea__extract_firmware`, `rea__goto_address`,
+`rea__inspect_adb_client`, `rea__inspect_adb_device`, `rea__inspect_adb_display`,
+`rea__inspect_adb_package`, `rea__inspect_adb_window`, `rea__inspect_android_class`,
+`rea__inspect_android_method`, `rea__inspect_android_package`, `rea__inspect_apktool_client`,
+`rea__inspect_artifact`, `rea__inspect_asset_catalog`, `rea__inspect_binary_layout`,
+`rea__inspect_evm_interface`, `rea__inspect_firmware_regions`, `rea__inspect_macho`,
+`rea__inspect_plist`, `rea__inspect_recorded_crash`, `rea__inspect_signature`,
+`rea__inspect_web_network_capture`, `rea__install_adb_package`, `rea__list_adb_devices`,
+`rea__list_adb_directory`, `rea__list_adb_features`, `rea__list_adb_packages`,
+`rea__list_adb_processes`, `rea__list_adb_services`, `rea__list_architectures`,
+`rea__observe_native_calls`, `rea__observe_native_ui`, `rea__observe_web_execution`,
+`rea__open_binary`, `rea__pull_adb_file`, `rea__pull_adb_package`, `rea__push_adb_file`,
+`rea__read_adb_logcat`, `rea__read_adb_setting`, `rea__recover_javascript_sources`,
+`rea__resolve_adb_packages`, `rea__search_android_classes`, `rea__set_address_name`,
+`rea__set_addresses_names`, `rea__set_bookmark`, `rea__set_comment`, `rea__set_inline_comment`,
+`rea__start_adb_activity`, `rea__start_adb_app`, `rea__stop_adb_app`,
+`rea__trace_android_references`, `rea__trace_web_module_imports`,
+`rea__trace_web_source_location`, `rea__uninstall_adb_package`, `rea__unset_bookmark`.
 
 Never run an untrusted target outside an environment the user chose for it.
 In a scheduled or unattended run with nobody to ask, skip these calls and

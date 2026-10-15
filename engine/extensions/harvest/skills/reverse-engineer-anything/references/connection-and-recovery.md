@@ -9,7 +9,7 @@ operation and the next useful step; after repair, continue the investigation.
 | Observation | Meaning and next step |
 | --- | --- |
 | No `rea__` tools are available | The Harvest plugin is disabled or the server failed to start. Ask the user to run `branch plugins enable harvest`, then start a new session. A same-name `mcp.servers.rea` entry replaces the plugin's server. Inspect whether it is an accidental setup-generated duplicate or an intentional engine configuration before proposing changes; preserve deliberate user settings. Do not run `rea setup`, `rea-agents setup`, or `branch mcp add rea`. |
-| The server fails to start | REA runs through `npx -y rea-agents@6.4.0 mcp` and needs Node.js 22.19+, 24.11+ or 26+ (not 23 or 25) with `npx` on PATH. The first start downloads the package into npm's cache. Check `node --version` and `npx --version` in the shell Branch Agent uses. |
+| The server fails to start | REA runs `node` on the locked install `engine/extensions/harvest/rea-pin/node_modules/rea-agents/scripts/rea.mjs`. Create that install with `npm ci --ignore-scripts --no-audit --no-fund` in `engine/extensions/harvest/rea-pin`. npm checks the lockfile integrity hash and will not fetch another version. The server needs Node.js 22.19+, 24.11+ or 26+ (not 23 or 25). Do not start it with `npx -y` or an unpinned package name. Check `node --version` in the shell Branch Agent uses. |
 | REA returns `provider_unavailable` or an unavailable tool entry | Read that operation's provider diagnostics or `rea__binary_session` with `{}` and its `result.tool_availability`. Resolve only the prerequisite the task needs; a complete tool catalog does not mean every operation is available. |
 | A call is refused before REA runs | Branch Agent policy (a disabled tool, an approval denial, or a scheduled run with nobody to ask) blocked it. Report it; do not retry the same call. |
 
@@ -40,8 +40,9 @@ This is an intentional override, not the duplicate registration made by
     servers: {
       rea: {
         transport: "stdio",
-        command: "npx",
-        args: ["-y", "rea-agents@6.4.0", "mcp"],
+        command: "node",
+        args: ["<harvest-plugin>/rea-pin/node_modules/rea-agents/scripts/rea.mjs", "mcp"],
+        cwd: "<harvest-plugin>/rea-pin",
         requestTimeoutMs: 1000000,
         connectionTimeoutMs: 1000000,
         env: {
@@ -56,9 +57,12 @@ This is an intentional override, not the duplicate registration made by
 ```
 
 Replace `<ghidra-install>` and `<jdk-install>` with the user's actual
-installations. The explicit entry replaces the plugin's MCP settings, so
-retain the reviewed package pin and both deadlines, and revisit the pin when
-updating the plugin. The bundled skill remains available. Restart the session
+installations. Replace `<harvest-plugin>` with the Harvest plugin directory.
+The copy under `rea-pin/node_modules` comes from `npm ci` in that `rea-pin`
+directory, which checks the lockfile integrity hash. The explicit entry
+replaces the plugin's MCP settings, so retain that locked install and both
+deadlines, and revisit the pin when updating the plugin. Do not replace the
+command with `npx -y` or an unpinned package name. The bundled skill remains available. Restart the session
 after changing launch settings. Static JavaScript and PE-resource inspection
 do not require these engines.
 
@@ -91,12 +95,13 @@ cancelled work unless requested.
 ## Continue through the CLI
 
 When MCP is unavailable but the shell works, the same workflows run as CLI
-commands at the same pinned version:
+commands from the locked install. Replace `<harvest-plugin>` with the Harvest
+plugin directory. These commands use that install, not `npx`:
 
 ```bash
-npx -y rea-agents@6.4.0 analyze-javascript-application <app> --json > app-evidence.json
+node <harvest-plugin>/rea-pin/node_modules/rea-agents/scripts/rea.mjs analyze-javascript-application <app> --json > app-evidence.json
 jq -c '{source: {kind: "inline", evidence: .}, view: {kind: "summary"}}' app-evidence.json > app-view.json
-npx -y rea-agents@6.4.0 inspect-analysis-view app-view.json
+node <harvest-plugin>/rea-pin/node_modules/rea-agents/scripts/rea.mjs inspect-analysis-view app-view.json
 ```
 
 CLI JavaScript JSON is complete and can be very large; redirect it rather than

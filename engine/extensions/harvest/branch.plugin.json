@@ -12,8 +12,9 @@
   "mcpServers": {
     "rea": {
       "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "rea-agents@6.4.0", "mcp"],
+      "command": "node",
+      "args": ["./rea-pin/node_modules/rea-agents/scripts/rea.mjs", "mcp"],
+      "cwd": "./rea-pin",
       "env": {
         "REA_GHIDRA_STARTUP_TIMEOUT_MS": "900000"
       },
