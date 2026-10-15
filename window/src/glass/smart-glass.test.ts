@@ -24,3 +24,13 @@ describe("smart glass", () => {
     expect(code).toMatch(/:root\[data-transparency="reduce"\]:not\(#sg#sg#sg#sg\) :is\(\.g-popover, \.g-float, \.r1-topic-host > \.topicsT5\) \{ background: var\(--bg\)/);
   });
 });
+
+describe("smart glass, batch 3", () => {
+  it("makes the re-hosted Classic popovers one glass sheet with plain rows, solid when transparency is reduced", () => {
+    expect(code).toMatch(/:root:not\(#sg#sg#sg#sg\) \.pop:is\(\.menu, \.panel\) \{ background: color-mix\(in srgb, var\(--bg\) 94%/);
+    expect(code).toMatch(/:root\[data-transparency="reduce"\]:not\(#sg#sg#sg#sg\) \.pop:is\(\.menu, \.panel\) \{ background: var\(--bg\)/);
+  });
+  it("fades the transcript out under the window header", () => {
+    expect(code).toMatch(/\.r1-conversation > \.r1-header::before \{ content: ""; position: absolute;/);
+  });
+});
