@@ -35,7 +35,9 @@ function run(command, args, cwd, extraEnv) {
 function main() {
   // Prebuild rewrites package.json's android and ios scripts to `expo run:*`. This build leaves the
   // checked-in files as they are, so it puts them back afterwards.
-  const kept = ['package.json', 'app.json'].map((name) => [name, readFileSync(path.join(root, name))]);
+  const kept = ['package.json', 'app.json', 'app.config.js']
+    .filter((name) => existsSync(path.join(root, name)))
+    .map((name) => [name, readFileSync(path.join(root, name))]);
   try {
     writeAppJsonReleaseMeta(path.join(root, 'app.json'));
     run('npx', ['expo', 'prebuild', '--platform', 'android', '--no-install', ...(clean ? ['--clean'] : [])], root);
