@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import type { PairingState } from '../pairing/pairingSession';
 import { gatewayHost } from '../pairing/setupCode';
@@ -34,11 +34,14 @@ export function PairedScreen({
   state,
   onUnpair,
   onBack,
+  updateCard,
   backTo = 'Chats',
 }: {
   state: Extract<PairingState, { step: 'paired' }>;
   onUnpair: () => void;
   onBack: () => void;
+  /** Settings: this phone’s version and a manual check for a sideloaded Android APK. */
+  updateCard?: ReactNode;
   backTo?: 'Chats' | 'Settings';
 }) {
   const { color, space, radius, layout } = useTheme();
@@ -91,6 +94,15 @@ export function PairedScreen({
         <Row label="Computer" value={gatewayHost(state.url)} />
         <Row label="Branch" value={state.serverVersion ?? 'Checking…'} last />
       </Card>
+      {updateCard ? (
+        <Card testID="this-phone-card">
+          <ThemedText variant="headline">This phone</ThemedText>
+          <ThemedText variant="footnote" tone="ink2" style={{ marginTop: space.xs, marginBottom: space.sm }}>
+            Pairing, chats and settings stay on this phone when an update installs over this app.
+          </ThemedText>
+          {updateCard}
+        </Card>
+      ) : null}
     </Screen>
   );
 }

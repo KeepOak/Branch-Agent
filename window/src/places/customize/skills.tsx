@@ -90,7 +90,7 @@ function Gardener({ ctx }: { ctx: ToolsCtx }) {
   const looked = typeof d.lastSuccessAtMs === "number" ? `Gardener · looked ${ago(d.lastSuccessAtMs)}` : "Gardener · hasn’t looked yet";
   return <div className="cz-card cz-garden"><span className="cz-tile"><Glyph name="sparkle" size={16} /></span>
     <span className="grow"><b>{looked}</b><small>{Number(c.active ?? 0)} in use · {Number(c.stale ?? 0)} resting · {Number(c.archived ?? 0)} set aside · {kept} kept in use</small>{str(d.lastError) && <small className="cz-error">{str(d.lastError)}</small>}</span>
-    <Grey reason="Needs the engine's gardener run method.">Look now</Grey></div>;
+    <Grey reason="Running the Gardener by hand comes in a later update.">Look now</Grey></div>;
 }
 
 function Suggested({ ctx, p, reload }: { ctx: ToolsCtx; p: Proposal; reload: () => void }) {
@@ -119,7 +119,7 @@ function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
       {shows(ctx.level, "technical") && skill.filePath && <><dt>File</dt><dd><code>{skill.filePath}</code></dd></>}</dl></Sec>
     {shows(ctx.level, "advanced") && <KeptVersions ctx={ctx} skill={skill} />}
     <div className="cz-acts">{skill.registry ? <button type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.update", { ...scopeOf(ctx), source: "clawhub", slug: skill.key }, ctx.skills.reload)}>Check for updates</button> : <Grey reason="Only skills from the skill library can be checked for updates.">Check for updates</Grey>}
-      <span className="cz-grow" /><Grey className="btn ghost sm" reason="Needs the engine's skill remove method.">Remove</Grey></div>
+      <span className="cz-grow" /><Grey className="btn ghost sm" reason="Removing a skill from here comes in a later update.">Remove</Grey></div>
   </div>;
 }
 
@@ -179,9 +179,9 @@ export function AddSkill({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
   return <Dialog wide title="Add a skill" onClose={close} footer={<button type="button" className="btn ghost" onClick={close}>Cancel</button>}>
     <div className="cz-provs">
       <button type="button" className="cz-prov" onClick={() => setLibrary(true)}><b>From the skill library</b><small>Search skills others have shared and install one.</small></button>
-      <div className="cz-prov" title={shownWhy("Needs the engine's skill upload from this window.")}><b>From a file</b><small>A SKILL.md or a folder.</small><Grey reason="Needs the engine's skill upload from this window.">Choose a file</Grey></div>
-      <div className="cz-prov"><b>From GitHub</b><small>A repository with a SKILL.md.</small><Grey reason="Needs the engine's install from a GitHub address.">Add from GitHub</Grey></div>
-      <div className="cz-prov"><b>Write one with Branch</b><small>Say what it should know how to do.</small><Grey reason="Needs the engine's skill drafting method.">Draft it</Grey></div>
+      <div className="cz-prov"><b>From a file</b><small>A SKILL.md or a folder.</small><Grey reason="Adding a skill from a file comes in a later update.">Choose a file</Grey></div>
+      <div className="cz-prov"><b>From GitHub</b><small>A repository with a SKILL.md.</small><Grey reason="Adding a skill from GitHub comes in a later update.">Add from GitHub</Grey></div>
+      <div className="cz-prov"><b>Write one with Branch</b><small>Say what it should know how to do.</small><Grey reason="Writing a skill with Branch comes in a later update.">Draft it</Grey></div>
     </div>
   </Dialog>;
 }

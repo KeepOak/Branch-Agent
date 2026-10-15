@@ -9,6 +9,9 @@ import { ChatView } from "../chat/ChatView";
 import { useWorkMode } from "../chat/chat-logic";
 import type { ReplyTarget } from "../../thread/useMessageActions";
 import { Composer } from "../composer/Composer";
+import { COMPOSE_EVENT } from "../../composer/Composer";
+import { safeStorage, saveDraft } from "../../composer/drafts";
+import { requestCustomize, type PromptHandoff } from "../../places/customize/r1-request";
 import { NewTrunkCard, type NewTrunk } from "../../shell/NewTrunkFlow";
 import { conversationActions } from "../../shell/conversation-actions";
 import { makeRandomTrunk } from "../../places/trunk/new-trunk-r1";
@@ -32,7 +35,7 @@ import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Sidebar } from "../sidebar/Sidebar";
 import { Toasts } from "../../shell/Toasts";
 import { R1ExtraDialogs } from "./R1ExtraDialogs";
-import { ApprovalsLayer } from "../approvals";
+import { ApprovalsLayer, useAsks } from "../approvals";
 import { useProblemBannerRows } from "../approvals/ProblemBanners";
 import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
@@ -111,6 +114,14 @@ export function resolveRoute(route: Route): Route {
   return target ? { kind: "place", place: target.place } : route;
 }
 
+/** Seedbank is Customize's Community now: the Seedbank pill and a saved seedbank route both open Customize in Community. */
+export function r1Route(route: Route): Route {
+  const resolved = resolveRoute(route);
+  if (resolved.kind !== "place" || resolved.place !== "seedbank") return resolved;
+  requestCustomize({ mode: "community" });
+  return { kind: "place", place: "customize" };
+}
+
 /** The tab a Settings page that is a place opens on, told to the place after it shows (as WindowShell does). */
 function openPlaceTab(route: Route): void {
   const target = route.kind === "settings" ? SETTINGS_PLACE[r1PageFor(route.page)] : undefined;
@@ -154,10 +165,12 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const waiting = usePendingApprovals(session, ready);
   const limits = useLimits(session, ready);
   const lockdown = useLockdown(engine, ready, session, true);
+  // One list of what waits for a yes, shared by the conversation cards and the banners and drop (approvals/ApprovalsLayer).
+  const approvals = useAsks(ready ? engine : null, lockdown.on);
   const machine = useMachine(session, ready);
   // The re-hosted Classic character panel (parity row 19), shown beside the conversation unless hidden.
   const [characterShown, setCharacterShown] = useR1CharacterShown(engine);
-  const [route, setRoute] = useState<Route>(() => resolveRoute(loadRoute()));
+  const [route, setRoute] = useState<Route>(() => r1Route(loadRoute()));
   const trunks = useTrunks(session, ready);
   const contactsState = useContacts(session, ready);
   const graftedNames = useMemo(() => new Map(contactsState[0].filter(contact => contact.kind === "outside").map(contact => [contact.id, contact.name])), [contactsState]);
@@ -215,7 +228,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const behind = onboarding || finding;
   // The details panel the pill docks (GOD queue item 3): closing it hands focus back to the pill.
   const closeAgent = useCallback(() => { setAgentOpen(false); pill.current?.focus(); }, []);
-  const applyRoute = useCallback((next: Route) => {
+  const applyRoute = useCallback((raw: Route) => {
+    const next = r1Route(raw);
     saveRoute(next); setRoute(next); setAgentOpen(false);
     if (next.kind === "chat") { const key = next.key ?? session.getSnapshot().mainKey; if (key && !isGraftedContactKey(key) && key !== session.getSnapshot().sessionKey) void session.open(key); }
   }, [session]);
@@ -224,7 +238,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     const pop = (event: PopStateEvent) => {
       const index = event.state?.r1Index;
       const saved = parseRoute(JSON.stringify(event.state?.r1Route));
-      const next = saved && resolveRoute(saved);
+      const next = saved && r1Route(saved);
       if (typeof index !== "number" || index < 0 || index >= entries.current.length || !next) return;
       setHistory({ index, count: entries.current.length }); applyRoute(next);
     };
@@ -233,7 +247,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     // This window owns only entries created during this mount; it never navigates outside them.
   }, [applyRoute]);
   const navigate = (asked: Route) => {
-    const next = resolveRoute(asked);
+    const next = r1Route(asked);
     openPlaceTab(asked);
     if (JSON.stringify(next) === JSON.stringify(route)) return;
     const index = history.index + 1;
@@ -360,6 +374,18 @@ export function R1Window({ session }: { session: SaplingSession }) {
       openConversation(flow.sessionKey);
     } catch (e) { setNotice(e instanceof Error ? e.message : String(e)); }
   };
+  // Customize's Use: the command goes into the default Trunk's composer as a draft, and the conversation opens.
+  const promptKey = session.getSnapshot().mainKey;
+  const usePromptText: PromptHandoff = {
+    ready: Boolean(promptKey),
+    use: (text: string) => {
+      const key = session.getSnapshot().mainKey;
+      if (!key) return;
+      saveDraft(safeStorage(), key, text);
+      window.dispatchEvent(new CustomEvent(COMPOSE_EVENT, { detail: { sessionKey: key, text } }));
+      openConversation(key);
+    },
+  };
   // Settings › Learn more › Ask a Trunk (#977): the default Trunk's conversation opens and the question is sent there.
   const askTrunk = (text: string) => {
     const key = session.getSnapshot().mainKey;
@@ -395,10 +421,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const sidebar = <Sidebar onNewTrunk={() => void newTrunk()} session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
     currentKey={route.kind === "chat" ? graftedKey ?? graftedContactOf(snapshot.sessionKey) ?? snapshot.sessionKey : null} waiting={waiting} contacts={contactsState} searchRef={search} onOpen={openConversation}
     onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} onTour={() => setTour("full")} error={conversations.error} />;
-  const main = route.kind === "settings" && !r1SettingsPage(route.page, settingsPages) ? <ClassicSettingsFrame keepLevel page={CLASSIC_PAGE[route.page] ?? route.page} heading={(R1_PAGE_SPECS as Record<string, { title: string } | undefined>)[r1PageFor(route.page)]?.title} backName={name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={settingsPages} places={SETTINGS_PLACES} {...settingsSearch} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : graftedKey ? <GraftedEmpty name={name} state={graftedNone?.key === graftedKey ? (graftedNone.error ? "error" : "none") : "looking"} /> : route.kind === "place" ? <PlaceView place={route.place} engine={engine} createTrunk={() => void newTrunk()} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : changes ? <R1Changes key={snapshot.sessionKey ?? "none"} engine={engine} name={name} onClose={closeChanges} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
+  const main = route.kind === "settings" && !r1SettingsPage(route.page, settingsPages) ? <ClassicSettingsFrame keepLevel page={CLASSIC_PAGE[route.page] ?? route.page} heading={(R1_PAGE_SPECS as Record<string, { title: string } | undefined>)[r1PageFor(route.page)]?.title} backName={name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={settingsPages} places={SETTINGS_PLACES} {...settingsSearch} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : graftedKey ? <GraftedEmpty name={name} state={graftedNone?.key === graftedKey ? (graftedNone.error ? "error" : "none") : "looking"} /> : route.kind === "place" ? <PlaceView place={route.place} r1 usePrompt={usePromptText} engine={engine} createTrunk={() => void newTrunk()} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : changes ? <R1Changes key={snapshot.sessionKey ?? "none"} engine={engine} name={name} onClose={closeChanges} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
     onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "devices" })} onPip={small => { setPip(small); setStage(null); }} /> : <>{threads.above}<ChatView
     name={speaker} history={threads.history ?? snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
-    engine={engine} sessionKey={snapshot.sessionKey} examplesWhy={examples?.key === snapshot.sessionKey ? examples.why : undefined} onAnswer={(id, answer) => void session.answer(id, answer)} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
+    engine={engine} sessionKey={snapshot.sessionKey} examplesWhy={examples?.key === snapshot.sessionKey ? examples.why : undefined} onAnswer={(id, answer) => void session.answer(id, answer)} asks={approvals.asks} onAsk={(id, reply) => void approvals.answer(id, reply)} lockdown={lockdown.on} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo} onOpenHelpers={() => setHelpersView(open => ({ key: snapshot.sessionKey, focus: (open?.focus ?? 0) + 1 }))} room={room.thread}
   /></>;
   const shown = chat && !stage && helpersOpen ? <div className="r1-with-helpers">{main}<R1HelpersPanel key={snapshot.sessionKey ?? "none"} engine={engine} name={name} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
@@ -496,11 +522,11 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {pip && chat && !stage ? <R1StagePip key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={name} computer={pip} blocks={[...snapshot.history, ...snapshot.live]} onOpen={() => { setStage(pip.kind === "browser" ? "Browser" : "Computer"); setPip(null); }} onClose={() => setPip(null)} /> : null}
     <Toasts />
     <R1ExtraDialogs engine={engine} ready={ready} limits={limits} working={workingKeys} />
-    <ApprovalsLayer engine={engine} ready={ready} more={problems} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
+    <ApprovalsLayer engine={engine} ready={ready} approvals={approvals} more={problems} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
     {/* The approved ••• menu (Pin, Rename, Snooze, Archive, Send to the board, Export, View, Start over, Delete) and its dialogs. */}
     {chat ? <ConversationMenu session={session} open={convMenu} anchor={convAnchor} onClose={() => setConvMenu(false)} sessionKey={snapshot.sessionKey}
       row={current ?? null} isDefault={Boolean(snapshot.sessionKey && snapshot.sessionKey === snapshot.mainKey)} list={list} name={name || "Conversation"} history={snapshot.history}
-      work={work} onOpen={openConversation} mainKey={snapshot.mainKey} onPlace={place => navigate({ kind: "place", place })} room={room.menu}
+      work={work} onOpen={openConversation} mainKey={snapshot.mainKey} onPlace={place => navigate({ kind: "place", place })} onSettings={page => navigate({ kind: "settings", page })} room={room.menu}
       changesNeed={CHANGES_NEED} onChanges={() => { setStage(null); setPip(null); setChanges(true); setConvMenu(false); }} /> : null}
   </>;
 }
