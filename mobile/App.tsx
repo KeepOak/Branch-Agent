@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState, useSyncExternalStore } from 'react';
@@ -27,6 +28,9 @@ import { ScanScreen } from './src/screens/ScanScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import type { ColorScheme } from './src/theme/tokens';
+import { applyQuietJsUpdate } from './src/updates/ota';
+import { SettingsUpdateCard, UpdateBanner } from './src/updates/UpdateBanner';
+import { useApkUpdate } from './src/updates/useApkUpdate';
 
 // The splash stays up until the saved pairing has been read, so the first frame is the right screen.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -62,6 +66,25 @@ function OpenChat({ session, row, online, onBack }: { session: PairingSession; r
 function Shell({ session, notifier, appState }: { session: PairingSession; notifier: Notifier; appState: AppStateSource }) {
   const theme = useTheme();
   const state = usePairingState(session);
+  const update = useApkUpdate();
+  const installed = {
+    version: Constants.expoConfig?.version ?? '0.1.0',
+    versionCode: Constants.expoConfig?.android?.versionCode ?? 1,
+  };
+  const updateBanner = (
+    <UpdateBanner state={update.state} onUpdate={update.startUpdate} onAllowInstalls={() => update.allowInstalls()} />
+  );
+  const updateCard = (
+    <SettingsUpdateCard
+      version={installed.version}
+      versionCode={installed.versionCode}
+      state={update.state}
+      onCheck={update.check}
+      onUpdate={update.startUpdate}
+      onAllowInstalls={() => update.allowInstalls()}
+      apkUpdates={Platform.OS === 'android'}
+    />
+  );
   const [route, setRoute] = useState<Route>('welcome');
   const [pairedRoute, setPairedRoute] = useState<PairedRoute>(CHATS);
   // One list for the whole session, so going to Your computer and back doesn't reload it.
@@ -154,7 +177,7 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
         ) : route === 'code' ? (
           <EnterCodeScreen onCode={begin} onScan={() => setRoute('scan')} onCancel={toWelcome} />
         ) : (
-          <WelcomeScreen onPair={() => setRoute('scan')} />
+          <WelcomeScreen onPair={() => setRoute('scan')} updateBanner={updateBanner} />
         );
       break;
     case 'connecting':
@@ -164,7 +187,9 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
       break;
     case 'paired':
       if (pairedRoute.name === 'computer') {
-        screen = <PairedScreen state={state} onUnpair={() => void session.unpair()} onBack={() => setPairedRoute(CHATS)} />;
+        screen = (
+          <PairedScreen state={state} onUnpair={() => void session.unpair()} onBack={() => setPairedRoute(CHATS)} updateCard={updateCard} />
+        );
       } else if (pairedRoute.name === 'chat') {
         // The header follows the list live (a rename, the working dot); the row it was opened from fills in until then.
         const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
@@ -203,6 +228,7 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
             onOpen={(row) => setPairedRoute({ name: 'chat', row })}
             needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
             onNeedsYou={() => setPairedRoute({ name: 'approvals' })}
+            updateBanner={updateBanner}
           />
         );
       }
@@ -236,6 +262,9 @@ export default function App({
     void session.restore();
     return () => session.dispose();
   }, [session]);
+  useEffect(() => {
+    void applyQuietJsUpdate();
+  }, []);
   return (
     // Starting from the window's known insets draws the first frame at once instead of a blank one.
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
