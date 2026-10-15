@@ -42,7 +42,7 @@ import { LoneThought, StepsList } from "./Steps";
 import { foldTalks } from "../../rooms/fold";
 import { RoomLine } from "../../rooms/RoomLine";
 import { RoomMessage } from "../../rooms/RoomMessage";
-import { TalkedFold } from "../../rooms/TalkedFold";
+import { ExchangeLine, ExchangeView, type ExchangeNames, type OpenExchange } from "./Exchange";
 import { fromName, otherSender, type ThreadRoom } from "../../rooms/thread-room";
 import { roomEntries, type RoomEntry } from "./room-entries";
 import "../../thread/thread.css";
@@ -73,7 +73,7 @@ export type ChatViewProps = {
   onStart?: (text: string) => void;
   /** Puts "Replying to …" on the composer (chat.send replyToId). */
   onReply?: (target: ReplyTarget) => void;
-  /** Who else writes here (rooms/useShellRoom): their rows, the talked-it-through fold and the room line (§4.2.4). */
+  /** Who else writes here (rooms/useShellRoom): their rows, the Trunk-to-Trunk exchange lines and the room line (§4.2.4). */
   room?: ThreadRoom;
   /** An examples conversation with no messages yet: why this Trunk is here (examples-greeting.ts). */
   examplesWhy?: string;
@@ -190,10 +190,18 @@ export function ChatView(props: ChatViewProps) {
   const historyReady = props.historyReady !== false;
   const waitingCount = (props.queued?.length ?? 0) + ownLine.length;
   const empty = historyReady && !history.length && !pendingUser && !running && !waitingCount && !props.loadError;
-  // As in the Classic thread: with a room, exchanges between Trunks fold into one row (rooms/fold.ts).
+  // As in the Classic thread: with a room, exchanges between Trunks fold (rooms/fold.ts), here into one centred line.
   const inRoom = Boolean(props.room), ownAgentId = props.room?.ownAgentId;
   const entries = useMemo<RoomEntry[]>(() => (inRoom ? roomEntries(foldTalks(layout(history), ownAgentId)) : entriesOf(layout(history))), [history, inRoom, ownAgentId]);
   const times = useMemo(() => entries.map(entryTime), [entries]);
+  // Trunk-to-Trunk exchanges: one centred line each, opened read-only over the chat (./Exchange).
+  const [exchange, setExchange] = useState<OpenExchange | null>(null);
+  const trunkName = props.room?.trunkName;
+  const exchangeNames = useMemo<ExchangeNames>(() => {
+    const at = new Map(history.map((b) => [b.key, blockTime(b)]));
+    return { ownName: name, trunkName: trunkName ?? ((id: string) => id), timeOf: (key) => at.get(key) };
+  }, [history, name, trunkName]);
+  useEffect(() => { setExchange(null); }, [props.sessionKey]);
   const dividers = useMemo(() => dividerPositions(times), [times]);
   const lastUser = history.map((b) => b.kind).lastIndexOf("user");
   const lastReply = [...history].reverse().find((b) => b.kind === "text");
@@ -219,7 +227,7 @@ export function ChatView(props: ChatViewProps) {
         {empty ? <EmptyChat name={name} engine={engine} onStart={props.onStart} /> : !historyReady && !history.length && !props.loadError ? <NoticeLine text="Opening this conversation…" testid="opening" /> : null}
         {entries.map((entry, i) => <Fragment key={entry.type === "item" ? entry.item.block.key : entry.key}>
           {dividers.has(i) && times[i] ? <TimeDivider at={times[i]!} /> : null}
-          {entry.type === "talk" ? <div className="r1c-row r1c-talk"><TalkedFold talk={entry.talk} ownName={name} trunkName={props.room?.trunkName ?? ((id: string) => id)} /></div> : <EntryView entry={entry} view={view} live={false} />}
+          {entry.type === "talk" ? <ExchangeLine talk={entry.talk} names={exchangeNames} onOpen={setExchange} /> : <EntryView entry={entry} view={view} live={false} />}
         </Fragment>)}
         {props.room ? <RoomLine history={history} room={props.room} ownName={name} /> : null}
         {pendingUser ? <UserBubble block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
@@ -237,6 +245,7 @@ export function ChatView(props: ChatViewProps) {
         </div> : null}
       </div>
       <Rail scroller={scroller} blocks={all} sessionKey={props.sessionKey} />
+      {exchange ? <ExchangeView key={exchange.talk.key} open={exchange} names={exchangeNames} host={root.current?.closest<HTMLElement>(".r1-conversation") ?? null} onClose={() => setExchange(null)} /> : null}
     </div>
     {dialog}
   </ThreadContext.Provider></CapabilityProvider>;
