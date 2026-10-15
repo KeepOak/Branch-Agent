@@ -10,7 +10,7 @@ import { configStore } from "../../places/settings/config-store";
 import { TrunkHost } from "../../places-nav/TrunkHost";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { pinsOf } from "../../places/settings/pins";
-import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
+import { GOTO_SUB, LEVELS, PAGES, navAt, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
 import { COMING_FROM, ROWS, cardRows, comingRow, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 import { LaterRows } from "../../glass/LaterRows";
 import { RowView, Segmented } from "./RowView";
@@ -82,11 +82,58 @@ export type SettingsFrameProps = {
   pages?: PageSlots;
 };
 
+/** The narrow layout hides group names and shows every page in one strip (settings.css, max-width 760px). */
+function useNarrowNav(): boolean {
+  const query = "(max-width: 760px)";
+  const [narrow, setNarrow] = useState(() => {
+    try { return typeof matchMedia === "function" && matchMedia(query).matches; } catch { return false; }
+  });
+  useEffect(() => {
+    let list: MediaQueryList;
+    try { list = matchMedia(query); } catch { return; }
+    const apply = () => setNarrow(list.matches);
+    list.addEventListener?.("change", apply);
+    return () => list.removeEventListener?.("change", apply);
+  }, []);
+  return narrow;
+}
+
 function NavButton({ page, current, onOpen, sub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string }) {
   return (
     <button type="button" className="r1s-nav" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} onClick={onOpen}>
       <span>{page.title}</span>{sub ? <small>{sub}</small> : null}
     </button>
+  );
+}
+
+/** Regular: four group buttons, and the open group's pages. Advanced and Technical: the full nav, every group open. */
+function NavList({ level, narrow, shownPage, onOpen }: { level: Level; narrow: boolean; shownPage: PageId; onOpen: (id: PageId) => void }) {
+  const shown = navAt(level);
+  const openGroup = shown.groups.find((g) => g.pages.some((p) => p.id === shownPage))?.title;
+  const sub = (id: PageId) => id === "goto" ? GOTO_SUB : undefined;
+  return (
+    <>
+      {shown.top.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={sub(p.id)} onOpen={() => onOpen(p.id)} />)}
+      {shown.groups.map((g) => {
+        const pages = g.pages.filter((p) => pageShown(p.id, level));
+        if (!pages.length) return null;
+        const open = level > 0 || narrow || g.title === openGroup;
+        return (
+          <div key={g.title} className="r1s-fold" role="group" aria-label={g.title} data-open={open ? "true" : "false"} style={{ display: "contents" }}>
+            {level === 0 ? (
+              <div role="button" tabIndex={0} className="r1s-grp g-label" aria-expanded={open} onClick={() => onOpen(pages[0].id)} onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();
+                onOpen(pages[0].id);
+              }}>{g.title}</div>
+            ) : (
+              <div className="r1s-grp g-label">{g.title}</div>
+            )}
+            {open ? pages.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={sub(p.id)} onOpen={() => onOpen(p.id)} />) : null}
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -169,6 +216,7 @@ function CardRows({ rows, ...host }: RowHost & { rows: Row[] }) {
 
 export function SettingsFrame(props: SettingsFrameProps) {
   const { engine } = props;
+  const narrow = useNarrowNav();
   const slots = props.pages ?? NO_SLOTS;
   const rows = useMemo(() => mergeRows(props.rows ?? ROWS, slots), [props.rows, slots]);
   const [level, setLevel] = useLevel(engine);
@@ -248,18 +296,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </div>
         <nav className="r1s-list" aria-label="Settings pages">
           {q.trim() ? <Results engine={engine} hits={hits} onOpen={open} onMakeDefault={props.onTrunk ? (id) => { setQ(""); props.onTrunk?.(id, "makeDefault"); } : undefined} /> : (
-            <>
-              {TOP_PAGES.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={p.id === "goto" ? GOTO_SUB : undefined} onOpen={() => go(p.id)} />)}
-              {NAV.map((g) => {
-                const pages = g.pages.filter((p) => pageShown(p.id, level));
-                return pages.length ? (
-                  <div key={g.title} role="group" aria-label={g.title} style={{ display: "contents" }}>
-                    <div className="r1s-grp g-label">{g.title}</div>
-                    {pages.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} onOpen={() => go(p.id)} />)}
-                  </div>
-                ) : null;
-              })}
-            </>
+            <NavList level={level} narrow={narrow} shownPage={shownPage} onOpen={go} />
           )}
         </nav>
       </aside>
