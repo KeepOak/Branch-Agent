@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import type * as NodeFs from "node:fs";
 import { chmod, copyFile, mkdir, mkdtemp, open, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
@@ -42,7 +42,10 @@ export interface DesktopJournal {
   /** What the replacement takes the place of. */
   target: string;
   phase: "staged" | "applying" | "applied";
-  /** SHA256 of the staged app.asar, recorded at staging; a start that finds other bytes discards the update. */
+  /**
+   * SHA256 recorded at staging of the staged app.asar (asar), of the app.asar inside the staged app (runtime) or of
+   * the AppImage; a start that finds other bytes discards the update.
+   */
   stagedSha256?: string;
   /** Set when the app was still in use at the swap: later starts wait until then; Restart retries at once. */
   heldUntil?: number;
@@ -141,12 +144,19 @@ async function stagedMatchesInstalled(journal: DesktopJournal, install: DesktopI
   return true;
 }
 
-/** Why a staged record can no longer be applied: one of its files is gone, or the app.asar bytes changed since staging. */
+/** The one staged file whose SHA256 staging records: the app.asar a whole app carries, else the staged file itself. */
+function checkedFile(journal: DesktopJournal, install: DesktopInstall): string {
+  return journal.kind === "runtime" ? stagedPairs(journal, install)[1]![0] : journal.staged;
+}
+
+/** Why a staged record can no longer be applied: one of its files is gone, or the checked bytes changed since staging. */
 async function stagedDefect(journal: DesktopJournal, install: DesktopInstall): Promise<string | undefined> {
+  if (typeof journal.staged !== "string" || typeof journal.target !== "string" || typeof journal.version !== "string") return "the record is incomplete";
   for (const [staged] of stagedPairs(journal, install)) {
     if (await fileSha256(staged) === undefined) return `${basename(staged)} is missing`;
   }
-  if (journal.stagedSha256 && await fileSha256(journal.staged) !== journal.stagedSha256) return `${basename(journal.staged)} fails its SHA256`;
+  const checked = checkedFile(journal, install);
+  if (journal.stagedSha256 && await fileSha256(checked) !== journal.stagedSha256) return `${basename(checked)} fails its SHA256`;
   return undefined;
 }
 
@@ -159,10 +169,12 @@ async function helperMissing(helperSource: string): Promise<boolean> {
 }
 
 /** A record that cannot be applied is dropped, and the app starts on its current build. The reason goes to desktop.log. */
-async function discardStagedUpdate(cfg: DesktopConfig, journal: DesktopJournal, reason: string): Promise<false> {
-  await rm(journalFile(cfg), { force: true });
-  // The log never blocks launch.
-  try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version} discarded: ${reason}; starting the current build\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
+async function discardStagedUpdate(cfg: DesktopConfig, journal: Pick<DesktopJournal, "version"> | undefined, reason: string): Promise<false> {
+  // Neither a record that cannot be removed nor the log ever blocks launch.
+  let removed = true;
+  try { await rm(journalFile(cfg), { force: true }); } catch { removed = false; }
+  const version = typeof journal?.version === "string" ? `${journal.version} ` : "";
+  try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${version}discarded: ${reason}; starting the current build${removed ? "" : " (the record could not be removed)"}\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
   return false;
 }
 
@@ -255,7 +267,14 @@ async function stageAppImageUpdate(cfg: DesktopConfig, release: ComponentRelease
 
 /** Downloads, verifies and extracts the release's desktop component; nothing in the running app changes. */
 export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, install?: DesktopInstall): Promise<boolean> {
-  if (!install || await readDesktopJournal(cfg)) return false;
+  if (!install) return false;
+  const held = await readDesktopJournal(cfg);
+  // A staged app that was never applied is replaced by a newer release. Left alone, it would be applied after the newer
+  // engine and window, and roll the app back to an older build.
+  if (held) {
+    if (held.phase !== "staged" || held.version === release.version) return false;
+    await dropStagedDesktop(cfg, held, `replaced by ${release.version}`);
+  }
   if (install.appImage) {
     if (await readOrEmpty(versionFile(cfg)) === release.version) return false;
     return stageAppImageUpdate(cfg, release, request, install.appImage);
@@ -303,13 +322,26 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
         throw error;
       }
     }
-    const journal: DesktopJournal = { version: release.version, sha256: choice.asset.sha256, kind: choice.kind, staged, target, phase: "staged",
-      ...(choice.kind === "asar" ? { stagedSha256: await fileSha256(staged) } : {}) };
+    const recorded: DesktopJournal = { version: release.version, sha256: choice.asset.sha256, kind: choice.kind, staged, target, phase: "staged" };
+    const journal: DesktopJournal = { ...recorded, stagedSha256: await fileSha256(checkedFile(recorded, install)) };
     await replaceFile(journalFile(cfg), JSON.stringify(journal));
     await writeFile(join(directory, ".desktop-complete"), "");
     await rm(join(directory, ".update-staging"), { force: true });
     return true;
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
+}
+
+/**
+ * Removes a staged desktop update that was never applied: its record, and its folder under updates/ (only a folder
+ * inside updates/ is ever removed). The log says why, so an owner who looks sees the replacement.
+ */
+export async function dropStagedDesktop(cfg: DesktopConfig, journal: DesktopJournal, reason: string): Promise<void> {
+  const updates = join(cfg.dataDir, "updates");
+  await rm(journalFile(cfg), { force: true });
+  if (journal.kind === "appimage" && typeof journal.staged === "string") await rm(journal.staged, { force: true }).catch(() => undefined);
+  const inside = typeof journal.work === "string" ? relative(updates, journal.work) : "";
+  if (inside && !inside.startsWith("..") && !isAbsolute(inside)) await rm(journal.work!, { recursive: true, force: true }).catch(() => undefined);
+  try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version} dropped: ${reason}\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
 }
 
 /** A staged desktop update waits for the next start (or the owner's Restart); the version it will become. */
@@ -336,7 +368,21 @@ function startHelper(node: string, args: string[], env: NodeJS.ProcessEnv): Prom
  * Restart) ignores the wait after a swap that found the app still in use.
  */
 export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopInstall, helperSource: string, args: string[] = [], explicit = false): Promise<boolean> {
-  const journal = await readDesktopJournal(cfg);
+  let journal: DesktopJournal | undefined;
+  try { journal = await readDesktopJournal(cfg); } catch (error) {
+    return discardStagedUpdate(cfg, undefined, `the record is unreadable (${error instanceof Error ? error.message : String(error)})`);
+  }
+  // Whatever goes wrong with a pending update (its files gone, a folder that vanished under the helper, a disk
+  // error), the record is dropped and the app starts on its current build: a pending update never blocks launch.
+  try { return await handOffJournal(cfg, install, helperSource, args, explicit, journal); } catch (error) {
+    if (!journal) throw error;
+    if (journal.kind === "appimage" && typeof journal.staged === "string") await rm(journal.staged, { force: true }).catch(() => undefined);
+    return discardStagedUpdate(cfg, journal, error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function handOffJournal(cfg: DesktopConfig, install: DesktopInstall, helperSource: string, args: string[], explicit: boolean,
+  journal: DesktopJournal | undefined): Promise<boolean> {
   const updateWaiting = journal?.phase === "staged";
   if (!updateWaiting || !explicit && (journal?.heldUntil ?? 0) > Date.now()) {
     if (!updateWaiting) await ensureMacApplicationsInstall(install.appDir, join(cfg.dataDir, "desktop.log"));
@@ -379,7 +425,8 @@ export async function handOffDesktopUpdate(cfg: DesktopConfig, install: DesktopI
     confirmTimeoutMs: CONFIRM_TIMEOUT_MS };
   const planFile = join(work, "desktop-update-plan.json");
   await replaceFile(planFile, JSON.stringify(plan));
-  const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
+  // ELECTRON_NO_ASAR: under Electron's own Node, the helper must see app.asar as the plain file it copies and renames.
+  const env = { ...process.env, ELECTRON_RUN_AS_NODE: "1", ELECTRON_NO_ASAR: "1" };
   const failure = await startHelper(node, [helper, planFile], env);
   if (failure) return discardStagedUpdate(cfg, journal, `the update helper could not start: ${failure}`);
   return true;

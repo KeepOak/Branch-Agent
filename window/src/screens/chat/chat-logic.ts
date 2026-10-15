@@ -3,7 +3,7 @@
 // read them directly.
 import { useCallback, useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
-import { formatDuration, stepsSummary } from "../../thread/format";
+import { stepsSummary } from "../../thread/format";
 import type { Item } from "../../thread/layout";
 import type { Block } from "../../thread/model";
 
@@ -55,15 +55,14 @@ export function streamTokens(text: string): string[] {
 
 /** The steps' one plain line: what runs now ("Opened Outlook on the web…" · "3 so far"), or what was done.
  *  "failed" counts the steps that failed; "took" is the run's length when the turn finished. */
-export function stepsLine(steps: readonly Step[], run?: { title: string; durationMs?: number }): { text: string; meta: string; failed: number; live: boolean } {
+export function stepsLine(steps: readonly Step[]): { text: string; meta: string; failed: number; live: boolean } {
   const running = steps.find((s) => s.status === "running");
   const failed = steps.filter((s) => s.status === "failed").length;
   if (running) return { text: stepsSummary([running]) + "…", meta: steps.length + " so far", failed, live: true };
   const text = stepsSummary(steps).replace(/ · .*$/, "");
-  const times = steps.map((s) => s.at).filter((at): at is number => typeof at === "number");
-  const took = run?.durationMs ? formatDuration(run.durationMs) : times.length >= 2 ? formatDuration(Math.max(...times) - Math.min(...times)) : "";
+  // A finished run shows its step count only; the elapsed clock belongs to a step that is still running.
   const count = steps.length === 1 ? "1 step" : steps.length + " steps";
-  return { text, meta: [count, took].filter(Boolean).join(" · "), failed, live: false };
+  return { text, meta: count, failed, live: false };
 }
 
 /** "Show agents' work as" (owner item 26): Normal hides thoughts, Thinking adds them as quiet rows inside the steps,

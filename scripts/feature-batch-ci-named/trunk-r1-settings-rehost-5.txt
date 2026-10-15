@@ -1,0 +1,6 @@
+window:src/screens/settings/pages/learning-live.test.tsx
+window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/settings/rows.test.ts
+window:src/screens/frame/R1Window.test.tsx
+window:src/places/settings/set2/seasons-copy.test.tsx
+window:src/places/settings/set2/self.check.test.tsx

@@ -7,9 +7,11 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Keyboa
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
+import { TrunkHost } from "../../places-nav/TrunkHost";
 import { lookStore } from "../../places/settings/set1/appearance-store";
+import { pinsOf } from "../../places/settings/pins";
 import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
-import { ROWS, cardRows, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
+import { COMING_FROM, ROWS, cardRows, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots, type SlotControl } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
@@ -125,6 +127,11 @@ function SlotRow({ engine, row, hints, control: Control, onPage }: RowHost & { r
   const level = rowLevel(row, hints);
   const tag = level > 0 ? LEVELS[level].label : undefined;
   const help = rowHelp(row, hints);
+  if (row.bare) return (
+    <div id={`row-${row.id}`} className="r1s-row r1s-stack" data-row={row.id} data-lv={tag} data-slot="" data-bare="" aria-label={rowLabel(row, hints)}>
+      <div className="r1s-ctl r1s-own"><Control engine={engine} row={row} onPage={onPage} /></div>
+    </div>
+  );
   return (
     <div id={`row-${row.id}`} className={`r1s-row${row.control === "custom" ? " r1s-stack" : ""}`} data-row={row.id} data-lv={tag} data-slot="">
       <b className="g-label" data-lv={tag}>{rowLabel(row, hints)}</b>
@@ -204,13 +211,20 @@ export function SettingsFrame(props: SettingsFrameProps) {
   };
 
   const spec = PAGES[shownPage];
-  const sections = spec.cards.flatMap((card) => {
+  // General's Pinned card shows only once the person has pinned a row, as in the preview.
+  const pinCount = pinsOf(lookStore(engine).snap.look).length;
+  const cards = spec.cards.filter((card) => !(shownPage === "general" && card === "Pinned" && !pinCount));
+
+  const controls = slots[shownPage]?.controls;
+  const sections = cards.flatMap((card) => {
     const all = rows.filter((r) => r.page === shownPage && r.card === card);
-    const visible = cardRows(shownPage, card, level, hints, rows);
+    const visible = cardRows(shownPage, card, level, hints, rows, controls);
     if (all.length && !visible.length) return [];
+    // A section with no rows yet is all Coming: Regular shows only what works today.
+    if (!all.length && level < COMING_FROM) return [];
     return [{ card, visible }];
   });
-  const first = pageFirstLevel(shownPage, hints, rows);
+  const first = pageFirstLevel(shownPage, hints, rows, controls);
   const loadFailed = typeof config === "string";
   const invalid = config && typeof config === "object" && config.valid === false ? configIssues(config.issues) : null;
   const levelLine = LEVELS[level].line;
@@ -279,18 +293,18 @@ export function SettingsFrame(props: SettingsFrameProps) {
             </div>
           ) : null}
           {sections.length ? sections.map(({ card, visible }) => (
+            // A section with no rows yet collapses to one quiet line, not an empty card: nothing hollow to look at.
+            visible.length ? (
             <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title}>
               {card ? <h2 className="g-label">{card}</h2> : null}
-              {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} /> : (
-                // A section with no rows in the table yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
-                <Coming engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
-                  <div className="r1s-row">
-                    <b className="g-label">Coming</b>
-                    <small className="r1s-note g-label" data-lines>{SECTION_COMING(card || spec.title)}</small>
-                  </div>
-                </Coming>
-              )}
+              <CardRows engine={engine} rows={visible} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} />
             </section>
+            ) : (
+              // Nothing to show yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
+              <Coming key={card} engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
+                <p id={`sec-${shownPage}-${card}`} className="r1s-quiet g-label" aria-label={card || spec.title} data-lines><b>{card || spec.title}</b> · Coming. {SECTION_COMING(card || spec.title)}</p>
+              </Coming>
+            )
           )) : (
             <div className="r1s-empty g-clear">
               <p className="g-label">These settings show at {first !== null && first > level ? LEVELS[first].label : "Advanced"}.</p>
@@ -300,6 +314,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </div>
         </>}
       </div>
+      <TrunkHost engine={engine} level={LEVEL_WORD[level]} openSettings={(page) => go(pageFor(page))} openPlace={(place) => props.onOpenPlace?.(place)} />
     </div>
   );
 }

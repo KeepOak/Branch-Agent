@@ -5,6 +5,7 @@
 // connected now (system-presence). The browser rows are in computer-browser.tsx, the code and git rows in
 // computer-code.tsx.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { Fragment, useRef, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pick, Pill, Sec, Seg, Switch, Tabs, useConfig, type RowEntry } from "../kit";
@@ -119,7 +120,7 @@ const CODE_COMMITS: SecSpec = { t: "Code and commits", lv: 0, rows: [
 
 const NETWORK_MORE: SecSpec = { t: "Network, more", group: "Network", lv: 1, rows: [
   { t: "Its computer joins a private network", sub: "So a Trunk’s computer reaches your private machines without opening them to the internet.", k: "seg", opts: [{ v: "off", l: "Off" }, { v: "tailscale", l: "Tailscale" }, { v: "netbird", l: "NetBird" }], off: "Needs the engine to join a Trunk’s computer to a private network." },
-  { t: "Previews on your other computers", sub: "See a preview server running on taofik-ai, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Needs the engine to forward preview servers from other computers." },
+  { t: "Previews on your other computers", sub: "See a preview server running on another of your computers, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Previews on your other computers comes in a later update." },
 ] };
 
 const ON_MORE: SecSpec = { t: "On a computer, more", group: "On a computer", showHeading: false, lv: 1, rows: [
@@ -637,11 +638,12 @@ function SparesMax({ c }: { c: Ctx }) {
   const shown = draft ?? (typeof v === "number" ? String(v) : "");
   const n = shown.trim() === "" ? null : Number(shown);
   const ok = n === null || (Number.isInteger(n) && n >= 0);
-  const save = () => { if (!ok) return; void cfg.set("cloudWorkers.preparedPool.maxTotal", n); setDraft(null); };
+  const unchanged = n === (typeof v === "number" ? v : null);
+  const save = () => { if (!ok || unchanged) return; void cfg.set("cloudWorkers.preparedPool.maxTotal", n); setDraft(null); };
   return (
     <Ctl title="Most spares at once" sub="Across every repository and cloud computer." help="Across every repository and cloud computer. Empty means 4; 0 stops spares and lets the unused ones go.">
       <input className="inp s2cm-num" inputMode="numeric" aria-label="Most spares at once" placeholder="4" value={shown} disabled={cfg.loading} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} />
-      <Btn sm disabled={cfg.loading || !ok} onClick={save}>Save</Btn>
+      <Btn sm disabled={cfg.loading || !ok || unchanged} onClick={save}>Save</Btn>
     </Ctl>
   );
 }
@@ -832,6 +834,7 @@ const MODE: Record<string, string> = { ui: "the window", webchat: "a browser", c
 const IDLE_S = 300;
 
 function Who({ c }: { c: Ctx }) {
+  const [checked, stamp] = useCheckedAt();
   const pres = useLive<unknown>(c.engine, "system-presence", {}, ["presence"]);
   const nodes = useLive<RecordValue>(c.engine, "node.list", {}, PAIR_EVENTS);
   const devs = useLive<RecordValue>(c.engine, "device.pair.list", {}, PAIR_EVENTS);
@@ -840,7 +843,7 @@ function Who({ c }: { c: Ctx }) {
   const pending = list(rec(devs.data).pending);
   return (
     <>
-      <Acts><button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => { void pres.reload(); void nodes.reload(); }}><Ico name="retry" s /></button></Acts>
+      <Acts><button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => { void Promise.all([pres.reload(), nodes.reload()]).then(([presOk, nodesOk]) => { if (presOk && nodesOk) stamp(); }, () => undefined); }}><Ico name="retry" s /></button><CheckedAt at={checked} /></Acts>
       {pres.error ? <p className="hint s2-err" role="alert">{pres.error}</p> : null}
       {pres.data && !rows.length && !pending.length ? <Empty>Nothing is reporting in right now.</Empty> : null}
       <div className="rows">
@@ -849,7 +852,7 @@ function Who({ c }: { c: Ctx }) {
           <div key={str(r.requestId)} className="prow">
             <Tile><Ico name="monitor" s /></Tile>
             <span className="grow"><b>{str(r.displayName) || str(r.clientId) || "A device"}</b><small>Waiting for your yes. Its abilities stay off until you allow it.</small></span>
-            <Btn sm onClick={() => document.getElementById("s2-waiting")?.scrollIntoView({ behavior: "smooth" })}>Review</Btn>
+            <Btn sm data-jump-to="#s2-waiting" onClick={() => document.getElementById("s2-waiting")?.scrollIntoView({ behavior: "smooth" })}>Review</Btn>
           </div>
         ))}
       </div>
@@ -887,6 +890,9 @@ const SECTIONS: SecSpec[] = [
   LENT_TECH, SCREEN_TECH, ALLOWING, CODE_COMMITS, NETWORK_MORE, ...BROWSER_MORE, ...BROWSER_TECH, ...CODE_SECS, CODE_TECH,
   ON_MORE, USING_MORE, PHONES_SMALL, MORE_PLACES, USING_TECH, WHERE_MORE, SCRIPTS, SEALED_TECH, LIMITS_TECH,
 ];
+
+/** The sections the R1 Devices page draws on its cards (screens/settings/pages/devices.ts). */
+export const DEVICE_SECS = { CLOUD, LET_TRUNKS, PHONES_LENT, EVERYTHING, WHO, LENT_TECH, ALLOWING, NETWORK_MORE, TECHNICAL, PHONES_SMALL, MORE_PLACES, WHERE_MORE, SCRIPTS, SEALED_TECH, LIMITS_TECH };
 
 /** The parts the page splits into where Settings has a page for each: Browser & screen, Coding, and the rest (Devices). */
 export type ComputerPart = "browser" | "coding" | "devices";
