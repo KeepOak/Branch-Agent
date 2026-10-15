@@ -7,7 +7,9 @@ import { record, text, visible } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, Empty, Hint, LinkBtn, Pick, Sec, Seg, Switch, useSaveRunner, type Opt } from "../kit";
 import { Logo } from "./service";
-import { connectionsOf, fallbacksOf, modelOpts, refOf, type Connection, type ModelsCtx } from "./models-data";
+import { connectionsOf, fallbacksOf, modelOpts, plainThinking, refOf, type Connection, type ModelsCtx } from "./models-data";
+import { useLevel } from "../kit";
+import { showsInternals } from "../internals";
 
 const PREF = "branch.models.connectionDefaults";
 const NONE = "Branch has no setting for this yet.";
@@ -44,11 +46,12 @@ export function DefaultsTab({ m }: { m: ModelsCtx }) {
 
 function ConnectionRow({ m, c, value, onModel }: { m: ModelsCtx; c: Connection; value: string; onModel: (ref: string) => void }) {
   const model = c.models.find((x) => x.ref === value);
+  const technical = showsInternals(useLevel());
   const think = model ? text(m.cfg.get(m.own("models", model.ref, "params", "thinking")) ?? model.thinkingDefault ?? "") : "";
   return (
     <Ctl id={c.name} title={c.name} icon={<Logo id={c.local ? "local" : c.id} name={c.name} size={22} />} sub={c.local ? "On this computer · free and private" : `${c.accounts} ${c.accounts === 1 ? "account" : "accounts"}`}>
       <Pick label={`${c.name} default model`} value={value} options={modelOpts(c.models)} onChange={onModel} />
-      {model && model.thinking.length ? <Seg label={`${c.name} thinking`} value={think} options={model.thinking} onChange={(v) => void m.cfg.set(m.own("models", model.ref, "params", "thinking"), v)} /> : null}
+      {model && model.thinking.length ? <Seg label={`${c.name} thinking`} value={think} options={plainThinking(model.thinking, technical)} onChange={(v) => void m.cfg.set(m.own("models", model.ref, "params", "thinking"), v)} /> : null}
     </Ctl>
   );
 }
