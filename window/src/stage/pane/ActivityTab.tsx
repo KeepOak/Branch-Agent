@@ -121,11 +121,6 @@ function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: App
   );
 }
 
-/**
- * The task the Activity tab is about, never earlier tasks' steps: the run going now (its blocks follow the history's
- * last turn end, or your last message), or else the last task, the newest turn that had steps. A plain reply after
- * it is not a task, so it doesn't empty the list.
- */
 /** A step's sub-line: the reason when it failed or was refused, and a finished step's raw output only at Technical, so file
  *  contents, tool replies and ids ("Sent visible reply … via internal-ui", "no_change") stay out of normal views. */
 export function stepDetail(step: Extract<Block, { kind: "step" }>, level: Level): string | null {
@@ -135,6 +130,11 @@ export function stepDetail(step: Extract<Block, { kind: "step" }>, level: Level)
   return null;
 }
 
+/**
+ * The task the Activity tab is about, never earlier tasks' steps: the run going now (its blocks follow the history's
+ * last turn end, or your last message), or else the last task, the newest turn that had steps. A plain reply after
+ * it is not a task, so it doesn't empty the list.
+ */
 export function currentTask(blocks: readonly Block[], running: boolean): Block[] {
   const kinds = blocks.map((b) => b.kind);
   if (running) return blocks.slice(Math.max(kinds.lastIndexOf("user"), kinds.lastIndexOf("done"), kinds.lastIndexOf("error")) + 1);
