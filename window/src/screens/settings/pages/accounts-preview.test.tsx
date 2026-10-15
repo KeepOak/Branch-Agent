@@ -8,7 +8,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { forgetLookStore } from "../../../places/settings/set1/appearance-store";
-import { PAGES } from "../nav";
+import { PAGES, regularHub } from "../nav";
 import { ROWS } from "../rows";
 import { SettingsFrame } from "../SettingsFrame";
 import { R1_PAGES } from "./plugged";
@@ -82,4 +82,14 @@ it("puts the finer account rows in Your own accounts at Advanced and the sign-in
   const sources = labels("Where each sign-in comes from");
   for (const label of ["A command that makes a sign-in", "On a build server, sign in with", "Accept sign-ins from your editor", "This Branch’s identity", "Sign-ins through the Gateway", "Settings from another Branch",
     "Keep service settings in step on my devices", "Use a model from a hub for one run", "Region", "Install a service’s package when needed", "Each account keeps its own folder", "Point your coding apps at Branch"]) expect(sources).toContain(label);
+});
+
+it("sits on Regular's Usage page as its first page, with the other Usage pages under Advanced", async () => {
+  expect(regularHub("accounts")?.title).toBe("Usage");
+  expect(regularHub("accounts")?.pages[0].id).toBe("accounts");
+  const { engine } = engineOf();
+  await mount(engine, "regular");
+  expect(host.querySelector(".r1s-nav[aria-current=page]")?.getAttribute("data-hub")).toBe("Usage");
+  expect(host.querySelector(".r1s-head h1")?.textContent).toBe(PAGES.accounts.title);
+  expect([...host.querySelectorAll<HTMLElement>(".r1s-advanced [data-page]")].map((b) => b.dataset.page)).toEqual(regularHub("accounts")!.pages.slice(1).map((p) => p.id));
 });
