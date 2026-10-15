@@ -1,6 +1,7 @@
 // Settings › Data & usage (DESIGN-SPEC §4.7.14): the spend card and its report (sessions.usage, usage.cost,
 // sessions.usage.timeseries/logs), what each connection has left (usage.status), spend per Trunk, keeping
 // conversations (config `session.*`), backups (backup.status) and the rest, greyed with why where the engine has none.
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import type { WindowEngine } from "../../../connect/engine";
@@ -20,6 +21,7 @@ import "./usage.css";
 import { DesktopCtl } from "../desktop-ctl";
 import { formatMoney } from "../../../format/money";
 import { forgetDeletedConversationWindow } from "../../../shell/own-window";
+import { trunkDisplayName } from "../../../connect/trunk-name";
 
 /* ---------- figures ---------- */
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -31,7 +33,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const pct = (v: number, digits = 0) => `${(v * 100).toFixed(digits)}%`;
 /** "4.7M", "472k", "262". */
-export function tok(n: unknown): string {
+function tok(n: unknown): string {
   const v = num(n);
   return v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}k` : String(Math.round(v));
 }
@@ -59,7 +61,7 @@ function useQuery(engine: WindowEngine, method: string, params: unknown) {
 /** Trunk names by id, from agents.list. */
 function useNames(engine: WindowEngine): Map<string, string> {
   const agents = useLive<RecordValue>(engine, "agents.list", {}, []);
-  return useMemo(() => new Map(list(rec(agents.data).agents).map((a) => [str(a.id), str(rec(a.identity).name) || str(a.name) || str(a.id)])), [agents.data]);
+  return useMemo(() => new Map(list(rec(agents.data).agents).map((a) => [str(a.id), trunkDisplayName(a)])), [agents.data]);
 }
 
 const CHANNEL: Record<string, string> = {
@@ -271,7 +273,7 @@ function periodDates(s: RepState): RecordValue {
 }
 
 /** The sessions.usage request for the report: who (Trunk, person), the time zone, the lineage, then the dates. */
-export function reportParams(s: RepState, sel: Sel): RecordValue {
+function reportParams(s: RepState, sel: Sel): RecordValue {
   return {
     ...(s.agent ? { agentId: s.agent } : ALL), ...(s.creator ? { creatorKey: s.creator } : {}),
     ...(s.utc ? { mode: "utc" } : LOCAL), groupBy: s.lineage, limit: 1000,
@@ -306,7 +308,7 @@ function daysOf(data: RecordValue): Day[] {
   });
 }
 
-export function ReportDialog({ engine, lv, days, names, onClose }: { engine: WindowEngine; lv: number; days: string; names: Map<string, string>; onClose: () => void }) {
+function ReportDialog({ engine, lv, days, names, onClose }: { engine: WindowEngine; lv: number; days: string; names: Map<string, string>; onClose: () => void }) {
   const [s, setS] = useState<RepState>(() => initial(days));
   const set = (patch: Partial<RepState>) => setS((o) => ({ ...o, ...patch }));
   const waiting = s.period === "Custom…" && !(s.from && s.to);
@@ -569,7 +571,7 @@ function Heat({ year }: { year: RecordValue }) {
 }
 
 /** Tokens and errors by local (or UTC) weekday and hour, from each conversation's quarter-hour buckets. */
-export function timeBuckets(rows: RecordValue[], utc: boolean) {
+function timeBuckets(rows: RecordValue[], utc: boolean) {
   const dow = Array<number>(7).fill(0); const hours = Array<number>(24).fill(0);
   const hourMsgs = Array<number>(24).fill(0); const hourErrs = Array<number>(24).fill(0);
   const at = (b: RecordValue) => { const d = new Date(`${str(b.date)}T00:00:00Z`); d.setTime(d.getTime() + num(b.quarterIndex) * 900_000); return d; };
@@ -720,7 +722,7 @@ const ROLE: Record<string, string> = { user: "You", tool: "Tool", toolResult: "T
 
 /* ---------- export ---------- */
 const cell = (v: unknown) => { const t = String(v ?? ""); return /[",\n]/.test(t) ? `"${t.replace(/"/g, "\"\"")}"` : t; };
-export function csv(rows: unknown[][]): string { return rows.map((r) => r.map(cell).join(",")).join("\n"); }
+function csv(rows: unknown[][]): string { return rows.map((r) => r.map(cell).join(",")).join("\n"); }
 
 function download(name: string, body: string, type: string) {
   const url = URL.createObjectURL(new Blob([body], { type }));
@@ -801,7 +803,7 @@ function AllowanceRows({ engine }: { engine: WindowEngine }) {
     <>
       <Ctl title="Offer to save progress at 95%" sub={<>It asks once per account window, never for an estimate. <button type="button" className="link-k" onClick={() => window.dispatchEvent(new Event(CKPT_SHOW))}>Show me</button></>}><Switch label="Offer to save progress at 95%" checked={ckptOn} onChange={(on) => void lookStore(engine).set(CKPT_PREF, on)} /></Ctl>
       <Ctl title="Asking a service what is left" off={NO_ASK}><Switch label="Asking a service what is left" checked onChange={() => undefined} /></Ctl>
-      <DesktopCtl title="Show usage in the tray" sub="A small ring by the clock opens the same list." name="trayUsage" />
+      <DesktopCtl title="Also show usage in the system tray" sub="The usage ring is in the bottom bar. In the desktop app, you can also show it in the system tray." name="trayUsage" />
     </>
   );
 }
@@ -988,7 +990,7 @@ function CodexFolders({ config }: { config: Cfg }) {
     <Ctl title="More Codex folders" sub="Folders Branch also reads Codex conversations from." help="Folders Branch also reads Codex conversations from. Takes effect after the Gateway restarts." after={
       <div className="s2usage-x">
         <div className="s2usage-list">{homes.length ? homes.map((h) => <span className="chip6" key={name(h)}>{name(h)}<button type="button" className="ib" aria-label={`Remove ${name(h)}`} onClick={() => void config.set(path, homes.filter((x) => x !== h))}><Ico name="x" s /></button></span>) : <small>None.</small>}</div>
-        <div className="acts"><input className="inp" aria-label="More Codex folders: add" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm onClick={add}>Add</Btn></div>
+        <div className="acts"><input className="inp" aria-label="More Codex folders: add" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm disabled={!draft.trim()} onClick={add}>Add</Btn></div>
         {err ? <small className="s2-err" role="alert">{err}</small> : null}
       </div>
     } />
@@ -1037,6 +1039,7 @@ export function MoveInDialog({ engine, onClose }: { engine: WindowEngine; onClos
 // a workspace folder on a schedule, or now). The artifact has no row for it; add one here, styled like "Backups",
 // once the engine has the method.
 function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
+  const [checked, stamp] = useCheckedAt();
   const [backups, setBackups] = useState(false);
   const usage = useLive<RecordValue>(engine, "usage.status", {}, []);
   const balances = list(rec(usage.data).providers).flatMap((p) => list(p.billing).filter((b) => b.type === "balance").map((b) => `${str(p.displayName)}: ${str(b.unit) === "USD" ? money(b.amount) : `${num(b.amount)} ${str(b.unit)}`}`));
@@ -1044,7 +1047,7 @@ function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
     <Sec title="Money and keeping, more" group="Keeping things" showHeading={false}>
       <Ctl title="Spend caps per service" sub="Pauses work when a service reaches its monthly limit." help="A monthly limit for each service that bills per use; work pauses and asks when one is reached." off={NO_CAPS}><Btn sm>Set caps</Btn></Ctl>
       <Ctl title="Prepaid balances" sub={balances.length ? balances.join(" · ") : "For services that sell credit, how much is left, checked when you open this page."}>
-        <Btn sm disabled={usage.loading} onClick={() => void usage.reload()}>Check now</Btn>
+        <Btn sm disabled={usage.loading} onClick={() => void usage.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check now</Btn><CheckedAt at={checked} />
       </Ctl>
       <Ctl title="What each project cost" sub="Spend by project and by conversation, for the period you pick." off={NO_PROJECT}><Btn sm>See projects</Btn></Ctl>
       <Ctl title="Backups" sub="Back up conversations, memory and settings on a schedule." help="A copy of your conversations, memory and settings, on a schedule you choose."><Btn sm onClick={() => setBackups(true)}>See backups</Btn></Ctl>
@@ -1112,7 +1115,7 @@ function KeepingMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
       <Ctl title="Tidy the list" sub={str(g("mode")) === "warn" ? "Branch only tells you what it would tidy." : "Idle conversations leave the list; search still finds them."}>
         <Seg label="Tidy the list" value={str(g("mode")) === "warn" ? "warn" : "enforce"} options={[{ id: "enforce", label: "Do it" }, { id: "warn", label: "Only warn" }]} disabled={config.loading} onChange={(v) => void config.set(`${M}.mode`, v)} />
       </Ctl>
-      <Ctl title="Archive conversations idle for" sub="They leave the list; search still finds them."><Num label="Archive conversations idle for" unit="days" min={1} placeholder="30" value={asNum(daysFrom(g("pruneAfter") ?? ""))} onCommit={(v) => void config.set(`${M}.pruneAfter`, v === null ? null : `${v}d`)} /></Ctl>
+      <Ctl title="Archive conversations idle for" sub="They leave the list; search still finds them. Unset keeps them forever."><Num label="Archive conversations idle for" unit="days" min={1} value={asNum(daysFrom(g("pruneAfter") ?? ""))} onCommit={(v) => void config.set(`${M}.pruneAfter`, v === null ? null : `${v}d`)} /></Ctl>
       <Ctl title="Most conversations in the list" sub="The oldest idle ones are archived first past this."><Num label="Most conversations in the list" min={1} placeholder="5000" value={asNum(str(g("maxEntries")))} onCommit={(v) => void config.set(`${M}.maxEntries`, v === null ? null : Math.round(v))} /></Ctl>
       <Ctl title="Space for conversations, per Trunk" sub="Past 80%, the oldest archived transcripts are removed first."><Num label="Space for conversations, per Trunk" unit="GB" min={1} placeholder="10" value={asNum(gbFrom(g("maxDiskBytes") ?? ""))} onCommit={(v) => void config.set(`${M}.maxDiskBytes`, v === null ? null : `${v}gb`)} /></Ctl>
       <Ctl title="Try a tidy-up" sub="Lists what would be archived or removed, changing nothing." off={NO_DRY}><Btn sm>Show me</Btn></Ctl>
@@ -1183,7 +1186,7 @@ const SESSKEYS: Key[] = [
   ["session.resetByType", "The same, per kind of chat (direct, group, thread).", "json", null, "{}"],
   ["session.resetByChannel", "The same, per chat app.", "json", null, "{}"],
   ["session.maintenance.mode", "Tidy the list, or only warn.", "sel", ["enforce", "warn"], "enforce"],
-  ["session.maintenance.pruneAfter", "Time before an untouched conversation is archived.", "txt", null, "30d"],
+  ["session.maintenance.pruneAfter", "Time before an untouched conversation is archived.", "txt", null, "Forever"],
   ["session.maintenance.archiveDashboardAfter", "Time before an idle conversation in this window is archived.", "txt", null, "7d"],
   ["session.maintenance.maxEntries", "Most conversations in the list.", "num", null, "5000"],
   ["session.maintenance.preserveRecent", "Conversations active within this time are never tidied.", "txt", null, "unset"],
@@ -1196,7 +1199,7 @@ const SESSKEYS: Key[] = [
 ];
 
 /** The value as typed: numbers for num, JSON for json, booleans for bool; "" means back to default. */
-export function parseKey(kind: Key[2], raw: string): unknown {
+function parseKey(kind: Key[2], raw: string): unknown {
   if (raw.trim() === "") return null;
   if (kind === "num") { const n = Number(raw); if (!Number.isFinite(n)) throw new Error("Enter a number."); return n; }
   if (kind === "json") return JSON.parse(raw) as unknown;
@@ -1291,7 +1294,7 @@ function BackupsGo({ data }: { data: RecordValue }) {
 
 export const ROWS: RowEntry[] = ([
   ["Offer to save progress at 95%", "Account allowances", 0],
-  ["Asking a service what is left", "Account allowances", 0], ["Show usage in the tray", "Account allowances", 0],
+  ["Asking a service what is left", "Account allowances", 0], ["Also show usage in the system tray", "Account allowances", 0],
   ["Keep conversations", "Keeping things", 0], ["Checkpoints", "Keeping things", 0], ["Conversations", "Keeping things", 1],
   ["Test set", "Test the model you use", 0],
   ...SUITES.map(([t]): [string, string, number] => [t, "Evals", 0]),

@@ -12,7 +12,7 @@ export function petWords(waiting: string | null, now = Date.now()): string {
   return waiting ? `${waiting} needs a yes. It’s in your Inbox.` : TIPS[Math.floor(now / 60000) % TIPS.length];
 }
 
-/** The roaming pet (Appearance › Pet › Let it roam): it walks the chat lane and its menu can stop it, which brings the card back. */
+/** The roaming pet (the pet picked in Appearance › Pet): it walks the chat lane and its menu can stop it, which brings the card back. */
 export function SidebarPet({ pet, waiting, still, working = false, onStopRoaming }: { pet: { id: string; name: string }; waiting: string | null; still: boolean; working?: boolean; onStopRoaming?: () => void }) {
   const strip = useRef<HTMLDivElement>(null);
   const [x, setX] = useState(0);

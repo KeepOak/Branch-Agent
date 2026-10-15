@@ -1,0 +1,3 @@
+window:src/screens/frame/R1Window.stage.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/stage/ComputerStage.test.tsx

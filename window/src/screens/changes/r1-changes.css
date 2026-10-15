@@ -1,0 +1,22 @@
+/* The re-hosted Classic Changes view and pull request box inside the R1 frame (parity row 4). README item 48: the view is
+   clear glass; its words and controls sit on small frosted pills, and the Classic file cards and pull request box lose their
+   own fill and outline so the conversation shows through. No divider lines. */
+.r1-changes { max-width: 1040px; margin: 0 auto; padding: 4px var(--r1-gutter, 16px) 16px; display: grid; gap: 10px; }
+.r1-changes-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.r1-changes-top h2 { margin: 0; font-size: 13.5px; font-weight: 600; }
+.r1-changes-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r1-changes-grow { flex: 1; }
+.r1-changes-close { width: 30px; height: 30px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; color: inherit; font: inherit; }
+.r1-changes .file-cd, .r1-changes .pr-box-cd { background: transparent; border-color: transparent; }
+.r1-changes .hunk-cd, .r1-changes .hunk-split-cd { background: transparent; border-top-color: transparent; }
+.r1-changes .row-cd pre + pre { border-left-color: transparent; }
+/* glass.css gives every button inside a .g-clear surface its own pill (the :is(.g-frost, .g-label), .g-clear :is(button …)
+   rule). A file's row is one frosted pill here, so its open/close toggle shares that pill instead of stacking a second. */
+.r1-changes .file-h-cd { border-radius: 12px; background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); }
+.r1-changes .file-h-cd .tog-cd:not(#g48#g48) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+/* Text that sits straight on the view (the counts, unchanged-line gaps, the empty and reading lines, the PR box title and
+   hints) takes a pill. */
+.r1-changes :is(.chg-h-cd > small, .changes-cd > .hint-st, .changes-cd > .pane-empty, .file-cd > .hint-st, .gap-cd, .pr-box-cd > h3, .pr-box-cd > .hint-st, .pr-confirm-cd > p, .pr-confirm-cd > small),
+.r1-changes > .pane-empty, .r1-changes > .err-st { width: fit-content; max-width: 100%; box-sizing: border-box; margin: 0; padding: 2px 9px; border-radius: var(--r-pill); background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); }
+.r1-changes .pr-box-cd { padding-inline: 0; }
+.r1-changes :is(.gap-cd, .file-cd > .hint-st) { margin: 6px 10px; font-size: 11.5px; border-top: 0; }
