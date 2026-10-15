@@ -13,8 +13,8 @@ describe("joinNames", () => {
 
   it("joins short lists with commas and a final and", () => {
     expect(joinNames(["Mac"])).toBe("Mac");
-    expect(joinNames(["Mac", "Legion"])).toBe("Mac and Legion");
-    expect(joinNames(["Mac", "Legion", "NAS"], 3)).toBe("Mac, Legion and NAS");
+    expect(joinNames(["Mac", "Office PC"])).toBe("Mac and Office PC");
+    expect(joinNames(["Mac", "Office PC", "NAS"], 3)).toBe("Mac, Office PC and NAS");
   });
 
   it("drops blanks and returns nothing for an empty list", () => {

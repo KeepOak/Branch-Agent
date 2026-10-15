@@ -28,13 +28,13 @@ const tile = (container: HTMLElement, title: string) => container.querySelector<
 
 describe("Devices & apps tiles", () => {
   it("reads Offline, not Connected, for a paired computer that is not online now", async () => {
-    const container = await render(engineWith([], [{ displayName: "Legion", platform: "win32", connected: false }]));
+    const container = await render(engineWith([], [{ displayName: "Office PC", platform: "win32", connected: false }]));
     expect(tile(container, "Windows")?.textContent).toContain("Offline");
     expect(tile(container, "Windows")?.textContent).not.toContain("Connected");
   });
 
   it("is Connected when the computer is online now", async () => {
-    const container = await render(engineWith([{ displayName: "Legion", platform: "win32", connected: true }], []));
+    const container = await render(engineWith([{ displayName: "Office PC", platform: "win32", connected: true }], []));
     expect(tile(container, "Windows")?.textContent).toContain("Connected");
   });
 
