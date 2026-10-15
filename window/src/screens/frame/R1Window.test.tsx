@@ -6,8 +6,9 @@ import type { SaplingSession } from "../../connect/session";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { NAV, PAGES, TOP_PAGES } from "../settings/nav";
 import { levelFor, pageAtLevel, settingsGroups } from "../../places-nav/settings-nav";
-import { CLASSIC_PAGE, r1SettingsPage, r1Window, R1Window, resolveRoute } from "./R1Window";
+import { CLASSIC_PAGE, r1Route, r1SettingsPage, r1Window, R1Window, resolveRoute } from "./R1Window";
 import { FIND_ANYTHING_EVENT } from "../find/find-event";
+import { peekCustomizeRequest, takeCustomizeRequest } from "../../places/customize/r1-request";
 vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <p>{name}</p> }));
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null, useUpdate: () => null }));
@@ -323,6 +324,14 @@ it("puts Talk beside on a place's header and opens the Classic pane beside the p
   await act(async () => root.render(<R1Window session={session} />));
   expect(host.querySelector('.r1-header-right [aria-label^="Talk to"]')).toBeNull();
   expect(host.querySelector(".r1-beside")).toBeNull();
+});
+
+it("sends the Seedbank place to Customize's Community, both from the pill and from a saved route", () => {
+  expect(r1Route({ kind: "place", place: "seedbank" })).toEqual({ kind: "place", place: "customize" });
+  expect(peekCustomizeRequest()).toEqual({ mode: "community" });
+  takeCustomizeRequest();
+  expect(r1Route({ kind: "place", place: "inbox" })).toEqual({ kind: "place", place: "inbox" });
+  expect(peekCustomizeRequest()).toEqual({});
 });
 
 it("hands the Grove a createTrunk, so its Trunk button makes a random Trunk on R1 as the + menu's New Trunk does", async () => {

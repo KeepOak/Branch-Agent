@@ -175,6 +175,8 @@
 :root:not(#sg#sg#sg#sg) .r1s-sec.g-clear:not(#g48#g48#g48) { background: var(--sg-panel); border-radius: 18px; padding: 18px 20px;
   box-shadow: inset 0 0 0 .5px var(--sg-line); }
 :root:not(#sg#sg#sg#sg) .r1s-side.g-clear :is(button, a[href]):not([aria-current="page"], [aria-current="true"], :hover, #g48#g48#g48) { background: transparent; box-shadow: none; }
+/* Advanced links on a Regular settings page are a list of rows. Words sit on the page, never on a frosted chip. */
+:root:not(#sg#sg#sg#sg) .r1s-advanced .r1s-jump { background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: 0; }
 :root:not(#sg#sg#sg#sg) :is(.r1c-txt, .r1c-from, .r1c-time):not(#g48#g48#g48) { background: none; box-shadow: none;
   backdrop-filter: none; -webkit-backdrop-filter: none; border: 0; }
 :root:not(#sg#sg#sg#sg) .r1c-txt:not(#g48#g48#g48) { padding: 0; border-radius: 0; }

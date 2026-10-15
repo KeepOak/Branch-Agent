@@ -118,9 +118,10 @@ describe("settings row table", () => {
       "Add an account", "Test it", "Answer first", "Rename", "Which Trunks use it", "Sign out", "Select accounts", "Pause",
       "Move to the next account in the list", "Fall back to this computer", "Each service’s terms", "Which account goes next",
       "Your own accounts", "Add your own account", "Claude Code", "Codex", "Gemini CLI", "Check again", "Where each sign-in comes from",
-      "GitHub", "Permissions", "Access expires", "Connect your keepoak.com account",
+      // Classic's expiry row is a value on the GitHub row now ("Expires …"), as the preview shows an expiry.
+      "GitHub", "Permissions", "Your keepoak.com account",
       "Which account each Trunk uses", "Helpers keep their account", "Pick by what the task needs", "Fallback keys", "Resting now",
-      "Which sign-in each request used", "Organisation", "A customer’s ChatGPT account on a KeepOak computer",
+      "Which sign-in each request used", "Organisation", "A customer’s ChatGPT plan on a KeepOak computer",
       "A command that makes a sign-in", "On a build server, sign in with", "Accept sign-ins from your editor", "This Branch’s identity",
       "Sign-ins through the Gateway", "Settings from another Branch", "Keep service settings in step on my devices",
       "Use a model from a hub for one run", "Region", "Install a service’s package when needed", "Each account keeps its own folder",
@@ -131,20 +132,24 @@ describe("settings row table", () => {
     // names the call it waits for.
     const at = (id: string) => page.find((r) => r.id === id);
     for (const row of page) {
-      expect(["slot", "coming"], row.id).toContain(row.source.kind);
+      // Show usage in the tray is the desktop app's own switch (Classic's trayUsage), as on Classic Data & usage.
+      expect(["slot", "coming", "desktop"], row.id).toContain(row.source.kind);
       if (row.source.kind === "coming") expect(row.source.need, row.id).toMatch(/^(window|engine): /);
     }
     expect(at("accounts.apps.codex")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["config.patch"]) });
     expect(at("accounts.order.sign-out")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["models.authLogout"]) });
     expect(at("accounts.order.answer-first")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["models.authOrderSet"]) });
     expect(at("accounts.order.test")?.source).toMatchObject({ kind: "slot", calls: expect.arrayContaining(["models.probe"]) });
-    for (const id of ["accounts.order.rename", "accounts.order.pause", "accounts.keepoak.connect"]) expect(at(id)?.source.kind, id).toBe("coming");
-    // Classic's levels: Terms and Accounts, more at Advanced; Which goes next, the sources and Accounts, technical at Technical.
-    expect(cardRows("accounts", "Accounts, more", 0, {})).toEqual([]);
-    expect(cardRows("accounts", "Accounts, more", 1, {}).length).toBeGreaterThan(0);
-    expect(cardRows("accounts", "Accounts, technical", 1, {})).toEqual([]);
-    for (const card of ["Order Branch uses them in", "When one runs out", "Which account goes next", "Your own accounts", "Coding apps on this computer",
-      "Where each sign-in comes from", "Terms", "GitHub", "keepoak.com", "Accounts, more", "Accounts, technical"]) {
+    for (const id of ["accounts.order.rename", "accounts.order.pause"]) expect(at(id)?.source.kind, id).toBe("coming");
+    // keepoak.com is the preview's button, drawn by the page and Coming with its reason.
+    expect(at("accounts.keepoak.connect")?.source).toMatchObject({ kind: "slot", reason: "keepoak.com has no sign-in Branch can use yet." });
+    // The preview's levels: Classic's "more" rows sit in Your own accounts at Advanced, the "technical" ones in Where each
+    // sign-in comes from at Technical; there are no "Accounts, more" or "Accounts, technical" cards.
+    expect(cardRows("accounts", "Your own accounts", 0, {}).map((r) => r.id)).not.toContain("accounts.more.each-trunk");
+    expect(cardRows("accounts", "Your own accounts", 1, {}).map((r) => r.id)).toContain("accounts.more.each-trunk");
+    expect(cardRows("accounts", "Where each sign-in comes from", 1, {})).toEqual([]);
+    for (const card of ["Usage by account", "Linked accounts", "Order Branch uses them in", "When one runs out", "Which account goes next", "Your own accounts", "Coding apps on this computer",
+      "Where each sign-in comes from", "Terms"]) {
       expect(cardRows("accounts", card, 2, {}).length, card).toBeGreaterThan(0);
     }
   });
