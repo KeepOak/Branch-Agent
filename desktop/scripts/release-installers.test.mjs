@@ -242,13 +242,19 @@ test("Windows: the built launcher has no console, starts the folder current.txt 
     assert.deepEqual(args, ["--hidden", "two words"]);
     appPid = Number(readFileSync(join(root, "app-0.4.5-bbbbbb", "pid.txt"), "utf8"));
   } finally {
-    // The launcher starts the app detached; it must be gone before its folder can be removed on Windows.
-    if (appPid) {
-      const alive = () => { try { process.kill(appPid, 0); return true; } catch { return false; } };
-      for (const end = Date.now() + 10_000; alive() && Date.now() < end;) spawnSync(process.execPath, ["-e", "setTimeout(() => {}, 100)"]);
-      if (alive()) spawnSync("taskkill", ["/PID", String(appPid), "/T", "/F"]);
-    }
-    rmSync(work, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    // Windows will not delete a folder that a live process runs from or has as its working directory.
+    // End every process whose executable lives under the temp folder (the launched app and anything it started),
+    // wait until none is left, and only then remove the folder; rmSync's retries cover a brief scanner hold.
+    const under = () => {
+      const ps = "Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($env:BRANCH_TEST_WORK, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { $_.ProcessId }";
+      const out = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", ps], { encoding: "utf8", env: { ...process.env, BRANCH_TEST_WORK: realpathSync.native(work) } });
+      return String(out.stdout ?? "").split(/\s+/).filter(Boolean).map(Number);
+    };
+    const pids = new Set([...(appPid ? [appPid] : []), ...under()]);
+    for (const pid of pids) spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"]);
+    const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    for (const end = Date.now() + 15_000; ([...pids].some(alive) || under().length) && Date.now() < end;) spawnSync(process.execPath, ["-e", "setTimeout(() => {}, 200)"]);
+    rmSync(work, { recursive: true, force: true, maxRetries: 50, retryDelay: 200 });
   }
 });
 
