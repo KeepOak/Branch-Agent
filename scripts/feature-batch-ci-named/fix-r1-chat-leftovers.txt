@@ -13,6 +13,7 @@ window:src/screens/composer/glass48.test.tsx
 window:src/screens/frame/Header.test.tsx
 window:src/screens/frame/R1Window.character.test.tsx
 window:src/screens/frame/R1Window.test.tsx
+window:src/screens/frame/coming.test.tsx
 window:src/screens/frame/conversation-menu.test.ts
 window:src/screens/sidebar/Sidebar.test.tsx
 window:src/screens/sidebar/row-menu.test.ts
