@@ -10,6 +10,7 @@ import { useStartupPreparation } from "../../connect/startup-preparation";
 import { Coming } from "../../glass/coming";
 import { shows, useLevel } from "../../places-nav/level";
 
+const FIX_IT = "Fix it";
 const FIX_IT_FAILED = "Couldn’t fix it. Try again in a minute.";
 
 export function StartupLine({ engine, name, startup }: { engine: WindowEngine; name: string; startup: StartupWait }) {
@@ -22,7 +23,7 @@ export function StartupLine({ engine, name, startup }: { engine: WindowEngine; n
   const fix = () => { setFixedFor(startup); repair.retry(); };
   return <>
     <span data-testid="startup-line" data-state={slow ? "slow" : "getting-ready"}>{slow ? preparationSlowLabel(name) : preparationLabel(name)}</span>
-    {slow ? <>{" "}<Coming engine={engine} need="agents.retryStartup" reason="This engine can’t get a Trunk ready again from here."><button type="button" data-testid="startup-fix" disabled={repair.busy} onClick={fix}>{repair.busy ? "Fixing…" : "Fix it"}</button></Coming></> : null}
+    {slow ? <>{" "}<Coming engine={engine} need="agents.retryStartup" reason={`${FIX_IT} comes in a later update.`}><button type="button" data-testid="startup-fix" disabled={repair.busy} onClick={fix}>{repair.busy ? "Fixing…" : FIX_IT}</button></Coming></> : null}
     {slow && repair.error ? <span data-testid="startup-fix-failed"> {FIX_IT_FAILED}</span> : null}
     {technical ? <details className="r1-startup-raw" data-testid="startup-raw"><summary>Raw error</summary><pre>{repair.error ? `${startup.detail}\n\n${repair.error}` : startup.detail}</pre></details> : null}
   </>;

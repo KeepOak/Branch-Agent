@@ -42,7 +42,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 const flush = async () => { for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); }); };
 
-async function mount(snapshotPatch: Record<string, unknown>) {
+async function mount(snapshotPatch: Record<string, unknown>, methods = ["sessions.list", "agents.list", "agents.retryStartup", "chat.history"]) {
   const snapshot = { status: { phase: "connected" }, name: "Juniper", sessionKey: KEY, mainKey: KEY, history: [], live: [], queued: [], historyReady: false, error: null, startup: null, ...snapshotPatch };
   const request = vi.fn(async (method: string) => {
     if (method === "sessions.list") return { sessions: [] };
@@ -50,7 +50,7 @@ async function mount(snapshotPatch: Record<string, unknown>) {
     if (method === "agents.retryStartup") return { agentId: "juniper", retrying: true };
     return {};
   });
-  const engine = { request, onEvent: () => () => undefined, sessionKey: KEY, agentId: "juniper", scopes: ["operator.admin"], features: { methods: ["sessions.list", "agents.list", "agents.retryStartup", "chat.history"], events: [] } };
+  const engine = { request, onEvent: () => () => undefined, sessionKey: KEY, agentId: "juniper", scopes: ["operator.admin"], features: { methods, events: [] } };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine, gatewayUrl: "ws://gateway.invalid" } as unknown as SaplingSession;
   await act(async () => root.render(<R1Window session={session} />));
   await flush();
@@ -98,6 +98,18 @@ describe("R1 window while the engine gets the Trunk ready", () => {
     await flush();
     expect(request).toHaveBeenCalledWith("agents.retryStartup", { agentId: "juniper" });
     expect(line()?.textContent).toBe("Getting Juniper ready…");
+  });
+
+  it("greys Fix it with the later-update reason when the engine can't start a Trunk's preparation again", async () => {
+    const { request } = await mount({ error: "Juniper is still starting up. Try again in a minute.", startup: { detail: RAW, stalled: true } }, ["sessions.list", "agents.list", "chat.history"]);
+    expect(line()?.textContent).toBe("Juniper is taking longer than usual to get ready.");
+    const fix = host.querySelector<HTMLButtonElement>('[data-testid="startup-fix"]')!;
+    expect(fix.textContent).toBe("Fix it");
+    expect(fix.getAttribute("aria-disabled")).toBe("true");
+    expect(fix.title).toBe("Fix it comes in a later update.");
+    await act(async () => fix.click());
+    await flush();
+    expect(request).not.toHaveBeenCalledWith("agents.retryStartup", expect.anything());
   });
 
   it("still shows real errors as errors, in the sidebar and above the chat", async () => {
