@@ -113,9 +113,27 @@ export function paletteRows(c: Ctx): PaletteRow[] {
   const settings = settingsGroups("technical").flatMap((g) =>
     g.pages.map((p) => ({ id: `s:${p.id}`, group: "Settings", label: p.name, hint: "Settings", keywords: SETTINGS_KEYWORDS[p.id], run: () => c.openSettings(p.id) })),
   );
-  const trunks = uniqueBy(c.trunks, (t) => t.id).map((t) => ({ id: `t:${t.id}`, group: "Trunks", label: t.name, hint: "Trunk", run: () => c.openPlace("customize") }));
+  const trunks = uniqueBy(c.trunks, (t) => t.id).map((t) => {
+    const line = trunkDescription(t.theme);
+    const main = c.conversations.find((row) => row.isMain && row.agentId === t.id);
+    return {
+      id: `t:${t.id}`,
+      group: "Trunks",
+      label: t.name,
+      hint: "",
+      detail: line,
+      keywords: line,
+      run: () => (main ? c.openConversation(main.key) : c.openPlace("customize")),
+    };
+  });
   // Every row id is a React key in the list, so a repeated id would make rows vanish or repeat on update.
   return uniqueBy([...actions, ...conversations, ...places, ...settings, ...trunks], (r) => r.id);
+}
+
+/** A Trunk's one-line description (identity.theme), collapsed to a single line. */
+export function trunkDescription(theme: string | undefined): string {
+  const line = (theme ?? "").replace(/\s+/g, " ").trim();
+  return line || "Trunk";
 }
 
 /** The first item for each key, in order. A contact and a session row can both carry one conversation key. */

@@ -8,6 +8,7 @@ import { Coming } from "../../glass/coming";
 import { Face } from "../../face/Face";
 import { useSidebarPointerDrag, type DropZone, type SidebarDrop } from "../../shell/sidebar-drag";
 import { FOLDERS, folderCount, rowTime, type Folder, type SideRow } from "./model";
+import { FIND_ANYTHING_EVENT } from "../find/find-event";
 import { pinAxis, pinKey } from "./pin-order";
 
 const svg = (body: ReactNode, size = 16) => <svg className="r1sb-i" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{body}</svg>;
@@ -178,7 +179,7 @@ export function TopCapsules({ searchRef, plusRef, ...p }: Capsules) {
   const rail = () => Boolean(document.querySelector(".r1-frame[data-wide='false']")) && !matchMedia("(max-width: 760px)").matches;
   return <div className="r1sb-caps" data-tap={tapOpen || undefined} onPointerLeave={() => setTapOpen(false)}>
     <label className="r1sb-cap r1sb-search" data-keep={p.query ? "" : undefined} title="Search · Ctrl K">
-      {icons.search}
+      <button type="button" className="r1sb-mag" aria-label="Find anything" title="Find anything" onMouseDown={event => event.preventDefault()} onClick={event => { event.preventDefault(); event.stopPropagation(); window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); }}>{icons.search}</button>
       <input ref={searchRef} type="search" data-local="" aria-label="Search chats, Trunks, messages and past sessions" placeholder="Search" value={p.query}
         onChange={event => p.onQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape" && p.query) { event.stopPropagation(); p.onQuery(""); } }} />
       <kbd>Ctrl K</kbd>

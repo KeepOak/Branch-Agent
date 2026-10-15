@@ -475,9 +475,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
     }} /></> : undefined} onShortcut={action => {
       if (action === "settings") navigate({ kind: "settings", page: "appearance" });
       else if (action === "nextConversation" && rows.length) { const index = rows.findIndex(row => row.key === snapshot.sessionKey); openConversation(rows[(index + 1) % rows.length].key); }
-      // Ctrl K focuses the sidebar search; a second Ctrl K, from the search, opens Find anything (CHANGELOG-PASS17 line 156).
-      else if (action === "palette" && document.activeElement === search.current) setFinding(true);
-      else { search.current?.focus(); }
+      // Ctrl K or Cmd K opens Find anything. Focusing the sidebar field stays on its own shortcut.
+      else if (action === "palette") setFinding(true);
+      else search.current?.focus();
     }} />
     {chat && !stage && characterShown ? <R1Character name={current ? mainTitle(conversations.rows, current.agentId) || name : name} snapshot={snapshot} waiting={snapshot.sessionKey ? waiting.get(snapshot.sessionKey) ?? 0 : 0}
       onHide={() => setCharacterShown(false)} onShow={() => setCharacterShown(true)} onChangePet={() => navigate({ kind: "settings", page: "appearance" })}

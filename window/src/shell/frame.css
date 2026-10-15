@@ -616,6 +616,14 @@
 .search input::placeholder {
   color: var(--ink-3);
 }
+.search-mag {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+}
 .search-clear {
   display: grid;
   place-items: center;

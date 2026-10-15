@@ -122,6 +122,7 @@ import { TALK_EVENT, useVoiceCatalog } from "../composer/VoiceParts";
 import { DockQuestion } from "../thread/QuestionCard";
 import { CHECK_STATUS_EVENT } from "../thread/blocks";
 import { WhereChips } from "../thread/WhereChips";
+import { FIND_ANYTHING_EVENT } from "../screens/find/find-event";
 import { FIND_EVENT } from "../thread/FindBar";
 import { useQuestions } from "../thread/questions";
 import { Walkthrough } from "./Walkthrough";
@@ -429,6 +430,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const openNews = () => setGuide("news");
     window.addEventListener("branch:whats-new", openNews);
     return () => window.removeEventListener("branch:whats-new", openNews);
+  }, []);
+  useEffect(() => {
+    const open = () => setOverlay((current) => (current?.kind === "palette" ? current : { kind: "palette" }));
+    window.addEventListener(FIND_ANYTHING_EVENT, open);
+    return () => window.removeEventListener(FIND_ANYTHING_EVENT, open);
   }, []);
   const [characterShown, setCharacterShown] = useCharacterShown();
   // The card and Appearance › Agents › "Show the agent beside the conversation" are one switch: keep both in step.
@@ -1620,7 +1626,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             setGroupDrop({ kind, source: drop.source, target: drop.target, roomId: target?.roomId ?? source?.roomId, anchor });
           }
         }}
-        onRailSearch={focusSearch}
+        onRailSearch={() => setOverlay((current) => (current?.kind === "palette" ? current : { kind: "palette" }))}
         onOpen={(key) => {
           selection.clear();
           setTopicReturnKey(null);

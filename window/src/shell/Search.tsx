@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import { agentIdOf } from "../connect/session";
 import { Pebble } from "../face/Pebble";
+import { FIND_ANYTHING_EVENT } from "../screens/find/find-event";
 import { Icon } from "./icons";
 import { rowTime } from "./list-model";
 import {
@@ -68,7 +69,9 @@ export function SearchBox({ query, onQuery }: BoxProps) {
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   return (
     <label className="search" data-testid="search" title="Search chats, Trunks, messages and past sessions">
-      <Icon name="search" small />
+      <button type="button" className="search-mag" aria-label="Find anything" title="Find anything" onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); }}>
+        <Icon name="search" small />
+      </button>
       <input
         ref={ref}
         placeholder="Search"
