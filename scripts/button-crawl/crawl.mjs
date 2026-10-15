@@ -23,6 +23,7 @@ import { markdownReport } from './report.mjs';
 import { REQUEST_WAIT_CAP_MS, waitForPermissionRequests as waitForRequests } from './permission-wait.mjs';
 import { viteLaunch } from './vite-launch.mjs';
 import { SettingsTwins, twinSkips } from './twins.mjs';
+import { NEVER_CLICKED_ALLOW, PageCoverage, neverKey } from './coverage.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const windowDir = resolve(root, 'window');
@@ -42,10 +43,12 @@ const legacyCaps = windowKind === 'classic';
 const caps = {
   maxScreens: number('BUTTON_CRAWL_MAX_SCREENS', legacyCaps ? 48 : 150),
   maxPerScreen: number('BUTTON_CRAWL_MAX_PER_SCREEN', legacyCaps ? 28 : 40),
-  // Regular and Advanced Settings pages show a subset of the controls the Technical page of the same page shows, which
-  // is clicked at the full cap. Their own cap keeps the R1 crawl inside the CI time. Set BUTTON_CRAWL_MAX_PER_SCREEN_LEVEL=40
-  // for full coverage at those levels; the report lists every control a cap leaves unclicked.
+  // Regular and Advanced Settings pages show a subset of the controls the Technical page of the same page shows. Their own
+  // cap keeps the R1 crawl inside the CI time; a Settings page's levels share their clicks (coverage.mjs), so the
+  // Technical level clicks what the other levels did not reach.
   maxPerScreenLevel: number('BUTTON_CRAWL_MAX_PER_SCREEN_LEVEL', legacyCaps ? 28 : 24),
+  // The Technical level of a Settings page clicks every control the page has left: the largest page has 86 controls.
+  maxPerSettingsPage: number('BUTTON_CRAWL_MAX_PER_SETTINGS_PAGE', legacyCaps ? 28 : 90),
   maxClicks: number('BUTTON_CRAWL_MAX_CLICKS', legacyCaps ? 800 : 2400),
   maxDepth: number('BUTTON_CRAWL_MAX_DEPTH', 1),
   maxOverlays: number('BUTTON_CRAWL_MAX_OVERLAYS', legacyCaps ? 8 : 40),
@@ -62,6 +65,13 @@ const baselinePath = resolve(root, windowKind === 'classic' ? 'scripts/button-cr
 // plain id, so the Technical keys of Classic and R1 read the same as before.
 const settingsId = (page, level) => (level === 'technical' ? `settings:${page}` : `settings:${page}@${level}`);
 const mapPath = process.env.BUTTON_CRAWL_MAP || resolve(root, MAP_PATH);
+
+/** The click cap of one screen: Regular and Advanced Settings levels, the Technical Settings page, or any other screen. */
+function settingsCap(screen) {
+  if (screen.route.kind !== 'settings') return caps.maxPerScreen;
+  if (screen.level === 'regular' || screen.level === 'advanced') return caps.maxPerScreenLevel;
+  return caps.maxPerSettingsPage;
+}
 
 function signature(surface) {
   // Every field classifyClick reads as a result must change the signature, or a click whose only result is that field
@@ -225,6 +235,7 @@ async function main() {
     let sidebarDone = false;
     let navDone = false;
     const settingsTwins = new SettingsTwins();
+    const coverage = new PageCoverage();
     while (queue.length && screenCount < caps.maxScreens) {
       const screen = queue.shift();
       screenCount += 1;
@@ -295,13 +306,18 @@ async function main() {
         checks.push({ screenId: screen.id, complete: false, keys: [] });
         continue;
       }
-      const screenCap = screen.route.kind === 'settings' && (screen.level === 'regular' || screen.level === 'advanced') ? caps.maxPerScreenLevel : caps.maxPerScreen;
+      const screenCap = settingsCap(screen);
       const room = Math.min(screenCap, Math.max(0, caps.maxClicks - clickCount));
-      const chosen = ordered.slice(0, room);
-      // Controls over the per-screen cap are not clicked: the report names them, so no coverage is dropped silently.
-      if (ordered.length > chosen.length) truncated.push({ screen: screen.id, notClicked: ordered.slice(chosen.length).map((el) => el.name) });
+      // A Settings page's levels share their controls (coverage.mjs): the room goes to controls no level has clicked yet.
+      // Controls over the room are not clicked here; the report names them, and the gate names any no level clicks.
+      const plan = screen.route.kind === 'settings'
+        ? coverage.plan(screen.route.page, ordered, room)
+        : { chosen: ordered.slice(0, room), beyond: ordered.slice(room).map((el) => el.name) };
+      const chosen = plan.chosen;
+      const chosenSet = new Set(chosen);
+      if (plan.beyond.length) truncated.push({ screen: screen.id, notClicked: plan.beyond });
       const shared = [];
-      let clickedAll = chosen.length === wanted.length;
+      let clickedAll = plan.beyond.length === 0;
       if (screen.depth === 0 && chromeNames.size < caps.maxChrome) {
         const fresh = chooseRegion(elements, 'chrome', {
           limit: caps.maxChrome - chromeNames.size,
@@ -334,6 +350,7 @@ async function main() {
         const result = await clickOne(page, errors, el);
         if (!result) { clickedAll = false; continue; }
         clickCount += 1;
+        if (screen.route.kind === 'settings' && chosenSet.has(el)) coverage.markClicked(screen.route.page, el.name);
         const key = elementKey(screen.id, el.name);
         screenKeys.push(key);
         add(found, key, result.problems);
@@ -376,6 +393,12 @@ async function main() {
     }
     const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
     const gate = compareBaseline({ baseline: baseline.problems || {}, found, checks });
+    // A control that no level of its Settings page clicked fails the gate, unless it is in the reasoned allow list.
+    const neverClicked = coverage.neverClicked();
+    for (const item of neverClicked) {
+      if (!NEVER_CLICKED_ALLOW[neverKey(item.page, item.name)]) gate.news.push({ key: neverKey(item.page, item.name), problem: 'never-clicked' });
+    }
+    if (gate.news.length) gate.ok = false;
     // Screens still queued when the screen cap was reached were never opened: that is missing coverage, not a pass.
     if (queue.length) gate.unvisited = queue.map((item) => item.id);
     if (queue.length) gate.ok = false;
@@ -385,6 +408,7 @@ async function main() {
       screenCount,
       clickCount,
       unvisitedScreens: queue.map((item) => item.id),
+      neverClicked,
       skipped,
       truncated,
       gated: normalizeBaseline(found),
