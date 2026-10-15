@@ -72,10 +72,15 @@ try {
   const plistPath = join(installed, "Contents/Info.plist");
   const plist = await readFile(plistPath, "utf8");
   execFileSync("plutil", ["-lint", plistPath], { stdio: "ignore", windowsHide: true });
-  for (const key of ["CFBundleName", "CFBundleDisplayName"]) {
-    assert.equal(plistString(plist, key), "Branch");
-    assert.equal(capture("plutil", ["-extract", key, "raw", "-o", "-", plistPath]).replaceAll('"', ""), "Branch");
+  for (const [key, name] of [["CFBundleName", "Branch Agent"], ["CFBundleDisplayName", "Branch"]]) {
+    assert.equal(plistString(plist, key), name);
+    assert.equal(capture("plutil", ["-extract", key, "raw", "-o", "-", plistPath]).replaceAll('"', ""), name);
   }
+  // Electron aborts at launch ("Unable to find helper app") unless every helper is "<CFBundleName> Helper*.app".
+  const helperPrefix = `${plistString(plist, "CFBundleName")} Helper`;
+  const helpers = (await readdir(join(installed, "Contents/Frameworks"))).filter(name => name.includes(" Helper"));
+  assert.ok(helpers.length > 0, "the bundle has no Electron helpers");
+  for (const helper of helpers) assert.ok(helper.startsWith(helperPrefix), `${helper} does not match CFBundleName`);
   assert.equal(plistString(plist, "CFBundlePackageType"), "APPL");
   assert.equal(capture("plutil", ["-extract", "CFBundlePackageType", "raw", "-o", "-", plistPath]).replaceAll('"', ""), "APPL");
   assert.equal(plistString(plist, "CFBundleIdentifier"), MAC_BUNDLE_ID);

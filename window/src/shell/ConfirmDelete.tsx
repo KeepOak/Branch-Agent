@@ -13,14 +13,16 @@ export function askBeforeDelete(): boolean {
   }
 }
 
-/** "Delete “<name>”?" (DESIGN-SPEC §4.1.6 Parity adds, Delete…). */
-export function ConfirmDelete({ row, count = 1, onCancel, onDelete }: { row: Conversation; count?: number; onCancel: () => void; onDelete: () => void }) {
+/** "Delete “<name>”?" (DESIGN-SPEC §4.1.6 Parity adds, Delete…). clear: the R1 window's item 48 glass (README 48), a clear
+ *  dialog with its words on frosted pills; Delete stays solid. */
+export function ConfirmDelete({ row, count = 1, onCancel, onDelete, clear }: { row: Conversation; count?: number; onCancel: () => void; onDelete: () => void; clear?: boolean }) {
   const [dontAsk, setDontAsk] = useState(false);
   return (
     <Dialog
       title={count > 1 ? `Delete ${count} conversations?` : `Delete “${row.title || "New conversation"}”?`}
       onClose={onCancel}
       testid="confirm-delete"
+      clear={clear}
       footer={
         <>
           <button type="button" className="btn ghost" onClick={onCancel}>
@@ -29,6 +31,7 @@ export function ConfirmDelete({ row, count = 1, onCancel, onDelete }: { row: Con
           <button
             type="button"
             className="btn bad"
+            data-solid=""
             data-testid="confirm-delete-yes"
             onClick={() => {
               if (dontAsk) {
@@ -46,12 +49,12 @@ export function ConfirmDelete({ row, count = 1, onCancel, onDelete }: { row: Con
         </>
       }
     >
-      <p className="dlg-p">
+      <p className={clear ? "dlg-p g-label" : "dlg-p"} data-lines={clear ? "" : undefined}>
         {count > 1
           ? `Delete ${count} conversations and their messages? Anything still running for them is stopped safely first.`
           : "Its messages are deleted. Anything still running for it is stopped safely first."}
       </p>
-      <label className="check">
+      <label className={clear ? "check g-label" : "check"}>
         <input type="checkbox" checked={dontAsk} onChange={(e) => setDontAsk(e.target.checked)} />
         Don't ask me again
       </label>

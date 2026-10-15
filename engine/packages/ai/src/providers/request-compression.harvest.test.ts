@@ -1,4 +1,4 @@
-// From openai/codex@cc31e374fc15cd616fca19c07d55f9fa7e6d7e31:codex-rs/core/tests/suite/request_compression.rs (atlas AGENT-LOOP-0030). Converted to Vitest against Branch's production Responses providers; compression is enabled by default in both runtimes.
+// Converted to Vitest against Branch's production Responses providers; compression is enabled by default in both runtimes.
 import { once } from "node:events";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { closeBranchStateDatabaseForTest } from "../../state/branch-state-db.js";
 import {
   graftDeviceId,
   graftSendRefusal,
@@ -48,6 +49,8 @@ beforeEach(() => {
 afterEach(() => {
   if (previousState === undefined) delete process.env.BRANCH_STATE_DIR;
   else process.env.BRANCH_STATE_DIR = previousState;
+  // Disconnect clears room membership in the shared state database; Windows cannot remove the dir while it is open.
+  closeBranchStateDatabaseForTest();
   fs.rmSync(stateDir, { recursive: true, force: true });
 });
 
@@ -125,6 +128,19 @@ describe("Branch-to-Branch graft on the host", () => {
     expect((await call("graft.work.complete", { id: sent.payload.id, reply: "forged" }, device("dev-c"))).ok).toBe(false);
     expect((await call("graft.work.complete", { id: sent.payload.id, reply: "PONG" }, device("dev-b"))).ok).toBe(true);
     expect(replyStep).toHaveBeenCalledWith(expect.objectContaining({ agentId: "juniper", sessionKey: "agent:juniper:main", message: "PONG" }));
+  });
+
+  it("shows a joined Trunk's failure as a plain sentence and gives the raw error only to the Trunk", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
+    const sent = await call("graft.work.send", { target: "a2a:branch-b--scout", text: "Ping", sourceSessionKey: "agent:juniper:main", idempotencyKey: "send-fail" }, owner);
+    await call("graft.work.poll", {}, device("dev-b"));
+    const raw = "gateway timeout after 10000ms\nGateway target: ws://127.0.0.1:38157\nConfig: /home/someone/.branch/branch.json";
+    expect((await call("graft.work.complete", { id: sent.payload.id, error: raw }, device("dev-b"))).ok).toBe(true);
+    const step = replyStep.mock.calls.at(-1)![0] as { message: string; extraSystemPrompt: string };
+    expect(step.message).toBe("The joined Trunk did not answer in time, so the request may or may not have run.");
+    expect(step.message).not.toMatch(/ws:\/\/|\/home\/|[Gg]ateway/);
+    expect(step.extraSystemPrompt).toContain(raw);
   });
 
   it("refuses another device or the owner's tools taking a grafted Branch's rows", async () => {

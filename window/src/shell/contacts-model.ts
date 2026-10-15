@@ -6,6 +6,7 @@ import type { RoomPick } from "../rooms/RoomFaces";
 import type { Actions } from "./conversation-actions";
 import type { ListPrefs, ListSection } from "./list-model";
 import type { Trunk } from "./engine-data";
+import { displayTrunkTitle } from "../connect/trunk-name";
 
 export type Contact = GatewayContact & { thread: Conversation | null; roomId?: string; offline?: boolean; roomPicks?: RoomPick[] };
 
@@ -27,11 +28,40 @@ export function fallbackTrunkContacts(trunks: readonly Trunk[], sessions: readon
 
 /** An empty loaded roster is authoritative; only the first-run bootstrap owner is window-local. */
 export function contactRowsFor(gateway: readonly GatewayContact[], loaded: boolean, trunks: readonly Trunk[], sessions: readonly Conversation[], mainKey: string | null, firstRun: boolean, bootstrapDefault?: Trunk): GatewayContact[] {
-  const rows = loaded ? [...gateway] : firstRun ? fallbackTrunkContacts(trunks, sessions, mainKey) : [];
+  // A Trunk row reads its display name: the engine names the default Trunk "main" when it has no name of its own.
+  const rows = loaded
+    ? collapseGrafted([...gateway]).map((row) => (row.kind === "trunk" ? { ...row, name: displayTrunkTitle(row.name, row.id.slice("trunk:".length)) } : row))
+    : firstRun ? fallbackTrunkContacts(trunks, sessions, mainKey) : [];
   if (bootstrapDefault && !rows.some((row) => row.id === `trunk:${bootstrapDefault.id}`)) {
     rows.push(...fallbackTrunkContacts([bootstrapDefault], sessions, mainKey));
   }
   return rows;
+}
+
+/** The same agent name, however it is typed: case, hyphens and spaces don't count. */
+export function normalizeAgentName(name: string): string {
+  return name.trim().toLowerCase().replace(/[-\s]+/g, " ");
+}
+
+/** Grafted agents are one row per name and computer. A new graft gets a new contact id, so the newest contact stands for its earlier sessions. Other rows pass through. */
+export function collapseGrafted<T extends { kind: string; name: string; where?: string; lastActivityAt: number }>(rows: readonly T[]): T[] {
+  const kept: T[] = [];
+  const slot = new Map<string, number>();
+  for (const row of rows) {
+    if (row.kind !== "outside") {
+      kept.push(row);
+      continue;
+    }
+    const key = `${normalizeAgentName(row.name)}|${row.where ?? ""}`;
+    const at = slot.get(key);
+    if (at === undefined) {
+      slot.set(key, kept.length);
+      kept.push(row);
+    } else if (row.lastActivityAt > kept[at].lastActivityAt) {
+      kept[at] = row;
+    }
+  }
+  return kept;
 }
 
 /** Join Gateway contacts to session rows only for existing row actions and detail. */

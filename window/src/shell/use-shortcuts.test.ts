@@ -147,3 +147,9 @@ describe("modal shortcut scope (§3.6)", () => {
     }
   });
 });
+
+it("writes a side-panel key with plus signs, as the preview does", async () => {
+  const { plusLabel } = await import("./keymap");
+  expect(plusLabel("Ctrl Alt Shift G", false)).toBe("Ctrl+Alt+Shift+G");
+  expect(plusLabel("Ctrl `", false)).toBe("Ctrl+`");
+});

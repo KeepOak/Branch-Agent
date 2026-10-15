@@ -75,6 +75,15 @@ describe("P54 one composer symbol", () => {
     expect(request).not.toHaveBeenCalledWith("sessions.fork", expect.anything());
   });
 
+  it("marks the model in use as the checked choice, and only that one", async () => {
+    const { host } = await mount();
+    const tune = host.querySelector<HTMLButtonElement>('[data-testid="tune-button"]')!;
+    await act(async () => tune.click());
+    const checked = [...host.querySelectorAll<HTMLButtonElement>('[data-testid="model-option"][aria-checked="true"]')];
+    expect(checked).toHaveLength(1);
+    expect(tune.getAttribute("aria-label")).toContain(checked[0]!.textContent!.trim().split(" ")[0]!);
+  });
+
   it("updates the model label after a pick and returns access to As set", async () => {
     const { host, request } = await mount();
     const tune = host.querySelector<HTMLButtonElement>('[data-testid="tune-button"]')!;

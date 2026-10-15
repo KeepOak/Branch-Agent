@@ -149,7 +149,7 @@ describe('approvals in the app', () => {
     const { session, engine } = await pairedApp();
     expect(screen.getByTestId('needs-you-banner')).toHaveProp('accessibilityLabel', '2 approvals need your yes. Oak · Run a command and 1 more');
     await fireEvent.press(screen.getByTestId('needs-you-banner'));
-    expect(screen.getByText('Needs you')).toBeOnTheScreen();
+    expect(screen.getByText('Approvals')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('allow-exec-1'));
     await eventually(() => expect(within(screen.getByTestId('answered-exec-1')).getByText('Allowed on this phone')).toBeOnTheScreen());
     expect(engine.requests).toContainEqual({ method: 'exec.approval.resolve', params: { id: 'exec-1', decision: 'allow-once' } });

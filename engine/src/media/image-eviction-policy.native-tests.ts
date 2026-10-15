@@ -1,4 +1,3 @@
-// Arithmetic vectors copied from Hermes tests/agent/test_image_eviction_policy.py.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { outboundImageRetireCount as retire, OUTBOUND_IMAGE_LIMIT as LIMIT, IMAGE_EVICTION_BATCH as BATCH, OUTBOUND_IMAGE_FLOOR as FLOOR } from "./image-eviction-policy.ts";

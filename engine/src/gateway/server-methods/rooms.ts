@@ -699,7 +699,7 @@ export const roomHandlers: GatewayRequestHandlers = {
     )
       return;
     try {
-      const room = archiveRoom(options.params.roomId);
+      const room = archiveRoom(options.params.roomId, options.params.archived !== false);
       changed(options, room);
       options.respond(true, { room });
     } catch (error) {
