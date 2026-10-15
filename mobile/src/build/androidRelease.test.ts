@@ -2,6 +2,7 @@
  * @jest-environment node
  */
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -32,10 +33,11 @@ function planFromCli(env: NodeJS.Dict<string>) {
 }
 
 describe('Android release version and signing plan', () => {
-  it('takes versionCode from a numeric or exact semver tag, otherwise the run number', () => {
-    expect(call('versionCode', { tag: 'v12', runNumber: 3 })).toBe(12);
-    expect(call('versionCode', { tag: 'v0.4.4', runNumber: 99 })).toBe(404);
+  it('uses the workflow run number as versionCode so each release is newer than the last', () => {
+    expect(call('versionCode', { tag: 'v12', runNumber: 3 })).toBe(3);
+    expect(call('versionCode', { tag: 'v0.4.4', runNumber: 99 })).toBe(99);
     expect(call('versionCode', { tag: 'v0.4.4-build-d0c144af53a8', runNumber: 77 })).toBe(77);
+    expect(call('versionCode', { runNumber: 10 })).toBeGreaterThan(call('versionCode', { runNumber: 9 }));
     expect(call('releaseVersion', { tag: 'v0.4.4-build-d0c144af53a8', runNumber: 77 })).toBe('0.4.4-build-d0c144af53a8');
     expect(call('releaseVersion', { runNumber: 8, fallbackVersion: '0.1.0' })).toBe('0.1.0');
   });
@@ -61,7 +63,9 @@ describe('Android release version and signing plan', () => {
     const signed = call('releasePlan', { tag: 'v0.4.4-build-abc', runNumber: 4, env: secrets });
     expect(signed.attachRelease).toBe(true);
     expect(signed.apkName).toBe('branch-android-0.4.4-build-abc.apk');
+    expect(signed.sha256Name).toBe('branch-android-0.4.4-build-abc.apk.sha256');
     expect(signed.versionCode).toBe(4);
+    expect(unsigned.sha256Name).toBe('');
   });
 
   it('passes PKCS12 signing to gradle only when the keystore path and secrets are set', () => {
@@ -95,6 +99,7 @@ describe('Android release version and signing plan', () => {
       version: '0.4.4-build-abc',
       versionCode: 9,
       apkName: 'branch-android-0.4.4-build-abc.apk',
+      sha256Name: 'branch-android-0.4.4-build-abc.apk.sha256',
     });
     const unsigned = planFromCli({
       RELEASE_TAG: 'v0.4.4-build-abc',
@@ -106,6 +111,31 @@ describe('Android release version and signing plan', () => {
     });
     expect(unsigned.attachRelease).toBe(false);
     expect(unsigned.apkName).toContain('-unsigned.apk');
+    expect(unsigned.sha256Name).toBe('');
+  });
+
+  it('writes branch-android-<version>.apk.sha256 containing the APK hex SHA-256', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'android-sha256-'));
+    try {
+      const apkName = 'branch-android-0.4.4-build-abc.apk';
+      const apkPath = path.join(dir, apkName);
+      writeFileSync(apkPath, 'branch-apk-bytes');
+      const expected = createHash('sha256').update('branch-apk-bytes').digest('hex');
+      expect(call('sha256FileName', apkName)).toBe(`${apkName}.sha256`);
+      const sidecar = JSON.parse(execFileSync(process.execPath, [helper, '--sha256', apkPath, '--json'], {
+        cwd: mobileRoot,
+        encoding: 'utf8',
+      }));
+      expect(sidecar).toEqual({
+        path: `${apkPath}.sha256`,
+        name: `${apkName}.sha256`,
+        hex: expected,
+      });
+      expect(readFileSync(sidecar.path, 'utf8')).toBe(`${expected}  ${apkName}\n`);
+      expect(sidecar.hex).toMatch(/^[a-f0-9]{64}$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -137,6 +167,15 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).not.toMatch(/gh release upload[\s\S]*attach_release == 'false'/);
     expect(workflow).toContain('timeout-minutes:');
     expect(workflow).toContain('persist-credentials: false');
+  });
+
+  it('writes a hex SHA-256 sidecar and attaches it only with a signed APK', () => {
+    expect(workflow).toContain('--sha256');
+    expect(workflow).toContain('SHA256_NAME');
+    expect(workflow).toContain('${APK_NAME}.sha256');
+    expect(workflow).toMatch(/SIGNED" == "true"[\s\S]*--sha256/);
+    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*SHA256_PATH[\s\S]*gh release upload/);
+    expect(workflow).not.toMatch(/--sha256[\s\S]*attach_release == 'false'/);
   });
 });
 

@@ -73,7 +73,8 @@ phone or emulator in one step.
 
 ## Install a release APK (sideload)
 
-Each GitHub release can include a signed `branch-android-<version>.apk`. That is the only APK
+Each GitHub release can include a signed `branch-android-<version>.apk` and, next to it,
+`branch-android-<version>.apk.sha256` (the APK's hex SHA-256). Those are the only Android assets
 attached to the release. CI still builds when the signing secrets are missing, but that APK stays
 a workflow artifact and is never published.
 

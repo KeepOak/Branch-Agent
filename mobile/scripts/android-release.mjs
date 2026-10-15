@@ -1,6 +1,7 @@
 // Release-plan helper for the sideloadable Android APK.
 // Used by scripts/build-android.mjs and .github/workflows/mobile-android-release.yml.
 // Secrets stay in the environment; this file never writes a keystore or password.
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,20 +30,11 @@ export function releaseVersion({ tag, runNumber, fallbackVersion } = {}) {
   return String(runNumber ?? '');
 }
 
-export function versionCode({ tag, runNumber } = {}) {
-  const raw = String(tag ?? '').trim().replace(/^v/i, '');
-  if (/^\d+$/.test(raw)) {
-    const n = Number(raw);
-    if (n > 0) return n;
-  }
-  const semver = /^(\d+)\.(\d+)\.(\d+)$/.exec(raw);
-  if (semver) {
-    const code = Number(semver[1]) * 10000 + Number(semver[2]) * 100 + Number(semver[3]);
-    if (code > 0) return code;
-  }
+// Same workflow, so github.run_number is strictly increasing across releases.
+export function versionCode({ runNumber } = {}) {
   const n = Number(runNumber);
   if (!Number.isInteger(n) || n <= 0) {
-    throw new Error('versionCode needs a release tag with a version, or a positive run number');
+    throw new Error('versionCode needs a positive workflow run number');
   }
   return n;
 }
@@ -50,6 +42,25 @@ export function versionCode({ tag, runNumber } = {}) {
 export function apkFileName(version, { signed } = { signed: true }) {
   const safe = String(version || 'unsigned').replace(/[^A-Za-z0-9._-]+/g, '-');
   return signed ? `branch-android-${safe}.apk` : `branch-android-${safe}-unsigned.apk`;
+}
+
+export function sha256FileName(apkName) {
+  return `${apkName}.sha256`;
+}
+
+export function hexSha256(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+export function sha256SidecarText(hex, apkName) {
+  return `${String(hex).toLowerCase()}  ${apkName}\n`;
+}
+
+export function writeSha256Sidecar(apkPath, apkName = path.basename(apkPath)) {
+  const hex = hexSha256(readFileSync(apkPath));
+  const sidecarPath = `${apkPath}.sha256`;
+  writeFileSync(sidecarPath, sha256SidecarText(hex, apkName));
+  return { path: sidecarPath, name: sha256FileName(apkName), hex };
 }
 
 export function shouldAttachToRelease({ signed, releaseTag } = {}) {
@@ -134,6 +145,7 @@ export function releasePlan({
     version,
     versionCode: code,
     apkName,
+    sha256Name: signed ? sha256FileName(apkName) : '',
     artifactName: apkName.replace(/\.apk$/i, ''),
     attachRelease: shouldAttachToRelease({ signed, releaseTag }),
     releaseTag,
@@ -150,6 +162,7 @@ function printGithubOutput(plan) {
     version: plan.version,
     version_code: String(plan.versionCode),
     apk_name: plan.apkName,
+    sha256_name: plan.sha256Name,
     artifact_name: plan.artifactName,
     attach_release: plan.attachRelease ? 'true' : 'false',
     release_tag: plan.releaseTag,
@@ -160,7 +173,30 @@ function printGithubOutput(plan) {
   }
 }
 
+function printSha256Output(sidecar) {
+  const rows = {
+    sha256_path: sidecar.path,
+    sha256_name: sidecar.name,
+    sha256_hex: sidecar.hex,
+  };
+  if (process.argv.includes('--json')) {
+    process.stdout.write(`${JSON.stringify(sidecar)}\n`);
+    return;
+  }
+  for (const [key, value] of Object.entries(rows)) {
+    process.stdout.write(`${key}=${value}\n`);
+  }
+}
+
 function main() {
+  const shaIndex = process.argv.indexOf('--sha256');
+  if (shaIndex !== -1) {
+    const apkPath = process.argv[shaIndex + 1];
+    if (!apkPath) throw new Error('pass the staged APK path after --sha256');
+    printSha256Output(writeSha256Sidecar(apkPath));
+    return;
+  }
+
   const env = process.env;
   const plan = releasePlan({
     tag: env.RELEASE_TAG,
