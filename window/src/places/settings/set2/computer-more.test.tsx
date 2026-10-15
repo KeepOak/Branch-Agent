@@ -60,6 +60,17 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     expect(sec("Lent computer, technical")).not.toBeNull();
   });
 
+  it("folds identical pairings of one window into one row, with a count, and removes nothing", async () => {
+    const copy = (approvedAtMs: number) => ({ deviceId: `win-${approvedAtMs}`, publicKey: "k", displayName: "Branch", platform: "MacIntel", clientId: "webchat-ui", clientMode: "webchat", roles: ["operator"], scopes: [], approvedAtMs, createdAtMs: approvedAtMs, connected: false });
+    const copies = [1, 2, 3, 4, 5].map(copy);
+    const { engine, request } = engineWith({ ...CONFIG, "device.pair.list": { pending: [], paired: copies }, "node.list": { nodes: [] } });
+    await show(engine, "technical");
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-row='Branch']")];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain("4 older copies of this folded in");
+    expect(request).not.toHaveBeenCalledWith("device.pair.remove", expect.anything());
+  });
+
   it("does not draw a row the engine can't back yet, and shows no developer note", async () => {
     const { engine } = engineWith(CONFIG);
     await show(engine, "regular");

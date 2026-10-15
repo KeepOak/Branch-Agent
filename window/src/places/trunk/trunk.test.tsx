@@ -108,9 +108,8 @@ describe("Trunk editor", () => {
     await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[1], "Money");
     await click(byText("What it may do"));
     await click(document.querySelector('[aria-label="Use the browser"]'));
-    const send = [...document.querySelectorAll<HTMLElement>(".tk-ctl")].find(r => r.querySelector("b")?.textContent === "Send email and messages")!;
-    expect(send.classList.contains("off")).toBe(true); expect(send.title).toBe("");
-    expect(send.textContent).toContain("Overrides the mode for this Trunk only."); expect([...send.querySelectorAll("button")].every(b => b.disabled)).toBe(true);
+    // The later-update rows (Send email and messages, Keep its own notes) are not drawn until they work.
+    expect(document.body.textContent).not.toContain("Send email and messages");
     expect(visibleDevNotes(document.body)).toEqual([]);
     await click(byText("Its computers"));
     await click(document.querySelector('[data-value="n1"]'));
@@ -318,7 +317,8 @@ describe("Trunk profile and studio", () => {
     expect(document.body.textContent).toContain("ID birch");
     await click(document.querySelector('[aria-label="Morning on or off"]'));
     expect(request).toHaveBeenCalledWith("cron.update", { id: "j1", patch: { enabled: false } });
-    expect(byText("Pause Birch").getAttribute("aria-disabled")).toBe("true");
+    // Pause is not built yet, so the profile shows no Pause control at all rather than a live-looking one.
+    expect(document.querySelector(".tk-pf-pause")).toBeNull();
   });
   it("asks Branch through branch.chat and shows its reply", async () => {
     const request = vi.fn(() => Promise.resolve({ sessionId: "s", reply: "Here is my proposal.", action: "none", needsApproval: true }));
