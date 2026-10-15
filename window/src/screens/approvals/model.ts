@@ -4,7 +4,7 @@
 // Classic card's helpers (thread/ApprovalCard actionWords / actionFields, thread/approval-trust maskCommand).
 import { actionFields, actionWords } from "../../thread/ApprovalCard";
 import { maskCommand } from "../../thread/approval-trust";
-import type { ApprovalDecision } from "../../thread/model";
+import type { Approval, ApprovalDecision } from "../../thread/model";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -120,6 +120,17 @@ export function callFor(ask: Ask, reply: Reply): { method: string; params: Recor
 
 export type Settled = ApprovalDecision | "answered" | "skipped" | "elsewhere" | "expired";
 export const settledBy = (reply: Reply): Settled => (reply === "skip" ? "skipped" : typeof reply === "object" ? "answered" : reply);
+
+/** A thread approval block as an exec Ask, for the decided line of an approval the engine no longer lists. */
+export function askOfApproval(approval: Approval): Ask | null {
+  return readExec({ id: approval.id, request: { command: approval.command, cwd: approval.cwd, host: approval.host } });
+}
+
+/** How a thread approval block ended, for its decided line. */
+export function settledOfApproval(approval: Approval): Settled {
+  if (approval.state === "denied") return "deny";
+  return approval.always ? "allow-always" : "allow-once";
+}
 
 /** The decided pill: "✓ Sent", "✕ Declined", "Answered elsewhere". */
 export function settledText(ask: Ask, how: Settled, name: string): { text: string; tone: "ok" | "bad" | "idle" } {
