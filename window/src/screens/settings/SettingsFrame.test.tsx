@@ -50,9 +50,10 @@ const type = async (text: string) => {
 const level = (name: string) => [...$$(".r1s-level button")].find((b) => b.textContent === name)!;
 
 describe("SettingsFrame", () => {
-  it("draws the nav groups in order with search and How much to show at the top", async () => {
+  it("draws the four Settings pages in order with search and How much to show at the top", async () => {
     await mount(engineOf().engine);
-    expect($$(".r1s-grp").map((g) => g.textContent)).toEqual(["General", "Computer", "Usage", "Updates"]);
+    expect($$(".r1s-list .r1s-nav").map((g) => g.textContent)).toEqual(["General", "Computer", "Usage", "Updates"]);
+    expect($$(".r1s-grp[aria-expanded]")).toEqual([]);
     expect($<HTMLInputElement>(".r1s-search input").placeholder).toBe("Search settings");
     expect($(".r1s-level small").textContent).toBe("The essentials, in plain words.");
     expect($(".r1s-nav[aria-current=page]").textContent).toBe("General");
@@ -241,7 +242,8 @@ describe("SettingsFrame custom pages", () => {
     await mountSlots(engine, { chatapps: { component: Page } }, { page: "chatapps" });
     expect($("[data-slot=chatapps] [data-testid=chat-slot]").textContent).toBe("same engine");
     expect(Page.mock.calls.every(([props]) => props.engine === engine)).toBe(true);
-    expect($(".r1s-nav[aria-current=page]").textContent).toBe("Chat apps");
+    expect($(".r1s-nav[aria-current=page]").textContent).toBe("General");
+    expect($(".r1s-advanced [data-page=chatapps]")?.getAttribute("aria-current")).toBe("true");
     expect($(".r1s-search input")).not.toBeNull();
     expect($$(".r1s-level button").map((b) => b.textContent)).toEqual(["Regular", "Advanced", "Technical"]);
     expect($$(".r1s-sec")).toHaveLength(0);
