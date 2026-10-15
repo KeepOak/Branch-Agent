@@ -4,7 +4,7 @@ import { notify } from "../../shell/notify";
 import { ActionGate, errorText, rec, str, type Row } from "./runtime";
 
 /** cron.run answers ran:false with a reason when it could not start (engine cron/service run preparation). */
-export const RUN_REASONS: Record<string, string> = {
+const RUN_REASONS: Record<string, string> = {
   "not-due": "It isn’t due yet.", "already-running": "It’s already running.", stopped: "Still getting going after a restart.",
   "invalid-spec": "Its schedule or task is broken.", disabled: "Every automation is paused.", ownerless: "It couldn’t be started.",
 };

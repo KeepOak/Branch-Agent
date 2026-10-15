@@ -155,7 +155,7 @@ describe("update failure report", () => {
     await expect(fs.stat(prepared.savedReportPath)).rejects.toMatchObject({ code: "ENOENT" });
     const result = await submitUpdateFailureReport(prepared, prepared.previewDigest, {
       createIssue: mockFallbackIssue(
-        "https://github.com/openclaw/openclaw/issues/new?title=update",
+        "https://github.com/KeepOak/Branch-Agent/issues/new?title=update",
       ),
       env: { HOME: home, BRANCH_STATE_DIR: stateDir },
       stateDir,
@@ -242,7 +242,7 @@ describe("update failure report", () => {
 
   it("submits once and rejects a duplicate click for the same attempt", async () => {
     const { submit } = await prepareFailedReport("attempt-once");
-    const createIssue = mockCreatedIssue("https://github.com/openclaw/openclaw/issues/123");
+    const createIssue = mockCreatedIssue("https://github.com/KeepOak/Branch-Agent/issues/123");
 
     const [first, second] = await Promise.all([submit({ createIssue }), submit({ createIssue })]);
     const third = await submit({
@@ -254,7 +254,7 @@ describe("update failure report", () => {
     expect([first.status, second.status].toSorted()).toEqual(["created", "retryable"]);
     expect(third).toMatchObject({
       status: "duplicate",
-      url: "https://github.com/openclaw/openclaw/issues/123",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/123",
     });
     await expect(fs.stat(first.savedReportPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -287,7 +287,7 @@ describe("update failure report", () => {
         env,
       ),
     ).toMatchObject({ reserved: true });
-    const createIssue = mockCreatedIssue("https://github.com/openclaw/openclaw/issues/123");
+    const createIssue = mockCreatedIssue("https://github.com/KeepOak/Branch-Agent/issues/123");
 
     await expect(submit({ createIssue })).resolves.toMatchObject({
       message: "This update attempt already has a report preparation in progress.",
@@ -317,7 +317,7 @@ describe("update failure report", () => {
           issueCreateCalls += 1;
           return {
             status: "created" as const,
-            url: "https://github.com/openclaw/openclaw/issues/123",
+            url: "https://github.com/KeepOak/Branch-Agent/issues/123",
           };
         },
       );
@@ -339,7 +339,7 @@ describe("update failure report", () => {
           issueCreateCalls += 1;
           return {
             status: "created" as const,
-            url: "https://github.com/openclaw/openclaw/issues/124",
+            url: "https://github.com/KeepOak/Branch-Agent/issues/124",
           };
         },
       );
@@ -367,7 +367,7 @@ describe("update failure report", () => {
         issueCreateCalls += 1;
         return {
           status: "created" as const,
-          url: "https://github.com/openclaw/openclaw/issues/123",
+          url: "https://github.com/KeepOak/Branch-Agent/issues/123",
         };
       },
     );
@@ -388,7 +388,7 @@ describe("update failure report", () => {
         issueCreateCalls += 1;
         return {
           status: "created" as const,
-          url: "https://github.com/openclaw/openclaw/issues/124",
+          url: "https://github.com/KeepOak/Branch-Agent/issues/124",
         };
       },
     );
@@ -647,7 +647,7 @@ describe("update failure report", () => {
       }
       return writeFile(...args);
     });
-    const oldCreateIssue = mockCreatedIssue("https://github.com/openclaw/openclaw/issues/122");
+    const oldCreateIssue = mockCreatedIssue("https://github.com/KeepOak/Branch-Agent/issues/122");
 
     const oldSubmission = submit({ createIssue: oldCreateIssue });
     await oldWriteStartedGate;
@@ -657,7 +657,7 @@ describe("update failure report", () => {
 
     nowMs += 10 * 60_000;
     const replacement = await submit({
-      createIssue: mockCreatedIssue("https://github.com/openclaw/openclaw/issues/123"),
+      createIssue: mockCreatedIssue("https://github.com/KeepOak/Branch-Agent/issues/123"),
     });
     await fs.mkdir(path.dirname(oldReportPath), { mode: 0o700, recursive: true });
     const rm = fs.rm;
@@ -676,11 +676,11 @@ describe("update failure report", () => {
 
     expect(replacement).toMatchObject({
       status: "created",
-      url: "https://github.com/openclaw/openclaw/issues/123",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/123",
     });
     expect(oldResult).toMatchObject({
       status: "duplicate",
-      url: "https://github.com/openclaw/openclaw/issues/123",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/123",
     });
     expect(oldCreateIssue).not.toHaveBeenCalled();
     expect(receipt()).toMatchObject({
@@ -691,13 +691,13 @@ describe("update failure report", () => {
     await expect(fs.readFile(oldStagedReportPath, "utf8")).resolves.toBe(prepared.body);
 
     const reconnectCreateIssue = mockCreatedIssue(
-      "https://github.com/openclaw/openclaw/issues/124",
+      "https://github.com/KeepOak/Branch-Agent/issues/124",
     );
     const reconnected = await submit({ createIssue: reconnectCreateIssue });
 
     expect(reconnected).toMatchObject({
       status: "duplicate",
-      url: "https://github.com/openclaw/openclaw/issues/123",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/123",
     });
     expect(reconnectCreateIssue).not.toHaveBeenCalled();
     await expect(fs.stat(oldReportPath)).rejects.toMatchObject({ code: "ENOENT" });
@@ -763,7 +763,7 @@ describe("update failure report", () => {
         transportCount += 1;
         return {
           status: "created" as const,
-          url: "https://github.com/openclaw/openclaw/issues/123",
+          url: "https://github.com/KeepOak/Branch-Agent/issues/123",
         };
       },
     );
@@ -784,20 +784,20 @@ describe("update failure report", () => {
     const successorResult = await successorSubmission;
     expect(successorResult).toMatchObject({
       status: "created",
-      url: "https://github.com/openclaw/openclaw/issues/123",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/123",
     });
     expect(transportCount).toBe(1);
     expect(successorCreateIssue).toHaveBeenCalledOnce();
 
     const reconnectCreateIssue = mockCreatedIssue(
-      "https://github.com/openclaw/openclaw/issues/124",
+      "https://github.com/KeepOak/Branch-Agent/issues/124",
     );
     const reconnected = await submit({ createIssue: reconnectCreateIssue });
     now.mockRestore();
 
     expect(reconnected).toMatchObject({
       status: "duplicate",
-      url: "https://github.com/openclaw/openclaw/issues/123",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/123",
     });
     expect(reconnectCreateIssue).not.toHaveBeenCalled();
     await expect(listSavedReportArtifacts(prepared)).resolves.toEqual([]);
@@ -825,7 +825,7 @@ describe("update failure report", () => {
 
     nowMs += 10 * 60_000;
     const replacement = await submit({
-      createIssue: mockCreatedIssue("https://github.com/openclaw/openclaw/issues/123"),
+      createIssue: mockCreatedIssue("https://github.com/KeepOak/Branch-Agent/issues/123"),
     });
     releaseOldFallback();
     const oldResult = await oldSubmission;
@@ -833,11 +833,11 @@ describe("update failure report", () => {
 
     expect(replacement).toMatchObject({
       status: "created",
-      url: "https://github.com/openclaw/openclaw/issues/123",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/123",
     });
     expect(oldResult).toMatchObject({
       status: "duplicate",
-      url: "https://github.com/openclaw/openclaw/issues/123",
+      url: "https://github.com/KeepOak/Branch-Agent/issues/123",
     });
     expect(oldResult).not.toHaveProperty("fallbackUrl");
     await expect(fs.stat(`${prepared.savedReportPath}.result.json`)).rejects.toMatchObject({
@@ -855,7 +855,7 @@ describe("update failure report", () => {
     ],
   ])("returns a created URL without retrying when receipt finalization %s", async (_, fail) => {
     const { submit } = await prepareFailedReport("attempt-created-finalize-failure");
-    const issueUrl = "https://github.com/openclaw/openclaw/issues/123";
+    const issueUrl = "https://github.com/KeepOak/Branch-Agent/issues/123";
     const createIssue = mockCreatedIssue(issueUrl);
     const finalizeReceipt = vi.fn(finalizeUpdateFailureReportReceipt).mockImplementationOnce(fail);
 
@@ -874,7 +874,7 @@ describe("update failure report", () => {
 
   it("does not hide a created result when saved-report cleanup fails", async () => {
     const { prepared, submit } = await prepareFailedReport("attempt-created-cleanup-failure");
-    const issueUrl = "https://github.com/openclaw/openclaw/issues/123";
+    const issueUrl = "https://github.com/KeepOak/Branch-Agent/issues/123";
     const createIssue = mockCreatedIssue(issueUrl);
     const realRm = fs.rm.bind(fs);
     const rm = vi.spyOn(fs, "rm").mockImplementation(async (target, options) => {

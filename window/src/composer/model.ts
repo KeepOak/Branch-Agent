@@ -80,7 +80,7 @@ export function currentThinking(row: Rec, defaults: Rec): string {
 }
 
 /** Preview §4.3.4 / rule 13: the chip when no usable model is connected. */
-export const NO_MODEL_CHIP = "No model";
+const NO_MODEL_CHIP = "No model";
 
 /** "<model> · <thinking>" in lower case for the level (§4.3.4 rule 1). */
 export function chipLabel(modelName: string, thinking: string): string {
@@ -99,7 +99,7 @@ export function composerChipLabel(current: ModelChoice | undefined, thinking: st
 }
 
 /** The service a model belongs to, as the group label in the model menu. */
-export function serviceName(m: ModelChoice): string {
+function serviceName(m: ModelChoice): string {
   return m.local ? "On this computer" : m.provider;
 }
 

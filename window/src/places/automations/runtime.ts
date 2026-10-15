@@ -8,7 +8,6 @@ export const rec = (v: unknown): Row => v && typeof v === "object" ? v as Row : 
 export const str = (v: unknown): string => typeof v === "string" ? v : "";
 export const rows = (v: unknown): Row[] => Array.isArray(v) ? v.map(rec) : [];
 export const errorText = (v: unknown): string => v instanceof Error ? v.message : str(rec(v).message) || String(v);
-export const time = (v: unknown): string => typeof v === "number" && v > 0 ? new Date(v).toLocaleString() : "Not recorded";
 export const canWrite = (engine: WindowEngine) => engine.scopes.includes("operator.admin") || engine.scopes.includes("operator.write");
 export const canApprove = (engine: WindowEngine) => engine.scopes.includes("operator.admin") || engine.scopes.includes("operator.approvals");
 export async function paged(engine: WindowEngine, method: string, key: string, params: Row = {}): Promise<Row[]> {
@@ -59,7 +58,9 @@ export function usePlaceData<T>(engine: WindowEngine, load: (engine: WindowEngin
   currentEngine.current = engine;
   const refresh = useCallback(async () => {
     const id = ++generation.current;
+    if (engine.connected === false) { setLoading(false); setError(""); return; }
     setLoading(true);
+    setError("");
     try { const value = await load(engine); if (mounted.current && id === generation.current) { setData(value); setError(""); } }
     catch (e) { if (mounted.current && id === generation.current) setError(errorText(e)); }
     finally { if (mounted.current && id === generation.current) setLoading(false); }

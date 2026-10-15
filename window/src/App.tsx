@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { startKey, type DesktopBridge } from "./connect/start-key";
 import { SaplingSession } from "./connect/session";
+import { installUiEventLog } from "./diagnostics/ui-log";
 import { loadRoute } from "./places-nav/routes";
 import { WindowShell } from "./shell/WindowShell";
+import { r1Window, R1Window } from "./screens/frame/R1Window";
+import { isGraftedContactKey } from "./screens/frame/open-name";
 import { PreConnect, type PreConnectState } from "./setup/PreConnect";
 import { LOCAL_ADDRESS, readTarget, saveTarget } from "./setup/pre-connect-state";
 import { Connecting } from "./setup/Connecting";
@@ -19,6 +22,7 @@ const LOCAL = BUILT_IN ?? LOCAL_ADDRESS;
 const RESIDENT_URL_KEY = "branch.window.residentUrl";
 
 export function App() {
+  useEffect(() => installUiEventLog(), []);
   const [url, setUrl] = useState<string | null>(() => readTarget() ?? BUILT_IN ?? null);
   const [typed, setTyped] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -69,7 +73,8 @@ export function App() {
 /** The conversation the window last showed (§3.3 "Reopen where you were"). */
 function savedConversation(): string | null {
   const route = loadRoute();
-  return route.kind === "chat" ? route.key : null;
+  // A grafted agent's contact key is not a conversation: the window finds that agent's conversation once connected.
+  return route.kind === "chat" && !isGraftedContactKey(route.key) ? route.key : null;
 }
 
 type WindowProps = { url: string; sharedToken?: string; onConnect: (url: string, key: string) => void; onRetry: () => void };
@@ -115,7 +120,7 @@ function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
   }, [s.status.phase, activeUrl]);
   // Once connected, the frame stays up through reconnects; the status bar says "Offline" or "Connecting" (§3.5).
   if (everConnected || s.status.phase === "connected") {
-    return <WindowShell session={session} url={activeUrl} />;
+    return r1Window() ? <R1Window session={session} /> : <WindowShell session={session} url={activeUrl} />;
   }
   const status = s.status;
   if (status.phase === "pairing" || status.phase === "failed") {

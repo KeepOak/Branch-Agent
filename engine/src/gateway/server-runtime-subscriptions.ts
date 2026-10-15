@@ -142,6 +142,16 @@ export function startGatewayEventSubscriptions(params: {
     }
   };
   reconcileAuditPolicy(getRuntimeConfig());
+  void import("./server-methods/trunk-queue.js").then(({ startTrunkQueueSweep }) =>
+    startTrunkQueueSweep({
+      getConfig: getRuntimeConfig,
+      log: (message) => params.log.warn(message),
+      signal: params.signal,
+    }),
+  );
+  void import("./server-methods/trunk-team-progress.js").then(({ attachTeamProgress }) =>
+    attachTeamProgress(params.broadcast),
+  );
   const sessionActivitySummaries = createSessionActivitySummaries({
     scheduler: params.scheduler,
     getConfig: getRuntimeConfig,
@@ -611,6 +621,10 @@ export function startGatewayEventSubscriptions(params: {
             : onTrunkRunLifecycle({
                 agentId: queueAgentId,
                 terminal: queueTerminal,
+                threadKey: evt.sessionKey ?? evt.deliverySessionKey,
+                outcome: lifecyclePhase === "end" ? "completed" : "failed",
+                error: evt.data?.error,
+                errorKind: evt.data?.errorKind,
                 cfg: getRuntimeConfig(),
               }),
         )

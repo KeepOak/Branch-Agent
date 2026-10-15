@@ -58,6 +58,10 @@ if (info) {
   contextBridge.exposeInMainWorld("branchDesktop", {
     gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
     openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
+    diagnostics: {
+      uiEvent: (event: unknown): void => ipcRenderer.send("branch-desktop:ui-event", event),
+      reportProblem: (minutes: number): Promise<{ saved: boolean; bytes?: number }> => ipcRenderer.invoke("branch-desktop:report-problem", minutes),
+    },
     conversationWindows: {
       list: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:conversation-windows"),
       saved: (): Promise<string[]> => ipcRenderer.invoke("branch-desktop:saved-conversation-windows"),
@@ -82,19 +86,39 @@ if (info) {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
       stage: () => ipcRenderer.invoke("branch-desktop:component-update:stage"),
+      /** The owner's Install now: the same owned-window restart the update bar's button sends. */
+      install: () => ipcRenderer.send("branch-desktop:restart-engine"),
+      /** Whether the last update can still be undone, with its version line (the previous engine's probation, Private #983). */
+      undoAvailability: () => ipcRenderer.invoke("branch-desktop:undo-availability"),
+      undo: () => ipcRenderer.send("branch-desktop:undo-update"),
     },
     onUpdateApplied: (listener: (notice: AppliedUpdateNotice) => void) => subscribeApplied(listener),
     onUpdateUndone: (listener: () => void) => subscribeUndone(listener),
     reportUpdateNotice: (event: string, notice: AppliedUpdateNotice) => {
       ipcRenderer.send("branch-desktop:update-notice", event, notice);
     },
-    onAutoApplyProbe: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean }>) => {
+    onAutoApplyProbe: (listener: () => Promise<{ pendingApprovals: number; streaming: boolean; unsavedDraftFiles: boolean; workingTrunks?: number }>) => {
       const handler = (_event: Electron.IpcRendererEvent, id: number): void => {
         void listener().then(value => ipcRenderer.send("branch-desktop:auto-apply:result", id, value),
           error => ipcRenderer.send("branch-desktop:auto-apply:result", id, { error: String(error) }));
       };
       ipcRenderer.on("branch-desktop:auto-apply:probe", handler);
       return () => ipcRenderer.removeListener("branch-desktop:auto-apply:probe", handler);
+    },
+    /** The tray's Pause all work (Private #454 C): the window stops every live run, as its own Pause all does. */
+    onPauseAll: (listener: () => void) => {
+      const handler = (): void => listener();
+      ipcRenderer.on("branch-desktop:pause-all", handler);
+      return () => ipcRenderer.removeListener("branch-desktop:pause-all", handler);
+    },
+    /** A closed-window "done" notice for a paired phone (Private #454 D): the window sends it through the engine's push service. */
+    onPhonePush: (listener: (notice: { title: string; body: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, notice: unknown): void => {
+        const value = notice as { title?: unknown; body?: unknown } | null;
+        if (typeof value?.title === "string" && typeof value.body === "string") listener({ title: value.title, body: value.body });
+      };
+      ipcRenderer.on("branch-desktop:phone-push", handler);
+      return () => ipcRenderer.removeListener("branch-desktop:phone-push", handler);
     },
     // Windows only: the header's colours and height for the native window buttons drawn over its top-right.
     titleBar: process.platform === "win32"
@@ -131,6 +155,9 @@ if (info) {
   });
   ipcRenderer.on("branch-desktop:gateway-recovery-failed", (_e, message: string) => showRecoveryError(message));
   ipcRenderer.on("branch-desktop:engine-update-failed", (_e, message: string) => showUpdateFailure(message));
+  // The window draws the disk-full notice as one of its problem banners (window/src/shell/problem-banners.ts).
+  ipcRenderer.on("branch-desktop:disk-full", () => window.dispatchEvent(new Event("branch:disk-full")));
+  ipcRenderer.on("branch-desktop:disk-ok", () => window.dispatchEvent(new Event("branch:disk-ok")));
   ipcRenderer.on("branch-desktop:prepare-swap", (_e, id: number) => {
     saveBeforeSwap();
     ipcRenderer.send("branch-desktop:swap-ready", id);
@@ -166,7 +193,6 @@ function restoreAfterSwap(): void {
   };
   const timer = setInterval(() => { tryRestore(); if (!pending.length) clearInterval(timer); }, 100);
   setTimeout(() => clearInterval(timer), 10_000);
-  showToast("Branch updated");
 }
 
 function elementPath(el: Element): string {
@@ -182,7 +208,6 @@ function elementPath(el: Element): string {
 /** A small, quiet note that fades by itself. */
 function showToast(message: string): void {
   const show = () => {
-    document.getElementById("branch-desktop-update")?.remove();
     const notice = document.getElementById("branch-desktop-update-notice");
     const toast = document.createElement("div");
     toast.setAttribute("role", "status");
@@ -204,6 +229,8 @@ function showToast(message: string): void {
 
 /** Says why an update did not finish, above the update bar, then fades; the engine keeps or regains a working version. */
 function showUpdateFailure(message: string): void {
+  // The update did not finish: the Settings page clears its pending state and says why.
+  window.dispatchEvent(new CustomEvent("branch:update-state", { detail: { state: "failed", message } }));
   const show = () => {
     document.getElementById("branch-desktop-update-failed")?.remove();
     const note = document.createElement("div");
@@ -245,49 +272,20 @@ function showRecoveryError(message: string): void {
   if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
 }
 
-/** A small bar at the bottom of the window while an update waits or applies. The app and window stay open throughout. */
+/**
+ * Updates apply in place (R1 design, P45): the window shows no update banner or Update button. The Settings page mirrors
+ * the state, and the window shows its one small "Updated in place" toast when an update lands.
+ */
 function showUpdateBar(state: UpdateState): void {
-  if (state === "updated") document.getElementById("branch-desktop-recovery-error")?.remove();
+  window.dispatchEvent(new CustomEvent("branch:update-state", { detail: { state } }));
+  if (state === "updated") {
+    document.getElementById("branch-desktop-recovery-error")?.remove();
+    // The engine changed under the open window: reconnect now rather than at the next backoff step.
+    window.dispatchEvent(new Event("branch:engine-ready"));
+  }
   if (state === "kept") {
     // The new engine did not start; Branch keeps running the version it had.
     window.dispatchEvent(new Event("branch:engine-ready"));
-    showToast("Update postponed; Branch kept the current version");
-    return;
-  }
-  if (state === "updated") {
-    // The engine changed under the open window: reconnect now rather than at the next backoff step.
-    window.dispatchEvent(new Event("branch:engine-ready"));
-    showToast("Branch updated");
-    return;
-  }
-  let bar = document.getElementById("branch-desktop-update");
-  if (!bar) {
-    bar = document.createElement("div");
-    bar.id = "branch-desktop-update";
-    bar.setAttribute("role", "status");
-    bar.dataset.testid = "desktop-update-bar";
-    bar.style.cssText = [
-      "position:fixed", "left:50%", "bottom:16px", "transform:translateX(-50%)", "z-index:2147483647",
-      "display:flex", "align-items:center", "gap:12px", "padding:8px 8px 8px 14px", "border-radius:10px",
-      "background:#1e293b", "color:#f1f5f9", "font:13px/1.3 system-ui,-apple-system,'Segoe UI',sans-serif",
-      "box-shadow:0 6px 24px rgba(15,23,42,.28)",
-    ].join(";");
-    document.body.appendChild(bar);
-  }
-  bar.replaceChildren();
-  const text = document.createElement("span");
-  text.textContent = state === "ready" ? "An update is ready" : state === "auto-wait"
-    ? "Update ready, applying when your Trunks finish" : state === "preparing" ? "Getting the update ready…" : "Updating Branch…";
-  bar.appendChild(text);
-  if (state === "ready" || state === "auto-wait") {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = state === "ready" ? "Update" : "Update now";
-    button.dataset.testid = "desktop-update-restart";
-    button.style.cssText =
-      "border:0;border-radius:7px;padding:5px 12px;background:#f1f5f9;color:#0f172a;font:inherit;font-weight:600;cursor:pointer";
-    button.addEventListener("click", () => ipcRenderer.send("branch-desktop:restart-engine"));
-    bar.appendChild(button);
   }
 }
 

@@ -1,4 +1,4 @@
-// Written by Branch for INTEGRATIONS-0128 from openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/gateway/server-methods/nodes.invoke.ts and node-command-rejection-hint.ts; exercises the production policy without replacing Branch's newer authority checks.
+// Exercises the production policy without replacing Branch's newer authority checks.
 import { afterEach, describe, expect, it } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { resetPluginRuntimeStateForTest } from "../../plugins/runtime.js";
