@@ -3,7 +3,13 @@
  * branch.trunk-template.json. Pure data and functions. The exporter reads a Trunk and
  * hands only the fields below to buildTrunkTemplate, so nothing else can leave.
  */
-import { ALWAYS_ON_TOOL_IDS, listToolsetIds } from "../agents/tool-toolsets.js";
+import { ALWAYS_ON_TOOL_IDS, listToolsetIds, TOOLSETS } from "../agents/tool-toolsets.js";
+import {
+  parseFirstRun,
+  parseStarter,
+  type TrunkTemplateFirstRun,
+  type TrunkTemplateStarter,
+} from "./trunk-template-first-run.js";
 
 export const TRUNK_TEMPLATE_FILE_NAME = "branch.trunk-template.json";
 export const TRUNK_TEMPLATE_FORMAT = "branch.trunk-template";
@@ -12,6 +18,7 @@ export const TRUNK_TEMPLATE_VERSION = 1;
 const SEEDBANK_SKILL_PREFIX = "seedbank:@branch-agent/";
 const SKILL_ID_PATTERN = /^seedbank:@branch-agent\/([a-z0-9][a-z0-9-]*)(?:@\S+)?$/;
 const MODEL_FAMILY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const CONNECTION_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PEM_BLOCK_PATTERN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g;
 const PEM_HEADER_PATTERN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/g;
 const WINDOWS_USER_PATH_PATTERN = /[A-Za-z]:[\\/]Users[\\/][^\\/\s"'`]+/g;
@@ -32,11 +39,20 @@ export type TrunkTemplate = {
   skills: string[];
   /** Named toolset switches carried by the file, applied to the new Trunk on create. */
   toolsets: Record<string, boolean>;
+  /** Single built-in tools turned off inside a toolset that stays on, such as sessions_spawn. Added to tools.deny on create. */
+  denyTools?: string[];
   /** A model family such as "gpt-5.5". Never an account, key or auth profile. */
   model?: { family: string };
+  /** Routines. Import adds each one turned off, so nothing runs until the owner approves it. */
   automations?: TrunkTemplateAutomation[];
+  /** Channel ids the Trunk was bound to, such as "telegram". Never an account id or a token. */
+  connections?: string[];
   /** What the Trunk may reach, in plain words, as the exporter found it. */
   permissions: string[];
+  /** The first-run contract: questions with defaults, owner timezone, paused routines, Overview card. */
+  firstRun?: TrunkTemplateFirstRun;
+  /** Bundled starters only: how the Chief offers this teammate in its first conversation. */
+  starter?: TrunkTemplateStarter;
 };
 
 /** The only fields the exporter may pass in. Anything else on a Trunk stays on it. */
@@ -47,9 +63,13 @@ export type TrunkTemplateSource = {
   soulMd?: string;
   skillSlugs?: string[];
   toolsets?: Record<string, boolean>;
+  denyTools?: string[];
   modelFamily?: string;
   automations?: TrunkTemplateAutomation[];
+  connections?: string[];
   permissions?: string[];
+  firstRun?: TrunkTemplateFirstRun;
+  starter?: TrunkTemplateStarter;
 };
 
 export function skillIdForSlug(slug: string): string {
@@ -95,6 +115,11 @@ export function buildTrunkTemplate(source: TrunkTemplateSource): {
   if (source.modelFamily && !modelFamily) {
     skills.warnings.push("The model family was not a plain model name and was skipped.");
   }
+  const connections = [...new Set(source.connections ?? [])];
+  const keptConnections = connections.filter((id) => CONNECTION_ID_PATTERN.test(id));
+  if (keptConnections.length < connections.length) {
+    skills.warnings.push("One connection is not a plain channel id and was skipped.");
+  }
   const template: TrunkTemplate = {
     format: TRUNK_TEMPLATE_FORMAT,
     version: TRUNK_TEMPLATE_VERSION,
@@ -106,9 +131,13 @@ export function buildTrunkTemplate(source: TrunkTemplateSource): {
     },
     skills: skills.ids,
     toolsets: toolsetSwitches(source.toolsets),
+    ...(source.denyTools?.length ? { denyTools: [...new Set(source.denyTools)] } : {}),
     ...(modelFamily ? { model: { family: modelFamily } } : {}),
     ...(source.automations?.length ? { automations: source.automations } : {}),
+    ...(keptConnections.length ? { connections: keptConnections } : {}),
     permissions: source.permissions?.length ? source.permissions : [NO_RESTRICTIONS_PERMISSION],
+    ...(source.firstRun ? { firstRun: source.firstRun } : {}),
+    ...(source.starter ? { starter: source.starter } : {}),
   };
   return { template, warnings: skills.warnings };
 }
@@ -143,6 +172,50 @@ export type TrunkTemplateParse =
 
 function isStringRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function filledString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/** Keeps routines that have a name, a cron line and a prompt. Each other entry is named in a warning. */
+function parseAutomations(value: unknown, warnings: string[]): TrunkTemplateAutomation[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.flatMap((item: unknown) => {
+    if (isStringRecord(item) && filledString(item.name) && filledString(item.cron) && filledString(item.prompt)) {
+      return [{ name: item.name.trim(), cron: item.cron.trim(), prompt: item.prompt }];
+    }
+    warnings.push("One routine is missing its name, schedule or prompt and was skipped.");
+    return [];
+  });
+}
+
+/** Every built-in tool a template may switch off by name: the tools of every toolset. */
+function knownToolIds(): Set<string> {
+  return new Set(TOOLSETS.flatMap((toolset) => toolset.tools));
+}
+
+/** The optional denyTools list. Unknown or always-on names warn and are skipped; it never fails. */
+function parseDenyTools(raw: unknown, warnings: string[]): string[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(raw)) {
+    warnings.push("denyTools is not a list of tool names and was skipped.");
+    return undefined;
+  }
+  const known = knownToolIds();
+  const kept: string[] = [];
+  for (const id of raw as unknown[]) {
+    if (typeof id === "string" && known.has(id) && !ALWAYS_ON_TOOL_IDS.includes(id)) {
+      kept.push(id);
+    } else {
+      warnings.push("One denyTools entry names no built-in tool and was skipped.");
+    }
+  }
+  return kept.length ? kept : undefined;
 }
 
 /** Checks the shape of a template file. Bad toolsets and malformed skill ids warn; they do not fail. */
@@ -185,11 +258,17 @@ export function parseTrunkTemplate(raw: unknown): TrunkTemplateParse {
     soulMd: typeof raw.persona.soulMd === "string" ? raw.persona.soulMd : undefined,
     skillSlugs: skills.ids.map((id) => skillSlugForId(id) ?? ""),
     toolsets,
+    denyTools: parseDenyTools(raw.denyTools, warnings),
     modelFamily: isStringRecord(raw.model) && typeof raw.model.family === "string" ? raw.model.family : undefined,
-    automations: Array.isArray(raw.automations) ? (raw.automations as TrunkTemplateAutomation[]) : undefined,
+    automations: parseAutomations(raw.automations, warnings),
+    connections: Array.isArray(raw.connections)
+      ? raw.connections.filter((id): id is string => typeof id === "string")
+      : undefined,
     permissions: Array.isArray(raw.permissions) && raw.permissions.every((line) => typeof line === "string")
       ? (raw.permissions as string[])
       : undefined,
+    firstRun: parseFirstRun(raw.firstRun, warnings),
+    starter: parseStarter(raw.starter, warnings),
   });
   warnings.push(...built.warnings);
   return { ok: true, template: built.template, warnings };

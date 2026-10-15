@@ -79,7 +79,7 @@ describe("memory search config", () => {
   it("bounds the embedding cache with a built-in default", () => {
     // #111382 purged `memory.search.cache.maxEntries` from the config contract and replaced it
     // with an unset built-in default, so pruneEmbeddingCacheIfNeeded early-returned on
-    // `!max` and memory_embedding_cache grew without limit (openclaw/openclaw#114612).
+ // `!max` and memory_embedding_cache grew without limit.
     const resolved = resolveMemorySearchConfig(
       asConfig({ memory: { search: {} }, agents: { defaults: {} } }),
       "main",

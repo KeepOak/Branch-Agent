@@ -1,0 +1,3 @@
+window:src/screens/approvals/ProblemBanners.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/frame/glass48.test.tsx

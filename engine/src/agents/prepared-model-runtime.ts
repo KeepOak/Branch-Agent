@@ -279,6 +279,11 @@ export function getPendingPreparedModelRuntimeReplacement(agentId?: string): Pro
   return getPassiveReplacement(agentId)?.promise;
 }
 
+/** Every configured owner holds a current publication: none is unpublished, stale or still building. */
+export function hasPublishedConfiguredModelRuntimes(): boolean {
+  return configuredOwnersAreRequestVisible(owners);
+}
+
 /** Trace text for the pending publication barrier an agent awaits: its scope and degraded flag. */
 export function describePendingPreparedModelRuntimeReplacement(agentId?: string): string | undefined {
   const replacement = getPassiveReplacement(agentId);

@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/telegram/src/webhook.host-floor.test.ts (atlas CHAT-APPS-0119). Changed for Branch: exercise Gateway-owned webhook routes after upstream retired per-account listeners.
+// Changed for Branch: exercise Gateway-owned webhook routes after upstream retired per-account listeners.
 import { once } from "node:events";
 import { createServer, request } from "node:http";
 import { createDeferred } from "branch/plugin-sdk/extension-shared";

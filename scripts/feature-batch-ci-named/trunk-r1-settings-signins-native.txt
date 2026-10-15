@@ -1,0 +1,3 @@
+window:src/screens/settings/pages/signins-live.test.tsx
+window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/frame/R1Window.test.tsx
