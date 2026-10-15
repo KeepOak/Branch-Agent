@@ -104,9 +104,12 @@ describe("R1 Settings, the Coming contract", () => {
     expect(host.textContent).not.toContain("later update");
     // Advanced: the Coming rows and the sections with no rows yet show, each with its reason.
     await click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === "Advanced")!);
-    expect(cards()).toEqual(expect.arrayContaining(["Writing", "Keyboard", "Starting up"]));
+    // A section with no rows yet is one quiet line, not an empty card.
+    expect(cards()).toEqual(expect.arrayContaining(["Writing", "Keyboard"]));
+    expect(cards()).not.toContain("Starting up");
     expect(host.querySelector('[data-row="general.writing.later"] .r1s-note')?.textContent).toBe("Waits comes in a later update.");
     expect(host.querySelector('[data-row="general.keyboard.later"]')).not.toBeNull();
+    expect([...host.querySelectorAll("p.r1s-quiet")].map((p) => p.textContent).join(" ")).toContain("Starting up");
     expect(host.textContent).toContain("Starting up comes to this page in a later update.");
   });
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { errorText } from "./adapter";
+import { STALL_TEXT, stallAfter } from "./stall";
 
 /** A stale response never replaces a newer load or a different page's state. */
 export function useResource<T>(engine: WindowEngine, method: string, params: unknown = {}) {
@@ -10,10 +11,14 @@ export function useResource<T>(engine: WindowEngine, method: string, params: unk
   const reload = useCallback(async () => {
     const current = ++generation.current;
     setState({ loading: true });
+    const stop = stallAfter(() => {
+      if (current === generation.current) setState((s) => (s.data === undefined ? { loading: false, error: STALL_TEXT } : s));
+    });
     try {
       const data = await engine.request<T>(method, JSON.parse(paramsKey));
+      stop();
       if (current === generation.current) setState({ data, loading: false });
-    } catch (error) { if (current === generation.current) setState({ error: errorText(error), loading: false }); }
+    } catch (error) { stop(); if (current === generation.current) setState({ error: errorText(error), loading: false }); }
   }, [engine, method, paramsKey]);
   useEffect(() => { void reload(); return () => { generation.current++; }; }, [reload]);
   return { ...state, reload };

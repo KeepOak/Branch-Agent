@@ -57,7 +57,8 @@ export function TrunkEditor(props: TrunkEditorProps) {
   const { engine, agentId, onClose } = props;
   const data = useLoad(() => loadTrunkData(engine), agentId);
   const initial = useMemo(() => (data.data ? draftOf(data.data, agentId) : null), [data.data, agentId]);
-  const name = initial?.name || agentId;
+  // Until the Trunk is read, the title names it plainly: never the engine id (research-desk).
+  const name = initial?.name || "this Trunk";
   if (!data.data || !initial) {
     const line = data.error || (data.loading ? "Reading this Trunk…" : "This Trunk is no longer in the engine’s list.");
     return <Layer><Dialog title={`Edit ${name}`} wide onClose={onClose} testid="trunk-editor" footer={<button type="button" className="btn ghost" onClick={onClose}>Cancel</button>}><p className={data.error ? "tk-error" : "tk-hint"} role={data.error ? "alert" : "status"}>{line}</p></Dialog></Layer>;

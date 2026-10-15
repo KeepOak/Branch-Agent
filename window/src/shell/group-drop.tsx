@@ -7,6 +7,7 @@ import { RoomFaces } from "../rooms/RoomFaces";
 import { openNewGroupChat } from "../rooms/NewGroupChat";
 import type { SidebarDrop } from "./sidebar-drag";
 import "./group-drop.css";
+import { joinNames } from "./join-names";
 
 export type GroupMember = { kind: "trunk" | "person" | "a2a"; id: string; role?: "lead" | "member" };
 export type GroupRoom = { roomId: string; name: string; lead?: string; rule?: "lead" | "everyone" | "mentions"; createdAt: number; archivedAt?: number; members: GroupMember[] };
@@ -123,7 +124,7 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
     if (event.kind === "created") {
       const members = data.members ?? [];
       const shown = members.length > 2 ? members.slice(0, 2) : members;
-      return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `You started a group with ${shown.map(named).join(" and ")}`, at: event.createdAt }];
+      return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `You started a group with ${joinNames(shown.map(named))}`, at: event.createdAt }];
     }
     // The merge feed: one plain sentence per merge ("That's 107 merged: #1088 …."), and the line that says the room follows a repository.
     if ((event.kind === "merge" || event.kind === "merge.follow") && data.text?.trim()) return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: data.text.trim(), at: event.createdAt }];
