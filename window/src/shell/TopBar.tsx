@@ -3,6 +3,7 @@ import { Pebble } from "../face/Pebble";
 import { STATE_LABEL, type AgentState } from "../face/agentState";
 import { useTrunkAppearance } from "../face/appearance";
 import { Icon } from "./icons";
+import { keyHint } from "./key-hint";
 import { syncTitleBar } from "../connect/title-bar";
 import { CONVERSATION_MORE_IDLE_LABEL, conversationMoreLabel } from "./conversation-more";
 
@@ -224,8 +225,8 @@ export function TopBar({ compact, machine, header, dark, listHidden, onToggleLis
           {!compact ? <button
             type="button"
             className="ib"
-            aria-label={listHidden ? "Show the list · Ctrl+B" : "Hide the list · Ctrl+B"}
-            title={listHidden ? "Show the list (Ctrl+B)" : "Hide the list (Ctrl+B)"}
+            aria-label={`${listHidden ? "Show" : "Hide"} the list · ${keyHint("Ctrl+B")}`}
+            title={`${listHidden ? "Show" : "Hide"} the list (${keyHint("Ctrl+B")})`}
             aria-pressed={!listHidden}
             data-testid="list-toggle"
             onClick={(e: MouseEvent) => {
