@@ -4,7 +4,7 @@ import { NAV, PAGES, TOP_PAGES, pageShown, type Level, type PageId } from "./nav
 import { COMING_FROM, ROWS, comingRow, rowHelp, rowLabel, shownLevel, type Row, type UiHints } from "./rows";
 
 export const NOTHING_MATCHES = "Nothing matches. Try another word.";
-export const SEARCH_PLACEHOLDER = "Search settings, places, Trunks, features";
+export const SEARCH_PLACEHOLDER = "Search settings";
 const MAX = { pages: 6, rows: 14, trunks: 5, features: 6 } as const;
 
 export type SearchHit =

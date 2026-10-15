@@ -53,7 +53,7 @@ describe("SettingsFrame", () => {
   it("draws the nav groups in order with search and How much to show at the top", async () => {
     await mount(engineOf().engine);
     expect($$(".r1s-grp").map((g) => g.textContent)).toEqual(["You", "Your Trunks", "Talking", "Accounts & models", "Permissions & safety", "Computers", "Branch"]);
-    expect($<HTMLInputElement>(".r1s-search input").placeholder).toBe("Search settings, places, Trunks, features");
+    expect($<HTMLInputElement>(".r1s-search input").placeholder).toBe("Search settings");
     expect($(".r1s-level small").textContent).toBe("The essentials, in plain words.");
     expect($(".r1s-nav[aria-current=page]").textContent).toBe("General");
     expect($("[data-page=developer]")).toBeNull();
