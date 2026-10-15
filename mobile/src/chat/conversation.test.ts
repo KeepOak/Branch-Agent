@@ -159,7 +159,10 @@ describe('one chat, live', () => {
     });
     engine.failMethod('chat.send', 'The engine is busy');
     await chat.send('', [file]);
-    expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-2', text: 'shot.png', message: '', state: 'failed' }]);
+    expect(chat.getSnapshot().sends).toMatchObject([
+      { id: 'run-1', text: 'Look', state: 'sent' },
+      { id: 'run-2', text: 'shot.png', message: '', state: 'failed' },
+    ]);
     engine.failMethod('chat.send', null);
     await chat.retry('run-2');
     const last = engine.requests.filter((r) => r.method === 'chat.send').at(-1)?.params;

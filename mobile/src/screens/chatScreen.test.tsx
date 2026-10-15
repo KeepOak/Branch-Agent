@@ -182,8 +182,8 @@ describe('chat attachments', () => {
     expect(screen.getByTestId('attach')).toBeEnabled();
     await fireEvent.press(screen.getByTestId('attach'));
     await fireEvent.press(screen.getByTestId('attach-library'));
-    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent('shot.png'));
-    expect(screen.getByTestId('file-chip')).toHaveTextContent('3 B');
+    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent(/shot\.png/));
+    expect(screen.getByTestId('file-chip')).toHaveTextContent(/3 B/);
     await fireEvent.changeText(screen.getByTestId('composer'), 'Look at this');
     await fireEvent.press(screen.getByTestId('send'));
     expect(screen.queryByTestId('file-chip')).toBeNull();
@@ -206,13 +206,13 @@ describe('chat attachments', () => {
     await eventually(() => expect(screen.getByText('Your expenses for September are filed.')).toBeOnTheScreen());
     await fireEvent.press(screen.getByTestId('attach'));
     await fireEvent.press(screen.getByTestId('attach-photo'));
-    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent('shot.png'));
+    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent(/shot\.png/));
     await fireEvent.press(screen.getByTestId('remove-file-f1'));
     expect(screen.queryByTestId('file-chip')).toBeNull();
     next = notes;
     await fireEvent.press(screen.getByTestId('attach'));
     await fireEvent.press(screen.getByTestId('attach-file'));
-    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent('notes.txt'));
+    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent(/notes\.txt/));
     expect(screen.getByTestId('send')).toBeEnabled();
     await fireEvent.press(screen.getByTestId('send'));
     await eventually(() => expect(screen.getByText('notes.txt')).toBeOnTheScreen());
@@ -241,7 +241,7 @@ describe('chat attachments', () => {
     await eventually(() => expect(screen.getByText('Your expenses for September are filed.')).toBeOnTheScreen());
     await fireEvent.press(screen.getByTestId('attach'));
     await fireEvent.press(screen.getByTestId('attach-library'));
-    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent('Too large to send: shot.png'));
+    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent(/Too large to send: shot\.png/));
     expect(screen.getByTestId('send')).toBeDisabled();
     fail = true;
     await fireEvent.press(screen.getByTestId('attach'));
