@@ -3,6 +3,7 @@
 import type { BrowserWindow, Rectangle } from "electron";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { reportDiskFull, reportDiskWritable } from "./disk-full";
 
 export type SavedWindowState = { mode: "maximized" | "normal"; x: number; y: number; width: number; height: number; display?: Rectangle };
 export type WindowPlacement = { maximized: boolean; bounds?: Rectangle };
@@ -42,7 +43,8 @@ export function placeWindow(saved: SavedWindowState | undefined, displays: Displ
 }
 
 /** Saves maximized/normal state, the normal bounds and the display on every move, resize and close. */
-export function trackWindowState(w: BrowserWindow, dataDir: string, displayFor: (bounds: Rectangle) => Rectangle, file: string | (() => string) = FILE): void {
+export function trackWindowState(w: BrowserWindow, dataDir: string, displayFor: (bounds: Rectangle) => Rectangle, file: string | (() => string) = FILE,
+  write: (path: string, text: string) => void = writeFileSync): void {
   let timer: NodeJS.Timeout | undefined;
   const save = (): void => {
     if (timer) clearTimeout(timer);
@@ -51,9 +53,11 @@ export function trackWindowState(w: BrowserWindow, dataDir: string, displayFor: 
     const bounds = w.getNormalBounds();
     const state: SavedWindowState = { mode: w.isMaximized() ? "maximized" : "normal", ...bounds, display: displayFor(bounds) };
     try {
-      writeFileSync(join(dataDir, typeof file === "function" ? file() : file), JSON.stringify(state));
-    } catch {
-      // saving the window state must never stop the app
+      write(join(dataDir, typeof file === "function" ? file() : file), JSON.stringify(state));
+      reportDiskWritable();
+    } catch (error) {
+      // saving the window state must never stop the app; a full disk shows the one disk-full banner
+      reportDiskFull(error);
     }
   };
   const later = (): void => {

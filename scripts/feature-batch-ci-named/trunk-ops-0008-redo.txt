@@ -1,0 +1,16 @@
+# Unique foundation-0008 harvest tests; listed for trusted coverage after rate limit.
+# Report-target fix: every test whose fixtures moved to the Branch-owned report repository.
+engine:src/cli/gateway-cli/run.option-collisions.test.ts
+engine:src/cli/update-cli/update-command-report.test.ts
+engine:src/cli/update-cli/update-command-rollback-report.test.ts
+engine:src/commands/doctor-session-sqlite.failure-reports.test.ts
+engine:src/commands/doctor.test.ts
+engine:src/flows/doctor-health.update.test.ts
+engine:src/gateway/server-methods/update-report-run.test.ts
+engine:src/gateway/server-methods/update-report.test.ts
+engine:src/gateway/server/ws-connection/update-report-authority.server.test.ts
+engine:src/infra/github-issue.test.ts
+engine:src/infra/update-check.test.ts
+engine:src/infra/update-failure-report-recovery.test.ts
+engine:src/infra/update-failure-report-transport.test.ts
+engine:src/infra/update-failure-report.test.ts

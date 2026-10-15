@@ -15,7 +15,7 @@ import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { transport } from '../transport/index.js';
 
 /** Name of the office's own options (export / import / reset layout, sound, names, areas). */
-export const GROVE_OPTIONS = 'Grove options';
+const GROVE_OPTIONS = 'Grove options';
 
 export function BranchToolbar(p: {
   isEditMode: boolean;
@@ -29,8 +29,8 @@ export function BranchToolbar(p: {
   return (
     <div className="absolute bottom-10 left-10 z-20 pa-bar" role="toolbar" aria-label="Grove" data-testid="office-toolbar">
       {p.onNewAgent && (
-        <button type="button" className="pa-btn pri" onClick={p.onNewAgent} title="Make a new Trunk">
-          New Trunk
+        <button type="button" className="pa-btn pri" onClick={p.onNewAgent} aria-label="New Trunk" title="Make a new Trunk">
+          Trunk
         </button>
       )}
       <button type="button" className="pa-btn" aria-pressed={p.isEditMode} onClick={p.onToggleEditMode} title="Edit the office layout">

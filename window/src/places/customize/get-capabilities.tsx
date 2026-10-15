@@ -1,6 +1,7 @@
 // Customize › Tools › "Get capabilities": one page with five tabs (Skills, Connectors, Plugins, Trunk templates,
 // Automations), as the owner-approved capability structure describes. Skills and Plugins list what is built in,
-// installed, and available, with Install or Remove. The other three tabs are not built yet. Install and Remove reuse
+// installed, and available, with Install or Remove. Trunk templates lists the template catalog with Create and Import
+// (trunk-templates.tsx). Connectors and Automations are not built yet. Install and Remove reuse
 // the methods the Plugins and Skills kinds already call (plugins.install, plugins.uninstall, skills.install). A skill
 // cannot be removed yet: the engine has no skill remove method, so its Remove is greyed out with the reason. Each source
 // loads on its own, so a failed catalogue never hides the rows that come from this computer.
@@ -16,6 +17,7 @@ import { Grey, list, Pill, rec, str, type Rec } from "./common";
 import { Glyph } from "./glyphs";
 import { readPlugins, type Plugin } from "./plugins";
 import { readSkillRows, type Skill } from "./skills";
+import { TemplatesTab } from "./trunk-templates";
 
 export type Tag = "Bundled" | "Installed" | "Available";
 type Action = { method: string; params: Rec };
@@ -143,7 +145,8 @@ export function GetCapabilitiesDialog({ engine, close, done, scope = {} }: { eng
       {plugins.data != null && !rows.length && <EmptyLine icon={<Icon name="search" />}>{q ? "Nothing matches. Try another search." : "Nothing to show yet."}</EmptyLine>}
       <div className="get-rows">{rows.map(r => <GetRowCard key={r.id} row={r} busy={action.busy === r.id}
         install={() => r.install && start(r, "Install", r.install)} remove={() => setConfirming(r)} />)}</div>
-    </> : <EmptyLine icon={<Glyph name="sparkle" size={22} />}>Coming in a later update.</EmptyLine>}
+    </> : tab === "Trunk templates" ? <TemplatesTab engine={engine} done={done} />
+    : <EmptyLine icon={<Glyph name="sparkle" size={22} />}>Coming in a later update.</EmptyLine>}
     {work && <ResultDialog work={work} busy={action.busy === work.row.id} error={action.error} finished={finished === work.row.id} close={() => setWork(null)} />}
     {confirming && <Dialog title={`Remove ${confirming.name}?`} onClose={() => setConfirming(null)} testid="get-remove-confirm"
       footer={<><button type="button" className="btn ghost" onClick={() => setConfirming(null)}>Cancel</button><button type="button" className="btn bad" onClick={() => confirmRemove(confirming)}>Remove</button></>}>

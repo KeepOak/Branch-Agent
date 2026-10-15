@@ -8,7 +8,7 @@ import { Glyph, type GlyphName } from "./glyphs";
 import { jobName } from "./model";
 import { str, type Row } from "./runtime";
 
-export const IDEAS: [string, string, string][] = [
+const IDEAS: [string, string, string][] = [
   ["Money", "Receipts into folders", "When a receipt lands in email, file it by the month it was paid."],
   ["Money", "Subscription watch", "Tell me when a subscription price goes up."],
   ["Money", "Bill reminders", "A nudge three days before each bill is due."],
@@ -44,7 +44,7 @@ export function Ideas({ pick, canWrite }: { pick: (title: string, message: strin
   </Section>;
 }
 
-export const NEEDS = {
+const NEEDS = {
   orders: "Needs the engine’s standing-orders store.",
   reminders: "Needs the engine’s reminders store.",
   ready: "Needs the engine’s unattended-run check.",

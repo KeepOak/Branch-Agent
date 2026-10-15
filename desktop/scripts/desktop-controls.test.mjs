@@ -18,11 +18,10 @@ async function fixture(run) {
   await mkdir(parent, { recursive: true });
   const root = await mkdtemp(join(parent, "fixture-"));
   const calls = [];
-  const state = { login: false, onPath: false, nextBlocker: 7 };
+  const state = { login: false, onPath: false };
   const deps = {
     settingsFile: join(root, "desktop-settings.json"),
     login: { get: () => state.login, set: on => { calls.push(["login", on]); state.login = on; } },
-    awake: { start: () => { calls.push(["awake-start"]); return state.nextBlocker; }, stop: id => calls.push(["awake-stop", id]) },
     cli: { installed: async () => state.onPath, install: async () => { calls.push(["cli-install"]); state.onPath = true; },
       uninstall: async () => { calls.push(["cli-uninstall"]); state.onPath = false; } },
     tray: { usage: (left, on) => calls.push(["tray", left, on]) },
@@ -31,9 +30,9 @@ async function fixture(run) {
   try { await run({ root, deps, calls, state }); } finally { await rm(root, { recursive: true, force: true }); }
 }
 
-test("defaults keep working and auto-apply on, keep awake and tray ring off", async () => fixture(async ({ deps }) => {
+test("defaults keep working, keep awake (plugged in) and auto-apply on; awake on battery and tray ring off", async () => fixture(async ({ deps }) => {
   const controls = createDesktopControls(deps);
-  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true, agentControl: false, startWithWindows: false, branchOnPath: false });
+  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: true, keepAwakeOnBattery: false, trayUsage: false, autoApplyUpdates: true, agentControl: false, startWithWindows: false, branchOnPath: false });
 }));
 
 test("letting agents use the window is off by default, saved, and read at the next launch", async () => fixture(async ({ deps, calls }) => {
@@ -53,19 +52,21 @@ test("Start with Windows goes to the login item, not the settings file", async (
   assert.equal((await controls.get()).startWithWindows, false);
 }));
 
-test("keep awake holds one blocker, saves, and is reapplied at launch", async () => fixture(async ({ deps, calls }) => {
-  const controls = createDesktopControls(deps);
-  await controls.set("keepAwake", true);
-  await controls.set("keepAwake", true);
-  assert.deepEqual(calls, [["awake-start"]]);
-  assert.equal(JSON.parse(await readFile(deps.settingsFile, "utf8")).keepAwake, true);
+test("keep awake is saved and read back; the blocker itself follows runs (keep-awake.ts), never the switch", async () => fixture(async ({ deps, calls }) => {
+  const changes = [];
+  const controls = createDesktopControls({ ...deps, onChange: settings => changes.push(settings) });
+  await controls.set("keepAwake", false);
+  await controls.set("keepAwakeOnBattery", true);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(changes.map(s => [s.keepAwake, s.keepAwakeOnBattery]), [[false, false], [false, true]]);
+  const saved = JSON.parse(await readFile(deps.settingsFile, "utf8"));
+  assert.equal(saved.keepAwake, false);
+  assert.equal(saved.keepAwakeOnBattery, true);
   const relaunched = createDesktopControls(deps);
   relaunched.apply();
-  assert.deepEqual(calls.at(-1), ["awake-start"]);
+  assert.equal(relaunched.settings().keepAwake, false);
   relaunched.dispose();
-  assert.deepEqual(calls.at(-1), ["awake-stop", 7]);
-  await controls.set("keepAwake", false);
-  assert.deepEqual(calls.at(-1), ["awake-stop", 7]);
+  assert.deepEqual(calls, []);
 }));
 
 test("keep working when the window closes is saved and read back", async () => fixture(async ({ deps }) => {
@@ -297,4 +298,33 @@ test("launch refreshes an existing branch command and never installs one", async
   deps.cli.refresh = () => { throw new Error("locked"); };
   assert.doesNotThrow(() => createDesktopControls(deps).apply());
   controls.dispose();
+}));
+
+test("a full disk keeps a changed setting in memory, shows the disk-full banner once, and saves on the next write", async () => fixture(async ({ deps }) => {
+  const { diskIsFull, onDiskFullChange } = await import(pathToFileURL(join(dist, "disk-full.js")));
+  const seen = [];
+  const stop = onDiskFullChange(full => seen.push(full));
+  let failing = true;
+  const writes = [];
+  // ENOSPC is injected into the settings write; the real disk is never filled.
+  const { writeFileSync } = await import("node:fs");
+  const writeFile = (file, text) => {
+    if (failing) throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC", errno: -28, syscall: "write" });
+    writes.push(file);
+    writeFileSync(file, text);
+  };
+  const controls = createDesktopControls({ ...deps, writeFile });
+  try {
+    assert.equal((await controls.set("keepWorking", false)).keepWorking, false, "the toggle never throws on a full disk");
+    assert.equal((await controls.set("trayUsage", true)).trayUsage, true);
+    assert.equal(controls.settings().keepWorking, false, "the new value stays in memory");
+    assert.equal(diskIsFull(), true);
+    assert.deepEqual(seen, [true], "one banner for both failed saves");
+    failing = false;
+    await controls.set("keepAwake", false);
+    assert.deepEqual(writes, [deps.settingsFile]);
+    assert.equal(readSettings(deps.settingsFile).keepWorking, false, "the next save writes the kept value");
+    assert.equal(diskIsFull(), false);
+    assert.deepEqual(seen, [true, false], "the banner goes away once a save lands");
+  } finally { stop(); }
 }));

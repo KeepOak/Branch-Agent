@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { markThreadsRead, newReadActionId } from "../../shell/contacts-model";
 import { agents, sessions, type Agent, type Session } from "../overview/engine";
+import { isEngineJob } from "../../connect/engine-jobs";
 
 export type Row = Record<string, unknown>;
 export const rec = (v: unknown): Row => v && typeof v === "object" && !Array.isArray(v) ? v as Row : {};
@@ -95,7 +96,7 @@ export async function loadNeeds(engine: WindowEngine): Promise<Needs> {
     pairs ? settle("Computers", errors, () => engine.request("node.pair.list", {}), {}) : {},
     asks ? settle("Questions", errors, () => engine.request("question.list", {}), {}) : {},
     settle("Mentions", errors, () => engine.request("mentions.list", {}), {}),
-    settle("Automations", errors, () => paged(engine, "cron.list", "jobs", { lastRunStatus: "error", enabled: "enabled" }), [] as Row[]),
+    settle("Automations", errors, async () => (await paged(engine, "cron.list", "jobs", { lastRunStatus: "error", enabled: "enabled" })).filter(j => !isEngineJob(j)), [] as Row[]),
     settle("Sign-ins", errors, () => engine.request("models.authStatus", {}), {}),
     settle("Chat apps", errors, () => engine.request("channels.status", { probe: false }), {}),
     settle("Conversations", errors, () => paged(engine, "sessions.list", "sessions", { includeGlobal: true, includeUnknown: true, includeLastMessage: true, includeDerivedTitles: true, archived: "all" }), [] as Row[]),

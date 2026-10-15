@@ -279,6 +279,11 @@ export function getPendingPreparedModelRuntimeReplacement(agentId?: string): Pro
   return getPassiveReplacement(agentId)?.promise;
 }
 
+/** Every configured owner holds a current publication: none is unpublished, stale or still building. */
+export function hasPublishedConfiguredModelRuntimes(): boolean {
+  return configuredOwnersAreRequestVisible(owners);
+}
+
 /** Trace text for the pending publication barrier an agent awaits: its scope and degraded flag. */
 export function describePendingPreparedModelRuntimeReplacement(agentId?: string): string | undefined {
   const replacement = getPassiveReplacement(agentId);
@@ -566,6 +571,7 @@ export function refreshPreparedModelRuntimeSnapshots(
   options: PreparedModelRuntimeRefreshOptions = {},
 ): Promise<void> {
   if (options.isPublicationCurrent?.() === false) {
+    options.onPublicationSkipped?.();
     return Promise.resolve();
   }
   const requestedScopedRefresh = options.agentIds !== undefined;
@@ -584,6 +590,9 @@ export function refreshPreparedModelRuntimeSnapshots(
   let publicationAgentIds = initialAgentIds;
   const isPublicationCurrent = () =>
     requestEpoch === refreshRequestEpoch && options.isPublicationCurrent?.() !== false;
+  const skipPublication = () => {
+    options.onPublicationSkipped?.();
+  };
   const startup =
     options.startup === true && options.catalogMode === "static" && replacement
       ? new PreparedModelRuntimeStartup({
@@ -621,11 +630,21 @@ export function refreshPreparedModelRuntimeSnapshots(
     );
     rejectPendingPreparedModelRuntimeReplacement(replacement?.gateId, error);
   };
+  let publicationCommitted = false;
   const commitReplacement = () => {
-    if (!replacement || pendingModelRuntimeReplacement !== replacement) {
+    if (!replacement) {
+      return;
+    }
+    if (pendingModelRuntimeReplacement !== replacement) {
+      // A newer gate replaced this publication before its commit ran. A drain that already
+      // committed this publication also reaches here, so only an uncommitted one is a skip.
+      if (!publicationCommitted) {
+        skipPublication();
+      }
       return;
     }
     if (!isPublicationCurrent()) {
+      skipPublication();
       rejectReplacement(
         new PreparedModelRuntimePublicationSupersededError(
           "prepared model runtime publication was superseded",
@@ -633,6 +652,7 @@ export function refreshPreparedModelRuntimeSnapshots(
       );
       return;
     }
+    publicationCommitted = true;
     const adoptedAuthTransaction = authPublication.prepareAdoptedCommit(replacement.gateId);
     replyDispatchPublication.rebuild(owners.values());
     log.info(
@@ -652,10 +672,12 @@ export function refreshPreparedModelRuntimeSnapshots(
   const publication = publicationQueue
     .enqueue(async () => {
       if (!isPublicationCurrent()) {
+        skipPublication();
         return;
       }
       const currentConfig = typeof config === "function" ? await config() : config;
       if (!isPublicationCurrent()) {
+        skipPublication();
         return;
       }
       publicationAgentIds = forceFullRefresh
@@ -684,6 +706,7 @@ export function refreshPreparedModelRuntimeSnapshots(
         },
       );
       if (!isPublicationCurrent()) {
+        skipPublication();
         return;
       }
       const drain = () =>
@@ -700,6 +723,9 @@ export function refreshPreparedModelRuntimeSnapshots(
     }, startup?.release)
     .then(commitReplacement, (error: unknown) => {
       const refreshError = toStringifiedError(error);
+      if (!isPublicationCurrent()) {
+        skipPublication();
+      }
       if (replacement?.degraded && isPublicationCurrent()) {
         startup?.update(true);
         if (pendingModelRuntimeReplacement === replacement) {

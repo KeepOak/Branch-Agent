@@ -170,7 +170,7 @@ describe("execution auth binding fingerprints", () => {
     // The successful-run capture may resolve a key from env while the owner
     // revalidation resolves the identical key through a models.json marker or
     // profile fallback. The owner gate must treat both as the same authority
-    // (openclaw/openclaw#138584) instead of failing closed on provenance.
+ // instead of failing closed on provenance.
     const material = "shared-credential-material";
     const fromEnv = fingerprintResolvedProviderAuth({
       apiKey: material,

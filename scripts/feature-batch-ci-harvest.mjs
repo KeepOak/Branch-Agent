@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
-import { harvestMatrix, harvestTests, shardOf, shardTests, touchedHarvestTests } from './feature-batch-ci-targets.mjs';
+import { harvestMatrix, harvestShardFiles } from './feature-batch-ci-targets.mjs';
 import { preparePnpm, publishWindowDependencies, run, scratchRoot, toolingRoot, verifiedExceptionFlags, windowRoot } from './feature-batch-ci-runtime.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -35,8 +35,7 @@ if (mode === 'install') {
 } else if (mode === 'run') {
   const lane = process.env.HARVEST_LANE;
   if (!['engine', 'window'].includes(lane)) throw new Error('HARVEST_LANE must be engine or window');
-  const files = changed ? touchedHarvestTests(lane, changed) : harvestTests(lane);
-  const selected = shardTests(files, shardOf(process.env.HARVEST_SHARD));
+  const selected = harvestShardFiles(lane, process.env.HARVEST_SHARD, changed);
   const laneRoot = path.join(root, lane);
   const results = path.join(process.env.RUNNER_TEMP ?? root, `harvest-${lane}-${process.env.HARVEST_SHARD?.replace('/', '-')}.json`);
   const config = path.join(root, 'scripts', `feature-batch-ci-harvest-${lane}.config.mjs`);
