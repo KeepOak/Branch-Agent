@@ -61,7 +61,7 @@ import { availability } from "../../connect/capabilities";
 import { CHANGES_NEED, R1Changes } from "../changes/R1Changes";
 import { R1Character, useR1CharacterShown } from "../character/R1Character";
 import { graftedContactOf, isGraftedContactKey, newestGraftedTopic, openConversationName } from "./open-name";
-import { GraftedEmpty } from "./GraftedEmpty";
+import { GraftedEmpty, GraftedFace } from "./GraftedEmpty";
 import { agentIdOf } from "../../connect/session";
 
 const FIND_ANYTHING_NAMES_ONLY = "Message search needs a newer Branch engine. Find anything lists names only.";
@@ -386,7 +386,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     <Frame sidebar={sidebar} main={shown} freeLayout={threads.layout === "free"} topics={chat ? threads.column ?? undefined : undefined} beside={talk.beside} pane={pane && ready && chat ? <R1SidePane key={snapshot.sessionKey ?? "none"} engine={engine} name={name} title={name || "Conversation"}
       blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={setNotice} onReload={() => void session.reload()} /> : undefined} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
-      face: room.header && chat ? room.header.faces(24) : <Face size={24} label={name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
+      face: room.header && chat ? room.header.faces(24) : graftedKey || graftedContactOf(snapshot.sessionKey) ? <GraftedFace name={name} size={24} /> : <Face size={24} label={name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
       right: route.kind === "chat" ? [
         { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", pressed: stageShown && stage === "Computer", onClick: tools ? () => toggleStage("Computer") : undefined },
         { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", pressed: stageShown && stage === "Browser", onClick: tools ? () => toggleStage("Browser") : undefined },

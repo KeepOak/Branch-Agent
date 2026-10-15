@@ -92,6 +92,9 @@ it("opens a grafted agent with no conversation as its own empty state: no defaul
   expect(host.querySelector('[data-testid="grafted-empty"]')?.textContent).toContain("No conversation with Claude Code yet.");
   expect(host.querySelector('[data-testid="chat"]')).toBeNull();
   expect(composer()).toBeNull();
+  // Its face is the grafted initials disc, as in the sidebar, never a Trunk's character.
+  expect(host.querySelector('[data-testid="grafted-empty"] .g-av-initials[data-kind="grafted"]')?.textContent).toBe("CC");
+  expect(host.querySelector('[data-testid="grafted-empty"] [data-testid="face"]')).toBeNull();
   expect(title()).toBe("Claude Code");
   expect(sidebar.props!.currentKey).toBe("a2a:claude-code");
 });
