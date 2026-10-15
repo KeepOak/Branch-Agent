@@ -101,7 +101,7 @@ function ListEditor({ r, c }: { r: Spec; c: Ctx }) {
       {items.length ? items.map((x, i) => <span key={`${x}-${i}`} className="chip6">{x}<button type="button" className="s2-x" aria-label={`Remove ${x}`} onClick={() => put(saved.filter((_, j) => j !== i))}>×</button></span>) : <span className="hint">Nothing here yet.</span>}
       <span className="s2advanced-add">
         <input className="inp s2advanced-mono" aria-label={`${r.t}: new item`} placeholder={r.ph} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
-        <Btn sm disabled={c.config.loading} onClick={add}>{r.add ?? "Add"}</Btn>
+        <Btn sm disabled={c.config.loading || !draft.trim()} onClick={add}>{r.add ?? "Add"}</Btn>
       </span>
     </div>
   );
