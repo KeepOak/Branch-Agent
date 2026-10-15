@@ -137,6 +137,37 @@ describe('one chat, live', () => {
     session.dispose();
   });
 
+  it('sends ready chips on chat.send and retries them under the same key', async () => {
+    const { session, engine } = await paired();
+    const chat = open(session);
+    await eventually(() => expect(chat.getSnapshot().loaded).toBe(true));
+    const file = {
+      id: '1',
+      kind: 'file' as const,
+      fileName: 'shot.png',
+      mimeType: 'image/png',
+      sizeBytes: 3,
+      content: 'AAA',
+      origin: 'file' as const,
+    };
+    await chat.send('Look', [file]);
+    expect(engine.requests.find((r) => r.method === 'chat.send')?.params).toEqual({
+      sessionKey: KEY,
+      message: 'Look',
+      idempotencyKey: 'run-1',
+      attachments: [{ type: 'image', mimeType: 'image/png', fileName: 'shot.png', origin: 'file', content: 'AAA' }],
+    });
+    engine.failMethod('chat.send', 'The engine is busy');
+    await chat.send('', [file]);
+    expect(chat.getSnapshot().sends).toMatchObject([{ id: 'run-2', text: 'shot.png', message: '', state: 'failed' }]);
+    engine.failMethod('chat.send', null);
+    await chat.retry('run-2');
+    const last = engine.requests.filter((r) => r.method === 'chat.send').at(-1)?.params;
+    expect(last).toMatchObject({ message: '', idempotencyKey: 'run-2', attachments: [{ fileName: 'shot.png', content: 'AAA' }] });
+    chat.dispose();
+    session.dispose();
+  });
+
   it('stops a reply, and says how a reply ended when it didn’t finish', async () => {
     const { session, engine } = await paired();
     const chat = open(session);

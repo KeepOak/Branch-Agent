@@ -1,7 +1,20 @@
 import { useState, useSyncExternalStore } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
+import { FlatList, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  attachmentPolicy,
+  canSendAttachments,
+  formatSize,
+  NO_ATTACH_METHOD_NOTE,
+  preparingLine,
+  readPickedFile,
+  toChatAttachments,
+  type DraftFile,
+  type HelloAttachments,
+  type PickedFile,
+} from '../chat/attachments';
 import { phaseLabel, type ChatItem, type Conversation, type ConversationSnapshot, type LiveReply, type OwnSend } from '../chat/conversation';
+import { expoPickers, type AttachmentPickers } from '../chat/pickAttachment';
 import type { ChatRow } from '../chats/chatList';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
@@ -181,22 +194,112 @@ function Empty({ title, body, testID, action }: { title: string; body: string; t
   );
 }
 
+function FileChip({ file, onRemove }: { file: DraftFile; onRemove: () => void }) {
+  const { color, space, radius } = useTheme();
+  const bad = Boolean(file.problem);
+  return (
+    <View
+      testID="file-chip"
+      accessibilityLabel={file.problem ?? `${file.fileName}, ${formatSize(file.sizeBytes)}`}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: space.xs,
+        height: 32,
+        maxWidth: 220,
+        paddingLeft: space.sm,
+        paddingRight: space.xs,
+        borderRadius: radius.pill,
+        backgroundColor: bad ? color.badTint : color.fill,
+      }}
+    >
+      {file.preview ? <Image source={{ uri: file.preview }} style={{ width: 20, height: 20, borderRadius: 4 }} /> : null}
+      <ThemedText variant="caption1" tone={bad ? 'bad' : 'ink2'} numberOfLines={1} style={{ flexShrink: 1 }}>
+        {file.problem ?? file.fileName}
+      </ThemedText>
+      {file.problem ? null : (
+        <ThemedText variant="caption2" tone="ink3">
+          {formatSize(file.sizeBytes)}
+        </ThemedText>
+      )}
+      <Pressable
+        testID={`remove-file-${file.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={`Remove ${file.fileName}`}
+        onPress={onRemove}
+        hitSlop={8}
+        style={({ pressed }) => ({ width: 24, height: 24, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+      >
+        <ThemedText variant="footnote" tone="ink3">
+          ×
+        </ThemedText>
+      </Pressable>
+    </View>
+  );
+}
+
 /** One chat: the history, the reply streaming in live, and a composer pinned above the keyboard. */
-export function ChatScreen({ row, conversation, online, onBack }: { row: ChatRow; conversation: Conversation; online: boolean; onBack: () => void }) {
+export function ChatScreen({
+  row,
+  conversation,
+  online,
+  onBack,
+  hello = null,
+  pickers = expoPickers,
+}: {
+  row: ChatRow;
+  conversation: Conversation;
+  online: boolean;
+  onBack: () => void;
+  hello?: HelloAttachments | null;
+  pickers?: AttachmentPickers;
+}) {
   const { color, space, radius, layout, type } = useTheme();
   const insets = useSafeAreaInsets();
   const snapshot = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const [draft, setDraft] = useState('');
+  const [files, setFiles] = useState<DraftFile[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [pickError, setPickError] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(0);
+  const [nextFileId, setNextFileId] = useState(1);
   const lines = chatLines(snapshot);
   const live = snapshot.live;
   const status = live ? (live.text ? 'Typing…' : phaseLabel(live.phase)) : !online ? 'Reconnecting…' : row.room ? 'Room' : row.trunkName ? `With ${row.trunkName}` : '';
-  const canSend = online && !live && draft.trim().length > 0;
+  const canAttach = online && canSendAttachments(hello);
+  const readyFiles = toChatAttachments(files).length;
+  const canSend = online && !live && (draft.trim().length > 0 || readyFiles > 0);
+
+  const addPicked = (picked: PickedFile | null) => {
+    if (!picked) return;
+    const id = `f${nextFileId}`;
+    setNextFileId((n) => n + 1);
+    setFiles((current) => [...current, readPickedFile(id, picked, 'file', attachmentPolicy(hello))]);
+  };
+
+  const pick = async (kind: 'photo' | 'library' | 'file') => {
+    setMenuOpen(false);
+    setPickError(null);
+    setPreparing((n) => n + 1);
+    try {
+      const picked = kind === 'photo' ? await pickers.takePhoto() : kind === 'library' ? await pickers.pickPhoto() : await pickers.pickFile();
+      addPicked(picked);
+    } catch (error) {
+      setPickError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPreparing((n) => n - 1);
+    }
+  };
 
   const send = () => {
     if (!canSend) return;
     const text = draft;
+    const attached = files;
     setDraft('');
-    void conversation.send(text);
+    setFiles([]);
+    setMenuOpen(false);
+    setPickError(null);
+    void conversation.send(text, attached);
   };
 
   let body;
@@ -269,7 +372,74 @@ export function ChatScreen({ row, conversation, online, onBack }: { row: ChatRow
         )}
       </View>
       <View style={{ flex: 1 }}>{body}</View>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, paddingHorizontal: layout.screenInset - space.xs, paddingTop: space.sm, paddingBottom: insets.bottom + space.sm, borderTopWidth: layout.hairline, borderTopColor: color.line, backgroundColor: color.bg }}>
+      <View style={{ paddingHorizontal: layout.screenInset - space.xs, paddingTop: space.sm, paddingBottom: insets.bottom + space.sm, borderTopWidth: layout.hairline, borderTopColor: color.line, backgroundColor: color.bg, gap: space.sm }}>
+        {files.length || preparing ? (
+          <ScrollView horizontal testID="file-chips" showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.xs, alignItems: 'center' }}>
+            {preparing ? (
+              <ThemedText testID="preparing-attachments" variant="caption1" tone="ink3">
+                {preparingLine(preparing)}
+              </ThemedText>
+            ) : null}
+            {files.map((file) => (
+              <FileChip key={file.id} file={file} onRemove={() => setFiles((current) => current.filter((f) => f.id !== file.id))} />
+            ))}
+          </ScrollView>
+        ) : null}
+        {online && !canSendAttachments(hello) ? (
+          <ThemedText testID="attach-unavailable" variant="caption1" tone="ink3">
+            {NO_ATTACH_METHOD_NOTE}
+          </ThemedText>
+        ) : null}
+        {pickError ? (
+          <ThemedText testID="attach-error" variant="caption1" tone="bad">
+            {pickError}
+          </ThemedText>
+        ) : null}
+        {menuOpen ? (
+          <View testID="attach-menu" style={{ backgroundColor: color.raise, borderRadius: radius.md, overflow: 'hidden' }}>
+            {(
+              [
+                ['attach-photo', 'Take photo', 'photo'],
+                ['attach-library', 'Photo library', 'library'],
+                ['attach-file', 'File', 'file'],
+              ] as const
+            ).map(([testID, title, kind]) => (
+              <Pressable
+                key={testID}
+                testID={testID}
+                accessibilityRole="button"
+                accessibilityLabel={title}
+                onPress={() => void pick(kind)}
+                style={({ pressed }) => ({ minHeight: layout.rowMinHeight, justifyContent: 'center', paddingHorizontal: space.md, backgroundColor: pressed ? color.fill : 'transparent' })}
+              >
+                <ThemedText variant="body">{title}</ThemedText>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm }}>
+        <Pressable
+          testID="attach"
+          accessibilityRole="button"
+          accessibilityLabel="Attach a photo or file"
+          accessibilityHint={canAttach ? undefined : NO_ATTACH_METHOD_NOTE}
+          accessibilityState={{ disabled: !canAttach }}
+          disabled={!canAttach}
+          onPress={() => setMenuOpen((open) => !open)}
+          style={({ pressed }) => ({
+            width: 40,
+            height: 40,
+            borderRadius: radius.pill,
+            backgroundColor: color.fill,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: !canAttach ? 0.4 : pressed ? 0.7 : 1,
+          })}
+        >
+          <ThemedText variant="title3" tone="accentInk" style={{ fontWeight: '400' }}>
+            +
+          </ThemedText>
+        </Pressable>
         <TextInput
           testID="composer"
           value={draft}
@@ -306,6 +476,7 @@ export function ChatScreen({ row, conversation, online, onBack }: { row: ChatRow
             </ThemedText>
           </Pressable>
         )}
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
