@@ -1,11 +1,18 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadPluginManifest } from "../../../src/plugins/manifest.js";
+import {
+  installLockedRea,
+  npmCiArgs,
+  reaEntryPath,
+  startLockedReaServer,
+} from "../rea-pin/launch.mjs";
 import { approvalForReaTool, RISKY_REA_TOOLS } from "./rea-approval.js";
 
 const pluginRoot = path.join(import.meta.dirname, "..");
-const LOCKED_REA_ENTRY = "./rea-pin/node_modules/rea-agents/scripts/rea.mjs";
+const LOCKED_LAUNCH = "./rea-pin/launch.mjs";
 const HARD_RULE =
   "Copy code only from permissively licensed sources. Closed apps (like an Electron app) may only be studied for behavior and design, never copied.";
 
@@ -46,7 +53,7 @@ describe("harvest plugin", () => {
     expect(result.manifest.categories).toEqual(["research"]);
     expect(result.manifest.mcpServers?.rea).toMatchObject({
       command: "node",
-      args: [LOCKED_REA_ENTRY, "mcp"],
+      args: [LOCKED_LAUNCH, "mcp"],
       cwd: "./rea-pin",
     });
   });
@@ -71,11 +78,95 @@ describe("harvest plugin", () => {
     };
     expect(servers.rea.command).toBe("node");
     expect(servers.rea.cwd).toBe("./rea-pin");
-    expect(servers.rea.args).toEqual([LOCKED_REA_ENTRY, "mcp"]);
+    expect(servers.rea.args).toEqual([LOCKED_LAUNCH, "mcp"]);
     const launch = servers.rea.args.join(" ");
     expect(launch).not.toContain("-y");
     expect(launch).not.toContain("@latest");
     expect(launch).not.toContain("rea-agents@");
+  });
+
+  it("installs the locked REA package before the server starts", () => {
+    const pinDir = mkdtempSync(path.join(tmpdir(), "harvest-rea-"));
+    const order: string[] = [];
+    try {
+      expect(readFileSync(path.join(pluginRoot, "rea-pin/launch.mjs"), "utf8")).toContain(
+        "npm ci failed for the locked REA install",
+      );
+      startLockedReaServer({
+        pinDir,
+        args: ["mcp"],
+        install(dir: string) {
+          order.push("install");
+          expect(dir).toBe(pinDir);
+        },
+        start(entry: string, args: string[]) {
+          order.push("start");
+          expect(order).toEqual(["install", "start"]);
+          expect(entry).toBe(reaEntryPath(pinDir));
+          expect(args).toEqual(["mcp"]);
+        },
+      });
+      expect(order).toEqual(["install", "start"]);
+    } finally {
+      rmSync(pinDir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips npm ci when the locked REA install is already present", () => {
+    const pinDir = mkdtempSync(path.join(tmpdir(), "harvest-rea-"));
+    const order: string[] = [];
+    try {
+      const entry = reaEntryPath(pinDir);
+      mkdirSync(path.dirname(entry), { recursive: true });
+      writeFileSync(entry, "");
+      startLockedReaServer({
+        pinDir,
+        args: ["mcp"],
+        install() {
+          order.push("install");
+        },
+        start() {
+          order.push("start");
+        },
+      });
+      expect(order).toEqual(["start"]);
+    } finally {
+      rmSync(pinDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runs npm ci with ignore-scripts so the lockfile integrity is checked", () => {
+    const calls: Array<{ command: string; args: string[]; cwd?: string; windowsHide?: boolean }> =
+      [];
+    installLockedRea("/plugin/rea-pin", ((command: string, args: string[], options: { cwd?: string; windowsHide?: boolean }) => {
+      calls.push({ command, args, cwd: options.cwd, windowsHide: options.windowsHide });
+      return { status: 0 };
+    }) as never);
+    expect(calls).toEqual([
+      {
+        command: process.platform === "win32" ? "npm.cmd" : "npm",
+        args: npmCiArgs(),
+        cwd: "/plugin/rea-pin",
+        windowsHide: true,
+      },
+    ]);
+    expect(npmCiArgs()).toEqual(["ci", "--ignore-scripts", "--no-audit", "--no-fund"]);
+
+    let started = false;
+    expect(() =>
+      startLockedReaServer({
+        pinDir: "/plugin/rea-pin",
+        args: ["mcp"],
+        entryExists: () => false,
+        install() {
+          throw new Error("npm ci failed for the locked REA install");
+        },
+        start() {
+          started = true;
+        },
+      }),
+    ).toThrow(/npm ci failed/);
+    expect(started).toBe(false);
   });
 
   it("requires approval for risky REA tools", () => {

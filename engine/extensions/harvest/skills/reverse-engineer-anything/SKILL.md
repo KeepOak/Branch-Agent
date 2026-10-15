@@ -20,14 +20,15 @@ readiness or provider commands.
 ## Connect only when needed
 
 In Branch Agent this skill ships inside the Harvest plugin, and the same plugin
-registers the REA MCP server. The server is the locked `rea-agents` 6.4.0
-install under `rea-pin`, started with `node` on
-`rea-pin/node_modules/rea-agents/scripts/rea.mjs`. Call each
-tool as `rea__<tool>`, for example `rea__open_binary`. Nothing else needs
-registering: never run `rea-agents setup`, `rea setup`, or `branch mcp add rea`.
-Setup would add a second `mcp.servers.rea` entry that replaces the plugin's
-server and its pinned version. Do not start the server with `npx -y` or an
-unpinned package name.
+registers the REA MCP server. The server command is `node` on `rea-pin/launch.mjs`.
+On first use, before it starts `rea-pin/node_modules/rea-agents/scripts/rea.mjs`,
+that launcher runs `npm ci --ignore-scripts` in `rea-pin` so the lockfile
+integrity hash is checked. When that file is already present, the install is
+skipped. Call each tool as `rea__<tool>`, for example `rea__open_binary`.
+Nothing else needs registering: never run `rea-agents setup`, `rea setup`, or
+`branch mcp add rea`. Setup would add a second `mcp.servers.rea` entry that
+replaces the plugin's server and its pinned version. Do not start the server
+with `npx -y` or an unpinned package name.
 
 The enabled server advertises its tools directly. A tool it does not advertise
 is not available in this session.
@@ -209,8 +210,10 @@ are:
 `rea__trace_web_source_location`, `rea__uninstall_adb_package`, `rea__unset_bookmark`.
 
 Never run an untrusted target outside an environment the user chose for it.
-In a scheduled or unattended run with nobody to ask, skip these calls and
-report the step that needs approval.
+The ask-first list includes helper commands that only read, such as list and
+inspect tools that start a process. That is intended. In a scheduled or
+unattended run with nobody to ask, skip every ask-first call, including those
+readers, and report the step that needs approval.
 
 ## Plan broader investigations
 

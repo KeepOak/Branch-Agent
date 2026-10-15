@@ -13,7 +13,7 @@
     "rea": {
       "transport": "stdio",
       "command": "node",
-      "args": ["./rea-pin/node_modules/rea-agents/scripts/rea.mjs", "mcp"],
+      "args": ["./rea-pin/launch.mjs", "mcp"],
       "cwd": "./rea-pin",
       "env": {
         "REA_GHIDRA_STARTUP_TIMEOUT_MS": "900000"
