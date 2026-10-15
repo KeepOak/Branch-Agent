@@ -49,11 +49,18 @@ it("uses live account health and opens Manage for a configured app", async () =>
   expect(manage).toHaveBeenCalledWith(expect.objectContaining({ id: "telegram" }));
 });
 
-it("keeps code approval Coming because its engine protocol requires a local-state owner", async () => {
+it("keeps code approval Coming because its engine protocol requires a local-state owner, shown from Advanced", async () => {
+  const regular = await render();
+  // Regular shows only what works today: the Coming code box waits for Advanced.
+  expect(regular.host.querySelector('input[aria-label="Pairing code"]')).toBeNull();
+  expect(regular.host.textContent).not.toContain("later update");
+  await act(async () => root.unmount()); regular.host.remove();
+  localStorage.setItem("branch.level", "advanced");
   const {host,request} = await render();
   expect(host.querySelector<HTMLInputElement>('input[aria-label="Pairing code"]')!.disabled).toBe(true);
   expect(host.textContent).toContain("Approval by code comes in a later update.");
   expect(request.mock.calls.some(([method]) => method === "channels.pairing.approve")).toBe(false);
+  localStorage.removeItem("branch.level");
 });
 
 it("offers WhatsApp (your number) once the engine lists the WhatsApp channel, though web.login is never advertised", async () => {
@@ -96,6 +103,7 @@ it("gives the pairing buttons a Coming reason when the engine can't approve or d
   expect(host.querySelector(".r1-ca-pairing")!.textContent).toContain("Approving requests here comes in a later update.");
 });
 it("R1-10: against an engine with no methods, every card and the code approval are Coming through <Coming>, naming their calls", async () => {
+  localStorage.setItem("branch.level", "advanced"); // the code approval shows from Advanced
   const { host, setup } = await render({}, []);
   expect(undeclaredControls(host).map(el => el.getAttribute("aria-label") || el.textContent?.trim())).toEqual([]);
   const telegram = [...host.querySelectorAll<HTMLButtonElement>(".r1-ca-card")].find(b => b.textContent?.includes("Telegram"))!;
@@ -108,6 +116,7 @@ it("R1-10: against an engine with no methods, every card and the code approval a
   expect(where("WhatsApp (your number)")).toEqual(["web.login.start", "web.login.wait"]);
   expect(where("Pairing code")).toEqual(["channels.pairing.approve"]);
   expect(where("Approve by code")).toEqual(["channels.pairing.approve"]);
+  localStorage.removeItem("branch.level");
 });
 it("explains Who answers instead of leaving an empty card when no app is connected", async () => {
   const access = vi.fn((app: { id: string }) => <p>Access for {app.id}</p>);

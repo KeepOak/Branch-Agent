@@ -6,6 +6,8 @@ export type ComponentUpdateStatus = {
   phase: "unchecked" | "checking" | "available" | "current" | "staging" | "staged" | "error";
   currentVersion: string | null; latestVersion: string | null; pendingVersion: string | null;
   checkedAt: number | null; error: string | null;
+  /** A staged update applies by itself when no Trunk is working (the owner's auto-apply setting); false means at the next start. */
+  applyWhenIdle?: boolean;
 };
 export type ComponentUpdates = {
   status(): Promise<ComponentUpdateStatus>;

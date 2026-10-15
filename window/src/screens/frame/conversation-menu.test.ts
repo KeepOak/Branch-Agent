@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../../connect/conversations";
 import type { MenuEntry } from "../../glass/Menu";
-import { DEFAULT_AWAKE, DEFAULT_LISTED, TRUNK_LISTED } from "../sidebar/row-menu";
+import { DEFAULT_AWAKE, DEFAULT_LISTED, FIRST_MESSAGE, TRUNK_LISTED } from "../sidebar/row-menu";
 import { ROOM_REASONS } from "../../rooms/room-menu";
 import { roomRulesItems } from "../../rooms/room-rules";
 import { conversationMenu, CONVERSATION_NEED, ROOM_RULE_NEED, roomRuleEntries, WORK_AS, type ConversationMenuContext, type ConversationMenuRun } from "./conversation-menu";
@@ -16,7 +16,7 @@ const runs = (): ConversationMenuRun => ({
   copyConversation: vi.fn(), map: vi.fn(), replay: vi.fn(), lookInside: vi.fn(), workMode: vi.fn(), list: vi.fn(), ownWindow: vi.fn(), startOver: vi.fn(), remove: vi.fn(),
 });
 const ctx = (patch: Partial<ConversationMenuContext> = {}): ConversationMenuContext => ({
-  row: thread(), isDefault: false, now: NOW, hasReply: true, work: { global: "normal", override: null }, ownWindowOff: null, run: runs(), ...patch,
+  row: thread(), hasMessages: true, isDefault: false, now: NOW, hasReply: true, work: { global: "normal", override: null }, ownWindowOff: null, run: runs(), ...patch,
 });
 const named = (rows: MenuEntry[], label: string) => rows.find(row => row.label === label)!;
 const all = (rows: MenuEntry[]): MenuEntry[] => rows.flatMap(row => [row, ...all(row.submenu ?? [])]);
@@ -135,6 +135,23 @@ describe("Group rules in a group chat (#974 row 21)", () => {
     expect(choose).toHaveBeenCalledWith("always");
     for (const row of all(conversationMenu(ctx({ room: { ruleWords: null, rules } })))) {
       expect(Boolean(row.submenu || row.local || row.need || row.off), row.label).toBe(true);
+    }
+  });
+});
+
+describe("the conversation ••• menu reasons follow the real thread", () => {
+  it("says a first message is needed only when the thread has no messages", () => {
+    const empty = conversationMenu(ctx({ row: null, hasMessages: false }));
+    expect(named(empty, "Pin to top").off).toBe(FIRST_MESSAGE);
+    expect(named(empty, "Share…").off).toBe(FIRST_MESSAGE);
+    expect(named(empty, "Delete…").off).toBe(FIRST_MESSAGE);
+  });
+
+  it("does not say 'Send a first message first.' in a thread that already has messages", () => {
+    const loading = conversationMenu(ctx({ row: null, hasMessages: true }));
+    for (const label of ["Pin to top", "Snooze", "Archive", "Share…", "Delete…"]) {
+      expect(named(loading, label).off).not.toBe(FIRST_MESSAGE);
+      expect(named(loading, label).off).toBe("Still loading this conversation.");
     }
   });
 });

@@ -22,10 +22,10 @@ function useFold(id: string, initial: boolean): [boolean, (open: boolean) => voi
 }
 
 /** "Read a file, ran 2 commands… ● 1 failed · 1m 48s ⌄" */
-export function StepsList({ steps, thoughts = [], live, run, mode }: { steps: Step[]; thoughts?: Thought[]; live: boolean; run?: { title: string; durationMs?: number }; mode: WorkMode }) {
+export function StepsList({ steps, thoughts = [], mode }: { steps: Step[]; thoughts?: Thought[]; live: boolean; mode: WorkMode }) {
   const id = steps[0]?.key ?? thoughts[0]?.key ?? "steps";
   const [open, setOpen] = useFold(id, mode === "verbose");
-  const line = stepsLine(steps, live ? undefined : run);
+  const line = stepsLine(steps);
   const shownThoughts = mode === "normal" ? [] : thoughts;
   const label = (line.live ? "Working: " : "") + line.text + (line.failed ? ", " + line.failed + " failed" : "") + (line.meta ? ", " + line.meta : "");
   return <details className="r1c-steps" open={open || mode === "verbose"} onToggle={(e) => setOpen(e.currentTarget.open)} data-testid="steps" data-live={line.live || undefined}>

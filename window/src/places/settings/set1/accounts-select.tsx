@@ -34,7 +34,7 @@ export function SelectBox({ acc, name, picked, onPick }: { acc: Account; name: s
   return <input type="checkbox" className="chk-acc" aria-label={`Select ${name}`} checked={on} onChange={(e) => onPick(e.target.checked ? [...picked, key(acc)] : picked.filter((k) => k !== key(acc)))} />;
 }
 
-type BulkProps = { engine: WindowEngine; all: Account[]; picked: string[]; agent: { agentId?: string }; reload: () => Promise<void>; done: () => void };
+type BulkProps = { engine: WindowEngine; all: Account[]; picked: string[]; agent: { agentId?: string }; reload: () => Promise<unknown>; done: () => void };
 export function BulkBar({ engine, all, picked, agent, reload, done }: BulkProps) {
   const save = useSaveRunner();
   const chosen = all.filter((acc) => picked.includes(key(acc)));

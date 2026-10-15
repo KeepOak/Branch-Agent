@@ -3,7 +3,7 @@ import type { Conversation } from "../../connect/conversations";
 import type { Actions } from "../../shell/conversation-actions";
 import type { Contact } from "../../shell/contacts-model";
 import { contactRows, type SideRow } from "./model";
-import { DEFAULT_AWAKE, DEFAULT_LISTED, FIRST_MESSAGE, PAUSE_OFF, rowMenu, type RowMenuContext } from "./row-menu";
+import { DEFAULT_AWAKE, DEFAULT_LISTED, FIRST_MESSAGE, PAUSE_OFF, rowMenu, TRUNK_LISTED, type RowMenuContext } from "./row-menu";
 
 const thread = { key: "agent:ledger:main", title: "Ledger", agentId: "ledger", snoozedUntil: null, working: false } as unknown as Conversation;
 const contact = (over: Partial<Contact>): Contact => ({
@@ -64,5 +64,14 @@ describe("row ••• menu", () => {
     tiles[3].onSelect?.();
     expect(c.archiveRoom).toHaveBeenCalled();
     expect(rows.some(row => row.label === "New conversation")).toBe(false);
+  });
+});
+
+describe("row ••• menu hints", () => {
+  it("are short plain words with no 'default' jargon, so they fit a tile in one or two lines", () => {
+    for (const hint of [DEFAULT_AWAKE, DEFAULT_LISTED, TRUNK_LISTED]) {
+      expect(hint).not.toMatch(/default/i);
+      expect(hint.length).toBeLessThanOrEqual(16);
+    }
   });
 });

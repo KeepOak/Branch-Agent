@@ -17,7 +17,7 @@ export type Ctx = {
   /** "Rules for": this computer, or a node id. */
   rulesFor: string; setRulesFor: (id: string) => void;
   /** agents.list as read, and a re-read after the mode changes. */
-  agents?: RecordValue; reloadAgents: () => Promise<void>;
+  agents?: RecordValue; reloadAgents: () => Promise<unknown>;
 };
 
 /** A greyed control: what to draw, disabled, beside the reason. */
