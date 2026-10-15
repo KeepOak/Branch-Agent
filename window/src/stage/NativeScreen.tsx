@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../connect/engine";
+import { type ComputerStatus, computerStatusProblem } from "./computer-status-problem";
 
-type Status = { available?: boolean; reason?: string; computerUse?: { provider: { generation: string } } };
+type Status = ComputerStatus & { computerUse?: { provider: { generation: string } } };
 type Frame = { format: "png" | "jpeg"; base64: string };
 const MESSAGE = "Couldn't show this computer's screen. Check that screen access is on and try again.";
 
@@ -13,12 +14,15 @@ export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: Windo
   // The desktop app's reason this computer's own driver isn't ready: Coming (R1-10) until it is, polling as before.
   // null: not Coming. An empty reason shows the preview's bare "Coming" alone (the preview has no line for it).
   const [coming, setComing] = useState<string | null>(null);
+  // Try again shows only for a failure a retry can fix; a stopped driver needs the app reopened instead.
+  const [retryable, setRetryable] = useState(true);
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     setImage("");
     setError("");
     setComing(null);
+    setRetryable(true);
     onLive(false);
     const capture = async () => {
       let generation: string | undefined;
@@ -26,10 +30,19 @@ export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: Windo
       try {
         const status = await engine.request<Status>("computer.status", {});
         if (!live) return;
-        if (!status.available && typeof status.reason === "string") {
+        const problem = computerStatusProblem(status);
+        if (problem?.kind === "coming") {
           setImage("");
           setError("");
-          setComing(status.reason);
+          setComing(problem.reason);
+          onLive(false);
+          return;
+        }
+        if (problem?.kind === "error") {
+          setImage("");
+          setComing(null);
+          setRetryable(problem.retry);
+          setError(problem.message);
           onLive(false);
           return;
         }
@@ -48,7 +61,7 @@ export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: Windo
           onLive(true);
         }
       } catch {
-        if (live) { setError(MESSAGE); onLive(false); }
+        if (live) { setRetryable(true); setError(MESSAGE); onLive(false); }
       } finally {
         if (generation) {
           await engine.request("computer.invoke", {
@@ -65,6 +78,6 @@ export function NativeScreen({ engine, retry, onLive, onRetry }: { engine: Windo
   return <div className="st7-wrap"><div className="st7-screen live-st">
     {image ? <img className="native-screen" src={image} alt="Live screen of this computer" /> : null}
     {coming !== null ? <div className="stage-empty" data-coming={coming}><b>Coming</b>{coming ? <p>{coming}</p> : null}</div>
-      : !image || error ? <div className="stage-empty"><b>{error || "Connecting…"}</b>{error ? <button type="button" className="btn" onClick={onRetry}>Try again</button> : null}</div> : null}
+      : !image || error ? <div className="stage-empty"><b>{error || "Connecting…"}</b>{error && retryable ? <button type="button" className="btn" onClick={onRetry}>Try again</button> : null}</div> : null}
   </div></div>;
 }

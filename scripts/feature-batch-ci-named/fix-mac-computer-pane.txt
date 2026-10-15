@@ -1,0 +1,2 @@
+window:src/stage/computer-status-problem.test.ts
+window:src/stage/computer-screen-setup.test.tsx
