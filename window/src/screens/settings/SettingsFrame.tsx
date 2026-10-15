@@ -10,7 +10,7 @@ import { configStore } from "../../places/settings/config-store";
 import { TrunkHost } from "../../places-nav/TrunkHost";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { pinsOf } from "../../places/settings/pins";
-import { GOTO_SUB, LEVELS, PAGES, navAt, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
+import { GOTO_SUB, LEVELS, PAGES, REGULAR_GROUPS, navAt, pageFor, pageShown, regularHub, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
 import { COMING_FROM, ROWS, cardRows, comingRow, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 import { LaterRows } from "../../glass/LaterRows";
 import { RowView, Segmented } from "./RowView";
@@ -98,42 +98,64 @@ function useNarrowNav(): boolean {
   return narrow;
 }
 
-function NavButton({ page, current, onOpen, sub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string }) {
+function NavButton({ page, current, onOpen, sub, hub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string; hub?: string }) {
   return (
-    <button type="button" className="r1s-nav" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} onClick={onOpen}>
+    <button type="button" className="r1s-nav" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} data-hub={hub} onClick={onOpen}>
       <span>{page.title}</span>{sub ? <small>{sub}</small> : null}
     </button>
   );
 }
 
-/** Regular: four group buttons, and the open group's pages. Advanced and Technical: the full nav, every group open. */
+/** Regular: the four pages. Advanced and Technical: the full nav, every group open. */
 function NavList({ level, narrow, shownPage, onOpen }: { level: Level; narrow: boolean; shownPage: PageId; onOpen: (id: PageId) => void }) {
-  const shown = navAt(level);
-  const openGroup = shown.groups.find((g) => g.pages.some((p) => p.id === shownPage))?.title;
   const sub = (id: PageId) => id === "goto" ? GOTO_SUB : undefined;
+  if (level === 0) {
+    return (
+      <>
+        {REGULAR_GROUPS.map((g) => {
+          const landing = g.pages[0];
+          const current = g.pages.some((p) => p.id === shownPage);
+          return <NavButton key={g.title} page={{ ...landing, title: g.title }} current={current} onOpen={() => onOpen(landing.id)} hub={g.title} />;
+        })}
+      </>
+    );
+  }
+  const shown = navAt(level);
   return (
     <>
       {shown.top.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={sub(p.id)} onOpen={() => onOpen(p.id)} />)}
       {shown.groups.map((g) => {
         const pages = g.pages.filter((p) => pageShown(p.id, level));
         if (!pages.length) return null;
-        const open = level > 0 || narrow || g.title === openGroup;
+        const open = level > 0 || narrow;
         return (
           <div key={g.title} className="r1s-fold" role="group" aria-label={g.title} data-open={open ? "true" : "false"} style={{ display: "contents" }}>
-            {level === 0 ? (
-              <div role="button" tabIndex={0} className="r1s-grp g-label" aria-expanded={open} onClick={() => onOpen(pages[0].id)} onKeyDown={(e) => {
-                if (e.key !== "Enter" && e.key !== " ") return;
-                e.preventDefault();
-                onOpen(pages[0].id);
-              }}>{g.title}</div>
-            ) : (
-              <div className="r1s-grp g-label">{g.title}</div>
-            )}
+            <div className="r1s-grp g-label">{g.title}</div>
             {open ? pages.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={sub(p.id)} onOpen={() => onOpen(p.id)} />) : null}
           </div>
         );
       })}
     </>
+  );
+}
+
+/** The other settings pages that belong to the open Regular page, under Advanced on that page. */
+function HubAdvanced({ shownPage, onOpen }: { shownPage: PageId; onOpen: (id: PageId) => void }) {
+  const hub = regularHub(shownPage);
+  if (!hub) return null;
+  const rest = hub.pages.slice(1);
+  if (!rest.length) return null;
+  return (
+    <nav className="r1s-advanced" aria-label="Advanced">
+      <h2 className="g-label">Advanced</h2>
+      <div className="r1s-jumps">
+        {rest.map((p) => (
+          <button key={p.id} type="button" className="r1s-jump" data-page={p.id} aria-current={shownPage === p.id ? "true" : undefined} onClick={() => onOpen(p.id)}>
+            <span>{p.title}</span>{p.id === "goto" ? <small>{GOTO_SUB}</small> : null}
+          </button>
+        ))}
+      </div>
+    </nav>
   );
 }
 
@@ -325,6 +347,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
             </div>
           ) : null}
         </header>
+        {level === 0 ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
         {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} /></div> : <>
         <div className="r1s-col">
           {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></Coming></div> : null}
