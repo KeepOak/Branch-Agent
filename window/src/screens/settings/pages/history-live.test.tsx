@@ -94,6 +94,26 @@ describe("R1 Settings › History & backups is a native R1 page with the preview
     expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(regularCards);
   });
 
+  it("lists every change in plain words below Technical, and the engine's raw keys only at Technical", async () => {
+    const env = engineOf();
+    const base = env.request.getMockImplementation()!;
+    env.request.mockImplementation(async (method: string, params?: unknown) => method === "branch.changes.list"
+      ? { entries: [{ id: "c1", source: "config-rpc", summary: "Settings updated configuration: agents.entries.main.model.fallbacks[0], plugins.installs", changedPaths: ["agents.entries.main.model.fallbacks[0]", "plugins.installs"], at: Date.now(), kind: "config-write" },
+        { id: "c2", source: "config-rpc", summary: "Configuration updated: gateway.auth.token", at: Date.now(), kind: "config-write" }] }
+      : base(method, params));
+    await act(async () => root.render(<SettingsFrame engine={env.engine} page="history" pages={R1_PAGES} />));
+    await settle();
+    const list = () => row("history.undo.changes")?.textContent ?? "";
+    expect(list()).toContain("Changed 2 settings");
+    expect(list()).toContain("Changed Branch’s setup");
+    expect(list()).not.toMatch(/agents\.entries|plugins\.installs|gateway\.auth/);
+    await setLevel("Advanced");
+    expect(list()).not.toMatch(/agents\.entries|plugins\.installs|gateway\.auth/);
+    await setLevel("Technical");
+    expect(list()).toContain("agents.entries.main.model.fallbacks[0], plugins.installs");
+    expect(list()).toContain("gateway.auth.token");
+  });
+
   it("adds the preview's Advanced and Technical rows inside the same cards", async () => {
     await mount();
     await setLevel("Advanced");

@@ -7,12 +7,14 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Coming } from "../../../glass/coming";
 import { list, record, type RecordValue } from "../../../places/settings/adapter";
+import { hasRawKey, showsInternals } from "../../../places/settings/internals";
 import { useConfig } from "../../../places/settings/kit";
 import { DAY, WEEK, MEDIA_FILE_MB, MEDIA_TOTAL_MB, destinationOf, gitSchedule, lastBackup, type Destination, type MediaLimits } from "../../../places/settings/set2/backups";
 import { str, useLive, when } from "../../../places/settings/set2/common";
 import { BackfillDialog, DiaryDialog } from "../../../places/settings/set2/seasons";
 import { ImportDialog, SOURCE, exportSettings } from "../../../places/settings/set2/self";
 import { Segmented, Toggle } from "../RowView";
+import { useLevel } from "../SettingsFrame";
 import type { SlotControlProps } from "../slots";
 import { useRead } from "./accounts-live";
 import { Failed, Needs, useFailure } from "./appearance-live";
@@ -224,7 +226,18 @@ export function NeverDies({ row }: SlotControlProps) {
 }
 
 /** Every change: the engine's record of changes to its setup, newest first (branch.changes.list). */
+/** What one change says: below Technical, who made it and how many settings it changed, never the raw keys the engine
+ *  names them by; at Technical, the engine's own summary and the first keys. */
+export function changeLines(e: RecordValue, technical: boolean): { title: string; sub: string } {
+  const paths = Array.isArray(e.changedPaths) ? e.changedPaths.map(String) : [];
+  const summary = str(e.summary);
+  if (technical) return { title: [SOURCE[str(e.source)], summary].filter(Boolean).join(": "), sub: `${when(e.at)}${paths.length ? ` · ${paths.slice(0, 3).join(", ")}` : ""}` };
+  const plain = paths.length ? `Changed ${paths.length} ${paths.length === 1 ? "setting" : "settings"}` : summary && !hasRawKey(summary) ? summary : "Changed Branch’s setup";
+  return { title: [SOURCE[str(e.source)], plain].filter(Boolean).join(": "), sub: when(e.at) };
+}
+
 export function EveryChange({ engine, row }: SlotControlProps) {
+  const [level] = useLevel(engine);
   const changes = useLive<RecordValue>(engine, "branch.changes.list", { limit: 50 }, ["config"]);
   const entries = list(record(changes.data).entries);
   return (
@@ -234,14 +247,14 @@ export function EveryChange({ engine, row }: SlotControlProps) {
         {changes.data && !entries.length ? <Line>No changes yet.</Line> : null}
         {entries.length ? (
           <ul className="r1s-items">
-            {entries.map((e) => (
+            {entries.map((e) => { const line = changeLines(e, showsInternals(level)); return (
               <li key={str(e.id)} className="r1s-item" data-bad={e.invalid === true || undefined}>
-                <span className="r1s-item-t g-label">{[SOURCE[str(e.source)], str(e.summary)].filter(Boolean).join(": ")}</span>
-                <small className="g-label">{when(e.at)}{Array.isArray(e.changedPaths) && e.changedPaths.length ? ` · ${e.changedPaths.map(String).slice(0, 3).join(", ")}` : ""}</small>
+                <span className="r1s-item-t g-label">{line.title}</span>
+                <small className="g-label">{line.sub}</small>
                 {e.kind === "config-write" ? <Coming engine={engine} need="engine: rolling back a settings change" unwired reason="Rolling back a change comes in a later update." where="Roll back">
                   <button type="button" className="r1s-link" disabled>Roll back</button></Coming> : null}
               </li>
-            ))}
+            ); })}
           </ul>
         ) : null}
       </div>
