@@ -25,7 +25,7 @@ it("DA-64: the Grove toolbar uses the app's buttons and names its menu Grove opt
   expect(bar.classList.contains("pixel-panel")).toBe(false);
   expect(bar.classList.contains("pa-bar")).toBe(true);
   const buttons = [...bar.querySelectorAll("button")];
-  expect(buttons.map(b => b.textContent?.trim())).toEqual(["New Trunk", "Layout", "Trunks", "Grove options"]);
+  expect(buttons.map(b => b.textContent?.trim())).toEqual(["Trunk", "Layout", "Trunks", "Grove options"]);
   for (const b of buttons) expect(b.classList.contains("pa-btn")).toBe(true);
   expect(buttons.map(b => b.getAttribute("aria-pressed"))).toEqual([null, "false", "false", "true"]);
   act(() => buttons[0].click()); act(() => buttons[3].click());

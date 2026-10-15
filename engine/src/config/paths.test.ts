@@ -342,9 +342,12 @@ describe("oauth paths", () => {
       BRANCH_STATE_DIR: "/custom/state",
     };
 
-    expect(resolveOAuthDir(env, "/custom/state")).toBe(path.join("/custom/state", "credentials"));
-    expect(resolveLegacyOAuthPath(env)).toBe(
-      path.join("/custom/state", "credentials", "oauth.json"),
+    // Compared through path.resolve so the assertion holds on Windows too (drive letter, separators).
+    expect(path.resolve(resolveOAuthDir(env, "/custom/state"))).toBe(
+      path.resolve("/custom/state", "credentials"),
+    );
+    expect(path.resolve(resolveLegacyOAuthPath(env))).toBe(
+      path.resolve("/custom/state", "credentials", "oauth.json"),
     );
   });
 });

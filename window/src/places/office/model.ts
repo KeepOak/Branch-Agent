@@ -1,5 +1,6 @@
 import type { Contact } from "@branch/gateway-protocol";
 import { lookOf } from "../trunk/model";
+import { trunkDisplayName } from "../../connect/trunk-name";
 
 export type OfficeAgent = {
   id: string; name: string; kind: "trunk" | "grafted" | "group";
@@ -37,7 +38,7 @@ export function officeToolEvent(tools: OfficeTools, event: string, payload: unkn
 /** sessions.list projects hasActiveRun from the live run registry; contacts supplies room/guest presence. */
 export function officeRoster(agentsValue: unknown, sessionsValue: unknown, contactsValue: unknown, outsideValue?: unknown, tools: OfficeTools = new Map(), approvalsValue?: unknown): { agents: OfficeAgent[]; openKey: Map<string, string> } {
   const trunks = rows(obj(agentsValue).agents).filter(t => str(t.id) && t.kind !== "system").map(t => ({
-    id: str(t.id), name: str(obj(t.identity).name) || str(t.name) || str(t.id),
+    id: str(t.id), name: trunkDisplayName(t),
     colour: str(obj(t.identity).colour), avatar: str(obj(t.identity).avatar),
     shape: str(obj(t.identity).shape), eyes: str(obj(t.identity).eyes),
   }));

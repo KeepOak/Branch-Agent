@@ -10,6 +10,8 @@ export const CORE_FIELD_HELP: Record<string, string> = {
     "Global directory for new managed worktrees. Use an absolute path or ~ for your home directory; defaults to <state-dir>/worktrees. Existing worktrees keep their recorded paths when this changes.",
   worktreeAcceleration:
     "Use filesystem acceleration for new managed worktrees when supported (default: true). Set false to use normal Git checkout and file copying. Applies only to new worktrees.",
+  buildWorktreeRoots:
+    'Folders where build worktrees are made by hand with git worktree add (default: ["~/branch-work"]; [] turns cleanup off). Every 30 minutes and after each merge, Branch removes a worktree here once its pull request is merged or closed, its branch is gone from origin, or nobody touched it for 48 hours, and only when it has no uncommitted changes, no unpushed commits, is not a parent repo and is not in use. Under 15% free disk it first clears node_modules from idle worktrees.',
   worktreeMaxCount:
     "Maximum live managed worktrees across all agents and repositories (default: 4096). Evicts merged or squashed branches first, then oldest idle worktrees, including unsaved data. Live runs are protected; raise this value if they occupy the cap. Disk-space admission still applies.",
   ...META_FIELD_HELP,

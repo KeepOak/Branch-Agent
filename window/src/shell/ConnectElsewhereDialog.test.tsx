@@ -34,6 +34,8 @@ afterEach(async () => {
 
 async function mountConnected() {
   (window as { branchDesktop?: unknown }).branchDesktop = { gatewayUrl: HOME, gatewayToken: "k" };
+  // The dialog belongs to the Classic window (mocked above); the R1 frame has its own tests.
+  localStorage.setItem("branch.classic", "1");
   const { App } = await import("../App");
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);

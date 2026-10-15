@@ -1,5 +1,3 @@
-// Adapted from continuedev/continue@5522c6f44ca0ac3528b37244818fbfa39b5af470
-// core/edit/searchAndReplace/findSearchMatch.ts.
 /**
  * Represents a basic match result with start and end character positions
  */

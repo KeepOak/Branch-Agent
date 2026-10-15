@@ -10,7 +10,6 @@ import { browserCall, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBr
 import { BrowserTools } from "./BrowserTools";
 import { SIcon } from "./stage-icons";
 
-export { recordedBrowserTabs, scopedBrowserRequest } from "./browser-route";
 
 export function browserRemotePoint(
   rect: { left: number; top: number; width: number; height: number },

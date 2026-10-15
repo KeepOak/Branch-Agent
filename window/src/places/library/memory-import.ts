@@ -8,7 +8,7 @@ const count = (v: unknown, fallback = 0): number => (typeof v === "number" && Nu
 
 export type Found = { providerId: string; label: string; fingerprint: string; items: string[] };
 
-export type PlannedItem = { id: string; status: string; source: string; target: string; message: string };
+type PlannedItem = { id: string; status: string; source: string; target: string; message: string };
 
 export type ProviderPlan = {
   providerId: string;

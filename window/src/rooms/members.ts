@@ -5,7 +5,7 @@
 import type { Block } from "../thread/model";
 import { A2A_CHANNEL, isMine, type Sender } from "./sender";
 
-export type Member = { id: string; name: string };
+type Member = { id: string; name: string };
 export type Members = {
   /** The other Trunks (agent ids), not counting the conversation's own Trunk. */
   trunks: string[];

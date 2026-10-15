@@ -103,7 +103,7 @@ export function setWebSearch(o: ToolOverrides, on: boolean, base: boolean): Tool
 }
 
 /** Drops empty maps, so "nothing changed here" is exactly an empty overlay. */
-export function tidy(o: ToolOverrides): ToolOverrides {
+function tidy(o: ToolOverrides): ToolOverrides {
   const out: ToolOverrides = {};
   if (o.mcpServers && Object.keys(o.mcpServers).length) out.mcpServers = o.mcpServers;
   if (o.mcpToolsDeny && Object.keys(o.mcpToolsDeny).length) out.mcpToolsDeny = o.mcpToolsDeny;
