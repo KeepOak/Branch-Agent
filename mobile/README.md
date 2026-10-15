@@ -15,6 +15,11 @@ npx jest src/<path>.test.ts
 npx tsc --noEmit
 ```
 
+Pull requests that change `mobile/` or the engine packages this app compiles
+(`gateway-client`, `gateway-protocol`, `normalization-core`, `retry`) run
+`.github/workflows/mobile-checks.yml`: `tsc --noEmit`, Jest, and `expo export`
+(web). Other pull requests skip that job; merge-gate treats the skip as a pass.
+
 Expo Go is fine for the screens, but it can't stand in for the real app everywhere: on Android it no
 longer delivers push notifications (Expo SDK 53 removed them from Expo Go). For that, build the app
 itself as below.

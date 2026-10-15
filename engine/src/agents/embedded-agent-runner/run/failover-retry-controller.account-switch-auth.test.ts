@@ -82,7 +82,16 @@ function resolvedAuth(profileId: string, secondSignedIn: boolean): ResolvedProvi
   }
 }
 
-async function limitedRun(params: { secondSignedIn: boolean; replaySafe: boolean }) {
+/** The run's auth state and controller, with the first sign-in already applied. */
+type RunSetup = {
+  secondSignedIn: boolean;
+  subscriptionsOnly: boolean;
+  /** The run's own candidate list; a harness-owned run gets its prepared list from prepare-auth. */
+  candidates?: string[];
+  harnessOwnsTransport?: boolean;
+};
+
+async function setUpRun(params: RunSetup) {
   const store = {
     version: 1,
     profiles: {
@@ -111,7 +120,7 @@ async function limitedRun(params: { secondSignedIn: boolean; replaySafe: boolean
     workspaceDir: "/tmp/account-switch-auth-workspace",
     authStore: store,
     authStorage: { setRuntimeApiKey },
-    profileCandidates: ORDER,
+    profileCandidates: params.candidates ?? ORDER,
     initialThinkLevel: "off",
     attemptedThinking: new Set(),
     fallbackConfigured: true,
@@ -125,6 +134,7 @@ async function limitedRun(params: { secondSignedIn: boolean; replaySafe: boolean
   const controller = createEmbeddedRunFailoverRetryController({
     runParams: {
       runId: "run:account-switch-auth",
+      config: { agents: { defaults: { subscriptionsOnly: params.subscriptionsOnly } } },
     } as Parameters<typeof createEmbeddedRunFailoverRetryController>[0]["runParams"],
     provider: PROVIDER,
     modelId: MODEL,
@@ -134,11 +144,36 @@ async function limitedRun(params: { secondSignedIn: boolean; replaySafe: boolean
     profileFailureStore: store,
     getLastProfileId: () => state.lastProfileId,
     getSessionId: () => "session:account-switch-auth",
-    harnessOwnsTransport: () => false,
+    harnessOwnsTransport: () => params.harnessOwnsTransport === true,
     getRuntimeAuthOwnerId: () => "embedded",
     getApiKeyInfo: () => state.apiKeyInfo,
     advanceAuthProfile: authController.advanceAuthProfile,
   });
+  return { controller, state, setRuntimeApiKey };
+}
+
+/** One short rate-limit rotation (below the wait threshold) from the first sign-in. */
+/** One automatic move from the first sign-in: a short rate limit, or an auth failure when rateLimit is false. */
+async function rotateOnce(params: RunSetup & { rateLimit?: boolean }) {
+  const { controller, state, setRuntimeApiKey } = await setUpRun(params);
+  const rotated =
+    params.rateLimit === false
+      ? await controller.advanceAuthProfile()
+      : await controller.advanceRateLimitAuthProfile({
+          failoverProvider: PROVIDER,
+          failoverModel: MODEL,
+          logFallbackDecision: () => undefined,
+        });
+  const runtimeKeys = setRuntimeApiKey.mock.calls.map(([, key]) => key);
+  return { rotated, state, runtimeKeys };
+}
+
+async function limitedRun(params: {
+  secondSignedIn: boolean;
+  replaySafe: boolean;
+  subscriptionsOnly: boolean;
+}) {
+  const { controller, state, setRuntimeApiKey } = await setUpRun(params);
   const limits: RateLimitAccountWait[] = [];
   const switches: string[] = [];
   const retried = await controller.maybeRetryTransient({
@@ -168,7 +203,11 @@ describe("rate-limit account switch with the embedded auth controller", () => {
   });
 
   it("waits on the limited account when the next subscription can't sign in and tools ran", async () => {
-    const run = await limitedRun({ secondSignedIn: false, replaySafe: false });
+    const run = await limitedRun({
+      secondSignedIn: false,
+      replaySafe: false,
+      subscriptionsOnly: true,
+    });
 
     expect(run.retried).toBe(true);
     const slept = vi.mocked(sleepWithAbort).mock.calls.reduce((total, [ms]) => total + ms, 0);
@@ -188,7 +227,11 @@ describe("rate-limit account switch with the embedded auth controller", () => {
   });
 
   it("hands a replay-safe run to fallback without applying the API key", async () => {
-    const run = await limitedRun({ secondSignedIn: false, replaySafe: true });
+    const run = await limitedRun({
+      secondSignedIn: false,
+      replaySafe: true,
+      subscriptionsOnly: true,
+    });
 
     expect(run.retried).toBe(false);
     expect(sleepWithAbort).not.toHaveBeenCalled();
@@ -200,7 +243,11 @@ describe("rate-limit account switch with the embedded auth controller", () => {
   });
 
   it("passes over the API key to the next subscription that signs in", async () => {
-    const run = await limitedRun({ secondSignedIn: true, replaySafe: false });
+    const run = await limitedRun({
+      secondSignedIn: true,
+      replaySafe: false,
+      subscriptionsOnly: true,
+    });
 
     expect(run.retried).toBe(true);
     expect(sleepWithAbort).not.toHaveBeenCalled();
@@ -208,5 +255,77 @@ describe("rate-limit account switch with the embedded auth controller", () => {
     expect(run.state.lastProfileId).toBe("anthropic:second");
     expect(run.runtimeKeys).not.toContain("fixture-api-key");
     expect(run.runtimeKeys.at(-1)).toBe("fixture-token-second");
+  });
+
+  it("never rotates a short rate limit onto an API-key sign-in when subscriptionsOnly is set", async () => {
+    const run = await rotateOnce({ secondSignedIn: true, subscriptionsOnly: true });
+
+    // The rotation really happens (no cap throw): it lands on the next subscription, not the key.
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:second");
+    expect(run.runtimeKeys).not.toContain("fixture-api-key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-token-second");
+  });
+
+  it("rotates a short rate limit onto the API-key sign-in when subscriptionsOnly is off", async () => {
+    const run = await rotateOnce({ secondSignedIn: true, subscriptionsOnly: false });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
+  });
+
+  it("never rotates an auth failure onto an API-key sign-in when subscriptionsOnly is set", async () => {
+    const run = await rotateOnce({
+      secondSignedIn: true,
+      subscriptionsOnly: true,
+      rateLimit: false,
+    });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:second");
+    expect(run.runtimeKeys).not.toContain("fixture-api-key");
+  });
+
+  it("rotates an auth failure onto the API-key sign-in when subscriptionsOnly is off", async () => {
+    const run = await rotateOnce({
+      secondSignedIn: true,
+      subscriptionsOnly: false,
+      rateLimit: false,
+    });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
+  });
+
+  it("a harness-owned run takes the next entry of its own list without re-filtering it", async () => {
+    // The guard is skipped here on purpose: prepare-auth builds a harness-owned run's list without
+    // API-key sign-ins when subscriptionsOnly is set (see prepare-auth.test.ts), so this list is what
+    // the run was given and the controller only moves along it.
+    const run = await rotateOnce({
+      secondSignedIn: true,
+      subscriptionsOnly: true,
+      rateLimit: false,
+      harnessOwnsTransport: true,
+    });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
+  });
+
+  it("moves a limited run onto the API-key sign-in when subscriptionsOnly is off", async () => {
+    const run = await limitedRun({
+      secondSignedIn: false,
+      replaySafe: false,
+      subscriptionsOnly: false,
+    });
+
+    expect(run.retried).toBe(true);
+    expect(sleepWithAbort).not.toHaveBeenCalled();
+    expect(run.switches).toEqual(["anthropic:key"]);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
   });
 });

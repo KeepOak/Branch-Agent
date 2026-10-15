@@ -312,7 +312,7 @@ export function ComputerStage({
             </button>
           )}
         </span>
-        <span className={`pill ${pill.kind}`}>
+        <span className={`stage-status-st ${pill.kind}`}>
           <i />
           {pill.text}
         </span>
