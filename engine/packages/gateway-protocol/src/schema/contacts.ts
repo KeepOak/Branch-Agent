@@ -98,8 +98,20 @@ export const ContactsTopicsResultSchema = closedObject({
   topics: Type.Array(TopicSchema),
   nextCursor: Type.Optional(NonEmptyString),
 });
-export const ContactsMarkReadParamsSchema = closedObject({ contactId: NonEmptyString });
+export const ContactsMarkReadParamsSchema = closedObject({
+  contactId: NonEmptyString,
+  mutationId: Type.Optional(NonEmptyString),
+});
 export const ContactsMarkReadResultSchema = closedObject({ updated: Type.Integer({ minimum: 0 }) });
+/** Marks every thread read, or only `sessionKeys`. Reads and writes shared state, never an agent's own database. */
+export const ContactsMarkAllReadParamsSchema = closedObject({
+  mutationId: NonEmptyString,
+  sessionKeys: Type.Optional(Type.Array(NonEmptyString, { minItems: 1, maxItems: 500 })),
+});
+export const ContactsMarkAllReadResultSchema = closedObject({
+  applied: Type.Boolean(),
+  readThroughMs: Type.Integer({ minimum: 0 }),
+});
 /** An outside agent speaking through `branch mcp serve`: contact `a2a:<id>`, drawn as an A2A agent. */
 export const OutsideAgentSchema = closedObject({
   id: Type.String({ pattern: "^[a-z0-9][a-z0-9-]{0,63}$" }),
@@ -137,3 +149,4 @@ export type Topic = Static<typeof TopicSchema>;
 export type ContactsListParams = Static<typeof ContactsListParamsSchema>;
 export type ContactsTopicsParams = Static<typeof ContactsTopicsParamsSchema>;
 export type ContactsMarkReadParams = Static<typeof ContactsMarkReadParamsSchema>;
+export type ContactsMarkAllReadParams = Static<typeof ContactsMarkAllReadParamsSchema>;

@@ -38,6 +38,7 @@ import { projectPluginSessionExtensionsSync } from "../plugins/host-hook-state.j
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import { resolveActiveSessionAgentStatus } from "../sessions/session-agent-status.js";
 import { deriveSessionUnread } from "../shared/session-unread.js";
+import { readReadMarkers, readThroughEntry } from "./contacts/read-state.js";
 import type { SessionRepositoryWorkspaceRecord } from "../state/session-repository-workspaces.types.js";
 import { resolveActiveFallbackState } from "../status/fallback-notice-state.js";
 import { readSessionFallbackModel } from "../status/session-fallback-model.js";
@@ -430,7 +431,9 @@ export function projectSessionRowChildLinks(links: readonly SessionChildLink[] |
 }
 
 export function materializeSessionRow(input: ReturnType<typeof readSessionRowInputs>["inputs"]) {
-  const { cfg, key, entry } = input;
+  const { cfg, key } = input;
+  // Every session view reads unread through the shared read markers, so no path can disagree.
+  const entry = readThroughEntry(key, input.entry, readReadMarkers());
   const observerDigest =
     entry?.observerDigest &&
     // Strictly newer: a run end and restart can share a millisecond, and the

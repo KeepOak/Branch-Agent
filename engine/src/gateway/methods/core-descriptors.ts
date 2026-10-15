@@ -662,6 +662,7 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["contacts.list", "contacts", "operator.read", "2026.9"],
   ["contacts.topics", "contacts", "operator.read", "2026.9"],
   ["contacts.markRead", "contacts", "operator.write", "2026.9"],
+  ["contacts.markAllRead", "contacts", "operator.write", "2026.10"],
   ["a2a.peers.list", "contacts", "operator.read", "2026.9"],
   ["a2a.peers.refresh", "contacts", "operator.write", "2026.9"],
   ["rooms.create", "rooms", "operator.write", "2026.9"],

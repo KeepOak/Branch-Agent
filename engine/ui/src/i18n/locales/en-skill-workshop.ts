@@ -87,7 +87,7 @@ const enSkillWorkshop = {
         "Tell the agent what should change. The suggestion stays pending and the workshop creates a revised version.",
       placeholder:
         "Example: Make this use Gmail labels instead of unread search, and add a safer dry-run step.",
-      preparing: "Waiting for chat admission",
+      preparing: "Waiting for chat to be ready",
       notAdmitted:
         "Revision request was not admitted. Your instructions are still available; review the error and retry. {error}",
       send: "Send revision",

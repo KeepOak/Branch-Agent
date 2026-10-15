@@ -129,7 +129,7 @@ export function createSkillWorkshopRevisionAdmissions(): ApplicationSkillWorksho
         },
       };
       if (disposed) {
-        throw new Error("Skill Workshop revision admission owner is disposed.");
+        throw new Error("Skill Workshop revision was closed.");
       }
       entries.set(id, entry);
       publish();

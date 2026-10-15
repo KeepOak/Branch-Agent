@@ -697,7 +697,7 @@ export const en: TranslationMap & {
         "Another managed update is already running. Wait for it to complete, then refresh update status.",
       managedServiceHandoffUnavailable:
         "Stop the foreground Gateway, run `branch update`, then launch it again. For automatic updates, install a managed Gateway service.",
-      doctorFailed: "Doctor repair failed. Run `branch doctor --non-interactive` and retry.",
+      doctorFailed: "Repair failed. Try again in a minute.",
       managedServiceHandoffFailed:
         "The update helper stopped before finishing. Run `branch update` in the terminal to see why.",
       managedServiceHandoffSpawnFailed:
@@ -4574,7 +4574,7 @@ export const en: TranslationMap & {
       agentMessageRequired: "Agent message is required.",
       timeoutInvalid: "If set, timeout must be 0 or greater (0 disables this timeout).",
       deliveryModeRequired:
-        "Choose a delivery mode explicitly, or run branch doctor --fix to repair legacy settings.",
+        "Choose a delivery mode explicitly to repair legacy settings.",
       webhookUrlRequired: "Webhook URL is required.",
       webhookUrlInvalid: "Webhook URL must be a valid http(s):// URL without embedded credentials.",
       invalidRunTime: "Invalid run time.",

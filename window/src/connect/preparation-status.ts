@@ -4,6 +4,19 @@ export function isPreparationPending(error: unknown): boolean {
   return /has not completed startup inspection and preparation|agent database startup preparation|prepared model runtime publication was superseded|prepared reply dispatch runtime owner was not published|unavailable during gateway startup|Model catalog is not ready/i.test(message);
 }
 
+/**
+ * Owner-facing text for a failed action, without a final period so the caller can add one.
+ * An agent that is still starting gets one plain line; the engine's repair steps stay in logs.
+ */
+export function ownerErrorText(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  if (isPreparationPending(error)) {
+    const id = /Agent ([\w.-]+) has not completed/.exec(message)?.[1];
+    return id ? `${id.charAt(0).toUpperCase()}${id.slice(1)} is still starting up` : "Still starting up";
+  }
+  return message.replace(/[.\s]+$/, "");
+}
+
 export function preparationLabel(name: string): string {
   return `Getting ${name || "this Trunk"} ready…`;
 }
