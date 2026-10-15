@@ -1,1 +1,2 @@
+engine:test/gateway-desktop-handoff.e2e.test.ts
 engine:test/helpers/task-scheduler-preflight.test.ts
