@@ -2,7 +2,7 @@
 // Packaged defaults are per user; desktop.json can override any field.
 // The engine is installed separately: use the published copy, with the source build as a development fallback.
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { homedir } from "node:os";
 
 export interface DesktopConfig {
@@ -43,14 +43,19 @@ function isFile(file: string): boolean {
   }
 }
 
+/** An XDG or Windows folder variable counts only when absolute, as the engine's service check reads it (#1053). */
+function absoluteDir(value: string | undefined): string | undefined {
+  return value && isAbsolute(value) ? value : undefined;
+}
+
 export function defaultDataDirectory(): string {
   if (process.env.BRANCH_DESKTOP_DATA) return process.env.BRANCH_DESKTOP_DATA;
   const legacy = join(homedir(), "BranchApp");
   if (isFile(join(legacy, "desktop.json"))
     || isFile(join(legacy, "gateway-token")) && isFile(join(legacy, "engine-current.txt"))) return legacy;
-  if (process.platform === "win32") return join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "BranchAgent");
+  if (process.platform === "win32") return join(absoluteDir(process.env.LOCALAPPDATA) ?? join(homedir(), "AppData", "Local"), "BranchAgent");
   if (process.platform === "darwin") return join(homedir(), "Library", "Application Support", "BranchAgent");
-  return join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "BranchAgent");
+  return join(absoluteDir(process.env.XDG_DATA_HOME) ?? join(homedir(), ".local", "share"), "BranchAgent");
 }
 
 const DATA_DIR = defaultDataDirectory();

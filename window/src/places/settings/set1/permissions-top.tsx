@@ -92,12 +92,12 @@ function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
 }
 
 /** Saves tools.exec.mode; the engine refuses mode beside the older security/ask keys, so those go. */
-async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void>) {
+async function saveMode(cfg: Cfg, mode: string, after: () => Promise<unknown>) {
   if (await cfg.set("tools.exec", { mode, security: null, ask: null })) await after();
 }
 
 const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
-export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<void> }) {
+export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<unknown> }) {
   const selected = execMode(cfg, agents);
   const lockdown = cfg.get("security.lockdown") === true;
   return (
