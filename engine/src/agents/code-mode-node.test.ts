@@ -205,14 +205,14 @@ describe("Node Code Mode executor", () => {
           typeof TextDecoder.prototype.leftBehind,
           typeof process, typeof require, typeof fetch,
           Array.from(new TextEncoder().encode('🌿')),
-          new TextDecoder().decode(new Uint8Array([240, 159, 166, 158])),
+          new TextDecoder().decode(new Uint8Array([240, 159, 140, 191])),
         ];`,
       ),
     ).toMatchObject({
       status: "completed",
       value: {
         kind: "complete",
-        json: '["undefined","undefined","undefined","undefined","undefined","undefined",[240,159,166,158],"🌿"]',
+        json: '["undefined","undefined","undefined","undefined","undefined","undefined",[240,159,140,191],"🌿"]',
       },
     });
   });

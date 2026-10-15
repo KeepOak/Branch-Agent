@@ -293,7 +293,7 @@ function formatFullAccessBlockedReason(reason?: EmbeddedFullAccessBlockedReason)
 
 const MODEL_IDENTITY_PREFIX = "Current model identity:";
 
-/** In-repo docs on GitHub. Branch has no hosted docs site equivalent of docs.openclaw.ai. */
+/** In-repo docs on GitHub. Branch has no hosted docs site. */
 const BRANCH_AGENT_DOCS_URL = "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs";
 const BRANCH_AGENT_SOURCE_URL = "https://github.com/KeepOak/Branch-Agent";
 
@@ -690,6 +690,11 @@ export function buildAgentSystemPrompt(params: {
               : buildBranchToolFallbackText({
                   surface: promptSurface,
                 }),
+            ...(params.codeModeActive && visibleTools.has("exec")
+              ? [
+                  `Only the tools listed above are top-level calls. read, write, edit and every other tool named elsewhere in this prompt are async globals inside \`${resolveToolName("exec")}\` code; a direct call fails.`,
+                ]
+              : []),
             ...(toolSchemaDirectoryPrompt
               ? ["", "### Deferred Tool Schemas", toolSchemaDirectoryPrompt]
               : []),
@@ -774,6 +779,7 @@ export function buildAgentSystemPrompt(params: {
               "- Weak/empty result: vary query/path/command/source, then conclude.",
               "- Mutable facts: live-check files/git/time/versions/services/processes/packages.",
               "- Final claim needs evidence or named blocker.",
+              "- Tool/engine failure: tell the user in plain words what didn't work and what's next; never paste raw error text, method names or session keys.",
               "- Long work: brief update, keep going; background/subagents when useful.",
               "",
             ]),

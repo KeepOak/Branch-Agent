@@ -34,6 +34,7 @@ import {
 import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
 import { registerSkillUsageTracking } from "../skills/workshop/gardener.js";
 import { pruneExpiredArtifactDownloads } from "./artifact-download-grants.js";
+import { startBuildWorktreeCleanup } from "./build-worktree-cleanup.js";
 import {
   abortChatRunById,
   type ChatAbortControllerEntry,
@@ -71,6 +72,7 @@ import { PENDING_CHAT_SEND_DEDUPE_PREFIX, type DedupeEntry } from "./server-shar
 import { setBroadcastHealthUpdate } from "./server/health-state.js";
 import { startSessionColdStorageMaintenance } from "./session-cold-storage-maintenance.js";
 import { tryResolveSessionCompatibilityOwnerAgentId } from "./session-request-agent.js";
+import { startSignalWakePollerForGateway } from "./signal-wake-poller-start.js";
 import { checkGatewayInstallationReplacement } from "./stale-install.js";
 import { startWorktreeMaintenance } from "./worktree-maintenance.js";
 
@@ -256,6 +258,11 @@ export function startGatewayMaintenanceTimers(params: {
     true,
   );
 
+  const signalWakePoller = startSignalWakePollerForGateway({
+    getRuntimeConfig: params.getRuntimeConfig,
+    onError: (message) => params.logHealth.error(`signal wake poll failed: ${message}`),
+  });
+
   const worktreeMaintenance = startWorktreeMaintenance({
     scheduler: params.scheduler,
     getRuntimeConfig: params.getRuntimeConfig,
@@ -269,6 +276,12 @@ export function startGatewayMaintenanceTimers(params: {
       }
     },
     onError: (message) => params.logHealth.error(`managed worktree cleanup failed: ${message}`),
+  });
+  // Hand-made build worktrees under the build checkout roots: every 30 minutes and after each merge.
+  const buildWorktreeCleanup = startBuildWorktreeCleanup({
+    scheduler: params.scheduler,
+    getRuntimeConfig: params.getRuntimeConfig,
+    log: params.logHealth,
   });
 
   // Queue tombstone expiry and reference-aware media GC share one maintenance
@@ -566,6 +579,8 @@ export function startGatewayMaintenanceTimers(params: {
       periodicTasksStopPromise = Promise.allSettled([
         scheduler.stop(),
         worktreeMaintenance.stop(),
+        buildWorktreeCleanup.stop(),
+        signalWakePoller.stop(),
         sessionColdStorageMaintenance.stop(),
         stopMediaCleanup(),
       ]).then((results) => {

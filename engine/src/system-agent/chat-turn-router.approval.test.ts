@@ -18,6 +18,7 @@ import {
 import { ChatTurnRouter } from "./chat-turn-router.js";
 import { ChatWizardHost } from "./chat-wizard-host.js";
 import { describeSystemAgentPersistentOperation } from "./operations.js";
+import { buildSystemAgentChatResult } from "../gateway/server-methods/system-agent-chat-turn.js";
 
 function createRouterHarness(options: ConstructorParameters<typeof ChatTurnRouter>[0]) {
   const verifiedInference = expectDefined(
@@ -252,6 +253,33 @@ describe("SystemAgentChatEngine approval", () => {
       });
     },
   );
+
+  it("hands the staged create-agent request to clients as structured data", async () => {
+    useTempStateDir();
+    const engine = new SystemAgentChatEngine({
+      runAgentTurn: async () => ({ text: "noted" }),
+      classifyApproval: async () => "other",
+      deps: { loadOverview: fakeOverviewLoader() },
+    });
+    engine.propose({
+      kind: "create-agent",
+      agentId: "quill",
+      name: "Quill",
+      purpose: "Watch renewals",
+      role: "researcher",
+      workspace: "/tmp/quill",
+    });
+    const result = buildSystemAgentChatResult({
+      sessionId: "approval-router-test",
+      reply: { text: "Here is my proposal.", action: "none" },
+      pendingProposal: engine.getPendingOperatorProposal(),
+    });
+    expect(result).toMatchObject({
+      needsApproval: true,
+      proposal: { kind: "create-agent", agentId: "quill", name: "Quill", job: "Watch renewals", role: "researcher" },
+    });
+    expect(result.proposal).not.toHaveProperty("workspace");
+  });
 
   it("stays in setup when an established workspace has no bootstrap pending", async () => {
     useTempStateDir();

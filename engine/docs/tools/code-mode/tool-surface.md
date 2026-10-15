@@ -128,8 +128,8 @@ and namespace calls including MCP — are auto-drained inside the same
 block that awaits several tools runs to completion in one model turn instead of
 forcing one model tool call per await.
 A bridged shell `exec` without `yieldMs` or `background: true` waits for the
-remaining call budget (`tools.codeMode.timeoutMs`, default 10 s) minus a resume
-margin before backgrounding, so commands that finish within that window return
+remaining call budget (`tools.codeMode.timeoutMs`, default 10 s, or the call's
+`timeoutSeconds`, up to 3600) minus a resume margin before backgrounding, so commands that finish within that window return
 inline in the same turn. Late sequential calls background sooner and still
 return their process handle so the guest can resume inline.
 

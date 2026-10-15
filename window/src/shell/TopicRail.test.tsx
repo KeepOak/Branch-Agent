@@ -52,6 +52,14 @@ describe("preview thread row", () => {
     expect(JSON.parse(localStorage.getItem("branch-topics-t5")!)).toEqual({ layout: "tabs", width: 0, per: {} });
   });
 
+  it("checks the thread layout in use among How threads show's choices", async () => {
+    const t = await render();
+    await t.click("How threads show: Column");
+    const choice = (label: string) => [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find((el) => el.textContent?.includes(label));
+    expect(choice("Column")?.getAttribute("aria-checked")).toBe("true");
+    expect(choice("Tabs above the chat")?.getAttribute("aria-checked")).toBe("false");
+  });
+
   it("mutes unread badges as the preview does and remembers the choice", async () => {
     const t = await render();
     expect(t.host.querySelector(".tpBadgeT5")).toBeTruthy();
@@ -110,5 +118,56 @@ describe("preview thread row", () => {
       { key: topic.key, title: "Fix the parser for CSV", labelled: true, preview: "", updatedAt: 2, blocks: [{ kind: "user", key: "b", text: "Second", meta: { timestamp: 200 } }] },
     ], { [topic.key]: "🧪" });
     expect(chosen[0]).toMatchObject({ kind: "notice", topicKey: topic.key, text: "🧪 Fix the parser for CSV" });
+  });
+});
+
+describe("tab names", () => {
+  it("shows a readable a2a name in the tab, with the same text as its tooltip, and never the raw key", async () => {
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "tabs", width: 280, per: {} }));
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    const raw: Topic = { key: "agent:juniper:a2a:branch-nas-linux--tester", contactId: "trunk:juniper", title: "agent:juniper:a2a:branch-nas-linux--tester", status: "active", unread: false };
+    await act(async () => root!.render(<TopicRail contactId="trunk:juniper" contactName="Juniper" contactKey="agent:juniper:main" generalPreview="" generalUpdatedAt={0} currentKey="agent:juniper:main" items={[{ topic: raw, preview: "", updatedAt: 0 }]} onOpen={() => {}} onAll={() => {}} onPatch={async () => {}} />));
+    const tab = [...host.querySelectorAll("button")].find((button) => button.getAttribute("data-tip") === "Talk with Tester on Nas-linux");
+    expect(tab?.getAttribute("aria-label")).toBe("Talk with Tester on Nas-linux");
+    expect(host.textContent).not.toContain("a2a:");
+  });
+});
+
+describe("duplicate tab names", () => {
+  it("tells two threads with the same readable name apart in the tab strip", async () => {
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "tabs", width: 280, per: {} }));
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    const items = ["agent:juniper:a2a:branch-coordinator-a5a54c", "agent:juniper:a2a:branch-coordinator-b1c2d3"].map((key) => ({ topic: { key, contactId: "trunk:juniper", title: key, status: "active", unread: false } as Topic, preview: "", updatedAt: 0 }));
+    await act(async () => root!.render(<TopicRail contactId="trunk:juniper" contactName="Juniper" contactKey="agent:juniper:main" generalPreview="" generalUpdatedAt={0} currentKey="agent:juniper:main" items={items} onOpen={() => {}} onAll={() => {}} onPatch={async () => {}} />));
+    const labels = [...host.querySelectorAll("button")].map((button) => button.getAttribute("aria-label") ?? "").filter((label) => label.startsWith("Talk with Coordinator"));
+    expect(labels).toHaveLength(2);
+    expect(labels[0]).toMatch(/^Talk with Coordinator · [0-9a-f]{6}$/);
+    expect(new Set(labels).size).toBe(2);
+  });
+
+  it("keeps the tag as its own element, so a cut name never hides it", async () => {
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "tabs", width: 280, per: {} }));
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    const items = ["agent:juniper:a2a:branch-coordinator-a5a54c", "agent:juniper:a2a:branch-coordinator-b1c2d3"].map((key) => ({ topic: { key, contactId: "trunk:juniper", title: key, status: "active", unread: false } as Topic, preview: "", updatedAt: 0 }));
+    await act(async () => root!.render(<TopicRail contactId="trunk:juniper" contactName="Juniper" contactKey="agent:juniper:main" generalPreview="" generalUpdatedAt={0} currentKey="agent:juniper:main" items={items} onOpen={() => {}} onAll={() => {}} onPatch={async () => {}} />));
+    const tab = [...host.querySelectorAll("button.tpTabT5")].find((button) => button.getAttribute("aria-label")?.startsWith("Talk with Coordinator"));
+    expect(tab?.querySelector(".tpTabNameT5")?.textContent).toBe("Talk with Coordinator");
+    expect(tab?.querySelector(".tpTabTagT5")?.textContent).toMatch(/^ · [0-9a-f]{6}$/);
+  });
+});
+
+describe("All view separators", () => {
+  it("gives two threads with the same readable name distinct separator labels", () => {
+    const a = "agent:juniper:a2a:branch-coordinator-a5a54c";
+    const b = "agent:juniper:a2a:branch-coordinator-b1c2d3";
+    const blocks = mergeTopicTranscripts([
+      { key: "agent:juniper:main", title: "General", preview: "", updatedAt: 1, blocks: [] },
+      { key: a, title: a, preview: "", updatedAt: 2, blocks: [{ kind: "text", key: "x", text: "One", streaming: false, meta: { timestamp: 100 } }] },
+      { key: b, title: b, preview: "", updatedAt: 3, blocks: [{ kind: "text", key: "y", text: "Two", streaming: false, meta: { timestamp: 200 } }] },
+    ]);
+    const separators = blocks.flatMap((block) => (block.kind === "notice" ? [block.text] : []));
+    expect(separators).toHaveLength(2);
+    expect(separators[0]).toMatch(/^💬 Talk with Coordinator · [0-9a-f]{6}$/);
+    expect(new Set(separators).size).toBe(2);
   });
 });

@@ -1,0 +1,6 @@
+engine:src/gateway/rooms/methods.test.ts
+window:src/screens/sidebar/Sidebar.test.tsx
+window:src/screens/sidebar/coming.test.tsx
+window:src/screens/sidebar/row-menu.test.ts
+window:src/screens/sidebar/wired.test.tsx
+window:src/shell/group-drop.test.tsx

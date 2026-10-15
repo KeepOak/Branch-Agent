@@ -2,8 +2,10 @@
 // and whether a new version waits. Each refreshes on the engine's own events, never on a made-up timer result.
 import { useEffect, useState } from "react";
 import type { SaplingSession } from "../connect/session";
-import { readLimits, usagePollResult, type Limits, type UpdateInfo } from "./status-data";
+import { accountEmails, readLimits, usagePollResult, withAccountEmails, type Limits, type UpdateInfo } from "./status-data";
 import { componentDesktop, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus } from "../connect/desktop-component-updates";
+
+import { isNewerBranchVersion } from "../connect/branch-version";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const RELEASE_URL = "https://api.github.com/repos/KeepOak/Branch-Agent/releases/latest";
@@ -63,10 +65,11 @@ export function useLimits(session: SaplingSession, ready: boolean): Limits | nul
     if (!ready) {
       return;
     }
+    // The account emails come from the same models.authStatus Settings › Accounts reads, so a row names its account.
     const load = () =>
-      session.request("usage.status", {}).then(
-        (r) => {
-          const next = readLimits(r);
+      Promise.all([session.request("usage.status", {}), session.request("models.authStatus", {}).catch(() => ({}))]).then(
+        ([r, auth]) => {
+          const next = withAccountEmails(readLimits(r), accountEmails(auth));
           setLimits(next);
           window.dispatchEvent(new CustomEvent("branch:usage-checked", { detail: next }));
         },
@@ -111,15 +114,19 @@ export function useUpdate(session: SaplingSession, ready: boolean, version: stri
   if (!ready) return null;
   if (desktop) {
     const status = native.status;
-    const available = status?.phase === "available" || status?.phase === "staged";
-    return { current: status?.currentVersion ?? version, latest: available ? status.latestVersion : null, notes: [],
-      installing: status?.phase === "staging" || status?.phase === "staged",
-      waiting: status?.phase === "staged" ? "Downloaded. Restart Branch when your work is ready."
+    const current = status?.currentVersion ?? version;
+    const newer = Boolean(current.trim()) && isNewerBranchVersion(status?.latestVersion, current);
+    const available = newer && (status?.phase === "available" || status?.phase === "staged");
+    const ready = available && status?.phase === "staged";
+    return { current, latest: available ? status.latestVersion : null, notes: [],
+      installing: status?.phase === "staging", ready,
+      waiting: ready ? (status.applyWhenIdle === false ? "Update ready. It applies the next time Branch starts."
+          : "Update ready. It applies when no Trunk is working")
         : status?.phase === "staging" ? "Downloading and checking the update." : null,
       statusMessage: !desktop.componentUpdates ? desktop.unavailableReason ?? MANUAL_UPDATE_UNSUPPORTED : native.error ??
         (status?.phase === "current" ? undefined : "Check for updates in Updates & about.") };
   }
-  return { current: version, latest: version && release.version !== version ? release.version : null,
+  return { current: version, latest: version.trim() && isNewerBranchVersion(release.version, version) ? release.version : null,
     notes: [], installing: false, waiting: null,
     statusMessage: release.error ?? (release.version ? undefined : "Checking Branch releases…") };
 }

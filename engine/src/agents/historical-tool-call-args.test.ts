@@ -1,4 +1,4 @@
-// From bytedance/deer-flow@f840e843d3e2db1485cb65ceae73a5525aa80193:backend/tests/test_tool_call_args.py (atlas AGENT-LOOP-0097). Converted core rewriting and pairing tests; Branch canonical block and checkpoint assertions added.
+// Converted core rewriting and pairing tests; Branch canonical block and checkpoint assertions added.
 import { describe, expect, it } from "vitest";
 import {
   pairToolCallResults,

@@ -1,6 +1,6 @@
 // The window's connection to the engine's gateway. It drives Branch Agent's own wire client
 // (GatewayProtocolClient and GatewayBrowserDeviceAuthLifecycle from @branch/gateway-client/browser),
-// the way Branch Agent's Control UI does in ui/src/api/gateway.ts at openclaw/openclaw@57e0aaa1c190.
+// the way Branch Agent's Control UI does in ui/src/api/gateway.ts.
 import {
   ConnectErrorDetailCodes,
   GATEWAY_CLIENT_CAPS,
@@ -37,8 +37,15 @@ type ScopeUpgradeRuntime = {
   cancelScopeUpgrade: () => void;
 };
 
+import { recordRequest } from "../diagnostics/ui-log";
+
+function errorCodeOf(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === "string" ? code : "error";
+}
+
 export const OPERATOR_ROLE = "operator";
-/** The same scopes OpenClaw's own browser UI asks for (ui/src/api/gateway-connect-plan.ts, CONTROL_UI_OPERATOR_SCOPES). */
+/** The same scopes 's own browser UI asks for (ui/src/api/gateway-connect-plan.ts, CONTROL_UI_OPERATOR_SCOPES). */
 export const OPERATOR_SCOPES = [
   "operator.admin",
   "operator.read",
@@ -181,7 +188,14 @@ export class BranchGateway {
   }
 
   request<T = unknown>(method: string, params?: unknown, options?: GatewayProtocolRequestOptions): Promise<T> {
-    return this.client.request<T>(method, params, options);
+    const started = Date.now();
+    const sent = this.client.request<T>(method, params, options);
+    // The diagnostics log keeps the method, the outcome and the time. Params and results are never recorded.
+    sent.then(
+      () => recordRequest(method, true, undefined, Date.now() - started),
+      (error: unknown) => recordRequest(method, false, errorCodeOf(error), Date.now() - started),
+    );
+    return sent;
   }
 
   /** Ask an owner for the full operator scopes; persist the rotated device key the way the upstream client does. */
