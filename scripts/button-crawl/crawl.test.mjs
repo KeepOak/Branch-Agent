@@ -235,14 +235,24 @@ test('a control that opens its own window is a real result, not dead', () => {
 });
 
 test('a control that scrolls the page to a section is a real result', () => {
-  const before = surface({ scroll: 'window:0' });
-  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'window:420' }), elapsedMs: 20 }).problems, []);
-  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'window:0' }), elapsedMs: 20 }).problems, ['dead']);
+  const before = surface({ scroll: 'main:0', jump: true });
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'main:420', jump: true }), elapsedMs: 20 }).problems, []);
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'main:0', jump: true }), elapsedMs: 20 }).problems, ['dead']);
+});
+
+test('a button that only scrolls the sidebar is dead', () => {
+  const before = surface({ scroll: 'sidebar:0', jump: false });
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'sidebar:120', jump: false }), elapsedMs: 20 }).problems, ['dead']);
+});
+
+test('a scroll that is not an in-page jump does not count, even inside the main content', () => {
+  const before = surface({ scroll: 'main:0', jump: false });
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'main:300', jump: false }), elapsedMs: 20 }).problems, ['dead']);
 });
 
 test('a smooth scroll to a section is not a slow click', () => {
-  const before = surface({ scroll: 'window:0' });
-  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'window:420' }), elapsedMs: 900 }).problems, []);
+  const before = surface({ scroll: 'main:0', jump: true });
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'main:420', jump: true }), elapsedMs: 900 }).problems, []);
 });
 
 test('a control that saves a file is a real result', () => {

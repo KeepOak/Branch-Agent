@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyApprovalsSet, applyConfigPatch, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshPrefs, freshVoice, mergeConfig } from "./button-crawl-state";
+import { applyApprovalsSet, applyConfigPatch, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshPrefs, freshVoice, mergeConfig, voiceProviders, voiceStatus } from "./button-crawl-state";
 
 describe("button crawl mock engine state", () => {
   it("a config.patch from one click does not reach the next click's fresh config", () => {
@@ -52,8 +52,31 @@ describe("button crawl exec approvals state", () => {
 describe("button crawl voice state", () => {
   it("turning reading aloud on is read back as always, and off is read back as off", () => {
     const on = applyVoiceToggle(freshVoice(), true);
-    expect(on).toMatchObject({ enabled: true, auto: "always" });
-    expect(applyVoiceToggle(on, false)).toMatchObject({ enabled: false, auto: "off" });
+    expect(on.auto).toBe("always");
+    expect(voiceStatus(on).enabled).toBe(true);
+    expect(voiceStatus(applyVoiceToggle(on, false))).toMatchObject({ enabled: false, auto: "off" });
     expect(freshVoice().auto).toBe("off");
+  });
+
+  // The mock must answer with the engine's field names (gateway/server-methods/tts.ts). A missing or renamed field
+  // would make a control look dead for the wrong reason.
+  it("tts.status has the engine's fields (tts.ts:67-105: enabled, auto, provider, persona, personas, fallback, prefsPath, providerStates)", () => {
+    expect(Object.keys(voiceStatus(freshVoice())).sort()).toEqual(
+      ["auto", "enabled", "fallbackProvider", "fallbackProviders", "persona", "personas", "prefsPath", "provider", "providerStates"],
+    );
+  });
+
+  it("tts.providers has the engine's fields (tts.ts:287-300: providers with id, name, configured, models, voices; and active)", () => {
+    const payload = voiceProviders(freshVoice());
+    expect(Object.keys(payload).sort()).toEqual(["active", "providers"]);
+    expect(Object.keys(payload.providers[0]).sort()).toEqual(["configured", "id", "models", "name", "voices"]);
+  });
+});
+
+describe("button crawl exec approvals shape", () => {
+  // exec.approvals.get answers with the snapshot (gateway/server-methods/exec-approvals.ts:202-218, toExecApprovalsPayload
+  // at :81). Its schema is packages/gateway-protocol/src/schema/exec-approvals.ts:86-92.
+  it("the snapshot has the engine's fields: path, exists, hash, file and resolvedDefaults", () => {
+    expect(Object.keys(freshApprovals()).sort()).toEqual(["exists", "file", "hash", "path", "resolvedDefaults"]);
   });
 });

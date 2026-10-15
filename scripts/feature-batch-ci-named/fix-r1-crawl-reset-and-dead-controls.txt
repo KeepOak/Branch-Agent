@@ -1,2 +1,3 @@
 window:scripts/button-crawl-state.test.ts
+window:src/composer/ui.test.tsx
 window:src/places/settings/checked-at.test.tsx

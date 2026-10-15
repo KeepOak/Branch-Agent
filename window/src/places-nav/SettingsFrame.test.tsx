@@ -116,6 +116,17 @@ describe("settings frame level", () => {
     expect(onPage).not.toHaveBeenCalled();
   });
 
+  it("choosing Technical raises the level, saves it, and marks Technical as the one chosen", async () => {
+    localStorage.setItem("branch.level", "regular");
+    await open("general");
+    const technical = document.querySelector('[data-level="technical"]') as HTMLButtonElement;
+    expect(technical.getAttribute("aria-checked")).toBe("false");
+    await act(async () => technical.click());
+    expect(localStorage.getItem("branch.level")).toBe("technical");
+    expect((document.querySelector('[data-level="technical"]') as HTMLButtonElement).getAttribute("aria-checked")).toBe("true");
+    expect((document.querySelector('[data-level="regular"]') as HTMLButtonElement).getAttribute("aria-checked")).toBe("false");
+  });
+
   it("lowering the level by hand still moves a hidden page to General", async () => {
     localStorage.setItem("branch.level", "advanced");
     const onPage = await open("advanced");

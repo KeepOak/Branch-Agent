@@ -358,7 +358,7 @@ export function AllVoiceSettings({ engine, row }: SlotControlProps) {
           : <input className="r1s-inp" aria-label={key} value={String(v)} placeholder="Default" onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} />}
         <small className="g-label">{what}</small></li>); })}</ul>
     <span className="r1s-acts"><button type="button" className="r1s-btn" disabled={!Object.keys(draft).length || busy || cfg.loading} onClick={() => void save()}>Save</button>
-      <button type="button" className="r1s-btn" disabled={busy} onClick={() => { setDraft({}); setErr(""); void cfg.reload().then(stamp, () => undefined); }}>Reload</button><CheckedAt at={checked} /></span>
+      <button type="button" className="r1s-btn" disabled={busy} onClick={() => { setDraft({}); setErr(""); void cfg.reload().then((ok) => { if (ok) stamp(); }, () => undefined); }}>Reload</button><CheckedAt at={checked} /></span>
     {err ? <Line bad>{err}</Line> : null}
   </div></Needs>;
 }

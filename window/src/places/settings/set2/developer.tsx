@@ -488,10 +488,10 @@ export function BuildMore({ engine, config }: Ctx) {
   const [traffic, setTraffic] = useState(false);
   return (
     <Sec title="Build on Branch" showHeading={false} id="build-more">
-      {BUILD2_JUMP.map(([t, sub, btn, sel]) => <Ctl key={t} title={t} sub={sub}><Btn sm onClick={() => jump(sel)}>{btn}</Btn></Ctl>)}
+      {BUILD2_JUMP.map(([t, sub, btn, sel]) => <Ctl key={t} title={t} sub={sub}><Btn sm data-jump-to={sel} onClick={() => jump(sel)}>{btn}</Btn></Ctl>)}
       <Ctl title="Events for your programs" sub="A stream of what happens in Branch that your own programs can follow."><Btn sm onClick={() => setEvents(true)}>Show the stream</Btn></Ctl>
       <Greyed rows={BUILD2_OFF2} />
-      <Ctl title="Send traces elsewhere" sub="Sends run traces to your chosen tracing service." help="Every round and tool as a trace, sent to OpenTelemetry, Langfuse, LangSmith or Prometheus."><Btn sm onClick={() => jump('[data-row="Where traces go"]')}>Choose</Btn></Ctl>
+      <Ctl title="Send traces elsewhere" sub="Sends run traces to your chosen tracing service." help="Every round and tool as a trace, sent to OpenTelemetry, Langfuse, LangSmith or Prometheus."><Btn sm data-jump-to={'[data-row="Where traces go"]'} onClick={() => jump('[data-row="Where traces go"]')}>Choose</Btn></Ctl>
       <Greyed rows={BUILD2_OFF2B} />
       <Ctl title="Watch model traffic" sub="Records Branch’s model requests and replies locally." help="A proxy on this computer that records what Branch sends and gets back, to find doubled or failing requests."><Btn sm onClick={() => setTraffic(true)}>See how</Btn></Ctl>
       <Ctl title="Pages from plugins" sub="Plugins you installed can add pages, widgets and views." help="Plugins you installed can add pages, widgets and views. Off until you choose: their code runs with your permissions, so use it only for plugins you trust. Plugins that come with Branch keep their views either way.">

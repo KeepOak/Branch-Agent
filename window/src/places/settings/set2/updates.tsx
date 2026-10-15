@@ -49,7 +49,7 @@ export const ROWS: RowEntry[] = [
   ["Update status for scripts", "Help and updates, more", 2],
 ].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), group: ({ "In your editors and notes": "Branch on your other devices", "Help and updates, more": "Updating", Technical: "Updating" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
-type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => Promise<unknown> };
+type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => Promise<boolean> };
 
 export function UpdatesPage(props: SettingsPageProps) {
   return componentDesktop(props.engine.gatewayUrl) ? <DesktopUpdatesPage {...props} /> : <GatewayUpdatesPage {...props} />;
@@ -436,7 +436,7 @@ function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: 
       <Ctl title="The engine" sub={version ? "The engine is installed and answering." : undefined}>
         <span className="val-k">{version ? `Installed ${version}` : ""}</span>
         <Btn sm disabled title={APP_ONLY}>Repair</Btn>
-        <Btn sm ghost onClick={() => void data.reload().then(stamp, () => undefined)}>Check again</Btn><CheckedAt at={checked} />
+        <Btn sm ghost onClick={() => void data.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</Btn><CheckedAt at={checked} />
       </Ctl>
       {lvOf(level) >= 2 ? <CodeRow title="Update status for scripts" code="branch update status --json" /> : null}
       {history ? <HistoryDialog engine={engine} onClose={() => setHistory(false)} /> : null}

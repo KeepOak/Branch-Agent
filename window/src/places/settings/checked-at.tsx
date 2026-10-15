@@ -14,13 +14,15 @@ export function CheckedAt({ at }: { at: number | null }) {
   return <small className="g-label checked-at" role="status">{`Checked at ${time}`}</small>;
 }
 
-/** A button that runs a check and then shows its time. The time is set only when the check finishes without an error. */
+/** A button that runs a check and then shows its time. `run` resolves true only when the check succeeded (a failed
+ *  read resolves false, with its error on the page), so a failure never shows a Checked at time. */
 export function CheckButton({ run, className = "r1s-btn", disabled, title, children, ...rest }: {
-  run: () => Promise<unknown>; className?: string; disabled?: boolean; title?: string; children: ReactNode; "data-local"?: string;
+  run: () => Promise<boolean>; className?: string; disabled?: boolean; title?: string; children: ReactNode; "data-local"?: string;
 }) {
   const [at, stamp] = useCheckedAt();
+  const onClick = () => void run().then((ok) => { if (ok) stamp(); }, () => undefined);
   return <>
-    <button type="button" className={className} disabled={disabled} title={title} {...rest} onClick={() => void run().then(stamp, () => undefined)}>{children}</button>
+    <button type="button" className={className} disabled={disabled} title={title} {...rest} onClick={onClick}>{children}</button>
     <CheckedAt at={at} />
   </>;
 }

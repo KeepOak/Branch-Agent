@@ -110,3 +110,14 @@ describe("ConfigStore", () => {
     expect(modelSafePatch({ agents: { defaults: { model: { primary: "x/y" } } } }, "agents.defaults.model.fallbacks", ["a/b"])).toEqual({ agents: { defaults: { model: { fallbacks: ["a/b"] } } } });
   });
 });
+
+describe("ConfigStore.load reports whether the read succeeded", () => {
+  it("resolves true when config.get answers, and false with the error kept when it fails", async () => {
+    const ok = engineWith(() => ({ hash: "h1", config: {}, valid: true }));
+    expect(await new ConfigStore(ok.engine).load()).toBe(true);
+    const failing = engineWith(() => { throw new Error("The engine is not answering."); });
+    const store = new ConfigStore(failing.engine);
+    expect(await store.load()).toBe(false);
+    expect(store.error).toContain("not answering");
+  });
+});

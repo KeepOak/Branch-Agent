@@ -46,7 +46,7 @@ export function ConnectionsTechnical({ m }: { m: ModelsCtx }) {
         <Switch checked={refresh !== false} label="Keep the model list and prices up to date" onChange={(v) => void m.cfg.set(["models", "catalogRefresh", "enabled"], v)} />
       </Ctl>
       <Ctl title="Model list" sub={m.catalog.data?.refreshFailed === true ? "The last check failed. Try again." : undefined}>
-        <Btn sm onClick={() => void save(async () => { await m.engine.request("models.list", { refresh: true, ...m.agent }); await m.catalog.reload(); stamp(); })}>Check now</Btn><CheckedAt at={checked} />
+        <Btn sm onClick={() => void save(async () => { await m.engine.request("models.list", { refresh: true, ...m.agent }); if (await m.catalog.reload()) stamp(); })}>Check now</Btn><CheckedAt at={checked} />
       </Ctl>
       <Ctl title="Find free models" sub="Free models on OpenRouter, ranked for use as a fallback." help="Free models on OpenRouter, ranked for use as a fallback. Listed only. Connect OpenRouter to check each with a real call." off={NONE}><Btn sm>Look now</Btn></Ctl>
     </Sec>

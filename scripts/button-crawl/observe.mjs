@@ -48,7 +48,8 @@ export function classifyClick({ before, after, elapsedMs = 0, consoleErrors = []
   const hashChanged = (before.hash || '') !== (after.hash || '');
   const chromeChanged = (before.chrome || '') !== (after.chrome || '');
   const windowOpened = (after.popups ?? 0) > (before.popups ?? 0) || (after.downloads ?? 0) > (before.downloads ?? 0);
-  const scrolled = (after.scroll ?? '') !== (before.scroll ?? '') && after.scroll !== undefined;
+  // A scroll is a result only when the control is an in-page jump; a sidebar scroll by any other control is not.
+  const scrolled = after.jump === true && (after.scroll ?? '') !== (before.scroll ?? '') && after.scroll !== undefined;
   // A saved setting is a result even when the menu that changed it closes: the engine kept the new value.
   const settingSaved = (after.configRevision ?? '') !== (before.configRevision ?? '') && after.configRevision !== undefined;
   const real = routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || textChanged || focusChanged || hashChanged || chromeChanged || windowOpened || scrolled || settingSaved;

@@ -12,7 +12,7 @@ import '../src/theme/base.css';
 import '../src/shell/shell.css';
 import '../src/shell/frame.css';
 import '../src/shell/controls.css';
-import { applyApprovalsSet, applyConfigPatch, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshPrefs, freshVoice, type CrawlApprovals, type CrawlConfig, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
+import { applyApprovalsSet, applyConfigPatch, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshPrefs, freshVoice, voiceProviders, voiceStatus, type CrawlApprovals, type CrawlConfig, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
 
 type Call = { method: string; ok: boolean; error?: string };
 
@@ -146,12 +146,12 @@ function respond(method: string, params: { key?: string; sessionKey?: string; ra
     config = applyConfigPatch(config, params?.raw || '{}');
     return { ok: true, hash: config.hash, config: config.config };
   }
-  if (method === 'tts.status') return voice;
-  if (method === 'tts.enable' || method === 'tts.disable') { voice = applyVoiceToggle(voice, method === 'tts.enable'); return { ok: true }; }
-  if (method === 'tts.providers') return { active: voice.provider, providers: voice.providers };
-  if (method === 'tts.setProvider') { voice = { ...voice, provider: String(params?.provider ?? voice.provider) }; return { ok: true }; }
-  // The engine's memory probe answers with the meaning-search check; a plain status read has no embedding yet.
-  if (method === 'doctor.memory.status' && (params as { probe?: boolean } | undefined)?.probe) return { embedding: { checked: true, ok: true } };
+  if (method === 'tts.status') return voiceStatus(voice);
+  if (method === 'tts.enable' || method === 'tts.disable') { voice = applyVoiceToggle(voice, method === 'tts.enable'); return { enabled: voice.auto !== 'off' }; }
+  if (method === 'tts.providers') return voiceProviders(voice);
+  if (method === 'tts.setProvider') { voice = { ...voice, provider: String(params?.provider ?? voice.provider) }; return { provider: voice.provider }; }
+  // The engine's memory probe (gateway doctor.ts) answers with the embedding check; a plain status read has none yet.
+  if (method === 'doctor.memory.status' && (params as { probe?: boolean } | undefined)?.probe) return { agentId: 'main', searchRuntimeRegistered: true, embedding: { ok: true, checked: true } };
   if (method === 'exec.approvals.get') return approvals;
   if (method === 'exec.approvals.set') {
     approvals = applyApprovalsSet(approvals, params as { file?: Record<string, unknown>; baseHash?: string } ?? {});
@@ -357,13 +357,15 @@ function controlState(el: Element) {
   return [pressed, checked, input].join('|');
 }
 
-// Scroll position of every scrollable element in the page, so a control that scrolls to a section is a visible result.
+// Scroll positions inside the main content only (the sidebar and the window itself are not measured). A scroll is a
+// result only for an in-page jump (see surface): a control that scrolls the sidebar leaves this value unchanged.
 function scrollOf() {
-  const scrolled: string[] = [`window:${Math.round(window.scrollY)}`];
-  for (const el of document.querySelectorAll<HTMLElement>('#main *')) {
-    if (el.scrollTop > 0 && el.scrollHeight > el.clientHeight) scrolled.push(`${el.className || el.tagName}:${Math.round(el.scrollTop)}`);
-  }
-  return scrolled.join('|');
+  const main = document.querySelector<HTMLElement>('#main');
+  if (!main) return '';
+  return [main, ...main.querySelectorAll<HTMLElement>('*')]
+    .filter((el) => el.scrollTop > 0)
+    .map((el) => `${el.className || el.tagName}:${Math.round(el.scrollTop)}`)
+    .join('|');
 }
 
 function surface() {
@@ -399,7 +401,9 @@ function surface() {
     historyMoves,
     popups,
     downloads,
-    scroll: scrollOf(),
+    // An in-page jump: a link to an anchor, or a button that scrolls to a section (data-jump-to).
+    jump: Boolean(target?.closest('a[href^="#"], [data-jump-to]')),
+    scroll: target?.closest('a[href^="#"], [data-jump-to]') ? scrollOf() : '',
     configRevision: config.hash,
     alreadyCurrent: target?.getAttribute('aria-current') === 'true',
     menuItems,

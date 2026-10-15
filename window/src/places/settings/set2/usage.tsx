@@ -1047,7 +1047,7 @@ function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
     <Sec title="Money and keeping, more" group="Keeping things" showHeading={false}>
       <Ctl title="Spend caps per service" sub="Pauses work when a service reaches its monthly limit." help="A monthly limit for each service that bills per use; work pauses and asks when one is reached." off={NO_CAPS}><Btn sm>Set caps</Btn></Ctl>
       <Ctl title="Prepaid balances" sub={balances.length ? balances.join(" · ") : "For services that sell credit, how much is left, checked when you open this page."}>
-        <Btn sm disabled={usage.loading} onClick={() => void usage.reload().then(stamp, () => undefined)}>Check now</Btn><CheckedAt at={checked} />
+        <Btn sm disabled={usage.loading} onClick={() => void usage.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check now</Btn><CheckedAt at={checked} />
       </Ctl>
       <Ctl title="What each project cost" sub="Spend by project and by conversation, for the period you pick." off={NO_PROJECT}><Btn sm>See projects</Btn></Ctl>
       <Ctl title="Backups" sub="Back up conversations, memory and settings on a schedule." help="A copy of your conversations, memory and settings, on a schedule you choose."><Btn sm onClick={() => setBackups(true)}>See backups</Btn></Ctl>

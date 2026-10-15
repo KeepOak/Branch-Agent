@@ -83,7 +83,7 @@ function AllVoiceSettings({ cfg }: { cfg: Cfg }) {
               </label>
             );
           })}
-          <div className="acts"><Btn pri sm disabled={!dirty || busy || cfg.loading} onClick={() => void save()}>Save</Btn><Btn ghost sm disabled={busy} onClick={() => { setDraft({}); setErr(""); void cfg.reload().then(stamp, () => undefined); }}>Reload</Btn><CheckedAt at={checked} />{err ? <small className="bad-k" role="alert">{err}</small> : null}</div>
+          <div className="acts"><Btn pri sm disabled={!dirty || busy || cfg.loading} onClick={() => void save()}>Save</Btn><Btn ghost sm disabled={busy} onClick={() => { setDraft({}); setErr(""); void cfg.reload().then((ok) => { if (ok) stamp(); }, () => undefined); }}>Reload</Btn><CheckedAt at={checked} />{err ? <small className="bad-k" role="alert">{err}</small> : null}</div>
         </div>
       )} />
   );

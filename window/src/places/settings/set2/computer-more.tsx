@@ -843,7 +843,7 @@ function Who({ c }: { c: Ctx }) {
   const pending = list(rec(devs.data).pending);
   return (
     <>
-      <Acts><button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => { void Promise.all([pres.reload(), nodes.reload()]).then(stamp, () => undefined); }}><Ico name="retry" s /></button><CheckedAt at={checked} /></Acts>
+      <Acts><button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => { void Promise.all([pres.reload(), nodes.reload()]).then(([presOk, nodesOk]) => { if (presOk && nodesOk) stamp(); }, () => undefined); }}><Ico name="retry" s /></button><CheckedAt at={checked} /></Acts>
       {pres.error ? <p className="hint s2-err" role="alert">{pres.error}</p> : null}
       {pres.data && !rows.length && !pending.length ? <Empty>Nothing is reporting in right now.</Empty> : null}
       <div className="rows">
@@ -852,7 +852,7 @@ function Who({ c }: { c: Ctx }) {
           <div key={str(r.requestId)} className="prow">
             <Tile><Ico name="monitor" s /></Tile>
             <span className="grow"><b>{str(r.displayName) || str(r.clientId) || "A device"}</b><small>Waiting for your yes. Its abilities stay off until you allow it.</small></span>
-            <Btn sm onClick={() => document.getElementById("s2-waiting")?.scrollIntoView({ behavior: "smooth" })}>Review</Btn>
+            <Btn sm data-jump-to="#s2-waiting" onClick={() => document.getElementById("s2-waiting")?.scrollIntoView({ behavior: "smooth" })}>Review</Btn>
           </div>
         ))}
       </div>

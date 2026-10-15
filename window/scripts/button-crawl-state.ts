@@ -3,8 +3,14 @@
 
 export type CrawlConfig = { hash: string; config: Record<string, unknown> };
 export type CrawlPrefs = { status: string; entries: Record<string, unknown> };
-/** Reply voice: tts.status, tts.enable and tts.disable, and the speaking engine (tts.providers, tts.setProvider). */
-export type CrawlVoice = { enabled: boolean; auto: 'off' | 'inbound' | 'always'; persona: string; personas: string[]; provider: string; providers: { id: string; label: string }[] };
+/** Reply voice, as the engine keeps it (gateway tts.ts): autoMode, the active provider and persona, and the providers. */
+export type CrawlVoice = {
+  auto: 'off' | 'inbound' | 'tagged' | 'always';
+  provider: string;
+  persona: string | null;
+  personas: { id: string; label: string; description: string; provider: string }[];
+  providers: { id: string; name: string; configured: boolean; models: string[]; voices: string[] }[];
+};
 /** The engine's exec approvals file (exec.approvals.get / set), as the Permissions page reads and saves it. */
 export type CrawlApprovals = { path: string; exists: boolean; hash: string; file: Record<string, unknown>; resolvedDefaults: Record<string, unknown> };
 
@@ -16,7 +22,8 @@ const INITIAL_CONFIG: CrawlConfig = {
 const INITIAL_PREFS: CrawlPrefs = { status: 'ok', entries: {} };
 
 const INITIAL_VOICE: CrawlVoice = {
-  enabled: false, auto: 'off', persona: '', personas: [], provider: 'local', providers: [{ id: 'local', label: 'On this computer' }],
+  auto: 'off', provider: 'local', persona: null, personas: [],
+  providers: [{ id: 'local', name: 'On this computer', configured: true, models: [], voices: [] }],
 };
 
 const INITIAL_APPROVALS: CrawlApprovals = {
@@ -41,7 +48,8 @@ export function freshApprovals(): CrawlApprovals {
 
 /** exec.approvals.set: refuses a stale base hash (as the engine does), otherwise saves the file and returns the new snapshot. */
 export function applyApprovalsSet(current: CrawlApprovals, params: { file?: Record<string, unknown>; baseHash?: string }): CrawlApprovals {
-  if (params.baseHash !== current.hash) throw new Error('The approvals file changed since last load; reload and try again.');
+  // The engine's own wording (gateway exec-approvals.ts), which the Permissions page matches to offer a reload.
+  if (params.baseHash !== current.hash) throw new Error('exec approvals changed since last load; re-run exec.approvals.get and retry');
   const next = { ...current, file: params.file ?? current.file, hash: `approvals-${Date.now().toString(36)}` };
   const defaults = (next.file.defaults ?? {}) as Record<string, unknown>;
   next.resolvedDefaults = { ...INITIAL_APPROVALS.resolvedDefaults, ...defaults };
@@ -82,5 +90,25 @@ export function freshVoice(): CrawlVoice {
 
 /** tts.enable turns reading aloud on for every reply; tts.disable turns it off. */
 export function applyVoiceToggle(current: CrawlVoice, enabled: boolean): CrawlVoice {
-  return { ...current, enabled, auto: enabled ? 'always' : 'off' };
+  return { ...current, auto: enabled ? 'always' : 'off' };
+}
+
+/** The tts.status payload (gateway tts.ts "tts.status": enabled, auto, provider, persona, personas, fallback, prefsPath, providerStates). */
+export function voiceStatus(v: CrawlVoice) {
+  return {
+    enabled: v.auto !== 'off',
+    auto: v.auto,
+    provider: v.provider,
+    persona: v.persona,
+    personas: v.personas,
+    fallbackProvider: null,
+    fallbackProviders: [] as string[],
+    prefsPath: 'tts-prefs.json',
+    providerStates: v.providers.map((p) => ({ id: p.id, label: p.name, configured: p.configured })),
+  };
+}
+
+/** The tts.providers payload (gateway tts.ts "tts.providers": providers with id, name, configured, models, voices; and active). */
+export function voiceProviders(v: CrawlVoice) {
+  return { providers: v.providers, active: v.provider };
 }

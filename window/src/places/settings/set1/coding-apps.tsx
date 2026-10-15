@@ -53,7 +53,7 @@ export function CodingApps({ engine }: { engine: WindowEngine }) {
           </Ctl>
         );
       })}
-      <div className="acts"><Btn sm disabled={detect.loading} onClick={() => void detect.reload().then(stamp, () => undefined)}>Check again</Btn><CheckedAt at={checked} /></div>
+      <div className="acts"><Btn sm disabled={detect.loading} onClick={() => void detect.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</Btn><CheckedAt at={checked} /></div>
     </Sec>
   );
 }
