@@ -9,10 +9,27 @@ export type GuestBridge = {
   onOpenTab(listener: (url: string) => void): () => void;
 };
 
-/** The bridge when this window is an R1 window on the desktop, or null (plain web page, remote engine). */
+type RawBridge = Partial<GuestBridge>;
+
+// One wrapper per desktop bridge object, so the pane's effects see the same identity on every render.
+const wrapped = new WeakMap<object, GuestBridge>();
+
+/**
+ * The bridge when this window is an R1 window on the desktop, or null (plain web page, remote engine). Presence is
+ * decided by the bridge object alone. A method the desktop did not provide becomes a no-op, so the switch still shows.
+ */
 export function guestBridge(): GuestBridge | null {
-  const bridge = (window as unknown as { branchDesktop?: { browserGuest?: GuestBridge } }).branchDesktop?.browserGuest;
-  return bridge && typeof bridge.openPopout === "function" && typeof bridge.onOpenTab === "function" ? bridge : null;
+  const raw = (window as unknown as { branchDesktop?: { browserGuest?: RawBridge } }).branchDesktop?.browserGuest;
+  if (!raw || typeof raw !== "object") return null;
+  const cached = wrapped.get(raw);
+  if (cached) return cached;
+  const bridge: GuestBridge = {
+    local: raw.local === true,
+    openPopout: (url: string) => (typeof raw.openPopout === "function" ? raw.openPopout(url) : Promise.resolve()),
+    onOpenTab: (listener) => (typeof raw.onOpenTab === "function" ? raw.onOpenTab(listener) : () => {}),
+  };
+  wrapped.set(raw, bridge);
+  return bridge;
 }
 
 /** Null for the main window. A pop-out window (?browser=popout&url=...) returns its page address, or "" if it has none. */
