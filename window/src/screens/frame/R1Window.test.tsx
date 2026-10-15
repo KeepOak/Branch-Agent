@@ -30,7 +30,7 @@ vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: (p: { createTrunk?: ()
 vi.mock("../../face/Face", () => ({ Face: () => <span /> }));
 vi.mock("../sidebar/Sidebar", () => ({ Sidebar: ({ ready, onSettings }: { ready: boolean; onSettings: (page: string) => void }) => <nav aria-label="Sidebar stub" data-ready={ready}><button type="button" aria-label="Settings" onClick={() => onSettings("appearance")} /></nav> }));
 vi.mock("../../places/settings/set1/appearance-store", () => ({ lookStore: () => ({ load: async () => undefined }) }));
-vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: [] }], usePendingApprovals: () => new Map(), useMachine: () => null, useTrunks: () => ({ list: [], defaultId: null }), useListPeople: () => ({ selfId: null, names: new Map() }) }));
+vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: [] }], usePendingApprovals: () => new Map(), useMachine: () => null, useContacts: () => [[], () => undefined, false], useTrunks: () => ({ list: [], defaultId: null }), useListPeople: () => ({ selfId: null, names: new Map() }) }));
 vi.mock("../../shell/group-drop", async (real) => ({ ...(await real<object>()), useGroupRooms: () => ({ rooms: [], peerOnline: new Map(), reload: async () => undefined }) }));
 const problemArgs: { value?: { onOpenConnection: () => void; machineName: string } } = {};
 vi.mock("../approvals/ProblemBanners", () => ({ useProblemBannerRows: (args: { onOpenConnection: () => void; machineName: string }) => { problemArgs.value = args; return undefined; } }));
@@ -212,7 +212,9 @@ it("the conversation menu's View › \"Show agents' work as\" rows turn Coming w
   // R1-10: the header names its calls (Computer, Browser, the pill) or says local (•••), and Find anything is registered.
   expect(undeclaredControls(host.querySelector(".r1-header")!)).toEqual([]);
   const needs = comingControls().flatMap((entry) => entry.need);
-  expect(needs).toEqual(expect.arrayContaining(["computer.status", "browser.request", "agent.identity.get", "sessions.search"]));
+  // The title pill is not gated on a capability: it opens the agent details whatever the engine lists.
+  expect(needs).toEqual(expect.arrayContaining(["computer.status", "browser.request", "sessions.search"]));
+  expect(needs).not.toContain("agent.identity.get");
   await act(async () => document.querySelector<HTMLButtonElement>('.r1-header-right [aria-label="More"]')!.click());
   const open = async (label: string) => act(async () => [...document.querySelectorAll<HTMLButtonElement>(".r1c-conv [data-menu-item]")].find((el) => el.querySelector(".g-menu-label")?.firstChild?.textContent === label)!.click());
   await open("View");

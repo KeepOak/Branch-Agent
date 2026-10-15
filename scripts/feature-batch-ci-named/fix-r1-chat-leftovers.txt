@@ -1,3 +1,4 @@
+window:src/composer/ModelAccessInfo.test.tsx
 window:src/composer/ModelMenu.line.test.ts
 window:src/composer/VoiceScreen.error.test.tsx
 window:src/composer/talk-controls.test.tsx
@@ -10,6 +11,8 @@ window:src/screens/chat/chat-logic.test.ts
 window:src/screens/composer/footer-account.test.ts
 window:src/screens/composer/glass48.test.tsx
 window:src/screens/frame/Header.test.tsx
+window:src/screens/frame/R1Window.character.test.tsx
+window:src/screens/frame/R1Window.test.tsx
 window:src/screens/frame/conversation-menu.test.ts
 window:src/screens/sidebar/Sidebar.test.tsx
 window:src/screens/sidebar/row-menu.test.ts
