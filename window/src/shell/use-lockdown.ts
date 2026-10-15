@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { createElement, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { SaplingSession } from "../connect/session";
 import { configStore } from "../places/settings/config-store";
 import { notify } from "./notify";
+import { ConfirmLockdown } from "./ConfirmLockdown";
 
 export function useLockdown(engine: WindowEngine, ready: boolean, session?: SaplingSession) {
   const store = configStore(engine);
   const [supported, setSupported] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const busy = useRef(false);
   const snapshot = useSyncExternalStore(
     (listener) => store.subscribe(listener),
     () => store.snap,
@@ -28,13 +32,33 @@ export function useLockdown(engine: WindowEngine, ready: boolean, session?: Sapl
     return () => { current = false; };
   }, [engine, ready]);
   const on = (snapshot?.config as { security?: { lockdown?: boolean } } | undefined)?.security?.lockdown === true;
+  const save = useCallback(async (next: boolean) => {
+    if (busy.current) return;
+    busy.current = true;
+    setSaving(true);
+    try {
+      await store.set("security.lockdown", next);
+      notify(next ? "Lockdown is on." : "Lockdown is off.");
+      setConfirming(false);
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
+  }, [store]);
   const toggle = useCallback(() => {
     if (!supported) return Promise.reject(new Error("This engine has no Lockdown switch yet."));
-    const next = !on;
-    return store.set("security.lockdown", next).then(() => {
-      // Preview spec-v23 index.html:8910 toast text
-      notify(next ? "Lockdown is on." : "Lockdown is off.");
-    });
-  }, [store, on, supported]);
-  return { on, toggle, loaded: Boolean(snapshot), supported, error: store.error };
+    if (!snapshot || busy.current) return Promise.resolve();
+    if (on) return save(false);
+    setConfirming(true);
+    return Promise.resolve();
+  }, [snapshot, on, supported, save]);
+  const confirmation = confirming ? createElement(ConfirmLockdown, {
+    busy: saving,
+    onCancel: () => { if (!busy.current) setConfirming(false); },
+    onConfirm: () => {
+      if (!supported || !ready) { setConfirming(false); return; }
+      void save(true).catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
+    },
+  }) : null;
+  return { on, toggle, confirmation, loaded: Boolean(snapshot), supported, error: store.error };
 }
