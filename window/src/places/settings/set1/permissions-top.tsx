@@ -135,6 +135,7 @@ export function Lockdown({ engine }: { engine: WindowEngine }) {
       <div><b>Lockdown</b><p>One switch that stops every Trunk from sending, changing or spending anything.</p></div>
       {/* Preview spec-v23 index.html:8553: danger-filled only while off; "Turn Lockdown off" is the plain button. */}
       <Btn className={lockdown.on ? undefined : "bad"} disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Turn Lockdown on"}</Btn>
+      {lockdown.confirmation}
     </div>
   );
 }

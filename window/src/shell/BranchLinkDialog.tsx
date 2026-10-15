@@ -107,7 +107,7 @@ export function BranchLinkDialog({ engine, onClose, onLinked, onOpenGatewaySetti
       <label className="cz-field"><span>Setup code</span><textarea className="inp" aria-label="Setup code" value={incoming} onChange={event => setIncoming(event.target.value)} /></label>
       <label className="cz-field"><span>Name on the other Branch (optional)</span><input className="inp" value={name} onChange={event => setName(event.target.value)} /></label>
       {join?.pending && <p role="status">Waiting for approval on the other Branch. {join.requestId ? <>Compare check code <strong>{pairingCheckCode(join.requestId)}</strong> with the “Allow this device?” request there before approving.</> : null}</p>}
-      {join && !join.pending && <p role="status" className="cz-ok">Linked to {join.link?.url}. Your helpers are now available there.</p>}
+      {join && !join.pending && <p role="status" className="cz-ok">Linked to {join.link?.url}. Your Trunks are now available there.</p>}
     </div>}
     {savedLinks.length > 0 && <section aria-label="Linked Branches"><h3>Linked Branches</h3>
       {savedLinks.map((link) => <div key={link.url} className="branch-link-code"><span>{link.name}</span>

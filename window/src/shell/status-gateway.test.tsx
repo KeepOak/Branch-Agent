@@ -34,7 +34,9 @@ describe("independent gateway status", () => {
     expect(document.querySelector("[data-testid=sb-connection] .status-label")?.textContent).toBe("Online · you are here");
     expect(gateway.querySelector(".status-label")).toBeNull();
     await act(async () => root?.render(<StatusFixture connection="offline" gateway="checking" />));
-    expect(document.querySelector("[data-testid=sb-connection] .status-label")?.textContent).toBe("Offline · Fixture");
+    // The computer's name is in the top bar's switcher, not repeated in the status bar.
+    expect(document.querySelector("[data-testid=sb-connection] .status-label")?.textContent).toBe("Offline");
+    expect(document.querySelector("[data-testid=sb-connection]")?.getAttribute("aria-label")).toBe("Fixture · Offline");
     expect(document.querySelector("[data-testid=sb-gateway] .status-label")).toBeNull();
   });
   it.each(["connected", "offline"] as const)("shows a genuine health check while the socket is %s", async (connection) => {

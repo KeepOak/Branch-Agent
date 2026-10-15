@@ -204,7 +204,7 @@ const KITS: [string, string, string, string?][] = [
   ["Python", "The same, sync or async.", "", "There is no Python kit yet."],
   ["Java", "A client for the agent protocol and the Gateway.", "", "There is no Java kit yet."],
   ["Gateway client", "Live updates, device sign-in and reconnecting. In the engine’s source as @branch/gateway-client.", "engine/packages/gateway-client"],
-  ["KeepOak cloud", "Your helpers on keepoak.com, from your own code.", "", "There is no KeepOak kit yet."],
+  ["KeepOak cloud", "Your Trunks on keepoak.com, from your own code.", "", "There is no KeepOak kit yet."],
 ];
 
 function BuildOnBranch({ config }: Ctx) {
@@ -303,7 +303,7 @@ function RunWithout({ config, base }: Ctx) {
       <h3 className="s2-h3">Kits</h3>
       <p className="hint">TypeScript, Python, Go, React, C and inside your own server: none of these kits is published yet. The gateway client is in Build on Branch, above.</p>
       <h3 className="s2-h3">Other agent programs on this computer</h3>
-      <p className="hint">Branch checks the usual places (programs, npm, pip, Homebrew) and can hand work to them as helpers.</p>
+      <p className="hint">Branch checks the usual places (programs, npm, pip, Homebrew) and can hand work to them as Trunks.</p>
       {shownWhy(ne("agent program finder")) ? <p className="hint s2developer-why">{shownWhy(ne("agent program finder"))}</p> : null}
     </Sec>
   );

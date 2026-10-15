@@ -385,3 +385,8 @@
 .r618-pick { display: grid; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: none; color: var(--ink); font: inherit; cursor: pointer; }
 .r618-pick:hover { background: var(--fill); }
 .r618-pick small { color: var(--ink-3); }
+
+/* Context room left: a labelled bar that drains as the conversation fills (replaces the battery glyph). */
+.sb-room { gap: 6px; }
+.ctx-meter { display: inline-block; width: 40px; height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
+.ctx-meter-fill { display: block; height: 100%; border-radius: 3px; transition: width .3s ease; }

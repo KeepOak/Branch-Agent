@@ -4,6 +4,10 @@ import { toStringifiedError } from "@branch/normalization-core/error-coercion";
 import type { BranchConfig } from "../config/types.branch.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { runOutsideSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker-context.js";
+import {
+  describePreparedModelRuntimeOwnerStates,
+  formatPreparedModelFailure,
+} from "./prepared-model-runtime.trace.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { registerRuntimeAuthProfileStoreMutationListener } from "./auth-profiles/runtime-snapshots.js";
 import type { ModelCatalogSnapshot } from "./model-catalog.types.js";
@@ -273,6 +277,16 @@ export function getPreparedModelRuntimeSnapshot(
 /** Reads the owner-held publication barrier without starting catalog acquisition. */
 export function getPendingPreparedModelRuntimeReplacement(agentId?: string): Promise<void> | undefined {
   return getPassiveReplacement(agentId)?.promise;
+}
+
+/** Trace text for the pending publication barrier an agent awaits: its scope and degraded flag. */
+export function describePendingPreparedModelRuntimeReplacement(agentId?: string): string | undefined {
+  const replacement = getPassiveReplacement(agentId);
+  if (!replacement) {
+    return undefined;
+  }
+  const scope = replacement.agentIds ? [...replacement.agentIds].toSorted().join(",") : "global";
+  return `scope=${scope} degraded=${replacement.degraded === true}`;
 }
 
 /** Startup's retry of one agent: its unsettled model builds stop holding the next one back. */
@@ -594,6 +608,9 @@ export function refreshPreparedModelRuntimeSnapshots(
         resetPluginGeneration: true,
       });
     }
+    log.info(
+      `prepared model publication rejected; owners ${describePreparedModelRuntimeOwnerStates(owners, publicationAgentIds)}; reason=${formatPreparedModelFailure(error.message, 160)}`,
+    );
     rejectPendingPreparedModelRuntimeReplacement(replacement?.gateId, error);
   };
   const commitReplacement = () => {
@@ -610,6 +627,9 @@ export function refreshPreparedModelRuntimeSnapshots(
     }
     const adoptedAuthTransaction = authPublication.prepareAdoptedCommit(replacement.gateId);
     replyDispatchPublication.rebuild(owners.values());
+    log.info(
+      `prepared model publication committed; owners ${describePreparedModelRuntimeOwnerStates(owners, publicationAgentIds)}`,
+    );
     pendingModelRuntimeReplacement = undefined;
     startup?.complete();
     if (adoptedAuthTransaction) {

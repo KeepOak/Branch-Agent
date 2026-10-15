@@ -20,8 +20,8 @@ const NARROW = 760;
 /** The cards, in the spec's order; the prototype-only surface switcher card is left out (§8). */
 export function tourCards(defaultName: string): Card[] {
   return [
-    { title: "Your helpers are contacts", target: "[data-testid=conversation-list]", side: true, prep: () => sidePanel(false), text: "Each Trunk is an assistant with one job. Message it like a teammate. A moving ring means it’s working; a dot means it needs you." },
-    { title: "Your helpers, in person", target: ".character-panel", text: "Each Trunk can have a character. It acts out what the Trunk is really doing: thinking, searching, reading, working, waiting for you, celebrating, resting. Change it in the Trunk’s Look tab." },
+    { title: "Your Trunks are contacts", target: "[data-testid=conversation-list]", side: true, prep: () => sidePanel(false), text: "Each Trunk is an assistant with one job. Message it like a teammate. A moving ring means it’s working; a dot means it needs you." },
+    { title: "Your Trunks, in person", target: ".character-panel", text: "Each Trunk can have a character. It acts out what the Trunk is really doing: thinking, searching, reading, working, waiting for you, celebrating, resting. Change it in the Trunk’s Look tab." },
     { title: "Watch it work", target: ".computer-activity-card", text: "When a Trunk uses the browser you see it live, with Take over one click away. Its plan and folded steps sit just above." },
     { title: "Its own computer, full size", target: ".computer-stage", text: "Pick which computer a Trunk may use: a private box, this computer, the KeepOak computer or a home server. Watch it live, take over, or shrink it to a small window." },
     { title: "It asks before it acts", target: "[data-testid=approval-card]", text: "Anything that sends, deletes, spends or installs waits for your yes: Send it, Always allow, or Don’t. The Inbox collects them all." },

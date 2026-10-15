@@ -27,3 +27,35 @@ export function trunkAppearance(avatar: string | undefined, _name: string, colou
   if (/^(https?:\/\/|data:image\/|\/avatar\/)/i.test(chosen)) return { still: chosen };
   return undefined;
 }
+
+/** Nature-themed pebbles for a Trunk or grafted agent with no look of its own: the same name always gets the same one. */
+const NATURE_COLOURS = ["#5E7F4A", "#7A5A3C", "#4F7FA0", "#B0643F", "#8A8F4B", "#2F7C7A", "#6A5A8C", "#B39A5A"];
+const NATURE_SHAPES = ["Circle", "Stone", "Leaf", "Acorn", "Shield"];
+
+/** The identity key a name is matched on: lowercased, with spaces and hyphens folded together. */
+export function identityKey(name: string): string {
+  return name.trim().toLowerCase().replace(/[\s-]+/g, " ");
+}
+
+/** The key a nature look is drawn from: a JSON pair of the name's identity key and the computer's (null when unknown),
+ *  so no name can collide with a name-plus-computer pair. */
+export function lookKey(name: string, where?: string): string {
+  return JSON.stringify([identityKey(name), where?.trim() ? identityKey(where) : null]);
+}
+
+/** A deterministic moss, bark, sky or clay pebble from a look key (djb2 hash). */
+export function natureLook(key: string): PebbleLook {
+  let hash = 5381;
+  for (const ch of key) hash = ((hash << 5) + hash + ch.charCodeAt(0)) >>> 0;
+  return {
+    colour: NATURE_COLOURS[hash % NATURE_COLOURS.length],
+    shape: NATURE_SHAPES[Math.floor(hash / NATURE_COLOURS.length) % NATURE_SHAPES.length],
+    eyes: "Round",
+  };
+}
+
+/** A look with its gaps filled from the name's nature look, so a face never falls back to the grey placeholder. */
+export function completePebbleLook(look: PebbleLook | undefined, name: string | undefined, where?: string): PebbleLook {
+  const nature = natureLook(lookKey(name ?? "", where));
+  return { colour: look?.colour ?? nature.colour, shape: look?.shape ?? nature.shape, eyes: look?.eyes ?? nature.eyes };
+}

@@ -63,7 +63,7 @@ export function HowItLearns({ engine, trunks, scope, onApplied }: { engine: Wind
           ? <button type="button" className="btn sm" data-testid="memory-bring-in" disabled={!agentId} onClick={() => setBring(true)}>Bring in</button>
           : <Grey label="Bring in" reason={BRING_IN_WRITE_REASON} />}
       </Row>
-      <Row icon="learn" title="Learn from past conversations" line="Finds what earlier conversations taught and lets memory cleanup keep the useful parts."><button type="button" className="btn sm" onClick={() => setLearn(true)}>Choose dates</button></Row>
+      <Row icon="learn" title="Learn from past conversations" line="Finds what earlier conversations taught and lets Rings keep the useful parts."><button type="button" className="btn sm" onClick={() => setLearn(true)}>Choose dates</button></Row>
     </div>
     {learn && <LearnDialog engine={engine} trunks={trunks} scope={scope} onClose={() => setLearn(false)} />}
     {bring && <BringInDialog engine={engine} agentId={agentId} onClose={() => setBring(false)} onApplied={onApplied} />}
@@ -90,7 +90,7 @@ function LearnDialog({ engine, trunks, scope, onClose }: { engine: WindowEngine;
     <div className="lib-dates"><label className="lib-fld"><span>From</span><input className="inp" type="date" value={from} onChange={e => { setFrom(e.target.value); setFound(null); }} /></label>
       <label className="lib-fld"><span>To</span><input className="inp" type="date" value={to} onChange={e => { setTo(e.target.value); setFound(null); }} /></label></div>
     {found && !kept && <p role="status">{plural(num(found.candidates) ?? 0, "thing", "things")} worth keeping from {plural(num(found.days) ?? 0, "day", "days")}.{found.truncated ? " There are more after these; preview again to continue." : ""}</p>}
-    {kept && <p role="status">{plural(num(kept.staged) ?? num(kept.candidates) ?? 0, "thing", "things")} handed to overnight cleanup to sort tonight.</p>}
+    {kept && <p role="status">{plural(num(kept.staged) ?? num(kept.candidates) ?? 0, "thing", "things")} handed to Rings to sort tonight.</p>}
     {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
   </Dialog>;
 }
