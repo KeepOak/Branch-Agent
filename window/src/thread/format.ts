@@ -250,13 +250,14 @@ export function dayStamp(ms: number, now = Date.now()): string {
   return `${d.toLocaleDateString([], sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" })} ${time}`;
 }
 
-/** The first sentence of an engine error, without the engine's own lead-in and warning sign. */
-/** Local file paths (macOS, Linux, Windows, ~/) that a plain sentence must not show; the raw text stays at Technical. */
-const LOCAL_PATH = /(?:[A-Za-z]:\\[^\s"'`,;()<>]+|~\/[^\s"'`,;()<>]*|\/(?:Users|Volumes|private|tmp|var|home|opt|etc|Library|Applications|usr|root|srv|mnt)(?:\/[^\s"'`,;()<>]*)?)/g;
+/** Local file paths (macOS, Linux, Windows, ~/) that a plain sentence must not show; the raw text stays at Technical.
+ *  A space continues the path only when the next word holds another slash ("/Volumes/512GB SSD/data"). */
+const LOCAL_PATH = /(?:[A-Za-z]:\\[^\s"'`,;()<>]+|~\/[^\s"'`,;()<>]*|\/(?:Users|Volumes|private|tmp|var|home|opt|etc|Library|Applications|usr|root|srv|mnt)(?:\/[^\s"'`,;()<>]*)?)(?: [^\s\/"'`,;()<>]+\/[^\s"'`,;()<>]*)*/g;
 export function scrubLocalPaths(text: string): string {
   return text.replace(LOCAL_PATH, "a local file");
 }
 
+/** The first sentence of an engine error, without the engine's own lead-in and warning sign. */
 export function shortReason(message: string): string {
   if (/PLUGIN_STATE_READ_FAILED|Session maintenance protection changed|PluginInstanceUnavailableError|^\s*\{|\"telemetry\"/.test(message)) {
     return "Something went wrong. Try again, or open Diagnostics for details.";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockLeft, dayStamp, formatDuration, modelName, parseDiffLines, rawDiffText, shortReason, stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename, stepOutputTail, stepsSummary } from "./format";
+import { clockLeft, dayStamp, formatDuration, modelName, parseDiffLines, rawDiffText, scrubLocalPaths, shortReason, stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename, stepOutputTail, stepsSummary } from "./format";
 import type { Block } from "./model";
 
 const step = (tool: string, status: "running" | "ok" = "ok"): Extract<Block, { kind: "step" }> => ({
@@ -106,4 +106,11 @@ describe("plain error copy", () => {
     expect(shortReason("Failed in /tmp/rv1305/verdict.md, see log.")).toBe("Failed in a local file, see log.");
     expect(shortReason("Authentication failed (provider returned HTTP 401).")).toBe("Authentication failed (provider returned HTTP 401).");
   });
+});
+
+it("hides a whole local path, even one with a space in a folder name", () => {
+  expect(scrubLocalPaths("1 step failed: bash — /Volumes/512GB SSD/BranchAgent/data/home/.branch/workspace/notes"))
+    .toBe("1 step failed: bash — a local file");
+  expect(scrubLocalPaths("Saved /Users/someone/notes.md and moved on")).toBe("Saved a local file and moved on");
+  expect(scrubLocalPaths("Config: C:\\Users\\someone\\branch.json")).toBe("Config: a local file");
 });
