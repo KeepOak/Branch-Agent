@@ -4,8 +4,7 @@
 // channels.imessage.groups. A non-empty groupAllowFrom can admit groups despite
 // an empty groups map (senderFilterBypass in src/config/group-policy.ts).
 // Without these warnings the drop-all case is invisible at default log level
-// during iMessage config migration. See
-// https://github.com/openclaw/openclaw/issues/78749.
+// during iMessage config migration.
 
 import { createDedupeCache } from "branch/plugin-sdk/dedupe-runtime";
 

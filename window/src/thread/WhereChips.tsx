@@ -19,9 +19,9 @@ const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object"
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export const NOT_GIT = "This folder isn’t a Git project";
-export const COMPUTER_WHY = "The computer that runs its commands and code.";
-export const folderWhy = (trunkName: string) => `Where it reads and saves files. Until you pick one, it uses ${trunkName}’s files.`;
+const NOT_GIT = "This folder isn’t a Git project";
+const COMPUTER_WHY = "The computer that runs its commands and code.";
+const folderWhy = (trunkName: string) => `Where it reads and saves files. Until you pick one, it uses ${trunkName}’s files.`;
 
 const isPath = (q: string) => /^([a-zA-Z]:[\\/]|\/|~[\\/])/.test(q.trim());
 const isGit = (q: string) => /^(https?:\/\/|git@)\S+$/.test(q.trim());

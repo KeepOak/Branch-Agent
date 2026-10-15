@@ -8,7 +8,7 @@ import { Btn, Ctl, Field, Num, Pick, Sec, Seg, Switch, useConfig, type Lv, type 
 import type { ConfigPath } from "../config-store";
 import { rec, str, type RecordValue } from "./common";
 
-export type Config = ReturnType<typeof useConfig>;
+type Config = ReturnType<typeof useConfig>;
 /** What every Advanced row may read: the engine, its config, the level and the installed plugins. */
 export type Ctx = SettingsPageProps & { config: Config; lv: Lv; agent: string; plugins: RecordValue[] };
 
@@ -32,7 +32,7 @@ export const NOSET = "The engine has no setting for this.";
 export const APP = "Set by the Branch app on this computer.";
 
 /** The rows a section shows at this level. */
-export const shown = (rows: Spec[], lv: Lv) => rows.filter((r) => (r.lv ?? 0) <= lv);
+const shown = (rows: Spec[], lv: Lv) => rows.filter((r) => (r.lv ?? 0) <= lv);
 
 export function Section({ spec, c }: { spec: SecSpec; c: Ctx }) {
   if (spec.lv > c.lv) return null;
@@ -45,7 +45,7 @@ export function Section({ spec, c }: { spec: SecSpec; c: Ctx }) {
   );
 }
 
-export function Row({ r, c }: { r: Spec; c: Ctx }) {
+function Row({ r, c }: { r: Spec; c: Ctx }) {
   if (r.draw) return <>{r.draw(c)}</>;
   if (r.off) return <Ctl title={r.t} sub={r.s} help={r.help} off={r.off}>{greyControl(r)}</Ctl>;
   if (r.plug) return <PlugRow r={r} c={c} />;
@@ -89,7 +89,7 @@ function Control({ r, c, disabled }: { r: Spec; c: Ctx; disabled: boolean }) {
 }
 
 /** A list of strings (folders, plugin ids, patterns): chips with ×, and an add field. */
-export function ListEditor({ r, c }: { r: Spec; c: Ctx }) {
+function ListEditor({ r, c }: { r: Spec; c: Ctx }) {
   const raw = r.k ? c.config.get(r.k) : undefined;
   const saved: unknown[] = Array.isArray(raw) ? raw : [];
   const items = saved.map((x) => (typeof x === "string" ? x : str(rec(x).path)));
@@ -101,7 +101,7 @@ export function ListEditor({ r, c }: { r: Spec; c: Ctx }) {
       {items.length ? items.map((x, i) => <span key={`${x}-${i}`} className="chip6">{x}<button type="button" className="s2-x" aria-label={`Remove ${x}`} onClick={() => put(saved.filter((_, j) => j !== i))}>×</button></span>) : <span className="hint">Nothing here yet.</span>}
       <span className="s2advanced-add">
         <input className="inp s2advanced-mono" aria-label={`${r.t}: new item`} placeholder={r.ph} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
-        <Btn sm disabled={c.config.loading} onClick={add}>{r.add ?? "Add"}</Btn>
+        <Btn sm disabled={c.config.loading || !draft.trim()} onClick={add}>{r.add ?? "Add"}</Btn>
       </span>
     </div>
   );

@@ -1,20 +1,24 @@
 /**
  * Reads one Trunk and returns its template. Allowlist only: the name, the persona files
- * AGENTS.md and SOUL.md, the skill slugs, and a model family. Everything else on the Trunk
+ * AGENTS.md and SOUL.md (which hold its job and anti-jobs), the skill slugs, a model family, its
+ * scheduled-prompt routines, and the channel ids it is bound to. Everything else on the Trunk
  * (memory, USER.md, secrets, accounts, auth profiles, machine names, paths, workspace)
  * is never read into the output. Export refuses persona text that looks like a secret.
  */
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { resolveAgentConfig, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { resolveAgentEntry } from "../agents/agent-scope-config.js";
+import { resolveAgentConfig, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
+import { listRouteBindings } from "../config/bindings.js";
 import type { BranchConfig } from "../config/types.branch.js";
 import { redactSensitiveText } from "../logging/redact.js";
+import { normalizeAgentId } from "../routing/session-key.js";
 import {
   buildTrunkTemplate,
   redactPersonaText,
   type TrunkTemplate,
+  type TrunkTemplateAutomation,
 } from "./trunk-template.js";
 
 const PERSONA_FILE_LIMIT_BYTES = 64 * 1024;
@@ -81,10 +85,82 @@ function permissionsFor(cfg: BranchConfig, agentId: string): string[] {
   return lines;
 }
 
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+/** True for a private key header or anything the log redactor would mask. Import uses the same check. */
+export function looksSecret(text: string): boolean {
+  return PRIVATE_KEY_HEADER.test(text) || redactSensitiveText(text) !== text;
+}
+
+/**
+ * The Trunk's routines as template entries: cron-scheduled prompts only. Prompts lose machine paths;
+ * a routine whose text looks like a secret, or that another kind of schedule or a plugin owns, is left
+ * out with a warning. Delivery targets, accounts and run history never leave.
+ */
+export function automationsFromCronJobs(
+  jobs: readonly unknown[],
+  paths: { workspaceDir?: string; homeDir?: string },
+): { automations: TrunkTemplateAutomation[]; warnings: string[] } {
+  const automations: TrunkTemplateAutomation[] = [];
+  const warnings: string[] = [];
+  for (const raw of jobs) {
+    const job = record(raw);
+    const schedule = record(job.schedule);
+    const payload = record(job.payload);
+    const name = redactPersonaText(typeof job.name === "string" ? job.name.trim() : "", paths);
+    if (!name) {
+      continue;
+    }
+    if (typeof job.declarationKey === "string" && job.declarationKey) {
+      warnings.push(
+        `Routine "${name}" is managed by Branch or a plugin, so the template leaves it out.`,
+      );
+      continue;
+    }
+    const cron = typeof schedule.expr === "string" ? schedule.expr.trim() : "";
+    const message = typeof payload.message === "string" ? payload.message : "";
+    if (
+      schedule.kind !== "cron" ||
+      !cron ||
+      payload.kind !== "agentTurn" ||
+      !message.trim() ||
+      job.trigger
+    ) {
+      warnings.push(`Routine "${name}" is not a scheduled prompt, so the template leaves it out.`);
+      continue;
+    }
+    const prompt = redactPersonaText(message, paths);
+    if (looksSecret(prompt) || looksSecret(name)) {
+      warnings.push(
+        "One routine looks like it contains a secret (a token or key), so the template leaves it out.",
+      );
+      continue;
+    }
+    automations.push({ name, cron, prompt });
+  }
+  return { automations, warnings };
+}
+
+/** Channel ids this Trunk is bound to. Account ids and peers stay on this computer. */
+export function connectionsFor(cfg: BranchConfig, agentId: string): string[] {
+  const id = normalizeAgentId(agentId);
+  const channels = listRouteBindings(cfg)
+    .filter((binding) => normalizeAgentId(binding.agentId) === id)
+    .map((binding) => binding.match?.channel?.trim().toLowerCase())
+    .filter((channel): channel is string => Boolean(channel));
+  return [...new Set(channels)];
+}
+
 export async function exportTrunkTemplate(params: {
   cfg: BranchConfig;
   agentId: string;
   env?: NodeJS.ProcessEnv;
+  /** This Trunk's scheduled jobs, as cron.list returns them. */
+  cronJobs?: readonly unknown[];
 }): Promise<TrunkTemplateExport> {
   const agent = resolveAgentConfig(params.cfg, params.agentId);
   if (!agent) {
@@ -109,14 +185,17 @@ export async function exportTrunkTemplate(params: {
     soulMd?.truncated ? "SOUL.md" : undefined,
   ].filter((name): name is string => name !== undefined);
   const modelRef = typeof agent.model === "string" ? agent.model : agent.model?.primary;
+  const routines = automationsFromCronJobs(params.cronJobs ?? [], paths);
   const { template, warnings } = buildTrunkTemplate({
     name: agent.name ?? params.agentId,
     agentsMd: agentsText,
     soulMd: soulText,
     skillSlugs: agent.skills ?? [],
     modelFamily: modelFamilyFromRef(modelRef),
+    automations: routines.automations,
+    connections: connectionsFor(params.cfg, params.agentId),
     permissions: permissionsFor(params.cfg, params.agentId),
   });
   const truncation = cut.map((name) => `${name} was cut to 64 KB for the template.`);
-  return { ok: true, template, warnings: [...warnings, ...truncation] };
+  return { ok: true, template, warnings: [...warnings, ...routines.warnings, ...truncation] };
 }

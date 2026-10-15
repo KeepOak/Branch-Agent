@@ -1,6 +1,4 @@
-/* Settings › Accounts: the "Select several" link and bar, the stacked command field, coding-app and GitHub rows. */
-.set-col .sec > h2 .link-acc { padding: 0; border: 0; background: none; cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--ink-3); }
-.set-col .sec > h2 .link-acc:hover { color: var(--ink); }
+/* Settings › Accounts: the selection bar, stacked command field, coding-app and GitHub rows. */
 .set-col .bulk-acc { display: flex; align-items: center; gap: 6px; margin: 4px 0 6px; padding: 8px 10px; border-radius: 12px; background: var(--fill); font-size: 12.5px; }
 .set-col .bulk-acc .grow { flex: 1; }
 .set-col .bulk-acc .btn:disabled { opacity: 0.45; }

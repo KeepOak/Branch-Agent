@@ -13,7 +13,7 @@ const WORDS: Record<string, string> = {
   protocol_violation: "Broke the card rules", archived: "Archived", unarchived: "Restored", stale: "Conversation went quiet",
 };
 
-export function eventWords(e: Row, attempt: number): string {
+function eventWords(e: Row, attempt: number): string {
   if (e.kind === "moved") return `Moved to ${statusName(str(e.toStatus))}`;
   if (e.kind === "attempt_started") return `Attempt ${attempt} started`;
   return WORDS[str(e.kind)] ?? "";
@@ -26,7 +26,7 @@ function Timeline({ c }: { c: Row }) {
 }
 
 /** Opens a card attachment from canopy.cards.attachments.get ({attachment, contentBase64}) in a new window, or saves it. */
-export async function openAttachment(ctx: Ctx, id: string) {
+async function openAttachment(ctx: Ctx, id: string) {
   const got = rec(await ctx.engine.request("canopy.cards.attachments.get", { id })), info = rec(got.attachment), b64 = str(got.contentBase64);
   if (!b64) throw new Error("The engine returned no content for this attachment.");
   const bytes = Uint8Array.from(atob(b64), ch => ch.charCodeAt(0));

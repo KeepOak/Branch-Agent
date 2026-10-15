@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/codex/src/app-server/attempt-steering.test.ts (atlas AGENT-LOOP-0022). Changed for Branch: apply scripts/rebrand-map.json and require the existing ingress-rejection callback in exact RPC assertions.
+// Changed for Branch: apply scripts/rebrand-map.json and require the existing ingress-rejection callback in exact RPC assertions.
 // Codex tests cover attempt steering plugin behavior.
 import { createDeferred } from "branch/plugin-sdk/extension-shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

@@ -1,5 +1,3 @@
-// Adapted from continuedev/continue core/edit/lazy/unifiedDiffApply.ts,
-// pinned at 5522c6f44ca0ac3528b37244818fbfa39b5af470.
 export type UnifiedDiffLine = { type: "same" | "new" | "old"; line: string };
 type Hunk = { lines: string[]; start: number; oldCount: number };
 export type UnifiedDiffFile = { oldPath: string; newPath: string; diff: string };

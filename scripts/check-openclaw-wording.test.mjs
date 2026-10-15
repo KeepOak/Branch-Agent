@@ -250,3 +250,12 @@ test('allowlistRule covers an npm scope and rejects the same word in prose', () 
   const prose = findCandidateSpans('Welcome to OpenClaw')[0];
   assert.equal(allowlistRule('engine/src/a.ts', 'Welcome to OpenClaw', prose), null);
 });
+
+test('credit files may name upstream projects; the allowance is file-specific, not a directory skip', () => {
+  assert.equal(checkAddedDiff(added('NOTICE', 9, 'openclaw/openclaw @ 57e0aaa1c190')).length, 0);
+  assert.equal(checkAddedDiff(added('third_party/mastra/LICENSE', 2, 'Welcome to OpenClaw')).length, 0);
+  assert.equal(checkAddedDiff(added('docs/upstream/COPIED.csv', 2, 'x,y,openclaw/openclaw,57e0,z,d')).length, 0);
+  assert.equal(checkAddedDiff(added('docs/upstream/copied/chore-root-license.csv', 2, 'openclaw/openclaw')).length, 0);
+  assert.equal(checkAddedDiff(added('docs/upstream/notes.md', 2, 'Welcome to OpenClaw')).length, 1);
+  assert.equal(checkAddedDiff(added('docs/upstream/copied/nested/x.csv', 2, 'Welcome to OpenClaw')).length, 1);
+});

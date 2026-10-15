@@ -127,6 +127,19 @@ export const SystemAgentChatQuestionSchema = closedObject({
   skipAction: Type.Optional(Type.Literal("exit")),
 });
 
+/**
+ * A create-agent request Branch has staged and is waiting on. Only what the staged operation holds is sent: the
+ * name, the job the owner gave, and the role. Tools, computer, permissions and talks-to are not decided at staging,
+ * so they are absent and clients keep those rows out of the card.
+ */
+export const SystemAgentChatProposalSchema = closedObject({
+  kind: Type.Literal("create-agent"),
+  agentId: NonEmptyString,
+  name: Type.Optional(NonEmptyString),
+  job: Type.Optional(NonEmptyString),
+  role: Type.Optional(NonEmptyString),
+});
+
 /** One Branch Agent reply; `action` tells clients about conversation handoffs. */
 export const SystemAgentChatResultSchema = closedObject({
   sessionId: NonEmptyString,
@@ -151,6 +164,8 @@ export const SystemAgentChatResultSchema = closedObject({
   /** Destination agent for a specific `open-agent` handoff. */
   agentId: Type.Optional(NonEmptyString),
   needsApproval: Type.Optional(Type.Boolean()),
+  /** The staged request behind `needsApproval`, when it is a create-agent request. */
+  proposal: Type.Optional(SystemAgentChatProposalSchema),
   proposalId: Type.Optional(NonEmptyString),
   question: Type.Optional(SystemAgentChatQuestionSchema),
   /**
