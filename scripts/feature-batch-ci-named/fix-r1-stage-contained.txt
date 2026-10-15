@@ -1,0 +1,2 @@
+window:src/screens/stage/r1-stage-contained.test.ts
+window:src/screens/frame/R1Window.stage.test.tsx
