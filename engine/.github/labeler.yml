@@ -800,6 +800,10 @@
           - "extensions/groq/**"
           - "docs/providers/groq.md"
           - "docs/plugins/reference/groq.md"
+"extensions: harvest":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "extensions/harvest/**"
 "extensions: alibaba":
   - changed-files:
       - any-glob-to-any-file:

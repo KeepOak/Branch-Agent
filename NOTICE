@@ -74,6 +74,7 @@ MIT and ISC sources
 - OpenHands/software-agent-sdk @ 0a9abc87641ad7ffe02e2dadf5e2cb3976b35217 (third_party/openhands-agent-sdk/LICENSE)
 - Kilo-Org/kilocode @ 6fd9b7b29ce63b5a38176e45b738e94ed6167cfb (third_party/kilocode/LICENSE)
 - NousResearch/hermes-agent @ 18d125cc1bd9d0e26188ab49bb325427d5945fa2 (third_party/hermes-agent/LICENSE)
+- NousResearch/hermes-official-plugins @ 3a102d9a387983e9c95bf84379d08fa2492b1de8 and morluto/rea (third_party/rea/LICENSE)
 - bytedance/deer-flow @ f840e843d3e2db1485cb65ceae73a5525aa80193 (third_party/deer-flow/LICENSE)
 - danny-avila/LibreChat @ f10b1d91f1eee3a2c82d5247bf620351486b7c1b (third_party/librechat/LICENSE)
 - zhayujie/CowAgent @ 986f44a19508b572d15d40dcb8bd5b2796559ec7 (third_party/cowagent/LICENSE)
