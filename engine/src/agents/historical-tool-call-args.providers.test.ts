@@ -1,4 +1,4 @@
-// From bytedance/deer-flow@f840e843d3e2db1485cb65ceae73a5525aa80193:backend/tests/test_tool_call_args.py (atlas AGENT-LOOP-0097). Provider serializer probes converted to Branch's real request builders and canonical toolCall surface.
+// Provider serializer probes converted to Branch's real request builders and canonical toolCall surface.
 import type { AssistantMessage, Model, Api } from "@branch/llm-core";
 import { describe, expect, it } from "vitest";
 import { convertMessages } from "../../packages/ai/src/openai-completions-messages.js";

@@ -1,0 +1,8 @@
+engine:extensions/browser/src/browser/navigation-guard.test.ts
+engine:src/agents/agent-tools.before-tool-call.decision.test.ts
+engine:src/gateway/net.test.ts
+engine:src/infra/device-pairing.test.ts
+engine:src/infra/fs-safe-advanced.test.ts
+engine:src/logging/redact.test.ts
+engine:src/plugins/hooks.before-tool-call.test.ts
+engine:src/secrets/egress-proxy/stream-substitution.test.ts

@@ -27,9 +27,12 @@
 .v23-tower > header b { flex: 1; margin: 0; font-size: 13px; }
 .v23-tower-health { display: flex; align-items: center; gap: 7px; margin: 2px 12px 10px; padding: 7px 9px; border-radius: 8px; background: var(--fill); color: var(--ink-2); font-size: 11px; }
 .v23-tower-health i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.v23-tower-health.warn i { background: var(--warn); }
+.v23-tower-health.bad i { background: var(--bad); }
 .v23-tower section { padding: 10px 12px 12px; border-top: 1px solid var(--hair17); }
 .v23-tower h3 { display: flex; align-items: center; gap: 5px; margin: 0 0 8px; color: var(--ink-2); font-size: 11px; }
 .v23-tower h3 span { color: var(--ink-3); font-weight: 400; }
+.v23-tower h3 .v23-link { margin-left: auto; }
 .v23-tower p { margin: 0 0 6px; color: var(--ink-3); font-size: 11px; line-height: 1.35; }
 .v23-tower-row { display: flex; align-items: center; gap: 5px; width: 100%; min-height: 38px; padding: 4px 0; border: 0; background: transparent; color: inherit; text-align: left; }
 button.v23-tower-row { cursor: pointer; }
@@ -43,5 +46,22 @@ button.v23-tower-row:hover { background: var(--fill); }
 .v23-deny { flex: none; border: 0; background: transparent; color: var(--ink-3); cursor: pointer; }
 .v23-allow:disabled, .v23-deny:disabled { opacity: .45; cursor: default; }
 .v23-link { border: 0; padding: 5px 0; background: transparent; color: var(--accent); font: 600 11px inherit; cursor: pointer; }
+.v23-link:disabled { opacity: .45; cursor: default; }
+.v23-tower-time { flex: none; color: var(--ink-3); font: 11px var(--mono, ui-monospace); font-variant-numeric: tabular-nums; }
+.v23-tower-bar { display: block; width: 44px; height: 4px; border-radius: 4px; background: var(--line); overflow: hidden; flex: none; }
+.v23-tower-bar i { display: block; height: 100%; background: var(--accent); }
+.v23-chatter { display: block; width: 100%; padding: 5px 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 11px; line-height: 1.45; text-align: left; cursor: pointer; }
+.v23-chatter:hover { background: var(--fill); }
+.v23-chatter-who { margin-right: 6px; color: var(--ink-3); font: 11px var(--mono, ui-monospace); white-space: nowrap; }
+.v23-acct { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; width: 100%; padding: 6px 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.v23-acct:hover { background: var(--fill); }
+.v23-acct-name { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.v23-acct-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink-2); }
+.v23-acct-left { color: var(--ink-3); font: 11px var(--mono, ui-monospace); white-space: nowrap; }
+.v23-meter { grid-column: 1 / -1; height: 5px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.v23-meter i { display: block; height: 100%; background: var(--ok); }
+.v23-acct.warm .v23-meter i { background: var(--warn); }
+.v23-acct.hot .v23-meter i { background: var(--bad); }
+.v23-acct small { grid-column: 1 / -1; color: var(--ink-3); font-size: 10px; }
 @media (max-width: 1100px) { .v23-tower { display: none; } }
 @media (max-width: 600px) { .v23-threads { display: none; } }

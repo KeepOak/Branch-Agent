@@ -21,7 +21,10 @@ import {
 import { registerSharedClientCompactionRetentionTests } from "./shared-client-compaction-retention.test-support.js";
 import { registerSharedClientConnectionArtifactTests } from "./shared-client-connection-artifact.test-support.js";
 import { registerSharedClientInferenceTests } from "./shared-client-inference.test-support.js";
-import { retireSharedCodexAppServerClientsBeforeDesktopGeneration } from "./shared-client-lifecycle.js";
+import {
+  retireSharedCodexAppServerClientsBeforeDesktopGeneration,
+  SHARED_CODEX_APP_SERVER_CLIENT_IDLE_MS,
+} from "./shared-client-lifecycle.js";
 import { registerSharedClientLifetimeTests } from "./shared-client-lifetime.test-support.js";
 import { registerSharedClientWebSocketStartupTests } from "./shared-client-websocket-startup.test-support.js";
 import { createClientHarness } from "./test-support.js";
@@ -1990,6 +1993,77 @@ describe("shared Codex app-server client", () => {
       pendingAcquires: 0,
     });
     expect(first.process.stdin.destroyed).toBe(true);
+  });
+
+  it("reaps the unused clients of several ended sessions after the idle grace period", async () => {
+    vi.useFakeTimers();
+    try {
+      const harnesses = [createClientHarness(), createClientHarness(), createClientHarness()];
+      vi.spyOn(CodexAppServerClient, "start")
+        .mockResolvedValueOnce(harnesses[0]!.client)
+        .mockResolvedValueOnce(harnesses[1]!.client)
+        .mockResolvedValueOnce(harnesses[2]!.client);
+      const clients: CodexAppServerClient[] = [];
+      for (const [index, harness] of harnesses.entries()) {
+        const lease = getLeasedSharedCodexAppServerClient({
+          startOptions: createStartOptions({ cwd: `/tmp/codex-reap-${index}` }),
+          timeoutMs: 1000,
+        });
+        await sendInitializeResult(harness, "branch/0.149.0 (macOS; test)");
+        clients.push(await lease);
+      }
+      for (const client of clients) {
+        expect(releaseLeasedSharedCodexAppServerClient(client)).toBe(true);
+      }
+
+      await vi.advanceTimersByTimeAsync(SHARED_CODEX_APP_SERVER_CLIENT_IDLE_MS - 1);
+      for (const harness of harnesses) {
+        expect(harness.process.stdin.destroyed).toBe(false);
+      }
+      await vi.advanceTimersByTimeAsync(1);
+      for (const [index, harness] of harnesses.entries()) {
+        expect(harness.process.stdin.destroyed).toBe(true);
+        expect(clearSharedCodexAppServerClientIfCurrentAndUnclaimed(clients[index])).toEqual({
+          found: false,
+          closed: false,
+          activeLeases: 0,
+          pendingAcquires: 0,
+        });
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a shared client that a new session takes before the idle grace period ends", async () => {
+    vi.useFakeTimers();
+    try {
+      const harness = createClientHarness();
+      const startSpy = vi.spyOn(CodexAppServerClient, "start").mockResolvedValueOnce(harness.client);
+      const firstLease = getLeasedSharedCodexAppServerClient({
+        startOptions: createStartOptions({ cwd: "/tmp/codex-reap-resume" }),
+        timeoutMs: 1000,
+      });
+      await sendInitializeResult(harness, "branch/0.149.0 (macOS; test)");
+      const client = await firstLease;
+      expect(releaseLeasedSharedCodexAppServerClient(client)).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(SHARED_CODEX_APP_SERVER_CLIENT_IDLE_MS / 2);
+      const secondLease = await getLeasedSharedCodexAppServerClient({
+        startOptions: createStartOptions({ cwd: "/tmp/codex-reap-resume" }),
+        timeoutMs: 1000,
+      });
+      expect(secondLease).toBe(client);
+      await vi.advanceTimersByTimeAsync(SHARED_CODEX_APP_SERVER_CLIENT_IDLE_MS * 2);
+      expect(harness.process.stdin.destroyed).toBe(false);
+      expect(startSpy).toHaveBeenCalledTimes(1);
+
+      expect(releaseLeasedSharedCodexAppServerClient(secondLease)).toBe(true);
+      await vi.advanceTimersByTimeAsync(SHARED_CODEX_APP_SERVER_CLIENT_IDLE_MS);
+      expect(harness.process.stdin.destroyed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects pending acquires during shared-client retirement", async () => {

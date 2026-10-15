@@ -1,6 +1,7 @@
 // Guide › What Branch can do (the preview's DLG_R618.cando): eight things Branch does, each opening where it
 // happens. The conversation ones open the default Trunk's conversation with the ask written in its message box,
 // ready to send or change; nothing is sent until the person sends it.
+// R1 folds the same list into each Trunk's page as "What it can do" (places/trunk/TrunkProfile.tsx, parity row 16).
 import { Dialog } from "./Dialog";
 
 export type CanDoGo =

@@ -3,9 +3,9 @@ import { formatSize, pastedTitle, preparingLine, sizeProblem, toChatAttachments,
 import { caretOnEdge, step, userTexts } from "./drafts";
 import { replaceToken, skillTokenAt, tokenAt } from "./mention";
 import { blockedReason, FULL_ACCESS_BLOCKED, MODE_ROWS, nextMode } from "./mode";
-import { chipLabel, currentModelRef, currentThinking, groupModels, readModels } from "./model";
+import { chipLabel, composerChipLabel, currentModelRef, currentThinking, groupModels, readModels } from "./model";
 import { chipWords, enqueue, moveUp, nextToSend, mark, remove, reword, type QueueItem } from "./queue";
-import { buildExtras, planSend, sendTooltip } from "./sending";
+import { buildExtras, firstSendEcho, planSend, sendTooltip, shouldKeepFirstSendEcho } from "./sending";
 import { argQuery, filterCommands, readCommands, slashQuery } from "./slash";
 import { changedCount, patchValue, readConnectors, readSkills, setWebSearch, toggle } from "./tools";
 
@@ -13,6 +13,11 @@ describe("permission modes", () => {
   it("keeps the spec's order and keys 1–5 with the engine ids", () => {
     expect(MODE_ROWS.map((r) => r.name)).toEqual(["Auto", "Ask first", "Plan first", "Read only", "Full access"]);
     expect(MODE_ROWS.map((r) => r.engine)).toEqual(["workspace", "guarded", null, "read-only", "full"]);
+  });
+  it("says Full access does not include seeing the screen", () => {
+    expect(MODE_ROWS[4].line).toMatch(/Does anything on this computer without asking: files, commands, the internet/);
+    expect(MODE_ROWS[4].line).toMatch(/separate switch in Settings › Computer & browser/);
+    expect(MODE_ROWS[4].line).not.toMatch(/Computer Control/);
   });
   it("blocks Full access for anyone but the owner, and Plan first as an engine gap", () => {
     expect(blockedReason(MODE_ROWS[4], false)).toBe(FULL_ACCESS_BLOCKED);
@@ -40,6 +45,13 @@ describe("model chip", () => {
   it("labels the chip with the model and its thinking level in lower case", () => {
     expect(chipLabel("GPT-6.1 Sol", "Medium")).toBe("GPT-6.1 Sol · medium");
     expect(chipLabel("", "low")).toBe("");
+  });
+  it("does not name a configured default that is not a usable models.list row", () => {
+    const connected = readModels({ models: [{ id: "gpt-6-astra", name: "gpt-6-astra", provider: "openai", available: true }] })[0];
+    expect(composerChipLabel(connected, "medium", true)).toBe("GPT-6 Astra · medium");
+    expect(composerChipLabel(undefined, "medium", true)).toBe("No model");
+    expect(composerChipLabel(undefined, "medium", false)).toBe("");
+    expect(composerChipLabel({ ...connected, available: false }, "medium", true)).toBe("No model");
   });
   it("uses the session's model, else the engine's default; never an invented one", () => {
     expect(currentModelRef({ model: "m", modelProvider: "p" }, {})).toBe("p/m");
@@ -152,6 +164,13 @@ describe("sending", () => {
     expect(sendTooltip("steer")).toBe("Enter: steer it now · Ctrl Enter: wait in line");
     expect(sendTooltip("followup")).toBe("Enter: wait in line · Ctrl Enter: steer it now");
   });
+  it("keeps a first-send echo until history holds the message, and drops a blank", () => {
+    expect(firstSendEcho("  What is 2+3?  ")).toBe("What is 2+3?");
+    expect(firstSendEcho(" \n ")).toBeNull();
+    expect(shouldKeepFirstSendEcho(false, false)).toBe(true);
+    expect(shouldKeepFirstSendEcho(true, false)).toBe(false);
+    expect(shouldKeepFirstSendEcho(false, true)).toBe(false);
+  });
   it("adds mentions where the names sit, and the reply target", () => {
     const extras = buildExtras("hi @Ana", [], [{ profileId: "p1", name: "Ana" }], "steer", { entryId: "e1", name: "x", text: "y" });
     expect(extras).toEqual({ mentions: [{ profileId: "p1", start: 3, end: 7 }], queueMode: "steer", replyToId: "e1" });
@@ -184,7 +203,7 @@ describe("the plug", () => {
       { name: "a", skillKey: "a", missing: { bins: [] } },
       { name: "hidden", blockedByAllowlist: true },
     ] });
-    expect(skills.map((s) => [s.name, s.problem])).toEqual([["a", undefined], ["b", "Needs a key"]]);
+    expect(skills.map((s) => [s.name, s.problem])).toEqual([["A", undefined], ["B", "Needs a key"]]);
   });
   it("keeps only what differs from the Trunk's own settings", () => {
     const off = toggle({}, "skills", "a", false, true);

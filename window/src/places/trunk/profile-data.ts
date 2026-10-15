@@ -4,8 +4,9 @@ import { parseFacts } from "../library/memory-data";
 import { loadTrunkData, type TrunkData } from "./data";
 import { entryOf, rec, str, strs } from "./model";
 import { scheduleWords } from "../automations/model";
+import { isEngineJob } from "../../connect/engine-jobs";
 
-export type Automation = { id: string; name: string; when: string; enabled: boolean };
+type Automation = { id: string; name: string; when: string; enabled: boolean };
 /** `facts`: the bullets in its MEMORY.md (agents.files.get), as Library › Memory counts them; null when unread. */
 /** `working`: what one of its conversations is doing now ("" when it says nothing), or null when none is running. */
 export type ProfileData = TrunkData & { automations: Automation[] | null; week: number | null; facts: number | null; working: string | null; notes: string[] };
@@ -18,20 +19,20 @@ export function scheduleText(schedule: unknown): string {
   return scheduleWords(rec(schedule));
 }
 
-export function readAutomations(result: unknown, agentId: string): Automation[] {
+function readAutomations(result: unknown, agentId: string): Automation[] {
   const jobs = Array.isArray(rec(result).jobs) ? (rec(result).jobs as unknown[]).map(rec) : [];
-  return jobs.filter((j) => str(j.agentId) === agentId).map((j) => ({ id: str(j.id), name: str(j.displayName) || str(j.name), when: scheduleText(j.schedule), enabled: j.enabled === true }));
+  return jobs.filter((j) => str(j.agentId) === agentId && !isEngineJob(j)).map((j) => ({ id: str(j.id), name: str(j.displayName) || str(j.name), when: scheduleText(j.schedule), enabled: j.enabled === true }));
 }
 
 /** Whether a conversation with this Trunk is running now, with what its run says it is doing (sessions.list). */
-export function readWorking(result: unknown, agentId: string): string | null {
+function readWorking(result: unknown, agentId: string): string | null {
   const rows = Array.isArray(rec(result).sessions) ? (rec(result).sessions as unknown[]).map(rec) : [];
   const run = rows.find((r) => (str(r.agentId) || str(r.key).split(":")[1]) === agentId && r.hasActiveRun === true);
   return run ? str(rec(run.observerDigest).headline) : null;
 }
 
 /** Conversations with this Trunk that changed in the last 7 days (sessions.list keys are agent:<id>:…). */
-export function readWeek(result: unknown, agentId: string, now: number): number | null {
+function readWeek(result: unknown, agentId: string, now: number): number | null {
   const rows = Array.isArray(rec(result).sessions) ? (rec(result).sessions as unknown[]).map(rec) : [];
   if (rows.length >= WEEK_LIMIT) return null;
   return rows.filter((r) => (str(r.agentId) || str(r.key).split(":")[1]) === agentId && typeof r.updatedAt === "number" && now - r.updatedAt <= 7 * DAY).length;

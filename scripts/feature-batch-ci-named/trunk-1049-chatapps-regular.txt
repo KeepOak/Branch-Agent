@@ -1,0 +1,3 @@
+window:src/screens/chatapps/More.test.tsx
+window:src/screens/chatapps/ChatApps.test.tsx
+window:src/screens/chatapps/Manage.test.tsx

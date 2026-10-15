@@ -8,6 +8,7 @@ import { snoozeChoices, snoozeTime, wakeWords } from "./conversation-actions";
 import { isSnoozed } from "./list-model";
 import type { MenuItem } from "./Menu";
 import { menuIcon } from "./menu-icons";
+import { topicLayoutNames, type TopicLayout } from "./topic-layout";
 
 /** What the engine says about the open conversation (sessions.describe), as far as the menu needs it. */
 export type ConversationDetail = { showThinking: boolean };
@@ -43,7 +44,6 @@ export type ConversationMenuRun = {
   sidePanel: () => void;
   tower: () => void;
   list: () => void;
-  theme: () => void;
   computer: () => void;
   browser: () => void;
   guide: () => void;
@@ -64,7 +64,7 @@ export type ConversationMenuContext = {
   now: number;
   /** Whether the Trunk has replied in this conversation yet (Look inside reads the last reply). */
   hasReply: boolean;
-  /** Why Talk out loud is greyed, or null when voice works. */
+  /** Why live voice can't run (the row is then left out), or null when it works. */
   talkOff: string | null;
   /** The agent window is closed (its × hides it; this row brings it back). */
   characterHidden?: boolean;
@@ -76,6 +76,7 @@ export type ConversationMenuContext = {
   ownWindowOff?: string | null;
   hasContactReturn?: boolean;
   hasContactConversations?: boolean;
+  threadView?: { contactName: string; layout: TopicLayout; set: (layout: TopicLayout) => void };
   towerVisible?: boolean;
   /** In a room, the room rows (rooms/room-menu.ts) in place of the Trunk rows; a room has no Move, Archive or Share this Trunk. */
   room?: MenuItem[] | null;
@@ -83,7 +84,7 @@ export type ConversationMenuContext = {
 };
 
 const NO_METHOD = "needs an engine method Branch doesn't have yet.";
-export const OFF_REASONS = {
+const OFF_REASONS = {
   pause: `Pausing a Trunk ${NO_METHOD}`,
   teach: `Showing it how ${NO_METHOD}`,
   makeDefault: `Changing the default Trunk ${NO_METHOD}`,
@@ -132,7 +133,8 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     c.hasContactReturn ? item("Back to contact thread", "chat", c.run.backToContact) : null,
     row ? item(row.pinned ? "Unpin" : "Pin", "pin", c.run.pin) : null,
     snoozeRow(c),
-    item("Talk live", "wave", c.run.talk, c.talkOff ? { disabled: c.talkOff } : {}),
+    // DA-16: no greyed "Talk live" when no live voice service is ready; the row shows once one is.
+    c.talkOff ? null : item("Talk live", "wave", c.run.talk),
     item("Send to the board", "puzzle", c.run.toBoard),
     isRoom ? null : c.canMove ? item("Move to another computer…", "monitor", c.run.move) : off("Move to another computer…", "monitor", OFF_REASONS.move),
     item("Share this conversation…", "users", c.run.share),
@@ -162,6 +164,11 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     { kind: "sub", label: "Export", icon: menuIcon("doc"), items: exportItems },
     SEP,
     { kind: "head", label: "View" },
+    // Preview View opens on click (viewmPB18). Hover here covers Side panel and Open the browser.
+    c.threadView ? { kind: "sub", label: "View", icon: menuIcon("eye"), hover: false, testid: "conversation-view", items: [
+      { kind: "head", label: `${c.threadView.contactName}’s threads show as` },
+      ...(Object.entries(topicLayoutNames) as [TopicLayout, string][]).map(([layout, label]): MenuItem => ({ label, checked: c.threadView!.layout === layout, radio: true, run: () => c.threadView!.set(layout) })),
+    ] } : null,
     item("Side panel", "panel", c.run.sidePanel, { hint: "Ctrl Shift K" }),
     c.hasContactConversations ? item("Conversations", "chat", c.run.conversations) : null,
     item(c.towerVisible ? "Hide the Control tower" : "Show the Control tower", "panel", c.run.tower, { hint: "Ctrl Shift T" }),
@@ -172,7 +179,6 @@ export function conversationMenuItems(c: ConversationMenuContext): MenuItem[] {
     item(c.ownWindowOpen ? "Show its window" : "Open in its own window", "panel", c.run.ownWindow, c.ownWindowOff ? { disabled: c.ownWindowOff } : {}),
     item("Open its computer", "monitor", c.run.computer),
     item("Open the browser", "eye", c.run.browser),
-    item("Switch light or dark", "spark", c.run.theme),
     SEP,
     { kind: "head", label: "Help" },
     item("Why each thing is here", "info", c.run.guide),

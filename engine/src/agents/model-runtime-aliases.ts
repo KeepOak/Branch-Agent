@@ -236,6 +236,7 @@ function resolveCliRuntimeFromAuthProfile(
         params.cfg ?? {},
         env,
         () => params.preparedAuthDirectories?.inheritedAuthDir,
+        { agentId: params.agentId, agentDir: params.preparedAuthDirectories?.agentDir },
       ),
       env,
     );

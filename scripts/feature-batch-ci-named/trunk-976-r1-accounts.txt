@@ -1,0 +1,11 @@
+window:src/places/settings/GitHubSettings.test.tsx
+window:src/places/settings/set1/accounts.limited.test.tsx
+window:src/places/settings/set1/accounts.test.tsx
+window:src/places/settings/set1/add-account.test.ts
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/screens/settings/coming.test.tsx
+window:src/screens/settings/glass48.test.tsx
+window:src/screens/settings/pages/accounts-live.test.tsx
+window:src/screens/settings/pages/appearance-live.test.tsx
+window:src/screens/settings/rows.test.ts

@@ -10,23 +10,35 @@ type Props = { at: MenuAnchor; onClose: () => void; label: string; children: Rea
 export function Popover({ at, onClose, label, children, testid, width, above, className }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(at);
+  // The parent passes a new onClose on every render. Read it through a ref so the focus effect below runs once,
+  // not on each re-render, which would scroll a long list back to its first control.
+  const closeRef = useRef(onClose);
   useLayoutEffect(() => {
-    const r = ref.current?.getBoundingClientRect();
-    if (r) {
-      const x = above ? (above.align === "right" ? above.right - r.width : above.left) : at.x;
-      const y = above ? above.top - r.height - 6 : at.y;
-      setPos({ x: Math.max(8, Math.min(x, innerWidth - r.width - 8)), y: Math.max(8, Math.min(y, innerHeight - r.height - 8)) });
+    closeRef.current = onClose;
+  });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) {
+      // Layout size, not getBoundingClientRect: the opening animation scales the panel to 0.98 and lifts it 4px, so its
+      // painted box is smaller than the panel it settles into. Measuring that box let the usage popover settle over the
+      // status bar and flush against the window edge, floating over the chat instead of opening above its item (DA-99).
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      const x = above ? (above.align === "right" ? above.right - w : above.left) : at.x;
+      const y = above ? above.top - h - 6 : at.y;
+      setPos({ x: Math.max(8, Math.min(x, innerWidth - w - 8)), y: Math.max(8, Math.min(y, innerHeight - h - 8)) });
     }
   }, [at, above]);
   useEffect(() => {
     const back = document.activeElement as HTMLElement | null;
     const trigger = back && back !== document.body ? back : null;
-    ref.current?.querySelector<HTMLElement>("button, input, select")?.focus();
+    // preventScroll: opening must show the top of the popover, not scroll the first control into view.
+    ref.current?.querySelector<HTMLElement>("button, input, select")?.focus({ preventScroll: true });
     const away = (e: PointerEvent) => {
       // A flyout opened from inside the popover (Filter and sort's choices) counts as inside.
       const inFly = Boolean((e.target as Element).closest?.(".pop.fly"));
       if (!ref.current?.contains(e.target as Node) && !trigger?.contains(e.target as Node) && !inFly) {
-        onClose();
+        closeRef.current();
       }
     };
     document.addEventListener("pointerdown", away, true);
@@ -38,7 +50,7 @@ export function Popover({ at, onClose, label, children, testid, width, above, cl
         back?.focus?.();
       }
     };
-  }, [onClose]);
+  }, []);
   return (
     <div
       ref={ref}

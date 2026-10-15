@@ -1,10 +1,11 @@
 // Settings › Computer & browser (DESIGN-SPEC §4.7.12), every section below "Which Trunk uses which", in the
 // preview's order and gated by level. Rows are one table per section: a row with a `key` reads and saves that engine
-// config path (config.patch), a row with `off` is greyed with why. The live sections at the end: Cloud computers
+// config path (config.patch), a row with `off` is not drawn (its spec stays as the engine-lane backlog). The live sections at the end: Cloud computers
 // (environments.*, cloudWorkers.*), Everything connected (device.pair.*, node.*, device.token.*) and Who is
 // connected now (system-presence). The browser rows are in computer-browser.tsx, the code and git rows in
 // computer-code.tsx.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { Fragment, useRef, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pick, Pill, Sec, Seg, Switch, Tabs, useConfig, type RowEntry } from "../kit";
@@ -20,14 +21,14 @@ import { Ico } from "./icons";
 import "./computer-more.css";
 import { shownWhy } from "../../../shell/shown-why";
 
-export type Lv = 0 | 1 | 2;
+type Lv = 0 | 1 | 2;
 export type Ctx = { engine: WindowEngine; lv: Lv; props: SettingsPageProps };
-export type Opt = { v: unknown; l: string; off?: string };
+type Opt = { v: unknown; l: string; off?: string };
 /** One row. k: sw switch, seg, pick, num, text, list (chips), cmd (node command policy), arg (browser launch flag),
  *  code (copyable text), btn, val (a fixed value), info (no control), hint (a paragraph), custom (render). */
 export type Spec = {
   t: string; k: "sw" | "seg" | "pick" | "num" | "text" | "list" | "cmd" | "arg" | "code" | "btn" | "val" | "info" | "copy" | "change" | "hint" | "custom";
-  sub?: string; lv?: Lv; key?: string | string[]; def?: unknown; on?: unknown; offV?: unknown; is?: (v: unknown) => boolean;
+  sub?: string; help?: string; lv?: Lv; key?: string | string[]; def?: unknown; on?: unknown; offV?: unknown; is?: (v: unknown) => boolean;
   opts?: Opt[]; unit?: string; ph?: string; val?: string; tone?: "ok" | "warn" | "bad" | "idle"; btns?: string[]; bare?: boolean; upTo?: Lv; min?: number; max?: number; csv?: boolean; off?: string; btn?: string; tag?: string;
   code?: string; cmds?: string[]; danger?: boolean; arg?: string; render?: (c: Ctx) => ReactNode;
 };
@@ -41,7 +42,7 @@ const NODE_IMAGE = "node:24.21.0-slim";
 const SCREEN_DRIVER = "Needs the screen driver to report this.";
 
 const ON_COMPUTER: SecSpec = { t: "On a computer", lv: 0, rows: [
-  { t: "See the screen and use the mouse", k: "sw", key: "plugins.entries.cua-computer.enabled", def: false, sub: "Needed for apps without a connection. Turn it on to let Trunks use this screen and mouse. You can always take over." },
+  { t: "See the screen and use the mouse", k: "sw", key: "plugins.entries.cua-computer.enabled", def: false, sub: "Needed for apps without a connection. Turn it on to let Trunks use this screen and mouse. Full access does not turn this on. You can always take over." },
   { t: "Ask before opening an app it hasn’t used", sub: "Once per app, per Trunk. Off until you choose: apps open without asking each one.", k: "sw", off: "Needs the engine to keep the apps each Trunk has opened." },
   { t: "Use the camera", k: "cmd", cmds: ["camera.snap", "camera.clip"], danger: true, sub: "A Trunk can take a photo or a short clip with a computer’s camera. Applies to every paired computer and phone." },
   { t: "Cameras", sub: "Each camera on this computer, and what it can do.", k: "btn", lv: 1, btn: "See", off: "Needs the engine to list this computer’s cameras." },
@@ -57,7 +58,6 @@ const ON_COMPUTER: SecSpec = { t: "On a computer", lv: 0, rows: [
 const USING_SCREEN: SecSpec = { t: "Using the screen", lv: 0, rows: [
   { t: "Apps it may use", sub: "Each app on the list is allowed or never used. Every other app follows “Ask before opening an app it hasn’t used”.", k: "btn", btn: "Add an app", off: "Needs the engine to keep a list of allowed apps." },
   { t: "Pause when you touch the mouse", sub: "Moving the mouse or typing while a Trunk uses this computer pauses it at once. Its own clicks don’t count.", k: "sw", off: "Needs the screen driver to notice your own mouse and keys." },
-  { t: "Stop-everything key", k: "custom", render: () => <StopKey /> },
   { t: "Branch’s own windows", sub: "Never in its pictures or recordings, and its pointer and borders stay out too.", k: "val", val: "Always", tone: "idle", off: "Needs the screen driver to leave Branch’s windows out of its pictures." },
   { t: "Sign-in and password windows", sub: "No picture is taken while one shows. The live view is never saved, logged or shown to a model, and it’s refused under Lockdown and App lock.", k: "val", val: "Always", tone: "idle", off: "Needs the screen driver to recognise sign-in windows." },
   { t: "Check what works", k: "custom", render: (c) => <CheckWorks c={c} /> },
@@ -66,7 +66,6 @@ const USING_SCREEN: SecSpec = { t: "Using the screen", lv: 0, rows: [
 const TECHNICAL: SecSpec = { t: "Technical", group: "Connections", showHeading: false, lv: 2, body: (c) => <TechKv c={c} /> };
 
 const LET_TRUNKS: SecSpec = { t: "Let Trunks use this computer", lv: 0, hint: "Lend this computer to Branch on another computer.", rows: [
-  { t: "Code from the other computer", k: "custom", render: () => <PairRow /> },
   { t: "Share this computer’s screen", k: "custom", lv: 1, render: (c) => <ShareScreen c={c} /> },
 ] };
 
@@ -121,7 +120,7 @@ const CODE_COMMITS: SecSpec = { t: "Code and commits", lv: 0, rows: [
 
 const NETWORK_MORE: SecSpec = { t: "Network, more", group: "Network", lv: 1, rows: [
   { t: "Its computer joins a private network", sub: "So a Trunk’s computer reaches your private machines without opening them to the internet.", k: "seg", opts: [{ v: "off", l: "Off" }, { v: "tailscale", l: "Tailscale" }, { v: "netbird", l: "NetBird" }], off: "Needs the engine to join a Trunk’s computer to a private network." },
-  { t: "Previews on your other computers", sub: "See a preview server running on taofik-ai, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Needs the engine to forward preview servers from other computers." },
+  { t: "Previews on your other computers", sub: "See a preview server running on another of your computers, such as an app a Trunk is building, here in Branch’s browser.", k: "sw", off: "Previews on your other computers comes in a later update." },
 ] };
 
 const ON_MORE: SecSpec = { t: "On a computer, more", group: "On a computer", showHeading: false, lv: 1, rows: [
@@ -219,17 +218,22 @@ const LIMITS_TECH: SecSpec = { t: "Limits, technical", group: "Limits", lv: 2, r
   { t: "Limits for commands", sub: "On Windows, commands run inside a job with a memory and processor ceiling.", k: "btn", btn: "Show limits", off: "Needs the engine to report the limits it puts on commands." },
 ] };
 
-export function ComputerMore(props: SettingsPageProps) {
+/** The sections drawn below the top of the page: all of them, or only one part's (computer-parts.tsx). */
+export function ComputerMore(props: SettingsPageProps & { part?: ComputerPart }) {
   const lv = lvOf(props.level);
   const c: Ctx = { engine: props.engine, lv, props };
-  return <>{SECTIONS.filter((s) => s.lv <= lv).map((s) => <SecView key={s.t} s={s} c={c} />)}</>;
+  const { part } = props;
+  return <>{SECTIONS.filter((s) => s.lv <= lv && (!part || partOf(s) === part)).map((s) => <SecView key={s.t} s={s} c={c} />)}</>;
 }
 
+/** A section shows only when it has a live row or a live body; a section of greyed rows is not drawn at all. */
 function SecView({ s, c }: { s: SecSpec; c: Ctx }) {
+  const rows = (s.rows ?? []).filter((r) => (r.lv ?? 0) <= c.lv && c.lv <= (r.upTo ?? 2) && !r.off);
+  if (!s.body && !rows.length) return null;
   return (
     <Sec title={s.t} group={s.group} showHeading={s.showHeading} hint={s.hint} id={s.id}>
       {s.body ? s.body(c) : null}
-      {(s.rows ?? []).filter((r) => (r.lv ?? 0) <= c.lv && c.lv <= (r.upTo ?? 2)).map((r) => <Row key={r.t} s={r} c={c} />)}
+      {rows.map((r) => <Row key={r.t} s={r} c={c} />)}
     </Sec>
   );
 }
@@ -240,10 +244,10 @@ function subOf(s: Spec): ReactNode {
 }
 
 /** Draws one table row: greyed with its reason, or wired to its config path. */
-export function Row({ s, c }: { s: Spec; c: Ctx }) {
+function Row({ s, c }: { s: Spec; c: Ctx }) {
   if (s.k === "hint") return <Hint>{s.sub}</Hint>;
   if (s.k === "custom") return <>{s.render?.(c)}</>;
-  if (s.off) return <OffRow s={s} />;
+  if (s.off) return null; // greyed stubs are not drawn; their specs stay as the engine-lane backlog (TODO(engine-lane))
   if (s.k === "code") return <CodeRow title={s.t} code={s.code ?? ""} sub={s.sub} />;
   if (s.k === "copy") return <CopyCfgRow s={s} c={c} />;
   if (s.k === "change") return <ChangeRow s={s} c={c} />;
@@ -251,22 +255,6 @@ export function Row({ s, c }: { s: Spec; c: Ctx }) {
   if (s.k === "list") return <ListRow s={s} c={c} />;
   if (s.k === "arg") return <ArgRow s={s} c={c} />;
   return <CfgRow s={s} c={c} />;
-}
-
-/** A row the engine can't back yet: the control drawn inert and the reason as its sub-line. */
-function OffRow({ s }: { s: Spec }) {
-  const none = () => undefined;
-  const opts = (s.opts ?? []).map((o, i) => ({ id: String(i), label: o.l }));
-  const control = s.k === "sw" ? <Switch label={s.t} checked={false} onChange={none} disabled />
-    : s.k === "seg" ? <Seg label={s.t} value="" options={opts} onChange={none} disabled />
-    : s.k === "pick" ? <Pick label={s.t} value="0" options={opts} onChange={none} disabled />
-    : s.k === "num" ? <Num label={s.t} value={undefined} onCommit={none} unit={s.unit} disabled />
-    : s.k === "code" ? <code className="s2-code">{s.code}</code>
-    : s.k === "text" || s.k === "list" || s.k === "arg" ? <Field label={s.t} value="" placeholder={s.ph} onCommit={none} disabled />
-    : s.k === "val" ? (s.tone ? <Pill tone={s.tone}>{s.val}</Pill> : s.code ? <code className="s2-code">{s.val}</code> : <span className="val-k">{s.val}</span>)
-    : s.btns ? <>{s.btns.map((b) => <Btn key={b} sm disabled>{b}</Btn>)}</>
-    : s.btn ? <Btn sm disabled>{s.btn}</Btn> : null;
-  return <Ctl title={s.t} sub={subOf(s)} off={s.off}>{control}</Ctl>;
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -288,7 +276,7 @@ function CfgRow({ s, c }: { s: Spec; c: Ctx }) {
   else if (s.k === "pick") control = <Pick label={s.t} value={at === "-1" ? str(cur) : at} options={opts} disabled={cfg.loading} onChange={pickOpt} />;
   else if (s.k === "num") control = <Num label={s.t} value={typeof raw === "number" ? raw : undefined} placeholder={s.ph ?? (s.def === undefined ? undefined : String(s.def))} unit={s.unit} min={s.min} max={s.max} disabled={cfg.loading} onCommit={save} />;
   else if (s.k === "text") control = <TextCtl s={s} raw={raw} save={save} />;
-  return <Ctl title={s.t} sub={subOf(s)}>{control}</Ctl>;
+  return <Ctl title={s.t} sub={subOf(s)} help={s.help}>{control}</Ctl>;
 }
 
 function TextCtl({ s, raw, save }: { s: Spec; raw: unknown; save: (v: unknown) => void }) {
@@ -449,25 +437,6 @@ function TechKv({ c }: { c: Ctx }) {
   return <Kv rows={[["Sealed box", mode === "off" ? `Off · ${image}` : image], ["Browser profile", str(rec(br.data).userDataDir)]]} />;
 }
 
-/** Stop-everything key: the keys drawn inert until the engine has a stop key on this computer. */
-function StopKey() {
-  return (
-    <Ctl title="Stop-everything key" sub="Stops every Trunk’s mouse and keyboard on every computer." help="Press it anywhere to stop every Trunk’s mouse and keyboard on every computer at once. It stays stopped until you let them resume." off="Needs the engine’s stop key on this computer.">
-      <span className="s2cm-kbd">{["Ctrl", "Alt", "Shift", "Esc"].map((k) => <kbd key={k}>{k}</kbd>)}</span>
-    </Ctl>
-  );
-}
-
-/** Lending this computer starts on this computer's node: the Branch app pairs it with the other Branch. */
-function PairRow() {
-  return (
-    <Ctl title="Code from the other computer" sub="8 characters, two groups of 4." help="8 characters, two groups of 4. Make it on the other computer: Add a computer › Another computer with Branch." off="Lending this computer is done by the Branch app on it.">
-      <input className="inp s2cm-code" aria-label="Code from the other computer" placeholder="ABCD-1234" disabled />
-      <Btn pri sm disabled>Pair</Btn>
-    </Ctl>
-  );
-}
-
 /** desktop.host.enabled, with the local desktop's setup state from environments.list. */
 function ShareScreen({ c }: { c: Ctx }) {
   const cfg = useConfig(c.engine);
@@ -548,7 +517,6 @@ function ScreenDriver({ c }: { c: Ctx }) {
   return (
     <Ctl title="Screen driver" sub={str(d.error) || "The driver computer control uses on this computer."}>
       {st.data ? <Pill tone={tone}>{word}</Pill> : null}
-      <Btn sm disabled title="Reinstalling the driver is done by the Branch app on your computer.">Reinstall</Btn>
     </Ctl>
   );
 }
@@ -670,11 +638,12 @@ function SparesMax({ c }: { c: Ctx }) {
   const shown = draft ?? (typeof v === "number" ? String(v) : "");
   const n = shown.trim() === "" ? null : Number(shown);
   const ok = n === null || (Number.isInteger(n) && n >= 0);
-  const save = () => { if (!ok) return; void cfg.set("cloudWorkers.preparedPool.maxTotal", n); setDraft(null); };
+  const unchanged = n === (typeof v === "number" ? v : null);
+  const save = () => { if (!ok || unchanged) return; void cfg.set("cloudWorkers.preparedPool.maxTotal", n); setDraft(null); };
   return (
     <Ctl title="Most spares at once" sub="Across every repository and cloud computer." help="Across every repository and cloud computer. Empty means 4; 0 stops spares and lets the unused ones go.">
       <input className="inp s2cm-num" inputMode="numeric" aria-label="Most spares at once" placeholder="4" value={shown} disabled={cfg.loading} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} />
-      <Btn sm disabled={cfg.loading || !ok} onClick={save}>Save</Btn>
+      <Btn sm disabled={cfg.loading || !ok || unchanged} onClick={save}>Save</Btn>
     </Ctl>
   );
 }
@@ -865,6 +834,7 @@ const MODE: Record<string, string> = { ui: "the window", webchat: "a browser", c
 const IDLE_S = 300;
 
 function Who({ c }: { c: Ctx }) {
+  const [checked, stamp] = useCheckedAt();
   const pres = useLive<unknown>(c.engine, "system-presence", {}, ["presence"]);
   const nodes = useLive<RecordValue>(c.engine, "node.list", {}, PAIR_EVENTS);
   const devs = useLive<RecordValue>(c.engine, "device.pair.list", {}, PAIR_EVENTS);
@@ -873,7 +843,7 @@ function Who({ c }: { c: Ctx }) {
   const pending = list(rec(devs.data).pending);
   return (
     <>
-      <Acts><button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => { void pres.reload(); void nodes.reload(); }}><Ico name="retry" s /></button></Acts>
+      <Acts><button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => { void Promise.all([pres.reload(), nodes.reload()]).then(([presOk, nodesOk]) => { if (presOk && nodesOk) stamp(); }, () => undefined); }}><Ico name="retry" s /></button><CheckedAt at={checked} /></Acts>
       {pres.error ? <p className="hint s2-err" role="alert">{pres.error}</p> : null}
       {pres.data && !rows.length && !pending.length ? <Empty>Nothing is reporting in right now.</Empty> : null}
       <div className="rows">
@@ -882,7 +852,7 @@ function Who({ c }: { c: Ctx }) {
           <div key={str(r.requestId)} className="prow">
             <Tile><Ico name="monitor" s /></Tile>
             <span className="grow"><b>{str(r.displayName) || str(r.clientId) || "A device"}</b><small>Waiting for your yes. Its abilities stay off until you allow it.</small></span>
-            <Btn sm onClick={() => document.getElementById("s2-waiting")?.scrollIntoView({ behavior: "smooth" })}>Review</Btn>
+            <Btn sm data-jump-to="#s2-waiting" onClick={() => document.getElementById("s2-waiting")?.scrollIntoView({ behavior: "smooth" })}>Review</Btn>
           </div>
         ))}
       </div>
@@ -921,8 +891,22 @@ const SECTIONS: SecSpec[] = [
   ON_MORE, USING_MORE, PHONES_SMALL, MORE_PLACES, USING_TECH, WHERE_MORE, SCRIPTS, SEALED_TECH, LIMITS_TECH,
 ];
 
-export const ROWS: RowEntry[] = SECTIONS.flatMap((s) => [
-  { page: "computer", title: s.t, sec: s.t, group: s.group ?? s.t, lv: s.lv },
-  ...(s.rows ?? []).filter((r) => r.k !== "hint").map((r) => ({ page: "computer", title: r.t, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, r.lv ?? 0) as Lv })),
-  ...(s.titles ?? []).map(([title, lv]) => ({ page: "computer", title, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, lv) as Lv })),
+/** The sections the R1 Devices page draws on its cards (screens/settings/pages/devices.ts). */
+export const DEVICE_SECS = { CLOUD, LET_TRUNKS, PHONES_LENT, EVERYTHING, WHO, LENT_TECH, ALLOWING, NETWORK_MORE, TECHNICAL, PHONES_SMALL, MORE_PLACES, WHERE_MORE, SCRIPTS, SEALED_TECH, LIMITS_TECH };
+
+/** The parts the page splits into where Settings has a page for each: Browser & screen, Coding, and the rest (Devices). */
+export type ComputerPart = "browser" | "coding" | "devices";
+const BROWSER_PART: ReadonlySet<SecSpec> = new Set([ON_COMPUTER, ON_MORE, USING_SCREEN, USING_MORE, USING_TECH, SCREEN_TECH, LOGBOOK, BROWSER_BASIC, ...BROWSER_MORE, ...BROWSER_TECH]);
+const CODING_PART: ReadonlySet<SecSpec> = new Set([CODE_COMMITS, ...CODE_SECS, CODE_TECH]);
+/** The part a section belongs to. */
+export const partOf = (s: SecSpec): ComputerPart => (BROWSER_PART.has(s) ? "browser" : CODING_PART.has(s) ? "coding" : "devices");
+
+const rowsOf = (secs: readonly SecSpec[], page: string): RowEntry[] => secs.flatMap((s) => [
+  { page, title: s.t, sec: s.t, group: s.group ?? s.t, lv: s.lv },
+  ...(s.rows ?? []).filter((r) => r.k !== "hint").map((r) => ({ page, title: r.t, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, r.lv ?? 0) as Lv })),
+  ...(s.titles ?? []).map(([title, lv]) => ({ page, title, sec: s.t, group: s.group ?? s.t, lv: Math.max(s.lv, lv) as Lv })),
 ]);
+
+export const ROWS: RowEntry[] = rowsOf(SECTIONS, "computer");
+/** One part's rows, on the page id that draws only that part. */
+export const partRows = (part: ComputerPart, page: string): RowEntry[] => rowsOf(SECTIONS.filter((s) => partOf(s) === part), page);

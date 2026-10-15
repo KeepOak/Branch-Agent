@@ -293,6 +293,10 @@ function formatFullAccessBlockedReason(reason?: EmbeddedFullAccessBlockedReason)
 
 const MODEL_IDENTITY_PREFIX = "Current model identity:";
 
+/** In-repo docs on GitHub. Branch has no hosted docs site. */
+const BRANCH_AGENT_DOCS_URL = "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs";
+const BRANCH_AGENT_SOURCE_URL = "https://github.com/KeepOak/Branch-Agent";
+
 export function buildModelIdentityPromptLine(model?: string): string | undefined {
   const trimmed = model?.trim();
   if (!trimmed) {
@@ -606,12 +610,11 @@ export function buildAgentSystemPrompt(params: {
     ? []
     : [
         "## Documentation",
-        docsPath ? `Docs: ${docsPath}` : "Docs: https://docs.openclaw.ai",
-        docsPath ? "Mirror: https://docs.openclaw.ai" : undefined,
-        sourcePath ? `Source: ${sourcePath}` : "Source: https://github.com/openclaw/openclaw",
+        docsPath ? `Docs: ${docsPath}` : `Docs: ${BRANCH_AGENT_DOCS_URL}`,
+        sourcePath ? `Source: ${sourcePath}` : `Source: ${BRANCH_AGENT_SOURCE_URL}`,
         docsPath
           ? `Branch Agent behavior questions: docs first${docsReadTool ? ` via \`${docsReadTool}\`/local search` : " using available tools"}. AGENTS/project/workspace/profile/memory = instructions/user memory, not product design truth.`
-          : "Branch Agent behavior questions: docs mirror first when web exists. AGENTS/project/workspace/profile/memory = instructions/user memory, not product design truth.",
+          : "Branch Agent behavior questions: repository docs first when web exists. AGENTS/project/workspace/profile/memory = instructions/user memory, not product design truth.",
         hasGateway
           ? "Config field: use `gateway(config.schema.lookup)` with an exact path only when that action is exposed by the tool schema. Otherwise use `docs/gateway/configuration.md` and `docs/gateway/configuration-reference.md`."
           : "Configuration docs: `docs/gateway/configuration.md`, `docs/gateway/configuration-reference.md`.",
@@ -620,7 +623,7 @@ export function buildAgentSystemPrompt(params: {
           : "If docs are silent/stale, say so and inspect GitHub source.",
         "Diagnosis: run `branch status` when possible; ask only if blocked.",
         "",
-      ].filter((line): line is string => line !== undefined);
+      ];
   const workspaceNotes = normalizeStringEntries(params.workspaceNotes);
 
   const preparedContextFiles = prepareContextFilesForPrompt(
@@ -687,6 +690,11 @@ export function buildAgentSystemPrompt(params: {
               : buildBranchToolFallbackText({
                   surface: promptSurface,
                 }),
+            ...(params.codeModeActive && visibleTools.has("exec")
+              ? [
+                  `Only the tools listed above are top-level calls. read, write, edit and every other tool named elsewhere in this prompt are async globals inside \`${resolveToolName("exec")}\` code; a direct call fails.`,
+                ]
+              : []),
             ...(toolSchemaDirectoryPrompt
               ? ["", "### Deferred Tool Schemas", toolSchemaDirectoryPrompt]
               : []),
@@ -771,6 +779,7 @@ export function buildAgentSystemPrompt(params: {
               "- Weak/empty result: vary query/path/command/source, then conclude.",
               "- Mutable facts: live-check files/git/time/versions/services/processes/packages.",
               "- Final claim needs evidence or named blocker.",
+              "- Tool/engine failure: tell the user in plain words what didn't work and what's next; never paste raw error text, method names or session keys.",
               "- Long work: brief update, keep going; background/subagents when useful.",
               "",
             ]),

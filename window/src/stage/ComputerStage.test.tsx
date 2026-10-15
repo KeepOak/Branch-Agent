@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { ComputerStage } from "./ComputerStage";
+import { ComputerStage, SLOW_CONNECT_MS } from "./ComputerStage";
 import { StageConversation } from "./StageConversation";
 import type { WindowEngine } from "../connect/engine";
 const viewer = vi.hoisted(() => ({ connect: vi.fn() }));
@@ -93,7 +93,6 @@ describe("conversation computer lifecycle", () => {
     });
     await render(engine(request as WindowEngine["request"]));
     await flush();
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Placement unavailable");
     expect(container.textContent).not.toContain("It can't see a screen");
     failed = false;
     await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Try again")!.click());
@@ -109,7 +108,8 @@ describe("conversation computer lifecycle", () => {
     });
     await render(engine(request as WindowEngine["request"]));
     await flush();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Computer list unavailable");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Can’t see this computer right now.");
+    expect(container.textContent).not.toContain("Computer list unavailable");
     expect(viewer.connect).toHaveBeenCalled();
     expect(container.textContent).toContain("Take over");
   });
@@ -190,5 +190,49 @@ describe("conversation computer lifecycle", () => {
     expect(viewer.connect).not.toHaveBeenCalled();
     expect(request).toHaveBeenCalledWith("desktop.release", { wsPath: "/desktop/one" });
     expect(container.textContent).toContain("requires authentication");
+  });
+});
+
+describe("a computer that never connects (DA-68)", () => {
+  const button = (text: string) => [...container.querySelectorAll<HTMLButtonElement>(".stage-empty button")].find((b) => b.textContent === text);
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  it("stops saying Connecting after a while and offers to connect a computer", async () => {
+    vi.useFakeTimers();
+    const request = vi.fn(() => new Promise<never>(() => {}));
+    await render(engine(request as unknown as WindowEngine["request"]));
+    expect(container.textContent).toContain("Connecting to this conversation's computer…");
+    expect(button("Connect a computer")).toBeDefined();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SLOW_CONNECT_MS);
+    });
+    expect(container.textContent).not.toContain("Connecting to this conversation's computer…");
+    expect(container.querySelector(".stage-empty b")?.textContent).toBe("No computer is connected to Scout.");
+    expect(button("Try again")).toBeDefined();
+    await act(async () => button("Connect a computer")!.click());
+    expect(document.querySelector('[data-testid="add-computer"]')).not.toBeNull();
+  });
+  it("says which computer it couldn't reach and tries it again", async () => {
+    vi.useFakeTimers();
+    const request = vi.fn((method: string) => (method === "sessions.describe" ? Promise.resolve(placed) : method === "environments.list" ? Promise.resolve({ environments: [environment] }) : new Promise<never>(() => {})));
+    await render(engine(request as unknown as WindowEngine["request"]));
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SLOW_CONNECT_MS);
+    });
+    expect(container.querySelector(".stage-empty b")?.textContent).toBe("Couldn't reach this conversation's computer.");
+    const asked = request.mock.calls.filter(([method]) => method === "environments.status").length;
+    await act(async () => button("Try again")!.click());
+    await flush();
+    expect(request.mock.calls.filter(([method]) => method === "environments.status").length).toBeGreaterThan(asked);
+    expect(container.textContent).toContain("Connecting to this conversation's computer…");
+  });
+  it("names the missing computer when the engine lists none", async () => {
+    const request = vi.fn(async () => ({ session: { key: "agent:scout:one" } }));
+    await render(engine(request as WindowEngine["request"]));
+    await flush();
+    expect(container.querySelector(".stage-empty b")?.textContent).toBe("No computer is connected to Scout.");
+    expect(button("Connect a computer")).toBeDefined();
   });
 });

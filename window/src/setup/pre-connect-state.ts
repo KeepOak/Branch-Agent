@@ -60,7 +60,7 @@ export function readTargetName(url: string): string | null {
 export function saveTargetName(url: string, name: string): void {
   try {
     localStorage.setItem(TARGET_NAME_KEY, JSON.stringify({ url, name }));
-    if (name.trim()) {
+    if (name.trim() && !isLocalTarget(url)) {
       const rows = readSavedTargets().filter(row => row.url !== url);
       localStorage.setItem(SAVED_TARGETS_KEY, JSON.stringify([...rows, { url, name: name.trim() }]));
     }
@@ -71,13 +71,18 @@ export function saveTargetName(url: string, name: string): void {
 export function readSavedTargets(): { url: string; name: string }[] {
   try {
     const rows = JSON.parse(localStorage.getItem(SAVED_TARGETS_KEY) ?? "[]") as unknown;
-    return Array.isArray(rows) ? rows.filter((row): row is { url: string; name: string } =>
-      !!row && typeof row.url === "string" && /^wss?:\/\/\S+$/.test(row.url) && typeof row.name === "string" && !!row.name.trim()) : [];
+    const seen = new Set<string>();
+    return Array.isArray(rows) ? rows.filter((row): row is { url: string; name: string } => {
+      if (!row || typeof row.url !== "string" || !/^wss?:\/\/\S+$/.test(row.url)
+        || typeof row.name !== "string" || !row.name.trim() || isLocalTarget(row.url) || seen.has(row.url)) return false;
+      seen.add(row.url);
+      return true;
+    }) : [];
   } catch { return []; }
 }
 
 export function isLocalTarget(url: string): boolean {
-  try { return ["127.0.0.1", "localhost", "::1"].includes(new URL(url).hostname); }
+  try { return ["127.0.0.1", "localhost", "[::1]"].includes(new URL(url).hostname); }
   catch { return false; }
 }
 

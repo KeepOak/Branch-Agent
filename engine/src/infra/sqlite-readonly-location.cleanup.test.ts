@@ -264,17 +264,26 @@ describe("prepared SQLite snapshot cleanup", () => {
     async ({ strict, retry }) => {
       const { ownedRoot, prepared } = fixture(strict);
       const failure = Object.assign(new Error("snapshot busy"), { code: "EBUSY" });
-      const remove = vi.spyOn(fs.promises, "rm").mockRejectedValueOnce(failure);
+      const original = fs.promises.rm;
+      let busy = true;
+      // The lock outlasts every backoff attempt of the first cleanup, so it must report failure.
+      const remove = vi.spyOn(fs.promises, "rm").mockImplementation(async (target, options) => {
+        if (busy) {
+          throw failure;
+        }
+        return original(target, options);
+      });
       const first = prepared.cleanupAsync();
       if (strict) {
         await expect(first).rejects.toThrow("snapshot cleanup failed");
       } else {
         expect(await first).toBe(false);
       }
+      expect(remove.mock.calls.length).toBeGreaterThan(1);
       expect(fs.existsSync(ownedRoot)).toBe(true);
+      busy = false;
       expect(retry === "async" ? await prepared.cleanupAsync() : prepared.cleanup()).toBe(true);
       expect(fs.existsSync(ownedRoot)).toBe(false);
-      expect(remove).toHaveBeenCalledTimes(retry === "async" ? 2 : 1);
       expect(await prepared.cleanupAsync()).toBe(true);
     },
   );

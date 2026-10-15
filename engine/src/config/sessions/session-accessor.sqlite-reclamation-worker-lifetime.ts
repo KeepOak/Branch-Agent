@@ -346,6 +346,7 @@ export class SqliteReclamationWorker {
       maxRows: number;
       maxBytes: number;
       initializeCanonicalValidation: boolean;
+      quarantineInvalidRows?: number;
     },
   ): Promise<CanonicalSessionValidationResult> {
     return this.runRequest({
@@ -361,6 +362,9 @@ export class SqliteReclamationWorker {
         maxRows: params.maxRows,
         maxBytes: params.maxBytes,
         initializeCanonicalValidation: params.initializeCanonicalValidation,
+        ...(params.quarantineInvalidRows
+          ? { quarantineInvalidRows: params.quarantineInvalidRows }
+          : {}),
         coordination,
       }),
     });

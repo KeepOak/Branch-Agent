@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
-import { PeoplePage } from "./people";
+import { PEOPLE_ROWS, PeoplePage } from "./people";
 import { PIC_ERRORS, avatarParams, keptDevices, mayOf, pictureFileError, revokePlan } from "./people-data";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -47,6 +47,18 @@ const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("
 const pick = async (name: string) => act(async () => [...host.querySelectorAll<HTMLButtonElement>(".pitem-pp")].find((b) => b.textContent?.includes(name))!.click());
 
 describe("Settings › People", () => {
+  it.each([0, 1, 2] as const)("omits unsupported sign-in settings at level %s without hiding working People actions", async (level) => {
+    await render(engineOf().engine, level);
+    expect(host.querySelector('[data-sec="Signing in to Branch"]')).toBeNull();
+    for (const title of ["Passkeys", "Authenticator codes", "A link by email", "Google, GitHub or Apple", "Company sign-in", "New people", "Allowed email domains", "Check their email first", "A check against bots on the sign-in page", "Add people from your directory", "One-time sign-in links for other systems", "Pass company sign-in on to tools", "Let someone start as a guest", "Recovery key"]) {
+      expect(host.querySelector(`[data-row="${title}"]`)).toBeNull();
+      expect(PEOPLE_ROWS.some((row) => row.title === title)).toBe(false);
+    }
+    expect(button("Invite someone")?.disabled).toBe(false);
+    expect(button("Open People")?.disabled).toBe(false);
+    expect(Boolean(button("See the last"))).toBe(level >= 1);
+  });
+
   it("lists people from users.list grouped by where they use Branch, merged profiles left out", async () => {
     await render(engineOf().engine);
     expect(host.querySelector("p.lede")?.textContent).toBe("Everyone who uses Branch, on this computer or their own.");
@@ -135,20 +147,36 @@ describe("Settings › People", () => {
     expect(request).toHaveBeenCalledWith("users.setRole", { profileId: "p-dana", role: "Child" });
   });
 
-  it("levels: Records and Signing in from Advanced, your scopes at Technical; See the last reads audit.list", async () => {
+  it("levels: Records from Advanced, your scopes at Technical; See the last reads audit.list", async () => {
     const { engine, request } = engineOf({ "audit.list": { events: [{ eventId: "e1", agentId: "main", kind: "tool_action", toolName: "read", status: "succeeded", occurredAt: NOW }] } });
     await render(engine, 0);
     expect(host.querySelector('[data-sec="Records"]')).toBeNull();
     expect(host.querySelector('[data-sec="Signing in to Branch"]')).toBeNull();
     await render(engine, 1);
-    expect(host.querySelector('[data-row="Passkeys"]')?.getAttribute("aria-disabled")).toBe("true");
-    expect(button("Show it")?.disabled).toBe(true);
     expect(host.querySelector(".scopes-pp")).toBeNull();
     await act(async () => button("See the last")!.click());
     expect(request).toHaveBeenCalledWith("audit.list", { limit: 20 });
     expect(document.querySelector(".dlg .prow b")?.textContent).toBe("main · read");
     await render(engine, 2);
     expect([...host.querySelectorAll(".scopes-pp code")].map((c) => c.textContent)).toEqual(["operator.read", "operator.write", "operator.admin"]);
+  });
+
+  it("stays inside Settings: Open People is the way out to the People place", async () => {
+    const left: unknown[] = [];
+    const onLeave = (event: Event) => left.push((event as CustomEvent).detail);
+    window.addEventListener("branch:navigate-place", onLeave);
+    try {
+      await render(engineOf().engine);
+      expect(host.querySelector('[data-page-title="People"]')).not.toBeNull();
+      expect(host.querySelector('[data-row="Open People"]')).not.toBeNull();
+      expect(host.querySelector(".ppl")).toBeNull();
+      expect(host.textContent).not.toContain("Live now");
+      expect(left).toEqual([]);
+      await act(async () => button("Open People")!.click());
+      expect(left).toEqual([{ place: "people" }]);
+    } finally {
+      window.removeEventListener("branch:navigate-place", onLeave);
+    }
   });
 
   it("pure rules: may for the owner, revoke plan", () => {

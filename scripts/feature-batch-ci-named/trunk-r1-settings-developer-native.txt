@@ -1,0 +1,5 @@
+window:src/screens/settings/pages/developer-live.test.tsx
+window:src/screens/settings/pages/devices-live.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/places/settings/set2/developer.test.tsx
+window:src/places/settings/set2/advanced.test.tsx

@@ -95,6 +95,24 @@ describe("Tools, three panes", () => {
     await open("Connectors", { "config.get": { hash: "h", sourceConfig: {}, runtimeConfig: {} } });
     expect(host.textContent).toContain("No connectors yet.");
   });
+  it("says why Test it and Check for updates are greyed, with and without a server", async () => {
+    await open("Connectors", { "config.get": { hash: "h", sourceConfig: {}, runtimeConfig: {} } });
+    expect(button("Test it")!.disabled).toBe(true);
+    expect(button("Test it")!.title).toBe("Add a server first");
+    expect(button("Check for updates")!.disabled).toBe(true);
+    expect(button("Check for updates")!.title).toBe("Add a server first");
+    expect(host.textContent).toContain("Add a server first");
+    expect(visibleDevNotes(host)).toEqual([]);
+    if (root) await act(async () => root!.unmount()); document.body.innerHTML = "";
+    await open("Connectors");
+    expect(button("Test it")!.disabled).toBe(true);
+    expect(button("Test it")!.title).toBe("This connector cannot be tested yet.");
+    expect(button("Check for updates")!.disabled).toBe(true);
+    expect(button("Check for updates")!.title).toBe("This connector cannot be checked for updates yet.");
+    expect(host.textContent).toContain("This connector cannot be tested yet.");
+    expect(host.textContent).toContain("This connector cannot be checked for updates yet.");
+    expect(visibleDevNotes(host.querySelector(".cz-acts")!)).toEqual([]);
+  });
   it("installs from the connector catalogue with plugins.install", async () => {
     const request = await open("Connectors");
     await click(button("Add a server"));

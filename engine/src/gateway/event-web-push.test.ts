@@ -880,8 +880,21 @@ describe("event Web Push classification", () => {
       expect(preparedWebPushSendMock).not.toHaveBeenCalled();
     });
 
+    it("delivers a mention when the browser keeps the default categories", async () => {
+      vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-01T12:00:00Z"));
+      const preparation = createDeferred<typeof preparedWebPushSendMock>();
+      prepareWebPushNotificationSenderMock.mockReturnValue(preparation.promise);
+      createEventWebPushDelivery({ getRuntimeConfig: () => ({}) }).deliverMention(humanMention());
+      const subscription = boundSubscription("browser-device", "bob");
+      subscription.devicePreferences = { ...subscription.devicePreferences, categories: {} };
+      listBoundWebPushSubscriptionsMock.mockResolvedValue([subscription]);
+      preparation.resolve(preparedWebPushSendMock);
+
+      await authorityCompleted.promise;
+      expect(preparedWebPushSendMock).toHaveBeenCalledOnce();
+    });
+
     it.each([
-      { name: "default category", preferences: { categories: {} } },
       { name: "disabled category", preferences: { categories: { humanMentioned: false } } },
       { name: "disabled browser", preferences: { enabled: false } },
       { name: "agent filter", preferences: { agentIds: ["other"] } },

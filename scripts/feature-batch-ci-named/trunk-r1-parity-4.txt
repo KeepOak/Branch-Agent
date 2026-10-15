@@ -1,0 +1,2 @@
+window:src/screens/frame/R1Window.changes.test.tsx
+window:src/stage/coding/coding.test.tsx
