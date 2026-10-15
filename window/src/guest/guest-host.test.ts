@@ -42,6 +42,26 @@ describe("guest host", () => {
     expect(request).toHaveBeenLastCalledWith("browser.guest.host", { sessionKey: "agent:main:one", ready: false });
   });
 
+  it("re-announces ready after the gateway reconnects", () => {
+    const { engine, request } = fakeEngine();
+    const host = attachGuestHost({ engine, sessionKey: "agent:main:one", access: createGuestAccess(), source: fakeSource() });
+    host.setReady(true);
+    request.mockClear();
+
+    host.resendReady();
+    expect(request).toHaveBeenCalledWith("browser.guest.host", { sessionKey: "agent:main:one", ready: true });
+  });
+
+  it("does not announce ready on reconnect when no live tab was open", () => {
+    const { engine, request } = fakeEngine();
+    const host = attachGuestHost({ engine, sessionKey: "agent:main:one", access: createGuestAccess(), source: fakeSource() });
+    host.setReady(false);
+    request.mockClear();
+
+    host.resendReady();
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("answers a request for its conversation with the result", async () => {
     const { engine, request, emit } = fakeEngine();
     const access = createGuestAccess();

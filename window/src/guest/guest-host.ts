@@ -4,6 +4,8 @@ import { GuestRefusal, runGuestRequest, type GuestDriveContext, type GuestTabRef
 import type { GuestAccessStore } from "./guest-access";
 
 export type GuestEngine = {
+  /** False while the gateway connection is down; the host re-announces when it comes back. */
+  connected?: boolean;
   request<T = unknown>(method: string, params?: unknown): Promise<T>;
   onEvent(listener: (e: { event: string; payload?: unknown }) => void): () => void;
 };
@@ -18,6 +20,8 @@ export type GuestPageSource = {
 export type GuestHost = {
   /** Tells the engine whether a live tab is open. Call it again whenever the tab list changes. */
   setReady(ready: boolean): void;
+  /** Re-sends the last ready flag, for a new gateway connection (the engine forgets it when the old one closes). */
+  resendReady(): void;
   dispose(): void;
 };
 
@@ -41,6 +45,7 @@ export function attachGuestHost({ engine, sessionKey, access, source }: GuestHos
   const announce = (ready: boolean) => {
     void engine.request("browser.guest.host", { sessionKey, ready }).catch(() => undefined);
   };
+  let lastReady = false;
   const off = engine.onEvent(({ event, payload }) => {
     if (event !== "browser.guest.request") return;
     const request = readRequest(payload);
@@ -53,7 +58,13 @@ export function attachGuestHost({ engine, sessionKey, access, source }: GuestHos
     void engine.request("browser.guest.respond", { requestId: request.requestId, ...reply }).catch(() => undefined);
   };
   return {
-    setReady: announce,
+    setReady: (ready) => {
+      lastReady = ready;
+      announce(ready);
+    },
+    resendReady: () => {
+      if (lastReady) announce(true);
+    },
     dispose: () => {
       announce(false);
       off();

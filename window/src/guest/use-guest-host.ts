@@ -31,6 +31,11 @@ export function useGuestHost({ engine, sessionKey, access, tabsRef, page, openTa
   useEffect(() => {
     hostRef.current?.setReady(ready);
   }, [engine, sessionKey, ready, tabKey]);
+  // A reconnect gives the engine a new connection, which has forgotten this pane. Announce again on each reconnect.
+  const connected = engine?.connected;
+  useEffect(() => {
+    if (connected) hostRef.current?.resendReady();
+  }, [connected, engine, sessionKey]);
 }
 
 /** The tab list the Trunk sees: each tab's id is its targetId. */
