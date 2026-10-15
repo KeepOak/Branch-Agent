@@ -84,6 +84,35 @@ phone or emulator in one step.
   `usesCleartextTraffic`), as Expo Go allows it.
 - Light and dark follow the phone's setting (`userInterfaceStyle: automatic`, which needs
   `expo-system-ui` in a built app).
+- Pairing, the device key and the engine token live in Keystore-backed storage, not cache, so they
+  survive an update that installs over this app. Don't change `android.package` (`com.keepoak.branch`)
+  or the signing key, or Android will treat the new APK as a different app.
+
+## In-app update (sideloaded Android APK)
+
+A built Android app checks GitHub releases for a newer `branch-android-<version>.apk`. When one is
+ready, Chats (and Welcome) show an **Update** banner, and **Computer → This phone** has a manual
+**Check for update**. Tapping Update downloads the APK, checks its SHA-256 against the release's
+`.sha256` asset, checks that the APK's signing certificate matches this install, then opens the
+system installer through a FileProvider content URI. The first time, Android asks to allow installs
+from Branch; the app explains that, opens the setting, and continues when you come back.
+
+## Publishing the APK checksum
+
+The Android APK release workflow is not on main yet. When it lands, publish a SHA-256 sidecar next to
+the APK so the phone can verify the download. Without that file, the phone will not offer the update.
+
+1. Upload `branch-android-<version>.apk` (version is the app version, optionally `+<versionCode>`).
+2. Upload `branch-android-<version>.apk.sha256` whose first 64-character hex is the SHA-256 of the
+   APK, for example `sha256sum branch-android-0.2.0.apk > branch-android-0.2.0.apk.sha256`.
+3. Keep the package `com.keepoak.branch` and the same signing certificate as the previous APK.
+
+## JS-only updates (EAS Update)
+
+`expo-updates` is wired so a JS-only fix can land without a new APK. It is a no-op unless the build
+sets `EXPO_UPDATE_URL` (and `EAS_PROJECT_ID` if the hosting needs it). Those values are read from the
+environment in `app.config.js` and are not committed. `runtimeVersion` is `<version>.<versionCode>`,
+so an OTA from an older native build never applies after a native change.
 
 ## Check approvals end to end
 

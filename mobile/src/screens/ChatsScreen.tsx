@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CHAT_FILTERS, filterRows, matchesSearch, unreadCount, type ChatFilter, type ChatListSnapshot, type ChatRow } from '../chats/chatList';
@@ -249,6 +249,7 @@ export function ChatsScreen({
   needsYou,
   onNeedsYou,
   now: fixedNow,
+  updateBanner,
 }: {
   list: ChatListSnapshot;
   online: boolean;
@@ -264,6 +265,8 @@ export function ChatsScreen({
   onNeedsYou?: () => void;
   /** A fixed time for tests and screenshots; otherwise the phone's clock, read again every half minute. */
   now?: number;
+  /** Sideloaded Android APK update, when one is ready or in flight. */
+  updateBanner?: ReactNode;
 }) {
   const { color, space, radius, layout, type } = useTheme();
   // The list can stay open for hours: a render every half minute moves rows from "Now" to a time, and from
@@ -354,6 +357,7 @@ export function ChatsScreen({
           </Pressable>
         ) : null}
       </View>
+      {updateBanner}
       {needsYou && needsYou.count > 0 ? (
         <Pressable
           testID="needs-you-banner"
