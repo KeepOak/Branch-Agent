@@ -57,7 +57,7 @@ describe("content-aware tool-result compression", () => {
     );
     const text = textOf(result);
     expect(text).toContain("[ERROR] src/net/socket.ts:42 cannot find name 'reconnect'");
-    expect(text).toContain("lines elided (caveman)");
+    expect(text).toContain("lines elided …");
     expect(text).toContain(formatFullOutputFooter(spillPath));
     expect(text).toContain("[INFO] build finished with 1 error");
     expect(text.length).toBeLessThanOrEqual(4_000);
@@ -65,14 +65,14 @@ describe("content-aware tool-result compression", () => {
 
   it("keeps head and tail truncation when no complete original is saved", () => {
     const withoutSpill = textOf(truncateToolResultMessage(toolResult(noisyBuildLog()), 4_000));
-    expect(withoutSpill).not.toContain("lines elided (caveman)");
+    expect(withoutSpill).not.toContain("lines elided …");
     const partial = textOf(
       truncateToolResultMessage(
         toolResult(noisyBuildLog(), { spill: { path: spillPath, truncated: true } }),
         4_000,
       ),
     );
-    expect(partial).not.toContain("lines elided (caveman)");
+    expect(partial).not.toContain("lines elided …");
   });
 
   it("does not point at a saved output that no longer exists", async () => {
@@ -80,7 +80,7 @@ describe("content-aware tool-result compression", () => {
     const text = textOf(
       truncateToolResultMessage(toolResult(noisyBuildLog(), { fullOutputPath: spillPath }), 4_000),
     );
-    expect(text).not.toContain("lines elided (caveman)");
+    expect(text).not.toContain("lines elided …");
   });
 
   it("leaves results within budget untouched", () => {
@@ -95,7 +95,7 @@ describe("content-aware tool-result compression", () => {
         4_000,
       ),
     );
-    expect(text).not.toContain("(caveman)");
+    expect(text).not.toContain("lines elided");
     expect(text.startsWith("aaaa")).toBe(true);
   });
 });

@@ -3,13 +3,13 @@
 // context. Lossy: callers only use it when the full original is stored.
 import { crSuffix, isWellFormedText, joinLines, splitLines, synthLine } from "./line-ends.js";
 
-const DIFF_MARKER_RE = /context lines elided \(caveman\)/;
+const DIFF_MARKER_RE = /^… \d+ context lines elided …\r?$/;
 const KEEP_CONTEXT = 2;
 const MIN_LINES = 12;
 const STRUCTURAL_PREFIXES = ["diff --git ", "index ", "--- ", "+++ ", "@@ "];
 
 function diffMarker(n: number): string {
-  return `… ${n} context lines elided (caveman) …`;
+  return `… ${n} context lines elided …`;
 }
 
 /**

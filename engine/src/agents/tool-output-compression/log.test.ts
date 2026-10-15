@@ -21,7 +21,7 @@ describe("log compressor", () => {
     expect(out).toBeDefined();
     expect(out).toContain("[ERROR] kaboom");
     expect(out).toContain("undefined symbol");
-    expect(out).toContain("lines elided (caveman)");
+    expect(out).toContain("lines elided …");
     expect(out!.length).toBeLessThan(noisyLog().length);
   });
 

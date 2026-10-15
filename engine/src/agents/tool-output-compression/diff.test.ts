@@ -30,8 +30,8 @@ describe("diff compressor", () => {
     expect(out).toContain(
       " context line 22 that is unchanged\n context line 23 that is unchanged\n-old value",
     );
-    expect(out).toContain("… 20 context lines elided (caveman) …");
-    expect(out).toContain("… 22 context lines elided (caveman) …");
+    expect(out).toContain("… 20 context lines elided …");
+    expect(out).toContain("… 22 context lines elided …");
     expect(out).not.toContain("context line 5 ");
   });
 
@@ -48,7 +48,7 @@ describe("diff compressor", () => {
 
   it("uses CRLF for markers when the diff is CRLF", () => {
     const out = compressDiff(diffWithContext("+added\n").replaceAll("\n", "\r\n"))!;
-    expect(out).toContain("(caveman) …\r\n");
+    expect(out).toContain("context lines elided …\r\n");
     expect(out.replaceAll("\r\n", "")).not.toContain("\n");
   });
 });

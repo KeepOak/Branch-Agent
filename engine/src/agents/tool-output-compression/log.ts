@@ -20,9 +20,9 @@ import { keepQueryRelevant } from "./relevance.js";
 export const IMPORTANT_LINE_RE =
   /(\b(ERROR|FATAL|PANIC|EXCEPTION|TRACEBACK|FAIL|FAILED|FAILURE|WARN|WARNING)\b|^\s+at\s|^\s+File "|\.go:\d+|^\s+--->|caused by)/i;
 /** Markers from an earlier pass are kept so the compressor stays idempotent. */
-const LOG_MARKER_RE = /lines elided \(caveman\)/;
+const LOG_MARKER_RE = /^… \d+ lines elided …\r?$/;
 /** Opens the one-per-payload contract line; detected on re-entry so it is never duplicated. */
-export const ELISION_NOTE_PREFIX = "… caveman: elided ";
+export const ELISION_NOTE_PREFIX = "… elided ";
 /** A payload must drop this many bytes before it can afford the contract line. */
 const ELISION_NOTE_MIN_ELIDED_BYTES = 4096;
 /** The smallest run collapsed on the strength of its count alone. */
@@ -65,7 +65,7 @@ export function importantLogLine(line: string): boolean {
 }
 
 function logMarker(n: number): string {
-  return `… ${n} lines elided (caveman) …`;
+  return `… ${n} lines elided …`;
 }
 
 /** The trailing line that tells the agent how to read a view with elided units. */
@@ -75,7 +75,7 @@ export function elisionNote(unit: string): string {
     unit +
     " resemble shown " +
     unit +
-    " — answer from this view; if you truly cannot, read the full output once …"
+    ". Answer from this view; if you truly cannot, read the full output once …"
   );
 }
 
