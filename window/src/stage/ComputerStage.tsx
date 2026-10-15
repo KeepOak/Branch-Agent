@@ -1,6 +1,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BrowserView, NO_MARKUP, type BrowserPhase } from "./BrowserView";
+import { NO_MARKUP, type BrowserPhase } from "./BrowserView";
+import { BrowserPanes } from "./BrowserPanes";
 import { profileLine, recordedBrowserTabs, routeOf } from "./browser-route";
 import { readLevel } from "../places-nav/SettingsFrame";
 import type { Block } from "../thread/model";
@@ -378,7 +379,7 @@ export function ComputerStage({
         </div>
       ) : null}
       {browser ? (
-        <BrowserView
+        <BrowserPanes
           engine={engine}
           gatewayUrl={gatewayUrl}
           blocks={blocks}

@@ -58,6 +58,16 @@ if (info) {
   contextBridge.exposeInMainWorld("branchDesktop", {
     gatewayUrl: info.gatewayUrl, getGatewayUrl: () => gatewayUrl, gatewayToken: info.gatewayToken,
     openConversation: (key: string) => ipcRenderer.invoke("branch-desktop:open-conversation", key),
+    browserGuest: {
+      // A sandboxed preload cannot import modules, so the loopback test is repeated here (see browser-guest-policy.ts).
+      local: isLoopbackUrl(info.gatewayUrl),
+      openPopout: (url: string) => ipcRenderer.invoke("branch-desktop:browser-popout", url),
+      onOpenTab: (listener: (url: string) => void) => {
+        const handler = (_event: unknown, url: unknown) => { if (typeof url === "string") listener(url); };
+        ipcRenderer.on("branch-desktop:browser-open-tab", handler);
+        return () => { ipcRenderer.off("branch-desktop:browser-open-tab", handler); };
+      },
+    },
     diagnostics: {
       uiEvent: (event: unknown): void => ipcRenderer.send("branch-desktop:ui-event", event),
       reportProblem: (minutes: number): Promise<{ saved: boolean; bytes?: number }> => ipcRenderer.invoke("branch-desktop:report-problem", minutes),
@@ -298,4 +308,13 @@ function fillTokenForm(info: DesktopInfo): void {
   setTimeout(() => {
     document.querySelector<HTMLButtonElement>('[data-testid="connect"]')?.click();
   }, 50);
+}
+
+function isLoopbackUrl(raw: string): boolean {
+  try {
+    const host = new URL(raw).hostname;
+    return host === "127.0.0.1" || host === "localhost" || host === "[::1]";
+  } catch {
+    return false;
+  }
 }

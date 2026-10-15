@@ -245,6 +245,7 @@ export function ChatsScreen({
   online,
   onRefresh,
   onComputer,
+  onAgents,
   onSettings,
   onOpen,
   searchMessages,
@@ -257,6 +258,8 @@ export function ChatsScreen({
   onRefresh: () => Promise<void>;
   /** Opens Computers. */
   onComputer: () => void;
+  /** Opens Agents. With it, the top bar has an Agents button next to Settings. */
+  onAgents?: () => void;
   /** Opens Settings. */
   onSettings?: () => void;
   /** Opens a chat. */
@@ -304,7 +307,7 @@ export function ChatsScreen({
 
   const header = (
     <View style={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
-      <View style={{ flexDirection: 'row', justifyContent: onNeedsYou ? 'space-between' : 'flex-end' }}>
+      <View style={{ flexDirection: 'row', justifyContent: onNeedsYou ? 'space-between' : 'flex-end', alignItems: 'center' }}>
         {onNeedsYou ? (
           <Pressable
             testID="approvals-button"
@@ -338,6 +341,20 @@ export function ChatsScreen({
             >
               <ThemedText variant="body" tone="accentInk">
                 Settings
+              </ThemedText>
+            </Pressable>
+          ) : null}
+          {onAgents ? (
+            <Pressable
+              testID="agents-button"
+              accessibilityRole="button"
+              accessibilityLabel="Agents"
+              onPress={onAgents}
+              hitSlop={8}
+              style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, opacity: pressed ? 0.6 : 1 })}
+            >
+              <ThemedText variant="body" tone="accentInk">
+                Agents
               </ThemedText>
             </Pressable>
           ) : null}

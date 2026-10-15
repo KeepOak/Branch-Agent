@@ -59,6 +59,8 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=256'
         run: npm run build
+      - name: Check the owner's browser guest policy (partition, sandbox, navigation and popup rules)
+        run: node --test src/browser-guest-policy.test.ts
       - name: Check available memory
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
