@@ -1,4 +1,5 @@
 window:src/screens/find/FindAnything.test.tsx
+window:src/screens/frame/R1Window.agent-customize.test.tsx
 window:src/screens/frame/R1Window.changes.test.tsx
 window:src/screens/frame/R1Window.character.test.tsx
 window:src/screens/frame/R1Window.helpers.test.tsx
