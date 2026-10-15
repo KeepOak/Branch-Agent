@@ -83,15 +83,14 @@ export function timelineItems(blocks: Block[], name: string): TimelineItem[] {
 
 export type Summary = { steps: number; ms?: number; cost?: number };
 
-/** "11 steps · 1m 56s so far · $0.37": the duration from the first to the last timestamp (or now while working). */
+/** "11 steps · $0.37": the step count and cost. The clock runs only while a step is running now, from that step's start. */
 export function timelineSummary(items: TimelineItem[], running: boolean, now = Date.now()): Summary {
-  const times = items.map((i) => i.at).filter((t): t is number => typeof t === "number" && Number.isFinite(t));
   const costs = items.map((i) => i.cost).filter((c): c is number => typeof c === "number" && Number.isFinite(c));
-  const start = times.length ? Math.min(...times) : undefined;
-  const end = running ? now : times.length ? Math.max(...times) : undefined;
+  const live = running ? items.find((i) => i.status === "running" && typeof i.at === "number" && Number.isFinite(i.at)) : undefined;
+  const ms = live?.at !== undefined && now >= live.at ? now - live.at : undefined;
   return {
     steps: items.length,
-    ...(start !== undefined && end !== undefined && end >= start ? { ms: end - start } : {}),
+    ...(ms !== undefined ? { ms } : {}),
     ...(costs.length ? { cost: costs.reduce((a, b) => a + b, 0) } : {}),
   };
 }

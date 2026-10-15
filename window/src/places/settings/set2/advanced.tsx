@@ -54,7 +54,7 @@ function LogFileRow({ c }: { c: Ctx }) {
     </Ctl>
   );
 }
-const LOGS: SecSpec = { title: "Logs", lv: 2, rows: [
+export const LOGS: SecSpec = { title: "Logs", lv: 2, rows: [
   { t: "This app’s own log", s: "How much the desktop app writes about itself.", kind: "pick", off: APP, def: "Info", opts: ["Trace", "Debug", "Info", "Notice", "Warning", "Error", "Critical"].map((x) => ({ id: x, label: x })) },
   { t: "Detailed diagnostics log", draw: () => <DiagLogRow /> },
   { t: "Gateway log", draw: (c) => <GatewayLogRow c={c} /> },
@@ -153,7 +153,7 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   no("Keep a history in Git", "Every change to memory as a commit, on this computer."),
   { t: "Recall before replying", s: "Searches memory more deeply when quick recall finds nothing strong.", help: "Before a reply about the past, a Trunk searches memory more deeply. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
   { t: "Memory wiki", s: "Keeps what Trunks know as linked Markdown pages.", help: "Each fact has its source. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", plug: "memory-wiki" },
-], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "plugins")}>Open Plugins</LinkBtn></p> };
+], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "Plugins")}>Open Plugins</LinkBtn></p> };
 
 /* ---------- Automations ---------- */
 const FA = "cron.failureAlert";
@@ -256,7 +256,7 @@ const TOOLS_TECH: SecSpec = { title: "Tools, technical", group: "Tools", lv: 2, 
   no("Run connector programs on Branch’s own Node.js", "Off: the Node.js installed on this computer."),
   { t: "Python service", s: "Comes with Branch. Runs Python for tools that need it.", kind: "none", off: "The engine doesn’t report a Python service." },
 ] };
-const HOOKS: SecSpec = { title: "Hooks", lv: 2, rows: ["Before a tool runs", "After a tool runs", "When a conversation starts", "When you send a message", "When a Trunk stops", "Before tidying up", "When it needs you", "When a task finishes", "When a session ends", "When settings change", "When a file changes"].map((t) => ({ t })), whole: (c) => <HooksSec c={c} /> };
+export const HOOKS: SecSpec = { title: "Hooks", lv: 2, rows: ["Before a tool runs", "After a tool runs", "When a conversation starts", "When you send a message", "When a Trunk stops", "Before tidying up", "When it needs you", "When a task finishes", "When a session ends", "When settings change", "When a file changes"].map((t) => ({ t })), whole: (c) => <HooksSec c={c} /> };
 const AUTO_MORE: SecSpec = { title: "Automations, more", group: "Automations", lv: 1, rows: [no("Run on GitHub Actions while this computer is off", "Schedules and their skills run on free GitHub runners; results and memory come back as commits. Off until you choose: your skills run on GitHub’s computers.")] };
 const SHARING_MORE: SecSpec = { title: "Sharing, more", group: "Sharing", lv: 1, rows: [btnOff("Pages Trunks publish", "Pages and their comments.", "See them", "Needs the engine’s list of published pages.")] };
 const TRUNKS_MORE: SecSpec = { title: "Trunks, more", group: "Trunks", lv: 1, rows: [
@@ -272,7 +272,7 @@ const TRUNKS_MORE: SecSpec = { title: "Trunks, more", group: "Trunks", lv: 1, ro
 const LIBRARY_MORE: SecSpec = { title: "Library, more", group: "Library", lv: 1, rows: [
   no("Search documents by meaning", "Finds the lease clause about repairs when you ask “who fixes the boiler”."),
   no("A local index of mail, calendar and messages", "Built and kept on this computer, for faster answers."),
-  no("Keep versions of what Trunks make", "Every file in Made for you keeps its versions and a checksum."),
+  no("Keep versions of what Trunks make", "Every file in Library › Activity keeps its versions and a checksum."),
   { t: "Rewrite short notes", draw: () => <Ctl title="Rewrite short notes" sub="Clearer, shorter, fixed or more formal."><Btn sm onClick={() => openPlace("library")}>Try it</Btn></Ctl> },
 ] };
 const PINNED: SecSpec = { title: "Pinned skills", lv: 1, rows: [{ t: "Always read in full", s: "A pinned skill’s whole instructions go with every message, not only when it seems to fit.", kind: "seg", off: "The engine can’t pin a skill.", opts: [{ id: "none", label: "None" }] }] };
@@ -327,15 +327,15 @@ function UseProxy({ c }: { c: Ctx }) {
     </Ctl>
   );
 }
-const NETWORK: SecSpec = { title: "Network", lv: 2, rows: [
+export const NETWORK: SecSpec = { title: "Network", lv: 2, rows: [
   { t: "Proxy address", s: "Send Branch’s outside traffic through your company proxy. Only used once you add an address.", k: "proxy.proxyUrl", kind: "text", mono: true, ph: "http:// or https://, empty for none" },
   { t: "Use the proxy", draw: (c) => <UseProxy c={c} /> },
   { t: "Proxy certificate", s: "For a private certificate authority: the path of its .pem file.", k: "proxy.tls.caFile", kind: "text", ph: "C:\\certs\\company-ca.pem" },
   { t: "Traffic to this computer", k: "proxy.loopbackMode", kind: "seg", def: "gateway-only", opts: [{ id: "gateway-only", label: "Skip the proxy" }, { id: "proxy", label: "Through the proxy" }, { id: "block", label: "Block" }] },
   { t: "Check it", draw: () => <CodeRow title="Check it" code="branch proxy validate" /> },
 ] };
-const ELSE: SecSpec = { title: "Everything else", lv: 2, rows: ["Text to speech", "Attachments", "Messages", "Talk", "Web", "Media", "Find any setting"].map((t) => ({ t })), whole: (c) => <EverythingElse c={c} /> };
-const HEALTH: SecSpec = { title: "Health", lv: 2, rows: [
+export const ELSE: SecSpec = { title: "Everything else", lv: 2, rows: ["Text to speech", "Attachments", "Messages", "Talk", "Web", "Media", "Ctrl K to find anything"].map((t) => ({ t })), whole: (c) => <EverythingElse c={c} /> };
+export const HEALTH: SecSpec = { title: "Health", lv: 2, rows: [
   { t: "Health", draw: (c) => <DialogRow t="Health" s="Readouts only; nothing to set." btn="See readouts" open={(close) => <HealthDialog engine={c.engine} onClose={close} />} /> },
   btnOff("Errors that say how to fix them", "When a service refuses, the message says what to do, not only the code.", "Show one", "Built into the engine’s error messages; nothing to set."),
 ] };
@@ -411,6 +411,14 @@ const SECTIONS: SecSpec[] = [SEEING, LOGS, SETUP, COMMANDS, DOCKER_SEC, FILES, W
   TRUNKS_MORE, LIBRARY_MORE, PINNED, WHAT, TRY, CONVERSATIONS, MEMORY_MORE, MEMORY_TECH, SKILLS_TECH, PLUGINS_TECH, NETWORK, ELSE, HEALTH, RECALL, DOCS, HELPERS_AGENTS, AUTO_STEPS];
 
 export const ROWS: RowEntry[] = rowsOf("advanced", SECTIONS);
+
+/** What each Advanced section reads, for a page that draws one of them (R1 Developer). */
+export function useAdvCtx(props: SettingsPageProps): Ctx {
+  const config = useConfig(props.engine);
+  const agent = useScope() ?? props.engine.agentId ?? "";
+  const plugins = useLive<RecordValue>(props.engine, "plugins.list", {}, ["plugins"]);
+  return { ...props, config, lv: lvOf(props.level), agent, plugins: list(rec(plugins.data).plugins) };
+}
 
 export function AdvancedPage(props: SettingsPageProps) {
   const config = useConfig(props.engine);

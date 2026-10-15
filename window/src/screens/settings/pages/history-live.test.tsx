@@ -9,6 +9,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { undeclaredControls } from "../../../glass/coming-registry";
 import { PAGES } from "../nav";
 import { SettingsFrame } from "../SettingsFrame";
+import { HISTORY_ROWS } from "./history";
 import { R1_PAGES } from "./plugged";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -77,24 +78,51 @@ describe("R1 Settings › History & backups is a native R1 page with the preview
     expect(host.querySelector(".r1s-custom, .r1s-classic, [data-classic]")).toBeNull();
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("History & backups");
     expect(host.querySelector(".r1s-lede")?.textContent).toContain(PAGES.history.lede);
-    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
+    // Regular shows only what works today: a Coming row shows from Advanced, and A copy of your setup has nothing else
+    // at Regular.
+    const coming = new Set(HISTORY_ROWS.filter((r) => r.source.kind === "coming").map((r) => r.label));
+    const regularCards = PREVIEW_CARDS.filter((c) => c !== "A copy of your setup");
+    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(regularCards);
+    expect(host.querySelector(".r1s-row[data-coming]")).toBeNull();
     for (const sec of sections()) {
       const card = sec.getAttribute("aria-label") ?? "";
-      expect(labels(sec).filter((l) => !(EXTRA_REGULAR[card] ?? []).includes(l ?? "")), card).toEqual(PREVIEW_REGULAR[card]);
+      expect(labels(sec).filter((l) => !(EXTRA_REGULAR[card] ?? []).includes(l ?? "")), card).toEqual(PREVIEW_REGULAR[card].filter((l) => !coming.has(l)));
       expect(labels(sec).filter((l) => (EXTRA_REGULAR[card] ?? []).includes(l ?? "")), card).toEqual(EXTRA_REGULAR[card] ?? []);
     }
     expect(host.textContent).not.toContain("comes to this page in a later update");
     await click(button(host, "Learn more"));
-    expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(PREVIEW_CARDS);
+    expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(regularCards);
+  });
+
+  it("lists every change in plain words below Technical, and the engine's raw keys only at Technical", async () => {
+    const env = engineOf();
+    const base = env.request.getMockImplementation()!;
+    env.request.mockImplementation(async (method: string, params?: unknown) => method === "branch.changes.list"
+      ? { entries: [{ id: "c1", source: "config-rpc", summary: "Settings updated configuration: agents.entries.main.model.fallbacks[0], plugins.installs", changedPaths: ["agents.entries.main.model.fallbacks[0]", "plugins.installs"], at: Date.now(), kind: "config-write" },
+        { id: "c2", source: "config-rpc", summary: "Configuration updated: gateway.auth.token", at: Date.now(), kind: "config-write" },
+        { id: "c3", source: "config-rpc", summary: "Signed in to keepoak.com", at: Date.now(), kind: "config-write" }] }
+      : base(method, params));
+    await act(async () => root.render(<SettingsFrame engine={env.engine} page="history" pages={R1_PAGES} />));
+    await settle();
+    const list = () => row("history.undo.changes")?.textContent ?? "";
+    expect(list()).toContain("Changed 2 settings");
+    expect(list()).toContain("Changed Branch’s setup");
+    expect(list()).toContain("Signed in to keepoak.com"); // a host name is not a settings key: the summary stays
+    expect(list()).not.toMatch(/agents\.entries|plugins\.installs|gateway\.auth/);
+    await setLevel("Advanced");
+    expect(list()).not.toMatch(/agents\.entries|plugins\.installs|gateway\.auth/);
+    await setLevel("Technical");
+    expect(list()).toContain("agents.entries.main.model.fallbacks[0], plugins.installs");
+    expect(list()).toContain("gateway.auth.token");
   });
 
   it("adds the preview's Advanced and Technical rows inside the same cards", async () => {
     await mount();
     await setLevel("Advanced");
     const copy = sections().find((s) => s.getAttribute("aria-label") === "A copy of your setup")!;
-    expect(labels(copy)).toEqual(["Export a copy without secrets", "Export", "Import", "From a preset address", "Where conversations are stored", "Where files are kept", "Where your data lives", "Put Branch on a USB stick"]);
+    expect(labels(copy)).toEqual(["Export", "Import", "Where your data lives", "Export a copy without secrets", "From a preset address", "Where conversations are stored", "Where files are kept", "Put Branch on a USB stick"]);
     const snaps = sections().find((s) => s.getAttribute("aria-label") === "Snapshots")!;
-    expect(labels(snaps)).toEqual(["Tidy memory overnight", "Night window", "Rings diary", "Keep notes for good now", "Try a night without keeping anything", "Fill in from past conversations"]);
+    expect(labels(snaps)).toEqual(["Tidy memory overnight", "Night window", "Rings diary", "Fill in from past conversations", "Keep notes for good now", "Try a night without keeping anything"]);
     await setLevel("Technical");
     expect(labels(sections().find((s) => s.getAttribute("aria-label") === "Snapshots")!)).toContain("Repair Rings’ files");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);

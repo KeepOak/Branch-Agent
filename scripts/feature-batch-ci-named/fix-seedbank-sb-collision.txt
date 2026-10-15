@@ -1,0 +1,2 @@
+window:src/screens/seedbank/Seedbank.test.tsx
+window:src/shell/frame-sb-scope.test.ts

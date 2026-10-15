@@ -1,7 +1,7 @@
 // The R1 sidebar's pieces (HANDOFF R1-02), ported from the preview's `sideR2`, `foldP11`, `contactsLookT5`, `renderSide`
 // rows and the owner row. Layout and glass live in sidebar.css; data comes in as SideRows (model.ts). Every control here
 // only opens, filters or navigates, so it says data-local (R1-10); the calls live in the menus (row-menu.ts).
-import { useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { Avatar, InitialsFace } from "../../glass/Avatar";
 import { GroupCluster } from "../../glass/GroupCluster";
 import { Coming } from "../../glass/coming";
@@ -27,8 +27,29 @@ export const icons = {
   computer: svg(<><rect x="3" y="4.5" width="18" height="12" rx="2" /><path d="M9 20h6M12 16.5V20" /></>),
 };
 
-/** One face per row kind: a Trunk's character, a person's initials, a Grafted agent's dashed disc, a group's cluster. */
+const REDUCE = "(prefers-reduced-motion: reduce)";
+const reduceQuery = () => typeof matchMedia === "function" ? matchMedia(REDUCE) : null;
+const subscribeReduce = (change: () => void) => {
+  const query = reduceQuery();
+  query?.addEventListener?.("change", change);
+  return () => query?.removeEventListener?.("change", change);
+};
+/** Reduced motion, live: the working ring keeps its arc but stops turning (preview: .av.working under reduced motion). */
+export const useReducedMotion = () => useSyncExternalStore(subscribeReduce, () => Boolean(reduceQuery()?.matches), () => false);
+
+/** The face is the status (preview `.av.working`): while the row's Trunk works, the face plays its working state inside
+ *  the turning working ring (face/face.css); the row carries no spinner and no "Working" words. Reduced motion or
+ *  "Keep things still" leave the arc still, so working still reads. */
 export function RowFace({ row, size }: { row: SideRow; size: number }) {
+  const still = useReducedMotion();
+  const face = <RowFaceInner row={row} size={size} />;
+  return row.working
+    ? <span className="r1sb-ring working-ring" data-working="" data-still={still || undefined} style={{ width: size, height: size }}>{face}</span>
+    : face;
+}
+
+/** One face per row kind: a Trunk's character, a person's initials, a Grafted agent's dashed disc, a group's cluster. */
+function RowFaceInner({ row, size }: { row: SideRow; size: number }) {
   if (row.kind === "group") {
     const inner = Math.round(size * 0.58);
     const members = (row.members ?? []).map((member, index) => member.kind === "trunk"
@@ -43,7 +64,11 @@ export function RowFace({ row, size }: { row: SideRow; size: number }) {
   return <Avatar size={size} ring="side" status={status} face={<InitialsFace name={row.name} kind={row.kind === "grafted" ? "grafted" : "person"} />} />;
 }
 
-/** onOpen gets the click, so Alt or Shift can pick the row instead of opening it (select several). */
+/** Shift+F10 or the Menu key: the keyboard's right-click (preview: Shift+F10 on `#side .row` opens POPS.rowmenu). */
+const menuKey = (event: KeyboardEvent<HTMLElement>) => event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
+
+/** onOpen gets the click, so Alt or Shift can pick the row instead of opening it (select several). The menu anchors on
+ *  the row's own button, so closing it puts focus back on the row. */
 export type RowHandlers = { onOpen: (row: SideRow, event?: MouseEvent<HTMLElement>) => void; onMenu: (row: SideRow, anchor: HTMLElement) => void };
 
 /** A two-line row: name and time, then the preview. Hover shows only •••. */
@@ -56,8 +81,8 @@ export function SideRowView({ row, current, now, handlers, picked = false }: { r
     <button type="button" className="r1sb-row" data-local="" aria-current={current ? "true" : undefined} aria-label={label} title={row.name}
       data-one={row.preview ? undefined : ""} data-offline={row.offline || undefined}
       onClick={event => handlers.onOpen(row, event)}
-      onContextMenu={event => { if (!menu) return; event.preventDefault(); handlers.onMenu(row, wrap.current!); }}
-      onKeyDown={event => { if (menu && event.key === "F10" && event.shiftKey) { event.preventDefault(); handlers.onMenu(row, more.current ?? wrap.current!); } }}>
+      onContextMenu={event => { if (!menu) return; event.preventDefault(); handlers.onMenu(row, event.currentTarget); }}
+      onKeyDown={event => { if (menu && menuKey(event)) { event.preventDefault(); handlers.onMenu(row, event.currentTarget); } }}>
       <span className="r1sb-face"><RowFace row={row} size={40} /></span>
       <b className="r1sb-name"><span>{row.name}</span>{row.kind === "person" && row.role ? <i className="r1sb-tag">{row.role}</i> : null}</b>
       <span className="r1sb-meta">{time ? <time>{time}</time> : null}{row.unread && !current ? <i className="r1sb-unread" aria-hidden="true" /> : null}</span>
@@ -107,7 +132,8 @@ function PinnedTile({ row, current, handlers }: { row: SideRow; current: boolean
   return <div className="r1sb-pin" role="listitem" data-pin={pinKey(row)} data-pin-fixed={row.isDefault ? "" : undefined} ref={tile}>
     <button type="button" className="r1sb-pin-open" data-local="" aria-current={current ? "true" : undefined} title={row.name}
       aria-label={`${row.name}, ${row.role}${row.unread ? ", unread" : ""}${row.working ? ", working" : ""}`}
-      onClick={() => handlers.onOpen(row)} onContextMenu={event => { event.preventDefault(); handlers.onMenu(row, tile.current!); }}>
+      onClick={() => handlers.onOpen(row)} onContextMenu={event => { event.preventDefault(); handlers.onMenu(row, event.currentTarget); }}
+      onKeyDown={event => { if (menuKey(event)) { event.preventDefault(); handlers.onMenu(row, event.currentTarget); } }}>
       <span className="r1sb-pin-face"><RowFace row={row} size={60} />{row.unread && !current ? <i className="r1sb-pin-unread" aria-hidden="true" /> : null}</span>
       <b className="r1sb-pin-name">{row.name}</b>
       <span className="r1sb-pin-role">{row.role}</span>

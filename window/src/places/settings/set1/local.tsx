@@ -7,7 +7,7 @@ import type { SettingsPageProps } from "../index";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
-import { Btn, Ctl, Empty, Page, Sec, Status, NOSETUP, useConfig, useScope, type RowEntry } from "../kit";
+import { Btn, Empty, Page, Sec, Status, NOSETUP, useConfig, useScope, type RowEntry } from "../kit";
 import { Runtimes, RUNTIMES } from "./local-runtimes";
 import { LocalMore, MORE_TITLES } from "./local-more";
 import { SetupDialog } from "./local-setup";
@@ -17,7 +17,6 @@ import { shownWhy } from "../../../shell/shown-why";
 
 const GIB = 1024 ** 3;
 export const NO_GPU = "Branch can’t read the graphics card yet.";
-const NO_CATALOGUE = "Branch can’t list recommended models with their sizes yet. Each setup above picks one that fits this computer.";
 
 /** This computer, from system.info. Graphics memory isn't reported by the engine. */
 export type Hw = { cpu?: string; ramGb?: number; diskGb?: number; mac: boolean; windows: boolean; port?: number };
@@ -75,8 +74,8 @@ export function LocalPage(props: SettingsPageProps) {
   const done = () => { setSetup(null); void detect.reload(); void models.reload(); };
   return (
     <Page title={props.title} lede="Models that run here, free and private." help="Models that run here, free and private. Branch looks at this computer first and only offers what fits.">
-      <Hardware loading={info.loading} error={info.error} hw={hw} runtimes={detect.loading ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />
-      <Recommended loading={detect.loading || models.loading} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} primary={primary} onUse={useModel} maySetup={maySetup} />
+      <Hardware loading={info.loading} error={info.error} retry={info.reload} hw={hw} runtimes={detect.loading ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />
+      <Recommended loading={detect.loading || models.loading} error={detect.error ?? models.error} retry={() => { void detect.reload(); void models.reload(); }} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} primary={primary} onUse={useModel} maySetup={maySetup} />
       <Runtimes engine={props.engine} hw={hw} detect={detect} models={models} found={found} />
       <LocalMore engine={props.engine} hw={hw} local={local} />
       {setup ? <SetupDialog engine={props.engine} option={setup} agent={agent} onClose={done} /> : null}
@@ -102,10 +101,10 @@ export function LocalBlock(props: SettingsPageProps & { part: "hardware" | "reco
   const local = list(models.data?.models).filter((m) => m.local === true);
   const found = foundRuntimes(detect.data, local);
   const done = () => { setSetup(null); void detect.reload(); void models.reload(); };
-  if (props.part === "hardware") return <Hardware loading={info.loading} error={info.error} hw={hw} runtimes={detect.loading ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />;
+  if (props.part === "hardware") return <Hardware loading={info.loading} error={info.error} retry={info.reload} hw={hw} runtimes={detect.loading ? undefined : detect.error ? null : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />;
   if (props.part === "runtimes") return <Runtimes engine={props.engine} hw={hw} detect={detect} models={models} found={found} />;
   return <>
-    <Recommended loading={detect.loading || models.loading} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} primary={primary} onUse={(ref) => { void cfg.set(modelPath, ref); }} maySetup={maySetup} />
+    <Recommended loading={detect.loading || models.loading} error={detect.error ?? models.error} retry={() => { void detect.reload(); void models.reload(); }} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} primary={primary} onUse={(ref) => { void cfg.set(modelPath, ref); }} maySetup={maySetup} />
     {setup ? <SetupDialog engine={props.engine} option={setup} agent={agent} onClose={done} /> : null}
   </>;
 }
@@ -116,16 +115,17 @@ const LAYERS = SVG("M12 3l9 5-9 5-9-5zM3 13l9 5 9-5");
 const TERM = SVG("M4 5h16v14H4zM7 9l3 3-3 3M12 15h5");
 export const DOWNLOAD = SVG("M12 4v11M7 10l5 5 5-5M5 20h14");
 
-type HwProps = { loading: boolean; error?: string; hw: Hw; runtimes?: string[] };
-function Hardware({ loading, error, hw, runtimes }: HwProps) {
+/** runtimes: undefined while the check runs, null when it did not answer, else the runtimes found. */
+type HwProps = { loading: boolean; error?: string; retry?: () => void; hw: Hw; runtimes?: string[] | null };
+function Hardware({ loading, error, retry, hw, runtimes }: HwProps) {
   if (loading) return <div className="hw-k scan-k" role="status"><span className="spin-k" /><b>Looking at this computer…</b><small>Memory, graphics card, free space and which runtimes are installed.</small></div>;
-  if (error) return <Status tone="bad" title="Branch couldn’t look at this computer">{visible(error)}</Status>;
+  if (error) return <Status tone="bad" title="Branch couldn’t look at this computer" action={retry ? <Btn sm onClick={retry}>Try again</Btn> : undefined}>{visible(error)}</Status>;
   const tiles: [ReactNode, string, string | undefined, string?][] = [
     [CPU, "Processor", hw.cpu],
     [LAYERS, "Memory", hw.ramGb ? `${hw.ramGb} GB` : undefined],
     [<Icon key="g" name="monitor" small />, "Graphics", undefined, NO_GPU],
     [<Icon key="f" name="folder" small />, "Free space", hw.diskGb !== undefined ? `${hw.diskGb} GB` : undefined],
-    [TERM, "Runtime", runtimes === undefined ? "Looking…" : runtimes.length ? runtimes.join(", ") : "None found"],
+    [TERM, "Runtime", runtimes === undefined ? "Looking…" : runtimes === null ? "Couldn’t check" : runtimes.length ? runtimes.join(", ") : "None found"],
   ];
   return (
     <div className="hw-k">
@@ -139,8 +139,8 @@ function Hardware({ loading, error, hw, runtimes }: HwProps) {
   );
 }
 
-type RecProps = { loading: boolean; options: RecordValue[]; local: RecordValue[]; onSetup: (o: RecordValue) => void; primary: unknown; onUse: (ref: string) => void; maySetup: boolean };
-function Recommended({ loading, options, local, onSetup, primary, onUse, maySetup }: RecProps) {
+type RecProps = { loading: boolean; error?: string; retry?: () => void; options: RecordValue[]; local: RecordValue[]; onSetup: (o: RecordValue) => void; primary: unknown; onUse: (ref: string) => void; maySetup: boolean };
+function Recommended({ loading, error, retry, options, local, onSetup, primary, onUse, maySetup }: RecProps) {
   return (
     <Sec title="Recommended for you">
       {options.length || local.length ? (
@@ -154,8 +154,8 @@ function Recommended({ loading, options, local, onSetup, primary, onUse, maySetu
             </div>
           ))}
         </div>
-      ) : loading ? <p className="hint">Looking for what this computer can run…</p> : <Empty>Nothing to set up on this computer yet.</Empty>}
-      <Ctl title="Recommended models, sized to this computer" sub="Show models that fit here and the sizes available." help="Each model with how well it fits here, and a size to pick: small, balanced or full." off={NO_CATALOGUE} />
+      ) : error ? <Status tone="bad" title="Branch couldn’t check what this computer can run" action={retry ? <Btn sm onClick={retry}>Try again</Btn> : undefined}>{visible(error)}</Status>
+        : loading ? <p className="hint">Looking for what this computer can run…</p> : <Empty>Nothing to set up on this computer yet.</Empty>}
     </Sec>
   );
 }
@@ -185,7 +185,6 @@ function Installed({ m, primary, onUse, maySetup }: { m: RecordValue; primary: u
 
 const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "local", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 export const LOCAL_ROWS: RowEntry[] = [
-  ...rows("Recommended for you", 0, ["Recommended models, sized to this computer"]),
   ...rows("Runtimes", 0, RUNTIMES.map((r) => r.name)),
   ...rows("Runtimes", 1, ["Share with your other computers"]),
   ...rows("Running models here, more", 1, MORE_TITLES),

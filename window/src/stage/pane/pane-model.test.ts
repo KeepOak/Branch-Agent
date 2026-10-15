@@ -25,11 +25,17 @@ describe("side pane model", () => {
   });
   it("sums steps, time and cost, and leaves out what wasn't recorded", () => {
     const items = timelineItems(blocks, "Ada");
-    expect(summaryLine(timelineSummary(items, false), false)).toBe("3 steps · 1m 56s · $0.05");
+    expect(summaryLine(timelineSummary(items, false), false)).toBe("3 steps · $0.05");
     expect(summaryLine(timelineSummary(items.slice(1, 2), false), false)).toBe("1 step");
-    expect(summaryLine(timelineSummary(items, true, 121_000), true)).toBe("3 steps · 2m 0s so far · $0.05");
   });
-  it("says waiting before working", () => {
+  it("shows an elapsed clock only for a step that is running now", () => {
+    const items = timelineItems(blocks, "Ada");
+    const running = [{ ...items[1]!, status: "running", at: 61_000 }];
+    expect(summaryLine(timelineSummary(running, true, 121_000), true)).toBe("1 step · 1m 0s so far");
+    expect(summaryLine(timelineSummary(items, true, 121_000), true)).toBe("3 steps · $0.05");
+    expect(summaryLine(timelineSummary(running, false, 121_000), false)).toBe("1 step");
+  });
+  it("says waiting before working, and idle without a stale clock", () => {
     expect(activityState(true, 1).text).toBe("Waiting on you");
     expect(activityState(true, 0).text).toBe("Working");
     expect(activityState(false, 0).text).toBe("Idle");
