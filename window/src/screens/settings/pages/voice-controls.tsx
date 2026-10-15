@@ -123,6 +123,23 @@ export function SpeakingEngine({ engine, row }: SlotControlProps) {
 }
 
 /** Preview: plays tts.speak's clip. */
+/** What Preview says when no voice service can speak yet, in place of the engine's "no provider registered". */
+export const NO_VOICE_SERVICE = "Add a voice service to hear a preview.";
+const NO_PROVIDER = /no (tts |speech |voice )?provider|provider (is )?not (registered|configured)/i;
+/** The words a failed preview shows: a missing voice service in plain words, anything else as the engine said it. */
+export const previewError = (e: unknown): string => {
+  const said = errorText(e);
+  return NO_PROVIDER.test(said) ? NO_VOICE_SERVICE : visible(said);
+};
+/** Shows the Voice services row (same card, same level as Preview) and moves focus to its first button. */
+function showVoiceServices() {
+  const el = document.getElementById("row-voice.speaking.services");
+  el?.scrollIntoView?.({ block: "center" });
+  el?.setAttribute("data-flash", "");
+  setTimeout(() => el?.removeAttribute("data-flash"), 1400);
+  el?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+}
+
 export function PreviewVoice({ engine, row }: SlotControlProps) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -132,9 +149,11 @@ export function PreviewVoice({ engine, row }: SlotControlProps) {
       const r = await engine.request<{ audioBase64?: string; mimeType?: string }>("tts.speak", { text: "This is how replies will sound." });
       if (!r.audioBase64) throw new Error("The speaking engine sent no sound.");
       await new Audio(`data:${r.mimeType ?? "audio/mpeg"};base64,${r.audioBase64}`).play();
-    } catch (e) { setErr(visible(errorText(e))); } finally { setBusy(false); }
+    } catch (e) { setErr(previewError(e)); } finally { setBusy(false); }
   };
-  return <><Needs engine={engine} need={["tts.speak"]} where={row.label ?? ""}><Btn disabled={busy} onClick={() => void play()}>{busy ? "Playing…" : "Preview"}</Btn></Needs>{err ? <Line bad>{err}</Line> : null}</>;
+  return <><Needs engine={engine} need={["tts.speak"]} where={row.label ?? ""}><Btn disabled={busy} onClick={() => void play()}>{busy ? "Playing…" : "Preview"}</Btn></Needs>
+    {err === NO_VOICE_SERVICE ? <Line bad>{err} <button type="button" className="r1s-link" data-local="" onClick={showVoiceServices}>Voice services</button></Line>
+      : err ? <Line bad>{err}</Line> : null}</>;
 }
 
 const runsHere = (p: Provider) => /local|cli/i.test(p.id);

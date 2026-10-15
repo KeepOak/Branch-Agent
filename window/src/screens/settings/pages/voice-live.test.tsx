@@ -117,4 +117,23 @@ describe("R1 Settings › Voice & calls is a native R1 page with the preview's c
     expect(request.mock.calls.some(([m]) => m === "voicecall.initiate")).toBe(true);
     expect(row("voice.talking.keep-voice-ready")?.getAttribute("data-coming")).toBeTruthy();
   });
+
+  it("says a missing voice service in plain words when Preview fails, with a way to Voice services", async () => {
+    const { request } = await mount();
+    const base = request.getMockImplementation()!;
+    request.mockImplementation(async (method: string, params?: unknown) => {
+      if (method === "tts.speak") throw new Error("TTS conversion failed: : no provider registered");
+      return base(method, params);
+    });
+    await setLevel("Advanced");
+    await click(button(row("voice.speaking.preview"), "Preview"));
+    const said = row("voice.speaking.preview")?.textContent ?? "";
+    expect(said).toContain("Add a voice service to hear a preview.");
+    expect(said).not.toMatch(/TTS|provider registered|conversion failed/);
+    const services = row("voice.speaking.services")!;
+    services.scrollIntoView = vi.fn();
+    await click(button(row("voice.speaking.preview"), "Voice services"));
+    expect(services.scrollIntoView).toHaveBeenCalled();
+    expect(services.hasAttribute("data-flash")).toBe(true);
+  });
 });
