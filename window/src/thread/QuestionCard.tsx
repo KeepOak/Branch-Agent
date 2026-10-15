@@ -46,7 +46,7 @@ export function DockQuestion({ record, trunkName, onResolve }: { record: Questio
   );
 }
 
-export function QuestionCard({ record, trunkName, onResolve }: { record: QuestionRecord; trunkName: string; onResolve: Resolve }) {
+function QuestionCard({ record, trunkName, onResolve }: { record: QuestionRecord; trunkName: string; onResolve: Resolve }) {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [at, setAt] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -154,7 +154,7 @@ function SecretLines({ q, trunkName }: { q: Question; trunkName: string }) {
   return (
     <div className="q-sec">
       <span>Requested by {trunkName}</span>
-      {store ? <span>{store.kind === "env" ? `Saves it as an environment variable ${store.name}` : `Saves it as ${store.name} in Saved sign-ins`}</span> : null}
+      {store ? <span>{store.kind === "env" ? `Saves it as an environment variable ${store.name}` : `Saves it as ${store.name} in Saved passwords`}</span> : null}
       {store?.allowedHosts.length ? <span>Only sent to {store.allowedHosts.join(", ")}</span> : null}
     </div>
   );

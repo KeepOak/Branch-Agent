@@ -25,10 +25,7 @@ import {
 } from "../../plugins/hook-agent-context.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { loadPluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.js";
-import {
-  runOutsidePluginRuntimeGenerationScope,
-  withPluginRuntimeGenerationScope,
-} from "../../plugins/runtime/generation-scope.js";
+import { runOutsidePluginRuntimeGenerationScope } from "../../plugins/runtime/generation-scope.js";
 import {
   AsyncWorkScope,
   captureAsyncWorkTracker,
@@ -59,6 +56,7 @@ import {
   acquireReadOnlyPreparedModelRuntime,
 } from "../prepared-model-runtime.js";
 import { settleFailedRequesterRun, settleRequesterRun } from "../requester-run-settlement.js";
+import { withPreparedRunJournal } from "../run-journal.js";
 import {
   applyAgentRunSessionTargetIdentity,
   resolveAgentRunSessionTarget,
@@ -343,7 +341,10 @@ async function runEmbeddedAgentInternal(
           agentDir: requestedAgentDir,
           // Shared credential inheritance stays anchored to its compatibility owner;
           // the selected session agent already owns this prepared runtime.
-          inheritedAuthDir: resolveLegacyInheritedAuthDir(config),
+          inheritedAuthDir: resolveLegacyInheritedAuthDir(config, undefined, undefined, {
+            agentId: requestedWorkspaceResolution.agentId,
+            agentDir: requestedAgentDir,
+          }),
           workspaceDir: runtimeWorkspaceResolution.workspaceDir,
           preserveWorkspaceDirOnRefresh: !runtimeWorkspaceResolution.isCanonicalWorkspace,
           ...(params.allowGatewaySubagentBinding ? { allowGatewaySubagentBinding: true } : {}),
@@ -593,7 +594,7 @@ async function runEmbeddedAgentInternal(
               });
             };
             const runWithPreparedRuntime = () =>
-              withPluginRuntimeGenerationScope(preparedModelRuntime, () => {
+              withPreparedRunJournal(params, preparedModelRuntime, () => {
                 context = AsyncLocalStorage.snapshot();
                 return runPrepared();
               });

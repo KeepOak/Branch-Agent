@@ -13,6 +13,7 @@ import { DoneCheer } from "./DoneCheer";
 import { EmptyState } from "./EmptyState";
 import { FindBar, useFindKey } from "./FindBar";
 import { HelpersChip } from "./Helpers";
+import { nativeHelpers } from "./native-helpers";
 import { HoverBar } from "./HoverBar";
 import { Rail } from "./Rail";
 import { Icon, ICONS } from "./icons";
@@ -40,7 +41,7 @@ import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
 import { QueuedMessages, useOwnWaitingLine } from "./QueuedMessages";
 import type { QueuedMessage, RunEnd, SteeredNote as Steered } from "../connect/session";
-import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel } from "./format";
+import { dayStamp, formatDuration, fullTime, messageTime, modelName, shortReason, stepLabel } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 import { suggestionsFor } from "./suggestions";
 import type { EarlierPage } from "../shell/useContactSegments";
@@ -83,6 +84,8 @@ type Props = {
   onStart?: (text: string) => void;
   /** How the last run ended; the done cheer plays only for one that finished. */
   ended?: RunEnd | null;
+  /** The done cheer shows only when the person turned it on (Settings › Appearance). Off by default. */
+  cheerOn?: boolean;
   /** The conversation's last run error (sessions.list lastRunError); restart recovery's own one shows "Stopped by restart". */
   recoveryFailure?: string;
   /** The Plan card; it goes after the turn that last updated it (planAnchor), else at the end (§4.2.2). */
@@ -101,7 +104,6 @@ type Props = {
   earlierError?: string;
   preparationError?: string | null;
   /** The Trunk got ready after this conversation stopped waiting for it: read the conversation again. */
-  onStartupReady?: () => void;
   advancedDiagnostics?: boolean;
   onLoadEarlier?: () => void;
 };
@@ -211,9 +213,10 @@ export function Thread(props: Props) {
   const { details } = useApprovalDetails(engine);
   const { reactions, apply } = useReactions(engine, history.length);
   const { helpers } = useHelpers(engine);
+  const native = useMemo(() => nativeHelpers([...history, ...live]), [history, live]);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const [usedSuggestion, setUsedSuggestion] = useState<string | null>(null);
-  const all = useMemo(() => [...history, ...(running ? live : [])], [history, live, running]);
+  const all = useMemo(() => [...history, ...live], [history, live]);
   const extras = pendingExtras(details, shownApprovalIds(all), engine?.sessionKey);
   const answer = useCallback(
     (id: string, decision: ApprovalDecision) => {
@@ -251,13 +254,13 @@ export function Thread(props: Props) {
     props.onFindRequestHandled?.(props.findRequest.nonce);
   }, [props.findRequest?.nonce]);
   const historyReady = props.historyReady !== false;
-  const empty = historyReady && !history.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
+  const empty = historyReady && !history.length && !live.length && !pendingUser && !running && !props.questions?.length && !waitingCount;
   const lastReply = [...history].reverse().find((block) => block.kind === "text");
   const suggestionKey = lastReply ? `${props.sessionKey ?? ""}:${lastReply.key}` : null;
   const suggestions = props.onStart && !firstPending && suggestionKey !== usedSuggestion
     ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
   const preparationError = [props.preparationError, props.earlierError].find((error) => isPreparationPending(error) || isPreparationStalled(error));
-  const startup = useStartupPreparation(engine, Boolean(preparationError), isPreparationStalled(preparationError), props.onStartupReady);
+  const startup = useStartupPreparation(engine, Boolean(preparationError));
   const inRoom = Boolean(props.room);
   const ownAgentId = props.room?.ownAgentId;
   const anchors = useMemo(() => anchorQuestions(history, props.questions ?? []), [history, props.questions]);
@@ -272,8 +275,9 @@ export function Thread(props: Props) {
   const planAt = items.some((i) => i.type === "block" && i.index === planWanted) ? planWanted : -1;
   const lastUser = history.map((b) => b.kind).lastIndexOf("user");
   const stamps = useMemo(() => dayStamps(history), [history]);
-  const helperChip = helpers.length && engine?.sessionKey ? (
+  const helperChip = (helpers.length || native.length) && engine?.sessionKey ? (
     <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenActivity}
+      native={native}
       onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast(`Stopped ${h.name}. ${name} carries on without it.`), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} />
   ) : null;
   const topicEvents = new Map<number, { at: number; node: ReactNode }[]>();
@@ -334,7 +338,7 @@ export function Thread(props: Props) {
             <div className="stamp">New start · {page.startedAt ? new Date(page.startedAt).toLocaleDateString() : "Earlier"}</div>
             {page.blocks.filter((block) => ["user", "text", "thinking", "step", "notice", "error"].includes(block.kind)).map((block) => <div key={block.key} className="segment-line">
               <strong>{block.kind === "user" ? "You" : block.kind === "text" ? name : block.kind === "step" ? stepLabel(block) : "Activity"}</strong>
-              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? [block.title, block.detail].filter(Boolean).join(" · ") : block.kind === "error" ? isPreparationPending(block.message) ? "Branch retried a startup delay." : block.message : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
+              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? [block.title, block.detail].filter(Boolean).join(" · ") : block.kind === "error" ? isPreparationPending(block.message) ? "Branch retried a startup delay." : shortReason(block.message) : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
             </div>)}
           </div>)}
           {(props.earlierPages?.length || props.hasEarlierPages) ? <div className="stamp">New start · {props.currentStartedAt ? new Date(props.currentStartedAt).toLocaleDateString() : "Current"}</div> : null}
@@ -374,7 +378,7 @@ export function Thread(props: Props) {
             )
           ) : null}
           <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="delivered" />
-          {running ? <LiveRun view={view} offset={history.length} /> : null}
+          {running || live.length ? <LiveRun view={view} offset={history.length} /> : null}
           {running ? (props.steered ?? []).map((note) => <SteeredNote key={note.runId} name={name} text={note.text} />) : null}
           <QueuedMessages queued={props.queued ?? []} own={ownLine} room={props.room} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
           {(anchors.get(-1) ?? []).map((r) => <QuestionLine key={r.id} record={r} />)}
@@ -383,7 +387,9 @@ export function Thread(props: Props) {
           {helperNextUserAt < 0 ? helperChip : null}
           {restSupplement}
           {suggestions.length ? <div className="suggestion-row" role="group" aria-label="Suggested replies" data-testid="suggestion-row">
-            {suggestions.map((text) => <button key={text} type="button" onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}>{text}</button>)}
+            {/* NC-01: a visible lead and quoted text, so a chip reads as a line you send, never as "open the thing". */}
+            <span className="sug-lead" aria-hidden="true">Reply with</span>
+            {suggestions.map((text) => <button key={text} type="button" title={`Send “${text}” as your reply`} aria-label={`Reply: ${text}`} onClick={() => { setUsedSuggestion(suggestionKey); props.onStart?.(text); }}><Icon d={ICONS.reply} size={12} className="sug-arrow" /><span className="sug-text">{`\u201c${text}\u201d`}</span></button>)}
           </div> : null}
           {props.recoveryFailure === RESTART_NOT_RESUMED ? (
             <div className="pass-line restart-stop" role="status" data-testid="restart-stopped">Stopped by restart{recoveryEntryId ? <button type="button" className="btn pri sm" onClick={() => void continueInterrupted()}>Resume</button> : null}</div>
@@ -398,7 +404,7 @@ export function Thread(props: Props) {
           <Icon d={ICONS.down} size={16} />
         </button>
       ) : null}
-      {props.room?.isRoom ? null : <DoneCheer name={name} ended={props.ended} history={history} />}
+      {props.room?.isRoom || !props.cheerOn ? null : <DoneCheer name={name} ended={props.ended} history={history} />}
       </div>
       {dialog}
     </ThreadContext.Provider>
@@ -482,21 +488,22 @@ function LiveRun({ view, offset }: { view: View; offset: number }) {
   const [elapsed, setElapsed] = useState(0);
   const startedAt = view.liveStartedAt;
   useEffect(() => {
+    if (!view.running) return;
     const started = startedAt ?? Date.now();
     const tick = () => setElapsed(Math.max(0, Date.now() - started));
     tick();
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [startedAt]);
+  }, [startedAt, view.running]);
   const usage = live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage");
   const waiting = live.some((b) => b.kind === "approval" && b.approval.state === "pending");
   const typing = !waiting && !live.some((b) => b.kind === "text" || (view.showThinking && b.kind === "thinking") || (b.kind === "step" && !isInternalStep(b)) || b.kind === "preamble" || b.kind === "plan");
   return (
-    <div className="live-run" data-streaming="true">
+    <div className="live-run" data-streaming={view.running}>
       {/* While only the dots show, nothing sits above them (P47); the clock comes with the first real activity. */}
-      {typing ? null : <header className="live-run-head">Working{elapsed >= 1000 ? ` · ${formatDuration(elapsed)}` : ""}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>}
-      {layout(live.filter((b) => b.kind !== "status"), offset).map((item) => <ItemView key={keyOf(item)} item={item} view={view} live />)}
-      {typing ? <Typing name={name} /> : null}
+      {!view.running || typing ? null : <header className="live-run-head">Working{elapsed >= 1000 ? ` · ${formatDuration(elapsed)}` : ""}{usage?.total ? ` · ${usage.total.toLocaleString()} tokens` : ""}</header>}
+      {layout(live.filter((b) => b.kind !== "status"), offset).map((item) => <ItemView key={keyOf(item)} item={item} view={view} live={view.running} />)}
+      {view.running && typing ? <Typing name={name} /> : null}
     </div>
   );
 }
@@ -575,7 +582,7 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
     case "notice":
       return block.topicKey ? <div className="tpLblT5"><button type="button" onClick={() => view.onOpenSession?.(block.topicKey!)}>{block.text}</button></div> : <Notice block={block} />;
     case "steer":
-      return <SteeredNote name={view.name} text={block.text} />;
+      return <SteeredNote name={view.name} text={block.text} attachments={block.attachments} />;
     default:
       return null;
   }
@@ -584,6 +591,13 @@ function ItemBody({ item, view, live }: { item: Item; view: View; live: boolean 
 function faceFor(view: View, live: boolean): ReactNode {
   const state = live ? agentState({ live: view.live, running: view.running, history: [], endedAt: null, now: Date.now() }) : "idle";
   return <Face size={28} label={view.name} state={state} priority={live ? PRIORITY.open : PRIORITY.row} />;
+}
+
+/** In a group chat, another Trunk's post carries that Trunk's face, not this conversation's. */
+function postedFace(block: Extract<Block, { kind: "text" }>, view: View): ReactNode | null {
+  const sender = block.meta?.sender;
+  if (!view.room?.isRoom || sender?.kind !== "trunk" || !sender.posted) return null;
+  return <Face size={28} label={view.room.trunkName(sender.agentId)} priority={PRIORITY.row} />;
 }
 
 function MessageView({ block, index, firstReply, face, view, live }: { block: Extract<Block, { kind: "user" | "text" }>; index: number; firstReply: boolean; face: boolean; view: View; live: boolean }) {
@@ -612,7 +626,7 @@ function MessageView({ block, index, firstReply, face, view, live }: { block: Ex
   }
   return (
     <>
-      <Reply block={block} face={face ? faceFor(view, live) : undefined} working={face && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
+      <Reply block={block} face={face ? postedFace(block, view) ?? faceFor(view, live) : undefined} working={face && !postedFace(block, view) && view.running && (live || index > view.lastUser)} from={fromName(block, firstReply, view.room, view.name)}>{bar}</Reply>
       {putBack}
       {live ? null : <TimeLine block={block} view={view} />}
       <ReactionChips list={chips} onToggle={toggle} />

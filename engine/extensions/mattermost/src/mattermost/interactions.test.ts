@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/mattermost/src/mattermost/interactions.test.ts (atlas CHAT-APPS-0233). Changed for Branch: isolate the inherited test gateway port when asserting the upstream default.
+// Changed for Branch: isolate the inherited test gateway port when asserting the upstream default.
 // Mattermost tests cover interactions plugin behavior.
 import { createHmac } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";

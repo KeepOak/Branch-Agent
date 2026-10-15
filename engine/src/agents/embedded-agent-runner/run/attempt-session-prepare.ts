@@ -18,6 +18,7 @@ import {
   resolveEffectiveCompactionMode,
 } from "../../agent-settings.js";
 import { toToolDefinitions } from "../../agent-tool-definition-adapter.js";
+import { describeCodeModeMissingTool } from "../../code-mode-control-tools.js";
 import { sanitizeCompactionReplayMessages } from "../../compaction-replay.js";
 import { resolveUserTimezone } from "../../date-time.js";
 import { bootstrapHarnessContextEngine } from "../../harness/context-engine-lifecycle.js";
@@ -198,6 +199,18 @@ export async function prepareEmbeddedAttemptAgentSession(input: {
           }
           return hydratedTool;
         }
+      : undefined,
+    // Code Mode shows only exec/wait; a direct call to a cataloged tool learns
+    // how to reach it from exec instead of a bare "not found".
+    describeMissingTool: input.clientToolPreparation.codeModeControlsEnabledForRun
+      ? ({ toolCall }) =>
+          describeCodeModeMissingTool(
+            toolCall.name,
+            resolveToolSearchCatalogTool(
+              { catalogRef: input.clientToolPreparation.toolSearchCatalogRef },
+              toolCall.name,
+            ) !== undefined,
+          )
       : undefined,
     withSessionWriteSettlement: (operation) =>
       input.transcriptLifecycle.withTranscriptWrite(operation),

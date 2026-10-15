@@ -37,7 +37,7 @@ export function OwnAccounts({ engine }: { engine: WindowEngine }) {
   );
 }
 
-function PickOwn({ engine, accounts, onClose }: { engine: WindowEngine; accounts: RecordValue[]; onClose: (picked: boolean) => void }) {
+export function PickOwn({ engine, accounts, onClose }: { engine: WindowEngine; accounts: RecordValue[]; onClose: (picked: boolean) => void }) {
   const save = useSaveRunner();
   const pick = (a: RecordValue) => void save(async () => {
     await engine.request("users.selectModelAccount", { authProfileId: a.authProfileId });

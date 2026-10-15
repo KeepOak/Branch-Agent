@@ -43,7 +43,11 @@
 .acc.theme-acc { display: grid; place-items: center; font: 600 11px var(--mono); color: var(--ink-2); }
 .acc-pick { background: conic-gradient(#e0533a, #e0a526, #2f8f5b, #2f8c86, #4f6fa8, #8a5aa8, #c0467a, #e0533a); }
 .acc-pick input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.set-col .ctl:has(.accs) { grid-template-columns: minmax(0, 1fr) auto; }
+/* Keep the explanation and save action out of the swatches' horizontal budget. */
+.set-col .ctl:has(.accs) { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
+.set-col .ctl:has(.accs) > small { grid-row: 2; }
+.set-col .ctl:has(.accs) > .right { grid-row: 3; grid-column: 1; justify-content: flex-start; }
+.set-col .ctl:has(.accs) > .acts { grid-row: 4; margin-top: 0; }
 
 /* painted scenes, ranges, pictures */
 .set-col .fld.ap-k { display: grid; gap: 6px; margin: 12px 0 4px; }
@@ -160,8 +164,6 @@
 @media (max-width: 640px) {
   .dlg .ced.ap-k { grid-template-columns: minmax(0, 1fr); }
   .set-col .theme-now .sw6 { width: 100%; }
-  .set-col .ctl:has(.accs) { grid-template-columns: minmax(0, 1fr); }
-  .set-col .ctl:has(.accs) > .right { grid-row: auto; grid-column: 1; justify-content: flex-start; }
   .set-col .ctl:has(.range) > .right { grid-row: auto; grid-column: 1; }
   .set-col .ctl:has(.range) { grid-template-columns: minmax(0, 1fr); }
 }
