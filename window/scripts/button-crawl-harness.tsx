@@ -476,8 +476,18 @@ function viewText() {
 function controlState(el: Element) {
   const pressed = el.getAttribute('aria-pressed');
   const checked = el.getAttribute('aria-checked');
+  const expanded = el.getAttribute('aria-expanded');
   const input = el instanceof HTMLInputElement ? String(el.checked) : '';
-  return [pressed, checked, input].join('|');
+  return [pressed, checked, input, expanded].join('|');
+}
+
+// The content a disclosure shows or hides (aria-controls): hidden, or its text when shown. Empty when the control names none.
+function controlledState(el: Element | null) {
+  const id = el?.getAttribute('aria-controls');
+  if (!id) return '';
+  const panel = document.getElementById(id);
+  if (!panel) return 'missing';
+  return panel.hidden ? 'hidden' : `shown:${(panel.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 400)}`;
 }
 
 // Scroll positions inside the main content only (the sidebar and the window itself are not measured). A scroll is a
@@ -517,6 +527,7 @@ function surface() {
     unimplemented: /\b(coming soon|not implemented|not yet implemented|placeholder)\b/i.test(mainText),
     blank: mainText.length < 12,
     control: target instanceof HTMLElement ? controlState(target) : '',
+    controlled: target instanceof HTMLElement ? controlledState(target) : '',
     focus: document.activeElement instanceof HTMLElement
       && document.activeElement !== target
       && document.activeElement !== document.body

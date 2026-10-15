@@ -1,10 +1,11 @@
 // Runs by itself under plain Node (copied out of app.asar): only Node built-ins, no other desktop modules.
-// Waits for the desktop app to exit, swaps the staged copy in, relaunches it and waits for the new app to confirm
-// its start (it removes the journal). No confirmation in time: stop the new app by its PID, put the previous copy
-// back, remember the release as rejected and relaunch the previous app.
+// Waits for the desktop app to exit, swaps the staged copy in (or, on Windows, lands it in a fresh version folder
+// and switches current.txt), relaunches it and waits for the new app to confirm its start (it removes the journal).
+// No confirmation in time: stop the new app by its PID, put the previous copy back, remember the release as rejected
+// and relaunch the previous app. Windows never renames or deletes a folder that is still in use.
 import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
-import { cp, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { cp, lstat, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 
 export interface HelperPlan {
@@ -17,9 +18,74 @@ export interface HelperPlan {
   relaunch: { command: string; fallback?: string; args: string[] };
   confirmTimeoutMs: number;
 }
-interface Journal { version: string; sha256: string; kind: "asar" | "runtime" | "appimage"; staged: string; target: string; phase: string; heldUntil?: number }
+interface Journal {
+  version: string;
+  sha256: string;
+  kind: "asar" | "runtime" | "appimage";
+  staged: string;
+  target: string;
+  phase: string;
+  heldUntil?: number;
+  /** Windows side-by-side: user-writable root that holds version folders and current.txt. */
+  installRoot?: string;
+  /** Folder name under installRoot for this update. A single relative segment, never a path. */
+  versionFolder?: string;
+  /** Previous version folder name, or empty when the live app is the legacy root itself. */
+  previousFolder?: string;
+}
 /** After a swap that found the app in use, starts leave the update staged this long (Restart retries at once). */
 const RETRY_AFTER_MS = 60 * 60 * 1000;
+/** Pointer the launcher, shortcut and stub read; switched by an atomic rename. */
+export const WINDOWS_POINTER = "current.txt";
+/** Previous version folder name, so prune can keep one rollback copy. */
+export const WINDOWS_PREVIOUS = "previous.txt";
+/** Cmd stub that reads current.txt and starts that folder's Branch Agent.exe. */
+export const WINDOWS_LAUNCHER = "Branch Agent.cmd";
+const VERSION_FOLDER = /^app-[A-Za-z0-9._-]+$/;
+
+export function sanitizeWindowsVersion(version: string): string {
+  return version.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "build";
+}
+
+/** Fresh folder for one Windows build under the install root. sha256 (when given) disambiguates same-version rebuilds. */
+export function windowsVersionFolderName(version: string, sha256?: string): string {
+  const safe = sanitizeWindowsVersion(version);
+  return sha256 ? `app-${safe}-${sha256.slice(0, 6).toLowerCase()}` : `app-${safe}`;
+}
+
+export function isWindowsVersionFolder(name: string): boolean {
+  return VERSION_FOLDER.test(name);
+}
+
+/** Legacy installs live at the root; a versioned install lives in app-* under that root. */
+export function windowsInstallRoot(appDir: string): string {
+  return isWindowsVersionFolder(basename(appDir)) ? dirname(appDir) : appDir;
+}
+
+export function usesWindowsVersionedLayout(platform: NodeJS.Platform | undefined, appImage?: string): boolean {
+  return (platform ?? process.platform) === "win32" && !appImage;
+}
+
+export function windowsLauncherScript(): string {
+  return [
+    "@echo off",
+    "setlocal EnableDelayedExpansion",
+    'set "ROOT=%~dp0"',
+    'set "VER="',
+    `if exist "%ROOT%${WINDOWS_POINTER}" set /p VER=<"%ROOT%${WINDOWS_POINTER}"`,
+    'if defined VER if exist "%ROOT%!VER!\\Branch Agent.exe" (',
+    '  start "" "%ROOT%!VER!\\Branch Agent.exe" %*',
+    "  exit /b 0",
+    ")",
+    'if exist "%ROOT%Branch Agent.exe" start "" "%ROOT%Branch Agent.exe" %*',
+    "",
+  ].join("\r\n");
+}
+
+function versioned(journal: Journal): boolean {
+  return Boolean(journal.kind === "runtime" && journal.installRoot && journal.versionFolder && isWindowsVersionFolder(journal.versionFolder)
+    && dirname(join(journal.installRoot, journal.versionFolder)) === journal.installRoot);
+}
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 function alive(pid: number): boolean {
@@ -57,22 +123,38 @@ async function move(source: string, target: string, attempts = 120, fs: HelperFs
   }
 }
 
-function launch(plan: HelperPlan): number | undefined {
+function pointedWindowsExe(journal: Journal): string | undefined {
+  if (!journal.installRoot) return undefined;
+  const pointer = join(journal.installRoot, WINDOWS_POINTER);
+  if (existsSync(pointer)) {
+    const folder = readFileSync(pointer, "utf8").trim();
+    const exe = isWindowsVersionFolder(folder) ? join(journal.installRoot, folder, "Branch Agent.exe") : undefined;
+    if (exe && existsSync(exe)) return exe;
+  }
+  const legacy = join(journal.installRoot, "Branch Agent.exe");
+  return existsSync(legacy) ? legacy : undefined;
+}
+
+function launch(plan: HelperPlan, journal?: Journal): number | undefined {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   // This relaunches the Branch GUI, whose first ShowWindow must remain visible.
-  const command = existsSync(plan.relaunch.command) ? plan.relaunch.command : plan.relaunch.fallback ?? plan.relaunch.command;
+  const pointed = journal ? pointedWindowsExe(journal) : undefined;
+  const requested = existsSync(plan.relaunch.command) ? plan.relaunch.command : plan.relaunch.fallback ?? plan.relaunch.command;
+  // Tests pass a Node script as the relaunch command; only a Branch Agent.exe follows current.txt.
+  const command = pointed && basename(requested) === "Branch Agent.exe" ? pointed : requested;
   const child = spawn(command, plan.relaunch.args, { detached: true, stdio: "ignore", windowsHide: false, env });
   child.unref();
   return child.pid;
 }
 
 /** Windows caches executable icons by shortcut. Re-save only links that already target this app. */
-function refreshWindowsIcon(plan: HelperPlan, log: (line: string) => void): void {
+function refreshWindowsIcon(plan: HelperPlan, log: (line: string) => void, journal?: Journal): void {
   if (process.platform !== "win32" || process.env.BRANCH_DESKTOP_TEST_DIST) return;
-  const exe = plan.relaunch.command;
+  const exe = (journal && pointedWindowsExe(journal)) || plan.relaunch.command;
   const quoted = exe.replaceAll("'", "''");
-  const script = `$exe='${quoted}'; $shell=New-Object -ComObject WScript.Shell; foreach($dir in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))) { if(!$dir) { continue }; $path=Join-Path $dir 'Branch Agent.lnk'; if(!(Test-Path -LiteralPath $path)) { continue }; $link=$shell.CreateShortcut($path); if($link.TargetPath -ieq $exe) { $link.IconLocation="$exe,0"; $link.Save() } }`;
+  const root = (journal?.installRoot ?? "").replaceAll("'", "''");
+  const script = `$exe='${quoted}'; $root='${root}'; $shell=New-Object -ComObject WScript.Shell; foreach($dir in @([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'))) { if(!$dir) { continue }; $path=Join-Path $dir 'Branch Agent.lnk'; if(!(Test-Path -LiteralPath $path)) { continue }; $link=$shell.CreateShortcut($path); $target=$link.TargetPath; $ours=$target -ieq $exe; if($root -and $target) { try { $ours=$ours -or ([IO.Path]::GetFullPath($target).StartsWith([IO.Path]::GetFullPath($root).TrimEnd('\\')+'\\',[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($target) -ieq 'Branch Agent.exe') } catch {} }; if($ours) { $link.TargetPath=$exe; $link.WorkingDirectory=[IO.Path]::GetDirectoryName($exe); $link.IconLocation="$exe,0"; $link.Save() } }`;
   const errors: string[] = [];
   try { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], { windowsHide: true, stdio: "ignore", timeout: 15_000 }); }
   catch (error) { errors.push(`shortcuts: ${String(error)}`); }
@@ -172,6 +254,124 @@ async function swap(plan: HelperPlan, journal: Journal, previous: string, log: (
   return true;
 }
 
+async function writePointer(root: string, folder: string, fs: HelperFs): Promise<void> {
+  const pointer = join(root, WINDOWS_POINTER);
+  const temporary = `${pointer}.${process.pid}.tmp`;
+  await writeFile(temporary, `${folder}\n`);
+  await move(temporary, pointer, 120, fs);
+}
+
+async function writePrevious(root: string, folder: string, fs: HelperFs): Promise<void> {
+  const file = join(root, WINDOWS_PREVIOUS);
+  const temporary = `${file}.${process.pid}.tmp`;
+  await writeFile(temporary, folder ? `${folder}\n` : "\n");
+  await move(temporary, file, 120, fs);
+}
+
+/**
+ * Windows: land the update in a fresh version folder and switch current.txt. Never rename or delete the live
+ * folder, which an orphan process can hold with Access denied.
+ */
+async function swapVersioned(plan: HelperPlan, journal: Journal, log: (line: string) => void, fs: HelperFs): Promise<boolean> {
+  const root = journal.installRoot!;
+  await writeJournal(plan.journal, { ...journal, phase: "applying" });
+  const keep = async (line: string): Promise<false> => {
+    await writeJournal(plan.journal, { ...journal, phase: "staged", heldUntil: Date.now() + RETRY_AFTER_MS });
+    log(`desktop update ${journal.version}: ${line}`);
+    return false;
+  };
+  let destName = journal.versionFolder!;
+  let dest = join(root, destName);
+  if (existsSync(dest)) {
+    try { await fs.remove(dest); } catch {
+      destName = `${journal.versionFolder}-${String(process.pid)}`;
+      if (!isWindowsVersionFolder(destName)) return keep("could not pick a free version folder; kept staged");
+      dest = join(root, destName);
+    }
+  }
+  try {
+    if (existsSync(journal.staged)) await restoreAsarNames(journal.staged);
+    const incoming = await bringBesideTarget(journal.staged, dest, fs);
+    try { await move(incoming.path, dest, 120, fs); }
+    catch (error) {
+      if (incoming.copied) await fs.remove(incoming.path).catch(() => undefined);
+      else await fs.rename(incoming.path, journal.staged).catch(() => undefined);
+      throw error;
+    }
+    if (incoming.copied) await fs.remove(journal.staged).catch(() => undefined);
+  } catch (error) {
+    await fs.remove(dest).catch(() => undefined);
+    return keep(`could not place the new copy in a version folder (${String(error)}); kept staged`);
+  }
+  try {
+    await writePointer(root, destName, fs);
+    await writePrevious(root, journal.previousFolder ?? "", fs);
+    await writeFile(join(root, WINDOWS_LAUNCHER), windowsLauncherScript());
+  } catch (error) {
+    return keep(`could not switch the current-version pointer (${String(error)}); kept staged`);
+  }
+  log(`desktop update ${journal.version}: version folder ${destName}; left the live folder in place`);
+  const { heldUntil: _retry, ...applied } = journal;
+  await writeJournal(plan.journal, { ...applied, versionFolder: destName, phase: "applied" });
+  return true;
+}
+
+/** Switch current.txt back to the previous folder. Never rename a folder that may still be locked. */
+async function rollbackVersioned(plan: HelperPlan, journal: Journal, pid: number | undefined, fs: HelperFs): Promise<void> {
+  if (pid !== undefined) await stop(pid);
+  const root = journal.installRoot!;
+  try {
+    if (journal.previousFolder && isWindowsVersionFolder(journal.previousFolder)) await writePointer(root, journal.previousFolder, fs);
+    else await fs.remove(join(root, WINDOWS_POINTER)).catch(() => undefined);
+  } catch { /* pointer stays; prune will skip a locked folder */ }
+  if (journal.versionFolder) await fs.remove(join(root, journal.versionFolder)).catch(() => undefined);
+  await writeFile(plan.rejectedFile, JSON.stringify({ version: journal.version, sha256: journal.sha256 }));
+  await rm(plan.journal, { force: true });
+}
+
+const LOCKED_PRUNE = new Set(["EPERM", "EBUSY", "EACCES", "ENOTEMPTY", "EEXIST"]);
+
+/**
+ * Delete unused Windows version folders under the install root. A locked folder is skipped so prune never
+ * fails the update and never needs admin rights.
+ */
+export async function pruneWindowsVersionFolders(
+  root: string,
+  keep: Iterable<string>,
+  options: { remove?: (path: string) => Promise<void>; log?: (line: string) => void } = {},
+): Promise<{ removed: number; skipped: number }> {
+  const kept = new Set([...keep].filter(name => isWindowsVersionFolder(name)));
+  let removed = 0, skipped = 0;
+  let entries: Array<{ name: string; isDirectory(): boolean }>;
+  try { entries = await readdir(root, { withFileTypes: true }); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { removed, skipped };
+    throw error;
+  }
+  const remove = options.remove ?? ((path: string) => rm(path, { recursive: true, force: true, maxRetries: 0 }));
+  for (const entry of entries) {
+    if (!isWindowsVersionFolder(entry.name) || kept.has(entry.name)) continue;
+    const folder = join(root, entry.name);
+    try {
+      const info = await lstat(folder);
+      if (info.isSymbolicLink() || !info.isDirectory()) continue;
+    } catch { continue; }
+    try {
+      await remove(folder);
+      removed++;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (LOCKED_PRUNE.has(code) || /access denied/i.test(String(error))) {
+        options.log?.(`desktop update: left locked version folder ${entry.name}`);
+        skipped++;
+        continue;
+      }
+      options.log?.(`desktop update: could not prune ${entry.name} (${String(error)})`);
+      skipped++;
+    }
+  }
+  return { removed, skipped };
+}
+
 /** The failed copy is renamed aside beside the target (never across volumes), the previous copy returns, then the failed one goes. */
 async function rollback(plan: HelperPlan, journal: Journal, previous: string, pid: number | undefined, fs: HelperFs): Promise<void> {
   if (pid !== undefined) await stop(pid);
@@ -221,20 +421,22 @@ export async function runHelper(plan: HelperPlan, fs: HelperFs = nodeHelperFs): 
     return "none";
   }
   const previous = `${journal.target}.previous`;
-  if (!await swap(plan, journal, previous, log, fs)) { launch(plan); return "kept"; }
+  const placed = versioned(journal) ? await swapVersioned(plan, journal, log, fs) : await swap(plan, journal, previous, log, fs);
+  if (!placed) { launch(plan, journal); return "kept"; }
   log(`desktop update ${journal.version}: ${journal.kind} swapped in; relaunching`);
   registerLaunchedMacApp(journal.target, log);
-  const pid = launch(plan);
+  const pid = launch(plan, journal);
   for (const end = Date.now() + plan.confirmTimeoutMs; Date.now() < end; await sleep(250)) {
     if (!existsSync(plan.journal)) {
-      if (journal.kind === "runtime") refreshWindowsIcon(plan, log);
+      if (journal.kind === "runtime" || versioned(journal)) refreshWindowsIcon(plan, log, journal);
       log(`desktop update ${journal.version}: confirmed by the new app`); return "applied";
     }
   }
   log(`desktop update ${journal.version}: the new app did not confirm its start; restoring the previous copy`);
-  await rollback(plan, journal, previous, pid, fs);
+  if (versioned(journal)) await rollbackVersioned(plan, journal, pid, fs);
+  else await rollback(plan, journal, previous, pid, fs);
   registerLaunchedMacApp(journal.target, log);
-  launch(plan);
+  launch(plan, journal);
   return "rolled-back";
 }
 

@@ -15,6 +15,11 @@ npx jest src/<path>.test.ts
 npx tsc --noEmit
 ```
 
+Pull requests that change `mobile/` or the engine packages this app compiles
+(`gateway-client`, `gateway-protocol`, `normalization-core`, `retry`) run
+`.github/workflows/mobile-checks.yml`: `tsc --noEmit`, Jest, and `expo export`
+(web). Other pull requests skip that job; merge-gate treats the skip as a pass.
+
 Expo Go is fine for the screens, but it can't stand in for the real app everywhere: on Android it no
 longer delivers push notifications (Expo SDK 53 removed them from Expo Go). For that, build the app
 itself as below.
@@ -71,6 +76,22 @@ Or copy the APK to the phone and open it there, allowing installs from that app 
 `npx expo run:android --variant release` is the same build installed straight onto a connected
 phone or emulator in one step.
 
+## Install a release APK (sideload)
+
+Each GitHub release can include a signed `branch-android-<version>.apk` and, next to it,
+`branch-android-<version>.apk.sha256` (the APK's hex SHA-256). Those are the only Android assets
+attached to the release. CI still builds when the signing secrets are missing, but that APK stays
+a workflow artifact and is never published.
+
+1. On the phone, open the [GitHub release](https://github.com/KeepOak/Branch-Agent/releases) and
+   download `branch-android-<version>.apk`.
+2. Open the file. If Android asks, allow installs from that app (Chrome, Files, or your browser).
+3. Install Branch. It sits next to Expo Go (`com.keepoak.branch`).
+4. Pair it with Branch on your computer as usual.
+
+A later release installs over this one only when it is signed with the same upload key. A
+debug-signed local build will not replace a release APK.
+
 **What to know about this build:**
 
 - It's a release build: the JavaScript is bundled inside, so it runs without Metro or a computer
@@ -102,9 +123,11 @@ the setting, and continues when you come back.
 
 ## Publishing the APK checksum
 
-The Android APK release workflow is not on main yet. When it lands, publish a SHA-256 sidecar next to
-the APK so the phone can verify the download, and a versionCode sidecar so a later APK with the same
-dotted version is still offered. Without the checksum file, the phone will not offer the update.
+The Android APK release workflow (`.github/workflows/mobile-android-release.yml`) publishes
+`branch-android-<version>.apk` and `branch-android-<version>.apk.sha256` on each GitHub release.
+Without the checksum file, the phone will not offer the update. For a later APK with the same dotted
+version to be offered, also attach `branch-android-<version>.apk.versioncode.<runNumber>` (the same
+integer baked into the APK as `versionCode`). If you attach an APK by hand:
 
 1. Upload `branch-android-<version>.apk` (version is the release tag without a leading `v`).
 2. Upload `branch-android-<version>.apk.sha256` whose first 64-character hex is the SHA-256 of the

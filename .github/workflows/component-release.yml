@@ -101,10 +101,16 @@ jobs:
                 return
               fi
             fi
-            # Skip only when a check on main's head actually failed. Missing or pending checks do not block.
-            # One rerun of failed jobs first; skip only if a check is still failing after that.
+            # Missing or pending checks do not block. A listing that fails, or more than
+            # 300 check runs, skips this release. One rerun of failed jobs, then this
+            # release waits for the next schedule.
             failed_decision="$(node desktop/scripts/component-release-readiness.mjs resolve-failed-checks --sha "$main_commit")"
-            failed_checks="$(node -p 'JSON.parse(process.argv[1]).failedCount' "$failed_decision")"
+            read -r failed_checks decision_skip decision_reason < <(node -e 'const d = JSON.parse(process.argv[1]); process.stdout.write(d.failedCount + " " + d.skip + " " + d.reason + "\n")' "$failed_decision")
+            if [[ "$decision_skip" == "true" && "$failed_checks" == "0" ]]; then
+              note "Could not confirm checks at $main_commit ($decision_reason); skipping release"
+              printf '%s %s %s\n' false "$main_commit" checks-unavailable
+              return
+            fi
             if [[ "$failed_checks" != "0" ]]; then
               note "Main has $failed_checks failed check(s) at $main_commit; skipping release"
               printf '%s %s %s\n' false "$main_commit" failed-checks
@@ -500,6 +506,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
+  # Starts mobile-android-release.yml after a published desktop release.
+  dispatch-android-apk:
+    needs: [identity, publish]
+    if: github.event_name != 'pull_request' && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Dispatch the Android APK build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run mobile-android-release.yml -f tag=v${{ needs.identity.outputs.version }}
   # Waits out the 25-minute batching window, then starts one release if main moved.
   # The sleep is the catch-up, so this job is longer than the 15-minute check cap.
   # A failed publish still enters this job. It continues only when that commit is

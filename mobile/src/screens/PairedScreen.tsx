@@ -35,12 +35,14 @@ export function PairedScreen({
   onUnpair,
   onBack,
   updateCard,
+  backTo = 'Chats',
 }: {
   state: Extract<PairingState, { step: 'paired' }>;
   onUnpair: () => void;
   onBack: () => void;
   /** Settings: this phone’s version and a manual check for a sideloaded Android APK. */
   updateCard?: ReactNode;
+  backTo?: 'Chats' | 'Settings';
 }) {
   const { color, space, radius, layout } = useTheme();
   const [confirming, setConfirming] = useState(false);
@@ -63,15 +65,15 @@ export function PairedScreen({
       }
     >
       <Pressable
-        testID="back-to-chats"
+        testID={backTo === 'Settings' ? 'back-to-settings' : 'back-to-chats'}
         accessibilityRole="button"
-        accessibilityLabel="Back to Chats"
+        accessibilityLabel={`Back to ${backTo}`}
         onPress={onBack}
         hitSlop={8}
         style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: layout.rowMinHeight, justifyContent: 'center', marginTop: -space.xl, opacity: pressed ? 0.6 : 1 })}
       >
         <ThemedText variant="body" tone="accentInk">
-          ‹ Chats
+          {`‹ ${backTo}`}
         </ThemedText>
       </Pressable>
       <ThemedText variant="largeTitle" accessibilityRole="header">

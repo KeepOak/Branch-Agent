@@ -120,9 +120,9 @@ describe("R1 Settings › History & backups is a native R1 page with the preview
     await mount();
     await setLevel("Advanced");
     const copy = sections().find((s) => s.getAttribute("aria-label") === "A copy of your setup")!;
-    expect(labels(copy)).toEqual(["Export a copy without secrets", "Export", "Import", "From a preset address", "Where conversations are stored", "Where files are kept", "Where your data lives", "Put Branch on a USB stick"]);
+    expect(labels(copy)).toEqual(["Export", "Import", "Where your data lives", "Export a copy without secrets", "From a preset address", "Where conversations are stored", "Where files are kept", "Put Branch on a USB stick"]);
     const snaps = sections().find((s) => s.getAttribute("aria-label") === "Snapshots")!;
-    expect(labels(snaps)).toEqual(["Tidy memory overnight", "Night window", "Rings diary", "Keep notes for good now", "Try a night without keeping anything", "Fill in from past conversations"]);
+    expect(labels(snaps)).toEqual(["Tidy memory overnight", "Night window", "Rings diary", "Fill in from past conversations", "Keep notes for good now", "Try a night without keeping anything"]);
     await setLevel("Technical");
     expect(labels(sections().find((s) => s.getAttribute("aria-label") === "Snapshots")!)).toContain("Repair Rings’ files");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
