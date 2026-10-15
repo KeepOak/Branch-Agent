@@ -217,7 +217,7 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
 test("downstream release jobs require their build dependencies after always()", () => {
   const windowJob = workflow.slice(workflow.indexOf("\n  window:"), workflow.indexOf("\n  native:"));
   const nativeJob = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
-  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  catch-up:"));
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
   const catchUp = workflow.slice(workflow.indexOf("\n  catch-up:"));
   const readinessJob = workflow.slice(workflow.indexOf("\n  readiness:"), workflow.indexOf("\n  readiness-rehearsal:"));
   const rehearsalJob = workflow.slice(workflow.indexOf("\n  readiness-rehearsal:"), workflow.indexOf("\n  identity:"));
@@ -232,16 +232,24 @@ test("downstream release jobs require their build dependencies after always()", 
   assert.equal((workflow.match(/^\s+actions: write\s*$/mg) || []).length, 3);
   assert.doesNotMatch(windowJob, /actions: write/);
   assert.doesNotMatch(nativeJob, /actions: write/);
-  assert.match(publishJob, /actions: write/);
+  assert.doesNotMatch(publishJob, /actions: write/);
 });
 
-test("publish job dispatches the Android APK workflow with the release tag", () => {
-  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  catch-up:"));
-  assert.match(publishJob, /actions: write/);
+test("a separate job dispatches the Android APK workflow with the release tag", () => {
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
+  const dispatchJob = workflow.slice(workflow.indexOf("\n  dispatch-android-apk:"), workflow.indexOf("\n  catch-up:"));
+  assert.doesNotMatch(publishJob, /actions: write/);
   assert.match(publishJob, /contents: write/);
-  assert.match(publishJob, /GH_TOKEN: \$\{\{ github\.token \}\}/);
-  assert.match(publishJob, /gh workflow run mobile-android-release\.yml -f tag=v\$\{\{ needs\.identity\.outputs\.version \}\}/);
-  assert.match(publishJob, /if: github\.event_name != 'pull_request'/);
+  assert.doesNotMatch(publishJob, /gh workflow run mobile-android-release\.yml/);
+  assert.match(dispatchJob, /actions: write/);
+  assert.match(dispatchJob, /contents: read/);
+  assert.doesNotMatch(dispatchJob, /contents: write/);
+  assert.match(dispatchJob, /needs: \[identity, publish\]/);
+  assert.match(dispatchJob, /needs\.publish\.result == 'success'/);
+  assert.match(dispatchJob, /github\.event_name != 'pull_request'/);
+  assert.match(dispatchJob, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(dispatchJob, /gh workflow run mobile-android-release\.yml -f tag=v\$\{\{ needs\.identity\.outputs\.version \}\}/);
+  assert.match(dispatchJob, /timeout-minutes: 5/);
 });
 
 function failedCapabilityCheck({

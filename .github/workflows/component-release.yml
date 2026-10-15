@@ -472,7 +472,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
-      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -507,8 +506,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
+  # Starts mobile-android-release.yml after a published desktop release.
+  dispatch-android-apk:
+    needs: [identity, publish]
+    if: github.event_name != 'pull_request' && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
       - name: Dispatch the Android APK build
-        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run mobile-android-release.yml -f tag=v${{ needs.identity.outputs.version }}
