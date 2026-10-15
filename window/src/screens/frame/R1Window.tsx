@@ -438,6 +438,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
         <button type="button" data-local="" onClick={() => openAgentTrunk("edit")}>Customize</button>
         <button type="button" data-local="" onClick={() => openAgentTrunk("profile")}>Profile</button>
       </> : null}
+      <button type="button" data-local="" onClick={() => { setCharacterShown(!characterShown); closeAgent(); }}>{characterShown ? "Hide the character" : "Show the character"}</button>
     </>} /> : null;
   return <>
     {onboarding && <Onboarding engine={engine} startAt={firstRun.step ?? 0}
