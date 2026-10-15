@@ -281,7 +281,7 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('--sha256');
     expect(workflow).toContain('SHA256_NAME');
     expect(workflow).toContain('${APK_NAME}.sha256');
-    expect(workflow).toMatch(/--sha256[\s\S]*Reject a debug-signed APK/);
+    expect(workflow).toMatch(/--sha256[\s\S]*Verify APK signature/);
     expect(workflow).toMatch(/attach_release == 'true'[\s\S]*SHA256_PATH[\s\S]*gh release upload/);
     expect(workflow).not.toMatch(/--sha256[\s\S]*attach_release == 'false'/);
   });
@@ -293,7 +293,7 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('VERSIONCODE_NAME');
     expect(workflow).toContain('ANDROID_VERSION_CODE');
     expect(workflow).toMatch(/Stage the APK[\s\S]*ANDROID_VERSION_CODE[\s\S]*SIGNED" == "true"[\s\S]*--sha256/);
-    expect(workflow).toMatch(/Reject a debug-signed APK[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
+    expect(workflow).toMatch(/Verify APK signature[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
     expect(workflow).toMatch(/apksigner verify --print-certs[\s\S]*actions\/upload-artifact/);
     expect(workflow).toMatch(/attach_release == 'true'[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
     expect(workflow).toContain('${APK_NAME}.versioncode.');
