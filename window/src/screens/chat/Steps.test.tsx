@@ -61,12 +61,28 @@ it("Regular, live with a working label: the label is the disclosure, and the cou
   expect(host.querySelectorAll('[data-testid="step"]')).toHaveLength(2);
 });
 
-it("Advanced, live: the working label does not replace the full live sentence", async () => {
+it("Advanced, live: the app in plain words and the count, never a tool's name", async () => {
   localStorage.setItem("branch.level", "advanced");
-  await act(async () => root.render(<StepsList steps={fresh([steps[0], { ...steps[1], status: "running", detail: "" }])} live mode="normal" working="Working in GitHub" />));
+  await act(async () => root.render(<StepsList steps={fresh([steps[0], { ...steps[1], status: "running", detail: "" }])} live mode="normal" />));
+  const summary = host.querySelector('[data-testid="steps"] summary')!;
+  expect(summary.querySelector(".r1c-steps-text")!.textContent).toBe("Working on your computer · 2 steps so far");
+  expect(summary.textContent).not.toContain("Running a command");
+});
+
+it("Advanced, live with a connected tool: its app, with no tool id", async () => {
+  localStorage.setItem("branch.level", "advanced");
+  const github: Step[] = [{ kind: "step", key: "g1", tool: "mcp__plugin_github_github__list_pull_requests", title: "", detail: "", status: "running" }];
+  await act(async () => root.render(<StepsList steps={fresh(github)} live mode="normal" />));
   const text = host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent!;
-  expect(text).not.toBe("Working in GitHub");
-  expect(text.length).toBeGreaterThan(0);
+  expect(text).toBe("Working in GitHub · 1 step so far");
+  expect(text).not.toContain("mcp__");
+  expect(text).not.toContain("list pull requests");
+});
+
+it("Technical, live: the step words stay as they were", async () => {
+  localStorage.setItem("branch.level", "technical");
+  await act(async () => root.render(<StepsList steps={fresh([steps[0], { ...steps[1], status: "running", detail: "" }])} live mode="normal" />));
+  expect(host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent).toBe("Running a command…");
 });
 
 it("Regular: the finished steps are one quiet count, and the list still opens", async () => {
