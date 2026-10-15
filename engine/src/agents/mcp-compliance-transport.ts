@@ -1,5 +1,5 @@
-/** Adapted from google-gemini/gemini-cli@c6bccb7ecbf6d8368d995455dd725ed34466faad,
- * packages/core/src/tools/mcp-compliance-transport.ts. */
+// Copyright 2025 Google LLC
+// SPDX-License-Identifier: Apache-2.0
 import type {
   Transport,
   TransportSendOptions,

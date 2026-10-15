@@ -1,0 +1,1 @@
+window:src/screens/onboarding/Onboarding.test.tsx

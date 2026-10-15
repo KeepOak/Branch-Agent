@@ -85,3 +85,49 @@
 .ov-pick:hover, .ov-pick[aria-pressed="true"] { background:var(--fill); }
 .ov-pick small { color:var(--ink-3); }
 .ov-badges { display:flex; gap:8px; flex-wrap:wrap; min-height:28px; } /* the artifact's badge strip; empty until the engine reports milestones */
+
+.ov-mate { display:flex; align-items:center; gap:10px; padding:6px 0; flex-wrap:wrap; }
+.ov-mate + .ov-mate { border-top:1px solid var(--hair17); }
+.ov-mate small { font-size:12.5px; color:var(--ink-3); }
+.ov-mate .ov-mate-on { color:var(--ok); }
+.ov-mate .ov-grow { gap:2px; }
+
+/* Overview as approved (item 34a): hero composer, range and account chips, reorderable widget cards. */
+.p34-place { display: flex; flex-direction: column; gap: 14px; }
+.p34-hero { display: flex; flex-direction: column; gap: 6px; }
+.p34-ask { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 16px; border-radius: var(--r-composer, 22px); border: 1px solid var(--line); background: color-mix(in srgb, var(--raise) 82%, transparent); }
+.p34-ask .inp { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; color: var(--ink); outline: none; }
+.p34-send { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--btn); color: var(--on-btn); cursor: pointer; }
+.p34-send:disabled { opacity: .45; cursor: default; }
+.p34-flip { display: inline-flex; transform: rotate(180deg); }
+.p34-to { margin: 0 6px; font-size: 13px; color: var(--ink-3); }
+.p34-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.p34-head h1 { margin: 0; font-size: 24px; }
+.p34-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--fill); }
+.p34-seg button { border: 0; border-radius: 999px; padding: 4px 11px; background: transparent; color: var(--ink-2); font: 500 13px var(--sans); cursor: pointer; }
+.p34-seg button[aria-pressed="true"] { background: var(--raise); color: var(--ink); }
+.p34-src { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.p34-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.p34-chips button { border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; background: transparent; color: var(--ink-2); font: 500 13px var(--sans); cursor: pointer; }
+.p34-chips button[aria-pressed="true"] { background: var(--fill-2); color: var(--ink); }
+.p34-add { position: relative; }
+.p34-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 230px; display: flex; flex-direction: column; padding: 6px; border-radius: 14px; border: 1px solid var(--line); background: var(--raise); box-shadow: var(--ov-pop-sh); }
+.p34-pop button { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--ink); font: 500 13.5px var(--sans); text-align: left; cursor: pointer; }
+.p34-pop button:hover { background: var(--fill); }
+.p34-state { font-size: 12px; color: var(--ink-3); }
+.p34-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 14px; align-items: start; }
+.p34-w { min-width: 0; padding: 14px; border-radius: 20px; }
+.p34-w-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; min-width: 0; }
+.p34-w-head b { font-weight: 600; font-size: 14px; }
+.p34-w-head small { font-size: 12px; color: var(--ink-3); }
+.p34-grow { flex: 1; }
+.p34-w-btns { display: inline-flex; gap: 2px; }
+.p34-leaf { display: inline-grid; place-items: center; width: 26px; height: 26px; flex: none; }
+.p34-coming, .p34-unlinked { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; font-size: 13.5px; }
+.p34-coming p, .p34-unlinked p { margin: 0; color: var(--ink-2); }
+.p34-link { padding: 0; border: 0; background: none; color: var(--accent); font: 500 13px var(--sans); white-space: nowrap; cursor: pointer; }
+.p34-old .ov-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 900px) { .p34-old .ov-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.p34-chip { flex: none; padding: 4px 10px; border-radius: 999px; background: var(--fill); color: var(--ink-2); font: 500 12.5px var(--sans); white-space: nowrap; }
+.p34-bg-row { display: flex; justify-content: flex-end; }
+.p34-bg { padding: 4px 10px; border: 0; background: none; color: var(--ink-3); font: 500 12.5px var(--sans); cursor: default; }

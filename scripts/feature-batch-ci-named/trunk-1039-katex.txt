@@ -1,0 +1,1 @@
+window:src/thread/math-katex.test.tsx

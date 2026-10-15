@@ -18,9 +18,9 @@ import {
 import { resolveBranchStateSqlitePath } from "../state/branch-state-db.paths.js";
 import { createBranchTestState } from "../test-utils/branch-test-state.js";
 import { getFreePort } from "../test-utils/ports.js";
-import { prepareGatewayKernel } from "./server-kernel.js";
 import * as lazyCron from "./server-cron-lazy.js";
 import { GatewayHandoffFatalError } from "./server-handoff-error.js";
+import { prepareGatewayKernel } from "./server-kernel.js";
 import * as runShutdown from "./server-run-shutdown.js";
 import * as stateRuntime from "./server-runtime-state-prepare.js";
 import { startGatewayServerCore } from "./server-start.js";
@@ -219,7 +219,84 @@ describe("Gateway startup phases", () => {
     });
   });
 
-  it("fails a stuck receipt drain within the whole deactivation deadline", async () => {
+  it("aborts the handoff and keeps serving when a slow receipt drain overruns the deadline (#481)", async () => {
+    await withPhaseState("gateway-phase-deactivate-overrun", async (port) => {
+      const release = vi.fn(async () => {});
+      const server = await startGatewayServerCore(port, {
+        ...options("gateway-phase-deactivate-overrun-token"),
+        gatewayStateOwner: { assertDatabaseAccess: () => {}, release },
+      });
+      const previousDeadline = process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS;
+      process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS = "18000";
+      try {
+        await server.startupSettled;
+        // A loaded host: the receipt drain takes 25 s against an 18 s deadline, then finishes.
+        vi.spyOn(cronAuthority, "drainCronReceiptAuthority").mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              setTimeout(resolve, 25_000);
+            }),
+        );
+        vi.useFakeTimers();
+        const outcome = server.deactivate().then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        await vi.advanceTimersByTimeAsync(30_000);
+        const error = await outcome;
+        expect(String(error)).toContain("the handoff was aborted and this engine keeps serving");
+        expect(error).not.toBeInstanceOf(GatewayHandoffFatalError);
+        expect(release).not.toHaveBeenCalled();
+        expect(isGatewayWorkAdmissionClosed()).toBe(false);
+      } finally {
+        if (previousDeadline === undefined) {
+          delete process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS;
+        } else {
+          process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS = previousDeadline;
+        }
+        vi.useRealTimers();
+        await server.close({ reason: "deactivation overrun test cleanup" });
+      }
+    });
+  });
+
+  it("accepts a state-lease release that finishes late instead of exiting (#481)", async () => {
+    await withPhaseState("gateway-phase-late-release", async (port) => {
+      const release = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, 25_000);
+          }),
+      );
+      const server = await startGatewayServerCore(port, {
+        ...options("gateway-phase-late-release-token"),
+        gatewayStateOwner: { assertDatabaseAccess: () => {}, release },
+      });
+      const previousDeadline = process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS;
+      process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS = "18000";
+      try {
+        await server.startupSettled;
+        vi.useFakeTimers();
+        const outcome = server.deactivate().then(
+          () => "released",
+          (error: unknown) => error,
+        );
+        await vi.advanceTimersByTimeAsync(30_000);
+        await expect(outcome).resolves.toBe("released");
+        expect(release).toHaveBeenCalledOnce();
+      } finally {
+        if (previousDeadline === undefined) {
+          delete process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS;
+        } else {
+          process.env.BRANCH_GATEWAY_HANDOFF_DEADLINE_MS = previousDeadline;
+        }
+        vi.useRealTimers();
+        await server.close({ reason: "late release test cleanup" });
+      }
+    });
+  });
+
+  it("fails a receipt drain that never settles after the deactivation deadline", async () => {
     await withPhaseState("gateway-phase-deactivate-deadline", async (port) => {
       const release = vi.fn(async () => {});
       const server = await startGatewayServerCore(port, {
@@ -233,10 +310,9 @@ describe("Gateway startup phases", () => {
         );
         vi.useFakeTimers();
         const deactivation = server.deactivate();
-        const rejection = expect(deactivation).rejects.toThrow(
-          "Gateway handoff deactivation exceeded 18 seconds",
-        );
-        await vi.advanceTimersByTimeAsync(18_000);
+        const rejection = expect(deactivation).rejects.toThrow("but its step never settled");
+        // The deadline (at most 45 s), then as long again for the late step to settle.
+        await vi.advanceTimersByTimeAsync(90_000);
         await rejection;
         expect(release).not.toHaveBeenCalled();
         expect(isGatewayWorkAdmissionClosed()).toBe(true);
@@ -249,20 +325,25 @@ describe("Gateway startup phases", () => {
 
   it("does not reopen admission when failed handoff restoration exceeds the deadline", async () => {
     await withPhaseState("gateway-phase-restore-deadline", async (port) => {
-      const server = await startGatewayServerCore(port, options("gateway-phase-restore-deadline-token"));
+      const server = await startGatewayServerCore(
+        port,
+        options("gateway-phase-restore-deadline-token"),
+      );
       try {
         await server.startupSettled;
         vi.spyOn(cronAuthority, "drainCronReceiptAuthority").mockRejectedValueOnce(
           new Error("receipt drain failed"),
         );
-        vi.spyOn(cronAuthority, "resumeCronReceiptAuthorityHostAfterFailedHandoff")
-          .mockImplementationOnce(() => new Promise(() => {}));
+        vi.spyOn(
+          cronAuthority,
+          "resumeCronReceiptAuthorityHostAfterFailedHandoff",
+        ).mockImplementationOnce(() => new Promise(() => {}));
         vi.useFakeTimers();
         const deactivation = server.deactivate();
         const rejection = expect(deactivation).rejects.toThrow(
-          "Gateway handoff deactivation exceeded 18 seconds",
+          "Gateway handoff restoration failed",
         );
-        await vi.advanceTimersByTimeAsync(18_000);
+        await vi.advanceTimersByTimeAsync(45_000);
         await rejection;
         expect(isGatewayWorkAdmissionClosed()).toBe(true);
       } finally {
@@ -274,14 +355,19 @@ describe("Gateway startup phases", () => {
 
   it("keeps admission fenced when handoff restoration fails", async () => {
     await withPhaseState("gateway-phase-restore-fails", async (port) => {
-      const server = await startGatewayServerCore(port, options("gateway-phase-restore-fails-token"));
+      const server = await startGatewayServerCore(
+        port,
+        options("gateway-phase-restore-fails-token"),
+      );
       try {
         await server.startupSettled;
         vi.spyOn(cronAuthority, "drainCronReceiptAuthority").mockRejectedValueOnce(
           new Error("receipt drain failed"),
         );
-        vi.spyOn(cronAuthority, "resumeCronReceiptAuthorityHostAfterFailedHandoff")
-          .mockRejectedValueOnce(new Error("receipt restore failed"));
+        vi.spyOn(
+          cronAuthority,
+          "resumeCronReceiptAuthorityHostAfterFailedHandoff",
+        ).mockRejectedValueOnce(new Error("receipt restore failed"));
         await expect(server.deactivate()).rejects.toBeInstanceOf(GatewayHandoffFatalError);
         expect(isGatewayWorkAdmissionClosed()).toBe(true);
       } finally {

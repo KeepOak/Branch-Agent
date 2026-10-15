@@ -1,5 +1,4 @@
-/** Rendering copied from OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f
- * src/utils/transcript-export/index.ts; native entry adaptation is separate. */
+/** Native entry adaptation is separate. */
 import type { TranscriptEntry, TranscriptExportOptions } from "./resume-transcript-entries.js";
 function markdownFence(value: string, language: string): string {
   const longest = Math.max(0, ...Array.from(value.matchAll(/`+/g), (match) => match[0].length));

@@ -37,6 +37,16 @@ const READY = { sentinel: null, updateAvailable: { currentVersion: "1.0.0", late
 const RUNNING = { sessions: [{ key: "agent:main:a", agentId: "main", hasActiveRun: true, activeRunIds: ["r1"] }, { key: "agent:main:b", agentId: "main", hasActiveRun: false }] };
 
 describe("Settings › Updates & about", () => {
+  it("shows the browser search address, with its host and port, only at Technical", async () => {
+    const { engine } = engineWith({ "update.status": READY });
+    const withAddress = { ...engine, gatewayUrl: "ws://127.0.0.1:19031" } as WindowEngine;
+    await show("updates", withAddress, "advanced");
+    expect(document.body.textContent).toContain("Search with Branch from your browser");
+    expect(document.body.textContent).not.toContain("127.0.0.1:19031/?q=%s");
+    await show("updates", withAddress, "technical");
+    expect(document.body.textContent).toContain("http://127.0.0.1:19031/?q=%s");
+  });
+
   it("keeps build detail out of failed update copy", async () => {
     const { engine } = engineWith({ "update.status": { ...READY, lastRun: { status: "failed", reason: "Install stopped.", updatedAtMs: Date.now() } } });
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, text: async () => "1.2.3-build-abcd1234" })));

@@ -9,6 +9,7 @@ import { Icon } from "../../shell/icons";
 const NAMES = ["Ash", "Elm", "Hazel", "Rowan", "Alder", "Willow", "Linden", "Birch", "Juniper", "Cedar"];
 export type TrunkChoice = { name: string; avatar: string };
 
+/** A random unused name and look for a new Trunk (the dialog and R1's random character use the same choice). */
 export function nextTrunkChoice(roster: Roster, previous?: TrunkChoice, fixedName?: string): TrunkChoice {
   const used = new Set(roster.agents.map((row) => row.name.toLowerCase()));
   const names = NAMES.filter((name) => !used.has(name.toLowerCase()) && name !== previous?.name);

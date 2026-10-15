@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { smokeProductionEngine } from "./production-engine-smoke.mjs";
+import { shutdown, smokeProductionEngine } from "./production-engine-smoke.mjs";
 
 const commit = "a".repeat(40);
 async function fixture(mode, body) {
@@ -67,3 +67,15 @@ for (const [mode, message] of [["exit", /exited before/], ["stall", /readiness d
 }
 test("production smoke rejects a different packaged source before starting a child", () => fixture("success", root => assert.rejects(
   smokeProductionEngine(root, process.execPath, "b".repeat(40), { min: 4, max: 4 }), /source identity mismatch/)));
+
+test("Windows shutdown treats a taskkill race as success once the child is gone", async () => {
+  const child = { pid: 4242, exitCode: null, signalCode: null };
+  const terminate = () => { setTimeout(() => { child.exitCode = 1; }, 20); throw Object.assign(new Error("Command failed: taskkill /PID 4242 /T /F"), { status: 255 }); };
+  await shutdown(child, { platform: "win32", terminate, waitMs: 500 });
+  assert.equal(child.exitCode, 1);
+});
+test("Windows shutdown still fails when the child survives a failed taskkill", async () => {
+  const child = { pid: 4243, exitCode: null, signalCode: null };
+  const terminate = () => { throw Object.assign(new Error("Command failed: taskkill /PID 4243 /T /F"), { status: 255 }); };
+  await assert.rejects(shutdown(child, { platform: "win32", terminate, waitMs: 100 }), /survived shutdown \(terminate failed: Command failed: taskkill/);
+});

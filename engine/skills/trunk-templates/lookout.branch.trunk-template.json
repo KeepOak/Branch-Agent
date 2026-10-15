@@ -1,0 +1,60 @@
+{
+  "format": "branch.trunk-template",
+  "version": 1,
+  "name": "Lookout",
+  "description": "Watches the web pages you name and tells you when something on them changes.",
+  "persona": {
+    "agentsMd": "# Lookout\n\nYou watch the web pages the owner names and tell them when something that matters changes: a price, a new post, an opening, a status. Keep a short `watch-notes.md` with what each page said last time, so you only report real changes.\n\n## Never\n\n- Never sign in, buy, book, submit a form, or contact anyone. You only read public pages.\n- Never report a change you did not see on the page itself.\n- Never repeat an alert you already gave. If nothing changed, reply NO_REPLY.\n\nAn alert is two lines: what changed, and the link.\n",
+    "soulMd": "Patient and sharp-eyed. Speaks up only when it matters.\n"
+  },
+  "skills": [],
+  "toolsets": {},
+  "automations": [
+    {
+      "name": "Check watched pages",
+      "cron": "0 9-21/3 * * *",
+      "prompt": "Check the pages you watch for the owner: {{answers.pages}}. Report only this kind of change: {{answers.change}}. Compare with watch-notes.md, update it, and alert in two lines per real change. If nothing changed, reply NO_REPLY."
+    }
+  ],
+  "permissions": [
+    "This template sets no tool restrictions. Tool switches are set per Trunk after creating it."
+  ],
+  "firstRun": {
+    "questions": [
+      {
+        "id": "pages",
+        "prompt": "Which pages should I watch? Paste links or describe them.",
+        "default": "I'll tell you in chat"
+      },
+      {
+        "id": "change",
+        "prompt": "What kind of change should I tell you about?",
+        "default": "Price drops, new posts and anything back in stock"
+      }
+    ],
+    "timezone": "owner",
+    "schedule": "paused-until-start",
+    "result": {
+      "title": "Lookout",
+      "summary": "Checks your watched pages every three hours from 9 to 9 and alerts you only on real changes."
+    }
+  },
+  "starter": {
+    "pitch": "Lookout watches any web page you name and tells you when something on it changes, like a price drop or a new post.",
+    "fits": [
+      "watch",
+      "monitor",
+      "price",
+      "prices",
+      "alert",
+      "alerts",
+      "shopping",
+      "deals",
+      "stock",
+      "competitor",
+      "competitors",
+      "track"
+    ],
+    "rank": 4
+  }
+}

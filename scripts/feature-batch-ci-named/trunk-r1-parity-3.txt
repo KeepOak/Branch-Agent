@@ -1,0 +1,2 @@
+window:src/screens/frame/R1Window.helpers.test.tsx
+window:src/screens/helpers/R1HelpersPanel.test.tsx
