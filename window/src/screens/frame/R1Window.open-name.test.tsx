@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SaplingSession } from "../../connect/session";
 import { R1Window } from "./R1Window";
-vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <p data-testid="chat">{name}</p> }));
+vi.mock("../chat/ChatView", () => ({ ChatView: ({ name, history }: { name: string; history: { text?: string }[] }) => <><p data-testid="chat">{name}</p>{history.map((block, i) => <p key={i} data-testid="history-line">{block.text}</p>)}</> }));
 vi.mock("../composer/Composer", () => ({ Composer: ({ name }: { name: string }) => <textarea aria-label={`Message ${name}`} /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
@@ -39,9 +39,9 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 
 /** A connected session whose open conversation changes on open(), as the real one does. Its own name is the default Trunk's. */
-function liveSession(sessionKey: string, initial: unknown[] = []) {
+function liveSession(sessionKey: string, initial: unknown[] = [], history: unknown[] = []) {
   let topics = initial;
-  let snapshot = { status: { phase: "connected" }, name: "Juniper", sessionKey, mainKey: "agent:juniper:main", history: [], live: [], queued: [], liveRunId: null, doneAt: null, lastActivityAt: null };
+  let snapshot = { status: { phase: "connected" }, name: "Juniper", sessionKey, mainKey: "agent:juniper:main", history, live: [], queued: [], liveRunId: null, doneAt: null, lastActivityAt: null };
   const listeners = new Set<() => void>();
   const request = vi.fn(async (method: string) => (method === "contacts.topics" ? { topics } : {}));
   const engine = { agentId: "juniper", sessionKey, scopes: ["operator.admin"], features: { methods: ["agent.identity.get"], events: [] }, request, onEvent: () => () => undefined };
@@ -101,6 +101,18 @@ it("opens a grafted agent with no conversation as its own empty state: no defaul
   expect(host.querySelector('[data-testid="grafted-empty"] [data-testid="face"]')).toBeNull();
   expect(title()).toBe("Claude Code");
   expect(sidebar.props!.currentKey).toBe("a2a:claude-code");
+});
+
+it("replaces the conversation that was open with the grafted agent's empty state, and keeps none of its thread", async () => {
+  const previous = [{ kind: "text", key: "r:1", text: "A reply in the default Trunk's thread", streaming: false }];
+  const { session } = liveSession("agent:juniper:main", [], previous);
+  await act(async () => root.render(<R1Window session={session} />));
+  expect(host.querySelector('[data-testid="history-line"]')?.textContent).toBe("A reply in the default Trunk's thread");
+  await act(async () => sidebar.props!.onOpen("a2a:claude-code"));
+  expect(host.querySelector('[data-testid="grafted-empty"]')?.textContent).toContain("No conversation with Claude Code yet.");
+  expect(host.textContent).not.toContain("A reply in the default Trunk's thread");
+  expect(host.querySelector('[data-testid="history-line"]')).toBeNull();
+  expect(composer()).toBeNull();
 });
 
 it("opens a grafted agent's first conversation as soon as it starts", async () => {
