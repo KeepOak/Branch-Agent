@@ -2,9 +2,10 @@
 // running tasks, or stopping them first), the update schedule in config `update.*`, history from update.runs.*,
 // failure reports through update.report, and the parts that only the Branch app can do, greyed with why.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, useHeadless, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
 import { CallLine, CodeRow, Kv, Tile, day, lvOf, openPlace, rec, str, useCall, useLive, when, type RecordValue } from "./common";
@@ -13,6 +14,8 @@ import { componentDesktop } from "../../../connect/desktop-component-updates";
 import { DesktopUpdatesPage } from "./desktop-updates";
 import { useBranchVersion, versionParts } from "../../../connect/branch-version";
 import { KeeperMark } from "../../../brand/KeeperMark";
+import { WhatsNewRow } from "./whats-new-row";
+import { showsInternals, versionLabel } from "../internals";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -46,10 +49,40 @@ export const ROWS: RowEntry[] = [
   ["Update status for scripts", "Help and updates, more", 2],
 ].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), group: ({ "In your editors and notes": "Branch on your other devices", "Help and updates, more": "Updating", Technical: "Updating" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
-type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => void };
+type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => Promise<boolean> };
 
 export function UpdatesPage(props: SettingsPageProps) {
   return componentDesktop(props.engine.gatewayUrl) ? <DesktopUpdatesPage {...props} /> : <GatewayUpdatesPage {...props} />;
+}
+
+/** One card's worth of the page, for the R1 Updates & about page (screens/settings/pages/updates.ts). In the Branch app
+ *  the Updating card is the app's own updater. */
+export function UpdatesBlock(props: SettingsPageProps & { part: "updating" | "devices" | "before" | "reports" | "editors" | "about" | "privacy" | "remove" }) {
+  const { part } = props;
+  if (part === "devices") return <Devices lv={lvOf(props.level)} />;
+  if (part === "before") return <BeforeInstall />;
+  if (part === "reports") return <Reports />;
+  if (part === "editors") return <Editors gatewayUrl={props.engine.gatewayUrl} technical={showsInternals(props.level)} />;
+  if (part === "about") return <About />;
+  if (part === "privacy") return <Privacy openSettings={props.openSettings} />;
+  if (part === "remove") return <RemoveBranch />;
+  return componentDesktop(props.engine.gatewayUrl) ? <DesktopUpdatesPage {...props} /> : <GatewayUpdating {...props} />;
+}
+
+function GatewayUpdating(props: SettingsPageProps) {
+  const status = useLive<RecordValue>(props.engine, "update.status", {}, UPDATE_EVENTS);
+  const info = useLive<RecordValue>(props.engine, "status", {}, []);
+  const sys = useLive<RecordValue>(props.engine, "system.info", {}, []);
+  const version = useBranchVersion(props.engine.gatewayUrl);
+  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => status.reload() };
+  return <>
+    {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
+    {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
+    {status.data ? <Waiting {...props} data={data} version={version} /> : null}
+    {status.data ? <Updating {...props} data={data} /> : null}
+    {lvOf(props.level) >= 1 ? <HelpMore {...props} data={data} version={version} /> : null}
+    {lvOf(props.level) >= 2 ? <Technical data={data} version={version} /> : null}
+  </>;
 }
 
 function GatewayUpdatesPage(props: SettingsPageProps) {
@@ -59,11 +92,11 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
   const version = useBranchVersion(props.engine.gatewayUrl);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
   const lede = version ? `Branch ${versionParts(version).short}${os ? ` on ${os}` : ""}.` : props.title;
-  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
+  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => status.reload() };
   return (
     <Page title={props.title} lede={lede}>
-      {status.error ? <Status tone="bad" title="Branch couldn’t read its update status">{status.error}</Status> : null}
-      {status.loading && !status.data ? <Hint>Checking for updates…</Hint> : null}
+      {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
+      {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
       {status.data ? <Waiting {...props} data={data} version={version} /> : null}
       {status.data ? <Updating {...props} data={data} /> : null}
       <Devices lv={lvOf(props.level)} />
@@ -71,7 +104,7 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
       <RemoveBranch />
       <Reports />
       <BeforeInstall />
-      {lvOf(props.level) >= 1 ? <Editors gatewayUrl={props.engine.gatewayUrl} /> : null}
+      {lvOf(props.level) >= 1 ? <Editors gatewayUrl={props.engine.gatewayUrl} technical={showsInternals(props.level)} /> : null}
       <Privacy openSettings={props.openSettings} />
       {lvOf(props.level) >= 1 ? <HelpMore {...props} data={data} version={version} /> : null}
       {lvOf(props.level) >= 2 ? <Technical data={data} version={version} /> : null}
@@ -100,7 +133,7 @@ function useNow(on: boolean): number {
   return now;
 }
 
-function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; version: string }) {
+function Waiting({ engine, data, version, level }: SettingsPageProps & { data: Data; version: string }) {
   const [dialog, setDialog] = useState<"" | "notes" | "report">("");
   const call = useCall();
   const hold = useCall();
@@ -141,7 +174,7 @@ function Waiting({ engine, data, version }: SettingsPageProps & { data: Data; ve
       ) : latest ? (
         <Status title="A Branch update is ready">It waits for running tasks, up to the update deadline, and keeps a safety copy first.</Status>
       ) : (
-        <Status title="Branch is up to date.">{version ? `You have Branch ${versionParts(version).detail}.` : "You have the newest version."}</Status>
+        <Status title="Branch is up to date.">{version ? `You have Branch ${versionLabel(version, level)}.` : "You have the newest version."}</Status>
       )}
       {latest && !str(active.runId) ? (
         <Acts>
@@ -164,7 +197,7 @@ function NotesDialog({ available, version, onClose, onInstall }: { available: Re
   const behind = typeof available.commitsBehind === "number" ? available.commitsBehind : undefined;
   return (
     <Dialog title="What’s new" wide onClose={onClose} footer={<><Btn ghost disabled title={NO_SKIP}>Skip this version</Btn><Btn pri onClick={onInstall}>Install update</Btn></>}>
-      <p className="hint">{version ? `What this update changes from Branch ${versionParts(version).detail}.` : "What this Branch update changes."}</p>
+      <p className="hint">{version ? `What this update changes from Branch ${versionParts(version).short}.` : "What this Branch update changes."}</p>
       {commits.length ? (
         <div className="rows">{commits.map((c) => <Prow key={str(c.sha)} title={str(c.subject)} sub={str(c.sha).slice(0, 7)} />)}</div>
       ) : <p className="hint">The engine has no release notes for this version yet.</p>}
@@ -280,14 +313,16 @@ export function About() {
   return (
     <Sec title="About">
       <KeeperMark />
+      <WhatsNewRow />
       <Ctl title="Open-source licences" sub="The software Branch is built on, with each licence." off="The list comes with the Branch app on your computer."><Btn sm disabled>Show</Btn></Ctl>
+      <small className="about-credit">Based on OpenClaw</small>
     </Sec>
   );
 }
 
 const NOT_PUBLISHED = "The Branch add-on for it isn’t published yet.";
 /** In your editors and notes (Advanced): add-ons that aren't published yet, greyed with why. */
-function Editors({ gatewayUrl }: { gatewayUrl?: string }) {
+function Editors({ gatewayUrl, technical }: { gatewayUrl?: string; technical?: boolean }) {
   const origin = gatewayUrl ? gatewayUrl.replace(/^ws/, "http").replace(/\/+$/, "") : "";
   const rows: [string, string, string][] = [
     ["VS Code", "Marketplace", "Send the selection or files to a Trunk; Quick edit with Ctrl Shift I."],
@@ -299,17 +334,18 @@ function Editors({ gatewayUrl }: { gatewayUrl?: string }) {
     <Sec title="In your editors and notes" group="Branch on your other devices">
       {rows.map(([title, store, sub]) => <Ctl key={title} title={title} sub={sub} off={NOT_PUBLISHED}><Btn sm disabled>{store}</Btn></Ctl>)}
       <Ctl title="Folders to keep in sync" sub="Obsidian folders the Trunks read, refreshed as they change." off="Needs the Obsidian add-on."><input className="inp" aria-label="Folders to keep in sync" disabled /></Ctl>
-      <Ctl title="Search with Branch from your browser" sub="Add it as a search engine; what you type opens a new conversation." off="Opening a conversation from a browser search needs the Branch app."><code className="s2-code">{`${origin}/?q=%s`}</code></Ctl>
+      <Ctl title="Search with Branch from your browser" sub="Add it as a search engine; what you type opens a new conversation." off="Opening a conversation from a browser search needs the Branch app.">{technical ? <code className="s2-code">{`${origin}/?q=%s`}</code> : null}</Ctl>
       <Ctl title="Install from a terminal" off="The Branch installer isn’t published yet." />
     </Sec>
   );
 }
 
 function RemoveBranch() {
-  const parts: [string, string][] = [["The app", ""], ["Programs it downloaded to run models", ""], ["Models on this computer", ""], ["The Gateway’s Linux system (WSL)", "Its WSL system, disk image and start-up entry."]];
+  const headless = useHeadless();
+  const parts: [string, string][] = [["The app", ""], ["Programs it downloaded to run models", ""], ["Models on this computer", ""], ["Branch’s Linux system (WSL)", "Its WSL system, disk image and start-up entry."]];
   return (
-    <div className="sec s2-danger" data-sec="Remove Branch">
-      <h2>Remove Branch</h2>
+    <div className={headless ? "s2-danger" : "sec s2-danger"} data-sec="Remove Branch">
+      {headless ? null : <h2>Remove Branch</h2>}
       <div className="rows">
         {parts.map(([t, s]) => <Prow key={t} title={t} sub={s || undefined}><span className="s2-meta">Removed</span></Prow>)}
         <Ctl title="Keep my conversations and settings" sub="Branch finds them again if you install it later." off="The uninstaller asks."><Switch label="Keep my conversations and settings" checked onChange={() => undefined} /></Ctl>
@@ -379,6 +415,7 @@ function Privacy({ openSettings }: Pick<SettingsPageProps, "openSettings">) {
 
 /** Help and updates, more (Advanced): the last attempt, every update (update.runs.list) and the engine's version. */
 function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: Data; version: string }) {
+  const [checked, stamp] = useCheckedAt();
   const [history, setHistory] = useState(false);
   const last = rec(data.status.lastRun);
   const kind = str(rec(rec(data.status.schedule).install).kind);
@@ -399,7 +436,7 @@ function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: 
       <Ctl title="The engine" sub={version ? "The engine is installed and answering." : undefined}>
         <span className="val-k">{version ? `Installed ${version}` : ""}</span>
         <Btn sm disabled title={APP_ONLY}>Repair</Btn>
-        <Btn sm ghost onClick={data.reload}>Check again</Btn>
+        <Btn sm ghost onClick={() => void data.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</Btn><CheckedAt at={checked} />
       </Ctl>
       {lvOf(level) >= 2 ? <CodeRow title="Update status for scripts" code="branch update status --json" /> : null}
       {history ? <HistoryDialog engine={engine} onClose={() => setHistory(false)} /> : null}

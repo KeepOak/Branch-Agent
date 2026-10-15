@@ -14,11 +14,14 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { skipReason } from './denylist.mjs';
 import { chooseRegion, chooseScreenClicks } from './targets.mjs';
+import { isPlusMoreRow } from './plus-more.mjs';
 import { classifyClick, elementKey, isNoise } from './observe.mjs';
 import { inconsistentOpens, internalNameProblems, rowActionProblems } from './list-checks.mjs';
 import { compareBaseline, formatGate, normalizeBaseline } from './baseline.mjs';
 import { MAP_PATH, isInformationalStatus, isThreadLayoutMenu, previewDestinationMatches, readPreviewMap, threadLayoutDiff } from './preview-map.mjs';
 import { markdownReport } from './report.mjs';
+import { REQUEST_WAIT_CAP_MS, waitForPermissionRequests as waitForRequests } from './permission-wait.mjs';
+import { viteLaunch } from './vite-launch.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const windowDir = resolve(root, 'window');
@@ -30,12 +33,17 @@ const number = (name, fallback) => {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 };
 
+// R1 is the window every owner opens (the app default), so it is the default crawl and the CI gate. Classic is the
+// escape window: it is crawled only with BUTTON_CRAWL_WINDOW=classic, against its own baseline.
+const windowKind = process.env.BUTTON_CRAWL_WINDOW === 'classic' ? 'classic' : 'r1';
+// Classic keeps the caps its baseline was built from; R1 gets the larger catalog.
+const legacyCaps = windowKind === 'classic';
 const caps = {
-  maxScreens: number('BUTTON_CRAWL_MAX_SCREENS', 48),
-  maxPerScreen: number('BUTTON_CRAWL_MAX_PER_SCREEN', 28),
-  maxClicks: number('BUTTON_CRAWL_MAX_CLICKS', 800),
+  maxScreens: number('BUTTON_CRAWL_MAX_SCREENS', legacyCaps ? 48 : 150),
+  maxPerScreen: number('BUTTON_CRAWL_MAX_PER_SCREEN', legacyCaps ? 28 : 40),
+  maxClicks: number('BUTTON_CRAWL_MAX_CLICKS', legacyCaps ? 800 : 2400),
   maxDepth: number('BUTTON_CRAWL_MAX_DEPTH', 1),
-  maxOverlays: number('BUTTON_CRAWL_MAX_OVERLAYS', 8),
+  maxOverlays: number('BUTTON_CRAWL_MAX_OVERLAYS', legacyCaps ? 8 : 40),
   maxChrome: number('BUTTON_CRAWL_MAX_CHROME', 20),
   maxNav: number('BUTTON_CRAWL_MAX_NAV', 48),
   maxSidebar: number('BUTTON_CRAWL_MAX_SIDEBAR', 40),
@@ -44,11 +52,16 @@ const caps = {
 const port = number('BUTTON_CRAWL_PORT', 5653);
 let harnessUrl = '';
 const outDir = resolve(root, 'button-crawl-output');
-const baselinePath = resolve(root, 'scripts/button-crawl/baseline.json');
+const baselinePath = resolve(root, windowKind === 'classic' ? 'scripts/button-crawl/baseline-classic.json' : 'scripts/button-crawl/baseline.json');
+// A Settings page at Regular or Advanced is its own screen (the level changes which rows show); Technical keeps the
+// plain id, so the Technical keys of Classic and R1 read the same as before.
+const settingsId = (page, level) => (level === 'technical' ? `settings:${page}` : `settings:${page}@${level}`);
 const mapPath = process.env.BUTTON_CRAWL_MAP || resolve(root, MAP_PATH);
 
 function signature(surface) {
-  return [surface.route, surface.dialog, surface.menu, surface.panel, surface.toast, surface.mainText, surface.viewText, surface.control, surface.alert, surface.focus, surface.hash, surface.chrome, surface.historyMoves].join('\n');
+  // Every field classifyClick reads as a result must change the signature, or a click whose only result is that field
+  // waits out the full 450 ms and is then reported slow.
+  return [surface.route, surface.dialog, surface.menu, surface.panel, surface.toast, surface.mainText, surface.viewText, surface.control, surface.alert, surface.focus, surface.hash, surface.chrome, surface.historyMoves, surface.popups, surface.downloads, surface.configRevision, surface.overlay, surface.values, surface.frame].join('\n');
 }
 
 function add(found, key, problems) {
@@ -68,7 +81,8 @@ async function waitForUrl(url) {
 }
 
 function startVite() {
-  const child = spawn('pnpm', ['exec', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+  const launch = viteLaunch(['--host', '127.0.0.1', '--port', String(port), '--strictPort'], require);
+  const child = spawn(launch.command, launch.args, {
     cwd: windowDir,
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -88,8 +102,18 @@ function stopVite(child) {
   catch { child.kill('SIGTERM'); }
 }
 
+// Each screen starts from a page load. The app keeps module-level state (look prefs, banners, the trunk host) that a
+// remount does not reset, so one screen's clicks could change what the next screen shows. One reload per screen is
+// cheaper than one per click (about 0.75 s each, which would push a full run past the 15 minute CI cap).
+async function loadScreen(page) {
+  await page.goto(harnessUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.locator('[data-connection="ready"]').waitFor({ timeout: 30000 });
+}
+
 async function show(page, screen) {
-  await page.evaluate((route) => window.__crawl.mount(route), screen.route);
+  // A control can reload the harness page (the conversation menu's Reload). Wait until the harness is back.
+  await page.waitForFunction(() => Boolean(window.__crawl), null, { timeout: 60000 });
+  await page.evaluate((args) => window.__crawl.mount(args.route, args.level), { route: screen.route, level: screen.level || 'technical' });
   await page.locator('[data-connection="ready"]').waitFor({ timeout: 20000 });
   for (const step of screen.path || []) {
     const marked = await page.evaluate((target) => window.__crawl.mark(target.name, target.occurrence, target.region), step);
@@ -100,6 +124,25 @@ async function show(page, screen) {
   return true;
 }
 
+// A click can start a permission-style request (the microphone, a notification prompt). Its
+// result arrives after the click, so the click is classified once no such request is in flight.
+// A request still pending after the cap is classified as is, and the crawl says so.
+
+
+async function waitForPermissionRequests(page) {
+  return waitForRequests({
+    readPending: () => page.evaluate(() => window.__crawl.pendingPermissionRequests()),
+    frames: (count) => page.evaluate((n) => new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(0); } };
+      setTimeout(finish, 100 * n);
+      const step = (left) => (left === 0 ? finish() : requestAnimationFrame(() => step(left - 1)));
+      step(n);
+    }), count),
+    wait: (ms) => page.waitForTimeout(ms),
+  });
+}
+
 async function clickOne(page, errors, target) {
   const marked = await page.evaluate((el) => window.__crawl.mark(el.name, el.occurrence, el.region), target);
   if (!marked) return null;
@@ -108,8 +151,14 @@ async function clickOne(page, errors, target) {
   const started = Date.now();
   let after = before;
   let leftThePage = false;
+  let requestWait = { timedOut: false, pending: 0 };
+  let requestWaitMs = 0;
   try {
     await page.evaluate(() => window.__crawl.clickTarget());
+    const waitStart = Date.now();
+    requestWait = await waitForPermissionRequests(page);
+    requestWaitMs = Date.now() - waitStart;
+    if (requestWait.timedOut) process.stderr.write(`button-crawl: ${target.name} still had ${requestWait.pending} permission request(s) pending after ${REQUEST_WAIT_CAP_MS / 1000}s; classified as is\n`);
     for (;;) {
       after = await page.evaluate(() => window.__crawl.surface());
       if (signature(after) !== signature(before) || Date.now() - started > 450) break;
@@ -120,11 +169,12 @@ async function clickOne(page, errors, target) {
     leftThePage = true;
     after = { ...before, route: `${before.route || ''}#left` };
   }
-  const elapsedMs = Date.now() - started;
+  // The wait for a permission prompt is not UI latency, so it is left out of the elapsed time.
+  const elapsedMs = Date.now() - started - requestWaitMs;
   if (leftThePage && harnessUrl) await page.goto(harnessUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => undefined);
   const consoleErrors = leftThePage ? [] : errors.slice(errorFrom).filter((line) => !isNoise(line));
   const failedCalls = (after.requests || []).slice(before.requestCount || 0).filter((call) => call && call.ok === false);
-  return { before, after, elapsedMs, consoleErrors, failedCalls, ...classifyClick({ before, after, elapsedMs, consoleErrors, failedCalls }) };
+  return { before, after, elapsedMs, consoleErrors, failedCalls, requestTimedOut: requestWait.timedOut, ...classifyClick({ before, after, elapsedMs, consoleErrors, failedCalls }) };
 }
 
 async function main() {
@@ -142,7 +192,7 @@ async function main() {
   const ownServer = !process.env.BUTTON_CRAWL_URL;
   const vite = ownServer ? startVite() : null;
   const base = process.env.BUTTON_CRAWL_URL || `http://127.0.0.1:${port}`;
-  harnessUrl = `${base}/scripts/button-crawl-harness.html`;
+  harnessUrl = `${base}/scripts/button-crawl-harness.html?window=${windowKind}`;
   const errors = [];
   let browser;
   try {
@@ -151,17 +201,18 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
     page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
     page.on('pageerror', (error) => errors.push(String(error)));
-    await page.goto(`${base}/scripts/button-crawl-harness.html`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto(harnessUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.locator('[data-connection="ready"]').waitFor({ timeout: 30000 });
     const catalog = await page.evaluate(() => window.__crawl.catalog());
     const queue = [];
     for (const session of catalog.sessions) queue.push({ id: `chat:${session.key}`, route: { kind: 'chat', key: session.key }, depth: 0, path: [], listCheck: queue.length === 0 });
     for (const place of catalog.places) queue.push({ id: `place:${place}`, route: { kind: 'place', place }, depth: 0, path: [] });
-    for (const settingsPage of catalog.settings) queue.push({ id: `settings:${settingsPage}`, route: { kind: 'settings', page: settingsPage }, depth: 0, path: [] });
+    for (const entry of catalog.settings) queue.push({ id: settingsId(entry.page, entry.level), route: { kind: 'settings', page: entry.page }, level: entry.level, depth: 0, path: [] });
     const found = {};
     const checks = [];
     const clicks = [];
     const skipped = [];
+    const truncated = [];
     let clickCount = 0;
     let overlays = 0;
     let screenCount = 0;
@@ -172,6 +223,7 @@ async function main() {
       const screen = queue.shift();
       screenCount += 1;
       const errorFrom = errors.length;
+      await loadScreen(page).catch((error) => errors.push(String(error)));
       const opened = await show(page, screen).catch((error) => {
         errors.push(String(error));
         return false;
@@ -226,6 +278,8 @@ async function main() {
       const ordered = thread ? [thread, ...wanted.filter((el) => el !== thread)] : wanted;
       const room = Math.min(caps.maxPerScreen, Math.max(0, caps.maxClicks - clickCount));
       const chosen = ordered.slice(0, room);
+      // Controls over the per-screen cap are not clicked: the report names them, so no coverage is dropped silently.
+      if (ordered.length > chosen.length) truncated.push({ screen: screen.id, notClicked: ordered.slice(chosen.length).map((el) => el.name) });
       const shared = [];
       if (screen.depth === 0 && chromeNames.size < caps.maxChrome) {
         const fresh = chooseRegion(elements, 'chrome', {
@@ -275,6 +329,14 @@ async function main() {
         if (!threadMenu && isThreadLayoutMenu(result.after.menu, el.name)) {
           threadMenu = { items: result.after.menuItems || [], ...threadLayoutDiff(result.after.menuItems || []) };
         }
+        if (isPlusMoreRow(el, screen)) {
+          queue.push({
+            id: `${screen.id} > ${el.name}`,
+            route: screen.route,
+            depth: screen.depth + 1,
+            path: [...(screen.path || []), { name: el.name, occurrence: el.occurrence, region: el.region }],
+          });
+        }
         const menuOpened = Boolean(result.after.menu) && result.after.menu !== result.before.menu;
         const dialogOpened = Boolean(result.after.dialog) && result.after.dialog !== result.before.dialog;
         const hasMenuItems = (result.after.menuItems || []).length > 0;
@@ -292,12 +354,17 @@ async function main() {
     }
     const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
     const gate = compareBaseline({ baseline: baseline.problems || {}, found, checks });
+    // Screens still queued when the screen cap was reached were never opened: that is missing coverage, not a pass.
+    if (queue.length) gate.unvisited = queue.map((item) => item.id);
+    if (queue.length) gate.ok = false;
     const report = {
       runtimeMs: Date.now() - startedAt,
       caps,
       screenCount,
       clickCount,
+      unvisitedScreens: queue.map((item) => item.id),
       skipped,
+      truncated,
       gated: normalizeBaseline(found),
       gate,
       clicks,
@@ -318,6 +385,7 @@ async function main() {
       console.log(`wrote ${baselinePath}`);
     }
     const lines = formatGate(gate);
+    for (const id of gate.unvisited || []) lines.push(`Screen not crawled (screen cap reached): ${id}`);
     console.log(markdownReport(report));
     if (!gate.ok && process.env.BUTTON_CRAWL_WRITE_BASELINE !== '1') {
       console.error(lines.join('\n'));

@@ -15,7 +15,7 @@ import { accountName, type Account } from "../places/settings/set1/accounts";
 import { shows, useLevel } from "../places-nav/level";
 import type { WindowEngine } from "./engine";
 import { NOT_ON_PLAN, offPlan, planOrder, runsOnCodex, useCodexPlan } from "./codex-plan";
-import { currentModelAccount, useModelAccounts } from "./useModelAccount";
+import { useModelAccounts } from "./useModelAccount";
 
 type Props = {
   embedded?: boolean;
@@ -40,21 +40,20 @@ type Props = {
   trunkId?: string;
 };
 
-const NO_PICK_ACCOUNT = "Picking one account for a single conversation isn't in the engine yet. Change the order in Accounts.";
 
 const accountsFor = (all: Account[], provider: string | undefined) => (provider ? all.filter((a) => a.p.provider === provider || a.p.authProvider === provider) : []);
 const UNAVAILABLE_LABELS: Record<AvailabilityReason, string> = {
-  "missing-auth": "sign-in needed", "auth-failed": "sign-in needs attention",
-  cooldown: "resting after a limit", "unsupported-runtime": "runtime unavailable",
+  "missing-auth": "Sign-in needed", "auth-failed": "Sign-in needs attention",
+  cooldown: "Resting after a limit", "unsupported-runtime": "Runtime unavailable",
 };
 
-/** The line under a model: its selected account by name, else its service. */
-function modelLine(m: ModelChoice, all: Account[], row: Rec): string {
+/** The line under a model. A usable model shows nothing here: its account is named once, in the footer and the Account
+ *  group, and its service heads the group. Only a problem (local hardware, or a sign-in or limit) gets a line. */
+export function modelLine(m: ModelChoice): string | undefined {
   if (m.local) return accountLine(m);
-  const first = currentModelAccount(all, m.provider, row);
-  const line = first ? accountName(first) : brandName(m.provider);
+  if (m.available) return undefined;
   const reason = m.runtimeMetadata?.unavailableReason;
-  return m.available ? line : `${line} · ${reason ? UNAVAILABLE_LABELS[reason] : "unavailable"}`;
+  return reason ? UNAVAILABLE_LABELS[reason] : "Unavailable";
 }
 
 const SPEEDS = [
@@ -137,7 +136,7 @@ export function ModelMenu(p: Props) {
                   tick
                   lead={<Logo id={m.provider} size={22} />}
                   label={<span className="c-modelname">{m.name}{m.supportsTools ? null : <span className="c-pill" title="It can chat, but it can't use tools. Pick another model for files, commands, the web or media.">Chat only</span>}</span>}
-                  sub={modelLine(m, allAccounts, p.row)}
+                  sub={modelLine(m)}
                   checked={m.ref === p.currentRef}
                   disabled={locked || off}
                   reason={off ? NOT_ON_PLAN : undefined}
@@ -165,9 +164,6 @@ export function ModelMenu(p: Props) {
             <Sep />
             <Head>Account</Head>
             <MenuItem label="Automatic" sub="Branch picks, and moves on when one runs low" checked />
-            {accounts.map((a) => (
-              <MenuItem key={a.a.profileId} label={accountName(a)} disabled reason={NO_PICK_ACCOUNT} />
-            ))}
             <LinkRow icon="users" label="Manage accounts…" target="settings/accounts" onOpen={p.onOpen} open={open} />
           </>
         ) : null}
@@ -178,7 +174,6 @@ export function ModelMenu(p: Props) {
           Thinking options depend on the model.
           {accounts.length > 1 ? ` When ${accountName(accounts[0])} runs out, Branch moves to ${accountName(accounts[1])}.` : ""}
         </p> : null}
-        {!p.embedded ? <LinkRow icon="users" label="Accounts and order…" target="settings/accounts" onOpen={p.onOpen} open={open} /> : null}
         {!p.embedded ? <LinkRow icon="sliders" label="Manage models…" target="settings/models" onOpen={p.onOpen} open={open} /> : null}
       </div>
   );

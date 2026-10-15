@@ -157,3 +157,57 @@ describe("system-agent chat input", () => {
     });
   });
 });
+
+describe("system-agent chat proposal", () => {
+  const reply = { text: "Here is my proposal.", action: "none" as const };
+
+  it("returns a staged create-agent request with only the fields the operation holds", () => {
+    const result = buildSystemAgentChatResult({
+      sessionId: "s1",
+      reply,
+      pendingProposal: {
+        operation: {
+          kind: "create-agent",
+          agentId: "quill",
+          name: "Quill",
+          purpose: "Watch renewals",
+          role: "researcher",
+          workspace: "/tmp/quill",
+        },
+      },
+    });
+    expect(result).toEqual({
+      sessionId: "s1",
+      reply: "Here is my proposal.",
+      action: "none",
+      needsApproval: true,
+      proposal: { kind: "create-agent", agentId: "quill", name: "Quill", job: "Watch renewals", role: "researcher" },
+    });
+    expect(result.proposal).not.toHaveProperty("workspace");
+  });
+
+  it("omits the optional fields a create-agent request does not name", () => {
+    const result = buildSystemAgentChatResult({
+      sessionId: "s1",
+      reply,
+      pendingProposal: { operation: { kind: "create-agent", agentId: "quill" } },
+    });
+    expect(result.proposal).toEqual({ kind: "create-agent", agentId: "quill" });
+  });
+
+  it("flags other staged operations for approval without a proposal", () => {
+    const result = buildSystemAgentChatResult({
+      sessionId: "s1",
+      reply,
+      pendingProposal: { operation: { kind: "config-unset", path: "agents.list" } },
+    });
+    expect(result).toEqual({ sessionId: "s1", reply: "Here is my proposal.", action: "none", needsApproval: true });
+  });
+
+  it("adds nothing when no operation is staged", () => {
+    const result = buildSystemAgentChatResult({ sessionId: "s1", reply, pendingProposal: null });
+    expect(result).not.toHaveProperty("needsApproval");
+    expect(result).not.toHaveProperty("proposal");
+  });
+});
+

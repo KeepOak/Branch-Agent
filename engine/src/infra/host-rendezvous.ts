@@ -1,4 +1,4 @@
-/** Per-user gateway rendezvous, adapted from Hermes' gateway/host_rendezvous.py. */
+/** Per-user gateway rendezvous. */
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";

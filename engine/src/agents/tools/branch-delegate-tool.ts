@@ -7,8 +7,8 @@ import {
   isDeliverableMessageChannel,
   normalizeMessageChannel,
 } from "../../utils/message-channel.js";
-import { resolveExecDefaults } from "../exec-defaults.js";
 import type { BranchToolsOptions } from "../branch-tools.types.js";
+import { resolveAgentFullAccess } from "./agent-full-access.js";
 import { jsonResult, readToolStringParam, type AnyAgentTool } from "./common.js";
 import { withGatewayToolCallerIdentity } from "./gateway-caller-context.js";
 import { callInProcessGatewayTool } from "./in-process-gateway.js";
@@ -60,18 +60,14 @@ export function createBranchDelegateToolsForRun(
   }
   const sessionKey = options.runSessionKey ?? options.agentSessionKey;
   const defaultSessionId = stableDelegationSessionId(sessionKey, options.sessionAgentId);
-  const execPolicy = resolveExecDefaults({
-    cfg: options.config,
+  const fullPermission = resolveAgentFullAccess({
+    config: options.config,
     agentId: options.sessionAgentId,
     sessionKey: options.agentSessionKey ?? sessionKey,
-    sessionEntry: options.execSession,
+    execSession: options.execSession,
     execOverrides: options.execOverrides,
+    fsPolicy: options.fsPolicy,
   });
-  const fullPermission =
-    options.fsPolicy?.workspaceOnly !== true &&
-    execPolicy.effectiveHost !== "sandbox" &&
-    execPolicy.security === "full" &&
-    execPolicy.ask === "off";
   const turnSourceTo =
     options.currentMessagingTarget ?? options.currentChannelId ?? options.agentTo;
   const turnSourceThreadId = options.currentThreadTs ?? options.agentThreadId;

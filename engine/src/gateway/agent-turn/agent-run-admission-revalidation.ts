@@ -1,5 +1,14 @@
 import { ErrorCodes, type ErrorShape } from "../../../packages/gateway-protocol/src/index.js";
+import type { PreparedModelRuntimeAdmissionBudget } from "../../agents/prepared-model-runtime-admission-budget.js";
+import type {
+  PreparedModelRuntimeLease,
+  PreparedReplyDispatchRuntime,
+} from "../../agents/prepared-model-runtime.types.js";
 import type { BranchConfig } from "../../config/types.branch.js";
+import {
+  isRuntimeRaceFailure,
+  RUNTIME_RACE_SUMMARY,
+} from "../../sessions/session-run-error-presentation.js";
 import type { registerChatAbortController } from "../chat-abort.js";
 import { errorShapeFromError } from "../error-shape.js";
 import type { readInProcessSubagentResume } from "../in-process-subagent-resume.js";
@@ -14,13 +23,53 @@ import {
 } from "./agent-run-user-turn.js";
 import type { AgentTurnContext, AgentTurnPrincipal } from "./types.js";
 
-/** Keep owner-provided policy failures intact across every preaccept preparation phase. */
+/** Carry all re-admitted execution facts together, not just the successor plugin generation. */
+export function rebindAgentRunReplyDispatchRuntime(
+  runtime: PreparedReplyDispatchRuntime,
+  lease: PreparedModelRuntimeLease,
+): PreparedReplyDispatchRuntime {
+  return Object.freeze({
+    ...runtime,
+    config: lease.snapshot.config,
+    modelCatalog: lease.snapshot.modelCatalog,
+    readFullModelCatalog: lease.snapshot.readFullModelCatalog,
+    inboundPluginRegistry:
+      lease.pluginGeneration.inboundPluginRegistry ?? runtime.inboundPluginRegistry,
+    pluginGeneration: lease.pluginGeneration,
+  });
+}
+
+/** Stop only this turn's reader on timeout; the shared publication keeps its own owner. */
+export async function waitForAgentRunRuntimePublication<T>(
+  budget: PreparedModelRuntimeAdmissionBudget,
+  abortSignal: AbortSignal,
+  load: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const reader = new AbortController();
+  try {
+    const runtime = await budget.wait(load(AbortSignal.any([abortSignal, reader.signal])));
+    budget.progress();
+    return runtime;
+  } finally {
+    reader.abort();
+  }
+}
+
+/**
+ * Keep owner-provided policy failures intact across every preaccept preparation phase.
+ * A runtime race that outlived its rejoin budget is refused with the same plain sentence the
+ * transcript shows. Its internal text names files, so it never becomes the RPC message;
+ * attached diagnostics are kept.
+ */
 export function resolveAgentRunAdmissionError(
   code: Parameters<typeof errorShapeFromError>[0],
   error: unknown,
 ): ErrorShape {
-  return error instanceof SessionMutationAuthorizationChangedError
-    ? error.error
+  if (error instanceof SessionMutationAuthorizationChangedError) {
+    return error.error;
+  }
+  return isRuntimeRaceFailure(error)
+    ? errorShapeFromError(code, error, { message: RUNTIME_RACE_SUMMARY })
     : errorShapeFromError(code, error);
 }
 

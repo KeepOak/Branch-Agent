@@ -1,0 +1,4 @@
+engine:src/gateway/method-scopes.test.ts
+engine:src/gateway/server-methods-list.test.ts
+engine:src/gateway/server-methods/sessions-messages.test.ts
+engine:src/gateway/server-methods/sessions-reactions.test.ts

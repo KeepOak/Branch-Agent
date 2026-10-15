@@ -87,7 +87,10 @@ function resolvePreparedAgentSnapshot(
     ...(agentId ? { agentId } : {}),
     agentDir: resolvedAgentDir,
     config: cfg ?? {},
-    inheritedAuthDir: resolveLegacyInheritedAuthDir(cfg ?? {}),
+    inheritedAuthDir: resolveLegacyInheritedAuthDir(cfg ?? {}, undefined, undefined, {
+      agentId,
+      agentDir: resolvedAgentDir,
+    }),
   };
   const published = getPreparedModelRuntimeSnapshot({
     ...base,
@@ -149,7 +152,10 @@ export async function resolveModelAsync(
           ...(options?.agentId ? { agentId: options.agentId } : {}),
           agentDir: resolvedAgentDir,
           config: cfg ?? {},
-          inheritedAuthDir: resolveLegacyInheritedAuthDir(cfg ?? {}),
+          inheritedAuthDir: resolveLegacyInheritedAuthDir(cfg ?? {}, undefined, undefined, {
+            agentId: options?.agentId,
+            agentDir: resolvedAgentDir,
+          }),
           ...(derivedWorkspaceDir ? { workspaceDir: derivedWorkspaceDir } : {}),
         })
       : undefined);
@@ -357,7 +363,6 @@ export async function resolveModelAsync(
 }
 
 // Providers registered by setup/auth can explain an otherwise opaque model miss.
-// See https://github.com/openclaw/openclaw/issues/17328.
 function buildUnknownModelError(params: {
   provider: string;
   modelId: string;
