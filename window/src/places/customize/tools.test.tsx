@@ -68,6 +68,17 @@ describe("Tools, three panes", () => {
     expect([...host.querySelectorAll(".cz-whose .cz-chip")].map(c => c.textContent)).toEqual(["Every Trunk", "Sapling", "Oak"]);
     expect(button("Add a server")).toBeTruthy();
   });
+  it("groups the Whose tools chips as one choice: Every Trunk starts chosen and is picked again after another Trunk", async () => {
+    await open("Connectors");
+    const group = host.querySelector('[role="group"][aria-label="Whose tools"]')!;
+    expect(group).toBeTruthy();
+    const pressed = () => [...group.querySelectorAll("button")].filter(b => b.getAttribute("aria-pressed") === "true").map(b => b.textContent);
+    expect(pressed()).toEqual(["Every Trunk"]);
+    await click(button("Oak", group));
+    expect(pressed()).toEqual(["Oak"]);
+    await click(button("Every Trunk", group));
+    expect(pressed()).toEqual(["Every Trunk"]);
+  });
   it("switches a connector off and limits which Trunks may use it, through config.patch", async () => {
     const request = await open("Connectors");
     await click(host.querySelector('[aria-label="files on or off"]'));

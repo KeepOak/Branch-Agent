@@ -69,7 +69,7 @@ export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGet
   return <div className="t9" data-testid="tools">
     <nav className="t9-nav" aria-label="Kinds of tools">
       <div className="cz-whose"><span className="cz-lh">Whose tools</span>
-        <div className="cz-chips">{[{ id: null, name: "Every Trunk" }, ...trunks.map(t => ({ id: t.id as string | null, name: trunkName(t) }))].map(o =>
+        <div className="cz-chips" role="group" aria-label="Whose tools">{[{ id: null, name: "Every Trunk" }, ...trunks.map(t => ({ id: t.id as string | null, name: trunkName(t) }))].map(o =>
           <button key={o.id ?? "*"} type="button" className="cz-chip" aria-pressed={whose === o.id} onClick={() => setWhose(o.id)}>{o.name}</button>)}</div>
       </div>
       {KIND_LIST.map(k => <button key={k.id} type="button" className="t9-kind" data-kind={k.id} aria-current={k.id === kind} onClick={() => setKind(k.id)}>
