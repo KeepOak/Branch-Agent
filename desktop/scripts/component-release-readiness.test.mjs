@@ -196,7 +196,7 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(catchUp, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
   assert.doesNotMatch(catchUp, /check-runs/);
   assert.doesNotMatch(catchUp, /contents: write/);
-  assert.equal(workflow.match(/actions: write/g).length, 2);
+  assert.equal(workflow.match(/actions: write/g).length, 3);
   const readinessJob = workflow.slice(workflow.indexOf("\n  readiness:"), workflow.indexOf("\n  readiness-rehearsal:"));
   const rehearsalJob = workflow.slice(workflow.indexOf("\n  readiness-rehearsal:"), workflow.indexOf("\n  identity:"));
   const identityJob = workflow.slice(workflow.indexOf("\n  identity:"), workflow.indexOf("\n  window:"));
@@ -217,7 +217,7 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
 test("downstream release jobs require their build dependencies after always()", () => {
   const windowJob = workflow.slice(workflow.indexOf("\n  window:"), workflow.indexOf("\n  native:"));
   const nativeJob = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
-  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  catch-up:"));
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
   const catchUp = workflow.slice(workflow.indexOf("\n  catch-up:"));
   const readinessJob = workflow.slice(workflow.indexOf("\n  readiness:"), workflow.indexOf("\n  readiness-rehearsal:"));
   const rehearsalJob = workflow.slice(workflow.indexOf("\n  readiness-rehearsal:"), workflow.indexOf("\n  identity:"));
@@ -229,10 +229,27 @@ test("downstream release jobs require their build dependencies after always()", 
   assert.match(readinessJob, /actions: write/);
   assert.match(readinessJob, /github\.event_name != 'pull_request'/);
   assert.doesNotMatch(rehearsalJob, /actions: write/);
-  assert.equal((workflow.match(/^\s+actions: write\s*$/mg) || []).length, 2);
+  assert.equal((workflow.match(/^\s+actions: write\s*$/mg) || []).length, 3);
   assert.doesNotMatch(windowJob, /actions: write/);
   assert.doesNotMatch(nativeJob, /actions: write/);
   assert.doesNotMatch(publishJob, /actions: write/);
+});
+
+test("a separate job dispatches the Android APK workflow with the release tag", () => {
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
+  const dispatchJob = workflow.slice(workflow.indexOf("\n  dispatch-android-apk:"), workflow.indexOf("\n  catch-up:"));
+  assert.doesNotMatch(publishJob, /actions: write/);
+  assert.match(publishJob, /contents: write/);
+  assert.doesNotMatch(publishJob, /gh workflow run mobile-android-release\.yml/);
+  assert.match(dispatchJob, /actions: write/);
+  assert.match(dispatchJob, /contents: read/);
+  assert.doesNotMatch(dispatchJob, /contents: write/);
+  assert.match(dispatchJob, /needs: \[identity, publish\]/);
+  assert.match(dispatchJob, /needs\.publish\.result == 'success'/);
+  assert.match(dispatchJob, /github\.event_name != 'pull_request'/);
+  assert.match(dispatchJob, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(dispatchJob, /gh workflow run mobile-android-release\.yml -f tag=v\$\{\{ needs\.identity\.outputs\.version \}\}/);
+  assert.match(dispatchJob, /timeout-minutes: 5/);
 });
 
 function failedCapabilityCheck({

@@ -76,6 +76,22 @@ Or copy the APK to the phone and open it there, allowing installs from that app 
 `npx expo run:android --variant release` is the same build installed straight onto a connected
 phone or emulator in one step.
 
+## Install a release APK (sideload)
+
+Each GitHub release can include a signed `branch-android-<version>.apk` and, next to it,
+`branch-android-<version>.apk.sha256` (the APK's hex SHA-256). Those are the only Android assets
+attached to the release. CI still builds when the signing secrets are missing, but that APK stays
+a workflow artifact and is never published.
+
+1. On the phone, open the [GitHub release](https://github.com/KeepOak/Branch-Agent/releases) and
+   download `branch-android-<version>.apk`.
+2. Open the file. If Android asks, allow installs from that app (Chrome, Files, or your browser).
+3. Install Branch. It sits next to Expo Go (`com.keepoak.branch`).
+4. Pair it with Branch on your computer as usual.
+
+A later release installs over this one only when it is signed with the same upload key. A
+debug-signed local build will not replace a release APK.
+
 **What to know about this build:**
 
 - It's a release build: the JavaScript is bundled inside, so it runs without Metro or a computer
