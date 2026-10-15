@@ -117,7 +117,7 @@ export function Agents({ ctx }: { ctx: ToolsCtx }) {
         <Switch label={`${agent.name} on or off`} on={agent.enabled} onChange={on => { void ctx.config.patch({ plugins: { entries: { acpx: { config: { nativeAgents: { [agent.id]: on } } } } } }).then(ok => ok && ctx.agents.reload()); }} /></div>
       {ctx.config.writeError && <p role="alert" className="cz-error">{ctx.config.writeError}</p>}
       <Sec title="Rules"><dl className="cz-kv cz-box"><dt>Runs as</dt><dd><code>{agent.runtimeId}</code></dd></dl></Sec>
-      <div className="cz-acts"><Grey reason="Needs the engine's agent test method.">Test it</Grey><Grey reason="Needs the engine's agent update check.">Check for updates</Grey></div>
+      <div className="cz-acts"><Grey reason="Testing an agent from here comes in a later update.">Test it</Grey><Grey reason="Checking an agent for updates comes in a later update.">Check for updates</Grey></div>
     </div> : <div className="t9-detail cz-empty-detail" />}
   </>;
 }
@@ -154,7 +154,7 @@ export function AddAgent({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
         <label>Outbound token<input aria-label="Outbound token" type="password" value={outboundToken} onChange={event => setOutboundToken(event.target.value)} /></label>
         {(error || ctx.config.writeError) && <p role="alert" className="cz-error">{error || ctx.config.writeError}</p>}</div>
       <div className="cz-prov"><b>Branch on another computer</b><small>Its Trunks answer here.</small><button type="button" className="btn sm" onClick={() => setLinkBranch(true)}>Connect</button></div>
-      <div className="cz-prov"><b>An agent on your KeepOak computer</b><small>Runs in the cloud, answers here.</small><Grey reason="Needs keepoak.com sign-in in the engine.">Connect</Grey></div>
+      <div className="cz-prov"><b>An agent on your KeepOak computer</b><small>Runs in the cloud, answers here.</small><Grey reason="Connecting to keepoak.com from here comes in a later update.">Connect</Grey></div>
     </div>
   </Dialog>;
 }
