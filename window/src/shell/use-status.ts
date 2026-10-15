@@ -117,9 +117,11 @@ export function useUpdate(session: SaplingSession, ready: boolean, version: stri
     const current = status?.currentVersion ?? version;
     const newer = Boolean(current.trim()) && isNewerBranchVersion(status?.latestVersion, current);
     const available = newer && (status?.phase === "available" || status?.phase === "staged");
+    const ready = available && status?.phase === "staged";
     return { current, latest: available ? status.latestVersion : null, notes: [],
-      installing: status?.phase === "staging" || (available && status?.phase === "staged"),
-      waiting: available && status?.phase === "staged" ? "Downloaded. It applies in place when no Trunk is working."
+      installing: status?.phase === "staging", ready,
+      waiting: ready ? (status.applyWhenIdle === false ? "Update ready. It applies the next time Branch starts."
+          : "Update ready. It applies when no Trunk is working")
         : status?.phase === "staging" ? "Downloading and checking the update." : null,
       statusMessage: !desktop.componentUpdates ? desktop.unavailableReason ?? MANUAL_UPDATE_UNSUPPORTED : native.error ??
         (status?.phase === "current" ? undefined : "Check for updates in Updates & about.") };

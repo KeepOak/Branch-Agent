@@ -146,6 +146,9 @@ button.r1sb-cap:hover { color: var(--ink); }
 /* The icon is drawn in the disc's own white and inverted, so the disc stays white with a black icon in both themes. */
 .r1sb-upd svg { filter: invert(1); }
 .r1sb-upd:hover:not(:disabled) { transform: translateY(-1px); }
+/* A downloaded update waits for its gap: a calm dot, never the spinner (the chip is not spinning while it waits). */
+.r1sb-upd[data-ready] { position: relative; }
+.r1sb-upd[data-ready]::after { content: ""; position: absolute; top: 3px; right: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--on-accent); }
 .r1sb-upd[data-busy] { cursor: progress; background: conic-gradient(var(--accent) 0 30%, var(--on-accent) 30% 100%); animation: r1sb-spin 1s linear infinite; }
 @keyframes r1sb-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes r1sb-spin { to { rotate: 360deg; } }
@@ -154,8 +157,6 @@ button.r1sb-cap:hover { color: var(--ink); }
 
 /* The person menu (PROTECTED, trimmed per owner items 16 and 22). */
 .r1sb-person { display: flex; flex-direction: column; }
-.r1sb-upd-ban { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; padding: 8px 8px 8px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--ink); font-size: 13px; font-weight: 600; }
-.r1sb-upd-ban button { padding: 4px 12px; border: 0; border-radius: var(--r-pill); background: var(--on-accent); color: var(--accent); font-size: 12px; font-weight: 600; box-shadow: var(--gk-sh-thumb); }
 .r1sb-ph { padding: 6px 10px 4px; font-size: var(--fs-12-5); font-weight: 600; color: var(--ink-3); }
 .r1sb-people { display: flex; gap: 12px; padding: 4px 10px 8px; }
 .r1sb-person-chip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 12px; }
@@ -214,18 +215,17 @@ button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
 .g-popover:has(> .r1sb-pop) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
 .r1sb-pop .g-menu { gap: 4px; }
 .r1sb-pop .g-menu-tiles { padding: 0 0 4px; margin-bottom: 0; }
-.r1sb-pop :is(.g-menu-row, .g-menu-tile, .r1sb-ph, .r1sb-people, .r1sb-look, .r1sb-upd-ban) {
+.r1sb-pop :is(.g-menu-row, .g-menu-tile, .r1sb-ph, .r1sb-people, .r1sb-look) {
   background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
   box-shadow: inset 0 0 0 1px var(--gp-edge); border-color: transparent; --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); --mute17c: var(--gp-ink-2); }
 .r1sb-pop :is(.g-menu-row, .r1sb-look) { border-radius: 999px; }
-.r1sb-pop :is(.r1sb-people, .r1sb-upd-ban) { border-radius: 14px; }
+.r1sb-pop .r1sb-people { border-radius: 14px; }
 .r1sb-pop .r1sb-ph { width: fit-content; padding: 2px 9px; border-radius: 999px; }
 .r1sb-pop .g-menu-row[data-gap] { margin-top: 4px; }
 .r1sb-pop .g-menu-row[aria-disabled="true"], .r1sb-pop .g-menu-tile[data-off] { opacity: .7; }
 .r1sb-pop :is(.g-menu-row, .g-menu-tile):is(:hover, :focus-visible):not([aria-disabled="true"]):not([data-off]) {
   background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
 .r1sb-pop.r1sb-person { gap: 4px; }
-.r1sb-pop .r1sb-upd-ban { margin-bottom: 0; }
 /* Move to › Group…: the existing groups as chips above the name field. */
 .r1sb-groups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .r1sb-groups [aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); }

@@ -3,11 +3,11 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, powerMoni
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { totalmem } from "node:os";
+import { homedir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
-import { attachOrStartEngine, childModeSettingsLine, engineAnswers, readEngineHealth, restartStoppedServiceEngine, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
+import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { createRunKeepAwake, POWER_STATE_REFRESH_MS, writePowerState } from "./keep-awake";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
@@ -275,7 +275,7 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
     }
   },
 });
-const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
+const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate, appliesWhenIdle: () => controls.settings().autoApplyUpdates });
 let tray: Tray | undefined;
 /** Said once in Settings when this computer runs the engine inside the app (engine-service takeChildModeNotice). */
 let childModeNotice: string | undefined;
@@ -860,8 +860,9 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
 }
 
 const autoApply = createAutoApplyUpdate({
+  // A staged engine/window pair, or a staged desktop app (it waits for the same idle gap, then relaunches).
   pendingVersion: async () => {
-    const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+    const version = (await readComponentUpdateStatus(cfg)).pendingVersion;
     return version === withdrawnUpdateVersion ? null : version;
   },
   enabled: () => controls.settings().autoApplyUpdates && !updateLock.held,
@@ -896,6 +897,12 @@ const autoApply = createAutoApplyUpdate({
       streaming: engine.pendingReplies > 0 || Boolean(window?.streaming), unsavedDraftFiles: window?.unsavedDraftFiles ?? false };
   },
   restart: async (version, handoffOnly, drain) => {
+    if ((await readComponentUpdateStatus(cfg)).componentsPendingVersion !== version) {
+      // Only a staged desktop app is left: it has no standby, so it applies by a relaunch at the gap the caller checked.
+      if (handoffOnly) throw new Error("a staged desktop app has no standby to hand off to");
+      await relaunchForDesktopUpdate();
+      return;
+    }
     await swapEngineInPlace(version, false, undefined, handoffOnly, drain);
     if ((await readComponentUpdateStatus(cfg)).currentVersion !== version) throw new Error("The new release was not confirmed");
   },
@@ -913,6 +920,18 @@ const autoApply = createAutoApplyUpdate({
   },
   log,
 });
+
+/**
+ * A staged desktop app applies at an idle gap (the auto-apply check already saw no Trunk working): the helper swaps it
+ * in once this app has exited and relaunches it. The normal quit runs, so the engine stops as on any quit.
+ */
+async function relaunchForDesktopUpdate(): Promise<void> {
+  if (!install) throw new Error("this copy of Branch Agent cannot update itself");
+  const handed = await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), false);
+  if (!handed) throw new Error("the staged desktop update could not be handed to the update helper");
+  log("desktop update staged; handing off to the update helper at an idle gap and quitting");
+  app.quit();
+}
 
 /**
  * A staged engine/window pair waits for the in-place swap; until then the window server keeps serving the build
@@ -1393,6 +1412,11 @@ async function attachServiceEngine(): Promise<boolean> {
   const engineDir = resolveEngineDir(cfg);
   const probe = () => engineAnswers(cfg.gatewayPort);
   let rolledBack = false;
+  // macOS privacy: launchd cannot run a service whose folders sit on another volume, so that computer runs the child.
+  const home = homedir();
+  const logPaths = serviceLogPaths(home);
+  // An externally supervised launch (BRANCH_SUPERVISOR_MODE=external) is refused service install and uninstall alike.
+  const externallySupervised = (process.env.BRANCH_SUPERVISOR_MODE ?? "").trim().toLowerCase() === "external";
   const result = await attachOrStartEngine({
     dataDir: cfg.dataDir,
     probe,
@@ -1400,6 +1424,11 @@ async function attachServiceEngine(): Promise<boolean> {
     startService: () => runEngineServiceAction(cfg, engineDir, token, "start", log),
     waitForService: () => waitForEngineAnswer(probe, READY_TIMEOUT_MS),
     spawnChild: async () => { rolledBack = await bootSelectedEngine(); },
+    volumeBlock: () => serviceVolumeBlock([cfg.dataDir, stateDir, engineDir], home, nodeVolumeReader),
+    logMark: () => serviceLogSizes(logPaths),
+    cannotRunReason: async mark => serviceCannotRunReason(await readServiceLogsSince(logPaths, mark), [join(stateDir, "service-env"), cfg.nodePath],
+      process.platform === "darwin" ? await launchdJob() : undefined),
+    uninstallService: externallySupervised ? undefined : () => runEngineServiceAction(cfg, engineDir, token, "uninstall", log),
     log,
   });
   if (result.mode === "child") return rolledBack;

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import * as fsp from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -158,6 +159,39 @@ test("install publishes one Branch.app, replaces it in place, and registers it",
     assert.deepEqual((await readdir(apps)).filter(name => name.endsWith(".app") || name.startsWith(".")), ["Branch.app"]);
     await mac.installMacApp(first, { applicationsDirectory: apps, register: async args => { calls.push(args); } });
     assert.equal(calls.some(args => args[0] === "-u" && args[1] === first), false);
+  } finally { await done(); }
+});
+
+/**
+ * Electron's fs reads and writes any path ending in .asar as an archive, so the installer's copy of a bundle's app.asar
+ * fails with "Invalid package" (0.4.4-build-98a8dac57bb9 logged it on every launch). This fake fails the same way.
+ */
+function electronLikeFs(base) {
+  const archive = path => /\.asar(?:[\\/]|$)/.test(String(path));
+  const refuse = path => { if (archive(path)) throw new Error(`Invalid package ${path}`); };
+  return {
+    ...base,
+    async mkdir(path, options) { refuse(path); return base.mkdir(path, options); },
+    async rm(path, options) { refuse(path); return base.rm(path, options); },
+    async rename(from, to) { refuse(from); refuse(to); return base.rename(from, to); },
+    async cp(from, to, options) {
+      for (const entry of await base.readdir(from, { recursive: true })) refuse(join(to, entry));
+      return base.cp(from, to, options);
+    },
+  };
+}
+
+test("install copies a bundle that carries app.asar with a file API Electron does not read as an archive", async () => {
+  const { apps, source, done } = await tempTree();
+  const register = async () => {};
+  try {
+    await bundle(source);
+    await writeFile(join(source, "Contents/Resources/app.asar"), "asar-bytes");
+    await assert.rejects(mac.installMacApp(source, { applicationsDirectory: apps, register, stripQuarantine: async () => {}, fs: electronLikeFs(fsp) }), /Invalid package/);
+    assert.equal((await readdir(apps)).some(name => name.startsWith(".Branch")), false);
+    const installed = await mac.installMacApp(source, { applicationsDirectory: apps, register, stripQuarantine: async () => {} });
+    assert.equal(await readFile(join(installed, "Contents/Resources/app.asar"), "utf8"), "asar-bytes");
+    assert.equal((await lstat(join(installed, "Contents/Resources/app.asar"))).isFile(), true);
   } finally { await done(); }
 });
 

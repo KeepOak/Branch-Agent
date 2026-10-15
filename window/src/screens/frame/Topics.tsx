@@ -22,13 +22,14 @@ const EMOJI_KEY = "branch-topic-emoji-t5";
 const NARROW = "(max-width: 900px)";
 
 /** A Trunk's own conversation is agent:<id>:<main key>; its threads name it as their parent. */
-export function topicContactFor(rows: readonly Conversation[], currentKey: string | null, mainSuffix = "main"): TopicContact | null {
+export function topicContactFor(rows: readonly Conversation[], currentKey: string | null, mainSuffix = "main", trunkName?: string): TopicContact | null {
   const current = rows.find((row) => row.key === currentKey);
   if (!current?.agentId) return null;
   const key = `agent:${current.agentId}:${mainSuffix}`;
   if (current.key !== key && current.parentKey !== key) return null;
   const main = rows.find((row) => row.key === key);
-  return { id: `trunk:${current.agentId}`, key, name: main?.title || current.agentId };
+  // The Trunk's own name (Juniper), never its id (juniper): the window passes the name it shows in the title.
+  return { id: `trunk:${current.agentId}`, key, name: trunkName || main?.title || current.agentId };
 }
 
 function useTopics(session: SaplingSession, ready: boolean, contactId: string | null) {
@@ -87,12 +88,14 @@ export type R1TopicsProps = {
   currentKey: string | null;
   /** The main key after agent:<id>: (the window's main key names it). */
   mainSuffix: string;
+  /** The open Trunk's display name, as the window title shows it. */
+  trunkName?: string;
   onOpen: (key: string) => void;
 };
 
 /** What the window draws: the rail in the topics column or above the chat, and the All stream while it shows. */
 export function useR1Topics(p: R1TopicsProps): { column: ReactNode; above: ReactNode; history: Block[] | null; layout: R1TopicLayout } {
-  const contact = topicContactFor(p.rows, p.currentKey, p.mainSuffix);
+  const contact = topicContactFor(p.rows, p.currentKey, p.mainSuffix, p.trunkName);
   const contactId = contact?.id ?? null;
   const { topics, reload } = useTopics(p.session, p.ready, contactId);
   const layout = useLayout(contactId);
