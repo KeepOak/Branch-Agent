@@ -146,6 +146,9 @@ button.r1sb-cap:hover { color: var(--ink); }
 /* The icon is drawn in the disc's own white and inverted, so the disc stays white with a black icon in both themes. */
 .r1sb-upd svg { filter: invert(1); }
 .r1sb-upd:hover:not(:disabled) { transform: translateY(-1px); }
+/* A downloaded update waits for its gap: a calm dot, never the spinner (the chip is not spinning while it waits). */
+.r1sb-upd[data-ready] { position: relative; }
+.r1sb-upd[data-ready]::after { content: ""; position: absolute; top: 3px; right: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--on-accent); }
 .r1sb-upd[data-busy] { cursor: progress; background: conic-gradient(var(--accent) 0 30%, var(--on-accent) 30% 100%); animation: r1sb-spin 1s linear infinite; }
 @keyframes r1sb-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes r1sb-spin { to { rotate: 360deg; } }

@@ -321,7 +321,8 @@ export function Sidebar(p: SidebarProps) {
       <button type="button" className="r1sb-seed" data-local="" aria-label="Seedbank: agents, skills, tools, plugins and connections" title="Seedbank: agents, skills, tools, plugins and connections" onClick={() => p.onPlace("seedbank")}>
         <span className="r1sb-seed-icons" aria-hidden="true"><i>{icons.apps}</i><i>{icons.term}</i><i>{icons.leaf}</i></span><span className="r1sb-seed-t">Seedbank</span>
       </button>
-      {update?.latest ? <button type="button" className="r1sb-upd" data-local="" data-busy={busy || undefined} aria-label={busy ? `Installing ${short}` : `Update to ${short}`} title={update.waiting ?? `Update to ${short}`} disabled={busy} onClick={install}>{icons.cloud}</button> : null}
+      {update?.latest ? <button type="button" className="r1sb-upd" data-local="" data-busy={busy || undefined} data-ready={update.ready && !busy || undefined}
+        aria-label={busy ? `Downloading ${short}` : update.ready ? `Update ready, ${short}` : `Update to ${short}`} title={update.waiting ?? `Update to ${short}`} disabled={busy} onClick={install}>{icons.cloud}</button> : null}
     </div>
 
     {menu && menuItems ? <Popover anchor={menuAnchor} label={`${menu.name} menu`} width={300} onClose={() => setMenu(null)}><div className="r1sb-pop"><Menu label={menu.name} tiles={menuItems.tiles} rows={menuItems.rows} onClose={() => setMenu(null)} /></div></Popover> : null}
