@@ -75,7 +75,7 @@ function Projects({ engine }: { engine: SettingsPageProps["engine"] }) {
   );
 }
 
-/** A project's folder name as a person reads it: "haggle-bot" is "Haggle bot". Technical keeps the folder name. */
+/** A project's folder name as a person reads it: "sample-project" is "Sample project". Technical keeps the folder name. */
 export function plainProjectName(name: string, technical: boolean): string {
   if (technical || !/^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(name)) return name;
   const words = name.replace(/-/g, " ");

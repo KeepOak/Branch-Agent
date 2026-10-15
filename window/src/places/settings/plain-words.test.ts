@@ -19,12 +19,12 @@ describe("plainThinking", () => {
 
 describe("plainProjectName", () => {
   it("turns a folder slug into words", () => {
-    expect(plainProjectName("haggle-bot", false)).toBe("Haggle bot");
-    expect(plainProjectName("mac-builder-1", false)).toBe("Mac builder 1");
+    expect(plainProjectName("sample-project", false)).toBe("Sample project");
+    expect(plainProjectName("team-folder-1", false)).toBe("Team folder 1");
   });
 
   it("keeps the folder name at Technical, and leaves names that are not slugs alone", () => {
-    expect(plainProjectName("haggle-bot", true)).toBe("haggle-bot");
+    expect(plainProjectName("sample-project", true)).toBe("sample-project");
     expect(plainProjectName("Quarterly numbers", false)).toBe("Quarterly numbers");
   });
 });
