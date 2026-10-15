@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { NAV, PAGES, TOP_PAGES, pageFor, pageShown, r1PageFor, type PageId } from "./nav";
 import { APPEARANCE_ROWS as CLASSIC_APPEARANCE } from "../../places/settings/set1/appearance-rows";
 import { ASK_BEFORE_DELETE_KEY, agentsWork, askBeforeDeleting, checklistShown } from "./pages/general";
-import { ROWS, cardRows, hintFor, pageFirstLevel, rowLabel, rowLevel, type Row } from "./rows";
+import { ROWS, cardRows, comingRow, hintFor, pageFirstLevel, rowLabel, rowLevel, shownLevel, type Row } from "./rows";
 
 /** The keys the engine keeps in its schema history but that do nothing (engine/src/config/dead-config-keys.test.ts). */
 function deadKeys(): string[] {
@@ -165,7 +165,7 @@ describe("settings row table", () => {
     for (const title of classic) expect(labels.has(renamed[title] ?? title), title).toBe(true);
     // Every one of Classic's look keys is a row on the same key (or Coming, where Classic greys it).
     const lookKeys = ["reduceTransparency", "contrast", "agentSize", "bg", "season", "size", "petSounds", "show.usage", "show.gateway", "show.gfx", "show.projects", "show.live",
-      "show.statusbar", "still", "scenery", "msgLook", "dir", "math", "scroll", "codeCol", "tabs", "ch.act", "ch.move", "ch.touch", "ch.cap", "headlines",
+      "show.statusbar", "still", "scenery", "msgLook", "dir", "math", "codeCol", "tabs", "ch.act", "ch.move", "ch.touch", "ch.cap", "headlines",
       "accent", "scene", "scrim", "see", "fontUi", "fontChat", "pet", "petName", "agentShown", "askDelete"];
     const wired = new Set(page.flatMap((r) => (r.source.kind === "look" ? [r.source.key] : [])));
     for (const key of lookKeys) expect(wired.has(key), key).toBe(true);
@@ -191,6 +191,11 @@ describe("settings row table", () => {
     expect([at("appearance.pet.pick")?.codec?.read(undefined), at("appearance.pet.pick")?.codec?.write("otter"), at("appearance.pet.pick")?.codec?.write("none")]).toEqual(["none", "otter", null]);
     // There is no Let it roam switch: picking a pet turns it on, so the roam row is gone from the page.
     expect(at("appearance.pet.roam")).toBeUndefined();
+    // Scroll bars are hidden everywhere: there is no Scroll bars row, here or in Classic's table, and so no "Always".
+    expect(at("appearance.reading.scroll")).toBeUndefined();
+    expect(wired.has("scroll")).toBe(false);
+    expect(CLASSIC_APPEARANCE.some((e) => e.title === "Scroll bars")).toBe(false);
+    // The character beside the conversation is an extra: off until the person turns it on.
     expect(at("appearance.characters.shown")).toMatchObject({ control: "toggle", source: { kind: "look", key: "agentShown" }, fallback: false });
     expect(at("appearance.characters.cheer")).toMatchObject({ card: "Characters", label: "Celebrate when a task finishes", control: "toggle", source: { kind: "look", key: "cheer" }, fallback: false });
     // Each Classic card now draws rows: none of the page's Classic cards is empty at Technical.
@@ -232,5 +237,23 @@ describe("settings nav", () => {
     expect(pageShown("developer", 1)).toBe(false);
     expect(pageShown("developer", 2)).toBe(true);
     expect(pageShown("general", 0)).toBe(true);
+  });
+});
+
+describe("Coming rows wait for Advanced", () => {
+  const base = { page: "general", card: "Writing", label: "x", control: "toggle" } as const;
+  const coming: Row = { ...base, id: "general.writing.c", level: 0, source: { kind: "coming", need: "x.y", reason: "x comes in a later update." } };
+  const live: Row = { ...base, id: "general.writing.l", level: 0, source: { kind: "device", key: "x" } };
+  const slot: Row = { ...base, id: "general.writing.s", level: 0, source: { kind: "slot", calls: [], reason: "x comes in a later update." } };
+  const tech: Row = { ...coming, id: "general.writing.t", level: 2 };
+  it("shows a Coming row from Advanced, keeps its own higher level, and leaves working rows where they are", () => {
+    expect([shownLevel(coming, {}), shownLevel(live, {}), shownLevel(tech, {})]).toEqual([1, 0, 2]);
+    expect(rowLevel(coming, {})).toBe(0); // its tag is still its own level
+    // A slot row is Coming only on a page with no control for it.
+    expect([comingRow(slot), comingRow(slot, {}), comingRow(slot, { [slot.id]: () => null })]).toEqual([false, true, false]);
+    const rows = [coming, live, tech];
+    expect(cardRows("general", "Writing", 0, {}, rows).map((r) => r.id)).toEqual([live.id]);
+    expect(cardRows("general", "Writing", 1, {}, rows).map((r) => r.id)).toEqual([coming.id, live.id]);
+    expect(pageFirstLevel("general", {}, [coming, tech])).toBe(1);
   });
 });

@@ -142,6 +142,25 @@ export function pageFor(id: string | null | undefined): PageId {
 }
 
 const ALL_PAGES: NavPage[] = [...TOP_PAGES, ...NAV.flatMap((g) => g.pages)];
+const BY_ID = new Map(ALL_PAGES.map((page) => [page.id, page]));
+function pagesOf(...ids: PageId[]): NavPage[] {
+  return ids.map((id) => BY_ID.get(id)!);
+}
+
+/** Regular's sidebar, four groups. Every page except Developer lives in one of them.
+ *  Developer stays on Technical, inside NAV's Branch group. */
+export const REGULAR_GROUPS: NavGroup[] = [
+  { title: "General", pages: pagesOf("general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps") },
+  { title: "Computer", pages: pagesOf("devices", "browser", "coding", "remote", "permissions") },
+  { title: "Usage", pages: pagesOf("accounts", "models", "privacy", "signins") },
+  { title: "Updates", pages: pagesOf("updates", "history", "learning", "features") },
+];
+
+/** The sidebar for a level. Regular is the four groups. Advanced and Technical keep the full nav. */
+export function navAt(level: Level): { top: NavPage[]; groups: NavGroup[] } {
+  return level === 0 ? { top: [], groups: REGULAR_GROUPS } : { top: TOP_PAGES, groups: NAV };
+}
+
 /** A page's nav entry. */
 export const navPage = (id: PageId): NavPage | undefined => ALL_PAGES.find((p) => p.id === id);
 /** Whether a page is in the nav at this level (Developer needs Technical). */

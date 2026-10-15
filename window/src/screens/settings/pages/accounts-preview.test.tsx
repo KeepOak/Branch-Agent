@@ -39,7 +39,8 @@ async function mount(engine: WindowEngine, level: "regular" | "advanced" | "tech
 }
 const remount = async () => { await act(async () => root.unmount()); root = createRoot(host); forgetLookStore(); };
 const cards = () => [...host.querySelectorAll<HTMLElement>(".r1s-sec")].map((s) => s.querySelector(":scope > h2")?.textContent ?? "");
-const labels = (card: string) => [...host.querySelectorAll<HTMLElement>(`.r1s-sec[aria-label="${card}"] > .r1s-row > b, .r1s-sec[aria-label="${card}"] > .r1s-fine > .r1s-row > b`)].map((b) => b.textContent);
+// Later-update rows sit inside the fold (main), so they are not direct children of the section.
+const labels = (card: string) => [...host.querySelectorAll<HTMLElement>(`.r1s-sec[aria-label="${card}"] .r1s-row > b`)].map((b) => b.textContent);
 
 it("lists the preview's Accounts cards, and every row sits on one of them", () => {
   expect(PAGES.accounts.cards).toEqual(CARDS);
@@ -63,7 +64,10 @@ it("draws Usage by account here: what Branch spent, each account, and the previe
   const usage = host.querySelector<HTMLElement>('.r1s-sec[aria-label="Usage by account"]')!;
   expect(usage.textContent).toContain("Last 30 days");
   expect(usage.textContent).toContain("164 tasks");
-  expect(labels("Usage by account")).toEqual(["The ring bottom right", "Offer to save progress at 95%", "Asking a service what is left", "Show usage in the tray"]);
+  // The preview's four rows stay in this order. Regular draws the ones that work; the Coming row is folded in at Advanced.
+  const usageRows = ROWS.filter((r) => r.page === "accounts" && r.card === "Usage by account" && !r.bare).map((r) => r.label);
+  expect(usageRows).toEqual(["The ring bottom right", "Offer to save progress at 95%", "Asking a service what is left", "Show usage in the tray"]);
+  expect(labels("Usage by account")).toEqual(["The ring bottom right", "Offer to save progress at 95%", "Show usage in the tray"]);
   expect(labels("Linked accounts")).toEqual(["GitHub", "Gmail", "Google Calendar", "Google Drive"]);
   // The GitHub access expiry is a value on the GitHub row, as the preview shows it, not a row of its own.
   expect(host.querySelector('[data-row="accounts.github.expires"]')).toBeNull();
@@ -72,6 +76,7 @@ it("draws Usage by account here: what Branch spent, each account, and the previe
 
 it("puts the finer account rows in Your own accounts at Advanced and the sign-in rows at Technical", async () => {
   await mount(engineOf().engine, "technical");
+  expect(labels("Usage by account")).toContain("Asking a service what is left");
   const own = labels("Your own accounts");
   for (const label of ["Which account each Trunk uses", "Helpers keep their account", "Pick by what the task needs", "Fallback keys", "Resting now", "Which sign-in each request used", "Organisation", "A customer’s ChatGPT plan on a KeepOak computer"]) expect(own).toContain(label);
   const sources = labels("Where each sign-in comes from");

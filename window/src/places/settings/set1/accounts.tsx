@@ -175,7 +175,7 @@ function AccountsStatus({ loading, error, count, unavailable }: { loading: boole
   return <Status title={`${count} ${count === 1 ? "account" : "accounts"} signed in`}>Branch never sees your passwords. Each account is billed by its own site.</Status>;
 }
 
-type OrderProps = SettingsPageProps & { all: Account[]; reload: () => Promise<void>; onAdd: (s: AddStart) => void; agent: { agentId?: string } };
+type OrderProps = SettingsPageProps & { all: Account[]; reload: () => Promise<unknown>; onAdd: (s: AddStart) => void; agent: { agentId?: string } };
 function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
   const save = useSaveRunner();
   const lv = useLevel();
@@ -213,7 +213,7 @@ function OrderSection({ engine, all, reload, onAdd, agent }: OrderProps) {
   );
 }
 
-type MenuProps = { engine: SettingsPageProps["engine"]; acc: Account; all: Account[]; at: MenuAnchor; agent: { agentId?: string }; reload: () => Promise<void>; setOrder: (a: Account, ids: string[]) => Promise<boolean>; onClose: () => void };
+type MenuProps = { engine: SettingsPageProps["engine"]; acc: Account; all: Account[]; at: MenuAnchor; agent: { agentId?: string }; reload: () => Promise<unknown>; setOrder: (a: Account, ids: string[]) => Promise<boolean>; onClose: () => void };
 function AccountMenu({ engine, acc, all, at, agent, reload, setOrder, onClose }: MenuProps) {
   const save = useSaveRunner();
   const items: MenuItem[] = [

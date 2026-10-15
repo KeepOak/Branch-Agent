@@ -10,6 +10,12 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { INSTRUCTIONS_ROWS } from "./instructions";
+import { AboutYou, Files } from "./instructions-live";
+import { VOICE_ROWS } from "./voice";
+import * as Voice from "./voice-controls";
+import { REMOTE_ROWS } from "./remote";
+import { Activity, BrowserPage, GatewayAddress, Https, Infrastructure, LabelComputer, Lately, Origins, Ping, RestartEngine as RestartGateway, Risky, ScriptCode } from "./remote-live";
 import { GENERAL_PAGE } from "./general-live";
 import { SIGNINS_ROWS } from "./signins";
 import { Keys as SigninKeys, Where as SigninWhere } from "./signins-live";
@@ -25,11 +31,12 @@ import {
   MediaAll, MediaFile, NeverDies, ReadDiary,
 } from "./history-live";
 import { DEVICES } from "./devices";
+import { DEVELOPER } from "./developer";
 import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsHad, SmallModel, ThemePicker, ThreadsShowAs } from "./appearance-live";
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  who: "people", notifications: "notifications", instructions: "instructions",
+  who: "people", notifications: "notifications",
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -48,6 +55,52 @@ export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
+  instructions: { rows: INSTRUCTIONS_ROWS, controls: { "instructions.you.file": AboutYou, "instructions.project.files": Files } },
+  // Voice & calls: native R1 cards in the preview's order; Classic Voice draws behind its rows (voice-controls.tsx).
+  voice: {
+    rows: VOICE_ROWS,
+    controls: {
+      "voice.speaking.voice": Voice.VoicePick,
+      "voice.listening.wake-words": Voice.WakeWords,
+      "voice.listening.aloud": Voice.AnswerAloud,
+      "voice.speaking.engine": Voice.SpeakingEngine,
+      "voice.speaking.preview": Voice.PreviewVoice,
+      "voice.speaking.services": Voice.SpeakServices,
+      "voice.speaking.named": Voice.NamedVoices,
+      "voice.live.status": Voice.LiveStatus,
+      "voice.live.through": Voice.LiveThrough,
+      "voice.live.model": Voice.LiveModel,
+      "voice.live.speaker": Voice.LiveSpeaker,
+      "voice.live.gateway": Voice.LiveGateway,
+      "voice.live.who": Voice.LiveWho,
+      "voice.live.services": Voice.LiveServices,
+      "voice.calls.test": Voice.TestCall,
+      "voice.calls.notes": Voice.MeetingNotes,
+      "voice.services.all": Voice.AllVoiceSettings,
+      "voice.services.listening": Voice.ListeningEngine,
+      "voice.services.listen-keys": Voice.ListenServices,
+      ...Object.fromEntries(["file", "status", "call-setup", "call-speak", "during", "tail", "latency", "expose"].map((id) => [`voice.services.${id}`, Voice.VoiceCode])),
+    },
+  },
+  // Remote access: native R1 cards in the preview's order; Classic Gateway draws behind its rows (remote-live.tsx).
+  remote: {
+    rows: REMOTE_ROWS,
+    controls: {
+      "remote.reached.label": LabelComputer,
+      "remote.reached.browser": BrowserPage,
+      "remote.doing.lately": Lately,
+      "remote.doing.restart": RestartGateway,
+      "remote.connection.address": GatewayAddress,
+      "remote.connection.ping": Ping,
+      "remote.connection.activity": Activity,
+      "remote.connection.infra": Infrastructure,
+      "remote.exposure.https": Https,
+      "remote.exposure.origins": Origins,
+      "remote.exposure.risky": Risky,
+      ...Object.fromEntries(["send", "connect", "poll", "else", "several"].map((id) => [`remote.scripts.${id}`, ScriptCode])),
+    },
+  },
   // Sign-ins & keys: the preview's four cards; Classic's password manager and key store inside them.
   signins: { rows: SIGNINS_ROWS, controls: { "signins.where.block": SigninWhere, "signins.keys.block": SigninKeys } },
   // Updates & about: the preview's ten cards; Classic Updates' sections and the achievements badges inside them.
@@ -105,6 +158,8 @@ export const R1_PAGES: PageSlots = {
   },
   // Devices: native R1 cards in the preview's order, from Classic Computer & browser's section data (devices.tsx).
   devices: DEVICES,
+  // Developer: native R1 cards in the preview's order, with the Classic Developer and Advanced sections behind them.
+  developer: DEVELOPER,
   appearance: {
     controls: {
       "appearance.theme.mode": LightOrDark,

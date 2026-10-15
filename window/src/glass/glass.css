@@ -20,6 +20,14 @@
 .g-pill[data-tight] .g-pill-title { position: absolute; width: 1px; clip-path: inset(50%); }
 .g-pill:disabled { opacity: .55; cursor: not-allowed; }
 .g-popover { position: fixed; z-index: 100; display: block; overflow: auto; padding: 8px; border-radius: var(--r-menu); animation: g-pop-in var(--spring-pop); }
+/* R1 working line (screens/chat WorkingLine): one dim line of words under the latest message. No pill behind it and no
+   spinner. The soft shimmer runs only with motion allowed; reduced motion or the in-app still setting leaves dim words. */
+.r1c-working { display: block; width: fit-content; max-width: 100%; margin: 0; font-size: var(--fs-12-5); color: var(--ink-3); }
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-still]) .r1c-shimmer { background: linear-gradient(90deg, var(--ink-3) 35%, var(--ink) 50%, var(--ink-3) 65%) 0 0 / 250% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent; animation: g-shimmer 2.6s linear infinite; }
+}
+@keyframes g-shimmer { from { background-position: 0 0; } to { background-position: -150% 0; } }
 @keyframes g-pop-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
 @property --fade-top { syntax: '<length>'; inherits: false; initial-value: 0px; }
 @property --fade-bot { syntax: '<length>'; inherits: false; initial-value: 0px; }
@@ -67,7 +75,7 @@
 .g-menu-tile-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .g-menu-tile[data-off] { opacity: .55; cursor: default; height: auto; min-height: 58px; justify-content: flex-start; gap: 1px; padding-top: 8px; }
 .g-menu-tile[data-off] .g-menu-tile-label { line-height: 1.15; }
-.g-menu-tile small { display: block; max-width: 84px; font-size: 9.5px; line-height: 1.15; color: var(--ink-3); text-align: center; }
+.g-menu-tile small { display: block; max-width: 100%; font-size: var(--fs-11); line-height: 1.2; color: var(--ink-3); text-align: center; }
 .g-menu-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 6px 10px; border: 0; border-radius: var(--r-menu-row); background: transparent; color: var(--ink); font-size: var(--fs-13-5); text-align: left; }
 .g-menu-row:hover:not([aria-disabled="true"]), .g-menu-row:focus-visible { background: var(--fill); outline: none; }
 .g-menu-row[data-gap] { margin-top: 6px; }
@@ -87,20 +95,18 @@
 .g-menu-switch[data-on] { background: var(--btn, var(--accent)); }
 .g-menu-switch[data-on]::after { transform: translateX(10px); }
 
-/* ===== Item 48, the glass model (owner, final; docs/design/r1 README 48, preview "item 48"): the left sidebar is the only tinted,
-   frosted surface. Every other surface (pages, panels, menus, popovers, sheets and dialogs) is clear glass: .g-clear. Text and
-   controls on a clear surface sit on small frosted pills with a 1px low-alpha outline (--gp-* in theme/tokens.css, ink 4.5:1 over
-   white and black): .g-frost for a control or a row, .g-label for a run of text (it hugs its words; data-lines for a paragraph).
-   Controls inside a .g-clear surface get the pill on their own; a solid control opts out with data-solid. The :not(#g48) ids
-   lift these rules over a surface's own fill (.dlg, .g-popover, a card) without !important. Reduce transparency: the --gp-*
-   tokens make pills solid and .g-clear surfaces turn solid --bg. ===== */
+/* ===== Smart glass (owner, 2026-10-15; replaces item 48 "everything clear, words on pills"). The window canvas is solid
+   --bg, so words sit straight on it: no pill behind text anywhere. Content groups (a Settings section, a code block) are quiet
+   inset panels. Anything that floats over other content (menus, popovers, the topic bar, the title pill, the composer, side
+   sheets and dialogs) is ONE sheet of tinted liquid glass with plain rows inside, never a pill per row. No visible scrollbars:
+   the edge fade says there is more. Controls on the canvas keep their frosted chip (.g-frost and the .g-clear control rule
+   below). The Smart glass layer at the end of this file carries the rules; its :root:not(#sg...) ids outrank the #g48 ids
+   so no rule needs !important. Reduce transparency makes the glass solid. ===== */
 .g-clear:not(#g48) { background: transparent; background-image: none; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; border-color: transparent; }
 :is(.g-frost, .g-label):not(#g48), .g-clear :is(button, a[href], select, textarea, input:not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"])):not([data-solid], [role="switch"], #g48) {
   background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
   box-shadow: inset 0 0 0 1px var(--gp-edge); border-color: transparent; color: var(--ink);
   --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); --mute17c: var(--gp-ink-2); }
-.g-label:not(#g48) { width: fit-content; max-width: 100%; box-sizing: border-box; padding: 2px 9px; border-radius: var(--r-pill); }
-.g-label[data-lines]:not(#g48) { padding: 5px 11px; border-radius: 14px; }
 /* a control inside a pill shares that pill's frost instead of stacking a second one */
 :is(.g-frost, .g-label) :is(button, a[href], select, textarea, input):not(#g48#g48) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
 /* ...and the chosen one in a group of choices on one pill (a segmented switch) takes the light lift over it */
@@ -122,7 +128,93 @@
 .scrim:has(> .dlg.g-clear:not(#g48)) { backdrop-filter: none; -webkit-backdrop-filter: none; }
 .scrim > .dlg.g-clear:not(#g48) { background: color-mix(in srgb, var(--bg) 74%, transparent); background-image: none; border-color: transparent;
   -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
-  box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi), 0 30px 80px rgba(0,0,0,.24); }
+  box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi), var(--gw-dlg-sh); }
 .scrim > .dlg.g-clear :is(.g-label, .g-label[data-lines]):not(#g48) { width: auto; max-width: none; padding: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 :root[data-transparency="reduce"] .scrim > .dlg.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
 @media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .scrim > .dlg.g-clear:not(#g48#g48) { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+
+/* ===== Smart glass layer (see the header above). Generated selectors are scoped under :root:not(#sg#sg#sg#sg) so they win over
+   screen rules lifted with :not(#g48...) ids. Sections: tokens; no scrollbars; words never on pills; one glass sheet for
+   floating layers with plain rows; chat replies as plain text and quiet meta; code blocks; the topic bar capsule; Settings
+   sections as inset panels; denser glass for chrome over the transcript, where the edge-fade mask stops backdrop blur. ===== */
+:root { --sg-glass: color-mix(in srgb, var(--bg) 68%, transparent);
+  --sg-glass-strong: color-mix(in srgb, var(--bg) 80%, transparent);
+  --sg-blur: blur(32px) saturate(185%);
+  --sg-edge: color-mix(in srgb, var(--ink) 13%, transparent);
+  --sg-hi: color-mix(in srgb, var(--ink) 9%, transparent);
+  --sg-panel: color-mix(in srgb, var(--ink) 4.5%, var(--bg));
+  --sg-line: color-mix(in srgb, var(--ink) 8%, transparent);
+  --sg-shadow: 0 24px 60px -20px rgba(0,0,0,.6), 0 4px 14px -4px rgba(0,0,0,.4);
+  --sg-shadow-sm: 0 10px 30px -14px rgba(0,0,0,.55); }
+:root:not(#sg#sg#sg#sg) * { scrollbar-width: none; }
+:root:not(#sg#sg#sg#sg) *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+:root:not(#sg#sg#sg#sg) .g-label:not(#g48#g48#g48) { width: auto; max-width: none; padding: 0; border-radius: 0; background: none;
+  box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root:not(#sg#sg#sg#sg) :is(.g-popover, .g-float):not(#g48#g48#g48) { background: var(--sg-glass); backdrop-filter: var(--sg-blur);
+  -webkit-backdrop-filter: var(--sg-blur); border: 0;
+  box-shadow: inset 0 0 0 .5px var(--sg-edge), inset 0 1px 0 var(--sg-hi), var(--sg-shadow); border-radius: 18px; }
+:root:not(#sg#sg#sg#sg) :is(.g-popover, .g-float, [role=menu]) :is(button, a[href], [role=menuitem]):not([role=switch], [data-solid], #g48#g48#g48) { background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root:not(#sg#sg#sg#sg) :is(.g-popover, .g-float, [role=menu]) :is(button, a[href], [role=menuitem]):is(:hover, :focus-visible, [aria-current="true"], [aria-selected="true"]):not([role=switch], #g48#g48#g48) { background: color-mix(in srgb, var(--ink) 9%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1c-from { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-bottom: 2px; }
+:root:not(#sg#sg#sg#sg) .r1c-time { margin: 18px auto 8px; font-size: 11.5px; color: var(--ink-3); letter-spacing: .01em; }
+:root:not(#sg#sg#sg#sg) .r1c-txt { line-height: 1.55; }
+:root:not(#sg#sg#sg#sg) .r1c-steps > summary { background: none; box-shadow: none; padding: 2px 0; color: var(--ink-3); }
+:root:not(#sg#sg#sg#sg) .r1c-steps > summary:hover { color: var(--ink-2); }
+:root:not(#sg#sg#sg#sg) .code-block { border-radius: 14px; background: var(--sg-panel); box-shadow: inset 0 0 0 .5px var(--sg-line); overflow: hidden; }
+:root:not(#sg#sg#sg#sg) .code-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 6px 14px;
+  border-bottom: .5px solid var(--sg-line); color: var(--ink-3); font-size: 12px; }
+:root:not(#sg#sg#sg#sg) .code-head :is(button) { background: transparent; box-shadow: none; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host { position: sticky; top: 8px; z-index: 6; display: flex; justify-content: center; pointer-events: none; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host > .topicsT5 { pointer-events: auto; max-width: min(760px, 92%); padding: 4px; border-radius: 999px;
+  background: var(--sg-glass); backdrop-filter: var(--sg-blur); -webkit-backdrop-filter: var(--sg-blur);
+  box-shadow: inset 0 0 0 .5px var(--sg-edge), inset 0 1px 0 var(--sg-hi), var(--sg-shadow-sm); }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .tpTabsT5 { overflow-x: auto; mask-image: linear-gradient(90deg, var(--mask-opaque) calc(100% - 28px), transparent); gap: 2px; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host :is(.tpTabT5, .tpLayT5, .tpAddP17) { border-radius: 999px; background: transparent; box-shadow: none;
+  border: 0; height: 30px; padding: 0 12px; color: var(--ink-2); white-space: nowrap; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .tpTabT5.curT5 { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
+:root:not(#sg#sg#sg#sg) .r1s-sec.g-clear:not(#g48#g48#g48) { background: var(--sg-panel); border-radius: 18px; padding: 18px 20px;
+  box-shadow: inset 0 0 0 .5px var(--sg-line); }
+:root:not(#sg#sg#sg#sg) .r1s-side.g-clear :is(button, a[href]):not([aria-current="page"], [aria-current="true"], :hover, #g48#g48#g48) { background: transparent; box-shadow: none; }
+:root:not(#sg#sg#sg#sg) :is(.r1c-txt, .r1c-from, .r1c-time):not(#g48#g48#g48) { background: none; box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none; border: 0; }
+:root:not(#sg#sg#sg#sg) .r1c-txt:not(#g48#g48#g48) { padding: 0; border-radius: 0; }
+:root:not(#sg#sg#sg#sg) .r1c-me .r1c-txt:not(#g48#g48#g48), :root:not(#sg#sg#sg#sg) .msg.me .r1c-txt:not(#g48#g48#g48) { background: color-mix(in srgb, var(--ink) 11%, var(--bg));
+  padding: 10px 14px; border-radius: 20px 20px 6px 20px; }
+:root:not(#sg#sg#sg#sg) .r1c-from:not(#g48#g48#g48) { padding: 0; }
+:root:not(#sg#sg#sg#sg) .r1c-time:not(#g48#g48#g48) { padding: 0; }
+:root:not(#sg#sg#sg#sg) .code-head > :first-child { flex: 1; }
+:root:not(#sg#sg#sg#sg) .code-head :is(button):not(#g48#g48#g48) { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: var(--ink-3); }
+:root:not(#sg#sg#sg#sg) .code-head :is(button):hover:not(#g48#g48#g48) { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .tpTabsT5, :root:not(#sg#sg#sg#sg) .r1-topic-host > .topicsT5 { align-items: center; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host :is(.tpTabT5, .tpLayT5, .tpAddP17) { display: inline-flex; align-items: center; gap: 6px; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host :is(.tpLayT5, .tpAddP17) { width: 30px; padding: 0; justify-content: center; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host :is(.tpLayT5, .tpAddP17) svg { width: 16px; height: 16px; flex: none; }
+:root:not(#sg#sg#sg#sg) .code-head :is(button):not(#g48#g48#g48) { box-shadow: none; border: 0; }
+:root:not(#sg#sg#sg#sg) .r1-content .r1c :is(button, summary):not([role=switch], [data-solid], .r1c-steps > summary, #g48#g48#g48) { box-shadow: none; background: color-mix(in srgb, var(--ink) 7%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1-content .r1c :is(button, summary):hover:not([role=switch], [data-solid], #g48#g48#g48) { background: color-mix(in srgb, var(--ink) 12%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1-topic-host > .topicsT5 { background: color-mix(in srgb, var(--bg) 88%, transparent); }
+:root:not(#sg#sg#sg#sg) :is(.r1-header, .r1-head, .r1-conversation > header) :is(.g-pill, .g-capsule) { background: color-mix(in srgb, var(--bg) 86%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1-conversation .g-pill { background: color-mix(in srgb, var(--bg) 86%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1-conversation .g-capsule { background: color-mix(in srgb, var(--bg) 86%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1-topic-host { z-index: 40; isolation: isolate; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host > .topicsT5, :root:not(#sg#sg#sg#sg) .r1-conversation .g-pill, :root:not(#sg#sg#sg#sg) .r1-conversation .g-capsule { background: color-mix(in srgb, var(--bg) 96%, var(--ink) 4%); }
+:root[data-transparency="reduce"]:not(#sg#sg#sg#sg) :is(.g-popover, .g-float, .r1-topic-host > .topicsT5) { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]):not(#sg#sg#sg#sg) :is(.g-popover, .g-float, .r1-topic-host > .topicsT5) { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; } }
+
+/* ===== Smart glass, batch 3 (owner, 2026-10-15). Classic popovers re-hosted in R1 (.pop.menu, .pop.panel: Threads show
+   as, Filter and sort) were clear or 90% and let the transcript read through; they are the same glass sheet as .g-popover,
+   with plain rows. A soft scrim under the window header fades transcript lines out before they reach the title pill. ===== */
+:root:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) { background: color-mix(in srgb, var(--bg) 94%, var(--ink) 3%); backdrop-filter: var(--sg-blur); -webkit-backdrop-filter: var(--sg-blur);
+  border: 0; border-radius: 16px; box-shadow: inset 0 0 0 .5px var(--sg-edge), inset 0 1px 0 var(--sg-hi), var(--sg-shadow); }
+:root:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) :is(button, a[href], [role=menuitem]):not([role=switch], [data-solid]) { background: transparent; box-shadow: none; }
+:root:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) :is(button, a[href], [role=menuitem]):is(:hover, :focus-visible, [aria-checked="true"], [aria-current="true"]):not([role=switch]) { background: color-mix(in srgb, var(--ink) 9%, transparent); }
+:root[data-transparency="reduce"]:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+/* Threads as a column (the side list): one rounded glass panel, plain header words, plain rows. The pill shape above is for
+   the tab bar; on a column it stretched into a tall capsule with a box around every row (owner, 2026-10-15). */
+:root:not(#sg#sg#sg#sg) .r1-topic-host > .topicsT5.lay-column { border-radius: 18px; padding: 6px; align-items: stretch; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpHeadT5 :is(b, small) { background: none; box-shadow: none; border: 0; padding: 0; border-radius: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpHeadT5 small { color: var(--ink-3); font-weight: 400; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpRowT5 { background: transparent; box-shadow: none; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpRowT5:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpRowT5.curT5 { background: color-mix(in srgb, var(--ink) 12%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpRowT5 :is(button, .tpGoT5) { background: transparent; box-shadow: none; border: 0; }

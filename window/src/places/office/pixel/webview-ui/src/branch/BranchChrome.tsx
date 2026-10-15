@@ -29,8 +29,8 @@ export function BranchToolbar(p: {
   return (
     <div className="absolute bottom-10 left-10 z-20 pa-bar" role="toolbar" aria-label="Grove" data-testid="office-toolbar">
       {p.onNewAgent && (
-        <button type="button" className="pa-btn pri" onClick={p.onNewAgent} title="Make a new Trunk">
-          New Trunk
+        <button type="button" className="pa-btn pri" onClick={p.onNewAgent} aria-label="New Trunk" title="Make a new Trunk">
+          Trunk
         </button>
       )}
       <button type="button" className="pa-btn" aria-pressed={p.isEditMode} onClick={p.onToggleEditMode} title="Edit the office layout">

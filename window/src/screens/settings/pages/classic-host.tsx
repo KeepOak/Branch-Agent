@@ -12,7 +12,7 @@ import { usePins, type Pin } from "../../../places/settings/pins";
 import { HIDDEN_PAGES, SETUP_PAGES, pageName } from "../../../places-nav/settings-nav";
 import { Icon } from "../../../shell/icons";
 import { PAGES, pageFor, sectionNeed, type PageId } from "../nav";
-import type { Row } from "../rows";
+import { COMING_FROM, type Row } from "../rows";
 import { SECTION_COMING, useLevel } from "../SettingsFrame";
 import type { PageSlot } from "../slots";
 import "./classic-host.css";
@@ -81,7 +81,8 @@ export function ClassicHost({ engine, page, classic, coming, onPage }: { engine:
             );
           })}
         </KitProvider>
-        {coming?.map((card) => (
+        {/* Cards that are all Coming: Regular shows only what works today (rows.ts COMING_FROM). */}
+        {level < COMING_FROM ? null : coming?.map((card) => (
           <section key={card} className="sec r1s-classic-coming" aria-label={card}>
             <h2>{card}</h2>
             <Coming engine={engine} need={sectionNeed(page, card)} unwired reason={SECTION_COMING(card)} where={`${PAGES[page].title} › ${card}`}>

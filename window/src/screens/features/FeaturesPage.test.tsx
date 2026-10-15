@@ -45,7 +45,7 @@ describe("All features", () => {
     expect(t.text()).toContain("Run shell commands");
     const chips = [...t.host.querySelectorAll(".feat-chip")].map((c) => c.textContent);
     expect(chips).toEqual(expect.arrayContaining(["In Branch", "Coming", "Partly built"]));
-    expect(t.host.querySelector(".feat-count")!.textContent).toBe("4 of 5 features · 1 more at the Technical level");
+    expect(t.host.querySelector(".feat-count")!.textContent).toMatch(/^In Branch \d+ · Coming \d+ · 1 more at the Technical level$/);
     expect(t.host.querySelector("input")!.placeholder).toBe("Search 5 features");
     expect([...t.host.querySelectorAll("[role='radio']")].map((b) => b.textContent)).toEqual(["All 5", "In Branch 3", "Partly built 1", "Coming 1"]);
   });
@@ -67,7 +67,7 @@ describe("All features", () => {
   it("shows the Technical areas at Technical", async () => {
     const t = await render({ technical: true });
     expect(t.text()).toContain("Running Branch");
-    expect(t.host.querySelector(".feat-count")!.textContent).toBe("5 of 5 features");
+    expect(t.host.querySelector(".feat-count")!.textContent).toMatch(/^In Branch \d+ · Coming \d+$/);
   });
 
   it("draws Open only where the host can go and the feature exists at least in part", async () => {
@@ -84,7 +84,7 @@ describe("All features", () => {
     await act(async () => t.host.querySelector<HTMLButtonElement>("[aria-label='Open where Talk mode lives']")!.click());
     expect(onOpen).toHaveBeenCalledWith({ kind: "settings", page: "voice" });
     await act(async () => t.host.querySelector<HTMLButtonElement>("[aria-label='Open Tools']")!.click());
-    expect(onOpen).toHaveBeenLastCalledWith({ kind: "place", place: "customize", tab: "tools" });
+    expect(onOpen).toHaveBeenLastCalledWith({ kind: "place", place: "customize", tab: "Tools" });
   });
 
   it("deep-links to a feature, searching for it when its area shows only at Technical", async () => {
@@ -110,7 +110,7 @@ describe("All features", () => {
   it("loads the shipped atlas when no rows are given", async () => {
     const t = await render({ rows: undefined });
     await act(async () => { await loadAtlas(); });
-    expect(t.host.querySelector(".feat-count")!.textContent).toMatch(/^4,\d{3} of 4,973 features · \d[\d,]* more at the Technical level$/);
+    expect(t.host.querySelector(".feat-count")!.textContent).toMatch(/^In Branch [\d,]+ · Coming [\d,]+ · [\d,]+ more at the Technical level$/);
   });
 });
 

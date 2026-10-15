@@ -10,7 +10,7 @@ let root: Root | undefined;
 beforeEach(() => localStorage.clear());
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
 
-const METHODS = ["channels.status", "channels.pairing.list", "channels.pairing.approve", "channels.pairing.dismiss", "wizard.start", "wizard.next", "wizard.cancel", "config.get", "config.patch", "agents.list", "sessions.list", "logs.tail"];
+const METHODS = ["channels.status", "channels.pairing.list", "channels.pairing.approve", "channels.pairing.dismiss", "wizard.start", "wizard.next", "wizard.cancel", "config.get", "config.patch", "agents.list", "sessions.list", "logs.tail", "device.pair.setupCode"];
 const STATUS = {
   channelMeta: [{ id: "telegram", label: "Telegram", detailLabel: "" }, { id: "signal", label: "Signal", detailLabel: "" }, { id: "matrix", label: "Matrix", detailLabel: "" }, { id: "nostrish", label: "Nostrish", detailLabel: "Relay chat" }],
   channelAccounts: { telegram: [{ accountId: "main", running: true, configured: true }], signal: [{ accountId: "default", running: true, configured: true }] },
@@ -104,7 +104,7 @@ it("draws Classic's Advanced tables: a table row saves its key and a row Classic
 
 it("edits owners in chat apps (commands.ownerAllowFrom)", async () => {
   const { host, request } = await render("advanced");
-  await act(async () => button(host, "Edit", host.querySelector('[data-sec="Commands from chat apps"]')!).click());
+  await act(async () => button(host, "Edit", host.querySelector('[data-card="Commands"] [data-sec="Commands from chat apps"]')!).click());
   const editor = host.querySelector('[aria-label="Owners in chat apps"][role="group"]')!;
   await choose(editor.querySelector<HTMLInputElement>('input[aria-label="Their ID or @name"]')!, "4242");
   await act(async () => button(host, "Add", editor).click());
@@ -178,18 +178,57 @@ it("#1049: at Regular the page ends after Who answers; the setting cards and Who
   expect(adv.host.querySelector('[aria-label="Hold up to"]')).toBeNull();
 });
 
-it("#1049: every app card shows its set-up time (preview TIME_T5); apps not wired yet keep the Coming action", async () => {
+it("#1049: Advanced and Technical draw the preview's approved cards, in order, once each", async () => {
+  // preview Chat apps at Advanced: … Who answers · Who may message · How replies look & arrive · Groups · Commands ·
+  // Approvals & what Trunks may do · Each app · Limits & quiet (SETTINGS-PROPOSAL "Chat apps from 20 to 8").
+  const APPROVED = ["Who may message", "How replies look & arrive", "Groups", "Commands", "Approvals & what Trunks may do", "Each app", "Limits & quiet"];
+  for (const level of ["advanced", "technical"] as const) {
+    const { host } = await render(level);
+    const cards = [...host.querySelectorAll(".r1-ca-more > section")].map((s) => s.querySelector("h2")?.textContent);
+    expect(cards, level).toEqual(APPROVED);
+    const heads = [...host.querySelectorAll("h2")].map((h) => h.textContent);
+    expect(heads.indexOf("Who answers")).toBe(heads.indexOf("Who may message") - 1);
+    expect(host.querySelector('.r1-ca-cont[data-card="Who answers"]')?.textContent).toContain("Photo albums as one message");
+    for (const old of ["Commands in chat apps", "What the Trunk sees", "Staying connected", "Formatting in each app", "How replies arrive", "Chat apps", "Messages, every setting", "In every chat", "Quiet and limits"]) expect(heads, old).not.toContain(old);
+    // The page's own rows sit in their card: Show typing under How replies, Typed commands under Commands.
+    expect(host.querySelector('[data-card="How replies look & arrive"] [aria-label="Show typing"]')).not.toBeNull();
+    expect(host.querySelector('[data-card="Commands"] [aria-label="Typed commands"]')).not.toBeNull();
+    expect(host.querySelectorAll('[aria-label="Show typing"]')).toHaveLength(1);
+    await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = "";
+  }
+});
+
+it("#1049: draws the preview's Your phone tile after the app groups, and Pair a phone opens the pairing dialog", async () => {
+  const { host } = await render("regular");
+  const tile = host.querySelector('section[aria-label="Your phone"]')!;
+  expect(tile.textContent).toContain("Answer approvals and talk to Trunks from the Branch app.");
+  const heads = [...host.querySelectorAll("h2")].map((h) => h.textContent);
+  // After Every chat app's groups, before Who answers.
+  expect(tile.compareDocumentPosition(host.querySelector('[aria-labelledby="r1-ca-all"]')!) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  expect(heads).toContain("Who answers");
+  const pair = [...tile.querySelectorAll("button")].find((b) => b.textContent === "Pair a phone")!;
+  expect(pair.getAttribute("data-need")).toBe("device.pair.setupCode");
+  await act(async () => pair.click());
+  expect(document.querySelector('[data-testid="pair"]')).not.toBeNull();
+});
+
+it("drops the per-tile set-up times, and folds the apps that don't work yet into one More chat apps row", async () => {
   const { host } = await render("regular");
   const cards = [...host.querySelectorAll<HTMLElement>(".r1-ca-card")];
-  const sub = (name: string) => cards.find((c) => c.querySelector(".r1-ca-text b")?.textContent === name)?.querySelector(".r1-ca-text small")?.textContent;
-  expect(sub("WhatsApp Business")).toBe("About 15 minutes · needs a Meta business account");
-  expect(sub("iMessage")).toBe("About 5 minutes · needs a Mac");
-  expect(sub("Viber")).toBe("About 5 minutes");
-  expect(sub("A webhook of your own")).toBe("About 2 minutes");
-  // The catalogue's cards (an app only the engine lists keeps the engine's own line under its name).
-  const idle = cards.filter((c) => !/Connected|Manage/.test(c.textContent ?? "") && c.closest("section")?.querySelector("h3, b")?.textContent !== "Also in Branch" && !/Nostrish/.test(c.textContent ?? ""));
-  expect(idle.length).toBeGreaterThan(40);
-  expect(idle.filter((c) => !/^About \d+ minutes?/.test(c.querySelector(".r1-ca-text small")?.textContent ?? "")).map((c) => c.textContent)).toEqual([]);
+  expect(cards.some((c) => /About \d+ minutes?/.test(c.textContent ?? ""))).toBe(false);
+  const fold = host.querySelector<HTMLElement>("[data-later-rows]");
+  expect(fold?.querySelector(".r1s-later-btn")?.textContent).toMatch(/^More chat apps \(\d+\)$/);
+  // Apps that work lead: the first chat-app card is not greyed, and the greyed catalogue sits inside the fold.
+  expect(cards[0].getAttribute("aria-disabled")).not.toBe("true");
+  expect(fold?.querySelectorAll(".r1-ca-card").length).toBeGreaterThan(40);
   expect(host.textContent).not.toContain("Coming in a later update");
-  expect(cards.find((c) => c.querySelector(".r1-ca-text b")?.textContent === "Viber")?.querySelector(".r1-ca-action")?.textContent).toBe("Coming");
+});
+
+it("names the raw key behind Show progress as reactions only at Technical", async () => {
+  const advanced = await render("advanced");
+  expect(advanced.host.textContent).toContain("Branch has one switch for every app.");
+  expect(advanced.host.textContent).not.toContain("messages.statusReactions");
+  await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = "";
+  const technical = await render("technical");
+  expect(technical.host.textContent).toContain("messages.statusReactions.enabled");
 });
