@@ -127,9 +127,12 @@ export function countsOf(rows: readonly AtlasRow[]): Counts {
 
 export const fmt = (n: number) => n.toLocaleString("en-US");
 
-/** "N of 4,973 features · M more at the Technical level". */
-export function countLine(flat: Flat, total: number): string {
-  return `${fmt(flat.shown)} of ${fmt(total)} features${flat.hidden ? ` · ${fmt(flat.hidden)} more at the Technical level` : ""}`;
+/** Browsing with no search or status filter: what is in Branch leads, Coming follows on the same quiet line, and rows
+ *  held back for Technical come last. A search or a filter reads as "N of M features", so the match count is the point. */
+export function countLine(flat: Flat, total: number, counts: Counts, browsing: boolean): string {
+  const more = flat.hidden ? ` · ${fmt(flat.hidden)} more at the Technical level` : "";
+  if (browsing) return `In Branch ${fmt(counts.in)} · Coming ${fmt(counts.soon)}${more}`;
+  return `${fmt(flat.shown)} of ${fmt(total)} features${more}`;
 }
 
 type PackedRow = readonly [id: string, a: string, f: string, w: string, s: AtlasStatus, p: string];

@@ -9,6 +9,8 @@ export interface ComponentUpdateStatus {
   pendingVersion: string | null;
   checkedAt: number | null;
   error: string | null;
+  /** A staged update applies by itself when no Trunk is working (auto-apply is on); false means at the next start. */
+  applyWhenIdle?: boolean;
 }
 export interface ComponentUpdateController {
   status(): Promise<ComponentUpdateStatus>;
@@ -20,17 +22,21 @@ export interface ComponentUpdateController {
 export function createComponentUpdateController(cfg: DesktopConfig, options: {
   request?: typeof fetch;
   stage?: () => Promise<boolean>;
+  appliesWhenIdle?: () => boolean;
 } = {}): ComponentUpdateController {
   let state: ComponentUpdateStatus = { phase: "unchecked", currentVersion: null, latestVersion: null, pendingVersion: null, checkedAt: null, error: null };
   let flight: Promise<ComponentUpdateStatus> | undefined;
   let activeKind: "checking" | "staging" | undefined;
   let reading: Promise<ComponentUpdateStatus> | undefined;
+  /** The newest release the last check saw. A staged older build never takes its place as the latest. */
+  let checkedLatest: string | undefined;
   const status = (): Promise<ComponentUpdateStatus> => {
     reading ??= readComponentUpdateStatus(cfg).then(({ currentVersion, pendingVersion }) => {
+      const latestVersion = checkedLatest ?? pendingVersion ?? state.latestVersion;
       const value = { currentVersion, pendingVersion };
-      const phase = value.pendingVersion ? "staged" : state.phase === "staged"
-        ? state.latestVersion === value.currentVersion ? "current" : "unchecked" : state.phase;
-      state = { ...state, ...value, phase, ...(value.pendingVersion ? { latestVersion: value.pendingVersion } : {}) };
+      const phase = value.pendingVersion ? (value.pendingVersion === latestVersion ? "staged" : "available")
+        : state.phase === "staged" ? (latestVersion === value.currentVersion ? "current" : "unchecked") : state.phase;
+      state = { ...state, ...value, phase, latestVersion, applyWhenIdle: options.appliesWhenIdle?.() ?? false };
       return { ...state };
     }).finally(() => { reading = undefined; });
     return reading;
@@ -53,12 +59,16 @@ export function createComponentUpdateController(cfg: DesktopConfig, options: {
     if (!installed.pendingVersion && installed.currentVersion !== release.version && await componentReleaseRejected(cfg, release)) {
       throw new Error("The latest release failed readiness; the desktop retained its previous components");
     }
-    state = { ...state, ...installed, phase: installed.pendingVersion ? "staged" : installed.currentVersion === release.version ? "current" : "available",
-      latestVersion: release.version, checkedAt: Date.now() };
+    // Staged means the staged build is the newest release: an older staged one is replaced by the stage step.
+    checkedLatest = release.version;
+    const phase = installed.pendingVersion === release.version ? "staged"
+      : installed.currentVersion === release.version ? "current" : "available";
+    state = { ...state, ...installed, phase, latestVersion: release.version, checkedAt: Date.now(),
+      applyWhenIdle: options.appliesWhenIdle?.() ?? false };
   }), stage: () => run("staging", async () => {
     const staged = await (options.stage ?? (() => refreshComponentUpdate(cfg, options.request)))();
     const installed = await readComponentUpdateStatus(cfg);
-    if (!staged && !installed.pendingVersion && state.latestVersion && installed.currentVersion !== state.latestVersion) {
+    if (!staged && installed.pendingVersion !== state.latestVersion && state.latestVersion && installed.currentVersion !== state.latestVersion) {
       throw new Error("The release was not staged; the desktop retained its current components");
     }
     state = { ...state, phase: state.latestVersion && installed.currentVersion === state.latestVersion ? "current" : "unchecked" };

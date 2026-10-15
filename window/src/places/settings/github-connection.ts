@@ -23,14 +23,16 @@ export class GitHubConnection {
   }
   private update(next: Partial<GitHubView>) { if (!this.retired) { this.view = { ...this.view, ...next }; this.changed(); } }
   private fail(error: unknown) { this.update({ error: error instanceof Error ? error.message : "GitHub request failed" }); }
-  async refresh() {
-    if (this.view.busy || this.retired) return;
+  /** Resolves true when the status was read; a failure is shown on the connection and resolves false. */
+  async refresh(): Promise<boolean> {
+    if (this.view.busy || this.retired) return false;
     const revision = ++this.reading;
     this.update({ phase: "loading", error: null });
     try {
       const status = await this.engine.request<ToolsGitHubStatusResult>("tools.github.status", { agentId: this.agentId, selectedScope: this.scope });
       if (revision === this.reading) this.update({ status: readable(status), phase: "ready" });
-    } catch (error) { if (revision === this.reading) { this.fail(error); this.update({ phase: "ready" }); } }
+      return true;
+    } catch (error) { if (revision === this.reading) { this.fail(error); this.update({ phase: "ready" }); } return false; }
   }
   async start() {
     if (this.view.busy || this.retired) return;

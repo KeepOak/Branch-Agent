@@ -30,19 +30,18 @@ it("declares every frame control against an engine with no methods, and names th
   expect(host.querySelector(".r1-drawer-scrim")).not.toBeNull();
   expect(undeclared()).toEqual([]);
   const needs = comingControls().flatMap((entry) => entry.need);
-  expect(needs).toEqual(expect.arrayContaining(["agent.identity.get", "computer.status", "browser.request", "sessions.github.status"]));
-  const pill = host.querySelector<HTMLButtonElement>(".g-pill")!;
-  expect(pill.getAttribute("aria-disabled")).toBe("true");
-  await act(async () => pill.click());
-  expect(onOpen).not.toHaveBeenCalled();
+  expect(needs).toEqual(expect.arrayContaining(["computer.status", "browser.request", "sessions.github.status"]));
+  // The name pill reads the Trunks list the window already has, so it waits on no call of its own.
+  expect(needs).not.toContain("agent.identity.get");
+  expect(host.querySelector<HTMLButtonElement>(".g-pill")!.dataset.need).toBeUndefined();
 });
 
-it("keeps the pill live once the engine offers agent.identity.get, and the unwired tools still Coming", async () => {
+it("keeps the pill live without agent.identity.get, and the unwired tools still Coming", async () => {
   const onOpen = vi.fn();
-  await render(engineOf(["agent.identity.get", "computer.status", "browser.request", "sessions.github.status"]), onOpen);
+  await render(engineOf(["computer.status", "browser.request", "sessions.github.status"]), onOpen);
   const pill = host.querySelector<HTMLButtonElement>(".g-pill")!;
   expect(pill.getAttribute("aria-disabled")).toBeNull();
-  expect(pill.dataset.need).toBe("agent.identity.get");
+  expect(pill.dataset.need).toBeUndefined();
   await act(async () => pill.click());
   expect(onOpen).toHaveBeenCalledOnce();
   // The header tools have nothing to run yet: Coming, still naming their calls.

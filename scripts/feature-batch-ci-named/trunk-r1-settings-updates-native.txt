@@ -1,0 +1,5 @@
+window:src/screens/settings/pages/updates-live.test.tsx
+window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/places/settings/set2/achievements.test.tsx
+window:src/places/settings/set2/about-credit.test.tsx

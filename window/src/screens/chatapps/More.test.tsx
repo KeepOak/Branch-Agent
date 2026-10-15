@@ -163,6 +163,21 @@ it("opens the watchdog log (logs.tail) and turns the watch off on every connecte
   expect(request.mock.calls.some(([m]) => m === "logs.tail")).toBe(true);
 });
 
+it("#1049: at Regular the page ends after Who answers; the setting cards and Who may message start at Advanced", async () => {
+  const { host } = await render("regular");
+  const heads = () => [...host.querySelectorAll("h2")].map((h) => h.textContent);
+  // preview Chat apps at Regular: Your chat apps, the app groups, Who answers.
+  expect(heads()).not.toEqual(expect.arrayContaining(["How replies look & arrive"]));
+  for (const card of ["How replies look & arrive", "Groups", "Commands", "Approvals & what Trunks may do", "Limits & quiet"]) expect(heads(), card).not.toContain(card);
+  expect(host.querySelector('[aria-label^="Who may message"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Show typing"]')).toBeNull();
+  await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = "";
+  const adv = await render("advanced");
+  expect(adv.host.querySelector('[aria-label="Show typing"]')).not.toBeNull();
+  expect(adv.host.querySelector('[aria-label^="Who may message"]')).not.toBeNull();
+  expect(adv.host.querySelector('[aria-label="Hold up to"]')).toBeNull();
+});
+
 it("#1049: every app card shows its set-up time (preview TIME_T5); apps not wired yet keep the Coming action", async () => {
   const { host } = await render("regular");
   const cards = [...host.querySelectorAll<HTMLElement>(".r1-ca-card")];
@@ -177,4 +192,13 @@ it("#1049: every app card shows its set-up time (preview TIME_T5); apps not wire
   expect(idle.filter((c) => !/^About \d+ minutes?/.test(c.querySelector(".r1-ca-text small")?.textContent ?? "")).map((c) => c.textContent)).toEqual([]);
   expect(host.textContent).not.toContain("Coming in a later update");
   expect(cards.find((c) => c.querySelector(".r1-ca-text b")?.textContent === "Viber")?.querySelector(".r1-ca-action")?.textContent).toBe("Coming");
+});
+
+it("names the raw key behind Show progress as reactions only at Technical", async () => {
+  const advanced = await render("advanced");
+  expect(advanced.host.textContent).toContain("Branch has one switch for every app.");
+  expect(advanced.host.textContent).not.toContain("messages.statusReactions");
+  await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = "";
+  const technical = await render("technical");
+  expect(technical.host.textContent).toContain("messages.statusReactions.enabled");
 });

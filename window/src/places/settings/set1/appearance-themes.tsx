@@ -15,7 +15,7 @@ import { LEGACY_THEMES } from "./appearance-legacy";
 export type ThemeDesc = { id: string; name: string; description?: string; source: "builtin" | "plugin" | "user"; modes?: Mode[] };
 type Current = { id: string; mode?: string; effectiveMode?: Mode; overrides?: { id?: string; mode?: string } };
 export type Extra = Partial<Record<string, { light?: Partial<Ef>; dark?: Partial<Ef> }>>;
-export type Themes = { list: ThemeDesc[]; current: Current | null; pairOf: (id: string) => Pair | undefined; loading: boolean; error?: string; reload: () => Promise<void> };
+export type Themes = { list: ThemeDesc[]; current: Current | null; pairOf: (id: string) => Pair | undefined; loading: boolean; error?: string; reload: () => Promise<unknown> };
 
 export const PALETTE_ICON = <svg className="i s" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.5-.2-.8-.5-1.2-.3-.3-.4-.6-.4-1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5C21 6.5 17 3 12 3z" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="7.5" cy="11" r="1.2" fill="currentColor" /><circle cx="10.5" cy="7.5" r="1.2" fill="currentColor" /><circle cx="15" cy="7.5" r="1.2" fill="currentColor" /></svg>;
 const legacyGroups = new Map<string, string>(LEGACY_THEMES.map((theme) => [theme.id, theme.group]));
