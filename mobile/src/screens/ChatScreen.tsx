@@ -2,12 +2,12 @@ import { useState, useSyncExternalStore } from 'react';
 import { FlatList, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  attachmentPolicy,
   canSendAttachments,
   formatSize,
   NO_ATTACH_METHOD_NOTE,
   preparingLine,
   readPickedFile,
+  resolvedAttachmentPolicy,
   toChatAttachments,
   type DraftFile,
   type HelloAttachments,
@@ -267,6 +267,7 @@ export function ChatScreen({
   const live = snapshot.live;
   const status = live ? (live.text ? 'Typing…' : phaseLabel(live.phase)) : !online ? 'Reconnecting…' : row.room ? 'Room' : row.trunkName ? `With ${row.trunkName}` : '';
   const canAttach = online && canSendAttachments(hello);
+  const policy = resolvedAttachmentPolicy(hello);
   const readyFiles = toChatAttachments(files).length;
   const canSend = online && !live && (draft.trim().length > 0 || readyFiles > 0);
 
@@ -274,7 +275,7 @@ export function ChatScreen({
     if (!picked) return;
     const id = `f${nextFileId}`;
     setNextFileId((n) => n + 1);
-    setFiles((current) => [...current, readPickedFile(id, picked, 'file', attachmentPolicy(hello))]);
+    setFiles((current) => [...current, readPickedFile(id, picked, 'file', policy)]);
   };
 
   const pick = async (kind: 'photo' | 'library' | 'file') => {
@@ -282,7 +283,7 @@ export function ChatScreen({
     setPickError(null);
     setPreparing((n) => n + 1);
     try {
-      const picked = kind === 'photo' ? await pickers.takePhoto() : kind === 'library' ? await pickers.pickPhoto() : await pickers.pickFile();
+      const picked = kind === 'photo' ? await pickers.takePhoto(policy) : kind === 'library' ? await pickers.pickPhoto(policy) : await pickers.pickFile(policy);
       addPicked(picked);
     } catch (error) {
       setPickError(error instanceof Error ? error.message : String(error));

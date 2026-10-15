@@ -28,6 +28,30 @@ export type PickedFile = {
   content?: string;
 };
 
+/** A pick's name, type and reported size, before any bytes are read. */
+export type PickMeta = {
+  fileName: string;
+  mimeType: string;
+  sizeBytes?: number;
+};
+
+/**
+ * The engine's advertised ceilings when hello omits policy.attachments
+ * (engine/src/gateway/chat-attachment-policy.ts: 20 MiB files, 6 MiB images).
+ */
+export const DEFAULT_ATTACHMENT_POLICY: Required<AttachmentPolicy> = {
+  maxBytes: 20 * 1024 * 1024,
+  maxImageBytes: 6 * 1024 * 1024,
+};
+
+/** The read stopped because the stream went past the size ceiling. */
+export class OversizeReadError extends Error {
+  constructor(readonly sizeBytes: number) {
+    super('Too large to send');
+    this.name = 'OversizeReadError';
+  }
+}
+
 export type HelloAttachments = {
   features?: { methods?: readonly string[] };
   policy?: { attachments?: AttachmentPolicy };
@@ -53,10 +77,50 @@ export function attachmentPolicy(hello: HelloAttachments | null | undefined): At
   return policy && (policy.maxBytes !== undefined || policy.maxImageBytes !== undefined) ? policy : undefined;
 }
 
+/** Hello's limits when present, else the engine's 20 MiB / 6 MiB defaults. */
+export function resolvedAttachmentPolicy(hello: HelloAttachments | null | undefined): AttachmentPolicy {
+  const fromHello = attachmentPolicy(hello);
+  return {
+    maxBytes: fromHello?.maxBytes ?? DEFAULT_ATTACHMENT_POLICY.maxBytes,
+    maxImageBytes: fromHello?.maxImageBytes ?? DEFAULT_ATTACHMENT_POLICY.maxImageBytes,
+  };
+}
+
+/** The decoded-size ceiling for this MIME, window fallback order then the engine defaults. */
+export function attachmentLimit(mimeType: string, policy: AttachmentPolicy | undefined): number {
+  if (isImage(mimeType)) return policy?.maxImageBytes ?? policy?.maxBytes ?? DEFAULT_ATTACHMENT_POLICY.maxImageBytes;
+  return policy?.maxBytes ?? DEFAULT_ATTACHMENT_POLICY.maxBytes;
+}
+
 /** The problem with a file before it is read, from the engine's own limits (hello.policy.attachments). */
 export function sizeProblem(name: string, mimeType: string, size: number, policy: AttachmentPolicy | undefined): string | undefined {
-  const limit = isImage(mimeType) ? (policy?.maxImageBytes ?? policy?.maxBytes) : policy?.maxBytes;
-  return limit !== undefined && size > limit ? `Too large to send: ${name}` : undefined;
+  return size > attachmentLimit(mimeType, policy) ? `Too large to send: ${name}` : undefined;
+}
+
+/**
+ * Window order (readDraftFile): reject on the reported size before any read. When the picker
+ * does not know the size, `read` is called with the ceiling and must stop at that many bytes.
+ */
+export async function readIfWithinLimit(
+  meta: PickMeta,
+  policy: AttachmentPolicy | undefined,
+  read: (maxBytes: number) => Promise<Uint8Array>,
+): Promise<PickedFile> {
+  const fileName = meta.fileName || 'file';
+  const mimeType = meta.mimeType || 'application/octet-stream';
+  const sizeBytes = meta.sizeBytes ?? 0;
+  const maxBytes = attachmentLimit(mimeType, policy);
+  if (sizeBytes > 0 && sizeProblem(fileName, mimeType, sizeBytes, policy)) {
+    return { fileName, mimeType, sizeBytes };
+  }
+  try {
+    const bytes = await read(maxBytes);
+    if (bytes.byteLength > maxBytes) return { fileName, mimeType, sizeBytes: bytes.byteLength };
+    return { fileName, mimeType, sizeBytes: sizeBytes || bytes.byteLength, content: encodeBase64(bytes) };
+  } catch (error) {
+    if (error instanceof OversizeReadError) return { fileName, mimeType, sizeBytes: error.sizeBytes };
+    throw error;
+  }
 }
 
 /** The size in the chip, in the units people read. */
@@ -93,7 +157,7 @@ export function toChatAttachments(files: readonly DraftFile[]): Array<Record<str
     }));
 }
 
-/** Turns a picked photo or file into a chip, using the engine's size limits when the hello sent them. */
+/** Turns a picked photo or file into a chip. A size problem never keeps `content`. */
 export function readPickedFile(id: string, picked: PickedFile, origin: DraftFile['origin'], policy: AttachmentPolicy | undefined): DraftFile {
   const mimeType = picked.mimeType || 'application/octet-stream';
   const sizeBytes = picked.sizeBytes || (picked.content ? Math.floor((picked.content.length * 3) / 4) : 0);

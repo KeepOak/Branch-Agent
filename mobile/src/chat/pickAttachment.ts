@@ -1,23 +1,27 @@
-// Camera, library and file pickers for the chat composer. The bytes go on chat.send; these only
-// turn a system pick into the same PickedFile the window's File reader produces.
+// Camera, library and file pickers for the chat composer. Size is checked before any read, the
+// way the window's readDraftFile rejects on file.size before arrayBuffer().
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { encodeBase64, type PickedFile } from './attachments';
+import {
+  OversizeReadError,
+  readIfWithinLimit,
+  type AttachmentPolicy,
+  type PickMeta,
+  type PickedFile,
+} from './attachments';
 
 export type AttachmentPickers = {
-  takePhoto(): Promise<PickedFile | null>;
-  pickPhoto(): Promise<PickedFile | null>;
-  pickFile(): Promise<PickedFile | null>;
+  takePhoto(policy?: AttachmentPolicy): Promise<PickedFile | null>;
+  pickPhoto(policy?: AttachmentPolicy): Promise<PickedFile | null>;
+  pickFile(policy?: AttachmentPolicy): Promise<PickedFile | null>;
 };
 
-function fromImage(asset: ImagePicker.ImagePickerAsset): PickedFile {
+function imageMeta(asset: ImagePicker.ImagePickerAsset): PickMeta {
   const mimeType = asset.mimeType || 'image/jpeg';
-  const content = asset.base64 ?? undefined;
   return {
     fileName: asset.fileName || (mimeType === 'image/png' ? 'photo.png' : 'photo.jpg'),
     mimeType,
-    sizeBytes: asset.fileSize ?? (content ? Math.floor((content.length * 3) / 4) : 0),
-    content,
+    sizeBytes: asset.fileSize,
   };
 }
 
@@ -31,35 +35,69 @@ async function requireLibrary(): Promise<void> {
   if (!permission.granted) throw new Error('Turn on Photos for Branch in Settings to attach a picture.');
 }
 
-async function bytesFromUri(uri: string): Promise<Uint8Array> {
+/** Reads at most `maxBytes`. Uses Content-Length when present, then the body, and stops past the ceiling. */
+export async function readUriCapped(uri: string, maxBytes: number): Promise<Uint8Array> {
   const response = await fetch(uri);
   if (!response.ok) throw new Error('Couldn’t read the file.');
-  return new Uint8Array(await response.arrayBuffer());
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) throw new OversizeReadError(declared);
+  const body = response.body;
+  if (body && typeof body.getReader === 'function') {
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new OversizeReadError(total);
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > maxBytes) throw new OversizeReadError(bytes.byteLength);
+  return bytes;
+}
+
+function fromUri(meta: PickMeta, uri: string, policy: AttachmentPolicy | undefined): Promise<PickedFile> {
+  return readIfWithinLimit(meta, policy, (maxBytes) => readUriCapped(uri, maxBytes));
 }
 
 export const expoPickers: AttachmentPickers = {
-  async takePhoto() {
+  async takePhoto(policy) {
     await requireCamera();
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], base64: true, quality: 1 });
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
     const asset = result.canceled ? null : result.assets[0];
-    return asset ? fromImage(asset) : null;
+    return asset ? fromUri(imageMeta(asset), asset.uri, policy) : null;
   },
-  async pickPhoto() {
+  async pickPhoto(policy) {
     await requireLibrary();
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], base64: true, quality: 1 });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
     const asset = result.canceled ? null : result.assets[0];
-    return asset ? fromImage(asset) : null;
+    return asset ? fromUri(imageMeta(asset), asset.uri, policy) : null;
   },
-  async pickFile() {
+  async pickFile(policy) {
     const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
     const asset = result.canceled ? null : result.assets[0];
     if (!asset) return null;
-    const bytes = await bytesFromUri(asset.uri);
-    return {
-      fileName: asset.name || 'file',
-      mimeType: asset.mimeType || 'application/octet-stream',
-      sizeBytes: asset.size ?? bytes.byteLength,
-      content: encodeBase64(bytes),
-    };
+    return fromUri(
+      {
+        fileName: asset.name || 'file',
+        mimeType: asset.mimeType || 'application/octet-stream',
+        sizeBytes: asset.size ?? undefined,
+      },
+      asset.uri,
+      policy,
+    );
   },
 };
