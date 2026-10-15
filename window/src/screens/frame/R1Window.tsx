@@ -374,7 +374,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const topics = current?.isMain ? conversations.rows.filter(row => row.agentId === current.agentId && row.key !== current.key && !row.isMain && !row.system && !row.archived && !row.helper).map(row => ({ key: row.key, title: row.title })) : [];
   // The open Trunk's threads (Classic TopicRail): in the topics column, or above the chat for Tabs and narrow windows.
   const threads = useR1Topics({ session, ready, rows: conversations.rows, list, currentKey: route.kind === "chat" ? snapshot.sessionKey : null,
-    mainSuffix: snapshot.mainKey?.split(":").slice(2).join(":") || "main", onOpen: openConversation });
+    mainSuffix: snapshot.mainKey?.split(":").slice(2).join(":") || "main", trunkName: speaker, onOpen: openConversation });
   // Opening a conversation clears its unread flag once per unread episode (Classic read-on-open, connect/unread-guard.ts).
   const markRequest = useCallback((method: string, params?: unknown) => session.request(method, params), [session]);
   const refreshList = useCallback(() => { void list.refresh(); }, [list]);

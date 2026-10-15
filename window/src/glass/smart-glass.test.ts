@@ -33,4 +33,10 @@ describe("smart glass, batch 3", () => {
   it("leaves the scroll edge under the window header to the shared frame rule (no one-off scrim here)", () => {
     expect(code).not.toMatch(/\.r1-header::before/);
   });
+  it("draws threads as a column on one rounded panel with plain header words and plain rows, not a tall pill", () => {
+    expect(css).toMatch(/\.r1-topic-host > \.topicsT5\.lay-column \{[^}]*border-radius: 18px/);
+    expect(css).toMatch(/\.lay-column \.tpHeadT5 :is\(b, small\) \{[^}]*background: none/);
+    expect(css).toMatch(/\.lay-column \.tpRowT5 \{[^}]*background: transparent[^}]*box-shadow: none/);
+    expect(css).toMatch(/\.lay-column \.tpRowT5 :is\(button, \.tpGoT5\) \{[^}]*box-shadow: none/);
+  });
 });
