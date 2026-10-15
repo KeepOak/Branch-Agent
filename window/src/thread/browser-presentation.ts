@@ -14,7 +14,7 @@ const record = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 const identifier = (v: unknown, max = 128): v is string =>
   typeof v === "string" && v.length > 0 && v.length <= max && v.trim() === v;
-export function readBrowserTabTarget(value: unknown): BrowserTabTarget | undefined {
+function readBrowserTabTarget(value: unknown): BrowserTabTarget | undefined {
   const tab = record(value);
   if (!identifier(tab.targetId) || !identifier(tab.profile)) return;
   const identity = { targetId: tab.targetId, profile: tab.profile };

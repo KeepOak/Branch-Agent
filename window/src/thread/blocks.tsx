@@ -8,6 +8,7 @@ import { Attachments } from "./Attachments";
 import { copyText, useThread } from "./context";
 import { useFreshClass } from "./fresh";
 import { Dialog } from "./Dialog";
+import { shows, useLevel } from "../places-nav/level";
 import {
   formatDuration,
   parseDiffLines,
@@ -24,17 +25,17 @@ import {
 import { Icon, ICONS, StepKindIcon } from "./icons";
 import { Markdown } from "./markdown";
 import { computerStepDetail, isComputerToolName, isScreenToolName } from "./computer-action-label";
-import { fullOutput, type Block, type FileChange } from "./model";
+import { fullOutput, type Attachment, type Block, type FileChange } from "./model";
 import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { withMentions } from "../rooms/RoomMessage";
 
 type Of<K extends Block["kind"]> = Extract<Block, { kind: K }>;
 
 /** Asks the window to open a workspace file from a step's File changes card (preview pathPB18). */
-export const OPEN_FILE_EVENT = "branch:open-file";
+const OPEN_FILE_EVENT = "branch:open-file";
 
 /** Over 1,200 characters or 40 lines, your message shows its first 5 lines (§4.2.2 Parity adds "Long messages"). */
-export function isLong(text: string): boolean {
+function isLong(text: string): boolean {
   return text.length > 1200 || text.split("\n").length > 40;
 }
 
@@ -65,11 +66,12 @@ export function UserMessage({ block, children }: { block: Of<"user">; children?:
 }
 
 /** Steered note (§4.2.2): what you told the Trunk while it worked, inside that turn (the preview's `.steered-b17`). */
-export function SteeredNote({ name, text }: { name: string; text: string }) {
+export function SteeredNote({ name, text, attachments }: { name: string; text: string; attachments?: Attachment[] }) {
   return (
     <div className="steered-note indent" role="note" data-testid="steered-note">
       <Icon d={ICONS.retry} size={14} />
       <span>You steered {name}: “{text}”. It takes this at its next step; nothing done so far is lost.</span>
+      {attachments?.length ? <Attachments items={attachments} mine /> : null}
     </div>
   );
 }
@@ -369,7 +371,7 @@ export function DoneLine({ block, name, words }: { block: Of<"done">; name: stri
 export const CHECK_STATUS_EVENT = "branch:check-status";
 
 /** The real Settings switch named by the computer tool when no device is connected. */
-export const SCREEN_CONTROL_SWITCH = "See the screen and use the mouse";
+const SCREEN_CONTROL_SWITCH = "See the screen and use the mouse";
 
 export function isScreenControlSetupError(message: string): boolean {
   return message.includes(SCREEN_CONTROL_SWITCH);
@@ -395,6 +397,7 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
   const { name, toast } = useThread();
   const screenSwitch = isScreenControlSetupError(block.message);
   const noAccount = isModelAccountMissingError(block.message);
+  const level = useLevel();
   return (
     <div className="strip indent" data-testid="run-error" role="alert">
       <div className="strip-line">
@@ -406,13 +409,15 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
           <Icon d={ICONS.x} />
         </button>
       </div>
-      <details className="fold">
-        <summary>
-          <Icon d={ICONS.chev} className="chev" />
-          Details
-        </summary>
-        <pre className="fold-body mono">{block.message}</pre>
-      </details>
+      {shows(level, "technical") ? (
+        <details className="fold">
+          <summary>
+            <Icon d={ICONS.chev} className="chev" />
+            Details
+          </summary>
+          <pre className="fold-body mono">{block.message}</pre>
+        </details>
+      ) : null}
       <div className="row-buttons">
         <button type="button" className="btn sm ghost" onClick={() => void copyText(block.message, toast)}>
           Copy error

@@ -17,9 +17,18 @@ export function Popover({ anchor, onClose, label, className, align = "left", chi
 
   useLayoutEffect(() => {
     const el = ref.current;
+    if (!el) return;
+    // A menu whose content arrives after it opens (the tools list) grows; place it again so it stays inside the window.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => place(el));
+    observer?.observe(el);
+    place(el);
+    return () => observer?.disconnect();
+  }, [anchor, align]);
+
+  function place(el: HTMLDivElement) {
     const a = anchor.current;
-    const host = el?.offsetParent as HTMLElement | null;
-    if (!el || !a || !host) return;
+    const host = el.offsetParent as HTMLElement | null;
+    if (!a || !host) return;
     const hostBox = host.getBoundingClientRect();
     const box = a.getBoundingClientRect();
     if (window.innerWidth <= 480) {
@@ -40,7 +49,7 @@ export function Popover({ anchor, onClose, label, className, align = "left", chi
       const left = Math.max(8, Math.min(box.left, window.innerWidth - 8 - el.offsetWidth)) - hostBox.left;
       setPos({ left });
     }
-  }, [anchor, align]);
+  }
 
   // Focus moves into the menu when it opens (§5.4).
   useEffect(() => {

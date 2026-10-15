@@ -13,9 +13,9 @@ import { BUILTIN, DEFAULT_THEME, EF_KEYS, isHex, pairOfDefinition, SLATE, type E
 import { LEGACY_THEMES } from "./appearance-legacy";
 
 export type ThemeDesc = { id: string; name: string; description?: string; source: "builtin" | "plugin" | "user"; modes?: Mode[] };
-export type Current = { id: string; mode?: string; effectiveMode?: Mode; overrides?: { id?: string; mode?: string } };
+type Current = { id: string; mode?: string; effectiveMode?: Mode; overrides?: { id?: string; mode?: string } };
 export type Extra = Partial<Record<string, { light?: Partial<Ef>; dark?: Partial<Ef> }>>;
-export type Themes = { list: ThemeDesc[]; current: Current | null; pairOf: (id: string) => Pair | undefined; loading: boolean; error?: string; reload: () => Promise<void> };
+export type Themes = { list: ThemeDesc[]; current: Current | null; pairOf: (id: string) => Pair | undefined; loading: boolean; error?: string; reload: () => Promise<unknown> };
 
 export const PALETTE_ICON = <svg className="i s" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.5-.2-.8-.5-1.2-.3-.3-.4-.6-.4-1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5C21 6.5 17 3 12 3z" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="7.5" cy="11" r="1.2" fill="currentColor" /><circle cx="10.5" cy="7.5" r="1.2" fill="currentColor" /><circle cx="15" cy="7.5" r="1.2" fill="currentColor" /></svg>;
 const legacyGroups = new Map<string, string>(LEGACY_THEMES.map((theme) => [theme.id, theme.group]));
@@ -85,7 +85,7 @@ export function ThemesDialog(p: DialogProps) {
     <div className="gal-foot ap-k">
       <label className="chk-k"><input type="checkbox" checked={p.contrast} onChange={(e) => p.onContrast(e.target.checked)} /> More contrast</label>
       <span className="grow" />
-      {level >= 1 ? <Btn sm disabled title="The engine can’t fetch a theme from a link yet.">Import from a link</Btn> : null}
+      {level >= 1 ? <Btn sm disabled title="Importing from a link isn’t available yet. Paste a theme code instead.">Import from a link</Btn> : null}
       <Btn sm onClick={() => setSub({ kind: "paste" })}>Paste a theme code</Btn>
       <Btn pri sm onClick={p.onMake}>{PALETTE_ICON}Make your own</Btn>
       <p className="hint">{`The ${all.length} themes come with Branch, its plugins and you, each in Daylight and Moonlight. Picking one keeps your light or dark choice. Picking a theme also puts the accent and fonts back to the theme’s own.`}</p>
@@ -161,8 +161,10 @@ function PasteDialog(p: DialogProps & { back: () => void }) {
   const [why, setWhy] = useState("");
   const go = async () => {
     const t = readThemeCode(txt);
-    if (!t) { setWhy("That isn’t a Branch theme code. It starts with {\"branchTheme\":1."); return; }
+    if (!t) { setWhy("Paste a complete Branch theme code. You can copy one from a theme’s Code button."); return; }
+    setWhy("");
     if (await p.onImport(t.name, t.pair)) p.back();
+    else setWhy("Could not add the theme. Check that you’re signed in to Branch, then try again.");
   };
   return (
     <Dialog title="Paste a theme code" onClose={p.back} footer={<><Btn ghost onClick={p.back}>Cancel</Btn><Btn pri onClick={() => void go()}>Add theme</Btn></>}>

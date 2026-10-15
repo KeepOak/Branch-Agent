@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Thread } from "../thread/Thread";
 import { historyToBlocks } from "../thread/history";
+import type { Block } from "../thread/model";
 import type { ThreadRoom } from "./thread-room";
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -30,11 +31,11 @@ const messages = [
 const names: Record<string, string> = { ledger: "Ledger", scout: "Scout" };
 const room = (isRoom: boolean): ThreadRoom => ({ isRoom, selfId: "p-me", ownAgentId: "ledger", trunkName: (id) => names[id] ?? id, whereRuns: (peer) => (peer === "researcher" ? "agents.example.net" : null) });
 
-async function render(r: ThreadRoom, list: unknown[] = messages) {
+async function render(r: ThreadRoom, list: unknown[] = messages, extra: Block[] = []) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  const history = historyToBlocks(list, [], "agent:ledger:grp", null);
+  const history = [...historyToBlocks(list, [], "agent:ledger:grp", null), ...extra];
   await act(async () => root!.render(<Thread name="Ledger" history={history} live={[]} pendingUser={null} running={false} onAnswer={() => undefined} room={r} />));
   return host;
 }
@@ -49,8 +50,9 @@ describe("a room's thread", () => {
     expect(agent?.closest(".rm-ext")).not.toBeNull();
     expect(agent?.querySelector(".rm-tag")?.textContent).toBe("A2A · agents.example.net");
     const fold = host.querySelector("[data-testid=talked-through] details");
-    expect(fold?.hasAttribute("open")).toBe(true);
-    expect(fold?.querySelector("summary")?.textContent).toBe("Scout and Ledger talked it through · 2 messages");
+    expect(fold?.hasAttribute("open")).toBe(false);
+    expect(fold?.querySelector("summary .rm-talk-n")?.textContent).toBe("2 messages with 2 agents");
+    expect(fold?.querySelector("summary .rm-talk-who")?.textContent).toBe("Scout and Ledger");
     expect([...(fold?.querySelectorAll(".rm-talk-l b") ?? [])].map((b) => b.textContent)).toEqual(["Scout", "Ledger"]);
     expect(fold?.querySelector(".rm-mention")?.textContent).toBe("@Ledger");
     expect(host.querySelector(".reply-from")?.textContent).toBe("Ledger");
@@ -59,6 +61,46 @@ describe("a room's thread", () => {
     expect(mineBubble?.textContent).toBe("Thanks @Scout, mail me at me@example.com.");
     expect([...(mineBubble?.querySelectorAll(".rm-mention") ?? [])].map((m) => m.textContent)).toEqual(["@Scout"]);
     expect(fold?.querySelector("strong")?.textContent).toBe("please");
+  });
+
+  it("collapses three agent-to-agent messages into one '3 messages with 2 agents' row and keeps the Trunk's report to you", async () => {
+    const talk = [
+      { role: "user", content: "Close September?", __branch: { senderIdentity: { type: "profile", id: "p-me" }, senderId: "p-me", senderName: "Me", senderIsOwner: true } },
+      { role: "assistant", content: [{ type: "text", text: "Done. September is closed." }], stopReason: "stop", __branch: { runId: "r1" } },
+      { role: "assistant", content: "@Ledger want me to pull the two missing receipts?", senderLabel: "Forwarded from scout", senderSession: { sessionKey: "agent:scout:main", agentId: "scout" } },
+      { role: "assistant", content: [{ type: "text", text: "Yes please." }], stopReason: "stop", __branch: { runId: "r2" } },
+      { role: "assistant", content: "Found both.", senderLabel: "Forwarded from scout", senderSession: { sessionKey: "agent:scout:main", agentId: "scout" } },
+    ];
+    const host = await render(room(true), talk);
+    const rows = host.querySelectorAll("[data-testid=talked-through]");
+    expect(rows).toHaveLength(1);
+    const fold = rows[0]!.querySelector("details");
+    expect(fold?.hasAttribute("open")).toBe(false);
+    expect(fold?.querySelector("summary .rm-talk-n")?.textContent).toBe("3 messages with 2 agents");
+    expect(fold?.querySelectorAll(".rm-talk-l")).toHaveLength(3);
+    // The agents' messages are only in the fold; the report to you stays a reply of its own, under the Trunk's name.
+    const replies = [...host.querySelectorAll('[data-role="assistant"]')].filter((node) => !node.closest("[data-testid=talked-through]"));
+    expect(replies.map((node) => node.querySelector(".reply-from")?.textContent ?? "")).toEqual(["Ledger"]);
+    expect(replies[0]?.textContent).toContain("Done. September is closed.");
+  });
+
+  it("shows another Trunk's report from the room's log under its own name and face, and folds the chatter after it", async () => {
+    const asked = [{ role: "user", content: "Status?", __branch: { senderIdentity: { type: "profile", id: "p-me" }, senderId: "p-me", senderName: "Me", senderIsOwner: true } }];
+    const post = (agentId: string | null, key: string, text: string): Block => ({ kind: "text", key, text, streaming: false, meta: agentId ? { sender: { kind: "trunk", agentId, posted: true } } : {} });
+    const host = await render(room(true), asked, [
+      post(null, "l0", "Ledger: books balanced."),
+      post("scout", "s1", "Scout: receipts filed. @Ledger check Delta?"),
+      post(null, "l1", "Delta matches."),
+      post("scout", "s2", "Thanks."),
+      post(null, "l2", "Logged."),
+    ]);
+    const replies = [...host.querySelectorAll('[data-role="assistant"]')].filter((node) => !node.closest("[data-testid=talked-through]"));
+    expect(replies.map((node) => [node.querySelector(".reply-from")?.textContent, node.querySelector(".md, p")?.textContent ?? node.textContent])).toEqual([
+      ["Ledger", expect.stringContaining("books balanced")],
+      ["Scout", expect.stringContaining("receipts filed")],
+    ]);
+    expect(replies[1]?.closest(".msg")?.querySelector(".gutter [aria-label]")?.getAttribute("aria-label")).toBe("Scout");
+    expect(host.querySelector("[data-testid=talked-through] .rm-talk-n")?.textContent).toBe("3 messages with 2 agents");
   });
 
   it("outside a room, keeps people and agents apart but shows no sender over the replies", async () => {

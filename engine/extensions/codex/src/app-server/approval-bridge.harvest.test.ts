@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/codex/src/app-server/approval-bridge.test.ts (atlas AGENT-LOOP-0022). Changed for Branch: apply scripts/rebrand-map.json.
+// Changed for Branch: apply scripts/rebrand-map.json.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { reviewExecRequestWithConfiguredModel } from "branch/plugin-sdk/agent-harness-exec-review-runtime";
