@@ -253,6 +253,7 @@ export function ChatsScreen({
   list: ChatListSnapshot;
   online: boolean;
   onRefresh: () => Promise<void>;
+  /** Opens Computers. */
   onComputer: () => void;
   /** Opens a chat. */
   onOpen?: (row: ChatRow) => void;
@@ -324,14 +325,14 @@ export function ChatsScreen({
         <Pressable
           testID="computer-button"
           accessibilityRole="button"
-          accessibilityLabel={online ? 'Your computer, connected' : 'Your computer, reconnecting'}
+          accessibilityLabel={online ? 'Computers, connected' : 'Computers, reconnecting'}
           onPress={onComputer}
           hitSlop={8}
           style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, gap: space.xs + 2, opacity: pressed ? 0.6 : 1 })}
         >
           <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: online ? color.ok : color.warn }} />
           <ThemedText variant="body" tone="accentInk">
-            Computer
+            Computers
           </ThemedText>
         </Pressable>
       </View>
