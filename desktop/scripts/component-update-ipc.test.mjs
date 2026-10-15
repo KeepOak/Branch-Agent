@@ -118,3 +118,33 @@ test("served preload exposes only fixed parameter-free component IPC methods", a
   assert.deepEqual(calls, [["branch-desktop:component-update:status"], ["branch-desktop:component-update:check"], ["branch-desktop:component-update:stage"],
     ["branch-desktop:title-bar", overlay]]);
 });
+
+test("an update check or staging that runs out of disk reports the plain disk-full message instead of throwing", async () => fixture(async cfg => {
+  const { DISK_FULL_MESSAGE, diskIsFull, reportDiskWritable } = await import(pathToFileURL(join(dist, "disk-full.js")));
+  // ENOSPC is injected into staging; the real disk is never filled.
+  const controller = createComponentUpdateController(cfg, { stage: async () => { throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC", errno: -28, syscall: "write" }); } });
+  const result = await controller.stage();
+  assert.equal(result.phase, "error");
+  assert.equal(result.error, DISK_FULL_MESSAGE);
+  assert.equal(diskIsFull(), true);
+  reportDiskWritable();
+  const other = createComponentUpdateController(cfg, { stage: async () => { throw new Error("Owned lifecycle is occupied"); } });
+  assert.equal((await other.stage()).error, "Owned lifecycle is occupied", "other failures keep their own message");
+  assert.equal(diskIsFull(), false);
+}));
+
+test("a newer release is the latest even while an older desktop app waits, and the older one is not reported as staged", async () => fixture(async cfg => {
+  // An older desktop app was staged and never applied. The check still sees release 1.2.3 as the newest.
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({ version: "1.2.2", sha256: "b".repeat(64), kind: "asar",
+    staged: join(cfg.dataDir, "updates", "desktop-old", "app.asar.staged"), target: join(cfg.dataDir, "app.asar"), phase: "staged" }));
+  const controller = createComponentUpdateController(cfg, { request: async () => new Response(JSON.stringify(release)),
+    stage: async () => { assert.fail("check must not stage"); }, appliesWhenIdle: () => true });
+  const checked = await controller.check();
+  assert.equal(checked.phase, "available");
+  assert.equal(checked.latestVersion, "1.2.3");
+  assert.equal(checked.pendingVersion, "1.2.2");
+  assert.equal(checked.applyWhenIdle, true);
+  const after = await controller.status();
+  assert.equal(after.latestVersion, "1.2.3", "status never shrinks the latest to the older staged build");
+  assert.equal(after.phase, "available");
+}));

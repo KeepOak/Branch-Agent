@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onTrunkRunLifecycle } from "../gateway/server-methods/trunk-queue.js";
+import { isTrunkQueueThreadKey } from "./trunk-queue-thread-key.js";
 import {
   addQueueItem,
   claimNextQueueItem,
@@ -22,6 +23,9 @@ function fakeGateway(working: Set<string> = new Set()) {
   const gateway: TrunkQueueGateway = {
     async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
       calls.push({ method, params });
+      if (method === "agent.wait") {
+        return { runId: params.runId, status: "ok" } as T;
+      }
       if (method === "sessions.list") {
         const busy = working.has(String(params.agentId));
         return {
@@ -80,6 +84,8 @@ describe("Trunk job queue pickup", () => {
 
     const thread = listQueueItems(env).find((item) => item.id === high.id)?.thread_key;
     expect(thread).toMatch(new RegExp(`^agent:builder-birch:queue-${high.id}-[0-9a-f]{8}$`));
+    // The skill review treats this thread as a finished job's own top-level thread, never a subagent.
+    expect(isTrunkQueueThreadKey(thread)).toBe(true);
     expect(calls.map((call) => call.method)).toEqual([
       "sessions.list",
       "sessions.create",
@@ -228,6 +234,8 @@ describe("Trunk job queue pickup", () => {
     expect(picked?.item.id).toBe(job.id);
     expect(calls.map((call) => [call.method, call.params.agentId ?? null])).toEqual([
       ["sessions.list", "ash"],
+      // The stale claim is freed only after its run is confirmed ended in this gateway epoch.
+      ["agent.wait", null],
       ["sessions.list", "birch"],
       ["sessions.create", "birch"],
       ["chat.send", "birch"],

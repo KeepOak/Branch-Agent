@@ -1,0 +1,3 @@
+window:src/connect/capabilities.test.ts
+window:src/connect/hello-features.test.ts
+window:src/glass/coming.test.tsx

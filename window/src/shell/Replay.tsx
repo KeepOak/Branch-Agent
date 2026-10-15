@@ -16,7 +16,7 @@ export function replayLines(history: Block[], trunkName: string): Line[] {
 
 const STEP_MS = 1600;
 
-export function ReplayDialog({ history, trunkName, onClose }: { history: Block[]; trunkName: string; onClose: () => void }) {
+export function ReplayDialog({ history, trunkName, onClose, clear }: { history: Block[]; trunkName: string; onClose: () => void; clear?: boolean }) {
   const lines = replayLines(history, trunkName);
   const n = lines.length;
   const [at, setAt] = useState(0);
@@ -37,9 +37,9 @@ export function ReplayDialog({ history, trunkName, onClose }: { history: Block[]
     setPlaying(!playing);
   };
   return (
-    <Dialog title="Replay this conversation" wide onClose={onClose} testid="replay">
+    <Dialog title="Replay this conversation" wide onClose={onClose} testid="replay" clear={clear}>
       <div className="rp">
-        <div className="rpc">
+        <div className={clear ? "rpc g-label" : "rpc"} data-lines={clear ? "" : undefined}>
           <b>{line?.who ?? ""}</b>
           <p>{line ? line.text.slice(0, 400) : "Nothing to replay."}</p>
         </div>
@@ -49,7 +49,7 @@ export function ReplayDialog({ history, trunkName, onClose }: { history: Block[]
           </button>
           <input type="range" min={0} max={Math.max(0, n - 1)} value={Math.min(at, Math.max(0, n - 1))} aria-label="Where in the conversation" disabled={!n}
             onChange={(e) => (setPlaying(false), setAt(Number(e.target.value)))} />
-          <span className="hint">{Math.min(at + 1, n)} of {n}</span>
+          <span className={clear ? "hint g-label" : "hint"}>{Math.min(at + 1, n)} of {n}</span>
           <span className="seg" role="group" aria-label="Speed">
             {[1, 2, 4].map((s) => (
               <button key={s} type="button" aria-pressed={speed === s} onClick={() => setSpeed(s)}>{s}×</button>

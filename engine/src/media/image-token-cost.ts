@@ -1,5 +1,4 @@
-// Ported from NousResearch/hermes-agent@18d125cc1bd9d0e26188ab49bb325427d5945fa2
-// agent/image_token_cost.py; provider usage is authoritative, never a vendor formula.
+// Provider usage is authoritative, never a vendor formula.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";

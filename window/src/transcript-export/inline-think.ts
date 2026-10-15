@@ -1,4 +1,4 @@
-// From OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f:src/components/conversation-events/chat/event-thought-helpers.ts (atlas SESSIONS-0047). Leading-think helper copied unchanged.
+// Leading-think helper copied unchanged.
 /**
  * Splits a leading `<think>…</think>` reasoning block out of assistant content
  * so it renders in the collapsible thinking section, not the message bubble.

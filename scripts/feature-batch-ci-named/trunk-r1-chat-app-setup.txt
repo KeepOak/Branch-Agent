@@ -1,0 +1,4 @@
+window:src/places/settings/set1/chatapps.test.tsx
+window:src/screens/chatapps/ChatApps.test.tsx
+window:src/screens/chatapps/Manage.test.tsx
+window:src/screens/chatapps/SetupWizard.test.tsx
