@@ -4,6 +4,7 @@ window:src/places/settings/internals.test.ts
 window:src/screens/chatapps/ChatApps.test.tsx
 window:src/screens/chatapps/More.test.tsx
 window:src/screens/frame/R1Window.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
 window:src/screens/settings/coming.test.tsx
 window:src/screens/settings/pages/classic-host.test.tsx
 window:src/screens/settings/pages/devices-live.test.tsx
@@ -15,3 +16,4 @@ window:src/screens/settings/pages/remote-live.test.tsx
 window:src/screens/settings/pages/signins-live.test.tsx
 window:src/screens/settings/pages/voice-live.test.tsx
 window:src/screens/settings/rows.test.ts
+window:src/screens/settings/search.test.ts
