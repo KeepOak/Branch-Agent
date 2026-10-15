@@ -13,7 +13,7 @@ if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact deskto
 const require = createRequire(import.meta.url);
 const service = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'engine-service.js'));
 const { acquireEngineStartLock, attachOrStartEngine, engineAnswers, engineServiceArgs, recordEngineMode, takeChildModeNotice, takeCrashStormNotice } = service;
-const { EXTERNAL_VOLUME_SERVICE_LINE, SERVICE_BLOCKED_LINE, childModeSettingsLine, readServiceLogsSince, serviceCannotRunReason, serviceLogPaths, serviceVolumeBlock } = service;
+const { EXTERNAL_VOLUME_SERVICE_LINE, SERVICE_BLOCKED_LINE, childModeSettingsLine, parseLaunchdJob, readServiceLogsSince, serviceCannotRunReason, serviceLogPaths, serviceVolumeBlock } = service;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function dataDir(t) {
@@ -231,8 +231,22 @@ test('launchd cannot run the job: the shell cannot exec the wrapper, the wrapper
   assert.equal(serviceCannotRunReason(`/bin/sh: ${WRAPPER}: Operation not permitted\n`, EXECUTABLES), SERVICE_BLOCKED_LINE);
   assert.equal(serviceCannotRunReason(`${WRAPPER}: Permission denied\n`, EXECUTABLES), SERVICE_BLOCKED_LINE);
   assert.equal(serviceCannotRunReason(`${NODE_BINARY}: Permission denied\n`, EXECUTABLES), SERVICE_BLOCKED_LINE);
-  assert.equal(serviceCannotRunReason('', EXECUTABLES, 126), SERVICE_BLOCKED_LINE);
-  assert.equal(serviceCannotRunReason('', EXECUTABLES, 127), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, { state: 'not running', lastExit: 126 }), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, { state: 'not running', lastExit: 127 }), SERVICE_BLOCKED_LINE);
+});
+
+test('a stale last exit 126 is not a launch failure while the job runs with a live pid: a slow service is never removed', () => {
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, { state: 'running', pid: 4242, lastExit: 126 }), undefined);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, { state: 'running', lastExit: 127 }), undefined, 'a pid is what proves it is running');
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, { state: 'not running', pid: 4242, lastExit: 126 }), undefined, 'a live pid always wins');
+});
+
+test('launchctl print gives the job state, its live pid and its last exit code', () => {
+  const running = parseLaunchdJob('gui/501/ai.branch.gateway = {\n\tstate = running\n\tpid = 4242\n\tlast exit code = 126\n}\n');
+  assert.deepEqual(running, { state: 'running', pid: 4242, lastExit: 126 });
+  const stopped = parseLaunchdJob('gui/501/ai.branch.gateway = {\n\tstate = not running\n\tlast exit code = 127\n}\n');
+  assert.deepEqual(stopped, { state: 'not running', lastExit: 127 });
+  assert.deepEqual(parseLaunchdJob('Could not find service "ai.branch.gateway"'), {});
 });
 
 test('an ordinary denial from the engine, a denial of an unrelated file, or a healthy exit is not a launch failure', () => {
@@ -249,6 +263,13 @@ test('an ordinary denial from the engine, a denial of an unrelated file, or a he
 test('a slow service that logs an unrelated denial is still an error: it is never removed or replaced by a child', async t => {
   const log = '[plugins] read blocked: /Library/Containers/example/notes.db: Operation not permitted\n';
   const { calls, steps } = fakeLaunch(t, { neverAnswers: true, cannotRun: serviceCannotRunReason(log, EXECUTABLES) });
+  await assert.rejects(attachOrStartEngine(steps), /did not answer in time/);
+  assert.deepEqual(calls, ['mark', 'install', 'start'], 'no uninstall, no child');
+});
+
+test('a slow but healthy service with a stale failed exit is still an error: a live job is never removed', async t => {
+  const healthySlow = { state: 'running', pid: 4242, lastExit: 126 };
+  const { calls, steps } = fakeLaunch(t, { neverAnswers: true, cannotRun: serviceCannotRunReason('', EXECUTABLES, healthySlow) });
   await assert.rejects(attachOrStartEngine(steps), /did not answer in time/);
   assert.deepEqual(calls, ['mark', 'install', 'start'], 'no uninstall, no child');
 });

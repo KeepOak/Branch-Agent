@@ -304,11 +304,12 @@ const DENIED = /Permission denied/;
 
 /**
  * The Settings reason when launchd could not run the service, or undefined. `executables` are the paths a denial must
- * name to count (the service-env folder that holds the wrapper, and the node binary). `lastExit` is launchd's last exit
- * status for the label (launchctl print); 126 and 127 mean it could not execute the job.
+ * name to count (the service-env folder that holds the wrapper, and the node binary). `job` is launchd's view of the
+ * label (launchd job lookup). A last exit of 126 or 127 counts only when the job is not running and has no live pid: a
+ * stale exit from an earlier failed start must not remove a healthy service that is merely slow.
  */
-export function serviceCannotRunReason(appendedLog: string, executables: readonly string[], lastExit?: number): string | undefined {
-  if (lastExit === 126 || lastExit === 127) return SERVICE_BLOCKED_LINE;
+export function serviceCannotRunReason(appendedLog: string, executables: readonly string[], job?: LaunchdJob): string | undefined {
+  if (job && job.state === "not running" && job.pid === undefined && (job.lastExit === 126 || job.lastExit === 127)) return SERVICE_BLOCKED_LINE;
   for (const line of appendedLog.split("\n")) {
     if (SHELL_INIT_DENIED.test(line)) return SERVICE_BLOCKED_LINE;
     const namesExecutable = executables.some(path => path !== "" && line.includes(path));
@@ -317,16 +318,33 @@ export function serviceCannotRunReason(appendedLog: string, executables: readonl
   return undefined;
 }
 
-/** launchd's last exit status for the label, from `launchctl print` in the user's GUI domain; undefined when unknown. */
 /** The LaunchAgent label the engine writes (engine/src/daemon/constants.ts). */
 export const SERVICE_LAUNCHD_LABEL = "ai.branch.gateway";
 
-export async function launchdLastExitCode(label = SERVICE_LAUNCHD_LABEL, uid = process.getuid?.() ?? 0): Promise<number | undefined> {
+/** launchd's view of a job from `launchctl print`: its state, its live pid (only while running) and its last exit status. */
+export interface LaunchdJob { state?: string; pid?: number; lastExit?: number }
+
+/**
+ * Reads the job's state, pid and last exit code from `launchctl print` output, and launchd's last exit status for the
+ * label in the user's GUI domain. Undefined fields are unknown. A failed lookup reads as an empty job.
+ */
+export function parseLaunchdJob(output: string): LaunchdJob {
+  const value = (key: string): string | undefined => new RegExp(`^\\s*${key} = (.+)$`, "m").exec(output)?.[1]?.trim();
+  const state = value("state");
+  const pid = value("pid");
+  const lastExit = value("last exit code");
+  return {
+    ...(state ? { state } : {}),
+    ...(pid && /^\d+$/.test(pid) ? { pid: Number(pid) } : {}),
+    ...(lastExit && /^\d+$/.test(lastExit) ? { lastExit: Number(lastExit) } : {}),
+  };
+}
+
+export async function launchdJob(label = SERVICE_LAUNCHD_LABEL, uid = process.getuid?.() ?? 0): Promise<LaunchdJob> {
   const output = await new Promise<string>(resolve => {
     execFile("launchctl", ["print", `gui/${uid}/${label}`], { timeout: 5_000, windowsHide: true }, (_error, stdout) => resolve(String(stdout)));
   });
-  const match = /last exit code = (\d+)/.exec(output);
-  return match ? Number(match[1]) : undefined;
+  return parseLaunchdJob(output);
 }
 
 /** The two launchd log files the macOS service writes (stdout and stderr), under the owner's home folder. */
