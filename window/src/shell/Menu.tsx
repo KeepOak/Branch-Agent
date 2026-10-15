@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { keyLabel } from "./key-label";
 import { shownWhy } from "./shown-why";
 import "./menu.css";
 
@@ -141,7 +142,7 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
         onKeyDown={(e) => e.key === "ArrowRight" && (e.preventDefault(), openSub(i, e.currentTarget))}>
         {it.icon ? <i className="mi-ico" aria-hidden="true">{it.icon}</i> : null}
         <span>{it.label}</span>
-        <span className="mi-hint">{it.hint ? `${it.hint} ` : ""}›</span>
+        <span className="mi-hint">{it.hint ? `${keyLabel(it.hint)} ` : ""}›</span>
       </button>
     );
   }
@@ -161,7 +162,7 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
       ) : (
         <span>{it.label}</span>
       )}
-      {it.hint ? <span className="mi-hint">{it.hint}</span> : it.letter ? <span className="mi-hint"><kbd className="mi-key">{it.letter}</kbd></span> : null}
+      {it.hint ? <span className="mi-hint">{keyLabel(it.hint)}</span> : it.letter ? <span className="mi-hint"><kbd className="mi-key">{it.letter}</kbd></span> : null}
     </button>
   );
 }

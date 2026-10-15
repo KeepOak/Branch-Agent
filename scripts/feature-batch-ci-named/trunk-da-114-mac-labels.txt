@@ -1,0 +1,2 @@
+window:src/shell/key-label.test.ts
+window:src/shell/mac-key-labels.test.tsx

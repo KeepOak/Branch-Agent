@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { SaplingSession } from "../connect/session";
 import type { ThemeChoice } from "../theme/theme";
 import { Icon } from "./icons";
+import { keyLabel } from "./key-label";
 import type { MenuAnchor } from "./Menu";
 import { Popover, Segmented, type Above } from "./Popover";
 import { versionParts } from "../connect/branch-version";
@@ -65,7 +66,7 @@ function Row({ icon, label, hint, onClick, testid }: { icon: Parameters<typeof I
     <button type="button" className="mi" data-testid={testid} onClick={onClick}>
       <Icon name={icon} small />
       <span className="mi-label">{label}</span>
-      {hint ? <span className="mi-hint">{hint}</span> : null}
+      {hint ? <span className="mi-hint">{keyLabel(hint)}</span> : null}
     </button>
   );
 }
