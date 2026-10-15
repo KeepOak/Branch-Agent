@@ -407,3 +407,16 @@ describe("Canopy data", () => {
     expect(convState({ status: "todo" }, [], now)[0]).toBe("No conversation");
   });
 });
+
+// Every step, live: with no steps, Open all, Fold all and Clear have nothing to act on, so they are off rather than silent.
+// Fails on main, where the three buttons stayed on and did nothing (the button crawl read them as dead).
+describe("Canopy Every step bulk controls with no steps", () => {
+  it("disables Open all, Fold all and Clear", async () => {
+    // The [A] sections show from Advanced (see the test above).
+    await mount(fx({ "sessions.list": { sessions: [], hasMore: false }, "cron.list": { jobs: [], hasMore: false }, "exec.approval.list": [] }), "advanced");
+    const live = host.querySelector<HTMLElement>('[aria-label="Every step, live"]');
+    expect(live).not.toBeNull();
+    const bulk = ["Open all", "Fold all", "Clear"].map((text) => [...live!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === text));
+    expect(bulk.map((b) => b?.disabled)).toEqual([true, true, true]);
+  });
+});

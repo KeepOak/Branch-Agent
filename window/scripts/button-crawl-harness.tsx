@@ -4,6 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { Contact } from '@branch/gateway-protocol';
 import { historyToBlocks } from '../src/thread/history';
 import { WindowShell } from '../src/shell/WindowShell';
+import { R1Window, SETTINGS_PLACE } from '../src/screens/frame/R1Window';
+import { PAGES as R1_PAGES_SPEC, pageShown, type PageId, type Level } from '../src/screens/settings/nav';
 import { dismiss, getToasts } from '../src/shell/notify';
 import { PLACES, type Route } from '../src/places-nav/routes';
 import { settingsGroups } from '../src/places-nav/settings-nav';
@@ -12,9 +14,18 @@ import '../src/theme/base.css';
 import '../src/shell/shell.css';
 import '../src/shell/frame.css';
 import '../src/shell/controls.css';
+import { createCrawlCapture } from './button-crawl-capture';
 import { applyApprovalsSet, applyConfigPatch, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshPrefs, freshVoice, voiceProviders, voiceStatus, type CrawlApprovals, type CrawlConfig, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
 
 type Call = { method: string; ok: boolean; error?: string };
+// The request params the mock reads. Path and method are the browser route's (browser-request.ts:567).
+type CrawlParams = { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown>; file?: Record<string, unknown>; baseHash?: string; provider?: string; probe?: boolean; method?: string; path?: string };
+// The window under test. The shipped app opens R1 (R1Window) unless the Classic escape is set, so R1 is the default
+// and Classic is crawled only with ?window=classic (see crawl.mjs BUTTON_CRAWL_WINDOW).
+const WINDOW_KIND: 'r1' | 'classic' = new URLSearchParams(location.search).get('window') === 'classic' ? 'classic' : 'r1';
+// The level a Settings screen is drawn at: the look store's word for it (branch.level in this window's storage).
+export type LevelWord = 'regular' | 'advanced' | 'technical';
+const LEVEL_OF: Record<LevelWord, Level> = { regular: 0, advanced: 1, technical: 2 };
 
 const now = Date.now();
 const contact = (id: string, kind: 'trunk' | 'outside', name: string, threadKey: string, isDefault = false): Contact => ({
@@ -34,6 +45,9 @@ const SESSIONS = [
   { key: 'agent:builder:roadmap', label: 'Builder', agentId: 'builder', sessionId: 'sess-builder', updatedAt: now - 60000, createdAt: now - 60000, lastMessagePreview: 'The next slice is the sidebar.', hasActiveRun: false, kind: 'direct' },
   { key: 'agent:planner:design', label: 'Studio computer', agentId: 'planner', sessionId: 'sess-planner', updatedAt: now - 120000, createdAt: now - 120000, lastMessagePreview: 'The preview is open.', hasActiveRun: false, kind: 'direct' },
 ];
+
+// A grafted agent's row opens its contact key (a2a:<peer>), not a session (see screens/frame/open-name.ts).
+const GRAFTED_KEY = 'a2a:studio';
 
 const MESSAGES: Record<string, { role: string; content: string; timestamp: number }[]> = {
   'agent:researcher:notes': [
@@ -64,6 +78,21 @@ const SELECTOR = [
   '[role="tab"]', '[role="switch"]', 'input[type="checkbox"]', '.chip', '.ib',
 ].join(',');
 
+// Every R1 Settings page at each level it is shown at. A page that is a place (Customize, Automations, Memory &
+// documents) opens that place, so the place screens cover it and it is not repeated here.
+const LEVEL_WORD_LIST: LevelWord[] = ['regular', 'advanced', 'technical'];
+function r1SettingsScreens() {
+  return Object.keys(R1_PAGES_SPEC)
+    .filter((page) => !(page in SETTINGS_PLACE))
+    .flatMap((page) => LEVEL_WORD_LIST
+      .filter((word) => pageShown(page as PageId, LEVEL_OF[word]))
+      .map((word) => ({ page, level: word })));
+}
+
+function classicSettingsScreens() {
+  return settingsGroups('technical').flatMap((group) => group.pages.map((page) => ({ page: page.id, level: 'technical' as LevelWord })));
+}
+
 let config: CrawlConfig = freshConfig();
 let historyMoves = 0;
 // A control that opens a window (Open in its own window) is a visible result: the browser fallback calls window.open.
@@ -77,6 +106,13 @@ document.addEventListener('click', (event) => {
   downloads += 1;
   event.preventDefault();
 }, true);
+// A detached anchor that a control clicks to save a file (a seed, an export) never reaches the listener above, so the
+// click is counted here: the download is cancelled and the click is a visible result.
+const nativeAnchorClick = HTMLAnchorElement.prototype.click;
+HTMLAnchorElement.prototype.click = function clickWithoutSaving(this: HTMLAnchorElement) {
+  if (this.hasAttribute('download')) { downloads += 1; return; }
+  nativeAnchorClick.call(this);
+};
 const historyBack = history.back.bind(history);
 const historyForward = history.forward.bind(history);
 history.back = () => { historyMoves += 1; historyBack(); };
@@ -108,10 +144,12 @@ function snapshot(key: string) {
 }
 
 let prefs: CrawlPrefs = freshPrefs();
+// Whether the browser the stage drives is running. "Start the browser" flips it, as the engine does.
+let browserRunning = false;
 let approvals: CrawlApprovals = freshApprovals();
 let voice: CrawlVoice = freshVoice();
 
-function request(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown>; file?: Record<string, unknown>; baseHash?: string; provider?: string; probe?: boolean } | undefined) {
+function request(method: string, params: CrawlParams | undefined) {
   const started = performance.now();
   try {
     const result = respond(method, params);
@@ -125,7 +163,7 @@ function request(method: string, params: { key?: string; sessionKey?: string; ra
   }
 }
 
-function respond(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown>; file?: Record<string, unknown>; baseHash?: string; provider?: string; probe?: boolean } | undefined) {
+function respond(method: string, params: CrawlParams | undefined) {
   if (method === 'agents.list') return AGENTS;
   if (method === 'sessions.subscribe') return { list: { sessions: SESSIONS } };
   if (method === 'sessions.list') return { sessions: SESSIONS, defaults: { modelProvider: 'local', model: 'fixture', thinkingLevel: 'medium' } };
@@ -165,7 +203,28 @@ function respond(method: string, params: { key?: string; sessionKey?: string; ra
   if (method === 'models.list') return { models: [{ id: 'fixture', provider: 'local', name: 'Local model', contextWindow: 32768 }] };
   if (method === 'system.info') return { machineName: 'This computer' };
   if (method === 'health') return { ok: true, durationMs: 4 };
-  if (method === 'usage.status') return {};
+  // Replies for the methods R1 calls. Each cites the engine handler that answers it, so a control reads the fields it
+  // reads on a real engine.
+  if (method === 'browser.request' && params?.method === 'POST' && params?.path === '/start') {
+    browserRunning = true;
+    return { ok: true, running: true }; // browser-request.ts:567 route map
+  }
+  if (method === 'usage.status') return { updatedAt: now, refreshing: false, providers: [] }; // usage.ts:189
+  if (method === 'computer.status') return { available: false, configured: false }; // computer.ts:79
+  if (method === 'browser.request') return { running: browserRunning, detectedBrowser: null, detectedExecutablePath: null, detectError: null }; // browser-request.ts:567, basic.ts:211-224
+  if (method === 'node.list') return { ts: now, activeNodeId: null, nodes: [] }; // nodes.read.ts:226
+  if (method === 'memory.export') return { agentId: 'researcher', files: [{ path: 'MEMORY.md', content: '# Memory\n' }] }; // memory-export.ts:69
+  if (method === 'sessions.diff') return { sessionKey: params?.sessionKey ?? snap.sessionKey, files: [], additions: 0, deletions: 0, unavailableReason: 'unknown_session' }; // sessions-diff.ts:24-31
+  if (method === 'gateway.restart.request') return { status: 'scheduled' }; // restart-coordinator.ts:57
+  if (method === 'sessions.branches.list') return { branches: [] }; // sessions-rewind.ts:199
+  if (method === 'portal.list') return { portals: [] }; // portals.ts:119-125
+  if (method === 'progressCard.get') return { card: null }; // progress-card.ts:102
+  if (method === 'rooms.list') return { rooms: [] }; // rooms.ts:495
+  if (method === 'models.authStatus') return { providers: [], profiles: [] }; // models-auth-status.ts:301
+  if (method === 'plugins.catalog.browse') return { items: [], catalog: {}, local: {} }; // plugins.ts:242, seedbank/catalog.ts:75-90
+  if (method === 'branch.setup.detect') return { candidates: [], unavailableCandidates: [], setupComplete: false }; // setup-inference-detect.ts:448-454
+  if (method === 'agents.create') return { ok: true, agentId: 'new-trunk' }; // agents.ts:646
+  if (method === 'sessions.create') return { ok: true, key: SESSIONS[0].key, sessionId: 'sess-researcher', entry: {}, runStarted: false }; // sessions-create.ts:633-640
   if (method === 'exec.approval.list' || method === 'plugin.approval.list' || method === 'branch.approval.list') return [];
   if (method === 'commands.list') return { commands: [] };
   if (method === 'skills.status') return { skills: [] };
@@ -174,6 +233,19 @@ function respond(method: string, params: { key?: string; sessionKey?: string; ra
   if (method === 'sessions.search') return { results: [] };
   return { ok: true, items: [], sessions: [], contacts: [], rooms: [], peers: [], models: [], messages: [], results: [] };
 }
+
+// The methods the engine advertises by default. The engine sends its core list at connect (engine connect-hello.ts:171-174,
+// core list from core-descriptors.ts). A method missing here reads as unavailable, so its control draws as Coming and the
+// crawl never clicks it. canopy.cards.list is left out on purpose: Canopy is off by default, so its controls stay Coming.
+const ADVERTISED_METHODS = [
+  'agents.list', 'sessions.list', 'sessions.describe', 'sessions.subscribe', 'sessions.preview', 'sessions.search',
+  'sessions.branches.list', 'sessions.diff', 'chat.history', 'contacts.list', 'contacts.topics', 'rooms.list', 'a2a.peers.list',
+  'config.get', 'config.patch', 'tts.status', 'tts.enable', 'tts.disable', 'tts.providers', 'tts.setProvider',
+  'doctor.memory.status', 'exec.approvals.get', 'exec.approvals.set', 'exec.approval.list', 'plugin.approval.list',
+  'users.prefs.get', 'users.prefs.set', 'models.list', 'models.authStatus', 'system.info', 'health', 'usage.status',
+  'commands.list', 'skills.status', 'users.mentionable', 'computer.status', 'browser.request', 'node.list', 'memory.export',
+  'gateway.restart.request', 'portal.list', 'progressCard.get', 'plugins.catalog.browse', 'branch.setup.detect',
+];
 
 const fixture = {
   subscribe(fn: () => void) { listeners.add(fn); return () => listeners.delete(fn); },
@@ -195,6 +267,7 @@ const fixture = {
       agentId: snap.sessionKey.split(':')[1],
       scopes: ['operator.admin'],
       attachmentPolicy: { maxBytes: 10_000_000 },
+      features: { methods: ADVERTISED_METHODS },
       onEvent: (fn: (event: string, payload: unknown) => void) => { events.add(fn); return () => events.delete(fn); },
     });
   },
@@ -221,8 +294,19 @@ function nameOf(el: Element) {
   return (text || el.getAttribute('title') || el.getAttribute('data-testid') || el.tagName).slice(0, 80);
 }
 
+// R1 regions: the Settings page list (r1s-side), the header (r1-header), the sidebar (r1-sidebar), and everything else
+// in the frame (the conversation or Settings page, the composer, the side panel, the Computer and Browser stage).
+function r1RegionOf(el: Element) {
+  if (el.closest('.r1s-side')) return 'nav';
+  if (el.closest('.r1-header') || el.closest('a.skip')) return 'chrome';
+  if (el.closest('.r1-sidebar')) return 'sidebar';
+  if (el.closest('.r1-frame')) return 'screen';
+  return 'ignored';
+}
+
 function regionOf(el: Element) {
-  if (el.closest('[role="menu"], [role="dialog"]')) return 'overlay';
+  if (el.closest('[role="menu"], [role="dialog"], [role="alertdialog"]')) return 'overlay';
+  if (WINDOW_KIND === 'r1') return r1RegionOf(el);
   if (el.closest('.set-nav')) return 'nav';
   if (el.closest('.topbar') || el.closest('a.skip')) return 'chrome';
   if (el.closest('[data-testid="sidebar"]')) return 'sidebar';
@@ -231,11 +315,25 @@ function regionOf(el: Element) {
 }
 
 function regionRoot(region: string) {
-  if (region === 'overlay') return document.querySelector('[role="menu"], [role="dialog"]');
-  if (region === 'nav') return document.querySelector('.set-nav');
-  if (region === 'sidebar') return document.querySelector('[data-testid="sidebar"]');
-  if (region === 'screen') return document.querySelector('#main');
+  if (region === 'overlay') return document.querySelector('[role="menu"], [role="dialog"], [role="alertdialog"]');
+  if (region === 'nav') return document.querySelector(WINDOW_KIND === 'r1' ? '.r1s-side' : '.set-nav');
+  if (region === 'sidebar') return sideElement();
+  if (region === 'screen') return document.querySelector(WINDOW_KIND === 'r1' ? '.r1-frame' : '#main');
   return document;
+}
+
+/** The main column the text and scroll checks read: the conversation or Settings page in R1, #main in Classic. */
+function mainElement(): Element | null {
+  return document.querySelector(WINDOW_KIND === 'r1' ? '.r1-conversation' : '#main');
+}
+
+/** R1's side panel renders in its own slot beside the conversation, not inside it. */
+function paneElement(): Element | null {
+  return document.querySelector(WINDOW_KIND === 'r1' ? '.r1-pane-slot' : null);
+}
+
+function sideElement(): Element | null {
+  return document.querySelector(WINDOW_KIND === 'r1' ? '.r1-sidebar' : '[data-testid="sidebar"]');
 }
 
 function findMarked() {
@@ -252,7 +350,7 @@ function findMarked() {
 }
 
 function collect(overlay = false) {
-  const root = overlay ? document.querySelector('[role="menu"], [role="dialog"]') : document;
+  const root = overlay ? document.querySelector('[role="menu"], [role="dialog"], [role="alertdialog"]') : document;
   if (!root) return [];
   const seen = new Map<string, number>();
   const elements: { name: string; href: string; disabled: boolean; selected: boolean; occurrence: number; region: string }[] = [];
@@ -272,7 +370,9 @@ function collect(overlay = false) {
       disabled: control.disabled === true || el.getAttribute('aria-disabled') === 'true',
       // A tab, or a radio option that is already the chosen value, has nothing to change: clicking it is a no-op
       // by design, so the crawl skips it ("already-selected") instead of calling it dead.
-      selected: el.getAttribute('role') === 'tab' && el.getAttribute('aria-selected') === 'true'
+      // A menu's radio choice that is already chosen (a scope, a sort) has nothing to change, like a tab that is open.
+      selected: el.getAttribute('role') === 'menuitemradio' && el.getAttribute('aria-checked') === 'true'
+        || el.getAttribute('role') === 'tab' && el.getAttribute('aria-selected') === 'true'
         || el.getAttribute('role') === 'radio' && el.getAttribute('aria-checked') === 'true'
         || el.getAttribute('aria-pressed') === 'true' && Boolean(el.closest('[role="group"], [role="radiogroup"]'))
         || Boolean(el.closest('.sseg') && (el.getAttribute('aria-pressed') === 'true' || el.getAttribute('aria-checked') === 'true')),
@@ -327,12 +427,12 @@ function rowCardOpen() {
 function textOf(node: Element | null) {
   if (!node) return '';
   const copy = node.cloneNode(true) as HTMLElement;
-  copy.querySelectorAll('[role="menu"], [role="dialog"], .toast, .toasts').forEach((el) => el.remove());
+  copy.querySelectorAll('[role="menu"], [role="dialog"], [role="alertdialog"], .toast, .toasts').forEach((el) => el.remove());
   return (copy.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
 function screenText() {
-  const main = document.querySelector('#main .set-col') ?? document.querySelector('#main') ?? document.body;
+  const main = document.querySelector('#main .set-col') ?? mainElement() ?? document.body;
   return textOf(main).slice(0, 4000);
 }
 
@@ -344,10 +444,29 @@ function digest(text: string) {
   return `${text.length}:${hash}`;
 }
 
+// The text of the open menu or dialog, and the values typed into the page's fields. A sub-view that swaps inside a
+// menu, a popover that fills in a result, or a field a control fills in is a visible result too.
+function overlayDigest() {
+  const overlays = [...document.querySelectorAll<HTMLElement>('[role="menu"], [role="dialog"], [role="alertdialog"]')].filter(visible);
+  return overlays.length ? digest(overlays.map(textOf).join(' | ')) : '';
+}
+
+function valuesDigest() {
+  const fields = [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea')].filter(visible);
+  return digest(fields.map((field) => `${field.name}|${field.placeholder}=${field.value}`).join('|'));
+}
+
+/** R1's frame layout: the sidebar's width state and which side panels are open. Collapsing the list changes it. */
+function frameState() {
+  const frame = document.querySelector('.r1-frame');
+  if (!(frame instanceof HTMLElement)) return '';
+  return ['wide', 'drawer', 'topics', 'pane'].map((name) => frame.getAttribute(`data-${name}`) ?? '').join('|');
+}
+
 function viewText() {
-  const main = document.querySelector('#main .set-col') ?? document.querySelector('#main');
-  const side = document.querySelector('[data-testid="sidebar"]');
-  return digest([textOf(main), textOf(side)].filter(Boolean).join(' '));
+  const main = document.querySelector('#main .set-col') ?? mainElement();
+  const side = sideElement();
+  return digest([textOf(main), textOf(side), textOf(paneElement())].filter(Boolean).join(' '));
 }
 
 function controlState(el: Element) {
@@ -360,8 +479,8 @@ function controlState(el: Element) {
 // Scroll positions inside the main content only (the sidebar and the window itself are not measured). A scroll is a
 // result only for an in-page jump (see surface): a control that scrolls the sidebar leaves this value unchanged.
 function scrollOf() {
-  const main = document.querySelector<HTMLElement>('#main');
-  if (!main) return '';
+  const main = mainElement();
+  if (!(main instanceof HTMLElement)) return '';
   return [main, ...main.querySelectorAll<HTMLElement>('*')]
     .filter((el) => el.scrollTop > 0)
     .map((el) => `${el.className || el.tagName}:${Math.round(el.scrollTop)}`)
@@ -369,9 +488,10 @@ function scrollOf() {
 }
 
 function surface() {
-  const dialog = document.querySelector('[role="dialog"]');
+  const dialog = document.querySelector('[role="dialog"], [role="alertdialog"]');
   const menu = document.querySelector('[role="menu"]');
   const toast = document.querySelector('.toast');
+  const pane = paneElement();
   const alert = [...document.querySelectorAll('[role="alert"]')].find((el) => !el.closest('.toast, .toasts'));
   const target = markedEl && markedEl.isConnected ? markedEl : findMarked();
   const mainText = screenText();
@@ -382,10 +502,13 @@ function surface() {
     route: routeId(readRoute()),
     dialog: dialog instanceof HTMLElement ? (dialog.getAttribute('aria-label') || dialog.textContent || 'dialog').replace(/\s+/g, ' ').trim().slice(0, 80) : null,
     menu: menu instanceof HTMLElement ? (menu.getAttribute('aria-label') || 'menu') : null,
-    panel: document.querySelector('.side-pane, .panel, .character-panel') instanceof HTMLElement ? 'panel' : null,
+    panel: pane instanceof HTMLElement && pane.childElementCount > 0 ? 'panel' : document.querySelector('.side-pane, .panel, .character-panel') instanceof HTMLElement ? 'panel' : null,
     toast: toast instanceof HTMLElement ? toast.textContent?.replace(/\s+/g, ' ').trim().slice(0, 120) || null : null,
     mainText,
     viewText: viewText(),
+    overlay: overlayDigest(),
+    values: valuesDigest(),
+    frame: frameState(),
     alert: alert instanceof HTMLElement ? alert.textContent?.replace(/\s+/g, ' ').trim().slice(0, 160) || '' : '',
     unimplemented: /\b(coming soon|not implemented|not yet implemented|placeholder)\b/i.test(mainText),
     blank: mainText.length < 12,
@@ -405,7 +528,8 @@ function surface() {
     jump: Boolean(target?.closest('a[href^="#"], [data-jump-to]')),
     scroll: target?.closest('a[href^="#"], [data-jump-to]') ? scrollOf() : '',
     configRevision: config.hash,
-    alreadyCurrent: target?.getAttribute('aria-current') === 'true',
+    // aria-current marks the page or item already shown ("page" in R1's Settings nav, "true" elsewhere): a click on it is a no-op by design.
+    alreadyCurrent: Boolean(target?.getAttribute('aria-current') && target.getAttribute('aria-current') !== 'false'),
     menuItems,
     requests: calls.slice(),
     requestCount: calls.length,
@@ -444,6 +568,7 @@ function resetMockEngine() {
   prefs = freshPrefs();
   approvals = freshApprovals();
   voice = freshVoice();
+  browserRunning = false;
   calls.length = 0;
   historyMoves = 0;
   popups = 0;
@@ -451,10 +576,10 @@ function resetMockEngine() {
   try { localStorage.clear(); sessionStorage.clear(); } catch { /* storage blocked: the defaults below still apply */ }
 }
 
-function mount(route: Route) {
+function mount(route: Route, level: LevelWord = 'technical') {
   resetMockEngine();
   localStorage.setItem('branch.route', JSON.stringify(route));
-  localStorage.setItem('branch.level', 'technical');
+  localStorage.setItem('branch.level', level);
   localStorage.setItem('branch.theme', 'light');
   for (const toast of getToasts()) dismiss(toast.id);
   cachedEngine = null;
@@ -467,7 +592,13 @@ function mount(route: Route) {
   const host = document.getElementById('root');
   if (!host) return;
   root ??= createRoot(host);
-  root.render(<WindowShell key={nonce} session={fixture as never} url="ws://127.0.0.1:9" />);
+  root.render(WINDOW_KIND === 'r1' ? <R1Root key={nonce} /> : <WindowShell key={nonce} session={fixture as never} url="ws://127.0.0.1:9" />);
+}
+
+// R1 has no connection marker of its own; the crawl waits for data-connection="ready" before it clicks, so the harness
+// adds one here once the mock engine has answered. Classic's WindowShell sets its own marker.
+function R1Root() {
+  return <div data-connection="ready" style={{ height: '100vh' }}><R1Window session={fixture as never} /></div>;
 }
 
 // Permission-style requests a control can start. A microphone or notification prompt answers
@@ -479,20 +610,13 @@ function trackPermissionRequest<T>(call: () => Promise<T>): Promise<T> {
     pendingPermissionRequests -= 1;
   });
 }
-// The crawl has no microphone or camera. Each capture request resolves to a silent stream of the kind it
-// asked for, so a voice note really starts recording and the crawl observes that state.
-// One audio context per page: creating it on every capture took most of a click's time on a loaded machine.
-let silentAudio: AudioContext | null = null;
-function fakeCapture(constraints: MediaStreamConstraints): Promise<MediaStream> {
-  if (constraints.video) {
-    return Promise.resolve(document.createElement("canvas").captureStream());
-  }
-  silentAudio ??= new AudioContext();
-  return Promise.resolve(silentAudio.createMediaStreamDestination().stream);
-}
+// The crawl has no microphone or camera. Each capture request resolves to a silent stream of the kind it asked for, so
+// a voice note really starts recording and the crawl observes that state. The audio context is built here, at load.
+const capture = createCrawlCapture(() => new AudioContext());
+if (typeof AudioContext === 'function') capture.prewarm();
 if (navigator.mediaDevices) {
   navigator.mediaDevices.getUserMedia = (constraints: MediaStreamConstraints) =>
-    trackPermissionRequest(() => fakeCapture(constraints));
+    trackPermissionRequest(() => capture.capture(constraints));
 }
 if (typeof Notification !== 'undefined') {
   const nativeRequestPermission = Notification.requestPermission.bind(Notification);
@@ -517,9 +641,10 @@ window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
   mount,
   catalog() {
     return {
-      sessions: SESSIONS.map((session) => ({ key: session.key, title: session.label })),
+      window: WINDOW_KIND,
+      sessions: [...SESSIONS.map((session) => ({ key: session.key, title: session.label })), ...(WINDOW_KIND === 'r1' ? [{ key: GRAFTED_KEY, title: 'Studio computer' }] : [])],
       places: PLACES.map((place) => place.id),
-      settings: settingsGroups('technical').flatMap((group) => group.pages.map((page) => page.id)),
+      settings: WINDOW_KIND === 'r1' ? r1SettingsScreens() : classicSettingsScreens(),
     };
   },
   collect, mark, clickTarget, surface, rowActions, listLabels, openKind,

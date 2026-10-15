@@ -79,7 +79,7 @@ function Where({ onePassword, config }: Pick<SettingsPageProps, "engine"> & { on
           options={[{ id: "bitwarden", label: "Bitwarden", off: "Bitwarden needs its engine plugin." }, { id: "onepassword", label: "1Password" }, { id: "windows", label: "Windows", off: "Windows Credential Manager needs its engine plugin." }]} />
       </Ctl>
       <Ctl title="Keys kept apart from settings" sub="Keys stay in a locker only the engine can read." help="Keys live in a locker only the engine reads, so sharing your settings never shares a key.">
-        <Btn sm data-jump-to="#s2-keys" onClick={() => document.getElementById("s2-keys")?.scrollIntoView({ block: "start" })}>Show where</Btn>
+        <Btn sm data-jump-to="#s2-keys" onClick={() => (document.getElementById("s2-keys") ?? document.getElementById("sec-signins-Keys Branch holds"))?.scrollIntoView({ block: "start" })}>Show where</Btn>
       </Ctl>
       <Ctl title="Sign-in tokens" sub="Sign-in tokens are encrypted, refreshed and revoked." help="Tokens from “sign in with…” are encrypted, refreshed before they expire, and revoked when removed." off="Checking them needs the engine’s token report."><Btn sm>Check them</Btn></Ctl>
     </Sec>

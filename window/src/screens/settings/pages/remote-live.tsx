@@ -88,13 +88,30 @@ export function Lately({ engine, row }: SlotControlProps) {
   );
 }
 
-/** Restart the engine (gateway.restart.request): deferred until running work finishes when the engine says so. */
+/** What the restart request answered, in plain words: a deferred restart waits for running work to end. */
+const RESTART_SAID: Record<string, string> = {
+  deferred: "Restart requested. Branch restarts when its current work ends.",
+  scheduled: "Restart requested. Branch is restarting.",
+  coalesced: "Restart requested. A restart is already on its way.",
+};
+
+/** Restart the engine (gateway.restart.request): deferred until running work finishes when the engine says so. The line
+ *  under the button says what the engine answered, and shows only after the request succeeds. */
 export function RestartEngine({ engine, row }: SlotControlProps) {
   const [failed, run] = useFailure();
   const [busy, setBusy] = useState(false);
-  const go = () => { setBusy(true); void run(() => engine.request("gateway.restart.request", { reason: "settings" })).finally(() => setBusy(false)); };
+  const [said, setSaid] = useState<string | null>(null);
+  const go = () => {
+    setBusy(true);
+    setSaid(null);
+    void run(async () => {
+      const answer = await engine.request<{ status?: string }>("gateway.restart.request", { reason: "settings" });
+      setSaid(RESTART_SAID[answer?.status ?? ""] ?? "Restart requested.");
+    }).finally(() => setBusy(false));
+  };
   return <>
     <Needs engine={engine} need={["gateway.restart.request"]} where={row.label ?? ""}><Btn disabled={busy} onClick={go}>Restart the engine</Btn></Needs>
+    {said ? <small className="g-label" role="status">{said}</small> : null}
     <Failed text={failed} />
   </>;
 }
