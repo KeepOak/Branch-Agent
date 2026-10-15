@@ -2015,6 +2015,7 @@ test('trusted gate re-runs the UI screenshot proof check from main', () => {
 test('trusted gate includes and runs the SELF-CHECK body check from main', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/check-self-check.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/check-self-check.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/final-head-history.mjs'));
   const source = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(source, /from '\.\/check-self-check\.mjs'/);
   assert.match(source, /if \(!runSelfCheckFromPr\(process\.env\.HEAD_BRANCH, body\)\) process\.exit\(1\)/);
