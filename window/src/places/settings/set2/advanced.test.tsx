@@ -220,6 +220,100 @@ describe("Settings › Advanced", () => {
   });
 });
 
+const STRUCTURED = {
+  plugins: {
+    entries: {
+      "llm-task": {
+        enabled: true,
+        llm: { allowModelOverride: true, allowedCompletionModels: ["openai/gpt-5"] },
+        config: { defaultProvider: "openai", defaultModel: "gpt-5", maxTokens: 800, timeoutMs: 10000 },
+      },
+    },
+  },
+  tools: { alsoAllow: ["llm-task"] },
+};
+const MODELS = { "models.list": { models: [{ provider: "openai", id: "gpt-5", name: "GPT-5", available: true }, { provider: "openai", id: "gpt-5-mini", name: "GPT-5 mini", available: true }] } };
+async function typeNum(input: HTMLInputElement, value: string) {
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+  await flush();
+}
+
+describe("Settings › Advanced › structured answers", () => {
+  it("reads unset values as off and writes the engine keys when they change", async () => {
+    const { engine, request } = engineWith({ ...CONFIG, ...MODELS });
+    await show(engine, "advanced");
+    const sw = row("Structured answers").querySelector("input[role=switch]") as HTMLInputElement;
+    expect(sw.checked).toBe(false);
+    expect(row("Structured answers").textContent).toContain("Off until you choose");
+    expect((row("Model for structured answers").querySelector("select") as HTMLSelectElement).value).toBe("");
+    expect((row("Longest structured answer").querySelector("input") as HTMLInputElement).value).toBe("");
+    expect((row("Longest structured answer").querySelector("input") as HTMLInputElement).placeholder).toBe("No limit");
+    expect((row("Answer time limit").querySelector("input") as HTMLInputElement).placeholder).toBe("30,000");
+    expect(row("Models it may use").textContent).toContain("Nothing here yet.");
+
+    await click(sw);
+    expect(patches(request)).toEqual([
+      { plugins: { entries: { "llm-task": { enabled: true } } } },
+      { tools: { alsoAllow: ["llm-task"] } },
+    ]);
+
+    const model = row("Model for structured answers").querySelector("select") as HTMLSelectElement;
+    await act(async () => { model.value = "openai/gpt-5"; model.dispatchEvent(new Event("change", { bubbles: true })); });
+    await flush();
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { defaultProvider: "openai" } } } } });
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { defaultModel: "gpt-5" } } } } });
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { llm: { allowModelOverride: true } } } } });
+
+    await typeNum(row("Longest structured answer").querySelector("input") as HTMLInputElement, "800");
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { maxTokens: 800 } } } } });
+    await typeNum(row("Answer time limit").querySelector("input") as HTMLInputElement, "10000");
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { timeoutMs: 10000 } } } } });
+
+    const models = row("Models it may use");
+    const field = models.querySelector("input") as HTMLInputElement;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "openai/gpt-5"); field.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click(button("Add", models));
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { llm: { allowedCompletionModels: ["openai/gpt-5"] } } } } });
+  });
+
+  it("reads set values and writes the next change", async () => {
+    const { engine, request } = engineWith({ ...CONFIG, ...MODELS, "config.get": { hash: "h", valid: true, config: STRUCTURED } });
+    await show(engine, "advanced");
+    const sw = row("Structured answers").querySelector("input[role=switch]") as HTMLInputElement;
+    expect(sw.checked).toBe(true);
+    expect((row("Model for structured answers").querySelector("select") as HTMLSelectElement).value).toBe("openai/gpt-5");
+    expect((row("Longest structured answer").querySelector("input") as HTMLInputElement).value).toBe("800");
+    expect((row("Answer time limit").querySelector("input") as HTMLInputElement).value).toBe("10,000");
+    expect(row("Models it may use").textContent).toContain("openai/gpt-5");
+
+    const model = row("Model for structured answers").querySelector("select") as HTMLSelectElement;
+    await act(async () => { model.value = "openai/gpt-5-mini"; model.dispatchEvent(new Event("change", { bubbles: true })); });
+    await flush();
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { defaultModel: "gpt-5-mini" } } } } });
+
+    await typeNum(row("Longest structured answer").querySelector("input") as HTMLInputElement, "400");
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { maxTokens: 400 } } } } });
+    await typeNum(row("Answer time limit").querySelector("input") as HTMLInputElement, "5000");
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { timeoutMs: 5000 } } } } });
+
+    await click(sw);
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { enabled: false } } } });
+    expect(patches(request)).toContainEqual({ tools: { alsoAllow: null } });
+  });
+
+  it("adds the tool to the existing allow list instead of a second list", async () => {
+    const { engine, request } = engineWith({ ...CONFIG, "config.get": { hash: "h", valid: true, config: { tools: { allow: ["read"] } } } });
+    await show(engine, "advanced");
+    expect((row("Structured answers").querySelector("input[role=switch]") as HTMLInputElement).checked).toBe(false);
+    await click(row("Structured answers").querySelector("input") as HTMLElement);
+    expect(patches(request)).toEqual([
+      { plugins: { entries: { "llm-task": { enabled: true } } } },
+      { tools: { allow: ["read", "llm-task"] } },
+    ]);
+  });
+});
+
 describe("Advanced helpers", () => {
   it("makes a merge patch that removes keys and keeps unchanged ones out", () => {
     expect(mergePatch({ a: 1, b: { c: 2, d: 3 } }, { a: 1, b: { c: 4 } })).toEqual({ b: { c: 4, d: null } });
