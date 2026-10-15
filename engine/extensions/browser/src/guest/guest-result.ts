@@ -43,11 +43,13 @@ function formatRead(result: unknown): AgentToolResult<unknown> {
 
 function formatScreenshot(result: unknown): AgentToolResult<unknown> {
   const match = DATA_URL_PATTERN.exec(readText(readRecord(result).dataUrl));
-  if (!match) {
+  const mimeType = match?.[1];
+  const data = match?.[2];
+  if (mimeType === undefined || data === undefined) {
     throw new Error("The browser pane sent a screenshot I can't read.");
   }
   return {
-    content: [{ type: "image", data: match[2], mimeType: match[1] }],
+    content: [{ type: "image", data, mimeType }],
     details: result,
   };
 }
