@@ -7,8 +7,11 @@
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
     "ios": {
+      "bundleIdentifier": "com.keepoak.branch",
       "supportsTablet": false,
       "infoPlist": {
+        "NSCameraUsageDescription": "Branch uses the camera to scan the pairing code on your computer.",
+        "NSUserNotificationsUsageDescription": "Branch sends notifications when something on your computer needs your approval.",
         "NSLocalNetworkUsageDescription": "Branch connects to the Branch app on your computer over your home network.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
@@ -18,7 +21,8 @@
     "android": {
       "package": "com.keepoak.branch",
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -33,7 +37,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Branch uses the camera to read the pairing code on your computer.",
+          "cameraPermission": "Branch uses the camera to scan the pairing code on your computer.",
           "recordAudioAndroid": false
         }
       ],
