@@ -266,6 +266,8 @@
   --fade: .15s ease;
   /* layout */
   --hdr: 52px; --topics-w: 300px;
+  /* the conversation's thread row (the topic bar), when it shows: its pill height */
+  --r1-topic-row: 42px;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --line: #1D262C; --line-2: #2B363E; --mute17c: #95A2AB;

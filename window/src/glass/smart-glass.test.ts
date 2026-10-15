@@ -30,7 +30,7 @@ describe("smart glass, batch 3", () => {
     expect(code).toMatch(/:root:not\(#sg#sg#sg#sg\) \.pop:is\(\.menu, \.panel\) \{ background: color-mix\(in srgb, var\(--bg\) 94%/);
     expect(code).toMatch(/:root\[data-transparency="reduce"\]:not\(#sg#sg#sg#sg\) \.pop:is\(\.menu, \.panel\) \{ background: var\(--bg\)/);
   });
-  it("fades the transcript out under the window header", () => {
-    expect(code).toMatch(/\.r1-conversation > \.r1-header::before \{ content: ""; position: absolute;/);
+  it("leaves the scroll edge under the window header to the shared frame rule (no one-off scrim here)", () => {
+    expect(code).not.toMatch(/\.r1-header::before/);
   });
 });
