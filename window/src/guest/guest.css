@@ -30,7 +30,9 @@
 .stage-status-st {font-size:12.5px;color:var(--ink-3);}
 .guest-stage {position:relative;flex:1 1 auto;min-height:0;overflow:hidden;}
 .guest-tab {position:absolute;inset:0;}
-.guest-tab[data-active="false"] {left:-100000px;}
+/* A tab in the background is moved off the stage at its full size, so its page keeps its layout. It must not reach back over
+   the stage: with inset:0 still giving it right:0 it spanned the showing page and, its page clear, took every click and touch. */
+.guest-tab[data-active="false"] {left:-100000px;right:auto;width:100%;pointer-events:none;}
 .guest-page {display:flex;width:100%;height:100%;}
 .guest-empty {margin:0;padding:24px;font-size:13px;color:var(--ink-3);}
 .guest-reader {position:absolute;inset:0;overflow:auto;scrollbar-width:none;padding:12px 24px 24px;background:var(--bg);}

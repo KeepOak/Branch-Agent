@@ -135,6 +135,8 @@ jobs:
         id: stage
         env:
           APK_NAME: ${{ steps.plan.outputs.apk_name }}
+          SIGNED: ${{ steps.plan.outputs.signed }}
+          ANDROID_VERSION_CODE: ${{ steps.plan.outputs.version_code }}
         run: |
           set -euo pipefail
           source_apk="mobile/android/app/build/outputs/apk/release/app-release.apk"
@@ -143,7 +145,9 @@ jobs:
           apk_path="${RUNNER_TEMP}/apk/${APK_NAME}"
           cp "$source_apk" "$apk_path"
           echo "apk_path=${apk_path}" >> "$GITHUB_OUTPUT"
-          node mobile/scripts/android-release.mjs --sha256 "$apk_path" >> "$GITHUB_OUTPUT"
+          if [[ "$SIGNED" == "true" ]]; then
+            node mobile/scripts/android-release.mjs --sha256 "$apk_path" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Reject a debug-signed APK
         env:
@@ -173,11 +177,14 @@ jobs:
           APK_NAME: ${{ steps.plan.outputs.apk_name }}
           SHA256_PATH: ${{ steps.stage.outputs.sha256_path }}
           SHA256_NAME: ${{ steps.stage.outputs.sha256_name }}
+          VERSIONCODE_PATH: ${{ steps.stage.outputs.versioncode_path }}
+          VERSIONCODE_NAME: ${{ steps.stage.outputs.versioncode_name }}
         run: |
           set -euo pipefail
           gh release upload "$TAG" \
             "${APK_PATH}#${APK_NAME}" \
             "${SHA256_PATH}#${SHA256_NAME}" \
+            "${VERSIONCODE_PATH}#${VERSIONCODE_NAME}" \
             --repo "${GITHUB_REPOSITORY}"
 
       - name: Remove the keystore
@@ -190,6 +197,7 @@ jobs:
           ATTACH: ${{ steps.plan.outputs.attach_release }}
           APK_NAME: ${{ steps.plan.outputs.apk_name }}
           TAG: ${{ steps.plan.outputs.release_tag }}
+          VERSION_CODE: ${{ steps.plan.outputs.version_code }}
         run: |
           set -euo pipefail
           {
@@ -197,9 +205,11 @@ jobs:
             echo
             echo "- File: \`$APK_NAME\`"
             echo "- Checksum: \`${APK_NAME}.sha256\`"
+            echo "- versionCode: \`${APK_NAME}.versioncode.${VERSION_CODE}\`"
             if [[ "$ATTACH" == "true" ]]; then
               echo "- Release asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}"
               echo "- Checksum asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}.sha256"
+              echo "- versionCode asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}.versioncode.${VERSION_CODE}"
             else
               echo "- Kept as a workflow artifact only (no release tag on this run)."
             fi
