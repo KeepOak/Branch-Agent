@@ -13,7 +13,7 @@ describe("a model row's line", () => {
   });
 
   it("explains a problem in plain words", () => {
-    expect(modelLine(model({ available: false, runtimeMetadata: { available: false, unavailableReason: "missing-auth" } } as Partial<ModelChoice>))).toBe("sign-in needed");
+    expect(modelLine(model({ available: false, runtimeMetadata: { available: false, unavailableReason: "missing-auth" } } as Partial<ModelChoice>))).toBe("Sign-in needed");
     expect(modelLine(model({ available: false }))).toBe("Unavailable");
   });
 

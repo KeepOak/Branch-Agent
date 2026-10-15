@@ -43,8 +43,8 @@ type Props = {
 
 const accountsFor = (all: Account[], provider: string | undefined) => (provider ? all.filter((a) => a.p.provider === provider || a.p.authProvider === provider) : []);
 const UNAVAILABLE_LABELS: Record<AvailabilityReason, string> = {
-  "missing-auth": "sign-in needed", "auth-failed": "sign-in needs attention",
-  cooldown: "resting after a limit", "unsupported-runtime": "runtime unavailable",
+  "missing-auth": "Sign-in needed", "auth-failed": "Sign-in needs attention",
+  cooldown: "Resting after a limit", "unsupported-runtime": "Runtime unavailable",
 };
 
 /** The line under a model. A usable model shows nothing here: its account is named once, in the footer and the Account
