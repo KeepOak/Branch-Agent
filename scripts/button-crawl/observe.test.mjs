@@ -87,3 +87,11 @@ test('a button whose aria-expanded does not change, and nothing else changes, is
   assert.deepEqual(problemsOf({ ...still, control: '|||false', controlled: 'hidden' }, { ...still, control: '|||false', controlled: 'hidden' }), ['dead']);
   assert.deepEqual(problemsOf({ ...still, control: '|||', controlled: '' }, { ...still, control: '|||', controlled: '' }), ['dead']);
 });
+
+// A timer inside an expanded panel changes as time passes; that alone is not a result.
+test('a ticking time inside an expanded panel is not a result', () => {
+  const before = { ...still, control: '|||true', controlled: 'shown:Next run 10:01 AM' };
+  const after = { ...still, control: '|||true', controlled: 'shown:Next run 10:02 AM' };
+  assert.deepEqual(problemsOf(before, after), ['dead']);
+  assert.deepEqual(problemsOf({ ...still, controlled: 'shown:Two items' }, { ...still, controlled: 'shown:Three items' }), []);
+});

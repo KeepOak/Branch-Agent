@@ -41,6 +41,10 @@ const legacyCaps = windowKind === 'classic';
 const caps = {
   maxScreens: number('BUTTON_CRAWL_MAX_SCREENS', legacyCaps ? 48 : 150),
   maxPerScreen: number('BUTTON_CRAWL_MAX_PER_SCREEN', legacyCaps ? 28 : 40),
+  // Regular and Advanced Settings pages show a subset of the controls the Technical page of the same page shows, which
+  // is clicked at the full cap. Their own cap keeps the R1 crawl inside the CI time. Set BUTTON_CRAWL_MAX_PER_SCREEN_LEVEL=40
+  // for full coverage at those levels; the report lists every control a cap leaves unclicked.
+  maxPerScreenLevel: number('BUTTON_CRAWL_MAX_PER_SCREEN_LEVEL', legacyCaps ? 28 : 24),
   maxClicks: number('BUTTON_CRAWL_MAX_CLICKS', legacyCaps ? 800 : 2400),
   maxDepth: number('BUTTON_CRAWL_MAX_DEPTH', 1),
   maxOverlays: number('BUTTON_CRAWL_MAX_OVERLAYS', legacyCaps ? 8 : 40),
@@ -219,6 +223,7 @@ async function main() {
     const chromeNames = new Set();
     let sidebarDone = false;
     let navDone = false;
+    const settingsTwins = new Map();
     while (queue.length && screenCount < caps.maxScreens) {
       const screen = queue.shift();
       screenCount += 1;
@@ -276,7 +281,21 @@ async function main() {
       const wanted = chooseScreenClicks(elements, { limit: 10000, skip });
       const thread = wanted.find((el) => /how threads show|threads show as/i.test(el.name));
       const ordered = thread ? [thread, ...wanted.filter((el) => el !== thread)] : wanted;
-      const room = Math.min(caps.maxPerScreen, Math.max(0, caps.maxClicks - clickCount));
+      // A Settings page at a level whose controls are the same as a page already crawled (the same page at another level,
+      // or the same rows) is not clicked again: the same controls ran there. The screen is still opened and named in the
+      // report, and its keys stay out of the gate (no check is complete for it), so a change still shows on the first one.
+      if (screen.route.kind === 'settings' && screen.depth === 0 && sidebarDone && navDone) {
+        const signature = `${screen.route.page}\n${[...new Set(wanted.map((el) => el.name))].sort().join('\n')}`;
+        const twin = settingsTwins.get(signature);
+        if (twin) {
+          skipped.push({ screen: screen.id, label: '(all controls)', reason: `same-controls-as ${twin}` });
+          checks.push({ screenId: screen.id, complete: false, keys: [] });
+          continue;
+        }
+        settingsTwins.set(signature, screen.id);
+      }
+      const screenCap = screen.route.kind === 'settings' && (screen.level === 'regular' || screen.level === 'advanced') ? caps.maxPerScreenLevel : caps.maxPerScreen;
+      const room = Math.min(screenCap, Math.max(0, caps.maxClicks - clickCount));
       const chosen = ordered.slice(0, room);
       // Controls over the per-screen cap are not clicked: the report names them, so no coverage is dropped silently.
       if (ordered.length > chosen.length) truncated.push({ screen: screen.id, notClicked: ordered.slice(chosen.length).map((el) => el.name) });

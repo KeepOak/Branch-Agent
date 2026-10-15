@@ -69,7 +69,8 @@ export function classifyClick({ before, after, elapsedMs = 0, consoleErrors = []
   // The side layout (Collapse the list, a side panel) is a result. An empty value is a window with no R1 frame.
   const frameChanged = Boolean(after.frame) && before.frame !== after.frame;
   // A disclosure's content (aria-controls) that shows or hides is a result, as the click that opened it is.
-  const controlledChanged = after.controlled !== undefined && (before.controlled ?? '') !== after.controlled;
+  // A ticking timer inside an expanded panel is not a result: the content compares with its time-only parts removed.
+  const controlledChanged = after.controlled !== undefined && stableText(before.controlled ?? '') !== stableText(after.controlled);
   const real = frameChanged || overlayChanged || valuesChanged || routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || controlledChanged || textChanged || focusChanged || hashChanged || chromeChanged || windowOpened || scrolled || settingSaved;
 
   if (!real && !after.alreadyCurrent) {
