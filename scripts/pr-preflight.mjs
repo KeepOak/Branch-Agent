@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkSelfCheck } from './check-self-check.mjs';
+import { explainFinalHeadDrift } from './final-head-history.mjs';
 import { checkUIProof } from './check-ui-proof.mjs';
 import { ALLOWED_SUFFIX, FIX_LINES, evaluateCommits, fetchPrCommitsWithApi } from './check-commit-emails.mjs';
 import {
@@ -75,14 +76,21 @@ export function commitProblems(commits, { cloudAgent = false } = {}) {
   return [...addressProblems, ...trailerProblems];
 }
 
-// The SELF-CHECK block must exist, be valid, and name the head this push is actually at.
-export function selfCheckProblems({ branch, headSha, body }) {
+// The SELF-CHECK block must exist and be valid. Final head must be this head, or this head
+// may be that commit plus later merges that only bring main in.
+export function selfCheckProblems({ branch, headSha, body, repoDir }) {
   const problems = checkSelfCheck({ headRef: branch, body }).problems.map((message) => problem(
     'self-check', message, 'edit the draft body file, then rerun preflight',
   ));
   const final = /Final head:\s*([0-9a-f]{40})/i.exec(body ?? '');
   if (final && final[1].toLowerCase() !== headSha.toLowerCase()) {
-    problems.push(problem('self-check', `Final head ${final[1].slice(0, 9)} is stale; HEAD is ${headSha.slice(0, 9)}`, `set "Final head: ${headSha}" in the body`));
+    const drift = repoDir ? explainFinalHeadDrift({ repoDir, namedSha: final[1], headSha }) : { ok: false, known: false };
+    if (!drift.ok) {
+      const message = drift.known
+        ? drift.message
+        : `Final head ${final[1].slice(0, 9)} is stale; HEAD is ${headSha.slice(0, 9)}`;
+      problems.push(problem('self-check', message, `set "Final head: ${headSha}" in the body`));
+    }
   }
   return problems;
 }
@@ -257,7 +265,7 @@ export function runPreflight(input) {
   return [
     ...dirtyTreeProblems(input.dirtyCount ?? 0),
     ...commitProblems(input.commits ?? [], { cloudAgent: input.cloudAgent === true }),
-    ...selfCheckProblems({ branch: input.branch, headSha: input.headSha, body }),
+    ...selfCheckProblems({ branch: input.branch, headSha: input.headSha, body, repoDir: input.repoDir }),
     ...namedListProblems({ changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
     ...priorArtProblems({ title: input.title, body }),
     ...uiProofProblems({ changedFiles, body }),
@@ -336,6 +344,7 @@ function gatherInputs({ argv, cwd }) {
     branch,
     headSha: git(['rev-parse', 'HEAD'], cwd),
     title: argValue('--title', argv) ?? git(['log', '-1', '--format=%s'], cwd),
+    repoDir: cwd,
     body: bodyPath && existsSync(path.resolve(cwd, bodyPath)) ? readFileSync(path.resolve(cwd, bodyPath), 'utf8') : null,
     dirtyCount: git(['status', '--porcelain'], cwd).split('\n').filter(Boolean).length,
     commits: gitCommits(base, cwd),
@@ -466,7 +475,7 @@ export function runCli(argv, cwd, env = process.env, { ciInput = apiInputFromEnv
         text: [...ciSkippedLines(), `preflight could not read GitHub within its ${budgetSeconds}s budget (${reason}). This is not a preflight failure; re-run the check.`].join('\n'),
       };
     }
-    const problems = runPreflight({ ...input, cloudAgent: false });
+    const problems = runPreflight({ ...input, cloudAgent: false, repoDir: cwd });
     return { exitCode: problems.length ? 1 : 0, text: [...ciSkippedLines(), formatProblems(problems)].join('\n') };
   }
   if (!argv.includes('--body')) {
