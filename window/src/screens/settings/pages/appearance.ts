@@ -68,7 +68,8 @@ export const APPEARANCE_ROWS: Row[] = [
   fromClassic("appearance.reading.messages", "Reading", "msgLook"),
   fromClassic("appearance.reading.direction", "Reading", "dir"),
   fromClassic("appearance.reading.math", "Reading", "math"),
-  fromClassic("appearance.reading.scroll", "Reading", "scroll"),
+  // No Scroll bars row: the window hides scroll bars everywhere, so "Always" did nothing and "While scrolling" was the only
+  // choice left. A saved "scroll" choice stays in the person's look untouched.
   fromClassic("appearance.reading.code", "Reading", "codeCol"),
   coming("appearance.reading.editor-theme", "Reading", rowOf("edTheme").title, "editor: the VS Code and JetBrains panels passing their theme to the window", rowOf("edTheme").off ?? "", { help: rowOf("edTheme").sub, control: "toggle" }),
   { id: "appearance.reading.font-ui", page: "appearance", card: "Reading", label: "Interface font", level: 1, control: "select", options: FONTS.map((f) => ({ v: f.id, label: f.label })),
@@ -102,7 +103,7 @@ export const APPEARANCE_ROWS: Row[] = [
 
   // The list
   slot("appearance.list.threads", "The list", "Threads show as", [], { help: "How a contact’s threads show beside its chat. A contact’s ⋯ › View can differ.", control: "segmented",
-    options: [{ v: "column", label: "Column" }, { v: "rail", label: "Emoji rail" }, { v: "side", label: "Side tabs" }, { v: "tabs", label: "Tabs" }] }),
+    options: [{ v: "tabs", label: "Tabs" }, { v: "free", label: "Freedom Mode" }] }),
   { id: "appearance.list.ask-delete", page: "appearance", card: "The list", label: "Ask before deleting a conversation", help: "Removing a kept working copy always asks.", level: 1, control: "toggle",
     source: { kind: "look", key: "askDelete" }, fallback: true },
   fromClassic("appearance.list.headlines", "The list", "headlines"),

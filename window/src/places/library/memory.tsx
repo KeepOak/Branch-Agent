@@ -14,6 +14,7 @@ import { RingsRow } from "./rings";
 import { EmptyIcon, Grey, IcoTile, LibIcon, plural, Row } from "./parts";
 import { FileDialog } from "./reader";
 import { shownWhy } from "../../shell/shown-why";
+import { trunkDisplayName } from "../../connect/trunk-name";
 
 const TIDY_REASON = "Needs the engine’s memory tidy-up method.";
 
@@ -50,7 +51,7 @@ export function MemoryTab(props: MemoryProps) {
   return <div className="lib-mem">
     <MemoryCard {...props} scope={scope} files={scoped} status={status} check={check} />
     <RingsRow engine={engine} level={level} scope={scope} status={status} openSettings={props.openSettings} />
-    <MemorySearch engine={engine} trunks={trunks} scope={scope} setScope={setScope} scopeName={scopeName ? scopeName.identity?.name || scopeName.name || scopeName.id : null} files={scoped} reloadFiles={props.reloadFiles} />
+    <MemorySearch engine={engine} trunks={trunks} scope={scope} setScope={setScope} scopeName={scopeName ? trunkDisplayName(scopeName) : null} files={scoped} reloadFiles={props.reloadFiles} />
     {shows(level, "advanced") && <HowItLearns engine={engine} trunks={trunks} scope={scope || props.defaultId} onApplied={props.reloadFiles} />}
     <MemoryHealth engine={engine} agentId={scope || props.defaultId} status={status} check={check} />
     <WhatToRemember />
@@ -62,7 +63,7 @@ export function MemoryTab(props: MemoryProps) {
 
 type CardProps = MemoryProps & { scope: string; status: { data: MemoryStatus | null; error: string | null }; check: () => void };
 
-function MemoryCard({ engine, level, files, scope, status, check }: CardProps) {
+function MemoryCard({ engine, level, files, scope, status, check, reloadFiles }: CardProps) {
   const config = useResource<unknown>(engine, "config.get");
   const own = config.data ? configuredLimit(config.data, scope || null) : null;
   const lookup = useResource<unknown>(engine, config.data && own === null ? "config.schema.lookup" : null, { path: "agents.defaults.bootstrapMaxChars" });
@@ -78,11 +79,13 @@ function MemoryCard({ engine, level, files, scope, status, check }: CardProps) {
   const line = `${sizes.size > 1 ? "Up to " : ""}${fmt(loaded)}${limit ? ` of ${fmt(limit)}` : ""} characters load at the start of each conversation.`;
   const s = status.data;
   return <div className="lib-card" data-testid="memory-card">
-    <Ring part={loaded} whole={limit} label={line} />
+    {/* DA-43: a ring at zero reads as a loading spinner, so it only shows once something loads. */}
+    {loaded > 0 && <Ring part={loaded} whole={limit} label={line} />}
     <div className="lib-grow">
-      <b>{status.error ? "Memory needs attention" : plural(count, "memory", "memories") + (notes ? ` · ${plural(notes, "daily note", "daily notes")}` : "")}</b>
+      <b>{status.error ? "Memory needs attention" : (count ? plural(count, "memory", "memories") : "No memories yet") + (notes ? ` · ${plural(notes, "daily note", "daily notes")}` : "")}</b>
       <p>{status.error ? status.error : line}</p>
       {failed.filter(f => shownWhy(f.error)).map(f => <p key={f.agentId} className="lib-bad" role="alert">{f.trunk}: {f.error}</p>)}
+      {failed.some(f => shownWhy(f.error)) ? <button type="button" onClick={reloadFiles}>Try again</button> : null}
       {shows(level, "advanced") && s && !status.error && <small className="lib-third">{engineName(s.provider)} · {s.embedding.ok ? "searches by meaning and words" : "searches by words only"}</small>}
     </div>
     <span className="lib-card-acts">
@@ -127,13 +130,14 @@ function MemorySearch(props: SearchProps) {
     const scopeTrunks = trunks.filter(t => !scope || t.id === scope);
     const answers = await Promise.all(scopeTrunks.map(t => engine.request<unknown>("memory.search", { agentId: t.id, query: q })
       .then(r => ({ t, r: rec(r), e: null as string | null }), e => ({ t, r: null, e: errorText(e) }))));
-    const hits = answers.flatMap(a => hitsOf(a.r?.results).map(h => ({ ...h, agentId: a.t.id, trunk: a.t.identity?.name || a.t.name || a.t.id })));
+    const hits = answers.flatMap(a => hitsOf(a.r?.results).map(h => ({ ...h, agentId: a.t.id, trunk: trunkDisplayName(a.t) })));
     hits.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     const mode = answers.some(a => a.r?.searchMode === "hybrid") ? "by meaning and words" : "by words only";
     setResult({ q, hits, mode, errors: answers.flatMap(a => (a.e ? [`${a.t.identity?.name || a.t.id}: ${a.e}`] : [])) });
     setBusy(false);
   }
-  const scopeItems: MenuItem[] = [{ label: "Every Trunk", run: () => setScope("") }, { kind: "sep" }, ...trunks.map(t => ({ label: t.identity?.name || t.name || t.id, run: () => setScope(t.id) }))];
+  // The scope in use is checked, so choosing it again reads as a no-op by design.
+  const scopeItems: MenuItem[] = [{ label: "Every Trunk", radio: true, checked: !scope, run: () => setScope("") }, { kind: "sep" }, ...trunks.map(t => ({ label: trunkDisplayName(t), radio: true, checked: scope === t.id, run: () => setScope(t.id) }))];
   return <div className="lib-search">
     <form className="lib-search-row" role="search" onSubmit={search}>
       <label className="lib-field"><LibIcon name="search" /><input aria-label="Search memory" type="search" placeholder={`Search what ${scopeName ?? "every Trunk"} remembers`} value={query} onChange={e => setQuery(e.target.value)} /></label>

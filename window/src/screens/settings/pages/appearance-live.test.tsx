@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { undeclaredControls } from "../../../glass/coming-registry";
 import { forgetLookStore } from "../../../places/settings/set1/appearance-store";
-import { readTopicSettings } from "../../../shell/topic-layout";
 import { SettingsFrame } from "../SettingsFrame";
 import { R1_PAGES } from "./plugged";
 
@@ -123,10 +122,13 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(calls(request, "agents.update")).toContainEqual({ agentId: "main", model: "anthropic/big" });
   });
 
-  it("sets how threads show for every contact, in this window", async () => {
+  it("offers Tabs and Freedom Mode for threads, and a saved removed layout reads as Tabs", async () => {
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "side", width: 88, per: {} }));
     await mount();
-    await click([...row("appearance.list.threads")!.querySelectorAll("button")].find((b) => b.textContent === "Side tabs")!);
-    expect(readTopicSettings().layout).toBe("side");
+    const labels = [...row("appearance.list.threads")!.querySelectorAll("button")].map((b) => b.textContent);
+    expect(labels).toEqual(["Tabs", "Freedom Mode"]);
+    await click([...row("appearance.list.threads")!.querySelectorAll("button")].find((b) => b.textContent === "Freedom Mode")!);
+    expect(JSON.parse(localStorage.getItem("branch-topics-t5")!).layout).toBe("free");
   });
 
   it("shows the small model and opens Models to change it", async () => {

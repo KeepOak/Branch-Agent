@@ -53,6 +53,13 @@ async function oldInstall(home, platform) {
 /** What the platform's installed copy holds now: the AppImage bytes, or the executable and app.asar. */
 async function installed(install) {
   if (install.appImage) return readFile(install.appImage, "utf8");
+  if (install.platform === "win32") {
+    const root = desktopUpdate.windowsInstallRoot(install.appDir);
+    const pointed = await readFile(join(root, desktopUpdate.WINDOWS_POINTER), "utf8").then(text => text.trim(), () => "");
+    if (desktopUpdate.isWindowsVersionFolder(pointed)) {
+      return `${await readFile(join(root, pointed, "Branch Agent.exe"), "utf8")}|${await readFile(join(root, pointed, "resources/app.asar"), "utf8")}`;
+    }
+  }
   return `${await readFile(install.executable, "utf8")}|${await readFile(join(install.resourcesDir, "app.asar"), "utf8")}`;
 }
 const OLD = { linux: "#!/bin/sh\n# Branch Agent AppImage fixture\n# version 0.4.4\n", win32: "old runtime|old desktop asar", darwin: "old runtime|old desktop asar" };
@@ -126,6 +133,13 @@ for (const platform of ["linux", "win32", "darwin"]) {
     const journal = await desktopUpdate.readDesktopJournal(cfg);
     assert.equal(journal.kind, KIND[platform]);
     assert.equal(journal.target, install.appImage ?? install.appDir);
+    if (platform === "win32") {
+      assert.equal(journal.installRoot, install.appDir);
+      assert.match(journal.versionFolder, /^app-/);
+      assert.equal(journal.previousFolder, "");
+    } else {
+      assert.equal(journal.installRoot, undefined);
+    }
     assert.equal(await installed(install), OLD[platform], "nothing changes while the old app runs");
     if (platform === "linux") {
       assert.equal(journal.staged, `${install.appImage}.update-${VERSION}`, "staged beside the running AppImage for an atomic rename");
@@ -134,6 +148,10 @@ for (const platform of ["linux", "win32", "darwin"]) {
     const plan = await helperPlan(cfg, [await confirmScript(root, cfg)], 15_000);
     assert.equal(await runHelper(plan), "applied");
     assert.equal(await installed(install), NEW[platform]);
+    if (platform === "win32") {
+      assert.equal(await readFile(join(install.appDir, "Branch Agent.exe"), "utf8"), "old runtime", "the live folder is never renamed");
+      assert.equal((await readFile(join(install.appDir, desktopUpdate.WINDOWS_POINTER), "utf8")).trim(), journal.versionFolder);
+    }
     assert.equal((await readFile(plan.versionFile, "utf8")).trim(), VERSION);
     assert.equal(await exists(plan.journal), false);
     if (platform === "linux") {

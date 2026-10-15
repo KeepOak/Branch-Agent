@@ -8,6 +8,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
 import { NAV, TOP_PAGES } from "./nav";
+import type { Row } from "./rows";
 import { SettingsFrame } from "./SettingsFrame";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -62,7 +63,7 @@ describe("R1 Settings, the Coming contract", () => {
     expect(ask.getAttribute("aria-disabled")).toBe("true");
     await typeIn("Ledger");
     expect(undeclared()).toEqual([]);
-    expect(host.querySelector(".r1s-mkdef")).toBeNull();
+    expect(host.querySelector(".r1s-mkdef")?.getAttribute("aria-disabled")).toBe("true");
 
     await typeIn("");
     const writes = request.mock.calls.length;
@@ -75,13 +76,41 @@ describe("R1 Settings, the Coming contract", () => {
     expect(request.mock.calls.slice(writes).map(([method]) => method)).not.toContain("users.prefs.set");
     const needs = comingControls().flatMap((entry) => entry.need);
     expect(needs).toEqual(expect.arrayContaining(["config.patch", "chat.send"]));
-    // General draws none of its empty sections (they wait in Seedbank, R1-15); other pages' empty sections name a real
-    // engine call, never a page/card label.
+    // Sections with no rows yet (General's Keyboard and the rest, #1049) name a real engine call, never a page/card label.
     const comingSections = () => comingControls().filter((entry) => entry.reason.endsWith("comes to this page in a later update."));
-    expect(comingSections().filter((entry) => entry.where.startsWith("General ›"))).toEqual([]);
+    // General draws every card the preview has, each with its own rows (#1049): no General card is a whole-card Coming mark.
+    expect(comingControls().filter((entry) => entry.where.startsWith("General › "))).toEqual([]);
     await click(host.querySelector("[data-page='remote']")!);
     expect(comingSections().length).toBeGreaterThan(0);
     expect(comingSections().flatMap((entry) => entry.need).filter((need) => !/^[a-z][a-zA-Z]*(\.[a-zA-Z]+)+$/.test(need))).toEqual([]);
+    // It opens every Settings page at Technical; each native page adds its rows, so it needs more than the 5 s default.
+  }, 20_000);
+
+  it("hides Coming rows and all-Coming sections at Regular, and shows them with their reason from Advanced", async () => {
+    const { engine } = engineOf(CALLS);
+    const rows: Row[] = [
+      { id: "general.writing.works", page: "general", card: "Writing", label: "Works today", level: 0, control: "toggle", source: { kind: "device", key: "x.works" } },
+      { id: "general.writing.later", page: "general", card: "Writing", label: "Waits", level: 0, control: "toggle", source: { kind: "coming", need: "x.later", reason: "Waits comes in a later update." } },
+      { id: "general.keyboard.later", page: "general", card: "Keyboard", label: "Only waits", level: 0, control: "toggle", source: { kind: "coming", need: "x.later", reason: "Only waits comes in a later update." } },
+    ];
+    await act(async () => root.render(<SettingsFrame engine={engine} page="general" rows={rows} />));
+    await settle();
+    const cards = () => [...host.querySelectorAll<HTMLElement>("section.r1s-sec")].map((s) => s.getAttribute("aria-label"));
+    // Regular: only what works. A card whose rows all wait, and a card with no rows yet, are left out; the level stays.
+    expect(host.querySelector(".r1set")?.getAttribute("data-level")).toBe("regular");
+    expect(cards()).toEqual(["Writing"]);
+    expect(host.querySelector('[data-row="general.writing.works"]')).not.toBeNull();
+    expect(host.querySelector('[data-row="general.writing.later"]')).toBeNull();
+    expect(host.textContent).not.toContain("later update");
+    // Advanced: the Coming rows and the sections with no rows yet show, each with its reason.
+    await click([...host.querySelectorAll(".r1s-level button")].find((b) => b.textContent === "Advanced")!);
+    // A section with no rows yet is one quiet line, not an empty card.
+    expect(cards()).toEqual(expect.arrayContaining(["Writing", "Keyboard"]));
+    expect(cards()).not.toContain("Starting up");
+    expect(host.querySelector('[data-row="general.writing.later"] .r1s-note')?.textContent).toBe("Waits comes in a later update.");
+    expect(host.querySelector('[data-row="general.keyboard.later"]')).not.toBeNull();
+    expect([...host.querySelectorAll("p.r1s-quiet")].map((p) => p.textContent).join(" ")).toContain("Starting up");
+    expect(host.textContent).toContain("Starting up comes to this page in a later update.");
   });
 
   it("keeps the rows live and saving once the engine offers config and prefs", async () => {

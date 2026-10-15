@@ -40,6 +40,19 @@ function backend() {
 }
 
 describe("actual thread compact helper entry", () => {
+  it("keeps completed live output visible without working indicators while history is pending", async () => {
+    const fixture = backend();
+    const container = document.body.appendChild(document.createElement("div"));
+    root = createRoot(container);
+    await act(async () => root!.render(<Thread name="Owner" history={[]}
+      live={[{ kind: "text", key: "completed", text: "Completed reply waiting for history", streaming: false }]}
+      pendingUser={null} running={false} engine={fixture.engine} onAnswer={() => {}} />));
+    expect(container.textContent).toContain("Completed reply waiting for history");
+    expect(container.querySelector('[data-streaming="true"]')).toBeNull();
+    expect(container.querySelector(".live-run-head")).toBeNull();
+    expect(container.querySelector(".working-ring")).toBeNull();
+  });
+
   it("opens native worker assignments without creating or navigating to a sidebar session", async () => {
     const fixture = backend();
     fixture.request.mockImplementation(async (method: string) => method === "sessions.list" ? { sessions: [] } : method === "users.prefs.get" ? { status: "ok", entries: {} } : method === "users.self" ? { id: "observer" } : method === "session.reactions.list" ? { reactions: {} } : method === "usage.status" ? { providers: [] } : { items: [] });

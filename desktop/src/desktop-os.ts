@@ -1,6 +1,6 @@
-// The real OS calls behind the desktop controls (desktop-controls.ts): Electron's login items and power-save blocker,
+// The real OS calls behind the desktop controls (desktop-controls.ts): Electron's login items,
 // the user Path in HKCU\Environment (kept unexpanded, as REG_EXPAND_SZ, then broadcast), and the tray.
-import { nativeImage, powerSaveBlocker, shell, type App, type Tray } from "electron";
+import { nativeImage, shell, type App, type Tray } from "electron";
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -38,10 +38,6 @@ export function desktopOs(app: App, cfg: DesktopConfig, tray: () => Tray | undef
     login: {
       get: () => app.getLoginItemSettings(login).openAtLogin,
       set: (on) => app.setLoginItemSettings({ ...login, openAtLogin: on }),
-    },
-    awake: {
-      start: () => powerSaveBlocker.start("prevent-app-suspension"),
-      stop: (id) => { if (powerSaveBlocker.isStarted(id)) powerSaveBlocker.stop(id); },
     },
     // macOS and Linux: ~/.local/bin/branch, where the earlier installer put its command (refresh repairs that one).
     cli: process.platform !== "win32" ? posixBranchCommand(join(homedir(), ".local", "bin", "branch"), () => branchPosixShim(cfg)) : {

@@ -76,14 +76,17 @@ it("draws the kinds hub in the preview's order and words, with For:", async () =
 it("uses the preview's row words in each card", async () => {
   await mount(engineOf().engine, "technical");
   expect(labels("Customize")).toEqual(["Pinned skills", "Signed packages only", "Search back end"]);
-  expect(labels("Tools and skills")).toEqual(["Your own tools from files", "Find tools with a command", "Run connector programs on Branch’s own Node.js", "Python service", "Check a skill is ready first",
-    "Only signed skill packages", "Check install requests for malware", "Search the web", "Web search", "Web search details", "Search X", "Video tools", "Let plugins add their own views", "Connector app views"]);
-  expect(labels("Skills")).toEqual(["Start a skill by itself when it clearly fits", "Run !`command` lines in skills", "Where new skills are saved", "Always read in full", "Extra skill folders", "Built-in skills to offer",
-    "Pick up skill changes by themselves", "Install skills with", "Every skill setting"]);
+  // Working rows stay in preview order. Later-update rows fold after them (LaterRows), still in their own order.
+  expect(labels("Tools and skills")).toEqual(["Search the web", "Web search", "Web search details", "Search X", "Let plugins add their own views", "Connector app views",
+    "Your own tools from files", "Find tools with a command", "Run connector programs on Branch’s own Node.js", "Python service", "Check a skill is ready first",
+    "Only signed skill packages", "Check install requests for malware", "Video tools"]);
+  expect(labels("Skills")).toEqual(["Extra skill folders", "Built-in skills to offer", "Pick up skill changes by themselves", "Install skills with", "Every skill setting",
+    "Start a skill by itself when it clearly fits", "Run !`command` lines in skills", "Where new skills are saved", "Always read in full"]);
   expect(labels("Plugins")).toEqual(["Load plugins", "Only these plugins", "Never these plugins", "Extra plugin folders", "Memory engine", "Context engine"]);
-  expect(labels("Helpers and other agents")).toEqual(["Helpers’ model", "Helpers get the connectors", "New helpers start with", "Helpers use", "Ask a stronger model on hard calls", "Plan first on long tasks",
-    "Wait for my yes on the plan", "Check the answer before saying done", "Trunks message each other", "Take work over the agent protocol", "Who may call your Trunks from outside", "Tools lent by a connected program",
-    "Carry a conversation on somewhere else", "Look after several assistants at once", "Other computers running Branch, side by side", "Trunks on other computers", "Helpers at once", "When every helper slot is busy", "Waiting line", "Wait at most"]);
+  expect(labels("Helpers and other agents")).toEqual(["Helpers’ model", "Trunks message each other", "Take work over the agent protocol", "Look after several assistants at once", "Helpers at once",
+    "Helpers get the connectors", "New helpers start with", "Helpers use", "Ask a stronger model on hard calls", "Plan first on long tasks",
+    "Wait for my yes on the plan", "Check the answer before saying done", "Who may call your Trunks from outside", "Tools lent by a connected program",
+    "Carry a conversation on somewhere else", "Other computers running Branch, side by side", "Trunks on other computers", "When every helper slot is busy", "Waiting line", "Wait at most"]);
   expect(labels("What it can do")).toEqual(["Read links you paste", "Deep research reports", "Edit documents exactly", "Tables and charts from spreadsheets", "GitLab", "Smart home", "Numbered sources you can check"]);
   expect(labels("Allow")).toEqual(["Let agents connect", "Let agents use this window"]);
   expect(labels("Connect an agent")[0]).toBe("Type branch in any terminal");

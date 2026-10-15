@@ -7,9 +7,12 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Keyboa
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
+import { TrunkHost } from "../../places-nav/TrunkHost";
 import { lookStore } from "../../places/settings/set1/appearance-store";
-import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
-import { ROWS, cardRows, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
+import { pinsOf } from "../../places/settings/pins";
+import { GOTO_SUB, LEVELS, PAGES, REGULAR_GROUPS, navAt, pageFor, pageShown, regularHub, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
+import { COMING_FROM, ROWS, cardRows, comingRow, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
+import { LaterRows } from "../../glass/LaterRows";
 import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots, type SlotControl } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
@@ -20,7 +23,12 @@ import "./settings.css";
 const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
 const LEVEL_KEY = "branch.level";
 export const SECTION_COMING = (card: string) => `${card} comes to this page in a later update.`;
+/** What a page is for, for a page with nothing at the level shown: the empty state says what would go here. */
+const NOTHING_AT_REGULAR: Partial<Record<PageId, string>> = {
+  signins: "This page keeps the sign-ins and API keys your Trunks use to reach other services. Nothing here needs a change at this level. Show Advanced to see what is stored and to add or remove one.",
+};
 export const ASK_COMING = "Asking a Trunk from Settings comes in a later update.";
+export const MAKE_DEFAULT_COMING = "Making a Trunk the default from Settings comes in a later update.";
 const FINE = "Fine-tune each part";
 const NO_SLOTS: PageSlots = {};
 
@@ -74,11 +82,80 @@ export type SettingsFrameProps = {
   pages?: PageSlots;
 };
 
-function NavButton({ page, current, onOpen, sub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string }) {
+/** The narrow layout hides group names and shows every page in one strip (settings.css, max-width 760px). */
+function useNarrowNav(): boolean {
+  const query = "(max-width: 760px)";
+  const [narrow, setNarrow] = useState(() => {
+    try { return typeof matchMedia === "function" && matchMedia(query).matches; } catch { return false; }
+  });
+  useEffect(() => {
+    let list: MediaQueryList;
+    try { list = matchMedia(query); } catch { return; }
+    const apply = () => setNarrow(list.matches);
+    list.addEventListener?.("change", apply);
+    return () => list.removeEventListener?.("change", apply);
+  }, []);
+  return narrow;
+}
+
+function NavButton({ page, current, onOpen, sub, hub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string; hub?: string }) {
   return (
-    <button type="button" className="r1s-nav" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} onClick={onOpen}>
+    <button type="button" className="r1s-nav" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} data-hub={hub} onClick={onOpen}>
       <span>{page.title}</span>{sub ? <small>{sub}</small> : null}
     </button>
+  );
+}
+
+/** Regular: the four pages. Advanced and Technical: the full nav, every group open. */
+function NavList({ level, narrow, shownPage, onOpen }: { level: Level; narrow: boolean; shownPage: PageId; onOpen: (id: PageId) => void }) {
+  const sub = (id: PageId) => id === "goto" ? GOTO_SUB : undefined;
+  if (level === 0) {
+    return (
+      <>
+        {REGULAR_GROUPS.map((g) => {
+          const landing = g.pages[0];
+          const current = g.pages.some((p) => p.id === shownPage);
+          return <NavButton key={g.title} page={{ ...landing, title: g.title }} current={current} onOpen={() => onOpen(landing.id)} hub={g.title} />;
+        })}
+      </>
+    );
+  }
+  const shown = navAt(level);
+  return (
+    <>
+      {shown.top.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={sub(p.id)} onOpen={() => onOpen(p.id)} />)}
+      {shown.groups.map((g) => {
+        const pages = g.pages.filter((p) => pageShown(p.id, level));
+        if (!pages.length) return null;
+        const open = level > 0 || narrow;
+        return (
+          <div key={g.title} className="r1s-fold" role="group" aria-label={g.title} data-open={open ? "true" : "false"} style={{ display: "contents" }}>
+            <div className="r1s-grp g-label">{g.title}</div>
+            {open ? pages.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={sub(p.id)} onOpen={() => onOpen(p.id)} />) : null}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** The other settings pages that belong to the open Regular page, under Advanced on that page. */
+function HubAdvanced({ shownPage, onOpen }: { shownPage: PageId; onOpen: (id: PageId) => void }) {
+  const hub = regularHub(shownPage);
+  if (!hub) return null;
+  const rest = hub.pages.slice(1);
+  if (!rest.length) return null;
+  return (
+    <nav className="r1s-advanced" aria-label="Advanced">
+      <h2 className="g-label">Advanced</h2>
+      <div className="r1s-jumps">
+        {rest.map((p) => (
+          <button key={p.id} type="button" className="r1s-jump" data-page={p.id} aria-current={shownPage === p.id ? "true" : undefined} onClick={() => onOpen(p.id)}>
+            <span>{p.title}</span>{p.id === "goto" ? <small>{GOTO_SUB}</small> : null}
+          </button>
+        ))}
+      </div>
+    </nav>
   );
 }
 
@@ -96,15 +173,14 @@ function Results({ engine, hits, onOpen, onMakeDefault }: { engine: WindowEngine
                 <span><b data-lv={hit.kind === "row" && hit.level > 0 ? LEVELS[hit.level].label : undefined}>{hit.label}</b>{"sub" in hit && hit.sub ? <small>{hit.sub}</small> : null}</span>
               </button>
             );
-            // Without a host that makes it, Make default is not drawn: it waits in Seedbank › Coming to Branch (R1-15).
-            if (hit.kind !== "trunk" || !hit.actions.includes("makeDefault") || !onMakeDefault) return button;
+            if (hit.kind !== "trunk" || !hit.actions.includes("makeDefault")) return button;
             // Make default is its own button beside the Trunk, so it never reads as part of opening it.
             return (
               <div key={`${hit.kind}:${hit.id}`} className="r1s-hit">
                 {button}
-                {/* Make default is a config.patch of the default agent (HANDOFF R1-06). */}
-                <Coming engine={engine} need="config.patch">
-                  <button type="button" className="r1s-link r1s-mkdef" onClick={() => onMakeDefault(hit.id)}>Make default</button>
+                {/* Make default is a config.patch of the default agent (HANDOFF R1-06); without a host that makes it, Coming here (#1049). */}
+                <Coming engine={engine} need="config.patch" unwired={!onMakeDefault} reason={onMakeDefault ? undefined : MAKE_DEFAULT_COMING} where="Settings search › Make default">
+                  <button type="button" className="r1s-link r1s-mkdef" onClick={() => onMakeDefault?.(hit.id)}>Make default</button>
                 </Coming>
               </div>
             );
@@ -125,6 +201,11 @@ function SlotRow({ engine, row, hints, control: Control, onPage, onAsk }: RowHos
   const level = rowLevel(row, hints);
   const tag = level > 0 ? LEVELS[level].label : undefined;
   const help = rowHelp(row, hints);
+  if (row.bare) return (
+    <div id={`row-${row.id}`} className="r1s-row r1s-stack" data-row={row.id} data-lv={tag} data-slot="" data-bare="" aria-label={rowLabel(row, hints)}>
+      <div className="r1s-ctl r1s-own"><Control engine={engine} row={row} onPage={onPage} /></div>
+    </div>
+  );
   return (
     <div id={`row-${row.id}`} className={`r1s-row${row.control === "custom" ? " r1s-stack" : ""}`} data-row={row.id} data-lv={tag} data-slot="">
       <b className="g-label" data-lv={tag}>{rowLabel(row, hints)}</b>
@@ -157,6 +238,7 @@ function CardRows({ rows, ...host }: RowHost & { rows: Row[] }) {
 
 export function SettingsFrame(props: SettingsFrameProps) {
   const { engine } = props;
+  const narrow = useNarrowNav();
   const slots = props.pages ?? NO_SLOTS;
   const rows = useMemo(() => mergeRows(props.rows ?? ROWS, slots), [props.rows, slots]);
   const [level, setLevel] = useLevel(engine);
@@ -165,6 +247,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
   const [q, setQ] = useState("");
   const [help, setHelp] = useState(false);
   const [jump, setJump] = useState<string | null>(null);
+  const [slotSecs, setSlotSecs] = useState<string[]>([]);
   const scroller = useRef<HTMLDivElement>(null);
   const store = configStore(engine);
   const config = useSyncExternalStore((fn) => store.subscribe(fn), () => store.snap ?? store.error ?? null, () => store.snap ?? store.error ?? null);
@@ -204,20 +287,25 @@ export function SettingsFrame(props: SettingsFrameProps) {
 
   const spec = PAGES[shownPage];
   const ownCards = slots[shownPage]?.cards ?? {};
-  const sections = spec.cards.flatMap((card) => {
+  // General's Pinned card shows only once the person has pinned a row, as in the preview.
+  const pinCount = pinsOf(lookStore(engine).snap.look).length;
+  const cards = spec.cards.filter((card) => !(shownPage === "general" && card === "Pinned" && !pinCount));
+
+  const controls = slots[shownPage]?.controls;
+  const sections = cards.flatMap((card) => {
     const all = rows.filter((r) => r.page === shownPage && r.card === card);
-    const visible = cardRows(shownPage, card, level, hints, rows);
+    const visible = cardRows(shownPage, card, level, hints, rows, controls);
     // A card the page draws itself shows from its level; its table rows (if any) follow it.
     const drawn = ownCards[card];
     const Own = drawn && (drawn.level ?? 0) <= level ? drawn.component : undefined;
     if (drawn && !Own && !visible.length) return [];
     if (!Own && all.length && !visible.length) return [];
-    // General's sections with no rows yet are not drawn: they wait in Seedbank › Coming to Branch (R1-15).
-    if (!Own && !all.length && shownPage === "general") return [];
+    // A section with no rows yet is all Coming: Regular shows only what works today.
+    if (!Own && !all.length && level < COMING_FROM) return [];
     return [{ card, visible, Own }];
   });
   const cardLevels = Object.values(ownCards).map((c) => c.level ?? 0);
-  const rowFirst = pageFirstLevel(shownPage, hints, rows);
+  const rowFirst = pageFirstLevel(shownPage, hints, rows, controls);
   const first = cardLevels.length ? (Math.min(...cardLevels, ...(rowFirst === null ? [] : [rowFirst])) as Level) : rowFirst;
   const loadFailed = typeof config === "string";
   const invalid = config && typeof config === "object" && config.valid === false ? configIssues(config.issues) : null;
@@ -237,30 +325,28 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </div>
         <nav className="r1s-list" aria-label="Settings pages">
           {q.trim() ? <Results engine={engine} hits={hits} onOpen={open} onMakeDefault={props.onTrunk ? (id) => { setQ(""); props.onTrunk?.(id, "makeDefault"); } : undefined} /> : (
-            <>
-              {TOP_PAGES.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={p.id === "goto" ? GOTO_SUB : undefined} onOpen={() => go(p.id)} />)}
-              {NAV.map((g) => {
-                const pages = g.pages.filter((p) => pageShown(p.id, level));
-                return pages.length ? (
-                  <div key={g.title} role="group" aria-label={g.title} style={{ display: "contents" }}>
-                    <div className="r1s-grp g-label">{g.title}</div>
-                    {pages.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} onOpen={() => go(p.id)} />)}
-                  </div>
-                ) : null;
-              })}
-            </>
+            <NavList level={level} narrow={narrow} shownPage={shownPage} onOpen={go} />
           )}
         </nav>
       </aside>
       <div className="r1s-page" ref={scroller}>
-        {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} onAsk={props.onAsk} /></div> : <>
+        {/* Every page, row page or slot page, has the frame's title, lede and Learn more (preview s36Head, HANDOFF R1-06);
+            slot pages draw no title of their own (#1049). */}
         <header className="r1s-head">
           <h1 className="g-label">{spec.title}</h1>
-          <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" data-local="" aria-expanded={help} onClick={() => setHelp((v) => !v)}>Learn more</button></p>
+          <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" data-local="" aria-expanded={help} onClick={() => {
+            // A slot page's "On this page" is its section headings, read when the sheet opens (preview s36Help reads .s36Sec).
+            if (Custom) setSlotSecs([...(scroller.current?.querySelectorAll<HTMLElement>(".r1s-custom h2") ?? [])].map((h) => h.textContent?.trim() ?? "").filter(Boolean));
+            setHelp((v) => !v);
+          }}>Learn more</button></p>
           {help ? (
             <div className="r1s-help g-clear" role="dialog" aria-label={`About ${spec.title}`}>
-              <h3 className="g-label">On this page</h3>
-              <ul>{sections.map((s) => <li key={s.card}><button type="button" className="r1s-link" data-local="" onClick={() => { setHelp(false); setJump(`sec-${shownPage}-${s.card}`); }}>{s.card || spec.title}</button></li>)}</ul>
+              {/* A page with no sections (Go to) has no "On this page" list, as in the preview's s36Help. */}
+              {(Custom ? slotSecs.length : sections.length) ? <h3 className="g-label">On this page</h3> : null}
+              <ul>{Custom ? slotSecs.map((t, i) => <li key={`${i}-${t}`}><button type="button" className="r1s-link" data-local="" onClick={() => {
+                setHelp(false);
+                [...(scroller.current?.querySelectorAll<HTMLElement>(".r1s-custom h2") ?? [])].find((h) => h.textContent?.trim() === t)?.scrollIntoView?.({ block: "start" });
+              }}>{t}</button></li>) : sections.map((s) => <li key={s.card}><button type="button" className="r1s-link" data-local="" onClick={() => { setHelp(false); setJump(`sec-${shownPage}-${s.card}`); }}>{s.card || spec.title}</button></li>)}</ul>
               {/* Ask a Trunk sends the question to the default Trunk's conversation with chat.send (the window's session.send). */}
               <Coming engine={engine} need="chat.send" unwired={!props.onAsk} reason={props.onAsk ? undefined : ASK_COMING}>
                 <button type="button" className="r1s-btn" onClick={() => props.onAsk?.(`Help me with Settings › ${spec.title}.`)}>Ask a Trunk</button>
@@ -268,6 +354,8 @@ export function SettingsFrame(props: SettingsFrameProps) {
             </div>
           ) : null}
         </header>
+        {level === 0 ? <HubAdvanced shownPage={shownPage} onOpen={go} /> : null}
+        {Custom ? <div key={shownPage} className="r1s-custom" data-slot={shownPage}><Custom engine={engine} onPage={(id) => go(id)} onAsk={props.onAsk} /></div> : <>
         <div className="r1s-col">
           {loadFailed ? <div className="r1s-notice g-frost" role="alert">Settings didn’t load · <Coming engine={engine} need="config.get"><button type="button" className="r1s-link" onClick={() => void store.load()}>Try again</button></Coming></div> : null}
           {invalid ? (
@@ -276,22 +364,30 @@ export function SettingsFrame(props: SettingsFrameProps) {
               {invalid.length ? <ul>{invalid.map((line, i) => <li key={i}>{line}</li>)}</ul> : null}
             </div>
           ) : null}
-          {sections.length ? sections.map(({ card, visible, Own }) => (
+          {sections.length ? sections.map(({ card, visible, Own }) => {
+            // The section's later-update rows fold into one line; its live rows draw as they always did.
+            const later = visible.filter((row) => comingRow(row, controls));
+            const live = visible.filter((row) => !comingRow(row, controls));
+            return (
+            // A section with no rows yet collapses to one quiet line, not an empty card: nothing hollow to look at.
+            // A card the page draws itself (Customize's kinds hub) is the section, even with no table rows.
+            visible.length || Own ? (
             <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title} data-card={card || undefined}>
               {card ? <h2 className="g-label">{card}</h2> : null}
               {Own ? <div className="r1s-card-own"><Own engine={engine} onPage={(id) => go(id)} onAsk={props.onAsk} /></div> : null}
-              {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} onAsk={props.onAsk} /> : Own ? null : (
-                // A section with no rows in the table yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
-                <Coming engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
-                  <div className="r1s-row">
-                    <b className="g-label">Coming</b>
-                    <small className="r1s-note g-label" data-lines>{SECTION_COMING(card || spec.title)}</small>
-                  </div>
-                </Coming>
-              )}
+              {live.length ? <CardRows engine={engine} rows={live} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} onAsk={props.onAsk} /> : null}
+              {later.length ? <LaterRows count={later.length}><CardRows engine={engine} rows={later} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} onAsk={props.onAsk} /></LaterRows> : null}
             </section>
-          )) : (
+            ) : (
+              // Nothing to show yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
+              <Coming key={card} engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
+                <p id={`sec-${shownPage}-${card}`} className="r1s-quiet g-label" aria-label={card || spec.title} data-lines><b>{card || spec.title}</b> · Coming. {SECTION_COMING(card || spec.title)}</p>
+              </Coming>
+            )
+            );
+          }) : (
             <div className="r1s-empty g-clear">
+              {NOTHING_AT_REGULAR[shownPage] ? <p className="g-label" data-lines>{NOTHING_AT_REGULAR[shownPage]}</p> : null}
               <p className="g-label">These settings show at {first !== null && first > level ? LEVELS[first].label : "Advanced"}.</p>
               <button type="button" className="r1s-btn" data-local="" onClick={() => setLevel(first !== null && first > level ? first : 1)}>Show {first !== null && first > level ? LEVELS[first].label : "Advanced"}</button>
             </div>
@@ -299,6 +395,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </div>
         </>}
       </div>
+      <TrunkHost engine={engine} level={LEVEL_WORD[level]} openSettings={(page) => go(pageFor(page))} openPlace={(place) => props.onOpenPlace?.(place)} />
     </div>
   );
 }

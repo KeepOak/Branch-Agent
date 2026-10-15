@@ -11,7 +11,7 @@ import { Logo } from "./service";
 
 type Live = { providers: Provider[]; active?: Provider; chosen: string };
 /** The realtime services, the one live voice really uses (catalog's active one) and the one chosen in settings. */
-function liveOf(catalog: RecordValue | undefined, cfg: Cfg): Live {
+export function liveOf(catalog: RecordValue | undefined, cfg: Cfg): Live {
   const rt = group(catalog, "realtime");
   const providers = providersOf(rt.providers);
   const chosen = text(cfg.get("talk.realtime.provider") ?? "");
@@ -20,7 +20,7 @@ function liveOf(catalog: RecordValue | undefined, cfg: Cfg): Live {
 }
 
 /** Choose a live-voice service; the engine needs it listed in talk.realtime.providers when that map has entries. */
-function chooseLive(cfg: Cfg, id: string) {
+export function chooseLive(cfg: Cfg, id: string) {
   const map = record(cfg.get("talk.realtime.providers"));
   const listed = !id || !Object.keys(map).length || id in map;
   return cfg.set("talk.realtime", { provider: id || null, model: null, speakerVoice: null, ...(listed ? {} : { providers: { [id]: {} } }) });
@@ -142,7 +142,7 @@ export function LiveServices({ cfg, catalog }: Shared) {
             </Prow>
           ))}
         </Plist>
-      ) : <Hint>{catalog.loading ? "Looking for live-voice services…" : "No live-voice service is installed."}</Hint>}
+      ) : <Hint>{catalog.loading ? "Checking…" : "No live-voice service is set up yet."}</Hint>}
       <Greyed why={NO_KEY} rows={[{ t: "Live voice with a ChatGPT account", sub: "Use your ChatGPT sign-in for live voice instead of a key.", c: { sw: true } }]} />
     </Sec>
   );

@@ -1,6 +1,5 @@
 import type { WindowEngine } from "../../connect/engine";
 import { useRow, type Row } from "../settings";
-import { BASE_ROWS } from "./rows";
 
 export function ChatAppRow({ engine, row }: { engine: WindowEngine; row: Row }) {
   const view = useRow(engine, row);
@@ -11,7 +10,4 @@ export function ChatAppRow({ engine, row }: { engine: WindowEngine; row: Row }) 
         : <input type="number" aria-label={view.label} defaultValue={typeof view.value === "number" ? view.value : ""} key={String(view.value)} disabled={disabled} data-need="config.patch" onBlur={e => { if (e.target.value && Number.isFinite(e.target.valueAsNumber) && e.target.valueAsNumber !== view.value) void view.set(e.target.valueAsNumber).catch(() => undefined); }} />}
     {view.state === "error" && <p role="alert" className="g-label" data-lines>{view.reason}</p>}{view.restart && <small className="g-label">Takes effect after a restart.</small>}
   </div>;
-}
-export function ChatAppSettings({ engine }: { engine: WindowEngine }) {
-  return <>{[...new Set(BASE_ROWS.map(r => r.card))].map(card => <section key={card}><h2 className="g-label">{card}</h2>{BASE_ROWS.filter(r => r.card === card).map(row => <ChatAppRow key={row.id} engine={engine} row={row} />)}</section>)}</>;
 }

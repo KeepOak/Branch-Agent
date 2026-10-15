@@ -61,6 +61,7 @@ export const GATE_SCRIPTS = [
   'scripts/check-ui-proof.test.mjs',
   'scripts/check-self-check.mjs',
   'scripts/check-self-check.test.mjs',
+  'scripts/final-head-history.mjs',
   'scripts/feature-batch-ci-targets.mjs',
   'scripts/feature-batch-ci-matrix.mjs',
   'scripts/feature-batch-ci.mjs',

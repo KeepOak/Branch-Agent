@@ -91,8 +91,9 @@ describe("Chat apps follow the item 48 glass model", () => {
     const engine = engineOf(["channels.status", "channels.start", "channels.stop", "channels.logout", "config.get", "config.patch", "agents.list"]);
     const host = await mount(<Manage engine={engine} app={telegram} onClose={() => {}} onSetup={() => {}} />);
     expect(host.querySelector(".dlg")!.classList).toContain("g-clear");
-    await act(async () => [...host.querySelectorAll("button")].find(b => b.textContent === "Unlink")!.click());
-    expect(host.querySelector('[aria-label="Confirm unlink"]')).not.toBeNull();
+    // Telegram is not a linked account, so the row has no Unlink (#1049); Disconnect asks first.
+    await act(async () => [...host.querySelectorAll("button")].find(b => b.textContent === "Disconnect")!.click());
+    expect(host.querySelector('[aria-label="Confirm disconnect"]')).not.toBeNull();
     expect(frostedClasses(host)).toEqual([]);
     expect(bareText(host)).toEqual([]);
   });

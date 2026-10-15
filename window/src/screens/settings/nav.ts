@@ -124,11 +124,16 @@ export const PAGES: Record<PageId, PageSpec> = {
 
 /** Old page ids (the preview's and Classic's) and the page each one now lives on. */
 const OLD_IDS: Record<string, PageId> = {
-  people: "who", gateway: "remote", usage: "privacy", seasons: "history", backupsT5: "history", self: "learning",
+  people: "who", gateway: "remote", usage: "privacy", seasons: "learning", backupsT5: "history", self: "learning",
   achievements: "updates", branchP17: "updates", advanced: "general", computer: "browser", secrets: "signins",
   placesP17: "goto", graftsT5: "customize", czP17: "customize", trunksP17: "trunks", seedbankP17: "seedbank",
   featuresP17: "features", local: "devices",
 };
+
+/** The R1 page a route id belongs to: a new or old id on its page, or the id itself when R1 has no page for it (a Classic page). */
+export function r1PageFor(id: string): string {
+  return Object.hasOwn(PAGES, id) || Object.hasOwn(OLD_IDS, id) ? pageFor(id) : id;
+}
 
 /** The page a link or saved id opens: a new id as is, an old id on its new page, anything else on General. */
 export function pageFor(id: string | null | undefined): PageId {
@@ -137,6 +142,34 @@ export function pageFor(id: string | null | undefined): PageId {
 }
 
 const ALL_PAGES: NavPage[] = [...TOP_PAGES, ...NAV.flatMap((g) => g.pages)];
+const BY_ID = new Map(ALL_PAGES.map((page) => [page.id, page]));
+function pagesOf(...ids: PageId[]): NavPage[] {
+  return ids.map((id) => BY_ID.get(id)!);
+}
+
+/** Regular's four pages. Every page except Developer lives in one of them.
+ *  Developer stays on Technical, inside NAV's Branch group. The first page in a group is what that
+ *  Regular page shows. The others stay reachable under an Advanced section on that page. */
+export const REGULAR_GROUPS: NavGroup[] = [
+  { title: "General", pages: pagesOf("general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps") },
+  { title: "Computer", pages: pagesOf("devices", "browser", "coding", "remote", "permissions") },
+  { title: "Usage", pages: pagesOf("accounts", "models", "privacy", "signins") },
+  { title: "Updates", pages: pagesOf("updates", "history", "learning", "features") },
+];
+
+/** The Regular page a settings page belongs to, or none (Developer). */
+export function regularHub(id: PageId): NavGroup | undefined {
+  return REGULAR_GROUPS.find((g) => g.pages.some((p) => p.id === id));
+}
+
+/** The sidebar for a level. Regular is the four pages. Advanced and Technical keep the full nav. */
+export function navAt(level: Level): { top: NavPage[]; groups: NavGroup[] } {
+  if (level === 0) {
+    return { top: REGULAR_GROUPS.map((g) => ({ ...g.pages[0], title: g.title })), groups: [] };
+  }
+  return { top: TOP_PAGES, groups: NAV };
+}
+
 /** A page's nav entry. */
 export const navPage = (id: PageId): NavPage | undefined => ALL_PAGES.find((p) => p.id === id);
 /** Whether a page is in the nav at this level (Developer needs Technical). */

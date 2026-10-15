@@ -1,0 +1,33 @@
+{
+  "id": "harvest",
+  "name": "Harvest",
+  "description": "Harvest skill, the pinned REA server (rea-agents 6.4.0), and the reverse-engineer-anything skill. Asks before a tool runs a command, drives an app, or overwrites a file.",
+  "version": "2026.9.8",
+  "categories": ["research"],
+  "enabledByDefault": false,
+  "activation": {
+    "onStartup": true
+  },
+  "skills": ["./skills"],
+  "mcpServers": {
+    "rea": {
+      "transport": "stdio",
+      "command": "node",
+      "args": ["./rea-pin/launch.mjs", "mcp"],
+      "cwd": "./rea-pin",
+      "env": {
+        "REA_GHIDRA_STARTUP_TIMEOUT_MS": "900000"
+      },
+      "requestTimeoutMs": 1000000,
+      "connectionTimeoutMs": 1000000,
+      "codex": {
+        "defaultToolsApprovalMode": "prompt"
+      }
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
