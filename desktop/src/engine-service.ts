@@ -293,12 +293,40 @@ export async function serviceVolumeBlock(paths: readonly string[], home: string,
   return undefined;
 }
 
-/** launchd's own log lines when it could not run the service: macOS privacy, or a shell that cannot exec its wrapper. */
-const CANNOT_RUN_LOG = /Operation not permitted|Permission denied|exit(?:ed)?[^\n]{0,40}\b126\b/i;
+/**
+ * What launchd cannot run: the shell that starts the service cannot exec its wrapper (macOS privacy), or the wrapper or
+ * the node binary is denied. Only these lines count. An ordinary denial from the engine's own code (a plugin reading a
+ * protected folder) is not a launch failure, so a slow service that logs one stays an error, never a removal.
+ */
+const SHELL_INIT_DENIED = /shell-init: error retrieving current directory\b.*Operation not permitted/;
+const SHELL_CANNOT_EXEC = /^\/bin\/sh: .*: Operation not permitted\s*$/;
+const DENIED = /Permission denied/;
 
-/** The Settings reason when the text a service's logs gained since the start shows it could not run; undefined otherwise. */
-export function serviceCannotRunReason(appendedLog: string): string | undefined {
-  return CANNOT_RUN_LOG.test(appendedLog) ? SERVICE_BLOCKED_LINE : undefined;
+/**
+ * The Settings reason when launchd could not run the service, or undefined. `executables` are the paths a denial must
+ * name to count (the service-env folder that holds the wrapper, and the node binary). `lastExit` is launchd's last exit
+ * status for the label (launchctl print); 126 and 127 mean it could not execute the job.
+ */
+export function serviceCannotRunReason(appendedLog: string, executables: readonly string[], lastExit?: number): string | undefined {
+  if (lastExit === 126 || lastExit === 127) return SERVICE_BLOCKED_LINE;
+  for (const line of appendedLog.split("\n")) {
+    if (SHELL_INIT_DENIED.test(line)) return SERVICE_BLOCKED_LINE;
+    const namesExecutable = executables.some(path => path !== "" && line.includes(path));
+    if (namesExecutable && (SHELL_CANNOT_EXEC.test(line) || DENIED.test(line))) return SERVICE_BLOCKED_LINE;
+  }
+  return undefined;
+}
+
+/** launchd's last exit status for the label, from `launchctl print` in the user's GUI domain; undefined when unknown. */
+/** The LaunchAgent label the engine writes (engine/src/daemon/constants.ts). */
+export const SERVICE_LAUNCHD_LABEL = "ai.branch.gateway";
+
+export async function launchdLastExitCode(label = SERVICE_LAUNCHD_LABEL, uid = process.getuid?.() ?? 0): Promise<number | undefined> {
+  const output = await new Promise<string>(resolve => {
+    execFile("launchctl", ["print", `gui/${uid}/${label}`], { timeout: 5_000, windowsHide: true }, (_error, stdout) => resolve(String(stdout)));
+  });
+  const match = /last exit code = (\d+)/.exec(output);
+  return match ? Number(match[1]) : undefined;
 }
 
 /** The two launchd log files the macOS service writes (stdout and stderr), under the owner's home folder. */

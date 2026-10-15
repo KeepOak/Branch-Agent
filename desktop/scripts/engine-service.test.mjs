@@ -221,11 +221,36 @@ test('the volume check never blocks other platforms, and a folder not created ye
   assert.equal(await serviceVolumeBlock([`${HOME}/not-yet`], HOME, reader, 'darwin'), undefined);
 });
 
-test('the launchd log lines that mean the service could not run are told apart from an ordinary silence', () => {
-  assert.equal(serviceCannotRunReason('shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted\n'), SERVICE_BLOCKED_LINE);
-  assert.equal(serviceCannotRunReason('/bin/sh: wrapper.sh: Operation not permitted\n'), SERVICE_BLOCKED_LINE);
-  assert.equal(serviceCannotRunReason('launchd: ai.branch.gateway exited with status 126\n'), SERVICE_BLOCKED_LINE);
-  assert.equal(serviceCannotRunReason('gateway listening on 127.0.0.1:19031\nGateway start timed out after 45s\n'), undefined);
+const SERVICE_ENV = '/Volumes/External/BranchAgent/data/home/.branch/service-env';
+const WRAPPER = `${SERVICE_ENV}/ai.branch.gateway-env-wrapper.sh`;
+const NODE_BINARY = '/Volumes/External/BranchAgent/node';
+const EXECUTABLES = [SERVICE_ENV, NODE_BINARY];
+
+test('launchd cannot run the job: the shell cannot exec the wrapper, the wrapper or node is denied, or launchd exited 126/127', () => {
+  assert.equal(serviceCannotRunReason('shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted\n', EXECUTABLES), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason(`/bin/sh: ${WRAPPER}: Operation not permitted\n`, EXECUTABLES), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason(`${WRAPPER}: Permission denied\n`, EXECUTABLES), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason(`${NODE_BINARY}: Permission denied\n`, EXECUTABLES), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, 126), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, 127), SERVICE_BLOCKED_LINE);
+});
+
+test('an ordinary denial from the engine, a denial of an unrelated file, or a healthy exit is not a launch failure', () => {
+  // An engine plugin reading a protected folder logs the same words, and a slow service must stay an error.
+  assert.equal(serviceCannotRunReason('[plugins] read blocked: /Library/Containers/example/notes.db: Operation not permitted\n', EXECUTABLES), undefined);
+  assert.equal(serviceCannotRunReason('/tmp/other-tool: Permission denied\n', EXECUTABLES), undefined);
+  assert.equal(serviceCannotRunReason(`/bin/sh: ${WRAPPER}: No such file or directory\n`, EXECUTABLES), undefined);
+  assert.equal(serviceCannotRunReason('gateway listening on 127.0.0.1:19031\ngateway start timed out after 45s\n', EXECUTABLES), undefined);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, 0), undefined);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, 1), undefined);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES), undefined);
+});
+
+test('a slow service that logs an unrelated denial is still an error: it is never removed or replaced by a child', async t => {
+  const log = '[plugins] read blocked: /Library/Containers/example/notes.db: Operation not permitted\n';
+  const { calls, steps } = fakeLaunch(t, { neverAnswers: true, cannotRun: serviceCannotRunReason(log, EXECUTABLES) });
+  await assert.rejects(attachOrStartEngine(steps), /did not answer in time/);
+  assert.deepEqual(calls, ['mark', 'install', 'start'], 'no uninstall, no child');
 });
 
 test('the service logs are read only from where this start began, and a rotated log is read from its start', async t => {
