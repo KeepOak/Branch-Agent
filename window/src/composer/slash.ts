@@ -56,7 +56,7 @@ const WORDS: Record<string, { hint?: string; line: string }> = {
 };
 
 /** Left out of the list until their first letters are typed (§4.3.5 "/commands" row). */
-export const LESS_USED = new Set(["commands", "whoami", "queue", "redirect", "elevated", "exec"]);
+const LESS_USED = new Set(["commands", "whoami", "queue", "redirect", "elevated", "exec"]);
 
 function argHint(args: ReturnType<typeof list>): string {
   return args.map((a) => `<${str(a.name)}>`).join(" ");
@@ -132,9 +132,4 @@ export function filterChoices(choices: readonly Choice[], prefix: string): Choic
 export function commandWord(text: string): string {
   const m = /^\/(\S+)/.exec(text.trim());
   return m ? m[1].toLowerCase() : "";
-}
-
-/** The words after the command word. */
-export function commandRest(text: string): string {
-  return text.trim().replace(/^\/\S+\s*/, "");
 }

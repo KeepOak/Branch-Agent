@@ -48,6 +48,7 @@ import {
   type SubagentSessionRole,
 } from "./subagents/spawn/subagent-capabilities.js";
 import { createToolPolicyMatcher } from "./tool-policy-match.js";
+import { resolveDisabledToolsetTools } from "./tool-toolsets.js";
 import type { ConfiguredToolPolicySources } from "./tool-policy-pipeline.js";
 import { mergeAlsoAllowPolicy, resolveToolProfilePolicy } from "./tool-policy.js";
 import { AUTOMATIONS_TOOL_NAME } from "./tools/automations-tool-name.js";
@@ -70,6 +71,10 @@ const SUBAGENT_TOOL_DENY_ALWAYS = [
   // Direct user/session sends - subagents communicate through announce chain
   "message",
   "sessions_send",
+  "trunk_message",
+  "room_list",
+  "room_read",
+  "room_post",
   "conversations_list",
   "conversations_send",
   "conversations_turn",
@@ -143,6 +148,17 @@ export function resolveInheritedToolPolicyForSession(
   };
 }
 
+/** Adds the denies of switched-off toolsets. Deny only: an allow list is never widened. */
+function withToolsetDeny(
+  policy: SandboxToolPolicy | undefined,
+  disabledTools: readonly string[],
+): SandboxToolPolicy | undefined {
+  if (disabledTools.length === 0) {
+    return policy;
+  }
+  return { ...policy, deny: uniqueStrings([...(policy?.deny ?? []), ...disabledTools]) };
+}
+
 /** Resolve the shared profile, scope, extra, and sandbox policy layers. */
 export function resolveConfiguredToolPolicies(params: {
   cfg: BranchConfig;
@@ -156,10 +172,14 @@ export function resolveConfiguredToolPolicies(params: {
     resolveExplicitProfileAlsoAllow(params.agentTools) ??
     resolveExplicitProfileAlsoAllow(params.cfg.tools);
   const profilePolicy = mergeAlsoAllowPolicy(resolveToolProfilePolicy(profile), profileAlsoAllow);
+  const toolsetDeny = resolveDisabledToolsetTools(
+    params.agentId ? resolveAgentConfig(params.cfg, params.agentId)?.toolsets : undefined,
+  );
   const policies = [
     profilePolicy,
     pickSandboxToolPolicy(params.cfg.tools ?? undefined),
     pickSandboxToolPolicy(params.agentTools),
+    withToolsetDeny(undefined, toolsetDeny),
     ...(params.extraPolicies ?? []),
   ].filter((policy): policy is SandboxToolPolicy => Boolean(policy));
 
@@ -442,7 +462,10 @@ export function resolveEffectiveToolPolicy(params: {
   ];
   const explicitProfileAlsoAllow =
     resolveExplicitProfileAlsoAllow(agentTools) ?? resolveExplicitProfileAlsoAllow(globalTools);
-  const agentPolicy = pickSandboxToolPolicy(agentTools);
+  const agentPolicy = withToolsetDeny(
+    pickSandboxToolPolicy(agentTools),
+    resolveDisabledToolsetTools(agentConfig?.toolsets),
+  );
   const groveToolPolicyConsent = resolveGroveToolPolicyConsent({
     agentTools,
     agentId,

@@ -2,7 +2,7 @@
 // drawn disabled under the banner, as the preview does, showing the defaults a team starts with.
 import { Ctl, Seg, Sw } from "./ui";
 
-export const NO_TEAM = "Needs your keepoak.com team. Connect it above.";
+const NO_TEAM = "Needs your keepoak.com team. Connect it above.";
 
 export function RulesTab() {
   return <>

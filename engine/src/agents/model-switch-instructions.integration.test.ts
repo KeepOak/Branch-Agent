@@ -1,4 +1,4 @@
-// From openai/codex@cc31e374fc15cd616fca19c07d55f9fa7e6d7e31:codex-rs/core/tests/suite/model_switching.rs (atlas AGENT-LOOP-0098). Ported model-instruction request assertions to Branch's real Responses projection; service-tier and generated-media fixtures are not included here.
+// Model-instruction request assertions against Branch's real Responses projection; service-tier and generated-media fixtures are not included here.
 import type { AssistantMessage, Model, Context } from "@branch/llm-core";
 import { describe, expect, it } from "vitest";
 import { convertResponsesMessages } from "../../packages/ai/src/transports/openai-responses-replay-messages-internal.js";

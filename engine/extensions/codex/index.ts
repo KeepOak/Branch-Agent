@@ -27,7 +27,11 @@ import { createCodexAppServerConfig } from "./src/app-server/config-options.js";
 import { readCodexPluginConfig } from "./src/app-server/config-parsing.js";
 import { createCodexAppServerConnectionHealthService } from "./src/app-server/connection-health.js";
 import { createCodexDesktopGenerationService } from "./src/app-server/desktop-generation.js";
-import { setManagedCodexPluginRoot } from "./src/app-server/managed-binary.js";
+import { createInstalledCodex } from "./src/app-server/installed-codex.js";
+import {
+  setManagedCodexInstalled,
+  setManagedCodexPluginRoot,
+} from "./src/app-server/managed-binary.js";
 import {
   CODEX_MANAGED_THREAD_MAX_ENTRIES,
   CODEX_MANAGED_THREAD_NAMESPACE,
@@ -95,6 +99,8 @@ export default definePluginEntry({
     // Bundled modules may execute from a shared dist chunk, so import.meta.url
     // cannot identify the owning plugin package or its pinned dependencies.
     setManagedCodexPluginRoot(api.rootDir);
+    // Release builds ship no Codex binary: turns use the Codex installed on this computer.
+    setManagedCodexInstalled(createInstalledCodex());
     api.registerProvider(codexProviderDiscovery);
     const resolveCurrentConfig = () =>
       api.runtime.config?.current ? (api.runtime.config.current() as BranchConfig) : undefined;

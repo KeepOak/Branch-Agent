@@ -15,7 +15,7 @@ const LOCK_POLL_MS = 500;
 type ArtifactOwner = { directory: string; unjoinedError?: Error };
 let inheritedOwner: ArtifactOwner | undefined;
 
-function readDistArtifactStartIdentity(pid: number): string | undefined {
+export function readDistArtifactStartIdentity(pid: number): string | undefined {
   try {
     if (process.platform === "win32") {
       const started = readWindowsProcessStartTimeSync(pid);
@@ -62,7 +62,7 @@ function hasRetainedChildWork(directory: string): boolean {
   }
 }
 
-function canReclaimDistArtifactOwner(payload: unknown, directory?: string): boolean {
+export function canReclaimDistArtifactOwner(payload: unknown, directory?: string): boolean {
   const record = isRecord(payload) ? payload : {};
   const pid = record.pid;
   if (typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 1 || pid > 0x7fffffff) {
@@ -137,9 +137,9 @@ export async function releaseDistArtifactLock(rootDir: string, requestedDirector
   }
 }
 
-export function resolveDistArtifactLockPath(rootDir: string) {
+export function resolveDistArtifactLockPath(rootDir: string, checkout = true) {
   // Subdirectories share checkout ownership; standalone work owns its directory.
-  return path.join(findRepoRoot(rootDir) ?? rootDir, DIST_ARTIFACT_LOCK_PATH);
+  return path.join((checkout && findRepoRoot(rootDir)) || rootDir, DIST_ARTIFACT_LOCK_PATH);
 }
 
 function retainUnjoinedDistArtifactWork(owner: ArtifactOwner, error: unknown) {
@@ -188,8 +188,9 @@ export async function acquireDistArtifactOwnership(
   rootDir: string,
   wait = false,
   signal?: AbortSignal,
+  checkout = true,
 ): Promise<FileLockHandle> {
-  const directory = resolveDistArtifactLockPath(fs.realpathSync(rootDir));
+  const directory = resolveDistArtifactLockPath(fs.realpathSync(rootDir), checkout);
   const ownerPath = path.join(directory, "owner.json");
   let reportedWait = false;
   let owner: unknown;

@@ -37,7 +37,8 @@ type Builder = {
   /** Code Mode wrappers (an `exec` whose code called real tools): their nested calls are the steps, not them. */
   wrappers: Set<string>;
   runId: string | null;
-  runStart: number;
+  /** When the run's first message was written; null when that message carries no time. */
+  runStart: number | null;
   runFinished: boolean;
   /** The run was stopped (an aborted partial the engine kept: `branchAbort`). */
   runStopped: boolean;
@@ -87,7 +88,7 @@ function readVia(branch: Record<string, unknown>): string | undefined {
 }
 
 /** What the engine recorded about a message: entry id, run, time, model and usage. */
-export function readMeta(m: Message): MessageMeta {
+function readMeta(m: Message): MessageMeta {
   const branch = rec(m.__branch);
   const sender = readSender(m);
   const usage = rec(m.usage);
@@ -105,6 +106,7 @@ export function readMeta(m: Message): MessageMeta {
     ...(sender ? { sender } : {}),
     ...(readOwner(m) ? { owner: true } : {}),
     ...(m.excludeFromContext === true ? { excluded: true } : {}),
+    ...(m.pinned === true ? { pinned: true } : {}),
     ...(m.usage
       ? { usage: { input: num(usage.input), output: num(usage.output), total: num(usage.totalTokens), cost: num(cost.total) } }
       : {}),
@@ -152,9 +154,30 @@ function attachmentsOf(content: unknown): Attachment[] {
   return Array.isArray(content) ? content.map(readAttachment).filter((a): a is Attachment => a !== null) : [];
 }
 
+/** Canonical transcript media uses __branch.media (engine/ui/src/lib/chat/message-extract.ts).
+ * Keep that envelope separate from model content, and retain content attachments. */
+function messageAttachments(m: Message): Attachment[] {
+  const attachments = attachmentsOf(m.content);
+  const facts = rec(m.__branch).media;
+  if (!Array.isArray(facts)) return attachments;
+  for (const raw of facts) {
+    const fact = rec(raw);
+    const path = str(fact.path);
+    const src = path || str(fact.url);
+    const mimeType = str(fact.contentType);
+    const kind = KIND_BY_TYPE[str(fact.kind)] ?? KIND_BY_TYPE[mimeType.split("/")[0]] ?? "file";
+    if (!src || attachments.some((item) => item.src === src)) continue;
+    attachments.push({ kind, name: str(fact.fileName) || kind, src, kept: true, ...(path ? { local: true } : {}),
+      ...(mimeType ? { mimeType } : {}), ...(num(fact.sizeBytes) ? { sizeBytes: num(fact.sizeBytes) } : {}) });
+  }
+  return attachments;
+}
+
 function closeRun(b: Builder, inFlightRunId: string | null): void {
   if (b.runId && b.runFinished && b.runId !== inFlightRunId) {
-    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, durationMs: Math.max(0, b.lastTs - b.runStart), ...(b.runStopped ? { stopped: true } : {}) });
+    // A run whose first message has no time has no length: subtracting an absent start (0) read as ~56 years.
+    const durationMs = b.runStart !== null && b.lastTs > b.runStart ? b.lastTs - b.runStart : undefined;
+    b.blocks.push({ kind: "done", key: `${b.runId}:done`, runId: b.runId, ...(durationMs ? { durationMs } : {}), ...(b.runStopped ? { stopped: true } : {}) });
   }
   b.runId = null;
   b.runFinished = false;
@@ -197,7 +220,7 @@ function onAssistant(b: Builder, m: Message, index: number): void {
   for (const [i, part] of content.entries()) {
     onAssistantPart(b, part, `h:${index}:${i}`, m);
   }
-  const media = attachmentsOf(m.content);
+  const media = messageAttachments(m);
   if (media.length) {
     b.blocks.push({ kind: "text", key: `h:${index}:media`, text: "", streaming: false, meta: readMeta(m), attachments: media });
   }
@@ -312,17 +335,19 @@ function isRestartResume(m: Message): boolean {
 function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | null): void {
   if (str(rec(m.__branch).steerTargetRunId)) {
     // Steered into the turn that was running: it stays that turn's, so its Done line and steps stay whole.
-    b.blocks.push({ kind: "steer", key: `h:${index}`, text: messageText(m.content), meta: readMeta(m) });
+    const attachments = messageAttachments(m);
+    b.blocks.push({ kind: "steer", key: `h:${index}`, text: messageText(m.content), meta: readMeta(m), ...(attachments.length ? { attachments } : {}) });
     return;
   }
   closeRun(b, inFlightRunId);
   // A message sent while the turn before still ran starts its own turn when that one ended.
-  b.runStart = Math.max(num(m.timestamp), b.lastTs);
+  // An untimed message has no start: measuring from the previous run's end would count the idle gap as this run.
+  b.runStart = typeof m.timestamp === "number" ? Math.max(m.timestamp, b.lastTs) : null;
   if (isRestartResume(m)) {
     b.blocks.push({ kind: "notice", key: `h:${index}`, text: RESUMED_AFTER_RESTART });
     return;
   }
-  const attachments = attachmentsOf(m.content);
+  const attachments = messageAttachments(m);
   b.blocks.push({
     kind: "user",
     key: `h:${index}`,
@@ -343,7 +368,7 @@ export function historyToBlocks(
   inFlightRunId: string | null,
   options: { wholeOutput?: boolean } = {},
 ): Block[] {
-  const b: Builder = { blocks: [], steps: new Map(), wrappers: new Set(), runId: null, runStart: 0, runFinished: false, runStopped: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
+  const b: Builder = { blocks: [], steps: new Map(), wrappers: new Set(), runId: null, runStart: null, runFinished: false, runStopped: false, lastTs: 0, wholeOutput: options.wholeOutput === true };
   for (const [index, raw] of messages.entries()) {
     const m = rec(raw);
     const runId = str(rec(m.__branch).runId) || null;

@@ -3,7 +3,6 @@ import path from "node:path";
 
 export type FleetContainerRuntimeName = "docker" | "podman";
 
-export const DEFAULT_FLEET_IMAGE = "ghcr.io/openclaw/openclaw:latest";
 const FLEET_BASE_PORT = 19_100;
 export const FLEET_GATEWAY_PORT = 18_789;
 const FLEET_CONTAINER_HOME = "/home/node";
@@ -66,6 +65,15 @@ export function validateTenantId(tenantId: string): string {
     );
   }
   return tenantId;
+}
+
+export function requireFleetImage(image: string | undefined): string {
+  if (image === undefined || image.trim() === "") {
+    throw new Error(
+      "No fleet container image set. Pass one with --image <ref>. No Branch image is published yet, so pass your own.",
+    );
+  }
+  return validateFleetImage(image);
 }
 
 export function validateFleetImage(image: string): string {

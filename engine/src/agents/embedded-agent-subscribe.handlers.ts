@@ -62,6 +62,7 @@ export function createEmbeddedAgentSessionEventHandler(ctx: EmbeddedAgentSubscri
   };
 
   return (evt: AgentSessionEvent) => {
+    ctx.runJournal?.record(evt, ctx.params.session.messages);
     // Model facts advance before persistence, independently of queued reply delivery.
     ctx.captureModelEvent(evt);
     // Capture tool facts before reply delivery can delay their lifecycle handlers.

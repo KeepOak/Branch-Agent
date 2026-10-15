@@ -5,7 +5,9 @@ import { useEffect, useSyncExternalStore } from "react";
 import { TrunkEditor, TrunkProfile } from "../places/trunk";
 import type { PlaceProps } from "./PlaceFrame";
 
-export type OpenTrunk = { agentId: string; view: "profile" | "edit" };
+/** The Trunk tab an editor opens on: "may" holds the Trunk's own model and stand-ins. */
+export type OpenTrunk = { agentId: string; view: "profile" | "edit"; tab?: "look" | "may" | "computers" };
+const EDITOR_TABS = ["look", "may", "computers"] as const;
 
 let current: OpenTrunk | null = null;
 const listeners = new Set<() => void>();
@@ -20,9 +22,11 @@ const subscribe = (fn: () => void) => {
 
 /** The request in a "branch:open-trunk" event, or null when it names no Trunk. */
 export function readOpenTrunk(detail: unknown): OpenTrunk | null {
-  const d = (detail ?? {}) as { agentId?: unknown; view?: unknown };
+  const d = (detail ?? {}) as { agentId?: unknown; view?: unknown; tab?: unknown };
   if (typeof d.agentId !== "string" || !d.agentId) return null;
-  return { agentId: d.agentId, view: d.view === "edit" ? "edit" : "profile" };
+  const view = d.view === "edit" ? "edit" : "profile";
+  const tab = EDITOR_TABS.find((t) => t === d.tab);
+  return view === "edit" && tab ? { agentId: d.agentId, view, tab } : { agentId: d.agentId, view };
 }
 
 if (typeof window !== "undefined") {
@@ -33,12 +37,12 @@ if (typeof window !== "undefined") {
 }
 
 /** Draws the requested Trunk profile or editor over the window while a place is shown. */
-export function TrunkHost({ engine, level, openSettings, openPlace }: Pick<PlaceProps, "engine" | "level" | "openSettings" | "openPlace">) {
+export function TrunkHost({ engine, level, openSettings, openPlace, openConversation }: Pick<PlaceProps, "engine" | "level" | "openSettings" | "openPlace"> & Partial<Pick<PlaceProps, "openConversation">>) {
   const open = useSyncExternalStore(subscribe, () => current);
   useEffect(() => () => setOpen(null), []);
   if (!open) return null;
   const close = () => setOpen(null);
   return open.view === "edit"
-    ? <TrunkEditor key={open.agentId} engine={engine} agentId={open.agentId} level={level} onClose={close} openSettings={openSettings} />
-    : <TrunkProfile key={open.agentId} engine={engine} agentId={open.agentId} level={level} onClose={close} openSettings={openSettings} openPlace={openPlace} />;
+    ? <TrunkEditor key={open.agentId} engine={engine} agentId={open.agentId} level={level} onClose={close} openSettings={openSettings} tab={open.tab} />
+    : <TrunkProfile key={open.agentId} engine={engine} agentId={open.agentId} level={level} onClose={close} openSettings={openSettings} openPlace={openPlace} openConversation={openConversation} />;
 }

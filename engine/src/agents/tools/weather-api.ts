@@ -1,4 +1,3 @@
-/** Harvested from moeru-ai/airi@4b702bd6678def26b046a958c90dbdbe5c003b87, weather-api.ts. */
 // -- Open-Meteo API types --
 
 interface GeocodingResult {

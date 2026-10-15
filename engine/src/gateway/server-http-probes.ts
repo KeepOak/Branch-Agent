@@ -40,6 +40,44 @@ async function shouldIncludeGatewayProbeDetails(params: {
   ).ok;
 }
 
+/**
+ * Honest health (Private #454 D): why the gateway can't answer for an agent, or undefined when it can. The liveness
+ * probes keep HTTP 200 (the process is alive, so a supervisor must not restart it), but their body says `degraded`
+ * with this reason instead of OK while an agent database is not admitting work (or the state database is down).
+ * `summary` is for callers that don't get details; `detail` names the agents and their reasons.
+ */
+export function readGatewayDegradedReason(
+  getReadiness?: ReadinessChecker,
+): { summary: string; detail: string } | undefined {
+  if (!getReadiness) {
+    return undefined;
+  }
+  let result: ReturnType<ReadinessChecker>;
+  try {
+    result = getReadiness();
+  } catch {
+    return undefined;
+  }
+  if (result.stateDatabase) {
+    const summary = "the state database is not answering";
+    return { summary, detail: `${summary}: ${result.stateDatabase.reason}` };
+  }
+  const refused = result.agentDatabases ?? [];
+  if (refused.length === 0) {
+    return undefined;
+  }
+  const summary =
+    refused.length === 1
+      ? "an agent's database is not admitting work"
+      : `${refused.length} agents' databases are not admitting work`;
+  const each = refused.map((refusal) =>
+    refusal.code === "agent-database-inspection-pending"
+      ? `${refusal.agentId} (its database is still being checked)`
+      : `${refusal.agentId} (${refusal.reason})`,
+  );
+  return { summary, detail: `${summary}: ${each.join("; ")}` };
+}
+
 function startupProbeBody(result: StartupResult, includeDetails: boolean): string {
   if (!includeDetails) {
     return JSON.stringify({ ok: result.ok, status: result.status });
@@ -128,7 +166,24 @@ export async function handleGatewayProbeRequest(
     }
   } else {
     statusCode = 200;
-    body = JSON.stringify({ ok: true, status });
+    const degraded = status === "live" ? readGatewayDegradedReason(getReadiness) : undefined;
+    if (degraded) {
+      // Agent names are details: only local direct or authenticated callers get them.
+      const includeDetails = await shouldIncludeGatewayProbeDetails({
+        req,
+        resolvedAuth,
+        trustedProxies,
+        allowRealIpFallback,
+        rateLimiter,
+      });
+      body = JSON.stringify({
+        ok: false,
+        status: "degraded",
+        reason: includeDetails ? degraded.detail : degraded.summary,
+      });
+    } else {
+      body = JSON.stringify({ ok: true, status });
+    }
   }
   res.statusCode = statusCode;
   // Node suppresses the HEAD body but never synthesizes Content-Length; set it

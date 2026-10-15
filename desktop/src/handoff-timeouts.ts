@@ -24,3 +24,10 @@ export const HANDOFF_ROLLBACK_TIMEOUT_MS: number = shared.rollbackTimeoutMs;
  * own exit should have come by then) and before a lease turns stale, so two engines never write one session.
  */
 export const HANDOFF_RETIRE_KILL_AFTER_MS: number = shared.retireKillAfterMs;
+
+/**
+ * Desktop (Private #1038): a retiring old engine that still runs work it kept is not killed at
+ * HANDOFF_RETIRE_KILL_AFTER_MS, since the engine renews those sessions' leases while the runs work. It is killed this
+ * long after step-down was sent at the latest: after the engine's own lease hard cap deadline and before that cap.
+ */
+export const HANDOFF_RETIRE_HARD_CAP_MS: number = shared.retireHardCapMs;

@@ -25,7 +25,7 @@ export const bindingsOf = (cfg: Cfg) => list(cfg.get("bindings")) as unknown as 
 export function appRoute(bs: Binding[], ch: string): string | undefined {
   return (bs.find((b) => appLevel(b, ch) && b.match.accountId === "*") ?? bs.find((b) => appLevel(b, ch)))?.agentId;
 }
-export const chatRoute = (bs: Binding[], ch: string, p: Peer) => bs.find((b) => chatLevel(b, ch, p))?.agentId;
+const chatRoute = (bs: Binding[], ch: string, p: Peer) => bs.find((b) => chatLevel(b, ch, p))?.agentId;
 
 /** The bindings with this app's (or chat's) route replaced; null removes it, so the default answers. */
 export function withRoute(bs: Binding[], ch: string, peer: Peer | null, agentId: string | null): Binding[] {

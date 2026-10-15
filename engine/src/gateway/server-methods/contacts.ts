@@ -37,6 +37,7 @@ import {
 import { projectContacts } from "../contacts/project.js";
 import { claimGraftWork, completeGraftWork, enqueueGraftWork, getGraftWork } from "../contacts/graft-work.js";
 import { hasOperatorBoundary, resolveOperatorRolePolicy } from "../operator-role-policy.js";
+import { removeOutsideRoomMembers } from "../rooms/store.js";
 import { createSessionListEntryFilter } from "../session-sharing.js";
 import { readSessionTitleFieldsFromTranscriptAsync } from "../session-transcript-title-reader.js";
 import { deriveSessionTitle } from "../session-utils-core.js";
@@ -162,6 +163,13 @@ async function removeGraftDevice(
   });
 }
 
+/** What a person reads when a joined Branch's Trunk fails a request: plain words, no addresses or file paths. */
+export function graftFailureSentence(error: string): string {
+  if (/time(?:d)?\s?out|timeout/i.test(error)) return "The joined Trunk did not answer in time, so the request may or may not have run.";
+  if (/ECONNREFUSED|not connected|unreachable|offline|closed/i.test(error)) return "The joined Trunk could not be reached right now.";
+  return "The joined Trunk could not finish the request.";
+}
+
 export const contactHandlers: GatewayRequestHandlers = {
   "graft.work.send": async ({ params, respond, client, context }) => {
     const p = params && typeof params === "object" ? params as Record<string, unknown> : {};
@@ -222,8 +230,11 @@ export const contactHandlers: GatewayRequestHandlers = {
       agentId: job.sourceAgentId,
       sessionKey: job.sourceSessionKey,
       sourceTool: "sessions_send",
-      message: error ? `The joined Trunk could not complete the request: ${error}` : reply!,
-      extraSystemPrompt: "A Trunk on a joined Branch returned the result of your earlier sessions_send request. This result is delivered once; do not resend your request unless the user asks.",
+      // The message shows in the conversation, so a failure reads as one plain sentence; the raw error (addresses,
+      // config paths) goes only to the Trunk, which still needs it to explain or retry.
+      message: error ? graftFailureSentence(error) : reply!,
+      extraSystemPrompt: "A Trunk on a joined Branch returned the result of your earlier sessions_send request. This result is delivered once; do not resend your request unless the user asks." +
+        (error ? `\nThe joined Branch reported this error (do not quote addresses or file paths to the user):\n${error}` : ""),
       timeoutMs: 60_000,
       callGateway: (request) => callGateway(request),
     }).catch((failure: unknown) => context.logGateway.warn(`graft work reply delivery failed: ${String(failure)}`));
@@ -323,6 +334,19 @@ export const contactHandlers: GatewayRequestHandlers = {
     let settings = updateOutsideAgentSettings(params);
     for (const other of device?.ids.filter((id) => id !== params.id) ?? []) {
       settings = updateOutsideAgentSettings({ id: other, revoked: true });
+    }
+    if (params.revoked === true) {
+      // Include legacy/product-wide revocations as well as every row belonging to a grafted device.
+      const revokedIds = new Set([
+        params.id!,
+        ...(device?.ids ?? []),
+        ...listOutsideAgents()
+          .filter((row) => outsideAgentRefusal(row, { ...settings, enabled: true }))
+          .map((row) => row.id),
+      ]);
+      for (const room of removeOutsideRoomMembers([...revokedIds])) {
+        context.broadcast("rooms.changed", { roomId: room.roomId, room }, { dropIfSlow: true });
+      }
     }
     context.broadcast("contacts.changed", { ts: Date.now() }, { dropIfSlow: true });
     respond(true, settings);
