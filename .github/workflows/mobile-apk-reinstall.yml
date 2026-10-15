@@ -93,7 +93,7 @@ jobs:
 
       - name: Build vN and vN+1 with the same throwaway CI test key
         id: apk
-        run: node mobile/scripts/apk-reinstall-survives.mjs --build >> "$GITHUB_OUTPUT"
+        run: node mobile/scripts/apk-reinstall-survives.mjs --build
 
       - name: Enable KVM
         run: |

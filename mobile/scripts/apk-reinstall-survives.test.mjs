@@ -8,6 +8,7 @@ import {
   EMULATOR_RUNNER_SHA,
   PACKAGE,
   WORKFLOW_PATH,
+  gradleSettingsText,
   workflowContract,
 } from './apk-reinstall-survives.mjs';
 
@@ -31,6 +32,10 @@ describe('apk reinstall keeps pairing', () => {
     assert.match(script, /pairing\.json/);
     assert.match(script, /chat\.json/);
     assert.match(script, /settings\.xml/);
+    assert.match(gradleSettingsText(), /dependencyResolutionManagement/);
+    assert.match(gradleSettingsText(), /google\(\)/);
+    assert.match(gradleSettingsText(), /mavenCentral\(\)/);
+    assert.doesNotMatch(yaml, /--build >>/);
   });
 
   it('the app still uses that package and Keystore storage, not cache', () => {

@@ -54,15 +54,23 @@ export function workflowContract(yaml) {
   return problems;
 }
 
-function writeGradleProject(dir, keystorePath) {
-  mkdirSync(path.join(dir, 'app', 'src', 'main', 'java', 'com', 'keepoak', 'branch'), { recursive: true });
-  writeFileSync(path.join(dir, 'settings.gradle'), `pluginManagement {
+export function gradleSettingsText() {
+  return `pluginManagement {
   repositories { google(); mavenCentral(); gradlePluginPortal() }
 }
 plugins { id 'com.android.application' version '8.7.3' apply false }
+dependencyResolutionManagement {
+  repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+  repositories { google(); mavenCentral() }
+}
 rootProject.name = 'apk-reinstall'
 include ':app'
-`);
+`;
+}
+
+function writeGradleProject(dir, keystorePath) {
+  mkdirSync(path.join(dir, 'app', 'src', 'main', 'java', 'com', 'keepoak', 'branch'), { recursive: true });
+  writeFileSync(path.join(dir, 'settings.gradle'), gradleSettingsText());
   writeFileSync(path.join(dir, 'gradle.properties'), 'org.gradle.jvmargs=-Xmx1536m\nandroid.useAndroidX=true\n');
   writeFileSync(path.join(dir, 'app', 'build.gradle'), `plugins { id 'com.android.application' }
 android {
@@ -217,8 +225,9 @@ export function reinstallOnAdb({ v1, v2 }) {
 }
 
 function printOutputs(pair) {
-  process.stdout.write(`v1_apk=${pair.v1}\n`);
-  process.stdout.write(`v2_apk=${pair.v2}\n`);
+  const lines = `v1_apk=${pair.v1}\nv2_apk=${pair.v2}\n`;
+  if (process.env.GITHUB_OUTPUT) writeFileSync(process.env.GITHUB_OUTPUT, lines, { flag: 'a' });
+  else process.stdout.write(lines);
 }
 
 function main() {
