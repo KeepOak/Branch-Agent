@@ -52,6 +52,14 @@ describe("preview thread row", () => {
     expect(JSON.parse(localStorage.getItem("branch-topics-t5")!)).toEqual({ layout: "tabs", width: 0, per: {} });
   });
 
+  it("checks the thread layout in use among How threads show's choices", async () => {
+    const t = await render();
+    await t.click("How threads show: Column");
+    const choice = (label: string) => [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find((el) => el.textContent?.includes(label));
+    expect(choice("Column")?.getAttribute("aria-checked")).toBe("true");
+    expect(choice("Tabs above the chat")?.getAttribute("aria-checked")).toBe("false");
+  });
+
   it("mutes unread badges as the preview does and remembers the choice", async () => {
     const t = await render();
     expect(t.host.querySelector(".tpBadgeT5")).toBeTruthy();

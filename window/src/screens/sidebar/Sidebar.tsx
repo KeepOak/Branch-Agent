@@ -14,12 +14,12 @@ import { Popover } from "../../glass/Popover";
 import type { PlaceId } from "../../places-nav/routes";
 import { readLevel } from "../../places-nav/SettingsFrame";
 import { PairDialog } from "../../places/customize/pairing";
-import { createReadyTrunk } from "../../places/trunk/api";
 import { TrunkStudio } from "../../places/trunk/TrunkStudio";
 import { RemoveTrunkDialog } from "../../places/trunk/RemoveTrunk";
 import { NewGroupChatHost, openNewGroupChat } from "../../rooms/NewGroupChat";
 import { ConfirmDelete, askBeforeDelete } from "../../shell/ConfirmDelete";
 import { contactRowsFor, markContactRead, pinContact, projectContact, type Contact } from "../../shell/contacts-model";
+import { displayTrunkTitle } from "../../connect/trunk-name";
 import { conversationActions } from "../../shell/conversation-actions";
 import { Dialog } from "../../shell/Dialog";
 import { useContacts, useTrunks } from "../../shell/engine-data";
@@ -28,7 +28,6 @@ import { guideMenuItems } from "../../shell/guide-menu";
 import { clearFilters, filtersDiffer, type ListPrefs } from "../../shell/list-model";
 import { moveContactToProject, roomContact, useGroupRooms } from "../../shell/group-drop";
 import { menuIcon } from "../../shell/menu-icons";
-import { nextTrunkName } from "../../shell/NewTrunkFlow";
 import { notify } from "../../shell/notify";
 import { conversationLink, openConversationWindow, ownWindowUnavailable } from "../../shell/own-window";
 import { usePersonName } from "../../shell/PersonMenu";
@@ -52,6 +51,8 @@ import { QUICK_ASK_EVENT, QUICK_ASK_NEED } from "../quickask/QuickAskHost";
 import "./sidebar.css";
 
 export type SidebarProps = {
+  /** + › New Trunk: a random character and name, its conversation, and the two questions (R1Window). */
+  onNewTrunk: () => void;
   session: SaplingSession;
   ready: boolean;
   list: ConversationList;
@@ -68,6 +69,8 @@ export type SidebarProps = {
   onTour?: () => void;
   /** Why the conversation list couldn't load (useConversations().error); shown at the top of the list. */
   error?: string | null;
+  /** The contacts the window already reads (useContacts); without them the sidebar reads its own. */
+  contacts?: ReturnType<typeof useContacts>;
 };
 
 const rec = (value: unknown): Record<string, unknown> => (value && typeof value === "object" ? value as Record<string, unknown> : {});
@@ -116,7 +119,8 @@ export function Sidebar(p: SidebarProps) {
   const { session, ready } = p;
   const engine = session.engine;
   const request = useMemo(() => <T,>(method: string, params?: unknown) => session.request<T>(method, params), [session]);
-  const [gatewayContacts, refreshContacts, contactsLoaded] = useContacts(session, ready);
+  const ownContacts = useContacts(session, ready && !p.contacts);
+  const [gatewayContacts, refreshContacts, contactsLoaded] = p.contacts ?? ownContacts;
   const trunks = useTrunks(session, ready);
   // Archived groups too: they sit in the Archived bin, where Unarchive brings them back.
   const rooms = useGroupRooms(session, ready, true);
@@ -134,6 +138,8 @@ export function Sidebar(p: SidebarProps) {
   const query = search.query, setQuery = search.setQuery;
   const [folder, setFolder] = useState<Folder>("all"), [foldOpen, setFoldOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
+  // Deleting is final, so nothing is kept to list here yet; the bin still opens to say so.
+  const [deletedOpen, setDeletedOpen] = useState(false);
   // Filter and sort (Classic shell/FilterSort.tsx): the choices narrow and order the rows; the search looks past them.
   const [prefs, setPrefs] = useState<ListPrefs>(readR1Prefs);
   const changePrefs = (next: ListPrefs) => { setPrefs(next); saveR1Prefs(next); };
@@ -195,13 +201,7 @@ export function Sidebar(p: SidebarProps) {
     setInstalling(true);
     void stageWindowUpdate(engine).catch((error: unknown) => notify(`Couldn't install the update: ${reason(error)}`, { tone: "bad" })).finally(() => setInstalling(false));
   };
-  const newTrunk = async () => {
-    try {
-      const agentId = await createReadyTrunk(engine, nextTrunkName(trunks.list.map(trunk => trunk.name)));
-      const key = await actions.create(agentId);
-      if (key) p.onOpen(key);
-    } catch (error) { notify(`Couldn't make the Trunk: ${reason(error)}`, { tone: "bad" }); }
-  };
+  const newTrunk = () => p.onNewTrunk();
   const newConversation = (agentId: string) => void actions.create(agentId).then(key => { if (key) p.onOpen(key); });
 
   const menuItems = menu ? rowMenu(menu, {
@@ -219,7 +219,7 @@ export function Sidebar(p: SidebarProps) {
     copyText: text => void copyText(text),
     ownWindow: key => void openConversationWindow(key).catch((error: unknown) => notify(`Couldn't open window: ${reason(error)}`, { tone: "bad" })),
     ask: key => { p.onOpen(key); void session.open(key).then(() => session.send("What can you do?")); },
-    editTrunk: () => p.onPlace("customize"),
+    editTrunk: (agentId: string) => { p.onPlace("people"); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId, view: "edit" } })); },
     tidy: row => void tidy({ session, list: p.list }, row, false),
     advanced: readLevel() !== "regular",
     keepLast: row => setDialog({ kind: "keep", row }),
@@ -263,7 +263,10 @@ export function Sidebar(p: SidebarProps) {
   // While searching, the sidebar's own matches lead Chats and Trunks; the Classic matches add only what they don't cover.
   const leadRows = [...sections.pinned, ...sections.trunks, ...sections.people, ...sections.groups, ...sections.grafted, ...sections.archived];
   const leadKeys = new Set(leadRows.map(row => row.key).filter(Boolean));
-  const rowName = (key: string) => p.sessions.find(row => row.key === key)?.title || rows.find(row => row.key === key)?.name || "Conversation";
+  const rowName = (key: string) => {
+    const session = p.sessions.find(row => row.key === key);
+    return (session?.isMain && session.agentId ? displayTrunkTitle(session.title, session.agentId) : session?.title) || rows.find(row => row.key === key)?.name || "Conversation";
+  };
   const leaveSearch = () => setQuery("");
   // Opening any result leaves the search, as the Classic results do; the row ••• menu stays as it is.
   const leadHandlers: RowHandlers = { ...handlers, onOpen: row => { leaveSearch(); openRow(row); } };
@@ -300,14 +303,15 @@ export function Sidebar(p: SidebarProps) {
           <span className="r1sb-bin-chev">{icons.chevron}</span><span>Archived</span>{sections.archived.length ? <i>{sections.archived.length}</i> : null}
         </button>
         {binsOpen ? sections.archived.length ? sections.archived.map(row => <SideRowView key={row.id} row={row} current={row.key === p.currentKey} now={now} handlers={handlers} picked={row.key !== null && selection.picked.has(row.key)} />) : <p className="r1sb-bin-none">Nothing here</p> : null}
-        <Coming need="sessions.restore" reason="Recently deleted comes in a later update. Deleting is final for now.">
-          <button type="button" className="r1sb-bin"><span className="r1sb-bin-chev">{icons.chevron}</span><span>Recently deleted</span></button>
-        </Coming>
+        <button type="button" className="r1sb-bin" data-local="" aria-expanded={deletedOpen} onClick={() => setDeletedOpen(open => !open)}>
+          <span className="r1sb-bin-chev">{icons.chevron}</span><span>Recently deleted</span>
+        </button>
+        {deletedOpen ? <p className="r1sb-bin-none">Nothing here</p> : null}
       </div>
       </>}
       <div className="r1sb-rail-bins">
         <button type="button" className="r1sb-cap" data-local="" aria-label={`Archived, ${sections.archived.length}`} title="Archived" onClick={() => { setArchivedOpen(true); toggleRail(); }}>{icons.archive}{sections.archived.length ? <i className="r1sb-badge">{sections.archived.length}</i> : null}</button>
-        <Coming need="sessions.restore" reason="Recently deleted comes in a later update. Deleting is final for now."><button type="button" className="r1sb-cap" aria-label="Recently deleted">{icons.trash}</button></Coming>
+        <button type="button" className="r1sb-cap" data-local="" aria-label="Recently deleted" title="Recently deleted" onClick={() => { setDeletedOpen(true); toggleRail(); }}>{icons.trash}</button>
       </div>
     </nav>
     <div className="r1sb-foot">

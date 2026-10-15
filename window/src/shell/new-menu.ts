@@ -25,12 +25,8 @@ export function newMenuItems(c: Ctx): MenuItem[] {
       label: `with ${trunk.name}${trunk.id === c.defaultId ? " (default)" : ""}`,
       run: () => c.newWith(trunk.id), testid: `new-with-${trunk.id}`,
     })) },
-    // One way in to making a Trunk (UI audit N3); its first step picks how.
-    { kind: "sub", label: "New Trunk", testid: "new-trunk", items: [
-      { label: "Blank", sub: "Name it and start talking", run: c.newTrunk, testid: "new-trunk-blank" },
-      { label: "From a job…", sub: "Pick one of Customize's jobs", run: () => c.openPlace("customize"), testid: "new-trunk-from-job" },
-      { label: "Let Branch suggest…", sub: "Describe it; Branch proposes one", run: c.makeTrunk, testid: "new-make-trunk" },
-    ] },
+    { label: "New Trunk", hint: "random character", run: c.newTrunk, testid: "new-trunk" },
+    { label: "Have Branch make a Trunk", run: c.makeTrunk, testid: "new-make-trunk" },
     { label: "New group chat", hint: "people, Trunks, agents", run: openNewGroupChat, testid: "new-group-chat" },
     { label: "New automation", run: () => c.openPlace("automations"), testid: "new-automation" },
     { label: "Quick ask", hint: "Ctrl Shift Space", run: c.quickAsk, testid: "new-quick-ask" },

@@ -21,11 +21,11 @@ beforeEach(() => { n += 1; host = document.body.appendChild(document.createEleme
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
 it("Normal: one closed summary line with the failure count, no thoughts", async () => {
-  await act(async () => root.render(<StepsList steps={fresh(steps)} thoughts={freshThoughts()} live={false} run={{ title: "x", durationMs: 108_000 }} mode="normal" />));
+  await act(async () => root.render(<StepsList steps={fresh(steps)} thoughts={freshThoughts()} live={false} mode="normal" />));
   const fold = host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!;
   expect(fold.open).toBe(false);
   expect(fold.querySelector("summary")!.textContent).toContain("1 failed");
-  expect(fold.querySelector("summary")!.textContent).toContain("1m 48s");
+  expect(fold.querySelector("summary")!.textContent).not.toMatch(/\d+m \d+s|\dh /);
   expect(host.querySelectorAll('[data-testid="thought"]')).toHaveLength(0);
   expect(host.querySelectorAll('[data-testid="step"]')).toHaveLength(2);
 });

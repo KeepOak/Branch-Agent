@@ -298,7 +298,7 @@ function LookInto() {
   return (
     <Ctl title={t} sub="Sapling looks into it in your conversation." off={ask ? undefined : "Needs a model set up first."}>
       <input className="inp" aria-label="What went wrong" placeholder="Replies stopped after lunch" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") go(); }} />
-      <Btn sm onClick={go}>Look into it</Btn>
+      <Btn sm disabled={!text.trim()} onClick={go}>Look into it</Btn>
     </Ctl>
   );
 }
