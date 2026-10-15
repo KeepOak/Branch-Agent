@@ -10,7 +10,7 @@ import { comingControls } from "../../glass/coming-registry";
 import { Sidebar, type SidebarProps } from "./Sidebar";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span data-face={label} /> }));
-const update = vi.hoisted(() => ({ value: null as null | { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null } }));
+const update = vi.hoisted(() => ({ value: null as null | { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; ready?: boolean } }));
 vi.mock("../../shell/use-status", () => ({ useUpdate: () => update.value }));
 vi.mock("../../connect/branch-version", async (load) => ({ ...(await load<typeof import("../../connect/branch-version")>()), useBranchVersion: () => "0.4.4" }));
 
@@ -168,6 +168,16 @@ describe("R1 sidebar", () => {
     await click(host.querySelector('[aria-label="New, places and more"]'));
     expect(text(".g-menu-row .g-menu-label")).toEqual(["New conversation", "New Trunk", "New group", "Have Branch make a Trunk", "New automation", "Quick ask", "Collapse the list to faces"]);
     expect(text(".g-menu-row .g-menu-end small")).toEqual(["random character", "Ctrl Shift Space", "Ctrl B"]);
+  });
+
+  it("shows a downloaded update as a calm ready chip, never as installing", async () => {
+    update.value = { current: "0.4.4", latest: "0.5.0", notes: [], installing: false, ready: true, waiting: "Update ready. It applies when no Trunk is working" };
+    const { render } = setup(FULL);
+    await render();
+    const chip = host.querySelector(".r1sb-upd");
+    expect(chip?.getAttribute("aria-label")).toBe("Update ready, 0.5.0");
+    expect(chip?.hasAttribute("data-busy")).toBe(false);
+    expect(chip?.getAttribute("title")).toBe("Update ready. It applies when no Trunk is working");
   });
 
   it("opens the person menu with the update banner on top and no Settings row", async () => {

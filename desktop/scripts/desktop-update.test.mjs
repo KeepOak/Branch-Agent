@@ -452,3 +452,38 @@ test("EXDEV: a new app that never confirms is rolled back without a cross-volume
   assert.equal(await exists(plan.journal), false);
   assert.equal(JSON.parse(await readFile(plan.rejectedFile, "utf8")).version, "0.4.5");
 }));
+
+test("a staged desktop app that was never applied is replaced by a newer release, and its folder is removed", async () => fixture(async ({ cfg, request, install, release }) => {
+  const old = join(cfg.dataDir, "updates", "desktop-old");
+  await mkdir(old, { recursive: true });
+  await writeFile(join(old, "app.asar.staged"), "old staged desktop");
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({ version: "0.4.4", sha256: "c".repeat(64), kind: "asar",
+    staged: join(old, "app.asar.staged"), target: join(install.resourcesDir, "app.asar"), phase: "staged", work: old }));
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), true);
+  const journal = await desktopUpdate.readDesktopJournal(cfg);
+  assert.equal(journal.version, release.version, "the newest release is the one staged");
+  assert.equal(await exists(join(old, "app.asar.staged")), false, "the replaced staged folder is removed");
+  assert.match(await readFile(join(cfg.dataDir, "desktop.log"), "utf8"), /desktop update 0\.4\.4 dropped: replaced by 0\.4\.5/);
+}));
+
+test("a staged desktop app of the same release, or one already applying, is kept as it is", async () => fixture(async ({ cfg, request, install, release }) => {
+  await writeFile(join(cfg.dataDir, "desktop-update-version.txt"), `${release.version}\n`);
+  let requests = 0;
+  const counting = (...args) => { requests++; return request(...args); };
+  const sameRelease = { version: release.version, sha256: "d".repeat(64), kind: "asar", staged: join(cfg.dataDir, "updates", "x", "app.asar.staged"), target: "t", phase: "staged" };
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify(sameRelease));
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, counting, install), false);
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({ ...sameRelease, version: "0.4.4", phase: "applying" }));
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, counting, install), false);
+  assert.equal(requests, 0, "nothing is downloaded over a kept record");
+  assert.equal((await desktopUpdate.readDesktopJournal(cfg)).version, "0.4.4");
+}));
+
+test("a staged desktop app of the same release does not stop the engine and window from staging", async () => fixture(async ({ cfg, request, install, release }) => {
+  await writeFile(join(cfg.dataDir, "desktop-update-version.txt"), `${release.version}\n`);
+  await writeFile(join(cfg.dataDir, "desktop-update-pending.json"), JSON.stringify({ version: release.version, sha256: "e".repeat(64), kind: "asar",
+    staged: join(cfg.dataDir, "updates", "y", "app.asar.staged"), target: "t", phase: "staged" }));
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const status = await updater.readComponentUpdateStatus(cfg);
+  assert.equal(status.componentsPendingVersion, release.version, "the newest engine and window are staged beside the waiting desktop app");
+}));

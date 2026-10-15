@@ -275,7 +275,7 @@ const gatewaySupervisor = createGatewayCrashSupervisor({
     }
   },
 });
-const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate });
+const componentUpdates = createComponentUpdateController(cfg, { stage: stageComponentUpdate, appliesWhenIdle: () => controls.settings().autoApplyUpdates });
 let tray: Tray | undefined;
 /** Said once in Settings when this computer runs the engine inside the app (engine-service takeChildModeNotice). */
 let childModeNotice: string | undefined;
@@ -860,8 +860,9 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
 }
 
 const autoApply = createAutoApplyUpdate({
+  // A staged engine/window pair, or a staged desktop app (it waits for the same idle gap, then relaunches).
   pendingVersion: async () => {
-    const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
+    const version = (await readComponentUpdateStatus(cfg)).pendingVersion;
     return version === withdrawnUpdateVersion ? null : version;
   },
   enabled: () => controls.settings().autoApplyUpdates && !updateLock.held,
@@ -896,6 +897,12 @@ const autoApply = createAutoApplyUpdate({
       streaming: engine.pendingReplies > 0 || Boolean(window?.streaming), unsavedDraftFiles: window?.unsavedDraftFiles ?? false };
   },
   restart: async (version, handoffOnly, drain) => {
+    if ((await readComponentUpdateStatus(cfg)).componentsPendingVersion !== version) {
+      // Only a staged desktop app is left: it has no standby, so it applies by a relaunch at the gap the caller checked.
+      if (handoffOnly) throw new Error("a staged desktop app has no standby to hand off to");
+      await relaunchForDesktopUpdate();
+      return;
+    }
     await swapEngineInPlace(version, false, undefined, handoffOnly, drain);
     if ((await readComponentUpdateStatus(cfg)).currentVersion !== version) throw new Error("The new release was not confirmed");
   },
@@ -913,6 +920,18 @@ const autoApply = createAutoApplyUpdate({
   },
   log,
 });
+
+/**
+ * A staged desktop app applies at an idle gap (the auto-apply check already saw no Trunk working): the helper swaps it
+ * in once this app has exited and relaunches it. The normal quit runs, so the engine stops as on any quit.
+ */
+async function relaunchForDesktopUpdate(): Promise<void> {
+  if (!install) throw new Error("this copy of Branch Agent cannot update itself");
+  const handed = await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), false);
+  if (!handed) throw new Error("the staged desktop update could not be handed to the update helper");
+  log("desktop update staged; handing off to the update helper at an idle gap and quitting");
+  app.quit();
+}
 
 /**
  * A staged engine/window pair waits for the in-place swap; until then the window server keeps serving the build
