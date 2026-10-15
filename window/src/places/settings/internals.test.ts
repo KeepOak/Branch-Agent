@@ -13,6 +13,14 @@ describe("engine internals show only at Technical", () => {
     expect(hasRawKey("CLI updated configuration: agents.entries.main.model.fallbacks[0], plugins.installs")).toBe(true);
     expect(hasRawKey("Changed the night window")).toBe(false);
     expect(hasRawKey("You have Branch 0.4.4.")).toBe(false);
+    // Host names, versions and ordinary sentences with a dot are never keys, so their summaries pass through.
+    for (const plain of ["Signed in to keepoak.com", "Fetched example.org", "Updated to 0.4.4.", "Moved tools.dev to agents.io", "Done. Next step."]) {
+      expect(hasRawKey(plain), plain).toBe(false);
+    }
+    // Real settings paths, with an index or a profile id, are gated.
+    expect(hasRawKey("Changed agents.entries.x.model.fallbacks[0]")).toBe(true);
+    expect(hasRawKey("Configuration updated: auth.profiles.anthropic:someone@example.com, plugins.installs")).toBe(true);
+    expect(hasRawKey("Set update.channel")).toBe(true);
   });
 
   it("does not take a file name for a settings key", () => {

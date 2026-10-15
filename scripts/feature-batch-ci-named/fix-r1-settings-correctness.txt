@@ -1,6 +1,8 @@
 window:src/connect/branch-version.test.tsx
+window:src/connect/desktop-component-updates.test.tsx
 window:src/places-nav/SettingsFrame.test.tsx
 window:src/places/settings/internals.test.ts
+window:src/places/settings/set2/set2.test.tsx
 window:src/screens/chatapps/ChatApps.test.tsx
 window:src/screens/chatapps/More.test.tsx
 window:src/screens/frame/R1Window.test.tsx

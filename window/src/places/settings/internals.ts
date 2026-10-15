@@ -13,8 +13,18 @@ export function showsInternals(level: number | (typeof WORDS)[number]): boolean 
   return (typeof level === "number" ? level : WORDS.indexOf(level)) >= INTERNALS_FROM;
 }
 
-/** A raw settings key such as messages.statusReactions.enabled or agents.entries.main.model.fallbacks[0]. */
-const RAW_KEY = /\b[a-z][\w-]*(?:\.[\w*:@-]+|\[\d+\])+/g;
+/** The top-level sections of Branch's settings file: a dotted path starting with one of them is a settings key. */
+const CONFIG_ROOTS = [
+  "agents", "approvals", "auth", "bindings", "browser", "canvasHost", "channels", "commands", "cron", "diagnostics", "discovery", "env",
+  "gateway", "hooks", "logging", "mcp", "memory", "messages", "meta", "models", "nodeHost", "plugins", "session", "skills",
+  "talk", "tools", "tts", "ui", "update", "wizard",
+];
+/** A raw settings key: messages.statusReactions.enabled, agents.entries.main.model.fallbacks[0] or auth.profiles.anthropic:you.
+ *  A section name must start it, so host names (keepoak.com, example.org) and versions (0.4.4) are never one. */
+const RAW_KEY = new RegExp(`(?<![\\w.])(?:${CONFIG_ROOTS.join("|")})(?:\\.[\\w*-]+)+(?:\\[\\d+\\]|:[^\\s,]+)?`);
+
+/** A web address ending, so "tools.dev" or "agents.io" stays a host name, not a key. */
+const HOST_END = /\.(?:com|org|net|io|dev|ai|app|co|uk|de|fr|eu|us)$/;
 
 /** File extensions that look like a last key segment (memory.md, session.json) but name a file a person reads. */
 const FILE_EXTENSIONS = new Set([
@@ -30,9 +40,15 @@ const isFileName = (token: string): boolean => {
   return dot > 0 && !token.endsWith("]") && FILE_EXTENSIONS.has(token.slice(dot + 1));
 };
 
-/** Whether a line names a raw settings key. Plain file names (memory.md, skills.yaml) are not keys. */
-export const hasRawKey = (text: string): boolean =>
-  [...text.matchAll(RAW_KEY)].some((match) => !isFileName(match[0]));
+/** Whether a line names a raw settings key. Host names and plain file names (memory.md, skills.yaml) are not keys. */
+export const hasRawKey = (text: string): boolean => {
+  const all = new RegExp(RAW_KEY.source, "g");
+  for (const [found] of text.matchAll(all)) {
+    if (isFileName(found)) continue;
+    if (found.split(".").length > 2 || !HOST_END.test(found)) return true;
+  }
+  return false;
+};
 
 /** A Branch version as a person reads it ("0.4.4"), with its build hash only at Technical. */
 export function versionLabel(version: string, level: number | (typeof WORDS)[number]): string {
