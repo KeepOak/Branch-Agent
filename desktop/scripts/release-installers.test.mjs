@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -234,7 +234,10 @@ test("Windows: the built launcher has no console, starts the folder current.txt 
     assert.equal(run.status, 0);
     const ran = join(root, "app-0.4.5-bbbbbb", "ran.txt");
     for (const end = Date.now() + 10_000; !existsSync(ran) && Date.now() < end;) spawnSync(process.execPath, ["-e", "setTimeout(() => {}, 100)"]);
-    assert.equal(readFileSync(ran, "utf8"), [join(root, "app-0.4.5-bbbbbb"), "--hidden", "two words"].join("|"));
+    // The runner may hand back the 8.3 short form of the temp folder (C:\\Users\\RUNNER~1\\...), so compare real paths.
+    const [cwd, ...args] = readFileSync(ran, "utf8").split("|");
+    assert.equal(realpathSync.native(cwd).toLowerCase(), realpathSync.native(join(root, "app-0.4.5-bbbbbb")).toLowerCase());
+    assert.deepEqual(args, ["--hidden", "two words"]);
   } finally { rmSync(work, { recursive: true, force: true }); }
 });
 
