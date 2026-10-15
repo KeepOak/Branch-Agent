@@ -154,3 +154,56 @@ describe("Usage report that never counts", () => {
     expect(exportButton()?.disabled).toBe(true);
   });
 });
+
+describe("Coding apps, own accounts, browser profiles and Check what works that never answer", () => {
+  it("Coding apps stop looking and say they could not check", async () => {
+    const { CodingApps } = await import("./set1/coding-apps");
+    await act(async () => root.render(<CodingApps engine={engineWithSilent(["branch.setup.detect"], { "usage.status": {}, "config.get": { hash: "h", valid: true, config: {} } })} />));
+    await flush();
+    expect(textNow()).toContain("Looking…");
+    await act(async () => { vi.advanceTimersByTime(STALL_MS); });
+    await flush();
+    expect(textNow()).not.toContain("Looking…");
+    expect(textNow()).toContain("Couldn’t check");
+  });
+
+  it("Your own accounts say so when the list never answers", async () => {
+    const { OwnAccounts } = await import("./set1/own-accounts");
+    await act(async () => root.render(<OwnAccounts engine={engineWithSilent(["users.listModelAccounts"])} />));
+    await flush();
+    expect(textNow()).not.toContain(STALL_TEXT);
+    await act(async () => { vi.advanceTimersByTime(STALL_MS); });
+    await flush();
+    expect(textNow()).toContain(STALL_TEXT);
+  });
+
+  it("Browser profiles stop reading the profiles and show the stall line", async () => {
+    const { ComputerBrowserPage } = await import("./set2/computer-parts");
+    const engine = engineWithSilent(["browser.request"], { "config.get": { hash: "h", valid: true, config: {} } });
+    await act(async () => root.render(<ComputerBrowserPage page="computer-browser" title="Browser & screen" level="advanced" engine={engine} />));
+    await flush();
+    const manage = [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Manage");
+    await act(async () => { manage?.click(); });
+    await flush();
+    expect(document.body.textContent).toContain("Reading the profiles…");
+    await act(async () => { vi.advanceTimersByTime(STALL_MS); });
+    await flush();
+    expect(document.body.textContent).not.toContain("Reading the profiles…");
+    expect(document.body.textContent).toContain(STALL_TEXT);
+  });
+
+  it("Check what works stops checking and shows the stall line", async () => {
+    const { ComputerPage } = await import("./set2/computer");
+    const engine = engineWithSilent(["computer.status"], { "config.get": { hash: "h", valid: true, config: {} } });
+    await act(async () => root.render(<ComputerPage page="computer" title="Computer & browser" level="advanced" engine={engine} />));
+    await flush();
+    const check = [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Check");
+    await act(async () => { check?.click(); });
+    await flush();
+    expect(document.body.textContent).toContain("Checking…");
+    await act(async () => { vi.advanceTimersByTime(STALL_MS); });
+    await flush();
+    expect(document.body.textContent).not.toContain("Checking…");
+    expect(document.body.textContent).toContain(STALL_TEXT);
+  });
+});

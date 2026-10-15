@@ -5,7 +5,8 @@ import { CheckedAt, useCheckedAt } from "../checked-at";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import type { WindowEngine } from "../../../connect/engine";
-import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, useLevel, type RowEntry } from "../kit";
+import { showsInternals } from "../internals";
 import { errorText, list } from "../adapter";
 import { STALL_TEXT, stallAfter } from "../stall";
 import { Dialog } from "../../../shell/Dialog";
@@ -843,6 +844,7 @@ function Keeping({ engine, lv }: { engine: WindowEngine; lv: number }) {
 
 /** Manage conversations: sessions.list (active or archived), several deleted with sessions.delete. */
 function ManageDialog({ engine, onClose }: { engine: WindowEngine; onClose: () => void }) {
+  const level = useLevel();
   const [arch, setArch] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [ask, setAsk] = useState<"" | "some" | "archived">("");
@@ -875,7 +877,7 @@ function ManageDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =
           <div className="rows">{rows.map((r) => (
             <label className="prow" key={str(r.key)}>
               <input type="checkbox" checked={sel.has(str(r.key))} onChange={(e) => toggle(str(r.key), e.target.checked)} />
-              <span className="grow"><b>{str(r.label) || str(r.derivedTitle) || str(r.displayName) || str(r.key)}</b><small>{when(r.updatedAt)}{r.archived === true ? " · archived" : ""}</small></span>
+              <span className="grow"><b>{str(r.label) || str(r.derivedTitle) || str(r.displayName) || (showsInternals(level) ? str(r.key) : "Conversation")}</b><small>{when(r.updatedAt)}{r.archived === true ? " · archived" : ""}</small></span>
             </label>
           ))}</div>
         </>
@@ -897,8 +899,8 @@ const SUITES: [string, string][] = [
   ["Check a change by running it", "Builds, tests and the page itself, before and after · Per change · Evidence · passes at 90%"],
 ];
 const BENCH: [string, string][] = [
-  ["Terminal tasks", "Terminal-Bench style tasks, failures sorted"], ["Coding exercises", "Exercises in many languages, in throwaway folders"],
-  ["Desktop tasks", "OSWorld, in virtual machines"], ["Web tasks", "WebVoyager"], ["Research questions", "FRAMES, graded by a judge"], ["Public benchmarks", "Several suites, run head to head"],
+  ["Terminal tasks", "Shell tasks, with the failures sorted"], ["Coding exercises", "Exercises in many languages, in throwaway folders"],
+  ["Desktop tasks", "Whole-desktop tasks, run in virtual machines"], ["Web tasks", "Browsing tasks on real sites"], ["Research questions", "Questions with checked answers, graded by a judge"], ["Public benchmarks", "Several suites, run head to head"],
 ];
 const EVAL_ROWS: [string, string, string][] = [
   ["Test sets", "Make from conversations", "Inputs and expected answers, versioned."], ["Write tests for me", "Start", "Reads what a Trunk does, writes scenarios, and keeps only the ones proved to work."],

@@ -557,7 +557,7 @@ export function Widgets({ config }: Ctx) {
   const mode = str(config.get("gateway.controlUi.embedSandbox")) || "scripts";
   return (
     <Sec title="Widgets">
-      <Ctl title="What widgets may run" sub="Choose what a widget’s sealed frame may access." help="Widgets run their own buttons in a sealed frame that can’t reach this page. Nothing: no scripts, drawing only. Trusted: also same-site privileges, for pages that need them.">
+      <Ctl title="What widgets may run" sub="Choose what a widget’s safe frame may access." help="Widgets run their own buttons in a safe frame that can’t reach this page. Nothing: no scripts, drawing only. Trusted: also same-site privileges, for pages that need them.">
         <Seg label="What widgets may run" value={mode} disabled={config.loading} onChange={(v) => void config.set("gateway.controlUi.embedSandbox", v === "scripts" ? null : v)} options={[{ id: "strict", label: "Nothing" }, { id: "scripts", label: "Their own scripts" }, { id: "trusted", label: "Trusted" }]} />
       </Ctl>
       <Ctl title="Widgets may load outside pages" sub="Lets a widget frame show any outside http or https page." help="Lets a widget frame show any outside http or https page. Off until you choose: a widget could show any website inside Branch.">
@@ -569,7 +569,7 @@ export function Widgets({ config }: Ctx) {
 
 const OTHER_OFF: OffRow[] = [
   ["Share tools with other assistants", "Only the tools you pick are listed or callable, as a tool server or to other agents. Off until you choose: nothing is shared.", ne("shared tool list"), "sw"],
-  ["Share a skill without showing it", "Others get its name, its form and its answers, never its instructions; trust tiers decide who, and a misuse revokes it.", ne("sealed skill sharing"), "sw"],
+  ["Share a skill without showing it", "Others get its name, its form and its answers, never its instructions; trust tiers decide who, and a misuse revokes it.", ne("safe skill sharing"), "sw"],
   ["Approvals show in the app that called", "When another app uses Branch’s tools, a risky step asks there.", ne("approval forwarding"), "sw"],
 ];
 rowsOf("Other programs and assistants", ["A chat address other apps understand", "Its address", ...titles(OTHER_OFF)]);
