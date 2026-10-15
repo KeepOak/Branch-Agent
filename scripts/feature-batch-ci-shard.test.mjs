@@ -68,6 +68,23 @@ test('the workflow takes its matrix from the planner, and every planned shard fi
   }
 });
 
+test('the OS-specific macOS workflow takes its shard count from the planner, not a fixed list', () => {
+  // A fixed 16-shard macOS matrix planned an 810 s slowest job once the named lists grew, and its shards were
+  // cancelled at the 15-minute cap. The plan job filters the main-push matrix to macOS, so both use one count.
+  const yaml = readFileSync(new URL('../.github/workflows/os-specific-checks.yml', import.meta.url), 'utf8');
+  const named = yaml.slice(yaml.indexOf('\n  named:'), yaml.indexOf('\n  capabilities:'));
+  assert.match(named, /timeout-minutes: 15/);
+  assert.match(named, /needs: plan/);
+  assert.match(named, /matrix: \$\{\{ fromJSON\(needs\.plan\.outputs\.matrix\) \}\}/);
+  assert.match(named, /FEATURE_SHARD: \$\{\{ matrix\.shard \}\}\n/);
+  assert.doesNotMatch(named, /shard: \[/);
+  assert.match(yaml, /node base\/scripts\/feature-batch-ci-matrix\.mjs push --named-dir/);
+  assert.match(yaml, /select\(\.os == "macos-latest"\)/);
+  const macos = featureBatchMatrix({ event: 'push' }).include.filter(row => row.os === 'macos-latest');
+  assert.equal(macos.length, resolvedShardCounts().macos);
+  assert.deepEqual(overBudgetShards('macos', macos.length), []);
+});
+
 test('pull requests start every planned shard in one wave; main pushes keep max-parallel 6', () => {
   const yaml = readFileSync(new URL('../.github/workflows/feature-batch-checks.yml', import.meta.url), 'utf8');
   const cap = yaml.match(/max-parallel: \$\{\{ github\.event_name == 'pull_request' && (\d+) \|\| (\d+) \}\}/);

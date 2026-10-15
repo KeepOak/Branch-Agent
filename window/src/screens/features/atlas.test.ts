@@ -66,7 +66,8 @@ describe("flatten", () => {
     const flat = flatten(rows, { query: "", filter: "all", technical: false });
     expect(flat.items.map((i) => i.key)).toEqual(["k:Tools and connections", "a:tools", "T-1", "T-2", "k:Conversations and channels", "a:voice", "V-1"]);
     expect(flat.hidden).toBe(1);
-    expect(countLine(flat, 4)).toBe("3 of 4 features · 1 more at the Technical level");
+    expect(countLine(flat, 4, countsOf(rows), false)).toBe("3 of 4 features · 1 more at the Technical level");
+    expect(countLine(flat, 4, countsOf(rows), true)).toMatch(/^In Branch \d+ · Coming \d+ · 1 more at the Technical level$/);
     const tech = flatten(rows, { query: "", filter: "all", technical: true });
     expect(tech.hidden).toBe(0);
     expect(tech.items.some((i) => i.key === "a:ops")).toBe(true);

@@ -305,7 +305,8 @@ export function comingUp(jobs: unknown[], now = Date.now(), trunkName?: (id?: st
     .map((j) => ({ name: plainJobName(j, trunkName), when: dueWords(num(rec(j.state).nextRunAtMs), now) }));
 }
 
-export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; statusMessage?: string };
+/** `ready`: the update is downloaded and checked, and applies by itself (`waiting` says when). It never spins. */
+export type UpdateInfo = { current: string; latest: string | null; notes: string[]; installing: boolean; waiting: string | null; ready?: boolean; statusMessage?: string };
 
 /** "3 days, 4 hours" (§4.9.3 "Up <uptime>"). */
 export function uptimeWords(ms: number): string {

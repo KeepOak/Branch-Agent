@@ -68,9 +68,11 @@ export async function startGroupChat(engine: WindowEngine, p: { name: string; tr
   return key;
 }
 
-function Chip({ label, on, disabled, onClick }: { label: string; on: boolean; disabled?: string; onClick: () => void }) {
+/** A people chip toggles (aria-pressed). A Trunk chip is one choice of several: a radio, so the chosen Trunk reads as checked. */
+function Chip({ label, on, disabled, onClick, radio = false }: { label: string; on: boolean; disabled?: string; onClick: () => void; radio?: boolean }) {
+  const state = radio ? { role: "radio", "aria-checked": on } : { "aria-pressed": on };
   return (
-    <button type="button" className="rm-chip" aria-pressed={on} disabled={Boolean(disabled)} title={shownWhy(disabled)} onClick={onClick}>
+    <button type="button" className="rm-chip" {...state} disabled={Boolean(disabled)} title={shownWhy(disabled)} onClick={onClick}>
       {label}
     </button>
   );
@@ -150,7 +152,7 @@ export function NewGroupChat({ engine, onClose, onOpen, prefill }: { engine: Win
         <>
           <div className="rm-fld">
             <span>Trunk</span>
-            <span className="rm-chips">{choices.trunks.map((t) => <Chip key={t.id} label={t.name} on={t.id === picked} disabled={lockedReason} onClick={() => setTrunk(t.id)} />)}</span>
+            <span className="rm-chips" role="radiogroup" aria-label="Trunk">{choices.trunks.map((t) => <Chip key={t.id} label={t.name} on={t.id === picked} radio disabled={lockedReason} onClick={() => setTrunk(t.id)} />)}</span>
             {choices.trunks.length > 1 ? <small className="rm-hint">{GROUP_REASONS.secondTrunk}</small> : null}
           </div>
           <div className="rm-fld">

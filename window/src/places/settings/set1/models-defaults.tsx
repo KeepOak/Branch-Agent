@@ -6,7 +6,6 @@ import { shownWhy } from "../../../shell/shown-why";
 import { record, text, visible } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, Empty, Hint, LinkBtn, Pick, Sec, Seg, Switch, useSaveRunner, type Opt } from "../kit";
-import { openPlace } from "../set2/common";
 import { Logo } from "./service";
 import { connectionsOf, fallbacksOf, modelOpts, refOf, type Connection, type ModelsCtx } from "./models-data";
 
@@ -128,8 +127,8 @@ function TrunkFallbackNote({ m }: { m: ModelsCtx }) {
       <ul aria-label="Trunks with their own model">
         {trunks.map(([id, entry]) => (
           <li key={id}><LinkBtn onClick={() => {
-            openPlace("people");
-            window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: id, view: "edit" } }));
+            // The Trunk's own model lives on its "What it may do" tab; the editor opens over Models, not People.
+            window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: id, view: "edit", tab: "may" } }));
           }}>{visible(record(record(entry).identity).name || record(entry).name || id)}</LinkBtn></li>
         ))}
       </ul>

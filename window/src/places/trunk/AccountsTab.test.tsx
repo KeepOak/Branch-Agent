@@ -86,11 +86,11 @@ describe("Trunk Accounts", () => {
     let useOwnerAccounts: boolean | undefined;
     const patches: unknown[] = [];
     const request = vi.fn(async (method: string, params: Record<string, unknown>) => {
-      if (method === "config.get") return { hash: `h${patches.length}`, valid: true, config: { agents: { entries: { "mac-builder-1": useOwnerAccounts === undefined ? {} : { useOwnerAccounts } } } } };
+      if (method === "config.get") return { hash: `h${patches.length}`, valid: true, config: { agents: { entries: { "research-desk": useOwnerAccounts === undefined ? {} : { useOwnerAccounts } } } } };
       if (method === "config.patch") {
         const patch = JSON.parse(params.raw as string);
         patches.push(patch);
-        const value = patch.agents.entries["mac-builder-1"].useOwnerAccounts;
+        const value = patch.agents.entries["research-desk"].useOwnerAccounts;
         useOwnerAccounts = value === null ? undefined : value;
         return { ok: true };
       }
@@ -98,7 +98,7 @@ describe("Trunk Accounts", () => {
       return {};
     });
     const engine = { request, scopes: ["operator.admin"] } as unknown as WindowEngine;
-    await act(async () => root.render(<AccountsTab engine={engine} agentId="mac-builder-1" />));
+    await act(async () => root.render(<AccountsTab engine={engine} agentId="research-desk" />));
     const alert = host.querySelector('[data-testid="no-account"]')!;
     expect(alert.getAttribute("role")).toBe("alert");
     expect(alert.textContent).toContain("no model account");
@@ -112,11 +112,11 @@ describe("Trunk Accounts", () => {
     expect(toggle().checked).toBe(true);
     expect(toggle().disabled).toBe(false);
     await act(async () => toggle().click());
-    expect(patches[0]).toEqual({ agents: { entries: { "mac-builder-1": { useOwnerAccounts: false } } } });
+    expect(patches[0]).toEqual({ agents: { entries: { "research-desk": { useOwnerAccounts: false } } } });
     expect(request).toHaveBeenCalledWith("config.patch", expect.objectContaining({ baseHash: "h0" }));
     expect(toggle().checked).toBe(false);
     await act(async () => toggle().click());
-    expect(patches[1]).toEqual({ agents: { entries: { "mac-builder-1": { useOwnerAccounts: null } } } });
+    expect(patches[1]).toEqual({ agents: { entries: { "research-desk": { useOwnerAccounts: null } } } });
     expect(toggle().checked).toBe(true);
   });
 
