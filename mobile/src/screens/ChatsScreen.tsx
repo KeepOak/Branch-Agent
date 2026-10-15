@@ -7,6 +7,7 @@ import { chatTime } from '../chats/chatTime';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { OfflineBanner } from '../ui/OfflineBanner';
 import { useNow } from '../ui/useNow';
 
 const AVATAR = 52;
@@ -425,14 +426,7 @@ export function ChatsScreen({
           {messages.note}
         </ThemedText>
       ) : null}
-      {online ? null : (
-        <View testID="chats-offline" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, backgroundColor: color.warnTint, borderRadius: radius.md, padding: space.md }}>
-          <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: color.warn }} />
-          <ThemedText variant="footnote" tone="ink2" style={{ flex: 1 }}>
-            Reconnecting to your computer… These chats may be out of date.
-          </ThemedText>
-        </View>
-      )}
+      {online ? null : <OfflineBanner testID="chats-offline" message="Reconnecting to your computer… These chats may be out of date." />}
     </View>
   );
 

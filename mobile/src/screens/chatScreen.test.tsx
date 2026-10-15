@@ -145,6 +145,7 @@ describe('chat screen', () => {
   it('waits for the computer before sending, and keeps what you typed', async () => {
     const { conversation, session } = await renderChat(false, (e) => e.setHistory(KEY, history));
     expect(screen.getByTestId('chat-status')).toHaveTextContent('Reconnecting…');
+    expect(screen.getByTestId('chat-offline')).toHaveTextContent('Reconnecting to your computer… This chat may be out of date.');
     expect(screen.getByTestId('composer')).toHaveProp('placeholder', 'Waiting for your computer…');
     await fireEvent.changeText(screen.getByTestId('composer'), 'Later please');
     expect(screen.getByTestId('send')).toBeDisabled();
