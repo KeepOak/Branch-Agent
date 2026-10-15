@@ -119,6 +119,23 @@ it("restores the last tab after closing and reopening", async () => {
   expect(tab("Library").getAttribute("aria-selected")).toBe("true");
 });
 
+it("opens the details panel for a grafted agent's contact too, with its name and only Details", async () => {
+  localStorage.setItem("branch.route", JSON.stringify({ kind: "chat", key: "a2a:studio" }));
+  await act(async () => root.render(<R1Window session={session("agent:ledger:main").session} />));
+  await settle();
+  expect(panel()).toBeNull();
+  await act(async () => pill().click());
+  await settle();
+  expect(panel()).not.toBeNull();
+  expect(panel()!.closest(".r1-pane-slot")).not.toBeNull();
+  expect(panel()!.getAttribute("data-kind")).toBe("grafted");
+  expect(tabs().map((b) => b.textContent)).toEqual(["Details"]);
+  expect(panel()!.querySelector('[data-testid="details-grafted"]')?.textContent).toContain("is a grafted agent. It runs outside Branch");
+  expect(panel()!.textContent).not.toContain("Customize");
+  await act(async () => pill().click());
+  expect(panel()).toBeNull();
+});
+
 it("closes on Escape and hands focus back to the pill", async () => {
   data.rows = [{ key: "agent:ledger:main", agentId: "ledger", title: "Ledger", isMain: true, kind: "trunk" }];
   await act(async () => root.render(<R1Window session={session("agent:ledger:main").session} />));

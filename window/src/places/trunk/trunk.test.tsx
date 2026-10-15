@@ -128,6 +128,37 @@ describe("Trunk editor", () => {
     await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="advanced" tab="may" onClose={() => {}} />);
     expect(document.body.textContent).toContain("Model for decisions");
   });
+  it("groups each set of look choices, the chosen one pressed, so the choice already made reads as chosen", async () => {
+    await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="regular" onClose={() => {}} />);
+    const group = (label: string) => document.querySelector<HTMLElement>(`[role="group"][aria-label="${label}"]`);
+    for (const label of ["Looks", "Colour", "Shape", "Eyes"]) expect(group(label)).not.toBeNull();
+    expect(group("Looks")!.querySelector('[aria-label="Classic pebble"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(group("Shape")!.querySelector('[aria-label="Circle"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(group("Colour")!.querySelector('[aria-label="Colour #2F8C86"]')?.getAttribute("aria-pressed")).toBe("true");
+    await click(group("Shape")!.querySelector('[aria-label="Leaf"]'));
+    expect(group("Shape")!.querySelector('[aria-label="Leaf"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(group("Shape")!.querySelector('[aria-label="Circle"]')?.getAttribute("aria-pressed")).toBe("false");
+  });
+  it("Shuffle redraws the face with a new look and says which", async () => {
+    await mount(<TrunkEditor engine={engine(fake())} agentId="oak" level="regular" onClose={() => {}} />);
+    const chosen = () => [...document.querySelectorAll<HTMLElement>('.tk-swatches [aria-pressed="true"], .tk-shapes [aria-pressed="true"], .tk-seg [aria-pressed="true"]')].map((b) => b.getAttribute("aria-label") ?? b.textContent).join("|");
+    const said = () => document.querySelector('[data-testid="trunk-shuffled"]');
+    const was = chosen();
+    expect(said()?.getAttribute("role")).toBe("status");
+    expect(said()?.textContent).toBe("");
+    await click(byText("Shuffle"));
+    expect(chosen()).not.toBe(was);
+    expect(said()?.textContent).toMatch(/^Shuffled: (Circle|Stone|Leaf|Acorn|Shield), (round|wide|sleepy) eyes, colour #[0-9A-F]{6}\.$/);
+    expect(document.querySelector(".tk-dialog, [role=dialog]")?.textContent).toContain(said()!.textContent!);
+    // A Trunk wearing a character shuffles to another character, named the same way.
+    await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
+    await mount(<TrunkEditor engine={engine(fake())} agentId="birch" level="regular" onClose={() => {}} />);
+    const look = () => document.querySelector('.tk-looks [aria-pressed="true"]')?.getAttribute("aria-label");
+    expect(look()).toBe("Ember");
+    await click(byText("Shuffle"));
+    expect(look()).not.toBe("Ember");
+    expect(said()?.textContent).toBe(`Shuffled: ${look()!.replace(/, new$/, "")}.`);
+  });
   it("keeps Save off for a window without the owner's rights", async () => {
     await mount(<TrunkEditor engine={engine(fake(), [])} agentId="oak" level="regular" onClose={() => {}} />);
     await type(document.querySelectorAll<HTMLInputElement>(".tk-split input")[0], "Elm");

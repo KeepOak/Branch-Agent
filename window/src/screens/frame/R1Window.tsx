@@ -424,9 +424,10 @@ export function R1Window({ session }: { session: SaplingSession }) {
     window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: agentTrunkId, view } }));
   };
   // The pill docks the details panel: a Trunk's Details, Library and Computer, or a group's Members (GOD queue item 3).
+  // A grafted agent's contact (a2a:<peer>) opens it too: the pill names that agent, as the Agent details popover did.
   const group = Boolean(room.header && chat);
-  const details = agentOpen && chat ? <R1DetailsPanel key={snapshot.sessionKey ?? "none"} session={session} engine={engine} ready={ready} kind={group ? "group" : "trunk"} name={name}
-    face={group ? room.header!.faces(84) : graftedContactOf(snapshot.sessionKey) ? <GraftedFace name={name} size={84} /> : <Face size={84} label={name} />}
+  const details = agentOpen && route.kind === "chat" ? <R1DetailsPanel key={graftedKey ?? snapshot.sessionKey ?? "none"} session={session} engine={engine} ready={ready} kind={group ? "group" : graftedKey ? "grafted" : "trunk"} name={name}
+    face={group ? room.header!.faces(84) : graftedKey || graftedContactOf(snapshot.sessionKey) ? <GraftedFace name={name} size={84} /> : <Face size={84} label={name} />}
     line={group ? room.header!.line : agentLine} agentId={group ? undefined : agentTrunkId} roomId={group ? roomIdOf(snapshot.sessionKey ?? "") || null : undefined} memberNames={room.members}
     trunks={trunks.list.map(trunk => ({ id: trunk.id, name: trunk.name }))} gatewayUrl={session.gatewayUrl} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
     onClose={closeAgent} onOpenStage={mode => { setAgentOpen(false); toggleStage(mode); }} onPip={small => { setAgentOpen(false); setPip(small); }} onChooseComputer={() => navigate({ kind: "settings", page: "devices" })} openConversation={openConversation}
@@ -451,8 +452,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {tour ? <R1Tour kind={tour} defaultName={conversations.rows.find(row => row.key === snapshot.mainKey)?.title || "your Trunk"} onClose={() => setTour(null)} /> : null}
     {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
     <div className="r1-ob-behind" inert={behind} aria-hidden={behind || undefined} style={{ display: "contents", visibility: behind ? "hidden" : undefined }}>
-    <Frame sidebar={sidebar} main={shown} freeLayout={threads.layout === "free"} topics={chat ? threads.column ?? undefined : undefined} beside={talk.beside} pane={agentOpen && chat ? details : pane && ready && chat ? <R1SidePane key={snapshot.sessionKey ?? "none"} engine={engine} name={name} title={name || "Conversation"}
-      blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={setNotice} onReload={() => void session.reload()} /> : undefined} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
+    <Frame sidebar={sidebar} main={shown} freeLayout={threads.layout === "free"} topics={chat ? threads.column ?? undefined : undefined} beside={talk.beside} pane={details ?? (pane && ready && chat ? <R1SidePane key={snapshot.sessionKey ?? "none"} engine={engine} name={name} title={name || "Conversation"}
+      blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={setNotice} onReload={() => void session.reload()} /> : undefined)} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: room.header && chat ? room.header.faces(24) : graftedKey || graftedContactOf(snapshot.sessionKey) ? <GraftedFace name={name} size={24} /> : <Face size={24} label={name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => { setPane(null); setAgentOpen(open => !open); } : undefined,
       right: route.kind === "chat" ? [

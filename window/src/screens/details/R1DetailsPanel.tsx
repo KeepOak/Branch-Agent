@@ -1,7 +1,8 @@
 // The R1 details panel (GOD queue item 3): clicking the conversation header pill docks it at the right, as Grok Bot
 // shows a bot's details. A big face, the name and its line, the Trunk's own actions, then tabs. A Trunk has Details (its
 // routines, each with an on/off switch), Library (the files it made) and Computer (its live screen, or a calm Asleep
-// state when there is no screen). A group has Members, with Add and Remove. Every tab re-hosts what the window already
+// state when there is no screen). A group has Members, with Add and Remove. A grafted agent (an outside agent connected
+// as a contact) has only Details, which says that its routines, files and computer stay outside Branch. Every tab re-hosts what the window already
 // has: the profile's Automations list (cron.list / cron.update), Library's made files (sessions.list + artifacts.list),
 // the Classic computer stage, and the rooms.members.add / rooms.members.remove calls the sidebar's group drop makes.
 // The panel remembers its last tab per kind; Escape or × closes it and the frame hands focus back to the pill.
@@ -21,9 +22,9 @@ import { listComputers } from "../../stage/computers";
 import type { Block } from "../../thread/model";
 import "./r1-details.css";
 
-export type DetailsKind = "trunk" | "group";
+export type DetailsKind = "trunk" | "group" | "grafted";
 export type DetailsTab = "Details" | "Library" | "Computer" | "Members";
-export const DETAILS_TABS: Readonly<Record<DetailsKind, readonly DetailsTab[]>> = { trunk: ["Details", "Library", "Computer"], group: ["Members"] };
+export const DETAILS_TABS: Readonly<Record<DetailsKind, readonly DetailsTab[]>> = { trunk: ["Details", "Library", "Computer"], group: ["Members"], grafted: ["Details"] };
 /** Where the last tab is kept, one key per kind of panel. */
 export const detailsTabKey = (kind: DetailsKind) => `branch.r1.details.${kind}`;
 
@@ -86,9 +87,14 @@ export function R1DetailsPanel(props: Props) {
       {tabs.map((t) => <button key={t} type="button" role="tab" data-local="" id={`r1-details-tab-${t}`} aria-selected={shown === t} aria-controls="r1-details-body" onClick={() => choose(t)}>{t}</button>)}
     </div>
     <div className="r1-details-body" id="r1-details-body" role="tabpanel" aria-labelledby={`r1-details-tab-${shown}`}>
-      {shown === "Details" ? <RoutinesTab {...props} /> : shown === "Library" ? <LibraryTab {...props} /> : shown === "Computer" ? <ComputerTab {...props} /> : <MembersTab {...props} />}
+      {shown === "Details" ? kind === "grafted" ? <GraftedTab name={name} /> : <RoutinesTab {...props} /> : shown === "Library" ? <LibraryTab {...props} /> : shown === "Computer" ? <ComputerTab {...props} /> : <MembersTab {...props} />}
     </div>
   </aside>;
+}
+
+/** A grafted agent's Details: it runs outside Branch, so nothing of its own is listed here. */
+function GraftedTab({ name }: { name: string }) {
+  return <p className="g-label r1-details-empty" data-testid="details-grafted">{name || "This agent"} is a grafted agent. It runs outside Branch, so its routines, files and computer stay with it.</p>;
 }
 
 /** Details: its routines, the same list and switch as its profile (cron.list, cron.update). */
