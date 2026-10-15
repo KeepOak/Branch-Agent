@@ -44,7 +44,7 @@ function useTopics(session: SaplingSession, ready: boolean, contactId: string | 
       } catch (error) { if (live) console.warn("contacts.topics failed", error); }
     };
     void load();
-    const loadSoon = coalesce(() => void load(), 1_000);
+    const loadSoon = coalesce(() => void load(), 3_000);
     const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") loadSoon(); });
     return () => { live = false; off(); loadSoon.cancel(); };
   }, [session, ready, contactId, state.tick]);
