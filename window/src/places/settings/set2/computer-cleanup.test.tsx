@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,6 +35,15 @@ describe("Settings › Computer & browser › Build folders", () => {
     await show(engine);
     expect(request).toHaveBeenCalledWith("buildWorktrees.status", {});
     expect(line()?.textContent).toMatch(/^Freed 6\.2 GB, removed 5 worktrees · today /);
+  });
+
+  it("puts the line on a small frosted pill (item 48 glass model)", async () => {
+    const { engine } = engineWith({ "node.list": { nodes: [] }, "buildWorktrees.status": { enabled: true, last: null } });
+    await show(engine);
+    expect(line()?.className).toBe("s2-build-line");
+    const css = readFileSync("src/places/settings/set2/computer-cleanup.css", "utf8").replace(/\s+/g, " ");
+    expect(css).toContain("background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge);");
+    expect(css).toContain("width: fit-content;");
   });
 
   it("says nothing ran yet before the first cleanup", async () => {

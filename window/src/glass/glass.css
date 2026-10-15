@@ -201,3 +201,12 @@
 :root:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) :is(button, a[href], [role=menuitem]):not([role=switch], [data-solid]) { background: transparent; box-shadow: none; }
 :root:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) :is(button, a[href], [role=menuitem]):is(:hover, :focus-visible, [aria-checked="true"], [aria-current="true"]):not([role=switch]) { background: color-mix(in srgb, var(--ink) 9%, transparent); }
 :root[data-transparency="reduce"]:not(#sg#sg#sg#sg) .pop:is(.menu, .panel) { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+/* Threads as a column (the side list): one rounded glass panel, plain header words, plain rows. The pill shape above is for
+   the tab bar; on a column it stretched into a tall capsule with a box around every row (owner, 2026-10-15). */
+:root:not(#sg#sg#sg#sg) .r1-topic-host > .topicsT5.lay-column { border-radius: 18px; padding: 6px; align-items: stretch; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpHeadT5 :is(b, small) { background: none; box-shadow: none; border: 0; padding: 0; border-radius: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpHeadT5 small { color: var(--ink-3); font-weight: 400; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpRowT5 { background: transparent; box-shadow: none; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpRowT5:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpRowT5.curT5 { background: color-mix(in srgb, var(--ink) 12%, transparent); }
+:root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpRowT5 :is(button, .tpGoT5) { background: transparent; box-shadow: none; border: 0; }

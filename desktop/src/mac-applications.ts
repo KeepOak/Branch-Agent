@@ -1,7 +1,8 @@
 // Places the launchable macOS bundle in Applications and keeps the release signature stable.
 // The engine and window data stay in ~/Library/Application Support; only the .app moves.
 import { execFile } from "node:child_process";
-import { access, constants, cp, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import type * as NodeFs from "node:fs";
+import { access, constants, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
@@ -26,6 +27,14 @@ export const macReleaseSigning = {
   p12Secret: "BRANCH_MACOS_SIGNING_P12",
   passwordSecret: "BRANCH_MACOS_SIGNING_PASSWORD",
 } as const;
+
+/**
+ * Electron's fs opens any path ending in .asar as an archive, so copying, removing or renaming a bundle's app.asar
+ * from inside the app fails ("Invalid package"). original-fs touches the file's own bytes, as desktop-update.ts does.
+ */
+const rawFs: typeof NodeFs = process.versions.electron ? require("original-fs") : require("node:fs");
+/** The file calls the installer makes. Tests pass a fake that behaves like Electron's fs. */
+export type MacBundleFs = typeof NodeFs.promises;
 
 export const LSREGISTER = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 
@@ -137,6 +146,8 @@ export interface InstallMacAppOptions extends ApplicationsDirectoryOptions {
   stripQuarantine?: (app: string) => Promise<void>;
   /** Signature report for an app (`codesign -d -r- --verbose=2`), or undefined where it cannot be read. */
   readSignature?: (app: string) => Promise<string | undefined>;
+  /** The file API for the bundle tree. Defaults to the one that does not treat app.asar as an archive. */
+  fs?: MacBundleFs;
 }
 
 function run(command: string, args: string[]): Promise<void> {
@@ -162,82 +173,84 @@ async function stripQuarantine(app: string): Promise<void> {
   try { await run("xattr", ["-dr", "com.apple.quarantine", app]); } catch { /* already clear */ }
 }
 
-async function readBundleId(appDir: string): Promise<string> {
-  const plist = await readFile(join(appDir, "Contents", "Info.plist"), "utf8");
+async function readBundleId(fs: MacBundleFs, appDir: string): Promise<string> {
+  const plist = await fs.readFile(join(appDir, "Contents", "Info.plist"), "utf8");
   const id = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]*)<\/string>/.exec(plist)?.[1];
   if (!id) throw new Error(`Missing CFBundleIdentifier in ${basename(appDir)}`);
   return id;
 }
 
-async function pathExists(file: string): Promise<boolean> {
-  try { await lstat(file); return true; } catch { return false; }
+async function pathExists(fs: MacBundleFs, file: string): Promise<boolean> {
+  try { await fs.lstat(file); return true; } catch { return false; }
 }
 
-async function sameInstalledBundle(sourceReal: string, destination: string): Promise<boolean> {
+async function sameInstalledBundle(fs: MacBundleFs, sourceReal: string, destination: string): Promise<boolean> {
   if (resolve(sourceReal) === resolve(destination)) return true;
-  try { return await realpath(destination) === sourceReal; } catch { return false; }
+  try { return await fs.realpath(destination) === sourceReal; } catch { return false; }
 }
 
-async function retireLegacy(applicationsDir: string, destination: string, runningAppDir: string | undefined, register: (args: string[]) => Promise<void>): Promise<void> {
+async function retireLegacy(fs: MacBundleFs, applicationsDir: string, destination: string, runningAppDir: string | undefined,
+  register: (args: string[]) => Promise<void>): Promise<void> {
   const legacy = join(applicationsDir, MAC_LEGACY_BUNDLE_FOLDER);
   let info;
-  try { info = await lstat(legacy); } catch { return; }
+  try { info = await fs.lstat(legacy); } catch { return; }
   if (info.isSymbolicLink() || !info.isDirectory()) return;
-  const legacyReal = await realpath(legacy);
-  const appsReal = await realpath(applicationsDir);
+  const legacyReal = await fs.realpath(legacy);
+  const appsReal = await fs.realpath(applicationsDir);
   if (!pathStaysInside(appsReal, legacyReal)) return;
   let id: string;
-  try { id = await readBundleId(legacy); } catch { return; }
+  try { id = await readBundleId(fs, legacy); } catch { return; }
   if (id !== MAC_BUNDLE_ID) return;
-  const destinationReal = await realpath(destination);
-  const runningReal = runningAppDir ? await realpath(runningAppDir).catch(() => runningAppDir) : undefined;
+  const destinationReal = await fs.realpath(destination);
+  const runningReal = runningAppDir ? await fs.realpath(runningAppDir).catch(() => runningAppDir) : undefined;
   try { await register(["-u", legacy]); } catch { /* best effort */ }
   if (legacyReal === destinationReal || legacyReal === runningReal) return;
-  await rm(legacy, { recursive: true, force: true });
+  await fs.rm(legacy, { recursive: true, force: true });
 }
 
 /** Copies a stamped bundle to Branch.app, registers it, and drops a same-id legacy bundle that is not running. */
 export async function installMacApp(source: string, options: InstallMacAppOptions = {}): Promise<string> {
-  const id = await readBundleId(source);
+  const fs = options.fs ?? rawFs.promises;
+  const id = await readBundleId(fs, source);
   if (id !== MAC_BUNDLE_ID) throw new Error(`Refusing to install ${basename(source)} (${id})`);
   const applicationsDir = await chooseApplicationsDirectory(options);
-  await mkdir(applicationsDir, { recursive: true });
+  await fs.mkdir(applicationsDir, { recursive: true });
   const destination = join(applicationsDir, MAC_BUNDLE_FOLDER);
-  const sourceReal = await realpath(source);
+  const sourceReal = await fs.realpath(source);
   const register = options.register ?? defaultRegister;
-  if (await sameInstalledBundle(sourceReal, destination)) {
+  if (await sameInstalledBundle(fs, sourceReal, destination)) {
     await register(["-f", destination]);
-    await retireLegacy(applicationsDir, destination, options.runningAppDir ?? source, register);
+    await retireLegacy(fs, applicationsDir, destination, options.runningAppDir ?? source, register);
     return destination;
   }
-  if (await pathExists(destination)) {
+  if (await pathExists(fs, destination)) {
     const readSignature = options.readSignature ?? readMacSignature;
     assertNoMacSigningDowngrade(await readSignature(destination), await readSignature(source));
   }
   const stageRoot = join(applicationsDir, `.Branch.install-${process.pid}`);
   const aside = join(applicationsDir, ".Branch.previous");
-  await rm(stageRoot, { recursive: true, force: true });
-  await mkdir(stageRoot);
+  await fs.rm(stageRoot, { recursive: true, force: true });
+  await fs.mkdir(stageRoot);
   const staging = join(stageRoot, MAC_BUNDLE_FOLDER);
   try {
-    await cp(source, staging, { recursive: true, verbatimSymlinks: true } as import("node:fs").CopyOptions);
+    await fs.cp(source, staging, { recursive: true, verbatimSymlinks: true } as import("node:fs").CopyOptions);
     if (options.stripQuarantine) await options.stripQuarantine(staging);
     else if (process.platform === "darwin") await stripQuarantine(staging);
-    await rm(aside, { recursive: true, force: true });
-    if (await pathExists(destination)) await rename(destination, aside);
+    await fs.rm(aside, { recursive: true, force: true });
+    if (await pathExists(fs, destination)) await fs.rename(destination, aside);
     try {
-      await rename(staging, destination);
+      await fs.rename(staging, destination);
     } catch (error) {
-      if (await pathExists(aside) && !await pathExists(destination)) await rename(aside, destination);
+      if (await pathExists(fs, aside) && !await pathExists(fs, destination)) await fs.rename(aside, destination);
       throw error;
     }
-    await rm(aside, { recursive: true, force: true });
+    await fs.rm(aside, { recursive: true, force: true });
   } finally {
-    await rm(stageRoot, { recursive: true, force: true });
+    await fs.rm(stageRoot, { recursive: true, force: true });
   }
   await register(["-f", destination]);
   try { await register(["-u", source]); } catch { /* best effort */ }
-  await retireLegacy(applicationsDir, destination, options.runningAppDir, register);
+  await retireLegacy(fs, applicationsDir, destination, options.runningAppDir, register);
   return destination;
 }
 
