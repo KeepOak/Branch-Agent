@@ -104,7 +104,7 @@ it("draws Classic's Advanced tables: a table row saves its key and a row Classic
 
 it("edits owners in chat apps (commands.ownerAllowFrom)", async () => {
   const { host, request } = await render("advanced");
-  await act(async () => button(host, "Edit", host.querySelector('[data-sec="Commands from chat apps"]')!).click());
+  await act(async () => button(host, "Edit", host.querySelector('[data-card="Commands"] [data-sec="Commands from chat apps"]')!).click());
   const editor = host.querySelector('[aria-label="Owners in chat apps"][role="group"]')!;
   await choose(editor.querySelector<HTMLInputElement>('input[aria-label="Their ID or @name"]')!, "4242");
   await act(async () => button(host, "Add", editor).click());
@@ -176,6 +176,26 @@ it("#1049: at Regular the page ends after Who answers; the setting cards and Who
   expect(adv.host.querySelector('[aria-label="Show typing"]')).not.toBeNull();
   expect(adv.host.querySelector('[aria-label^="Who may message"]')).not.toBeNull();
   expect(adv.host.querySelector('[aria-label="Hold up to"]')).toBeNull();
+});
+
+it("#1049: Advanced and Technical draw the preview's approved cards, in order, once each", async () => {
+  // preview Chat apps at Advanced: … Who answers · Who may message · How replies look & arrive · Groups · Commands ·
+  // Approvals & what Trunks may do · Each app · Limits & quiet (SETTINGS-PROPOSAL "Chat apps from 20 to 8").
+  const APPROVED = ["Who may message", "How replies look & arrive", "Groups", "Commands", "Approvals & what Trunks may do", "Each app", "Limits & quiet"];
+  for (const level of ["advanced", "technical"] as const) {
+    const { host } = await render(level);
+    const cards = [...host.querySelectorAll(".r1-ca-more > section")].map((s) => s.querySelector("h2")?.textContent);
+    expect(cards, level).toEqual(APPROVED);
+    const heads = [...host.querySelectorAll("h2")].map((h) => h.textContent);
+    expect(heads.indexOf("Who answers")).toBe(heads.indexOf("Who may message") - 1);
+    expect(host.querySelector('.r1-ca-cont[data-card="Who answers"]')?.textContent).toContain("Photo albums as one message");
+    for (const old of ["Commands in chat apps", "What the Trunk sees", "Staying connected", "Formatting in each app", "How replies arrive", "Chat apps", "Messages, every setting", "In every chat", "Quiet and limits"]) expect(heads, old).not.toContain(old);
+    // The page's own rows sit in their card: Show typing under How replies, Typed commands under Commands.
+    expect(host.querySelector('[data-card="How replies look & arrive"] [aria-label="Show typing"]')).not.toBeNull();
+    expect(host.querySelector('[data-card="Commands"] [aria-label="Typed commands"]')).not.toBeNull();
+    expect(host.querySelectorAll('[aria-label="Show typing"]')).toHaveLength(1);
+    await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = "";
+  }
 });
 
 it("drops the per-tile set-up times, and folds the apps that don't work yet into one More chat apps row", async () => {

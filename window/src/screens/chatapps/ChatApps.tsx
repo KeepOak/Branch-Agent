@@ -13,7 +13,6 @@ import { CHAT_APPS, GROUPS, type ChatApp } from "./catalogue";
 import { LaterRows } from "../../glass/LaterRows";
 import { More } from "./More";
 import { Pairing } from "./Pairing";
-import { ChatAppSettings } from "./Settings";
 import { connectedOf, Pill, toneOf, useCfg } from "./parts";
 import { useChatApps } from "./useChatApps";
 import "../../glass/glass.css";
@@ -105,7 +104,7 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
       {later.length ? <LaterRows count={later.length} label={`More chat apps (${later.length})`}>{groupsOf(later)}</LaterRows> : null}
       {!shown.length && <p className="g-label" data-lines>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}
     </section>
-    </div>{renderAccess && <section aria-label="Who answers and who may message"><h2 className="g-label">Who answers</h2>{connected.length ? connected.map(c => <div key={c.state.id}>{renderAccess(c.app)}</div>) : <p className="r1-ca-hint g-label" data-lines>{live.loading ? "Checking…" : "No chat app is connected yet."}</p>}</section>}<ChatAppSettings engine={engine} level={level} />
+    </div>{renderAccess && <section aria-label="Who answers and who may message"><h2 className="g-label">Who answers</h2>{connected.length ? connected.map(c => <div key={c.state.id}>{renderAccess(c.app)}</div>) : <p className="r1-ca-hint g-label" data-lines>{live.loading ? "Checking…" : "No chat app is connected yet."}</p>}</section>}
     {level >= 1 ? <More engine={engine} cfg={cfg} apps={connected.map(c => c.state)} all={engineApps} trunks={trunks} level={level} /> : null}
   </section>;
 }
