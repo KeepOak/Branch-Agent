@@ -1,0 +1,5 @@
+window:src/screens/find/FindAnything.test.tsx
+window:src/screens/frame/R1Window.open-name.test.tsx
+window:src/screens/frame/open-name.test.ts
+window:src/thread/markdown-inline-nesting.test.tsx
+window:src/thread/suggestions-yes-no.test.ts
