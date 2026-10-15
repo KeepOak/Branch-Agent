@@ -99,40 +99,42 @@ describe("computer screen setup", () => {
     const commands = request.mock.calls.filter(([method]) => method === "computer.invoke").map(([, params]) => (params as { command: string }).command);
     expect(commands).toEqual(["screen.snapshot", "computer.act", "screen.snapshot", "computer.act"]);
   });
-  it("shows Coming with the app's reason while this computer's driver isn't ready, then the screen once it is", async () => {
+  it("shows the app's reason as one centered line while this computer isn't ready, then the screen once it is", async () => {
     vi.useFakeTimers();
     const driver: { reason?: string } = { reason: "macOS asks you to allow this once, in System Settings." };
     const { engine, request } = fixture(undefined, false, driver);
     await render(engine);
     await act(async () => screenButton()!.click());
-    const coming = document.querySelector(".stage-empty[data-coming]");
-    expect(coming?.querySelector("b")?.textContent).toBe("Coming");
-    expect(document.body.textContent).not.toContain("Computer control");
-    expect(coming?.textContent).toContain(driver.reason);
-    expect(coming?.querySelector("button")).toBeNull();
+    const note = document.querySelector(".pane-note[data-pane-state='stopped']");
+    expect(note?.querySelector("p")?.textContent).toBe(driver.reason);
+    expect(document.body.textContent).not.toContain("Coming");
+    expect(note?.querySelector("button")).toBeNull();
     expect(document.body.textContent).not.toContain("Couldn't show this computer's screen");
     expect(request.mock.calls.some(([method]) => method === "computer.invoke")).toBe(false);
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
-    expect(document.querySelector(".stage-empty[data-coming]")).not.toBeNull();
+    expect(document.querySelector(".pane-note[data-pane-state='stopped']")).not.toBeNull();
     driver.reason = undefined;
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
-    expect(document.querySelector(".stage-empty[data-coming]")).toBeNull();
+    expect(document.querySelector(".pane-note")).toBeNull();
     expect(document.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
   });
-  it("shows Coming alone, with no reason sentence, when the driver fails to start", async () => {
+  it("says Branch can't see this computer's screen in plain words when the driver isn't running, with no Try again", async () => {
     const { engine, request } = fixture(undefined, false, { reason: "" });
     await render(engine);
     await act(async () => screenButton()!.click());
-    const coming = document.querySelector(".stage-empty[data-coming]");
-    expect(coming?.textContent).toBe("Coming");
-    expect(coming?.querySelector("p")).toBeNull();
+    const note = document.querySelector(".pane-note[data-pane-state='stopped']");
+    expect(note?.querySelector("p")?.textContent).toBe(
+      "Branch can't see this computer's screen right now. Quit Branch Agent and open it again.",
+    );
+    expect(note?.querySelector("button")).toBeNull();
+    expect(document.body.textContent).not.toContain("Coming");
     expect(request.mock.calls.some(([method]) => method === "computer.invoke")).toBe(false);
   });
   it("says Connecting… while the first picture is on its way", async () => {
     const { engine } = fixture(() => new Promise(() => {}));
     await render(engine);
     await act(async () => screenButton()!.click());
-    expect(document.querySelector(".st7-screen .stage-empty b")?.textContent).toBe("Connecting…");
+    expect(document.querySelector(".pane-note[data-pane-state='connecting'] p")?.textContent).toBe("Connecting…");
     expect(document.body.textContent).not.toContain("Connecting to this computer's screen");
   });
 });

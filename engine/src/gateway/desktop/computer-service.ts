@@ -34,7 +34,7 @@ export type GatewayComputerStatus = {
 /** Set by the desktop app when it starts the Gateway without a native driver endpoint. */
 const DRIVER_REASON_ENV = "BRANCH_COMPUTER_DRIVER_REASON";
 /** Said when this Gateway holds no driver address to pass its computer host. */
-const DRIVER_ADDRESS_MISSING = "The screen driver's address is missing. Quit Branch Agent and open it again.";
+const DRIVER_ADDRESS_MISSING = "Branch can't see this computer's screen right now. Quit Branch Agent and open it again.";
 /** An empty reason still means Coming: the pane then shows the preview's bare "Coming" with no reason line. */
 function appDriverReason(env: NodeJS.ProcessEnv): string | undefined {
   const reason = env[DRIVER_REASON_ENV]?.trim();

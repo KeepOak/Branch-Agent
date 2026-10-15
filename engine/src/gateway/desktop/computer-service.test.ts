@@ -222,7 +222,7 @@ describe("Gateway computer service", () => {
     delete plain.config.desktop;
     vi.mocked(startComputerHostProcess).mockImplementation(unavailable);
     expect(await plain.service.status()).toMatchObject({
-      reason: "The screen driver's address is missing. Quit Branch Agent and open it again.",
+      reason: "Branch can't see this computer's screen right now. Quit Branch Agent and open it again.",
     });
 
     // A managed desktop is not this machine's own driver: its errors keep no app reason.
