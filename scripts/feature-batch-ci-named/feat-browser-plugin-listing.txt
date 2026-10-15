@@ -1,1 +1,1 @@
-engine:extensions/browser/browser-plugin-listing.test.mjs
+engine:extensions/browser/browser-plugin-listing.test.ts
