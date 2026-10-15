@@ -637,11 +637,12 @@ function SparesMax({ c }: { c: Ctx }) {
   const shown = draft ?? (typeof v === "number" ? String(v) : "");
   const n = shown.trim() === "" ? null : Number(shown);
   const ok = n === null || (Number.isInteger(n) && n >= 0);
-  const save = () => { if (!ok) return; void cfg.set("cloudWorkers.preparedPool.maxTotal", n); setDraft(null); };
+  const unchanged = n === (typeof v === "number" ? v : null);
+  const save = () => { if (!ok || unchanged) return; void cfg.set("cloudWorkers.preparedPool.maxTotal", n); setDraft(null); };
   return (
     <Ctl title="Most spares at once" sub="Across every repository and cloud computer." help="Across every repository and cloud computer. Empty means 4; 0 stops spares and lets the unused ones go.">
       <input className="inp s2cm-num" inputMode="numeric" aria-label="Most spares at once" placeholder="4" value={shown} disabled={cfg.loading} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} />
-      <Btn sm disabled={cfg.loading || !ok} onClick={save}>Save</Btn>
+      <Btn sm disabled={cfg.loading || !ok || unchanged} onClick={save}>Save</Btn>
     </Ctl>
   );
 }
@@ -840,7 +841,6 @@ function Who({ c }: { c: Ctx }) {
   const pending = list(rec(devs.data).pending);
   return (
     <>
-      <Acts><button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => { void pres.reload(); void nodes.reload(); }}><Ico name="retry" s /></button></Acts>
       {pres.error ? <p className="hint s2-err" role="alert">{pres.error}</p> : null}
       {pres.data && !rows.length && !pending.length ? <Empty>Nothing is reporting in right now.</Empty> : null}
       <div className="rows">
