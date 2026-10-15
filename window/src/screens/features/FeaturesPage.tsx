@@ -106,7 +106,7 @@ export function FeaturesPage({ technical, focus = null, onOpen, rows: given }: F
   };
 
   const total = rows?.length ?? 0;
-  const line = failed ? "The feature list didn't load." : rows ? countLine(flat, total) : "";
+  const line = failed ? "The feature list didn't load." : rows ? countLine(flat, total, counts, !query.trim() && filter === "all") : "";
   return <div className="feat-page g-clear">
     <div className="feat-bar">
       <label className="feat-search g-frost">

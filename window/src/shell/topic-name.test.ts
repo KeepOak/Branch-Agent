@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distinctNames, isRawSessionKey, readableTitle, sessionKeyName, splitKeyTag } from "./topic-name";
+import { distinctNames, isRawSessionKey, plainTopicTitle, readableTitle, sessionKeyName, splitKeyTag } from "./topic-name";
 
 describe("topic names", () => {
   it("reads a cross-computer a2a key as a sentence about the other party", () => {
@@ -60,5 +60,28 @@ describe("tag split", () => {
   it("splits a tagged label into its name and tag, and leaves an untagged label whole", () => {
     expect(splitKeyTag("Talk with Coordinator · ee3ee8")).toEqual({ name: "Talk with Coordinator", tag: "ee3ee8" });
     expect(splitKeyTag("Plan the trip")).toEqual({ name: "Plan the trip", tag: "" });
+  });
+});
+
+describe("plain topic titles", () => {
+  it("drops bracket tags and card ids from a topic title", () => {
+    expect(plainTopicTitle("[#948] [R1-06 part 2] Settings and Customize")).toBe("Settings and Customize");
+    expect(plainTopicTitle("[#865] Memory recall")).toBe("Memory recall");
+    expect(plainTopicTitle("#827 review of the glass sheet")).toBe("review of the glass sheet");
+  });
+
+  it("keeps ordinary words that only look like codes", () => {
+    expect(plainTopicTitle("Plan the Lisbon trip")).toBe("Plan the Lisbon trip");
+    expect(plainTopicTitle("Phase one p1-5.5 browser-handoff")).toBe("Phase one p1-5.5 browser-handoff");
+  });
+
+  it("never returns an id-only label", () => {
+    expect(readableTitle("[#948]")).toBe("Thread");
+    expect(readableTitle("[R1-06 part 2]")).toBe("Thread");
+  });
+
+  it("applies to a raw title in readableTitle, and a key still reads as words", () => {
+    expect(readableTitle("[#948] [R1-03] Chat: composer width")).toBe("Chat: composer width");
+    expect(readableTitle("agent:juniper:a2a:branch-nas-linux--tester")).toBe("Talk with Tester on Nas-linux");
   });
 });

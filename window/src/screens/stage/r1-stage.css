@@ -4,5 +4,9 @@
 /* The × sits at the end of the stage's top row; the row keeps room for it. Inside .g-clear it takes the glass pill. */
 .r1-stage > .computer-stage .st7-top { padding-right: 52px; }
 .r1-stage-close { position: absolute; top: 8px; right: calc(var(--r1-gutter, 12px) + 12px); width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 999px; color: inherit; font: inherit; }
-.r1-stage > .computer-stage { flex: 1 1 auto; min-height: 0; }
+/* The Classic stage is position: fixed over the whole window (shell/preview.css .computer-stage). Inside R1 it must stay in
+   its wrapper: fixed, it slid under the sidebar (its toolbar looked clipped) and covered the chat (owner, 2026-10-15). */
+.r1-stage > .computer-stage { flex: 1 1 auto; min-height: 0; position: relative; inset: auto; left: auto; right: auto; width: auto; z-index: auto; }
+/* The transcript column is a block; while the stage is open it lays the stage out as a full-height column. */
+.r1-content:has(> .r1-stage) { display: flex; flex-direction: column; }
 .r1-stage-pip { display: contents; }

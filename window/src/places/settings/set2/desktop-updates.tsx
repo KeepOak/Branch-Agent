@@ -10,12 +10,13 @@ export const INSTALL_NO_ANSWER_MS = 390_000;
 const NO_ANSWER_MESSAGE = "Branch didn’t confirm the update. It may still finish: check the version in a few minutes, or restart Branch.";
 import { rec, str, useLive, type RecordValue } from "./common";
 import { WhatsNewRow } from "./whats-new-row";
+import { versionLabel } from "../internals";
 import { isNewerBranchVersion, runningBranchVersion, useBranchVersion, useShippedWindowVersion, versionParts } from "../../../connect/branch-version";
 
 const OS: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "Linux" };
 
 /** The desktop owns component publication and activation; no gateway update configuration is written here. */
-export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
+export function DesktopUpdatesPage({ title, engine, level }: SettingsPageProps) {
   const desktop = componentDesktop(engine.gatewayUrl);
   const bridge = desktop?.componentUpdates;
   const data = useDesktopComponentStatus(engine.gatewayUrl);
@@ -43,20 +44,20 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
     catch (error) { setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
   };
-  if (!bridge) return <HourlyUpdates title={title} engine={engine} reason={desktop?.unavailableReason} />;
+  if (!bridge) return <HourlyUpdates title={title} engine={engine} level={level} reason={desktop?.unavailableReason} />;
   const running = runningBranchVersion(data.status?.currentVersion, shipped);
   const stagedWaiting = Boolean(data.status?.phase === "staged" && isNewerBranchVersion(data.status.pendingVersion ?? data.status.latestVersion, running));
   const autoApply = auto.state?.autoApplyUpdates !== false;
-  const lede = running ? `Branch ${versionParts(running).detail} on this computer.` : "Updates for Branch on this computer.";
+  const lede = running ? `Branch ${versionLabel(running, level)} on this computer.` : "Updates for Branch on this computer.";
   const install = bridge.install;
   const requestInstall = () => { if (!install || installRequested) return; setOutcome(null); install(); setInstallRequested(true); };
   const failed = !installRequested && bar === "failed";
-  const pendingLabel = versionParts(data.status?.pendingVersion ?? data.status?.latestVersion ?? "").detail;
+  const pendingLabel = versionLabel(data.status?.pendingVersion ?? data.status?.latestVersion ?? "", level);
   const headline = installRequested ? (bar === "preparing" ? "Getting the update ready…" : "Updating Branch…")
     : failed ? "The update didn’t finish"
     : bar === "kept" ? "Update postponed; Branch kept the current version"
     : stagedWaiting ? `${pendingLabel} is staged`
-    : statusLine(data.status);
+    : statusLine(data.status, level);
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
     {error || data.error ? <Status tone="bad" title="Branch couldn’t update">{error || data.error}</Status> : null}
@@ -64,7 +65,7 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
       {failed ? (outcome?.message || "Branch kept the current version.")
         : stagedWaiting && installRequested ? "Running work moves across to the new engine. Your conversations and settings stay in place."
         : stagedWaiting ? "It applies by itself, in place, the next time no Trunk is working. A safety copy is kept first, and nothing restarts."
-        : running ? `Branch ${versionParts(running).detail}. The window refreshes itself, running work moves across to the new engine, and nothing restarts. You only see a small “Updated” note. The desktop shell updates the next time you open Branch.`
+        : running ? `Branch ${versionLabel(running, level)}. The window refreshes itself, running work moves across to the new engine, and nothing restarts. You only see a small “Updated” note. The desktop shell updates the next time you open Branch.`
         : "Checks for a new verified Branch release."}
     </Status>
     <Sec title="Updating">
@@ -89,16 +90,16 @@ export function DesktopUpdatesPage({ title, engine }: SettingsPageProps) {
 
 /** An older Branch Agent app has no Check now bridge, but it still checks every hour and stages updates by itself.
  *  The page still uses Branch's version; a window connected elsewhere keeps its own reason. */
-function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title" | "engine"> & { reason?: string }) {
+function HourlyUpdates({ title, engine, level, reason }: Pick<SettingsPageProps, "title" | "engine" | "level"> & { reason?: string }) {
   const version = useBranchVersion(engine.gatewayUrl);
   const sys = useLive<RecordValue>(engine, "system.info", {}, []);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
-  const lede = version ? `Branch ${versionParts(version).detail}${os ? ` on ${os}` : ""}.` : "Updates for Branch on this computer.";
+  const lede = version ? `Branch ${versionLabel(version, level)}${os ? ` on ${os}` : ""}.` : "Updates for Branch on this computer.";
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
     {reason
       ? <Status tone="warn" title="Updates aren’t available here">{reason}</Status>
-      : <Status title={version ? `You have Branch ${versionParts(version).detail}` : "Branch on this computer"}>{DESKTOP_CHECKS_HOURLY}</Status>}
+      : <Status title={version ? `You have Branch ${versionLabel(version, level)}` : "Branch on this computer"}>{DESKTOP_CHECKS_HOURLY}</Status>}
     <Sec title="Updating">
       <Ctl title="Check for updates" off={reason ? undefined : MANUAL_UPDATE_UNSUPPORTED}><Btn sm disabled>Check now</Btn></Ctl>
       <Hint>A downloaded update takes effect when Branch restarts.</Hint>
@@ -106,13 +107,13 @@ function HourlyUpdates({ title, engine, reason }: Pick<SettingsPageProps, "title
   </Page>;
 }
 
-function statusLine(status: ComponentUpdateStatus | null): string {
+function statusLine(status: ComponentUpdateStatus | null, level: SettingsPageProps["level"]): string {
   if (!status) return "Reading desktop update status…";
   if (status.phase === "available") return "A Branch update is ready";
   if (status.phase === "current" || status.phase === "staged") return "Updates apply in place.";
   if (status.phase === "checking") return "Checking…";
   if (status.phase === "staging") return "Downloading and checking the update…";
-  return status.currentVersion ? `Branch ${versionParts(status.currentVersion).detail}` : "Check for updates";
+  return status.currentVersion ? `Branch ${versionLabel(status.currentVersion, level)}` : "Check for updates";
 }
 
 /** The preview's version line under "Undo the last update": "0.19.4 installed Sep 20." (month and day in the owner's locale). */

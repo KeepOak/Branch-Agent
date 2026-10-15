@@ -1,4 +1,5 @@
 import './permission-wait.test.mjs';
+import './observe.test.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -12,6 +13,9 @@ import { compareBaseline, formatGate } from './baseline.mjs';
 import { isInformationalStatus, loadPreviewMap, previewDestinationMatches, threadLayoutDiff } from './preview-map.mjs';
 import { countProblems } from './report.mjs';
 import { isPlusMoreRow, PLUS_POPOVER } from './plus-more.mjs';
+import { viteLaunch } from './vite-launch.mjs';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 const fixture = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures/preview-map.sample.json'), 'utf8'));
 
@@ -208,4 +212,57 @@ test('the + popover More… row opens its own nested screen only from the popove
   assert.equal(isPlusMoreRow({ name: 'More' }, overlay), false);
   assert.equal(isPlusMoreRow({ name: 'More…' }, { depth: 0, path: [] }), false);
   assert.equal(isPlusMoreRow({ name: 'More…' }, { depth: 1, path: [{ name: 'Conversation menu' }] }), false);
+});
+
+test('the dev server runs vite\'s own bin with node, and pnpm only when that bin cannot be resolved', () => {
+  const resolved = viteLaunch(['--port', '5653'], { resolve: () => '/w/node_modules/vite/package.json' });
+  assert.equal(resolved.command, process.execPath);
+  assert.deepEqual(resolved.args, ['/w/node_modules/vite/bin/vite.js', '--port', '5653']);
+  const fallback = viteLaunch(['--port', '5653'], { resolve: () => { throw new Error('not installed'); } });
+  assert.deepEqual(fallback, { command: 'pnpm', args: ['exec', 'vite', '--port', '5653'] });
+});
+
+test('the real window vite bin resolves through the package export, including a symlinked node_modules', () => {
+  const windowRequire = createRequire(new URL('../../window/package.json', import.meta.url));
+  const launch = viteLaunch(['--strictPort'], windowRequire);
+  assert.equal(launch.command, process.execPath);
+  assert.equal(existsSync(launch.args[0]), true);
+});
+
+test('a control that opens its own window is a real result, not dead', () => {
+  const before = surface({ popups: 0 });
+  assert.deepEqual(classifyClick({ before, after: surface({ popups: 1, requests: [{ method: 'users.prefs.set', ok: true }], requestCount: 1 }), elapsedMs: 20 }).problems, []);
+  assert.deepEqual(classifyClick({ before, after: surface({ popups: 0 }), elapsedMs: 20 }).problems, ['dead']);
+});
+
+test('a control that scrolls the page to a section is a real result', () => {
+  const before = surface({ scroll: 'main:0', jump: true });
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'main:420', jump: true }), elapsedMs: 20 }).problems, []);
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'main:0', jump: true }), elapsedMs: 20 }).problems, ['dead']);
+});
+
+test('a button that only scrolls the sidebar is dead', () => {
+  const before = surface({ scroll: 'sidebar:0', jump: false });
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'sidebar:120', jump: false }), elapsedMs: 20 }).problems, ['dead']);
+});
+
+test('a scroll that is not an in-page jump does not count, even inside the main content', () => {
+  const before = surface({ scroll: 'main:0', jump: false });
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'main:300', jump: false }), elapsedMs: 20 }).problems, ['dead']);
+});
+
+test('a smooth scroll to a section is not a slow click', () => {
+  const before = surface({ scroll: 'main:0', jump: true });
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'main:420', jump: true }), elapsedMs: 900 }).problems, []);
+});
+
+test('a control that saves a file is a real result', () => {
+  const before = surface({ downloads: 0 });
+  assert.deepEqual(classifyClick({ before, after: surface({ downloads: 1 }), elapsedMs: 20 }).problems, []);
+});
+
+test('a setting saved to the engine is a real result even when its menu closes', () => {
+  const before = surface({ configRevision: 'fixture' });
+  assert.deepEqual(classifyClick({ before, after: surface({ configRevision: 'fixturex' }), elapsedMs: 20 }).problems, []);
+  assert.deepEqual(classifyClick({ before, after: surface({ configRevision: 'fixture' }), elapsedMs: 20 }).problems, ['dead']);
 });
