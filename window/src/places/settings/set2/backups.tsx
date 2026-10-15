@@ -7,13 +7,13 @@ import { Acts, Btn, Ctl, Field, Hint, Num, Page, Pill, Sec, Seg, Status, type Ro
 import { list } from "../adapter";
 import { CallLine, lvOf, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 
-const DAY = 86_400_000;
-const WEEK = 7 * DAY;
+export const DAY = 86_400_000;
+export const WEEK = 7 * DAY;
 const LEDE = "Save your conversations, memory, files, and settings on a schedule.";
 const LEDE_HELP = "A copy of your conversations, memory, Trunk workspaces (Library documents included), the pictures and other media Trunks made, and settings, on a schedule you choose. Passwords, keys and sign-ins are never included.";
 /** The backup command's media defaults (engine DEFAULT_MEDIA_MAX_FILE_MB / _TOTAL_MB). */
-const MEDIA_FILE_MB = 50;
-const MEDIA_TOTAL_MB = 1024;
+export const MEDIA_FILE_MB = 50;
+export const MEDIA_TOTAL_MB = 1024;
 const GIT_HINT = "A private Git repository you own, such as https://github.com/you/branch-backups.git. Branch pushes to its backups branch with your Git sign-in.";
 const FOLDER_HINT = "A folder on this computer. Branch keeps a Git history of your backups there, so each one can be restored.";
 
@@ -23,14 +23,14 @@ export const ROWS: RowEntry[] = [
 ].map(([title, sec, lv]) => ({ page: "backups", title: String(title), sec: String(sec), group: String(sec), lv: lv as 0 | 1 | 2, words: "backup copy restore git repository folder schedule" }));
 
 type Kind = "folder" | "git";
-type MediaLimits = { mediaMaxFileMb?: number; mediaMaxTotalMb?: number };
-type Destination = { kind: "folder"; path: string } | { kind: "git"; url: string };
+export type MediaLimits = { mediaMaxFileMb?: number; mediaMaxTotalMb?: number };
+export type Destination = { kind: "folder"; path: string } | { kind: "git"; url: string };
 
 /** The Settings-managed schedule: the Git one (backup.status lists one per mode). */
-function gitSchedule(status: RecordValue | undefined): RecordValue | undefined {
+export function gitSchedule(status: RecordValue | undefined): RecordValue | undefined {
   return list(rec(status).schedules).find((s) => s.mode === "git");
 }
-function destinationOf(schedule: RecordValue | undefined): Destination | undefined {
+export function destinationOf(schedule: RecordValue | undefined): Destination | undefined {
   if (!schedule) return undefined;
   if (schedule.push === true) return str(schedule.remote) ? { kind: "git", url: str(schedule.remote) } : undefined;
   return { kind: "folder", path: str(schedule.target) };
@@ -130,19 +130,23 @@ function Where({ saved, suggested, advanced, busy, onSave, onForget }: { saved?:
   );
 }
 
-function LastBackup({ status, repository }: { status?: RecordValue; repository: string }) {
+/** The last backup to a repository, as Classic words it: when, what happened, and its pill (none when there is none). */
+export function lastBackup(status: RecordValue | undefined, repository: string): { sub: string; pill?: { tone: "ok" | "warn" | "bad"; label: string } } {
   const t = list(rec(status).targets).find((x) => x.kind === "git" && str(x.target) === repository);
   const latest = rec(t?.latest);
-  if (!repository || !t) return <Ctl title="Last backup" sub={repository ? "None yet." : "Nothing backed up yet."} />;
+  if (!repository || !t) return { sub: repository ? "None yet." : "Nothing backed up yet." };
   const ok = latest.status === "ok";
   const commit = str(latest.target);
-  // A successful run's error field holds its warnings, such as "3 large files skipped (…)".
   const notes = ok && latest.pushFailed !== true && str(latest.error) ? ` ${str(latest.error)}.` : "";
   const what = !ok ? str(latest.error) || "Failed." : latest.pushFailed === true ? `Saved here, but sending it to the repository failed: ${str(latest.error)}` : `${commit ? `Saved as ${commit.slice(0, 10)}.` : "Nothing changed since the one before."}${notes}`;
   const lastOk = rec(t.latestOk);
-  return (
-    <Ctl title="Last backup" sub={<>{when(latest.createdAt)} · {what}{!ok && lastOk.createdAt ? ` Last success: ${when(lastOk.createdAt)}.` : ""}</>}>
-      <Pill tone={ok ? (latest.pushFailed === true ? "warn" : "ok") : "bad"}>{ok ? (latest.pushFailed === true ? "Not sent" : "Succeeded") : "Failed"}</Pill>
-    </Ctl>
-  );
+  return {
+    sub: `${when(latest.createdAt)} · ${what}${!ok && lastOk.createdAt ? ` Last success: ${when(lastOk.createdAt)}.` : ""}`,
+    pill: ok ? (latest.pushFailed === true ? { tone: "warn", label: "Not sent" } : { tone: "ok", label: "Succeeded" }) : { tone: "bad", label: "Failed" },
+  };
+}
+
+function LastBackup({ status, repository }: { status?: RecordValue; repository: string }) {
+  const last = lastBackup(status, repository);
+  return <Ctl title="Last backup" sub={last.sub}>{last.pill ? <Pill tone={last.pill.tone}>{last.pill.label}</Pill> : null}</Ctl>;
 }

@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/agentsapi/agentsapi-harness.persistence.test.ts (atlas AGENT-LOOP-0024). Changed for Branch: apply scripts/rebrand-map.json and use the existing configFingerprint binding codec and mismatch message; preserve every upstream scenario and assertion.
+// Changed for Branch: apply scripts/rebrand-map.json and use the existing configFingerprint binding codec and mismatch message; preserve every upstream scenario and assertion.
 import path from "node:path";
 import type { Turn } from "openai/resources/beta/agents/sessions/turns";
 import {

@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/harness/compaction/summarization-completion.ts (atlas AGENT-LOOP-0100). Changed for Branch: apply the Goose structured-summary parser to completed model output.
+// Changed for Branch: apply the structured-summary parser to completed model output.
 import {
   resolveClaudeFable5ModelIdentity,
   type Model,

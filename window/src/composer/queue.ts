@@ -104,7 +104,7 @@ export function loadLine(storage: Storage | undefined, sessionKey: string): Queu
 }
 
 /** Fired on the window after the waiting line of a conversation changes, so the thread shows it as queued. */
-export const WAITING_LINE_EVENT = "branch:waiting-line";
+const WAITING_LINE_EVENT = "branch:waiting-line";
 
 function announce(sessionKey: string): void {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(WAITING_LINE_EVENT, { detail: { sessionKey } }));

@@ -1,6 +1,4 @@
-// Ported Google tuple/propertyNames cases from mastra-ai/mastra
-// packages/schema-compat/src/provider-compats/google.test.ts at
-// 486d3b7f35edfeaeab47b1230b56880e672cc421.
+// Google tuple/propertyNames schema compatibility cases.
 import { describe, expect, it } from "vitest";
 import { normalizeToolParameterSchema } from "./agent-tools-parameter-schema.js";
 import { cleanSchemaForGemini } from "./clean-for-gemini.js";

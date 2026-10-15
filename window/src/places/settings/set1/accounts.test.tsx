@@ -82,7 +82,8 @@ describe("Settings › Accounts", () => {
       "branch.setup.detect": { manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] },
     });
     await render(engine);
-    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add an account")!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((b) => b.textContent?.includes("Claude"))!.click());
     expect(document.querySelector('[data-testid="add-account"]')?.textContent).toContain("Sign in with Claude");
     const fallback = document.querySelector<HTMLDetailsElement>(".dlg details")!;
     expect(fallback.open).toBe(false);
@@ -139,10 +140,34 @@ describe("Settings › Accounts", () => {
     expect(patch[1].baseHash).toBe("h1");
   });
 
-  it("Select several signs out of the ticked accounts, one models.authLogout per service", async () => {
+  it("offers a visible Select accounts button and resets selection when finished", async () => {
+    const { engine } = engineOf();
+    await render(engine, 1);
+    const toggle = [...host.querySelectorAll<HTMLButtonElement>(".sec > h2 button")].find((button) => button.textContent === "Select accounts")!;
+    expect(toggle).toBeDefined();
+    expect(toggle.classList.contains("btn")).toBe(true);
+    expect(toggle.classList.contains("ghost")).toBe(false);
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(host.querySelector(".chk-acc")).toBeNull();
+    await act(async () => toggle.click());
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.textContent).toBe("Done selecting");
+    expect(host.querySelectorAll(".chk-acc")).toHaveLength(3);
+    await act(async () => host.querySelector<HTMLInputElement>(".chk-acc")!.click());
+    expect(host.querySelector(".bulk-acc b")?.textContent).toBe("1 selected");
+    await act(async () => toggle.click());
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(host.querySelector(".chk-acc")).toBeNull();
+    expect(host.querySelector(".bulk-acc")).toBeNull();
+    await act(async () => toggle.click());
+    expect(host.querySelector(".bulk-acc b")?.textContent).toBe("Tick the accounts");
+    expect(host.querySelectorAll(".chk-acc:checked")).toHaveLength(0);
+  });
+
+  it("Select accounts signs out of the ticked accounts, one models.authLogout per service", async () => {
     const { engine, request } = engineOf();
     await render(engine, 1);
-    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Select several")!.click());
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Select accounts")!.click());
     const boxes = [...host.querySelectorAll<HTMLInputElement>(".prow input.chk-acc")];
     expect(boxes).toHaveLength(3);
     await act(async () => boxes[0].click());
@@ -154,10 +179,10 @@ describe("Settings › Accounts", () => {
     expect(host.querySelector(".bulk-acc")).toBeNull();
   });
 
-  it("Select several moves the ticked accounts to the top of their service's order", async () => {
+  it("Select accounts moves the ticked accounts to the top of their service's order", async () => {
     const { engine, request } = engineOf();
     await render(engine, 1);
-    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Select several")!.click());
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Select accounts")!.click());
     await act(async () => host.querySelectorAll<HTMLInputElement>(".prow input.chk-acc")[1].click());
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".bulk-acc button")].find((b) => b.textContent === "Move to the top")!.click());
     expect(request).toHaveBeenCalledWith("models.authOrderSet", { provider: "openai", profileIds: ["openai:a", "openai:b"] });
@@ -185,7 +210,8 @@ describe("Settings › Accounts", () => {
   ])("Claude sign-in sends the right models.authLogin params for name '$name'", async ({ name, profileLabel }) => {
     const { engine, request } = engineOf({ "branch.setup.detect": { manualProviders: [{ id: "setup-token", brandId: "anthropic", label: "Anthropic setup-token" }] } });
     await render(engine);
-    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Claude account")!.click());
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add an account")!.click());
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>(".dlg .prov")].find((b) => b.textContent?.includes("Claude"))!.click());
     const input = document.querySelector<HTMLInputElement>('.dlg input[aria-label="Call it"]')!;
     expect(input.placeholder).toBe("Saved by email if blank");
     if (name) await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, name); input.dispatchEvent(new Event("input", { bubbles: true })); });

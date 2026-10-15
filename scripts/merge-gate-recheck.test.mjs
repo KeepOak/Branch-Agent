@@ -148,6 +148,28 @@ test('the recheck workflow reacts to completed runs of its listed workflows, and
   assert.doesNotMatch(yaml, /gh run rerun "\$id"/);
 });
 
+// Dedupe: a burst of completions must reach the listing once. Skip-only triggers never start the job (so they cannot
+// cancel a settling run), and the settle sleep comes before the listing, inside the cancel-in-progress group.
+test('the recheck job skips content failures before it starts and settles before it lists runs', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
+  const condition = /^\s+if: (.+)$/m.exec(yaml.slice(yaml.indexOf('  recheck:')))?.[1] ?? '';
+  assert.match(condition, /workflow_run\.conclusion == 'success'/);
+  assert.match(condition, /workflow_run\.name == 'Merge gate trusted'/);
+  const settle = yaml.indexOf('run: sleep 30');
+  const list = yaml.indexOf('run: node scripts/merge-gate-recheck.mjs');
+  assert.ok(settle > 0 && settle < list, 'the settle sleep must run before the listing script');
+  assert.ok(yaml.indexOf('cancel-in-progress: true') < settle);
+});
+
+test('the recheck and the trusted gate log the core API budget once per run, before and after', () => {
+  for (const file of ['merge-gate-recheck.yml', 'merge-gate-trusted.yml']) {
+    const yaml = readFileSync(new URL(`../.github/workflows/${file}`, import.meta.url), 'utf8');
+    assert.equal((yaml.match(/node scripts\/github-api-budget\.mjs before/g) ?? []).length, 1, file);
+    assert.equal((yaml.match(/node scripts\/github-api-budget\.mjs after/g) ?? []).length, 1, file);
+    assert.match(yaml, /if: always\(\)\n\s+env:\n(?:.*\n)*?\s+run: node scripts\/github-api-budget\.mjs after/, file);
+  }
+});
+
 test('regression: a cancelled older run of a check does not count once its newer run passed', () => {
   const older = { id: 70, workflowName: 'Feature batch checks', status: 'completed', conclusion: 'cancelled', createdAt: '2026-10-10T01:00:00Z' };
   const newer = { id: 71, workflowName: 'Feature batch checks', status: 'completed', conclusion: 'success', createdAt: '2026-10-10T02:00:00Z' };
@@ -205,5 +227,37 @@ test('the current recheck run is excluded by its id even when its name differs',
     error: () => {},
   });
   assert.equal(code, 0);
+  assert.deepEqual(reruns, [50]);
+});
+
+test('a content check that did not succeed lists nothing and reruns nothing (no API call spent)', () => {
+  const listed = [];
+  const reruns = [];
+  const logged = [];
+  const code = runRecheck({
+    repo: 'o/r', sha: 'abc', trigger: { kind: 'content', conclusion: 'failure', name: 'Desktop checks' },
+    currentRunId: 1, list: (...args) => { listed.push(args); return []; }, rerun: (...args) => reruns.push(args),
+    log: (line) => logged.push(line), error: () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(listed.length, 0);
+  assert.equal(reruns.length, 0);
+  assert.deepEqual(logged, [
+    'Merge gate: skip (the triggering check did not succeed)',
+    'Merge gate trusted: skip (the triggering check did not succeed)',
+  ]);
+});
+
+test('a successful content check lists the runs once, then reruns only what the plan says', () => {
+  let listCalls = 0;
+  const reruns = [];
+  const code = runRecheck({
+    repo: 'o/r', sha: 'abc', trigger: { kind: 'content', conclusion: 'success', name: 'Desktop checks' },
+    currentRunId: 1,
+    list: () => { listCalls += 1; return [gate('cancelled'), trusted('failure'), content('success')]; },
+    rerun: (repo, id) => reruns.push(id), log: () => {}, error: () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(listCalls, 1);
   assert.deepEqual(reruns, [50]);
 });
