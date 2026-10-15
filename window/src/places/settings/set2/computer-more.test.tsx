@@ -192,6 +192,26 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     expect(patches(request)).toContainEqual({ agents: { entries: { scout: { tools: { exec: { node: "n1" } } } } } });
   });
 
+  it("A screen in the safe box reads and writes cloudWorkers.desktop", async () => {
+    const { engine, request } = engineWith(CONFIG);
+    await show(engine, "advanced");
+    const screen = row("A screen in the safe box")!.querySelector<HTMLInputElement>("input[role=switch]")!;
+    expect(screen.checked).toBe(false);
+    expect(row("A screen in the safe box")!.textContent).toContain("Off until you choose");
+    await click(screen);
+    expect(patches(request)).toContainEqual({ cloudWorkers: { desktop: true } });
+
+    const { engine: onEngine, request: onRequest } = engineWith({
+      ...CONFIG,
+      "config.get": { hash: "h", valid: true, config: { cloudWorkers: { desktop: true } } },
+    });
+    await show(onEngine, "advanced");
+    const on = row("A screen in the safe box")!.querySelector<HTMLInputElement>("input[role=switch]")!;
+    expect(on.checked).toBe(true);
+    await click(on);
+    expect(patches(onRequest)).toContainEqual({ cloudWorkers: { desktop: false } });
+  });
+
   it("Most spares at once: Save stays off until the number changes", async () => {
     const { engine } = engineWith({ ...CONFIG, "config.get": { hash: "h", valid: true, config: { cloudWorkers: { preparedPool: { maxTotal: 3 } } } } });
     await show(engine, "advanced");
