@@ -211,6 +211,7 @@ const peSubsystem = file => { const bytes = readFileSync(file); const pe = bytes
 test("Windows: the built launcher has no console, starts the folder current.txt names and survives a prune", { skip: process.platform !== "win32" }, () => {
   const csc = launcher.windowsLauncherCompiler(process.env, existsSync);
   const work = mkdtempSync(join(tmpdir(), "branch-win-launcher-"));
+  let appPid;
   try {
     const root = join(work, "Branch Agent");
     mkdirSync(root);
@@ -222,7 +223,8 @@ test("Windows: the built launcher has no console, starts the folder current.txt 
     build("launcher.cs", launcher.windowsLauncherSource(), join(root, launcher.WINDOWS_LAUNCHER_EXE));
     assert.equal(peSubsystem(join(root, launcher.WINDOWS_LAUNCHER_EXE)), 2, "a windowed exe: opening it shows no console");
     // A stand-in Branch Agent.exe that records where it ran from and what it was given.
-    build("app.cs", "using System; using System.IO; static class App { static void Main(string[] a) { File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, \"ran.txt\"), Environment.CurrentDirectory + \"|\" + string.Join(\"|\", a)); } }",
+    // It writes its own process id first, so the test can wait for it to exit before removing the folder.
+    build("app.cs", "using System; using System.IO; static class App { static void Main(string[] a) { File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, \"pid.txt\"), System.Diagnostics.Process.GetCurrentProcess().Id.ToString()); File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, \"ran.txt\"), Environment.CurrentDirectory + \"|\" + string.Join(\"|\", a)); } }",
       join(work, "Branch Agent.exe"));
     for (const folder of ["app-0.4.4-aaaaaa", "app-0.4.5-bbbbbb"]) {
       mkdirSync(join(root, folder));
@@ -238,6 +240,15 @@ test("Windows: the built launcher has no console, starts the folder current.txt 
     const [cwd, ...args] = readFileSync(ran, "utf8").split("|");
     assert.equal(realpathSync.native(cwd).toLowerCase(), realpathSync.native(join(root, "app-0.4.5-bbbbbb")).toLowerCase());
     assert.deepEqual(args, ["--hidden", "two words"]);
-  } finally { rmSync(work, { recursive: true, force: true }); }
+    appPid = Number(readFileSync(join(root, "app-0.4.5-bbbbbb", "pid.txt"), "utf8"));
+  } finally {
+    // The launcher starts the app detached; it must be gone before its folder can be removed on Windows.
+    if (appPid) {
+      const alive = () => { try { process.kill(appPid, 0); return true; } catch { return false; } };
+      for (const end = Date.now() + 10_000; alive() && Date.now() < end;) spawnSync(process.execPath, ["-e", "setTimeout(() => {}, 100)"]);
+      if (alive()) spawnSync("taskkill", ["/PID", String(appPid), "/T", "/F"]);
+    }
+    rmSync(work, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
 });
 
