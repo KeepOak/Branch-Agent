@@ -195,7 +195,7 @@
 .r1x-line { align-self: center; display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; max-width: 100%; font-size: 12.5px; color: var(--ink-3); }
 .r1x-who { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 10px 3px 4px; border-radius: 999px; box-shadow: inset 0 0 0 .5px transparent; color: var(--ink-2);
   transition: background .2s, box-shadow .2s; }
-.r1x-who:hover, .r1x-who:focus-within, .r1x-who:has([aria-expanded="true"]) { background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge), 0 4px 12px rgba(0,0,0,.08); }
+.r1x-who:hover, .r1x-who:focus-within, .r1x-who:has([aria-expanded="true"]) { background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge), var(--r1x-lift-xs); }
 .r1x-faces { display: inline-flex; align-items: center; }
 .r1x-faces > * { margin-left: -6px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--bg); }
 .r1x-faces > :first-child { margin-left: 0; }
@@ -210,7 +210,7 @@
   animation: r1x-in .3s cubic-bezier(.3, 1.3, .5, 1); }
 .r1x-head { position: absolute; top: 8px; left: 50%; z-index: 2; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 8px; height: 36px; max-width: calc(100% - 32px);
   padding: 0 14px 0 6px; border-radius: 999px; font-size: 14px; white-space: nowrap;
-  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge), 0 6px 18px rgba(0,0,0,.12); }
+  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge), var(--r1x-lift-sm); }
 .r1x-head b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .r1x-arrow { color: var(--ink-3); }
 .r1x-list { flex: 1 1 auto; overflow: auto; padding: 64px max(16px, calc((100% - 760px) / 2)) 90px; outline: none; }
@@ -223,8 +223,8 @@
 .r1x-msg[data-me] .r1x-body p { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ink) 18%, transparent); }
 .r1x-close { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); height: 36px; padding: 0 18px; border: 0; border-radius: 999px; color: var(--ink);
   font-size: 13px; font-weight: 600; cursor: pointer;
-  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge), 0 6px 18px rgba(0,0,0,.14); }
-.r1x-close:hover { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on), 0 6px 18px rgba(0,0,0,.14); }
+  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge), var(--r1x-lift); }
+.r1x-close:hover { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on), var(--r1x-lift); }
 @keyframes r1x-in { from { opacity: 0; transform: scale(.98); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .r1x-view { animation: none; } .r1x-face:hover { transform: none; } }
 :root[data-transparency="reduce"] .r1x-view { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
