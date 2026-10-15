@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { extractErrorCode } from "@branch/normalization-core/error-coercion";
 import {
   createRetainedOperation,
@@ -238,6 +239,160 @@ const tempDirectoryRemovalOptions = {
   retryDelay: 20,
 } as const;
 
+// Windows keeps a just-closed snapshot busy for a moment (scanners, indexers). Only those
+// transient lock errors are retried, with backoff; anything else surfaces at once.
+const removalBackoffMs = [20, 40, 80, 160, 320] as const;
+const removalRetryCodes = new Set(["EBUSY", "EPERM", "ENOTEMPTY"]);
+const removalBackoffCell = new Int32Array(new SharedArrayBuffer(4));
+
+function removalBackoff(error: unknown, attempt: number): number | undefined {
+  return removalRetryCodes.has(extractErrorCode(error) ?? "")
+    ? removalBackoffMs.at(attempt)
+    : undefined;
+}
+
+/** Blocking wait one snapshot's synchronous removal may spend in total, shared by all its paths. */
+export type SyncRemovalBudget = {
+  remainingMs: number;
+  /** Blocks the calling thread for ms. Injectable so tests can observe each wait without real time. */
+  sleepSync: (ms: number) => void;
+};
+const syncRemovalBudgetMs = removalBackoffMs.reduce((total, wait) => total + wait, 0);
+
+function sleepBlocking(ms: number): void {
+  Atomics.wait(removalBackoffCell, 0, 0, ms);
+}
+
+export function createSyncRemovalBudget(
+  sleepSync: (ms: number) => void = sleepBlocking,
+): SyncRemovalBudget {
+  return { remainingMs: syncRemovalBudgetMs, sleepSync };
+}
+
+/**
+ * Synchronous removal of one snapshot path, retried only on transient lock errors. The shared budget caps
+ * the total Atomics.wait for the whole snapshot at 620 ms, so many locked payload files cannot block the
+ * caller for 620 ms each. A handle still open at rm time (the Windows EPERM case) outlasts the budget; the
+ * deferred retry then removes the directory once the handle is released.
+ */
+function removeSnapshotPathSync(target: string, budget: SyncRemovalBudget): void {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      fs.rmSync(target, tempDirectoryRemovalOptions);
+      return;
+    } catch (error) {
+      const wait = removalBackoff(error, attempt);
+      if (wait === undefined || wait > budget.remainingMs) {
+        throw error;
+      }
+      budget.remainingMs -= wait;
+      budget.sleepSync(wait);
+    }
+  }
+}
+
+/** Asynchronous removal of one snapshot path, retried only on transient lock errors. */
+async function removeSnapshotPathAsync(target: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await fs.promises.rm(target, tempDirectoryRemovalOptions);
+      return;
+    } catch (error) {
+      const wait = removalBackoff(error, attempt);
+      if (wait === undefined) {
+        throw error;
+      }
+      await delay(wait);
+    }
+  }
+}
+
+// A removal that loses to a briefly-held Windows handle used to wait in memory until process exit.
+// Only the transient lock codes retry, on an interval, and only for a bounded window. Any other error
+// gives up at once. After the window the directory stays on disk and the age-based orphan sweep takes it
+// over, because a claimed directory keeps its mtime.
+export const deferredSnapshotRemovalPolicy = {
+  intervalMs: 1_000,
+  giveUpAfterMs: 10 * 60_000,
+};
+const deferredRemovalsInFlight = new Set<string>();
+const deferredRemovalSince = new Map<string, number>();
+let deferredRemovalTimer: ReturnType<typeof setInterval> | undefined;
+
+function scheduleDeferredSnapshotRemoval(): void {
+  if (deferredRemovalTimer) {
+    return;
+  }
+  deferredRemovalTimer = setInterval(
+    retryDeferredSnapshotRemovals,
+    deferredSnapshotRemovalPolicy.intervalMs,
+  );
+  deferredRemovalTimer.unref?.();
+}
+
+function retryDeferredSnapshotRemovals(): void {
+  if (pendingTempDirectoryCleanup.size === 0) {
+    clearInterval(deferredRemovalTimer);
+    deferredRemovalTimer = undefined;
+    return;
+  }
+  for (const [directory, owner] of Array.from(pendingTempDirectoryCleanup)) {
+    if (deferredRemovalsInFlight.has(directory)) {
+      continue;
+    }
+    deferredRemovalsInFlight.add(directory);
+    void retryDeferredSnapshotRemoval(directory, owner).finally(() => {
+      deferredRemovalsInFlight.delete(directory);
+    });
+  }
+}
+
+async function retryDeferredSnapshotRemoval(
+  directory: string,
+  owner: SnapshotDirectory,
+): Promise<void> {
+  const since = deferredRemovalSince.get(directory) ?? Date.now();
+  deferredRemovalSince.set(directory, since);
+  let failure: unknown;
+  const removed = await removeTempDirectoryAsync(
+    directory,
+    (error) => {
+      failure = error;
+    },
+    owner,
+  );
+  if (removed) {
+    deferredRemovalSince.delete(directory);
+    return;
+  }
+  const code = extractErrorCode(failure);
+  if (!removalRetryCodes.has(code ?? "")) {
+    giveUpDeferredSnapshotRemoval(directory, owner, "non-transient error", code);
+  } else if (Date.now() - since >= deferredSnapshotRemovalPolicy.giveUpAfterMs) {
+    giveUpDeferredSnapshotRemoval(directory, owner, "retry window ended", code);
+  }
+}
+
+function giveUpDeferredSnapshotRemoval(
+  directory: string,
+  owner: SnapshotDirectory,
+  reason: string,
+  code: string | undefined,
+): void {
+  deferredRemovalSince.delete(directory);
+  try {
+    owner.release?.();
+  } catch {
+    // The native token is released as far as it can be; the sweep reclaims the directory later.
+  }
+  owner.release = undefined;
+  releaseSnapshotDirectoryCustody(directory, owner);
+  getChildLogger({ subsystem: "infra/sqlite-snapshot" }).warn(
+    { path: directory, errorCode: code, reason },
+    "SQLite snapshot removal gave up for this process; the orphan sweep reclaims it once idle.",
+  );
+}
+
 // A non-throwing cleanup-failure report emitted once per owner; a successful
 // read is never turned into a failure by temp-file cleanup.
 export type CleanupFailureReport = {
@@ -296,9 +451,10 @@ function prepareSnapshotRetirement(directory: string, owner: SnapshotDirectory |
 /** Delete in the token process: owner death must stop unlinking when its locks disappear. */
 export function retireSqliteSnapshotPayload(
   retirement: ReturnType<typeof beginSqliteSnapshotRetirement>,
+  budget: SyncRemovalBudget = createSyncRemovalBudget(),
 ): void {
   for (const file of retirement.payload) {
-    fs.rmSync(file, tempDirectoryRemovalOptions);
+    removeSnapshotPathSync(file, budget);
   }
   // Free copied bytes before SQLite allocates its retirement page/journal.
   // Controls stay intact until every marker commits and native handle closes.
@@ -309,6 +465,7 @@ export function removeTempDirectory(
   tempDir: string,
   onFailure?: (error: unknown) => void,
   selectedOwner = findSnapshotDirectory(tempDir),
+  budget: SyncRemovalBudget = createSyncRemovalBudget(),
 ): boolean {
   let owner = selectedOwner;
   try {
@@ -319,12 +476,12 @@ export function removeTempDirectory(
     const retirement = prepareSnapshotRetirement(tempDir, owner);
     try {
       if (retirement) {
-        retireSqliteSnapshotPayload(retirement);
+        retireSqliteSnapshotPayload(retirement, budget);
         owner = snapshotDirectory(tempDir);
         owner.release = undefined;
         owner.retired = true;
       }
-      fs.rmSync(tempDir, tempDirectoryRemovalOptions);
+      removeSnapshotPathSync(tempDir, budget);
     } finally {
       retirement?.release();
     }
@@ -336,6 +493,7 @@ export function removeTempDirectory(
   } catch (error) {
     onFailure?.(error);
     registerSnapshotTempDirectory(tempDir);
+    scheduleDeferredSnapshotRemoval();
     return false;
   }
 }
@@ -362,7 +520,7 @@ export async function removeTempDirectoryAsync(
     const retirement = prepareSnapshotRetirement(tempDir, owner);
     try {
       for (const file of retirement?.payload ?? []) {
-        await retainSnapshotWork(fs.promises.rm(file, tempDirectoryRemovalOptions));
+        await retainSnapshotWork(removeSnapshotPathAsync(file));
       }
       if (retirement) {
         retirement.retire();
@@ -370,7 +528,7 @@ export async function removeTempDirectoryAsync(
         owner.release = undefined;
         owner.retired = true;
       }
-      await retainSnapshotWork(fs.promises.rm(tempDir, tempDirectoryRemovalOptions));
+      await retainSnapshotWork(removeSnapshotPathAsync(tempDir));
     } finally {
       retirement?.release();
     }
@@ -382,6 +540,7 @@ export async function removeTempDirectoryAsync(
   } catch (error) {
     onFailure?.(error);
     registerSnapshotTempDirectory(tempDir);
+    scheduleDeferredSnapshotRemoval();
     return false;
   }
 }

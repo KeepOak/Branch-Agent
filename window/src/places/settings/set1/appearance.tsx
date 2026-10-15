@@ -60,7 +60,7 @@ export function AppearancePage(props: SettingsPageProps) {
   );
 }
 
-function startFrom(t: ThemeDesc | undefined, id: string, pair: Pair, accent: string): EditStart {
+export function startFrom(t: ThemeDesc | undefined, id: string, pair: Pair, accent: string): EditStart {
   const name = id === DEFAULT_THEME || !t ? "My theme" : `My ${themeName(t)}`.slice(0, 40);
   const withAccent = (m: "light" | "dark") => ({ ...pair[m], ...(/^#[0-9a-f]{6}$/.test(accent) ? { accent } : {}) });
   return { name, base: id, pair: { light: withAccent("light"), dark: withAccent("dark") } };
@@ -78,8 +78,8 @@ function WhereStatus({ look }: { look: Look }) {
 const definition = (name: string, pair: Pair) => ({ name, description: "Made in Branch.", light: toPalette(pair.light), dark: toPalette(pair.dark) });
 const NEEDS_PROFILE = "Saving a theme needs a signed-in profile on this Branch.";
 
-function useThemeActs({ engine }: SettingsPageProps, look: Look, themes: Themes, extra: Extra, profile: boolean) {
-  const save = useSaveRunner();
+export function useThemeActs({ engine }: Pick<SettingsPageProps, "engine">, look: Look, themes: Themes, extra: Extra, profile: boolean) {
+  const save = useSaveRunner(profile ? "Could not save the theme change. Try again." : NEEDS_PROFILE);
   const keepExtra = (id: string, pair: Pair | null) => {
     const next: Extra = { ...extra };
     if (pair) next[id] = { light: { ok: pair.light.ok, warn: pair.light.warn }, dark: { ok: pair.dark.ok, warn: pair.dark.warn } }; else delete next[id];

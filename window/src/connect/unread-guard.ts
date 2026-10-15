@@ -1,5 +1,4 @@
-// Copied from OpenClaw's ui/src/lib/sessions/unread.ts (SessionUnreadPatchGuard) at openclaw/openclaw@57e0aaa1c190,
-// with its error-code import replaced by a plain string match.
+// The error-code import is replaced by a plain string match.
 /**
  * Acknowledges unread state at most once per unread episode: the pending flag
  * clears when the server-confirmed read (unread=false) is observed, so fresh

@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/irc/src/monitor.test.ts (atlas CHAT-APPS-0236). Changed for Branch: await SQLite worker retirement on Windows, assert the configured realname, and use test-aware deadlines under shard load.
+// Changed for Branch: await SQLite worker retirement on Windows, assert the configured realname, and use test-aware deadlines under shard load.
 // Irc tests cover monitor plugin behavior.
 import fs from "node:fs/promises";
 import net from "node:net";

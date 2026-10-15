@@ -1,0 +1,9 @@
+window:src/screens/chat/ChatView.test.tsx
+window:src/screens/chat/HoverBar.test.tsx
+window:src/screens/chat/Steps.test.tsx
+window:src/screens/chat/glass48.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/frame/glass48.test.tsx
+window:src/screens/sidebar/Sidebar.test.tsx
+window:src/screens/sidebar/glass48.test.tsx
+window:src/shell/lockdown-confirmation.test.tsx

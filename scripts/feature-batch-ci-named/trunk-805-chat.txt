@@ -1,0 +1,6 @@
+window:src/glass/coming.test.tsx
+window:src/screens/chat/ChatView.test.tsx
+window:src/screens/chat/HoverBar.test.tsx
+window:src/screens/chatapps/ChatApps.test.tsx
+window:src/screens/chatapps/Manage.test.tsx
+window:src/screens/chatapps/glass48.test.tsx

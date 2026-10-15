@@ -1,10 +1,10 @@
-// Adapted from bytedance/UI-TARS-desktop@2ff41a9e515828c5bd5b276e493d73aa0bdf4a3a:
-// multimodal/tarko/agent-ui-builder/src/builder.ts (SESSIONS-0049). Branch embeds its existing transcript presentation.
+// Copyright (c) 2025 Bytedance, Inc. and its affiliates.
+// SPDX-License-Identifier: Apache-2.0
 import type { Block } from "../thread/model";
 import { buildTranscriptEntries, eventsToHtml, type TranscriptExportOptions } from "./render";
 import { installReplay } from "./replay-runtime";
 
-/** UI-TARS safeJsonStringify: never let event content terminate an embedding script. */
+/** safeJsonStringify: never let event content terminate an embedding script. */
 export function safeReplayJson(value: unknown): string {
   return JSON.stringify(value).replaceAll("<", "\\u003C").replaceAll(">", "\\u003E").replaceAll("/", "\\/");
 }

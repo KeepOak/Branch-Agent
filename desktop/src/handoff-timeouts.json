@@ -4,5 +4,6 @@
   "takeOverTimeoutMs": 30000,
   "standbyReadyTimeoutMs": 120000,
   "rollbackTimeoutMs": 30000,
-  "retireKillAfterMs": 345000
+  "retireKillAfterMs": 345000,
+  "retireHardCapMs": 7185000
 }

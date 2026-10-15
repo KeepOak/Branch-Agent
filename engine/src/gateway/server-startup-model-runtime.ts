@@ -1,6 +1,13 @@
+import { PreparedModelRuntimePublicationSupersededError } from "../agents/prepared-model-runtime.errors.js";
 import type { BranchConfig } from "../config/types.branch.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { PluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.types.js";
 import type { GatewayStartupTrace } from "./server-startup-trace.js";
+
+const log = createSubsystemLogger("gateway/startup-model-runtime");
+
+/** Startup publications a Gateway start repeats after newer publications left its agents unpublished. */
+export const MAX_STARTUP_MODEL_PUBLICATION_ROUNDS = 5;
 
 type StartupExternalAuthHydrationDeps = {
   listAgentIds: (cfg: BranchConfig) => string[];
@@ -62,7 +69,57 @@ export async function hydrateConfiguredExternalCliAuth(params: {
   return cfg;
 }
 
+/**
+ * Publishes the configured agents' model runtimes before the Gateway accepts work. An agent's startup
+ * admission, a reload or an auth refresh may start a newer publication while this one builds; that
+ * supersedes this one for every agent it covers. Superseded is not failed: wait out the newer
+ * publication, then re-check, and publish again only if it left a configured agent unpublished.
+ */
 export async function publishConfiguredModelRuntimeSnapshots(params: {
+  cfg: BranchConfig;
+  getConfig?: () => BranchConfig | Promise<BranchConfig>;
+  isCurrent?: () => boolean;
+  pluginMetadataSnapshot?: PluginMetadataSnapshot;
+  workspaceDir?: string;
+  startupTrace?: GatewayStartupTrace;
+}): Promise<void> {
+  const { getPendingPreparedModelRuntimeReplacement, hasPublishedConfiguredModelRuntimes } =
+    await import("../agents/prepared-model-runtime.js");
+  for (let round = 1; ; round += 1) {
+    try {
+      await publishConfiguredModelRuntimeSnapshotsOnce(params);
+      return;
+    } catch (error) {
+      if (
+        !(error instanceof PreparedModelRuntimePublicationSupersededError) ||
+        params.isCurrent?.() === false
+      ) {
+        throw error;
+      }
+      log.info(
+        `startup model publication was superseded (${error.message}); waiting for the newer publication`,
+      );
+      for (
+        let pending = getPendingPreparedModelRuntimeReplacement(),
+          waited: Promise<void> | undefined;
+        pending && pending !== waited;
+        pending = getPendingPreparedModelRuntimeReplacement()
+      ) {
+        waited = pending;
+        await pending.catch(() => undefined);
+      }
+      if (params.isCurrent?.() === false || hasPublishedConfiguredModelRuntimes()) {
+        return;
+      }
+      if (round >= MAX_STARTUP_MODEL_PUBLICATION_ROUNDS) {
+        throw error;
+      }
+      log.info("startup model publication left a configured agent unpublished; publishing again");
+    }
+  }
+}
+
+async function publishConfiguredModelRuntimeSnapshotsOnce(params: {
   cfg: BranchConfig;
   getConfig?: () => BranchConfig | Promise<BranchConfig>;
   isCurrent?: () => boolean;
