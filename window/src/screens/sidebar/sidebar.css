@@ -240,6 +240,16 @@ button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
 .r1sb-groups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .r1sb-groups [aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); }
 
+/* Replace with a different Trunk: one row per unpinned Trunk, its face then its name. */
+.r1sb-swap { display: grid; gap: 4px; max-height: 320px; overflow-y: auto; }
+.r1sb-swap-pick { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 10px; border: 0; border-radius: 14px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.r1sb-swap-pick:is(:hover, :focus-visible) { background: var(--gp-on); }
+.r1sb-swap-pick:is(:disabled, [aria-disabled="true"]) { cursor: default; opacity: .55; background: transparent; }
+.r1sb-swap-face { width: 32px; height: 32px; display: grid; place-items: center; flex: none; }
+.r1sb-swap-name { display: grid; font-weight: 500; }
+.r1sb-swap-name small { font-weight: 400; color: var(--ink-2); }
+.r1sb-swap-none { margin: 0; color: var(--ink-2); }
+
 /* Pinned order: a tile drags to a new place (the Classic pointer drag). The tile it would land beside shows an accent
    edge on that side; the tile being moved dims. The default Trunk stays first and doesn't move. */
 .r1sb-pin.pin-drop-before { box-shadow: inset 3px 0 var(--accent); border-radius: 14px; }
