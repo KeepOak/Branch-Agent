@@ -87,8 +87,10 @@ describe('Android release version and signing plan', () => {
     expect(signed.attachRelease).toBe(true);
     expect(signed.apkName).toBe('branch-android-0.4.4-build-abc.apk');
     expect(signed.sha256Name).toBe('branch-android-0.4.4-build-abc.apk.sha256');
+    expect(signed.versioncodeName).toBe('branch-android-0.4.4-build-abc.apk.versioncode.4');
     expect(signed.versionCode).toBe(4);
     expect(unsigned.sha256Name).toBe('');
+    expect(unsigned.versioncodeName).toBe('');
   });
 
   it('passes PKCS12 signing to gradle only when the keystore path and secrets are set', () => {
@@ -183,6 +185,7 @@ describe('Android release version and signing plan', () => {
       versionCode: 9,
       apkName: 'branch-android-0.4.4-build-abc.apk',
       sha256Name: 'branch-android-0.4.4-build-abc.apk.sha256',
+      versioncodeName: 'branch-android-0.4.4-build-abc.apk.versioncode.9',
     });
     const unsigned = planCliResult({
       RELEASE_TAG: 'v0.4.4-build-abc',
@@ -208,6 +211,7 @@ describe('Android release version and signing plan', () => {
       const sidecar = JSON.parse(execFileSync(process.execPath, [helper, '--sha256', apkPath, '--json'], {
         cwd: mobileRoot,
         encoding: 'utf8',
+        env: { ...process.env, ANDROID_VERSION_CODE: '' },
       }));
       expect(sidecar).toEqual({
         path: `${apkPath}.sha256`,
@@ -216,6 +220,13 @@ describe('Android release version and signing plan', () => {
       });
       expect(readFileSync(sidecar.path, 'utf8')).toBe(`${expected}  ${apkName}\n`);
       expect(sidecar.hex).toMatch(/^[a-f0-9]{64}$/);
+      const withCode = JSON.parse(execFileSync(process.execPath, [helper, '--sha256', apkPath, '--json'], {
+        cwd: mobileRoot,
+        encoding: 'utf8',
+        env: { ...process.env, ANDROID_VERSION_CODE: '13' },
+      }));
+      expect(withCode.versioncode_name).toBe(`${apkName}.versioncode.13`);
+      expect(readFileSync(withCode.versioncode_path, 'utf8')).toBe('13\n');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -270,9 +281,23 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('--sha256');
     expect(workflow).toContain('SHA256_NAME');
     expect(workflow).toContain('${APK_NAME}.sha256');
-    expect(workflow).toMatch(/--sha256[\s\S]*Verify APK signature/);
+    expect(workflow).toMatch(/--sha256[\s\S]*Reject a debug-signed APK/);
     expect(workflow).toMatch(/attach_release == 'true'[\s\S]*SHA256_PATH[\s\S]*gh release upload/);
     expect(workflow).not.toMatch(/--sha256[\s\S]*attach_release == 'false'/);
+  });
+
+  it('attaches branch-android-<version>.apk.versioncode.<runNumber> with a signed APK', () => {
+    expect(call('versionCodeFileName', 'branch-android-0.4.4-build-abc.apk', 13)).toBe(
+      'branch-android-0.4.4-build-abc.apk.versioncode.13',
+    );
+    expect(workflow).toContain('VERSIONCODE_NAME');
+    expect(workflow).toContain('ANDROID_VERSION_CODE');
+    expect(workflow).toMatch(/Stage the APK[\s\S]*ANDROID_VERSION_CODE[\s\S]*SIGNED" == "true"[\s\S]*--sha256/);
+    expect(workflow).toMatch(/Reject a debug-signed APK[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
+    expect(workflow).toMatch(/apksigner verify --print-certs[\s\S]*actions\/upload-artifact/);
+    expect(workflow).toMatch(/attach_release == 'true'[\s\S]*VERSIONCODE_PATH[\s\S]*gh release upload/);
+    expect(workflow).toContain('${APK_NAME}.versioncode.');
+    expect(workflow).not.toMatch(/-unsigned\.apk[\s\S]*gh release upload/);
   });
 
   it('verifies the APK certificate fingerprint matches the expected release key SHA-256', () => {

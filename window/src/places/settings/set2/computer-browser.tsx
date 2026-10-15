@@ -151,7 +151,7 @@ function ProfilesDialog({ c, onClose }: { c: Ctx; onClose: () => void }) {
   const profiles = list(rec(res.data).profiles);
   return (
     <Dialog title="Browser profiles" wide onClose={onClose}>
-      {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
+      {res.error ? <p className="hint s2-err" role="alert">{res.error}{res.data ? null : <> <Btn sm onClick={() => void res.reload()}>Try again</Btn></>}</p> : null}
       {res.loading && !res.data ? <p>Reading the profiles…</p> : null}
       {res.data && !profiles.length ? <p className="hint">No browser profiles yet.</p> : null}
       <div className="rows">

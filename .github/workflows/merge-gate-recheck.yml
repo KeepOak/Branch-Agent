@@ -26,6 +26,7 @@ on:
       - macOS checks for OS-specific changes
       - Merge gate
       - Merge gate trusted
+      - Mobile APK reinstall
       - Mobile checks
       - Non-merge-commit landing
       - OpenClaw wording

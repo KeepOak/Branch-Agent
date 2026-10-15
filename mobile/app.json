@@ -19,10 +19,11 @@
       }
     },
     "android": {
-      "versionCode": 1,
       "package": "com.keepoak.branch",
+      "versionCode": 1,
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.REQUEST_INSTALL_PACKAGES"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -70,7 +71,9 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "./plugins/withApkInstaller.js",
+      "expo-updates"
     ]
   }
 }
