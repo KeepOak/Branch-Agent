@@ -72,7 +72,8 @@ function Head({ row, data, isDefault, level }: { row: TrunkRow; data: ProfileDat
   </>;
 }
 
-function Automations({ engine, data, reload }: { engine: WindowEngine; data: ProfileData; reload: () => void }) {
+/** Its automations with an on/off switch each (cron.update); the R1 details panel re-hosts this list as its routines. */
+export function Automations({ engine, data, reload }: { engine: WindowEngine; data: Pick<ProfileData, "automations">; reload: () => void }) {
   const [error, setError] = useState<string | null>(null);
   if (!data.automations?.length) return null;
   const toggle = (id: string, enabled: boolean) => engine.request("cron.update", { id, patch: { enabled } }).then(reload, (e: unknown) => setError(errorText(e)));

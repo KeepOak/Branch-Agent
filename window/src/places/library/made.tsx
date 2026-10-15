@@ -102,7 +102,7 @@ function DashTile({ engine, row, trunk, open }: { engine: WindowEngine; row: Ses
 
 type Group = { row: SessionRow; trunk: string; files: Artifact[]; hasImages: boolean; error: string | null };
 
-function useMadeFiles(engine: WindowEngine, trunks: Trunk[]) {
+function useMadeFiles(engine: WindowEngine, trunks: Trunk[], agentId?: string) {
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
@@ -110,7 +110,7 @@ function useMadeFiles(engine: WindowEngine, trunks: Trunk[]) {
   useEffect(() => {
     let current = true;
     const name = (id: string) => { const t = trunks.find(x => x.id === id); return t ? trunkName(t) : id; };
-    void engine.request<unknown>("sessions.list", { excludeSubagents: true, limit: PAGE, offset }).then(pageOf).then(async page => {
+    void engine.request<unknown>("sessions.list", { excludeSubagents: true, limit: PAGE, offset, ...(agentId ? { agentId } : {}) }).then(pageOf).then(async page => {
       const found = await mapLimited(page.sessions ?? [], 4, async (row): Promise<Group> => {
         try {
           const r = { artifacts: artifactsOf(await engine.request<unknown>("artifacts.list", { sessionKey: row.key, ...(agentOf(row) ? { agentId: agentOf(row) } : {}), messageRole: "assistant" })) };
@@ -122,12 +122,13 @@ function useMadeFiles(engine: WindowEngine, trunks: Trunk[]) {
       setGroups(g => [...(offset && g ? g : []), ...found]);
     }, e => { if (current) setError(errorText(e)); });
     return () => { current = false; };
-  }, [engine, trunks, offset]);
+  }, [engine, trunks, offset, agentId]);
   return { groups, error, more, loadMore: () => setOffset(o => o + PAGE) };
 }
 
-function MadeFiles({ engine, trunks, openConversation }: Props) {
-  const made = useMadeFiles(engine, trunks);
+/** Every made file, or with `agentId` only that Trunk's (the R1 details panel's Library tab). */
+export function MadeFiles({ engine, trunks, openConversation, agentId }: Props & { agentId?: string }) {
+  const made = useMadeFiles(engine, trunks, agentId);
   const op = useOperation(engine);
   const files = made.groups?.flatMap(g => g.files.map(f => ({ f, g }))) ?? [];
   const withImages = made.groups?.filter(g => g.hasImages) ?? [];
