@@ -341,6 +341,13 @@ export function R1Window({ session }: { session: SaplingSession }) {
     name: conversations.rows.find(row => row.key === snapshot.mainKey)?.title || "your Trunk", page: route.kind === "place" ? PLACES.find(p => p.id === route.place)?.name ?? placeTitle(route.place) : "", onFull: openConversation });
   // The agent details popover's second line: the error, the agent's emoji, or the loading line (none when there's no emoji).
   const agentLine = identityError ?? (identity ? identity.emoji ?? "" : "Loading agent details…");
+  // The Trunk behind this conversation: its row's agent, or the agent named in a Trunk session key (agent:<id>:...).
+  const agentTrunkId = current?.agentId ?? /^agent:([^:]+):/.exec(snapshot.sessionKey ?? "")?.[1];
+  const openAgentTrunk = (view: "edit" | "profile") => {
+    closeAgent();
+    navigate({ kind: "place", place: "people" });
+    window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: agentTrunkId, view } }));
+  };
   return <>
     {onboarding && <Onboarding engine={engine} startAt={firstRun.step ?? 0}
       onLater={state => { firstRun.close(); void recordOnboarding(engine, state).catch((e: unknown) => setNotice(`Couldn’t save that setup is done: ${e instanceof Error ? e.message : String(e)}`)); }}
@@ -405,6 +412,12 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details g-clear">
       <strong className="g-label">{identity?.name ?? snapshot.name}</strong>{agentLine ? <p className="g-label">{agentLine}</p> : null}
       {room.header ? <p className="g-label" data-testid="room-members">{room.header.line}</p> : null}
+      {/* Clicking a Trunk's name is where people look to change it (owner, 2026-10-15): Customize opens its editor and Profile
+          its page, through People's TrunkHost like the ⋯ menu and the character do. */}
+      {route.kind === "chat" && agentTrunkId ? <>
+        <button type="button" data-local="" onClick={() => openAgentTrunk("edit")}>Customize</button>
+        <button type="button" data-local="" onClick={() => openAgentTrunk("profile")}>Profile</button>
+      </> : null}
       {route.kind === "chat" ? <button type="button" data-local="" onClick={() => { setCharacterShown(!characterShown); closeAgent(); }}>{characterShown ? "Hide the character" : "Show the character"}</button> : null}
       <button type="button" data-local="" onClick={closeAgent}>Close</button>
     </div></Popover>}
