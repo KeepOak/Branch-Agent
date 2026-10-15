@@ -167,27 +167,24 @@ export class AgentList {
   }
 
   private async loadRoster(): Promise<void> {
-    const agentsP = this.link.request('agents.list', {});
-    const sessionsP = this.link.request('sessions.list', LIST_PARAMS);
-    let agents: unknown;
-    try {
-      agents = await agentsP;
-    } catch (error) {
-      this.set({ error: listFailureMessage(error) });
+    const [agentsResult, sessionsResult] = await Promise.allSettled([
+      this.link.request('agents.list', {}),
+      this.link.request('sessions.list', LIST_PARAMS),
+    ]);
+    if (agentsResult.status === 'rejected') {
+      this.set({ error: listFailureMessage(agentsResult.reason) });
       return;
     }
-    let sessions: unknown;
-    try {
-      sessions = await sessionsP;
-      this.lastSessions = sessions;
-    } catch (error) {
+    if (sessionsResult.status === 'rejected') {
       if (this.lastSessions === undefined) {
-        this.set({ error: listFailureMessage(error) });
+        this.set({ error: listFailureMessage(sessionsResult.reason) });
         return;
       }
-      sessions = this.lastSessions;
+      this.apply(agentsResult.value, this.lastSessions);
+      return;
     }
-    this.apply(agents, sessions);
+    this.lastSessions = sessionsResult.value;
+    this.apply(agentsResult.value, sessionsResult.value);
   }
 
   private apply(agents: unknown, sessions: unknown): void {
