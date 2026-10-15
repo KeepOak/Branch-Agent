@@ -248,11 +248,11 @@ export function EveryChange({ engine, row }: SlotControlProps) {
         {entries.length ? (
           <ul className="r1s-items">
             {entries.map((e) => { const line = changeLines(e, showsInternals(level)); return (
-              <li key={str(e.id)} className="r1s-item" data-bad={e.invalid === true || undefined}>
-                <span className="r1s-item-t g-label">{line.title}</span>
-                <small className="g-label">{line.sub}</small>
-                {e.kind === "config-write" ? <Coming engine={engine} need="engine: rolling back a settings change" unwired reason="Rolling back a change comes in a later update." where="Roll back">
-                  <button type="button" className="r1s-link" disabled>Roll back</button></Coming> : null}
+              <li key={str(e.id)} className="r1s-change" data-bad={e.invalid === true || undefined}>
+                <span className="r1s-change-t">{line.title}</span>
+                <time className="r1s-change-when" dateTime={typeof e.at === "number" ? new Date(e.at).toISOString() : undefined}>{line.sub}</time>
+                {e.kind === "config-write" ? <div className="r1s-change-acts"><Coming engine={engine} need="engine: rolling back a settings change" unwired reason="Rolling back a change comes in a later update." where="Roll back">
+                  <button type="button" className="r1s-link" disabled>Roll back</button></Coming></div> : null}
               </li>
             ); })}
           </ul>
