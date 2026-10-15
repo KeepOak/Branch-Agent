@@ -61,7 +61,7 @@ const mapPath = process.env.BUTTON_CRAWL_MAP || resolve(root, MAP_PATH);
 function signature(surface) {
   // Every field classifyClick reads as a result must change the signature, or a click whose only result is that field
   // waits out the full 450 ms and is then reported slow.
-  return [surface.route, surface.dialog, surface.menu, surface.panel, surface.toast, surface.mainText, surface.viewText, surface.control, surface.alert, surface.focus, surface.hash, surface.chrome, surface.historyMoves, surface.popups, surface.downloads, surface.configRevision, surface.overlay, surface.values, surface.frame].join('\n');
+  return [surface.route, surface.dialog, surface.menu, surface.panel, surface.toast, surface.mainText, surface.viewText, surface.control, surface.alert, surface.focus, surface.hash, surface.chrome, surface.historyMoves, surface.popups, surface.downloads, surface.configRevision, surface.overlay, surface.values, surface.frame, surface.controlled].join('\n');
 }
 
 function add(found, key, problems) {

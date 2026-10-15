@@ -53,12 +53,14 @@ describe("later-update rows fold at Advanced", () => {
       const line = fold.querySelector<HTMLButtonElement>(".r1s-later-btn");
       expect(line?.textContent).toBe(laterLine(count));
       expect(line?.getAttribute("aria-expanded")).toBe("false");
-      const body = fold.querySelector<HTMLElement>(":scope > div[hidden]");
-      expect(body).not.toBeNull();
+      // The toggle names the panel it opens, and the panel is hidden until it opens.
+      const controls = line?.getAttribute("aria-controls") ?? "";
+      expect(controls).not.toBe("");
+      expect(document.getElementById(controls)?.hidden).toBe(true);
       expect(fold.querySelectorAll("[data-row][data-coming]").length).toBe(count);
       await act(async () => { line?.click(); });
       expect(line?.getAttribute("aria-expanded")).toBe("true");
-      expect(fold.querySelector<HTMLElement>(":scope > div")?.hidden).toBe(false);
+      expect(document.getElementById(controls)?.hidden).toBe(false);
       await act(async () => { line?.click(); });
     }
   });
