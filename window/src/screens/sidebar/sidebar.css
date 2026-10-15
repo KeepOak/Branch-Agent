@@ -110,6 +110,12 @@ button.r1sb-cap:hover { color: var(--ink); }
 .r1sb-pv[data-unread] { color: var(--ink-2); font-weight: 600; }
 .r1sb-from { font-weight: 500; color: var(--accent-ink, var(--accent)); }
 .r1sb-row[data-offline] .r1sb-face { opacity: .6; }
+/* Faces are the status (preview .av.working, .row .unread): a working Trunk's face sits in the turning working ring
+   (face/face.css .working-ring); unread is the one small accent dot. No spinner or status words in a row. */
+.r1sb-ring { display: grid; place-items: center; flex: none; border-radius: 50%; }
+.r1sb-ring[data-still]::before { animation: none !important; }
+:root[data-still] .r1sb-ring::before { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .r1sb-ring::before { animation: none !important; } }
 .r1sb-more { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: none; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--ink-3); }
 .r1sb-more:hover, .r1sb-more:focus-visible { background: var(--fill); color: var(--ink); }
 .r1sb-rw:is(:hover, :focus-within) > .r1sb-more { display: grid; }
@@ -193,6 +199,10 @@ button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
   .r1-frame[data-wide="false"] .r1sb-row > :not(.r1sb-face) { display: none; }
   .r1-frame[data-wide="false"] .r1sb-row .r1sb-face { grid-row: auto; }
   .r1-frame[data-wide="false"] .r1sb-more { display: none !important; }
+  /* The rail keeps the unread dot on the face's corner (preview .rail9 .row > .unread). */
+  .r1-frame[data-wide="false"] .r1sb-row > .r1sb-meta:has(> .r1sb-unread) { display: block; position: absolute; top: 5px; right: 5px; visibility: visible; }
+  .r1-frame[data-wide="false"] .r1sb-row > .r1sb-meta > time { display: none; }
+  .r1-frame[data-wide="false"] .r1sb-row .r1sb-unread { width: 9px; height: 9px; box-shadow: 0 0 0 2px var(--side); }
   .r1-frame[data-wide="false"] .r1sb-rail-bins { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 8px; }
   .r1-frame[data-wide="false"] .r1sb-badge { position: absolute; top: -4px; right: -4px; min-width: 14px; height: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--ink-2); color: var(--bg); font: 600 9.5px/14px var(--sans); font-style: normal; }
   .r1-frame[data-wide="false"] .r1sb-foot { flex-direction: column; gap: 8px; padding: 8px 0; justify-content: center; }
