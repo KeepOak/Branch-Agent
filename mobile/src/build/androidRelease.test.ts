@@ -29,6 +29,7 @@ function planFromCli(env: NodeJS.Dict<string>) {
     cwd: mobileRoot,
     encoding: 'utf8',
     env: { ...process.env, ...env },
+    stdio: ['ignore', 'pipe', 'pipe'],
   }));
 }
 
@@ -45,6 +46,7 @@ function planCliResult(env: NodeJS.Dict<string>) {
       cwd: mobileRoot,
       encoding: 'utf8',
       env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
     return { ok: true, stdout };
   } catch (error) {
