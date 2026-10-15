@@ -152,7 +152,11 @@ export function windowsLauncherCompiler(env, exists) {
   return found;
 }
 
-/** csc arguments: a windowed exe (no console), with the app icon so shortcuts and pins show Branch. */
-export function windowsLauncherCompileArgs({ source, out, icon }) {
-  return ["/nologo", "/target:winexe", "/optimize+", "/platform:anycpu", "/out:" + out, ...(icon ? ["/win32icon:" + icon] : []), source];
+/**
+ * csc arguments: a windowed exe (no console). Never /win32icon: the .NET Framework csc reads the .ico itself and
+ * fails the build on assets/branch.ico, whose images are all PNG-compressed. The release build stamps the icon on
+ * afterwards (windows-launcher-icon.mjs), the same way the packager stamps it on Branch Agent.exe.
+ */
+export function windowsLauncherCompileArgs({ source, out }) {
+  return ["/nologo", "/target:winexe", "/optimize+", "/platform:anycpu", "/out:" + out, source];
 }

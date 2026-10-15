@@ -17,4 +17,4 @@ export declare function runWindowsLauncher(options: { root: string; args?: strin
 export declare function windowsShortcutNeedsLauncher(target: string | undefined, root: string | undefined): boolean;
 export declare function windowsLauncherSource(): string;
 export declare function windowsLauncherCompiler(env: NodeJS.ProcessEnv, exists: (file: string) => boolean): string;
-export declare function windowsLauncherCompileArgs(options: { source: string; out: string; icon?: string }): string[];
+export declare function windowsLauncherCompileArgs(options: { source: string; out: string }): string[];

@@ -12,6 +12,7 @@ import { makeComponentRelease } from "./make-component-release.mjs";
 import { formatPayload, measurePayload, payloadBudgetProblems, pruneCodexPlatformPackages, pruneProductionDependencies } from "./release-payload.mjs";
 import { installLinuxLauncher } from "./linux-launcher.mjs";
 import { WINDOWS_LAUNCHER_RESOURCE, windowsLauncherCompileArgs, windowsLauncherCompiler, windowsLauncherSource } from "./windows-launcher.mjs";
+import { stampWindowsLauncherIcon } from "./windows-launcher-icon.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { MAC_ADHOC_NOTICE, macSignCommand, macSigningPlan } from "./mac-release-signing.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
@@ -89,13 +90,15 @@ async function deployEngine(pnpm, scratch, identity, macSigning) {
 /**
  * The stable Windows launcher (windows-launcher.mjs), compiled with the C# compiler that ships with Windows into the
  * package's resources/. The installer and the desktop app copy it to the install root, where every shortcut points.
+ * Compiled without an icon (csc rejects the PNG-compressed branch.ico and fails the Windows build), then stamped.
  */
 async function buildWindowsLauncher(resources, scratch) {
   const source = join(scratch, "branch-launcher.cs");
   await writeFile(source, windowsLauncherSource());
   const out = join(resources, WINDOWS_LAUNCHER_RESOURCE);
-  await run(windowsLauncherCompiler(process.env, existsSync), windowsLauncherCompileArgs({ source, out, icon: join(desktopRoot, "assets/branch.ico") }), scratch);
+  await run(windowsLauncherCompiler(process.env, existsSync), windowsLauncherCompileArgs({ source, out }), scratch);
   assert.ok(existsSync(out), `The Windows launcher was not built: ${out}`);
+  await stampWindowsLauncherIcon(out, join(desktopRoot, "assets/branch.ico"));
 }
 
 async function packageDesktop(scratch, output, identity, macSigning) {
