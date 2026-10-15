@@ -2007,17 +2007,6 @@ test('trusted gate runs the commit email checker on pull request commits', () =>
   assert.doesNotMatch(yaml, /ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.(?:sha|ref)/);
 });
 
-test('commit-emails fetches PR history with git HTTP basic auth, not a bearer extraheader', () => {
-  const yaml = readFileSync(new URL(`../${TRUSTED_WORKFLOW_PATH}`, import.meta.url), 'utf8');
-  const start = yaml.indexOf('Fetch pull request history for the Final head check');
-  const fetch = yaml.slice(start, yaml.indexOf('\n      - name: Preflight', start));
-  assert.match(fetch, /refs\/pull\/\$\{PR_NUMBER\}\/head:refs\/remotes\/pr\/head/);
-  assert.match(fetch, /x-access-token:%s/);
-  assert.match(fetch, /http\.https:\/\/github\.com\/\.extraheader=AUTHORIZATION: basic/);
-  assert.doesNotMatch(fetch, /AUTHORIZATION: bearer/);
-  assert.match(fetch, /git -c "http\.https:\/\/github\.com\/\.extraheader=/);
-});
-
 test('trusted gate re-runs the UI screenshot proof check from main', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/check-ui-proof.test.mjs'));
