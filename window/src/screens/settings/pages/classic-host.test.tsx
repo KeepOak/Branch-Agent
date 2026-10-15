@@ -123,7 +123,7 @@ it("keeps Models' Local tab on the R1 Models page and sends its Accounts tab to 
   await settle();
   const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="models"] .r1s-classic[data-classic="models"]')!;
   const tab = (name: string) => [...hosted.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => b.textContent === name)!;
-  expect([...hosted.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(["Accounts", "Default", "Local", "Second opinion (a second model checks answers)", "Media"]);
+  expect([...hosted.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(["Accounts", "Default", "Local", "Double-check", "Media"]);
   await act(async () => tab("Local").click());
   await settle();
   expect(onPage).not.toHaveBeenCalled();

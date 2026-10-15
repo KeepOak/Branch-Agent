@@ -13,8 +13,6 @@ import type { Draft } from "./api";
 import { GitHubChoice } from "./GitHubChoice";
 import type { May } from "./may";
 
-const SEND_WHY = "Send email and messages comes in a later update.";
-const NOTES_WHY = "Keep its own notes comes in a later update.";
 
 function Row({ title, hint, children, off }: { title: string; hint: string; children: ReactNode; off?: string }) {
   return <div className={off ? "tk-ctl off" : "tk-ctl"}><b>{title}</b><span className="tk-right">{children}</span><small>{hint}</small>{off ? <small className="tk-why">{off}</small> : null}</div>;
@@ -87,15 +85,9 @@ export function MayTab({ engine, agentId, name, draft, models, level, set, openS
           ? <button type="button" role="switch" aria-checked={false} aria-label="Use the browser" className="switch" disabled />
           : <Switch label="Use the browser" on={may.browse} onChange={next => setMay({ browse: next })} />}
       </Row>
-      <Row title="Send email and messages" hint="Overrides the mode for this Trunk only." off={SEND_WHY}>
-        <span className="tk-seg">{["Ask first", "Allowed"].map((l) => <button key={l} type="button" disabled>{l}</button>)}</span>
-      </Row>
       <Row title="Spend money" hint="Never, whatever mode Branch is in."><span className="tk-fixed">Never</span></Row>
       <ModelPick draft={draft} models={models} setModel={(model) => set({ model })} openSettings={openSettings} />
       {shows(level, "advanced") && <Advanced engine={engine} agentId={agentId} name={name} draft={draft} models={models} setMay={setMay} />}
-      <Row title="Keep its own notes" hint="Separate from other Trunks’ memory." off={NOTES_WHY}>
-        <button type="button" role="switch" aria-checked={true} aria-label="Keep its own notes" className="switch" disabled />
-      </Row>
     </div>
   );
 }

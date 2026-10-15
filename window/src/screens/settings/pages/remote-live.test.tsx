@@ -23,24 +23,24 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 const PREVIEW_CARDS = ["Keep Branch running", "Reach", "How it’s reached", "What it has been doing", "Another computer", "Connection", "Exposure", "Limits", "App previews", "From scripts", "Never break"];
 /** The preview's rows at each level, card by card; Classic's working rows the preview doesn't name are in EXTRA. */
 const PREVIEW: Record<string, string[]> = {
-  "Keep Branch running": ["Gateway", "Carry on interrupted work by itself", "Show the gateway in the tray", "Ask before quitting while work runs"],
-  Reach: ["Who can reach the Gateway", "Port", "Sign-in", "Through Cloudflare", "Tailscale", "Tailscale access", "Serve Branch’s page to browsers"],
+  "Keep Branch running": ["Running in the background", "Carry on interrupted work by itself", "Show the gateway in the tray", "Ask before quitting while work runs"],
+  Reach: ["Who can reach Branch", "Port", "Sign-in", "Through Cloudflare", "Tailscale", "Tailscale access", "Serve Branch’s page to browsers"],
   "How it’s reached": ["Label this computer", "Branch in your browser", "Web address path"],
-  "What it has been doing": ["A terminal where the Gateway runs"],
+  "What it has been doing": ["A terminal where Branch runs"],
   "Another computer": ["How to reach it", "Check the SSH host key", "Sign in through a proxy"],
-  Connection: ["Gateway address", "Session key or password", "Apply settings changes", "Only join a running Gateway", "Infrastructure settings"],
-  Exposure: ["Accept files and pictures", "HSTS header", "HTTPS for the Gateway", "Allowed browser addresses", "Trust the Host header for origins"],
+  Connection: ["Address Branch is on", "Session key or password", "Apply settings changes", "Only join a running Gateway", "Infrastructure settings"],
+  Exposure: ["Accept files and pictures", "HSTS header", "HTTPS for Branch", "Allowed browser addresses", "Trust the Host header for origins"],
   Limits: ["Wrong sign-ins allowed", "per", "Then lock that address for", "Never lock out this computer"],
   "App previews": ["Reach previews from other devices"],
   "From scripts": ["Send a message", "Connect a chat app", "Ask a poll", "Everything else in a chat"],
-  "Never break": ["Canary, journal and rollback"],
+  "Never break": ["Safe updates you can undo"],
 };
 const EXTRA: Record<string, string[]> = {
   "Keep Branch running": ["Keep working when the window closes"],
   Reach: ["The address"],
   "What it has been doing": ["Restart the engine"],
-  "Another computer": ["Its address", "SSH address", "Its gateway key", "Certificate fingerprint", "Connect"],
-  Connection: ["Gateway ping", "Gateway activity"],
+  "Another computer": ["Its address", "SSH address", "Its sign-in key", "Certificate fingerprint", "Connect"],
+  Connection: ["Response time", "Branch’s activity"],
   Exposure: ["Risky switches"],
   "From scripts": ["Send to several chats"],
 };
@@ -97,7 +97,8 @@ describe("R1 Settings › Remote access is a native R1 page with the preview's c
     await setLevel("Technical");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
     for (const [title, rows] of Object.entries(PREVIEW)) {
-      expect(labels(card(title)).filter((l) => !(EXTRA[title] ?? []).includes(l)), title).toEqual(rows);
+      // Later-update rows fold under their own line at the end of the card, so the check is on the rows, not their order.
+      expect(labels(card(title)).filter((l) => !(EXTRA[title] ?? []).includes(l)).sort(), title).toEqual([...rows].sort());
       expect(labels(card(title)).filter((l) => (EXTRA[title] ?? []).includes(l)), title).toEqual(EXTRA[title] ?? []);
     }
     expect(host.textContent).not.toMatch(/Chat apps, (more|even more|in depth)/);

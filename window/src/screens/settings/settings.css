@@ -67,6 +67,11 @@
 .r1s-empty p { margin: 0; }
 .r1s-btn { height: 30px; padding: 0 14px; border: 0; border-radius: 999px; color: var(--ink) !important; font-size: 13px; font-weight: 500; }
 .r1s-link { border: 0; padding: 0; color: var(--accent-ink) !important; font-size: 12.5px; }
+/* Later-update rows fold into one quiet line; it opens the rows under it (glass/LaterRows.tsx). */
+.r1s-later { display: grid; gap: 4px; padding: 4px 0; }
+.r1s-later-btn { justify-self: start; border: 0; padding: 0; background: none; color: var(--ink-3); font-size: 12.5px; cursor: pointer; }
+.r1s-later-btn:hover, .r1s-later-btn:focus-visible { color: var(--ink-2); }
+.r1s-later > div[hidden] { display: none; }
 
 /* a row: label and help on the left, the control on the right; no rule lines */
 .r1s-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: center; padding: 11px 0; }
