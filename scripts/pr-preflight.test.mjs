@@ -210,6 +210,32 @@ test('formatProblems prints one line per problem plus a count', () => {
   assert.equal(lines.at(-1), `preflight: ${problems.length} problem(s)`);
 });
 
+test('PR body emails fail across providers, custom domains, and Markdown without leaking the address', () => {
+  for (const address of ['someone@gmail.com', 'first.last+tag@example.org', 'PERSON@CUSTOM.EXAMPLE', 'person@users.noreply.github.com.example.org']) {
+    for (const text of [address, `[contact](mailto:${address})`, `\`\`\`\n${address}\n\`\`\``]) {
+      const problems = runPreflight(withInput({ body: `${BODY}\n\n${text}` }));
+      assert.deepEqual(checksOf(problems), ['body-email']);
+      assert.doesNotMatch(formatProblems(problems), new RegExp(address.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+  }
+});
+
+test('PR bodies allow GitHub noreply identities and ordinary handles and package names', () => {
+  assert.deepEqual(runPreflight(withInput({ body: `${BODY}\n\n${NOREPLY}\n@owner @branch/tools` })), []);
+});
+
+test('PR body version pins are not email addresses', () => {
+  for (const pin of ['vitest@3.2.4', '@scope/pkg@1.2.3']) {
+    assert.deepEqual(runPreflight(withInput({ body: `${BODY}\n\nPinned ${pin}.` })), [], pin);
+  }
+});
+
+test('PR body email checks also run for API inputs without file changes', () => {
+  const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files: [], commits: [], listText: null });
+  const problems = runPreflight({ ...input, body: `${BODY}\n\ncontact: someone@example.org` });
+  assert.deepEqual(checksOf(problems), ['body-email']);
+});
+
 // CLI wiring: drive the real runCli against a temporary git repository.
 function fixtureRepo({ branchMessage, branchEmail, body }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'preflight-cli-'));
@@ -250,6 +276,15 @@ test('the CLI reports a personal commit email from the real git log', () => {
   const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
   assert.equal(result.exitCode, 1);
   assert.match(result.text, /\[commit-email\]/);
+});
+
+test('the CLI rejects an email in a PR body even when commits and files are clean', () => {
+  const body = (head) => `${BODY.replace(SHA, head)}\n\ncontact: someone@example.org`;
+  const { dir, bodyPath } = fixtureRepo({ branchMessage: 'feat: x', branchEmail: NOREPLY, body });
+  const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.text, /preflight FAIL \[body-email\]/);
+  assert.doesNotMatch(result.text, /someone@example\.org/);
 });
 
 test('the CLI refuses to run without a body file', () => {
