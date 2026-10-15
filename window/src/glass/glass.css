@@ -22,9 +22,9 @@
 .g-popover { position: fixed; z-index: 100; display: block; overflow: auto; padding: 8px; border-radius: var(--r-menu); animation: g-pop-in var(--spring-pop); }
 /* R1 working line (screens/chat WorkingLine): one dim line of words under the latest message. No pill behind it and no
    spinner. The soft shimmer runs only with motion allowed; reduced motion or the in-app still setting leaves dim words. */
-.r1c-working { display: block; width: fit-content; max-width: 100%; margin: 8px 0 4px 4px; font-size: var(--fs-12-5); color: var(--ink-3); }
+.r1c-working { display: block; width: fit-content; max-width: 100%; margin: 6px 0 2px; font-size: var(--fs-12-5); color: var(--ink-3); }
 @media (prefers-reduced-motion: no-preference) {
-  :root:not([data-still]) .r1c-working { background: linear-gradient(90deg, var(--ink-3) 35%, var(--ink) 50%, var(--ink-3) 65%) 0 0 / 250% 100%;
+  :root:not([data-still]) .r1c-shimmer { background: linear-gradient(90deg, var(--ink-3) 35%, var(--ink) 50%, var(--ink-3) 65%) 0 0 / 250% 100%;
     -webkit-background-clip: text; background-clip: text; color: transparent; animation: g-shimmer 2.6s linear infinite; }
 }
 @keyframes g-shimmer { from { background-position: 0 0; } to { background-position: -150% 0; } }

@@ -33,6 +33,7 @@ import { suggestionsFor } from "../../thread/suggestions";
 import { useApprovalDetails, useHelpers, useReactions, type ApprovalDetails } from "../../thread/useEngineData";
 import { useMessageActions, type MessageChanges, type ReplyTarget } from "../../thread/useMessageActions";
 import { Icon } from "../../shell/icons";
+import { shows, useLevel } from "../../places-nav/level";
 import { blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
 import { HoverBar } from "./HoverBar";
 import { NoticeLine, TimeDivider, WorkingLine } from "./lines";
@@ -205,6 +206,10 @@ export function ChatView(props: ChatViewProps) {
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
   // The run's token count (the engine's usage block), as Classic's live-run header shows it; once something visible arrives.
   const usage = running ? live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage") : undefined;
+  // Regular, live: a steps row that ends the run carries the working line in its own summary (one line, a disclosure).
+  const full = shows(useLevel(), "advanced");
+  const workText = workingLine(live);
+  const inlineSteps = running && !full && liveEntries.at(-1)?.type === "steps";
   const liveShows = live.some((b) => b.kind === "text" || b.kind === "step" || b.kind === "plan" || b.kind === "preamble" || (b.kind === "approval") || (b.kind === "thinking" && work.mode !== "normal"));
   return <CapabilityProvider engine={capabilities}><ThreadContext.Provider value={ctx}>
     <div className="r1c" ref={root} data-mode={work.mode} data-times={prefs.messageTimes} dir={prefs.dir}>
@@ -219,8 +224,8 @@ export function ChatView(props: ChatViewProps) {
         {props.room ? <RoomLine history={history} room={props.room} ownName={name} /> : null}
         {pendingUser ? <UserBubble block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="delivered" />
-        {running ? liveEntries.map((entry) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live />) : null}
-        {running && !waitingTwo.length ? <WorkingLine label={workingLine(live)} /> : null}
+        {running ? liveEntries.map((entry, i) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live working={inlineSteps && i === liveEntries.length - 1 ? workText : undefined} />) : null}
+        {running && !waitingTwo.length && !inlineSteps ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
         {running && liveShows && usage?.total ? <NoticeLine text={usage.total.toLocaleString() + " tokens so far"} testid="live-usage" /> : null}
         {running ? (props.steered ?? []).map((note) => <NoticeLine key={note.runId} text={"You steered " + name + ": “" + note.text + "”. It takes this at its next step."} testid="steered-note" />) : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
@@ -268,14 +273,14 @@ function postedFace(block: Extract<Block, { kind: "text" }>, view: View): ReactN
   return <Face size={28} label={view.room.trunkName(sender.agentId)} priority={100} />;
 }
 
-function EntryView({ entry, view, live }: { entry: Entry; view: View; live: boolean }) {
+function EntryView({ entry, view, live, working }: { entry: Entry; view: View; live: boolean; working?: string }) {
   if (entry.type === "thought") return <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><LoneThought thought={entry.thought} mode={view.mode} /></div></div>;
   if (entry.type === "steps") {
     const computer = entry.steps.some(isComputerStep);
     return <div className="r1c-row r1c-b" data-block-key={entry.steps[0]?.key} data-block-keys={entry.steps.map((s) => s.key).join(" ")}>
       <div className="r1c-gut" data-working={(live && view.running) || undefined}>{entry.face ? faceFor(view, live) : null}</div>
       <div className="r1c-body">
-        <StepsList steps={entry.steps} thoughts={entry.thoughts} live={live} mode={view.mode} />
+        <StepsList steps={entry.steps} thoughts={entry.thoughts} live={live} mode={view.mode} working={working} />
         {computer ? <ComputerActivityCard blocks={[...entry.steps, ...turnDoneLines(entry.steps, view.all)]} running={view.running} name={view.name} engine={view.engine} gatewayUrl={view.engine?.gatewayUrl} onWatch={() => undefined} /> : null}
       </div>
     </div>;

@@ -23,20 +23,25 @@ function useFold(id: string, initial: boolean): [boolean, (open: boolean) => voi
 }
 
 /** Regular shows the count as one quiet link; Advanced and Technical keep the full sentence. Either opens the same list. */
-export function StepsList({ steps, thoughts = [], mode }: { steps: Step[]; thoughts?: Thought[]; live: boolean; mode: WorkMode }) {
+export function StepsList({ steps, thoughts = [], mode, working }: { steps: Step[]; thoughts?: Thought[]; live: boolean; mode: WorkMode; working?: string }) {
   const id = steps[0]?.key ?? thoughts[0]?.key ?? "steps";
   const [open, setOpen] = useFold(id, mode === "verbose");
   const full = shows(useLevel(), "advanced");
   const line = stepsLine(steps);
   const count = stepCount(steps.length, line.live);
   const failed = line.failed ? line.failed + " failed" : "";
-  const label = full
-    ? (line.live ? "Working: " : "") + line.text + (failed ? ", " + failed : "") + (line.meta ? ", " + line.meta : "")
-    : [count, failed].filter(Boolean).join(", ");
+  // Regular, live: this line is the working line too. It says what the run is in, and the count moves inside the list.
+  const inline = working !== undefined && !full;
+  const label = inline
+    ? [working, failed].filter(Boolean).join(", ")
+    : full
+      ? (line.live ? "Working: " : "") + line.text + (failed ? ", " + failed : "") + (line.meta ? ", " + line.meta : "")
+      : [count, failed].filter(Boolean).join(", ");
+  const text = inline ? working : full ? line.text : count;
   const shownThoughts = mode === "normal" ? [] : thoughts;
   return <details className={full ? "r1c-steps" : "r1c-steps r1c-steps-quiet"} open={open || mode === "verbose"} onToggle={(e) => setOpen(e.currentTarget.open)} data-testid="steps" data-live={line.live || undefined}>
     <summary aria-label={label} data-local="">
-      <span className="r1c-steps-text">{full ? line.text : count}</span>
+      <span className={inline ? "r1c-steps-text r1c-shimmer" : "r1c-steps-text"}>{text}</span>
       {line.failed ? <><span className="r1c-bad-dot" aria-hidden="true" /><span className="r1c-steps-meta">{failed}</span></> : null}
       {full && line.meta ? <span className="r1c-steps-meta">{line.failed ? "· " : ""}{line.meta}</span> : null}
       <span className="r1c-chev" aria-hidden="true"><Icon name="down" size={13} /></span>

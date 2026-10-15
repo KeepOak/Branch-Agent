@@ -52,6 +52,23 @@ it("a live run shows how many steps so far, with no spinner in the summary", asy
   expect(summary.textContent).toContain("2 steps so far");
 });
 
+it("Regular, live with a working label: the label is the disclosure, and the count stays inside", async () => {
+  await act(async () => root.render(<StepsList steps={fresh([steps[0], { ...steps[1], status: "running", detail: "" }])} live mode="normal" working="Working in GitHub" />));
+  const fold = host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!;
+  expect(fold.querySelector(".r1c-steps-text")!.textContent).toBe("Working in GitHub");
+  expect(fold.querySelector("summary")!.textContent).not.toContain("so far");
+  fold.querySelector("summary")!.click();
+  expect(host.querySelectorAll('[data-testid="step"]')).toHaveLength(2);
+});
+
+it("Advanced, live: the working label does not replace the full live sentence", async () => {
+  localStorage.setItem("branch.level", "advanced");
+  await act(async () => root.render(<StepsList steps={fresh([steps[0], { ...steps[1], status: "running", detail: "" }])} live mode="normal" working="Working in GitHub" />));
+  const text = host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent!;
+  expect(text).not.toBe("Working in GitHub");
+  expect(text.length).toBeGreaterThan(0);
+});
+
 it("Regular: the finished steps are one quiet count, and the list still opens", async () => {
   localStorage.setItem("branch.level", "regular");
   await act(async () => root.render(<StepsList steps={fresh(steps)} thoughts={[]} live={false} mode="normal" />));

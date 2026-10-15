@@ -22,7 +22,7 @@ it("renders one status line with just the words", async () => {
 
 it("shimmers only when motion is allowed; otherwise it is dim words with no animation or pill", () => {
   const css = readFileSync("src/glass/glass.css", "utf8").replace(/\s+/g, " ");
-  expect(css).toContain("@media (prefers-reduced-motion: no-preference) { :root:not([data-still]) .r1c-working {");
+  expect(css).toContain("@media (prefers-reduced-motion: no-preference) { :root:not([data-still]) .r1c-shimmer {");
   expect(css).toMatch(/\.r1c-working \{ display: block;[^}]*color: var\(--ink-3\); \}/);
   expect(css).not.toMatch(/\.r1c-working[^}]*(border-radius|padding|box-shadow)/);
 });

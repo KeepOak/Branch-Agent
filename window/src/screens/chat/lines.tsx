@@ -29,5 +29,5 @@ export function NoticeLine({ icon, text, links, details, tone, testid }: { icon?
 /** The one live line under the latest message while a run works: the app it is in, dim, with a soft shimmer
  *  (glass.css). No spinner and no pill; the words alone when the person asked for still motion. */
 export function WorkingLine({ label }: { label: string }) {
-  return <div className="r1c-working" role="status" data-testid="working-line">{label}</div>;
+  return <div className="r1c-working r1c-shimmer" role="status" data-testid="working-line">{label}</div>;
 }

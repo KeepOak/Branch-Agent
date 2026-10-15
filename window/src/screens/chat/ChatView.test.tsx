@@ -151,15 +151,28 @@ it("follows the item 48 glass model: clear conversation and menus, text and cont
   expect(css).toContain(".g-popover:has(> .r1c-menu, > .r1c-react) { background: transparent; backdrop-filter: none;");
 });
 
-it("shows one working line under a live run, in the app the tool works in, never the tool id", async () => {
+it("Regular: a live run is one line, the steps disclosure that says what it works in", async () => {
   const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: t0 + 40_000 }];
   await show({ history: history.slice(0, 1), live, running: true }, ["chat.send"]);
-  const lines = host.querySelectorAll('[data-testid="working-line"]');
-  expect(lines).toHaveLength(1);
-  expect(lines[0].textContent).toBe("Working in GitHub");
+  expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
+  const disclosure = host.querySelector('[data-testid="steps"] .r1c-steps-text')!;
+  expect(disclosure.textContent).toBe("Working in GitHub");
+  expect(disclosure.classList.contains("r1c-shimmer")).toBe(true);
+  expect(host.textContent).not.toContain("so far");
   expect(host.textContent).not.toContain("mcp__");
   await show({ history }, ["chat.send"]);
   expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
+});
+
+it("Advanced: the full live row stays, and the working line sits aligned in the message column", async () => {
+  localStorage.setItem("branch.level", "advanced");
+  const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: t0 + 40_000 }];
+  await show({ history: history.slice(0, 1), live, running: true }, ["chat.send"]);
+  expect(host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent).toContain("Using list pull requests");
+  const line = host.querySelector('[data-testid="working-line"]')!;
+  expect(line.textContent).toBe("Working in GitHub");
+  expect(line.closest(".r1c-body")).not.toBeNull();
+  localStorage.removeItem("branch.level");
 });
 
 it("opens find in this conversation with the words a search result asked for", async () => {
