@@ -47,7 +47,8 @@ export function classifyClick({ before, after, elapsedMs = 0, consoleErrors = []
   const focusChanged = Boolean(after.focus) && before.focus !== after.focus && !menuClosed;
   const hashChanged = (before.hash || '') !== (after.hash || '');
   const chromeChanged = (before.chrome || '') !== (after.chrome || '');
-  const real = routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || textChanged || focusChanged || hashChanged || chromeChanged;
+  const windowOpened = (after.popups ?? 0) > (before.popups ?? 0);
+  const real = routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || textChanged || focusChanged || hashChanged || chromeChanged || windowOpened;
 
   if (!real && !after.alreadyCurrent) {
     if (toastChanged) problems.push('toast-only');

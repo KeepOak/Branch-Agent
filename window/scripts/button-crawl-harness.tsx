@@ -12,6 +12,7 @@ import '../src/theme/base.css';
 import '../src/shell/shell.css';
 import '../src/shell/frame.css';
 import '../src/shell/controls.css';
+import { applyConfigPatch, applyPrefsSet, freshConfig, freshPrefs, type CrawlConfig, type CrawlPrefs } from './button-crawl-state';
 
 type Call = { method: string; ok: boolean; error?: string };
 
@@ -63,8 +64,11 @@ const SELECTOR = [
   '[role="tab"]', '[role="switch"]', 'input[type="checkbox"]', '.chip', '.ib',
 ].join(',');
 
-let config = { hash: 'fixture', config: { wizard: { lastRunAt: '2026-10-01T00:00:00Z' }, agents: { defaults: { model: { primary: 'local/fixture' } } } } };
+let config: CrawlConfig = freshConfig();
 let historyMoves = 0;
+// A control that opens a window (Open in its own window) is a visible result: the browser fallback calls window.open.
+let popups = 0;
+window.open = (() => { popups += 1; return null; }) as typeof window.open;
 const historyBack = history.back.bind(history);
 const historyForward = history.forward.bind(history);
 history.back = () => { historyMoves += 1; historyBack(); };
@@ -95,18 +99,7 @@ function snapshot(key: string) {
   };
 }
 
-function mergeConfig(base: unknown, patch: unknown): unknown {
-  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return patch;
-  const out: Record<string, unknown> = base && typeof base === 'object' && !Array.isArray(base) ? { ...(base as Record<string, unknown>) } : {};
-  for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
-    if (value === null) delete out[key];
-    else if (value && typeof value === 'object' && !Array.isArray(value)) out[key] = mergeConfig(out[key], value);
-    else out[key] = value;
-  }
-  return out;
-}
-
-let prefs: { status: string; entries: Record<string, unknown> } = { status: 'ok', entries: {} };
+let prefs: CrawlPrefs = freshPrefs();
 
 function request(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown> } | undefined) {
   const started = performance.now();
@@ -140,18 +133,12 @@ function respond(method: string, params: { key?: string; sessionKey?: string; ra
   if (method === 'a2a.peers.list') return { peers: [] };
   if (method === 'config.get') return config;
   if (method === 'config.patch') {
-    const patch = JSON.parse(params?.raw || '{}') as unknown;
-    config = { ...config, hash: `${config.hash}x`, config: mergeConfig(config.config, patch) as typeof config.config };
+    config = applyConfigPatch(config, params?.raw || '{}');
     return { ok: true, hash: config.hash, config: config.config };
   }
   if (method === 'users.prefs.get') return prefs;
   if (method === 'users.prefs.set') {
-    const entries = { ...prefs.entries };
-    for (const [key, value] of Object.entries(params?.entries || {})) {
-      if (value === null) delete entries[key];
-      else entries[key] = value;
-    }
-    prefs = { status: 'ok', entries };
+    prefs = applyPrefsSet(prefs, params?.entries || {});
     return { status: 'ok' };
   }
   if (method === 'models.list') return { models: [{ id: 'fixture', provider: 'local', name: 'Local model', contextWindow: 32768 }] };
@@ -262,7 +249,10 @@ function collect(overlay = false) {
       name,
       href: el instanceof HTMLAnchorElement ? el.href : '',
       disabled: control.disabled === true || el.getAttribute('aria-disabled') === 'true',
+      // A tab, or a radio option that is already the chosen value, has nothing to change: clicking it is a no-op
+      // by design, so the crawl skips it ("already-selected") instead of calling it dead.
       selected: el.getAttribute('role') === 'tab' && el.getAttribute('aria-selected') === 'true'
+        || el.getAttribute('role') === 'radio' && el.getAttribute('aria-checked') === 'true'
         || Boolean(el.closest('.sseg') && (el.getAttribute('aria-pressed') === 'true' || el.getAttribute('aria-checked') === 'true')),
       occurrence,
       region,
@@ -368,6 +358,7 @@ function surface() {
     hash: location.hash,
     chrome: document.documentElement.getAttribute('data-theme') || '',
     historyMoves,
+    popups,
     alreadyCurrent: target?.getAttribute('aria-current') === 'true',
     menuItems,
     requests: calls.slice(),
@@ -399,17 +390,28 @@ function openKind(key: string) {
   return 'popover';
 }
 
+// Every click starts from the same mock engine and storage. Without this, a config.patch or a stored pref from one
+// control leaks into the next click's result. Module-level app singletons survive a remount, so the crawl also
+// reloads the page once per screen (crawl.mjs).
+function resetMockEngine() {
+  config = freshConfig();
+  prefs = freshPrefs();
+  calls.length = 0;
+  historyMoves = 0;
+  popups = 0;
+  try { localStorage.clear(); sessionStorage.clear(); } catch { /* storage blocked: the defaults below still apply */ }
+}
+
 function mount(route: Route) {
+  resetMockEngine();
   localStorage.setItem('branch.route', JSON.stringify(route));
   localStorage.setItem('branch.level', 'technical');
   localStorage.setItem('branch.theme', 'light');
   for (const toast of getToasts()) dismiss(toast.id);
-  calls.length = 0;
   cachedEngine = null;
   marked = null;
   markedEl = null;
   if (location.hash) history.replaceState(null, '', `${location.pathname}${location.search}`);
-  historyMoves = 0;
   const key = route.kind === 'chat' && route.key ? route.key : SESSIONS[0].key;
   snap = snapshot(key);
   nonce += 1;

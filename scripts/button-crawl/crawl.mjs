@@ -21,6 +21,7 @@ import { compareBaseline, formatGate, normalizeBaseline } from './baseline.mjs';
 import { MAP_PATH, isInformationalStatus, isThreadLayoutMenu, previewDestinationMatches, readPreviewMap, threadLayoutDiff } from './preview-map.mjs';
 import { markdownReport } from './report.mjs';
 import { REQUEST_WAIT_CAP_MS, waitForPermissionRequests as waitForRequests } from './permission-wait.mjs';
+import { viteLaunch } from './vite-launch.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const windowDir = resolve(root, 'window');
@@ -70,7 +71,8 @@ async function waitForUrl(url) {
 }
 
 function startVite() {
-  const child = spawn('pnpm', ['exec', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+  const launch = viteLaunch(['--host', '127.0.0.1', '--port', String(port), '--strictPort'], require);
+  const child = spawn(launch.command, launch.args, {
     cwd: windowDir,
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -88,6 +90,14 @@ function stopVite(child) {
   if (!child || child.killed) return;
   try { process.kill(-child.pid, 'SIGTERM'); }
   catch { child.kill('SIGTERM'); }
+}
+
+// Each screen starts from a page load. The app keeps module-level state (look prefs, banners, the trunk host) that a
+// remount does not reset, so one screen's clicks could change what the next screen shows. One reload per screen is
+// cheaper than one per click (about 0.75 s each, which would push a full run past the 15 minute CI cap).
+async function loadScreen(page) {
+  await page.goto(harnessUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.locator('[data-connection="ready"]').waitFor({ timeout: 30000 });
 }
 
 async function show(page, screen) {
@@ -202,6 +212,7 @@ async function main() {
       const screen = queue.shift();
       screenCount += 1;
       const errorFrom = errors.length;
+      await loadScreen(page).catch((error) => errors.push(String(error)));
       const opened = await show(page, screen).catch((error) => {
         errors.push(String(error));
         return false;
