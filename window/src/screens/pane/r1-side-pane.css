@@ -51,7 +51,7 @@
    The tabs now get their own full-width row with a fade where they overflow; the tools sit above as plain icons.
    The #g48 ids beat glass.css's ".g-clear :is(button, …)" control-pill rule, which boxed every tool and tab. */
 .r1-pane .pane-head { flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; }
-.r1-pane .pane-head > .pane-tabs { order: 9; flex: 1 0 100%; gap: 2px; mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
+.r1-pane .pane-head > .pane-tabs { order: 9; flex: 1 0 100%; gap: 2px; mask-image: linear-gradient(90deg, var(--mask-solid) calc(100% - 24px), transparent); }
 .r1-pane .pane-head > :is(button, a[href]):not(#g48#g48#g48#g48) { background: transparent; box-shadow: none; border: 0; color: var(--ink-2); }
 .r1-pane .pane-head > :is(button, a[href]):hover:not(#g48#g48#g48#g48) { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); }
 .r1-pane .pane-tabs [role="tab"]:not(#g48#g48#g48#g48) { background: transparent; box-shadow: none; border-radius: 999px; padding: 4px 10px; white-space: nowrap; color: var(--ink-2); }

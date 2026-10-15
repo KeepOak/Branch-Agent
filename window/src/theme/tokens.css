@@ -3,6 +3,9 @@
    data-theme="dark" forces dark. Every other area uses these names. */
 
 :root {
+  /* Fixed values that are not colours a theme changes: an opaque mask stop and a deep glass shadow. */
+  --mask-solid: #000;
+  --shadow-deep: rgba(0,0,0,.55);
   /* §2.1 colour, Daylight */
   --bg: #f6f8f9;
   --side: #edf1f3;
