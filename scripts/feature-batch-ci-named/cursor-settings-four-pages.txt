@@ -1,0 +1,3 @@
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/screens/settings/four-pages.test.tsx
+window:src/screens/settings/regular-groups.test.tsx
