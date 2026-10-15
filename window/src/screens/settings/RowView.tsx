@@ -104,6 +104,12 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
           {options.map((o) => <option key={String(o.v)} value={String(o.v)}>{o.label}</option>)}
         </select>
       );
+      case "slider": {
+        const rg = row.range ?? { min: 0, max: 100, step: 1 };
+        const n = typeof r.value === "number" ? Math.max(rg.min, Math.min(rg.max, r.value)) : rg.min;
+        return <span className="r1s-slider"><input type="range" aria-label={r.label} min={rg.min} max={rg.max} step={rg.step} value={n} disabled={off}
+          onChange={(e) => save(e.target.valueAsNumber)} /><span className="g-label" aria-hidden="true">{n}{row.unit ?? ""}</span></span>;
+      }
       case "number": case "text": return <Field label={r.label} value={r.value} kind={row.control} unit={row.unit} disabled={off} onSave={save} />;
       case "secret": return <Field label={r.label} value={r.sensitive ? "" : r.value} kind="secret" disabled={off} placeholder={r.value ? "Saved" : undefined} onSave={save} />;
       default: return null;

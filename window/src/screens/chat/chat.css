@@ -2,6 +2,10 @@
    Glass comes only from the --gc / --gf / --gk tokens, so every theme and Reduce transparency apply. No divider lines. */
 .r1c { position: relative; }
 .r1c-thread { display: flex; flex-direction: column; gap: 16px; max-width: calc(723px + 38px + 48px); margin-inline: auto; padding: 26px 24px 20px; }
+/* Settings › Appearance › Reading › Conversation width (#1049): Wide uses more of a big screen; Full uses all of it. */
+:root[data-chat-width="wide"] .r1c-thread { max-width: calc(1040px + 38px + 48px); }
+:root[data-chat-width="full"] .r1c-thread { max-width: none; }
+:root[data-chat-width="wide"] .r1c-steps, :root[data-chat-width="full"] .r1c-steps { max-width: 100%; }
 .r1c-row { position: relative; min-width: 0; }
 .r1c-b { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; }
 .r1c-gut { width: 28px; min-height: 1px; padding-top: 1px; }

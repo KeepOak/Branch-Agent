@@ -43,7 +43,7 @@ const SHOWN = "What’s shown";
 
 export const APPEARANCE_ROWS: Row[] = [
   // Theme
-  slot("appearance.theme.mode", "Theme", "Light or dark", ["themes.set"], { control: "segmented", options: [{ v: "light", label: "Light" }, { v: "dark", label: "Dark" }, { v: "system", label: "Match this computer" }] }),
+  slot("appearance.theme.mode", "Theme", "Light or dark", ["themes.set"], { control: "segmented", options: [{ v: "light", label: "Light" }, { v: "dark", label: "Dark" }, { v: "system", label: "Auto" }] }),
   slot("appearance.theme.pick", "Theme", "Theme", ["themes.list", "themes.set", "themes.import", "users.prefs.set"], { help: "Browse every theme, or make your own." }),
   // Accent and Pet stay rows on their look keys; the page draws them with Classic's colour well and pet history.
   { id: "appearance.theme.accent", page: "appearance", card: "Theme", label: "Accent colour", help: "Only for what wants you: the working ring, the waiting dot, the yes button.", level: 0, control: "select",
@@ -57,13 +57,15 @@ export const APPEARANCE_ROWS: Row[] = [
   fromClassic("appearance.background.season", "Background", "season", { help: "With The grove behind the glass. Fireflies in summer, petals in spring, leaves in autumn, snow in winter." }),
   { id: "appearance.background.scene", page: "appearance", card: "Background", label: "Painted scenes", help: "With Painted grove behind the glass.", level: 0, control: "select",
     options: SCENES.map((s) => ({ v: s.id, label: s.name })), source: { kind: "look", key: "scene" }, codec: orDefault("auto") },
-  { id: "appearance.background.cover", page: "appearance", card: "Background", label: "How much the theme covers it", help: "More keeps text calmer; less shows more of the background.", level: 0, control: "number", unit: "%",
+  { id: "appearance.background.cover", page: "appearance", card: "Background", label: "How much the theme covers it", help: "More keeps text calmer; less shows more of the background.", level: 0, control: "slider", unit: "%", range: { min: 0, max: 90, step: 5 },
     source: { kind: "look", key: "scrim" }, codec: orDefault(35) },
-  { id: "appearance.background.see-through", page: "appearance", card: "Background", label: "See-through panels", help: "Panels blur what’s behind them.", level: 0, control: "number", unit: "%",
+  { id: "appearance.background.see-through", page: "appearance", card: "Background", label: "See-through panels", help: "Panels blur what’s behind them.", level: 0, control: "slider", unit: "%", range: { min: 0, max: 60, step: 5 },
     source: { kind: "look", key: "see" }, codec: orDefault(25) },
   slot("appearance.background.preview", "Background", "Preview", [], { help: "Hold it to see the background on its own." }),
 
   // Reading
+  { id: "appearance.reading.width", page: "appearance", card: "Reading", label: "Conversation width", help: "Wide uses more of a big screen.", level: 0, control: "segmented",
+    options: [{ v: "comfortable", label: "Comfortable" }, { v: "wide", label: "Wide" }, { v: "full", label: "Full" }], source: { kind: "look", key: "width" }, fallback: "comfortable" },
   fromClassic("appearance.reading.size", "Reading", "size"),
   fromClassic("appearance.reading.messages", "Reading", "msgLook"),
   fromClassic("appearance.reading.direction", "Reading", "dir"),

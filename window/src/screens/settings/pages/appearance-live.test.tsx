@@ -160,4 +160,20 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(swatches[1].getAttribute("aria-pressed")).toBe("true");
     expect(request.mock.calls.length).toBeGreaterThan(0);
   });
+
+  it("#1049: see-through and cover are sliders, Conversation width is a device row, and Auto is the mode's name everywhere", async () => {
+    await mount();
+    for (const [id, max] of [["appearance.background.see-through", "60"], ["appearance.background.cover", "90"]] as const) {
+      const range = row(id)!.querySelector<HTMLInputElement>('input[type="range"]')!;
+      expect(range, id).not.toBeNull();
+      expect(range.max).toBe(max);
+      expect(row(id)!.querySelector('input[type="number"]')).toBeNull();
+    }
+    const width = row("appearance.reading.width")!;
+    expect([...width.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Comfortable", "Wide", "Full"]);
+    await click([...width.querySelectorAll("button")].find((b) => b.textContent === "Wide")!);
+    expect(document.documentElement.getAttribute("data-chat-width")).toBe("wide");
+    const { APPEARANCE_ROWS } = await import("./appearance");
+    expect(APPEARANCE_ROWS.find((r) => r.id === "appearance.theme.mode")!.options!.map((o) => o.label)).toEqual(["Light", "Dark", "Auto"]);
+  });
 });

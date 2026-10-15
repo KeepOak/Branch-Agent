@@ -25,7 +25,7 @@ export type RowSource =
    *  one; a frame without that control draws the row as Coming with this reason. */
   | { kind: "slot"; calls: string[]; reason: string };
 
-export type Control = "toggle" | "segmented" | "select" | "number" | "text" | "secret" | "custom";
+export type Control = "toggle" | "segmented" | "select" | "number" | "slider" | "text" | "secret" | "custom";
 export type RowOption = { v: string | number | boolean; label: string };
 /** Converts between what is stored and what the control shows (for example "on"/"off" and a toggle). */
 export type Codec = { read: (stored: unknown) => unknown; write: (shown: unknown) => unknown };
@@ -48,6 +48,8 @@ export type Row = {
   /** Segmented only for 2 to 4 options; longer lists are a select. */
   options?: RowOption[];
   unit?: string;
+  /** A slider's range and step (control "slider"). */
+  range?: { min: number; max: number; step: number };
   source: RowSource;
   codec?: Codec;
   /** The value shown when nothing is stored and the schema has no default. */
