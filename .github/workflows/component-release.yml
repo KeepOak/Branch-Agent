@@ -519,6 +519,7 @@ jobs:
       - name: Dispatch the Android APK build
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: gh workflow run mobile-android-release.yml -f tag=v${{ needs.identity.outputs.version }}
   # Waits out the 25-minute batching window, then starts one release if main moved.
   # The sleep is the catch-up, so this job is longer than the 15-minute check cap.
