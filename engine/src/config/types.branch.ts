@@ -100,6 +100,8 @@ export type BranchConfig = {
   worktreeAcceleration?: boolean;
   /** Global live managed-worktree cap; oldest idle checkouts may lose unsaved data (default: 4096). */
   worktreeMaxCount?: number;
+  /** Folders of hand-made build worktrees that Branch removes once safe (default: ["~/branch-work"]; [] turns it off). */
+  buildWorktreeRoots?: string[];
   /** Tool exposure, policy, web/media tools, exec, and code-mode settings. */
   tools?: ToolsConfig;
   /** Legacy/direct agent bindings used by runtime resolution. */

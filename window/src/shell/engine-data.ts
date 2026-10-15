@@ -6,6 +6,7 @@ import { ConversationList, type ConversationsSnapshot } from "../connect/convers
 import type { SaplingSession } from "../connect/session";
 import type { Contact } from "@branch/gateway-protocol";
 import { NO_PEOPLE, type ListPeople } from "./list-model";
+import { trunkDisplayName } from "../connect/trunk-name";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -48,7 +49,7 @@ export function useContacts(session: SaplingSession, ready: boolean): [Contact[]
     const load = () => {
       const current = ++generation;
       void session.request<{ contacts: Contact[] }>("contacts.list", { includeArchived: true }).then(
-        (result) => { if (current === generation) { setContacts(result.contacts); setLoaded(true); } },
+        (result) => { if (current === generation) { setContacts(Array.isArray(result?.contacts) ? result.contacts : []); setLoaded(true); } },
         (error: unknown) => console.warn("contacts.list failed", error),
       );
     };
@@ -89,10 +90,10 @@ export function readTrunks(result: unknown): Trunks {
     : undefined;
   return {
     defaultId,
-    ...(bootstrap ? { bootstrapDefault: { id: str(bootstrap.id), name: str(rec(bootstrap.identity).name) || str(bootstrap.name) || str(bootstrap.id), isDefault: true } } : {}),
+    ...(bootstrap ? { bootstrapDefault: { id: str(bootstrap.id), name: trunkDisplayName(bootstrap), isDefault: true } } : {}),
     list: agents.map((a) => ({
       id: str(a.id),
-      name: str(rec(a.identity).name) || str(a.name) || str(a.id),
+      name: trunkDisplayName(a),
       isDefault: str(a.id) === defaultId || a.default === true,
       avatar: str(rec(a.identity).avatar) || str(a.avatar) || undefined,
       emoji: str(rec(a.identity).emoji) || undefined,

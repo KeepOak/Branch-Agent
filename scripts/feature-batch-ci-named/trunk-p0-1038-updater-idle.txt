@@ -1,0 +1,3 @@
+engine:src/agents/subagents/registry/subagent-liveness.owner-integration.test.ts
+engine:src/infra/p45-handoff-timeouts.test.ts
+engine:src/process/session-handoff-leases.test.ts

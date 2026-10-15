@@ -76,6 +76,45 @@ function resolveStopOptions(cmdOpts: DaemonLifecycleOptions, command?: Command) 
   };
 }
 
+/**
+ * `branch gateway linger on|off|status`: the engine's systemd-linger path for the Branch Agent app's "Keep working
+ * when nobody is signed in" (Private #454 D). Prints one JSON answer with --json; exits 1 when it can't.
+ */
+export async function runGatewayLingerCommand(
+  state: string,
+  json: boolean,
+  deps: {
+    platform?: NodeJS.Platform;
+    set?: (typeof import("../../daemon/systemd-linger.js"))["setSystemdUserLinger"];
+    write?: (line: string) => void;
+    exit?: (code: number) => void;
+  } = {},
+): Promise<void> {
+  const write = deps.write ?? ((line: string) => void process.stdout.write(`${line}\n`));
+  const exit = deps.exit ?? ((code: number) => void (process.exitCode = code));
+  const answer = await (async () => {
+    if (state !== "on" && state !== "off" && state !== "status") {
+      return { ok: false as const, error: `Unknown linger state: ${state} (use on, off or status)` };
+    }
+    if ((deps.platform ?? process.platform) !== "linux") {
+      return { ok: false as const, error: "Running with nobody signed in is set this way on Linux only" };
+    }
+    const set =
+      deps.set ?? (await import("../../daemon/systemd-linger.js")).setSystemdUserLinger;
+    return await set({ env: process.env, want: state });
+  })();
+  write(
+    json
+      ? JSON.stringify(answer)
+      : answer.ok
+        ? `Linger for ${answer.user}: ${answer.linger}`
+        : answer.error,
+  );
+  if (!answer.ok) {
+    exit(1);
+  }
+}
+
 /** Attach Gateway service status/install/lifecycle subcommands to a parent command. */
 export function addGatewayServiceCommands(parent: Command, opts?: { statusDescription?: string }) {
   parent
@@ -151,6 +190,17 @@ export function addGatewayServiceCommands(parent: Command, opts?: { statusDescri
         await lifecycle[action]({ ...cmdOpts, json: resolveJsonOption(cmdOpts, command) });
       });
   }
+
+  parent
+    .command("linger")
+    .description(
+      "Keep the Gateway service running when nobody is signed in (systemd linger; Linux only)",
+    )
+    .argument("[state]", "on, off or status", "status")
+    .option("--json", "Output JSON", false)
+    .action(async (state: string, cmdOpts, command) => {
+      await runGatewayLingerCommand(state, resolveJsonOption(cmdOpts, command));
+    });
 
   parent
     .command("stop")
