@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // Regular Settings is four pages (General, Computer, Usage, Updates). Every other page stays reachable
 // under Advanced on its page. Developer stays on Technical. Advanced and Technical keep the full nav.
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -113,5 +114,15 @@ describe("Settings four pages", () => {
     await click(level("Technical"));
     expect(host.querySelector("[data-page=developer]")).not.toBeNull();
     expect($$(".r1s-list .r1s-grp").map((g) => g.textContent)).toEqual(["You", "Your Trunks", "Talking", "Accounts & models", "Permissions & safety", "Computers", "Branch"]);
+  });
+
+  it("draws Advanced links as plain rows, not pills", () => {
+    const css = readFileSync("src/screens/settings/settings.css", "utf8");
+    const jump = css.slice(css.indexOf(".r1s-jump {"), css.indexOf(".r1s-jump > span"));
+    expect(jump).toContain("width: 100%");
+    expect(jump).toContain("border-radius: 0");
+    expect(jump).not.toContain("999px");
+    const glass = readFileSync("src/glass/glass.css", "utf8");
+    expect(glass).toMatch(/\.r1s-advanced \.r1s-jump \{[^}]*background: transparent[^}]*box-shadow: none[^}]*border-radius: 0/);
   });
 });
