@@ -1,0 +1,4 @@
+window:src/composer/composer-logic.test.ts
+window:src/connect/own-sends.test.ts
+window:src/connect/unconfirmed.test.ts
+window:src/thread/own-sends-thread.test.tsx

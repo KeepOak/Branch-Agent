@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/copilot/src/byok-proxy.test.ts (atlas AGENT-LOOP-0023). Changed for Branch: apply scripts/rebrand-map.json.
+// Changed for Branch: apply scripts/rebrand-map.json.
 import { request as httpRequest } from "node:http";
 // Copilot BYOK proxy tests verify SDK-local transport is guarded outbound fetch.
 import { expectDefined } from "@branch/normalization-core";

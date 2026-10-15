@@ -1,0 +1,1 @@
+window:src/thread/suggestions-preview-rules.test.ts

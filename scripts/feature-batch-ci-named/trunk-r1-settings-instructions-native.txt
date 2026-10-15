@@ -1,0 +1,4 @@
+window:src/screens/settings/pages/instructions-live.test.tsx
+window:src/screens/settings/pages/classic-host.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/places/settings/set1/instructions.test.tsx

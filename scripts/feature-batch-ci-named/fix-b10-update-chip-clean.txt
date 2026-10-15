@@ -1,0 +1,3 @@
+# Window test files for this PR, one per line: window:<window-relative test file>.
+window:src/screens/sidebar/Sidebar.test.tsx
+window:src/shell/use-status-update.test.tsx

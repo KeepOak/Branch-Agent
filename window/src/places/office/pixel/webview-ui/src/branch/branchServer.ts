@@ -1,95 +1,147 @@
 /**
- * The office's "server", in memory. Upstream's webview talks to a server (VS Code extension or the
- * standalone CLI) over a MessageTransport; this class is that transport and plays the server's part
- * for Branch: it sends the same ServerMessages upstream's agentRuntime would (assets, layout, settings,
- * agentCreated / agentToolStart / agentStatus / agentToolPermission / subagent* / agentClosed) from the
- * Branch roster, and answers the webview's ClientMessages (saveLayout, saveAgentSeats, focusAgent, ...)
- * with Branch callbacks and browser storage.
- *
- * State mapping (Branch → upstream). The OpenClaw dashboards map the same way: SweetSophia
- * openclaw-pixel-agents src/game/GameEngine.ts (typing/running_command → typing, reading/thinking →
- * reading, waiting_input → idle) and jaffer1979 server/openclawParser.ts.
- *   working    agentToolStart(Write, activity)         → walks to its desk and types, monitor on
- *   reading    agentToolStart(Read, activity)          → reads at its desk
- *   waiting    agentToolsClear + agentStatus(waiting)  → waiting bubble that stays up, wanders
- *   needs_you  agentToolStart + agentToolPermission    → stays at the desk under the amber bubble
- *   resting    agentToolsClear + agentStatus(idle)     → upstream idle: wanders, rests at its seat
- *   offline    agentToolsClear + headless              → dimmed ghost, seated, still
- *   needsYou>0 agentToolPermission (any state)         → amber "!" bubble with the count
- *   subagents  agentToolStart(Task, background) + subagentToolStart/Done/Clear → extra characters
+ * Office server for the Branch webview. It holds the roster, the office numbers and the
+ * stored layout, seats, looks and preferences, and it sends office messages to the webview.
  */
 import type { ClientMessage, ServerMessage } from '../../../core/src/messages.js';
 import type { OfficeState } from '../office/engine/officeState.js';
-import type { OfficeLayout } from '../office/types.js';
-import { CharacterState } from '../office/types.js';
+import { CharacterState, type OfficeLayout } from '../office/types.js';
 import type { MessageTransport, TransportState } from '../transport/types.js';
 import type { DecodedAssets } from './assets.js';
-import { BRANCH_AREA_MAPPINGS, generateBranchLayout, type LayoutPlan, planSize } from './branchLayout.js';
+import { BRANCH_AREA_MAPPINGS, type LayoutPlan, generateBranchLayout, planSize } from './branchLayout.js';
 import { fitZoom } from './fit.js';
-import type { OfficeStore, Storage, TrunkLook } from './storage.js';
+import type { OfficePrefs, OfficeStore, Storage, TrunkLook } from './storage.js';
 import { defaultSpriteKey } from './trunkSprites.js';
 import type { BranchAgent, BranchLink, BranchSubagent, Customization, MountOptions } from './types.js';
 
+const DEFAULT_PANE_WIDTH = 1280;
+const DEFAULT_PANE_HEIGHT = 800;
+const WIDE_RATIO = 1.15;
+const WIDE_PLAN_PER_ROW = { min: 3, max: 8 };
+const NARROW_PLAN_PER_ROW = { min: 2, max: 4 };
+const ZOOM_WEIGHT = 1000000;
+const SHAPE_BONUS = 100000;
+const WAITING_BUBBLE_CAP_SEC = 0.3;
+const GUEST_PALETTE_COUNT = 6;
+const GREY_SPREAD = 0.08;
+const HUE_STEP_DEG = 15;
 const READING_TOOLS = ['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch'];
 const SUBAGENT_TOOLS = ['Task', 'Agent'];
+const DESK_STATES = ['working', 'reading', 'needs_you'];
+const DESK_LABELS: Record<string, string> = {
+  working: 'Working',
+  reading: 'Reading',
+  needs_you: 'Waiting for your yes',
+};
+const HUMAN_SPRITE = /^human:(\d)$/;
 
-interface Snapshot {
+type TeamInfo = NonNullable<BranchAgent['team']>;
+
+interface SubMemory {
   state: string;
   activity: string;
-  needs: number;
-  toolId: string | null;
-  subs: Map<string, { state: string; activity: string; toolId: string | null }>;
-  team?: boolean;
+  open: string | null;
 }
 
-function hashIndex(s: string, n: number): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return Math.abs(h) % n;
+/** What the server last sent for one roster agent, used to send only changes. */
+interface Snapshot {
+  known: boolean;
+  state: string;
+  activity: string;
+  pending: number;
+  toolRow: string | null;
+  teamSent: boolean;
+  subs: Map<string, SubMemory>;
 }
 
-/** Hue (degrees, rounded to 15°) of a #rrggbb colour; 0 for none or a grey. */
-function hueOf(hex: string | undefined): number {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex ?? '');
-  if (!m) return 0;
-  const n = parseInt(m[1], 16);
-  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
-  if (d < 0.08) return 0;
-  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  return (Math.round((h * 60 + 360) / 15) * 15) % 360;
+interface LookInfo {
+  spriteKey?: string;
+  palette: number;
+  hueShift: number;
 }
 
-function planKey(p: LayoutPlan): string {
-  return `${p.wide}|${p.perRow}|${p.trunks}|${p.guests}`;
+/** Maps text to a stable index from zero to count minus one. */
+function hashIndex(text: string, count: number): number {
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) hash = (Math.imul(hash, 31) + text.charCodeAt(i)) | 0;
+  return Math.abs(hash) % count;
 }
 
-function linkKey(l: BranchLink): string {
-  return `${l.from}|${l.to}|${String(l.at)}`;
+/** Hue in steps of 15 degrees for a #rrggbb colour; grey or invalid colours give zero. */
+function hueFromColor(color: string | undefined): number {
+  const text = color ?? '';
+  if (!/^#[0-9a-f]{6}$/i.test(text)) return 0;
+  const r = Number.parseInt(text.slice(1, 3), 16) / 255;
+  const g = Number.parseInt(text.slice(3, 5), 16) / 255;
+  const b = Number.parseInt(text.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const delta = max - Math.min(r, g, b);
+  if (delta < GREY_SPREAD) return 0;
+  let h: number;
+  if (max === r) h = ((g - b) / delta) % 6;
+  else if (max === g) h = (b - r) / delta + 2;
+  else h = (r - g) / delta + 4;
+  let degrees = h * 60;
+  if (degrees < 0) degrees += 360;
+  return (Math.round(degrees / HUE_STEP_DEG) * HUE_STEP_DEG) % 360;
 }
 
-function linkTime(l: BranchLink): number {
-  return typeof l.at === 'number' ? l.at : Date.parse(l.at) || 0;
+/** Milliseconds for a link time; numbers are used as given, text is parsed as a date. */
+function linkTime(link: BranchLink): number {
+  if (typeof link.at === 'number') return Number.isFinite(link.at) ? link.at : 0;
+  const parsed = Date.parse(String(link.at));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function linkKey(link: BranchLink): string {
+  return `${link.from}|${link.to}|${String(link.at)}`;
+}
+
+function planKey(plan: LayoutPlan): string {
+  return [plan.wide, plan.perRow, plan.trunks, plan.guests].join('|');
+}
+
+function isDesk(state: string): boolean {
+  return DESK_STATES.includes(state);
+}
+
+/** Status text for a sub-agent row. */
+function subStatus(state: string, activity: string): string {
+  if (state === 'reading') {
+    if (!activity) return 'Reading';
+    return activity.startsWith('Read') ? activity : `Reading ${activity}`;
+  }
+  if (isDesk(state)) return activity || 'Writing';
+  return activity || 'Idle';
+}
+
+function taskRowId(key: string): string {
+  return `sub:${key}`;
+}
+
+/** Pose for a character that is typing and active, from the parent's activity text. */
+function thinkOrSearch(activity: string): string | null {
+  if (/^think/i.test(activity)) return 'think';
+  if (/^search/i.test(activity)) return 'search';
+  return null;
 }
 
 export class BranchServer implements MessageTransport {
   readonly state: TransportState = 'connected';
   readonly ready: Promise<void> = Promise.resolve();
-  private handlers = new Set<(m: ServerMessage) => void>();
-  private ids = new Map<string, number>();
-  private branchIds = new Map<number, string>();
-  private nextId = 1;
-  private seq = 0;
-  private snaps = new Map<string, Snapshot>();
-  private agents: BranchAgent[] = [];
-  private seenLinks = new Set<string>();
-  private readonly mountedAt = Date.now();
-  private webviewReady = false;
-  private viewport = { w: 1280, h: 800 };
-  private generatedFor = '';
-  private disposed = false;
   store: OfficeStore;
-
+  private agents: BranchAgent[] = [];
+  private readonly listeners = new Set<(m: ServerMessage) => void>();
+  private readonly idByNum = new Map<number, string>();
+  private readonly numById = new Map<string, number>();
+  private readonly memory = new Map<string, Snapshot>();
+  private readonly shown = new Set<string>();
+  private readonly mountedAt = Date.now();
+  private nextNum = 1;
+  private rowSeq = 0;
+  private webviewReady = false;
+  private disposed = false;
+  private pane = { width: DEFAULT_PANE_WIDTH, height: DEFAULT_PANE_HEIGHT };
+  private generatedKey: string | null = null;
   private readonly opts: MountOptions;
   private readonly storage: Storage;
   private readonly assets: DecodedAssets;
@@ -111,88 +163,94 @@ export class BranchServer implements MessageTransport {
     this.store = storage.load();
     if (typeof opts.soundEnabled === 'boolean') this.store.prefs.soundEnabled = opts.soundEnabled;
     this.agents = opts.agents;
-    for (const l of opts.links ?? []) if (linkTime(l) < this.mountedAt) this.seenLinks.add(linkKey(l));
+    for (const link of opts.links ?? []) {
+      if (linkTime(link) < this.mountedAt) this.shown.add(linkKey(link));
+    }
   }
 
-  // ── MessageTransport ────────────────────────────────────────────
-
   onMessage(handler: (m: ServerMessage) => void): () => void {
-    this.handlers.add(handler);
-    return () => this.handlers.delete(handler);
+    this.listeners.add(handler);
+    return () => {
+      this.listeners.delete(handler);
+    };
   }
 
   onStateChange(): () => void {
-    return () => {};
+    return () => undefined;
   }
 
   dispose(): void {
     this.disposed = true;
-    this.handlers.clear();
+    this.listeners.clear();
   }
 
   private deliver(m: Record<string, unknown>): void {
     if (this.disposed) return;
-    for (const h of [...this.handlers]) h(m as unknown as ServerMessage);
+    const message = m as unknown as ServerMessage;
+    for (const listener of [...this.listeners]) listener(message);
   }
 
   send(msg: ClientMessage): void {
-    const m = msg as unknown as Record<string, unknown>;
-    switch (m.type) {
+    switch (msg.type) {
       case 'webviewReady':
         this.onWebviewReady();
-        break;
+        return;
       case 'saveLayout':
-        this.store.layout = m.layout as unknown as OfficeLayout;
-        this.storage.saveLayout(this.store.layout);
-        this.opts.onLayoutChange?.(this.store.layout);
-        break;
+        this.onSaveLayout(msg.layout as OfficeLayout | null);
+        return;
       case 'saveAgentSeats':
-        this.onSaveSeats(m.seats as Record<number, { seatId: string | null }>);
-        break;
-      case 'focusAgent': {
-        const bid = this.branchIds.get(m.id as number);
-        if (bid) this.opts.onOpen?.(bid);
-        break;
-      }
+        this.onSaveSeats(msg.seats);
+        return;
+      case 'focusAgent':
+        this.focusAgent(msg.id);
+        return;
       case 'launchAgent':
         this.opts.onNewAgent?.();
-        break;
+        return;
       case 'setSoundEnabled':
-        this.store.prefs.soundEnabled = m.enabled as boolean;
-        this.storage.savePrefs(this.store.prefs);
-        break;
+        this.setPref('soundEnabled', msg.enabled);
+        return;
       case 'setAlwaysShowLabels':
-        this.store.prefs.alwaysShowLabels = m.enabled as boolean;
-        this.storage.savePrefs(this.store.prefs);
-        break;
+        this.setPref('alwaysShowLabels', msg.enabled);
+        return;
       case 'setGhostHeadlessAgents':
-        this.store.prefs.ghostOffline = m.enabled as boolean;
-        this.storage.savePrefs(this.store.prefs);
-        break;
+        this.setPref('ghostOffline', msg.enabled);
+        return;
       case 'setShowAreas':
-        this.store.prefs.showAreas = m.enabled as boolean;
-        this.storage.savePrefs(this.store.prefs);
-        break;
+        this.setPref('showAreas', msg.enabled);
+        return;
       default:
-        // closeAgent, requestDiagnostics, hooks/consent/version/asset-directory messages have no
-        // Branch counterpart (see INTEGRATION.md).
-        break;
+        return;
     }
   }
 
-  // ── Server side ─────────────────────────────────────────────────
+  private onSaveLayout(layout: OfficeLayout | null): void {
+    this.store.layout = layout;
+    this.storage.saveLayout(layout);
+    this.opts.onLayoutChange?.(layout);
+  }
+
+  private focusAgent(num: number): void {
+    const id = this.branchIdOf(num);
+    if (id !== undefined) this.opts.onOpen?.(id);
+  }
+
+  private setPref(key: keyof OfficePrefs, value: boolean): void {
+    this.store.prefs[key] = value;
+    this.storage.savePrefs({ ...this.store.prefs });
+  }
 
   branchIdOf(num: number): string | undefined {
-    return this.branchIds.get(num);
+    return this.idByNum.get(num);
   }
 
   numIdOf(id: string): number | undefined {
-    return this.ids.get(id);
+    return this.numById.get(id);
   }
 
   agentFor(num: number): BranchAgent | undefined {
-    const bid = this.branchIds.get(num);
-    return bid ? this.agents.find((a) => a.id === bid) : undefined;
+    const id = this.idByNum.get(num);
+    return id === undefined ? undefined : this.agentById(id);
   }
 
   groups(): BranchAgent[] {
@@ -203,16 +261,12 @@ export class BranchServer implements MessageTransport {
     return this.store.layout !== null;
   }
 
+  private agentById(id: string): BranchAgent | undefined {
+    return this.agents.find((a) => a.id === id);
+  }
+
   private onWebviewReady(): void {
-    const a = this.assets;
-    this.deliver({ type: 'providerCapabilities', readingTools: READING_TOOLS, subagentToolNames: SUBAGENT_TOOLS });
-    this.deliver({ type: 'characterSpritesLoaded', characters: a.characters });
-    this.deliver({ type: 'petSpritesLoaded', pets: a.pets, petNames: a.petNames });
-    this.deliver({ type: 'floorTilesLoaded', sprites: a.floorSprites });
-    this.deliver({ type: 'wallTilesLoaded', sets: a.wallSets });
-    this.deliver({ type: 'carpetTilesLoaded', sets: a.carpetSets });
-    this.deliver({ type: 'furnitureAssetsLoaded', catalog: a.furnitureCatalog, sprites: a.furnitureSprites });
-    this.deliver({ type: 'areaMappingsLoaded', mappings: BRANCH_AREA_MAPPINGS });
+    this.sendAssetMessages();
     const p = this.store.prefs;
     this.deliver({
       type: 'settingsLoaded',
@@ -226,55 +280,80 @@ export class BranchServer implements MessageTransport {
     this.sync(true);
   }
 
+  private sendAssetMessages(): void {
+    const a = this.assets;
+    this.deliver({ type: 'providerCapabilities', readingTools: READING_TOOLS, subagentToolNames: SUBAGENT_TOOLS });
+    this.deliver({ type: 'characterSpritesLoaded', characters: a.characters });
+    this.deliver({ type: 'petSpritesLoaded', pets: a.pets, petNames: a.petNames });
+    this.deliver({ type: 'floorTilesLoaded', sprites: a.floorSprites });
+    this.deliver({ type: 'wallTilesLoaded', sets: a.wallSets });
+    this.deliver({ type: 'carpetTilesLoaded', sets: a.carpetSets });
+    this.deliver({ type: 'furnitureAssetsLoaded', catalog: a.furnitureCatalog, sprites: a.furnitureSprites });
+    this.deliver({ type: 'areaMappingsLoaded', mappings: BRANCH_AREA_MAPPINGS });
+  }
+
+  /** The stored layout when there is one, otherwise a generated layout for the best plan. */
   private layoutToLoad(): OfficeLayout {
-    if (this.store.layout) return this.store.layout;
+    const stored = this.store.layout;
+    if (stored) return stored;
     const plan = this.bestPlan();
-    this.generatedFor = planKey(plan);
+    this.generatedKey = planKey(plan);
     return generateBranchLayout(plan);
   }
 
-  /**
-   * The default office for this pane: every wide and narrow arrangement is tried and the one with the
-   * largest integer zoom wins (ties go to the arrangement that matches the pane's shape, then the
-   * smaller office), so the office fills its pane however many Trunks there are.
-   */
   private bestPlan(): LayoutPlan {
-    const trunks = this.agents.filter((x) => x.kind === 'trunk').length;
-    const guests = this.agents.filter((x) => x.kind === 'grafted').length;
-    const { w, h } = this.viewport;
-    const wideish = w / Math.max(1, h) >= 1.15;
-    const options: LayoutPlan[] = [];
-    for (let perRow = 3; perRow <= 8; perRow++) options.push({ trunks, guests, wide: true, perRow });
-    for (let perRow = 2; perRow <= 4; perRow++) options.push({ trunks, guests, wide: false, perRow });
-    let best = options[0];
+    const { trunks, guests } = this.countKinds();
+    const paneWide = this.pane.width / Math.max(this.pane.height, 1) >= WIDE_RATIO;
+    const candidates: LayoutPlan[] = [];
+    for (let perRow = WIDE_PLAN_PER_ROW.min; perRow <= WIDE_PLAN_PER_ROW.max; perRow++) {
+      candidates.push({ trunks, guests, wide: true, perRow });
+    }
+    for (let perRow = NARROW_PLAN_PER_ROW.min; perRow <= NARROW_PLAN_PER_ROW.max; perRow++) {
+      candidates.push({ trunks, guests, wide: false, perRow });
+    }
+    let best = candidates[0];
     let bestScore = -Infinity;
-    for (const plan of options) {
-      const { cols, rows } = planSize(plan);
-      const zoom = fitZoom(w, h, cols, rows);
-      const score = zoom * 1e6 + (plan.wide === wideish ? 1e5 : 0) - cols * rows;
+    for (const plan of candidates) {
+      const score = this.planScore(plan, paneWide);
       if (score > bestScore) {
-        bestScore = score;
         best = plan;
+        bestScore = score;
       }
     }
     return best;
   }
 
-  /** Re-generate the default office when the pane or the roster changes its best arrangement. */
+  private planScore(plan: LayoutPlan, paneWide: boolean): number {
+    const { cols, rows } = planSize(plan);
+    const zoom = fitZoom(this.pane.width, this.pane.height, cols, rows);
+    const shapeBonus = plan.wide === paneWide ? SHAPE_BONUS : 0;
+    return zoom * ZOOM_WEIGHT + shapeBonus - cols * rows;
+  }
+
+  private countKinds(): { trunks: number; guests: number } {
+    let trunks = 0;
+    let guests = 0;
+    for (const agent of this.agents) {
+      if (agent.kind === 'trunk') trunks++;
+      else if (agent.kind === 'grafted') guests++;
+    }
+    return { trunks, guests };
+  }
+
+  /** Sends a regenerated layout only when no custom layout is stored and the best plan changed. */
   private maybeRelayout(): void {
-    if (!this.webviewReady || this.store.layout) return;
-    if (planKey(this.bestPlan()) === this.generatedFor) return;
+    if (!this.webviewReady || this.isCustomLayout()) return;
+    if (planKey(this.bestPlan()) === this.generatedKey) return;
     this.deliver({ type: 'layoutLoaded', layout: this.layoutToLoad() });
   }
 
   setViewport(width: number, height: number): void {
     if (width <= 0 || height <= 0) return;
-    if (width === this.viewport.w && height === this.viewport.h) return;
-    this.viewport = { w: width, h: height };
+    if (width === this.pane.width && height === this.pane.height) return;
+    this.pane = { width, height };
     this.maybeRelayout();
   }
 
-  /** Apply a layout the owner imported or reset to (null = back to the generated default). */
   applyLayout(layout: OfficeLayout | null): void {
     this.store.layout = layout;
     this.storage.saveLayout(layout);
@@ -291,312 +370,364 @@ export class BranchServer implements MessageTransport {
   }
 
   private onSaveSeats(seats: Record<number, { seatId: string | null }>): void {
-    for (const [num, s] of Object.entries(seats)) {
-      const bid = this.branchIds.get(Number(num));
-      if (!bid) continue;
-      if (s.seatId) this.store.seats[bid] = s.seatId;
-      else delete this.store.seats[bid];
+    const stored = { ...this.store.seats };
+    for (const [num, record] of Object.entries(seats)) {
+      const id = this.idByNum.get(Number(num));
+      if (id === undefined) continue;
+      if (record.seatId) stored[id] = record.seatId;
+      else delete stored[id];
     }
-    this.storage.saveSeats(this.store.seats);
-  }
-
-  // ── Looks / customization ───────────────────────────────────────
-
-  lookOf(agent: BranchAgent): { spriteKey: string | undefined; palette: number; hueShift: number } {
-    const saved: TrunkLook | undefined = this.store.looks[agent.id];
-    if (saved) return { spriteKey: saved.spriteKey, palette: saved.palette ?? 0, hueShift: saved.hueShift ?? 0 };
-    if (agent.kind === 'grafted') {
-      // Upstream office workers; the agent's own colour (if the app gives one) seeds the hue shift,
-      // the way upstream hue-shifts repeated palettes.
-      return { spriteKey: undefined, palette: hashIndex(agent.id, 6), hueShift: hueOf(agent.colorHint) };
-    }
-    return { spriteKey: defaultSpriteKey(agent), palette: 0, hueShift: 0 };
+    this.store.seats = stored;
+    this.storage.saveSeats(stored);
   }
 
   customization(id: string): Customization | null {
-    const agent = this.agents.find((a) => a.id === id);
-    if (!agent) return null;
-    const look = this.lookOf(agent);
-    const num = this.ids.get(id);
-    const ch = num !== undefined ? this.getOffice().characters.get(num) : undefined;
+    const entry = this.agentById(id);
+    if (!entry) return null;
+    const look = this.lookFor(entry);
     return {
       sprite: look.spriteKey ?? `human:${look.palette}`,
       hueShift: look.hueShift,
-      seatId: ch?.seatId ?? this.store.seats[id] ?? null,
+      seatId: this.seatIdFor(id),
     };
   }
 
+  private seatIdFor(id: string): string | null {
+    const num = this.numIdOf(id);
+    const live = num === undefined ? undefined : this.getOffice().characters.get(num);
+    return live?.seatId || this.store.seats[id] || null;
+  }
+
   customize(id: string, c: Partial<Customization>): void {
-    const agent = this.agents.find((a) => a.id === id);
-    if (!agent) return;
-    const cur = this.customization(id)!;
-    const next: Customization = { ...cur, ...c };
-    if (c.sprite !== undefined || c.hueShift !== undefined) {
-      const human = /^human:(\d)$/.exec(next.sprite);
-      const look: TrunkLook = human
-        ? { palette: Number(human[1]), hueShift: next.hueShift }
-        : { spriteKey: next.sprite, hueShift: next.hueShift };
-      this.store.looks[id] = look;
-      this.storage.saveLooks(this.store.looks);
-      this.applyLook(id);
-    }
-    const os = this.getOffice();
-    const num = this.ids.get(id);
-    if (c.seatId !== undefined && num !== undefined && c.seatId !== cur.seatId) {
-      if (c.seatId && os.seats.get(c.seatId) && !os.seats.get(c.seatId)!.assigned) {
-        os.reassignSeat(num, c.seatId);
-        this.onSaveSeats(os.getPersistableSeats());
-      }
-    }
-    this.opts.onCustomize?.(id, this.customization(id)!);
+    const current = this.customization(id);
+    if (!current) return;
+    if ('sprite' in c || 'hueShift' in c) this.saveLook(id, { ...current, ...c });
+    if (c.seatId && c.seatId !== current.seatId) this.moveSeat(id, c.seatId);
+    const fresh = this.customization(id);
+    if (fresh) this.opts.onCustomize?.(id, fresh);
   }
 
-  /** Reset a Trunk to the look it has in the app (its colour hint / app look). */
-  resetLook(id: string): void {
-    delete this.store.looks[id];
-    this.storage.saveLooks(this.store.looks);
+  private saveLook(id: string, merged: Customization): void {
+    const human = HUMAN_SPRITE.exec(merged.sprite);
+    const look: TrunkLook = human
+      ? { palette: Number(human[1]), hueShift: merged.hueShift }
+      : { spriteKey: merged.sprite, hueShift: merged.hueShift };
+    this.store.looks = { ...this.store.looks, [id]: look };
+    this.storage.saveLooks({ ...this.store.looks });
     this.applyLook(id);
-    this.opts.onCustomize?.(id, this.customization(id)!);
   }
 
+  private moveSeat(id: string, seat: string): void {
+    const num = this.numIdOf(id);
+    const office = this.getOffice();
+    const target = office.seats.get(seat);
+    if (num === undefined || !target || target.assigned) return;
+    office.reassignSeat(num, seat);
+    this.onSaveSeats(office.getPersistableSeats());
+  }
+
+  resetLook(id: string): void {
+    const looks = { ...this.store.looks };
+    delete looks[id];
+    this.store.looks = looks;
+    this.storage.saveLooks({ ...looks });
+    this.applyLook(id);
+    const fresh = this.customization(id);
+    this.opts.onCustomize?.(id, fresh as Customization);
+  }
+
+  /** Pushes the agent's look onto every office character for its number and its sub-agents. */
   private applyLook(id: string): void {
-    const agent = this.agents.find((a) => a.id === id);
-    const num = this.ids.get(id);
-    if (!agent || num === undefined) return;
-    const look = this.lookOf(agent);
-    const os = this.getOffice();
-    for (const ch of os.characters.values()) {
-      if (ch.id === num || ch.parentAgentId === num) {
-        ch.spriteKey = look.spriteKey;
-        ch.palette = look.palette;
-        ch.hueShift = look.hueShift;
-      }
+    const entry = this.agentById(id);
+    const num = this.numIdOf(id);
+    if (!entry || num === undefined) return;
+    const look = this.lookFor(entry);
+    for (const ch of this.getOffice().characters.values()) {
+      if (ch.id !== num && ch.parentAgentId !== num) continue;
+      ch.spriteKey = look.spriteKey;
+      ch.palette = look.palette;
+      ch.hueShift = look.hueShift;
     }
   }
 
-  // ── Roster → upstream messages ──────────────────────────────────
+  /** The saved look, else the guest default, else the Trunk default. */
+  private lookFor(entry: BranchAgent): LookInfo {
+    const saved = this.store.looks[entry.id];
+    if (saved) {
+      return { spriteKey: saved.spriteKey, palette: saved.palette ?? 0, hueShift: saved.hueShift ?? 0 };
+    }
+    if (entry.kind === 'grafted') {
+      return { palette: hashIndex(entry.id, GUEST_PALETTE_COUNT), hueShift: hueFromColor(entry.colorHint) };
+    }
+    return { spriteKey: defaultSpriteKey(entry), palette: 0, hueShift: 0 };
+  }
 
+  /** The seat for a new agent: its kind's seat at its index among the same kind, if free. */
+  private defaultSeat(agent: BranchAgent): string | undefined {
+    const index = this.agents.filter((a) => a.kind === agent.kind).indexOf(agent);
+    const candidate = agent.kind === 'grafted' ? `guest-sofa-${index}` : `seat-${index}`;
+    const seat = this.getOffice().seats.get(candidate);
+    return seat && !seat.assigned ? candidate : undefined;
+  }
+
+  /** Roster sync: numbers, creation or look repair, per-agent sync, then closings. */
   private sync(initial: boolean): void {
-    const os = this.getOffice();
-    const live = new Set<string>();
     for (const agent of this.agents) {
       if (agent.kind === 'group') continue;
-      live.add(agent.id);
-      let num = this.ids.get(agent.id);
-      if (num === undefined) {
-        num = this.nextId++;
-        this.ids.set(agent.id, num);
-        this.branchIds.set(num, agent.id);
-      }
-      if (!os.characters.has(num)) {
-        const look = this.lookOf(agent);
-        this.deliver({
-          type: 'agentCreated',
-          id: num,
-          palette: look.palette,
-          hueShift: look.hueShift,
-          spriteKey: look.spriteKey,
-          seatId: this.store.seats[agent.id] ?? this.defaultSeat(agent),
-          folderName: agent.kind === 'grafted' ? 'Grafted' : 'Trunks',
-          skipSpawnEffect: initial || this.isReducedMotion(),
-        });
-        this.snaps.delete(agent.id);
-      }
+      const num = this.ensureNumber(agent.id);
+      this.ensureCharacter(agent, num, initial);
       this.syncAgent(agent, num);
     }
-    for (const [bid, num] of [...this.ids]) {
-      if (live.has(bid)) continue;
-      this.deliver({ type: 'agentClosed', id: num });
-      this.ids.delete(bid);
-      this.branchIds.delete(num);
-      this.snaps.delete(bid);
+    this.closeMissing();
+  }
+
+  private ensureNumber(id: string): number {
+    const known = this.numById.get(id);
+    if (known !== undefined) return known;
+    const num = this.nextNum++;
+    this.numById.set(id, num);
+    this.idByNum.set(num, id);
+    return num;
+  }
+
+  private ensureCharacter(agent: BranchAgent, num: number, initial: boolean): void {
+    const look = this.lookFor(agent);
+    const ch = this.getOffice().characters.get(num);
+    if (!ch) {
+      this.sendCreated(agent, num, look, initial);
+      this.memory.delete(agent.id);
+      return;
+    }
+    if (ch.spriteKey !== look.spriteKey || ch.palette !== look.palette || ch.hueShift !== look.hueShift) {
+      this.applyLook(agent.id);
     }
   }
 
-  /** First visit: Trunks take the desks in roster order, guests one sofa each (upstream would pick
-   *  randomly; a stable order keeps every Trunk at the same desk on every device). */
-  private defaultSeat(agent: BranchAgent): string | undefined {
-    const same = this.agents.filter((a) => a.kind === agent.kind);
-    const i = same.findIndex((a) => a.id === agent.id);
-    const uid = agent.kind === 'grafted' ? `guest-sofa-${i}` : `seat-${i}`;
-    const seat = this.getOffice().seats.get(uid);
-    return seat && !seat.assigned ? uid : undefined;
+  private sendCreated(agent: BranchAgent, num: number, look: LookInfo, initial: boolean): void {
+    const message: Record<string, unknown> = {
+      type: 'agentCreated',
+      id: num,
+      palette: look.palette,
+      hueShift: look.hueShift,
+      folderName: agent.kind === 'grafted' ? 'Grafted' : 'Trunks',
+      skipSpawnEffect: initial || this.isReducedMotion(),
+    };
+    if (look.spriteKey !== undefined) message.spriteKey = look.spriteKey;
+    const seat = this.store.seats[agent.id] ?? this.defaultSeat(agent);
+    if (seat !== undefined) message.seatId = seat;
+    this.deliver(message);
   }
 
+  private closeMissing(): void {
+    const live = new Set(this.agents.map((a) => a.id));
+    for (const [id, num] of [...this.numById]) {
+      if (live.has(id)) continue;
+      this.deliver({ type: 'agentClosed', id: num });
+      this.numById.delete(id);
+      this.idByNum.delete(num);
+      this.memory.delete(id);
+    }
+  }
+
+  private snapshotFor(id: string): Snapshot {
+    const existing = this.memory.get(id);
+    if (existing) return existing;
+    const fresh: Snapshot = {
+      known: false,
+      state: '',
+      activity: '',
+      pending: 0,
+      toolRow: null,
+      teamSent: false,
+      subs: new Map(),
+    };
+    this.memory.set(id, fresh);
+    return fresh;
+  }
+
+  /** Per-agent sync: the tool row, permission, team info, context and the character. */
+  private syncAgent(agent: BranchAgent, id: number): void {
+    const state: string = agent.state ?? '';
+    const activity = agent.activity ?? '';
+    const pending = Math.max(0, agent.needsYou ?? 0);
+    const snap = this.snapshotFor(agent.id);
+    const prevPending = snap.pending;
+    const newSub = this.syncSubagents(agent, id, snap);
+    const changed = !snap.known || state !== snap.state || activity !== snap.activity || newSub;
+    if (changed) this.restateTool(snap, id, state, activity, pending);
+    this.syncPermission(id, pending, prevPending, changed);
+    if (agent.team && (changed || !snap.teamSent)) this.sendTeam(agent.team, id, snap);
+    if (agent.context) {
+      this.deliver({ type: 'agentContextUsage', id, contextTokens: agent.context.used, maxContextTokens: agent.context.max });
+    }
+    this.updateCharacter(id, state, pending);
+    snap.state = state;
+    snap.activity = activity;
+    snap.pending = pending;
+    snap.known = true;
+  }
+
+  private restateTool(snap: Snapshot, id: number, state: string, activity: string, pending: number): void {
+    if (snap.toolRow) {
+      this.deliver({ type: 'agentToolDone', id, toolId: snap.toolRow });
+      snap.toolRow = null;
+    }
+    if (isDesk(state)) {
+      this.openToolRow(snap, id, state, activity, pending);
+      return;
+    }
+    this.deliver({ type: 'agentToolsClear', id });
+    if (state === 'waiting') {
+      this.deliver({ type: 'agentStatus', id, status: 'waiting', awaitingInput: false });
+    } else {
+      this.deliver({ type: 'agentStatus', id, status: 'idle' });
+    }
+  }
+
+  private openToolRow(snap: Snapshot, id: number, state: string, activity: string, pending: number): void {
+    const toolId = `tool-${++this.rowSeq}`;
+    this.deliver({
+      type: 'agentToolStart',
+      id,
+      toolId,
+      status: activity || DESK_LABELS[state],
+      toolName: this.toolFor(state, activity),
+      permissionActive: pending > 0,
+    });
+    this.deliver({ type: 'agentStatus', id, status: 'active' });
+    snap.toolRow = toolId;
+  }
+
+  /** Tool label for an at-desk agent: Grep for search or look text while reading, Read otherwise, Write for the rest. */
   private toolFor(state: string, activity: string): string {
-    if (state === 'reading') return /^search|look/i.test(activity) ? 'Grep' : 'Read';
+    if (state === 'reading') {
+      return /^search/i.test(activity) || /look/i.test(activity) ? 'Grep' : 'Read';
+    }
     return 'Write';
   }
 
-  private syncAgent(agent: BranchAgent, id: number): void {
-    const os = this.getOffice();
-    const needs = Math.max(0, agent.needsYou ?? 0);
-    const activity = agent.activity ?? '';
-    let snap = this.snaps.get(agent.id);
-    if (!snap) {
-      snap = { state: '', activity: '', needs: 0, toolId: null, subs: new Map() };
-      this.snaps.set(agent.id, snap);
-    }
-    const subsChanged = this.syncSubagents(agent, id, snap);
-    const stateChanged = snap.state !== agent.state || snap.activity !== activity || subsChanged;
-
-    if (stateChanged) {
-      const atDesk = agent.state === 'working' || agent.state === 'reading' || agent.state === 'needs_you';
-      if (snap.toolId) this.deliver({ type: 'agentToolDone', id, toolId: snap.toolId });
-      snap.toolId = null;
-      if (atDesk) {
-        const toolId = `b${++this.seq}`;
-        const status =
-          activity ||
-          (agent.state === 'reading' ? 'Reading' : agent.state === 'needs_you' ? 'Waiting for your yes' : 'Working');
-        this.deliver({
-          type: 'agentToolStart',
-          id,
-          toolId,
-          status,
-          toolName: this.toolFor(agent.state, activity),
-          permissionActive: needs > 0,
-        });
-        this.deliver({ type: 'agentStatus', id, status: 'active' });
-        snap.toolId = toolId;
-      } else {
-        this.deliver({ type: 'agentToolsClear', id });
-        if (agent.state === 'waiting') {
-          // A finished turn (not awaitingInput) so upstream shows the waiting bubble; Branch keeps it up.
-          this.deliver({ type: 'agentStatus', id, status: 'waiting', awaitingInput: false });
-        } else {
-          this.deliver({ type: 'agentStatus', id, status: 'idle' });
-        }
-      }
-    }
-    if (needs > 0 && (stateChanged || snap.needs === 0)) {
+  private syncPermission(id: number, pending: number, prevPending: number, changed: boolean): void {
+    if (pending > 0 && (changed || prevPending === 0)) {
       this.deliver({ type: 'agentToolPermission', id });
-    } else if (needs === 0 && snap.needs > 0) {
+    } else if (pending === 0 && prevPending > 0) {
       this.deliver({ type: 'agentToolPermissionClear', id });
     }
-    if (agent.team && (stateChanged || !snap.team)) {
-      const lead = agent.team.lead ? undefined : this.ids.get(agent.team.leadId ?? '');
-      this.deliver({
-        type: 'agentTeamInfo',
-        id,
-        teamName: agent.team.name,
-        agentName: agent.team.role,
-        isTeamLead: !!agent.team.lead,
-        leadAgentId: lead,
-      });
-      snap.team = true;
-    }
-    if (agent.context) {
-      this.deliver({
-        type: 'agentContextUsage',
-        id,
-        contextTokens: agent.context.used,
-        maxContextTokens: agent.context.max,
-      });
-    }
-
-    const ch = os.characters.get(id);
-    if (ch) {
-      const wasWaiting = ch.waitingSticky;
-      ch.needsCount = needs;
-      ch.waitingSticky = agent.state === 'waiting';
-      if (wasWaiting && !ch.waitingSticky && ch.bubbleType === 'waiting') ch.bubbleTimer = Math.min(ch.bubbleTimer, 0.3);
-      const offline = agent.state === 'offline';
-      if (ch.offline !== offline) {
-        ch.offline = offline;
-        os.setHeadless(id, offline);
-      }
-    }
-    snap.state = agent.state;
-    snap.activity = activity;
-    snap.needs = needs;
   }
 
-  /** Returns true when sub-agent characters were created (their Task tool start re-activates the parent). */
+  private sendTeam(team: TeamInfo, id: number, snap: Snapshot): void {
+    const leadUnknown = Boolean(team.lead) || team.leadId === undefined;
+    this.deliver({
+      type: 'agentTeamInfo',
+      id,
+      teamName: team.name,
+      agentName: team.role,
+      isTeamLead: Boolean(team.lead),
+      leadAgentId: leadUnknown ? undefined : this.numIdOf(team.leadId ?? ''),
+    });
+    snap.teamSent = true;
+  }
+
+  /** Writes the character's pending count, waiting flags and offline presentation. */
+  private updateCharacter(id: number, state: string, pending: number): void {
+    const office = this.getOffice();
+    const ch = office.characters.get(id);
+    if (!ch) return;
+    ch.needsCount = pending;
+    const wasSticky = ch.waitingSticky === true;
+    const sticky = state === 'waiting';
+    ch.waitingSticky = sticky;
+    if (wasSticky && !sticky && ch.bubbleType === 'waiting') {
+      ch.bubbleTimer = Math.min(ch.bubbleTimer, WAITING_BUBBLE_CAP_SEC);
+    }
+    const offline = state === 'offline';
+    if ((ch.offline === true) !== offline) {
+      ch.offline = offline;
+      office.setHeadless(id, offline);
+    }
+  }
+
+  /** Sub-agent sync. Returns true when a sub-agent appears for the first time. */
   private syncSubagents(agent: BranchAgent, id: number, snap: Snapshot): boolean {
-    const subs: BranchSubagent[] = agent.subagents ?? [];
-    const live = new Set(subs.map((s) => s.id));
-    let created = false;
-    for (const sub of subs) {
-      const parentToolId = `sub:${sub.id}`;
-      let s = snap.subs.get(sub.id);
-      if (!s) {
-        this.deliver({
-          type: 'agentToolStart',
-          id,
-          toolId: parentToolId,
-          status: `Subtask: ${sub.label}`,
-          toolName: 'Task',
-          runInBackground: true,
-        });
-        s = { state: '', activity: '', toolId: null };
-        snap.subs.set(sub.id, s);
-        created = true;
+    const list = agent.subagents ?? [];
+    let firstSight = false;
+    for (const sub of list) {
+      let mem = snap.subs.get(sub.id);
+      if (!mem) {
+        firstSight = true;
+        mem = this.openSubtask(sub, id, snap);
       }
-      const st = sub.state ?? 'working';
-      const act = sub.activity ?? '';
-      if (s.state === st && s.activity === act) continue;
-      if (s.toolId) this.deliver({ type: 'subagentToolDone', id, parentToolId, toolId: s.toolId });
-      s.toolId = null;
-      if (st === 'working' || st === 'reading' || st === 'needs_you') {
-        const toolId = `s${++this.seq}`;
-        const status = act || (st === 'reading' ? 'Reading' : 'Writing');
-        this.deliver({
-          type: 'subagentToolStart',
-          id,
-          parentToolId,
-          toolId,
-          status: st === 'reading' && !/^Read/.test(status) ? `Reading ${status}` : status,
-        });
-        s.toolId = toolId;
-      } else {
-        // A resting sub-agent: one finished row, so upstream's sub-agent idle rule stops its typing.
-        const toolId = `s${++this.seq}`;
-        this.deliver({ type: 'subagentToolStart', id, parentToolId, toolId, status: act || 'Idle' });
-        this.deliver({ type: 'subagentToolDone', id, parentToolId, toolId });
-      }
-      if (st === 'needs_you') this.deliver({ type: 'subagentToolPermission', id, parentToolId });
-      s.state = st;
-      s.activity = act;
+      const state = sub.state ?? 'working';
+      const activity = sub.activity ?? '';
+      if (state !== mem.state || activity !== mem.activity) this.restateSub(id, sub.id, mem, state, activity);
     }
-    for (const subId of [...snap.subs.keys()]) {
-      if (live.has(subId)) continue;
-      this.deliver({ type: 'subagentClear', id, parentToolId: `sub:${subId}` });
-      snap.subs.delete(subId);
-    }
-    return created;
+    this.closeSubtasks(id, list, snap);
+    return firstSight;
   }
 
-  // ── A2A links ───────────────────────────────────────────────────
+  private openSubtask(sub: BranchSubagent, id: number, snap: Snapshot): SubMemory {
+    this.deliver({
+      type: 'agentToolStart',
+      id,
+      toolId: taskRowId(sub.id),
+      toolName: 'Task',
+      status: `Subtask: ${sub.label}`,
+      runInBackground: true,
+    });
+    const mem: SubMemory = { state: '', activity: '', open: null };
+    snap.subs.set(sub.id, mem);
+    return mem;
+  }
 
+  private restateSub(id: number, key: string, mem: SubMemory, state: string, activity: string): void {
+    const parentToolId = taskRowId(key);
+    if (mem.open) {
+      this.deliver({ type: 'subagentToolDone', id, parentToolId, toolId: mem.open });
+      mem.open = null;
+    }
+    const toolId = `sub-${++this.rowSeq}`;
+    this.deliver({ type: 'subagentToolStart', id, parentToolId, toolId, status: subStatus(state, activity) });
+    if (isDesk(state)) mem.open = toolId;
+    else this.deliver({ type: 'subagentToolDone', id, parentToolId, toolId });
+    if (state === 'needs_you') this.deliver({ type: 'subagentToolPermission', id, parentToolId });
+    mem.state = state;
+    mem.activity = activity;
+  }
+
+  private closeSubtasks(id: number, list: BranchSubagent[], snap: Snapshot): void {
+    const live = new Set(list.map((s) => s.id));
+    for (const key of [...snap.subs.keys()]) {
+      if (live.has(key)) continue;
+      this.deliver({ type: 'subagentClear', id, parentToolId: taskRowId(key) });
+      snap.subs.delete(key);
+    }
+  }
+
+  /** Replays links that are new to this server, so the sender walks to the recipient. */
   private runLinks(links: BranchLink[]): void {
-    const os = this.getOffice();
-    for (const l of links) {
-      const key = linkKey(l);
-      if (this.seenLinks.has(key)) continue;
-      this.seenLinks.add(key);
-      const from = this.ids.get(l.from);
-      const to = this.ids.get(l.to);
+    for (const link of links) {
+      const key = linkKey(link);
+      if (this.shown.has(key)) continue;
+      this.shown.add(key);
+      const from = this.numIdOf(link.from);
+      const to = this.numIdOf(link.to);
       if (from === undefined || to === undefined) continue;
-      os.startVisit(from, to);
+      this.getOffice().startVisit(from, to);
     }
   }
 
-  /** Pose for Trunk looks this frame (upstream humans have no poses and ignore it). */
+  /** Visible pose for a character, or null for none. */
   poseFor(num: number): string | null {
     const ch = this.getOffice().characters.get(num);
     if (!ch) return null;
-    const agentNum = ch.isSubagent && ch.parentAgentId !== null ? ch.parentAgentId : num;
+    const agentNum = ch.isSubagent && typeof ch.parentAgentId === 'number' ? ch.parentAgentId : num;
     const agent = this.agentFor(agentNum);
     if (!agent) return null;
-    if (ch.chatTimer && ch.chatTimer > 0) return 'talk';
+    if ((ch.chatTimer ?? 0) > 0) return 'talk';
     if (ch.isSubagent) return null;
     if (agent.state === 'offline') return 'sleep';
     if (agent.state === 'needs_you' || agent.state === 'waiting') return 'wait';
-    if (ch.state === CharacterState.TYPE) {
-      if (ch.isActive) return /^think/i.test(agent.activity ?? '') ? 'think' : /^search/i.test(agent.activity ?? '') ? 'search' : null;
-      return 'sleep';
-    }
-    return null; // standing: upstream's walk frame for the direction it faces
+    if (ch.state !== CharacterState.TYPE) return null;
+    if (!ch.isActive) return 'sleep';
+    return thinkOrSearch(agent.activity ?? '');
   }
 }

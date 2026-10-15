@@ -239,7 +239,6 @@ describe("requester settle wake commit retry", () => {
     // also postpones the write that would have succeeded, so the requester waits
     // out the whole gap after storage comes back. Reported volume is bounded by
     // shouldReportRequesterSettleWakeFailure instead.
-    // https://github.com/openclaw/openclaw/issues/154252
     const entry = makeRetainedChild();
     const { context } = makeContext([entry]);
 

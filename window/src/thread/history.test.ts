@@ -68,6 +68,32 @@ describe("historyToBlocks", () => {
 });
 
 describe("historyToBlocks: errors, notes, meta and attachments", () => {
+  it("restores captionless screenshots from canonical transcript media facts", () => {
+    const blocks = historyToBlocks([{ role: "user", content: [], __branch: { media: [
+      { url: "media://inbound/screenshot.png", contentType: "image/png", fileName: "image.png", sizeBytes: 42 },
+    ] } }], [], "k", null);
+    expect(blocks[0]).toMatchObject({ kind: "user", text: "", attachments: [
+      { kind: "image", src: "media://inbound/screenshot.png", name: "image.png", mimeType: "image/png", sizeBytes: 42, kept: true },
+    ] });
+  });
+  it("keeps screenshots attached to steering messages rather than discarding them", () => {
+    const blocks = historyToBlocks([{ role: "user", content: "Look at this", __branch: {
+      steerTargetRunId: "running-turn", media: [{ url: "media://inbound/screenshot.png", kind: "image", fileName: "image.png" }],
+    } }], [], "k", null);
+    expect(blocks[0]).toMatchObject({ kind: "steer", attachments: [{ kind: "image", src: "media://inbound/screenshot.png" }] });
+  });
+  it("marks only canonical media path facts as local, not url facts or content attachments", () => {
+    const blocks = historyToBlocks([{ role: "user", content: [{ type: "image", url: "/api/chat/media/plain.png" }], __branch: { media: [
+      { path: "/home/me/.branch/media/inbound/shot.png", contentType: "image/png" },
+      { url: "/files/other.png", contentType: "image/png" },
+    ] } }], [], "k", null);
+    const attachments = (blocks[0] as { attachments?: { src?: string; local?: boolean }[] }).attachments ?? [];
+    expect(attachments.map((a) => [a.src, a.local === true])).toEqual([
+      ["/api/chat/media/plain.png", false],
+      ["/home/me/.branch/media/inbound/shot.png", true],
+      ["/files/other.png", false],
+    ]);
+  });
   it("shows a run that failed before replying as the error block, and the engine's notes", () => {
     const blocks = historyToBlocks(
       [
@@ -105,5 +131,81 @@ describe("historyToBlocks: errors, notes, meta and attachments", () => {
     expect(blocks[0]).toMatchObject({ kind: "user", text: "look", attachments: [{ kind: "image", src: "data:image/png;base64,AAAA", kept: true }] });
     expect(blocks.map((b) => b.kind)).toEqual(["user", "thinking", "text", "done"]);
     expect(blocks[2]).toMatchObject({ meta: { entryId: "e2", model: "qwen3:14b", usage: { total: 9, cost: 0 } } });
+  });
+});
+
+describe("historyToBlocks: text-channel tool calls", () => {
+  const spawn = {
+    name: "sessions_spawn",
+    arguments: {
+      visible: true,
+      title: "model-smoke-test-2",
+      sessionKey: "agent:<id>:model-smoke-test-2",
+      message: "Starting new session for model smoke test",
+    },
+  };
+
+  it("projects a whole-reply tool-call JSON as a step, not as text", () => {
+    const blocks = historyToBlocks(
+      [
+        { role: "user", content: "new conversation", timestamp: 1 },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: JSON.stringify(spawn) }],
+          stopReason: "stop",
+          timestamp: 2,
+          __branch: { runId: "r" },
+        },
+      ],
+      [],
+      "k",
+      null,
+    );
+    expect(blocks.map((b) => b.kind)).toEqual(["user", "step", "done"]);
+    expect(blocks[1]).toMatchObject({ kind: "step", tool: "sessions_spawn", title: "model-smoke-test-2", status: "ok" });
+    expect(JSON.stringify(blocks)).not.toContain('"name": "sessions_spawn"');
+  });
+
+  it("projects a fenced tool-call JSON the same way, and leaves JSON inside prose as text", () => {
+    const fenced = historyToBlocks(
+      [{ role: "assistant", content: `\`\`\`json\n${JSON.stringify(spawn)}\n\`\`\``, stopReason: "stop", timestamp: 2, __branch: { runId: "r" } }],
+      [],
+      "k",
+      null,
+    );
+    expect(fenced[0]).toMatchObject({ kind: "step", tool: "sessions_spawn", title: "model-smoke-test-2" });
+    const prose = historyToBlocks(
+      [{ role: "assistant", content: [{ type: "text", text: `Here is the call: ${JSON.stringify(spawn)}` }], stopReason: "stop" }],
+      [],
+      "k",
+      null,
+    );
+    expect(prose[0]).toMatchObject({ kind: "text", text: `Here is the call: ${JSON.stringify(spawn)}` });
+  });
+
+  it("gives a run no length when its first message has no time, never one counted from the epoch", () => {
+    const untimed = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: [{ type: "text", text: "Hello." }], stopReason: "stop", timestamp: 1_790_000_000_000, __branch: { runId: "r" } },
+    ];
+    const done = historyToBlocks(untimed, [], "agent:a:main", null).find((b) => b.kind === "done");
+    expect(done).toBeDefined();
+    expect(done).not.toHaveProperty("durationMs");
+    const timed = [
+      { role: "user", content: "hi", timestamp: 1_000 },
+      { role: "assistant", content: [{ type: "text", text: "Hello." }], stopReason: "stop", timestamp: 61_000, __branch: { runId: "r" } },
+    ];
+    expect(historyToBlocks(timed, [], "agent:a:main", null).find((b) => b.kind === "done")).toMatchObject({ durationMs: 60_000 });
+  });
+
+  it("gives a later run whose message has no time no length, not the idle gap since the run before", () => {
+    const blocks = historyToBlocks([
+      { role: "user", content: "first", timestamp: 1_000 },
+      { role: "assistant", content: [{ type: "text", text: "Done." }], stopReason: "stop", timestamp: 5_000, __branch: { runId: "r1" } },
+      { role: "user", content: "later, untimed" },
+      { role: "assistant", content: [{ type: "text", text: "Also done." }], stopReason: "stop", timestamp: 1_790_000_000_000, __branch: { runId: "r2" } },
+    ], [], "agent:a:main", null);
+    const dones = blocks.filter((b) => b.kind === "done") as { durationMs?: number }[];
+    expect(dones.map((d) => d.durationMs)).toEqual([4_000, undefined]);
   });
 });

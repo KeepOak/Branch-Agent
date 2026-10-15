@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icons";
-import { filterPalette, GROUPS, moveSelection, type PaletteRow } from "./palette-model";
+import { filterPalette, GROUPS, moveSelection, paletteEmptyLine, type PaletteRow } from "./palette-model";
 import { readMessageHits, type MessageHit } from "./search-model";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
@@ -17,14 +17,18 @@ type Props = {
 function useMessageRows(request: Request, query: string, rowName: (k: string) => string, open: (key: string, query: string) => void) {
   const [hits, setHits] = useState<MessageHit[]>([]);
   const [note, setNote] = useState("");
+  const [searching, setSearching] = useState(false);
   useEffect(() => {
     const q = query.trim();
     if (!q) {
       setHits([]);
       setNote("");
+      setSearching(false);
       return;
     }
     let current = true;
+    setHits([]);
+    setSearching(true);
     setNote("Searching…");
     const timer = setTimeout(() => {
       const scope = { includeGlobal: true, includeUnknown: true, configuredAgentsOnly: true, excludeSubagents: true, excludeCron: true, excludeSystem: true };
@@ -33,9 +37,15 @@ function useMessageRows(request: Request, query: string, rowName: (k: string) =>
           if (current) {
             setHits(readMessageHits(r));
             setNote((r as { indexing?: boolean }).indexing ? "Looking through older messages. Search again shortly." : "");
+            setSearching(false);
           }
         },
-        () => current && setNote("Message search isn't available right now. Showing names only."),
+        () => {
+          if (current) {
+            setNote("Message search isn't available right now. Showing names only.");
+            setSearching(false);
+          }
+        },
       );
     }, 200);
     return () => {
@@ -44,12 +54,20 @@ function useMessageRows(request: Request, query: string, rowName: (k: string) =>
     };
   }, [request, query]);
   const rows = messagePaletteRows(hits, query, rowName, open);
-  return { rows, note };
+  return { rows, note, searching };
 }
 
 /** Palette message rows carry the searched words into the destination conversation's Find bar. */
 export function messagePaletteRows(hits: MessageHit[], query: string, rowName: (key: string) => string, open: (key: string, query: string) => void): PaletteRow[] {
   return hits.map((hit, i) => ({ id: `msg:${i}`, group: "Messages", label: hit.snippet, hint: rowName(hit.key), run: () => open(hit.key, query) }));
+}
+
+/** Message rows take their GROUPS slot, just before Trunks. Rows already listed keep their order; message rows only insert. */
+export function paletteShown(base: PaletteRow[], messageRows: PaletteRow[]): PaletteRow[] {
+  if (messageRows.length === 0) return base;
+  const messagesRank = GROUPS.indexOf("Messages");
+  const at = base.findIndex((r) => GROUPS.indexOf(r.group) > messagesRank);
+  return at < 0 ? [...base, ...messageRows] : [...base.slice(0, at), ...messageRows, ...base.slice(at)];
 }
 
 /** Find anything (DESIGN-SPEC §4.1.7): the field, the grouped list, Up/Down/Enter/Escape, and the footer. */
@@ -59,9 +77,10 @@ export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Prop
   const listRef = useRef<HTMLDivElement>(null);
   const messages = useMessageRows(request, query, rowName, onOpenMessage);
   const typing = query.trim() !== "";
-  // Trunks and Messages show only while typing (§4.1.7 Parity adds); groups keep their order.
-  const base = filterPalette(typing ? rows : rows.filter((r) => r.group !== "Trunks"), query);
-  const shown = [...base, ...(typing ? messages.rows : [])].sort((a, b) => GROUPS.indexOf(a.group) - GROUPS.indexOf(b.group));
+  // Trunks and Messages show only while typing (§4.1.7 Parity adds); conversation commands too.
+  const listed = typing ? rows : rows.filter((r) => r.group !== "Trunks" && !r.whenTyping);
+  const base = filterPalette(listed, query);
+  const shown = paletteShown(base, typing ? messages.rows : []);
   useEffect(() => setSel(0), [query]);
   useEffect(() => {
     listRef.current?.querySelector(`[data-index="${sel}"]`)?.scrollIntoView({ block: "nearest" });
@@ -73,6 +92,7 @@ export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Prop
     }
   };
   let lastGroup = "";
+  const empty = paletteEmptyLine(shown.length, messages.searching);
   return (
     <div className="scrim palette-scrim in17" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="palette" role="dialog" aria-modal="true" aria-label="Find anything" data-testid="palette">
@@ -101,7 +121,7 @@ export function Palette({ rows, request, rowName, onOpenMessage, onClose }: Prop
         </label>
         {messages.note ? <p className="pal-note">{messages.note}</p> : null}
         <div className="pal-list" ref={listRef} role="listbox" aria-label="Results">
-          {shown.length === 0 ? <p className="pal-none">Nothing matches. Try a Trunk’s name or a setting.</p> : null}
+          {empty ? <p className="pal-none">{empty}</p> : null}
           {shown.map((row, i) => {
             const head = row.group !== lastGroup ? row.group : null;
             lastGroup = row.group;

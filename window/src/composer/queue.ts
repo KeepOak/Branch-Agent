@@ -1,6 +1,7 @@
 // The waiting line (DESIGN-SPEC §4.3.7): messages sent while the Trunk works, held on this computer and sent
 // one at a time once the run ends, the way OpenClaw's browser UI keeps its outbox (ui/src/pages/chat/chat-queue.ts).
 import type { DraftFile } from "./attachments";
+import { reconcilePicks, type SkillPick } from "./skill-picks";
 
 /** `checking`: sent, but the connection went before Branch confirmed it ("Not confirmed yet"). The engine may hold
  *  it: it is checked against its conversation and sent again under the same id only if the engine doesn't. */
@@ -21,8 +22,11 @@ export type QueueItem = {
   id: string;
   text: string;
   files: DraftFile[];
+  /** Where the skill picks sit in `text` (display text, /seedbank). Resolved when the message is sent. */
+  picks?: SkillPick[];
   state: QueueState;
   error?: string;
+  createdAt?: number;
   sentWith?: SentWith;
   sentTo?: SentTo;
 };
@@ -32,7 +36,7 @@ export function enqueue(line: readonly QueueItem[], item: Omit<QueueItem, "state
 }
 
 export function reword(line: readonly QueueItem[], id: string, text: string): QueueItem[] {
-  return line.map((item) => (item.id === id ? { ...item, text } : item));
+  return line.map((item) => (item.id === id ? { ...item, text, picks: reconcilePicks(item.picks ?? [], item.text, text) } : item));
 }
 
 export function moveUp(line: readonly QueueItem[], id: string): QueueItem[] {
@@ -100,7 +104,7 @@ export function loadLine(storage: Storage | undefined, sessionKey: string): Queu
 }
 
 /** Fired on the window after the waiting line of a conversation changes, so the thread shows it as queued. */
-export const WAITING_LINE_EVENT = "branch:waiting-line";
+const WAITING_LINE_EVENT = "branch:waiting-line";
 
 function announce(sessionKey: string): void {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(WAITING_LINE_EVENT, { detail: { sessionKey } }));

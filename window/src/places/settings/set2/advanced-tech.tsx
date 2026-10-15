@@ -196,7 +196,7 @@ export function fieldsOf(schema: unknown, hints: RecordValue, p = "", out: Field
   return out;
 }
 /** The schema's fields, read once per window (config.schema). */
-export function useFields(engine: WindowEngine) {
+function useFields(engine: WindowEngine) {
   const res = useLive<RecordValue>(engine, "config.schema", {}, []);
   const fields = useMemo(() => (res.data ? fieldsOf(rec(res.data).schema, rec(rec(res.data).uiHints)) : []), [res.data]);
   return { fields, error: res.error, loading: res.loading && !res.data };
@@ -237,8 +237,9 @@ function KeyRow({ t, k, onEdit }: { t: string; k: string; onEdit: () => void }) 
   const on = pins?.has(t) ?? false;
   return (
     <div className="ctl" data-row={t}>
-      <b>{t} <code className="s2advanced-key">{k}</code></b>
-      {pins ? <button type="button" className="pin-k" aria-pressed={on} aria-label={`${on ? "Unpin" : "Pin"} ${t}`} title={on ? "Unpin" : "Pin to the top of General"} onClick={() => pins.toggle(t)}><Icon name="pin" small /></button> : null}
+      <b>{t} <code className="s2advanced-key">{k}</code>
+        {pins ? <button type="button" className="pin-k" aria-pressed={on} aria-label={`${on ? "Unpin" : "Pin"} ${t}`} title={on ? "Unpin" : "Pin to the top of General"} onClick={() => pins.toggle(t)}><Icon name="pin" small /></button> : null}
+      </b>
       <span className="right"><Btn sm onClick={onEdit}>Edit</Btn></span>
     </div>
   );
@@ -252,9 +253,9 @@ export function EverythingElse({ c }: { c: Ctx }) {
   return (
     <Sec title="Everything else" hint="Settings that have no page of their own." help="Settings that have no page of their own. Every field shows, including the fine ones.">
       {OTHER.map(([t, k]) => <KeyRow key={k} t={t} k={k} onEdit={() => setOpen([t, k])} />)}
-      <Ctl title="Find any setting" sub={error ?? (loading ? "Reading the engine’s settings list…" : `${fields.length} settings. Read only here; edit one in its section.`)} stack after={
+      <Ctl title="Ctrl K to find anything" sub={error ?? (loading ? "Checking…" : `${fields.length} settings. Read only here; edit one in its section.`)} stack after={
         <div className="s2advanced-find">
-          <input className="inp" placeholder="A setting’s name or path" aria-label="Find any setting" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="inp" placeholder="Ctrl K to find anything" aria-label="Ctrl K to find anything" value={q} onChange={(e) => setQ(e.target.value)} />
           {hits.length ? <FieldList fields={hits} config={c.config} /> : q.trim().length > 1 && !loading ? <p className="hint">No setting matches.</p> : null}
         </div>
       } />

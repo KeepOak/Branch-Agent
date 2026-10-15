@@ -1,6 +1,5 @@
 /* Settings › Permissions (§4.7.11), from the preview's 52-set2p and 95-g5p rules. Theme tokens only. */
 .set-col .pm-tile { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--fill); color: var(--ink-2); flex: none; }
-.set-col .sec.pm-loc { margin-top: 14px; }
 .set-col .sec.pm-mode { margin-top: 12px; }
 .set-col .ctl > .right .pm-unit { font-size: 12.5px; color: var(--ink-3); }
 .set-col .kit-page[data-page-title="Permissions"] .ctl:not(.stack-k) > .right > input.inp { width: 112px; min-width: 0; }

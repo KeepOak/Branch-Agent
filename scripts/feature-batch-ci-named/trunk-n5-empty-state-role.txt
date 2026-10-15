@@ -1,0 +1,2 @@
+window:src/thread/EmptyState.job.test.tsx
+window:src/thread/empty-state.test.ts

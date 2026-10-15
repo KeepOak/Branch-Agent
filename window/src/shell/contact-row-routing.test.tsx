@@ -98,7 +98,7 @@ it("orders TK by activity and moves it through Pinned on menu pin and unpin", as
       actions, contact, pinContact: toggle,
       now: 100, trunkName: "TK", level: "regular", open: () => {}, rename: () => {}, confirmDelete: () => {},
       ask: () => {}, editTrunk: () => {}, tidy: () => {}, copyMarkdown: () => {},
-      copyText: () => {}, copyLink: () => {}, ownWindow: () => {},
+      copyText: () => {}, copyLink: () => {}, copyConversation: () => {}, ownWindow: () => {},
     });
   };
   for (const [label, expectedPinned] of [["Pin", true], ["Unpin", false]] as const) {

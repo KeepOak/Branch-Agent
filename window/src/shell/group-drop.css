@@ -19,5 +19,6 @@
 .group-drop-question { margin: 2px 4px 10px; font-size: 13.5px; line-height: 1.4; }
 .group-drop-actions { display: flex; justify-content: end; gap: 8px; }
 .group-drop-note { margin: 8px 4px 0; color: var(--ink-3); font-size: 12px; line-height: 1.4; }
+.group-drop-empty { margin: 2px 4px 10px; color: var(--ink-3); font-size: 13px; line-height: 1.4; }
 .group-drop-error { color: var(--bad); font-size: 12px; }
 @media (prefers-reduced-motion: no-preference) { .group-drop-popover { animation: group-drop-in 140ms ease-out both; } .side .pin-drop-onto, .side .pin-drop-duplicate { transition: box-shadow 120ms, background 120ms; } }

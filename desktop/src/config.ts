@@ -2,7 +2,7 @@
 // Packaged defaults are per user; desktop.json can override any field.
 // The engine is installed separately: use the published copy, with the source build as a development fallback.
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { homedir } from "node:os";
 
 export interface DesktopConfig {
@@ -24,10 +24,16 @@ export interface DesktopConfig {
   /** Port of the tiny static server that serves the window on 127.0.0.1. */
   windowPort: number;
   /**
-   * P45's seamless handoff (the old engine steps down and finishes its runs while the standby takes over). Off by
-   * default until the engine side passes its real-engine test; off, an update drains the old engine first.
+   * Seamless handoff (the old engine steps down and finishes its runs while the standby takes over). On by
+   * default; set false to fall back to drain-first updates.
    */
   seamlessHandoff?: boolean;
+  /**
+   * Always on (Private #454): the engine runs as a per-user service (the engine's own `branch gateway install`), keeps
+   * working when the app quits, and the app only attaches to it; engine updates restart the service. On by default;
+   * false keeps the engine inside the app as before. A service that cannot be installed falls back to that by itself.
+   */
+  alwaysOn?: boolean;
 }
 
 function isFile(file: string): boolean {
@@ -37,14 +43,19 @@ function isFile(file: string): boolean {
   }
 }
 
+/** An XDG or Windows folder variable counts only when absolute, as the engine's service check reads it (#1053). */
+function absoluteDir(value: string | undefined): string | undefined {
+  return value && isAbsolute(value) ? value : undefined;
+}
+
 export function defaultDataDirectory(): string {
   if (process.env.BRANCH_DESKTOP_DATA) return process.env.BRANCH_DESKTOP_DATA;
   const legacy = join(homedir(), "BranchApp");
   if (isFile(join(legacy, "desktop.json"))
     || isFile(join(legacy, "gateway-token")) && isFile(join(legacy, "engine-current.txt"))) return legacy;
-  if (process.platform === "win32") return join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "BranchAgent");
+  if (process.platform === "win32") return join(absoluteDir(process.env.LOCALAPPDATA) ?? join(homedir(), "AppData", "Local"), "BranchAgent");
   if (process.platform === "darwin") return join(homedir(), "Library", "Application Support", "BranchAgent");
-  return join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "BranchAgent");
+  return join(absoluteDir(process.env.XDG_DATA_HOME) ?? join(homedir(), ".local", "share"), "BranchAgent");
 }
 
 const DATA_DIR = defaultDataDirectory();
@@ -58,6 +69,8 @@ const DEFAULTS: DesktopConfig = {
     ? join(RESOURCES, "node", process.platform === "win32" ? "node.exe" : "node") : process.execPath,
   gatewayPort: 19031,
   windowPort: 19032,
+  // Scratch test copies and hidden runs never install the per-user service: it would replace the owner's.
+  alwaysOn: process.env.BRANCH_DESKTOP_TEST !== "1" && process.env.BRANCH_DESKTOP_HIDDEN !== "1",
 };
 
 /** Never used: the old app's port and the owner's preview ports. */

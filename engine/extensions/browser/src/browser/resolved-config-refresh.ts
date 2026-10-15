@@ -1,7 +1,11 @@
 import { isDeepStrictEqual } from "node:util";
 import { loadBrowserConfigForRuntimeRefresh } from "./config-refresh-source.js";
 import { resolveBrowserConfig, resolveProfile, type ResolvedBrowserProfile } from "./config.js";
-import { beginProfileTransition, getProfileLifecycle } from "./server-context.lifecycle.js";
+import {
+  beginProfileTransition,
+  getProfileLifecycle,
+  refreshManagedChromeIdleWatches,
+} from "./server-context.lifecycle.js";
 import type { BrowserServerState, ProfileRuntimeState } from "./server-context.types.js";
 
 function changedProfileInvariants(
@@ -152,6 +156,7 @@ function applyResolvedConfig(
     }
     queueRemovedProfileCleanup({ current, name, runtime, initial: true });
   }
+  refreshManagedChromeIdleWatches(current);
 }
 
 export function refreshResolvedBrowserConfigFromDisk(params: {

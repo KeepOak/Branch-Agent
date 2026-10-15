@@ -5,19 +5,39 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
 import { runTargetedStrictChecks } from './feature-batch-ci-typecheck.mjs';
 import { typecheckSteps } from './window-typecheck.mjs';
 
 export async function main() {
+  // Use the engine's existing dist-artifact lock for admission across worktrees.
+  await import('../engine/scripts/tsx.mjs');
+  const { withHostHeavyStep } = await import('../engine/scripts/lib/host-heavy-step.mts');
+  const { runManagedCommand } = await import('../engine/scripts/lib/managed-child-process.mts');
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  process.once('SIGINT', cancel);
+  process.once('SIGTERM', cancel);
+  const runCheck = async (bin, args, cwd) => {
+    const code = await runManagedCommand({ bin, args, cwd, env: process.env,
+      signal: controller.signal, requireProcessTreeExit: process.platform !== 'win32' });
+    if (code !== 0) throw new Error(`Strict typecheck command exited ${code}`);
+  };
+  try {
+    return await withHostHeavyStep('typecheck', () => runAdmitted(runCheck), controller.signal);
+  } finally {
+    process.removeListener('SIGINT', cancel);
+    process.removeListener('SIGTERM', cancel);
+  }
+}
+
+async function runAdmitted(runCheck) {
   const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'branch-strict-'));
   try {
     // CI builds the gateway packages before this check; the window files import their built types.
     for (const [cwd, args] of typecheckSteps().slice(0, 2)) {
-      const result = spawnSync(process.execPath, args, { cwd, stdio: 'inherit' });
-      if (result.status !== 0) process.exit(result.status ?? 1);
+      await runCheck(process.execPath, args, cwd);
     }
-    await runTargetedStrictChecks(scratch);
+    await runTargetedStrictChecks(scratch, runCheck);
     console.log('strict typecheck passed (same files and options as CI)');
   } finally {
     await fs.rm(scratch, { recursive: true, force: true });

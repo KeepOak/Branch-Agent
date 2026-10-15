@@ -1,4 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // Explicit regression scope. This list never discovers the repository test matrix.
 export const engineTests = [
@@ -474,7 +476,12 @@ export const windowStrictFiles = [
 // A PR adds its named tests in its own file, scripts/feature-batch-ci-named/<topic>.txt, one
 // `engine:<file>` or `window:<file>` per line (# comments allowed), instead of editing the shared
 // lists above, so parallel PRs never conflict on them.
-const NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
+let NAMED_DIR = new URL('./feature-batch-ci-named/', import.meta.url);
+
+// The plan job loads this planner from the default branch and reads the PR's named lists as data.
+export function setNamedListDir(dirPath) {
+  NAMED_DIR = pathToFileURL(`${path.resolve(dirPath)}${path.sep}`);
+}
 
 export function namedTestFiles(lane, only) {
   let names = [];
@@ -534,8 +541,15 @@ export function harvestTestFiles(lane, only) {
   return files;
 }
 
+export function harvestE2eError(lane, file) {
+  if (!/\.e2e\.test\.(?:ts|tsx)$/.test(file)) return undefined;
+  return `Harvest test "${lane}:${file}" is an e2e file; Harvest vitest excludes **/*.e2e.test.ts so it would never run. Register it in the e2e suite instead.`;
+}
+
 export function harvestTests(lane) {
   const targets = [...new Set(harvestTestFiles(lane))].sort();
+  const e2e = targets.find(file => harvestE2eError(lane, file));
+  if (e2e) throw new Error(harvestE2eError(lane, e2e));
   const bad = targets.find(file => !/^.+\.test\.(?:ts|tsx|mjs|mts)$/.test(file) || file.includes('..') || file.startsWith('/'));
   if (bad) throw new Error(`Harvest test "${lane}:${bad}" must be repository-relative *.test.ts, *.test.tsx, *.test.mjs, or *.test.mts`);
   return targets;
@@ -550,20 +564,102 @@ export function touchedHarvestTests(lane, changedFiles) {
   return harvestTests(lane).filter(file => changed.has(file) || listed.has(file));
 }
 
-// The pilot added roughly 4.7 minutes to two named shards (about 11 files each).
-// Four files per PR shard stay below ten minutes; eight nightly files retain
-// headroom under fifteen minutes while extending the GitHub matrix growth ceiling.
-export const harvestFilesPerShard = { pr: 4, nightly: 8 };
+// Harvest shards are sized by expected time, not by file count. Seconds per engine file are rounded up from
+// the 2026-10-12 nightly job logs (job 114946830895 and job 114946831063). Files without a timing weigh
+// harvestUnlistedFileSeconds, the mean of the timed files without the 120 s timeout hang. Refresh this table
+// from CI logs when shard times drift.
+export const harvestFileSeconds = {
+  'extensions/agentsapi/agentsapi-harness.persistence.harvest.test.ts': 57,
+  'extensions/codex/src/conversation-binding.test.ts': 12,
+  'extensions/copilot/harness.harvest.test.ts': 17,
+  'extensions/copilot/src/attempt.harvest.test.ts': 4,
+  'extensions/copilot/src/attempt.test.ts': 4,
+  'extensions/discord/src/monitor/threading.auto-thread.test.ts': 40,
+  'extensions/matrix/src/matrix/device-health.test.ts': 1,
+  'extensions/qa-channel/src/outbound.test.ts': 1,
+  'extensions/slack/src/monitor/events/interactions.test.ts': 2,
+  'extensions/team-reports/src/aggregate.test.ts': 1,
+  'extensions/telegram/src/polling-session.test.ts': 119,
+  'extensions/telegram/src/webhook.admission.test.ts': 110,
+  'extensions/telegram/src/webhook.callback-guards.test.ts': 141,
+  'extensions/telegram/src/webhook.dispatch.test.ts': 40,
+  'extensions/telegram/src/webhook.registration.test.ts': 70,
+  'extensions/telegram/src/webhook.topic-lanes.test.ts': 124,
+  'extensions/typesafe/src/transport.test.ts': 1,
+  'packages/agent-core/src/agent-loop.harvest.test.ts': 1,
+  'src/agents/agent-command.live-model-switch.harvest.test.ts': 80,
+  'src/agents/agent-command.live-model-switch.test.ts': 59,
+  'src/agents/embedded-agent-runner/compact.hooks.test.ts': 66,
+  'src/agents/embedded-agent-runner/compact.hooks.upstream-main.test.ts': 65,
+  'src/agents/embedded-agent-runner/lanes.harvest.test.ts': 1,
+  'src/channels/plugins/outbound/presentation-delivery.test.ts': 1,
+  'src/gateway/server-channels.test.ts': 3,
+  'src/plugin-sdk/channel-inbound.test.ts': 121,
+};
+export const harvestUnlistedFileSeconds = 20;
+// Whole-job budgets. Runner setup (runnerSetupSeconds.ubuntu) counts against each budget, so the tests get
+// the rest. PRs target six minutes and nightly runs ten, both under the 10 and 15 minute job timeouts.
+export const harvestShardBudgetSeconds = { pr: 6 * 60, nightly: 10 * 60 };
+export const harvestMaxShards = 64;
+
+export function harvestFileSecondsFor(file) {
+  return harvestFileSeconds[file] ?? harvestUnlistedFileSeconds;
+}
+
+function packHarvestShards(files, total) {
+  const bins = Array.from({ length: total }, () => ({ files: [], load: 0 }));
+  const ranked = [...files].sort((a, b) => harvestFileSecondsFor(b) - harvestFileSecondsFor(a) || (a < b ? -1 : 1));
+  for (const file of ranked) {
+    let lightest = bins[0];
+    for (const bin of bins) if (bin.load < lightest.load) lightest = bin;
+    lightest.files.push(file);
+    lightest.load += harvestFileSecondsFor(file);
+  }
+  return bins.map(bin => ({ files: bin.files.sort(), load: bin.load }));
+}
+
+/** Smallest shard count whose every shard fits the scope budget. Longest file first, onto the lightest shard.
+ *  Each shard holds at least one file: an empty shard would select nothing, and vitest then runs the whole lane. */
+export function planHarvestShards(files, scope) {
+  if (!files.length) return [];
+  const budget = harvestShardBudgetSeconds[scope] - runnerSetupSeconds.ubuntu;
+  const totalSeconds = files.reduce((sum, file) => sum + harvestFileSecondsFor(file), 0);
+  const ceiling = Math.min(files.length, harvestMaxShards);
+  for (let total = Math.max(1, Math.ceil(totalSeconds / budget)); total <= ceiling; total++) {
+    const bins = packHarvestShards(files, total);
+    if (bins.every(bin => bin.load <= budget)) return bins.map(bin => bin.files);
+  }
+  throw new Error(`Harvest cannot fit ${files.length} file(s) into ${harvestMaxShards} ${scope} shards within the ${budget}s test budget; split the slowest file`);
+}
+
+function harvestLaneFiles(lane, changedFiles) {
+  return changedFiles ? touchedHarvestTests(lane, changedFiles) : harvestTests(lane);
+}
+
 export function harvestMatrix(changedFiles) {
+  const scope = changedFiles ? 'pr' : 'nightly';
   const matrix = [];
   for (const lane of ['engine', 'window']) {
-    const files = changedFiles ? touchedHarvestTests(lane, changedFiles) : harvestTests(lane);
-    const total = Math.ceil(files.length / harvestFilesPerShard[changedFiles ? 'pr' : 'nightly']);
+    const total = planHarvestShards(harvestLaneFiles(lane, changedFiles), scope).length;
     for (let index = 0; index < total; index++) {
       matrix.push({ lane, shard: `${index + 1}/${total}` });
     }
   }
   return matrix;
+}
+
+/** The files one Harvest job runs. The job recomputes the same plan the matrix was built from, and refuses a
+ *  shard count that does not match it, so a stale or mismatched matrix fails instead of running the wrong files. */
+export function harvestShardFiles(lane, shardValue, changedFiles) {
+  const scope = changedFiles ? 'pr' : 'nightly';
+  const plan = planHarvestShards(harvestLaneFiles(lane, changedFiles), scope);
+  const shard = shardOf(shardValue);
+  if (shard.total !== plan.length) {
+    throw new Error(`Harvest ${lane} shard ${shardValue} does not match the ${plan.length}-shard plan`);
+  }
+  const files = plan[shard.index];
+  if (!files?.length) throw new Error(`Harvest ${lane} shard ${shardValue} has no files`);
+  return files;
 }
 
 export function capabilityTests() {
@@ -575,9 +671,10 @@ export function capabilityTests() {
   return targets;
 }
 
-/** FEATURE_SHARD="<n>/<total>" (the workflow matrix): this job runs every total-th named test from the n-th.
+/** FEATURE_SHARD="<n>/<total>" (the workflow matrix): this job runs one duration-balanced slice.
  *  The named list grows with each PR; one serial job per OS passed the 15-minute cap (733 s of engine tests on
- *  Windows for #220), so the list is split across jobs instead of raising the cap. */
+ *  Windows for #220), so the list is split across jobs. Index round-robin then piled the slow files
+ *  onto the same slices, so placement is longest-file-first instead. */
 // Pull requests run the full named suite on Linux. Windows runs only the named tests whose test file,
 // or whose own scripts/feature-batch-ci-named/*.txt list, the PR touches, plus this fixed Windows smoke
 // set; the full Windows suite runs after merge and nightly (about 14 minutes on Windows, over the cap).
@@ -609,6 +706,250 @@ export function shardOf(value = process.env.FEATURE_SHARD) {
   return { index: n - 1, total };
 }
 
-export function shardTests(tests, shard) {
-  return tests.filter((_, i) => i % shard.total === shard.index);
+// Seconds per named engine file on ubuntu-latest: the median over 531 named-feature jobs (35 workflow runs,
+// main pushes and pull requests, 2026-10-14) of the time from the previous file's last result line to this file's last result
+// line, so import, setup and tests all count (files run one at a time). Every named file at 10 s or more is listed;
+// the other named files averaged under 3 s and count unlistedFeatureTestSeconds. The 2026-10-12 table listed
+// 100 files; the named lists grew since, and shards were cancelled at the 15-minute cap.
+// Refresh this table from CI logs when shard times drift.
+const featureTestWeights = {
+  'src/agents/cli-runner/prepare.test.ts': 351,
+  'src/gateway/server.auth.control-ui.test.ts': 284,
+  'src/gateway/server-methods/sessions-reactions.test.ts': 239,
+  'src/gateway/server-kernel.phases.test.ts': 220,
+  'src/skills/workshop/experience-review.apply.test.ts': 210,
+  'src/commands/startup-config-preflight.recovery.test.ts': 167,
+  'src/cron/session-registry-maintenance.test.ts': 165,
+  'src/infra/device-bootstrap.test.ts': 152,
+  'src/cron/service.heartbeat-busy-poll.test.ts': 137,
+  'src/infra/heartbeat-runner.exact-session-busy.test.ts': 124,
+  'src/gateway/server-methods/sessions-create-category.test.ts': 123,
+  'src/cli/gateway-cli/pre-bootstrap.process.test.ts': 120,
+  'src/agents/subagents/registry/subagent-liveness.owner-integration.test.ts': 117,
+  'src/cron/store/receipt-authority-owner.test.ts': 107,
+  'src/agents/embedded-agent-runner/run/attempt-prompt-submit.test.ts': 97,
+  'src/gateway/server-methods/update-report-run.test.ts': 82,
+  'src/gateway/watch-node-http.test.ts': 82,
+  'src/gateway/server/ws-connection.startup.test.ts': 79,
+  'src/commands/doctor/shared/default-agent-role-materialization.write.test.ts': 75,
+  'src/infra/telemetry.test.ts': 75,
+  'src/infra/heartbeat-runner.no-scratch-idle-gate.test.ts': 74,
+  'src/fleet/service-upgrade.runtime.test.ts': 72,
+  'src/agents/command/attempt-execution.cli.test.ts': 70,
+  'src/fleet/service-removal.runtime.test.ts': 70,
+  'src/gateway/server.trunk-queue.test.ts': 66,
+  'src/cron/service.wake-now-real-heartbeat.test.ts': 64,
+  'src/infra/heartbeat-runner.idle-trunk-gate.test.ts': 63,
+  'src/agents/branch-tools.session-status.gateway-model.test.ts': 58,
+  'src/gateway/server-worker-placement-startup-maintenance.test.ts': 58,
+  'src/agents/main-session-recovery/main-session-restart-recovery.parallel-startup.test.ts': 57,
+  'src/commands/config-preflight-snapshot.test.ts': 57,
+  'src/agents/tools/sessions-send-tool.admission.test.ts': 54,
+  'src/gateway/server.lockdown-owner.test.ts': 53,
+  'src/infra/heartbeat-inbox-fallback.idle-trunk.test.ts': 53,
+  'src/config/sessions/startup-migration.quarantine.test.ts': 50,
+  'src/gateway/event-web-push.test.ts': 48,
+  'extensions/codex/src/app-server/run-attempt.model-choice.test.ts': 47,
+  'src/gateway/server-methods/sessions-messages.test.ts': 47,
+  'extensions/codex/src/app-server/shared-client.test.ts': 43,
+  'src/agents/prepared-model-runtime.startup-replacement.test.ts': 42,
+  'src/config/sessions/startup-migration.acp.test.ts': 42,
+  'src/gateway/sessions-patch.test.ts': 42,
+  'src/skills/workshop/store.test.ts': 42,
+  'src/infra/heartbeat-inbox-fallback.test.ts': 41,
+  'src/agents/main-session-recovery/main-session-handoff-retry.test.ts': 40,
+  'src/gateway/session-handoff-lease-orphan-recovery.test.ts': 39,
+  'src/gateway/server-agent-database-startup.multi-agent.test.ts': 37,
+  'extensions/anthropic/index.test.ts': 35,
+  'src/agents/trunk-characters.test.ts': 35,
+  'src/gateway/server.sessions.create.contact-anchor.test.ts': 33,
+  'test/scripts/tsdown-config.test.ts': 33,
+  'src/agents/tools/sessions-send-operation-key.test.ts': 32,
+  'src/config/sessions/session-history-eviction.archived.test.ts': 32,
+  'src/agents/first-run-greeting.test.ts': 31,
+  'src/commands/doctor-session-row-repair.test.ts': 29,
+  'src/gateway/control-ui-assistant-media-cors.http.test.ts': 29,
+  'src/gateway/sessions-patch.done.test.ts': 28,
+  'extensions/memory-core/src/memory/manager-search-keyword-fallback.test.ts': 27,
+  'src/agents/tools/sessions-tool.model-approval.test.ts': 27,
+  'src/cron/trigger-script.test.ts': 27,
+  'src/agents/embedded-agent-runner/provider-capacity-failover.test.ts': 26,
+  'src/cron/isolated-agent/run.session-read.test.ts': 26,
+  'src/gateway/server-reload-managed-context.test.ts': 26,
+  'extensions/memory-core/src/memory/manager-search-upgrade.test.ts': 25,
+  'src/gateway/server-methods/backup-settings.test.ts': 25,
+  'src/gateway/session-startup-handoff-recovery.test.ts': 25,
+  'extensions/browser/src/browser-tool.test.ts': 24,
+  'src/agents/cli-runner.model-choice.test.ts': 24,
+  'src/agents/run-journal.test.ts': 24,
+  'src/gateway/server-startup-node-capabilities.test.ts': 24,
+  'src/gateway/server-methods/chat-history.segments.test.ts': 23,
+  'test/bundled-plugin-relative-imports.test.ts': 23,
+  'extensions/codex/src/app-server/native-process-authority.test.ts': 21,
+  'src/agents/agent-tools.before-tool-call.decision.test.ts': 21,
+  'src/agents/tools/message-tool.app-reaction.test.ts': 21,
+  'extensions/browser/src/browser/chrome.internal.test.ts': 19,
+  'src/agents/tools/message-tool-execution.test.ts': 19,
+  'src/cron/service/restart-recovery.behaviour.test.ts': 19,
+  'src/gateway/rooms/mentions-rule.test.ts': 19,
+  'src/gateway/server-methods/session-change-event.test.ts': 19,
+  'test/scripts/control-ui-i18n.test.ts': 19,
+  'src/agents/agent-tools.policy.test.ts': 18,
+  'src/agents/model-auth.profiles.test.ts': 18,
+  'src/infra/device-pairing.test.ts': 18,
+  'src/process/session-handoff-leases.test.ts': 18,
+  'src/state/agent-database-startup.bounded-retry.test.ts': 18,
+  'src/auto-reply/reply/reply-turn-admission.first-message.test.ts': 17,
+  'src/fleet/service.runtime.test.ts': 17,
+  'src/gateway/server-reload-hot.agent-roster.test.ts': 17,
+  'src/infra/device-bootstrap-single-use.test.ts': 17,
+  'extensions/codex/src/app-server/auth-profile-usage.test.ts': 16,
+  'extensions/codex/src/app-server/event-projector.command-output.test.ts': 16,
+  'src/commands/backup-no-secrets.test.ts': 16,
+  'src/agents/main-session-recovery/main-session-restart-recovery.pending-admission.test.ts': 15,
+  'src/cli/gateway-cli/run.option-collisions.test.ts': 15,
+  'src/infra/sqlite-readonly-location.snapshot-churn.test.ts': 15,
+  'extensions/browser/src/browser/pw-page-markdown.test.ts': 14,
+  'src/agents/lockdown-entrypoints.test.ts': 14,
+  'src/agents/sessions/session-manager-context-fence-concurrency.test.ts': 14,
+  'src/commands/doctor-session-sqlite.failure-reports.test.ts': 14,
+  'src/flows/doctor-health.update.test.ts': 14,
+  'src/infra/sqlite-readonly-location.test.ts': 14,
+  'extensions/browser/index.test.ts': 13,
+  'extensions/memory-core/src/rings-consolidation.test.ts': 13,
+  'src/agents/sessions/tools/read.test.ts': 12,
+  'src/agents/tools/skill-workshop-tool.args.test.ts': 12,
+  'src/commands/models/auth.test.ts': 12,
+  'src/gateway/agent-turn/agent-run-admission-revalidation.runtime-race.test.ts': 12,
+  'src/gateway/dev-agent-startup.test.ts': 12,
+  'extensions/codex/src/app-server/event-projector.failure-reason.test.ts': 11,
+  'extensions/discord/src/monitor/message-handler.context.test.ts': 11,
+  'src/agents/embedded-agent-runner/run-orchestrator.superseded-setup.test.ts': 11,
+  'src/cron/service.heartbeat-payload.test.ts': 11,
+  'src/cron/service/timer.lockdown.test.ts': 11,
+  'src/gateway/control-ui-assistant-media-filename.http.test.ts': 11,
+  'src/gateway/server-methods-list.test.ts': 11,
+  'src/gateway/server-methods/chat-history-phase-timing.handler.test.ts': 11,
+  'src/gateway/rooms/methods.test.ts': 10,
+  'src/infra/gateway-state-owner.heartbeat.test.ts': 10,
+};
+export const unlistedFeatureTestSeconds = 5;
+// Linux shard 1 also runs the strict typecheck and the native protocol check (~1 minute).
+export const firstShardReserveSeconds = 60;
+
+export function featureTestWeight(file, weights = featureTestWeights) {
+  const value = weights instanceof Map ? weights.get(file) : weights?.[file];
+  return value ?? unlistedFeatureTestSeconds;
+}
+
+export function featureTestWeightKeys() {
+  return Object.keys(featureTestWeights);
+}
+
+/** Longest-file-first packing. `loads` include the shard-1 reserve; `files` keep list order. */
+export function planShards(tests, total, weights = featureTestWeights) {
+  if (total <= 1) {
+    return {
+      files: [tests.slice()],
+      loads: [tests.reduce((sum, file) => sum + featureTestWeight(file, weights), 0)],
+    };
+  }
+  const loads = Array.from({ length: total }, (_, index) => index === 0 ? firstShardReserveSeconds : 0);
+  const ranked = tests.map((file, index) => ({ file, index, weight: featureTestWeight(file, weights) }));
+  ranked.sort((a, b) => b.weight - a.weight || a.index - b.index);
+  const buckets = Array.from({ length: total }, () => []);
+  for (const item of ranked) {
+    let best = 0;
+    for (let index = 1; index < total; index++) if (loads[index] < loads[best]) best = index;
+    buckets[best].push(item);
+    loads[best] += item.weight;
+  }
+  return {
+    files: buckets.map(bucket => bucket.sort((a, b) => a.index - b.index).map(item => item.file)),
+    loads,
+  };
+}
+
+export function shardTests(tests, shard, weights) {
+  return planShards(tests, shard.total, weights).files[shard.index];
+}
+
+// The shard counts below are floors. The matrix grows past them by the weight-derived count (shardCountFor).
+// The budget is the whole job: runner setup (checkout, frozen install, build artifacts), the engine and window
+// tests, and the Linux shard-1 checks. A 12-minute test-only budget left out about 80 s of Linux setup (150 s
+// on Windows), and with the stale weights the PR shards ran 11 to 15 minutes against the 15-minute cap. Ten
+// minutes of planned job time keeps a third of the cap for slow runners and for named tests a PR adds
+// without a weight. Max-parallel stays six, so more shards cost setup minutes, not a longer cap.
+// Setup is the 90th percentile of job start to the first named test file on 2026-10-12, rounded up (Linux
+// 97 s plus the job tail, Windows 164 s, macOS 152 s). Windows and macOS scales are each runner's engine seconds over Linux seconds for the
+// same files on the 2026-10-12 main pushes (1.64 and 1.27); macOS keeps its earlier, higher 1.35.
+export const pullRequestLinuxShardCount = 10;
+export const mainPushShardCounts = { ubuntu: 7, windows: 11, macos: 10 };
+export const shardBudgetSeconds = 10 * 60;
+export const windowShardFileSeconds = 2;
+export const runnerTestScale = { ubuntu: 1, windows: 1.7, macos: 1.4 };
+export const runnerSetupSeconds = { ubuntu: 100, windows: 170, macos: 160 };
+
+// The slowest planned job for a total, at the runner's scale, setup included. Shard 0 carries the reserve.
+export function plannedSlowestSeconds(os, total, { extraTests = [] } = {}) {
+  return Math.max(...plannedJobSeconds(os, total, { extraTests }));
+}
+
+export function plannedJobSeconds(os, total, { extraTests = [] } = {}) {
+  return expectedShardSeconds(total, { typecheck: os === 'ubuntu', scale: runnerTestScale[os], extraTests })
+    .map(seconds => seconds + runnerSetupSeconds[os]);
+}
+
+// Headroom: Windows and macOS keep ten percent under the budget (the Linux shard 1 keeps the full budget).
+export function shardBudgetFor(os) {
+  return os === 'ubuntu' ? shardBudgetSeconds : shardBudgetSeconds * 0.9;
+}
+
+// Shards over budget that more shards could still split. A file never splits, so a shard holding one engine
+// file is as fast as it can be: on Windows and macOS cli-runner/prepare.test.ts alone is near ten minutes,
+// and its shard then holds only that file.
+export function overBudgetShards(os, total, { extraTests = [] } = {}) {
+  const budget = shardBudgetFor(os);
+  const files = planShards([...namedTests('engine'), ...extraTests], total).files;
+  return plannedJobSeconds(os, total, { extraTests })
+    .map((seconds, index) => ({ shard: index + 1, seconds, files: files[index].length }))
+    .filter(shard => shard.seconds > budget && shard.files > 1);
+}
+
+const MAX_SHARD_COUNT = 64;
+
+// Derive the shard count from total weight, then verify: start at ceil(total / budget) and add shards
+// until the planned slowest shard fits. Adding named tests adds shards; it never fails a PR.
+export function shardCountFor(os, { extraTests = [] } = {}) {
+  const budget = shardBudgetFor(os);
+  const weight = [...namedTests('engine'), ...extraTests]
+    .reduce((sum, file) => sum + featureTestWeight(file), 0) * runnerTestScale[os];
+  const fits = total => overBudgetShards(os, total, { extraTests }).length === 0;
+  let total = Math.max(1, Math.ceil(weight / (budget - runnerSetupSeconds[os])));
+  while (total < MAX_SHARD_COUNT && !fits(total)) total += 1;
+  if (!fits(total)) {
+    throw new Error(`${os} cannot fit the named tests into ${MAX_SHARD_COUNT} shards within the ${budget}s budget`);
+  }
+  return total;
+}
+
+// The matrix counts: never fewer than the floors above, and grown by the weight-derived count.
+export function resolvedShardCounts({ extraTests = [] } = {}) {
+  return {
+    ubuntu: Math.max(mainPushShardCounts.ubuntu, shardCountFor('ubuntu', { extraTests })),
+    windows: Math.max(mainPushShardCounts.windows, shardCountFor('windows', { extraTests })),
+    macos: Math.max(mainPushShardCounts.macos, shardCountFor('macos', { extraTests })),
+    pullRequestLinux: Math.max(pullRequestLinuxShardCount, shardCountFor('ubuntu', { extraTests })),
+  };
+}
+
+export function expectedShardSeconds(total, { typecheck = false, scale = 1, extraTests = [] } = {}) {
+  const engine = planShards([...namedTests('engine'), ...extraTests], total);
+  const windowFiles = planShards(namedTests('window'), total).files;
+  return engine.loads.map((load, index) => {
+    const reserve = index === 0 ? firstShardReserveSeconds : 0;
+    const body = (load - reserve) + windowFiles[index].length * windowShardFileSeconds
+      + (typecheck && index === 0 ? reserve : 0);
+    return body * scale;
+  });
 }
