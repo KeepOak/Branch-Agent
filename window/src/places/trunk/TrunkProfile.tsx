@@ -8,7 +8,6 @@ import { CAN_DO, type CanDoGo } from "../../shell/CanDo";
 import { PairDialog } from "../customize/pairing";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
-import { Coming } from "../../glass/coming";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
 import { Icon } from "../../shell/icons";
 import { notify } from "../../shell/notify";
@@ -29,8 +28,7 @@ import { TrunkFiles } from "./TrunkFiles";
 import { Layer } from "./layer";
 import "./trunk.css";
 
-// Pausing and the seed actions have no engine call yet, so they stay greyed with their reason (the Coming state).
-const PAUSE_WHY = "Pause comes in a later update.";
+// Pausing has no engine call yet, so the profile shows no Pause control until it does. Seed actions stay greyed with their reason.
 
 export type TrunkProfileProps = {
   engine: WindowEngine;
@@ -166,7 +164,6 @@ function ProfileBody({ engine, level, onClose, openPlace, openSettings, openConv
   ];
   const openMore = (e: { currentTarget: HTMLElement }) => { const r = e.currentTarget.getBoundingClientRect(); setMore({ x: r.left, y: r.bottom + 4 }); };
   const footer = <>
-    <Coming need="agents.pause" unwired reason={PAUSE_WHY}><button type="button" className="btn ghost tk-pf-pause">Pause {row.name}</button></Coming>
     {!isDefault && <button type="button" className="btn ghost" disabled={!!block || !write} title={block || (write ? undefined : WRITE_WHY)} onClick={() => void toDefault()}>Make default</button>}
     <button type="button" className="btn ghost" aria-label={`More for ${row.name}`} aria-haspopup="menu" onClick={openMore}>⋯</button>
     <button type="button" className="btn pri" onClick={() => edit("look")}>Edit {row.name}</button>
@@ -178,7 +175,6 @@ function ProfileBody({ engine, level, onClose, openPlace, openSettings, openConv
         <Rows row={row} data={data} level={level} edit={edit} openPlace={openPlace && ((p) => { onClose(); openPlace(p); })} showFiles={() => setFiles(!files)} />
         {files && shows(level, "technical") && <TrunkFiles engine={engine} agentId={row.id} />}
         <Automations engine={engine} data={data} reload={reload} />
-        <p className="tk-hint tk-why">{PAUSE_WHY}</p>
         <CanDo reach={reach} go={go} />
         {data.notes.map((n) => <p key={n} className="tk-hint" role="status">{n}</p>)}
         {error && <p className="tk-error" role="alert">{error}</p>}

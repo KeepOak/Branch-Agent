@@ -38,13 +38,12 @@ function reasonFor(r: Runtime, detect: RecordValue | undefined): string | undefi
 export function Runtimes({ engine, hw, detect, models, found }: Props) {
   const lv = useLevel();
   const [looked, setLooked] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState<string | null>(null);
   const [wsl, setWsl] = useState(false);
-  const look = async (r: Runtime) => {
-    setBusy(r.id);
-    await Promise.all([detect.reload(), models.reload()]);
-    setBusy(null);
+  // Looking waits on the reads, which show their own "Looking…" and stall line; a click never waits on an answer itself.
+  const look = (r: Runtime) => {
     setLooked((s) => new Set(s).add(r.id));
+    void detect.reload();
+    void models.reload();
   };
   const lookFor = (r: Runtime) => {
     if (hw.windows && /\bWSL\b/.test(reasonFor(r, detect.data) ?? "")) setWsl(true);
@@ -57,7 +56,7 @@ export function Runtimes({ engine, hw, detect, models, found }: Props) {
           const on = found.has(r.id);
           return [
             <Prow key={r.id} icon={<Logo id={r.id} name={r.mark} size={30} />} title={r.name} sub={!on && looked.has(r.id) ? reasonFor(r, detect.data) ?? NOT_FOUND : r.note}>
-              <RuntimeRight r={r} on={on} loading={detect.loading && busy !== r.id} busy={busy === r.id} looked={looked.has(r.id)} onLook={() => lookFor(r)} />
+              <RuntimeRight r={r} on={on} loading={detect.loading} failed={Boolean(detect.error)} looked={looked.has(r.id)} onLook={() => lookFor(r)} />
             </Prow>,
             on && r.id === "ollama" && lv >= 1 ? <ShareRow key="share" engine={engine} /> : null,
           ];
@@ -68,12 +67,12 @@ export function Runtimes({ engine, hw, detect, models, found }: Props) {
   );
 }
 
-type RightProps = { r: Runtime; on: boolean; loading: boolean; busy: boolean; looked: boolean; onLook: () => void };
-function RuntimeRight({ r, on, loading, busy, looked, onLook }: RightProps) {
+type RightProps = { r: Runtime; on: boolean; loading: boolean; failed: boolean; looked: boolean; onLook: () => void };
+function RuntimeRight({ r, on, loading, failed, looked, onLook }: RightProps) {
   if (on) return <Pill tone="ok">Found</Pill>;
   if (loading) return <Pill tone="idle">Looking…</Pill>;
+  if (failed) return <><Pill tone="idle">Couldn’t check</Pill><Btn ghost sm onClick={onLook}>Try again</Btn></>;
   if (r.off) return <Btn ghost sm disabled title={shownWhy(r.off)}>Look for it</Btn>;
-  if (busy) return <Btn ghost sm disabled>Looking…</Btn>;
   return <>{looked ? <Pill tone="idle">Not found</Pill> : null}<Btn ghost sm onClick={onLook}>{looked ? "Look again" : "Look for it"}</Btn></>;
 }
 

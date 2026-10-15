@@ -105,6 +105,18 @@ describe("Library › Memory", () => {
     expect(request).toHaveBeenCalledWith("agents.files.get", { agentId: "b", name: "MEMORY.md" });
     expect(request).not.toHaveBeenCalledWith("config.schema.lookup", expect.anything());
   });
+  it("says No memories yet with no ring when nothing is remembered, so it does not read as loading (DA-43)", async () => {
+    const empty = engineOf(base((m) => m === "agents.files.get" ? { file: { name: "MEMORY.md", missing: true } } : m === "agents.workspace.list" ? { entries: [] } : undefined));
+    await mount(empty.engine);
+    const card = host.querySelector('[data-testid="memory-card"]')!;
+    expect(card.querySelector("b")!.textContent).toBe("No memories yet");
+    expect(card.textContent).not.toContain("0 memories");
+    expect(card.querySelector(".lib-ring")).toBeNull();
+    await act(async () => root!.unmount()); root = null; document.body.innerHTML = "";
+    const full = engineOf(base());
+    await mount(full.engine);
+    expect(host.querySelector('[data-testid="memory-card"] .lib-ring')).not.toBeNull();
+  });
   it("reads the engine's stated default when nothing is configured, and drops the 'of' when there is none", async () => {
     const first = engineOf(base((m) => m === "config.get" ? { config: {} } : m === "config.schema.lookup" ? { hint: { help: "Max (default: 20000)." } } : undefined));
     await mount(first.engine);

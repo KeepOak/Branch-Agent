@@ -1,7 +1,7 @@
 // The R1 sidebar's pieces (HANDOFF R1-02), ported from the preview's `sideR2`, `foldP11`, `contactsLookT5`, `renderSide`
 // rows and the owner row. Layout and glass live in sidebar.css; data comes in as SideRows (model.ts). Every control here
 // only opens, filters or navigates, so it says data-local (R1-10); the calls live in the menus (row-menu.ts).
-import { useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { Avatar, InitialsFace } from "../../glass/Avatar";
 import { GroupCluster } from "../../glass/GroupCluster";
 import { Coming } from "../../glass/coming";
@@ -27,8 +27,29 @@ export const icons = {
   computer: svg(<><rect x="3" y="4.5" width="18" height="12" rx="2" /><path d="M9 20h6M12 16.5V20" /></>),
 };
 
-/** One face per row kind: a Trunk's character, a person's initials, a Grafted agent's dashed disc, a group's cluster. */
+const REDUCE = "(prefers-reduced-motion: reduce)";
+const reduceQuery = () => typeof matchMedia === "function" ? matchMedia(REDUCE) : null;
+const subscribeReduce = (change: () => void) => {
+  const query = reduceQuery();
+  query?.addEventListener?.("change", change);
+  return () => query?.removeEventListener?.("change", change);
+};
+/** Reduced motion, live: the working ring keeps its arc but stops turning (preview: .av.working under reduced motion). */
+export const useReducedMotion = () => useSyncExternalStore(subscribeReduce, () => Boolean(reduceQuery()?.matches), () => false);
+
+/** The face is the status (preview `.av.working`): while the row's Trunk works, the face plays its working state inside
+ *  the turning working ring (face/face.css); the row carries no spinner and no "Working" words. Reduced motion or
+ *  "Keep things still" leave the arc still, so working still reads. */
 export function RowFace({ row, size }: { row: SideRow; size: number }) {
+  const still = useReducedMotion();
+  const face = <RowFaceInner row={row} size={size} />;
+  return row.working
+    ? <span className="r1sb-ring working-ring" data-working="" data-still={still || undefined} style={{ width: size, height: size }}>{face}</span>
+    : face;
+}
+
+/** One face per row kind: a Trunk's character, a person's initials, a Grafted agent's dashed disc, a group's cluster. */
+function RowFaceInner({ row, size }: { row: SideRow; size: number }) {
   if (row.kind === "group") {
     const inner = Math.round(size * 0.58);
     const members = (row.members ?? []).map((member, index) => member.kind === "trunk"

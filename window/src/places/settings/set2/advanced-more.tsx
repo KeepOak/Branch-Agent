@@ -154,8 +154,8 @@ export const LOG_ROWS = {
 export const COMMANDS: SecSpec = { title: "Commands", lv: 1, rows: [
   { t: "Where commands run", draw: (c) => <WhereRun c={c} /> },
   no("Shell", "Automatic: PowerShell on Windows, bash on Mac and Linux.", "pick", { opts: [{ id: "auto", label: "Automatic" }] }),
-  { t: "Longest a command may run", s: "Never longer than the sealed box waits before closing for being idle.", k: "tools.exec.timeoutSeconds", kind: "num", unit: "seconds", def: 1800, min: 1 },
-  { t: "Close an idle sealed box after", s: "It’s made again the next time it’s needed, and the Trunk is told.", k: "agents.defaults.sandbox.prune.idleHours", kind: "num", unit: "hours", def: 24, min: 0 },
+  { t: "Longest a command may run", s: "Never longer than the safe box waits before closing for being idle.", k: "tools.exec.timeoutSeconds", kind: "num", unit: "seconds", def: 1800, min: 1 },
+  { t: "Close an idle safe box after", s: "It’s made again the next time it’s needed, and the Trunk is told.", k: "agents.defaults.sandbox.prune.idleHours", kind: "num", unit: "hours", def: 24, min: 0 },
   no("Shorten long output: most characters", "The start and the end are kept; the rest is saved to a file the Trunk can read.", "num", { unit: "characters" }),
   no("Shorten long output: most lines", "", "num", { unit: "lines" }),
   no("Longest line", "", "num", { unit: "characters" }),
@@ -216,7 +216,7 @@ function WhereRun({ c }: { c: Ctx }) {
   const none = "Not in this engine.";
   const opts: Opt[] = [{ id: "local", label: "This computer" }, { id: "docker", label: "Docker" }, { id: "ssh", label: "SSH" }, { id: "singularity", label: "Singularity", off: none }, { id: "modal", label: "Modal", off: none }, { id: "daytona", label: "Daytona", off: none }];
   return (
-    <Ctl title="Where commands run" sub="Run commands here, over SSH, or in a sealed cloud box." help="This computer, or a separate place: a container, another computer over SSH, or a cloud sealed box.">
+    <Ctl title="Where commands run" sub="Run commands here, over SSH, or in a safe cloud box." help="This computer, or a separate place: a container, another computer over SSH, or a cloud safe box.">
       <Pick label="Where commands run" value={value} options={opts} disabled={c.config.loading} onChange={pick} />
     </Ctl>
   );
