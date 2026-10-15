@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Local preflight: runs the gate checks that need no CI infrastructure, before a push or a PR body edit.
 // Reuses the gates' own exported checks and config so the rules cannot drift. Prints one line per problem, with the fix.
-// Usage: node scripts/pr-preflight.mjs --body <draft-body.md> [--base origin/main] [--cloud-agent]
+// Usage: node scripts/pr-preflight.mjs --body <draft-body.md> [--title <PR title>] [--base origin/main] [--cloud-agent]
+// Without --title the title is the HEAD commit subject; pass the PR title when it differs.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -15,9 +16,9 @@ import {
   coverageFromPrFiles,
   evaluateGateChangeReview,
   fetchFileTextsBatch,
-  fetchPrBody,
   fetchPrFiles,
   gateApiBudget,
+  ghApi,
   loadProtectedGatePaths,
 } from './merge-gate-trusted.mjs';
 import { checkWindowClean, scanTree } from './check-window-clean.mjs';
@@ -149,6 +150,76 @@ export function desktopCoverageProblems({ files, desktopWorkflow }) {
   ));
 }
 
+// A fix, perf or refactor PR must say what it checked before it changed code: upstream, peer agents or the old code.
+// The title match ignores case, so "Fix(settings): ..." is held to the rule too.
+const PRIOR_ART_TITLE = /^(fix|perf|refactor)(\([^)]*\))?!?:/i;
+// "Prior art: x", "- Prior art: x", "**Prior art:** x" or "**Prior art**: x".
+const PRIOR_ART_LABEL = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?prior art(?:\*\*|__)?\s*:(?:\*\*|__)?(.*)$/i;
+// A "## Prior art" heading; its section is the lines up to the next heading.
+const PRIOR_ART_HEADING = /^\s{0,3}#{1,6}\s+(?:\*\*|__)?prior art(?:\*\*|__)?\s*:?\s*#*\s*$/i;
+const HEADING = /^\s{0,3}#{1,6}\s/;
+// An unfilled template slot such as "<what you checked>". Autolinks like <https://...> are real sources.
+const PLACEHOLDER = /<(?![a-z][a-z0-9+.-]*:\/\/)[^<>\n]*>/i;
+const EMPTY_ANSWER = /^(?:n\/?a|none|nothing|-+|tbd|todo)[.!]?$/i;
+const PRIOR_ART_FIX = 'add "Prior art: <what you checked>" (a line, a bold label, or a "## Prior art" section) naming the upstream project, peer agents or old code you checked, or "Prior art: none found: <what you checked>"';
+
+// The text a body gives for prior art: the label's own text, or the lines under it or under the heading when that is empty.
+function priorArtCandidates(body) {
+  const lines = body.replace(/<!--[\s\S]*?-->/g, '').split('\n');
+  const candidates = [];
+  lines.forEach((line, index) => {
+    const label = PRIOR_ART_LABEL.exec(line);
+    if (label && label[1].trim()) {
+      candidates.push(label[1]);
+      return;
+    }
+    if (!label && !PRIOR_ART_HEADING.test(line)) return;
+    const following = [];
+    for (const next of lines.slice(index + 1)) {
+      if (HEADING.test(next)) break;
+      // A bare label's source sits on the lines right after it; a blank line after them ends it.
+      if (label && !next.trim() && following.length) break;
+      following.push(next);
+    }
+    candidates.push(following.join('\n'));
+  });
+  return candidates;
+}
+
+function cleanPriorArt(text) {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '').replace(/\*\*|__/g, '').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+// Why a candidate is not an answer, or null when it is one.
+function priorArtGap(candidate) {
+  const text = cleanPriorArt(candidate);
+  if (!text) return 'is empty';
+  if (PLACEHOLDER.test(text)) return 'still has the template placeholder';
+  const answer = text.replace(/^prior art\s*:\s*/i, '');
+  if (EMPTY_ANSWER.test(answer)) return 'says only "' + answer + '" and names nothing checked';
+  if (/^none found\b/i.test(answer) && !/^none found\s*:\s*\S/i.test(answer)) return 'says "none found" without what was checked';
+  return null;
+}
+
+export function priorArtProblems({ title, body }) {
+  if (!PRIOR_ART_TITLE.test((title ?? '').trim())) {
+    return [];
+  }
+  const candidates = priorArtCandidates(body ?? '');
+  if (!candidates.length) {
+    return [problem('prior-art', 'title "' + title + '" needs a "Prior art:" line or section in the body and has none', PRIOR_ART_FIX)];
+  }
+  const gaps = candidates.map(priorArtGap);
+  if (gaps.some((gap) => gap === null)) {
+    return [];
+  }
+  return [problem('prior-art', 'the Prior art entry ' + gaps[0], PRIOR_ART_FIX)];
+}
+
 export function personalInfoProblems(addedLines) {
   const real = addedLines.filter((l) => !FIXTURE_FILE.test(l.file));
   return real.filter((l) => PERSONAL_PATTERNS.some((p) => p.test(l.text))).map((l) => (
@@ -196,6 +267,7 @@ export function runPreflight(input) {
     ...commitProblems(input.commits ?? [], { cloudAgent: input.cloudAgent === true }),
     ...selfCheckProblems({ branch: input.branch, headSha: input.headSha, body, repoDir: input.repoDir }),
     ...namedListProblems({ changedFiles, listText: input.listText ?? null, listPath: input.listPath }),
+    ...priorArtProblems({ title: input.title, body }),
     ...uiProofProblems({ changedFiles, body }),
     ...windowCleanProblems(input.windowResult),
     ...shardProblems(input.shardResult),
@@ -271,6 +343,7 @@ function gatherInputs({ argv, cwd }) {
   return {
     branch,
     headSha: git(['rev-parse', 'HEAD'], cwd),
+    title: argValue('--title', argv) ?? git(['log', '-1', '--format=%s'], cwd),
     repoDir: cwd,
     body: bodyPath && existsSync(path.resolve(cwd, bodyPath)) ? readFileSync(path.resolve(cwd, bodyPath), 'utf8') : null,
     dirtyCount: git(['status', '--porcelain'], cwd).split('\n').filter(Boolean).length,
@@ -338,10 +411,11 @@ export function unverifiedFileNames(files) {
     .map((f) => f.filename);
 }
 
-export function inputFromApi({ headBranch, headSha, files, commits, listText, desktopWorkflow = null }) {
+export function inputFromApi({ headBranch, headSha, files, commits, listText, desktopWorkflow = null, title = '' }) {
   return {
     branch: headBranch,
     headSha,
+    title,
     files,
     desktopWorkflow,
     dirtyCount: 0,
@@ -372,14 +446,16 @@ function apiInputFromEnv(env) {
   if (!repo || !prNumber || !token || !headSha || !headBranch) {
     throw new Error('CI mode needs REPO, PR_NUMBER, GITHUB_TOKEN, HEAD_SHA and HEAD_BRANCH');
   }
-  // The live body from the API: the event payload can predate a body edit, so CI never reads it from there.
-  const body = fetchPrBody(repo, prNumber, token);
+  // The live title and body from the API: the event payload can predate an edit, so CI never reads them from there.
+  const pr = ghApi(repo, token, `pulls/${prNumber}`);
+  const body = typeof pr?.body === 'string' ? pr.body : '';
+  const title = typeof pr?.title === 'string' ? pr.title : '';
   const files = fetchPrFiles(repo, prNumber, token);
   const commits = fetchPrCommitsWithApi({ repo, prNumber, token });
   const namedList = namedListPathFor(headBranch);
   const desktop = '.github/workflows/desktop-checks.yml';
   const heads = fetchFileTextsBatch(repo, headSha, token, [namedList, desktop]);
-  return { ...inputFromApi({ headBranch, headSha, files, commits, listText: heads[namedList], desktopWorkflow: heads[desktop] }), body };
+  return { ...inputFromApi({ headBranch, headSha, files, commits, listText: heads[namedList], desktopWorkflow: heads[desktop], title }), body };
 }
 
 // Exported so tests can drive the real CLI wiring against a temporary repository.

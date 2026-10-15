@@ -11,6 +11,7 @@ import { useTestApproval } from './src/approvals/useTestApproval';
 import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
 import { Conversation } from './src/chat/conversation';
 import { ChatList, type ChatRow } from './src/chats/chatList';
+import { ComputerList } from './src/computers/computerList';
 import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
 import type { PairingSession } from './src/pairing/pairingSession';
@@ -20,6 +21,7 @@ import { ApprovalScreen } from './src/screens/ApprovalScreen';
 import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { ChatsScreen } from './src/screens/ChatsScreen';
+import { ComputersScreen } from './src/screens/ComputersScreen';
 import { EnterCodeScreen } from './src/screens/EnterCodeScreen';
 import { PairedScreen } from './src/screens/PairedScreen';
 import { RefusedScreen } from './src/screens/RefusedScreen';
@@ -32,7 +34,7 @@ import type { ColorScheme } from './src/theme/tokens';
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 type Route = 'welcome' | 'scan' | 'code';
-type PairedRoute = { name: 'chats' } | { name: 'computer' } | { name: 'chat'; row: ChatRow } | { name: 'approvals'; focus?: string };
+type PairedRoute = { name: 'chats' } | { name: 'computers' } | { name: 'computer' } | { name: 'chat'; row: ChatRow } | { name: 'approvals'; focus?: string };
 
 const CHATS: PairedRoute = { name: 'chats' };
 
@@ -64,15 +66,21 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
   const state = usePairingState(session);
   const [route, setRoute] = useState<Route>('welcome');
   const [pairedRoute, setPairedRoute] = useState<PairedRoute>(CHATS);
-  // One list for the whole session, so going to Your computer and back doesn't reload it.
+  // One list for the whole session, so going to Computers or Your computer and back doesn't reload it.
   const [chats] = useState(() => new ChatList(session));
   const chatList = useSyncExternalStore(chats.subscribe, chats.getSnapshot);
+  const [computers] = useState(() => new ComputerList(session));
+  const computerList = useSyncExternalStore(computers.subscribe, computers.getSnapshot);
   const [searchMessages] = useState(() => messageSearcher((method, params) => session.request(method, params)));
 
   useEffect(() => {
     chats.attach();
-    return () => chats.dispose();
-  }, [chats]);
+    computers.attach();
+    return () => {
+      chats.dispose();
+      computers.dispose();
+    };
+  }, [chats, computers]);
 
   // Approvals are followed for the whole session, on every screen, so a notification can go out while
   // Branch is in the background and its buttons can answer.
@@ -110,14 +118,15 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
     if (state.step !== 'loading') void SplashScreen.hideAsync().catch(() => undefined);
     if (state.step === 'unpaired') {
       chats.reset();
+      computers.reset();
       inbox.reset();
       setPairedRoute(CHATS);
       return;
     }
     setRoute('welcome');
-  }, [state.step, chats, inbox]);
+  }, [state.step, chats, computers, inbox]);
 
-  // Android's back gesture leaves Your computer, a chat or Approvals for Chats, like the on-screen back button.
+  // Android's back gesture leaves Computers, Your computer, a chat or Approvals for Chats, like the on-screen back button.
   useEffect(() => {
     if (state.step !== 'paired' || pairedRoute.name === 'chats') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -163,7 +172,17 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
       screen = <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />;
       break;
     case 'paired':
-      if (pairedRoute.name === 'computer') {
+      if (pairedRoute.name === 'computers') {
+        screen = (
+          <ComputersScreen
+            list={computerList}
+            online={state.online}
+            onRefresh={() => computers.refresh()}
+            onBack={() => setPairedRoute(CHATS)}
+            onThisPhone={() => setPairedRoute({ name: 'computer' })}
+          />
+        );
+      } else if (pairedRoute.name === 'computer') {
         screen = <PairedScreen state={state} onUnpair={() => void session.unpair()} onBack={() => setPairedRoute(CHATS)} />;
       } else if (pairedRoute.name === 'chat') {
         // The header follows the list live (a rename, the working dot); the row it was opened from fills in until then.
@@ -199,7 +218,7 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
             online={state.online}
             searchMessages={searchMessages}
             onRefresh={() => chats.refresh()}
-            onComputer={() => setPairedRoute({ name: 'computer' })}
+            onComputer={() => setPairedRoute({ name: 'computers' })}
             onOpen={(row) => setPairedRoute({ name: 'chat', row })}
             needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
             onNeedsYou={() => setPairedRoute({ name: 'approvals' })}
