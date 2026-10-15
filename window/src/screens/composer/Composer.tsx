@@ -5,7 +5,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { Conversation as ListRow } from "../../connect/conversations";
 import { isPreparationPending, preparationLabel } from "../../connect/preparation-status";
 import { PASTED_TEXT_CHIP_CHARS } from "../../composer/attachments";
+import { COMPOSE_EVENT } from "../../composer/Composer";
 import { folderContext } from "../../composer/context";
+import { safeStorage, saveDraft } from "../../composer/drafts";
 import { DockRow, type Goal } from "../../composer/DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "../../composer/engine";
 import { Icon, StopMark } from "../../composer/icons";
@@ -111,6 +113,19 @@ export function Composer(props: Props) {
   const textNow = useRef("");
   useEffect(() => { setTarget(null); setMenu(null); }, [sessionKey]);
   const box = useRef<HTMLTextAreaElement>(null), fileInput = useRef<HTMLInputElement>(null), folderInput = useRef<HTMLInputElement>(null);
+  // Places fill this box with branch:compose (Customize's Use). The open conversation takes the words; any other one keeps them as its draft.
+  useEffect(() => {
+    const fill = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionKey?: unknown; text?: unknown }>).detail;
+      if (typeof detail?.sessionKey !== "string" || typeof detail.text !== "string") return;
+      if (detail.sessionKey === sessionKey) {
+        draft.setText(detail.text);
+        requestAnimationFrame(() => box.current?.focus());
+      } else saveDraft(safeStorage(), detail.sessionKey, detail.text);
+    };
+    window.addEventListener(COMPOSE_EVENT, fill);
+    return () => window.removeEventListener(COMPOSE_EVENT, fill);
+  }, [sessionKey, draft.setText]);
   const plus = useRef<HTMLButtonElement>(null), ring = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setMenu(null), []);
   // HANDOFF R1-04: at a dock 300 px wide or less, Dictate and Improve fold into the + menu (size only, read from a ref).
