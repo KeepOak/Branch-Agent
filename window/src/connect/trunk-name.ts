@@ -18,9 +18,25 @@ function ownName(agent: unknown): string {
   return str(rec(a.identity).name) || str(a.name);
 }
 
+/** A Trunk's title as a person reads it: the engine's id (the default Trunk is "main") and a name that is only the id read as
+ *  the Trunk's display name. Every place that shows a Trunk's main conversation uses this. */
+export function displayTrunkTitle(title: string, agentId: string): string {
+  return !title || title === agentId ? trunkDisplayName({ id: agentId }) : title;
+}
+
 /** An agents.list entry's display name: its own name, else the default Trunk's name, else the plain word "Trunk". */
 export function trunkDisplayName(agent: unknown): string {
   const name = ownName(agent);
   if (name) return name;
   return str(rec(agent).id) === DEFAULT_TRUNK_ID ? DEFAULT_TRUNK_NAME : PLAIN_TRUNK_NAME;
+}
+
+/** The name of the Trunk that owns a conversation key (agent:<id>:<rest>), read from an agents.list result; the fallback
+ *  when the key names no listed Trunk. A conversation's Trunk is its own, not the default Trunk. */
+export function trunkNameForKey(agents: unknown, key: string | null | undefined, fallback: string): string {
+  const id = key?.split(":")[1];
+  if (!id) return fallback;
+  const list = Array.isArray(rec(agents).agents) ? (rec(agents).agents as unknown[]) : [];
+  const agent = list.find((a) => str(rec(a).id) === id);
+  return agent ? trunkDisplayName(agent) : fallback;
 }

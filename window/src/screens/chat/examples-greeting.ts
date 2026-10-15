@@ -19,7 +19,7 @@ export function examplesGreetingText(me: string, name: string, why: string): str
 }
 
 /** The person's first name from users.self, read once while the greeting is shown. */
-function useFirstName(engine: WindowEngine | undefined, on: boolean): string {
+export function useFirstName(engine: WindowEngine | undefined, on: boolean): string {
   const [me, setMe] = useState("");
   useEffect(() => {
     if (!engine || !on) return;

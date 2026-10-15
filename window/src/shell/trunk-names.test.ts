@@ -4,7 +4,7 @@ import type { WindowEngine } from "../connect/engine";
 import { readTrunks } from "./engine-data";
 import { comingUp } from "./status-data";
 import { loadScheduled } from "../places/automations/data";
-import { placeTitle } from "../screens/frame/R1Window";
+import { placeTitle } from "../places-nav/routes";
 
 it("the Trunk list shows the default Trunk as Sapling, not its id, when the engine has no name for it", () => {
   const trunks = readTrunks({ defaultId: "main", agents: [{ id: "main" }, { id: "scout", identity: { name: "Scout" } }] });

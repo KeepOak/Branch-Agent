@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "problems": {
+    "chat:agent:builder:roadmap > Attach, mention a Trunk, skills, Temporary > More… :: Builder": [
+      "dead"
+    ],
+    "chat:agent:builder:roadmap > Attach, mention a Trunk, skills, Temporary > More… :: Run it in the background /bg": [
+      "error"
+    ],
+    "chat:agent:builder:roadmap > How threads show: Column :: Column": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes :: Back": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes :: Forward": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Conversation menu :: Copy link": [
+      "toast-only"
+    ],
+    "chat:agent:researcher:notes > Conversation menu :: Pin": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Conversation menu :: Reload": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > Conversation menu :: Send to the board": [
+      "toast-only"
+    ],
+    "chat:agent:researcher:notes > Model, access and usage: Local model · As set :: Use Local model for Researcher from now on": [
+      "toast-only"
+    ],
+    "chat:agent:researcher:notes > This computer Online · you are here :: Connect to a Branch elsewhere…": [
+      "dead"
+    ],
+    "chat:agent:researcher:notes > This computer Online · you are here :: This computer On this computer": [
+      "dead"
+    ],
+    "settings:accounts :: Refresh": [
+      "dead"
+    ],
+    "settings:achievements :: All": [
+      "dead"
+    ],
+    "settings:agents :: Let other agents work with Branch": [
+      "dead"
+    ],
+    "settings:appearance :: The theme’s own accent": [
+      "dead"
+    ],
+    "settings:models :: Check again": [
+      "dead"
+    ],
+    "settings:notifications :: Every Trunk": [
+      "dead"
+    ],
+    "settings:seasons :: All": [
+      "dead"
+    ],
+    "sidebar :: Builder": [
+      "row-actions-inconsistent"
+    ],
+    "sidebar :: Researcher": [
+      "row-actions-inconsistent"
+    ]
+  }
+}

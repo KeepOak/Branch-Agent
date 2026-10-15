@@ -1,11 +1,11 @@
 // Always on (Private #454 A+B): the app attaches to the engine service and never starts a second engine.
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
@@ -13,6 +13,7 @@ if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact deskto
 const require = createRequire(import.meta.url);
 const service = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'engine-service.js'));
 const { acquireEngineStartLock, attachOrStartEngine, engineAnswers, engineServiceArgs, recordEngineMode, takeChildModeNotice, takeCrashStormNotice } = service;
+const { EXTERNAL_VOLUME_SERVICE_LINE, SERVICE_BLOCKED_LINE, childModeSettingsLine, parseLaunchdJob, readServiceLogsSince, serviceCannotRunReason, serviceLogPaths, serviceVolumeBlock } = service;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function dataDir(t) {
@@ -141,3 +142,221 @@ test('the engine crash-storm marker is shown once', t => {
   assert.equal(takeCrashStormNotice(dir), 'paused; run branch doctor --fix');
   assert.equal(takeCrashStormNotice(dir), undefined);
 });
+
+// #1053: a custom setup that the engine refuses the service to is said once in Settings, in plain words; the engine's
+// own reason stays in desktop.log.
+const ENGINE_SKIP = 'gateway install failed: Gateway install blocked: Error: service management skipped: non-default state dir or config path. Rerun with HOME set to the OS account home, BRANCH_HOME either unset or pointing at that same home, and BRANCH_STATE_DIR and BRANCH_CONFIG_PATH either unset or pointing at the canonical paths for that account home and profile to install or rewrite the gateway service.';
+
+test('a custom data folder the engine keeps off the service runs inside the app and says so once, plainly', async t => {
+  const dir = dataDir(t);
+  let children = 0;
+  const logged = [];
+  const result = await attachOrStartEngine({
+    dataDir: dir,
+    probe: async () => children > 0,
+    installService: async () => { throw Error(ENGINE_SKIP); },
+    startService: async () => assert.fail('a refused service is never started'),
+    waitForService: async () => assert.fail('a refused service is never waited on'),
+    spawnChild: async () => { children++; },
+    log: line => logged.push(line),
+    lockTimeoutMs: 5_000,
+  });
+  assert.equal(result.mode, 'child');
+  assert.equal(children, 1);
+  assert.match(logged.join('\n'), /Rerun with HOME/, 'the log keeps the engine\'s full answer');
+  const notice = takeChildModeNotice(dir);
+  assert.equal(notice, "Running inside the app: this copy isn't the standard install, so the background service stays off.");
+  assert.equal(service.childModeSettingsLine(notice), "Running inside the app: this copy isn't the standard install, so the background service stays off. Quitting Branch stops your Trunks.");
+  assert.doesNotMatch(service.childModeSettingsLine(notice), /service management|non-default|state dir|config path|BRANCH_|Rerun/, 'Settings never shows the engine\'s reason');
+  assert.equal(takeChildModeNotice(dir), undefined, 'Settings says it once');
+  // A record an earlier build wrote with the engine's own words is said plainly too.
+  recordEngineMode(dir, 'service');
+  recordEngineMode(dir, 'child', 'service management skipped: non-default state dir or config path');
+  assert.equal(takeChildModeNotice(dir), notice);
+});
+
+test('the plain service reason keeps an OS refusal as it is', () => {
+  assert.equal(service.plainServiceReason('gateway install failed: Access is denied.'), 'Access is denied');
+  assert.equal(service.plainServiceReason('the background service could not be installed'), 'the background service could not be installed');
+  assert.equal(service.childModeSettingsLine('Access is denied'), "Branch runs inside the app on this computer because its background service couldn't be installed (Access is denied). Quitting Branch stops your Trunks.");
+});
+
+test('a relative XDG_DATA_HOME or LOCALAPPDATA never moves the data folder off its standard place', t => {
+  const config = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'config.js'));
+  const saved = { BRANCH_DESKTOP_DATA: process.env.BRANCH_DESKTOP_DATA, XDG_DATA_HOME: process.env.XDG_DATA_HOME, LOCALAPPDATA: process.env.LOCALAPPDATA };
+  t.after(() => { for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  delete process.env.BRANCH_DESKTOP_DATA;
+  process.env.XDG_DATA_HOME = 'relative-share';
+  process.env.LOCALAPPDATA = 'relative-local';
+  const dir = config.defaultDataDirectory();
+  assert.ok(isAbsolute(dir), dir);
+  assert.ok(!dir.includes('relative-'), dir);
+});
+
+/** A fake reader: paths map to devices (volumes), and a symlink maps a folder to its real location. */
+function volumes(devices, links = {}) {
+  return {
+    realpath: async path => links[path] ?? path,
+    deviceOf: async path => {
+      if (!(path in devices)) throw Object.assign(Error(`ENOENT: ${path}`), { code: 'ENOENT' });
+      return devices[path];
+    },
+  };
+}
+const HOME = '/Users/owner';
+const APP_DATA = '/Users/owner/Library/Application Support/BranchAgent';
+const EXTERNAL_DATA = '/Volumes/External/BranchAgent/data';
+
+test('macOS data on another volume is found through the symlink, and home-volume data is not', async () => {
+  const reader = volumes({ [HOME]: 1, [EXTERNAL_DATA]: 7, [`${HOME}/.branch`]: 1 }, { [APP_DATA]: EXTERNAL_DATA });
+  assert.equal(await serviceVolumeBlock([APP_DATA], HOME, reader, 'darwin'), EXTERNAL_VOLUME_SERVICE_LINE);
+  assert.equal(await serviceVolumeBlock([`${HOME}/.branch`], HOME, reader, 'darwin'), undefined);
+  assert.equal(await serviceVolumeBlock([APP_DATA, `${HOME}/.branch`], HOME, reader, 'darwin'), EXTERNAL_VOLUME_SERVICE_LINE);
+});
+
+test('the volume check never blocks other platforms, and a folder not created yet counts as home', async () => {
+  const reader = volumes({ [HOME]: 1, [EXTERNAL_DATA]: 7 }, { [APP_DATA]: EXTERNAL_DATA });
+  assert.equal(await serviceVolumeBlock([APP_DATA], HOME, reader, 'linux'), undefined);
+  assert.equal(await serviceVolumeBlock([APP_DATA], HOME, reader, 'win32'), undefined);
+  assert.equal(await serviceVolumeBlock([`${HOME}/not-yet`], HOME, reader, 'darwin'), undefined);
+});
+
+const SERVICE_ENV = '/Volumes/External/BranchAgent/data/home/.branch/service-env';
+const WRAPPER = `${SERVICE_ENV}/ai.branch.gateway-env-wrapper.sh`;
+const NODE_BINARY = '/Volumes/External/BranchAgent/node';
+const EXECUTABLES = [SERVICE_ENV, NODE_BINARY];
+
+test('launchd cannot run the job: the shell cannot exec the wrapper, the wrapper or node is denied, or launchd exited 126/127', () => {
+  assert.equal(serviceCannotRunReason('shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted\n', EXECUTABLES), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason(`/bin/sh: ${WRAPPER}: Operation not permitted\n`, EXECUTABLES), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason(`${WRAPPER}: Permission denied\n`, EXECUTABLES), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason(`${NODE_BINARY}: Permission denied\n`, EXECUTABLES), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, { state: 'not running', lastExit: 126 }), SERVICE_BLOCKED_LINE);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, { state: 'not running', lastExit: 127 }), SERVICE_BLOCKED_LINE);
+});
+
+test('a stale last exit 126 is not a launch failure while the job runs with a live pid: a slow service is never removed', () => {
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, { state: 'running', pid: 4242, lastExit: 126 }), undefined);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, { state: 'running', lastExit: 127 }), undefined, 'a pid is what proves it is running');
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, { state: 'not running', pid: 4242, lastExit: 126 }), undefined, 'a live pid always wins');
+});
+
+test('launchctl print gives the job state, its live pid and its last exit code', () => {
+  const running = parseLaunchdJob('gui/501/ai.branch.gateway = {\n\tstate = running\n\tpid = 4242\n\tlast exit code = 126\n}\n');
+  assert.deepEqual(running, { state: 'running', pid: 4242, lastExit: 126 });
+  const stopped = parseLaunchdJob('gui/501/ai.branch.gateway = {\n\tstate = not running\n\tlast exit code = 127\n}\n');
+  assert.deepEqual(stopped, { state: 'not running', lastExit: 127 });
+  assert.deepEqual(parseLaunchdJob('Could not find service "ai.branch.gateway"'), {});
+});
+
+test('an ordinary denial from the engine, a denial of an unrelated file, or a healthy exit is not a launch failure', () => {
+  // An engine plugin reading a protected folder logs the same words, and a slow service must stay an error.
+  assert.equal(serviceCannotRunReason('[plugins] read blocked: /Library/Containers/example/notes.db: Operation not permitted\n', EXECUTABLES), undefined);
+  assert.equal(serviceCannotRunReason('/tmp/other-tool: Permission denied\n', EXECUTABLES), undefined);
+  assert.equal(serviceCannotRunReason(`/bin/sh: ${WRAPPER}: No such file or directory\n`, EXECUTABLES), undefined);
+  assert.equal(serviceCannotRunReason('gateway listening on 127.0.0.1:19031\ngateway start timed out after 45s\n', EXECUTABLES), undefined);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, 0), undefined);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES, 1), undefined);
+  assert.equal(serviceCannotRunReason('', EXECUTABLES), undefined);
+});
+
+test('a slow service that logs an unrelated denial is still an error: it is never removed or replaced by a child', async t => {
+  const log = '[plugins] read blocked: /Library/Containers/example/notes.db: Operation not permitted\n';
+  const { calls, steps } = fakeLaunch(t, { neverAnswers: true, cannotRun: serviceCannotRunReason(log, EXECUTABLES) });
+  await assert.rejects(attachOrStartEngine(steps), /did not answer in time/);
+  assert.deepEqual(calls, ['mark', 'install', 'start'], 'no uninstall, no child');
+});
+
+test('a slow but healthy service with a stale failed exit is still an error: a live job is never removed', async t => {
+  const healthySlow = { state: 'running', pid: 4242, lastExit: 126 };
+  const { calls, steps } = fakeLaunch(t, { neverAnswers: true, cannotRun: serviceCannotRunReason('', EXECUTABLES, healthySlow) });
+  await assert.rejects(attachOrStartEngine(steps), /did not answer in time/);
+  assert.deepEqual(calls, ['mark', 'install', 'start'], 'no uninstall, no child');
+});
+
+test('the service logs are read only from where this start began, and a rotated log is read from its start', async t => {
+  const dir = dataDir(t);
+  const [stdout, stderr] = serviceLogPaths(dir);
+  mkdirSync(dirname(stdout), { recursive: true });
+  writeFileSync(stdout, 'old run: Operation not permitted\n');
+  writeFileSync(stderr, '');
+  const { serviceLogSizes } = service;
+  const mark = await serviceLogSizes([stdout, stderr]);
+  assert.equal(await readServiceLogsSince([stdout, stderr], mark), '');
+  writeFileSync(stdout, 'old run: Operation not permitted\nnew run: all good\n');
+  assert.equal(await readServiceLogsSince([stdout, stderr], mark), 'new run: all good\n');
+  writeFileSync(stdout, 'rotated\n');
+  assert.equal(await readServiceLogsSince([stdout, stderr], mark), 'rotated\n');
+});
+
+/**
+ * A fake launch with recorded calls. `up` is what answers the gateway port. Each option is one path through the flow.
+ */
+function fakeLaunch(t, options = {}) {
+  const calls = [];
+  const up = { engine: false, child: false };
+  const steps = {
+    dataDir: dataDir(t),
+    probe: async () => up.engine || up.child,
+    ...(options.volume ? { volumeBlock: async () => options.volume } : {}),
+    logMark: async () => { calls.push('mark'); return [0, 0]; },
+    cannotRunReason: async () => options.cannotRun,
+    installService: async () => { calls.push('install'); if (options.installFails) throw Error('Access is denied.'); },
+    startService: async () => { calls.push('start'); up.engine = !options.neverAnswers; },
+    waitForService: async () => !options.neverAnswers,
+    ...(options.noUninstall ? {} : { uninstallService: async () => { calls.push('uninstall'); if (options.uninstallFails) throw Error('launchctl bootout failed'); } }),
+    spawnChild: async () => { calls.push('child'); up.child = true; },
+    log: () => undefined,
+    lockTimeoutMs: 2_000,
+  };
+  return { calls, steps };
+}
+
+test('a data folder on another volume chooses the child up front: the service is removed first and never installed', async t => {
+  const { calls, steps } = fakeLaunch(t, { volume: EXTERNAL_VOLUME_SERVICE_LINE });
+  const result = await attachOrStartEngine(steps);
+  assert.deepEqual(calls, ['uninstall', 'child'], 'the service is removed before the one child starts');
+  assert.deepEqual(result, { mode: 'child', reason: EXTERNAL_VOLUME_SERVICE_LINE });
+  // Settings says the reason once, in full, and then stays quiet.
+  assert.equal(takeChildModeNotice(steps.dataDir), EXTERNAL_VOLUME_SERVICE_LINE);
+  assert.equal(takeChildModeNotice(steps.dataDir), undefined);
+  assert.equal(childModeSettingsLine(EXTERNAL_VOLUME_SERVICE_LINE), `${EXTERNAL_VOLUME_SERVICE_LINE} Quitting Branch stops your Trunks.`);
+});
+
+test('a service that installed but cannot run is removed, confirmed gone, and replaced by the one child engine', async t => {
+  const { calls, steps } = fakeLaunch(t, { neverAnswers: true, cannotRun: SERVICE_BLOCKED_LINE });
+  const result = await attachOrStartEngine(steps);
+  assert.deepEqual(calls, ['mark', 'install', 'start', 'uninstall', 'child'], 'uninstall comes before the child');
+  assert.equal(result.mode, 'child');
+  assert.equal(takeChildModeNotice(steps.dataDir), SERVICE_BLOCKED_LINE);
+});
+
+test('a silent service with no launchd failure in its logs is still an error, never a child beside it', async t => {
+  const { calls, steps } = fakeLaunch(t, { neverAnswers: true });
+  await assert.rejects(attachOrStartEngine(steps), /did not answer in time/);
+  assert.deepEqual(calls, ['mark', 'install', 'start'], 'nothing is removed or started on a guess');
+});
+
+test('a service that cannot be removed is never replaced by a child, for either reason', async t => {
+  const cannotRun = fakeLaunch(t, { neverAnswers: true, cannotRun: SERVICE_BLOCKED_LINE, uninstallFails: true });
+  await assert.rejects(attachOrStartEngine(cannotRun.steps), /launchctl bootout failed/);
+  assert.deepEqual(cannotRun.calls, ['mark', 'install', 'start', 'uninstall']);
+  const volume = fakeLaunch(t, { volume: EXTERNAL_VOLUME_SERVICE_LINE, uninstallFails: true });
+  await assert.rejects(attachOrStartEngine(volume.steps), /launchctl bootout failed/);
+  assert.deepEqual(volume.calls, ['uninstall']);
+});
+
+test('an externally supervised launch never removes or installs a service, and a cannot-run service there is an error', async t => {
+  const volume = fakeLaunch(t, { volume: EXTERNAL_VOLUME_SERVICE_LINE, noUninstall: true });
+  const result = await attachOrStartEngine(volume.steps);
+  assert.deepEqual(volume.calls, ['child'], 'no service call at all: the supervisor owns it');
+  assert.equal(result.mode, 'child');
+  const cannotRun = fakeLaunch(t, { neverAnswers: true, cannotRun: SERVICE_BLOCKED_LINE, noUninstall: true });
+  await assert.rejects(attachOrStartEngine(cannotRun.steps), /managed outside Branch Agent/);
+  assert.deepEqual(cannotRun.calls, ['mark', 'install', 'start']);
+});
+
+test('the uninstall action runs the engine uninstall, with the JSON answer the launch reads', () => {
+  assert.deepEqual(engineServiceArgs('uninstall'), ['branch.mjs', 'gateway', 'uninstall', '--json']);
+});
+
