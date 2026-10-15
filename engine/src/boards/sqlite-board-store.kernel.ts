@@ -269,7 +269,7 @@ function deleteRemovedTabs(
 
 export function hasBoardSession(database: BoardDatabaseHandle, sessionKey: string): boolean {
   const row = getBoardReadQueries(database.db).session(sessionKey).rows[0];
-  if (!row) {
+  if (!row || row.entry_valid === -1) {
     return false;
   }
   try {

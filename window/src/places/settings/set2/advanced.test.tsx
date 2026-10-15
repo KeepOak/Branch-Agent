@@ -147,6 +147,19 @@ describe("Settings › Advanced", () => {
     expect(row("Report for a bug").textContent).toContain("branch gateway diagnostics export");
   });
 
+  it("a list's Add stays off until a folder is typed, then saves it", async () => {
+    const { engine, request } = engineWith(CONFIG);
+    await show(engine);
+    const section = row("Extra folders to search");
+    const add = button("Add a folder", section);
+    expect(add.disabled).toBe(true);
+    const field = section.querySelector("input") as HTMLInputElement;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "D:/Notes"); field.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(add.disabled).toBe(false);
+    await click(add);
+    expect(patches(request)).toContainEqual({ memory: { search: { extraPaths: ["D:/Notes"] } } });
+  });
+
   it("the log window tails logs.tail and filters by level", async () => {
     const line = (lv: string, msg: string) => JSON.stringify({ 0: msg, time: "2026-10-03T10:00:00Z", _meta: { logLevelName: lv } });
     const { engine, request } = engineWith({ ...CONFIG, "logs.tail": { file: "/tmp/branch.log", cursor: 10, size: 10, lines: [line("INFO", "gateway ready"), line("ERROR", "browser timed out")] } });

@@ -59,7 +59,7 @@ const saveSet = (key: string, set: Set<string>) => {
 
 const locator = (t: CatalogThread) => ({ catalogId: t.catalogId, hostId: t.hostId, threadId: t.threadId, ...(t.sourceHomeId ? { sourceHomeId: t.sourceHomeId } : {}) });
 
-export const TERMINAL_OFF = "Opening another assistant's conversation in a terminal needs the Branch app on your computer.";
+const TERMINAL_OFF = "Opening another assistant's conversation in a terminal needs the Branch app on your computer.";
 
 /** The catalogs and what can be done with them. */
 export function useCatalogs(request: Request, ready: boolean) {

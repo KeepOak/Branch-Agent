@@ -22,7 +22,7 @@ export function resolveCronCompletionStatus(params: {
   deliverySuppressionReason?: NormalizeReplySkipReason;
   requiredDelivery?: boolean;
 }): CronCompletionStatus {
-  if (params.status === "error" || params.status === "skipped") {
+  if (params.status === "error") {
     return "failed";
   }
   if (params.status !== "ok") {

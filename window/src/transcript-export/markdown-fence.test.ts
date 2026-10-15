@@ -1,4 +1,3 @@
-// From OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f:__tests__/utils/markdown-fence.test.ts (atlas SESSIONS-0047).
 import { describe, it, expect } from "vitest";
 
 import { markdownFence, markdownInlineCode } from "./markdown-fence";

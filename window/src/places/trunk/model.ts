@@ -3,6 +3,7 @@
 // engine/src/config/zod-schema.agents.ts (agents.entries, default, ownership) and zod-schema.agent-runtime.ts (tools).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { CHARACTERS, EXTRA, trunkAppearance } from "../../face/appearance";
+import { trunkDisplayName } from "../../connect/trunk-name";
 
 export type Rec = Record<string, unknown>;
 export const rec = (v: unknown): Rec => (v && typeof v === "object" && !Array.isArray(v) ? (v as Rec) : {});
@@ -30,7 +31,7 @@ function readRow(a: Rec): TrunkRow {
   const identity = rec(a.identity);
   return {
     id: str(a.id),
-    name: str(identity.name) || str(a.name) || str(a.id),
+    name: trunkDisplayName(a),
     theme: str(identity.theme),
     emoji: str(identity.emoji),
     avatar: str(identity.avatar),
@@ -51,9 +52,6 @@ export function readRoster(result: unknown): Roster {
   const agents = (Array.isArray(r.agents) ? r.agents : []).map(rec).filter((a) => str(a.id) && str(a.kind) !== "system").map(readRow);
   return { defaultId: str(r.defaultId), mainKey: str(r.mainKey) || "main", ownership: str(r.ownership), agents };
 }
-
-/** The conversation key of a Trunk's main conversation (agent:<id>:<mainKey>). */
-export const mainKeyOf = (roster: Roster, id: string) => `agent:${id}:${roster.mainKey}`;
 
 /* ---------- looks: only those with real art (face/appearance.tsx), plus the classic pebble ---------- */
 const LOOK_NAMES: Record<string, string> = {
@@ -94,7 +92,7 @@ export const entryOf = (snap: ConfigSnapshot, id: string): Rec => rec(rec(rec(sn
 export const agentDefaults = (snap: ConfigSnapshot): Rec => rec(rec(snap.config.agents).defaults);
 
 /** Builds { a: { b: value } } from "a.b" paths, as config.patch's merge patch takes it. */
-export function mergePatch(changes: Record<string, unknown>): Rec {
+function mergePatch(changes: Record<string, unknown>): Rec {
   const patch: Rec = {};
   for (const [path, value] of Object.entries(changes)) {
     const keys = path.split(".");

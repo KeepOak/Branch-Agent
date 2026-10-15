@@ -20,7 +20,7 @@ export function computerCardState(input: {
 }
 
 /** The stage and the conversation card share take-over through this event (`branch:*` like the others). */
-export const COMPUTER_CONTROL_EVENT = "branch:computer-control";
+const COMPUTER_CONTROL_EVENT = "branch:computer-control";
 
 /** Tell the conversation card (and an open stage) whether the person is driving. */
 export function announceComputerControl(controlling: boolean): void {

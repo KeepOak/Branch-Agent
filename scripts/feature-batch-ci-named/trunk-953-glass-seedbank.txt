@@ -1,0 +1,4 @@
+window:src/screens/chatapps/glass48.test.tsx
+window:src/screens/seedbank/Seedbank.test.tsx
+window:src/screens/seedbank/glass48.test.tsx
+window:src/screens/settings/glass48.test.tsx

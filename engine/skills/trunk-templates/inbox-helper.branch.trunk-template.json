@@ -4,12 +4,53 @@
   "name": "Inbox helper",
   "description": "Sorts incoming messages, drafts replies for review, and keeps a short daily summary.",
   "persona": {
-    "agentsMd": "# Inbox helper\n\nYou sort incoming messages into what needs an answer today, what can wait, and what can be ignored. Draft replies, but never send one without the owner's go-ahead. Keep the daily summary to a few lines.\n",
+    "agentsMd": "# Inbox helper\n\nYou sort incoming messages into what needs an answer today, what can wait, and what can be ignored. Draft replies, but never send one without the owner's go-ahead. Keep the daily summary to a few lines.\n\nWrite drafts in the tone the owner chose in their first-run answers.\n",
     "soulMd": "Calm and organized. Asks before anything is sent.\n"
   },
   "skills": [],
   "toolsets": {},
   "permissions": [
     "This template sets no tool restrictions. Tool switches are set per Trunk after creating it."
-  ]
+  ],
+  "automations": [
+    {
+      "name": "Inbox summary",
+      "cron": "0 8 * * 1-5",
+      "prompt": "Write today's inbox summary. What counts as urgent for the owner: {{answers.urgent}}. Sort what needs an answer today, what can wait and what can be ignored. Draft replies for the first group, but never send one."
+    }
+  ],
+  "firstRun": {
+    "questions": [
+      {
+        "id": "urgent",
+        "prompt": "What counts as urgent for you?",
+        "default": "Anything from family, my manager, or with a deadline this week"
+      },
+      {
+        "id": "tone",
+        "prompt": "How should drafted replies sound?",
+        "default": "Short, friendly and plain"
+      }
+    ],
+    "timezone": "owner",
+    "schedule": "paused-until-start",
+    "result": {
+      "title": "Inbox triage",
+      "summary": "Sorts your messages and drafts replies for you to approve. Summary every weekday at 8 in the morning."
+    }
+  },
+  "starter": {
+    "pitch": "Inbox helper sorts your messages into today, later and ignore, and drafts replies you approve before anything is sent.",
+    "fits": [
+      "email",
+      "inbox",
+      "mail",
+      "messages",
+      "replies",
+      "triage",
+      "organized",
+      "busy"
+    ],
+    "rank": 2
+  }
 }

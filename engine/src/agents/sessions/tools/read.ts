@@ -613,6 +613,7 @@ export function createReadToolDefinition(
                   prefix: note ? `${note}\n` : undefined,
                   pageMaxBytes: Math.min(DEFAULT_MAX_BYTES, maxBytes) - noteBytes,
                   adaptive: options?.maxBytes !== undefined,
+                  fileBytes: buffer.length,
                 });
                 outputText = page.text;
                 textDetails = page.details;

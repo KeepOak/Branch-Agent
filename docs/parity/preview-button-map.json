@@ -2306,7 +2306,7 @@
     "previewAction": "Toasts: Opens a blank document a Trunk can help write.",
     "appFile": "window/src/places/library/index.tsx",
     "appComponent": "LibraryPlace",
-    "appAction": "Head actions Canvas / Translate / Make pictures are greyed (engine gaps). No toast-only Write button.",
+    "appAction": "Head actions Translate / Make pictures are greyed (engine gaps). No Clearing pill and no toast-only Write button.",
     "status": "different"
   },
   {
@@ -2326,8 +2326,8 @@
     "previewAction": "Later preview Clearings/canvas.",
     "appFile": "window/src/places/library/index.tsx",
     "appComponent": "LibraryPlace",
-    "appAction": "Greyed: needs an engine method that lists Clearings.",
-    "status": "different"
+    "appAction": "Not shown: a greyed Clearing pill told a person nothing (DA-42). Returns once the engine can list Clearings.",
+    "status": "missing"
   },
   {
     "id": "cz-tab-trunks",

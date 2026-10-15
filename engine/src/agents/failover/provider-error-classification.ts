@@ -1,4 +1,4 @@
-// From cline/cline@0809928ab28783c0d2b41c1e56edaf0951dadcab:sdk/packages/llms/src/providers/error-classification.ts (atlas AGENT-LOOP-0103). Copied with upstream-pinned AI SDK dependency; shared JSON parser adapted.
+// Copied with upstream-pinned AI SDK dependency; shared JSON parser adapted.
 
 type ProviderErrorClass = "context_window_exceeded" | "auth" | "unknown";
 function safeJsonParse<T>(text: string): T | undefined {
@@ -215,7 +215,7 @@ function collectSignalsFrom(values: readonly unknown[]): ErrorSignals {
  * not a recognized instance (or a typed wrapper leads nowhere), so the caller
  * falls back to the structural walk.
  *
- * `isInstance()` is the AI SDK's symbol-based guard, so it holds across
+ * `isInstance` is the AI SDK's symbol-based guard, so it holds across
  * duplicated package copies — but it can never match gateway-forwarded plain
  * JSON payloads that merely *name* an AI SDK error (ENG-2394); those stay the
  * structural walk's job.

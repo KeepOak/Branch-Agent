@@ -1,5 +1,3 @@
-// Copied from mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421
-// mastracode/sdk/src/utils/plan-diff.ts (Apache-2.0).
 /**
  * Line-level diffing for plan revisions.
  *

@@ -58,6 +58,27 @@ export const SessionContextSetParamsSchema = closedObject({
 });
 export const SessionContextSetResultSchema = closedObject({ messageId: NonEmptyString, excluded: Type.Boolean() });
 
+/** Pin or unpin one message; chat.history returns a pinned message with `pinned: true`. */
+export const SessionsMessagesPinParamsSchema = closedObject({
+  ...SessionReactionTargetParamsSchema,
+  messageId: NonEmptyString,
+  pinned: Type.Boolean(),
+});
+export const SessionsMessagesPinResultSchema = closedObject({
+  messageId: NonEmptyString,
+  pinned: Type.Boolean(),
+});
+
+/** Delete one message: chat.history stops returning it and the model no longer reads it. */
+export const SessionsMessagesDeleteParamsSchema = closedObject({
+  ...SessionReactionTargetParamsSchema,
+  messageId: NonEmptyString,
+});
+export const SessionsMessagesDeleteResultSchema = closedObject({
+  messageId: NonEmptyString,
+  deleted: Type.Literal(true),
+});
+
 export const SessionReactionsSetResultSchema = closedObject({
   messageId: NonEmptyString,
   reactions: Type.Array(MessageReactionSummarySchema),
@@ -85,6 +106,10 @@ export type SessionReactionMirror = Static<typeof SessionReactionMirrorSchema>;
 export type SessionReactionsSetParams = Static<typeof SessionReactionsSetParamsSchema>;
 export type SessionReactionsListParams = Static<typeof SessionReactionsListParamsSchema>;
 export type SessionContextSetParams = Static<typeof SessionContextSetParamsSchema>;
+export type SessionsMessagesPinParams = Static<typeof SessionsMessagesPinParamsSchema>;
+export type SessionsMessagesPinResult = Static<typeof SessionsMessagesPinResultSchema>;
+export type SessionsMessagesDeleteParams = Static<typeof SessionsMessagesDeleteParamsSchema>;
+export type SessionsMessagesDeleteResult = Static<typeof SessionsMessagesDeleteResultSchema>;
 export type SessionReactionsSetResult = Static<typeof SessionReactionsSetResultSchema>;
 export type SessionReactionsListResult = Static<typeof SessionReactionsListResultSchema>;
 export type SessionReactionEvent = Static<typeof SessionReactionEventSchema>;
