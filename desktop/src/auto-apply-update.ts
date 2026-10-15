@@ -9,8 +9,11 @@ export interface UpdateActivity {
 }
 
 export const AUTO_APPLY_POLL_MS = 30_000;
-export const AUTO_APPLY_IDLE_MS = 60_000;
+/** A gap: no turn streams, no approval waits and no draft is unsaved for this long (Private #1047). */
+export const AUTO_APPLY_GAP_MS = 30_000;
 export const AUTO_APPLY_RETRY_MS = 60_000;
+/** An update pending this long applies at the next gap, without waiting for the Trunk-work batch (Private #1047). */
+export const AUTO_APPLY_PENDING_CAP_MS = 6 * 60 * 60_000;
 
 /**
  * Private #951 cadence: on a machine running Trunk work, updates are batched. One applies at most this often, and only
@@ -61,7 +64,8 @@ export function createAutoApplyUpdate(options: {
   pendingVersion(): Promise<string | null>;
   enabled(): boolean;
   activity(): Promise<UpdateActivity>;
-  restart(version: string, handoffOnly: boolean): Promise<void>;
+  /** `drain`: stop the old engine by its drain (it refuses new work and finishes its runs), not only while idle. */
+  restart(version: string, handoffOnly: boolean, drain?: boolean): Promise<void>;
   /** A flagged standby can take over while the predecessor finishes admitted work. */
   seamlessHandoff?(): boolean;
   /** Free disk and RAM now; an unhealthy host never starts an update (Private #951). */
@@ -94,11 +98,16 @@ export function createAutoApplyUpdate(options: {
   let lastAppliedAt: number | undefined;
   let lastRunSeenAt: number | undefined;
   let lastSampleAt: number | undefined;
+  /** When the held version was first seen pending; the cap counts from here. */
+  let pendingSince: number | undefined;
+  /** The version whose pending-over-cap line is already in the log, so each tick does not repeat it. */
+  let cappedNoted: string | undefined;
   const now = options.now ?? Date.now;
   const decision = (line: string) => {
     if (line !== lastDecision) { options.log(`auto-apply: ${line}`); lastDecision = line; }
   };
-  const busy = (activity: UpdateActivity) => Boolean(activity.activeRuns || activity.pendingApprovals || activity.streaming || activity.unsavedDraftFiles);
+  /** A turn is streaming, an approval waits, or a draft is unsaved: the gap rule holds the update off. */
+  const turnWaiting = (activity: UpdateActivity) => Boolean(activity.streaming || activity.pendingApprovals || activity.unsavedDraftFiles);
   /** Every activity read notes a run in flight, which marks this machine as running Trunk work. */
   const readActivity = async (): Promise<UpdateActivity> => {
     const activity = await options.activity();
@@ -127,7 +136,12 @@ export function createAutoApplyUpdate(options: {
       const version = await options.pendingVersion();
       if (version !== heldVersion) {
         idleSince = undefined; retryAfter = 0; failedVersion = undefined; notifiedVersion = undefined;
-        appliedVersion = undefined; heldVersion = version ?? undefined;
+        appliedVersion = undefined;
+        // A newer release that replaces a pending one keeps the wait: the cap counts from when an update first became
+        // pending, so releases that keep coming every few hours cannot postpone the update forever.
+        if (!version) pendingSince = undefined;
+        else if (heldVersion === undefined) pendingSince = now();
+        heldVersion = version ?? undefined;
       }
       if (!version || !options.enabled() || appliedVersion === version) {
         idleSince = undefined;
@@ -148,8 +162,14 @@ export function createAutoApplyUpdate(options: {
       }
       const security = await options.securityFix?.(version) ?? false;
       await noteRuns();
-      // Trunk work batches updates: hourly at most, and only once idle. A security fix lands as on any machine.
-      const batched = !security && runningTrunkWork();
+      // A pending update over the cap skips the Trunk-work batch: it lands at the next gap.
+      const capped = pendingSince !== undefined && now() - pendingSince >= AUTO_APPLY_PENDING_CAP_MS;
+      if (capped && cappedNoted !== version) {
+        cappedNoted = version;
+        options.log(`auto-apply: ${version} has been pending over 6 hours; applying at the next gap, not waiting for Trunk work to finish`);
+      }
+      // Trunk work batches updates: hourly at most. A security fix or a capped update lands as on any machine.
+      const batched = !security && !capped && runningTrunkWork();
       if (batched && lastAppliedAt !== undefined && now() - lastAppliedAt < TRUNK_UPDATE_MIN_INTERVAL_MS) {
         idleSince = undefined;
         decision(`batching ${version} with Trunk work; the last update applied under an hour ago`);
@@ -172,34 +192,41 @@ export function createAutoApplyUpdate(options: {
         }
       }
       const activity = await readActivity();
-      if (busy(activity)) {
+      if (turnWaiting(activity)) {
         idleSince = undefined;
-        decision(`waiting for ${activity.activeRuns} active runs, ${activity.pendingApprovals} approvals${activity.streaming ? ", streaming reply" : ""}${activity.unsavedDraftFiles ? ", unsaved draft files" : ""}${batched ? `; deferring ${version} until Trunk work is idle` : ""}`);
+        decision(`waiting for ${activity.activeRuns} active runs, ${activity.pendingApprovals} approvals${activity.streaming ? ", streaming reply" : ""}${activity.unsavedDraftFiles ? ", unsaved draft files" : ""}${batched ? `; deferring ${version} until a gap in Trunk work` : ""}`);
         return;
       }
       idleSince ??= now();
-      if (now() - idleSince < AUTO_APPLY_IDLE_MS) {
+      if (now() - idleSince < AUTO_APPLY_GAP_MS) {
         decision(`idle hold for ${version}`);
         return;
       }
       // A fresh gateway snapshot closes the gap after the hold timer and before relaunch.
       const final = await readActivity();
-      if (busy(final) || !options.enabled()) {
+      if (turnWaiting(final) || !options.enabled()) {
         idleSince = undefined;
         decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals`);
         return;
       }
-      restarting = true;
-      // Batched and idle: the handoff still lands it without a stop; a failed handoff drains on the next idle tick.
+      // The handoff keeps running work alive, so it lands at a gap whatever Trunks are doing.
       if (batched && handoff) {
+        restarting = true;
         decision(`idle; handing off to ${version}`);
         try { await options.restart(version, true); await applied(version); }
-        catch { failedVersion = version; idleSince = undefined; decision(`handoff unavailable; falling back to idle drain for ${version}`); }
+        catch { failedVersion = version; decision(`handoff unavailable; falling back to idle drain for ${version}`); }
         finally { restarting = false; }
         return;
       }
-      decision(`restarting for ${version}`);
-      try { await options.restart(version, false); await applied(version); restarting = false; }
+      // Without a handoff, a drain protects running work only on an idle engine, or once the update is over the cap:
+      // then it drains at this gap, and the engine finishes its runs before it stops.
+      if (final.activeRuns && !capped) {
+        decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals; no standby to hand off to for ${version}`);
+        return;
+      }
+      restarting = true;
+      decision(final.activeRuns ? `draining at a gap for ${version}; ${final.activeRuns} runs finish first` : `restarting for ${version}`);
+      try { await options.restart(version, false, capped && final.activeRuns > 0); await applied(version); restarting = false; }
       catch (error) {
         restarting = false;
         retryAfter = now() + AUTO_APPLY_RETRY_MS;

@@ -9,7 +9,7 @@ const TABS = [
   { id: "accounts", label: "Accounts" },
   { id: "defaults", label: "Default" },
   { id: "local", label: "Local" },
-  { id: "second", label: "Second opinion (a second model checks answers)" },
+  { id: "second", label: "Double-check" },
   { id: "media", label: "Media" },
 ];
 const modelTab = (section?: string) =>

@@ -1,6 +1,7 @@
-// R1 Chat apps at Advanced and Technical: Classic's Settings › Chat apps tables (places/settings/set1/chatapps-tables), in
-// Classic's order, with every working control kept (README rule 6) and every row Classic greys kept as Coming with its
-// reason. Table rows draw through RowView (rows.ts MORE_ROWS); the rows that read engine data are drawn here, and so is
+// R1 Chat apps at Advanced and Technical: the preview's approved cards (rows.ts CARDS: Who may message, How replies look &
+// arrive, Groups, Commands, Approvals & what Trunks may do, Each app, Limits & quiet), each gathering Classic's Settings ›
+// Chat apps tables (places/settings/set1/chatapps-tables) with every working control kept (README rule 6) and every row
+// Classic greys kept as Coming with its reason. The page's own rows (rows.ts BASE_ROWS) draw in their Classic row's place. Table rows draw through RowView (rows.ts MORE_ROWS); the rows that read engine data are drawn here, and so is
 // Manage's Advanced part (AppMore: its commands, groups by ID, Discord server actions, health with Check now, accounts
 // with Add another account, and every setting the app has with Save and Reload).
 import { Fragment, useMemo, useState, type ReactNode } from "react";
@@ -8,6 +9,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { canAll, requestOrComing } from "../../connect/capabilities";
 import { errorText, list, record, text, visible, type RecordValue } from "../../places/settings/adapter";
 import { useResource } from "../../places/settings/hooks";
+import { showsInternals } from "../../places/settings/internals";
 import { LogsDialog } from "../../places/settings/set2/advanced-tech";
 import { ChatLogo } from "../../places/settings/set1/chatapps-logo";
 import { acctLine, acctTone, ago, PILL_WORDS, type Acct, type App, type CatalogueApp, type Trunk } from "../../places/settings/set1/chatapps-data";
@@ -21,30 +23,46 @@ import { fieldsOf } from "../../places/settings/set1/chatapps-manage-more";
 import { RowView, Segmented, Toggle } from "../settings/RowView";
 import type { Level } from "../settings/nav";
 import { Alert, Hint, Input, KeyLine, Line, LinesRow, PeopleList, Pill, appName, toneOf, type Cfg, type Entry } from "./parts";
-import { MORE_ROWS, MORE_SECTIONS, drawnAbove } from "./rows";
+import { BASE_ROWS, CARDS, MORE_ROWS, MORE_SECTIONS, baseFor, drawnAbove } from "./rows";
+import { ChatAppRow } from "./Settings";
 import type { ChatApp } from "./catalogue";
 
 type Ctx = { engine: WindowEngine; cfg: Cfg; apps: App[]; all: CatalogueApp[]; trunks: Trunk[]; level: Level };
 
-/** Advanced and Technical: the tables, in Classic's order, above the level's rows. */
+/** Advanced and Technical: the approved cards, in the preview's order. */
 export function More(ctx: Ctx) {
   const draw = (r: ClassicRow) => {
     if (r.kind === "custom") return <Part ctx={ctx} id={r.id ?? r.t} row={r} />;
-    if (drawnAbove(r)) return null;
+    if (drawnAbove(r)) { const own = baseFor(r); return own && own.level <= ctx.level ? <ChatAppRow engine={ctx.engine} row={own} /> : null; }
     const row = MORE_ROWS.get(r);
     if (!row) return null;
     return r.kind === "lines" && row.source.kind === "config" ? <LinesRow engine={ctx.engine} row={row} /> : <RowView engine={ctx.engine} row={row} />;
   };
+  const inTables = new Set(MORE_SECTIONS.flatMap((s) => s.rows).flatMap((r) => (drawnAbove(r) ? [baseFor(r)?.id] : [])));
   return (
     <div className="r1-ca-more">
-      {MORE_SECTIONS.filter((s) => s.lv <= ctx.level).map((sec) => (
-        <section key={sec.title} className="r1-ca-sec" data-sec={sec.title} aria-label={sec.group ?? sec.title}>
-          <h2 className="g-label">{sec.group ?? sec.title}</h2>
-          {sec.hint ? <Hint>{sec.hint}</Hint> : null}
-          {sec.rows.filter((r) => (r.lv ?? sec.lv) <= ctx.level).map((r) => <Fragment key={r.id ?? r.t}>{draw(r)}</Fragment>)}
-          {sec.after ? <Hint>{sec.after}</Hint> : null}
-        </section>
-      ))}
+      {CARDS.map(([card, titles]) => {
+        const secs = MORE_SECTIONS.filter((s) => titles.includes(s.title) && s.lv <= ctx.level);
+        // The page's own rows that no Classic table has: drawn first in their card.
+        const own = BASE_ROWS.filter((b) => b.card === card && !inTables.has(b.id) && b.level <= ctx.level);
+        if (!secs.length && !own.length) return null;
+        const parts = secs.map((sec) => (
+          <div key={sec.title} className="r1-ca-part" data-sec={sec.title}>
+            {sec.hint ? <Hint>{sec.hint}</Hint> : null}
+            {sec.rows.filter((r) => (r.lv ?? sec.lv) <= ctx.level).map((r) => <Fragment key={r.id ?? r.t}>{draw(r)}</Fragment>)}
+            {sec.after ? <Hint>{sec.after}</Hint> : null}
+          </div>
+        ));
+        // Who answers is drawn above with its own heading; its Advanced rows follow it with none.
+        if (card === "Who answers") return <div key={card} className="r1-ca-sec r1-ca-cont" data-card={card} aria-label={card}>{parts}</div>;
+        return (
+          <section key={card} className="r1-ca-sec" data-card={card} aria-label={card}>
+            <h2 className="g-label">{card}</h2>
+            {own.map((b) => <ChatAppRow key={b.id} engine={ctx.engine} row={b} />)}
+            {parts}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -95,7 +113,7 @@ function Part({ ctx, id, row }: { ctx: Ctx; id: string; row: ClassicRow }): Reac
     case "queueByApp": return apps.length ? <><Hint>Per app</Hint>{apps.map((a) => <KeyLine key={a.id} cfg={cfg} row={{ t: a.name, kind: "pick", opts: [["As above", undefined], ...QUEUE_MODES], ...(QUEUE_SURFACES.has(a.id) ? { path: "messages.queue.byChannel." + a.id } : { off: a.name + " follows the choice above." }) }} />)}</> : null;
     case "progress": {
       const on = cfg.get("messages.statusReactions.enabled");
-      return <Line label={row.t} help="The reaction on your message changes as the Trunk works and finishes. Slack keeps its own “is thinking” status as well." coming="Branch has one switch for every app (Technical › messages.statusReactions.enabled).">
+      return <Line label={row.t} help="The reaction on your message changes as the Trunk works and finishes. Slack keeps its own “is thinking” status as well." coming={showsInternals(ctx.level) ? "Branch has one switch for every app (messages.statusReactions.enabled)." : "Branch has one switch for every app."}>
         <span className="r1-ca-chips">{PROGRESS_APPS.map((n) => <button key={n} type="button" aria-pressed={n === "Discord" ? on !== false : on === true} disabled>{n}</button>)}</span>
       </Line>;
     }

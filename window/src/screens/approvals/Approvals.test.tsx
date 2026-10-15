@@ -122,6 +122,21 @@ describe("R1-05 approvals", () => {
     expect(request).toHaveBeenCalledWith("config.patch", { raw: JSON.stringify({ security: { lockdown: false } }), baseHash: "h" });
   });
 
+  it("Turn it off clears Lockdown for real: the patch goes out and the notice leaves", async () => {
+    let lockdown = true;
+    const { engine, request } = engineOf(ALL, (m) => {
+      if (m === "config.get") return { hash: "h", valid: true, config: { security: { lockdown } } };
+      if (m === "config.patch") { lockdown = false; return { ok: true, hash: "h2", config: { security: { lockdown: false } } }; }
+      return m.endsWith(".list") ? [] : {};
+    });
+    await render(engine, <ApprovalsLayer engine={engine} sessionKey={null} view="other" onOpen={() => undefined} />);
+    const notice = document.querySelector("[data-testid=r1-lock]")!;
+    expect(notice).not.toBeNull();
+    await click(button(notice, "Turn it off"));
+    expect(request).toHaveBeenCalledWith("config.patch", expect.objectContaining({ raw: JSON.stringify({ security: { lockdown: false } }) }));
+    expect(document.querySelector("[data-testid=r1-lock]")).toBeNull();
+  });
+
   it("keeps at most three banners, newest on top, and each leaves on its own after 6 s", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const gone: string[] = [];

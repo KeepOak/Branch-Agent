@@ -92,12 +92,12 @@ function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
 }
 
 /** Saves tools.exec.mode; the engine refuses mode beside the older security/ask keys, so those go. */
-async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void>) {
+async function saveMode(cfg: Cfg, mode: string, after: () => Promise<unknown>) {
   if (await cfg.set("tools.exec", { mode, security: null, ask: null })) await after();
 }
 
 const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
-export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<void> }) {
+export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<unknown> }) {
   const selected = execMode(cfg, agents);
   const lockdown = cfg.get("security.lockdown") === true;
   return (
@@ -172,7 +172,7 @@ function WhoDialog({ cfg, onClose }: { cfg: Cfg; onClose: () => void }) {
   const add = async () => { if (app && id.trim() && await put(app, [...(all[app] ?? []), id.trim()])) setId(""); };
   const rows = Object.entries(all).flatMap(([p, ids]) => ids.map((s) => ({ p, s })));
   return (
-    <Dialog title="Who may run commands outside the sealed box" onClose={onClose} footer={<button type="button" className="btn pri" onClick={onClose}>Done</button>}>
+    <Dialog title="Who may run commands outside the safe box" onClose={onClose} footer={<button type="button" className="btn pri" onClick={onClose}>Done</button>}>
       {rows.length ? <div className="rows">{rows.map(({ p, s }) => <Prow key={`${p}/${s}`} title={visible(s)} sub={visible(p)}><Btn sm ghost onClick={() => void put(p, all[p].filter((v) => v !== s))}>Remove</Btn></Prow>)}</div> : <p className="hint">No one yet.</p>}
       {apps.length ? (
         <div className="prow pm-add">

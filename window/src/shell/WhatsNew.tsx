@@ -18,7 +18,6 @@ type Props = {
   /** Rows for the installed version, by group. */
   installed: NewGroups;
   onOpenUpdates: () => void;
-  onInstall: () => void;
   onClose: () => void;
   /** Open on the waiting version (the version menu's "What's new"). */
   startOnReady?: boolean;
@@ -36,8 +35,9 @@ function Rows({ title, rows, close, clear }: { title: string; rows: NewRow[]; cl
     <div className="wn-g">
       <h3 className={clear ? "g-label" : undefined}>{title}</h3>
       <div className="new13">
-        {rows.map((r) => (
-          <button key={r.title} type="button" className="new-row13" onClick={() => (close(), r.run())}>
+        {rows.map((r, i) => (
+          // Update notes can repeat a line, so the title alone is not a unique key.
+          <button key={`${i}:${r.title}`} type="button" className="new-row13" onClick={() => (close(), r.run())}>
             <span className="ico-tile">
               <Icon name={r.icon} small />
             </span>
@@ -62,11 +62,6 @@ export function WhatsNew(p: Props) {
   const groups = showingReady ? waiting : p.installed;
   const footer = (
     <>
-      {showingReady && p.desktopInstall ? (
-        <button type="button" className="btn" data-testid="wn-install" disabled={p.update?.installing} onClick={() => (p.onClose(), p.onInstall())}>
-          Install when idle
-        </button>
-      ) : null}
       <button type="button" className="btn primary" onClick={p.onClose}>
         Done
       </button>
@@ -84,7 +79,7 @@ export function WhatsNew(p: Props) {
           </button>
         </span>
       ) : null}
-      <p className={p.clear ? "hint wn-hint g-label" : "hint wn-hint"}>{on === "ready" && ready ? p.desktopInstall ? `What Branch ${versionParts(ready).short} brings. It installs when nothing is running and keeps a safety copy first.` : installOnComputer(p.computerName ?? "") : `What Branch ${versionParts(p.version).short} brought, and where each part lives.`}</p>
+      <p className={p.clear ? "hint wn-hint g-label" : "hint wn-hint"}>{on === "ready" && ready ? p.desktopInstall ? `What Branch ${versionParts(ready).short} brings. It applies by itself, in place, when no Trunk is working, and keeps a safety copy first.` : installOnComputer(p.computerName ?? "") : `What Branch ${versionParts(p.version).short} brought, and where each part lives.`}</p>
       {showingReady && !notes.length ? <p className={p.clear ? "hint g-label" : "hint"}>The update didn't say what it changes.</p> : null}
       <Rows title="New" rows={groups.New} close={p.onClose} clear={p.clear} />
       <Rows title="Better" rows={groups.Better} close={p.onClose} clear={p.clear} />

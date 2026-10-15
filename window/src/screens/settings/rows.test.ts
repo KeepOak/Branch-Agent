@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { NAV, PAGES, TOP_PAGES, pageFor, pageShown, type PageId } from "./nav";
+import { NAV, PAGES, TOP_PAGES, pageFor, pageShown, r1PageFor, type PageId } from "./nav";
 import { APPEARANCE_ROWS as CLASSIC_APPEARANCE } from "../../places/settings/set1/appearance-rows";
 import { ASK_BEFORE_DELETE_KEY, agentsWork, askBeforeDeleting, checklistShown } from "./pages/general";
-import { ROWS, cardRows, hintFor, pageFirstLevel, rowLabel, rowLevel, type Row } from "./rows";
+import { ROWS, cardRows, comingRow, hintFor, pageFirstLevel, rowLabel, rowLevel, shownLevel, type Row } from "./rows";
 
 /** The keys the engine keeps in its schema history but that do nothing (engine/src/config/dead-config-keys.test.ts). */
 function deadKeys(): string[] {
@@ -75,22 +75,22 @@ describe("settings row table", () => {
     for (const row of moved) expect(row.source.kind, row.id).toBe("coming");
     expect(moved[1].options?.map((o) => o.label)).toEqual(["Off", "New kinds", "All", "Every detail"]);
     expect(cardRows("general", "Waiting line", 1, {})).toEqual([]);
-    expect(cardRows("general", "Waiting line", 2, {}).length).toBe(2);
+    expect(cardRows("general", "Waiting line", 2, {}).length).toBe(3);
     expect(pageFirstLevel("general", {})).toBe(0);
     expect(pageFirstLevel("seedbank", {})).toBeNull();
   });
 
   it("keeps Classic General's four controls, each on its card and on the key Classic uses (#952)", () => {
     const at = (id: string) => ROWS.find((r) => r.id === id);
-    // Starting up: "Start with <computer>", which opens quietly in the tray: the desktop app's startWithWindows switch.
+    // Starting up: "Start Branch when I sign in" (Private #454 F), which opens quietly in the tray: the desktop app's
+    // startWithWindows switch.
     const start = at("general.start.with-computer");
     expect(start).toMatchObject({ card: "Starting up", level: 0, control: "toggle", source: { kind: "desktop", name: "startWithWindows" } });
-    expect(start?.label).toMatch(/^Start with /);
+    expect(start?.label).toBe("Start Branch when I sign in");
     expect(start?.help).toBe("Opens quietly in the tray.");
-    // Projects: Classic's Edit for a project's instructions was greyed; it stays a Coming row with the call it waits for.
-    const projects = at("general.projects.instructions");
-    expect(projects).toMatchObject({ card: "Projects", level: 0, source: { kind: "coming" } });
-    expect(projects?.source.kind === "coming" && projects.source.need).toMatch(/project's own instructions/);
+    // Projects: Classic's list of projects (projects.list), each with its greyed Edit, is one bare row its page draws.
+    const projects = at("general.projects.list");
+    expect(projects).toMatchObject({ card: "Projects", level: 0, bare: true, source: { kind: "slot", calls: ["projects.list", "sessions.list"] } });
     // Writing: Show "Finish setting up", the person's look "checklist" (false hides it, null puts the default back).
     expect(at("general.writing.finish-setup")).toMatchObject({ card: "Writing", level: 0, control: "toggle", source: { kind: "look", key: "checklist" } });
     expect(checklistShown.read(undefined)).toBe(true);
@@ -102,9 +102,9 @@ describe("settings row table", () => {
     expect([askBeforeDeleting.read(null), askBeforeDeleting.read("0")]).toEqual([true, false]);
     expect([askBeforeDeleting.write(true), askBeforeDeleting.write(false)]).toEqual([null, "0"]);
     // Each card now draws these rows instead of a whole-card Coming mark.
-    expect(cardRows("general", "Starting up", 0, {}).map((r) => r.id)).toEqual(["general.start.with-computer"]);
-    expect(cardRows("general", "Projects", 0, {}).map((r) => r.id)).toEqual(["general.projects.instructions"]);
-    expect(cardRows("general", "Writing", 0, {}).map((r) => r.id)).toEqual(["general.writing.finish-setup"]);
+    expect(cardRows("general", "Starting up", 0, {}).map((r) => r.id)).toContain("general.start.with-computer");
+    expect(cardRows("general", "Projects", 0, {}).map((r) => r.id)).toEqual(["general.projects.list"]);
+    expect(cardRows("general", "Writing", 0, {}).map((r) => r.id)).toContain("general.writing.finish-setup");
     expect(cardRows("general", "The conversation", 0, {})).toEqual([]);
     expect(cardRows("general", "The conversation", 1, {}).map((r) => r.id)).toContain("general.conversation.ask-delete");
   });
@@ -159,8 +159,8 @@ describe("settings row table", () => {
     expect(classic.length).toBeGreaterThan(40);
     for (const title of classic) expect(labels.has(renamed[title] ?? title), title).toBe(true);
     // Every one of Classic's look keys is a row on the same key (or Coming, where Classic greys it).
-    const lookKeys = ["reduceTransparency", "contrast", "agentSize", "bg", "season", "size", "roam", "petSounds", "show.usage", "show.gateway", "show.gfx", "show.projects", "show.live",
-      "show.statusbar", "still", "scenery", "msgLook", "dir", "math", "scroll", "codeCol", "tabs", "ch.act", "ch.move", "ch.touch", "ch.cap", "headlines",
+    const lookKeys = ["reduceTransparency", "contrast", "agentSize", "bg", "season", "size", "petSounds", "show.usage", "show.gateway", "show.gfx", "show.projects", "show.live",
+      "show.statusbar", "still", "scenery", "msgLook", "dir", "math", "codeCol", "tabs", "ch.act", "ch.move", "ch.touch", "ch.cap", "headlines",
       "accent", "scene", "scrim", "see", "fontUi", "fontChat", "pet", "petName", "agentShown", "askDelete"];
     const wired = new Set(page.flatMap((r) => (r.source.kind === "look" ? [r.source.key] : [])));
     for (const key of lookKeys) expect(wired.has(key), key).toBe(true);
@@ -182,6 +182,17 @@ describe("settings row table", () => {
     expect(at("appearance.reading.size")).toMatchObject({ control: "select", source: { kind: "look", key: "size" } });
     expect(at("appearance.background.behind")?.options?.map((o) => o.v)).not.toContain("own");
     expect(at("appearance.pet.name")?.codec?.write("  Hazel ")).toBeNull();
+    // No pet and no done cheer until the person picks one: the default is "none", picking it removes the choice.
+    expect([at("appearance.pet.pick")?.codec?.read(undefined), at("appearance.pet.pick")?.codec?.write("otter"), at("appearance.pet.pick")?.codec?.write("none")]).toEqual(["none", "otter", null]);
+    // There is no Let it roam switch: picking a pet turns it on, so the roam row is gone from the page.
+    expect(at("appearance.pet.roam")).toBeUndefined();
+    // Scroll bars are hidden everywhere: there is no Scroll bars row, here or in Classic's table, and so no "Always".
+    expect(at("appearance.reading.scroll")).toBeUndefined();
+    expect(wired.has("scroll")).toBe(false);
+    expect(CLASSIC_APPEARANCE.some((e) => e.title === "Scroll bars")).toBe(false);
+    // The character beside the conversation is an extra: off until the person turns it on.
+    expect(at("appearance.characters.shown")).toMatchObject({ control: "toggle", source: { kind: "look", key: "agentShown" }, fallback: false });
+    expect(at("appearance.characters.cheer")).toMatchObject({ card: "Characters", label: "Celebrate when a task finishes", control: "toggle", source: { kind: "look", key: "cheer" }, fallback: false });
     // Each Classic card now draws rows: none of the page's Classic cards is empty at Technical.
     for (const card of ["Theme", "Background", "Reading", "The pet", "Characters", "What’s shown", "The list", "Window", "Tray", "Language"]) {
       expect(cardRows("appearance", card, 2, {}).length, card).toBeGreaterThan(0);
@@ -206,13 +217,38 @@ describe("settings nav", () => {
   });
 
   it("sends old page ids to their new page", () => {
-    const old: [string, PageId][] = [["people", "who"], ["gateway", "remote"], ["usage", "privacy"], ["seasons", "history"], ["trunksP17", "trunks"], ["general", "general"], ["nope", "general"], ["__proto__", "general"]];
+    const old: [string, PageId][] = [["people", "who"], ["gateway", "remote"], ["usage", "privacy"], ["seasons", "learning"], ["trunksP17", "trunks"], ["general", "general"], ["nope", "general"], ["__proto__", "general"]];
     for (const [from, to] of old) expect(pageFor(from)).toBe(to);
+  });
+
+  it("names the R1 page a route id belongs to, and leaves a Classic-only id as it is", () => {
+    expect(r1PageFor("gateway")).toBe("remote");
+    expect(r1PageFor("remote")).toBe("remote");
+    expect(r1PageFor("seasons")).toBe("learning");
+    expect(r1PageFor("computer-browser")).toBe("computer-browser");
   });
 
   it("shows Developer only at Technical", () => {
     expect(pageShown("developer", 1)).toBe(false);
     expect(pageShown("developer", 2)).toBe(true);
     expect(pageShown("general", 0)).toBe(true);
+  });
+});
+
+describe("Coming rows wait for Advanced", () => {
+  const base = { page: "general", card: "Writing", label: "x", control: "toggle" } as const;
+  const coming: Row = { ...base, id: "general.writing.c", level: 0, source: { kind: "coming", need: "x.y", reason: "x comes in a later update." } };
+  const live: Row = { ...base, id: "general.writing.l", level: 0, source: { kind: "device", key: "x" } };
+  const slot: Row = { ...base, id: "general.writing.s", level: 0, source: { kind: "slot", calls: [], reason: "x comes in a later update." } };
+  const tech: Row = { ...coming, id: "general.writing.t", level: 2 };
+  it("shows a Coming row from Advanced, keeps its own higher level, and leaves working rows where they are", () => {
+    expect([shownLevel(coming, {}), shownLevel(live, {}), shownLevel(tech, {})]).toEqual([1, 0, 2]);
+    expect(rowLevel(coming, {})).toBe(0); // its tag is still its own level
+    // A slot row is Coming only on a page with no control for it.
+    expect([comingRow(slot), comingRow(slot, {}), comingRow(slot, { [slot.id]: () => null })]).toEqual([false, true, false]);
+    const rows = [coming, live, tech];
+    expect(cardRows("general", "Writing", 0, {}, rows).map((r) => r.id)).toEqual([live.id]);
+    expect(cardRows("general", "Writing", 1, {}, rows).map((r) => r.id)).toEqual([coming.id, live.id]);
+    expect(pageFirstLevel("general", {}, [coming, tech])).toBe(1);
   });
 });

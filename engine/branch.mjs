@@ -8,6 +8,32 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+const MAC_DRIVER_ENDPOINT_ENV = "BRANCH_CUA_DRIVER_ENDPOINT";
+const MAC_DRIVER_ENDPOINT_FILE_ENV = "BRANCH_CUA_DRIVER_ENDPOINT_FILE";
+// Keep the desktop lease for this Gateway's own respawn only. Helper and Trunk
+// children inherit process.env after these keys are removed.
+const gatewayMacDriverLease = {};
+if (process.argv.includes("gateway")) {
+  let endpoint = process.env[MAC_DRIVER_ENDPOINT_ENV];
+  const endpointFile = process.env[MAC_DRIVER_ENDPOINT_FILE_ENV];
+  if (endpoint) {
+    gatewayMacDriverLease[MAC_DRIVER_ENDPOINT_ENV] = endpoint;
+  }
+  if (endpointFile) {
+    gatewayMacDriverLease[MAC_DRIVER_ENDPOINT_FILE_ENV] = endpointFile;
+  }
+  if (!endpoint && endpointFile) {
+    try { endpoint = readFileSync(endpointFile, "utf8"); } catch { /* file unavailable */ }
+  }
+  if (endpoint) {
+    globalThis[Symbol.for("branch.macComputerEndpoint")] = endpoint;
+  }
+  delete process.env[MAC_DRIVER_ENDPOINT_ENV];
+  delete process.env[MAC_DRIVER_ENDPOINT_FILE_ENV];
+}
+const withGatewayMacDriverLease = (env) =>
+  Object.keys(gatewayMacDriverLease).length === 0 ? env : { ...env, ...gatewayMacDriverLease };
+
 // The launcher runs before engine and plugin imports. Cover third-party and
 // legacy direct child_process calls that bypass src/process/spawn-utils.ts.
 // This affects Node children only; native children must hide their own spawns.
@@ -99,6 +125,7 @@ const ensureSupportedRuntimeVersion = async () => {
   const diagnosticExemption = unsupportedCommand === "diagnostic" && canRunDiagnostics;
   await recoverNodeRuntime({
     allowInstall: !diagnosticExemption,
+    env: withGatewayMacDriverLease(process.env),
   });
   if (!diagnosticExemption) {
     process.stderr.write(`branch: ${failure}\n`);
@@ -164,7 +191,7 @@ const respawnWithoutCompileCacheIfNeeded = () => {
   return runRespawnedChild(
     process.execPath,
     [...process.execArgv, resolveCompileCacheRespawnLauncher(), ...process.argv.slice(2)],
-    env,
+    withGatewayMacDriverLease(env),
   );
 };
 
@@ -202,7 +229,7 @@ const respawnWithPackagedCompileCacheIfNeeded = () => {
   return runRespawnedChild(
     process.execPath,
     [...process.execArgv, resolveCompileCacheRespawnLauncher(), ...process.argv.slice(2)],
-    env,
+    withGatewayMacDriverLease(env),
   );
 };
 
@@ -786,12 +813,6 @@ if (isBrowserNativeHostInvocation) {
     } else if (!isHelpFastPathDisabled() && tryOutputPrecomputedCommandHelp()) {
       // OK
     } else {
-      // Electron's authenticated Mac driver lease is for this Gateway alone.
-      // Remove it before any engine or plugin can spawn a Trunk shell.
-      if (process.argv.includes("gateway") && process.env.BRANCH_CUA_DRIVER_ENDPOINT) {
-        globalThis[Symbol.for("branch.macComputerEndpoint")] = process.env.BRANCH_CUA_DRIVER_ENDPOINT;
-        delete process.env.BRANCH_CUA_DRIVER_ENDPOINT;
-      }
       await installProcessWarningFilter();
       if (await tryGraftFastStart(process.argv)) {
         // OK: Graft is serving MCP; the full CLI is not loaded.

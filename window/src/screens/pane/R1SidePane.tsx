@@ -25,6 +25,14 @@ export const PANE_TAB_NEEDS: Readonly<Record<PaneTab, readonly string[]>> = {
   Conversations: ["sessions.list"],
 };
 
+/**
+ * The side panel's fixed tabs in R1, in the preview's order (preview.html §4.5.8, PT_PC18 and paneTabsPC18): Activity, Dashboard,
+ * Preview (only with a preview server), Timeline, Branches (only with two or more paths), Plan, Files, Memory, Terminal. The "+"
+ * adds Side chat and Changes (Advanced and up) and the Coming tabs, and an added tab stays in the conversation's row.
+ * Computer and Browser open full size from the header, not as tabs.
+ */
+export const R1_PANE_TABS: readonly PaneTab[] = ["Activity", "Dashboard", "Preview", "Timeline", "Branches", "Plan", "Files", "Memory", "Terminal"];
+
 /** The one-line reason a tab shows when this engine can't fill it. */
 export const paneComingReason = (tab: PaneTab) => `This engine can’t show ${tab === "Side chat" ? "a side chat" : tab}.`;
 
@@ -49,6 +57,6 @@ export function R1SidePane({ engine, name, title, blocks, running, tab, onTab, o
   </div> : null;
   return <div className="r1-pane g-clear" data-tab={tab} data-need={PANE_TAB_NEEDS.Activity.join(" ")}>
     <SidePane engine={engine} name={name} title={title} blocks={blocks} running={running} card={progress.card} cardError={progress.error} tab={tab}
-      onTab={onTab} onClose={onClose} toast={toast} onReload={onReload} gate={gate} />
+      onTab={onTab} onClose={onClose} toast={toast} onReload={onReload} gate={gate} fixed={R1_PANE_TABS} />
   </div>;
 }

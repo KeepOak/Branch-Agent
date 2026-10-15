@@ -12,7 +12,7 @@ import { configStore } from "../../places/settings/config-store";
 import { errorText } from "../../places/settings/adapter";
 import { Models } from "./Models";
 import { ModeStep } from "./ModeStep";
-import { clampStep, freshState, LAST_STEP, MODES, picked, primary, STEPS, togglePick, WAITS_FOR, type OnboardingState } from "./model";
+import { clampStep, freshState, helloOk, LAST_STEP, MODES, mainSessionOf, picked, primary, STEPS, togglePick, WAITS_FOR, type OnboardingState } from "./model";
 import { Welcome, WhereSheet } from "./Welcome";
 import "./onboarding.css";
 
@@ -80,7 +80,9 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       const target = first ? { agentId: first.agentId, mainKey: four.def?.mainKey ?? "main" } : four.def ? { agentId: four.def.id, mainKey: four.def.mainKey } : null;
       if (!target) { setTrunkError("Couldn’t find your default Trunk. Try again in a moment."); return; }
       await recordOnboarding(engine, s);
-      const sessionKey = await greet(engine, target.agentId, target.mainKey);
+      // The greeting is a real model reply, so it waits for a hello that worked. With examples or no model the
+      // conversation opens empty: no chat.send that would fail with "Couldn't sign in" (ONBOARDING-PROPOSAL ⑤).
+      const sessionKey = helloOk(s.hello) ? await greet(engine, target.agentId, target.mainKey) : mainSessionOf(target.agentId, target.mainKey);
       onDone?.({ sessionKey, made: created.made, state: s });
     } catch (e) {
       setTrunkError(`Couldn’t start your first conversation. ${errorText(e)}`);

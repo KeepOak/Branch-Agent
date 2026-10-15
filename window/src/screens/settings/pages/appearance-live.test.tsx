@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { undeclaredControls } from "../../../glass/coming-registry";
 import { forgetLookStore } from "../../../places/settings/set1/appearance-store";
-import { readTopicSettings } from "../../../shell/topic-layout";
 import { SettingsFrame } from "../SettingsFrame";
 import { R1_PAGES } from "./plugged";
 
@@ -97,13 +96,24 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(JSON.stringify(calls(request, "users.prefs.set"))).toContain("#123456");
   });
 
+  it("picking None turns the pet and its roam off", async () => {
+    const { request } = await mount();
+    await change(row("appearance.pet.pick")!.querySelector("select")!, "otter");
+    await change(row("appearance.pet.pick")!.querySelector("select")!, "none");
+    const last = request.mock.calls.filter(([m]) => m === "users.prefs.set").pop()?.[1] as { entries: Record<string, Record<string, unknown>> };
+    expect(last.entries["ui.window.look"]).not.toHaveProperty("pet");
+    expect(last.entries["ui.window.look"]).not.toHaveProperty("roam");
+  });
+
   it("keeps the pets you've had when a pet is picked", async () => {
     const { request } = await mount();
     await change(row("appearance.pet.pick")!.querySelector("select")!, "otter");
     const sent = JSON.stringify(calls(request, "users.prefs.set"));
     expect(sent).toContain("otter");
     expect(sent).toContain("petsHad");
-    expect(row("appearance.pet.had")!.querySelector(".r1s-val")!.textContent).toMatch(/^2 of \d+/);
+    expect(sent).toContain('"roam":true'); // picking a pet turns it on
+    // No pet is the default now, so the one picked is the only pet had.
+    expect(row("appearance.pet.had")!.querySelector(".r1s-val")!.textContent).toMatch(/^1 of \d+/);
   });
 
   it("changes a Trunk's model with agents.update", async () => {
@@ -112,10 +122,13 @@ describe("R1 Settings › Appearance draws every working Classic control", () =>
     expect(calls(request, "agents.update")).toContainEqual({ agentId: "main", model: "anthropic/big" });
   });
 
-  it("sets how threads show for every contact, in this window", async () => {
+  it("offers Tabs and Freedom Mode for threads, and a saved removed layout reads as Tabs", async () => {
+    localStorage.setItem("branch-topics-t5", JSON.stringify({ layout: "side", width: 88, per: {} }));
     await mount();
-    await click([...row("appearance.list.threads")!.querySelectorAll("button")].find((b) => b.textContent === "Side tabs")!);
-    expect(readTopicSettings().layout).toBe("side");
+    const labels = [...row("appearance.list.threads")!.querySelectorAll("button")].map((b) => b.textContent);
+    expect(labels).toEqual(["Tabs", "Freedom Mode"]);
+    await click([...row("appearance.list.threads")!.querySelectorAll("button")].find((b) => b.textContent === "Freedom Mode")!);
+    expect(JSON.parse(localStorage.getItem("branch-topics-t5")!).layout).toBe("free");
   });
 
   it("shows the small model and opens Models to change it", async () => {

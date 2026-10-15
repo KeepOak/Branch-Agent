@@ -2,8 +2,14 @@
 // doing and offers Open Branch, Pause all work and Stop Branch completely. Nothing here imports Electron: main.ts
 // gives it the engine calls the app already makes (the engine's /readyz, the window's approval and session lists).
 
-/** What the tray shows. `running` false means no engine answers. */
-export interface EngineLiveState { running: boolean; workingTrunks: number; waitingOnYou: number }
+/**
+ * What the tray shows. `running` false means no engine answers. `degraded` (Private #454 D, honest health) is the
+ * engine's own reason from /health while an agent can't answer, for example an agent database that isn't admitting.
+ */
+export interface EngineLiveState { running: boolean; workingTrunks: number; waitingOnYou: number; degraded?: string }
+
+/** The engine's /health answer: whether it answered at all, and its reason when it says degraded. */
+export interface EngineHealth { answered: boolean; degraded?: string }
 
 /** What the window reports from its own engine calls (the same probe automatic updates use). */
 export interface WindowWork { pendingApprovals: number; streaming: boolean; workingTrunks?: number }
@@ -15,6 +21,8 @@ export interface LiveStateSources {
   window(): Promise<WindowWork | undefined>;
   /** The owned child engine's own run count (child mode only); the window's count wins when it has one. */
   engineRuns?(): Promise<number | undefined>;
+  /** The engine's /health. An engine that answers it is running even while /readyz says not ready. */
+  health?(): Promise<EngineHealth>;
 }
 
 const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -23,6 +31,8 @@ const plural = (count: number, word: string): string => `${count} ${word}${count
 export function trayLabel(state: EngineLiveState | undefined): string {
   if (!state) return "Starting";
   if (!state.running) return "Stopped";
+  // Never "Ready" while an agent can't answer.
+  if (state.degraded) return `Needs attention: ${state.degraded}`;
   if (state.waitingOnYou > 0) return `Waiting on you (${state.waitingOnYou})`;
   if (state.workingTrunks > 0) return `${plural(state.workingTrunks, "Trunk")} working`;
   return "Ready";
@@ -30,13 +40,65 @@ export function trayLabel(state: EngineLiveState | undefined): string {
 
 /** Reads the live state from the engine calls the app already has. Never throws: a silent engine is "Stopped". */
 export async function readEngineLiveState(sources: LiveStateSources): Promise<EngineLiveState> {
-  if (!await sources.engineUp().catch(() => false)) return { running: false, workingTrunks: 0, waitingOnYou: 0 };
+  const [up, health] = await Promise.all([
+    sources.engineUp().catch(() => false),
+    sources.health ? sources.health().catch((): EngineHealth => ({ answered: false })) : Promise.resolve(undefined),
+  ]);
+  if (!up && !health?.answered) return { running: false, workingTrunks: 0, waitingOnYou: 0 };
+  const degraded = health?.degraded ? { degraded: health.degraded } : {};
   const [window, runs] = await Promise.all([
     sources.window().catch(() => undefined),
     sources.engineRuns ? sources.engineRuns().catch(() => undefined) : Promise.resolve(undefined),
   ]);
   const workingTrunks = window?.workingTrunks ?? runs ?? (window?.streaming ? 1 : 0);
-  return { running: true, workingTrunks: Math.max(0, workingTrunks), waitingOnYou: Math.max(0, window?.pendingApprovals ?? 0) };
+  return { running: true, workingTrunks: Math.max(0, workingTrunks), waitingOnYou: Math.max(0, window?.pendingApprovals ?? 0), ...degraded };
+}
+
+/** One OS notification: something waits on you, or a Trunk finished. */
+export interface WorkNotice { kind: "approval" | "done"; title: string; body: string }
+
+/** What changed between two tray reads that is worth a notification. */
+export function workNotices(before: EngineLiveState | undefined, after: EngineLiveState): WorkNotice[] {
+  if (!before?.running || !after.running) return [];
+  const notices: WorkNotice[] = [];
+  if (after.waitingOnYou > before.waitingOnYou) {
+    notices.push({ kind: "approval", title: "Waiting on you",
+      body: after.waitingOnYou === 1 ? "A Trunk needs your answer before it can go on." : `${after.waitingOnYou} requests need your answer.` });
+  }
+  if (after.workingTrunks < before.workingTrunks) {
+    const done = before.workingTrunks - after.workingTrunks;
+    notices.push({ kind: "done", title: "Done", body: done === 1 ? "A Trunk finished its work." : `${done} Trunks finished their work.` });
+  }
+  return notices;
+}
+
+export interface ClosedWindowNotifierDeps {
+  /** True while the window is on screen; notifications are only for when it is closed (hidden) or minimised. */
+  windowShown(): boolean;
+  /** The OS notification, raised from the tray. */
+  show(notice: WorkNotice): void;
+  /**
+   * The paired phone (existing push service). Approvals already reach a paired phone from the engine itself
+   * (engine/src/gateway/exec-approval-ios-push.ts), so only "done" is sent here.
+   */
+  phone?(notice: WorkNotice): void;
+}
+
+/** Reach you with the window closed (Private #454 D): approvals and "done" from the tray's live state. */
+export function createClosedWindowNotifier(deps: ClosedWindowNotifierDeps): { observe(state: EngineLiveState): WorkNotice[] } {
+  let last: EngineLiveState | undefined;
+  return {
+    observe: (state) => {
+      const notices = workNotices(last, state);
+      last = state;
+      if (deps.windowShown()) return [];
+      for (const notice of notices) {
+        deps.show(notice);
+        if (notice.kind === "done") deps.phone?.(notice);
+      }
+      return notices;
+    },
+  };
 }
 
 export interface TrayActions {
