@@ -224,6 +224,8 @@ function respond(method: string, params: CrawlParams | undefined) {
   if (method === 'plugins.catalog.browse') return { items: [], catalog: {}, local: {} }; // plugins.ts:242, seedbank/catalog.ts:75-90
   if (method === 'branch.setup.detect') return { candidates: [], unavailableCandidates: [], setupComplete: false }; // setup-inference-detect.ts:448-454
   if (method === 'agents.create') return { ok: true, agentId: 'new-trunk' }; // agents.ts:646
+  // backup.ts:64-71: no backups yet, no schedule, and the suggested folder is empty.
+  if (method === 'backup.status') return { suggestedFolder: '', targets: [], schedules: [], locations: [] };
   if (method === 'sessions.create') return { ok: true, key: SESSIONS[0].key, sessionId: 'sess-researcher', entry: {}, runStarted: false }; // sessions-create.ts:633-640
   if (method === 'exec.approval.list' || method === 'plugin.approval.list' || method === 'branch.approval.list') return [];
   if (method === 'commands.list') return { commands: [] };
@@ -245,6 +247,7 @@ const ADVERTISED_METHODS = [
   'users.prefs.get', 'users.prefs.set', 'models.list', 'models.authStatus', 'system.info', 'health', 'usage.status',
   'commands.list', 'skills.status', 'users.mentionable', 'computer.status', 'browser.request', 'node.list', 'memory.export',
   'gateway.restart.request', 'portal.list', 'progressCard.get', 'plugins.catalog.browse', 'branch.setup.detect',
+  'backup.status', 'backup.schedule.set', 'backup.schedule.clear', 'backup.run',
 ];
 
 const fixture = {
@@ -445,10 +448,11 @@ function digest(text: string) {
 }
 
 // The text of the open menu or dialog, and the values typed into the page's fields. A sub-view that swaps inside a
-// menu, a popover that fills in a result, or a field a control fills in is a visible result too.
-function overlayDigest() {
+// menu, a popover that fills in a result, or a field a control fills in is a visible result too. The text is sent
+// whole (capped): the classifier strips clock and timer text before it compares (observe.mjs stableText).
+function overlayText() {
   const overlays = [...document.querySelectorAll<HTMLElement>('[role="menu"], [role="dialog"], [role="alertdialog"]')].filter(visible);
-  return overlays.length ? digest(overlays.map(textOf).join(' | ')) : '';
+  return overlays.map(textOf).join(' | ').slice(0, 2000);
 }
 
 function valuesDigest() {
@@ -506,7 +510,7 @@ function surface() {
     toast: toast instanceof HTMLElement ? toast.textContent?.replace(/\s+/g, ' ').trim().slice(0, 120) || null : null,
     mainText,
     viewText: viewText(),
-    overlay: overlayDigest(),
+    overlay: overlayText(),
     values: valuesDigest(),
     frame: frameState(),
     alert: alert instanceof HTMLElement ? alert.textContent?.replace(/\s+/g, ' ').trim().slice(0, 160) || '' : '',

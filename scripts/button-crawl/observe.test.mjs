@@ -2,7 +2,7 @@
 // so a control whose only result was one of them was reported dead.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyClick } from './observe.mjs';
+import { classifyClick, stableText } from './observe.mjs';
 
 const still = {
   route: 'settings:devices', dialog: null, menu: null, panel: null, toast: null, mainText: 'Devices', viewText: 'v1',
@@ -37,4 +37,35 @@ test('a typed or filled field is a result', () => {
 
 test('nothing changing is still dead', () => {
   assert.deepEqual(problemsOf(still, still), ['dead']);
+});
+
+// Time-only text. A menu or dialog that only ticks a clock or an elapsed timer did nothing: the click is dead.
+test('a ticking clock in an open menu is dead', () => {
+  const before = { ...still, menu: 'Usage', overlay: 'Usage | Resets at 10:01 AM | Check every account now' };
+  const after = { ...still, menu: 'Usage', overlay: 'Usage | Resets at 10:02 AM | Check every account now' };
+  assert.deepEqual(problemsOf(before, after), ['dead']);
+});
+
+test('an elapsed timer in an open dialog is dead', () => {
+  const before = { ...still, dialog: 'Running', overlay: 'Running | Elapsed 00:12 | Stop' };
+  const after = { ...still, dialog: 'Running', overlay: 'Running | Elapsed 00:13 | Stop' };
+  assert.deepEqual(problemsOf(before, after), ['dead']);
+});
+
+test('a relative age that only grows is dead', () => {
+  const before = { ...still, menu: 'Backups', overlay: 'Backups | Last backup 5 min ago' };
+  const after = { ...still, menu: 'Backups', overlay: 'Backups | Last backup 6 min ago' };
+  assert.deepEqual(problemsOf(before, after), ['dead']);
+});
+
+test('a Checked at stamp that appears in an open menu is a result', () => {
+  const before = { ...still, menu: 'Usage', overlay: 'Usage | Check every account now' };
+  const after = { ...still, menu: 'Usage', overlay: 'Usage | Check every account now | Checked at 10:01 AM' };
+  assert.deepEqual(problemsOf(before, after), []);
+});
+
+test('stableText removes clocks and elapsed times and keeps words and counts', () => {
+  assert.equal(stableText('Resets at 10:01 AM, used 95%'), 'Resets at , used 95%');
+  assert.equal(stableText('Elapsed 00:12 of 3 steps'), 'Elapsed of 3 steps');
+  assert.equal(stableText('Checked at 9:24'), 'Checked at');
 });

@@ -1,20 +1,8 @@
 {
   "version": 1,
   "problems": {
-    "place:customize > New group chat :: Researcher": [
-      "dead"
-    ],
     "place:customize > Researcher: profile :: Copy ID": [
       "toast-only"
-    ],
-    "settings:history :: A folder on this computer": [
-      "dead"
-    ],
-    "settings:history@advanced :: A folder on this computer": [
-      "dead"
-    ],
-    "settings:history@regular :: A folder on this computer": [
-      "dead"
     ]
   }
 }
