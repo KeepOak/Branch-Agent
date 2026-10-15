@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Keyboa
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
+import { TrunkHost } from "../../places-nav/TrunkHost";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { pinsOf } from "../../places/settings/pins";
 import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
@@ -313,6 +314,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </div>
         </>}
       </div>
+      <TrunkHost engine={engine} level={level} openSettings={(page) => go(pageFor(page))} openPlace={(place) => props.onOpenPlace?.(place)} />
     </div>
   );
 }
