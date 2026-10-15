@@ -23,8 +23,8 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 const PREVIEW_CARDS = ["Talking", "Listening", "Speaking back", "Live voice", "Calls & meetings", "Voice services"];
 /** The preview's rows at Regular, and the first rows of each card at Technical, in order. */
 const REGULAR: Record<string, string[]> = {
-  Talking: ["Listening", "Push-to-talk key", "Microphone", "Test the microphone"],
-  "Speaking back": ["Voice", "Dictation in the message box"],
+  // Talking's Regular rows and Dictation wait for a later update: Regular shows only what works (they show from Advanced).
+  "Speaking back": ["Voice"],
 };
 const TECH_FIRST: Record<string, string[]> = {
   Talking: ["Listening", "Push-to-talk key", "Microphone", "Test the microphone", "Answer approvals by voice", "Talking over it stops it", "Hold the microphone to dictate",

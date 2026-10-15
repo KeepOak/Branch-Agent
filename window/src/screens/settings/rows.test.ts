@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { NAV, PAGES, TOP_PAGES, pageFor, pageShown, r1PageFor, type PageId } from "./nav";
 import { APPEARANCE_ROWS as CLASSIC_APPEARANCE } from "../../places/settings/set1/appearance-rows";
 import { ASK_BEFORE_DELETE_KEY, agentsWork, askBeforeDeleting, checklistShown } from "./pages/general";
-import { ROWS, cardRows, hintFor, pageFirstLevel, rowLabel, rowLevel, type Row } from "./rows";
+import { ROWS, cardRows, comingRow, hintFor, pageFirstLevel, rowLabel, rowLevel, shownLevel, type Row } from "./rows";
 
 /** The keys the engine keeps in its schema history but that do nothing (engine/src/config/dead-config-keys.test.ts). */
 function deadKeys(): string[] {
@@ -232,5 +232,23 @@ describe("settings nav", () => {
     expect(pageShown("developer", 1)).toBe(false);
     expect(pageShown("developer", 2)).toBe(true);
     expect(pageShown("general", 0)).toBe(true);
+  });
+});
+
+describe("Coming rows wait for Advanced", () => {
+  const base = { page: "general", card: "Writing", label: "x", control: "toggle" } as const;
+  const coming: Row = { ...base, id: "general.writing.c", level: 0, source: { kind: "coming", need: "x.y", reason: "x comes in a later update." } };
+  const live: Row = { ...base, id: "general.writing.l", level: 0, source: { kind: "device", key: "x" } };
+  const slot: Row = { ...base, id: "general.writing.s", level: 0, source: { kind: "slot", calls: [], reason: "x comes in a later update." } };
+  const tech: Row = { ...coming, id: "general.writing.t", level: 2 };
+  it("shows a Coming row from Advanced, keeps its own higher level, and leaves working rows where they are", () => {
+    expect([shownLevel(coming, {}), shownLevel(live, {}), shownLevel(tech, {})]).toEqual([1, 0, 2]);
+    expect(rowLevel(coming, {})).toBe(0); // its tag is still its own level
+    // A slot row is Coming only on a page with no control for it.
+    expect([comingRow(slot), comingRow(slot, {}), comingRow(slot, { [slot.id]: () => null })]).toEqual([false, true, false]);
+    const rows = [coming, live, tech];
+    expect(cardRows("general", "Writing", 0, {}, rows).map((r) => r.id)).toEqual([live.id]);
+    expect(cardRows("general", "Writing", 1, {}, rows).map((r) => r.id)).toEqual([coming.id, live.id]);
+    expect(pageFirstLevel("general", {}, [coming, tech])).toBe(1);
   });
 });

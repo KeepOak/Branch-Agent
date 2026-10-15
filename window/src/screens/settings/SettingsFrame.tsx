@@ -10,7 +10,7 @@ import { configStore } from "../../places/settings/config-store";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { pinsOf } from "../../places/settings/pins";
 import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
-import { ROWS, cardRows, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
+import { COMING_FROM, ROWS, cardRows, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots, type SlotControl } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
@@ -214,13 +214,16 @@ export function SettingsFrame(props: SettingsFrameProps) {
   const pinCount = pinsOf(lookStore(engine).snap.look).length;
   const cards = spec.cards.filter((card) => !(shownPage === "general" && card === "Pinned" && !pinCount));
 
+  const controls = slots[shownPage]?.controls;
   const sections = cards.flatMap((card) => {
     const all = rows.filter((r) => r.page === shownPage && r.card === card);
-    const visible = cardRows(shownPage, card, level, hints, rows);
+    const visible = cardRows(shownPage, card, level, hints, rows, controls);
     if (all.length && !visible.length) return [];
+    // A section with no rows yet is all Coming: Regular shows only what works today.
+    if (!all.length && level < COMING_FROM) return [];
     return [{ card, visible }];
   });
-  const first = pageFirstLevel(shownPage, hints, rows);
+  const first = pageFirstLevel(shownPage, hints, rows, controls);
   const loadFailed = typeof config === "string";
   const invalid = config && typeof config === "object" && config.valid === false ? configIssues(config.issues) : null;
   const levelLine = LEVELS[level].line;

@@ -9,6 +9,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { undeclaredControls } from "../../../glass/coming-registry";
 import { PAGES } from "../nav";
 import { SettingsFrame } from "../SettingsFrame";
+import { HISTORY_ROWS } from "./history";
 import { R1_PAGES } from "./plugged";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -77,15 +78,20 @@ describe("R1 Settings › History & backups is a native R1 page with the preview
     expect(host.querySelector(".r1s-custom, .r1s-classic, [data-classic]")).toBeNull();
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("History & backups");
     expect(host.querySelector(".r1s-lede")?.textContent).toContain(PAGES.history.lede);
-    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
+    // Regular shows only what works today: a Coming row shows from Advanced, and A copy of your setup has nothing else
+    // at Regular.
+    const coming = new Set(HISTORY_ROWS.filter((r) => r.source.kind === "coming").map((r) => r.label));
+    const regularCards = PREVIEW_CARDS.filter((c) => c !== "A copy of your setup");
+    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(regularCards);
+    expect(host.querySelector(".r1s-row[data-coming]")).toBeNull();
     for (const sec of sections()) {
       const card = sec.getAttribute("aria-label") ?? "";
-      expect(labels(sec).filter((l) => !(EXTRA_REGULAR[card] ?? []).includes(l ?? "")), card).toEqual(PREVIEW_REGULAR[card]);
+      expect(labels(sec).filter((l) => !(EXTRA_REGULAR[card] ?? []).includes(l ?? "")), card).toEqual(PREVIEW_REGULAR[card].filter((l) => !coming.has(l)));
       expect(labels(sec).filter((l) => (EXTRA_REGULAR[card] ?? []).includes(l ?? "")), card).toEqual(EXTRA_REGULAR[card] ?? []);
     }
     expect(host.textContent).not.toContain("comes to this page in a later update");
     await click(button(host, "Learn more"));
-    expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(PREVIEW_CARDS);
+    expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(regularCards);
   });
 
   it("adds the preview's Advanced and Technical rows inside the same cards", async () => {

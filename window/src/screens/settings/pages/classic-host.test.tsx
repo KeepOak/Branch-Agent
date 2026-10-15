@@ -106,6 +106,17 @@ it("draws each Browser & screen and Coding card no Classic control has yet as Co
   }
 });
 
+it("leaves out the Browser & screen and Coding cards that are all Coming at Regular, and keeps every working Classic section", async () => {
+  localStorage.setItem("branch.level", "regular");
+  for (const page of ["browser", "coding"] as const) {
+    await act(async () => root.render(<SettingsFrame key={page} engine={engine()} page={page} pages={R1_PAGES} />));
+    await settle();
+    expect(host.querySelector(`.r1s-custom[data-slot="${page}"] .r1s-classic`), page).not.toBeNull();
+    expect(host.querySelectorAll(".r1s-classic-coming").length, page).toBe(0);
+    expect(host.textContent, page).not.toContain("comes to this page in a later update");
+  }
+});
+
 it("keeps Models' Local tab on the R1 Models page and sends its Accounts tab to the R1 Accounts page", async () => {
   const onPage = vi.fn();
   await act(async () => root.render(<SettingsFrame engine={engine()} page="models" pages={R1_PAGES} onPage={onPage} />));

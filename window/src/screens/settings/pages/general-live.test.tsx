@@ -58,7 +58,13 @@ it("draws the preview's General cards at each level, and Pinned only once a row 
 
 it("uses the preview's rows and words in Writing, The conversation, Summaries, History repair and Waiting line", async () => {
   await mount(engineOf().engine, "regular");
-  expect(labels("Writing")).toEqual(["Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Add my location to messages", "Replies in", "After a plan", "Open Branch on", "Show “Finish setting up”"]);
+  // Regular shows only what works today; Writing's other Regular rows wait for a later update and show from Advanced.
+  expect(labels("Writing")).toEqual(["Show “Finish setting up”"]);
+  await remount();
+  await mount(engineOf().engine, "advanced");
+  expect(labels("Writing").slice(0, 8)).toEqual(["Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Add my location to messages", "Replies in", "After a plan", "Open Branch on", "Show “Finish setting up”"]);
+  await remount();
+  await mount(engineOf().engine, "regular");
   expect(labels("Show agents’ work")).toEqual(["Show agents’ work as"]);
   await remount();
   await mount(engineOf().engine, "technical");
