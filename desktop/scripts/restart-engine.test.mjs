@@ -308,7 +308,7 @@ test("crash recovery keeps the running engine and staged engine/window update pe
   assert.equal(await readFile(join(previousWindow, "index.html"), "utf8"), "<html>fixture</html>");
   assert.equal(await readFile(join(windowDir, "index.html"), "utf8"), "<html>staged window</html>");
   const { windowPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
-  assert.equal(await (await fetch(`http://127.0.0.1:${windowPort}/`)).text(), "<html>fixture</html>");
+  assert.equal(await (await fetch(`http://127.0.0.1:${windowPort}/`)).text(), "<html>staged window</html>");
   assert.equal(sent.filter(([channel, value]) => channel === "branch-desktop:engine-update" && value === "updated").length, 0);
   assert.equal(runtime.window.reloads, 0);
 }));
@@ -1378,7 +1378,7 @@ test("Undo pins the outgoing window, excludes auto-apply, and explains a busy-lo
   runtime.ipcMain.emit("branch-desktop:undo-update", { sender: owner, senderFrame: owner.mainFrame });
   await eventually(() => existsSync(join(root, "undo-prepared")));
   const { windowPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
-  assert.equal(await (await fetch(`http://127.0.0.1:${windowPort}/`)).text(), "<html>staged window</html>");
+  assert.equal(await (await fetch(`http://127.0.0.1:${windowPort}/`)).text(), "<html>fixture</html>");
   offerStaged();
   runtime.ipcMain.emit("branch-desktop:undo-update", { sender: owner, senderFrame: owner.mainFrame });
   await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:update-undo-failed" && value === "An update is finishing, try again in a moment"));
@@ -1476,18 +1476,19 @@ test("a staged-update replacement that ends rolled back keeps the served window 
   await writeFile(join(cfg.windowDir, "branch-build.txt"), "staged-build");
   offerStaged();
   const page = async () => { const response = await fetch(`http://127.0.0.1:${cfg.windowPort}/`); return [response.status, await response.text()]; };
-  await eventually(async () => (await page())[1] === "<html>fixture</html>");
+  const current = () => readFile(join(cfg.windowDir, "index.html"), "utf8");
+  await eventually(async () => (await page())[1] === (await current()));
   await pause(3_500); // the window watcher has seen the staged build
   const reloads = runtime.window.reloads;
   // The worst failure: the replacement's undo failed too, so the publication rolled back to the running build,
   // moving the window folder the desktop served into windowDir.
   const updates = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js"));
   await assert.rejects(swapGuard(async () => { await updates.rollbackComponentUpdate(cfg); throw Error("fixture: replacement rolled back"); }), /rolled back/);
-  assert.deepEqual(await page(), [200, "<html>fixture</html>"], "the served window went missing");
+  assert.deepEqual(await page(), [200, await current()], "the served window went missing");
   await pause(4_000); // more than one watcher poll
   assert.equal(runtime.window.reloads, reloads, "the live window was reloaded");
   assert.doesNotMatch(await readFile(join(root, "desktop.log"), "utf8"), /new window build found/);
-  assert.deepEqual(await page(), [200, "<html>fixture</html>"]);
+  assert.deepEqual(await page(), [200, await current()]);
 }, false, false, false, "never", async root => { await writeFile(join(root, "window", "branch-build.txt"), "running-build"); }));
 test("a new window build swaps in place after attached files are sent, keeping the engine", () => fixture(async ({ root, runtime, starts }) => {
   const main = runtime.window;

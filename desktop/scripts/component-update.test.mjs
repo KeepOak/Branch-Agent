@@ -521,7 +521,8 @@ test("actual desktop caller retains running engine and checks a failing engine b
     assert.equal(reloads, 0, "component staging must not reload the renderer before owned engine activation");
     assert.equal(ownerWindow.draft, "unfinished component-update draft");
     const served = await (await previousFetch(`http://127.0.0.1:${desktop.windowPort}/index.html`)).text();
-    assert.equal(served, "old window", "until the swap, the window server keeps the build the running engine started with");
+    // The window server serves the window folder the updater published into, staged or not (GOD, 2026-10-15).
+    assert.equal(served, "<title>new window</title>", "the window server serves the published window folder");
     ownerWindow.webContents.mainFrame = { url: ownerWindow.url };
     ipcMain.emit("branch-desktop:restart-engine", { sender: { ...ownerWindow.webContents }, senderFrame: ownerWindow.webContents.mainFrame });
     assert.doesNotThrow(() => process.kill(oldPid, 0), "foreign restart sender cannot stop the owned child");
@@ -1164,3 +1165,61 @@ test("prune retains a process working directly in an old release folder", { skip
     await exited;
   }
 }));
+
+// The window server reads its folder on every request, so the page always gets the build the updater published into
+// the window folder, including after a swap during startup. Prior art: the window server was pinned to the folder the
+// window had when the update was staged, and a swap that landed then was never logged.
+test('the window server serves the published window folder after a swap, and reports each swap', async () => {
+  const { serveWindow } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'static-server.js')));
+  const root = await mkdtemp(join(tmpdir(), 'branch-window-server-'));
+  const windowDir = join(root, 'window-current');
+  const build = async (name) => {
+    await rm(windowDir, { recursive: true, force: true });
+    await mkdir(join(windowDir, 'assets'), { recursive: true });
+    await writeFile(join(windowDir, 'index.html'), `<script src="/assets/index-${name}.js"></script>`);
+    await writeFile(join(windowDir, 'assets', `index-${name}.js`), name);
+  };
+  const get = async (port, path) => (await fetch(`http://127.0.0.1:${port}${path}`)).text();
+  const swaps = [];
+  await build('old');
+  const server = await serveWindow(() => windowDir, await freePort(), () => swaps.push('swap'));
+  try {
+    const port = server.address().port;
+    assert.match(await get(port, '/'), /index-old/);
+    assert.deepEqual(swaps, []);
+
+    // The updater moves the old folder aside and puts the new build in its place.
+    await rename(windowDir, join(root, 'window-previous'));
+    await build('new');
+    assert.match(await get(port, '/'), /index-new/);
+    assert.equal(await get(port, '/assets/index-new.js'), 'new');
+    assert.deepEqual(swaps, ['swap']);
+    assert.match(await get(port, '/'), /index-new/);
+    assert.deepEqual(swaps, ['swap'], 'a swap is reported once');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a window swap that lands before the first request is reported on that request', async () => {
+  const { serveWindow } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'static-server.js')));
+  const root = await mkdtemp(join(tmpdir(), 'branch-window-startup-'));
+  const windowDir = join(root, 'window-current');
+  await mkdir(windowDir, { recursive: true });
+  await writeFile(join(windowDir, 'index.html'), 'old');
+  const swaps = [];
+  // Launch sees the old build; the swap lands before the window's first request.
+  const server = await serveWindow(() => windowDir, await freePort(), () => swaps.push('swap'));
+  try {
+    await rename(windowDir, join(root, 'window-previous'));
+    await mkdir(windowDir, { recursive: true });
+    await writeFile(join(windowDir, 'index.html'), 'new');
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/`);
+    assert.equal(await response.text(), 'new');
+    assert.deepEqual(swaps, ['swap']);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(root, { recursive: true, force: true });
+  }
+});

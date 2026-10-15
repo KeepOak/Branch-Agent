@@ -1,6 +1,7 @@
 // Serves the built window on 127.0.0.1. The gateway refuses file:// and custom schemes, but accepts a loopback
 // origin from a loopback client (engine src/gateway/origin-check.ts, "local-loopback").
 import { createServer, type Server } from "node:http";
+import { statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 
@@ -17,14 +18,30 @@ const TYPES: Record<string, string> = {
   ".ico": "image/x-icon",
 };
 
+/** What is on disk for a build: the window's entry page, by inode, time and size. A new build changes it. */
+function windowIdentity(base: string): string {
+  try {
+    const entry = statSync(join(base, "index.html"));
+    return `${entry.ino}:${entry.mtimeMs}:${entry.size}`;
+  } catch {
+    return "missing";
+  }
+}
+
 /**
- * `root` is read on every request: while a staged update waits, the desktop keeps serving the window build that
- * matches the running engine (its lazy chunks stay loadable), and switches to the new build when it applies it.
+ * `root` is read on every request, so the server always serves the folder the updater publishes into. `onSwap` runs the
+ * first time a request finds a different build on disk from the one the server started with, or from the one it last
+ * served: a window swap at startup, after a launch, or during a staged update.
  */
-export function serveWindow(root: string | (() => string), port: number): Promise<Server> {
-  const rootNow = typeof root === "string" ? () => root : root;
+export function serveWindow(root: () => string, port: number, onSwap?: () => void): Promise<Server> {
+  let served = windowIdentity(normalize(root()));
   const server = createServer(async (req, res) => {
-    const base = normalize(rootNow()) + sep;
+    const base = normalize(root()) + sep;
+    const now = windowIdentity(normalize(root()));
+    if (now !== served) {
+      served = now;
+      onSwap?.();
+    }
     const path = decodeURIComponent(new URL(req.url ?? "/", "http://127.0.0.1").pathname);
     const file = normalize(join(base, path === "/" ? "index.html" : path));
     if (!file.startsWith(base)) {

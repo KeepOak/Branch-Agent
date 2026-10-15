@@ -218,7 +218,6 @@ function runConfirmedReleasePrune(): void {
   if (prune) void prune().catch(error => log(`Confirmed update cleanup: ${String(error)}`));
 }
 /** The window build the static server serves: the staged one only once its engine runs. */
-let servedWindowDir = cfg.windowDir;
 /**
  * The one update lock: an in-place update, crash recovery, a staged-update replacement and #380's Undo each hold it
  * for their whole run. Undo holds it across its prepare and passes the handle to swapEngineInPlace.
@@ -380,7 +379,7 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
   // A new update (or Undo) ends the last update's probation: it neither promotes nor rolls back from here on.
   admissionWatch?.abort();
   admissionWatch = undefined;
-  const windowBefore = windowBuild(servedWindowDir);
+  const windowBefore = windowBuild(cfg.windowDir);
   const priorGateway = gateway;
   const attempt = { stepDownSent: false };
   const stillOpen = () => { if (quitting) throw new Error("Branch Agent is quitting"); };
@@ -428,7 +427,6 @@ async function swapEngineInPlace(label: string, explicit: boolean, held?: Update
         throw error;
       }
       stillOpen();
-      servedWindowDir = cfg.windowDir;
       await waitForGatewayPort();
       stillOpen();
       const selectedStandby = standby;
@@ -503,7 +501,7 @@ async function swapServiceEngineInPlace(label: string, explicit: boolean, held?:
   const lock = held ?? updateLock.acquire(`update ${label}`)!;
   admissionWatch?.abort();
   admissionWatch = undefined;
-  const windowBefore = windowBuild(servedWindowDir);
+  const windowBefore = windowBuild(cfg.windowDir);
   const running = serviceEngineDir();
   const selected = resolveEngineDir(cfg);
   const probe = () => engineAnswers(cfg.gatewayPort);
@@ -534,7 +532,6 @@ async function swapServiceEngineInPlace(label: string, explicit: boolean, held?:
       log: line => log(`update ${label}: ${line}`),
     });
     engineUpdateReady = false;
-    servedWindowDir = cfg.windowDir;
     if (result === "updated") lastGoodEngineDir = selected;
     if (result === "kept" || result === "rolled-back") {
       if (explicit) sendToBranchWindows("branch-desktop:engine-update", "kept");
@@ -708,7 +705,6 @@ async function handOffToStandby(label: string, prior: ChildProcess, selected: Pr
     await takeControlBack(label, prior, selected, resumeSupervision, new Error("the standby did not take over in time"));
     return "kept";
   }
-  servedWindowDir = cfg.windowDir;
   try {
     // Sized from this host's measured cold start, and still under the lease deadline so the old engine can take control back.
     const readyTimeoutMs = standbyReadyTimeoutMs();
@@ -748,7 +744,6 @@ async function takeControlBack(label: string, prior: ChildProcess, selected: Pre
   } catch (recordError) { log(`update ${label}: failure could not be recorded: ${String(recordError)}`); }
   // Never back past the build that serves: a pending journal may name an older build than the one that runs.
   await settleFailedComponentUpdate(cfg, lastGoodEngineDir).catch(rollbackError => log(`update ${label}: component rollback: ${String(rollbackError)}`));
-  servedWindowDir = cfg.windowDir;
   gateway = prior;
   if (prior.pid !== undefined) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(prior.pid)));
   const back = await rollbackGateway(prior, ROLLBACK_TIMEOUT_MS);
@@ -824,8 +819,7 @@ async function underSwapGuard(work: () => Promise<boolean>): Promise<boolean | u
 }
 
 async function followStagedUpdate(): Promise<void> {
-  const { componentsPendingVersion, previousWindowDir } = await readComponentUpdateStatus(cfg);
-  servedWindowDir = previousWindowDir ?? cfg.windowDir;
+  const { componentsPendingVersion } = await readComponentUpdateStatus(cfg);
   if (!componentsPendingVersion && engineUpdateReady) {
     engineUpdateReady = false;
     watchEngine();
@@ -852,7 +846,6 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
   if (result !== "exited") { candidateCheckedFor = version; return true; }
   await rejectFailedComponentUpdate(cfg, candidate);
   await rollbackComponentUpdate(cfg);
-  servedWindowDir = cfg.windowDir;
   engineUpdateReady = false;
   watchEngine();
   log(`update ${label}: kept the running engine; nothing was stopped`);
@@ -940,12 +933,11 @@ async function relaunchForDesktopUpdate(): Promise<void> {
  */
 async function offerStagedUpdate(): Promise<void> {
   if (updateLock.purpose === "undo update") return;
-  const { componentsPendingVersion, previousWindowDir } = await readComponentUpdateStatus(cfg);
+  const { componentsPendingVersion } = await readComponentUpdateStatus(cfg);
   if (updateLock.purpose === "undo update") return;
   if (!componentsPendingVersion) return;
   if (componentsPendingVersion === withdrawnUpdateVersion) return;
   withdrawnUpdateVersion = undefined;
-  if (previousWindowDir && !updateLock.held) servedWindowDir = previousWindowDir;
   engineUpdateReady = true;
   sendToBranchWindows("branch-desktop:engine-update", controls.settings().autoApplyUpdates ? "auto-wait" : "ready");
   void autoApply.tick();
@@ -982,7 +974,6 @@ async function hotSwapWindow(): Promise<void> {
     });
     if (!w.isDestroyed()) w.webContents.reload();
   }));
-  log("window updated in place");
 }
 
 const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
@@ -1364,8 +1355,7 @@ async function start(): Promise<void> {
     log("Installing verified GitHub components for first launch");
     await refreshComponentUpdate(cfg, fetch, { desktop: install, underSwapGuard, log });
   }
-  servedWindowDir = cfg.windowDir;
-  server = await serveWindow(() => servedWindowDir, cfg.windowPort);
+  server = await serveWindow(() => cfg.windowDir, cfg.windowPort, () => log("window updated in place"));
   await win.loadURL(windowUrl());
   log(`window loaded after ${Date.now() - launchStarted} ms`);
   if (await (cfg.alwaysOn ? attachServiceEngine() : bootSelectedEngine())) {
@@ -1642,19 +1632,19 @@ async function bootSelectedEngine(prepared?: PreparedGateway): Promise<boolean> 
 /** The window build the open window last loaded; the watcher never reloads onto the same build. */
 let shownWindowBuild: string | undefined;
 function watchUpdates(w: BrowserWindow): void {
-  shownWindowBuild = windowBuild(servedWindowDir);
+  shownWindowBuild = windowBuild(cfg.windowDir);
   stopWindowWatch = watchWindowBuild(cfg.windowDir, () => {
     void readComponentUpdateStatus(cfg).then(({ publicationInProgress }) => {
       // A staged engine/window pair activates together through the in-place swap.
       if (publicationInProgress || updateLock.held) return;
       // The window already shows this build (a staged pair was put back, or rolled back to the build it runs).
-      if (windowBuild(servedWindowDir) === shownWindowBuild) return;
+      if (windowBuild(cfg.windowDir) === shownWindowBuild) return;
       log("new window build found; swapping it in");
       void hotSwapWindow();
     }).catch(error => log(`Window update status: ${String(error)}`));
   });
   // A reload re-runs the preload; show the bar again if an engine update is still waiting.
-  w.webContents.on("did-finish-load", () => { shownWindowBuild = windowBuild(servedWindowDir); offerWindowStatus(w); });
+  w.webContents.on("did-finish-load", () => { shownWindowBuild = windowBuild(cfg.windowDir); offerWindowStatus(w); });
 }
 function offerWindowStatus(w: BrowserWindow): void {
   if (w.isDestroyed() || !w.webContents.getURL().startsWith(windowUrl())) return;
@@ -1684,7 +1674,7 @@ async function undoLastUpdate(automatic = false): Promise<void> {
         window.streaming || window.unsavedDraftFiles)) throw new Error("The previous version cannot take over while work is running");
     // After the probation the previous engine is (or is about to be) pruned: Undo never runs past its deadline.
     if (!await canUndoComponentUpdate(cfg)) throw new Error("The previous version is no longer available");
-    if (!await prepareComponentUpdateUndo(cfg, dir => { servedWindowDir = dir; })) throw new Error("The previous version is no longer available");
+    if (!await prepareComponentUpdateUndo(cfg)) throw new Error("The previous version is no longer available");
     const previousVersion = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
     await swapEngineInPlace("previous version", true, lock);
     if ((await readComponentUpdateStatus(cfg)).currentVersion !== previousVersion) throw new Error("The previous version could not take over");
@@ -1694,7 +1684,6 @@ async function undoLastUpdate(automatic = false): Promise<void> {
   } catch (error) {
     try { await rollbackComponentUpdateUndo(cfg); }
     catch (rollbackError) { log(`update undo rollback failed: ${String(rollbackError)}`); }
-    if (!existsSync(servedWindowDir)) servedWindowDir = cfg.windowDir;
     log(`update undo failed: ${String(error)}`);
     sendToBranchWindows("branch-desktop:update-undo-failed", String(error));
   } finally {
