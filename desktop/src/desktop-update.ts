@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import type * as NodeFs from "node:fs";
 import { chmod, copyFile, mkdir, mkdtemp, open, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
@@ -267,7 +267,14 @@ async function stageAppImageUpdate(cfg: DesktopConfig, release: ComponentRelease
 
 /** Downloads, verifies and extracts the release's desktop component; nothing in the running app changes. */
 export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, install?: DesktopInstall): Promise<boolean> {
-  if (!install || await readDesktopJournal(cfg)) return false;
+  if (!install) return false;
+  const held = await readDesktopJournal(cfg);
+  // A staged app that was never applied is replaced by a newer release. Left alone, it would be applied after the newer
+  // engine and window, and roll the app back to an older build.
+  if (held) {
+    if (held.phase !== "staged" || held.version === release.version) return false;
+    await dropStagedDesktop(cfg, held, `replaced by ${release.version}`);
+  }
   if (install.appImage) {
     if (await readOrEmpty(versionFile(cfg)) === release.version) return false;
     return stageAppImageUpdate(cfg, release, request, install.appImage);
@@ -322,6 +329,19 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
     await rm(join(directory, ".update-staging"), { force: true });
     return true;
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
+}
+
+/**
+ * Removes a staged desktop update that was never applied: its record, and its folder under updates/ (only a folder
+ * inside updates/ is ever removed). The log says why, so an owner who looks sees the replacement.
+ */
+export async function dropStagedDesktop(cfg: DesktopConfig, journal: DesktopJournal, reason: string): Promise<void> {
+  const updates = join(cfg.dataDir, "updates");
+  await rm(journalFile(cfg), { force: true });
+  if (journal.kind === "appimage" && typeof journal.staged === "string") await rm(journal.staged, { force: true }).catch(() => undefined);
+  const inside = typeof journal.work === "string" ? relative(updates, journal.work) : "";
+  if (inside && !inside.startsWith("..") && !isAbsolute(inside)) await rm(journal.work!, { recursive: true, force: true }).catch(() => undefined);
+  try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version} dropped: ${reason}\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
 }
 
 /** A staged desktop update waits for the next start (or the owner's Restart); the version it will become. */

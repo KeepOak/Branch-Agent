@@ -167,3 +167,24 @@ describe("usage popover: sign in again", () => {
   });
 });
 
+
+// "Check every account now" stamps "Checked at" only when the check succeeds. A failed check shows its note and no time.
+describe("Usage popover: Check every account now stamps only on success", () => {
+  const claudeAccount = { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:one", plan: "Max (20x)", windows: [{ label: "5h", usedPercent: 20, resetsAt: Date.now() + 3_600_000 }] };
+  it("says when it last checked after a successful check", async () => {
+    const request = vi.fn(async () => ({ updatedAt: Date.now(), providers: [claudeAccount] }));
+    const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits({ updatedAt: Date.now(), providers: [claudeAccount] })} request={request as never} onOpenUsage={() => {}} />);
+    expect(host.textContent).not.toContain("Checked at");
+    await act(async () => button(host, "Check every account now").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(host.textContent).toContain("Checked at");
+  });
+  it("shows no time when the check fails", async () => {
+    const request = vi.fn(async () => { throw new Error("gateway unreachable"); });
+    const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits({ updatedAt: Date.now(), providers: [claudeAccount] })} request={request as never} onOpenUsage={() => {}} />);
+    await act(async () => button(host, "Check every account now").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(host.textContent).toContain("Couldn’t check accounts right now.");
+    expect(host.textContent).not.toContain("Checked at");
+  });
+});

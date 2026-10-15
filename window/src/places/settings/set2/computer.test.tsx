@@ -79,3 +79,24 @@ describe("Settings › Computer & browser › show the browser window", () => {
     expect(r?.textContent).not.toContain("Auto shows a window when this computer has a screen");
   });
 });
+
+// Refresh stamps "Checked at" only when both reads succeed. A failed read leaves no time on the line, so a failed check
+// never reads as a good one. Before the fix, Refresh stamped nothing and read as dead in the button crawl.
+describe("Settings › Computer & browser › Refresh checked-at stamp", () => {
+  const refresh = () => document.querySelector<HTMLButtonElement>('button[aria-label="Refresh"]');
+  it("says when it last checked once both reads succeed", async () => {
+    const { engine } = engineWith({ ...EMPTY_NODES, "computer.status": { available: false, configured: false } });
+    await show(engine, "advanced");
+    expect(host.textContent).not.toContain("Checked at");
+    await act(async () => refresh()?.click());
+    await flush();
+    expect(host.textContent).toContain("Checked at");
+  });
+  it("shows no time when a read fails", async () => {
+    const { engine } = engineWith({ ...EMPTY_NODES, "node.list": new Error("The computer list is unreachable.") });
+    await show(engine, "advanced");
+    await act(async () => refresh()?.click());
+    await flush();
+    expect(host.textContent).not.toContain("Checked at");
+  });
+});

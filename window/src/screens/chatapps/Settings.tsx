@@ -12,6 +12,7 @@ export function ChatAppRow({ engine, row }: { engine: WindowEngine; row: Row }) 
     {view.state === "error" && <p role="alert" className="g-label" data-lines>{view.reason}</p>}{view.restart && <small className="g-label">Takes effect after a restart.</small>}
   </div>;
 }
-export function ChatAppSettings({ engine }: { engine: WindowEngine }) {
-  return <>{[...new Set(BASE_ROWS.map(r => r.card))].map(card => <section key={card}><h2 className="g-label">{card}</h2>{BASE_ROWS.filter(r => r.card === card).map(row => <ChatAppRow key={row.id} engine={engine} row={row} />)}</section>)}</>;
+export function ChatAppSettings({ engine, level }: { engine: WindowEngine; level: number }) {
+  const shown = BASE_ROWS.filter(r => r.level <= level);
+  return <>{[...new Set(shown.map(r => r.card))].map(card => <section key={card}><h2 className="g-label">{card}</h2>{shown.filter(r => r.card === card).map(row => <ChatAppRow key={row.id} engine={engine} row={row} />)}</section>)}</>;
 }
