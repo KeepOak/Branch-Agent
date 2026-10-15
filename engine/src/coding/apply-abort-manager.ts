@@ -1,4 +1,3 @@
-// Adapted from continuedev/continue@5522c6f44ca0ac3528b37244818fbfa39b5af470 core/edit/applyAbortManager.ts.
 export class ApplyAbortManager {
   private static instance: ApplyAbortManager;
   private controllers: Map<string, AbortController>;

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, expectTypeOf, it, onTestFinished, vi } fro
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { readChannelContextAdmissionEvidence } from "../channels/message-access/admission-evidence.js";
 import { recordInboundSession } from "../channels/session.js";
+import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/config.js";
 import { loadSessionEntry, replaceSessionEntrySync } from "../config/sessions/session-accessor.js";
 import { resolveSqliteTargetFromSessionStorePath } from "../config/sessions/session-sqlite-target.js";
 import { sessionChanges } from "../sessions/session-row-changes.js";
@@ -117,6 +118,13 @@ describe("channel-inbound public helpers", () => {
   });
 
   it("dispatches a published inbound event before automatic session maintenance", async () => {
+    // An unset pruneAfter keeps conversations. This test checks the explicit 30-day age prune.
+    resetConfigRuntimeState();
+    const maintenanceConfig = {
+      session: { maintenance: { mode: "enforce" as const, pruneAfter: "30d" } },
+    };
+    setRuntimeConfigSnapshot(maintenanceConfig, maintenanceConfig);
+    onTestFinished(() => resetConfigRuntimeState());
     const storePath = `${tempDirs.make("branch-channel-inbound-maintenance-")}/sessions.json`;
     const staleSessionKey = "agent:main:published-inbound-stale";
     const activeSessionKey = "agent:main:test:peer";

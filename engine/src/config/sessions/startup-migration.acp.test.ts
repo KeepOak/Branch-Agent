@@ -10,6 +10,7 @@ import {
 import { noteSessionTranscriptHealth } from "../../commands/doctor-session-transcripts.js";
 import { openBranchAgentDatabase } from "../../state/branch-agent-db.js";
 import { resolveBranchAgentSqlitePath } from "../../state/branch-agent-db.paths.js";
+import { listBranchSessionRowQuarantines } from "../../state/branch-session-row-quarantine.js";
 import { openBranchStateDatabase } from "../../state/branch-state-db.js";
 import { withBranchTestState } from "../../test-utils/branch-test-state.js";
 import { replaceSessionEntrySync } from "./session-accessor.js";
@@ -102,13 +103,11 @@ it("startup requires offline ACP repair before handing restored stores to runtim
           now: () => 100,
         });
       }
-      if (shape === "unsettled-embedded") {
-        await expect(startup()).rejects.toMatchObject({
-          message: `invalid persisted session row requires repair for ${sessionKey}; stop the Gateway and run branch doctor --fix`,
-        });
-      } else {
-        await expect(startup()).rejects.toThrow('run "branch doctor --fix"');
-      }
+      // The unsettled row is set aside, so the store-level ACP refusal still stops startup.
+      await expect(startup()).rejects.toThrow('run "branch doctor --fix"');
+      expect(listBranchSessionRowQuarantines(env).map((record) => record.sessionKey)).toEqual(
+        shape === "unsettled-embedded" ? [sessionKey] : [],
+      );
       expect(handoffDatabase).not.toHaveBeenCalled();
       const warnings: string[] = [];
       await noteSessionTranscriptHealth({
@@ -121,6 +120,7 @@ it("startup requires offline ACP repair before handing restored stores to runtim
       expect(warnings).toEqual([]);
       expect(readAcpSessionMeta(scope)).toEqual(meta);
       await expect(startup()).resolves.toBeUndefined();
+      expect(listBranchSessionRowQuarantines(env)).toEqual([]);
       expect(handoffDatabase).toHaveBeenCalledTimes(owners.size);
       expect(await repairAcpSessionMetaKeysForDoctor({ cfg, env, apply: false })).toMatchObject({
         found: 0,

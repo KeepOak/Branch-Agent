@@ -302,8 +302,9 @@ export function Sidebar(p: SidebarProps) {
           <Icon name="down" small />
         </button>
         {p.talk ? (
-          <button type="button" className="ib talk-btn" aria-label={`Talk to ${p.talk.name} (${p.talk.keys})`} title={`Talk to ${p.talk.name} (${p.talk.keys})`} aria-pressed={p.talk.open} data-testid="talk-beside-button" onClick={p.talk.onToggle}>
+          <button type="button" className="ib talk-btn" aria-label={`Ask ${p.talk.name}`} title={`Talk to ${p.talk.name} (${p.talk.keys})`} aria-pressed={p.talk.open} data-testid="talk-beside-button" onClick={p.talk.onToggle}>
             <Icon name="chat" />
+            <span>Ask {p.talk.name}</span>
           </button>
         ) : null}
         <button type="button" className="ib" aria-label="Settings" title="Settings" data-testid="gear" onClick={p.onSettings}>

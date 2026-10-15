@@ -15,16 +15,18 @@ function createBoardReadQueries(database: DatabaseSync) {
   const db =
     getNodeSqliteKysely<Pick<DB, "board_tabs" | "board_widgets" | "session_nodes">>(database);
   return {
-    session: prepareSqliteQuerySync<string, { entry_json: string }>(database, (parameter) =>
-      db
-        .selectFrom("session_nodes")
-        .select("entry_json")
-        .where(
-          "session_key",
-          "=",
-          parameter((key) => key),
-        )
-        .limit(1),
+    session: prepareSqliteQuerySync<string, { entry_json: string; entry_valid: number }>(
+      database,
+      (parameter) =>
+        db
+          .selectFrom("session_nodes")
+          .select(["entry_json", "entry_valid"])
+          .where(
+            "session_key",
+            "=",
+            parameter((key) => key),
+          )
+          .limit(1),
     ),
     tabs: prepareSqliteQuerySync<string, SelectedBoardTabRow>(database, (parameter) =>
       db
