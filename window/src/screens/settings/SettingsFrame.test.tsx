@@ -96,7 +96,8 @@ describe("SettingsFrame", () => {
     expect(fine.getAttribute("aria-label")).toBe("Fine-tune each part");
     expect(fine.querySelector("h3")?.textContent).toBe("Fine-tune each part");
     expect(fine.querySelector("[data-row='general.work.thinking']")).not.toBeNull();
-    expect(fine.querySelector("[data-row='general.work.chat-steps-shown']")?.getAttribute("data-coming")).toBeTruthy();
+    // A later-update row folds under its own line after the live rows, so it is found in the card, not in the Fine group.
+    expect(work.querySelector("[data-row='general.work.chat-steps-shown']")?.getAttribute("data-coming")).toBeTruthy();
     expect(fine.querySelector("[data-row='general.work.mode']")).toBeNull();
     expect(work.querySelector(":scope > [data-row='general.work.mode']")).not.toBeNull();
   });

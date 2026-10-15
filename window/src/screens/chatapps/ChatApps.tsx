@@ -9,7 +9,8 @@ import { useResource } from "../../places/settings/hooks";
 import "../../places/settings/set1/chatapps.css";
 import { has } from "../../places/inbox/data";
 import { useLevel } from "../settings/SettingsFrame";
-import { CHAT_APPS, GROUPS, estimateOf, type ChatApp } from "./catalogue";
+import { CHAT_APPS, GROUPS, type ChatApp } from "./catalogue";
+import { LaterRows } from "../settings/LaterRows";
 import { More } from "./More";
 import { Pairing } from "./Pairing";
 import { ChatAppSettings } from "./Settings";
@@ -53,6 +54,40 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
   const connected = connectedOf(live.status);
   const { trunks, defaultId } = trunksOf(agents.data);
   const trunkFor = (ch: string) => { const id = appRoute(bindingsOf({ ...cfg, loading: !cfg.ready }), ch) ?? defaultId; return trunks.find(t => t.id === id)?.name ?? "your Trunk"; };
+  // A card's state: working apps (connected, set up here, or offered and waiting for an owner's setup) lead; the rest fold.
+  const stateOf = (app: ChatApp) => {
+    const state = app.channel ? appOf(live.status, { id: app.channel, name: app.name, detail: "" }) : undefined;
+    const on = state?.on === true;
+    const qr = app.id === "whatsappweb";
+    const needs = qr ? ["web.login.start", "web.login.wait"] : ["wizard.start", "wizard.next", "wizard.cancel"];
+    const offered = on ? canAll(engine, ["channels.status"]) : qr ? listed.has("whatsapp") : canAll(engine, needs);
+    const locked = !on && offered && !admin;
+    const enabled = Boolean(app.channel && (on ? onManage : onSetup) && offered && !locked);
+    return { state, on, qr, needs, locked, enabled };
+  };
+  const working = (app: ChatApp) => { const s = stateOf(app); return s.on || s.enabled || s.locked; };
+  const renderCard = (app: ChatApp) => {
+    const { state, on, qr, needs, locked, enabled } = stateOf(app);
+    const action = on ? onManage : onSetup;
+    const reason = locked ? "Setting up " + app.name + " needs full access on this connection." : "Setting up " + app.name + " comes in a later update.";
+    const face = <><ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{on ? (state?.running ? "Connected" : state?.word) : app.estimate}</small></span><span className="r1-ca-action">{locked ? "Needs full access" : !enabled ? "Coming" : on ? "Manage" : "Set up"}</span></>;
+    // Full access is this connection's scope, not a missing call: the card stays greyed with its reason and names its calls.
+    if (locked) return <button key={app.id} type="button" className="r1-ca-card g-frost" aria-disabled="true" title={reason} data-need={needs.join(" ")}>{face}</button>;
+    // Every other card goes through <Coming> with the calls it makes (R1-10). web.login.* is never in the hello, so
+    // WhatsApp (your number) is checked by its channel being listed instead of against the method list.
+    const need = on ? ["channels.status"] : needs;
+    return <Coming key={app.id} engine={qr && !on ? null : engine} need={need} unwired={!enabled} reason={reason} where={app.name}>
+      <button type="button" className="r1-ca-card g-frost" aria-disabled={enabled ? "false" : undefined} onClick={() => { if (enabled) action?.(app); }}>{face}</button>
+    </Coming>;
+  };
+  const groupsOf = (apps: ChatApp[]) => [...GROUPS, ALSO].map(group => {
+    const items = apps.filter(a => a.group === group);
+    return items.length ? <section className="r1-ca-group" key={group}><h3 className="g-label">{group} <span>{items.length}</span></h3><div className="r1-ca-grid">{items.map(renderCard)}</div></section> : null;
+  });
+  // A search lists every match; otherwise the apps that work lead and the rest fold into one row.
+  const leading = q ? shown : shown.filter(working);
+  const later = q ? [] : shown.filter(app => !working(app));
+
   return <section className="r1-chatapps g-clear" aria-label="Chat apps">
     {live.error && <p role="alert"><span className="g-label">{live.error}</span> <button type="button" onClick={() => void live.reload()} data-need="channels.status">Try again</button></p>}
     <div className="r1-ca-surface g-clear"><section aria-labelledby="r1-ca-your"><h2 id="r1-ca-your" className="g-label">Your chat apps</h2>
@@ -66,29 +101,8 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
     </section>
     <section aria-labelledby="r1-ca-all"><h2 id="r1-ca-all" className="g-label">Every chat app</h2>
       <label className="r1-ca-search g-frost"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search chat apps" placeholder="Search all 74 chat apps" value={query} onChange={e => setQuery(e.target.value)} data-local="search" /></label>
-      {[...GROUPS, ALSO].map(group => {
-        const apps = shown.filter(a => a.group === group);
-        return apps.length ? <section className="r1-ca-group" key={group}><h3 className="g-label">{group} <span>{apps.length}</span></h3><div className="r1-ca-grid">{apps.map(app => {
-          const state = app.channel ? appOf(live.status, { id: app.channel, name: app.name, detail: "" }) : undefined;
-          const on = state?.on === true;
-          const action = on ? onManage : onSetup;
-          const qr = app.id === "whatsappweb";
-          const needs = qr ? ["web.login.start", "web.login.wait"] : ["wizard.start", "wizard.next", "wizard.cancel"];
-          const offered = on ? canAll(engine, ["channels.status"]) : qr ? listed.has("whatsapp") : canAll(engine, needs);
-          const locked = !on && offered && !admin;
-          const enabled = Boolean(app.channel && action && offered && !locked);
-          const reason = locked ? "Setting up " + app.name + " needs full access on this connection." : "Setting up " + app.name + " comes in a later update.";
-          const face = <><ChatLogo id={app.channel ?? app.id} name={app.name} size={32} /><span className="r1-ca-text"><b>{app.name}</b><small>{on ? state?.running ? "Connected" : state?.word : app.estimate ?? estimateOf(app.id)}</small></span><span className="r1-ca-action">{locked ? "Needs full access" : !enabled ? "Coming" : on ? "Manage" : "Set up"}</span></>;
-          // Full access is this connection's scope, not a missing call: the card stays greyed with its reason and names its calls.
-          if (locked) return <button key={app.id} type="button" className="r1-ca-card g-frost" aria-disabled="true" title={reason} data-need={needs.join(" ")}>{face}</button>;
-          // Every other card goes through <Coming> with the calls it makes (R1-10). web.login.* is never in the hello, so
-          // WhatsApp (your number) is checked by its channel being listed instead of against the method list.
-          const need = on ? ["channels.status"] : needs;
-          return <Coming key={app.id} engine={qr && !on ? null : engine} need={need} unwired={!enabled} reason={reason} where={app.name}>
-            <button type="button" className="r1-ca-card g-frost" aria-disabled={enabled ? "false" : undefined} onClick={() => { if (enabled) action?.(app); }}>{face}</button>
-          </Coming>;
-        })}</div></section> : null;
-      })}
+      {groupsOf(leading)}
+      {later.length ? <LaterRows count={later.length} label={`More chat apps (${later.length})`}>{groupsOf(later)}</LaterRows> : null}
       {!shown.length && <p className="g-label" data-lines>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}
     </section>
     </div>{renderAccess && <section aria-label="Who answers and who may message"><h2 className="g-label">Who answers</h2>{connected.length ? connected.map(c => <div key={c.state.id}>{renderAccess(c.app)}</div>) : <p className="r1-ca-hint g-label" data-lines>{live.loading ? "Checking…" : "No chat app is connected yet."}</p>}</section>}<ChatAppSettings engine={engine} level={level} />

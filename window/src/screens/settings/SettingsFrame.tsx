@@ -11,7 +11,8 @@ import { TrunkHost } from "../../places-nav/TrunkHost";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { pinsOf } from "../../places/settings/pins";
 import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
-import { COMING_FROM, ROWS, cardRows, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
+import { COMING_FROM, ROWS, cardRows, comingRow, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
+import { LaterRows } from "./LaterRows";
 import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots, type SlotControl } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
@@ -292,12 +293,17 @@ export function SettingsFrame(props: SettingsFrameProps) {
               {invalid.length ? <ul>{invalid.map((line, i) => <li key={i}>{line}</li>)}</ul> : null}
             </div>
           ) : null}
-          {sections.length ? sections.map(({ card, visible }) => (
+          {sections.length ? sections.map(({ card, visible }) => {
+            // The section's later-update rows fold into one line; its live rows draw as they always did.
+            const later = visible.filter((row) => comingRow(row, controls));
+            const live = visible.filter((row) => !comingRow(row, controls));
+            return (
             // A section with no rows yet collapses to one quiet line, not an empty card: nothing hollow to look at.
             visible.length ? (
             <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title}>
               {card ? <h2 className="g-label">{card}</h2> : null}
-              <CardRows engine={engine} rows={visible} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} />
+              {live.length ? <CardRows engine={engine} rows={live} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} /> : null}
+              {later.length ? <LaterRows count={later.length}><CardRows engine={engine} rows={later} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} /></LaterRows> : null}
             </section>
             ) : (
               // Nothing to show yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
@@ -305,7 +311,8 @@ export function SettingsFrame(props: SettingsFrameProps) {
                 <p id={`sec-${shownPage}-${card}`} className="r1s-quiet g-label" aria-label={card || spec.title} data-lines><b>{card || spec.title}</b> · Coming. {SECTION_COMING(card || spec.title)}</p>
               </Coming>
             )
-          )) : (
+            );
+          }) : (
             <div className="r1s-empty g-clear">
               <p className="g-label">These settings show at {first !== null && first > level ? LEVELS[first].label : "Advanced"}.</p>
               <button type="button" className="r1s-btn" data-local="" onClick={() => setLevel(first !== null && first > level ? first : 1)}>Show {first !== null && first > level ? LEVELS[first].label : "Advanced"}</button>

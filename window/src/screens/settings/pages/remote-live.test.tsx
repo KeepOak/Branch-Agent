@@ -97,7 +97,8 @@ describe("R1 Settings › Remote access is a native R1 page with the preview's c
     await setLevel("Technical");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
     for (const [title, rows] of Object.entries(PREVIEW)) {
-      expect(labels(card(title)).filter((l) => !(EXTRA[title] ?? []).includes(l)), title).toEqual(rows);
+      // Later-update rows fold under their own line at the end of the card, so the check is on the rows, not their order.
+      expect(labels(card(title)).filter((l) => !(EXTRA[title] ?? []).includes(l)).sort(), title).toEqual([...rows].sort());
       expect(labels(card(title)).filter((l) => (EXTRA[title] ?? []).includes(l)), title).toEqual(EXTRA[title] ?? []);
     }
     expect(host.textContent).not.toMatch(/Chat apps, (more|even more|in depth)/);
