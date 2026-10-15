@@ -5,20 +5,9 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import {
-  SIGNING_SECRET_NAMES,
-  apkFileName,
-  applyAppJsonReleaseMeta,
-  gradleAssembleArgs,
-  missingSigningSecrets,
-  releasePlan,
-  releaseVersion,
-  shouldAttachToRelease,
-  unsignedWarning,
-  versionCode,
-} from '../../scripts/android-release.mjs';
 
 const mobileRoot = path.join(__dirname, '../..');
+const helper = path.join(mobileRoot, 'scripts/android-release.mjs');
 const workflow = readFileSync(path.join(mobileRoot, '../.github/workflows/mobile-android-release.yml'), 'utf8');
 const secrets = {
   ANDROID_KEYSTORE_B64: 'cGti',
@@ -27,8 +16,15 @@ const secrets = {
   ANDROID_KEY_ALIAS: 'branch',
 };
 
+function call(name: string, ...args: unknown[]) {
+  const source = args.length === 0
+    ? `import * as m from ${JSON.stringify(helper)}; console.log(JSON.stringify(m[${JSON.stringify(name)}]));`
+    : `import * as m from ${JSON.stringify(helper)}; console.log(JSON.stringify(m[${JSON.stringify(name)}](...${JSON.stringify(args)})));`;
+  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', source], { encoding: 'utf8' }));
+}
+
 function planFromCli(env: NodeJS.Dict<string>) {
-  return JSON.parse(execFileSync(process.execPath, ['scripts/android-release.mjs', '--json'], {
+  return JSON.parse(execFileSync(process.execPath, [helper, '--json'], {
     cwd: mobileRoot,
     encoding: 'utf8',
     env: { ...process.env, ...env },
@@ -37,39 +33,40 @@ function planFromCli(env: NodeJS.Dict<string>) {
 
 describe('Android release version and signing plan', () => {
   it('takes versionCode from a numeric or exact semver tag, otherwise the run number', () => {
-    expect(versionCode({ tag: 'v12', runNumber: 3 })).toBe(12);
-    expect(versionCode({ tag: 'v0.4.4', runNumber: 99 })).toBe(404);
-    expect(versionCode({ tag: 'v0.4.4-build-d0c144af53a8', runNumber: 77 })).toBe(77);
-    expect(releaseVersion({ tag: 'v0.4.4-build-d0c144af53a8', runNumber: 77 })).toBe('0.4.4-build-d0c144af53a8');
-    expect(releaseVersion({ runNumber: 8, fallbackVersion: '0.1.0' })).toBe('0.1.0');
+    expect(call('versionCode', { tag: 'v12', runNumber: 3 })).toBe(12);
+    expect(call('versionCode', { tag: 'v0.4.4', runNumber: 99 })).toBe(404);
+    expect(call('versionCode', { tag: 'v0.4.4-build-d0c144af53a8', runNumber: 77 })).toBe(77);
+    expect(call('releaseVersion', { tag: 'v0.4.4-build-d0c144af53a8', runNumber: 77 })).toBe('0.4.4-build-d0c144af53a8');
+    expect(call('releaseVersion', { runNumber: 8, fallbackVersion: '0.1.0' })).toBe('0.1.0');
   });
 
   it('names the APK branch-android-<version>.apk and labels an unsigned build', () => {
-    expect(apkFileName('0.4.4-build-abc', { signed: true })).toBe('branch-android-0.4.4-build-abc.apk');
-    expect(apkFileName('0.4.4', { signed: false })).toBe('branch-android-0.4.4-unsigned.apk');
+    expect(call('apkFileName', '0.4.4-build-abc', { signed: true })).toBe('branch-android-0.4.4-build-abc.apk');
+    expect(call('apkFileName', '0.4.4', { signed: false })).toBe('branch-android-0.4.4-unsigned.apk');
   });
 
   it('attaches to a GitHub release only when every signing secret is present and a tag exists', () => {
-    expect(missingSigningSecrets({ ANDROID_KEYSTORE_B64: 'x' })).toEqual(
-      SIGNING_SECRET_NAMES.filter((name) => name !== 'ANDROID_KEYSTORE_B64'),
+    const names: string[] = call('SIGNING_SECRET_NAMES');
+    expect(call('missingSigningSecrets', { ANDROID_KEYSTORE_B64: 'x' })).toEqual(
+      names.filter((name) => name !== 'ANDROID_KEYSTORE_B64'),
     );
-    expect(shouldAttachToRelease({ signed: true, releaseTag: 'v0.4.4-build-abc' })).toBe(true);
-    expect(shouldAttachToRelease({ signed: false, releaseTag: 'v0.4.4-build-abc' })).toBe(false);
-    expect(shouldAttachToRelease({ signed: true, releaseTag: '' })).toBe(false);
-    const unsigned = releasePlan({ tag: 'v0.4.4-build-abc', runNumber: 4, env: {} });
+    expect(call('shouldAttachToRelease', { signed: true, releaseTag: 'v0.4.4-build-abc' })).toBe(true);
+    expect(call('shouldAttachToRelease', { signed: false, releaseTag: 'v0.4.4-build-abc' })).toBe(false);
+    expect(call('shouldAttachToRelease', { signed: true, releaseTag: '' })).toBe(false);
+    const unsigned = call('releasePlan', { tag: 'v0.4.4-build-abc', runNumber: 4, env: {} });
     expect(unsigned.attachRelease).toBe(false);
     expect(unsigned.signed).toBe(false);
     expect(unsigned.apkName).toBe('branch-android-0.4.4-build-abc-unsigned.apk');
-    expect(unsignedWarning(unsigned.missing)).toMatch(/will not be attached to the GitHub release/);
-    const signed = releasePlan({ tag: 'v0.4.4-build-abc', runNumber: 4, env: secrets });
+    expect(call('unsignedWarning', unsigned.missing)).toMatch(/will not be attached to the GitHub release/);
+    const signed = call('releasePlan', { tag: 'v0.4.4-build-abc', runNumber: 4, env: secrets });
     expect(signed.attachRelease).toBe(true);
     expect(signed.apkName).toBe('branch-android-0.4.4-build-abc.apk');
     expect(signed.versionCode).toBe(4);
   });
 
   it('passes PKCS12 signing to gradle only when the keystore path and secrets are set', () => {
-    expect(gradleAssembleArgs({})).toEqual(['assembleRelease']);
-    const args = gradleAssembleArgs({
+    expect(call('gradleAssembleArgs', {})).toEqual(['assembleRelease']);
+    const args: string[] = call('gradleAssembleArgs', {
       ...secrets,
       ANDROID_KEYSTORE_PATH: '/tmp/android-release.p12',
       ANDROID_VERSION_CODE: '4',
@@ -83,12 +80,11 @@ describe('Android release version and signing plan', () => {
   });
 
   it('writes versionCode onto a copy of app.json and leaves the original shape intact', () => {
-    const next = applyAppJsonReleaseMeta({ expo: { version: '0.1.0', android: { package: 'com.keepoak.branch' } } }, {
-      versionName: '0.4.4-build-abc',
-      versionCode: 12,
-    });
-    expect(next.expo.version).toBe('0.4.4-build-abc');
-    expect(next.expo.android).toEqual({ package: 'com.keepoak.branch', versionCode: 12 });
+    const stamped = call('applyAppJsonReleaseMeta', {
+      expo: { version: '0.1.0', android: { package: 'com.keepoak.branch' } },
+    }, { versionName: '0.4.4-build-abc', versionCode: 12 });
+    expect(stamped.expo.version).toBe('0.4.4-build-abc');
+    expect(stamped.expo.android).toEqual({ package: 'com.keepoak.branch', versionCode: 12 });
   });
 
   it('prints the same plan from the CLI that the workflow writes to GITHUB_OUTPUT', () => {
@@ -100,7 +96,14 @@ describe('Android release version and signing plan', () => {
       versionCode: 9,
       apkName: 'branch-android-0.4.4-build-abc.apk',
     });
-    const unsigned = planFromCli({ RELEASE_TAG: 'v0.4.4-build-abc', GITHUB_RUN_NUMBER: '9', ANDROID_KEYSTORE_B64: '' });
+    const unsigned = planFromCli({
+      RELEASE_TAG: 'v0.4.4-build-abc',
+      GITHUB_RUN_NUMBER: '9',
+      ANDROID_KEYSTORE_B64: '',
+      ANDROID_KEYSTORE_PASSWORD: '',
+      ANDROID_KEY_PASSWORD: '',
+      ANDROID_KEY_ALIAS: '',
+    });
     expect(unsigned.attachRelease).toBe(false);
     expect(unsigned.apkName).toContain('-unsigned.apk');
   });
@@ -119,7 +122,7 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('secrets.ANDROID_KEYSTORE_PASSWORD');
     expect(workflow).toContain('secrets.ANDROID_KEY_PASSWORD');
     expect(workflow).toContain('secrets.ANDROID_KEY_ALIAS');
-    expect(workflow).toContain('runner.temp');
+    expect(workflow).toContain('RUNNER_TEMP');
     expect(workflow).toContain('base64 -d');
     expect(workflow).toMatch(/if: steps\.plan\.outputs\.signed == 'true'/);
     expect(workflow).not.toMatch(/ANDROID_KEYSTORE_PASSWORD: ['"][^$'"]+/);
@@ -127,7 +130,8 @@ describe('the mobile Android release workflow', () => {
 
   it('uploads every APK as an artifact, and attaches only a signed APK to the GitHub release', () => {
     expect(workflow).toMatch(/actions\/upload-artifact@[0-9a-f]{40}/);
-    expect(workflow).toContain('branch-android-');
+    expect(workflow).toContain('scripts/android-release.mjs');
+    expect(workflow).toContain('apk_name');
     expect(workflow).toMatch(/if: steps\.plan\.outputs\.attach_release == 'true'/);
     expect(workflow).toMatch(/attach_release == 'true'[\s\S]*gh release upload/);
     expect(workflow).not.toMatch(/gh release upload[\s\S]*attach_release == 'false'/);
@@ -142,7 +146,11 @@ describe('app.json restore stays local', () => {
     try {
       const file = path.join(dir, 'app.json');
       writeFileSync(file, `${JSON.stringify({ expo: { version: '0.1.0', android: { package: 'com.keepoak.branch' } } }, null, 2)}\n`);
-      const stamped = applyAppJsonReleaseMeta(JSON.parse(readFileSync(file, 'utf8')), { versionName: '1.2.3', versionCode: 10203 });
+      const stamped = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e',
+        `import { applyAppJsonReleaseMeta } from ${JSON.stringify(helper)};
+         import { readFileSync } from 'node:fs';
+         console.log(JSON.stringify(applyAppJsonReleaseMeta(JSON.parse(readFileSync(${JSON.stringify(file)}, 'utf8')), { versionName: '1.2.3', versionCode: 10203 })));`,
+      ], { encoding: 'utf8' }));
       expect(JSON.stringify(stamped)).not.toMatch(/keystore|password|\.p12|\.jks/i);
     } finally {
       rmSync(dir, { recursive: true, force: true });

@@ -44,7 +44,8 @@ describe('the installable Android build', () => {
     expect(src).toContain("from './android-release.mjs'");
     expect(src).toContain('gradleAssembleArgs()');
     expect(src).toContain('writeAppJsonReleaseMeta');
-    expect(src).toContain('signing.(store|key).password=');
+    expect(src).toContain('printableArgs');
+    expect(src).toContain('=***');
     expect(src).not.toMatch(/ANDROID_KEYSTORE_PASSWORD|ANDROID_KEY_PASSWORD/);
   });
 });
