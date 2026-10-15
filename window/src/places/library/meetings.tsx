@@ -9,7 +9,7 @@ import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { num, optStr, rec, recs, str, strs, useOperation, useResource, trunkName, type Trunk } from "./data";
 import { EmptyIcon, LibIcon, plural, Row } from "./parts";
 
-export type Meeting = {
+type Meeting = {
   selector: string; title?: string; providerId: string; providerName?: string; source?: { accountId?: string };
   startedAt: string; active: boolean; utteranceCount: number; overview?: string; agentId: string | null; lastUtteranceAt: string | null;
 };
@@ -20,7 +20,7 @@ type Filters = { providerId: string; accountId: string; agentId: string; from: s
 const NO_FILTERS: Filters = { providerId: "", accountId: "", agentId: "", from: "", to: "" };
 
 /** A transcript summary row read defensively; rows without a selector are left out. */
-export function meetingOf(r: Record<string, unknown>): Meeting {
+function meetingOf(r: Record<string, unknown>): Meeting {
   return { selector: r.selector as string, title: optStr(r.title), providerId: str(r.providerId), providerName: optStr(r.providerName), source: { accountId: optStr(rec(r.source).accountId) },
     startedAt: str(r.startedAt), active: r.active === true, utteranceCount: num(r.utteranceCount) ?? 0, overview: optStr(r.overview), agentId: optStr(r.agentId) ?? null, lastUtteranceAt: optStr(r.lastUtteranceAt) ?? null };
 }

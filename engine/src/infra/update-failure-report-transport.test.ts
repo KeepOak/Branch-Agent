@@ -14,7 +14,7 @@ import {
 import { prepareUpdateFailureReport, submitUpdateFailureReport } from "./update-failure-report.js";
 
 const tempDirs = useStateDatabaseTempDirs();
-const issueUrl = "https://github.com/openclaw/openclaw/issues/123";
+const issueUrl = "https://github.com/KeepOak/Branch-Agent/issues/123";
 const authSuccess: Awaited<ReturnType<RunGithubCli>> = {
   started: true,
   status: 0,
@@ -401,7 +401,10 @@ describe("update report shared transport boundary", () => {
     expect(result).not.toHaveProperty("fallbackUrl");
     expect(fixture.receipt()).toMatchObject({ status: "pending" });
     expect(fixture.runGh).toHaveBeenCalledTimes(2);
-    expect((await fs.stat(result.savedReportPath)).mode & 0o777).toBe(0o600);
+    // Windows has no POSIX permission bits; it reports 0o666 for any writable file.
+    if (process.platform !== "win32") {
+      expect((await fs.stat(result.savedReportPath)).mode & 0o777).toBe(0o600);
+    }
   });
 
   it("lets a successor CAS independently while an expired owner is still authenticating", async () => {

@@ -30,7 +30,7 @@ afterEach(async () => {
 const needs = (): Needs => ({
   approvals: [], proposals: [], pairing: [], ownerSet: false, devices: [], nodes: [], questions: [], mentions: [],
   failed: [], expired: [], channels: [], sessions: [], authByAgent: {},
-  agents: { defaultId: "main", mainKey: "home", list: [{ id: "main", name: "Rowan", mode: "" }] },
+  agents: { defaultId: "main", mainKey: "home", list: [{ id: "main", name: "Rowan", mode: "", paused: false }] },
   errors: [],
 });
 

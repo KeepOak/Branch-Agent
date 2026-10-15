@@ -2,11 +2,11 @@
 // preview, a card first opens what it shows (the side panel, a Settings page, a place and its tab) and, at phone width,
 // slides the list in for the list's own parts. A card whose part isn't on screen shows centred without a spotlight, so
 // the count stays the same (owner Q93). Toasts and banners are held while it runs and show when it ends (rule 2). No
-// mascot on the card (rule 5).
+// mascot on the card (rule 5). R1 re-hosts it with its own cards and clear glass (screens/onboarding/R1Tour.tsx).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "./walkthrough.css";
 
-type Card = { title: string; text: string; target: string | null; prep?: () => void; side?: boolean };
+export type Card = { title: string; text: string; target: string | null; prep?: () => void; side?: boolean };
 
 /** Shows the side panel (or hides it) through its top-bar button. */
 function sidePanel(open: boolean) {
@@ -89,8 +89,18 @@ function slideList(open: boolean): boolean {
   return true;
 }
 
-export function Walkthrough({ defaultName, onClose }: { defaultName: string; onClose: () => void }) {
-  const cards = useMemo(() => tourCards(defaultName), [defaultName]);
+type WalkthroughProps = {
+  defaultName: string;
+  onClose: () => void;
+  /** Another card set (R1: the 3-card walkthrough, or the tour's cards that can show there); the tour's own by default. */
+  cards?: Card[];
+  /** README item 48: a clear card whose words sit on frosted pills. */
+  clear?: boolean;
+};
+
+export function Walkthrough({ defaultName, onClose, cards: given, clear }: WalkthroughProps) {
+  const cards = useMemo(() => given ?? tourCards(defaultName), [given, defaultName]);
+  const pill = (base?: string) => (clear ? [base, "g-label"].filter(Boolean).join(" ") : base);
   const [i, setI] = useState(0);
   const [box, setBox] = useState<Box>(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -145,12 +155,12 @@ export function Walkthrough({ defaultName, onClose }: { defaultName: string; onC
       }}
     >
       <div className={box ? "tour-spot" : "tour-spot none"} style={box ?? undefined} />
-      <div ref={card} className="tour-card" role="dialog" aria-live="polite" aria-label="Walkthrough" style={pos}>
-        <span className="n">
+      <div ref={card} className={clear ? "tour-card g-clear" : "tour-card"} role="dialog" aria-live="polite" aria-label="Walkthrough" style={pos}>
+        <span className={pill("n")}>
           {i + 1} of {cards.length}
         </span>
-        <b>{cards[i].title}</b>
-        <p>{cards[i].text}</p>
+        <b className={pill()}>{cards[i].title}</b>
+        <p className={pill()} data-lines={clear ? "" : undefined}>{cards[i].text}</p>
         <div className="tour-dots" aria-hidden="true">
           {cards.map((c, j) => (
             <i key={c.title} className={j === i ? "on" : ""} />

@@ -12,6 +12,7 @@ import type { InlineModelEntry } from "./embedded-agent-runner/model.inline-prov
 import type { AgentHarnessPluginSelection } from "./harness/runtime-plugin-load-plan.js";
 import type { ModelCatalogEntry, ModelCatalogSnapshot } from "./model-catalog.types.js";
 import type { PublishedModelCatalogOwnerCandidate } from "./prepared-model-catalog.types.js";
+import type { PreparedModelRuntimeAdmissionBudget } from "./prepared-model-runtime-admission-budget.js";
 import type { AuthStorage, AuthStorageData } from "./sessions/auth-storage.js";
 import type { ModelRegistry } from "./sessions/model-registry.js";
 
@@ -74,6 +75,8 @@ export type PreparedModelRuntimePluginGeneration = Readonly<{
 
 export type PreparedModelRuntimeSnapshot = Omit<PublishedModelCatalogOwnerCandidate, "authStore"> &
   Readonly<{
+    /** Opaque publication identity retained by every run-time projection and lease. */
+    snapshotId: string;
     inheritedAuthDir?: string;
     /** Run-prepared repository root; null means discovery completed without a match. */
     repoRoot?: string | null;
@@ -160,6 +163,8 @@ export type PreparedModelRuntimeLease = Readonly<{
 }>;
 
 export type PreparedModelRuntimeLeaseOptions = {
+  /** Shared with the Gateway's reply-dispatch wait and every successor re-admission. */
+  admissionBudget?: PreparedModelRuntimeAdmissionBudget;
   retainIdleRunOwner?: boolean;
   catalogMode?: PreparedModelRuntimeCatalogMode;
   pluginGeneration?: PreparedModelRuntimePluginGeneration;
@@ -192,6 +197,12 @@ export type PreparedModelRuntimeRefreshOptions = {
   isPublicationCurrent?: () => boolean;
   /** Lifecycle callers may join a newer refresh after their own publication is superseded. */
   joinSupersedingPublication?: boolean;
+  /**
+   * Called when this refresh ends without publishing because a newer refresh, a reload, or the
+   * caller superseded it, whether it resolves quietly or rejects with that supersession. Once it is
+   * superseded, a rejection for any other reason also calls it before the error is rethrown.
+   */
+  onPublicationSkipped?: () => void;
   /** Restricts replacement to configured owners whose normalized agent id is present. */
   agentIds?: ReadonlySet<string>;
 };

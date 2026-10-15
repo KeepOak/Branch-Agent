@@ -1,6 +1,5 @@
 /**
- * Calendar reachability adapted from OpenHands/OpenHands
- * a8c05584ec6bb063a0857460b9cbff48e136919f, src/utils/automation-schedule.ts.
+ * Calendar reachability check.
  * Croner owns Branch grammar, optional seconds are first, and a restricted
  * weekday preserves the scheduler's day-of-month/day-of-week OR semantics.
  */
