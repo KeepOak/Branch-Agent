@@ -217,7 +217,7 @@ describe("update report live authority boundary", () => {
         commitIssueCreate?.();
         return {
           status: "created",
-          url: "https://github.com/openclaw/openclaw/issues/999999",
+          url: "https://github.com/KeepOak/Branch-Agent/issues/999999",
         };
       },
     );
@@ -251,7 +251,7 @@ describe("update report live authority boundary", () => {
         ok: true,
         payload: {
           status: "created",
-          url: "https://github.com/openclaw/openclaw/issues/999999",
+          url: "https://github.com/KeepOak/Branch-Agent/issues/999999",
         },
       });
     },
@@ -302,7 +302,7 @@ describe("update report live authority boundary", () => {
           started: true,
           status: 0,
           stdout: Buffer.from(
-            "HTTP/2.0 201 Created\nhttps://github.com/openclaw/openclaw/issues/999999\n",
+            "HTTP/2.0 201 Created\nhttps://github.com/KeepOak/Branch-Agent/issues/999999\n",
           ),
         };
       });
@@ -354,7 +354,7 @@ describe("update report live authority boundary", () => {
             ok: true,
             payload: {
               status: "created",
-              url: "https://github.com/openclaw/openclaw/issues/999999",
+              url: "https://github.com/KeepOak/Branch-Agent/issues/999999",
             },
           });
           expect(harness.close).not.toHaveBeenCalled();
@@ -467,7 +467,9 @@ describe("update report live authority boundary", () => {
           throw new Error("Missing browser handoff");
         }
         const url = new URL(submitted.payload.fallbackUrl);
-        expect(url.origin + url.pathname).toBe("https://github.com/openclaw/openclaw/issues/new");
+        expect(url.origin + url.pathname).toBe(
+          "https://github.com/KeepOak/Branch-Agent/issues/new",
+        );
         expect(url.searchParams.get("body")).toBe(preview.body);
         expect(url.searchParams.get("title")).toBe(preview.title);
         await dispatchSubmit({
@@ -522,7 +524,7 @@ describe("update report live authority boundary", () => {
           issueCreateCalls += 1;
           return {
             status: "created",
-            url: "https://github.com/openclaw/openclaw/issues/999999",
+            url: "https://github.com/KeepOak/Branch-Agent/issues/999999",
           };
         },
       );

@@ -13,7 +13,7 @@ body,
 body {
   background: var(--bg);
   color: var(--ink);
-  font: 14px/1.5 var(--sans);
+  font: 14px/1.55 var(--sans);
   letter-spacing: -0.003em;
   -webkit-font-smoothing: antialiased;
 }

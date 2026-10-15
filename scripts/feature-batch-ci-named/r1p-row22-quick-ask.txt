@@ -1,0 +1,3 @@
+window:src/screens/quickask/QuickAskHost.test.tsx
+window:src/screens/sidebar/Sidebar.test.tsx
+window:src/screens/sidebar/wired.test.tsx

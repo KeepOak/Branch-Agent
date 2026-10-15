@@ -95,7 +95,12 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     ...(c.canDo ? [{ id: "a:cando", group: "Actions", label: "What Branch can do", hint: "", run: c.canDo }] : []),
     ...conversationCommands(c),
   ];
-  const conversations = c.conversations.map((r) => ({
+  const seen = new Set<string>();
+  const conversations = c.conversations.filter((r) => {
+    if (seen.has(r.key)) return false;
+    seen.add(r.key);
+    return true;
+  }).map((r) => ({
     id: `c:${r.key}`,
     group: "Conversations",
     label: r.isMain ? c.trunkName(r.agentId) : r.title || "New conversation",
@@ -103,6 +108,11 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     run: () => c.openConversation(r.key),
   }));
   const places = PLACES.map((p) => ({ id: `p:${p.id}`, group: "Places", label: p.name, hint: "Place", run: () => c.openPlace(p.id) }));
+  for (const tab of ["Skills", "Get capabilities"]) {
+    places.push({ id: `p:customize:${tab}`, group: "Places", label: tab, hint: "Customize · Tools", run: () => {
+      window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "customize", tab } }));
+    } });
+  }
   const settings = settingsGroups("technical").flatMap((g) =>
     g.pages.map((p) => ({ id: `s:${p.id}`, group: "Settings", label: p.name, hint: "Settings", keywords: SETTINGS_KEYWORDS[p.id], run: () => c.openSettings(p.id) })),
   );

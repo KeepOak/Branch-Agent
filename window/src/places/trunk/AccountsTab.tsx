@@ -8,12 +8,12 @@ import { entryOf, errorText, patchConfig, readConfig } from "./model";
 type AuthStatus = { providers?: unknown };
 
 /** Settings › Accounts, where model accounts are signed in. */
-export function openAccountsSettings(): void {
+function openAccountsSettings(): void {
   window.dispatchEvent(new CustomEvent("branch:navigate-settings", { detail: { page: "accounts" } }));
 }
 
 /** agents.entries.<id>.useOwnerAccounts (engine/src/config/zod-schema.agent-entry-base.ts): unset means on. */
-function OwnerAccountsSwitch({ engine, agentId, onChanged }: { engine: WindowEngine; agentId: string; onChanged: () => Promise<void> }) {
+function OwnerAccountsSwitch({ engine, agentId, onChanged }: { engine: WindowEngine; agentId: string; onChanged: () => Promise<unknown> }) {
   const config = useResource<unknown>(engine, "config.get", {});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();

@@ -12,13 +12,13 @@ import type { Character, PlacedFurniture, Seat } from '../office/types.js';
 import { TILE_SIZE } from '../office/types.js';
 
 /** Space between the bottom of the desk unit and the top of the plate. */
-export const NAME_PLATE_GAP_PX = 2;
+const NAME_PLATE_GAP_PX = 2;
 
 type Footprint = (type: string) => { w: number; h: number } | undefined;
 
 /** Bottom edge (world px) of the furniture in front of a seat: the tiles beside the chair
  *  and the row under it. Null when nothing stands there. */
-export function deskBottomY(seat: Seat, furniture: readonly PlacedFurniture[], footprint: Footprint): number | null {
+function deskBottomY(seat: Seat, furniture: readonly PlacedFurniture[], footprint: Footprint): number | null {
   const c0 = seat.seatCol - 1;
   const c1 = seat.seatCol + 1;
   const r0 = seat.seatRow;

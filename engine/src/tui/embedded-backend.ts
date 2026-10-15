@@ -211,7 +211,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
     setEmbeddedMode(true);
     void ensureContextWindowCacheLoaded();
     // Suppress console output from logError/logInfo that would pollute the TUI.
-    // File logger (getLogger()) still captures everything via logger.ts:35.
+    // File logger (getLogger) still captures everything via logger.ts:35.
     this.previousRuntimeLog = defaultRuntime.log;
     this.previousRuntimeError = defaultRuntime.error;
     defaultRuntime.log = silentRuntime.log;
@@ -1350,7 +1350,7 @@ export class EmbeddedTuiBackend implements TuiBackend {
           // The per-message timestamp prefix is applied at the single LLM
           // boundary (normalizeMessagesForLlmBoundary) from each message's own
           // timestamp, so the current turn and historical turns carry identical
-          // bytes on the wire. See: https://github.com/openclaw/openclaw/issues/3658
+ // bytes on the wire. See.
           message,
           sessionKey: canonicalKey,
           agentId,
