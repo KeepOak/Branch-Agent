@@ -42,9 +42,8 @@ it.each([null, "oak"])("pins mounted editor GitHub reads and sign-in to edited B
   const { engine, request } = fixture(); await mount(engine, scope);
   expect(request).toHaveBeenCalledWith("tools.github.status", { agentId: "birch", selectedScope: "agent" });
   expect(document.body.textContent).toContain("@birch-github");
-  expect(document.body.textContent).toContain("GitHub connection changes save immediately for Birch");
   expect(button("Save").disabled).toBe(true);
-  await click("Change account");
+  await click("Its own");
   expect(request).toHaveBeenCalledWith("tools.github.authorize.start", { agentId: "birch", scope: "agent" });
   expect(document.body.textContent).toContain(device.userCode);
   await click("Look");
@@ -56,7 +55,7 @@ it("inherits immediately for Birch without saving other editor drafts when cance
   const { engine, request } = fixture(); const closed = vi.fn(); await mount(engine, null, closed);
   await act(async () => (document.body.querySelector('[aria-label="Use the browser"]') as HTMLButtonElement).click());
   expect(button("Save").disabled).toBe(false);
-  await click("Use shared account");
+  await click("Same as Branch");
   expect(request).toHaveBeenCalledWith("tools.github.configure", { agentId: "birch", scope: "agent", mode: "inherit" });
   expect(document.body.textContent).toContain("@shared-github");
   await click("Cancel"); expect(closed).toHaveBeenCalledTimes(1);
@@ -66,17 +65,25 @@ it("inherits immediately for Birch without saving other editor drafts when cance
 it("saves ordinary editor changes against fresh revision after an immediate GitHub change", async () => {
   const { engine, request } = fixture(); await mount(engine);
   await act(async () => (document.body.querySelector('[aria-label="Use the browser"]') as HTMLButtonElement).click());
-  await click("Use shared account"); await click("Save");
+  await click("Same as Branch"); await click("Save");
   const patch = request.mock.calls.find(([method]) => method === "config.patch");
   expect(patch).toBeTruthy();
-  expect(patch).toEqual(["config.patch", { baseHash: "h2", raw: JSON.stringify({ agents: { entries: { birch: { tools: { deny: ["browser"] } } } } }) }]);
+  expect(patch).toEqual(["config.patch", { baseHash: "h2", raw: JSON.stringify({ agents: { entries: { birch: { toolsets: { browser: false } } } } }) }]);
 });
 
 it("keeps edited-Trunk identity visible but blocks all GitHub mutations for read-only operators", async () => {
   const { engine, request } = fixture(["operator.read"]); await mount(engine, "oak");
   expect(document.body.textContent).toContain("@birch-github");
-  expect(button("Change account").disabled).toBe(true); expect(button("Use shared account").disabled).toBe(true);
-  await click("Change account"); await click("Use shared account"); await click("Refresh");
+  expect(button("Its own").disabled).toBe(true); expect(button("Same as Branch").disabled).toBe(true);
+  await click("Its own"); await click("Same as Branch");
   expect(request.mock.calls.some(([method]) => method === "tools.github.configure" || method === "tools.github.authorize.start")).toBe(false);
-  expect(request.mock.calls.filter(([method]) => method === "tools.github.status")).toHaveLength(2);
+  expect(request.mock.calls.filter(([method]) => method === "tools.github.status")).toHaveLength(1);
+});
+
+it("greys This computer’s GitHub with its reason, since no call pins one Trunk to it", async () => {
+  const { engine, request } = fixture(); await mount(engine);
+  expect(button("This computer’s GitHub").disabled).toBe(true);
+  expect(document.body.textContent).toContain("This computer’s GitHub comes in a later update.");
+  await click("This computer’s GitHub");
+  expect(request.mock.calls.some(([method]) => method === "tools.github.configure")).toBe(false);
 });

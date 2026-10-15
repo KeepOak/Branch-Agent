@@ -33,6 +33,7 @@ import {
   runGhWithRetry,
   shouldSkipEditedRerun,
   withIncludeFlag,
+  TRANSIENT_RETRY_LIMIT,
   withRateLimitRetry,
 } from './merge-gate-rate-limit.mjs';
 
@@ -491,8 +492,39 @@ test('withRateLimitRetry retries rate limits and throws other HTTP errors', () =
   assert.deepEqual(sleeps, [12]);
 
   assert.throws(() => withRateLimitRetry(() => {
-    throw new Error('HTTP 500 Internal Server Error');
-  }, { sleep: () => {}, now: () => 0, startedAt: 0 }), /HTTP 500/);
+    throw new Error('gh: Not Found (HTTP 404)');
+  }, { sleep: () => {}, now: () => 0, startedAt: 0 }), /HTTP 404/);
+});
+
+test('withRateLimitRetry retries transient 5xx and network errors with a logged HTTP status', () => {
+  const sleeps = [];
+  const logs = [];
+  let calls = 0;
+  const value = withRateLimitRetry(() => {
+    calls += 1;
+    if (calls <= 2) throw new Error('gh: Something went wrong (HTTP 502)');
+    return 'ok';
+  }, {
+    sleep: (seconds) => sleeps.push(seconds),
+    log: (line) => logs.push(line),
+    now: () => 0,
+    startedAt: 0,
+    budgetSeconds: 600,
+    random: () => 1,
+  });
+  assert.equal(value, 'ok');
+  assert.equal(calls, 3);
+  assert.equal(sleeps.length, 2);
+  assert.match(logs[0], /HTTP 502 \(transient\); retrying in \d+s \(1\/5\)/);
+});
+
+test('withRateLimitRetry gives up on transient errors after the retry limit', () => {
+  let calls = 0;
+  assert.throws(() => withRateLimitRetry(() => {
+    calls += 1;
+    throw new Error('read ECONNRESET');
+  }, { sleep: () => {}, now: () => 0, startedAt: 0, budgetSeconds: 600 }), /ECONNRESET/);
+  assert.equal(calls, TRANSIENT_RETRY_LIMIT + 1);
 });
 
 test('pollOrdinaryGate retries a rate limit without consuming a poll slot', () => {
@@ -608,7 +640,7 @@ test('ordinary merge-gate workflow runs the rate-limit waiter from a checkout', 
   assert.match(yaml, /MERGE_GATE_ACTION:/);
   assert.match(yaml, /node --test scripts\/merge-gate-trusted\.test\.mjs/);
   assert.match(yaml, /node --test scripts\/merge-gate-rate-limit\.test\.mjs scripts\/check-gate-files-fresh\.test\.mjs/);
-  assert.match(yaml, /seq 1 64/);
+  assert.match(yaml, /seq 1 1\)/);
   assert.match(yaml, /per_page=100&page=\$page/);
   assert.match(yaml, /node scripts\/merge-gate-rate-limit\.mjs gh --/);
   assert.doesNotMatch(yaml, /sleep 10/);

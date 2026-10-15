@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +8,7 @@ import { KitProvider, type SaveReport } from "../kit";
 import { AppearancePage, APPEARANCE_ROWS } from "./appearance";
 import { BUILTIN, contrast, fromPalette, SLATE, toPalette } from "./appearance-look";
 import { LEGACY_THEMES } from "./appearance-legacy";
-import { forgetLookStore, lookStore } from "./appearance-store";
+import { applyLook, forgetLookStore, lookStore } from "./appearance-store";
 import { readThemeCode, themeCode } from "./appearance-themes";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -26,7 +27,7 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; });
 
-function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; current?: string; conflicts?: number; themes?: typeof THEMES; themesResponse?: Promise<unknown> } = {}) {
+function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; current?: string; conflicts?: number; themes?: typeof THEMES; themesResponse?: Promise<unknown>; importError?: Error } = {}) {
   const prefs: Record<string, unknown> = { ...opts.prefs };
   let conflicts = opts.conflicts ?? 0;
   const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
@@ -35,6 +36,7 @@ function engineOf(opts: { profile?: boolean; prefs?: Record<string, unknown>; cu
     if (method === "themes.list") return opts.themesResponse ?? { current: { id: opts.current ?? "grove", mode: "system", scope: "profile", overrides: {} }, theme: THEMES[0], themes: opts.themes ?? THEMES };
     if (method === "agents.list") return { defaultId: "main", agents: [{ id: "main", name: "Birch" }] };
     if (method === "config.get") return { hash: "h1", valid: true, config: {} };
+    if (method === "themes.import" && opts.importError) throw opts.importError;
     if (method === "models.list") return { models: [] };
     return { status: "ok" };
   });
@@ -51,6 +53,64 @@ const sw = (label: string) => host.querySelector<HTMLInputElement>(`input[aria-l
 const rows = () => [...host.querySelectorAll(".ctl > b")].map((b) => b.textContent);
 
 describe("Settings › Appearance", () => {
+  it("follows system transparency until a saved choice overrides it", () => {
+    const saved = { look: {}, device: {}, prefs: {}, palette: null };
+    applyLook(saved);
+    expect(document.documentElement.dataset.transparency).toBeUndefined();
+    applyLook({ ...saved, look: { reduceTransparency: true } });
+    expect(document.documentElement.dataset.transparency).toBe("reduce");
+    applyLook({ ...saved, look: { reduceTransparency: false } });
+    expect(document.documentElement.dataset.transparency).toBe("full");
+  });
+  it("saves Reduce transparency through the profile and restores glass when switched off", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    expect(sw("Reduce transparency").closest(".ctl")?.querySelector("small")?.textContent).toBe("Swaps the glass for solid tinted surfaces. Easier to read, and lighter on older computers.");
+    await act(async () => sw("Reduce transparency").click());
+    expect(request).toHaveBeenCalledWith("users.prefs.set", { entries: { "ui.window.look": { reduceTransparency: true } }, expectedEntries: { "ui.window.look": null } });
+    expect(document.documentElement.dataset.transparency).toBe("reduce");
+    await act(async () => sw("Reduce transparency").click());
+    expect(document.documentElement.dataset.transparency).toBe("full");
+  });
+  it.each([1, 2] as const)("NA-02 omits unavailable character and pet controls from level %i and search", async (level) => {
+    const { engine } = engineOf();
+    await render(engine, level);
+    const unavailable = [
+      "Faces show feelings", "Mouth follows the voice", "Eyes follow the pointer", "Bobs to music",
+      "Light from the screen", "Float it beside the chat", "Copy my moves from the camera",
+      "Leaves follow the pointer", "A creature that moves with real work", "Drive a VTube Studio avatar",
+      "Bring in a character", "Pose by hand", "Describe a pet", "How faces are drawn",
+    ];
+    for (const title of unavailable) {
+      expect(host.querySelector(`[data-row="${title}"]`), title).toBeNull();
+      expect(APPEARANCE_ROWS.some((row) => row.title === title), `${title} in search`).toBe(false);
+    }
+    expect(host.querySelector('[data-sec="Characters"] [disabled]')).toBeNull();
+    expect(host.querySelector('select[aria-label="Birch: look"]')).toBeNull();
+  });
+
+  it("NA-02 retains working character switches and persists each choice", async () => {
+    const { engine, prefs } = engineOf();
+    await render(engine, 1);
+    for (const [label, key] of [
+      ["Acts out what it is doing", "ch.act"], ["Moves while it speaks", "ch.move"],
+      ["Reacts when you touch it", "ch.touch"], ["Captions under it", "ch.cap"],
+    ]) {
+      expect(sw(label).disabled).toBe(false);
+      expect(sw(label).checked).toBe(true);
+      await act(async () => sw(label).click());
+      expect(prefs["ui.window.look"]).toMatchObject({ [key]: false });
+      expect(sw(label).checked).toBe(false);
+    }
+    await act(async () => root.unmount());
+    forgetLookStore();
+    root = createRoot(host);
+    await render(engine, 1);
+    for (const label of ["Acts out what it is doing", "Moves while it speaks", "Reacts when you touch it", "Captions under it"]) {
+      expect(sw(label).checked).toBe(false);
+    }
+  });
+
   it("keeps pet-sound rationale in help without hiding the row description", async () => {
     const { engine } = engineOf();
     await render(engine);
@@ -135,6 +195,41 @@ describe("Settings › Appearance", () => {
     expect(report.saved).toHaveBeenCalled();
   });
 
+  it("AP1 gives the accent description, swatches and save action separate full-width rows", async () => {
+    const style = document.head.appendChild(document.createElement("style"));
+    style.textContent = readFileSync("src/places/settings/kit.css", "utf8") + readFileSync("src/places/settings/set1/appearance.css", "utf8");
+    try {
+      host.className = "set-col";
+      await render(engineOf().engine);
+      const row = host.querySelector<HTMLElement>('[data-row="Accent colour"]')!;
+      const description = row.querySelector("small")!;
+      const controls = row.querySelector(".right")!;
+      const save = button("Save as a theme", row);
+      expect(description.contains(save)).toBe(false);
+      expect(getComputedStyle(row).gridTemplateColumns).toBe("minmax(0, 1fr)");
+      expect(getComputedStyle(row).rowGap).toBe("8px");
+      expect(getComputedStyle(description).gridRow).toBe("2");
+      expect(getComputedStyle(controls).gridRow).toBe("3");
+      expect(getComputedStyle(controls).gridColumn).toBe("1");
+      expect(getComputedStyle(save.parentElement!).gridRow).toBe("4");
+    } finally { style.remove(); }
+  });
+
+  it("AP1 saves the selected accent through Save as a theme", async () => {
+    const { engine, request } = engineOf();
+    await render(engine);
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Accent #E0A526"]')!.click());
+    await act(async () => button("Save as a theme").click());
+    await act(async () => button("Save theme", document).click());
+    expect(request).toHaveBeenCalledWith("themes.import", expect.objectContaining({
+      apply: true,
+      definition: expect.objectContaining({
+        light: expect.objectContaining({ accent: "#e0a526" }),
+        dark: expect.objectContaining({ accent: "#e0a526" }),
+      }),
+    }));
+  });
+
   it("an accent goes to the engine's own ui.accent and onto the window", async () => {
     const { engine, request } = engineOf();
     await render(engine);
@@ -182,6 +277,32 @@ describe("Settings › Appearance", () => {
     expect(BUILTIN.dracula.dark.bg).toBe("#282a36");
   });
 
+  it.each([false, true])("pastes a theme with a plain failure and retained code when refused (%s)", async (fail) => {
+    const detail = new Error("themes.import: INVALID_REQUEST /private/themes");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { engine, request } = engineOf({ ...(fail ? { importError: detail } : {}) });
+    try {
+      await render(engine);
+      await act(async () => button("Browse all 3 themes").click());
+      await act(async () => button("Paste a theme code", document).click());
+      const textarea = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Theme code"]')!;
+      const code = themeCode("Test theme", SLATE);
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, code);
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => button("Add theme", document).click());
+      expect(request).toHaveBeenCalledWith("themes.import", expect.objectContaining({ definition: expect.objectContaining({ name: "Test theme" }) }));
+      if (fail) {
+        expect(document.querySelector('[role="alert"]')?.textContent).toContain("Could not add the theme");
+        expect(document.body.textContent).not.toMatch(/themes.import|INVALID_REQUEST|private/);
+        expect(textarea.value).toBe(code);
+        expect(report.failed).toHaveBeenLastCalledWith("Could not save the theme change. Try again.");
+        expect(warn).toHaveBeenCalledWith(expect.any(String), detail);
+      } else expect(document.querySelector('textarea[aria-label="Theme code"]')).toBeNull();
+    } finally { warn.mockRestore(); }
+  });
+
   it("Make your own imports the colours as the person's theme", async () => {
     const { engine, request } = engineOf();
     await render(engine);
@@ -202,7 +323,7 @@ describe("Settings › Appearance", () => {
     await act(async () => root.unmount());
     root = createRoot(host);
     await render(engine, 2);
-    expect(rows()).toEqual(expect.arrayContaining(["Interface font", "How faces are drawn", "Window frame", "Headlines for working conversations"]));
+    expect(rows()).toEqual(expect.arrayContaining(["Interface font", "Acts out what it is doing", "Window frame", "Headlines for working conversations"]));
     expect(host.querySelector('[data-row="Window frame"]')?.getAttribute("aria-disabled")).toBe("true");
   });
 
@@ -235,11 +356,30 @@ describe("Settings › Appearance", () => {
     expect(b.onEvent).toHaveBeenCalledTimes(1);
   });
 
+  it("the character and the done cheer are off until turned on, and the cheer switch saves", async () => {
+    const { engine, prefs } = engineOf();
+    await render(engine);
+    expect(sw("Show the agent beside the conversation").checked).toBe(false);
+    expect(sw("Celebrate when a task finishes").checked).toBe(false);
+    await act(async () => sw("Celebrate when a task finishes").click());
+    expect(prefs["ui.window.look"]).toMatchObject({ cheer: true });
+  });
+
+  it("picking a pet turns it on, and None turns it off", async () => {
+    const { engine, prefs } = engineOf();
+    await render(engine);
+    const pet = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".pets12 .pet-c12")].find((b) => b.querySelector("b")?.textContent === name)!;
+    await act(async () => pet("Otter").click());
+    expect(prefs["ui.window.look"]).toMatchObject({ pet: "otter", roam: true });
+    await act(async () => pet("None").click());
+    expect(prefs["ui.window.look"]).not.toHaveProperty("pet");
+    expect(prefs["ui.window.look"]).not.toHaveProperty("roam");
+  });
+
   it("reads saved rows from the engine", async () => {
     const { engine } = engineOf({ prefs: { "ui.window.look": { "show.usage": false } } });
     await render(engine);
     expect(sw("The usage ring").checked).toBe(false);
-    expect(sw("The pet").checked).toBe(true);
   });
 
   it("theme codes and engine palettes keep every colour", () => {
