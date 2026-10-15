@@ -193,14 +193,6 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     expect(save().disabled).toBe(false);
   });
 
-  it("Who is connected now has no Refresh, because its list updates by itself", async () => {
-    const { engine } = engineWith(CONFIG);
-    await show(engine, "advanced");
-    const who = sec("Who is connected now");
-    expect(who).not.toBeNull();
-    expect(who!.querySelector('button[aria-label="Refresh"]')).toBeNull();
-  });
-
   it("saves Most spares at once with Save and adds an extra folder from its dialog", async () => {
     const { engine, request } = engineWith(CONFIG);
     await show(engine, "advanced");

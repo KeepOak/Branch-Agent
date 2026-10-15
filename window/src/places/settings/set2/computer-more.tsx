@@ -841,6 +841,7 @@ function Who({ c }: { c: Ctx }) {
   const pending = list(rec(devs.data).pending);
   return (
     <>
+      <Acts><button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => { void pres.reload(); void nodes.reload(); }}><Ico name="retry" s /></button></Acts>
       {pres.error ? <p className="hint s2-err" role="alert">{pres.error}</p> : null}
       {pres.data && !rows.length && !pending.length ? <Empty>Nothing is reporting in right now.</Empty> : null}
       <div className="rows">
