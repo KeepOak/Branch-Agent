@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { APPIMAGE_DESKTOP_ENTRY, APPIMAGE_TOOLS, appImageToolArgs, appImageToolEnv, assembleAppDir, dmgArgs, fetchPinned, innoCompiler, innoSetupScript,
-  installerName, main, numericVersion, parseArgs, WINDOWS_APP_ID } from "./release-installers.mjs";
+  installerName, main, numericVersion, parseArgs, WINDOWS_APP_ID, windowsInstallerFolderName, windowsLauncherScript } from "./release-installers.mjs";
 
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 
@@ -16,13 +16,20 @@ test("installer names carry the release version and target", () => {
 });
 
 test("the Windows installer is per-user and leaves nothing the desktop updater swaps behind", () => {
-  const script = innoSetupScript({ version: "0.4.4-build-56aed4e6d99d", source: "C:\\stage\\payload", out: "C:\\out" });
+  const version = "0.4.4-build-56aed4e6d99d";
+  const folder = windowsInstallerFolderName(version);
+  const script = innoSetupScript({ version, source: "C:\\stage\\payload", out: "C:\\out", folder });
   const lines = script.split("\r\n");
+  const exe = `{app}\\${folder}\\Branch Agent.exe`;
+  assert.equal(folder, "app-0.4.4-build-56aed4e6d99d");
   assert.ok(lines.includes(`AppId=${WINDOWS_APP_ID}`));
   assert.ok(lines.includes("PrivilegesRequired=lowest"), "no admin prompt");
+  assert.doesNotMatch(script, /requireAdministrator|PrivilegesRequired=admin|runas/i, "never needs a UAC prompt");
   assert.ok(lines.includes("MinVersion=10.0"), "Setup refuses Windows the bundled Electron can't run on");
-  assert.ok(lines.includes("DefaultDirName={localappdata}\\Programs\\Branch Agent"), "a folder the updater can rename");
-  assert.ok(lines.includes("UninstallFilesDir={localappdata}\\Programs\\Branch Agent Uninstall"), "the uninstaller survives a whole-app swap");
+  assert.ok(lines.includes("DefaultDirName={localappdata}\\Programs\\Branch Agent"), "a user-writable install root");
+  assert.ok(lines.includes("UninstallFilesDir={localappdata}\\Programs\\Branch Agent Uninstall"), "the uninstaller survives leftover folders");
+  assert.ok(script.includes(`Filename: "${exe}"`), "shortcuts point at the version folder");
+  assert.ok(lines.includes(`UninstallDisplayIcon=${exe}`));
   assert.ok(lines.includes('Type: filesandordirs; Name: "{app}"'));
   assert.ok(lines.includes('Type: filesandordirs; Name: "{app}.previous"'));
   assert.ok(lines.includes("AppVersion=0.4.4-build-56aed4e6d99d"));
@@ -30,6 +37,7 @@ test("the Windows installer is per-user and leaves nothing the desktop updater s
   assert.ok(lines.includes("OutputBaseFilename=Branch-Agent-Setup-0.4.4-build-56aed4e6d99d-win32-x64"));
   assert.ok(lines.some((line) => line.startsWith('Source: "C:\\stage\\payload\\*"')));
   assert.doesNotMatch(script, /SignTool|signtool/i, "nothing signs here");
+  assert.match(windowsLauncherScript(), /set \/p VER=<"%ROOT%current\.txt"/);
 });
 
 test("the macOS image wraps the signed app with an Applications link", () => {
