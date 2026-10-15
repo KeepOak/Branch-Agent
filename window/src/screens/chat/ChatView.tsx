@@ -62,6 +62,8 @@ export type ChatViewProps = {
   sessionKey?: string | null;
   /** The conversation couldn't be read (chat.history failed). */
   loadError?: string | null;
+  /** Its Trunk is still getting ready: the window's startup line says so above, so no "Opening…" line or start screen here. */
+  startupWaiting?: boolean;
   ended?: RunEnd | null;
   onAnswer: (id: string, decision: "allow-once" | "deny") => void;
   onReload?: () => void;
@@ -189,7 +191,7 @@ export function ChatView(props: ChatViewProps) {
 
   const historyReady = props.historyReady !== false;
   const waitingCount = (props.queued?.length ?? 0) + ownLine.length;
-  const empty = historyReady && !history.length && !pendingUser && !running && !waitingCount && !props.loadError;
+  const empty = historyReady && !history.length && !pendingUser && !running && !waitingCount && !props.loadError && !props.startupWaiting;
   // As in the Classic thread: with a room, exchanges between Trunks fold (rooms/fold.ts), here into one centred line.
   const inRoom = Boolean(props.room), ownAgentId = props.room?.ownAgentId;
   const entries = useMemo<RoomEntry[]>(() => (inRoom ? roomEntries(foldTalks(layout(history), ownAgentId)) : entriesOf(layout(history))), [history, inRoom, ownAgentId]);
@@ -224,7 +226,7 @@ export function ChatView(props: ChatViewProps) {
       {finding ? <FindBar key={finding.nonce} root={root} name={name} signature={signature} initialQuery={finding.query} onClose={() => setFinding(null)} /> : null}
       <div className="r1c-thread">
         {props.loadError ? <NoticeLine tone="bad" text="Couldn’t load this conversation" details={props.loadError} links={props.onReload ? [{ label: "Try again", onClick: props.onReload, need: "chat.history", reason: "This engine can’t read conversations." }] : []} testid="load-error" /> : null}
-        {empty ? <EmptyChat name={name} engine={engine} onStart={props.onStart} /> : !historyReady && !history.length && !props.loadError ? <NoticeLine text="Opening this conversation…" testid="opening" /> : null}
+        {empty ? <EmptyChat name={name} engine={engine} onStart={props.onStart} /> : !historyReady && !history.length && !props.loadError && !props.startupWaiting ? <NoticeLine text="Opening this conversation…" testid="opening" /> : null}
         {entries.map((entry, i) => <Fragment key={entry.type === "item" ? entry.item.block.key : entry.key}>
           {dividers.has(i) && times[i] ? <TimeDivider at={times[i]!} /> : null}
           {entry.type === "talk" ? <ExchangeLine talk={entry.talk} names={exchangeNames} onOpen={setExchange} /> : <EntryView entry={entry} view={view} live={false} />}
