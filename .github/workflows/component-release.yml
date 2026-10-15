@@ -506,6 +506,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node desktop/scripts/publish-component-release.mjs "${{ runner.temp }}/release-assets" "${{ needs.identity.outputs.commit }}" "${{ needs.identity.outputs.version }}"
+  # Starts mobile-android-release.yml after a published desktop release.
+  dispatch-android-apk:
+    needs: [identity, publish]
+    if: github.event_name != 'pull_request' && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Dispatch the Android APK build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run mobile-android-release.yml -f tag=v${{ needs.identity.outputs.version }}
   # Waits out the 25-minute batching window, then starts one release if main moved.
   # The sleep is the catch-up, so this job is longer than the 15-minute check cap.
   # A failed publish still enters this job. It continues only when that commit is
