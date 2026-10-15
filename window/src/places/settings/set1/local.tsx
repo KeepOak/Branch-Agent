@@ -7,7 +7,7 @@ import type { SettingsPageProps } from "../index";
 import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
-import { Btn, Ctl, Empty, Page, Sec, Status, NOSETUP, useConfig, useScope, type RowEntry } from "../kit";
+import { Btn, Empty, Page, Sec, Status, NOSETUP, useConfig, useScope, type RowEntry } from "../kit";
 import { Runtimes, RUNTIMES } from "./local-runtimes";
 import { LocalMore, MORE_TITLES } from "./local-more";
 import { SetupDialog } from "./local-setup";

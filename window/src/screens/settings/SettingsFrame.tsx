@@ -314,7 +314,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </div>
         </>}
       </div>
-      <TrunkHost engine={engine} level={level} openSettings={(page) => go(pageFor(page))} openPlace={(place) => props.onOpenPlace?.(place)} />
+      <TrunkHost engine={engine} level={LEVEL_WORD[level]} openSettings={(page) => go(pageFor(page))} openPlace={(place) => props.onOpenPlace?.(place)} />
     </div>
   );
 }
