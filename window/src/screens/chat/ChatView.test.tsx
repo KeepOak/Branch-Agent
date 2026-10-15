@@ -72,11 +72,11 @@ it("adds a divider after 15 quiet minutes and keeps thoughts inside the steps", 
   expect(steps && steps.type === "steps" ? steps.thoughts.map((t) => t.key) : []).toEqual(["th1"]);
 });
 
-it("shows the typing line until the reply streams in word by word", async () => {
+it("keeps the working line under the latest message while the reply streams in word by word", async () => {
   await show({ history: history.slice(0, 1), running: true, live: [] });
-  expect(host.querySelector('[data-testid="typing"]')!.textContent).toContain("Scout is thinking");
+  expect(host.querySelector('[data-testid="working-line"]')!.textContent).toBe("Working");
   await show({ history: history.slice(0, 1), running: true, live: [{ kind: "text", key: "r2:text:1", text: "Looking in Outlook now", streaming: true }] });
-  expect(host.querySelector('[data-testid="typing"]')).toBeNull();
+  expect(host.querySelector('[data-testid="working-line"]')!.textContent).toBe("Working");
   const words = [...host.querySelectorAll('[data-testid="streaming"] .r1c-tok')];
   expect(words.map((w) => w.textContent).join("")).toBe("Looking in Outlook now");
   const first = words[0];
@@ -144,11 +144,22 @@ it("follows the item 48 glass model: clear conversation and menus, text and cont
   const tokens = readFileSync("src/theme/tokens.css", "utf8").replace(/\s+/g, " ");
   expect(tokens).toContain("--gp-fill: rgba(255,255,255,.76); --gp-edge: rgba(0,0,0,.11);");
   expect(tokens).toMatch(/:root\[data-transparency="reduce"\][^{]*\{ --gp-fill: var\(--raise\);[^}]*--gp-blur: none; \}/);
-  for (const piece of [".r1c-u", ".r1c-txt", ".r1c-notice", ".r1c-typing", ".r1c-steps > summary", ".r1c-chip", ".r1c-bar", ".r1c-mi", ".r1c-menu-meta"]) {
+  for (const piece of [".r1c-u", ".r1c-txt", ".r1c-notice", ".r1c-steps > summary", ".r1c-chip", ".r1c-bar", ".r1c-mi", ".r1c-menu-meta"]) {
     expect(css, piece).toMatch(new RegExp(":is\\([^)]*" + piece.replace(/[.>]/g, (c) => "\\" + c) + "[,)]"));
   }
   expect(css).toContain("background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge);");
   expect(css).toContain(".g-popover:has(> .r1c-menu, > .r1c-react) { background: transparent; backdrop-filter: none;");
+});
+
+it("shows one working line under a live run, in the app the tool works in, never the tool id", async () => {
+  const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: t0 + 40_000 }];
+  await show({ history: history.slice(0, 1), live, running: true }, ["chat.send"]);
+  const lines = host.querySelectorAll('[data-testid="working-line"]');
+  expect(lines).toHaveLength(1);
+  expect(lines[0].textContent).toBe("Working in GitHub");
+  expect(host.textContent).not.toContain("mcp__");
+  await show({ history }, ["chat.send"]);
+  expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
 });
 
 it("opens find in this conversation with the words a search result asked for", async () => {

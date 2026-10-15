@@ -21,7 +21,7 @@ import { copyText, ThreadContext, type ThreadContextValue } from "../../thread/c
 import { ReactionChips } from "../../thread/dialogs";
 import { startersFor } from "../../thread/EmptyState";
 import { FindBar, useFindKey } from "../../thread/FindBar";
-import { shortReason } from "../../thread/format";
+import { shortReason, workingLine } from "../../thread/format";
 import { HelpersChip } from "../../thread/Helpers";
 import { isComputerStep, layout, shownApprovalIds } from "../../thread/layout";
 import type { Approval, ApprovalDecision, Block } from "../../thread/model";
@@ -35,7 +35,7 @@ import { useMessageActions, type MessageChanges, type ReplyTarget } from "../../
 import { Icon } from "../../shell/icons";
 import { blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
 import { HoverBar } from "./HoverBar";
-import { NoticeLine, TimeDivider, TypingLine } from "./lines";
+import { NoticeLine, TimeDivider, WorkingLine } from "./lines";
 import { AgentReply, TimeLine, UserBubble } from "./Message";
 import { LoneThought, StepsList } from "./Steps";
 import { foldTalks } from "../../rooms/fold";
@@ -220,7 +220,7 @@ export function ChatView(props: ChatViewProps) {
         {pendingUser ? <UserBubble block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="delivered" />
         {running ? liveEntries.map((entry) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live />) : null}
-        {running && !liveShows && !waitingTwo.length ? <TypingLine name={name} /> : null}
+        {running && !waitingTwo.length ? <WorkingLine label={workingLine(live)} /> : null}
         {running && liveShows && usage?.total ? <NoticeLine text={usage.total.toLocaleString() + " tokens so far"} testid="live-usage" /> : null}
         {running ? (props.steered ?? []).map((note) => <NoticeLine key={note.runId} text={"You steered " + name + ": “" + note.text + "”. It takes this at its next step."} testid="steered-note" />) : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />

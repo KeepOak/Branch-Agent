@@ -1,7 +1,7 @@
-// The conversation's quiet lines (HANDOFF §2 #18–20): a centred time divider, the thin notice and the typing line.
+// The conversation's quiet lines (HANDOFF §2 #18–20): a centred time divider, the thin notice and the working line.
 import { useState, type ReactNode } from "react";
-import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
+import "../../glass/glass.css";
 import { fullTime } from "../../thread/format";
 import { dividerLabel } from "./chat-logic";
 
@@ -26,11 +26,8 @@ export function NoticeLine({ icon, text, links, details, tone, testid }: { icon?
   </div>;
 }
 
-/** "Scout is thinking" and three dots, with the agent's 22 px face. People use the same words. */
-export function TypingLine({ name }: { name: string }) {
-  return <div className="r1c-typing" role="status" aria-label={(name || "The agent") + " is thinking"} data-testid="typing">
-    <span className="r1c-typing-face"><Face size={22} label={name} state="think" priority={300} /></span>
-    <span>{(name || "It") + " is thinking"}</span>
-    <i /><i /><i />
-  </div>;
+/** The one live line under the latest message while a run works: the app it is in, dim, with a soft shimmer
+ *  (glass.css). No spinner and no pill; the words alone when the person asked for still motion. */
+export function WorkingLine({ label }: { label: string }) {
+  return <div className="r1c-working" role="status" data-testid="working-line">{label}</div>;
 }
