@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -376,5 +376,65 @@ test('a CI read that outlasts the budget fails closed with a clear message, not 
   } finally {
     gateApiBudget.budgetSeconds = undefined;
     gateApiBudget.startedAt = undefined;
+  }
+});
+
+function cliHistoryRepo(after) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'preflight-final-head-'));
+  const git = (args) => execFileSync('git', [
+    '-C', dir,
+    '-c', 'user.name=Final Head',
+    '-c', `user.email=${NOREPLY}`,
+    '-c', 'commit.gpgsign=false',
+    ...args,
+  ], { encoding: 'utf8', windowsHide: true });
+  git(['init', '-q', '-b', 'main']);
+  writeFileSync(path.join(dir, 'base.txt'), 'base\n');
+  git(['add', 'base.txt']);
+  git(['commit', '-q', '-m', 'base']);
+  git(['checkout', '-q', '-b', 'gate/history']);
+  writeFileSync(path.join(dir, 'base.txt'), 'feature\n');
+  git(['add', 'base.txt']);
+  git(['commit', '-q', '-m', 'feature']);
+  const named = git(['rev-parse', 'HEAD']).trim();
+  git(['checkout', '-q', 'main']);
+  writeFileSync(path.join(dir, 'main-1.txt'), 'main 1\n');
+  git(['add', 'main-1.txt']);
+  git(['commit', '-q', '-m', 'main 1']);
+  git(['checkout', '-q', 'gate/history']);
+  after(git, dir);
+  const bodyDir = mkdtempSync(path.join(tmpdir(), 'preflight-body-'));
+  const bodyPath = path.join(bodyDir, 'body.md');
+  writeFileSync(bodyPath, `Final head: ${named}\n\nNo visible change: history check only.\n`);
+  return { dir, bodyDir, bodyPath };
+}
+
+test('the CLI accepts a Final head when the only later commit merges main', () => {
+  const { dir, bodyDir, bodyPath } = cliHistoryRepo((git) => {
+    git(['merge', '-q', '--no-ff', 'main', '-m', 'merge main']);
+  });
+  try {
+    const result = runCli(['--body', bodyPath, '--base', 'main'], dir);
+    assert.equal(result.exitCode, 0, result.text);
+    assert.equal(result.text, 'preflight: ok');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(bodyDir, { recursive: true, force: true });
+  }
+});
+
+test('the CLI rejects a Final head when a regular commit follows it', () => {
+  const { dir, bodyDir, bodyPath } = cliHistoryRepo((git, repo) => {
+    writeFileSync(path.join(repo, 'base.txt'), 'more\n');
+    git(['add', 'base.txt']);
+    git(['commit', '-q', '-m', 'regular']);
+  });
+  try {
+    const result = runCli(['--body', bodyPath, '--base', 'main'], dir);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.text, /\[self-check\].*not a merge commit/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(bodyDir, { recursive: true, force: true });
   }
 });
