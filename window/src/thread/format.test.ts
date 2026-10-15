@@ -16,9 +16,10 @@ describe("thread words", () => {
     expect(stepsSummary([step("exec")])).toBe("Ran a command");
     expect(stepsSummary([step("exec"), step("exec"), step("read")])).toBe("Ran 2 commands and read a file · 3 steps");
     expect(stepsSummary([step("read"), step("read"), step("web_search")])).toBe("Read 2 files and searched the web · 3 steps");
-    expect(stepsSummary([{ ...step("exec"), at: 1_000 }, { ...step("read"), at: 42_000 }])).toBe("Ran a command and read a file · 2 steps · 41s");
+    expect(stepsSummary([{ ...step("exec"), at: 1_000 }, { ...step("read"), at: 42_000 }])).toBe("Ran a command and read a file · 2 steps");
     expect(stepsSummary([step("exec"), step("read", "running")])).toBe("Reading a file");
-    expect(stepsSummary([step("exec")], { title: "text", durationMs: 59_000 })).toBe("Ran a command");
+    expect(stepsSummary([step("exec")], { title: "text" })).toBe("Ran a command");
+    expect(stepsSummary([step("exec"), step("read")], { title: "Done" })).toBe("Done · 2 steps");
     expect(stepLabel({ ...step("computer"), title: "list_windows" })).toBe("Listed open windows");
     expect(stepLabel({ ...step("computer"), title: "frob_widget" })).toBe("Used the computer");
     expect(stepLabel({ ...step("computer"), title: "list_windows" })).not.toContain("list_windows");
@@ -94,5 +95,14 @@ describe("preview step kinds and cards", () => {
     const lines = parseDiffLines("@@ -1 +1 @@\n-old\n+new");
     expect(lines).toEqual([{ mark: "-", text: "old" }, { mark: "+", text: "new" }]);
     expect(rawDiffText(lines)).toBe("new");
+  });
+});
+
+describe("plain error copy", () => {
+  it("never shows a local file path in the plain sentence", () => {
+    expect(shortReason("ENOENT: no such file '/Users/someone/Library/Caches/run/out.json' was found.")).not.toMatch(/\/Users\//);
+    expect(shortReason("Could not write C:\\Users\\someone\\notes.md. Try again.")).not.toMatch(/Users|C:\\/);
+    expect(shortReason("Failed in /tmp/rv1305/verdict.md, see log.")).toBe("Failed in a local file, see log.");
+    expect(shortReason("Authentication failed (provider returned HTTP 401).")).toBe("Authentication failed (provider returned HTTP 401).");
   });
 });

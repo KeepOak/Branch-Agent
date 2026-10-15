@@ -211,13 +211,13 @@ function joinWords(parts: string[]): string {
 }
 
 /** The Steps fold's summary: the step at work while it runs, then what was done ("Ran 2 commands and read a file"). */
-export function stepsSummary(steps: readonly Step[], run?: { title: string; durationMs?: number }): string {
+export function stepsSummary(steps: readonly Step[], run?: { title: string }): string {
   const running = steps.find((s) => s.status === "running");
   if (running) {
     return stepLabel(running);
   }
   if (run?.title && run.title.toLowerCase() !== "text") {
-    return [run.title, steps.length > 1 ? `${steps.length} steps` : "1 step", run.durationMs ? formatDuration(run.durationMs) : ""].filter(Boolean).join(" · ");
+    return [run.title, steps.length > 1 ? `${steps.length} steps` : "1 step"].join(" · ");
   }
   const commands = steps.filter((s) => COMMAND_TOOLS.has(s.tool)).length;
   const reads = steps.filter((s) => s.tool === "read").length;
@@ -230,10 +230,9 @@ export function stepsSummary(steps: readonly Step[], run?: { title: string; dura
     ...(edited ? [counted(edited, "edited a file", "edited # files")] : []),
     ...others,
   ];
+  // A finished run shows no clock: its step times can span a long idle gap, so only a running step has an elapsed time.
   const text = joinWords(parts);
-  const times = steps.map((s) => s.at).filter((at): at is number => typeof at === "number");
-  const took = times.length >= 2 ? formatDuration(Math.max(...times) - Math.min(...times)) : "";
-  const tail = [steps.length > 1 ? `${steps.length} steps` : "", took].filter(Boolean).join(" · ");
+  const tail = steps.length > 1 ? `${steps.length} steps` : "";
   return text.charAt(0).toUpperCase() + text.slice(1) + (tail ? ` · ${tail}` : "");
 }
 
@@ -251,11 +250,17 @@ export function dayStamp(ms: number, now = Date.now()): string {
 }
 
 /** The first sentence of an engine error, without the engine's own lead-in and warning sign. */
+/** Local file paths (macOS, Linux, Windows, ~/) that a plain sentence must not show; the raw text stays at Technical. */
+const LOCAL_PATH = /(?:[A-Za-z]:\\[^\s"'`,;()<>]+|~\/[^\s"'`,;()<>]*|\/(?:Users|Volumes|private|tmp|var|home|opt|etc|Library|Applications|usr|root|srv|mnt)(?:\/[^\s"'`,;()<>]*)?)/g;
+export function scrubLocalPaths(text: string): string {
+  return text.replace(LOCAL_PATH, "a local file");
+}
+
 export function shortReason(message: string): string {
   if (/PLUGIN_STATE_READ_FAILED|Session maintenance protection changed|PluginInstanceUnavailableError|^\s*\{|\"telemetry\"/.test(message)) {
     return "Something went wrong. Try again, or open Diagnostics for details.";
   }
-  const plain = message
+  const plain = scrubLocalPaths(message)
     .replace(/^\s*[⚠️❗❌\s]+/u, "")
     .replace(/^Your request couldn['’]t be completed:\s*/i, "")
     .replace(/^[⚠️\s]+/u, "")

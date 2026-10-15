@@ -15,7 +15,7 @@ import { accountName, type Account } from "../places/settings/set1/accounts";
 import { shows, useLevel } from "../places-nav/level";
 import type { WindowEngine } from "./engine";
 import { NOT_ON_PLAN, offPlan, planOrder, runsOnCodex, useCodexPlan } from "./codex-plan";
-import { currentModelAccount, useModelAccounts } from "./useModelAccount";
+import { useModelAccounts } from "./useModelAccount";
 
 type Props = {
   embedded?: boolean;
@@ -47,13 +47,13 @@ const UNAVAILABLE_LABELS: Record<AvailabilityReason, string> = {
   cooldown: "resting after a limit", "unsupported-runtime": "runtime unavailable",
 };
 
-/** The line under a model: its selected account by name, else its service. */
-function modelLine(m: ModelChoice, all: Account[], row: Rec): string {
+/** The line under a model. A usable model shows nothing here: its account is named once, in the footer and the Account
+ *  group, and its service heads the group. Only a problem (local hardware, or a sign-in or limit) gets a line. */
+export function modelLine(m: ModelChoice): string | undefined {
   if (m.local) return accountLine(m);
-  const first = currentModelAccount(all, m.provider, row);
-  const line = first ? accountName(first) : brandName(m.provider);
+  if (m.available) return undefined;
   const reason = m.runtimeMetadata?.unavailableReason;
-  return m.available ? line : `${line} · ${reason ? UNAVAILABLE_LABELS[reason] : "unavailable"}`;
+  return reason ? UNAVAILABLE_LABELS[reason] : "Unavailable";
 }
 
 const SPEEDS = [
@@ -136,7 +136,7 @@ export function ModelMenu(p: Props) {
                   tick
                   lead={<Logo id={m.provider} size={22} />}
                   label={<span className="c-modelname">{m.name}{m.supportsTools ? null : <span className="c-pill" title="It can chat, but it can't use tools. Pick another model for files, commands, the web or media.">Chat only</span>}</span>}
-                  sub={modelLine(m, allAccounts, p.row)}
+                  sub={modelLine(m)}
                   checked={m.ref === p.currentRef}
                   disabled={locked || off}
                   reason={off ? NOT_ON_PLAN : undefined}

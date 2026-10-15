@@ -18,7 +18,7 @@ import { droppedFiles, engineKeyOf, FirstSendEcho, heldRuns, UnconfirmedSends } 
 import { failedAck, isRetryable, refusedOrUnsent, requestWithRetry } from "./send-errors";
 import { firstSendEcho, shouldKeepFirstSendEcho } from "../composer/sending";
 import { safeStorage } from "../composer/drafts";
-import { trunkDisplayName } from "./trunk-name";
+import { trunkDisplayName, trunkNameForKey } from "./trunk-name";
 
 export type SessionSnapshot = {
   status: GatewayStatus;
@@ -176,6 +176,8 @@ export class SaplingSession {
   /** Bumped each time a connection finishes reading its conversation, so the open pages re-read from the new engine. */
   private connectionEpoch = 0;
   private readonly preparationBackoff = new PreparationRetry();
+  /** The agents.list result of this connection: a conversation's own Trunk is named from it. */
+  private agentList: unknown = null;
   private stopped = false;
   private gateway: BranchGateway;
   private retiringGateway: BranchGateway | null = null;
@@ -439,7 +441,7 @@ export class SaplingSession {
   private set(patch: Partial<SessionSnapshot>): void {
     const preparationDelay = patch.error && isPreparationPending(patch.error) ? this.preparationBackoff.nextDelay() : null;
     if (patch.error && isPreparationPending(patch.error) && preparationDelay === null) {
-      patch = { ...patch, error: preparationTimeoutLabel(this.snapshot.name) };
+      patch = { ...patch, error: preparationTimeoutLabel(trunkNameForKey(this.agentList, patch.sessionKey ?? this.snapshot.sessionKey, this.snapshot.name)) };
     }
     this.snapshot = { ...this.snapshot, ...patch };
     this.syncStartupWatch(patch);
@@ -511,6 +513,7 @@ export class SaplingSession {
         this.gateway.request("sessions.subscribe", { limit: 20 }, BOOTSTRAP_REQUEST),
       ]);
       if (!current()) return;
+      this.agentList = agents;
       this.set({ name: readAgentName(agents) });
       await Promise.all([this.backfillApprovals(BOOTSTRAP_REQUEST).catch(() => undefined), this.loadHistory(BOOTSTRAP_REQUEST)]);
       if (!current()) return;

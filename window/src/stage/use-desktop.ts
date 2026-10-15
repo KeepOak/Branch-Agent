@@ -9,8 +9,19 @@ export type DesktopView = {
   /** The computer's own label, when the engine gave one. */
   title?: string;
   controlling?: boolean;
+  /** One plain sentence about the computer, shown to everyone. */
   message?: string;
+  /** The engine's own words for the failure (ports, settings paths), shown at the Technical level only. */
+  detail?: string;
 };
+
+/** The one plain sentence for a computer that cannot be seen right now. */
+export const COMPUTER_UNAVAILABLE = "Can’t see this computer right now.";
+
+/** A failure as the window shows it: the plain sentence, and the engine's raw text kept for Technical. */
+export function computerFailure(error: unknown): { message: string; detail: string } {
+  return { message: COMPUTER_UNAVAILABLE, detail: error instanceof Error ? error.message : String(error) };
+}
 
 /** The source desktop.observe needs for an environment id: the host, a paired node or a worker. */
 function sourceFor(id: string): DesktopSource {
@@ -98,7 +109,7 @@ export function useDesktopView(
         else connection = handle;
       } catch (e) {
         release();
-        show({ phase: "error", message: e instanceof Error ? e.message : String(e) });
+        show({ phase: "error", ...computerFailure(e) });
       }
     })();
     return () => {
