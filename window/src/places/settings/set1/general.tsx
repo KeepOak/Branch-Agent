@@ -43,11 +43,18 @@ function StartingUp() {
   const desk = useDesktopControls();
   const why = desk.off === NEEDS_NEWER_APP ? START_NEEDS_UPDATE : desk.off;
   const start = `Start with ${OS()}`;
+  const signedOut = "Keep working when nobody is signed in";
   return (
     <Sec title="Starting up">
       <Ctl title={start} sub="Opens quietly in the tray." off={why}>
         <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={start} onChange={(on) => void desk.set("startWithWindows", on)} />
       </Ctl>
+      {/* Always on (Private #454 F), Linux with the engine service only: the app says so by sending the switch. */}
+      {desk.state?.keepWorkingSignedOut !== undefined ? (
+        <Ctl title={signedOut} sub="Your Trunks start after a restart, before anyone signs in." off={why}>
+          <Switch checked={desk.state.keepWorkingSignedOut} disabled={desk.busy !== null} label={signedOut} onChange={(on) => void desk.set("keepWorkingSignedOut", on)} />
+        </Ctl>
+      ) : null}
       {desk.state && desk.error ? <small className="why-k" role="alert">{visible(desk.error)}</small> : null}
     </Sec>
   );

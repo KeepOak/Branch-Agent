@@ -140,6 +140,19 @@ describe("Branch-to-Branch graft on the host", () => {
     expect(replyStep).toHaveBeenCalledWith(expect.objectContaining({ agentId: "juniper", sessionKey: "agent:juniper:main", message: "PONG" }));
   });
 
+  it("shows a joined Trunk's failure as a plain sentence and gives the raw error only to the Trunk", async () => {
+    await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
+    await call("contacts.outside.hello", { agent: { ...scout, trunkId: "scout" } }, device("dev-b"));
+    const sent = await call("graft.work.send", { target: "a2a:branch-b--scout", text: "Ping", sourceSessionKey: "agent:juniper:main", idempotencyKey: "send-fail" }, owner);
+    await call("graft.work.poll", {}, device("dev-b"));
+    const raw = "gateway timeout after 10000ms\nGateway target: ws://127.0.0.1:38157\nConfig: /home/someone/.branch/branch.json";
+    expect((await call("graft.work.complete", { id: sent.payload.id, error: raw }, device("dev-b"))).ok).toBe(true);
+    const step = replyStep.mock.calls.at(-1)![0] as { message: string; extraSystemPrompt: string };
+    expect(step.message).toBe("The joined Trunk did not answer in time, so the request may or may not have run.");
+    expect(step.message).not.toMatch(/ws:\/\/|\/home\/|[Gg]ateway/);
+    expect(step.extraSystemPrompt).toContain(raw);
+  });
+
   it("refuses another device or the owner's tools taking a grafted Branch's rows", async () => {
     await call("contacts.outside.hello", { agent: branchB }, device("dev-b"));
     const other = await call("contacts.outside.hello", { agent: branchB }, device("dev-c"));

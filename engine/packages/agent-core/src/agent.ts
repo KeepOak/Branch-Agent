@@ -119,6 +119,8 @@ export interface AgentOptions {
   beforeToolCall?: NonNullable<AgentLoopConfig["beforeToolCall"]>;
   /** Hook that may hydrate a deferred authorized tool call into an executable tool. */
   resolveDeferredTool?: AgentLoopConfig["resolveDeferredTool"];
+  /** Hook that adds guidance to the result for a tool missing from the current toolset. */
+  describeMissingTool?: AgentLoopConfig["describeMissingTool"];
   /** Hook that may alter a tool result after execution. */
   afterToolCall?: NonNullable<AgentLoopConfig["afterToolCall"]>;
   /** Hook that may alter any finalized tool outcome, including pre-execution failures. */
@@ -312,6 +314,7 @@ export class Agent {
   public onResponse?: AgentOptions["onResponse"];
   public beforeToolCall?: NonNullable<AgentOptions["beforeToolCall"]>;
   public resolveDeferredTool?: AgentOptions["resolveDeferredTool"];
+  public describeMissingTool?: AgentOptions["describeMissingTool"];
   public afterToolCall?: NonNullable<AgentOptions["afterToolCall"]>;
   public afterToolOutcome?: NonNullable<AgentOptions["afterToolOutcome"]>;
   public prepareNextTurn?: NonNullable<AgentOptions["prepareNextTurn"]>;
@@ -339,6 +342,7 @@ export class Agent {
     this.onResponse = options.onResponse;
     this.beforeToolCall = options.beforeToolCall;
     this.resolveDeferredTool = options.resolveDeferredTool;
+    this.describeMissingTool = options.describeMissingTool;
     this.afterToolCall = options.afterToolCall;
     this.afterToolOutcome = options.afterToolOutcome;
     this.prepareNextTurn = options.prepareNextTurn;
@@ -610,6 +614,7 @@ export class Agent {
       completesToolTurn: getInternalToolTurnCompletion(this),
       toolLoopRecoveryState: this.toolLoopRecoveryState,
       resolveDeferredTool: this.resolveDeferredTool,
+      describeMissingTool: this.describeMissingTool,
       afterToolCall: this.afterToolCall,
       afterToolOutcome: this.afterToolOutcome,
       prepareNextTurn:

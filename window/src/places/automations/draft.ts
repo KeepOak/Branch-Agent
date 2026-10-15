@@ -67,7 +67,7 @@ function checkWebhook(url: string): void {
   if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password) throw new Error("Use an http:// or https:// address without a name or password in it.");
 }
 
-export function deliveryFor(d: Draft): Row | undefined {
+function deliveryFor(d: Draft): Row | undefined {
   if (d.sendsTo === "keep") return undefined;
   const shared = { ...(d.bestEffort ? { bestEffort: true } : {}), ...(d.account.trim() ? { accountId: d.account.trim() } : {}) };
   if (d.sendsTo === "nowhere") return { mode: "none" };

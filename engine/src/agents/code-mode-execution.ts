@@ -21,6 +21,7 @@ import type {
 } from "./code-mode-executor-types.js";
 import { runCodeModeExecutor } from "./code-mode-executor.js";
 import { CodeModeOutputState } from "./code-mode-json.js";
+import { describeMissingCodeModeGlobal } from "./code-mode-missing-global.js";
 import {
   createCodeModeNamespaceRuntime,
   type CodeModeNamespaceRuntime,
@@ -566,7 +567,16 @@ async function settleCodeModeResult(params: CodeModeSettlementContext) {
   const channels = {
     ...(result.status === "completed" ? { value: result.value } : {}),
     ...(result.status === "failed"
-      ? { error: timedOut ? timeoutErrorMessage(params.owner, params.config) : result.error }
+      ? {
+          error: timedOut
+            ? timeoutErrorMessage(params.owner, params.config)
+            : result.failurePhase === "guest"
+              ? describeMissingCodeModeGlobal(result.error, [
+                  ...params.catalogProjection.bindings.map((binding) => binding.callableName),
+                  ...params.namespaceRuntime.descriptors.map((descriptor) => descriptor.globalName),
+                ])
+              : result.error,
+        }
       : {}),
   };
   const metadata = {

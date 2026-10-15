@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:packages/agent-core/src/agent-loop.test.ts (atlas AGENT-LOOP-0001). Changed for Branch: apply DECISIONS.md item 127 using scripts/rebrand-map.json; retain main's executionStarted steering gate, so first-tool assertions reflect admitted execution before steering takes effect; retain the complete pinned suite alongside native coverage.
+// Changed for Branch: apply DECISIONS.md item 127 using scripts/rebrand-map.json; retain main's executionStarted steering gate, so first-tool assertions reflect admitted execution before steering takes effect; retain the complete pinned suite alongside native coverage.
 // Agent Core tests cover agent loop behavior.
 import { Type } from "typebox";
 import { describe, expect, it, vi } from "vitest";

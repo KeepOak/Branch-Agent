@@ -1,0 +1,4 @@
+window:src/screens/sidebar/Sidebar.test.tsx
+window:src/screens/onboarding/Onboarding.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/screens/settings/coming.test.tsx

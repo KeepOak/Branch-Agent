@@ -75,10 +75,11 @@ it("palette Lockdown action changes nothing until confirmation is accepted", asy
   expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
 
-it("Overview explains the secondary Lockdown button and confirms before changing state", async () => {
+it("Overview keeps the secondary Lockdown button and confirms before changing state", async () => {
   const f = fixture();
   const host = await render(<OverviewPlace engine={f.engine} facts={{ running: 0, waiting: 0 }} openConversation={noop} openPlace={noop} level="regular" />);
-  expect(host.textContent).toContain("Stops every Trunk from using tools until you turn this off");
+  // The preview's Controls tile has the mode line and the two buttons only (no explanation paragraph).
+  expect(host.textContent).not.toContain("Stops every Trunk from using tools until you turn this off");
   expect(button("Lockdown").className).toBe("btn sm");
   await act(async () => button("Lockdown").click());
   expect(f.patches()).toHaveLength(0);

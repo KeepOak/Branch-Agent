@@ -216,3 +216,6 @@
 .get-row small { color: var(--ink-3); font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
 .get-row .cz-acts { display: flex; gap: 6px; flex: none; }
 .get-row .get-perm { color: var(--ink-2); }
+
+/* Get capabilities › Trunk templates: paste a link or pick a file to import a Trunk template. */
+.tpl-import { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

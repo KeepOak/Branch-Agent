@@ -1,6 +1,7 @@
 // Settings › Models at Technical (§4.7.6): retries and timeouts, per connection, attachments, helpers, how turns
 // run, each model's own parameters (agents.defaults.models.<ref>.params) and the connection details.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { visible } from "../adapter";
 import { Btn, Ctl, Num, Pick, Sec, Seg, Switch, useSaveRunner } from "../kit";
 import { type ModelsCtx } from "./models-data";
@@ -35,6 +36,7 @@ export function PerConnection() {
 
 export function ConnectionsTechnical({ m }: { m: ModelsCtx }) {
   const save = useSaveRunner();
+  const [checked, stamp] = useCheckedAt();
   const refresh = m.cfg.get(["models", "catalogRefresh", "enabled"]);
   return (
     <Sec title="Connections, technical" group="Accounts">
@@ -44,7 +46,7 @@ export function ConnectionsTechnical({ m }: { m: ModelsCtx }) {
         <Switch checked={refresh !== false} label="Keep the model list and prices up to date" onChange={(v) => void m.cfg.set(["models", "catalogRefresh", "enabled"], v)} />
       </Ctl>
       <Ctl title="Model list" sub={m.catalog.data?.refreshFailed === true ? "The last check failed. Try again." : undefined}>
-        <Btn sm onClick={() => void save(async () => { await m.engine.request("models.list", { refresh: true, ...m.agent }); await m.catalog.reload(); })}>Check now</Btn>
+        <Btn sm onClick={() => void save(async () => { await m.engine.request("models.list", { refresh: true, ...m.agent }); if (await m.catalog.reload()) stamp(); })}>Check now</Btn><CheckedAt at={checked} />
       </Ctl>
       <Ctl title="Find free models" sub="Free models on OpenRouter, ranked for use as a fallback." help="Free models on OpenRouter, ranked for use as a fallback. Listed only. Connect OpenRouter to check each with a real call." off={NONE}><Btn sm>Look now</Btn></Ctl>
     </Sec>

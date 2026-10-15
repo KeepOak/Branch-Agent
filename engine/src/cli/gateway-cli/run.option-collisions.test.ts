@@ -1,3 +1,4 @@
+// Changed for Branch: retain caller-owned host recovery coverage and isolate startup migrations and host ownership from CLI option fixtures.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -33,6 +34,21 @@ const startGatewayServer = vi.fn(async (_port: number, _opts?: unknown) => ({
 }));
 const triageAfterFailure = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("../../commands/triage-failure.js", () => ({ triageAfterFailure }));
+// These startup services have their own behavior tests; option fixtures own no config writes or host.
+vi.mock("../../gateway/dev-agent-startup.js", () => ({
+  removeSeededDevAgentAtStartup: vi.fn(async () => {}),
+}));
+vi.mock("../../gateway/trunk-character-startup.js", () => ({
+  assignTrunkCharactersAtStartup: vi.fn(async () => {}),
+}));
+vi.mock("../../infra/host-rendezvous.js", () => ({
+  prepareHostRendezvous: vi.fn(async () => ({
+    decision: { outcome: "start", message: "Isolated CLI fixture" },
+    markStarting: vi.fn(async () => {}),
+    markReady: vi.fn(async () => {}),
+    close: vi.fn(async () => {}),
+  })),
+}));
 const setGatewayWsLogStyle = vi.fn((_style: string) => undefined);
 const setVerbose = vi.fn((_enabled: boolean) => undefined);
 const setConsoleSubsystemFilter = vi.fn((_filters: string[]) => undefined);
@@ -52,7 +68,9 @@ const findVerifiedGatewayListenerPidsOnPortSync = vi.fn((_port: number) => [] as
 const formatGatewayPidList = vi.fn((pids: number[]) => pids.join(", "));
 const isTerminalInteractive = vi.fn(() => true);
 const offerInvalidConfigRecovery = vi.fn(
-  async (_options: { retry: () => Promise<void> }): Promise<{ status: "declined" | "recovered" }> => ({
+  async (_options: {
+    retry: () => Promise<void>;
+  }): Promise<{ status: "declined" | "recovered" }> => ({
     status: "declined",
   }),
 );
@@ -274,6 +292,8 @@ vi.mock("../../infra/restart-stale-pids.js", () => ({
 }));
 
 vi.mock("../../daemon/restart-storm.js", () => ({
+  GATEWAY_CRASH_STORM_EXIT_CODE: 78,
+  guardGatewayCrashStorm: async () => undefined,
   warnAboutGatewayRestartStorm: (env: NodeJS.ProcessEnv, warn: (message: string) => void) =>
     warnAboutGatewayRestartStorm(env, warn),
 }));
@@ -908,6 +928,19 @@ describe("gateway run option collisions", () => {
     expect(startGatewayServer).not.toHaveBeenCalled();
     expect(runtimeErrors.join("\n")).toContain("branch gateway run --dev");
     expect(runtimeErrors.join("\n")).toContain("--profile <name> with a free port");
+  });
+
+  it("refuses a plain start when a verified gateway already listens on the port", async () => {
+    findVerifiedGatewayListenerPidsOnPortSync.mockReturnValue([4242]);
+
+    await expect(runGatewayCli(["gateway", "run", "--allow-unconfigured"])).rejects.toThrow(
+      "__exit__:1",
+    );
+
+    expect(findVerifiedGatewayListenerPidsOnPortSync).toHaveBeenCalledWith(18789);
+    expect(forceFreePortAndWait).not.toHaveBeenCalled();
+    expect(startGatewayServer).not.toHaveBeenCalled();
+    expect(runtimeErrors.join("\n")).toContain("pid 4242");
   });
 
   it("reports restart storms before managed macOS Gateway startup", async () => {
@@ -1553,10 +1586,7 @@ describe("gateway run option collisions", () => {
       }
     });
     startGatewayServer.mockRejectedValueOnce(
-      new BranchStateDatabaseSchemaMigrationRequiredError(
-        "audit-events-v2",
-        "/tmp/branch.sqlite",
-      ),
+      new BranchStateDatabaseSchemaMigrationRequiredError("audit-events-v2", "/tmp/branch.sqlite"),
     );
     parkCurrentLaunchAgentForMaintenance.mockResolvedValueOnce(true);
 
