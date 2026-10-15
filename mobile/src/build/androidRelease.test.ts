@@ -141,6 +141,7 @@ describe('Android release version and signing plan', () => {
     expect(unsigned.attachRelease).toBe(false);
     expect(unsigned.apkName).toContain('-unsigned.apk');
     expect(unsigned.sha256Name).toBe('');
+    expect(unsigned.versioncodeName).toBe('');
   });
 
   it('writes branch-android-<version>.apk.sha256 containing the APK hex SHA-256', () => {
