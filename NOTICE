@@ -13,6 +13,11 @@ https://github.com/milind-soni/OpenMausBot, Copyright 2026 Milind Soni and
 OpenMausBot contributors, used under the Apache License, Version 2.0
 (third_party/openmausbot/LICENSE).
 
+The R1 browser pane was designed with reference to Hermes Agent,
+https://github.com/NousResearch/hermes-agent (pinned at 73b9f2af7b87a619f42396710c332be04353aef2),
+used under the MIT License (third_party/hermes-agent/LICENSE). No Hermes Agent code
+was copied; docs/harvest/R1-REAL-BROWSER.md records what was studied.
+
 Files adapted from the projects listed below were modified by KeepOak;
 docs/upstream/COPIED.csv lists each file, its source path and the pinned
 commit. Each project's license text is in third_party/<name>/LICENSE, copied

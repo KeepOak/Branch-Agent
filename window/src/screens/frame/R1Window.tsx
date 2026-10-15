@@ -29,7 +29,6 @@ import { ROWS } from "../settings/rows";
 import { mergeRows, type PageSlots } from "../settings/slots";
 import type { Row } from "../settings/rows";
 import { lookStore } from "../../places/settings/set1/appearance-store";
-import { Popover } from "../../glass/Popover";
 import { Sidebar } from "../sidebar/Sidebar";
 import { Toasts } from "../../shell/Toasts";
 import { R1ExtraDialogs } from "./R1ExtraDialogs";
@@ -65,7 +64,8 @@ import { CHANGES_NEED, R1Changes } from "../changes/R1Changes";
 import { R1Character, useR1CharacterShown } from "../character/R1Character";
 import { graftedContactOf, isGraftedContactKey, newestGraftedTopic, openConversationName } from "./open-name";
 import { GraftedEmpty, GraftedFace } from "./GraftedEmpty";
-import { agentIdOf } from "../../connect/session";
+import { agentIdOf, roomIdOf } from "../../connect/session";
+import { R1DetailsPanel } from "../details/R1DetailsPanel";
 
 const FIND_ANYTHING_NAMES_ONLY = "Message search needs a newer Branch engine. Find anything lists names only.";
 
@@ -213,7 +213,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const [examples, setExamples] = useState<{ key: string; why: string } | null>(null);
   // A clear card or dialog over the whole window: the window behind it steps aside (README item 48).
   const behind = onboarding || finding;
-  const closeAgent = useCallback(() => setAgentOpen(false), []);
+  // The details panel the pill docks (GOD queue item 3): closing it hands focus back to the pill.
+  const closeAgent = useCallback(() => { setAgentOpen(false); pill.current?.focus(); }, []);
   const applyRoute = useCallback((next: Route) => {
     saveRoute(next); setRoute(next); setAgentOpen(false);
     if (next.kind === "chat") { const key = next.key ?? session.getSnapshot().mainKey; if (key && !isGraftedContactKey(key) && key !== session.getSnapshot().sessionKey) void session.open(key); }
@@ -422,6 +423,23 @@ export function R1Window({ session }: { session: SaplingSession }) {
     navigate({ kind: "place", place: "people" });
     window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: agentTrunkId, view } }));
   };
+  // The pill docks the details panel: a Trunk's Details, Library and Computer, or a group's Members (GOD queue item 3).
+  // A grafted agent's contact (a2a:<peer>) opens it too: the pill names that agent, as the Agent details popover did.
+  const group = Boolean(room.header && chat);
+  const details = agentOpen && route.kind === "chat" ? <R1DetailsPanel key={graftedKey ?? snapshot.sessionKey ?? "none"} session={session} engine={engine} ready={ready} kind={group ? "group" : graftedKey ? "grafted" : "trunk"} name={name}
+    face={group ? room.header!.faces(84) : graftedKey || graftedContactOf(snapshot.sessionKey) ? <GraftedFace name={name} size={84} /> : <Face size={84} label={name} />}
+    line={group ? room.header!.line : agentLine} agentId={group ? undefined : agentTrunkId} roomId={group ? roomIdOf(snapshot.sessionKey ?? "") || null : undefined} memberNames={room.members}
+    trunks={trunks.list.map(trunk => ({ id: trunk.id, name: trunk.name }))} gatewayUrl={session.gatewayUrl} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
+    onClose={closeAgent} onOpenStage={mode => { setAgentOpen(false); toggleStage(mode); }} onPip={small => { setAgentOpen(false); setPip(small); }} onChooseComputer={() => navigate({ kind: "settings", page: "devices" })} openConversation={openConversation}
+    actions={<>
+      {/* Clicking a Trunk's name is where people look to change it (owner, 2026-10-15): Customize opens its editor and Profile
+          its page, through People's TrunkHost like the ⋯ menu and the character do. */}
+      {agentTrunkId ? <>
+        <button type="button" data-local="" onClick={() => openAgentTrunk("edit")}>Customize</button>
+        <button type="button" data-local="" onClick={() => openAgentTrunk("profile")}>Profile</button>
+      </> : null}
+      <button type="button" data-local="" onClick={() => { setCharacterShown(!characterShown); closeAgent(); }}>{characterShown ? "Hide the character" : "Show the character"}</button>
+    </>} /> : null;
   return <>
     {onboarding && <Onboarding engine={engine} startAt={firstRun.step ?? 0}
       onLater={state => { firstRun.close(); void recordOnboarding(engine, state).catch((e: unknown) => setNotice(`Couldn’t save that setup is done: ${e instanceof Error ? e.message : String(e)}`)); }}
@@ -434,14 +452,14 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {tour ? <R1Tour kind={tour} defaultName={conversations.rows.find(row => row.key === snapshot.mainKey)?.title || "your Trunk"} onClose={() => setTour(null)} /> : null}
     {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
     <div className="r1-ob-behind" inert={behind} aria-hidden={behind || undefined} style={{ display: "contents", visibility: behind ? "hidden" : undefined }}>
-    <Frame sidebar={sidebar} main={shown} freeLayout={threads.layout === "free"} topics={chat ? threads.column ?? undefined : undefined} beside={talk.beside} pane={pane && ready && chat ? <R1SidePane key={snapshot.sessionKey ?? "none"} engine={engine} name={name} title={name || "Conversation"}
-      blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={setNotice} onReload={() => void session.reload()} /> : undefined} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
+    <Frame sidebar={sidebar} main={shown} freeLayout={threads.layout === "free"} topics={chat ? threads.column ?? undefined : undefined} beside={talk.beside} pane={details ?? (pane && ready && chat ? <R1SidePane key={snapshot.sessionKey ?? "none"} engine={engine} name={name} title={name || "Conversation"}
+      blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={setNotice} onReload={() => void session.reload()} /> : undefined)} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
       title: route.kind === "chat" ? name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
-      face: room.header && chat ? room.header.faces(24) : graftedKey || graftedContactOf(snapshot.sessionKey) ? <GraftedFace name={name} size={24} /> : <Face size={24} label={name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => setAgentOpen(open => !open) : undefined,
+      face: room.header && chat ? room.header.faces(24) : graftedKey || graftedContactOf(snapshot.sessionKey) ? <GraftedFace name={name} size={24} /> : <Face size={24} label={name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => { setPane(null); setAgentOpen(open => !open); } : undefined,
       right: route.kind === "chat" ? [
         { label: "Computer", icon: <Icon name="monitor" />, need: "computer.status", coming: "This engine can’t show a computer.", pressed: stageShown && stage === "Computer", onClick: tools ? () => toggleStage("Computer") : undefined },
         { label: "Browser", icon: <Icon name="globe" />, need: "browser.request", coming: "This engine can’t show a browser.", pressed: stageShown && stage === "Browser", onClick: tools ? () => toggleStage("Browser") : undefined },
-        { label: "Side panel", icon: <Icon name="panel" />, need: PANE_TAB_NEEDS[DEFAULT_PANE_TAB], coming: "This engine can’t show the side panel.", onClick: tools ? () => setPane(open => open ? null : DEFAULT_PANE_TAB) : undefined },
+        { label: "Side panel", icon: <Icon name="panel" />, need: PANE_TAB_NEEDS[DEFAULT_PANE_TAB], coming: "This engine can’t show the side panel.", onClick: tools ? () => { setAgentOpen(false); setPane(open => open ? null : DEFAULT_PANE_TAB); } : undefined },
         // ••• opens this window's conversation menu; each of its rows declares its own call.
         { label: "More", icon: <Icon name="more" />, onClick: tools ? () => { convAnchor.current = document.querySelector<HTMLElement>('.r1-header-right [aria-label="More"]'); setConvMenu(!convMenu); } : undefined },
       ] : talk.item ? [talk.item, ...DEFAULT_TOOLS] : undefined,
@@ -484,17 +502,5 @@ export function R1Window({ session }: { session: SaplingSession }) {
       row={current ?? null} isDefault={Boolean(snapshot.sessionKey && snapshot.sessionKey === snapshot.mainKey)} list={list} name={name || "Conversation"} history={snapshot.history}
       work={work} onOpen={openConversation} mainKey={snapshot.mainKey} onPlace={place => navigate({ kind: "place", place })} room={room.menu}
       changesNeed={CHANGES_NEED} onChanges={() => { setStage(null); setPip(null); setChanges(true); setConvMenu(false); }} /> : null}
-    {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent} closeOnScroll><div className="r1-agent-details g-clear">
-      <strong className="g-label">{name}</strong>{agentLine ? <p className="g-label">{agentLine}</p> : null}
-      {room.header && chat ? <p className="g-label" data-testid="room-members">{room.header.line}</p> : null}
-      {/* Clicking a Trunk's name is where people look to change it (owner, 2026-10-15): Customize opens its editor and Profile
-          its page, through People's TrunkHost like the ⋯ menu and the character do. */}
-      {route.kind === "chat" && agentTrunkId ? <>
-        <button type="button" data-local="" onClick={() => openAgentTrunk("edit")}>Customize</button>
-        <button type="button" data-local="" onClick={() => openAgentTrunk("profile")}>Profile</button>
-      </> : null}
-      {route.kind === "chat" ? <button type="button" data-local="" onClick={() => { setCharacterShown(!characterShown); closeAgent(); }}>{characterShown ? "Hide the character" : "Show the character"}</button> : null}
-      <button type="button" data-local="" onClick={closeAgent}>Close</button>
-    </div></Popover>}
   </>;
 }

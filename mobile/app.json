@@ -11,13 +11,14 @@
       "supportsTablet": false,
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Branch connects to the Branch app on your computer over your home network.",
+        "NSPhotoLibraryUsageDescription": "Branch uses your photos so you can send a picture in a chat.",
+        "NSCameraUsageDescription": "Branch uses the camera to read the pairing code on your computer and to take a picture to send in a chat.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
       }
     },
     "android": {
-      "versionCode": 1,
       "package": "com.keepoak.branch",
       "versionCode": 1,
       "permissions": [
@@ -37,8 +38,16 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Branch uses the camera to read the pairing code on your computer.",
+          "cameraPermission": "Branch uses the camera to read the pairing code on your computer and to take a picture to send in a chat.",
           "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Branch uses your photos so you can send a picture in a chat.",
+          "cameraPermission": "Branch uses the camera to read the pairing code on your computer and to take a picture to send in a chat.",
+          "microphonePermission": false
         }
       ],
       "expo-secure-store",

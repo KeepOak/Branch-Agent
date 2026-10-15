@@ -13,3 +13,13 @@ jest.mock('expo-updates', () => ({
   checkForUpdateAsync: async () => ({ isAvailable: false }),
   fetchUpdateAsync: async () => ({ isNew: false }),
 }));
+// The composer imports these; Jest has no camera, library or document picker.
+jest.mock('expo-image-picker', () => ({
+  launchCameraAsync: async () => ({ canceled: true, assets: [] }),
+  launchImageLibraryAsync: async () => ({ canceled: true, assets: [] }),
+  requestCameraPermissionsAsync: async () => ({ granted: true, canAskAgain: true, status: 'granted' }),
+  requestMediaLibraryPermissionsAsync: async () => ({ granted: true, canAskAgain: true, status: 'granted' }),
+}));
+jest.mock('expo-document-picker', () => ({
+  getDocumentAsync: async () => ({ canceled: true, assets: [] }),
+}));

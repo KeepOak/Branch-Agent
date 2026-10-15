@@ -10,7 +10,7 @@ let root: Root | undefined;
 beforeEach(() => localStorage.clear());
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
 
-const METHODS = ["channels.status", "channels.pairing.list", "channels.pairing.approve", "channels.pairing.dismiss", "wizard.start", "wizard.next", "wizard.cancel", "config.get", "config.patch", "agents.list", "sessions.list", "logs.tail"];
+const METHODS = ["channels.status", "channels.pairing.list", "channels.pairing.approve", "channels.pairing.dismiss", "wizard.start", "wizard.next", "wizard.cancel", "config.get", "config.patch", "agents.list", "sessions.list", "logs.tail", "device.pair.setupCode"];
 const STATUS = {
   channelMeta: [{ id: "telegram", label: "Telegram", detailLabel: "" }, { id: "signal", label: "Signal", detailLabel: "" }, { id: "matrix", label: "Matrix", detailLabel: "" }, { id: "nostrish", label: "Nostrish", detailLabel: "Relay chat" }],
   channelAccounts: { telegram: [{ accountId: "main", running: true, configured: true }], signal: [{ accountId: "default", running: true, configured: true }] },
@@ -196,6 +196,20 @@ it("#1049: Advanced and Technical draw the preview's approved cards, in order, o
     expect(host.querySelectorAll('[aria-label="Show typing"]')).toHaveLength(1);
     await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = "";
   }
+});
+
+it("#1049: draws the preview's Your phone tile after the app groups, and Pair a phone opens the pairing dialog", async () => {
+  const { host } = await render("regular");
+  const tile = host.querySelector('section[aria-label="Your phone"]')!;
+  expect(tile.textContent).toContain("Answer approvals and talk to Trunks from the Branch app.");
+  const heads = [...host.querySelectorAll("h2")].map((h) => h.textContent);
+  // After Every chat app's groups, before Who answers.
+  expect(tile.compareDocumentPosition(host.querySelector('[aria-labelledby="r1-ca-all"]')!) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  expect(heads).toContain("Who answers");
+  const pair = [...tile.querySelectorAll("button")].find((b) => b.textContent === "Pair a phone")!;
+  expect(pair.getAttribute("data-need")).toBe("device.pair.setupCode");
+  await act(async () => pair.click());
+  expect(document.querySelector('[data-testid="pair"]')).not.toBeNull();
 });
 
 it("drops the per-tile set-up times, and folds the apps that don't work yet into one More chat apps row", async () => {
