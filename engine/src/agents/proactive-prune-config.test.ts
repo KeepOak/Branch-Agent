@@ -1,4 +1,4 @@
-// From NousResearch/hermes-agent@18d125cc1bd9d0e26188ab49bb325427d5945fa2:tests/agent/test_proactive_prune_config.py (atlas AGENT-LOOP-0102). Ported config normalization cases; fractional and integral string checks added.
+// Ported config normalization cases; fractional and integral string checks added.
 import { expect, it } from "vitest";
 import { ProactiveToolResultPruner, pruneInteger } from "./proactive-tool-result-pruning.js";
 it("test_custom_values_are_honored", () => {

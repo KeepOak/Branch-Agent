@@ -1,0 +1,2 @@
+window:src/screens/composer/Composer.test.tsx
+window:src/screens/composer/glass48.test.tsx

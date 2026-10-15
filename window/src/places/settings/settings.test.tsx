@@ -66,7 +66,7 @@ describe("Settings repeated and interrupted flows", () => {
   it("ignores an interrupted load and allows retry after a failed load", async () => {
     const first = deferred<string>(); const second = deferred<string>();
     const request = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise).mockRejectedValueOnce(new Error("disconnected")).mockResolvedValueOnce("recovered");
-    const connection = engine(request); let reload!: () => Promise<void>;
+    const connection = engine(request); let reload!: () => Promise<unknown>;
     function View({ method }: { method: string }) { const state = useResource<string>(connection, method); reload = state.reload; return <span>{state.loading ? "Loading" : state.error ?? state.data}</span>; }
     await act(async () => root.render(<View method="first" />));
     await act(async () => root.render(<View method="second" />));
@@ -89,6 +89,6 @@ describe("Settings repeated and interrupted flows", () => {
     const request = vi.fn().mockRejectedValue(new Error("Engine offline"));
     const connection = engine(request);
     const ids = ["general", "people", "appearance", "notifications", "instructions", "models", "local", "accounts", "voice", "chatapps", "permissions", "computer", "secrets", "usage", "backups", "gateway", "self", "seasons", "updates", "achievements", "advanced", "developer"];
-    for (const page of ids) { await act(async () => root.render(<SettingsPage page={page} title={page} level="regular" engine={connection} />)); expect(host.querySelector("h1")?.textContent).toBe(page); expect(host.querySelector(".bs-success")).toBeNull(); }
+    for (const page of ids) { await act(async () => root.render(<SettingsPage page={page} title={page} level="regular" engine={connection} />)); expect(host.querySelector("h1")?.textContent).toBe(["accounts", "models", "local"].includes(page) ? "Models & accounts" : page); expect(host.querySelector(".bs-success")).toBeNull(); }
   });
 });

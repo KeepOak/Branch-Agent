@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/compaction.summarize-fallback.test.ts (atlas AGENT-LOOP-0099). Changed for Branch: existing runtime adapters and owner-context safeguards; upstream assertions retained.
+// Changed for Branch: existing runtime adapters and owner-context safeguards; upstream assertions retained.
 // Covers final fallback behavior when model-backed summarization fails.
 import type { AgentMessage } from "branch/plugin-sdk/agent-core";
 import type { ExtensionContext } from "branch/plugin-sdk/agent-sessions";
@@ -96,7 +96,7 @@ describe("compaction summarization fallback", () => {
   it("retries provider-side AbortError and returns a real summary when caller signal is not aborted", async () => {
     // Reproduce the undici AbortError("This operation was aborted") shape thrown
     // when the LLM API closes the connection mid-stream without the caller signal
-    // being fired. Before the fix, isAbortError() + isTimeoutError() both matched
+    // being fired. Before the fix, isAbortError + isTimeoutError both matched
     // this error shape, so shouldRetry returned false and no retry was attempted —
     // the compaction fell back to the "Summary unavailable" placeholder instead.
     const providerAbortErr = Object.assign(new Error("This operation was aborted"), {

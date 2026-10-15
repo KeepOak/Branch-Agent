@@ -1,4 +1,4 @@
-// Written by Branch for AGENT-LOOP-0007 from mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421:packages/core/src/agent/agent-processor.test.ts; native hook integration coverage, not a complete upstream test-file port.
+// Written by Branch; native hook integration coverage, not a complete test-file port.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHookRunner } from "../plugins/hooks.js";
 import { createMockPluginRegistry } from "../plugins/hooks.test-fixtures.js";

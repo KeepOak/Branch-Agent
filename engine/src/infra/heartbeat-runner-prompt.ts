@@ -24,6 +24,7 @@ import {
 } from "./heartbeat-events-filter.js";
 import { heartbeatLog as log } from "./heartbeat-log.js";
 import {
+  hasCustomHeartbeatPrompt,
   resolveConfiguredHeartbeatPrompt,
   resolveHeartbeatResponseToolPrompt,
 } from "./heartbeat-runner-config.js";
@@ -38,6 +39,7 @@ import {
 } from "./heartbeat-wake-policy.js";
 import {
   HEARTBEAT_SKIP_NO_PENDING_EVENT,
+  HEARTBEAT_SKIP_NO_SIGNAL,
   type HeartbeatScheduledTask,
   type HeartbeatWakeSource,
 } from "./heartbeat-wake.js";
@@ -52,7 +54,10 @@ export function truncateHeartbeatPreview(value: string | undefined): string | un
   return value ? truncateUtf16Safe(value, 200) : undefined;
 }
 
-type HeartbeatSkipReason = "empty-heartbeat-file" | typeof HEARTBEAT_SKIP_NO_PENDING_EVENT;
+type HeartbeatSkipReason =
+  | "empty-heartbeat-file"
+  | typeof HEARTBEAT_SKIP_NO_PENDING_EVENT
+  | typeof HEARTBEAT_SKIP_NO_SIGNAL;
 
 type HeartbeatPreflight = HeartbeatWakePayloadFlags & {
   session: HeartbeatSessionSelection;
@@ -219,12 +224,21 @@ export async function resolveHeartbeatPreflight(params: {
       skipReason: HEARTBEAT_SKIP_NO_PENDING_EVENT,
     };
   }
-  // Payload/task wakes bypass the empty-scratch gate; absent scratch uses the generic prompt.
-  if (
-    shouldBypassScratchGates ||
-    params.scheduledTasks?.length ||
-    heartbeatScratchContent === undefined
-  ) {
+  // Payload/task wakes bypass the empty-scratch gate.
+  if (shouldBypassScratchGates || params.scheduledTasks?.length) {
+    return basePreflight;
+  }
+  if (heartbeatScratchContent === undefined) {
+    // The default prompt only says "follow the monitor scratch". With no scratch, no
+    // pending event and no task, an interval poll has nothing to act on, so it would
+    // spend a full model turn to reply NO_REPLY. A custom prompt keeps its turn.
+    if (
+      params.source === "interval" &&
+      pendingEventEntries.length === 0 &&
+      !hasCustomHeartbeatPrompt(params.cfg, params.heartbeat)
+    ) {
+      return { ...basePreflight, skipReason: HEARTBEAT_SKIP_NO_SIGNAL };
+    }
     return basePreflight;
   }
   if (isHeartbeatContentEffectivelyEmpty(heartbeatScratchContent)) {

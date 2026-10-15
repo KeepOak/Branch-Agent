@@ -4,10 +4,10 @@
 // Advanced the rows for running models here. The engine has no model catalogue with sizes or graphics-card readout yet.
 import { useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
-import { list, text, visible, type RecordValue } from "../adapter";
+import { list, record, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
-import { Btn, Ctl, Empty, Page, Sec, Status, useScope, type RowEntry } from "../kit";
+import { Btn, Empty, Page, Sec, Status, NOSETUP, useConfig, useScope, type RowEntry } from "../kit";
 import { Runtimes, RUNTIMES } from "./local-runtimes";
 import { LocalMore, MORE_TITLES } from "./local-more";
 import { SetupDialog } from "./local-setup";
@@ -17,7 +17,6 @@ import { shownWhy } from "../../../shell/shown-why";
 
 const GIB = 1024 ** 3;
 export const NO_GPU = "Branch can’t read the graphics card yet.";
-const NO_CATALOGUE = "Branch can’t list recommended models with their sizes yet. Each setup above picks one that fits this computer.";
 
 /** This computer, from system.info. Graphics memory isn't reported by the engine. */
 export type Hw = { cpu?: string; ramGb?: number; diskGb?: number; mac: boolean; windows: boolean; port?: number };
@@ -58,6 +57,12 @@ export function foundRuntimes(detect: RecordValue | undefined, models: RecordVal
 
 export function LocalPage(props: SettingsPageProps) {
   const scope = useScope();
+  const cfg = useConfig(props.engine);
+  const maySetup = props.engine.scopes.length === 0 || props.engine.scopes.includes("operator.admin");
+  const modelPath = scope ? ["agents", "entries", scope, "model", "primary"] : ["agents", "defaults", "model", "primary"];
+  const current = cfg.get(modelPath.slice(0, -1)) ?? cfg.get(["agents", "defaults", "model"]);
+  const primary = typeof current === "string" ? current : record(current).primary;
+  const useModel = (ref: string) => { void cfg.set(modelPath, ref); };
   const agent = scope ? { agentId: scope } : {};
   const info = useResource<RecordValue>(props.engine, "system.info", {});
   const detect = useResource<RecordValue>(props.engine, "branch.setup.detect", agent);
@@ -69,13 +74,39 @@ export function LocalPage(props: SettingsPageProps) {
   const done = () => { setSetup(null); void detect.reload(); void models.reload(); };
   return (
     <Page title={props.title} lede="Models that run here, free and private." help="Models that run here, free and private. Branch looks at this computer first and only offers what fits.">
-      <Hardware loading={info.loading} error={info.error} hw={hw} runtimes={detect.loading ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />
-      <Recommended loading={detect.loading || models.loading} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} />
+      <Hardware loading={info.loading} error={info.error} retry={info.reload} hw={hw} runtimes={detect.loading ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />
+      <Recommended loading={detect.loading || models.loading} error={detect.error ?? models.error} retry={() => { void detect.reload(); void models.reload(); }} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} primary={primary} onUse={useModel} maySetup={maySetup} />
       <Runtimes engine={props.engine} hw={hw} detect={detect} models={models} found={found} />
       <LocalMore engine={props.engine} hw={hw} local={local} />
       {setup ? <SetupDialog engine={props.engine} option={setup} agent={agent} onClose={done} /> : null}
     </Page>
   );
+}
+
+/** One block of the page, for the R1 Devices page's cards: what this computer has, the models recommended for it, or
+ *  its runtimes. Each reads the same engine lists the whole page does. */
+export function LocalBlock(props: SettingsPageProps & { part: "hardware" | "recommended" | "runtimes" }) {
+  const scope = useScope();
+  const cfg = useConfig(props.engine);
+  const maySetup = props.engine.scopes.length === 0 || props.engine.scopes.includes("operator.admin");
+  const modelPath = scope ? ["agents", "entries", scope, "model", "primary"] : ["agents", "defaults", "model", "primary"];
+  const current = cfg.get(modelPath.slice(0, -1)) ?? cfg.get(["agents", "defaults", "model"]);
+  const primary = typeof current === "string" ? current : record(current).primary;
+  const agent = scope ? { agentId: scope } : {};
+  const info = useResource<RecordValue>(props.engine, "system.info", {});
+  const detect = useResource<RecordValue>(props.engine, "branch.setup.detect", agent);
+  const models = useResource<RecordValue>(props.engine, "models.list", { includeDetails: true });
+  const [setup, setSetup] = useState<RecordValue | null>(null);
+  const hw = hwOf(info.data);
+  const local = list(models.data?.models).filter((m) => m.local === true);
+  const found = foundRuntimes(detect.data, local);
+  const done = () => { setSetup(null); void detect.reload(); void models.reload(); };
+  if (props.part === "hardware") return <Hardware loading={info.loading} error={info.error} retry={info.reload} hw={hw} runtimes={detect.loading ? undefined : RUNTIMES.filter((r) => found.has(r.id)).map((r) => r.name)} />;
+  if (props.part === "runtimes") return <Runtimes engine={props.engine} hw={hw} detect={detect} models={models} found={found} />;
+  return <>
+    <Recommended loading={detect.loading || models.loading} error={detect.error ?? models.error} retry={() => { void detect.reload(); void models.reload(); }} options={list(detect.data?.prepareOptions)} local={local} onSetup={setSetup} primary={primary} onUse={(ref) => { void cfg.set(modelPath, ref); }} maySetup={maySetup} />
+    {setup ? <SetupDialog engine={props.engine} option={setup} agent={agent} onClose={done} /> : null}
+  </>;
 }
 
 const SVG = (d: string) => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
@@ -84,10 +115,10 @@ const LAYERS = SVG("M12 3l9 5-9 5-9-5zM3 13l9 5 9-5");
 const TERM = SVG("M4 5h16v14H4zM7 9l3 3-3 3M12 15h5");
 export const DOWNLOAD = SVG("M12 4v11M7 10l5 5 5-5M5 20h14");
 
-type HwProps = { loading: boolean; error?: string; hw: Hw; runtimes?: string[] };
-function Hardware({ loading, error, hw, runtimes }: HwProps) {
+type HwProps = { loading: boolean; error?: string; retry?: () => void; hw: Hw; runtimes?: string[] };
+function Hardware({ loading, error, retry, hw, runtimes }: HwProps) {
   if (loading) return <div className="hw-k scan-k" role="status"><span className="spin-k" /><b>Looking at this computer…</b><small>Memory, graphics card, free space and which runtimes are installed.</small></div>;
-  if (error) return <Status tone="bad" title="Branch couldn’t look at this computer">{visible(error)}</Status>;
+  if (error) return <Status tone="bad" title="Branch couldn’t look at this computer" action={retry ? <Btn sm onClick={retry}>Try again</Btn> : undefined}>{visible(error)}</Status>;
   const tiles: [ReactNode, string, string | undefined, string?][] = [
     [CPU, "Processor", hw.cpu],
     [LAYERS, "Memory", hw.ramGb ? `${hw.ramGb} GB` : undefined],
@@ -107,13 +138,13 @@ function Hardware({ loading, error, hw, runtimes }: HwProps) {
   );
 }
 
-type RecProps = { loading: boolean; options: RecordValue[]; local: RecordValue[]; onSetup: (o: RecordValue) => void };
-function Recommended({ loading, options, local, onSetup }: RecProps) {
+type RecProps = { loading: boolean; error?: string; retry?: () => void; options: RecordValue[]; local: RecordValue[]; onSetup: (o: RecordValue) => void; primary: unknown; onUse: (ref: string) => void; maySetup: boolean };
+function Recommended({ loading, error, retry, options, local, onSetup, primary, onUse, maySetup }: RecProps) {
   return (
     <Sec title="Recommended for you">
       {options.length || local.length ? (
         <div className="lm-grid-k">
-          {local.map((m) => <Installed key={`${text(m.provider)}/${text(m.id)}`} m={m} />)}
+          {local.map((m) => <Installed key={`${text(m.provider)}/${text(m.id)}`} m={m} primary={primary} onUse={onUse} maySetup={maySetup} />)}
           {options.map((o) => (
             <div key={text(o.id)} className="lm-k" data-row={visible(o.label)}>
               <div className="lm-h-k"><b>{visible(o.label)}</b></div>
@@ -122,13 +153,14 @@ function Recommended({ loading, options, local, onSetup }: RecProps) {
             </div>
           ))}
         </div>
-      ) : loading ? <p className="hint">Looking for what this computer can run…</p> : <Empty>Nothing to set up on this computer yet.</Empty>}
-      <Ctl title="Recommended models, sized to this computer" sub="Show models that fit here and the sizes available." help="Each model with how well it fits here, and a size to pick: small, balanced or full." off={NO_CATALOGUE} />
+      ) : error ? <Status tone="bad" title="Branch couldn’t check what this computer can run" action={retry ? <Btn sm onClick={retry}>Try again</Btn> : undefined}>{visible(error)}</Status>
+        : loading ? <p className="hint">Looking for what this computer can run…</p> : <Empty>Nothing to set up on this computer yet.</Empty>}
     </Sec>
   );
 }
 
-function Installed({ m }: { m: RecordValue }) {
+function Installed({ m, primary, onUse, maySetup }: { m: RecordValue; primary: unknown; onUse: (ref: string) => void; maySetup: boolean }) {
+  const ref = `${text(m.provider)}/${text(m.id)}`;
   const name = visible(m.name ?? m.id);
   const ctx = typeof m.contextWindow === "number" ? Math.round(m.contextWindow / 1000) : 0;
   const runtime = RUNTIMES.find((r) => r.id === m.provider)?.name ?? visible(m.provider);
@@ -143,7 +175,7 @@ function Installed({ m }: { m: RecordValue }) {
       </div>
       <div className="acts">
         <span className="pill done-k"><i />Installed</span>
-        <Btn sm disabled title="Open a conversation and pick this model to talk to it.">Say hello</Btn>
+        <Btn sm disabled={!maySetup || primary === ref || m.available === false} title={!maySetup ? NOSETUP : m.available === false ? "Start this model’s runtime first." : undefined} onClick={() => onUse(ref)}>{primary === ref ? "In use" : "Use this"}</Btn>
         <Btn ghost sm disabled title="Branch can’t remove a model from this computer yet.">Remove</Btn>
       </div>
     </div>
@@ -152,7 +184,6 @@ function Installed({ m }: { m: RecordValue }) {
 
 const rows = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "local", title, sec, group: sec.replace(/, (more|technical|in depth)$/, ""), lv }));
 export const LOCAL_ROWS: RowEntry[] = [
-  ...rows("Recommended for you", 0, ["Recommended models, sized to this computer"]),
   ...rows("Runtimes", 0, RUNTIMES.map((r) => r.name)),
   ...rows("Runtimes", 1, ["Share with your other computers"]),
   ...rows("Running models here, more", 1, MORE_TITLES),

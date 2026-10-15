@@ -1,7 +1,7 @@
 import { resolveGatewayWebSocketUrl } from "./gateway-websocket-url";
 const isApplePlatform = () => /Mac|iPhone|iPad/.test(navigator.platform);
 
-export type DesktopDisconnectDetail = {
+type DesktopDisconnectDetail = {
   clean: boolean;
   code?: number;
   reason?: string;
@@ -12,7 +12,7 @@ type DesktopSecurityFailureDetail = {
   status?: number;
 };
 
-export type DesktopSizingMode = "fit" | "actual" | "match";
+type DesktopSizingMode = "fit" | "actual" | "match";
 
 type DesktopConnectOptions = {
   background?: string;

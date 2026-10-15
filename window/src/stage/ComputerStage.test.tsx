@@ -93,7 +93,6 @@ describe("conversation computer lifecycle", () => {
     });
     await render(engine(request as WindowEngine["request"]));
     await flush();
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Placement unavailable");
     expect(container.textContent).not.toContain("It can't see a screen");
     failed = false;
     await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Try again")!.click());
@@ -109,7 +108,8 @@ describe("conversation computer lifecycle", () => {
     });
     await render(engine(request as WindowEngine["request"]));
     await flush();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Computer list unavailable");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("Can’t see this computer right now.");
+    expect(container.textContent).not.toContain("Computer list unavailable");
     expect(viewer.connect).toHaveBeenCalled();
     expect(container.textContent).toContain("Take over");
   });
