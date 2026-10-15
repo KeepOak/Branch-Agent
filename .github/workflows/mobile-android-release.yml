@@ -74,6 +74,7 @@ jobs:
           echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> "${GITHUB_ENV}"
           echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> "${GITHUB_PATH}"
           echo "${ANDROID_SDK_ROOT}/platform-tools" >> "${GITHUB_PATH}"
+          echo "${ANDROID_SDK_ROOT}/build-tools/36.0.0" >> "${GITHUB_PATH}"
 
       - name: Install Android SDK packages
         run: |
@@ -105,11 +106,14 @@ jobs:
         run: node scripts/android-release.mjs >> "$GITHUB_OUTPUT"
 
       - name: Decode the PKCS12 keystore
-        if: steps.plan.outputs.signed == 'true'
         env:
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
+          if [[ -z "${ANDROID_KEYSTORE_B64}" ]]; then
+            echo "Release keystore secret is missing or empty" >&2
+            exit 1
+          fi
           keystore_path="${RUNNER_TEMP}/android-release.p12"
           printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$keystore_path"
           test -s "$keystore_path"
@@ -118,8 +122,10 @@ jobs:
       - name: Build the Android APK
         working-directory: mobile
         env:
+          REQUIRE_ANDROID_RELEASE_SIGNING: '1'
           ANDROID_VERSION_CODE: ${{ steps.plan.outputs.version_code }}
           ANDROID_VERSION_NAME: ${{ steps.plan.outputs.version }}
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -129,7 +135,6 @@ jobs:
         id: stage
         env:
           APK_NAME: ${{ steps.plan.outputs.apk_name }}
-          SIGNED: ${{ steps.plan.outputs.signed }}
         run: |
           set -euo pipefail
           source_apk="mobile/android/app/build/outputs/apk/release/app-release.apk"
@@ -138,8 +143,17 @@ jobs:
           apk_path="${RUNNER_TEMP}/apk/${APK_NAME}"
           cp "$source_apk" "$apk_path"
           echo "apk_path=${apk_path}" >> "$GITHUB_OUTPUT"
-          if [[ "$SIGNED" == "true" ]]; then
-            node mobile/scripts/android-release.mjs --sha256 "$apk_path" >> "$GITHUB_OUTPUT"
+          node mobile/scripts/android-release.mjs --sha256 "$apk_path" >> "$GITHUB_OUTPUT"
+
+      - name: Reject a debug-signed APK
+        env:
+          APK_PATH: ${{ steps.stage.outputs.apk_path }}
+        run: |
+          set -euo pipefail
+          certs="$(apksigner verify --print-certs "$APK_PATH")"
+          if printf '%s\n' "$certs" | grep -F -q 'CN=Android Debug'; then
+            echo "Release APK is signed with the Android Debug certificate" >&2
+            exit 1
           fi
 
       - name: Upload the APK as a workflow artifact
@@ -173,27 +187,20 @@ jobs:
       - name: Summary
         if: always() && steps.plan.outcome == 'success'
         env:
-          SIGNED: ${{ steps.plan.outputs.signed }}
           ATTACH: ${{ steps.plan.outputs.attach_release }}
           APK_NAME: ${{ steps.plan.outputs.apk_name }}
           TAG: ${{ steps.plan.outputs.release_tag }}
         run: |
           set -euo pipefail
           {
-            if [[ "$SIGNED" == "true" ]]; then
-              echo "## Signed Android APK"
-              echo
-              echo "- File: \`$APK_NAME\`"
-              echo "- Checksum: \`${APK_NAME}.sha256\`"
-              if [[ "$ATTACH" == "true" ]]; then
-                echo "- Release asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}"
-                echo "- Checksum asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}.sha256"
-              else
-                echo "- Kept as a workflow artifact only (no release tag on this run)."
-              fi
+            echo "## Signed Android APK"
+            echo
+            echo "- File: \`$APK_NAME\`"
+            echo "- Checksum: \`${APK_NAME}.sha256\`"
+            if [[ "$ATTACH" == "true" ]]; then
+              echo "- Release asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}"
+              echo "- Checksum asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}.sha256"
             else
-              echo "## Unsigned Android APK"
-              echo
-              echo "Signing secrets were missing. The APK is a workflow artifact only and was not attached to the GitHub release."
+              echo "- Kept as a workflow artifact only (no release tag on this run)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
