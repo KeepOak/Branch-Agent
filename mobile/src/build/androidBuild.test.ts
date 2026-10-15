@@ -50,4 +50,14 @@ describe('the installable Android build', () => {
     expect(src).not.toMatch(/ANDROID_KEYSTORE_PASSWORD|ANDROID_KEY_PASSWORD/);
     expect(src).not.toMatch(/-Pandroid\.injected\.signing\.(store|key)\.password/);
   });
+
+  it('includes the release signing enforcement plugin to prevent debug-signing fallback', () => {
+    const pluginName = './withAndroidReleaseSigningRequired.js';
+    expect(plugins).toContain(pluginName);
+    const pluginSrc = readFileSync(path.join(__dirname, '../../withAndroidReleaseSigningRequired.js'), 'utf8');
+    expect(pluginSrc).toContain('REQUIRE_ANDROID_RELEASE_SIGNING');
+    expect(pluginSrc).toContain('withAppBuildGradle');
+    expect(pluginSrc).toContain('GradleException');
+    expect(pluginSrc).toContain('never fall back to debug signing');
+  });
 });

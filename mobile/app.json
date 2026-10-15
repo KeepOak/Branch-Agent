@@ -34,6 +34,7 @@
       "bundler": "metro"
     },
     "plugins": [
+      "./withAndroidReleaseSigningRequired.js",
       [
         "expo-camera",
         {

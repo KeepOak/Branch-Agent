@@ -270,9 +270,27 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('--sha256');
     expect(workflow).toContain('SHA256_NAME');
     expect(workflow).toContain('${APK_NAME}.sha256');
-    expect(workflow).toMatch(/--sha256[\s\S]*Reject a debug-signed APK/);
+    expect(workflow).toMatch(/--sha256[\s\S]*Verify APK signature/);
     expect(workflow).toMatch(/attach_release == 'true'[\s\S]*SHA256_PATH[\s\S]*gh release upload/);
     expect(workflow).not.toMatch(/--sha256[\s\S]*attach_release == 'false'/);
+  });
+
+  it('verifies the APK certificate fingerprint matches the expected release key SHA-256', () => {
+    expect(workflow).toContain('ANDROID_RELEASE_CERT_SHA256');
+    expect(workflow).toMatch(/85:B3:4C:E5:18:D8:74:9C:E0:06:4B:75:68:DE:75:0C:27:94:CB:17:0D:BB:E1:ED:4C:A0:62:29:E4:EB:46:C9/);
+    expect(workflow).toContain('EXPECTED_CERT_SHA256');
+    expect(workflow).toContain('Signer #1 certificate SHA-256 digest');
+    expect(workflow).toContain('Certificate fingerprint mismatch');
+    expect(workflow).toMatch(/Verify APK signature[\s\S]*apksigner verify --print-certs/);
+    expect(workflow).toMatch(/Verify APK signature[\s\S]*Upload the APK as a workflow artifact/);
+  });
+
+  it('fails the verification step if the APK is unsigned or the fingerprint check fails', () => {
+    expect(workflow).toContain('APK signature verification failed or APK is unsigned');
+    expect(workflow).toContain('Could not extract SHA-256 certificate fingerprint');
+    expect(workflow).toMatch(/if \[\[ -z "\$\{EXPECTED_CERT_SHA256\}" \]\]; then/);
+    expect(workflow).toMatch(/if \[\[ -z "\$\{actual_sha256\}" \]\]; then/);
+    expect(workflow).toMatch(/if \[\[ "\$\{actual_normalized\}" != "\$\{expected_normalized\}" \]\]; then/);
   });
 });
 
