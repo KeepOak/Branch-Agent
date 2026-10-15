@@ -9,6 +9,7 @@ import { headline } from './src/approvals/approvalWords';
 import { testApprovalsOn } from './src/approvals/testApproval';
 import { useTestApproval } from './src/approvals/useTestApproval';
 import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
+import { appIdentity, type AppIdentity } from './src/build/appIdentity';
 import { Conversation } from './src/chat/conversation';
 import { ChatList, type ChatRow } from './src/chats/chatList';
 import { messageSearcher } from './src/chats/messageSearch';
@@ -24,7 +25,9 @@ import { EnterCodeScreen } from './src/screens/EnterCodeScreen';
 import { PairedScreen } from './src/screens/PairedScreen';
 import { RefusedScreen } from './src/screens/RefusedScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
+import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import type { ColorScheme } from './src/theme/tokens';
 
@@ -32,7 +35,12 @@ import type { ColorScheme } from './src/theme/tokens';
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 type Route = 'welcome' | 'scan' | 'code';
-type PairedRoute = { name: 'chats' } | { name: 'computer' } | { name: 'chat'; row: ChatRow } | { name: 'approvals'; focus?: string };
+type PairedRoute =
+  | { name: 'chats' }
+  | { name: 'computer'; from?: 'settings' }
+  | { name: 'chat'; row: ChatRow }
+  | { name: 'approvals'; focus?: string }
+  | { name: 'settings' };
 
 const CHATS: PairedRoute = { name: 'chats' };
 
@@ -59,7 +67,17 @@ function OpenChat({ session, row, online, onBack }: { session: PairingSession; r
   return <ChatScreen row={row} conversation={conversation} online={online} onBack={onBack} />;
 }
 
-function Shell({ session, notifier, appState }: { session: PairingSession; notifier: Notifier; appState: AppStateSource }) {
+function Shell({
+  session,
+  notifier,
+  appState,
+  identity,
+}: {
+  session: PairingSession;
+  notifier: Notifier;
+  appState: AppStateSource;
+  identity: AppIdentity;
+}) {
   const theme = useTheme();
   const state = usePairingState(session);
   const [route, setRoute] = useState<Route>('welcome');
@@ -91,14 +109,21 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
   useEffect(() => {
     if (state.step !== 'paired') return;
     let live = true;
-    notifier.permission().then(
-      (p) => live && setPermission(p),
-      () => live && setPermission('unavailable'),
-    );
+    const read = () => {
+      notifier.permission().then(
+        (p) => live && setPermission(p),
+        () => live && setPermission('unavailable'),
+      );
+    };
+    read();
+    const stop = appState.onChange((next) => {
+      if (next === 'active') read();
+    });
     return () => {
       live = false;
+      stop();
     };
-  }, [state.step, notifier]);
+  }, [state.step, notifier, appState]);
   const [testTools] = useState(testApprovalsOn);
   const [refreshApprovals] = useState(() => () => inbox.refresh());
   const testApproval = useTestApproval(session, refreshApprovals);
@@ -117,11 +142,12 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
     setRoute('welcome');
   }, [state.step, chats, inbox]);
 
-  // Android's back gesture leaves Your computer, a chat or Approvals for Chats, like the on-screen back button.
+  // Android's back gesture leaves Your computer, Settings, a chat or Approvals for Chats, like the on-screen back button.
   useEffect(() => {
     if (state.step !== 'paired' || pairedRoute.name === 'chats') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setPairedRoute(CHATS);
+      if (pairedRoute.name === 'computer' && pairedRoute.from === 'settings') setPairedRoute({ name: 'settings' });
+      else setPairedRoute(CHATS);
       return true;
     });
     return () => sub.remove();
@@ -164,7 +190,27 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
       break;
     case 'paired':
       if (pairedRoute.name === 'computer') {
-        screen = <PairedScreen state={state} onUnpair={() => void session.unpair()} onBack={() => setPairedRoute(CHATS)} />;
+        const fromSettings = pairedRoute.from === 'settings';
+        screen = (
+          <PairedScreen
+            state={state}
+            onUnpair={() => void session.unpair()}
+            onBack={() => setPairedRoute(fromSettings ? { name: 'settings' } : CHATS)}
+            backTo={fromSettings ? 'Settings' : 'Chats'}
+          />
+        );
+      } else if (pairedRoute.name === 'settings') {
+        screen = (
+          <SettingsScreen
+            state={state}
+            permission={permission}
+            identity={identity}
+            onThisPhone={() => setPairedRoute({ name: 'computer', from: 'settings' })}
+            onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
+            onTurnOnNotifications={turnOnNotifications}
+            onBack={() => setPairedRoute(CHATS)}
+          />
+        );
       } else if (pairedRoute.name === 'chat') {
         // The header follows the list live (a rename, the working dot); the row it was opened from fills in until then.
         const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
@@ -200,6 +246,7 @@ function Shell({ session, notifier, appState }: { session: PairingSession; notif
             searchMessages={searchMessages}
             onRefresh={() => chats.refresh()}
             onComputer={() => setPairedRoute({ name: 'computer' })}
+            onSettings={() => setPairedRoute({ name: 'settings' })}
             onOpen={(row) => setPairedRoute({ name: 'chat', row })}
             needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
             onNeedsYou={() => setPairedRoute({ name: 'approvals' })}
@@ -224,14 +271,19 @@ export default function App({
   session: given,
   notifier: givenNotifier,
   appState = deviceAppState,
+  identity: givenIdentity,
+  themeStore,
 }: {
   scheme?: ColorScheme;
   session?: PairingSession;
   notifier?: Notifier;
   appState?: AppStateSource;
+  identity?: AppIdentity;
+  themeStore?: KeyValueStore;
 }) {
   const [session] = useState(() => given ?? createDeviceSession());
   const [notifier] = useState(() => givenNotifier ?? (Platform.OS === 'web' ? noNotifier : createExpoNotifier()));
+  const [identity] = useState(() => givenIdentity ?? appIdentity());
   useEffect(() => {
     void session.restore();
     return () => session.dispose();
@@ -239,8 +291,8 @@ export default function App({
   return (
     // Starting from the window's known insets draws the first frame at once instead of a blank one.
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <ThemeProvider scheme={scheme}>
-        <Shell session={session} notifier={notifier} appState={appState} />
+      <ThemeProvider scheme={scheme} store={themeStore ?? (given ? undefined : deviceStore())}>
+        <Shell session={session} notifier={notifier} appState={appState} identity={identity} />
       </ThemeProvider>
     </SafeAreaProvider>
   );

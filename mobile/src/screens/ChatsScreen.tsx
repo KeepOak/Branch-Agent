@@ -244,6 +244,7 @@ export function ChatsScreen({
   online,
   onRefresh,
   onComputer,
+  onSettings,
   onOpen,
   searchMessages,
   needsYou,
@@ -254,6 +255,8 @@ export function ChatsScreen({
   online: boolean;
   onRefresh: () => Promise<void>;
   onComputer: () => void;
+  /** Opens Settings. */
+  onSettings?: () => void;
   /** Opens a chat. */
   onOpen?: (row: ChatRow) => void;
   /** Searches every chat's messages (sessions.search); without it, search matches names and last lines. */
@@ -321,19 +324,35 @@ export function ChatsScreen({
             ) : null}
           </Pressable>
         ) : null}
-        <Pressable
-          testID="computer-button"
-          accessibilityRole="button"
-          accessibilityLabel={online ? 'Your computer, connected' : 'Your computer, reconnecting'}
-          onPress={onComputer}
-          hitSlop={8}
-          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, gap: space.xs + 2, opacity: pressed ? 0.6 : 1 })}
-        >
-          <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: online ? color.ok : color.warn }} />
-          <ThemedText variant="body" tone="accentInk">
-            Computer
-          </ThemedText>
-        </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          {onSettings ? (
+            <Pressable
+              testID="settings-button"
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              onPress={onSettings}
+              hitSlop={8}
+              style={({ pressed }) => ({ minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+            >
+              <ThemedText variant="body" tone="accentInk">
+                Settings
+              </ThemedText>
+            </Pressable>
+          ) : null}
+          <Pressable
+            testID="computer-button"
+            accessibilityRole="button"
+            accessibilityLabel={online ? 'Your computer, connected' : 'Your computer, reconnecting'}
+            onPress={onComputer}
+            hitSlop={8}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, gap: space.xs + 2, opacity: pressed ? 0.6 : 1 })}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: online ? color.ok : color.warn }} />
+            <ThemedText variant="body" tone="accentInk">
+              Computer
+            </ThemedText>
+          </Pressable>
+        </View>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
         <ThemedText variant="largeTitle" accessibilityRole="header">

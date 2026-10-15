@@ -130,6 +130,7 @@ describe('chats screen', () => {
 
   it('opens on Chats once paired, follows the computer live, and goes to Your computer and back', async () => {
     const { session, engine } = await pairedApp();
+    expect(screen.getByTestId('settings-button')).toBeOnTheScreen();
     expect(screen.getByTestId('computer-button')).toHaveProp('accessibilityLabel', 'Your computer, connected');
     expect(screen.queryByTestId('chats-offline')).toBeNull();
 
