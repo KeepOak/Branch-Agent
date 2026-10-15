@@ -2,9 +2,10 @@
 // The R1 browser route: the header's browser stage is R1Stage in Browser mode, which hosts ComputerStage. Its browser
 // view is BrowserPanes, so the owner's switch must show there whenever the desktop bridge exists.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { R1Stage } from "../screens/stage/R1Stage";
+import type { StageMode } from "./ComputerStage";
 import type { WindowEngine } from "../connect/engine";
 
 vi.mock("../face/Face", () => ({ Face: () => null }));
@@ -35,25 +36,37 @@ const engine = (): WindowEngine => ({
   onEvent: () => () => {},
 });
 
+// The route as the owner reaches it: the stage opens in Computer mode, and the Computer | Browser tabs change the mode
+// through the parent, as R1Window does with onMode.
+function RouteHost({ engine: owner }: { engine: WindowEngine }) {
+  const [mode, setMode] = useState<StageMode>("Computer");
+  return (
+    <R1Stage
+      engine={owner}
+      gatewayUrl="ws://gateway.invalid"
+      name="Scout"
+      mode={mode}
+      blocks={[]}
+      running={false}
+      onMode={setMode}
+      onClose={() => {}}
+      onChooseComputer={() => {}}
+      onPip={() => {}}
+    />
+  );
+}
+
 async function mountBrowserRoute() {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   await act(async () => {
-    root!.render(
-      <R1Stage
-        engine={engine()}
-        gatewayUrl="ws://gateway.invalid"
-        name="Scout"
-        mode="Browser"
-        blocks={[]}
-        running={false}
-        onMode={() => {}}
-        onClose={() => {}}
-        onChooseComputer={() => {}}
-        onPip={() => {}}
-      />,
-    );
+    root!.render(<RouteHost engine={engine()} />);
+  });
+  const browserTab = [...container.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="Show"] button')].find((button) => button.textContent?.trim() === "Browser");
+  expect(browserTab, "the stage has a Browser tab").toBeDefined();
+  await act(async () => {
+    browserTab!.click();
   });
 }
 
