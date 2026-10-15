@@ -1,22 +1,14 @@
 import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  PAUSE_UNAVAILABLE,
-  STATUS_LABEL,
-  type AgentListSnapshot,
-  type AgentRow,
-  type AgentStatus,
-} from '../agents/agentList';
+import { STATUS_LABEL, type AgentListSnapshot, type AgentRow, type AgentStatus } from '../agents/agentList';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { OfflineBanner } from '../ui/OfflineBanner';
 
-function statusTone(status: AgentStatus): 'ok' | 'warn' | 'ink3' {
-  if (status === 'running') return 'ok';
-  if (status === 'paused') return 'warn';
-  return 'ink3';
+function statusTone(status: AgentStatus): 'ok' | 'ink3' {
+  return status === 'running' ? 'ok' : 'ink3';
 }
 
 function Avatar({ row }: { row: AgentRow }) {
@@ -49,31 +41,10 @@ function Note({ title, body, testID, action }: { title: string; body: string; te
   );
 }
 
-function AgentCard({
-  row,
-  canControl,
-  sending,
-  failed,
-  confirming,
-  onAskPause,
-  onCancelPause,
-  onPause,
-  onResume,
-}: {
-  row: AgentRow;
-  canControl: boolean;
-  sending?: 'pause' | 'resume';
-  failed?: string;
-  confirming: boolean;
-  onAskPause: () => void;
-  onCancelPause: () => void;
-  onPause: () => void;
-  onResume: () => void;
-}) {
+function AgentCard({ row }: { row: AgentRow }) {
   const { color, space, radius, layout } = useTheme();
-  const busy = Boolean(sending);
   const status = STATUS_LABEL[row.status];
-  const fill = row.status === 'running' ? color.okTint : row.status === 'paused' ? color.warnTint : color.fill;
+  const fill = row.status === 'running' ? color.okTint : color.fill;
   return (
     <View
       testID={`agent-${row.id}`}
@@ -96,50 +67,25 @@ function AgentCard({
           </View>
         </View>
       </View>
-      {canControl ? (
-        confirming ? (
-          <View testID={`confirm-pause-${row.id}`} style={{ gap: space.sm }}>
-            <ThemedText variant="footnote" tone="ink2">
-              {`${row.name} won’t start anything new until you resume it.`}
-            </ThemedText>
-            <Button title={`Pause ${row.name}`} kind="destructive" busy={sending === 'pause'} disabled={busy} onPress={onPause} testID={`confirm-pause-${row.id}-yes`} />
-            <Button title="Keep running" kind="plain" disabled={busy} onPress={onCancelPause} testID={`confirm-pause-${row.id}-no`} />
-          </View>
-        ) : row.status === 'paused' ? (
-          <Button title={`Resume ${row.name}`} kind="secondary" busy={sending === 'resume'} disabled={busy} onPress={onResume} testID={`resume-${row.id}`} />
-        ) : (
-          <Button title={`Pause ${row.name}`} kind="secondary" disabled={busy} onPress={onAskPause} testID={`pause-${row.id}`} />
-        )
-      ) : null}
-      {failed ? (
-        <ThemedText testID={`failed-${row.id}`} variant="footnote" tone="bad">
-          {failed}
-        </ThemedText>
-      ) : null}
     </View>
   );
 }
 
-/** The home computer's agents: name and running / paused / idle, with Pause / Resume when the engine offers it. */
+/** The home computer's agents: name and running / idle. Read-only; Pause / Resume live on the computer. */
 export function AgentsScreen({
   list,
   online,
   onRefresh,
-  onPause,
-  onResume,
   onBack,
 }: {
   list: AgentListSnapshot;
   online: boolean;
   onRefresh: () => Promise<void>;
-  onPause: (id: string) => void;
-  onResume: (id: string) => void;
   onBack: () => void;
 }) {
   const { color, space, radius, layout } = useTheme();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [confirming, setConfirming] = useState<string | null>(null);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -159,24 +105,7 @@ export function AgentsScreen({
       <Note testID="agents-waiting" title="Waiting for your computer" body="Your agents show up here as soon as this phone reaches it." />
     );
   else if (list.rows.length === 0) body = <Note testID="agents-empty" title="No agents yet" body="Trunks you add on your computer show up here." />;
-  else
-    body = list.rows.map((row) => (
-      <AgentCard
-        key={row.id}
-        row={row}
-        canControl={list.canControl}
-        sending={list.sending[row.id]}
-        failed={list.failed[row.id]}
-        confirming={confirming === row.id}
-        onAskPause={() => setConfirming(row.id)}
-        onCancelPause={() => setConfirming(null)}
-        onPause={() => {
-          setConfirming(null);
-          onPause(row.id);
-        }}
-        onResume={() => onResume(row.id)}
-      />
-    ));
+  else body = list.rows.map((row) => <AgentCard key={row.id} row={row} />);
 
   return (
     <View testID="agents-screen" style={{ flex: 1, backgroundColor: color.grouped }}>
@@ -200,14 +129,15 @@ export function AgentsScreen({
           Agents
         </ThemedText>
         <ThemedText variant="subhead" tone="ink2" style={{ marginTop: space.xs }}>
-          The Trunks on your computer, and whether each one is running, paused or idle.
+          The Trunks on your computer, and whether each one is running or idle.
         </ThemedText>
         {online ? null : <OfflineBanner testID="agents-offline" message="Reconnecting to your computer… These agents may be out of date." />}
-        {list.loaded && !list.canControl ? (
-          <View testID="agents-readonly" style={{ marginTop: space.md, backgroundColor: color.fill, borderRadius: radius.md, padding: space.md }}>
-            <ThemedText variant="footnote" tone="ink2">
-              {PAUSE_UNAVAILABLE}
+        {list.loaded && list.error && online ? (
+          <View testID="agents-error" style={{ marginTop: space.md, backgroundColor: color.badTint, borderRadius: radius.md, padding: space.md, gap: space.sm }}>
+            <ThemedText variant="footnote" tone="bad">
+              {list.error}
             </ThemedText>
+            <Button title="Try again" kind="secondary" onPress={() => void refresh()} testID="agents-error-action" />
           </View>
         ) : null}
         {body}

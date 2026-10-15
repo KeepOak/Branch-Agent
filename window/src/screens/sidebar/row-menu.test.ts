@@ -3,7 +3,7 @@ import type { Conversation } from "../../connect/conversations";
 import type { Actions } from "../../shell/conversation-actions";
 import type { Contact } from "../../shell/contacts-model";
 import { contactRows, type SideRow } from "./model";
-import { DEFAULT_AWAKE, DEFAULT_LISTED, FIRST_MESSAGE, PAUSE_OFF, rowMenu, TRUNK_LISTED, type RowMenuContext } from "./row-menu";
+import { DEFAULT_AWAKE, DEFAULT_FIRST, DEFAULT_LISTED, FIRST_MESSAGE, PAUSE_OFF, REPLACE_PIN, rowMenu, TRUNK_LISTED, type RowMenuContext } from "./row-menu";
 
 const thread = { key: "agent:ledger:main", title: "Ledger", agentId: "ledger", snoozedUntil: null, working: false } as unknown as Conversation;
 const contact = (over: Partial<Contact>): Contact => ({
@@ -16,7 +16,7 @@ const ctx = (over: Partial<RowMenuContext> = {}): RowMenuContext => ({
   actions: { snooze: vi.fn(), setUnread: vi.fn(), archive: vi.fn(), restore: vi.fn(), copyConversation: vi.fn() } as unknown as Actions,
   open: vi.fn(), pin: vi.fn(), markRead: vi.fn(), archiveRoom: vi.fn(), unarchiveRoom: vi.fn(), rename: vi.fn(), moveToProject: vi.fn(), moveToGroup: vi.fn(), newConversation: vi.fn(),
   copyLink: vi.fn(), copyMarkdown: vi.fn(), copyText: vi.fn(), ownWindow: vi.fn(), ask: vi.fn(), editTrunk: vi.fn(), tidy: vi.fn(),
-  removeTrunk: vi.fn(), confirmDelete: vi.fn(), ...over,
+  removeTrunk: vi.fn(), confirmDelete: vi.fn(), replacePin: vi.fn(), ...over,
 });
 
 describe("row ••• menu", () => {
@@ -58,6 +58,21 @@ describe("row ••• menu", () => {
     expect(tiles.find(tile => tile.label === "Unread")?.off).toBe(FIRST_MESSAGE);
     expect(tiles.find(tile => tile.label === "Snooze")?.off).toBe(FIRST_MESSAGE);
   });
+  it("gives a pinned face the same menu plus Replace with a different Trunk…, which opens the picker", () => {
+    const c = ctx(), pinned = rowOf({ pinnedAt: 5 });
+    const { tiles, rows } = rowMenu(pinned, c);
+    expect(tiles.map(tile => tile.label)).toEqual(["Unpin", "Unread", "Snooze", "Archive"]);
+    expect(rows.map(row => row.label)).toEqual(["Rename", "Move to", "New conversation", "Copy", "Open in new window", REPLACE_PIN, "Ledger", "Delete conversation…"]);
+    const replace = rows.find(row => row.label === REPLACE_PIN)!;
+    expect(replace.need).toEqual(["sessions.patch", "sessions.patchMany", "contacts.topics"]);
+    replace.onSelect?.();
+    expect(c.replacePin).toHaveBeenCalledWith(pinned);
+    expect(rowMenu(rowOf({}), ctx()).rows.some(row => row.label === REPLACE_PIN)).toBe(false);
+  });
+  it("keeps the default's pin in place: its Replace says why", () => {
+    const { rows } = rowMenu(rowOf({ pinnedAt: 5, isDefault: true }), ctx());
+    expect(rows.find(row => row.label === REPLACE_PIN)?.off).toBe(DEFAULT_FIRST);
+  });
   it("archives a group through its room", () => {
     const c = ctx();
     const { tiles, rows } = rowMenu(rowOf({ id: "room:r1", kind: "group", name: "Quotes", roomId: "r1" } as Partial<Contact>), c);
@@ -69,7 +84,7 @@ describe("row ••• menu", () => {
 
 describe("row ••• menu hints", () => {
   it("are short plain words with no 'default' jargon, so they fit a tile in one or two lines", () => {
-    for (const hint of [DEFAULT_AWAKE, DEFAULT_LISTED, TRUNK_LISTED]) {
+    for (const hint of [DEFAULT_AWAKE, DEFAULT_LISTED, TRUNK_LISTED, DEFAULT_FIRST]) {
       expect(hint).not.toMatch(/default/i);
       expect(hint.length).toBeLessThanOrEqual(16);
     }

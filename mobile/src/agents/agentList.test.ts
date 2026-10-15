@@ -1,9 +1,7 @@
-import { PAUSE_METHOD, PAUSE_UNAVAILABLE, RESUME_METHOD, AgentList, canPauseResume, listFailureMessage, readAgentRows, type AgentListSnapshot } from './agentList';
+import { AgentList, listFailureMessage, readAgentRows, type AgentListSnapshot } from './agentList';
 import { createFakeEngine } from '../connect/fakeEngine';
 import { createFakeSession } from '../testing/fakeSession';
 import { fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
-
-const CONTROL = [PAUSE_METHOD, RESUME_METHOD];
 
 function until(list: AgentList, test: (s: AgentListSnapshot) => boolean): Promise<AgentListSnapshot> {
   if (test(list.getSnapshot())) return Promise.resolve(list.getSnapshot());
@@ -29,67 +27,45 @@ async function pairedList(engine = createFakeEngine({ sessions: fixtureSessions,
 }
 
 describe('agent rows', () => {
-  it('names each agent and marks running, paused and idle from agents.list and sessions', () => {
+  it('names each agent and marks running and idle from agents.list and sessions', () => {
     const rows = readAgentRows(fixtureAgents, { sessions: fixtureSessions });
     expect(rows.map((r) => r.id)).toEqual(['main', 'oak', 'researcher']);
     expect(rows.find((r) => r.id === 'main')).toMatchObject({ name: 'Branch Agent', avatar: '🌿', status: 'idle' });
     expect(rows.find((r) => r.id === 'oak')).toMatchObject({ name: 'Oak', avatar: 'O', status: 'running' });
-    expect(rows.find((r) => r.id === 'researcher')).toMatchObject({ name: 'Researcher', avatar: '🔎', status: 'paused' });
+    expect(rows.find((r) => r.id === 'researcher')).toMatchObject({ name: 'Researcher', avatar: '🔎', status: 'idle' });
   });
 
-  it('keeps paused ahead of a live run, and skips rows with no id', () => {
+  it('takes running from hasActiveRun and activeRunIds, and skips rows with no id', () => {
     const rows = readAgentRows(
-      { agents: [{ id: 'oak', name: 'Oak', paused: true }, { name: 'ghost' }, { id: 'main', name: 'Branch Agent' }] },
+      { agents: [{ id: 'oak', name: 'Oak' }, { name: 'ghost' }, { id: 'main', name: 'Branch Agent' }] },
       { sessions: [{ agentId: 'oak', hasActiveRun: true }, { agentId: 'main', activeRunIds: ['run-1'] }] },
     );
     expect(rows).toEqual([
-      { id: 'oak', name: 'Oak', avatar: 'O', status: 'paused' },
+      { id: 'oak', name: 'Oak', avatar: 'O', status: 'running' },
       { id: 'main', name: 'Branch Agent', avatar: 'B', status: 'running' },
     ]);
   });
 
-  it('treats pause and resume as missing unless the handshake named both methods', () => {
-    expect(canPauseResume(null)).toBe(false);
-    expect(canPauseResume({ type: 'hello-ok', protocol: 4, server: { version: '1' }, auth: { role: 'operator', scopes: [] } })).toBe(false);
-    expect(canPauseResume({ type: 'hello-ok', protocol: 4, server: { version: '1' }, auth: { role: 'operator', scopes: [] }, features: { methods: [PAUSE_METHOD] } })).toBe(false);
-    expect(canPauseResume({ type: 'hello-ok', protocol: 4, server: { version: '1' }, auth: { role: 'operator', scopes: [] }, features: { methods: CONTROL } })).toBe(true);
-    expect(PAUSE_UNAVAILABLE).toMatch(/agents\.pause/);
+  it('ignores an invented paused field on the wire', () => {
+    const rows = readAgentRows(
+      { agents: [{ id: 'oak', name: 'Oak', paused: true }] },
+      { sessions: [{ agentId: 'oak', hasActiveRun: true }] },
+    );
+    expect(rows).toEqual([{ id: 'oak', name: 'Oak', avatar: 'O', status: 'running' }]);
   });
 });
 
 describe('agent list from the computer', () => {
-  it('reads the roster and is read-only when the engine has not advertised pause and resume', async () => {
+  it('reads the roster as running or idle and never sends pause or resume', async () => {
     const { session, engine, list } = await pairedList();
     expect(engine.requests.some((r) => r.method === 'agents.list')).toBe(true);
-    expect(list.getSnapshot().canControl).toBe(false);
+    expect(engine.requests.some((r) => r.method === 'sessions.list')).toBe(true);
     expect(list.getSnapshot().rows.map((r) => [r.id, r.status])).toEqual([
       ['main', 'idle'],
       ['oak', 'running'],
-      ['researcher', 'paused'],
+      ['researcher', 'idle'],
     ]);
-    await list.pause('oak');
-    expect(engine.requests.some((r) => r.method === PAUSE_METHOD)).toBe(false);
-    session.dispose();
-    list.dispose();
-  });
-
-  it('pauses an agent after the engine advertises agents.pause', async () => {
-    const engine = createFakeEngine({ sessions: fixtureSessions, agents: fixtureAgents, methods: CONTROL });
-    const { session, list } = await pairedList(engine);
-    expect(list.getSnapshot().canControl).toBe(true);
-    await list.pause('oak');
-    expect(engine.requests).toContainEqual({ method: PAUSE_METHOD, params: { agentId: 'oak' } });
-    await until(list, (s) => s.rows.find((r) => r.id === 'oak')?.status === 'paused');
-    session.dispose();
-    list.dispose();
-  });
-
-  it('resumes a paused agent after the engine advertises agents.resume', async () => {
-    const engine = createFakeEngine({ sessions: fixtureSessions, agents: fixtureAgents, methods: CONTROL });
-    const { session, list } = await pairedList(engine);
-    await list.resume('researcher');
-    expect(engine.requests).toContainEqual({ method: RESUME_METHOD, params: { agentId: 'researcher' } });
-    await until(list, (s) => s.rows.find((r) => r.id === 'researcher')?.status === 'idle');
+    expect(engine.requests.some((r) => r.method === 'agents.pause' || r.method === 'agents.resume')).toBe(false);
     session.dispose();
     list.dispose();
   });
@@ -111,26 +87,38 @@ describe('agent list from the computer', () => {
     list.dispose();
   });
 
-  it('keeps the row and says why a pause failed, without the engine’s own text', async () => {
-    const engine = createFakeEngine({ sessions: fixtureSessions, agents: fixtureAgents, methods: CONTROL });
-    const { session, list } = await pairedList(engine);
-    engine.failMethod(PAUSE_METHOD, 'missing scope: operator.admin', { code: 'MISSING_SCOPE', missingScope: 'operator.admin' }, 'FORBIDDEN');
-    await list.pause('oak');
-    const snap = list.getSnapshot();
-    expect(snap.failed.oak).toBe('This phone isn’t allowed to pause or resume Trunks. Do that on your computer.');
-    expect(snap.failed.oak).not.toMatch(/operator\.admin|missing scope/);
-    expect(snap.rows.find((r) => r.id === 'oak')?.status).toBe('running');
+  it('fails the roster when sessions.list fails before any run state has been read', async () => {
+    const engine = createFakeEngine({ sessions: fixtureSessions, agents: fixtureAgents });
+    engine.failMethod('sessions.list', 'sessions unavailable', { reason: 'NOPE' }, 'INVALID_REQUEST');
+    const { session } = createFakeSession(engine);
+    const list = new AgentList(session);
+    list.attach();
+    session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
+    engine.approve();
+    expect(await until(list, (s) => s.error !== null)).toMatchObject({ loaded: false, error: listFailureMessage({ code: 'INVALID_REQUEST' }), rows: [] });
     session.dispose();
     list.dispose();
   });
 
-  it('says why a resume failed', async () => {
-    const engine = createFakeEngine({ sessions: fixtureSessions, agents: fixtureAgents, methods: CONTROL });
-    const { session, list } = await pairedList(engine);
-    engine.failMethod(RESUME_METHOD, 'agent offline', { reason: 'DOWN' }, 'UNAVAILABLE');
-    await list.resume('researcher');
-    expect(list.getSnapshot().failed.researcher).toBe('Your computer is busy right now. Try again in a moment.');
-    expect(list.getSnapshot().rows.find((r) => r.id === 'researcher')?.status).toBe('paused');
+  it('keeps running when a later sessions.list fails', async () => {
+    const { session, engine, list } = await pairedList();
+    expect(list.getSnapshot().rows.find((r) => r.id === 'oak')?.status).toBe('running');
+    engine.failMethod('sessions.list', 'sessions unavailable', { reason: 'NOPE' }, 'INVALID_REQUEST');
+    await list.refresh();
+    expect(list.getSnapshot()).toMatchObject({ loaded: true, error: null });
+    expect(list.getSnapshot().rows.find((r) => r.id === 'oak')?.status).toBe('running');
+    session.dispose();
+    list.dispose();
+  });
+
+  it('keeps the rows and records the error when a later agents.list fails', async () => {
+    const { session, engine, list } = await pairedList();
+    engine.failMethod('agents.list', 'agents unavailable', { reason: 'NOPE' }, 'INVALID_REQUEST');
+    await list.refresh();
+    const snap = list.getSnapshot();
+    expect(snap.loaded).toBe(true);
+    expect(snap.error).toBe(listFailureMessage({ code: 'INVALID_REQUEST' }));
+    expect(snap.rows.find((r) => r.id === 'oak')?.status).toBe('running');
     session.dispose();
     list.dispose();
   });

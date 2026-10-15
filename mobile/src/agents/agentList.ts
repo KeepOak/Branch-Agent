@@ -1,12 +1,10 @@
 // The home computer's agents (Trunks), read with agents.list the way Chats and the window roster do.
-// Status is paused when agents.list says so, running when a session for that agent has an active run,
-// otherwise idle. Pause and Resume call agents.pause / agents.resume when the engine advertises them
-// on hello; today's engine does not, so the screen is read-only until it does.
-import type { HelloOk } from '@branch/gateway-client/browser';
+// Status is running when a session for that agent has an active run, otherwise idle. The engine has
+// no agents.pause or agents.resume, so this list is read-only: a lost phone cannot change household Trunks.
 import { LIST_PARAMS } from '../chats/chatList';
 import type { EngineLink } from '../pairing/pairingSession';
 
-export type AgentStatus = 'running' | 'paused' | 'idle';
+export type AgentStatus = 'running' | 'idle';
 
 export type AgentRow = {
   id: string;
@@ -19,21 +17,9 @@ export type AgentListSnapshot = {
   rows: AgentRow[];
   loaded: boolean;
   error: string | null;
-  /** The engine advertised agents.pause and agents.resume on this connection. */
-  canControl: boolean;
-  sending: Record<string, 'pause' | 'resume'>;
-  failed: Record<string, string>;
 };
 
-export const PAUSE_METHOD = 'agents.pause';
-export const RESUME_METHOD = 'agents.resume';
-
-/** Shown when this engine has no pause/resume method the phone may call. */
-export const PAUSE_UNAVAILABLE =
-  'Pause and Resume need the computer to offer agents.pause and agents.resume. This engine doesn’t yet.';
-
 export const LIST_FAILED_MESSAGE = 'Your computer didn’t send its agents. Try again in a moment.';
-export const CONTROL_FAILED_MESSAGE = 'Your computer couldn’t change that Trunk just now. Try again in a moment.';
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
@@ -56,28 +42,8 @@ export function listFailureMessage(error: unknown): string {
   return LIST_FAILED_MESSAGE;
 }
 
-export function controlFailureMessage(error: unknown): string {
-  if (missingScope(error)) return 'This phone isn’t allowed to pause or resume Trunks. Do that on your computer.';
-  if (codeOf(error) === 'UNAVAILABLE') return 'Your computer is busy right now. Try again in a moment.';
-  return CONTROL_FAILED_MESSAGE;
-}
-
-/** Methods the engine named on this handshake (HelloOk.features.methods). */
-export function advertisedMethods(hello: HelloOk | null | undefined): Set<string> {
-  const features = rec(hello).features;
-  const methods = rec(features).methods;
-  return new Set((Array.isArray(methods) ? methods : []).filter((m): m is string => typeof m === 'string' && m.length > 0));
-}
-
-/** True when this connection advertised both pause and resume. */
-export function canPauseResume(hello: HelloOk | null | undefined): boolean {
-  const methods = advertisedMethods(hello);
-  return methods.has(PAUSE_METHOD) && methods.has(RESUME_METHOD);
-}
-
 export const STATUS_LABEL: Record<AgentStatus, string> = {
   running: 'Running',
-  paused: 'Paused',
   idle: 'Idle',
 };
 
@@ -108,25 +74,26 @@ export function readAgentRows(agentsResult: unknown, sessionsResult?: unknown): 
     if (!id) continue;
     const identity = rec(a.identity);
     const name = str(identity.name) || str(a.name) || id;
-    const paused = a.paused === true;
     rows.push({
       id,
       name,
       avatar: str(identity.emoji) || initial(name),
-      status: paused ? 'paused' : running.has(id) ? 'running' : 'idle',
+      status: running.has(id) ? 'running' : 'idle',
     });
   }
   return rows;
 }
 
 export class AgentList {
-  private snapshot: AgentListSnapshot = { rows: [], loaded: false, error: null, canControl: false, sending: {}, failed: {} };
+  private snapshot: AgentListSnapshot = { rows: [], loaded: false, error: null };
   private readonly listeners = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private inFlight: Promise<void> | null = null;
   private again = false;
   private readonly offs: Array<() => void> = [];
   private disposed = false;
+  /** Last sessions.list payload that landed, so a later sessions read failure does not idle every Trunk. */
+  private lastSessions: unknown | undefined;
 
   constructor(private readonly link: EngineLink) {}
 
@@ -156,20 +123,12 @@ export class AgentList {
 
   /** Forgets every row, after the phone unpairs. */
   reset(): void {
-    this.set({ rows: [], loaded: false, error: null, canControl: false, sending: {}, failed: {} });
+    this.lastSessions = undefined;
+    this.set({ rows: [], loaded: false, error: null });
   }
 
   async start(): Promise<void> {
-    this.set({ canControl: canPauseResume(this.link.hello) });
-    try {
-      const [agents, sessions] = await Promise.all([
-        this.link.request('agents.list', {}),
-        this.link.request('sessions.list', LIST_PARAMS).catch(() => null),
-      ]);
-      this.apply(agents, sessions);
-    } catch (error) {
-      this.set({ error: listFailureMessage(error) });
-    }
+    await this.loadRoster();
   }
 
   onEvent(event: string, payload: unknown): void {
@@ -197,15 +156,7 @@ export class AgentList {
       try {
         do {
           this.again = false;
-          try {
-            const [agents, sessions] = await Promise.all([
-              this.link.request('agents.list', {}),
-              this.link.request('sessions.list', LIST_PARAMS).catch(() => null),
-            ]);
-            this.apply(agents, sessions);
-          } catch (error) {
-            this.set({ error: listFailureMessage(error) });
-          }
+          await this.loadRoster();
         } while (this.again && !this.disposed);
       } finally {
         this.inFlight = null;
@@ -215,27 +166,28 @@ export class AgentList {
     return this.inFlight;
   }
 
-  async pause(id: string): Promise<void> {
-    await this.control(id, 'pause');
-  }
-
-  async resume(id: string): Promise<void> {
-    await this.control(id, 'resume');
-  }
-
-  private async control(id: string, action: 'pause' | 'resume'): Promise<void> {
-    if (!this.snapshot.canControl || this.snapshot.sending[id]) return;
-    const { [id]: _cleared, ...failed } = this.snapshot.failed;
-    this.set({ sending: { ...this.snapshot.sending, [id]: action }, failed });
+  private async loadRoster(): Promise<void> {
+    const agentsP = this.link.request('agents.list', {});
+    const sessionsP = this.link.request('sessions.list', LIST_PARAMS);
+    let agents: unknown;
     try {
-      await this.link.request(action === 'pause' ? PAUSE_METHOD : RESUME_METHOD, { agentId: id });
-      await this.refresh();
+      agents = await agentsP;
     } catch (error) {
-      this.set({ failed: { ...this.snapshot.failed, [id]: controlFailureMessage(error) } });
-    } finally {
-      const { [id]: _sent, ...sending } = this.snapshot.sending;
-      this.set({ sending });
+      this.set({ error: listFailureMessage(error) });
+      return;
     }
+    let sessions: unknown;
+    try {
+      sessions = await sessionsP;
+      this.lastSessions = sessions;
+    } catch (error) {
+      if (this.lastSessions === undefined) {
+        this.set({ error: listFailureMessage(error) });
+        return;
+      }
+      sessions = this.lastSessions;
+    }
+    this.apply(agents, sessions);
   }
 
   private apply(agents: unknown, sessions: unknown): void {
@@ -243,7 +195,6 @@ export class AgentList {
       rows: readAgentRows(agents, sessions),
       loaded: true,
       error: null,
-      canControl: canPauseResume(this.link.hello),
     });
   }
 

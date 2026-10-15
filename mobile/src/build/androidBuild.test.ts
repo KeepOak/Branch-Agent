@@ -1,6 +1,6 @@
 // The local Android build (README.md, scripts/build-android.mjs) generates android/ from app.json with
 // `expo prebuild`, so everything a built app needs has to be in app.json and package.json, not in android/.
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import app from '../../app.json';
 import pkg from '../../package.json';
@@ -37,5 +37,17 @@ describe('the installable Android build', () => {
   it('builds with one command and no EAS', () => {
     expect(pkg.scripts['build:android' as keyof typeof pkg.scripts]).toBe('node scripts/build-android.mjs');
     expect(Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).filter((name) => name.startsWith('eas'))).toEqual([]);
+  });
+
+  it('passes CI signing through gradle env and never logs passwords', () => {
+    const src = readFileSync(path.join(__dirname, '../../scripts/build-android.mjs'), 'utf8');
+    expect(src).toContain("from './android-release.mjs'");
+    expect(src).toContain('gradleAssembleArgs()');
+    expect(src).toContain('gradleSigningEnv()');
+    expect(src).toContain('writeAppJsonReleaseMeta');
+    expect(src).toContain('printableArgs');
+    expect(src).toContain('=***');
+    expect(src).not.toMatch(/ANDROID_KEYSTORE_PASSWORD|ANDROID_KEY_PASSWORD/);
+    expect(src).not.toMatch(/-Pandroid\.injected\.signing\.(store|key)\.password/);
   });
 });
