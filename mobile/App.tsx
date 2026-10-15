@@ -67,7 +67,7 @@ function OpenChat({ session, row, online, onBack }: { session: PairingSession; r
   useEffect(() => {
     void conversation.markRead(opened);
   }, [conversation, opened]);
-  return <ChatScreen row={row} conversation={conversation} online={online} onBack={onBack} />;
+  return <ChatScreen row={row} conversation={conversation} online={online} onBack={onBack} hello={session.hello} />;
 }
 
 function Shell({
