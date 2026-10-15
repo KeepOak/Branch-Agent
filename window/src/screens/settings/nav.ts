@@ -147,8 +147,9 @@ function pagesOf(...ids: PageId[]): NavPage[] {
   return ids.map((id) => BY_ID.get(id)!);
 }
 
-/** Regular's sidebar, four groups. Every page except Developer lives in one of them.
- *  Developer stays on Technical, inside NAV's Branch group. */
+/** Regular's four pages. Every page except Developer lives in one of them.
+ *  Developer stays on Technical, inside NAV's Branch group. The first page in a group is what that
+ *  Regular page shows. The others stay reachable under an Advanced section on that page. */
 export const REGULAR_GROUPS: NavGroup[] = [
   { title: "General", pages: pagesOf("general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps") },
   { title: "Computer", pages: pagesOf("devices", "browser", "coding", "remote", "permissions") },
@@ -156,9 +157,17 @@ export const REGULAR_GROUPS: NavGroup[] = [
   { title: "Updates", pages: pagesOf("updates", "history", "learning", "features") },
 ];
 
-/** The sidebar for a level. Regular is the four groups. Advanced and Technical keep the full nav. */
+/** The Regular page a settings page belongs to, or none (Developer). */
+export function regularHub(id: PageId): NavGroup | undefined {
+  return REGULAR_GROUPS.find((g) => g.pages.some((p) => p.id === id));
+}
+
+/** The sidebar for a level. Regular is the four pages. Advanced and Technical keep the full nav. */
 export function navAt(level: Level): { top: NavPage[]; groups: NavGroup[] } {
-  return level === 0 ? { top: [], groups: REGULAR_GROUPS } : { top: TOP_PAGES, groups: NAV };
+  if (level === 0) {
+    return { top: REGULAR_GROUPS.map((g) => ({ ...g.pages[0], title: g.title })), groups: [] };
+  }
+  return { top: TOP_PAGES, groups: NAV };
 }
 
 /** A page's nav entry. */
