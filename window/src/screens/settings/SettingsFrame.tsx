@@ -12,7 +12,7 @@ import { lookStore } from "../../places/settings/set1/appearance-store";
 import { pinsOf } from "../../places/settings/pins";
 import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
 import { COMING_FROM, ROWS, cardRows, comingRow, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
-import { LaterRows } from "./LaterRows";
+import { LaterRows } from "../../glass/LaterRows";
 import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots, type SlotControl } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
@@ -23,6 +23,10 @@ import "./settings.css";
 const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
 const LEVEL_KEY = "branch.level";
 export const SECTION_COMING = (card: string) => `${card} comes to this page in a later update.`;
+/** What a page is for, for a page with nothing at the level shown: the empty state says what would go here. */
+const NOTHING_AT_REGULAR: Partial<Record<PageId, string>> = {
+  signins: "This page keeps the sign-ins and API keys your Trunks use to reach other services. Nothing here needs a change at this level. Show Advanced to see what is stored and to add or remove one.",
+};
 export const ASK_COMING = "Asking a Trunk from Settings comes in a later update.";
 export const MAKE_DEFAULT_COMING = "Making a Trunk the default from Settings comes in a later update.";
 const FINE = "Fine-tune each part";
@@ -314,6 +318,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
             );
           }) : (
             <div className="r1s-empty g-clear">
+              {NOTHING_AT_REGULAR[shownPage] ? <p className="g-label" data-lines>{NOTHING_AT_REGULAR[shownPage]}</p> : null}
               <p className="g-label">These settings show at {first !== null && first > level ? LEVELS[first].label : "Advanced"}.</p>
               <button type="button" className="r1s-btn" data-local="" onClick={() => setLevel(first !== null && first > level ? first : 1)}>Show {first !== null && first > level ? LEVELS[first].label : "Advanced"}</button>
             </div>

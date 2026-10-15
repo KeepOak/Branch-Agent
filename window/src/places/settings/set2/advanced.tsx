@@ -153,7 +153,7 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   no("Keep a history in Git", "Every change to memory as a commit, on this computer."),
   { t: "Recall before replying", s: "Searches memory more deeply when quick recall finds nothing strong.", help: "Before a reply about the past, a Trunk searches memory more deeply. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
   { t: "Memory wiki", s: "Keeps what Trunks know as linked Markdown pages.", help: "Each fact has its source. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", plug: "memory-wiki" },
-], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "plugins")}>Open Plugins</LinkBtn></p> };
+], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "Plugins")}>Open Plugins</LinkBtn></p> };
 
 /* ---------- Automations ---------- */
 const FA = "cron.failureAlert";

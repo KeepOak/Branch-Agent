@@ -10,7 +10,7 @@ import "../../places/settings/set1/chatapps.css";
 import { has } from "../../places/inbox/data";
 import { useLevel } from "../settings/SettingsFrame";
 import { CHAT_APPS, GROUPS, type ChatApp } from "./catalogue";
-import { LaterRows } from "../settings/LaterRows";
+import { LaterRows } from "../../glass/LaterRows";
 import { More } from "./More";
 import { Pairing } from "./Pairing";
 import { ChatAppSettings } from "./Settings";

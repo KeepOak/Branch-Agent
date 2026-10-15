@@ -20,6 +20,7 @@ import { Icon } from "../../../shell/icons";
 import { Ico } from "./icons";
 import "./computer-more.css";
 import { shownWhy } from "../../../shell/shown-why";
+import { connectedNow } from "../../presence";
 
 type Lv = 0 | 1 | 2;
 export type Ctx = { engine: WindowEngine; lv: Lv; props: SettingsPageProps };
@@ -656,6 +657,8 @@ type Group = "Computers" | "Phones" | "Browsers and apps";
 type Thing = {
   key: string; kind: "device" | "node"; id: string; name: string; plat: string; version: string; connected: boolean; seen: number; ip: string;
   paired: number; roles: string[]; scopes: string[]; tokens: RecordValue[]; group: Group; old: Thing[]; how: string; cluster: string;
+  /** Identical unconnected pairings (same name, platform and client) folded under this one, for display only. */
+  same: string; copies: number;
 };
 const OS: Record<string, string> = { win32: "Windows", windows: "Windows", darwin: "macOS", macos: "macOS", linux: "Linux", ios: "iOS", android: "Android" };
 const osOf = (p: unknown) => OS[str(p).toLowerCase()] ?? str(p);
@@ -679,16 +682,32 @@ function things(devices: RecordValue, nodes: RecordValue): Thing[] {
     const n = byNode.get(str(d.deviceId)); byNode.delete(str(d.deviceId));
     const roles = words(d.roles).length ? words(d.roles) : str(d.role) ? [str(d.role)] : [];
     return { key: `d:${str(d.deviceId)}`, kind: "device", id: str(d.deviceId), name: str(d.operatorLabel) || str(d.displayName) || str(n?.displayName) || str(d.clientId) || str(d.deviceId),
-      plat: osOf(str(d.platform) || str(n?.platform)), version: str(n?.version), connected: d.connected === true || n?.connected === true, seen: Number(d.lastSeenAtMs ?? n?.lastSeenAtMs) || 0,
+      plat: osOf(str(d.platform) || str(n?.platform)), version: str(n?.version), connected: connectedNow(d, n), seen: Number(d.lastSeenAtMs ?? n?.lastSeenAtMs) || 0,
       ip: str(d.remoteIp), paired: Number(d.approvedAtMs) || 0, roles, scopes: words(d.scopes), tokens: list(d.tokens), group: groupOf(str(d.platform), str(d.deviceFamily), roles, "device"), old: [], how: str(d.approvedVia),
-      cluster: d.approvedVia === "silent" ? [d.clientId, d.clientMode, d.displayName].map((x) => str(x).trim().toLowerCase()).join("|") : "" };
+      cluster: d.approvedVia === "silent" ? [d.clientId, d.clientMode, d.displayName].map((x) => str(x).trim().toLowerCase()).join("|") : "",
+      same: [d.operatorLabel || d.displayName || n?.displayName, d.platform || n?.platform, d.clientId, d.clientMode].map((x) => str(x).trim().toLowerCase()).join("|"), copies: 0 };
   });
   for (const n of byNode.values()) {
     if (n.approvalState === "pending-approval" || n.approvalState === "unapproved") continue;
     out.push({ key: `n:${str(n.nodeId)}`, kind: "node", id: str(n.nodeId), name: str(n.displayName) || str(n.nodeId), plat: osOf(n.platform), version: str(n.version), connected: n.connected === true,
-      seen: Number(n.lastSeenAtMs) || 0, ip: str(n.remoteIp), paired: 0, roles: ["node"], scopes: [], tokens: [], group: groupOf(str(n.platform), str(n.deviceFamily), ["node"], "node"), old: [], how: "", cluster: "" });
+      seen: Number(n.lastSeenAtMs) || 0, ip: str(n.remoteIp), paired: 0, roles: ["node"], scopes: [], tokens: [], group: groupOf(str(n.platform), str(n.deviceFamily), ["node"], "node"), old: [], how: "", cluster: "", same: "", copies: 0 });
   }
-  return foldOld(out);
+  return foldSame(foldOld(out));
+}
+
+/** Identical unconnected pairings (the same window reconnecting again and again) show as one row, the newest, with a
+ *  count. Nothing is removed here: clean-up stays with the engine's own rule in foldOld. */
+function foldSame(all: Thing[]): Thing[] {
+  const newest = new Map<string, Thing>();
+  const out: Thing[] = [];
+  for (const t of [...all].sort((a, b) => b.paired - a.paired)) {
+    if (t.connected || !t.same) { out.push(t); continue; }
+    const keep = newest.get(t.same);
+    if (keep) { keep.copies += 1; continue; }
+    newest.set(t.same, t);
+    out.push(t);
+  }
+  return all.filter((t) => out.includes(t));
 }
 
 /** The engine's own rule for superseded pairings: same client and name, approved by itself on this computer;
@@ -754,6 +773,7 @@ function ThingRow({ c, t, onChanged }: { c: Ctx; t: Thing; onChanged: () => void
       <span className="grow">
         <b>{t.name}</b><small>{sub}</small>
         {t.old.length ? <small>{t.old.length} older {t.old.length === 1 ? "pairing" : "pairings"} of {t.name}</small> : null}
+        {t.copies ? <small>{t.copies} older {t.copies === 1 ? "copy" : "copies"} of this folded in</small> : null}
         {c.lv >= 2 ? <Details c={c} t={t} onChanged={onChanged} /> : null}
       </span>
       {t.connected ? <span className="s2cm-dot ok" aria-label="Connected now" /> : null}

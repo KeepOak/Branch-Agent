@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import { forgetLookStore } from "../../places/settings/set1/appearance-store";
 import { SettingsFrame } from "./SettingsFrame";
-import { laterLine } from "./LaterRows";
+import { UpdatesBlock } from "../../places/settings/set2/updates";
+import { laterLine } from "../../glass/LaterRows";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -68,5 +69,29 @@ describe("later-update rows fold at Advanced", () => {
       const rows = [...fold.querySelectorAll<HTMLElement>("[data-row]")];
       expect(rows.length).toBe(rows.filter((row) => row.dataset.coming !== undefined).length);
     }
+  });
+});
+
+describe("the editors and notes card", () => {
+  it("is one later-update line, and its add-on rows open under it", async () => {
+    await act(async () => root.render(<UpdatesBlock page="updates" title="Updates & about" level="advanced" engine={engine()} part="editors" />));
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    const fold = host.querySelector<HTMLElement>("[data-later-rows]");
+    expect(fold).toBeTruthy();
+    expect(fold?.querySelector(".r1s-later-btn")?.textContent).toBe(laterLine(Number(fold?.dataset.laterRows)));
+    expect(fold?.querySelector<HTMLElement>(":scope > div")?.hidden).toBe(true);
+    // The rows are in the folded body, hidden until the line opens them.
+    expect(fold?.querySelector<HTMLElement>(":scope > div")?.textContent).toContain("VS Code");
+    await act(async () => { fold?.querySelector<HTMLButtonElement>(".r1s-later-btn")?.click(); });
+    expect(fold?.querySelector<HTMLElement>(":scope > div")?.hidden).toBe(false);
+  });
+});
+
+describe("a page with nothing at the level shown", () => {
+  it("Sign-ins & keys at Regular says what the page keeps, not only where its settings are", async () => {
+    await act(async () => root.render(<SettingsFrame engine={engine()} page="signins" />));
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.querySelector(".r1s-empty")?.textContent).toContain("sign-ins and API keys your Trunks use");
+    expect(host.querySelector(".r1s-empty")?.textContent).toContain("Show Advanced");
   });
 });

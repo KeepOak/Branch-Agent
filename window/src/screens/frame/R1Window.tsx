@@ -17,6 +17,7 @@ import { useLockdown } from "../../shell/use-lockdown";
 import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
 import { PlaceView } from "../../places-nav/PlaceView";
+import { placeRequest } from "../../places-nav/place-request";
 import { PLACES, loadRoute, parseRoute, placeTitle, saveRoute, windowTitle, type PlaceId, type Route } from "../../places-nav/routes";
 import { SettingsFrame as ClassicSettingsFrame } from "../../places-nav/SettingsFrame";
 import { PAGES as R1_PAGE_SPECS, r1PageFor } from "../settings/nav";
@@ -276,8 +277,14 @@ export function R1Window({ session }: { session: SaplingSession }) {
   }, []);
   useEffect(() => {
     const openPlace = (event: Event) => {
-      const place = PLACES.find(p => p.id === (event as CustomEvent<{ place?: string }>).detail?.place);
-      if (place) navigateTo.current({ kind: "place", place: place.id });
+      const request = placeRequest((event as CustomEvent).detail, PLACES.map(p => p.id));
+      if (!request) return;
+      navigateTo.current({ kind: "place", place: request.place });
+      // A tab named with the request is told to the place once it shows, as openPlaceTab does for Settings pages.
+      if (request.tab) {
+        const tab = request.tab;
+        setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: request.place, tab } })), 0);
+      }
     };
     window.addEventListener("branch:navigate-place", openPlace);
     return () => window.removeEventListener("branch:navigate-place", openPlace);
