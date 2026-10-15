@@ -57,6 +57,19 @@ export function standbyReadyBudgetMs(samplesMs: readonly number[]): number {
   return measuredBudgetMs(samplesMs, { floorMs: HANDOFF_STANDBY_READY_TIMEOUT_MS, ceilingMs: STANDBY_READY_CEILING_MS });
 }
 
+/**
+ * Private #967: after a failed standby the old engine takes control back by restarting in place, and that restart first
+ * drains the runs it kept through step-down (the engine's restart drain budget, up to about 5 minutes) before its
+ * /readyz answers again. Judged on the standby's budget, a healthy engine that owns the state was killed mid-drain.
+ */
+export const ROLLBACK_RESTART_DRAIN_MS = 315_000;
+
+/** How long an old engine that answered the rollback gets to serve again: its restart drain plus a cold start. */
+export function rollbackReadyBudgetMs(samplesMs: readonly number[], ceilingMs: number): number {
+  const coldStartMs = standbyReadyBudgetMs(samplesMs);
+  return Math.max(coldStartMs, Math.min(ceilingMs, ROLLBACK_RESTART_DRAIN_MS + coldStartMs));
+}
+
 /** How long agents may stay refused after a swap before it rolls back (floor: the 10 minutes from #951 part 2). */
 export function admissionRollbackBudgetMs(samplesMs: readonly number[]): number {
   return measuredBudgetMs(samplesMs, { floorMs: ADMISSION_ROLLBACK_AFTER_MS, ceilingMs: ADMISSION_ROLLBACK_CEILING_MS });

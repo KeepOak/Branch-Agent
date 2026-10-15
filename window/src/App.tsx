@@ -5,6 +5,7 @@ import { installUiEventLog } from "./diagnostics/ui-log";
 import { loadRoute } from "./places-nav/routes";
 import { WindowShell } from "./shell/WindowShell";
 import { r1Window, R1Window } from "./screens/frame/R1Window";
+import { isGraftedContactKey } from "./screens/frame/open-name";
 import { PreConnect, type PreConnectState } from "./setup/PreConnect";
 import { LOCAL_ADDRESS, readTarget, saveTarget } from "./setup/pre-connect-state";
 import { Connecting } from "./setup/Connecting";
@@ -72,7 +73,8 @@ export function App() {
 /** The conversation the window last showed (§3.3 "Reopen where you were"). */
 function savedConversation(): string | null {
   const route = loadRoute();
-  return route.kind === "chat" ? route.key : null;
+  // A grafted agent's contact key is not a conversation: the window finds that agent's conversation once connected.
+  return route.kind === "chat" && !isGraftedContactKey(route.key) ? route.key : null;
 }
 
 type WindowProps = { url: string; sharedToken?: string; onConnect: (url: string, key: string) => void; onRetry: () => void };

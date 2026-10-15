@@ -41,3 +41,18 @@
   .r1-frame[data-pane="true"] > .r1-pane-slot .pane-resizer-pn { display: none; }
   .r1-frame[data-pane="true"] > .r1-conversation > :is(.r1-scroll, .r1-composer-slot) { visibility: hidden; }
 }
+/* The tab row scrolls sideways, as the preview's .ptabs does, rather than moving tabs into More (R1 shows the preview's set). */
+.r1-pane .pane-tabs { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.r1-pane .pane-tabs::-webkit-scrollbar { display: none; }
+.r1-pane .pane-tabs .ptab-wrap-pn { flex: none; }
+
+
+/* Smart glass (owner, 2026-10-15): seven tabs and five tools shared one 352px row, so the tabs were cut to "Tim…".
+   The tabs now get their own full-width row with a fade where they overflow; the tools sit above as plain icons.
+   The #g48 ids beat glass.css's ".g-clear :is(button, …)" control-pill rule, which boxed every tool and tab. */
+.r1-pane .pane-head { flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; }
+.r1-pane .pane-head > .pane-tabs { order: 9; flex: 1 0 100%; gap: 2px; mask-image: linear-gradient(90deg, var(--mask-opaque) calc(100% - 24px), transparent); }
+.r1-pane .pane-head > :is(button, a[href]):not(#g48#g48#g48#g48) { background: transparent; box-shadow: none; border: 0; color: var(--ink-2); }
+.r1-pane .pane-head > :is(button, a[href]):hover:not(#g48#g48#g48#g48) { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); }
+.r1-pane .pane-tabs [role="tab"]:not(#g48#g48#g48#g48) { background: transparent; box-shadow: none; border-radius: 999px; padding: 4px 10px; white-space: nowrap; color: var(--ink-2); }
+.r1-pane .pane-tabs [role="tab"][aria-selected="true"]:not(#g48#g48#g48#g48) { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }

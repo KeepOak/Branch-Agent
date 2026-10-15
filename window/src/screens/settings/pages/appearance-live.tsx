@@ -15,11 +15,11 @@ import { KitProvider, type SaveReport } from "../../../places/settings/kit";
 import { startFrom, useThemeActs } from "../../../places/settings/set1/appearance";
 import { ACCENTS, ThemeEditor, type EditStart } from "../../../places/settings/set1/appearance-editor";
 import { DEFAULT_THEME, isHex, SLATE } from "../../../places/settings/set1/appearance-look";
-import { DEFAULT_PET, PETS, petsHad } from "../../../places/settings/set1/appearance-pet";
+import { DEFAULT_PET, PETS, petsHad, pickPet } from "../../../places/settings/set1/appearance-pet";
 import { sceneFile, useLook } from "../../../places/settings/set1/appearance-store";
 import { localId, Swatch, themeGroup, themeName, ThemesDialog, useThemes, type Extra } from "../../../places/settings/set1/appearance-themes";
 import { useThemeChoice, useTrunk } from "../../../places/settings/set1/appearance-top";
-import { readTopicSettings, setDefaultTopicLayout, TOPIC_LAYOUT_KEY, topicLayoutNames, type TopicLayout } from "../../../shell/topic-layout";
+import { r1DefaultTopicLayout, r1TopicLayoutNames, setR1TopicLayout, TOPIC_LAYOUT_KEY, type R1TopicLayout } from "../../../shell/topic-layout";
 import { setThemeChoice, type ThemeChoice } from "../../../theme/theme";
 import { Segmented } from "../RowView";
 import type { SlotControlProps } from "../slots";
@@ -180,12 +180,7 @@ export function PetPick({ engine }: SlotControlProps) {
   const look = useLook(engine);
   const [failed, run] = useFailure();
   const cur = String(look.val("pet", DEFAULT_PET));
-  const pick = (id: string) => void run(async () => {
-    const had = petsHad(look);
-    await look.store.set("pet", id === DEFAULT_PET ? null : id);
-    if (id !== "none" && !had.includes(id)) await look.store.set("petsHad", [...had, id]);
-    if (!look.val("petFirst", "")) await look.store.set("petFirst", new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" }));
-  });
+  const pick = (id: string) => void run(() => pickPet(look, id));
   return <>
     <Needs engine={engine} need={lookCalls(look)} where="Pet">
       <select className="r1s-inp" aria-label="Pet" value={cur} onChange={(e) => pick(e.target.value)}>
@@ -243,20 +238,20 @@ export function EachTrunk({ engine }: SlotControlProps) {
   </>;
 }
 
-const LAYOUTS = (Object.entries(topicLayoutNames) as [TopicLayout, string][]).map(([v, label]) => ({ v, label: label === "Tabs above the chat" ? "Tabs" : label }));
+const LAYOUTS = (Object.entries(r1TopicLayoutNames) as [R1TopicLayout, string][]).map(([v, label]) => ({ v, label: label === "Tabs above the chat" ? "Tabs" : label }));
 
 /** How a contact's threads show beside its chat, for every contact without its own (kept in this window). */
 export function ThreadsShowAs({ row }: SlotControlProps) {
-  const [layout, setLayout] = useState(() => readTopicSettings().layout);
+  const [layout, setLayout] = useState(r1DefaultTopicLayout);
   useEffect(() => {
-    const sync = () => setLayout(readTopicSettings().layout);
+    const sync = () => setLayout(r1DefaultTopicLayout());
     const storage = (e: StorageEvent) => { if (e.key === TOPIC_LAYOUT_KEY) sync(); };
     window.addEventListener("branch:topic-layout-changed", sync);
     window.addEventListener("storage", storage);
     return () => { window.removeEventListener("branch:topic-layout-changed", sync); window.removeEventListener("storage", storage); };
   }, []);
   return <div className="r1s-own-ctl" data-local="">
-    <Segmented label={row.label ?? "Threads show as"} value={layout} options={LAYOUTS} onChange={(v) => { setDefaultTopicLayout(v as TopicLayout); setLayout(v as TopicLayout); }} />
+    <Segmented label={row.label ?? "Threads show as"} value={layout} options={LAYOUTS} onChange={(v) => { setR1TopicLayout(v as R1TopicLayout); setLayout(v as R1TopicLayout); }} />
   </div>;
 }
 

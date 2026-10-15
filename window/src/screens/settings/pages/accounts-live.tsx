@@ -11,6 +11,7 @@ import { configStore } from "../../../places/settings/config-store";
 import { errorText, list, record, text, visible, type RecordValue } from "../../../places/settings/adapter";
 import { GitHubConnection, type GitHubView } from "../../../places/settings/github-connection";
 import { KitProvider } from "../../../places/settings/kit";
+import { CheckedAt, CheckButton, useCheckedAt } from "../../../places/settings/checked-at";
 import {
   accountName, accountsOf, accountSub, anotherOffers, answerFirstWhy, firstOrder, isLimited, limitedLabel, movedUp, providersOf, saveOrder,
   signInOffers, signOut, signOutWhy, takeAddRequest, testAccount, type Account, type Provider,
@@ -25,6 +26,7 @@ import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { STALL_TEXT, stallAfter } from "../../../places/settings/stall";
 
 // One engine read shared by every row that shows it (the accounts list, Select accounts, Which goes next…): a change
 // made in one row reloads it once, and every row redraws. It reads again when a row first shows after none did.
@@ -42,13 +44,17 @@ class SharedRead {
     this.subs.add(fn);
     return () => void this.subs.delete(fn);
   }
-  async reload(): Promise<void> {
+  /** Resolves true when the read succeeded; a failure is kept as the read's error and resolves false. */
+  async reload(): Promise<boolean> {
     const gen = ++this.gen;
     if (!this.snap.loading) this.set({ ...this.snap, loading: true });
+    const stop = stallAfter(() => { if (gen === this.gen && this.snap.data === undefined) this.set({ loading: false, error: STALL_TEXT }); });
     try {
       const data = record(await this.engine.request(this.method, this.params));
+      stop();
       if (gen === this.gen) this.set({ data, loading: false });
-    } catch (e) { if (gen === this.gen) this.set({ loading: false, error: errorText(e) }); }
+      return true;
+    } catch (e) { stop(); if (gen === this.gen) this.set({ loading: false, error: errorText(e) }); return false; }
   }
   private set(next: Read) { this.snap = next; for (const fn of [...this.subs]) fn(); }
 }
@@ -61,7 +67,7 @@ function sharedRead(engine: WindowEngine, method: string, params: RecordValue = 
   if (!read) { read = new SharedRead(engine, method, params); byKey.set(id, read); }
   return read;
 }
-function useRead(engine: WindowEngine, method: string, params: RecordValue = {}) {
+export function useRead(engine: WindowEngine, method: string, params: RecordValue = {}) {
   const read = sharedRead(engine, method, params);
   // One subscription per read for as long as the row shows: a new one on every render would read again each time.
   const subscribe = useCallback((fn: () => void) => read.subscribe(fn), [read]);
@@ -451,12 +457,13 @@ export function AddOwnAccount({ engine }: SlotControlProps) {
 /** A coding app on this computer as branch.setup.detect finds it; Codex's switch is plugins.entries.codex.enabled, the
  *  others follow their own sign-in (a greyed switch, as Classic). Claude Code shows its account from usage.status. */
 function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
+  // §4.7.8: the switch reads on only when the app is ready, and is greyed until it is (preview's codingSecPE18).
   const detect = useRead(engine, "branch.setup.detect");
   const usage = useRead(engine, "usage.status");
   const { store, snap, config } = useConfigSnap(engine);
   const [failed, run] = useFailure();
   const f = foundState(app, detect.data);
-  const word = detect.loading ? "Looking…" : PILL[f.state][1];
+  const word = detect.error ? "Couldn’t check" : detect.loading ? "Looking…" : PILL[f.state][1];
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const pluginOn = app.plugin ? record(record(record(config.plugins).entries)[app.plugin]).enabled === true : f.state === "ready";
   const sub = detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
@@ -466,10 +473,11 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
       <span className="r1s-item-t g-label" data-lines>
         <b>{word}{app.kind === "claude-cli" && claude?.accountEmail ? " · " + text(claude.accountEmail) : ""}</b>
         <small>{detect.error ? visible(detect.error) : sub}</small>
+        {detect.error ? <button type="button" className="r1s-btn" onClick={() => void detect.reload()}>Try again</button> : null}
       </span>
       {app.plugin ? (
         <Needs engine={engine} need={["config.patch"]} where={"Use " + app.name}>
-          <span className="r1s-own-ctl" title={adminWhy(engine)}><Toggle label={"Use " + app.name} on={pluginOn} disabled={Boolean(adminWhy(engine)) || !snap} onChange={(v) => void run(() => store.set("plugins.entries." + app.plugin + ".enabled", v))} /></span>
+          <span className="r1s-own-ctl" title={adminWhy(engine)}><Toggle label={"Use " + app.name} on={f.state === "ready" && pluginOn} disabled={Boolean(adminWhy(engine)) || !snap || f.state !== "ready"} onChange={(v) => void run(() => store.set("plugins.entries." + app.plugin + ".enabled", v))} /></span>
         </Needs>
       ) : (
         <span className="r1s-own-ctl" title={"Follows " + app.name + "’s own sign-in on this computer."}><Toggle label={"Use " + app.name} on={pluginOn} disabled onChange={() => undefined} /></span>
@@ -486,8 +494,12 @@ export const GeminiCli = (p: SlotControlProps) => <CodingApp {...p} app={appOf("
 /** Check again: looks for the coding apps on this computer again (branch.setup.detect). */
 export function CheckApps({ engine }: SlotControlProps) {
   const detect = useRead(engine, "branch.setup.detect");
+  const [checked, stamp] = useCheckedAt();
   return <Needs engine={engine} need={["branch.setup.detect"]} where="Check again">
-    <button type="button" className="r1s-btn" disabled={detect.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void detect.reload()}>Check again</button>
+    <span className="r1s-own-ctl">
+      <button type="button" className="r1s-btn" disabled={detect.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void detect.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</button>
+      <CheckedAt at={checked} />
+    </span>
   </Needs>;
 }
 
@@ -555,7 +567,7 @@ export function GitHubRow({ engine }: SlotControlProps) {
           </Needs>
         ) : null}
         <Needs engine={engine} need={["tools.github.status"]} where="Refresh GitHub">
-          <button type="button" className="r1s-btn" disabled={!connection || Boolean(view?.busy) || loading} onClick={() => void connection?.refresh()}>Refresh</button>
+          <CheckButton run={() => connection?.refresh() ?? Promise.resolve(false)} disabled={!connection || Boolean(view?.busy) || loading}>Refresh</CheckButton>
         </Needs>
       </span>
     </div>

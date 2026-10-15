@@ -119,6 +119,32 @@ describe("R1 problem banners (Classic hooks in the R1 Banners shell)", () => {
     expect(banners()).toHaveLength(0);
   });
 
+  it("shows the disk-full notice as one sticky problem banner with no custom banner, and clears it when saving resumes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const tick = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
+      const { session } = sessionOf([]);
+      const calls = { onOpen: vi.fn(), onAsk: vi.fn(), onOpenConnection: vi.fn() };
+      const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+      const engine = engineOf([]);
+      await act(async () => root!.render(<CapabilityProvider engine={engine}><Window session={session} engine={engine} calls={calls} view="chat" /></CapabilityProvider>));
+      await tick(10);
+      await act(async () => { window.dispatchEvent(new Event("branch:disk-full")); window.dispatchEvent(new Event("branch:disk-full")); });
+      await tick(10);
+      expect(banners()).toHaveLength(1);
+      expect(banners()[0].querySelector("b")?.textContent).toBe("Your disk is full");
+      expect(banners()[0].textContent).toContain("Branch paused saving until you free space.");
+      expect(document.querySelectorAll("#branch-desktop-disk-full, [data-testid=desktop-disk-full]")).toHaveLength(0);
+      await tick(20_000);
+      expect(banners()).toHaveLength(1);
+      await act(async () => { window.dispatchEvent(new Event("branch:disk-ok")); });
+      await tick(10);
+      expect(banners()).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("starts the 6 s timer again when a repeat arrives, so a late ×2 stays its full time", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     try {

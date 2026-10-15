@@ -5,9 +5,12 @@
 import { useState } from "react";
 import type { WindowEngine } from "../connect/engine";
 import { patchConfig, readConfig, readRoster } from "../places/trunk/model";
+import { nextTrunkChoice } from "../places/trunk/NewTrunkPreview";
+import { trunkAppearance } from "../face/appearance";
+import { CharacterFace } from "../face/CharacterFace";
 import "../thread/questions.css";
 
-export type NewTrunk = { agentId: string; sessionKey: string; name: string };
+export type NewTrunk = { agentId: string; sessionKey: string; name: string; avatar?: string };
 type Opt = { label: string; line?: string };
 
 export const FIRST_JOB: Opt[] = [
@@ -45,9 +48,21 @@ const ok = (r: unknown) => {
 
 const KEYS = "ABCDE";
 
-export function NewTrunkCard({ engine, flow, onDone }: { engine: WindowEngine; flow: NewTrunk; onDone: (name: string) => void }) {
+/** The greeting the preview gives a new Trunk (preview.html:41518), with the name it has now. */
+const greeting = (name: string) => `Hi, I’m ${name}. Keep me as I am, or shuffle for another character and name. What should I take on first?`;
+
+export function NewTrunkCard({ engine, flow, onDone, onChangeLook }: { engine: WindowEngine; flow: NewTrunk; onDone: (name: string) => void; onChangeLook?: () => void }) {
   const [step, setStep] = useState<1 | 2>(1);
-  const [line, setLine] = useState(`Hi, I’m ${flow.name}. What should I take on first?`);
+  const [made, setMade] = useState({ name: flow.name, avatar: flow.avatar ?? "" });
+  const [line, setLine] = useState(greeting(flow.name));
+  const appearance = trunkAppearance(made.avatar || undefined, made.name);
+  // Shuffle: a new unused name and look, saved on the Trunk (agents.update), and the greeting follows it.
+  const shuffle = () => run(async () => {
+    const next = nextTrunkChoice(readRoster(await engine.request("agents.list", {})), { name: made.name, avatar: made.avatar });
+    ok(await engine.request("agents.update", { agentId: flow.agentId, name: next.name, avatar: next.avatar }));
+    setMade({ name: next.name, avatar: next.avatar });
+    setLine(greeting(next.name));
+  });
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,10 +87,16 @@ export function NewTrunkCard({ engine, flow, onDone }: { engine: WindowEngine; f
   return (
     <div className="dock-q talk-setup" data-testid="new-trunk-card">
       <div className="card choice q-card" aria-busy={busy}>
+        <div className="meet">
+          {appearance ? <CharacterFace appearance={appearance} size={56} label={made.name} /> : null}
+          <span className="grow"><b>{made.name}</b><small>A random character and name. Change anything later.</small></span>
+          <button type="button" className="btn sm" disabled={busy} onClick={() => void shuffle()}>Shuffle</button>
+          <button type="button" className="btn ghost sm" disabled={busy || !onChangeLook} onClick={() => onChangeLook?.()}>Change the look</button>
+        </div>
         <p className="talk-done">{line}</p>
-        <div className="q">{step === 1 ? "What should I take on first?" : "Access for this Trunk"}</div>
+        <div className="q">{step === 1 ? "What should I take on first?" : "How careful should I be?"}</div>
         <div className="sub">{step === 1 ? "Pick one for now. You can add more later." : "Lockdown still stops me, whatever you pick."}</div>
-        <div className="opts" role="radiogroup" aria-label={step === 1 ? "What should I take on first?" : "Access for this Trunk"}>
+        <div className="opts" role="radiogroup" aria-label={step === 1 ? "What should I take on first?" : "How careful should I be?"}>
           {opts.map((o, j) => (
             <button key={o.label} type="button" className="opt" role="radio" aria-checked={false} disabled={busy} onClick={() => void (step === 1 ? job(j) : care(j))}>
               <kbd>{KEYS[j]}</kbd>

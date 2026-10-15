@@ -7,7 +7,7 @@
 import { Coming } from "../../../glass/coming";
 import { TrunksTab } from "../../../places/customize/trunks";
 import { useResource, type Trunks } from "../../../places/library/data";
-import { PAGES, pageFor } from "../nav";
+import { pageFor } from "../nav";
 import type { Row } from "../rows";
 import { SECTION_COMING, useLevel } from "../SettingsFrame";
 import type { SlotPageProps } from "../slots";
@@ -28,13 +28,8 @@ const openPlace = (place: string) => window.dispatchEvent(new CustomEvent("branc
 export function TrunksPage({ engine, onPage }: SlotPageProps) {
   const [level] = useLevel(engine);
   const trunks = useResource<Trunks>(engine, "agents.list");
-  const spec = PAGES.trunks;
   return (
     <>
-      <header className="r1s-head">
-        <h1 className="g-label">{spec.title}</h1>
-        <p className="r1s-lede g-label" data-lines>{spec.lede}</p>
-      </header>
       <div className="r1s-col">
         <section className="r1s-sec g-clear r1s-trunks" aria-label="Your Trunks">
           <div className="kp kp-customize">

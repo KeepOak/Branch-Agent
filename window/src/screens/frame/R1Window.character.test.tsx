@@ -10,7 +10,7 @@ vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
-vi.mock("../../places-nav/SettingsFrame", () => ({ SettingsFrame: ({ page }: { page: string }) => <div data-testid="classic-settings" data-page={page} /> }));
+vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular", SettingsFrame: ({ page }: { page: string }) => <div data-testid="classic-settings" data-page={page} /> }));
 vi.mock("../settings/pages/plugged", () => ({ R1_PAGES: {} }));
 vi.mock("../settings", () => ({ SettingsFrame: ({ page }: { page?: string }) => <div data-testid="r1-settings" data-page={page} /> }));
 vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: ({ place }: { place: string }) => <p data-testid="place" data-place={place}>Place content</p> }));
@@ -23,13 +23,13 @@ const ROWS = [
   { key: "agent:scout:main", agentId: "scout", title: "Scout", isMain: true },
   { key: "agent:scout:topic", agentId: "scout", title: "September report", isMain: false },
 ];
-vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: ROWS }], usePendingApprovals: () => pending.map, useMachine: () => null, useTrunks: () => ({ list: [], defaultId: null }), useListPeople: () => ({ selfId: null, names: new Map() }) }));
+vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: ROWS }], usePendingApprovals: () => pending.map, useMachine: () => null, useContacts: () => [[], () => undefined, false], useTrunks: () => ({ list: [], defaultId: null }), useListPeople: () => ({ selfId: null, names: new Map() }) }));
 vi.mock("../../shell/group-drop", async (real) => ({ ...(await real<object>()), useGroupRooms: () => ({ rooms: [], peerOnline: new Map(), reload: async () => undefined }) }));
 vi.mock("../approvals/ProblemBanners", () => ({ useProblemBannerRows: () => undefined }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root, host: HTMLDivElement;
 beforeEach(() => {
-  localStorage.clear(); saved.length = 0; pending.map = new Map();
+  localStorage.clear(); localStorage.setItem("branch.characterShown", "1"); saved.length = 0; pending.map = new Map(); // the character is off by default; these tests turn it on
   window.history.replaceState(null, "");
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
@@ -45,6 +45,15 @@ function session(over: Record<string, unknown> = {}) {
 const panel = () => document.querySelector<HTMLElement>(".r1-character .character-panel");
 const rightClick = async (el: Element) => act(async () => { el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 })); });
 const menuItem = (testid: string) => document.querySelector<HTMLElement>(`[data-testid="${testid}"]`);
+
+it("is hidden by default, and shows once Settings › Appearance turns it on", async () => {
+  localStorage.clear();
+  await act(async () => root.render(<R1Window session={session()} />));
+  expect(panel()).toBeNull();
+  localStorage.setItem("branch.characterShown", "1");
+  await act(async () => { window.dispatchEvent(new CustomEvent("branch:look-change")); });
+  expect(panel()).not.toBeNull();
+});
 
 it("re-hosts the Classic character panel beside the R1 conversation, on clear glass, named for the Trunk", async () => {
   await act(async () => root.render(<R1Window session={session()} />));
