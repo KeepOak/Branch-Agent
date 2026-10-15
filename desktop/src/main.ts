@@ -3,11 +3,11 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, powerMoni
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Server } from "node:http";
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { homedir, totalmem } from "node:os";
+import { totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
-import { attachOrStartEngine, childModeSettingsLine, engineAnswers, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
+import { attachOrStartEngine, childModeSettingsLine, engineAnswers, readEngineHealth, restartStoppedServiceEngine, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { createRunKeepAwake, POWER_STATE_REFRESH_MS, writePowerState } from "./keep-awake";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
@@ -1412,11 +1412,6 @@ async function attachServiceEngine(): Promise<boolean> {
   const engineDir = resolveEngineDir(cfg);
   const probe = () => engineAnswers(cfg.gatewayPort);
   let rolledBack = false;
-  // macOS privacy: launchd cannot run a service whose folders sit on another volume, so that computer runs the child.
-  const home = homedir();
-  const logPaths = serviceLogPaths(home);
-  // An externally supervised launch (BRANCH_SUPERVISOR_MODE=external) is refused service install and uninstall alike.
-  const externallySupervised = (process.env.BRANCH_SUPERVISOR_MODE ?? "").trim().toLowerCase() === "external";
   const result = await attachOrStartEngine({
     dataDir: cfg.dataDir,
     probe,
@@ -1424,10 +1419,6 @@ async function attachServiceEngine(): Promise<boolean> {
     startService: () => runEngineServiceAction(cfg, engineDir, token, "start", log),
     waitForService: () => waitForEngineAnswer(probe, READY_TIMEOUT_MS),
     spawnChild: async () => { rolledBack = await bootSelectedEngine(); },
-    volumeBlock: () => serviceVolumeBlock([cfg.dataDir, stateDir, engineDir], home, nodeVolumeReader),
-    logMark: () => serviceLogSizes(logPaths),
-    cannotRunReason: async mark => serviceCannotRunReason(await readServiceLogsSince(logPaths, mark)),
-    uninstallService: externallySupervised ? undefined : () => runEngineServiceAction(cfg, engineDir, token, "uninstall", log),
     log,
   });
   if (result.mode === "child") return rolledBack;

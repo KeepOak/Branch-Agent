@@ -1,7 +1,7 @@
 // Always on (Private #454 A+B): the app attaches to the engine service and never starts a second engine.
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -13,7 +13,6 @@ if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact deskto
 const require = createRequire(import.meta.url);
 const service = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, 'engine-service.js'));
 const { acquireEngineStartLock, attachOrStartEngine, engineAnswers, engineServiceArgs, recordEngineMode, takeChildModeNotice, takeCrashStormNotice } = service;
-const { EXTERNAL_VOLUME_SERVICE_LINE, SERVICE_BLOCKED_LINE, childModeSettingsLine, readServiceLogsSince, serviceCannotRunReason, serviceLogPaths, serviceVolumeBlock } = service;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function dataDir(t) {
@@ -192,125 +191,3 @@ test('a relative XDG_DATA_HOME or LOCALAPPDATA never moves the data folder off i
   assert.ok(isAbsolute(dir), dir);
   assert.ok(!dir.includes('relative-'), dir);
 });
-
-/** A fake reader: paths map to devices (volumes), and a symlink maps a folder to its real location. */
-function volumes(devices, links = {}) {
-  return {
-    realpath: async path => links[path] ?? path,
-    deviceOf: async path => {
-      if (!(path in devices)) throw Object.assign(Error(`ENOENT: ${path}`), { code: 'ENOENT' });
-      return devices[path];
-    },
-  };
-}
-const HOME = '/Users/owner';
-const APP_DATA = '/Users/owner/Library/Application Support/BranchAgent';
-const EXTERNAL_DATA = '/Volumes/External/BranchAgent/data';
-
-test('macOS data on another volume is found through the symlink, and home-volume data is not', async () => {
-  const reader = volumes({ [HOME]: 1, [EXTERNAL_DATA]: 7, [`${HOME}/.branch`]: 1 }, { [APP_DATA]: EXTERNAL_DATA });
-  assert.equal(await serviceVolumeBlock([APP_DATA], HOME, reader, 'darwin'), EXTERNAL_VOLUME_SERVICE_LINE);
-  assert.equal(await serviceVolumeBlock([`${HOME}/.branch`], HOME, reader, 'darwin'), undefined);
-  assert.equal(await serviceVolumeBlock([APP_DATA, `${HOME}/.branch`], HOME, reader, 'darwin'), EXTERNAL_VOLUME_SERVICE_LINE);
-});
-
-test('the volume check never blocks other platforms, and a folder not created yet counts as home', async () => {
-  const reader = volumes({ [HOME]: 1, [EXTERNAL_DATA]: 7 }, { [APP_DATA]: EXTERNAL_DATA });
-  assert.equal(await serviceVolumeBlock([APP_DATA], HOME, reader, 'linux'), undefined);
-  assert.equal(await serviceVolumeBlock([APP_DATA], HOME, reader, 'win32'), undefined);
-  assert.equal(await serviceVolumeBlock([`${HOME}/not-yet`], HOME, reader, 'darwin'), undefined);
-});
-
-test('the launchd log lines that mean the service could not run are told apart from an ordinary silence', () => {
-  assert.equal(serviceCannotRunReason('shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted\n'), SERVICE_BLOCKED_LINE);
-  assert.equal(serviceCannotRunReason('/bin/sh: wrapper.sh: Operation not permitted\n'), SERVICE_BLOCKED_LINE);
-  assert.equal(serviceCannotRunReason('launchd: ai.branch.gateway exited with status 126\n'), SERVICE_BLOCKED_LINE);
-  assert.equal(serviceCannotRunReason('gateway listening on 127.0.0.1:19031\nGateway start timed out after 45s\n'), undefined);
-});
-
-test('the service logs are read only from where this start began, and a rotated log is read from its start', async t => {
-  const dir = dataDir(t);
-  const [stdout, stderr] = serviceLogPaths(dir);
-  mkdirSync(dirname(stdout), { recursive: true });
-  writeFileSync(stdout, 'old run: Operation not permitted\n');
-  writeFileSync(stderr, '');
-  const { serviceLogSizes } = service;
-  const mark = await serviceLogSizes([stdout, stderr]);
-  assert.equal(await readServiceLogsSince([stdout, stderr], mark), '');
-  writeFileSync(stdout, 'old run: Operation not permitted\nnew run: all good\n');
-  assert.equal(await readServiceLogsSince([stdout, stderr], mark), 'new run: all good\n');
-  writeFileSync(stdout, 'rotated\n');
-  assert.equal(await readServiceLogsSince([stdout, stderr], mark), 'rotated\n');
-});
-
-/**
- * A fake launch with recorded calls. `up` is what answers the gateway port. Each option is one path through the flow.
- */
-function fakeLaunch(t, options = {}) {
-  const calls = [];
-  const up = { engine: false, child: false };
-  const steps = {
-    dataDir: dataDir(t),
-    probe: async () => up.engine || up.child,
-    ...(options.volume ? { volumeBlock: async () => options.volume } : {}),
-    logMark: async () => { calls.push('mark'); return [0, 0]; },
-    cannotRunReason: async () => options.cannotRun,
-    installService: async () => { calls.push('install'); if (options.installFails) throw Error('Access is denied.'); },
-    startService: async () => { calls.push('start'); up.engine = !options.neverAnswers; },
-    waitForService: async () => !options.neverAnswers,
-    ...(options.noUninstall ? {} : { uninstallService: async () => { calls.push('uninstall'); if (options.uninstallFails) throw Error('launchctl bootout failed'); } }),
-    spawnChild: async () => { calls.push('child'); up.child = true; },
-    log: () => undefined,
-    lockTimeoutMs: 2_000,
-  };
-  return { calls, steps };
-}
-
-test('a data folder on another volume chooses the child up front: the service is removed first and never installed', async t => {
-  const { calls, steps } = fakeLaunch(t, { volume: EXTERNAL_VOLUME_SERVICE_LINE });
-  const result = await attachOrStartEngine(steps);
-  assert.deepEqual(calls, ['uninstall', 'child'], 'the service is removed before the one child starts');
-  assert.deepEqual(result, { mode: 'child', reason: EXTERNAL_VOLUME_SERVICE_LINE });
-  // Settings says the reason once, in full, and then stays quiet.
-  assert.equal(takeChildModeNotice(steps.dataDir), EXTERNAL_VOLUME_SERVICE_LINE);
-  assert.equal(takeChildModeNotice(steps.dataDir), undefined);
-  assert.equal(childModeSettingsLine(EXTERNAL_VOLUME_SERVICE_LINE), `${EXTERNAL_VOLUME_SERVICE_LINE} Quitting Branch stops your Trunks.`);
-});
-
-test('a service that installed but cannot run is removed, confirmed gone, and replaced by the one child engine', async t => {
-  const { calls, steps } = fakeLaunch(t, { neverAnswers: true, cannotRun: SERVICE_BLOCKED_LINE });
-  const result = await attachOrStartEngine(steps);
-  assert.deepEqual(calls, ['mark', 'install', 'start', 'uninstall', 'child'], 'uninstall comes before the child');
-  assert.equal(result.mode, 'child');
-  assert.equal(takeChildModeNotice(steps.dataDir), SERVICE_BLOCKED_LINE);
-});
-
-test('a silent service with no launchd failure in its logs is still an error, never a child beside it', async t => {
-  const { calls, steps } = fakeLaunch(t, { neverAnswers: true });
-  await assert.rejects(attachOrStartEngine(steps), /did not answer in time/);
-  assert.deepEqual(calls, ['mark', 'install', 'start'], 'nothing is removed or started on a guess');
-});
-
-test('a service that cannot be removed is never replaced by a child, for either reason', async t => {
-  const cannotRun = fakeLaunch(t, { neverAnswers: true, cannotRun: SERVICE_BLOCKED_LINE, uninstallFails: true });
-  await assert.rejects(attachOrStartEngine(cannotRun.steps), /launchctl bootout failed/);
-  assert.deepEqual(cannotRun.calls, ['mark', 'install', 'start', 'uninstall']);
-  const volume = fakeLaunch(t, { volume: EXTERNAL_VOLUME_SERVICE_LINE, uninstallFails: true });
-  await assert.rejects(attachOrStartEngine(volume.steps), /launchctl bootout failed/);
-  assert.deepEqual(volume.calls, ['uninstall']);
-});
-
-test('an externally supervised launch never removes or installs a service, and a cannot-run service there is an error', async t => {
-  const volume = fakeLaunch(t, { volume: EXTERNAL_VOLUME_SERVICE_LINE, noUninstall: true });
-  const result = await attachOrStartEngine(volume.steps);
-  assert.deepEqual(volume.calls, ['child'], 'no service call at all: the supervisor owns it');
-  assert.equal(result.mode, 'child');
-  const cannotRun = fakeLaunch(t, { neverAnswers: true, cannotRun: SERVICE_BLOCKED_LINE, noUninstall: true });
-  await assert.rejects(attachOrStartEngine(cannotRun.steps), /managed outside Branch Agent/);
-  assert.deepEqual(cannotRun.calls, ['mark', 'install', 'start']);
-});
-
-test('the uninstall action runs the engine uninstall, with the JSON answer the launch reads', () => {
-  assert.deepEqual(engineServiceArgs('uninstall'), ['branch.mjs', 'gateway', 'uninstall', '--json']);
-});
-

@@ -5,7 +5,6 @@
 // cannot be installed (a locked-down computer).
 import { execFile } from "node:child_process";
 import { closeSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
-import { open, realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 /** The engine CLI arguments for one service step (run from the engine folder with the app's node). */
@@ -19,8 +18,6 @@ export function engineServiceArgs(action: EngineServiceAction | "token", port?: 
   // (engine/src/cli/daemon-cli/lifecycle-safe-restart.ts), which skips the definition rewrite, so the service would
   // come back on the old engine. --force stays only on Stop Branch completely, after its warning.
   if (action === "restart") return ["branch.mjs", "gateway", "restart", "--json"];
-  // Removes the service the engine wrote: bootout, the plist moved to the Trash, and a check that it is no longer loaded.
-  if (action === "uninstall") return ["branch.mjs", "gateway", "uninstall", "--json"];
   // Stop Branch completely (C): the app is not a terminal, so the stop is confirmed with --force; the definition
   // stays, so the service starts again at the next sign-in (and the app starts it at its next launch).
   if (action === "stop") return ["branch.mjs", "gateway", "stop", "--force", "--json"];
@@ -28,7 +25,7 @@ export function engineServiceArgs(action: EngineServiceAction | "token", port?: 
   return ["branch.mjs", "config", "patch", "--stdin"];
 }
 
-export type EngineServiceAction = "install" | "start" | "restart" | "stop" | "uninstall";
+export type EngineServiceAction = "install" | "start" | "restart" | "stop";
 
 /**
  * "Keep working when nobody is signed in" (Private #454 D, Linux): the engine's own systemd-linger path
@@ -174,12 +171,6 @@ export function recordEngineMode(dataDir: string, mode: EngineMode, reason?: str
 
 /** Settings › General › Starting up, when the engine keeps a custom copy off the per-user service (#1053). */
 export const CUSTOM_COPY_SERVICE_LINE = "Running inside the app: this copy isn't the standard install, so the background service stays off.";
-/** The data sits on another volume than the home folder, which macOS keeps launchd's background jobs from reading. */
-export const EXTERNAL_VOLUME_SERVICE_LINE = "Running inside the app: your Branch data is on another drive, and macOS keeps background services from reading it.";
-/** The installed service never started, and its logs show macOS (or the shell) would not let launchd run it. */
-export const SERVICE_BLOCKED_LINE = "Running inside the app: macOS blocked Branch's background service from starting, so it was removed.";
-/** Reasons that already read as complete Settings sentences: shown as they are, never cut down to a short phrase. */
-const SELF_EXPLAINING_LINES: ReadonlySet<string> = new Set([CUSTOM_COPY_SERVICE_LINE, EXTERNAL_VOLUME_SERVICE_LINE, SERVICE_BLOCKED_LINE]);
 
 /**
  * The reason the service could not be installed, in plain words for Settings. The engine's own refusal of a custom
@@ -189,8 +180,7 @@ const SELF_EXPLAINING_LINES: ReadonlySet<string> = new Set([CUSTOM_COPY_SERVICE_
  * `Gateway install blocked:`, `Error:`) and keeps its first sentence, such as the OS's "Access is denied".
  */
 export function plainServiceReason(reason: string): string {
-  if (SELF_EXPLAINING_LINES.has(reason)) return reason;
-  if (/service management skipped|non-default (?:state dir|install)/i.test(reason)) return CUSTOM_COPY_SERVICE_LINE;
+  if (reason === CUSTOM_COPY_SERVICE_LINE || /service management skipped|non-default (?:state dir|install)/i.test(reason)) return CUSTOM_COPY_SERVICE_LINE;
   let text = reason.trim();
   for (let previous = ""; previous !== text;) {
     previous = text;
@@ -202,7 +192,7 @@ export function plainServiceReason(reason: string): string {
 
 /** The Settings line for the engine running inside the app, from the reason takeChildModeNotice gives. */
 export function childModeSettingsLine(notice: string): string {
-  if (SELF_EXPLAINING_LINES.has(notice)) return `${notice} Quitting Branch stops your Trunks.`;
+  if (notice === CUSTOM_COPY_SERVICE_LINE) return `${notice} Quitting Branch stops your Trunks.`;
   return `Branch runs inside the app on this computer because its background service couldn't be installed (${notice}). Quitting Branch stops your Trunks.`;
 }
 
@@ -263,72 +253,6 @@ export async function acquireEngineStartLock(dataDir: string, attached: () => Pr
   }
 }
 
-/** Reads a path's real location and the device (volume) it sits on. Tests pass their own; the app uses nodeVolumeReader. */
-export interface VolumeReader {
-  realpath(path: string): Promise<string>;
-  deviceOf(path: string): Promise<number>;
-}
-
-export const nodeVolumeReader: VolumeReader = {
-  realpath: path => realpath(path),
-  deviceOf: async path => (await stat(path)).dev,
-};
-
-/**
- * macOS privacy (TCC) keeps launchd's jobs off a volume other than the home volume unless the owner grants access, so a
- * service whose data is there cannot start (exit 126). Resolves the Settings reason when any path, after resolving
- * symlinks, sits on another volume than home. Other platforms are never blocked here. A folder that does not exist
- * yet is on home, as it will be created there.
- */
-export async function serviceVolumeBlock(paths: readonly string[], home: string, reader: VolumeReader,
-  platform: NodeJS.Platform = process.platform): Promise<string | undefined> {
-  if (platform !== "darwin") return undefined;
-  let homeDevice: number;
-  try { homeDevice = await reader.deviceOf(await reader.realpath(home)); } catch { return undefined; }
-  for (const path of paths) {
-    let device: number;
-    try { device = await reader.deviceOf(await reader.realpath(path)); } catch { continue; }
-    if (device !== homeDevice) return EXTERNAL_VOLUME_SERVICE_LINE;
-  }
-  return undefined;
-}
-
-/** launchd's own log lines when it could not run the service: macOS privacy, or a shell that cannot exec its wrapper. */
-const CANNOT_RUN_LOG = /Operation not permitted|Permission denied|exit(?:ed)?[^\n]{0,40}\b126\b/i;
-
-/** The Settings reason when the text a service's logs gained since the start shows it could not run; undefined otherwise. */
-export function serviceCannotRunReason(appendedLog: string): string | undefined {
-  return CANNOT_RUN_LOG.test(appendedLog) ? SERVICE_BLOCKED_LINE : undefined;
-}
-
-/** The two launchd log files the macOS service writes (stdout and stderr), under the owner's home folder. */
-export function serviceLogPaths(home: string): string[] {
-  const dir = join(home, "Library", "Logs", "branch");
-  return [join(dir, "gateway.log"), join(dir, "gateway.err.log")];
-}
-
-/** The size of each service log now: a later read starts here, so only this start's lines count. */
-export async function serviceLogSizes(paths: readonly string[]): Promise<number[]> {
-  return Promise.all(paths.map(file => stat(file).then(info => info.size, () => 0)));
-}
-
-/** The text each service log gained since `sizes` (a log that was rotated or shrank is read from its start). */
-export async function readServiceLogsSince(paths: readonly string[], sizes: readonly number[]): Promise<string> {
-  const parts: string[] = [];
-  for (const [index, file] of paths.entries()) {
-    let handle;
-    try { handle = await open(file, "r"); } catch { continue; }
-    try {
-      const { size } = await handle.stat();
-      const from = size < (sizes[index] ?? 0) ? 0 : sizes[index] ?? 0;
-      const bytes = Buffer.alloc(size - from);
-      await handle.read(bytes, 0, bytes.length, from);
-      if (bytes.length) parts.push(bytes.toString("utf8"));
-    } finally { await handle.close(); }
-  }
-  return parts.join("\n");
-}
-
 export interface EngineAttachSteps {
   dataDir: string;
   /** An engine answers on the gateway port. */
@@ -341,20 +265,6 @@ export interface EngineAttachSteps {
   waitForService(): Promise<boolean>;
   /** The fallback: today's child engine, started and ready. */
   spawnChild(): Promise<void>;
-  /**
-   * macOS: the Settings reason when the engine's data or state folder is on another volume than home, so launchd cannot
-   * run a service there. Undefined when every folder is on home. Checked before any install.
-   */
-  volumeBlock?(): Promise<string | undefined>;
-  /** Marks where this start's log lines begin, before the install. */
-  logMark?(): Promise<number[]>;
-  /** The Settings reason when the service's logs since `mark` show launchd could not run it; undefined otherwise. */
-  cannotRunReason?(mark: number[]): Promise<string | undefined>;
-  /**
-   * `branch gateway uninstall`: stops the service, removes its LaunchAgent and checks it is no longer loaded. Rejects
-   * when it is still there. Undefined when the supervisor manages the service (BRANCH_SUPERVISOR_MODE=external).
-   */
-  uninstallService?(): Promise<void>;
   log(line: string): void;
   lockTimeoutMs?: number;
 }
@@ -364,9 +274,8 @@ export type EngineAttachResult = { mode: "service"; via: "attached" | "started" 
 /**
  * Launch: attach to the engine that already answers; else install and start the service, then attach. Never a
  * second engine: the probe runs again under the start lock, and an installed service that is slow to answer is
- * an error, not a reason to start a child beside it. A service that cannot be installed, or that launchd cannot run,
- * is removed (confirmed gone) before the one child engine starts, recorded for Settings. A data folder on another
- * volume (macOS privacy) chooses the child engine up front, without installing anything.
+ * an error, not a reason to start a child beside it. Only a service that cannot be installed falls back to one
+ * child engine, recorded for Settings.
  */
 export async function attachOrStartEngine(steps: EngineAttachSteps): Promise<EngineAttachResult> {
   const attached = (): EngineAttachResult => {
@@ -379,48 +288,24 @@ export async function attachOrStartEngine(steps: EngineAttachSteps): Promise<Eng
   if (!release) return attached();
   try {
     if (await steps.probe()) return attached();
-    const volume = await steps.volumeBlock?.();
-    if (volume) return await childFallback(steps, attached, volume, volume, true);
-    const mark = await steps.logMark?.() ?? [];
     let installError: unknown;
     try { await steps.installService(); } catch (error) { installError = error; }
     if (installError === undefined) {
       // From here a service exists: whatever goes wrong is reported, never answered with a second engine.
       await steps.startService();
-      if (await steps.waitForService()) {
-        recordEngineMode(steps.dataDir, "service");
-        steps.log("engine: service installed and started; attached");
-        return { mode: "service", via: "started" };
-      }
-      const cannotRun = await steps.cannotRunReason?.(mark);
-      if (!cannotRun) throw new Error("Branch Agent's engine service started but did not answer in time; see gateway.log");
-      // Only a service this app can remove is replaced by the child: an externally managed one is never guessed at.
-      if (!steps.uninstallService) throw new Error("the background service cannot run and is managed outside Branch Agent; see gateway.log");
-      steps.log("engine: launchd could not run the service; removing it before running the engine inside the app");
-      return await childFallback(steps, attached, cannotRun, cannotRun, true);
+      if (!await steps.waitForService()) throw new Error("Branch Agent's engine service started but did not answer in time; see gateway.log");
+      recordEngineMode(steps.dataDir, "service");
+      steps.log("engine: service installed and started; attached");
+      return { mode: "service", via: "started" };
     }
     // An engine that came up meanwhile (a slow first start) is attached to, never doubled.
+    if (await steps.probe()) return attached();
     const reason = installError instanceof Error ? installError.message : String(installError);
-    return await childFallback(steps, attached, plainServiceReason(reason), reason, false);
+    steps.log(`engine: the background service could not be installed (${reason}); running the engine inside the app`);
+    recordEngineMode(steps.dataDir, "child", plainServiceReason(reason));
+    await steps.spawnChild();
+    return { mode: "child", reason };
   } finally {
     release();
   }
-}
-
-/**
- * The one child engine: removes the service first when it exists (and the app manages it), then starts the child.
- * A child is started only once the service is confirmed gone; a failed removal throws and nothing starts.
- */
-async function childFallback(steps: EngineAttachSteps, attached: () => EngineAttachResult, settingsReason: string, reason: string,
-  removeService: boolean): Promise<EngineAttachResult> {
-  if (removeService && steps.uninstallService) {
-    await steps.uninstallService();
-    steps.log("engine: removed the background service");
-  }
-  // An engine that came up meanwhile is attached to, never doubled.
-  if (await steps.probe()) return attached();
-  steps.log(`engine: the background service is not used (${reason}); running the engine inside the app`);
-  recordEngineMode(steps.dataDir, "child", settingsReason);
-  await steps.spawnChild();
-  return { mode: "child", reason };
 }
