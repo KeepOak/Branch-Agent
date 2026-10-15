@@ -5,6 +5,7 @@ import type { Block } from "../thread/model";
 import type { RoomPick } from "../rooms/RoomFaces";
 import { RoomFaces } from "../rooms/RoomFaces";
 import { openNewGroupChat } from "../rooms/NewGroupChat";
+import { FEED_EVENT_KINDS, jobNotices, type TrunkNames } from "../rooms/job-feed";
 import type { SidebarDrop } from "./sidebar-drag";
 import "./group-drop.css";
 
@@ -73,7 +74,7 @@ export function roomContact(room: GroupRoom, contacts: readonly GatewayContact[]
   };
 }
 
-export function useRoomNotices(session: SaplingSession, key: string | null, contacts: readonly GroupContact[]): Block[] {
+export function useRoomNotices(session: SaplingSession, key: string | null, contacts: readonly GroupContact[], trunkName: TrunkNames): Block[] {
   const roomId = /^agent:[^:]+:room:([^:]+)$/.exec(key ?? "")?.[1];
   const [events, setEvents] = useState<{ seq: number; kind: string; actorId?: string; payload: unknown; createdAt: number }[]>([]);
   useEffect(() => {
@@ -87,7 +88,7 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
         do {
           const page: { events: typeof events; nextCursor?: number } = await session.request("rooms.log", { roomId, ...(cursor ? { cursor } : {}) });
           if (!live) return;
-          notices.push(...page.events.filter((event) => event.kind === "created" || event.kind === "member.added"));
+          notices.push(...page.events.filter((event) => FEED_EVENT_KINDS.includes(event.kind)));
           cursor = page.nextCursor;
         } while (cursor);
         setEvents((current) => [...notices, ...current.filter((row) => !notices.some((saved) => saved.seq === row.seq))].sort((a, b) => a.seq - b.seq));
@@ -96,7 +97,7 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
     void load();
     const off = session.onGatewayEvent((event, payload) => {
       const value = payload as { roomId?: string; seq?: number; kind?: string; actorId?: string; payload?: unknown; createdAt?: number };
-      if (event === "rooms.event" && value?.roomId === roomId && typeof value.seq === "number" && (value.kind === "created" || value.kind === "member.added")) {
+      if (event === "rooms.event" && value?.roomId === roomId && typeof value.seq === "number" && FEED_EVENT_KINDS.includes(value.kind!)) {
         setEvents((current) => current.some((row) => row.seq === value.seq) ? current : [...current, { seq: value.seq!, kind: value.kind!, actorId: value.actorId, payload: value.payload, createdAt: value.createdAt ?? 0 }]);
       }
     });
@@ -106,7 +107,8 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
     const current = memberOf(contact);
     return current?.kind === member.kind && current.id === member.id;
   })?.name ?? member.id;
-  return events.flatMap((event): Block[] => {
+  const feed = jobNotices(roomId ?? "", events, trunkName);
+  return [...events.flatMap((event): Block[] => {
     const data = event.payload as { members?: GroupMember[]; kind?: GroupMember["kind"]; id?: string; from?: string };
     if (event.kind === "created") {
       const members = data.members ?? [];
@@ -115,7 +117,7 @@ export function useRoomNotices(session: SaplingSession, key: string | null, cont
     }
     if (event.kind === "member.added" && data.kind && data.id) return [{ kind: "notice", key: `room:${roomId}:${event.seq}`, text: `${event.actorId?.startsWith("a2a:") ? (data.from ?? event.actorId.slice(4)) : "You"} added ${named({ kind: data.kind, id: data.id })}`, at: event.createdAt }];
     return [];
-  });
+  }), ...feed];
 }
 
 /** Keep untimed blocks attached to their preceding message while placing room events by recorded time. */

@@ -76,6 +76,9 @@ export function readFileChanges(args: unknown): FileChange[] {
   }));
 }
 
+/** One transition of a Trunk job shown in a group room: its plain sentence and when it was recorded. */
+export type JobStep = { key: string; text: string; at: number };
+
 export type Block =
   | { kind: "user"; key: string; text: string; meta?: MessageMeta; attachments?: Attachment[] }
   /** Words you sent while the turn worked, which it took at its next step (`__branch.steerTargetRunId`). Part of
@@ -92,7 +95,8 @@ export type Block =
   /** The end of a turn. `stopped`: you (or the engine) stopped it; the thread says so instead of "Done in". */
   | { kind: "done"; key: string; runId: string; durationMs?: number; stopped?: boolean }
   | { kind: "error"; key: string; runId?: string; message: string }
-  | { kind: "notice"; key: string; text: string; at?: number; topicKey?: string }
+  /** `steps`: a Trunk job in a group room, its latest state in `text` and each transition in order (see rooms/job-feed.ts). */
+  | { kind: "notice"; key: string; text: string; at?: number; topicKey?: string; steps?: JobStep[] }
   | { kind: "status"; key: string; phase: string; attempt?: number; maxAttempts?: number };
 
 const record = (value: unknown): Record<string, unknown> =>

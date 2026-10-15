@@ -1,0 +1,4 @@
+# Calm feed for Trunk job events in group rooms (depends on #976): one line per job, transitions one click away.
+window:src/rooms/job-feed.test.ts
+window:src/rooms/job-line.test.tsx
+window:src/shell/group-drop.test.tsx
