@@ -19,12 +19,12 @@ Any tool that runs commands, drives apps or overwrites files must ask first. Nam
 
 A pin is the full 40-character commit. A branch name or a short id can move, so it is not a pin.
 
-Ask before cloning. Use a filtered clone at `/tmp/upstream/<owner>-<repo>`, then check out that commit:
+Ask before cloning. Use a filtered clone at `<upstream-checkout-dir>/<owner>-<repo>`, then check out that commit:
 
 ```bash
-git clone --filter=blob:none <repository-url> /tmp/upstream/<owner>-<repo>
-git -C /tmp/upstream/<owner>-<repo> checkout <full-sha>
-git -C /tmp/upstream/<owner>-<repo> rev-parse HEAD
+git clone --filter=blob:none <repository-url> <upstream-checkout-dir>/<owner>-<repo>
+git -C <upstream-checkout-dir>/<owner>-<repo> checkout <full-sha>
+git -C <upstream-checkout-dir>/<owner>-<repo> rev-parse HEAD
 ```
 
 Done when `git rev-parse HEAD` prints the same 40-character commit you recorded, and you have read `LICENSE` (and `NOTICE`, when the pin has one) at that commit.
@@ -113,7 +113,7 @@ Done when `NOTICE` names the project, the commit, and the vendored license file,
 Write `docs/harvest/<atlas-id>.md` in plain words. Include:
 
 - the atlas id and a short title
-- the pin as `owner/repo@<full-sha>`, the checkout `/tmp/upstream/<owner>-<repo>`, and the verified HEAD
+- the pin as `owner/repo@<full-sha>`, the checkout `<upstream-checkout-dir>/<owner>-<repo>`, and the verified HEAD
 - what you ported, or why the row is blocked
 - the test command and the passed and failed counts, including the fail-before run when production code changed
 - that copied files have pin headers and `docs/upstream/COPIED.csv` rows

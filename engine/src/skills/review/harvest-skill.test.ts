@@ -28,6 +28,8 @@ describe("harvest skill", () => {
     expect(content).toContain("NOTICE");
     expect(content).toContain("third_party/<short-name>/LICENSE");
     expect(content).toContain("docs/harvest/<atlas-id>.md");
+    expect(content).toContain("<upstream-checkout-dir>/<owner>-<repo>");
+    expect(content).not.toContain("/tmp/upstream");
   });
 
   it("keeps the permissive-license, closed-app, and ask-first rules", () => {
