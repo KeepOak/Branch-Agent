@@ -1,0 +1,16 @@
+window:src/screens/find/FindAnything.test.tsx
+window:src/screens/frame/R1Window.agent-customize.test.tsx
+window:src/screens/frame/R1Window.changes.test.tsx
+window:src/screens/frame/R1Window.character.test.tsx
+window:src/screens/frame/R1Window.helpers.test.tsx
+window:src/screens/frame/R1Window.open-name.test.tsx
+window:src/screens/frame/R1Window.pane.test.tsx
+window:src/screens/frame/R1Window.stage.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/frame/R1Window.tower.test.tsx
+window:src/screens/frame/glass48.test.tsx
+window:src/screens/frame/open-name.test.ts
+window:src/screens/onboarding/talk-window.test.tsx
+window:src/screens/settings/ask-trunk-window.test.tsx
+window:src/thread/markdown-inline-nesting.test.tsx
+window:src/thread/suggestions-yes-no.test.ts

@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/discord/src/monitor/model-picker.test.ts (atlas CHAT-APPS-0137). Changed for Branch: pin the token for the renamed runtime id.
+// Changed for Branch: pin the token for the renamed runtime id.
 import { ComponentType } from "discord-api-types/v10";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseCustomId, serializePayload } from "../internal/discord.js";

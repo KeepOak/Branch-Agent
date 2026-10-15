@@ -24,8 +24,8 @@ importers:
         specifier: 11.12.0
         version: 11.12.0
       katex:
-        specifier: 0.16.22
-        version: 0.16.22
+        specifier: 0.18.2
+        version: 0.18.2
       react:
         specifier: ^19.2.8
         version: 19.3.0
@@ -620,8 +620,8 @@ packages:
       canvas:
         optional: true
 
-  katex@0.16.22:
-    resolution: {integrity: sha512-XCHRdUw4lf3SKBaJe4EvgqIuWwkPSo9XoeO8GjQW94Bp7TWv9hNhzZjZ+OH9yf1UmLygb7DIT5GSFQiyt16zYg==}
+  katex@0.18.2:
+    resolution: {integrity: sha512-3snve4y0SXTMequLim1FMiPvLGElySam0blN5xQZBqEY3lOJz1TnuaaiugnBZBqHzlSAGmFTYL7MCQkORuLKCA==}
     hasBin: true
 
   lightningcss-android-arm64@1.32.0:
@@ -1407,7 +1407,7 @@ snapshots:
     transitivePeerDependencies:
       - '@noble/hashes'
 
-  katex@0.16.22:
+  katex@0.18.2:
     dependencies:
       commander: 8.3.0
 

@@ -21,7 +21,7 @@ const QR_OFF = "Reads the code from a picture in the Branch app on your computer
 type SetupCode = { url: string; key: boolean } | { expired: true } | { bad: true };
 
 /** Preview setupCodePA18: a pasted setup code, or null when the field is an address. */
-export function readSetupCode(v: string): SetupCode | null {
+function readSetupCode(v: string): SetupCode | null {
   const trimmed = (v || "").trim();
   if (!trimmed || /^wss?:\/\//i.test(trimmed) || (/^[\w.-]+(:\d+)?$/.test(trimmed) && trimmed.length < 20)) return null;
   try {

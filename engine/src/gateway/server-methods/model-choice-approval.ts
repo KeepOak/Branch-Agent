@@ -19,6 +19,24 @@ export async function requestModelChoiceApproval(params: {
   context: GatewayRequestContext;
   question: string;
 }): Promise<ModelChoiceDecision | "unavailable"> {
+  return requestOwnerChangeApproval({
+    context: params.context,
+    title: MODEL_CHOICE_APPROVAL_TITLE,
+    question: params.question,
+    kind: "model-choice",
+  });
+}
+
+/**
+ * The one approve card a Trunk's change goes through. Shared by model changes and team creation, so
+ * every Trunk-made change is decided on the same approval manager and by the same owner tap.
+ */
+export async function requestOwnerChangeApproval(params: {
+  context: GatewayRequestContext;
+  title: string;
+  question: string;
+  kind: string;
+}): Promise<ModelChoiceDecision | "unavailable"> {
   const manager = params.context.systemAgentApprovalManager;
   if (!manager) {
     return "unavailable";
@@ -26,21 +44,21 @@ export async function requestModelChoiceApproval(params: {
   const caller = getGatewayToolCallerIdentity();
   const id = randomUUID();
   const request: SystemAgentApprovalRequestPayload = {
-    title: MODEL_CHOICE_APPROVAL_TITLE,
+    title: params.title,
     description: params.question,
     command: params.question,
-    proposalHash: sha256Hex(`model-choice\0${id}\0${params.question}`),
+    proposalHash: sha256Hex(`${params.kind}\0${id}\0${params.question}`),
     allowedDecisions: SYSTEM_AGENT_APPROVAL_DECISIONS,
     agentId: caller?.agentId ?? null,
     sessionKey: caller?.sessionKey ?? null,
-    sessionId: `model-choice-${id}`,
+    sessionId: `${params.kind}-${id}`,
     turnSourceChannel: caller?.turnSourceChannel ?? null,
     turnSourceTo: caller?.turnSourceTo ?? null,
     turnSourceAccountId: caller?.turnSourceAccountId ?? null,
     turnSourceThreadId: caller?.turnSourceThreadId ?? null,
     runId: caller?.operationalRunInstance?.runId ?? null,
   };
-  const record = manager.create(request, SYSTEM_AGENT_APPROVAL_TIMEOUT_MS, `model-choice:${id}`);
+  const record = manager.create(request, SYSTEM_AGENT_APPROVAL_TIMEOUT_MS, `${params.kind}:${id}`);
   if (caller?.approvalSignals?.length) {
     record.approvalSignals = caller.approvalSignals;
   }

@@ -69,6 +69,8 @@ export type CanonicalSessionValidationResult = {
   certifiedRows: number;
   hasMore: boolean;
   oversizedRows: number;
+  /** Invalid rows recorded in branch-quarantine.sqlite instead of refusing readiness. */
+  quarantinedRows: number;
 };
 
 /** Worker operation facts; no Worker object or plan payload is retained. */

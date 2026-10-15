@@ -1,23 +1,23 @@
 // Trunk editor › What it may do (preview 30-trunks mayHTMLC18, 31-trunksp mayMorePC18 at Advanced).
 // Each row writes the Trunk's own config entry; rows the engine has no setting for are drawn greyed with the reason.
-// TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+// The greyed reasons in this file say what is still missing, shown in plain words under each row.
 import { useState, type ReactNode } from "react";
-import { shownWhy } from "../../shell/shown-why";
+import { useResource } from "../settings/hooks";
 import type { ModelChoice } from "../../composer/model";
 import type { WindowEngine } from "../../connect/engine";
-import { GitHubSettings } from "../settings/GitHubSettings";
 import { Menu, type MenuAnchor } from "../../shell/Menu";
 import { Segmented, Switch } from "../../shell/Popover";
 import { Icon } from "../../shell/icons";
 import { shows, type Level } from "../../places-nav/level";
 import type { Draft } from "./api";
+import { GitHubChoice } from "./GitHubChoice";
 import type { May } from "./may";
 
-export const SEND_WHY = "Needs the engine’s per-Trunk setting for asking before it sends.";
-export const NOTES_WHY = "Each Trunk keeps its notes in its own folder; the engine has no setting to share them.";
+const SEND_WHY = "Send email and messages comes in a later update.";
+const NOTES_WHY = "Keep its own notes comes in a later update.";
 
 function Row({ title, hint, children, off }: { title: string; hint: string; children: ReactNode; off?: string }) {
-  return <div className={off ? "tk-ctl off" : "tk-ctl"} title={shownWhy(off)}><b>{title}</b><span className="tk-right">{children}</span><small>{shownWhy(off) || hint}</small></div>;
+  return <div className={off ? "tk-ctl off" : "tk-ctl"}><b>{title}</b><span className="tk-right">{children}</span><small>{hint}</small>{off ? <small className="tk-why">{off}</small> : null}</div>;
 }
 
 const modelName = (models: ModelChoice[], ref: string) => models.find((m) => m.ref === ref)?.name || ref.split("/").pop() || ref;
@@ -66,22 +66,26 @@ function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: Wi
         </select>
       </Row>
       <Fallbacks draft={draft} models={models} setMay={setMay} />
-      <div className="kit-page">
-        <p className="tk-hint">GitHub connection changes save immediately for {name}, even if you cancel this editor. Other changes use Save below.</p>
-        <GitHubSettings engine={engine} agentId={agentId} />
-      </div>
+      <GitHubChoice engine={engine} agentId={agentId} />
     </>
   );
 }
 
+const NOT_OFFERED = "Its own tool list leaves these tools out, so this switch has no effect.";
+
 type Props = { engine: WindowEngine; agentId: string; name: string; draft: Draft; models: ModelChoice[]; level: Level; set: (d: Partial<Draft>) => void; openSettings?: (page: string) => void };
 export function MayTab({ engine, agentId, name, draft, models, level, set, openSettings }: Props) {
   const may = draft.may, setMay = (m: Partial<May>) => set({ may: { ...may, ...m } });
+  // The browser switch is greyed when the Trunk's own tool list leaves the browser out (tools.catalog).
+  const catalog = useResource<{ toolsets?: { id: string; offered?: boolean }[] }>(engine, "tools.catalog", { agentId });
+  const browserLock = may.browseLock || (catalog.data?.toolsets?.find(t => t.id === "browser")?.offered === false ? NOT_OFFERED : "");
   return (
     <div className="tk-may">
       <Row title="Read files in Documents and Downloads" hint="Reading never changes a file."><Switch label="Read files in Documents and Downloads" on={may.read} onChange={(read) => setMay({ read })} /></Row>
-      <Row title="Use the browser" hint="With your saved sign-ins." off={may.browseLock || undefined}>
-        {may.browseLock ? <button type="button" role="switch" aria-checked={false} aria-label="Use the browser" className="switch" disabled /> : <Switch label="Use the browser" on={may.browse} onChange={(browse) => setMay({ browse })} />}
+      <Row title="Use the browser" hint="With your saved sign-ins." off={browserLock || undefined}>
+        {browserLock
+          ? <button type="button" role="switch" aria-checked={false} aria-label="Use the browser" className="switch" disabled />
+          : <Switch label="Use the browser" on={may.browse} onChange={next => setMay({ browse: next })} />}
       </Row>
       <Row title="Send email and messages" hint="Overrides the mode for this Trunk only." off={SEND_WHY}>
         <span className="tk-seg">{["Ask first", "Allowed"].map((l) => <button key={l} type="button" disabled>{l}</button>)}</span>

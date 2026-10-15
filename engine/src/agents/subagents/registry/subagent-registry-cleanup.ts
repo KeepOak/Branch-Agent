@@ -1,3 +1,4 @@
+import { readAgentDatabaseAdmissionRefusal } from "../../../state/agent-database-admission.js";
 import { SUBAGENT_ENDED_REASON_COMPLETE } from "./subagent-lifecycle-events.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
@@ -34,9 +35,45 @@ export function resolveAnnounceDeliveryDeadline(
   );
 }
 
+/**
+ * #967: true while the requester's agent is still being admitted after a Gateway start. Its
+ * session refuses work until then ("has not completed startup inspection"); on a slow disk that
+ * can outlast the whole delivery window, so the window must not run out while it waits.
+ */
+export function isRequesterAwaitingAdmission(
+  entry: Pick<SubagentRunRecord, "requesterAgentId">,
+  options: { env?: NodeJS.ProcessEnv } = {},
+): boolean {
+  if (!entry.requesterAgentId) {
+    return false;
+  }
+  try {
+    return (
+      readAgentDatabaseAdmissionRefusal(entry.requesterAgentId, options)?.code ===
+      "agent-database-inspection-pending"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * #967: while the requester waits for admission its pending result stays queued in the registry,
+ * and its delivery window restarts from now, so the parent gets a full window once admitted.
+ */
+export function holdDeliveryWindowForAdmission(
+  delivery: { deadlineAt?: number },
+  now: number,
+  windowMs: number,
+): void {
+  delivery.deadlineAt = Math.max(delivery.deadlineAt ?? 0, now + windowMs);
+}
+
 export function resolveDeferredCleanupDecision(params: {
   entry: SubagentRunRecord;
   now: number;
+  /** The requester is still being admitted: its delivery waits instead of expiring (#967). */
+  requesterAwaitingAdmission?: boolean;
   activeDescendantRuns: number;
   announceExpiryMs: number;
   announceCompletionHardExpiryMs: number;
@@ -48,6 +85,7 @@ export function resolveDeferredCleanupDecision(params: {
     ? params.announceCompletionHardExpiryMs
     : params.announceExpiryMs;
   const expiryExceeded =
+    params.requesterAwaitingAdmission !== true &&
     params.now >= resolveAnnounceDeliveryDeadline(params.entry, params.now, expiryMs);
   if (isCompletionMessageFlow && params.activeDescendantRuns > 0) {
     if (expiryExceeded) {

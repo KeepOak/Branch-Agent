@@ -43,7 +43,7 @@ function skillProblem(s: Rec): SkillRow["problem"] {
   return anyMissing || s.eligible === false ? "Not running" : undefined;
 }
 
-/** Human-facing skill names; the engine key stays unchanged. */
+/** Human-facing skill names; the engine key stays unchanged. Product names come from the one display-name map. */
 function skillLabel(name: string): string {
   const label = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(name)
     ? name.replace(/[-_]/g, " ").replace(/^./, (letter) => letter.toUpperCase())
@@ -103,7 +103,7 @@ export function setWebSearch(o: ToolOverrides, on: boolean, base: boolean): Tool
 }
 
 /** Drops empty maps, so "nothing changed here" is exactly an empty overlay. */
-export function tidy(o: ToolOverrides): ToolOverrides {
+function tidy(o: ToolOverrides): ToolOverrides {
   const out: ToolOverrides = {};
   if (o.mcpServers && Object.keys(o.mcpServers).length) out.mcpServers = o.mcpServers;
   if (o.mcpToolsDeny && Object.keys(o.mcpToolsDeny).length) out.mcpToolsDeny = o.mcpToolsDeny;

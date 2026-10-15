@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // A Trunk stuck getting ready says so in its conversation, with a Retry that reaches the engine
-// (agents.retryStartup), and the conversation opens again by itself once the engine lets it through.
+// (agents.retryStartup). Reading the conversation again once the Trunk is ready is the session's job
+// (connect/session-startup-watch.test.ts), so it happens on any page.
 // Only Thread is rendered, so on a base without this feature the assertions fail, not the imports.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -57,11 +58,10 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 
-it("says a retrying Trunk failed and is retrying, with Retry now, after many failures too, and opens the conversation once it is ready", async () => {
+it("says a retrying Trunk failed and is retrying, with Retry now, after many failures too", async () => {
   // Twelve failures and two restarts from scratch: the engine keeps retrying, so the line still offers Retry now.
   const { engine, state } = fakeEngine(refusal({ state: "retrying", failures: 12, restarts: 2 }));
-  const onStartupReady = vi.fn();
-  const view = await render(engine, { preparationError: preparationTimeoutLabel("Juniper"), onStartupReady });
+  const view = await render(engine, { preparationError: preparationTimeoutLabel("Juniper") });
   await vi.waitFor(() => expect(statusText(view)).toContain("Getting Juniper ready failed, retrying…"));
   expect(statusText(view)).not.toContain("needs a restart");
   expect(retryButton(view)).toBeDefined();
@@ -69,7 +69,6 @@ it("says a retrying Trunk failed and is retrying, with Retry now, after many fai
   state.refusal = null;
   await act(async () => retryButton(view)!.click());
   expect(state.calls).toContainEqual({ method: "agents.retryStartup", params: { agentId: "juniper" } });
-  await vi.waitFor(() => expect(onStartupReady).toHaveBeenCalled());
 });
 
 it("says so when the engine answers that it had nothing to retry, and reads the Trunk again", async () => {
@@ -86,8 +85,7 @@ it("says so when the engine answers that it had nothing to retry, and reads the 
 it("says a Trunk whose startup stopped retrying needs attention, without a spinner, and its Retry starts it again", async () => {
   // Five failed starts in a row (thirty failures, four restarts): the engine stopped retrying on its own.
   const { engine, state } = fakeEngine(refusal({ state: "needs-attention", failures: 30, restarts: 4 }));
-  const onStartupReady = vi.fn();
-  const view = await render(engine, { preparationError: PENDING, onStartupReady });
+  const view = await render(engine, { preparationError: PENDING });
   await vi.waitFor(() => expect(statusText(view)).toContain("Juniper needs attention: getting it ready kept failing."));
   expect(statusText(view)).not.toContain("retrying…");
   expect(view.querySelector('[data-testid="preparation-status"] .preparation-spinner')).toBeNull();
@@ -97,7 +95,6 @@ it("says a Trunk whose startup stopped retrying needs attention, without a spinn
   state.refusal = null;
   await act(async () => retry!.click());
   expect(state.calls).toContainEqual({ method: "agents.retryStartup", params: { agentId: "juniper" } });
-  await vi.waitFor(() => expect(onStartupReady).toHaveBeenCalled());
 });
 
 it("keeps the plain getting-ready line, without a button, while the first preparation is still running", async () => {
