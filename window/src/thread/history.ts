@@ -154,6 +154,25 @@ function attachmentsOf(content: unknown): Attachment[] {
   return Array.isArray(content) ? content.map(readAttachment).filter((a): a is Attachment => a !== null) : [];
 }
 
+/** Canonical transcript media uses __branch.media (engine/ui/src/lib/chat/message-extract.ts).
+ * Keep that envelope separate from model content, and retain content attachments. */
+function messageAttachments(m: Message): Attachment[] {
+  const attachments = attachmentsOf(m.content);
+  const facts = rec(m.__branch).media;
+  if (!Array.isArray(facts)) return attachments;
+  for (const raw of facts) {
+    const fact = rec(raw);
+    const path = str(fact.path);
+    const src = path || str(fact.url);
+    const mimeType = str(fact.contentType);
+    const kind = KIND_BY_TYPE[str(fact.kind)] ?? KIND_BY_TYPE[mimeType.split("/")[0]] ?? "file";
+    if (!src || attachments.some((item) => item.src === src)) continue;
+    attachments.push({ kind, name: str(fact.fileName) || kind, src, kept: true, ...(path ? { local: true } : {}),
+      ...(mimeType ? { mimeType } : {}), ...(num(fact.sizeBytes) ? { sizeBytes: num(fact.sizeBytes) } : {}) });
+  }
+  return attachments;
+}
+
 function closeRun(b: Builder, inFlightRunId: string | null): void {
   if (b.runId && b.runFinished && b.runId !== inFlightRunId) {
     // A run whose first message has no time has no length: subtracting an absent start (0) read as ~56 years.
@@ -201,7 +220,7 @@ function onAssistant(b: Builder, m: Message, index: number): void {
   for (const [i, part] of content.entries()) {
     onAssistantPart(b, part, `h:${index}:${i}`, m);
   }
-  const media = attachmentsOf(m.content);
+  const media = messageAttachments(m);
   if (media.length) {
     b.blocks.push({ kind: "text", key: `h:${index}:media`, text: "", streaming: false, meta: readMeta(m), attachments: media });
   }
@@ -316,7 +335,8 @@ function isRestartResume(m: Message): boolean {
 function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | null): void {
   if (str(rec(m.__branch).steerTargetRunId)) {
     // Steered into the turn that was running: it stays that turn's, so its Done line and steps stay whole.
-    b.blocks.push({ kind: "steer", key: `h:${index}`, text: messageText(m.content), meta: readMeta(m) });
+    const attachments = messageAttachments(m);
+    b.blocks.push({ kind: "steer", key: `h:${index}`, text: messageText(m.content), meta: readMeta(m), ...(attachments.length ? { attachments } : {}) });
     return;
   }
   closeRun(b, inFlightRunId);
@@ -327,7 +347,7 @@ function onUser(b: Builder, m: Message, index: number, inFlightRunId: string | n
     b.blocks.push({ kind: "notice", key: `h:${index}`, text: RESUMED_AFTER_RESTART });
     return;
   }
-  const attachments = attachmentsOf(m.content);
+  const attachments = messageAttachments(m);
   b.blocks.push({
     kind: "user",
     key: `h:${index}`,

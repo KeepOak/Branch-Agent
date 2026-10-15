@@ -51,8 +51,7 @@ export function Header({ title, face, onOpen, onToggleSidebar, canBack, canForwa
       ]} />
     </div>
     {!hidden && <div className="r1-pill-position" style={{ left: geometry.left, width: geometry.width || undefined }}>
-      <GlassPill buttonRef={button} title={title} face={face} tight={geometry.tight} onOpen={onOpen} engine={engine}
-        need="agent.identity.get" coming={onOpen ? "This engine can’t show agent details." : "Agent details are not available yet."} />
+      <GlassPill buttonRef={button} title={title} face={face} tight={geometry.tight} onOpen={onOpen} coming={onOpen ? undefined : "Agent details are not available yet."} />
     </div>}
     <div className="r1-header-right" ref={end}><Capsule label="Conversation tools" engine={engine} items={right ?? DEFAULT_TOOLS} /></div>
   </header>;
