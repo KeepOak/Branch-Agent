@@ -15,7 +15,7 @@ import { Grey } from "./parts";
 import { Status } from "./ui";
 import "./library.css";
 
-export const HEAD_REASONS = {
+const HEAD_REASONS = {
   translate: "Needs the engine’s document translation method.",
   pictures: "Needs the engine’s picture-making method.",
 };

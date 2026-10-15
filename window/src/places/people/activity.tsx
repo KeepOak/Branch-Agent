@@ -15,12 +15,12 @@ import { shownWhy } from "../../shell/shown-why";
 const STATUS: Record<string, string> = { started: "Started", succeeded: "Done", failed: "Failed", cancelled: "Stopped", timed_out: "Timed out", blocked: "Blocked", unknown: "Unknown" };
 const KINDS = [{ id: "agent_run", name: "Runs" }, { id: "tool_action", name: "Tool steps" }, { id: "message", name: "Messages" }];
 const KIND_WORD: Record<string, string> = { agent_run: "Run", tool_action: "Tool step" };
-export const CHAT_APP_OFF = "Pick Kind › Messages first: chat apps only apply to messages.";
+const CHAT_APP_OFF = "Pick Kind › Messages first: chat apps only apply to messages.";
 type Filters = { agentId: string; kind: string; status: string; channel: string; from: string; to: string };
 const NONE: Filters = { agentId: "", kind: "", status: "", channel: "", from: "", to: "" };
 
 /** The engine's query for a set of filters; a chat app only goes with Kind › Messages. */
-export function activityParams(f: Filters, cursor?: string): Rec {
+function activityParams(f: Filters, cursor?: string): Rec {
   const day = (d: string, end: boolean) => d ? new Date(`${d}T${end ? "23:59:59.999" : "00:00:00"}`).getTime() : undefined;
   return Object.fromEntries(Object.entries({
     limit: 100, cursor, agentId: f.agentId || undefined, kind: f.kind || undefined, status: f.status || undefined,
@@ -29,13 +29,13 @@ export function activityParams(f: Filters, cursor?: string): Rec {
 }
 
 /** The chat apps the engine knows (channels.status), in its order, for the Chat app filter. */
-export function chatApps(value: unknown): { id: string; name: string }[] {
+function chatApps(value: unknown): { id: string; name: string }[] {
   const v = rec(value), labels = rec(v.channelLabels);
   const ids = Array.isArray(v.channelOrder) ? v.channelOrder.map(x => str(x)).filter(Boolean) : Object.keys(labels);
   return ids.map(id => ({ id, name: str(labels[id]) || id }));
 }
 
-export function when(ms: number, now = new Date()): string {
+function when(ms: number, now = new Date()): string {
   const d = new Date(ms), time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
   const days = Math.round((new Date(now.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
   return days === 0 ? time : days === 1 ? `Yesterday ${time}` : `${d.toLocaleDateString()} ${time}`;

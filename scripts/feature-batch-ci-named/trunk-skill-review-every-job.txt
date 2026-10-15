@@ -1,0 +1,2 @@
+engine:src/agents/trunk-queue.test.ts
+engine:src/skills/workshop/experience-review.finished-job.test.ts

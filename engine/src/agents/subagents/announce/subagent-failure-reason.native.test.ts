@@ -1,5 +1,4 @@
-// Error/noise fixtures adapted from elizaOS/eliza sub-agent-failure-evaluator.test.ts
-// Source commit: 3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf.
+// Error/noise fixtures for sub-agent failure narration.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildFailureReply, extractFailureReason } from "./subagent-failure-reason.ts";

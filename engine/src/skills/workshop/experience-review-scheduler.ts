@@ -1,5 +1,6 @@
 import type { EmbeddedForegroundPromptContext } from "../../agents/embedded-agent-runner/run/params.js";
 import { getCanonicalSkillWorkspace } from "../../agents/skill-workshop-workspace-context.js";
+import { isTrunkQueueThreadKey } from "../../agents/trunk-queue-thread-key.js";
 import type { TranscriptEntryAnchor } from "../../config/sessions/transcript-entry-anchor.js";
 import type { BranchConfig } from "../../config/types.branch.js";
 import { formatErrorMessage } from "../../infra/errors.js";
@@ -19,6 +20,11 @@ const EXPERIENCE_REVIEW_MIN_MODEL_ITERATIONS = 10;
 const EXPERIENCE_REVIEW_IDLE_MS = 30_000;
 const EXPERIENCE_REVIEW_RETRY_IDLE_MS = 30_000;
 const EXPERIENCE_REVIEW_MAX_PENDING = 32;
+/**
+ * A finished job's review waits for an idle system at most this long. Builder Trunks take their next job as soon
+ * as one ends, so on a busy install the system is never idle and the review would otherwise wait forever.
+ */
+const EXPERIENCE_REVIEW_FINISHED_JOB_MAX_DEFER_MS = 10 * 60_000;
 const EXPERIENCE_REVIEW_BLOCKED_TRIGGERS = new Set(["cron", "heartbeat", "memory", "overflow"]);
 const EXPERIENCE_REVIEW_BLOCKED_SESSION_SEGMENTS = new Set([
   "cron",
@@ -69,6 +75,8 @@ export type ExperienceReviewCandidate = {
   source: TranscriptEntryAnchor;
   usedSkills?: readonly RunSkillUsage[];
   turnAborted?: boolean;
+  /** The run cleanly finished a queued Trunk job; the review should leave one task-type skill. */
+  finishedJob?: boolean;
 };
 
 type ExperienceReviewTimer = ReturnType<typeof setTimeout>;
@@ -80,19 +88,36 @@ type ExperienceReviewSchedulerDeps = {
   claimSignalCooldown?: (input: { agentId: string; identity: string; nowMs: number }) => boolean;
   setTimer?: (callback: () => void, delayMs: number) => ExperienceReviewTimer;
   clearTimer?: (timer: ExperienceReviewTimer) => void;
+  now?: () => number;
 };
 
 type PendingExperienceReview = {
   candidate: ExperienceReviewCandidate;
   generation: number;
   timer?: ExperienceReviewTimer;
+  /** When this session's review was first queued; bounds how long a finished job waits for idle. */
+  queuedAtMs: number;
 };
 
-function isEligibleContext(ctx: ExperienceReviewAgentContext): boolean {
+/**
+ * A finished job is the run in a queued job's own thread that ended cleanly: the same outcome that marks the job
+ * done in the queue (onTrunkRunLifecycle). Its length does not matter. Aborted or errored runs are not finished.
+ */
+export function isFinishedTrunkJobRun(
+  event: ExperienceReviewAgentEndEvent,
+  ctx: Pick<ExperienceReviewAgentContext, "sessionKey">,
+): boolean {
+  const errored = typeof event.error === "string" && event.error.trim() !== "";
+  return event.success === true && !errored && isTrunkQueueThreadKey(ctx.sessionKey);
+}
+
+function isEligibleContext(ctx: ExperienceReviewAgentContext, finishedJob: boolean): boolean {
   // Only harnesses that report both the resolved model and actual host-side
   // Workshop availability may schedule. Other runtimes fail closed here.
+  // Long jobs nearly always compact; the review reads the persisted model context
+  // through the post-run anchor, so a finished job stays eligible after compaction.
   if (
-    ctx.compacted === true ||
+    (ctx.compacted === true && !finishedJob) ||
     ctx.skillWorkshopAvailable !== true ||
     !ctx.modelProviderId?.trim() ||
     !ctx.modelId?.trim()
@@ -117,6 +142,7 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
   let reviewInFlight = false;
   const setTimer = deps.setTimer ?? ((callback, delayMs) => setTimeout(callback, delayMs));
   const clearTimer = deps.clearTimer ?? clearTimeout;
+  const now = deps.now ?? Date.now;
 
   const arm = (key: string, pending: PendingExperienceReview, delayMs: number) => {
     if (pending.timer) {
@@ -133,7 +159,10 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
         if (pendingBySession.get(key) !== pending || pending.generation !== generation) {
           return;
         }
-        if (active || reviewInFlight) {
+        const waitedOut =
+          pending.candidate.finishedJob === true &&
+          now() - pending.queuedAtMs >= EXPERIENCE_REVIEW_FINISHED_JOB_MAX_DEFER_MS;
+        if (reviewInFlight || (active && !waitedOut)) {
           arm(key, pending, EXPERIENCE_REVIEW_RETRY_IDLE_MS);
           return;
         }
@@ -219,7 +248,8 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
       if (resolveSkillWorkshopConfig(params.config).autonomous.mode === "off") {
         return;
       }
-      if (!isEligibleContext(params.ctx)) {
+      const finishedJob = isFinishedTrunkJobRun(params.event, params.ctx);
+      if (!isEligibleContext(params.ctx, finishedJob)) {
         log.debug(`experience review skipped: reason=ineligible-context session=${sessionKey}`);
         return;
       }
@@ -239,7 +269,9 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
           : Number.isSafeInteger(reportedModelIterations) && reportedModelIterations >= 0
             ? reportedModelIterations
             : 0;
+      // A finished job is reviewed at any length: the outcome, not the iteration count, is the evidence.
       const belowDepthBar =
+        !finishedJob &&
         modelIterations < EXPERIENCE_REVIEW_MIN_MODEL_ITERATIONS &&
         !hasExplicitDurableTeaching(turnMessages);
       // One signal per run: the first identity the run recovered. Nothing is claimed here.
@@ -283,8 +315,9 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
         source: { ...source },
         usedSkills: params.usedSkills ? [...params.usedSkills] : undefined,
         turnAborted: !params.event.success,
+        ...(finishedJob ? { finishedJob: true } : {}),
       };
-      const pending = existing ?? { candidate, generation: 0 };
+      const pending = existing ?? { candidate, generation: 0, queuedAtMs: now() };
       const previousCandidate = existing?.candidate;
       pending.candidate = candidate;
       pendingBySession.set(key, pending);
@@ -304,7 +337,7 @@ export function createSkillExperienceReviewScheduler(deps: ExperienceReviewSched
         return;
       }
       log.debug(
-        `experience review scheduled: session=${sessionKey} iterations=${modelIterations} aborted=${!params.event.success}`,
+        `experience review scheduled: session=${sessionKey} iterations=${modelIterations} aborted=${!params.event.success} finishedJob=${finishedJob}`,
       );
     },
     clear(): void {

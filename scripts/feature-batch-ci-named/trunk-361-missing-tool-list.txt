@@ -1,0 +1,2 @@
+engine:packages/agent-core/src/agent-loop.missing-tool.test.ts
+engine:src/agents/code-mode-missing-tool.test.ts

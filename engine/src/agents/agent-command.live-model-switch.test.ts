@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/agent-command.live-model-switch.test.ts (atlas AGENT-LOOP-0001). Changed for Branch: preserve native suite assertions and extend partial fixtures with native scope/cache/plugin metadata exports used by delivery bootstrap and use a canonical scratch session for strict delivery.
+// Changed for Branch: preserve native suite assertions and extend partial fixtures with native scope/cache/plugin metadata exports used by delivery bootstrap and use a canonical scratch session for strict delivery.
 import fs from "node:fs/promises";
 /** Tests live model switching behavior in active agent command sessions. */
 import os from "node:os";

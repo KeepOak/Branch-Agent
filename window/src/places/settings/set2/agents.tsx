@@ -11,6 +11,7 @@ import { trunkAppearance } from "../../../face/appearance";
 import { DesktopCtl } from "../desktop-ctl";
 import { CodeRow, rec, str, useCall, useLive, when } from "./common";
 import "./agents.css";
+import { trunkDisplayName } from "../../../connect/trunk-name";
 
 const LEDE = "Coding agents connected to Branch: what each may do, and how to connect another.";
 
@@ -36,7 +37,7 @@ export function readAgents(result: unknown): { enabled: boolean; agents: Outside
 
 /** Grafted Branches with their Trunks nested under them; every other agent (and a Trunk whose Branch row is
  *  missing) stays a row of its own. */
-export function groupAgents(agents: readonly OutsideAgentRow[]): { row: OutsideAgentRow; trunks: OutsideAgentRow[] }[] {
+function groupAgents(agents: readonly OutsideAgentRow[]): { row: OutsideAgentRow; trunks: OutsideAgentRow[] }[] {
   const branches = new Set(agents.filter((a) => a.kind === "branch").map((a) => a.id));
   const nested = (a: OutsideAgentRow) => a.kind === "trunk" && !!a.via && branches.has(a.via);
   return agents.filter((a) => !nested(a)).map((row) => ({ row, trunks: row.kind === "branch" ? agents.filter((a) => nested(a) && a.via === row.id) : [] }));
@@ -87,7 +88,7 @@ export function nextDeny(current: readonly string[], id: string, allow: boolean,
 function trunksOf(result: unknown): Trunk[] {
   const list = rec(result).agents;
   return (Array.isArray(list) ? list : []).map(rec).filter((a) => str(a.id) && a.kind !== "system")
-    .map((a) => ({ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) }));
+    .map((a) => ({ id: str(a.id), name: trunkDisplayName(a) }));
 }
 
 function AgentRow({ agent, trunks, props, reload, sessions, nested = [] }: { agent: OutsideAgentRow; trunks: Trunk[]; props: SettingsPageProps; reload: () => void; sessions: string[]; nested?: OutsideAgentRow[] }) {
