@@ -168,7 +168,7 @@ it("Advanced: the full live row stays, and the working line sits aligned in the 
   localStorage.setItem("branch.level", "advanced");
   const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: t0 + 40_000 }];
   await show({ history: history.slice(0, 1), live, running: true }, ["chat.send"]);
-  expect(host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent).toContain("Using list pull requests");
+  expect(host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent).toBe("Working in GitHub · 1 step so far");
   const line = host.querySelector('[data-testid="working-line"]')!;
   expect(line.textContent).toBe("Working in GitHub");
   expect(line.closest(".r1c-body")).not.toBeNull();
