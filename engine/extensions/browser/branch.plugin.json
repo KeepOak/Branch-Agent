@@ -23,5 +23,11 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {}
-  }
+  },
+  "publisher": "KeepOak",
+  "permissions": [
+    "Opens web pages in a private browser on this computer.",
+    "Lets your Trunks read and click the pages you open, after you allow it.",
+    "Refuses page permissions, downloads, and file, chrome and devtools addresses."
+  ]
 }
