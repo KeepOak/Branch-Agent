@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { startKey, type DesktopBridge } from "./connect/start-key";
 import { SaplingSession } from "./connect/session";
+import { installUiEventLog } from "./diagnostics/ui-log";
 import { loadRoute } from "./places-nav/routes";
 import { WindowShell } from "./shell/WindowShell";
+import { r1Window, R1Window } from "./screens/frame/R1Window";
+import { isGraftedContactKey } from "./screens/frame/open-name";
 import { PreConnect, type PreConnectState } from "./setup/PreConnect";
 import { LOCAL_ADDRESS, readTarget, saveTarget } from "./setup/pre-connect-state";
 import { Connecting } from "./setup/Connecting";
@@ -16,8 +19,10 @@ const desktop: DesktopBridge | undefined = (window as { branchDesktop?: DesktopB
 const BUILT_IN: string | undefined = desktop?.gatewayUrl ?? import.meta.env.VITE_GATEWAY_URL;
 /** This computer's gateway: the desktop app's, the build's, or the engine's own default address. */
 const LOCAL = BUILT_IN ?? LOCAL_ADDRESS;
+const RESIDENT_URL_KEY = "branch.window.residentUrl";
 
 export function App() {
+  useEffect(() => installUiEventLog(), []);
   const [url, setUrl] = useState<string | null>(() => readTarget() ?? BUILT_IN ?? null);
   const [typed, setTyped] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -33,6 +38,7 @@ export function App() {
       const detail = (event as CustomEvent<{ url?: unknown; key?: unknown }>).detail;
       const next = detail?.url;
       if (typeof next !== "string" || !/^wss?:\/\/\S+$/.test(next)) return;
+      sessionStorage.removeItem(RESIDENT_URL_KEY);
       saveTarget(next === LOCAL ? null : next);
       setTyped(typeof detail?.key === "string" ? detail.key : null);
       setUrl(next);
@@ -42,6 +48,7 @@ export function App() {
     return () => window.removeEventListener("branch:switch-computer", switchComputer);
   }, []);
   const connect = (to: string, key: string) => {
+    if (to !== url) sessionStorage.removeItem(RESIDENT_URL_KEY);
     saveTarget(to === LOCAL ? null : to);
     setTyped(key.trim());
     setUrl(to);
@@ -66,7 +73,8 @@ export function App() {
 /** The conversation the window last showed (§3.3 "Reopen where you were"). */
 function savedConversation(): string | null {
   const route = loadRoute();
-  return route.kind === "chat" ? route.key : null;
+  // A grafted agent's contact key is not a conversation: the window finds that agent's conversation once connected.
+  return route.kind === "chat" && !isGraftedContactKey(route.key) ? route.key : null;
 }
 
 type WindowProps = { url: string; sharedToken?: string; onConnect: (url: string, key: string) => void; onRetry: () => void };
@@ -94,15 +102,25 @@ function Window({ url, sharedToken, onConnect, onRetry }: WindowProps) {
     };
   }, [session]);
   const s = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  const [everConnected, setEverConnected] = useState(false);
+  const [everConnected, setEverConnected] = useState(() => {
+    const residentUrl = sessionStorage.getItem(RESIDENT_URL_KEY);
+    if (!residentUrl) return false;
+    try {
+      // Preload's handoff URL has a trailing slash; desktop info after reload may not.
+      return new URL(residentUrl).href === new URL(url).href;
+    } catch {
+      return false;
+    }
+  });
   useEffect(() => {
     if (s.status.phase === "connected") {
+      sessionStorage.setItem(RESIDENT_URL_KEY, activeUrl);
       setEverConnected(true);
     }
-  }, [s.status.phase]);
+  }, [s.status.phase, activeUrl]);
   // Once connected, the frame stays up through reconnects; the status bar says "Offline" or "Connecting" (§3.5).
   if (everConnected || s.status.phase === "connected") {
-    return <WindowShell session={session} url={activeUrl} />;
+    return r1Window() ? <R1Window session={session} /> : <WindowShell session={session} url={activeUrl} />;
   }
   const status = s.status;
   if (status.phase === "pairing" || status.phase === "failed") {

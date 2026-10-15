@@ -1,0 +1,6 @@
+engine:src/agents/auth-profiles/usage.blocked-retry-after.test.ts
+engine:src/agents/embedded-agent-runner/run/attempt-recovery.rate-limit-switch.test.ts
+engine:src/agents/embedded-agent-runner/run/failover-retry-controller.account-switch-auth.test.ts
+engine:src/gateway/server-methods/models-auth-status.limited.test.ts
+window:src/places/settings/set1/accounts.limited.test.tsx
+window:src/thread/model.rate-limit-switch.test.ts

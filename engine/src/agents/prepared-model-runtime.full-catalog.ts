@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { normalizeProviderId } from "@branch/model-catalog-core/provider-id";
 import type { Model } from "../llm/types.js";
@@ -648,6 +649,7 @@ export function createPreparedModelRuntimeSnapshot(
     observationConfig: input.config,
     isCurrent: catalogAccess.isCurrent,
     accountCatalog: catalogAccess.accountCatalog,
+    snapshotId: randomUUID(),
     authModes: catalogAccess.initialAuth.authModes,
     metadataSnapshot: pluginMetadataSnapshot,
     allowGatewaySubagentBinding: input.allowGatewaySubagentBinding === true,

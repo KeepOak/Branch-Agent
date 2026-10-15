@@ -4,6 +4,24 @@ Branch Agent is a desktop AI assistant from [KeepOak](https://keepoak.com). This
 
 This is a source snapshot under active development. A feature being present in source does not establish that every workflow is complete or released.
 
+## Install
+
+macOS (Apple silicon) and Linux (x64):
+
+```sh
+curl -fsSL https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.sh | sh
+```
+
+Windows (x64), in PowerShell:
+
+```powershell
+irm https://github.com/KeepOak/Branch-Agent/releases/latest/download/install.ps1 | iex
+```
+
+The scripts install for the current user with no sudo or admin prompt. They check the download's SHA-256 against the release's `SHA256SUMS` before installing and stop on a mismatch. For a specific release, run `... | sh -s -- --version v1.2.3`, or on Windows set `$env:BRANCH_INSTALL_VERSION = 'v1.2.3'` first. Re-running upgrades in place. On Linux the script installs the release's AppImage as `~/.local/bin/branch-agent` with an app-menu entry. Details are in [desktop/INSTALLERS.md](desktop/INSTALLERS.md).
+
+Alternatively, download the installer from the [latest release](https://github.com/KeepOak/Branch-Agent/releases/latest). It isn't signed yet, so macOS needs right-click → Open on first launch and Windows SmartScreen needs More info → Run anyway.
+
 ## Requirements
 
 - Node.js matching the engine requirement: `>=24.16.0 <25 || >=26.1.0`.
@@ -73,7 +91,7 @@ The `Source builds` workflow runs only when a maintainer dispatches it on `main`
 
 `Desktop checks` runs on pull requests, relevant pushes to `main`, and manual dispatch. Hosted Windows, macOS and Linux jobs install the desktop lockfile with `npm ci`, compile strict TypeScript, and run the two named update/readiness checks at 96 MiB. These jobs build only the desktop sources and skip the Electron binary download. They do not build the engine, launch a visible app, or call model providers.
 
-Saved `dist/` outputs are source build artifacts. `Source builds` does not create installers or publish releases; its artifact retention is three days. Releases come from the `GitHub component release` workflow on every merge to `main` that changes the engine, window or desktop; see [Releases and component updates](CONTRIBUTING.md#releases-and-component-updates).
+Saved `dist/` outputs are source build artifacts. `Source builds` does not create installers or publish releases; its artifact retention is three days. Releases come from the `GitHub component release` workflow on a 30-minute schedule at :07 and :37, or from a push to main when the latest release is more than 25 minutes old, when main has moved since the last release and no check on main's head has failed; see [Releases and component updates](CONTRIBUTING.md#releases-and-component-updates).
 
 ## Working on Branch
 

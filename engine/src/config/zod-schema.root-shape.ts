@@ -231,6 +231,11 @@ export const BranchSchemaShape = {
           enabled: z.boolean().optional(),
         })
         .optional(),
+      /**
+       * Quiet minutes before Branch Agent closes an idle engine-launched headless
+       * Chrome. Default: 5. Set 0 to keep that process until shutdown.
+       */
+      idleTimeoutMinutes: z.number().int().min(0).optional(),
       /** Chrome extension relay authentication compatibility settings. */
       extensionRelay: z
         .strictObject({
@@ -365,6 +370,22 @@ export const BranchSchemaShape = {
     .optional(),
   worktreeAcceleration: z.boolean().optional(),
   worktreeMaxCount: z.number().int().positive().optional(),
+  buildWorktreeRoots: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .refine(
+          (value) =>
+            path.isAbsolute(value) ||
+            value === "~" ||
+            value.startsWith("~/") ||
+            value.startsWith(`~${path.sep}`),
+          "buildWorktreeRoots entries must be absolute paths or paths starting with ~",
+        ),
+    )
+    .optional(),
   tools: ToolsSchema,
   security: SecuritySchema,
   bindings: BindingsSchema,

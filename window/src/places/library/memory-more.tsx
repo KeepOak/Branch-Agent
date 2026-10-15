@@ -7,8 +7,11 @@ import { shownWhy } from "../../shell/shown-why";
 import type { WindowEngine } from "../../connect/engine";
 import { Dialog } from "../../shell/Dialog";
 import { fileOf, num, optStr, rec, useOperation, useResource, trunkName, type Trunk } from "./data";
+import { aboutYouSummary } from "./memory-about";
 import type { Fact } from "./memory-data";
 import { Grey, GreySwitch, plural, Row, Section, when } from "./parts";
+import { BringInDialog } from "./memory-bring-dialog";
+import { BRING_IN_WRITE_REASON } from "./memory-import";
 
 export type MemoryStatus = {
   agentId?: string; provider?: string;
@@ -26,7 +29,7 @@ export function statusOf(raw: unknown): MemoryStatus {
   };
 }
 
-export const REASONS = {
+const REASONS = {
   whatsapp: "Needs the engine’s chat-export import method.",
   rules: "Needs the engine’s what-to-remember rules.",
   pin: "Needs the engine’s pinned-memory method.",
@@ -37,7 +40,6 @@ export const REASONS = {
   versions: "Needs the engine’s fact history.",
   forgetChat: "Needs the engine’s forget-one-conversation method.",
   checkpoints: "Needs the engine’s memory checkpoints.",
-  bringIn: "Needs the engine’s memory import method.",
 };
 
 const LEARN_ROWS: [string, string, string, string][] = [
@@ -46,17 +48,25 @@ const LEARN_ROWS: [string, string, string, string][] = [
   ["Earlier versions of a fact", "Every change to a fact is kept, so an older one can come back.", "See versions", REASONS.versions],
   ["Forget what one conversation taught", "Removes every fact that came from one conversation, and nothing else.", "Choose one", REASONS.forgetChat],
   ["Memory checkpoints", "A snapshot of memory and every skill version, to go back to all at once.", "See checkpoints", REASONS.checkpoints],
-  ["Bring memories in", "From a JSON Lines file or an archive Branch exported, here or on another computer.", "Choose a file", REASONS.bringIn],
 ];
 
-export function HowItLearns({ engine, trunks, scope }: { engine: WindowEngine; trunks: Trunk[]; scope: string }) {
+export function HowItLearns({ engine, trunks, scope, onApplied }: { engine: WindowEngine; trunks: Trunk[]; scope: string; onApplied?: () => void }) {
   const [learn, setLearn] = useState(false);
+  const [bring, setBring] = useState(false);
+  const owner = engine.scopes.includes("operator.admin");
+  const agentId = scope || trunks[0]?.id || "";
   return <Section title="How it learns" testid="how-it-learns">
     <div className="lib-rows">
       {LEARN_ROWS.map(([title, line, label, reason]) => <Row key={title} icon="learn" title={title} line={line}><Grey label={label} reason={reason} /></Row>)}
+      <Row icon="learn" title="Bring memories in" line="Memories from another assistant on this computer. Everything comes in as a copy.">
+        {owner
+          ? <button type="button" className="btn sm" data-testid="memory-bring-in" disabled={!agentId} onClick={() => setBring(true)}>Bring in</button>
+          : <Grey label="Bring in" reason={BRING_IN_WRITE_REASON} />}
+      </Row>
       <Row icon="learn" title="Learn from past conversations" line="Finds what earlier conversations taught and lets Rings keep the useful parts."><button type="button" className="btn sm" onClick={() => setLearn(true)}>Choose dates</button></Row>
     </div>
     {learn && <LearnDialog engine={engine} trunks={trunks} scope={scope} onClose={() => setLearn(false)} />}
+    {bring && <BringInDialog engine={engine} agentId={agentId} onClose={() => setBring(false)} onApplied={onApplied} />}
   </Section>;
 }
 
@@ -121,7 +131,7 @@ export function Pinned({ facts }: { facts: Fact[] }) {
 export function AboutYou({ engine, agentId }: { engine: WindowEngine; agentId: string }) {
   const user = useResource<unknown>(engine, agentId ? "agents.files.get" : null, { agentId, name: "USER.md" });
   const file = user.data ? fileOf(user.data) : null;
-  const text = !file || file.missing ? "" : (file.content ?? "").split("\n").filter(l => !/^#{1,6}\s/.test(l)).join("\n").trim();
+  const text = !file || file.missing ? "" : aboutYouSummary(file.content ?? "");
   return <Section title="About you" hint="A short summary Trunks keep of you from what they remember. Edit it by changing the memories it comes from." testid="about-you">
     {user.loading && <p className="lib-hint" role="status">Loading…</p>}
     {user.error && <p className="lib-bad" role="alert">{user.error}</p>}

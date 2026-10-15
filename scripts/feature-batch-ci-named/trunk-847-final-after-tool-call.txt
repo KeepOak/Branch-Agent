@@ -1,0 +1,3 @@
+engine:src/agents/cli-output-stream.test.ts
+engine:src/agents/cli-runner.final-after-tool-call.test.ts
+engine:src/agents/embedded-agent-runner/run/settled-tool-evidence.test.ts

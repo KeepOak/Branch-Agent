@@ -1,0 +1,5 @@
+engine:src/commands/doctor/shared/contacts-migration.test.ts
+engine:src/config/sessions/session-history-eviction.archived.test.ts
+engine:src/config/sessions/startup-migration.acp.test.ts
+engine:src/config/sessions/startup-migration.quarantine-regression.test.ts
+engine:src/config/sessions/startup-migration.quarantine.test.ts

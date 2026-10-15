@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../connect/engine";
 import type { Level } from "../../places-nav/level";
 import { LibraryPlace } from "./index";
+import { USER_TEMPLATE } from "./memory-about.test";
 import { configuredLimit, parseFacts, statedDefault, withoutFact } from "./memory-data";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -139,6 +140,22 @@ describe("Library › Memory", () => {
     expect(request).toHaveBeenCalledWith("doctor.memory.status", { agentId: "b" });
     expect((host.querySelector('input[aria-label="Search memory"]') as HTMLInputElement).placeholder).toBe("Search what Rowan remembers");
   });
+  // The scope in use is the checked radio in Whose memory: choosing it again changes nothing, and choosing another moves the
+  // check. Before this, the items were plain menu rows, so the crawl read the repeat as dead.
+  it("checks the scope in use in Whose memory, and moves the check when another Trunk is picked", async () => {
+    const { engine } = engineOf(base());
+    await mount(engine);
+    const scopeItem = (label: string) => [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(el => el.textContent?.replace("✓", "").trim() === label);
+    await click("Every Trunk");
+    expect(scopeItem("Every Trunk")?.getAttribute("aria-checked")).toBe("true");
+    expect(scopeItem("Rowan")?.getAttribute("aria-checked")).toBe("false");
+    await click("Rowan");
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="Whose memory"]')!.click(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(scopeItem("Rowan")?.getAttribute("aria-checked")).toBe("true");
+    expect(scopeItem("Every Trunk")?.getAttribute("aria-checked")).toBe("false");
+  });
+
   it("shows Rings counts, reads the diary, and greys Undo last night and Tidy up with reasons", async () => {
     const { engine, request } = engineOf(base((m) => m === "doctor.memory.dreamDiary" ? { found: true, content: "Night one notes" } : undefined));
     await mount(engine);
@@ -197,14 +214,40 @@ describe("Library › Memory", () => {
   it("greys the head controls with their reasons and shows an empty line when nothing is remembered", async () => {
     const { engine } = engineOf(base((m, p) => m === "agents.files.get" ? { file: { name: String(p.name), missing: true } } : undefined));
     await mount(engine);
-    for (const label of ["Clearing", "Translate a document…", "Make pictures…"]) expect(button(label)!.disabled).toBe(true);
-    expect(button("Clearing")!.title).toBe("");
+    for (const label of ["Translate a document…", "Make pictures…"]) expect(button(label)!.disabled).toBe(true);
     for (const label of ["Translate a document…", "Make pictures…"]) expect(button(label)!.title).toBe("");
     expect(visibleDevNotes(host)).toEqual([]);
     expect(host.textContent).not.toContain("Canvas");
-    expect(button("Clearing")!.title).not.toMatch(/canvases/);
     expect(host.textContent).toContain("Nothing remembered yet.");
     expect(host.textContent).toContain("Nothing written about you yet.");
+  });
+  it("shows no Clearing pill under the Library heading (DA-42)", async () => {
+    const { engine } = engineOf(base());
+    await mount(engine);
+    expect(button("Clearing")).toBeUndefined();
+    expect(host.querySelector(".lib-canvas")).toBeNull();
+    expect(host.querySelector(".lib > h1")!.nextElementSibling!.className).toBe("lede");
+    expect(host.textContent).not.toContain("Clearing");
+  });
+  it("shows Nothing written about you yet when USER.md is still the template", async () => {
+    const { engine } = engineOf(base((m, p) => m === "agents.files.get" && p.name === "USER.md"
+      ? { file: { name: "USER.md", content: USER_TEMPLATE, hash: "tmpl" } } : undefined));
+    await mount(engine);
+    const about = host.querySelector('[data-testid="about-you"]')!;
+    expect(about.textContent).toContain("Nothing written about you yet.");
+    expect(about.textContent).toContain("Let it interview you");
+    expect(about.textContent).not.toMatch(/Store stable user preferences|```|observed:|Save this file|Agent workspace|Prefer \.\.\./);
+  });
+  it("shows real USER.md facts without the template, fences, comments or docs links", async () => {
+    const content = `${USER_TEMPLATE}\n<!-- observed: 2026-09-12 | status: active -->\n\n- Prefers short replies while a task is running\n- Works from Lisbon most weekdays\n`;
+    const { engine } = engineOf(base((m, p) => m === "agents.files.get" && p.name === "USER.md"
+      ? { file: { name: "USER.md", content, hash: "facts" } } : undefined));
+    await mount(engine);
+    const about = host.querySelector('[data-testid="about-you"]')!;
+    expect(about.textContent).toContain("Prefers short replies while a task is running");
+    expect(about.textContent).toContain("Works from Lisbon most weekdays");
+    expect(about.textContent).not.toContain("Nothing written about you yet.");
+    expect(about.textContent).not.toMatch(/Store stable user preferences|```|observed:|Save this file|Agent workspace|Prefer \.\.\./);
   });
   it("shows a Trunk's read failure on that Trunk only", async () => {
     const { engine } = engineOf(base((m, p) => m === "agents.files.get" && p.agentId === "b" && p.name === "MEMORY.md" ? new Error("Disk busy") : undefined));

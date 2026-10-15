@@ -180,7 +180,20 @@ const CORE_GATEWAY_HANDLER_MODULES = {
     import("./session-processes.js").then((module) => module.sessionProcessHandlers),
   "sessions-read": () => import("./sessions-read.js").then((module) => module.sessionReadHandlers),
   contacts: () => import("./contacts.js").then((module) => module.contactHandlers),
-  rooms: () => import("./rooms.js").then((module) => module.roomHandlers),
+  rooms: () =>
+    Promise.all([
+      import("./rooms.js"),
+      import("./rooms-trunk.js"),
+      import("./rooms-merge.js"),
+    ]).then(([rooms, trunk, merge]) => ({
+      ...rooms.roomHandlers,
+      ...trunk.roomTrunkHandlers,
+      ...merge.roomMergeHandlers,
+    })),
+  "trunk-queue": () => import("./trunk-queue.js").then((module) => module.trunkQueueHandlers),
+  "trunk-team": () => import("./trunk-team.js").then((module) => module.trunkTeamHandlers),
+  "build-worktrees": () =>
+    import("./build-worktrees.js").then((module) => module.buildWorktreesHandlers),
   "sessions-rewind": () =>
     import("./sessions-rewind.js").then((module) => module.sessionRewindHandlers),
   "sessions-sharing": () =>
@@ -211,6 +224,8 @@ const CORE_GATEWAY_HANDLER_MODULES = {
   "task-suggestions": () =>
     import("./task-suggestions.js").then((module) => module.taskSuggestionsHandlers),
   "tools-catalog": () => import("./tools-catalog.js").then((module) => module.toolsCatalogHandlers),
+  "trunk-templates": () =>
+    import("./trunk-templates.js").then((module) => module.trunkTemplatesHandlers),
   "tools-github": () => import("./tools-github.js").then((module) => module.toolsGitHubHandlers),
   "tools-effective": () =>
     import("./tools-effective.js").then((module) => module.toolsEffectiveHandlers),
