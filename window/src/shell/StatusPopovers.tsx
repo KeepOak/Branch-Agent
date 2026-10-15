@@ -5,7 +5,7 @@ import type { Conversation } from "../connect/conversations";
 import type { Level } from "../places-nav/settings-nav";
 import { Icon, type IconName } from "./icons";
 import { Popover, type Above } from "./Popover";
-import { accountEmails, ageWords, comingUp, readLimits, readRoom, readRounds, sizeWords, uptimeWords, withAccountEmails, type LimitRow, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
+import { accountLabels, ageWords, comingUp, readLimits, readRoom, readRounds, sizeWords, uptimeWords, withAccountLabels, type LimitRow, type Limits, type Room, type Round, type UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
 import "./status.css";
 import { shownWhy } from "./shown-why";
@@ -145,7 +145,7 @@ export function UsagePopover({ limits, request, onOpenUsage, onSignIn, ...base }
     request("models.authStatus", { refresh: true })
       .then((auth) => request("usage.status", { refresh: true }).then((result) => ({ auth, result })))
       .then(({ auth, result }) => {
-        setChecked(withAccountEmails(readLimits(result), accountEmails(auth)));
+        setChecked(withAccountLabels(readLimits(result), accountLabels(auth)));
         window.dispatchEvent(new Event("branch:usage-checked"));
       })
       .catch((error: unknown) => setCheckError(error instanceof Error ? error.message : String(error)))

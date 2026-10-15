@@ -2,7 +2,7 @@
 // and whether a new version waits. Each refreshes on the engine's own events, never on a made-up timer result.
 import { useEffect, useState } from "react";
 import type { SaplingSession } from "../connect/session";
-import { accountEmails, readLimits, usagePollResult, withAccountEmails, type Limits, type UpdateInfo } from "./status-data";
+import { accountLabels, readLimits, usagePollResult, withAccountLabels, type Limits, type UpdateInfo } from "./status-data";
 import { componentDesktop, MANUAL_UPDATE_UNSUPPORTED, useDesktopComponentStatus } from "../connect/desktop-component-updates";
 
 import { isNewerBranchVersion } from "../connect/branch-version";
@@ -69,7 +69,7 @@ export function useLimits(session: SaplingSession, ready: boolean): Limits | nul
     const load = () =>
       Promise.all([session.request("usage.status", {}), session.request("models.authStatus", {}).catch(() => ({}))]).then(
         ([r, auth]) => {
-          const next = withAccountEmails(readLimits(r), accountEmails(auth));
+          const next = withAccountLabels(readLimits(r), accountLabels(auth));
           setLimits(next);
           window.dispatchEvent(new CustomEvent("branch:usage-checked", { detail: next }));
         },

@@ -11,7 +11,7 @@ import { Menu, type MenuAnchor } from "../../../shell/Menu";
 import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span, str, useCall, useLive, useResource, when, type RecordValue } from "./common";
 import { Ico } from "./icons";
 import { Logo } from "../set1/service";
-import { accountEmails, readLimits, resetWords as sharedResetWords, withAccountEmails, type LimitRow } from "../../../shell/status-data";
+import { accountLabels, readLimits, resetWords as sharedResetWords, withAccountLabels, type LimitRow } from "../../../shell/status-data";
 import { ModelPrices } from "./usage-prices";
 import { ReportProblem } from "./report-problem";
 import { CKPT_PREF, CKPT_SHOW, useCkptOn } from "../../../shell/SaveProgress";
@@ -180,7 +180,7 @@ function Provider({ p, limit, updatedAt, openSettings }: { p: RecordValue; limit
   const told = windows.length > 0 || billing.some(billingMeasured);
   const signIn = limit.signInNeeded === true;
   const failed = signIn || Boolean(p.error);
-  const sub = [limit.email ? limit.name : "", limit.plan].filter(Boolean).join(" · ");
+  const sub = limit.plan;
   return (
     <div className="s2usage-lim" data-provider={str(p.provider)}>
       <Logo id={str(p.provider)} name={name} />
@@ -207,7 +207,7 @@ function Allowances({ engine, openSettings }: { engine: WindowEngine; openSettin
   const data = rec(res.data);
   const providers = list(data.providers);
   // Saved accounts' emails, the same ones Settings › Accounts lists, name each row.
-  const limits = withAccountEmails(readLimits(res.data), accountEmails(auth.data));
+  const limits = withAccountLabels(readLimits(res.data), accountLabels(auth.data));
   return (
     <Sec title="Account allowances" hint="What each account has left. Every figure comes from its service.">
       {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
