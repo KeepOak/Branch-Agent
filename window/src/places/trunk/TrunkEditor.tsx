@@ -57,7 +57,7 @@ export function TrunkEditor(props: TrunkEditorProps) {
   const { engine, agentId, onClose } = props;
   const data = useLoad(() => loadTrunkData(engine), agentId);
   const initial = useMemo(() => (data.data ? draftOf(data.data, agentId) : null), [data.data, agentId]);
-  // Until the Trunk is read, the title names it plainly: never the engine id (mac-builder-1).
+  // Until the Trunk is read, the title names it plainly: never the engine id (research-desk).
   const name = initial?.name || "this Trunk";
   if (!data.data || !initial) {
     const line = data.error || (data.loading ? "Reading this Trunk…" : "This Trunk is no longer in the engine’s list.");

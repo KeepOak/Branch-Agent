@@ -4,7 +4,7 @@ import { readOpenTrunk } from "./TrunkHost";
 // A Trunk's model setting opens its editor on the "What it may do" tab, so Models stays the place the person is in.
 describe("branch:open-trunk requests", () => {
   it("opens the editor on the tab it names", () => {
-    expect(readOpenTrunk({ agentId: "mac-builder-1", view: "edit", tab: "may" })).toEqual({ agentId: "mac-builder-1", view: "edit", tab: "may" });
+    expect(readOpenTrunk({ agentId: "research-desk", view: "edit", tab: "may" })).toEqual({ agentId: "research-desk", view: "edit", tab: "may" });
   });
 
   it("ignores a tab that is not an editor tab, and a tab on a profile", () => {
