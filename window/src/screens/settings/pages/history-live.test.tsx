@@ -99,13 +99,15 @@ describe("R1 Settings › History & backups is a native R1 page with the preview
     const base = env.request.getMockImplementation()!;
     env.request.mockImplementation(async (method: string, params?: unknown) => method === "branch.changes.list"
       ? { entries: [{ id: "c1", source: "config-rpc", summary: "Settings updated configuration: agents.entries.main.model.fallbacks[0], plugins.installs", changedPaths: ["agents.entries.main.model.fallbacks[0]", "plugins.installs"], at: Date.now(), kind: "config-write" },
-        { id: "c2", source: "config-rpc", summary: "Configuration updated: gateway.auth.token", at: Date.now(), kind: "config-write" }] }
+        { id: "c2", source: "config-rpc", summary: "Configuration updated: gateway.auth.token", at: Date.now(), kind: "config-write" },
+        { id: "c3", source: "config-rpc", summary: "Signed in to keepoak.com", at: Date.now(), kind: "config-write" }] }
       : base(method, params));
     await act(async () => root.render(<SettingsFrame engine={env.engine} page="history" pages={R1_PAGES} />));
     await settle();
     const list = () => row("history.undo.changes")?.textContent ?? "";
     expect(list()).toContain("Changed 2 settings");
     expect(list()).toContain("Changed Branch’s setup");
+    expect(list()).toContain("Signed in to keepoak.com"); // a host name is not a settings key: the summary stays
     expect(list()).not.toMatch(/agents\.entries|plugins\.installs|gateway\.auth/);
     await setLevel("Advanced");
     expect(list()).not.toMatch(/agents\.entries|plugins\.installs|gateway\.auth/);
