@@ -48,6 +48,11 @@ export function sha256FileName(apkName) {
   return `${apkName}.sha256`;
 }
 
+// Sibling of the APK: the workflow run number baked in as Android versionCode.
+export function versionCodeFileName(apkName, code) {
+  return `${apkName}.versioncode.${code}`;
+}
+
 export function hexSha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -61,6 +66,22 @@ export function writeSha256Sidecar(apkPath, apkName = path.basename(apkPath)) {
   const sidecarPath = `${apkPath}.sha256`;
   writeFileSync(sidecarPath, sha256SidecarText(hex, apkName));
   return { path: sidecarPath, name: sha256FileName(apkName), hex };
+}
+
+export function writeVersionCodeSidecar(apkPath, code, apkName = path.basename(apkPath)) {
+  const n = Number(code);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error('versionCode sidecar needs a positive workflow run number');
+  }
+  const name = versionCodeFileName(apkName, n);
+  const sidecarPath = path.join(path.dirname(apkPath), name);
+  writeFileSync(sidecarPath, `${n}\n`);
+  return { path: sidecarPath, name, versionCode: n };
+}
+
+function versionCodeFromEnv(env = process.env) {
+  const n = Number(env.ANDROID_VERSION_CODE);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 export function shouldAttachToRelease({ signed, releaseTag } = {}) {
@@ -153,6 +174,7 @@ export function releasePlan({
     versionCode: code,
     apkName,
     sha256Name: signed ? sha256FileName(apkName) : '',
+    versioncodeName: signed ? versionCodeFileName(apkName, code) : '',
     artifactName: apkName.replace(/\.apk$/i, ''),
     attachRelease: shouldAttachToRelease({ signed, releaseTag }),
     releaseTag,
@@ -170,6 +192,7 @@ function printGithubOutput(plan) {
     version_code: String(plan.versionCode),
     apk_name: plan.apkName,
     sha256_name: plan.sha256Name,
+    versioncode_name: plan.versioncodeName,
     artifact_name: plan.artifactName,
     attach_release: plan.attachRelease ? 'true' : 'false',
     release_tag: plan.releaseTag,
@@ -186,6 +209,10 @@ function printSha256Output(sidecar) {
     sha256_name: sidecar.name,
     sha256_hex: sidecar.hex,
   };
+  if (sidecar.versioncode_path) {
+    rows.versioncode_path = sidecar.versioncode_path;
+    rows.versioncode_name = sidecar.versioncode_name;
+  }
   if (process.argv.includes('--json')) {
     process.stdout.write(`${JSON.stringify(sidecar)}\n`);
     return;
@@ -200,7 +227,18 @@ function main() {
   if (shaIndex !== -1) {
     const apkPath = process.argv[shaIndex + 1];
     if (!apkPath) throw new Error('pass the staged APK path after --sha256');
-    printSha256Output(writeSha256Sidecar(apkPath));
+    const sha = writeSha256Sidecar(apkPath);
+    const code = versionCodeFromEnv();
+    if (code == null) {
+      printSha256Output(sha);
+      return;
+    }
+    const versioncode = writeVersionCodeSidecar(apkPath, code);
+    printSha256Output({
+      ...sha,
+      versioncode_path: versioncode.path,
+      versioncode_name: versioncode.name,
+    });
     return;
   }
 

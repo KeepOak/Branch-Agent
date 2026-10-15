@@ -2,12 +2,14 @@ import { compareVersions, isNewerApk, parseRemoteVersion, type RemoteVersion } f
 
 export const GITHUB_RELEASES_URL = 'https://api.github.com/repos/KeepOak/Branch-Agent/releases';
 export const ANDROID_APK_RE = /^branch-android-(.+)\.apk$/i;
+const SHA256_NAME_RE = /^branch-android-(.+)\.apk\.sha256(?:\.txt)?$/i;
 
 export type ReleaseAsset = { name: string; browser_download_url: string; size: number };
 export type GithubRelease = {
   draft: boolean;
   prerelease: boolean;
   tag_name: string;
+  name?: string;
   assets: ReleaseAsset[];
 };
 
@@ -24,35 +26,79 @@ function sha256AssetFor(apk: ReleaseAsset, assets: ReleaseAsset[]): ReleaseAsset
   const names = new Set(
     [`${apk.name}.sha256`, version ? `branch-android-${version}.sha256` : '', `${apk.name}.sha256.txt`].filter(Boolean),
   );
-  return assets.find((asset) => names.has(asset.name));
+  const exact = assets.find((asset) => names.has(asset.name));
+  if (exact) return exact;
+  if (!version) return undefined;
+  const apkName = parseRemoteVersion(version).name.toLowerCase();
+  return assets.find((asset) => {
+    const sha = SHA256_NAME_RE.exec(asset.name);
+    if (!sha) return false;
+    return parseRemoteVersion(sha[1]).name.toLowerCase() === apkName;
+  });
+}
+
+function stripReleaseLabel(value: string): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/^v/i, '')
+    .replace(/^Branch Agent\s+/i, '');
+}
+
+function versionCodeFromLabel(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = parseRemoteVersion(stripReleaseLabel(value));
+  return parsed.versionCode;
 }
 
 /**
- * The APK is named `branch-android-<version>.apk`. versionCode is the release workflow's run
- * number, published as `branch-android-<version>.apk.versioncode.<runNumber>` (or `+<runNumber>`
- * in the version string).
+ * versionCode is the Android APK workflow's run number. The workflow publishes it as
+ * `branch-android-<version>.apk.versioncode.<runNumber>` next to the APK and `.sha256`
+ * sidecar. The updater also accepts `+<runNumber>` in the APK name, tag, release name,
+ * or `.sha256` name when a release is attached by hand.
  */
-export function versionCodeFromAssets(version: string, assets: ReleaseAsset[]): number | undefined {
-  const parsed = parseRemoteVersion(version);
-  if (parsed.versionCode != null) return parsed.versionCode;
+export function versionCodeFromAssets(
+  version: string,
+  assets: ReleaseAsset[],
+  release?: Pick<GithubRelease, 'tag_name' | 'name'>,
+): number | undefined {
+  const fromApk = parseRemoteVersion(version);
+  if (fromApk.versionCode != null) return fromApk.versionCode;
+
   const prefix = `branch-android-${version}.apk.versioncode.`;
   for (const asset of assets) {
     if (!asset.name.toLowerCase().startsWith(prefix.toLowerCase())) continue;
     const n = Number(asset.name.slice(prefix.length));
     if (Number.isInteger(n) && n > 0) return n;
   }
+
+  const fromTag = versionCodeFromLabel(release?.tag_name);
+  if (fromTag != null) return fromTag;
+  const fromName = versionCodeFromLabel(release?.name);
+  if (fromName != null) return fromName;
+
+  for (const asset of assets) {
+    const sha = SHA256_NAME_RE.exec(asset.name);
+    if (!sha) continue;
+    const parsed = parseRemoteVersion(sha[1]);
+    if (parsed.versionCode != null) return parsed.versionCode;
+  }
   return undefined;
 }
 
 export function offerFromRelease(release: GithubRelease): ApkOffer | null {
   if (release.draft) return null;
-  const apk = release.assets.find((asset) => ANDROID_APK_RE.test(asset.name) && !asset.name.toLowerCase().includes('.apk.'));
+  const apk = release.assets.find(
+    (asset) =>
+      ANDROID_APK_RE.test(asset.name)
+      && !asset.name.toLowerCase().includes('.apk.')
+      && !asset.name.toLowerCase().includes('-unsigned'),
+  );
   if (!apk) return null;
   const sha256 = sha256AssetFor(apk, release.assets);
   if (!sha256) return null;
   const version = ANDROID_APK_RE.exec(apk.name)?.[1];
   if (!version) return null;
-  const versionCode = versionCodeFromAssets(version, release.assets);
+  const versionCode = versionCodeFromAssets(version, release.assets, release);
   const parsed = parseRemoteVersion(version);
   return {
     version,
