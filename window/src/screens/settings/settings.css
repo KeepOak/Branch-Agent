@@ -24,6 +24,13 @@
 .r1s-level > small { font-size: 11.5px; color: var(--ink-3); }
 .r1s-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .r1s-grp { margin: 12px 2px 2px; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+/* Regular group headings open that group's pages. A chevron, no fill of their own. */
+.r1s-grp[aria-expanded] { display: flex; align-items: center; justify-content: space-between; width: 100%; cursor: pointer; }
+.r1s-grp[aria-expanded]::after {
+  content: ""; flex: none; width: 5px; height: 5px; margin-left: 8px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+}
+.r1s-grp[aria-expanded="true"]::after { transform: rotate(45deg); }
 .r1s-nav { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 6px 12px; border: 0; border-radius: 999px; width: 100%;
   font-size: 13.5px; color: var(--ink-2) !important; text-align: left; }
 .r1s-nav > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -138,7 +145,7 @@
   .r1s-level > small { display: none; }
   .r1s-list { flex-direction: row; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px 4px; }
   .r1s-list::-webkit-scrollbar { display: none; }
-  .r1s-grp, .r1s-nav > small, .r1s-nav > svg { display: none; }
+  .r1s-grp, .r1s-grp[aria-expanded], .r1s-nav > small, .r1s-nav > svg { display: none; }
   .r1s-nav { width: auto; flex: none; padding: 6px 12px; border-radius: 999px; }
   .r1s-nav > span { overflow: visible; }
   .r1s-list:has(.r1s-res) { flex-direction: column; margin: 0; padding: 0; }
