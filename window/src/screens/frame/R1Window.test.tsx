@@ -11,7 +11,7 @@ vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null, useUpdate: () => null }));
 vi.mock("../../shell/use-lockdown", () => ({ useLockdown: () => ({ on: false, supported: false, toggle: async () => undefined, confirmation: null }) }));
-vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as const, SettingsFrame: ({ page, onPage }: { page: string; onPage: (page: string) => void }) => <div data-testid="classic-settings" data-page={page}>Classic settings<button type="button" onClick={() => onPage("general")}>General</button></div> }));
+vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as const, SettingsFrame: ({ page, onPage, keepLevel }: { page: string; onPage: (page: string) => void; keepLevel?: boolean }) => <div data-testid="classic-settings" data-page={page} data-keep-level={keepLevel ? "" : undefined}>Classic settings<button type="button" onClick={() => onPage("general")}>General</button></div> }));
 // One stub slot per page the real R1 Settings re-hosts from Classic (plugged.ts REHOSTED), the native History & backups
 // page's own rows, and Chat apps.
 vi.mock("../settings/pages/plugged", async () => {
@@ -138,6 +138,8 @@ it("keeps the Classic page for Settings pages R1 has no rows or slot for yet, so
   localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "local" }));
   await act(async () => root.render(<R1Window session={session} />));
   expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.page).toBe("local");
+  // R1 keeps the person's level: the Classic frame it hosts never raises or saves it (opening a page Regular hides).
+  expect(host.querySelector<HTMLElement>('[data-testid="classic-settings"]')?.dataset.keepLevel).toBe("");
   expect(host.querySelector('[data-testid="r1-settings"]')).toBeNull();
 });
 it("opens every R1 Settings nav page as its own page: its R1 page or the Classic page with its sections, never Classic General", async () => {

@@ -52,6 +52,9 @@ type Props = {
   askName?: string;
   /** The heading the page shows, when the host names it (R1 names its pages in its own words). */
   heading?: string;
+  /** The host keeps the person's "How much to show" (R1): a page their level hides never raises or saves the level;
+   *  the frame shows what the level does show, with one line that offers the level the page needs. */
+  keepLevel?: boolean;
 };
 
 /** The segmented "How much to show" control (§4.7.0, §5.2): Left and Right move the choice. */
@@ -199,9 +202,10 @@ function useRowJump(page: string) {
 
 /** The Settings frame (DESIGN-SPEC §4.7.0): the nav column with Back, search, "Settings for", page items, the save
  *  state and the level; one page on the right. */
-export function SettingsFrame({ page, backName, running, engine, onPage, onBack, onAsk, askName, heading }: Props) {
+export function SettingsFrame({ page, backName, running, engine, onPage, onBack, onAsk, askName, heading, keepLevel }: Props) {
   const [chosen, setLevel] = useState<Level>(readLevel);
-  const level = levelFor(page, chosen); // opening a page this level hides raises the level
+  const needs = levelFor(page, chosen); // the lowest level that shows this page
+  const level = keepLevel ? chosen : needs; // Classic: opening a page this level hides raises the level
   useEffect(() => {
     if (level !== chosen) {
       setLevel(level);
@@ -290,6 +294,12 @@ export function SettingsFrame({ page, backName, running, engine, onPage, onBack,
             ))}
           </nav>
           <FileProblem engine={engine} />
+          {needs !== level ? (
+            <p className="set-more" role="status">
+              More in {LEVELS.find((l) => l.id === needs)?.name}.{" "}
+              <button type="button" className="link-k" onClick={() => changeLevel(needs)}>Show {LEVELS.find((l) => l.id === needs)?.name}</button>
+            </p>
+          ) : null}
           <KitProvider level={LV[level]} report={report} scope={LV[level] >= 1 ? scope : origin} ask={hasModel ? onAsk : undefined} askName={askName} pins={pins}>
             <SetupLock locked={!maySetup && SETUP_PAGES.includes(shown)}>
               <SettingsPage running={running} page={shown} title={heading ?? pageName(shown)} level={level} engine={engine} openSettings={go} searchSection={searchRow?.page === shown ? searchRow.sec : undefined} />
