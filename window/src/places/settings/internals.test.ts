@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INTERNALS_FROM, hasRawKey, showsInternals, versionLabel } from "./internals";
+import { INTERNALS_FROM, hasRawKey, plainCopy, showsInternals, versionLabel } from "./internals";
 
 describe("engine internals show only at Technical", () => {
   it("answers for R1's numbers and Classic's words alike", () => {
@@ -28,5 +28,19 @@ describe("engine internals show only at Technical", () => {
     expect(versionLabel("0.4.4-build-d1225fcd", 0)).toBe("0.4.4");
     expect(versionLabel("0.4.4-build-d1225fcd", "advanced")).toBe("0.4.4");
     expect(versionLabel("0.4.4-build-d1225fcd", 2)).toContain("d1225fcd");
+  });
+
+  it("says engine for Gateway below Technical, and keeps the raw key at Technical", () => {
+    expect(plainCopy("Gateway comes in a later update.", 0)).toBe("The engine comes in a later update.");
+    expect(plainCopy("Turn it off when the Gateway is idle.", "regular")).toBe("Turn it off when the engine is idle.");
+    expect(plainCopy("Needs a Gateway restart.", "advanced")).toBe("Needs an engine restart.");
+    expect(plainCopy("Set gateway.auth.token in the file.", 0)).toBe("Set gateway.auth.token in the file.");
+    expect(plainCopy("Gateway comes in a later update.", 2)).toBe("Gateway comes in a later update.");
+  });
+
+  it("leaves copy without the word alone, and no Regular row keeps Gateway", () => {
+    expect(plainCopy("Branch is running.", 0)).toBe("Branch is running.");
+    const rows = ["Remote access", "Gateway (Off / When needed / On)", "Keep the gateway running while Trunks work"];
+    for (const row of rows) expect(plainCopy(row, 0)).not.toMatch(/gateway/i);
   });
 });

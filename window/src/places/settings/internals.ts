@@ -39,3 +39,21 @@ export function versionLabel(version: string, level: number | (typeof WORDS)[num
   const parts = versionParts(version);
   return showsInternals(level) ? parts.detail : parts.short;
 }
+
+/** The plain word for the engine below Technical. "Gateway" is an engine word the owner does not use; Regular and
+ *  Advanced say "engine", the word Remote access already uses ("Restart the engine"). Raw keys such as
+ *  gateway.auth.token are left alone, and grammar follows the article the copy already has. */
+export function plainCopy(text: string, level: number | (typeof WORDS)[number]): string {
+  if (showsInternals(level) || !/gateway/i.test(text)) return text;
+  return text.replace(/(\b(?:the|a|an)\s+)?\bgateway\b(?![.\w-])/gi, (_match, article: string | undefined, offset: number, whole: string) => {
+    if (article) {
+      const up = article.trimStart()[0] === article.trimStart()[0].toUpperCase();
+      const lower = article.trim().toLowerCase();
+      if (lower === "a" || lower === "an") return up ? "An engine" : "an engine";
+      return `${up ? "The" : "the"} engine`;
+    }
+    const sentenceStart = offset === 0 || /[.!?:;]\s*$/.test(whole.slice(0, offset));
+    const capital = whole[offset] === "G";
+    return sentenceStart || capital ? "The engine" : "the engine";
+  });
+}
