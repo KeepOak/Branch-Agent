@@ -1,2 +1,3 @@
 window:src/screens/frame/R1Window.details.test.tsx
 window:src/screens/frame/glass48.test.tsx
+window:src/places/trunk/trunk.test.tsx
