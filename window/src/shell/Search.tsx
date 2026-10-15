@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import { agentIdOf } from "../connect/session";
 import { Pebble } from "../face/Pebble";
@@ -123,6 +123,8 @@ type ResultsProps = {
   onOpen: (key: string) => void;
   onOpenMessage: (key: string, query: string) => void;
   onLibrary: () => void;
+  /** Rows the host matched itself (the R1 sidebar's contacts), drawn first under Chats and Trunks and counted with them. */
+  lead?: { count: number; rows: ReactNode };
 };
 
 function ChatResult({ row, p }: { row: Conversation; p: ResultsProps }) {
@@ -142,13 +144,14 @@ function ChatResult({ row, p }: { row: Conversation; p: ResultsProps }) {
 /** The results that replace the list while searching (§4.1.2): chips, sections, highlighted matches. */
 export function SearchResultsView(p: ResultsProps) {
   const { results, chip, query } = p;
-  const total = countOf(results, "all");
-  const show = (s: SearchChip) => (chip === "all" || chip === s) && countOf(results, s) > 0;
+  const count = (s: SearchChip) => countOf(results, s) + (s === "all" || s === "chats" ? p.lead?.count ?? 0 : 0);
+  const total = count("all");
+  const show = (s: SearchChip) => (chip === "all" || chip === s) && count(s) > 0;
   return (
     <div className="side-scroll search-results" data-testid="search-results">
       <div className="chips" role="tablist" aria-label="Search filters">
         {CHIPS.map((c) => {
-          const n = countOf(results, c.id);
+          const n = count(c.id);
           return (
             <button key={c.id} type="button" role="tab" aria-selected={chip === c.id} className="chip" data-chip={c.id} onClick={() => p.onChip(c.id)}>
               {c.name}
@@ -158,6 +161,7 @@ export function SearchResultsView(p: ResultsProps) {
         })}
       </div>
       {show("chats") ? <div className="lh">Chats and Trunks</div> : null}
+      {show("chats") ? p.lead?.rows : null}
       {show("chats") ? results.chats.map((r) => <ChatResult key={r.key} row={r} p={p} />) : null}
       {show("messages") ? <div className="lh">Messages</div> : null}
       {show("messages")

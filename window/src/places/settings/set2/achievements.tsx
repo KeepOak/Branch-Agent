@@ -14,8 +14,8 @@ const NO_LEDGER = "Branch doesn’t count most achievements yet.";
 
 export const ROWS: RowEntry[] = [{ page: "achievements", title: "Keep achievements quiet", sec: "Settings", group: "Settings", lv: 0 }];
 
-export const TIERS = ["Bronze", "Silver", "Gold", "Diamond", "Godly", "SSS+"] as const;
-export type Tier = (typeof TIERS)[number];
+const TIERS = ["Bronze", "Silver", "Gold", "Diamond", "Godly", "SSS+"] as const;
+type Tier = (typeof TIERS)[number];
 const TIER_COL: Record<Tier, string> = { Bronze: "#A86A3D", Silver: "#8C959E", Gold: "#C9982E", Diamond: "#4F8FB8", Godly: "#8A5AA8", "SSS+": "#C2412D" };
 export type Badge = { cat: string; tier: Tier; name: string; desc: string };
 const badges = (cat: string, tier: Tier, list: [string, string][]): Badge[] => list.map(([name, desc]) => ({ cat, tier, name, desc }));
@@ -189,14 +189,16 @@ function Medal() {
 }
 
 /** The badges the window can see for itself: the Settings level reached. */
-export function unlockedAt(level: Lv): Set<string> {
+function unlockedAt(level: Lv): Set<string> {
   const got = new Set<string>();
   if (level >= 1) got.add("Advanced");
   if (level >= 2) got.add("Technical");
   return got;
 }
 
+/** Tier counters show only once something has unlocked; before that, one plain line instead of a row of 0/42. */
 function Summary({ got }: { got: Set<string> }) {
+  if (got.size === 0) return <Hint>Nothing unlocked yet. Badges come as you use Branch.</Hint>;
   return (
     <>
       <div className="ach-sum">
@@ -263,10 +265,16 @@ function PetsSec({ engine, openSettings }: Pick<SettingsPageProps, "engine" | "o
   );
 }
 
+/** The tier counts and the badges, for the R1 Updates & about page's Achievements card. */
+export function AchievementsBlock() {
+  const got = unlockedAt(useLevel());
+  return <><Summary got={got} /><BadgeGrid got={got} /></>;
+}
+
 export function AchievementsPage(props: SettingsPageProps) {
   const got = unlockedAt(useLevel());
   return (
-    <Page title={props.title} lede={`Private to you, never nagging. ${got.size} of ${BADGES.length} unlocked.`}>
+    <Page title={props.title} lede={got.size ? `Private to you, never nagging. ${got.size} of ${BADGES.length} unlocked.` : "Private to you, never nagging."}>
       <Summary got={got} />
       <BadgeGrid got={got} />
       <PetsSec engine={props.engine} openSettings={props.openSettings} />

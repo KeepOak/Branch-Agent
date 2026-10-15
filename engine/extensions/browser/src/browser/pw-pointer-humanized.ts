@@ -1,4 +1,4 @@
-/** Native portable input driver adapted from elizaOS/eliza@3f38e54495ba5518f84bcf9cc1e84e0dc3d60bbf. */
+/** Native portable input driver. */
 import { sleepWithAbort } from "branch/plugin-sdk/runtime-env";
 import type { ElementHandle, JSHandle, Page } from "playwright-core";
 import {

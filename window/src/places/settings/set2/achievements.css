@@ -18,3 +18,5 @@
 .set-col .ach-sum ~ .tabs { margin-top: 6px; }
 .set-col .ach-sum ~ .tabs .tab { border: 1px solid transparent; }
 .set-col .sec[data-sec="Pets you’ve had"] > .hint { margin: 0 0 6px; }
+/* The category chips wrap onto more lines instead of running off the right edge. */
+.set-col [aria-label="Achievement categories"] { flex-wrap: wrap; overflow: visible; }

@@ -43,10 +43,10 @@ it("status glyphs open all six popovers from live facts", async () => {
   expect(host.querySelector("[data-testid=sb-room] .status-label")?.textContent).toBe("Context");
   expect(host.querySelector("[data-testid=sb-room] .status-number")?.textContent).toBe("86% left");
   expect(host.querySelector<HTMLElement>("[data-testid=sb-room] .ctx-meter-fill")?.style.width).toBe("86%");
-  expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("aria-label")).toBe("3 running");
+  expect(host.querySelector("[data-testid=sb-running]")?.getAttribute("aria-label")).toBe("3 running · what’s coming up");
   expect(host.querySelector("[data-testid=sb-version]")?.textContent).toContain("Branch 0.19.5");
   expect(host.querySelector("[data-testid=sb-version]")?.getAttribute("title")).toBe(BRANCH_VERSION_TIP);
-  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("ChatGPT · Account 1 · 77% left");
+  expect(host.querySelector("[data-testid=sb-usage]")?.getAttribute("aria-label")).toContain("you@example.com · 77% left");
 });
 
 it("usage ring matches the preview 16px geometry and colour thresholds", async () => {
@@ -126,17 +126,18 @@ it("Every account is a flat list with preview row text and checks again through 
   ] } : {});
   const open = vi.fn();
   const host = await show(<UsagePopover above={above} onClose={() => {}} limits={seeded} request={request as never} onOpenUsage={open} />);
-  expect(request).toHaveBeenCalledWith("usage.status", { refresh: true });
+  // Opening shows the reading Branch already has: no provider call until someone asks for a fresh check.
+  expect(request).not.toHaveBeenCalled();
   expect(host.querySelector(".sp-provider")).toBeNull();
   expect(host.textContent).toContain("you@example.com");
   expect(host.textContent).toContain("77% left");
-  expect(host.textContent).toContain("ChatGPT · Account 1 · Plus · this week 41% used");
+  expect(host.textContent).toContain("Account 1 · ChatGPT Plus · this week 41% used");
   expect(host.textContent).not.toContain("week 59% left");
   await click(host, "usage-check");
   expect(request).toHaveBeenCalledWith("models.authStatus", { refresh: true });
-  expect(request.mock.calls.filter(([method]) => method === "usage.status")).toHaveLength(2);
+  expect(request.mock.calls.filter(([method]) => method === "usage.status")).toHaveLength(1);
   expect(host.textContent).toContain("new@example.com");
-  expect(host.textContent).toContain("Claude · Account 1 · Pro");
+  expect(host.textContent).toContain("Account 1 · Claude Pro");
   await click(host, "open-usage");
   expect(open).toHaveBeenCalledOnce();
 });
@@ -158,11 +159,12 @@ it("Gateway, Running, and Update actions use their live callbacks", async () => 
   expect(open).toHaveBeenCalledWith("live");
   expect(automations).toHaveBeenCalledOnce();
   await act(async () => root?.unmount()); root = undefined;
-  const install = vi.fn(), whatsNew = vi.fn(), remind = vi.fn();
-  host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "0.19.5", latest: "0.20.0", notes: ["Groups can have rules"], installing: false, waiting: null }} version="0.19.5" desktopInstall onWhatsNew={whatsNew} onInstall={install} onRemind={remind} />);
+  const whatsNew = vi.fn(), remind = vi.fn();
+  host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "0.19.5", latest: "0.20.0", notes: ["Groups can have rules"], installing: false, waiting: null }} version="0.19.5" desktopInstall onWhatsNew={whatsNew} onRemind={remind} />);
   expect(host.textContent).toContain("You have 0.19.5");
-  await click(host, "ver-install"); await click(host, "ver-whatsnew"); await click(host, "ver-remind");
-  expect(install).toHaveBeenCalledOnce(); expect(whatsNew).toHaveBeenCalledOnce(); expect(remind).toHaveBeenCalledOnce();
+  expect(host.querySelector('[data-testid="ver-install"]')).toBeNull();
+  await click(host, "ver-whatsnew"); await click(host, "ver-remind");
+  expect(whatsNew).toHaveBeenCalledOnce(); expect(remind).toHaveBeenCalledOnce();
 });
 
 it("Pause all Trunks aborts each live run and refreshes the list", async () => {
