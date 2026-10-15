@@ -69,6 +69,8 @@ export type SidebarProps = {
   onTour?: () => void;
   /** Why the conversation list couldn't load (useConversations().error); shown at the top of the list. */
   error?: string | null;
+  /** The contacts the window already reads (useContacts); without them the sidebar reads its own. */
+  contacts?: ReturnType<typeof useContacts>;
 };
 
 const rec = (value: unknown): Record<string, unknown> => (value && typeof value === "object" ? value as Record<string, unknown> : {});
@@ -117,7 +119,8 @@ export function Sidebar(p: SidebarProps) {
   const { session, ready } = p;
   const engine = session.engine;
   const request = useMemo(() => <T,>(method: string, params?: unknown) => session.request<T>(method, params), [session]);
-  const [gatewayContacts, refreshContacts, contactsLoaded] = useContacts(session, ready);
+  const ownContacts = useContacts(session, ready && !p.contacts);
+  const [gatewayContacts, refreshContacts, contactsLoaded] = p.contacts ?? ownContacts;
   const trunks = useTrunks(session, ready);
   // Archived groups too: they sit in the Archived bin, where Unarchive brings them back.
   const rooms = useGroupRooms(session, ready, true);

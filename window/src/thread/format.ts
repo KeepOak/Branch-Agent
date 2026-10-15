@@ -66,6 +66,7 @@ const TOOL_WORDS: Record<string, Words> = {
   read: { now: "Reading a file", done: "Read a file" },
   sessions_spawn: { now: "Starting a helper", done: "Started a helper" },
   agents_wait: { now: "Waiting for its helpers", done: "Waited for its helpers" },
+  sessions_yield: { now: "Waiting for its helpers", done: "Waited for its helpers" },
   web_search: { now: "Searching the web", done: "Searched the web" },
   search: { now: "Searching the web", done: "Searched the web" },
   web_fetch: { now: "Reading a web page", done: "Read a web page" },

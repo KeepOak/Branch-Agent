@@ -143,3 +143,9 @@
 .r1-frame[data-topic-tier="3"] .r1-topic-host .tpL2T5 > span { -webkit-line-clamp: 2; }
 .r1-frame[data-topic-tier="4"] .r1-topic-host .tpL2T5 > span { -webkit-line-clamp: 3; }
 
+
+/* A place (Grove, Overview, Canopy…) fills the column under the header (owner, 2026-10-15): .r1-content is a block, so a
+   place's flex: 1 had nothing to fill and Grove's map sat in a 360px strip with the rest of the window empty. */
+.r1-content:has(> .enter11) { display: flex; flex-direction: column; }
+.r1-content > .enter11 { min-height: 0; }
+.pixel-office-view > .pixel-office-stage { min-height: 0; height: auto; }
