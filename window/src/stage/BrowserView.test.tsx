@@ -96,7 +96,7 @@ describe("scoped browser viewing", () => {
       target: "host", method: "GET", path: "/", query: { profile: "branch" }, tabScope: { sessionKey: "agent:scout:one" },
     });
     expect(container.textContent).toContain("Browse with your Trunk");
-    expect(container.textContent).toContain("Enter a website address above and press Enter");
+    expect(container.textContent).toContain("Type a website or a search above and press Enter");
     expect(container.textContent).toContain("ask Scout to read, compare or work on the page");
     expect(container.querySelector('[aria-label="New tab"]')).not.toBeNull();
     for (const label of ["Back", "Forward", "Reload", "Page", "Tools", "Reads", "Numbers", "Comment", "Record"]) {
@@ -260,24 +260,33 @@ describe("scoped browser viewing", () => {
       }),
     );
     expect(draw).toHaveBeenCalledOnce();
-    const canvas = container.querySelector("canvas")!;
     const before = request.mock.calls.length;
-    await act(async () =>
-      canvas.dispatchEvent(new KeyboardEvent("keydown", { key: "A", bubbles: true })),
-    );
+    const field = () => container.querySelector<HTMLTextAreaElement>("textarea[aria-label='Type into the page']")!;
+    await act(async () => field().dispatchEvent(new KeyboardEvent("keydown", { key: "A", bubbles: true })));
     expect(request.mock.calls.length).toBe(before);
     await render(engine, blocks, true);
     await act(async () =>
-      canvas.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "A", bubbles: true, cancelable: true }),
-      ),
+      field().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })),
     );
     expect(request).toHaveBeenLastCalledWith(
       "browser.request",
       expect.objectContaining({
         path: "/act",
-        body: { kind: "press", key: "A", targetId: "tab-one" },
+        body: { kind: "press", key: "Enter", targetId: "tab-one" },
         tabScope: { sessionKey: "agent:scout:one" },
+      }),
+    );
+    // A soft keyboard or an IME sends text as beforeinput, never as a keydown for each character.
+    const typed = Object.assign(new Event("beforeinput", { bubbles: true, cancelable: true }), { inputType: "insertText", data: "hé", isComposing: false });
+    await act(async () => {
+      field().dispatchEvent(typed);
+    });
+    expect(typed.defaultPrevented).toBe(true);
+    expect(request).toHaveBeenLastCalledWith(
+      "browser.request",
+      expect.objectContaining({
+        path: "/act",
+        body: { kind: "insertText", text: "hé", targetId: "tab-one" },
       }),
     );
     await act(async () => root!.unmount());
