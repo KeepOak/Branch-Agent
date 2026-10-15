@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { forgetLookStore } from "../../../places/settings/set1/appearance-store";
 import { CLASSIC_PAGE, r1SettingsPage } from "../../frame/R1Window";
-import { PAGES } from "../nav";
+import { PAGES, regularHub } from "../nav";
 import { SettingsFrame } from "../SettingsFrame";
 import { R1_PAGES } from "./plugged";
 
@@ -117,4 +117,18 @@ it("lists saved prompts with Try it, sent to the default Trunk", async () => {
   expect(card.textContent).toContain("/brief");
   await act(async () => { [...card.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Try it")!.click(); });
   expect(onAsk).toHaveBeenCalledWith("/brief");
+});
+
+it("sits on Regular's General page with the other Trunk pages, reached under Advanced there", async () => {
+  // preview.html puts graftsT5 and czP17 (both Customize) in Your Trunks, beside Trunks, Instructions, Voice and Chat apps.
+  const hub = regularHub("customize");
+  expect(hub?.title).toBe("General");
+  for (const id of ["trunks", "instructions", "voice", "chatapps"] as const) expect(regularHub(id)?.title).toBe("General");
+  const { engine } = engineOf();
+  await mount(engine, "regular");
+  expect(host.querySelector(".r1s-nav[aria-current=page]")?.getAttribute("data-hub")).toBe("General");
+  expect(host.querySelector(".r1s-head h1")?.textContent).toBe(PAGES.customize.title);
+  const jump = host.querySelector<HTMLElement>('.r1s-advanced [data-page="customize"]');
+  expect(jump?.getAttribute("aria-current")).toBe("true");
+  expect(jump?.textContent).toBe("Customize");
 });
