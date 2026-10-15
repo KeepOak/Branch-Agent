@@ -55,6 +55,9 @@ export type Attachment = {
   sizeBytes?: number;
   /** False when the engine left the bytes out of the history ("Not kept in the history"). */
   kept: boolean;
+  /** True when `src` is a gateway-host file path from the canonical `__branch.media` envelope. Only such
+   *  paths go through the authenticated media-ticket flow; other single-slash srcs render as before. */
+  local?: boolean;
 };
 
 export type FileChange = { path: string; added: number; removed: number; diff?: string };
@@ -82,7 +85,7 @@ export type Block =
   | { kind: "user"; key: string; text: string; meta?: MessageMeta; attachments?: Attachment[] }
   /** Words you sent while the turn worked, which it took at its next step (`__branch.steerTargetRunId`). Part of
    *  that turn, not a turn of its own. */
-  | { kind: "steer"; key: string; text: string; meta?: MessageMeta }
+  | { kind: "steer"; key: string; text: string; meta?: MessageMeta; attachments?: Attachment[] }
   | { kind: "text"; key: string; text: string; streaming: boolean; meta?: MessageMeta; attachments?: Attachment[] }
   | { kind: "thinking"; key: string; text: string; live: boolean }
   | { kind: "preamble"; key: string; text: string }
@@ -388,7 +391,7 @@ function lastStatus(events: readonly RunEvent[]): Extract<Block, { kind: "status
   return null;
 }
 
-function settle(blocks: Block[]): Block[] {
+export function settleRunBlocks(blocks: Block[]): Block[] {
   return blocks.map((block) =>
     block.kind === "text" ? { ...block, streaming: false } : block.kind === "thinking" ? { ...block, live: false } : block,
   );
@@ -436,7 +439,7 @@ export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<s
   // row for the same command, and the finished turn (history.ts) doesn't have it either.
   const blocks = b.wrappers.size ? b.blocks.filter((block) => block.kind !== "step" || !b.wrappers.has(block.key)) : b.blocks;
   if (ended) {
-    return settle(blocks);
+    return settleRunBlocks(blocks);
   }
   const status = lastStatus(events);
   return status ? [...blocks, status] : blocks;

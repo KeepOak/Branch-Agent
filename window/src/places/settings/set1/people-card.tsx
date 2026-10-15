@@ -86,7 +86,7 @@ function Actions({ ctx, p, out, onOut }: ActProps) {
 function RoleSeg({ ctx, p }: { ctx: People; p: Profile }) {
   const save = useSaveRunner();
   const { names } = ctx.roles;
-  if (!names.length) return <span title="No roles are set up on this Gateway yet."><Seg label={`${visible(p.name)}’s role`} value="" options={[{ id: "Adult", label: "Adult" }, { id: "Child", label: "Child" }]} disabled onChange={() => undefined} /></span>;
+  if (!names.length) return <span title="No roles are set up yet."><Seg label={`${visible(p.name)}’s role`} value="" options={[{ id: "Adult", label: "Adult" }, { id: "Child", label: "Child" }]} disabled onChange={() => undefined} /></span>;
   const set = (role: string) => void save(async () => { await ctx.engine.request("users.setRole", { profileId: p.id, role }); await ctx.reload(); });
   return <Seg label={`${visible(p.name)}’s role`} value={roleOf(p, ctx.roles)} disabled={!ctx.admin} options={names.map((n) => ({ id: n, label: visible(n) }))} onChange={set} />;
 }

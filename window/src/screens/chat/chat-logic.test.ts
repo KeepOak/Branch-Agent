@@ -41,9 +41,9 @@ describe("steps line", () => {
     expect(line.text.endsWith("…")).toBe(true);
     expect(line.meta).toBe("2 so far");
   });
-  it("counts failures and the run's length when finished", () => {
-    const line = stepsLine([step("a"), step("b", { status: "failed", detail: "Exit 1" })], { title: "Done", durationMs: 108_000 });
-    expect(line).toMatchObject({ live: false, failed: 1, meta: "2 steps · 1m 48s" });
+  it("counts failures and shows no clock once finished", () => {
+    const line = stepsLine([step("a"), step("b", { status: "failed", detail: "Exit 1" })]);
+    expect(line).toMatchObject({ live: false, failed: 1, meta: "2 steps" });
     expect(line.text).toMatch(/^Ran 2 commands/);
   });
 });

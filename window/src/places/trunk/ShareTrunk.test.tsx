@@ -25,21 +25,22 @@ async function open(answer: unknown = EXPORT) {
 const dialog = () => document.querySelector('[data-testid="share-trunk"]') as HTMLElement;
 const button = (text: string) => [...dialog().querySelectorAll("button")].find(b => b.textContent?.trim() === text) as HTMLButtonElement;
 
+const tab = (text: string) => [...dialog().querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(b => b.textContent === text)!;
+
 describe("Share a Trunk as a template", () => {
-  it("exports the Trunk and says what the template holds and what was left out", async () => {
+  it("exports the Trunk when it opens and warns about what the template leaves out", async () => {
     const request = await open();
     expect(request).toHaveBeenCalledWith("trunks.template.export", { agentId: "night" });
-    expect(dialog().textContent).toContain("1 skill and 1 routine");
-    expect(dialog().textContent).toContain("routines arrive turned off");
+    expect(dialog().querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("With people");
+    await act(async () => { tab("As a file").click(); });
     expect(dialog().querySelector('[data-testid="share-warnings"]')?.textContent).toContain('Routine "Ping"');
   });
 
-  it("copies the template link", async () => {
-    const writeText = vi.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  it("keeps the sharing tabs with people and the team greyed until the engine can share", async () => {
     await open();
-    await act(async () => { button("Copy link").click(); });
-    expect(writeText).toHaveBeenCalledWith("branch-template:1:abc");
+    await act(async () => { tab("With the team").click(); });
+    expect(button("Share with the team").closest("[data-coming]")).toBeTruthy();
+    expect(dialog().textContent).toContain("Share with the team comes in a later update.");
   });
 
   it("saves the template file under the name the engine imports", async () => {
@@ -47,7 +48,8 @@ describe("Share a Trunk as a template", () => {
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
     const clicked = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) { expect(this.download).toBe("night-shift.branch.trunk-template.json"); });
     await open();
-    await act(async () => { button("Save template file").click(); });
+    await act(async () => { tab("As a file").click(); });
+    await act(async () => { button("Save as a file").click(); });
     expect(clicked).toHaveBeenCalledTimes(1);
     const blob = created.mock.calls[0]?.[0] as Blob;
     expect(JSON.parse(await blob.text())).toEqual(TEMPLATE);
@@ -56,8 +58,8 @@ describe("Share a Trunk as a template", () => {
   it("shows the engine's refusal and keeps both actions off", async () => {
     await open(new Error("Persona text looks like it contains a secret (a token or key)."));
     expect(dialog().querySelector('[role="alert"]')?.textContent).toContain("looks like it contains a secret");
-    expect(button("Copy link").disabled).toBe(true);
-    expect(button("Save template file").disabled).toBe(true);
+    await act(async () => { tab("As a file").click(); });
+    expect(button("Save as a file").disabled).toBe(true);
   });
 });
 

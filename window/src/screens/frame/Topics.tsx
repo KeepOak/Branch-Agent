@@ -9,9 +9,11 @@ import { listContactTopics } from "../../shell/contacts-model";
 import { loadAllTopicTranscripts } from "../../shell/topic-all";
 import { r1TopicLayoutFor, setR1TopicLayout, TOPIC_LAYOUT_KEY, type R1TopicLayout } from "../../shell/topic-layout";
 import { createTopicSession } from "../../shell/topic-create";
+import { resetFree } from "./free-widths";
 import { patchTopicSession } from "../../shell/topic-session";
 import { TopicRail } from "../../shell/TopicRail";
 import type { Block } from "../../thread/model";
+import { coalesce } from "../../shell/coalesce";
 
 /** The Trunk whose threads show: the open conversation's own Trunk, from its main conversation or a thread of it. */
 export type TopicContact = { id: string; key: string; name: string };
@@ -20,13 +22,14 @@ const EMOJI_KEY = "branch-topic-emoji-t5";
 const NARROW = "(max-width: 900px)";
 
 /** A Trunk's own conversation is agent:<id>:<main key>; its threads name it as their parent. */
-export function topicContactFor(rows: readonly Conversation[], currentKey: string | null, mainSuffix = "main"): TopicContact | null {
+export function topicContactFor(rows: readonly Conversation[], currentKey: string | null, mainSuffix = "main", trunkName?: string): TopicContact | null {
   const current = rows.find((row) => row.key === currentKey);
   if (!current?.agentId) return null;
   const key = `agent:${current.agentId}:${mainSuffix}`;
   if (current.key !== key && current.parentKey !== key) return null;
   const main = rows.find((row) => row.key === key);
-  return { id: `trunk:${current.agentId}`, key, name: main?.title || current.agentId };
+  // The Trunk's own name (Juniper), never its id (juniper): the window passes the name it shows in the title.
+  return { id: `trunk:${current.agentId}`, key, name: trunkName || main?.title || current.agentId };
 }
 
 function useTopics(session: SaplingSession, ready: boolean, contactId: string | null) {
@@ -42,8 +45,9 @@ function useTopics(session: SaplingSession, ready: boolean, contactId: string | 
       } catch (error) { if (live) console.warn("contacts.topics failed", error); }
     };
     void load();
-    const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") void load(); });
-    return () => { live = false; off(); };
+    const loadSoon = coalesce(() => void load(), 3_000);
+    const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") loadSoon(); });
+    return () => { live = false; off(); loadSoon.cancel(); };
   }, [session, ready, contactId, state.tick]);
   const topics = ready && contactId && state.id === contactId ? state.topics : [];
   return { topics, reload: () => setState((old) => ({ ...old, tick: old.tick + 1 })) };
@@ -84,12 +88,14 @@ export type R1TopicsProps = {
   currentKey: string | null;
   /** The main key after agent:<id>: (the window's main key names it). */
   mainSuffix: string;
+  /** The open Trunk's display name, as the window title shows it. */
+  trunkName?: string;
   onOpen: (key: string) => void;
 };
 
 /** What the window draws: the rail in the topics column or above the chat, and the All stream while it shows. */
-export function useR1Topics(p: R1TopicsProps): { column: ReactNode; above: ReactNode; history: Block[] | null } {
-  const contact = topicContactFor(p.rows, p.currentKey, p.mainSuffix);
+export function useR1Topics(p: R1TopicsProps): { column: ReactNode; above: ReactNode; history: Block[] | null; layout: R1TopicLayout } {
+  const contact = topicContactFor(p.rows, p.currentKey, p.mainSuffix, p.trunkName);
   const contactId = contact?.id ?? null;
   const { topics, reload } = useTopics(p.session, p.ready, contactId);
   const layout = useLayout(contactId);
@@ -115,12 +121,12 @@ export function useR1Topics(p: R1TopicsProps): { column: ReactNode; above: React
       (error: unknown) => { if (live) { console.warn("All threads failed to load", error); setAll(null); } });
     return () => { live = false; };
   }, [all, contact, showingAll, items, p.rows, p.session]);
-  if (!contact || !topics.length) return { column: null, above: null, history: null };
+  if (!contact || !topics.length) return { column: null, above: null, history: null, layout };
   const general = p.rows.find((row) => row.key === contact.key);
   const agentId = contact.id.replace(/^trunk:/, "");
   const request = (method: string, params: unknown) => p.session.request(method, params);
   const rail = <div className="r1-topic-host g-clear"><TopicRail clear phoneList={narrow} contactId={contact.id} contactName={contact.name} contactKey={contact.key}
-    r1={{ layout, onLayout: (next) => setR1TopicLayout(next, contact.id),
+    r1={{ layout, onLayout: (next) => setR1TopicLayout(next, contact.id), onReset: resetFree,
       onCreate: async (draft) => { const key = await createTopicSession(request, { agentId, parentKey: contact.key }, draft); await p.list.refresh(); reload(); setAll(null); p.onOpen(key); },
       onDelete: async (topic) => { await request("sessions.delete", { key: topic.key, agentId, deleteTranscript: true }); await p.list.refresh(); reload(); if (p.currentKey === topic.key) { setAll(null); p.onOpen(contact.key); } } }}
     generalPreview={general?.preview ?? ""} generalUpdatedAt={general?.updatedAt ?? 0} currentKey={p.currentKey} allSelected={showingAll} items={items}
@@ -132,10 +138,10 @@ export function useR1Topics(p: R1TopicsProps): { column: ReactNode; above: React
       reload();
     }} /></div>;
   const history = showingAll ? all?.history ?? [] : null;
-  if (layout === "tabs") return { column: null, above: rail, history };
-  if (!narrow) return { column: rail, above: null, history };
+  if (layout === "tabs") return { column: null, above: rail, history, layout };
+  if (!narrow) return { column: rail, above: null, history, layout };
   const count = topics.length + 1;
-  return { column: null, history, above: <div className="r1-topic-fold">
+  return { column: null, history, layout, above: <div className="r1-topic-fold">
     <button type="button" className="g-frost" data-local="" aria-expanded={foldOpen} onClick={() => setFoldOpen((open) => !open)}>Threads · {count}</button>
     {foldOpen ? rail : null}
   </div> };

@@ -2,7 +2,6 @@
 // Agents are the eight day-one templates; Skills come from skills.search with installed state from skills.status;
 // Connectors and Plugins from plugins.catalog.browse (split by catalog category); Themes & looks from themes.list.
 // Grove layouts, Graft setups, Command-line tools, Toolsets and Adapters have no engine call yet, so they show Coming.
-// Coming to Branch lists the features moved out of the main window until they work (upcoming.ts).
 // A count shows only when the catalog returns it (Pitfall 14).
 import { DAY_ONE_TEMPLATES, listedTemplate, readListedTemplates, type DayOneTemplate } from "./templates";
 
@@ -12,10 +11,11 @@ const list = (v: unknown): Rec[] => (Array.isArray(v) ? v.map(rec) : []);
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
-export type KindId = "agents" | "groves" | "graftsets" | "skills" | "mcp" | "plugins" | "clis" | "toolsets" | "looks" | "adapters" | "upcoming";
+export type KindId = "agents" | "groves" | "graftsets" | "skills" | "mcp" | "plugins" | "clis" | "toolsets" | "looks" | "adapters";
 export type Kind = { id: KindId; label: string; one: string; coming?: string };
 
-/** The kind chips, in the preview's order. A kind with `coming` has no engine call yet. */
+/** The kind chips, exactly the preview's (preview.html mkKinds: All · Agents · … · Adapters). A kind with `coming` has no
+ *  engine call yet. Features that are not Seedbank items are Coming rows in their own screens, never a kind here (#1049). */
 export const KINDS: readonly Kind[] = [
   { id: "agents", label: "Agents", one: "agent" },
   { id: "groves", label: "Grove layouts", one: "Grove layout", coming: "Grove layouts arrive in Seedbank in a later update." },
@@ -27,7 +27,6 @@ export const KINDS: readonly Kind[] = [
   { id: "toolsets", label: "Toolsets", one: "toolset", coming: "Toolsets arrive in Seedbank in a later update." },
   { id: "looks", label: "Themes & looks", one: "theme" },
   { id: "adapters", label: "Adapters", one: "adapter", coming: "Adapters arrive after release." },
-  { id: "upcoming", label: "Coming to Branch", one: "feature", coming: "Features that arrive in a later update." },
 ];
 export const kindOf = (id: KindId): Kind => KINDS.find(kind => kind.id === id)!;
 
@@ -37,7 +36,7 @@ export const CONNECTOR_CATEGORIES: readonly string[] = ["web", "integrations", "
 export type Source =
   | { type: "template"; template: DayOneTemplate; templateId: string | null; permissions: string[] }
   | { type: "skill"; ref: string }
-  | { type: "plugin"; catalogId: string; pluginId: string; packageName: string; install: Rec | null; unavailable: boolean }
+  | { type: "plugin"; catalogId: string; pluginId: string; packageName: string; install: Rec | null; unavailable: boolean; /** On this computer (comes with Branch or installed). */ present?: boolean }
   | { type: "theme"; themeId: string };
 
 export type Entry = {
@@ -85,7 +84,7 @@ export function pluginEntries(browse: unknown): Entry[] {
     const kind: KindId = category && CONNECTOR_CATEGORIES.includes(category) ? "mcp" : "plugins";
     return [{ id: kind + ":" + id, kind, name: str(c.name) || id, by: str(c.author) || (official ? "Branch" : "someone"), desc: str(c.summary), badge: official ? "Official" as const : "Community" as const,
       checked: Boolean(str(c.verificationTier)) || official, installed: local.installed === true, downloads: num(c.downloads), featuredRank: c.featured === true ? num(c.featuredRank) ?? 0 : undefined, category,
-      source: { type: "plugin" as const, catalogId: id, pluginId: str(local.pluginId) || str(c.packageName) || id, packageName: str(c.packageName), install, unavailable: str(local.action) === "unavailable" } }];
+      source: { type: "plugin" as const, catalogId: id, pluginId: str(local.pluginId) || str(c.packageName) || id, packageName: str(c.packageName), install, unavailable: str(local.action) === "unavailable", present: local.present === true } }];
   });
 }
 

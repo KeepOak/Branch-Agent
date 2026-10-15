@@ -140,6 +140,22 @@ describe("Library › Memory", () => {
     expect(request).toHaveBeenCalledWith("doctor.memory.status", { agentId: "b" });
     expect((host.querySelector('input[aria-label="Search memory"]') as HTMLInputElement).placeholder).toBe("Search what Rowan remembers");
   });
+  // The scope in use is the checked radio in Whose memory: choosing it again changes nothing, and choosing another moves the
+  // check. Before this, the items were plain menu rows, so the crawl read the repeat as dead.
+  it("checks the scope in use in Whose memory, and moves the check when another Trunk is picked", async () => {
+    const { engine } = engineOf(base());
+    await mount(engine);
+    const scopeItem = (label: string) => [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(el => el.textContent?.replace("✓", "").trim() === label);
+    await click("Every Trunk");
+    expect(scopeItem("Every Trunk")?.getAttribute("aria-checked")).toBe("true");
+    expect(scopeItem("Rowan")?.getAttribute("aria-checked")).toBe("false");
+    await click("Rowan");
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="Whose memory"]')!.click(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(scopeItem("Rowan")?.getAttribute("aria-checked")).toBe("true");
+    expect(scopeItem("Every Trunk")?.getAttribute("aria-checked")).toBe("false");
+  });
+
   it("shows Rings counts, reads the diary, and greys Undo last night and Tidy up with reasons", async () => {
     const { engine, request } = engineOf(base((m) => m === "doctor.memory.dreamDiary" ? { found: true, content: "Night one notes" } : undefined));
     await mount(engine);

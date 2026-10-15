@@ -193,7 +193,6 @@ function restoreAfterSwap(): void {
   };
   const timer = setInterval(() => { tryRestore(); if (!pending.length) clearInterval(timer); }, 100);
   setTimeout(() => clearInterval(timer), 10_000);
-  showToast("Branch updated");
 }
 
 function elementPath(el: Element): string {
@@ -209,7 +208,6 @@ function elementPath(el: Element): string {
 /** A small, quiet note that fades by itself. */
 function showToast(message: string): void {
   const show = () => {
-    document.getElementById("branch-desktop-update")?.remove();
     const notice = document.getElementById("branch-desktop-update-notice");
     const toast = document.createElement("div");
     toast.setAttribute("role", "status");
@@ -274,51 +272,20 @@ function showRecoveryError(message: string): void {
   if (document.body) show(); else window.addEventListener("DOMContentLoaded", show, { once: true });
 }
 
-/** A small bar at the bottom of the window while an update waits or applies. The app and window stay open throughout. */
+/**
+ * Updates apply in place (R1 design, P45): the window shows no update banner or Update button. The Settings page mirrors
+ * the state, and the window shows its one small "Updated in place" toast when an update lands.
+ */
 function showUpdateBar(state: UpdateState): void {
-  // The Settings page mirrors this bar, so it can clear its own pending state on the same outcomes.
   window.dispatchEvent(new CustomEvent("branch:update-state", { detail: { state } }));
-  if (state === "updated") document.getElementById("branch-desktop-recovery-error")?.remove();
+  if (state === "updated") {
+    document.getElementById("branch-desktop-recovery-error")?.remove();
+    // The engine changed under the open window: reconnect now rather than at the next backoff step.
+    window.dispatchEvent(new Event("branch:engine-ready"));
+  }
   if (state === "kept") {
     // The new engine did not start; Branch keeps running the version it had.
     window.dispatchEvent(new Event("branch:engine-ready"));
-    showToast("Update postponed; Branch kept the current version");
-    return;
-  }
-  if (state === "updated") {
-    // The engine changed under the open window: reconnect now rather than at the next backoff step.
-    window.dispatchEvent(new Event("branch:engine-ready"));
-    showToast("Branch updated");
-    return;
-  }
-  let bar = document.getElementById("branch-desktop-update");
-  if (!bar) {
-    bar = document.createElement("div");
-    bar.id = "branch-desktop-update";
-    bar.setAttribute("role", "status");
-    bar.dataset.testid = "desktop-update-bar";
-    bar.style.cssText = [
-      "position:fixed", "left:50%", "bottom:16px", "transform:translateX(-50%)", "z-index:2147483647",
-      "display:flex", "align-items:center", "gap:12px", "padding:8px 8px 8px 14px", "border-radius:10px",
-      "background:#1e293b", "color:#f1f5f9", "font:13px/1.3 system-ui,-apple-system,'Segoe UI',sans-serif",
-      "box-shadow:0 6px 24px rgba(15,23,42,.28)",
-    ].join(";");
-    document.body.appendChild(bar);
-  }
-  bar.replaceChildren();
-  const text = document.createElement("span");
-  text.textContent = state === "ready" ? "An update is ready" : state === "auto-wait"
-    ? "Update ready, applying when your Trunks finish" : state === "preparing" ? "Getting the update ready…" : "Updating Branch…";
-  bar.appendChild(text);
-  if (state === "ready" || state === "auto-wait") {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = state === "ready" ? "Update" : "Update now";
-    button.dataset.testid = "desktop-update-restart";
-    button.style.cssText =
-      "border:0;border-radius:7px;padding:5px 12px;background:#f1f5f9;color:#0f172a;font:inherit;font-weight:600;cursor:pointer";
-    button.addEventListener("click", () => ipcRenderer.send("branch-desktop:restart-engine"));
-    bar.appendChild(button);
   }
 }
 
