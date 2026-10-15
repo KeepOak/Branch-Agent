@@ -1,14 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import type { Block } from "../../thread/model";
 import type { Level } from "../../places-nav/settings-nav";
 import { resolveApproval } from "../../thread/actions";
 import { useApprovalDetails, useHelpers, type ApprovalDetails, type Helper } from "../../thread/useEngineData";
 import { needsYou } from "../../thread/Helpers";
+import { nativeHelpers } from "../../thread/native-helpers";
+import { NativeHelpers } from "../../thread/NativeHelpers";
 import { Face } from "../../face/Face";
 import { SIcon } from "../stage-icons";
 import { activityRecordedAt, activityState, money } from "./pane-model";
 import { shortReason, stepLabel } from "../../thread/format";
+import { isInternalStep } from "../../thread/internal-steps";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -118,6 +121,15 @@ function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: App
   );
 }
 
+/** A step's sub-line: the reason when it failed or was refused, and a finished step's raw output only at Technical, so file
+ *  contents, tool replies and ids ("Sent visible reply … via internal-ui", "no_change") stay out of normal views. */
+export function stepDetail(step: Extract<Block, { kind: "step" }>, level: Level): string | null {
+  const detail = step.detail?.trim();
+  if (!detail || /^[[{]/.test(detail)) return null;
+  if (step.status === "failed" || step.status === "denied" || level === "technical") return shortReason(detail);
+  return null;
+}
+
 /**
  * The task the Activity tab is about, never earlier tasks' steps: the run going now (its blocks follow the history's
  * last turn end, or your last message), or else the last task, the newest turn that had steps. A plain reply after
@@ -137,10 +149,11 @@ export function currentTask(blocks: readonly Block[], running: boolean): Block[]
 }
 
 /** Activity: what it's doing now, the Canopy card it works on, its recent steps and its helpers. */
-export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, onError }: { engine: WindowEngine; name: string; blocks: Block[]; running: boolean; level: Level; focusHelpers?: number; onError: (m: string) => void }) {
+export function ActivityTab({ engine, name, blocks, running, level, focusHelpers = 0, onError }: { engine: WindowEngine; name: string; blocks: Block[]; running: boolean; level: Level; focusHelpers?: number; onError: (m: string) => void }) {
   const helperSection = useRef<HTMLElement>(null);
   const { helpers } = useHelpers(engine);
-  useEffect(() => { if (focusHelpers && helpers.length) helperSection.current?.scrollIntoView?.({ block: "start" }); }, [focusHelpers, helpers.length]);
+  const native = useMemo(() => nativeHelpers(blocks), [blocks]);
+  useEffect(() => { if (focusHelpers && (helpers.length || native.length)) helperSection.current?.scrollIntoView?.({ block: "start" }); }, [focusHelpers, helpers.length, native.length]);
   const { details } = useApprovalDetails(engine);
   const card = useCanopyCard(engine);
   const facts = useHelperFacts(engine, helpers);
@@ -149,7 +162,14 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
   const helperWaiting = approvals.filter((a) => !a.decision && helpers.some((h) => h.key === a.sessionKey)).length;
   const state = activityState(running, mine + helperWaiting);
   const asOf = activityRecordedAt(blocks);
-  const steps = currentTask(blocks, running).filter((b): b is Extract<Block, { kind: "step" }> => b.kind === "step");
+  const stepByKey = new Map<string, Extract<Block, { kind: "step" }>>();
+  for (const block of currentTask(blocks, running)) {
+    // The engine's own check-in (heartbeat_respond) never shows, here or in the transcript (thread/internal-steps.ts).
+    if (block.kind !== "step" || isInternalStep(block)) continue;
+    const previous = stepByKey.get(block.key);
+    if (!previous || (block.at ?? 0) >= (previous.at ?? 0)) stepByKey.set(block.key, block);
+  }
+  const steps = [...stepByKey.values()];
   const shown = steps.slice(-8);
   const first = steps.length - shown.length;
   const direct = helpers.filter((h) => h.parent === engine.sessionKey);
@@ -157,7 +177,7 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
     <>
       <p className="hg-pn">
         <i className={`dot-pn ${state.tone}`} />
-        {state.text}{asOf === undefined ? "" : ` · as of ${new Date(asOf).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+        {state.text}{state.tone === "idle" && asOf !== undefined ? ` · last active ${new Date(asOf).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}
       </p>
       {card ? (
         <div className="prow-pn">
@@ -177,7 +197,7 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
               <SIcon name={b.status === "ok" ? "check" : b.status === "running" ? "spin" : b.status === "denied" || b.status === "failed" ? "x" : "info"} small className={b.status === "running" ? "spin-st" : undefined} />
               <span>
                 {stepLabel(b)}
-                {b.detail && !/^\s*[\[{]/.test(b.detail) ? <small>{shortReason(b.detail)}</small> : null}
+                {stepDetail(b, level) ? <small>{stepDetail(b, level)}</small> : null}
               </span>
               <time>{b.at ? new Date(b.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : `Step ${first + i + 1}`}</time>
             </li>
@@ -186,12 +206,12 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
       ) : (
         <p className="pane-empty">No steps yet. What {name} does shows here as it works.</p>
       )}
-      {helpers.length ? (
+      {helpers.length || native.length ? (
         <section ref={helperSection} className="hp-pn" aria-label="Helpers on this task">
           <div className="hph-pn">
             <h3>Helpers on this task</h3>
             <small>
-              {direct.length} started by {name}
+              {direct.length + native.length} started by {name}
               {helperWaiting ? ` · ${needsYou(helperWaiting)}` : ""}
             </small>
           </div>
@@ -211,6 +231,7 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
               />
             ))}
           </div>
+          {native.length ? <NativeHelpers helpers={native} /> : null}
           <p className="hint-st">Each helper runs on its own model and asks for its own approvals. Nothing a helper does skips your rules.</p>
         </section>
       ) : null}

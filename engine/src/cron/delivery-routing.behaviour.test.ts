@@ -1,4 +1,4 @@
-// Written by Branch for AUTOMATION-0040 from openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/cron/delivery.ts and src/cron/delivery-preview.ts; preserves newer current-session routing.
+// Preserves newer current-session routing.
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { replaceSessionEntrySync } from "../config/sessions/session-accessor.js";

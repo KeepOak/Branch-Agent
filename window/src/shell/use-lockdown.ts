@@ -5,7 +5,8 @@ import { configStore } from "../places/settings/config-store";
 import { notify } from "./notify";
 import { ConfirmLockdown } from "./ConfirmLockdown";
 
-export function useLockdown(engine: WindowEngine, ready: boolean, session?: SaplingSession) {
+/** clear: draw the confirmation as the R1 window's clear glass dialog (README item 48). */
+export function useLockdown(engine: WindowEngine, ready: boolean, session?: SaplingSession, clear?: boolean) {
   const store = configStore(engine);
   const [supported, setSupported] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -53,7 +54,7 @@ export function useLockdown(engine: WindowEngine, ready: boolean, session?: Sapl
     return Promise.resolve();
   }, [snapshot, on, supported, save]);
   const confirmation = confirming ? createElement(ConfirmLockdown, {
-    busy: saving,
+    busy: saving, clear,
     onCancel: () => { if (!busy.current) setConfirming(false); },
     onConfirm: () => {
       if (!supported || !ready) { setConfirming(false); return; }

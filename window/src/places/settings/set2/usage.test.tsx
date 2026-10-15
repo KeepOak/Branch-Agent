@@ -248,7 +248,9 @@ describe("keeping things", () => {
     await act(async () => { ttl.value = "24"; ttl.dispatchEvent(new Event("change", { bubbles: true })); }); await flush();
     expect(patched(request)).toContainEqual({ attachments: { ttlHours: 24 } });
     const idle = document.querySelector<HTMLInputElement>('input[aria-label="Archive conversations idle for"]')!;
-    expect(idle.placeholder).toBe("30");
+    expect(idle).toBeTruthy();
+    expect(idle.placeholder).toBe("");
+    expect(row("Archive conversations idle for")?.textContent).toContain("Unset keeps them forever.");
   });
   it("Tidy now runs sessions.cleanup and says what it did", async () => {
     const { engine, request } = engineWith({ ...BASE, ...CFG(), "sessions.cleanup": { allAgents: true, mode: "enforce", stores: [{ archived: 2, capArchived: 0, pruned: 1, capped: 0, modelRunPruned: 0 }] } });
@@ -288,6 +290,15 @@ describe("keeping things", () => {
     expect(patched(request)).toContainEqual({ plugins: { entries: { codex: { config: { sessionCatalog: { homes: ["D:/old", "D:/new"] } } } } } });
     await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Remove D:/old"]')!.click()); await flush();
     expect(patched(request)).toContainEqual({ plugins: { entries: { codex: { config: { sessionCatalog: { homes: [] } } } } } });
+  });
+  it("More Codex folders Add is disabled while the folder box is empty, and enabled once a folder is typed", async () => {
+    const { engine } = engineWith({ ...BASE, ...CFG({ plugins: { entries: { codex: { config: { sessionCatalog: { homes: [] } } } } } }) });
+    await show(engine, "technical");
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="More Codex folders: add"]')!;
+    const add = () => [...row("More Codex folders")!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add")!;
+    expect(add().disabled).toBe(true);
+    await act(async () => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!; set.call(input, "D:/new"); input.dispatchEvent(new Event("input", { bubbles: true })); }); await flush();
+    expect(add().disabled).toBe(false);
   });
   it("Technical: every session key saves at its real path, and bad JSON is refused", async () => {
     const { engine, request } = engineWith({ ...BASE, ...CFG() });
