@@ -5,6 +5,7 @@ import { Btn, Ctl, Field, Pick, Switch, Val } from "../kit";
 import { ChatLogo as Logo } from "./chatapps-logo";
 import type { CatalogueApp } from "./chatapps-data";
 import { KeyRow, NO_KEY, type Cfg, type Row } from "./chatapps-kit";
+import { JOIN_HUDDLES_HELP, JOIN_HUDDLES_LABEL, joinHuddlesOn, setJoinHuddles } from "./slack-huddles";
 
 const off = (t: string, sub: string | undefined, kind: Row["kind"], def?: unknown, opts?: string[]): Row => ({ t, sub, kind, def, off: NO_KEY, ...(opts ? { opts: opts.map((l, i) => [l, i] as [string, unknown]) } : {}) });
 const SCAN = "Instead of copying IDs and secrets.";
@@ -31,6 +32,7 @@ export const DEPTH: Record<string, (Row & { key?: string })[]> = {
     { t: "Use the Discord app on this computer", sub: "Without a bot: reads and answers through the Discord window.", kind: "custom", id: "btn:Set up" },
   ],
   slack: [
+    { t: JOIN_HUDDLES_LABEL, sub: JOIN_HUDDLES_HELP, kind: "custom", id: "join-huddles" },
     off("Charts and tables as Slack blocks", "Tables and charts show as Slack’s own.", "sw", true),
     off("Read the thread first", "Pulled into a thread, it reads what was said before.", "sw", true),
     off("Reactions that start a task", "One emoji name per line, such as robot_face.", "lines"),
@@ -79,7 +81,9 @@ export function Depth({ catalogue, connected, cfg }: { catalogue: CatalogueApp[]
     return (
       <details key={c.id} className="fold-ca" open={connected.has(c.id)}>
         <summary><Logo id={c.id} name={c.name} size={26} /><span className="grow"><b>{c.name}</b><small>{`${rows.length} setting${rows.length > 1 ? "s" : ""}${connected.has(c.id) ? " · connected" : ""}`}</small></span></summary>
-        {rows.map((r) => r.kind === "custom" ? <Ctl key={r.t} title={r.t} sub={r.sub} off={NO_KEY}><Btn sm disabled>{(r.id ?? "").slice(4)}</Btn></Ctl> : <KeyRow key={r.t} row={r} cfg={cfg} />)}
+        {rows.map((r) => r.id === "join-huddles"
+          ? <Ctl key={r.t} title={r.t} sub={r.sub}><Switch checked={joinHuddlesOn(cfg.get)} label={r.t} disabled={cfg.loading} onChange={(on) => void setJoinHuddles(cfg.set, on)} /></Ctl>
+          : r.kind === "custom" ? <Ctl key={r.t} title={r.t} sub={r.sub} off={NO_KEY}><Btn sm disabled>{(r.id ?? "").slice(4)}</Btn></Ctl> : <KeyRow key={r.t} row={r} cfg={cfg} />)}
       </details>
     );
   })}</>;
