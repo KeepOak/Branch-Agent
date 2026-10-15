@@ -1,3 +1,4 @@
+engine:extensions/browser/index.test.ts
 engine:extensions/browser/src/guest/guest-registry.test.ts
 engine:extensions/browser/src/guest/guest-route.test.ts
 window:src/guest/GuestBrowser.test.tsx
