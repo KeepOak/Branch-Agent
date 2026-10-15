@@ -1,0 +1,4 @@
+window:src/glass/coming.test.tsx
+window:src/screens/features/FeaturesPage.test.tsx
+window:src/screens/updates/UpdateButton.test.tsx
+window:src/screens/updates/model.test.ts

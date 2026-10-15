@@ -1,5 +1,4 @@
-// Source cases: openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3
-// ui/src/pages/usage/query.test.ts. Runtime assertions use Node's test runner.
+// Runtime assertions use Node's test runner.
 import assert from "node:assert/strict";
 import { describe, it as nodeIt } from "node:test";
 import { buildDailyCsv, buildSessionsCsv } from "../src/shared/usage-csv.js";

@@ -11,7 +11,11 @@ import {
   SUBAGENT_ENDED_REASON_COMPLETE,
   type SubagentLifecycleEndedReason,
 } from "./subagent-lifecycle-events.js";
-import { resolveDeferredCleanupDecision } from "./subagent-registry-cleanup.js";
+import {
+  holdDeliveryWindowForAdmission,
+  isRequesterAwaitingAdmission,
+  resolveDeferredCleanupDecision,
+} from "./subagent-registry-cleanup.js";
 import {
   ANNOUNCE_COMPLETION_HARD_EXPIRY_MS,
   ANNOUNCE_EXPIRY_MS,
@@ -183,6 +187,7 @@ export const finalizeSubagentCleanup = async (
   );
   assertCurrent();
   const now = Date.now();
+  const requesterAwaitingAdmission = isRequesterAwaitingAdmission(entry);
   const decision: {
     value?: ReturnType<typeof resolveDeferredCleanupDecision>;
     delivered?: boolean;
@@ -197,6 +202,7 @@ export const finalizeSubagentCleanup = async (
       const deferredDecision = resolveDeferredCleanupDecision({
         entry: draft,
         now,
+        requesterAwaitingAdmission,
         activeDescendantRuns: Math.max(0, activeDescendantRuns),
         announceExpiryMs: ANNOUNCE_EXPIRY_MS,
         announceCompletionHardExpiryMs: ANNOUNCE_COMPLETION_HARD_EXPIRY_MS,
@@ -224,6 +230,9 @@ export const finalizeSubagentCleanup = async (
         delivery.payload ??= loadPendingFinalDeliveryPayload(draft);
         delivery.windowStartedAt ??= draft.execution.endedAt ?? now;
         delivery.deadlineAt ??= delivery.windowStartedAt + ANNOUNCE_COMPLETION_HARD_EXPIRY_MS;
+        if (requesterAwaitingAdmission) {
+          holdDeliveryWindowForAdmission(delivery, now, ANNOUNCE_COMPLETION_HARD_EXPIRY_MS);
+        }
         resumeDelayMs = requesterTurnPending
           ? Math.min(MIN_ANNOUNCE_RETRY_DELAY_MS, delivery.deadlineAt - now)
           : deferredDecision.resumeDelayMs;

@@ -125,6 +125,23 @@ type FreshConnectionProbe = {
   ok: boolean;
 };
 
+/**
+ * One steer probe: chat.send with queueMode steer into its own probe run.
+ * latencyMs is the RPC accept round trip; appliedMs is accept to the steer's terminal event (null if none).
+ * active is false when the probe run had already finished when the steer was accepted.
+ */
+type SteerProbe = {
+  active: boolean;
+  appliedMs: number | null;
+  /** Terminal chat state the steer reached, or null when none arrived before the deadline. */
+  terminal: string | null;
+  /** Error text the steer terminal event carried, when it ended in error. */
+  terminalError?: string | null;
+  error: string | null;
+  latencyMs: number;
+  ok: boolean;
+};
+
 type GatewayChildExit = {
   atMonotonicMicros: number;
   exitCode: number | null;
@@ -169,6 +186,7 @@ type BenchmarkRun = {
   cpuUsage: GatewayCpuUsage;
   durationMs: number;
   freshConnection: FreshConnectionProbe;
+  steers?: SteerProbe[];
   gatewayExit?: Awaited<ReturnType<typeof stopChild>>;
   gatewayProcess?: {
     pid: number | undefined;
@@ -234,6 +252,7 @@ type BenchmarkPartialRun = Partial<
     peakRssMb: number | null;
   };
   freshConnection: FreshConnectionProbe | null;
+  steers?: SteerProbe[];
   cpuUsage: GatewayCpuUsage | null;
   probeWarmup: { durationMs: number | null; samples: GatewaySample[] };
   liveProof?: BenchmarkRun["liveProof"] | ReturnType<LiveGatewayEvidence["snapshot"]>;
@@ -288,6 +307,7 @@ type CliOptions = {
   runs: number;
   sessionCount: number;
   sessionUpdateClients: number;
+  steers: number;
   sessionUpdates: number;
   streamChunkDelayMs: number;
   subscribers: number;
@@ -372,6 +392,7 @@ const VALUE_FLAGS = new Set([
   "--runs",
   "--session-count",
   "--session-update-clients",
+  "--steers",
   "--session-updates",
   "--stream-chunk-delay-ms",
   "--subscribers",
@@ -428,6 +449,7 @@ function parseOptions(argv: string[] = process.argv.slice(2)): CliOptions {
     runs: boundedInt("--runs", DEFAULT_RUNS, MAX_RUNS),
     sessionCount: boundedInt("--session-count", 0, MAX_SESSION_COUNT, true),
     sessionUpdateClients: boundedInt("--session-update-clients", 4, MAX_CONCURRENCY),
+    steers: boundedInt("--steers", 0, MAX_CONCURRENCY, true),
     sessionUpdates: boundedInt("--session-updates", 0, MAX_SESSION_UPDATES, true),
     streamChunkDelayMs: boundedInt("--stream-chunk-delay-ms", MOCK_RESPONSE_CHUNK_DELAY_MS, 30_000),
     subscribers: boundedInt("--subscribers", 0, MAX_CONCURRENCY, true),
@@ -525,6 +547,7 @@ Options:
   --session-count <n> Seed up to ${MAX_SESSION_COUNT} distinct sessions before load
   --session-updates <n> Bounded public sessions.patch mutations during load
   --session-update-clients <n> Concurrent session mutation clients (default: 4)
+  --steers <n>       Send n chat.send steer messages into active probe runs during load; reports accept and applied latency (default: 0)
   --history-clients <n> Concurrent dedicated history-prefetch WebSocket clients
   --history-burst <n> Parallel history requests per prefetch client (default: 5)
   --subscribers <n> Dedicated session-message subscription clients
@@ -911,12 +934,84 @@ function summarizeMockRequests(checkpoints: readonly MockRequestSnapshot[]) {
   };
 }
 
+const TERMINAL_CHAT_STATES = new Set(["final", "error", "aborted"]);
+
+/** Tracks probe runs and steer terminal events from the same connection, so event order is the accept order. */
+function createSteerProbeEvidence() {
+  const probes = new Map<string, { finished: boolean }>();
+  const steers = new Map<
+    string,
+    { state?: string; terminalAt?: number; errorMessage?: string; wake?: () => void }
+  >();
+  return {
+    registerProbe(runId: string) {
+      probes.set(runId, { finished: false });
+    },
+    registerSteer(runId: string) {
+      steers.set(runId, {});
+    },
+    probeFinished(runId: string): boolean {
+      return probes.get(runId)?.finished === true;
+    },
+    steerTerminal(
+      runId: string,
+    ): { state: string; terminalAt: number; errorMessage?: string } | undefined {
+      const steer = steers.get(runId);
+      return steer?.state !== undefined && steer.terminalAt !== undefined
+        ? { state: steer.state, terminalAt: steer.terminalAt, errorMessage: steer.errorMessage }
+        : undefined;
+    },
+    /** Resolves with the steer's terminal state, or undefined when none arrives before timeoutMs. */
+    waitForSteer(runId: string, timeoutMs: number): Promise<string | undefined> {
+      const steer = steers.get(runId);
+      if (!steer) {
+        return Promise.resolve(undefined);
+      }
+      if (steer.state !== undefined) {
+        return Promise.resolve(steer.state);
+      }
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(undefined), timeoutMs);
+        steer.wake = () => {
+          clearTimeout(timer);
+          resolve(steer.state);
+        };
+      });
+    },
+    onEvent(this: void, event: { event: string; payload?: unknown }) {
+      const payload = event.payload;
+      if (event.event !== "chat" || !isRecord(payload) || typeof payload.runId !== "string") {
+        return;
+      }
+      const state = payload.state;
+      if (typeof state !== "string" || !TERMINAL_CHAT_STATES.has(state)) {
+        return;
+      }
+      const probe = probes.get(payload.runId);
+      if (probe) {
+        probe.finished = true;
+      }
+      const steer = steers.get(payload.runId);
+      if (steer && steer.state === undefined) {
+        steer.state = state;
+        steer.terminalAt = performance.now();
+        if (typeof payload.errorMessage === "string") {
+          steer.errorMessage = payload.errorMessage;
+        }
+        steer.wake?.();
+      }
+    },
+  };
+}
+
 function createTurnEvidence(toolEvents: boolean) {
   const turns = new Map<
     string,
     {
       sessionKey: string;
       phase: "warmup" | "load";
+      sentAt: number;
+      firstTokenMs?: number;
       toolCallId?: string;
       toolCompleted: boolean;
       final: boolean;
@@ -929,7 +1024,14 @@ function createTurnEvidence(toolEvents: boolean) {
       if (turns.has(runId)) {
         throw new Error("duplicate benchmark run identity");
       }
-      turns.set(runId, { sessionKey, phase, toolCompleted: false, final: false, observer: false });
+      turns.set(runId, {
+        sessionKey,
+        phase,
+        sentAt: performance.now(),
+        toolCompleted: false,
+        final: false,
+        observer: false,
+      });
     },
     onEvent(this: void, event: { event: string; payload?: unknown }) {
       const payload = event.payload;
@@ -938,6 +1040,16 @@ function createTurnEvidence(toolEvents: boolean) {
       }
       const turn = turns.get(payload.runId);
       if (!turn) {
+        return;
+      }
+      if (
+        event.event === "agent" &&
+        payload.stream === "assistant" &&
+        isRecord(payload.data) &&
+        typeof payload.data.delta === "string" &&
+        payload.data.delta.length > 0
+      ) {
+        turn.firstTokenMs ??= performance.now() - turn.sentAt;
         return;
       }
       if (event.event === "session.observer") {
@@ -1007,6 +1119,8 @@ function createTurnEvidence(toolEvents: boolean) {
       return {
         toolTurns: toolEvents ? phaseTurns.length : 0,
         observerModelDigestTurns: phaseTurns.filter((turn) => turn.observer).length,
+        // Send-to-first-streamed-text latency per measured turn, in ms.
+        firstTokenMs: phaseTurns.flatMap((turn) => (turn.firstTokenMs === undefined ? [] : [turn.firstTokenMs])),
       };
     },
   };
@@ -1740,6 +1854,7 @@ async function runGatewaySample(
   let completedRun: BenchmarkRun | undefined;
   const mockCheckpoints: MockRequestSnapshot[] = [];
   const turnEvidence = createTurnEvidence(options.toolEvents);
+  const steerEvidence = createSteerProbeEvidence();
   let gatewayExit: Awaited<ReturnType<typeof stopChild>> | undefined;
   let readGatewayProcess: ReturnType<typeof observeBenchmarkChild> | undefined;
   let readMockProviderProcess: ReturnType<typeof observeBenchmarkChild> | undefined;
@@ -1913,6 +2028,7 @@ async function runGatewaySample(
       client = await connectGateway(port, options.deadlineAt, protocolVersion, true, (event) => {
         activityDiagnostics?.onEvent(event);
         turnEvidence.onEvent(event);
+        steerEvidence.onEvent(event);
         live?.onEvent(event);
       });
       const rpc = client.request;
@@ -2331,6 +2447,67 @@ async function runGatewaySample(
           partialRun.freshConnection = value;
         }),
       );
+      // Steer probes use their own sessions, so they never touch the measured turns. Each probe starts a
+      // run, then sends a chat.send with queueMode steer while that run is still active.
+      const steerProbes = allTurnsStarted.then(async (): Promise<SteerProbe[]> =>
+        Promise.all(
+          Array.from({ length: options.steers }, (_, index) => {
+            const sessionKey = `agent:main:gateway-steer-${index + 1}`;
+            return (async (): Promise<SteerProbe> => {
+              const probeRunId = randomUUID();
+              const steerRunId = randomUUID();
+              steerEvidence.registerProbe(probeRunId);
+              steerEvidence.registerSteer(steerRunId);
+              const startedAt = performance.now();
+              try {
+                await rpc("agent", {
+                  sessionKey,
+                  message: `Steer probe ${index + 1} holds an active run.`,
+                  deliver: false,
+                  idempotencyKey: probeRunId,
+                }, requireRemainingMs(loadDeadlineAt, "starting a steer probe"));
+                const steerSentAt = performance.now();
+                await rpc("chat.send", {
+                  sessionKey,
+                  message: `Steer probe ${index + 1} redirects.`,
+                  queueMode: "steer",
+                  idempotencyKey: steerRunId,
+                }, requireRemainingMs(loadDeadlineAt, "steering a probe session"));
+                const acceptedAt = performance.now();
+                // Read activity at accept: gateway events and responses share one connection, so an
+                // event that arrived before the accept response means the probe had already finished.
+                const active = !steerEvidence.probeFinished(probeRunId);
+                const terminal = await steerEvidence.waitForSteer(
+                  steerRunId,
+                  Math.max(0, remainingMs(loadDeadlineAt)),
+                );
+                const applied = steerEvidence.steerTerminal(steerRunId);
+                return {
+                  active,
+                  appliedMs:
+                    terminal === "final" && applied
+                      ? Math.max(0, applied.terminalAt - acceptedAt)
+                      : null,
+                  terminal: terminal ?? null,
+                  terminalError: applied?.errorMessage ?? null,
+                  error: null,
+                  latencyMs: acceptedAt - steerSentAt,
+                  ok: true,
+                };
+              } catch (error) {
+                return {
+                  active: false,
+                  appliedMs: null,
+                  terminal: null,
+                  error: describeProbeError(error, options.activitySummaryDiagnostics),
+                  latencyMs: performance.now() - startedAt,
+                  ok: false,
+                };
+              }
+            })();
+          }),
+        ),
+      );
       const browserClicks = allTurnsStarted.then(async (): Promise<BrowserSessionClick[]> => {
         try {
           if (!browserProbe) {
@@ -2480,14 +2657,18 @@ async function runGatewaySample(
       ).finally(() => {
         updatesDone = true;
       });
-      const [freshConnectionResult, sessionTurnCounts, browserClickResults] = await Promise.all([
-        freshConnection,
-        turns,
-        browserClicks,
-        sampler,
-        historyLoad,
-        sessionUpdateLoad,
-      ]);
+      const [freshConnectionResult, sessionTurnCounts, browserClickResults, steerResults] =
+        await Promise.all([
+          freshConnection,
+          turns,
+          browserClicks,
+          steerProbes,
+          sampler,
+          historyLoad,
+          sessionUpdateLoad,
+        ]);
+      // Keep steer evidence on partial attempts; the probes run after the turns and can outlive them.
+      partialRun.steers = steerResults;
       partialRun.turnCount = sessionTurnCounts.reduce((sum, count) => sum + count, 0);
       const cpuAfter = await readGatewayCpuUsage(gateway);
       partialRun.cpuUsage = measureGatewayCpuUsage(cpuBefore, cpuAfter);
@@ -2566,6 +2747,7 @@ async function runGatewaySample(
         processPlacement,
         durationMs: performance.now() - runStartedAt,
         freshConnection: freshConnectionResult,
+        steers: steerResults,
         history,
         loadWindow: {
           startMonotonicMicros: loadStartMonotonicMicros,
@@ -2964,6 +3146,29 @@ function summarizeRuns(
     ),
     freshConnectionFailedRuns: runs.filter((run) => !run.freshConnection.ok).length,
     freshConnectionLatencyMs: summarizeNumbers(runs.map((run) => run.freshConnection.latencyMs)),
+    // Send-to-first-streamed-text latency, measured turns only.
+    firstTokenMs: summarizeNumbers(runs.flatMap((run) => run.turnEvidence.firstTokenMs ?? [])),
+    steerFailedRuns: runs.reduce(
+      (total, run) => total + (run.steers ?? []).filter((steer) => !steer.ok).length,
+      0,
+    ),
+    // Steers accepted while their probe run was still active. Inactive probes are not summarized.
+    steerAcceptMs: summarizeNumbers(
+      runs.flatMap((run) =>
+        (run.steers ?? []).filter((steer) => steer.ok && steer.active).map((steer) => steer.latencyMs),
+      ),
+    ),
+    steerAppliedMs: summarizeNumbers(
+      runs.flatMap((run) =>
+        (run.steers ?? []).flatMap((steer) =>
+          steer.ok && steer.active && steer.appliedMs !== null ? [steer.appliedMs] : [],
+        ),
+      ),
+    ),
+    steerInactiveProbes: runs.reduce(
+      (total, run) => total + (run.steers ?? []).filter((steer) => steer.ok && !steer.active).length,
+      0,
+    ),
     gatewayUncleanExits: runs.filter(
       (run) =>
         run.gatewayExit && (run.gatewayExit.exitCode !== 0 || run.gatewayExit.signal !== null),
@@ -3190,6 +3395,7 @@ export const testing = {
   parseMockRequests,
   summarizeMockRequests,
   createTurnEvidence,
+  createSteerProbeEvidence,
   captureChildOutput,
   buildConfig,
   formatProbeFailure,

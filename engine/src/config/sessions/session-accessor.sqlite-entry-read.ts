@@ -37,6 +37,7 @@ import {
   readWithCanonicalSessionAdmission,
 } from "./session-canonical-key.js";
 import {
+  SessionRowRepairRequiredError,
   validateCanonicalSessionRowEntry,
   type CanonicalSessionValidationRow,
 } from "./session-canonical-row.js";
@@ -143,6 +144,11 @@ function parseReadableSessionEntryData(
   row: ResolvedSessionEntryRow["row"],
   projection: "full" | "list" | "delivery",
 ): SessionEntry | null {
+  // Startup quarantine settles the row invalid without touching its bytes; refuse it
+  // until doctor rewrites the row. "{}" with -1 is a retained placeholder, decided below.
+  if ("entry_valid" in row && row.entry_valid === -1 && row.entry_json !== "{}") {
+    throw new SessionRowRepairRequiredError(row.session_key);
+  }
   const parsed: SessionEntry | null =
     projection === "delivery"
       ? parseSqliteSessionEntryRecord(row)
@@ -275,7 +281,8 @@ function selectReadableSessionEntryRows(
     // JSON and literal NUL retain the existing parser's semantics through the fallback.
     const deliveryJson =
       /* kysely-allow-raw: bounded delivery projection of exact session rows. */ sql<string>`
-      CASE WHEN json_valid(entry_json)
+      CASE WHEN entry_valid = -1 AND entry_json <> '{}' THEN ''
+      WHEN json_valid(entry_json)
         AND json_type(entry_json, '$.sessionId') = 'text'
         AND json_type(entry_json, '$.updatedAt') IN ('integer', 'real')
         AND length(CAST(entry_json AS BLOB)) = length(CAST(printf('%s', entry_json) AS BLOB))

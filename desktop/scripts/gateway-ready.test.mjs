@@ -179,3 +179,91 @@ test("owned gateway shutdown also reaps its spawned child", async () => {
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
+
+// Private #951 part 2: an update is promoted only once its agents are admitted; still refused at the deadline, it rolls back.
+const admission = () => import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "agent-admission.js")));
+/** A fake engine: /startupz and /readyz answer from `state()`, as the engine does for a local probe. */
+const fakeEngine = state => (req, res) => {
+  const { inspecting, refused } = state();
+  const body = req.url === "/startupz"
+    ? (inspecting ? { ok: false, status: "starting", pendingReason: "agent-database-inspection" } : { ok: true, status: "started" })
+    : { ready: true, failing: [], ...(refused.length ? { agentDatabases: refused.map(agentId => ({ agentId, code: "agent-database-inspection-pending" })) } : {}) };
+  res.writeHead(req.url === "/startupz" && inspecting ? 503 : 200, { "content-type": "application/json" }).end(JSON.stringify(body));
+};
+
+test("inspection stuck past the deadline rolls the update back automatically and never promotes it", async () => {
+  const { superviseUpdateAdmission, waitForAgentAdmission } = await admission();
+  await fixture(fakeEngine(() => ({ inspecting: true, refused: ["coordinator", "tk"] })), async cfg => {
+    const calls = [], lines = [];
+    const result = await superviseUpdateAdmission({
+      label: "0.5.0",
+      wait: () => waitForAgentAdmission({ port: () => cfg.gatewayPort, child: { exitCode: null, signalCode: null }, rollbackAfterMs: 300, pollMs: 40 }),
+      promote: () => { calls.push("promote"); },
+      rollback: async outcome => { calls.push(`rollback ${outcome.refused.join(",")}`); },
+      log: line => lines.push(line),
+    });
+    assert.equal(result.outcome, "refused");
+    assert.ok(result.waitedMs >= 300 && result.waitedMs < 2_000, `waited ${result.waitedMs} ms`);
+    assert.deepEqual(calls, ["rollback coordinator,tk"]);
+    assert.match(lines.join("\n"), /still refused .*coordinator, tk.*rolling back/);
+  });
+});
+
+test("an engine that stops answering after the swap is rolled back too", async () => {
+  const { superviseUpdateAdmission, waitForAgentAdmission } = await admission();
+  const calls = [];
+  const port = await new Promise(resolve => { const s = createServer(); s.listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => resolve(p)); }); });
+  const result = await superviseUpdateAdmission({
+    label: "0.5.0",
+    wait: () => waitForAgentAdmission({ port: () => port, child: { exitCode: null, signalCode: null }, rollbackAfterMs: 150, pollMs: 30 }),
+    promote: () => { calls.push("promote"); }, rollback: async () => { calls.push("rollback"); }, log: () => {},
+  });
+  assert.equal(result.outcome, "refused");
+  assert.deepEqual(result.refused, ["(engine not answering)"]);
+  assert.deepEqual(calls, ["rollback"]);
+});
+
+test("real admission promotes the update: every agent admitted once inspection ends, no rollback", async () => {
+  const { superviseUpdateAdmission, waitForAgentAdmission } = await admission();
+  let probes = 0;
+  // The listener is up from the first probe, but agents are admitted only after a few polls.
+  await fixture(fakeEngine(() => (++probes <= 6 ? { inspecting: true, refused: ["coordinator"] } : { inspecting: false, refused: [] })), async cfg => {
+    const calls = [];
+    const result = await superviseUpdateAdmission({
+      label: "0.5.0",
+      wait: () => waitForAgentAdmission({ port: () => cfg.gatewayPort, child: { exitCode: null, signalCode: null }, rollbackAfterMs: 5_000, pollMs: 20 }),
+      promote: () => { calls.push("promote"); }, rollback: async () => { calls.push("rollback"); }, log: () => {},
+    });
+    assert.equal(result.outcome, "admitted");
+    assert.deepEqual(calls, ["promote"]);
+    assert.ok(probes > 6, "the listener alone never promoted the update");
+  });
+});
+
+test("agents the old engine already refused never hold the promotion back", async () => {
+  const { readAgentAdmission, waitForAgentAdmission } = await admission();
+  await fixture(fakeEngine(() => ({ inspecting: true, refused: ["broken"] })), async cfg => {
+    assert.deepEqual(await readAgentAdmission(cfg.gatewayPort), { admitted: false, refused: ["broken"], startup: "inspecting" });
+    const result = await waitForAgentAdmission({ port: () => cfg.gatewayPort, child: { exitCode: null, signalCode: null },
+      rollbackAfterMs: 1_000, pollMs: 20, knownRefused: new Set(["broken"]) });
+    assert.equal(result.outcome, "admitted");
+  });
+});
+
+test("the admission watch ends without promoting or rolling back when the engine exits or the watch is stopped", async () => {
+  const { superviseUpdateAdmission, waitForAgentAdmission } = await admission();
+  await fixture(fakeEngine(() => ({ inspecting: true, refused: ["coordinator"] })), async cfg => {
+    const calls = [];
+    const run = (child, signal) => superviseUpdateAdmission({
+      label: "0.5.0", wait: () => waitForAgentAdmission({ port: () => cfg.gatewayPort, child, rollbackAfterMs: 5_000, pollMs: 20, signal }),
+      promote: () => { calls.push("promote"); }, rollback: async () => { calls.push("rollback"); }, log: () => {},
+    });
+    assert.equal((await run({ exitCode: 1, signalCode: null })).outcome, "exited");
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 100);
+    const started = Date.now();
+    assert.equal((await run({ exitCode: null, signalCode: null }, stop.signal)).outcome, "stopped");
+    assert.ok(Date.now() - started < 1_000);
+    assert.deepEqual(calls, []);
+  });
+});
