@@ -9,16 +9,74 @@ on:
         description: Release tag to attach a signed APK to. Leave empty for an artifact-only build.
         required: false
         type: string
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-android-release.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: mobile-android-release-${{ github.event.release.tag_name || inputs.tag || github.run_id }}
+  group: mobile-android-release-${{ github.event.release.tag_name || inputs.tag || github.sha }}
   cancel-in-progress: false
 
 jobs:
+  resolve-tag:
+    if: github.repository == 'KeepOak/Branch-Agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      should_attach: ${{ steps.resolve.outputs.should_attach }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve release tag
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG_INPUT: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag || '' }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          tag=""
+          should_attach="false"
+          
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            tag="${{ github.event.release.tag_name }}"
+            should_attach="true"
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$RELEASE_TAG_INPUT" ]]; then
+            tag="$RELEASE_TAG_INPUT"
+            should_attach="true"
+          elif [[ "$EVENT_NAME" == "push" ]]; then
+            max_attempts=6
+            for attempt in $(seq 1 $max_attempts); do
+              tag=$(gh api "repos/$GITHUB_REPOSITORY/commits/$COMMIT_SHA" --jq '.commit.message' | grep -oP '^v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
+              if [[ -z "$tag" ]]; then
+                tag=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.target_commitish == "'"$COMMIT_SHA"'") | .tag_name' | head -1 || echo "")
+              fi
+              if [[ -n "$tag" ]]; then
+                should_attach="true"
+                break
+              fi
+              if [[ $attempt -lt $max_attempts ]]; then
+                sleep 5
+              fi
+            done
+          fi
+          
+          printf 'tag=%s\nshould_attach=%s\n' "$tag" "$should_attach" >> "$GITHUB_OUTPUT"
+
   apk:
+    needs: [resolve-tag]
     if: github.repository == 'KeepOak/Branch-Agent'
     name: Build Android APK
     runs-on: ubuntu-latest
@@ -97,7 +155,7 @@ jobs:
         id: plan
         working-directory: mobile
         env:
-          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag || '' }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.tag }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
