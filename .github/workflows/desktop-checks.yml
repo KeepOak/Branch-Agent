@@ -70,7 +70,7 @@ jobs:
       - name: Check release publication order and public latest retries
         run: node --test scripts/publish-component-release.test.mjs
       - name: Check the installer builder and its signing hooks
-        run: node --test scripts/release-installers.test.mjs scripts/release-signing.test.mjs
+        run: node --test scripts/release-installers.test.mjs scripts/windows-launcher-icon.test.mjs scripts/release-signing.test.mjs
       - name: Check the one-line install scripts against a fixture release
         run: node --test scripts/install-scripts.test.mjs
       - name: Check desktop auto-update end to end on each platform's path
