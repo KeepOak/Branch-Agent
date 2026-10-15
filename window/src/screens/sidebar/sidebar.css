@@ -110,6 +110,12 @@ button.r1sb-cap:hover { color: var(--ink); }
 .r1sb-pv[data-unread] { color: var(--ink-2); font-weight: 600; }
 .r1sb-from { font-weight: 500; color: var(--accent-ink, var(--accent)); }
 .r1sb-row[data-offline] .r1sb-face { opacity: .6; }
+/* Faces are the status (preview .av.working, .row .unread): a working Trunk's face sits in the turning working ring
+   (face/face.css .working-ring); unread is the one small accent dot. No spinner or status words in a row. */
+.r1sb-ring { display: grid; place-items: center; flex: none; border-radius: 50%; }
+.r1sb-ring[data-still]::before { animation: none !important; }
+:root[data-still] .r1sb-ring::before { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .r1sb-ring::before { animation: none !important; } }
 .r1sb-more { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: none; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--ink-3); }
 .r1sb-more:hover, .r1sb-more:focus-visible { background: var(--fill); color: var(--ink); }
 .r1sb-rw:is(:hover, :focus-within) > .r1sb-more { display: grid; }
@@ -146,6 +152,9 @@ button.r1sb-cap:hover { color: var(--ink); }
 /* The icon is drawn in the disc's own white and inverted, so the disc stays white with a black icon in both themes. */
 .r1sb-upd svg { filter: invert(1); }
 .r1sb-upd:hover:not(:disabled) { transform: translateY(-1px); }
+/* A downloaded update waits for its gap: a calm dot, never the spinner (the chip is not spinning while it waits). */
+.r1sb-upd[data-ready] { position: relative; }
+.r1sb-upd[data-ready]::after { content: ""; position: absolute; top: 3px; right: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--on-accent); }
 .r1sb-upd[data-busy] { cursor: progress; background: conic-gradient(var(--accent) 0 30%, var(--on-accent) 30% 100%); animation: r1sb-spin 1s linear infinite; }
 @keyframes r1sb-pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes r1sb-spin { to { rotate: 360deg; } }
@@ -154,8 +163,6 @@ button.r1sb-cap:hover { color: var(--ink); }
 
 /* The person menu (PROTECTED, trimmed per owner items 16 and 22). */
 .r1sb-person { display: flex; flex-direction: column; }
-.r1sb-upd-ban { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; padding: 8px 8px 8px 12px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--ink); font-size: 13px; font-weight: 600; }
-.r1sb-upd-ban button { padding: 4px 12px; border: 0; border-radius: var(--r-pill); background: var(--on-accent); color: var(--accent); font-size: 12px; font-weight: 600; box-shadow: var(--gk-sh-thumb); }
 .r1sb-ph { padding: 6px 10px 4px; font-size: var(--fs-12-5); font-weight: 600; color: var(--ink-3); }
 .r1sb-people { display: flex; gap: 12px; padding: 4px 10px 8px; }
 .r1sb-person-chip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 12px; }
@@ -192,6 +199,10 @@ button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
   .r1-frame[data-wide="false"] .r1sb-row > :not(.r1sb-face) { display: none; }
   .r1-frame[data-wide="false"] .r1sb-row .r1sb-face { grid-row: auto; }
   .r1-frame[data-wide="false"] .r1sb-more { display: none !important; }
+  /* The rail keeps the unread dot on the face's corner (preview .rail9 .row > .unread). */
+  .r1-frame[data-wide="false"] .r1sb-row > .r1sb-meta:has(> .r1sb-unread) { display: block; position: absolute; top: 5px; right: 5px; visibility: visible; }
+  .r1-frame[data-wide="false"] .r1sb-row > .r1sb-meta > time { display: none; }
+  .r1-frame[data-wide="false"] .r1sb-row .r1sb-unread { width: 9px; height: 9px; box-shadow: 0 0 0 2px var(--side); }
   .r1-frame[data-wide="false"] .r1sb-rail-bins { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 8px; }
   .r1-frame[data-wide="false"] .r1sb-badge { position: absolute; top: -4px; right: -4px; min-width: 14px; height: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--ink-2); color: var(--bg); font: 600 9.5px/14px var(--sans); font-style: normal; }
   .r1-frame[data-wide="false"] .r1sb-foot { flex-direction: column; gap: 8px; padding: 8px 0; justify-content: center; }
@@ -214,18 +225,17 @@ button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
 .g-popover:has(> .r1sb-pop) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
 .r1sb-pop .g-menu { gap: 4px; }
 .r1sb-pop .g-menu-tiles { padding: 0 0 4px; margin-bottom: 0; }
-.r1sb-pop :is(.g-menu-row, .g-menu-tile, .r1sb-ph, .r1sb-people, .r1sb-look, .r1sb-upd-ban) {
+.r1sb-pop :is(.g-menu-row, .g-menu-tile, .r1sb-ph, .r1sb-people, .r1sb-look) {
   background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
   box-shadow: inset 0 0 0 1px var(--gp-edge); border-color: transparent; --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); --mute17c: var(--gp-ink-2); }
 .r1sb-pop :is(.g-menu-row, .r1sb-look) { border-radius: 999px; }
-.r1sb-pop :is(.r1sb-people, .r1sb-upd-ban) { border-radius: 14px; }
+.r1sb-pop .r1sb-people { border-radius: 14px; }
 .r1sb-pop .r1sb-ph { width: fit-content; padding: 2px 9px; border-radius: 999px; }
 .r1sb-pop .g-menu-row[data-gap] { margin-top: 4px; }
 .r1sb-pop .g-menu-row[aria-disabled="true"], .r1sb-pop .g-menu-tile[data-off] { opacity: .7; }
 .r1sb-pop :is(.g-menu-row, .g-menu-tile):is(:hover, :focus-visible):not([aria-disabled="true"]):not([data-off]) {
   background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
 .r1sb-pop.r1sb-person { gap: 4px; }
-.r1sb-pop .r1sb-upd-ban { margin-bottom: 0; }
 /* Move to › Group…: the existing groups as chips above the name field. */
 .r1sb-groups { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .r1sb-groups [aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--ink); }
@@ -288,3 +298,7 @@ button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
 .r1-fs .pop hr:not(#g48) { border: 0; height: 6px; margin: 0; }
 .r1-fs .pop .switch:not(#g48) { box-shadow: inset 0 0 0 1px var(--gp-edge); }
 :root[data-transparency="reduce"] .r1-fs .pop :is(.ph, .mi, .row-in, .fsw, .hint, .fpq, .tgrid) { background: var(--raise, var(--bg)); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* The sticky section labels (Pinned, Trunks…) are as opaque as the sidebar they sit in (frame.css .r1-sidebar: --side at
+   80% over the canvas), so rows scrolling under them never show through (owner, 2026-10-15). */
+.r1sb-head { background: color-mix(in srgb, var(--side) 80%, var(--bg)); }

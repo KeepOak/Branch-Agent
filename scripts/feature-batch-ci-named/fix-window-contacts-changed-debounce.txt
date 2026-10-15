@@ -1,0 +1,2 @@
+window:src/shell/coalesce.test.ts
+window:src/shell/group-drop.test.tsx

@@ -7,7 +7,10 @@ import {
   resolveExplicitAuthOrderSelection,
   setAuthProfileOrder,
 } from "../../agents/auth-profiles.js";
-import { SUBSCRIPTION_ONLY_SIGN_IN_MESSAGE } from "../../agents/auth-profiles/subscription-only.js";
+import {
+  isSubscriptionsOnly,
+  SUBSCRIPTION_ONLY_SIGN_IN_MESSAGE,
+} from "../../agents/auth-profiles/subscription-only.js";
 import { resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { refreshModelAuthStateAfterMutation } from "../model-auth-refresh.js";
@@ -97,13 +100,14 @@ export const modelsAuthOrderHandlers: GatewayRequestHandlers = {
         rejectInvalidOrder(`profileId ${invalidProfile} is unavailable for provider ${provider}`);
         return;
       }
-      // Agent-made order changes never put an API-key sign-in in line; owner changes stay as-is.
+      // With subscriptionsOnly, agent-made order changes never put an API-key sign-in in line; owner changes stay as-is.
       const agentMade =
         client?.internal?.agentRuntimeIdentity !== undefined ||
         isAgentSessionModelPatchOrigin() ||
         isSessionStatusModelPatchOrigin();
       if (
         agentMade &&
+        isSubscriptionsOnly(preparedSnapshot.config) &&
         profileIds?.some(
           (profileId) => preparedSnapshot.authStore.profiles[profileId]?.type === "api_key",
         )

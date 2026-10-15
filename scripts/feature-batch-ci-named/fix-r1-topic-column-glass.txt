@@ -1,0 +1,2 @@
+window:src/glass/smart-glass.test.ts
+window:src/screens/frame/Topics.test.tsx

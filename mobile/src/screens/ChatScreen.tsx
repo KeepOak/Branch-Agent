@@ -6,6 +6,7 @@ import type { ChatRow } from '../chats/chatList';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { OfflineBanner } from '../ui/OfflineBanner';
 import { Avatar } from './ChatsScreen';
 
 /** "12s", "3 min", "1 h 5 min": how long a turn worked. */
@@ -261,6 +262,11 @@ export function ChatScreen({ row, conversation, online, onBack }: { row: ChatRow
             ) : null}
           </View>
         </View>
+        {online ? null : (
+          <View style={{ paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
+            <OfflineBanner testID="chat-offline" message="Reconnecting to your computer… This chat may be out of date." />
+          </View>
+        )}
       </View>
       <View style={{ flex: 1 }}>{body}</View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, paddingHorizontal: layout.screenInset - space.xs, paddingTop: space.sm, paddingBottom: insets.bottom + space.sm, borderTopWidth: layout.hairline, borderTopColor: color.line, backgroundColor: color.bg }}>

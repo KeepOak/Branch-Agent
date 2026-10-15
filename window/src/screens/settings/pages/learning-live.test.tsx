@@ -9,6 +9,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { undeclaredControls } from "../../../glass/coming-registry";
 import { PAGES, pageFor } from "../nav";
 import { SettingsFrame } from "../SettingsFrame";
+import { LEARNING_ROWS } from "./learning";
 import { R1_PAGES } from "./plugged";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -85,11 +86,16 @@ describe("R1 Settings › Learning & self-updates is a native R1 page with the p
     expect(host.querySelector(".r1s-custom, .r1s-classic, [data-classic]")).toBeNull();
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Learning & self-updates");
     expect(host.querySelector(".r1s-lede")?.textContent).toContain(PAGES.learning.lede);
-    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(Object.keys(PREVIEW_REGULAR));
-    for (const [title, rows] of Object.entries(PREVIEW_REGULAR)) expect(labels(card(title)), title).toEqual(rows);
-    expect(host.textContent).not.toContain("comes to this page in a later update");
+    // Regular shows only what works today: the preview's rows that wait for a later update show from Advanced, and a
+    // card with nothing else at Regular (Gardener, Keeping a change) is left out.
+    const coming = new Set(LEARNING_ROWS.filter((r) => r.source.kind === "coming").map((r) => r.label));
+    const regular = Object.entries(PREVIEW_REGULAR).map(([title, rows]) => [title, rows.filter((l) => !coming.has(l))] as const).filter(([, rows]) => rows.length);
+    expect(regular.map(([title]) => title)).toEqual(["What Branch may change about itself", "Learning", "Budding"]);
+    expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(regular.map(([title]) => title));
+    for (const [title, rows] of regular) expect(labels(card(title)), title).toEqual(rows);
+    expect(host.textContent).not.toContain("later update");
     await click(button(host, "Learn more"));
-    expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(Object.keys(PREVIEW_REGULAR));
+    expect([...host.querySelectorAll(".r1s-help li")].map((li) => li.textContent)).toEqual(regular.map(([title]) => title));
   });
 
   it("shows all ten preview cards at Advanced, in order, with Classic's extra working rows listed", async () => {
@@ -97,8 +103,9 @@ describe("R1 Settings › Learning & self-updates is a native R1 page with the p
     await setLevel("Advanced");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
     for (const [title, extra] of Object.entries(EXTRA)) for (const label of extra) expect(labels(card(title)), title).toContain(label);
-    expect(labels(card("Gardener"))).toEqual(["Look after skills", "Look at skills now", "Rest a skill after", "Set it aside after", "What each night costs", "Clear replayed notes",
-      "What Rings is weighing", "Time zone for the night window", "Model that writes the diary", "Where Rings writes what it keeps", "Keep reports out of memory"]);
+    // The live rows come first; the Gardener later-update rows fold under their own line at the end of the card.
+    expect(labels(card("Gardener"))).toEqual(["Clear replayed notes", "What Rings is weighing", "Time zone for the night window", "Model that writes the diary", "Where Rings writes what it keeps", "Keep reports out of memory",
+      "Look after skills", "Look at skills now", "Rest a skill after", "Set it aside after", "What each night costs"]);
   });
 
   it("says why each Coming row waits in one plain sentence, never naming how Branch works inside", async () => {

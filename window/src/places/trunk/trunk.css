@@ -196,3 +196,5 @@ button.tk-prow:disabled:hover { background: none; }
 .tk-accounts-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 1px solid var(--line, #ddd); border-radius: 8px; margin-bottom: 6px; }
 .tk-accounts-list li[draggable="true"] { cursor: grab; }
 .tk-accounts-list label { display: flex; align-items: center; gap: 7px; min-width: 0; overflow-wrap: anywhere; }
+.tk-card { display: grid; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); }
+.tk-card-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

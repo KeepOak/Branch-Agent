@@ -79,9 +79,10 @@ function MemoryCard({ engine, level, files, scope, status, check }: CardProps) {
   const line = `${sizes.size > 1 ? "Up to " : ""}${fmt(loaded)}${limit ? ` of ${fmt(limit)}` : ""} characters load at the start of each conversation.`;
   const s = status.data;
   return <div className="lib-card" data-testid="memory-card">
-    <Ring part={loaded} whole={limit} label={line} />
+    {/* DA-43: a ring at zero reads as a loading spinner, so it only shows once something loads. */}
+    {loaded > 0 && <Ring part={loaded} whole={limit} label={line} />}
     <div className="lib-grow">
-      <b>{status.error ? "Memory needs attention" : plural(count, "memory", "memories") + (notes ? ` · ${plural(notes, "daily note", "daily notes")}` : "")}</b>
+      <b>{status.error ? "Memory needs attention" : (count ? plural(count, "memory", "memories") : "No memories yet") + (notes ? ` · ${plural(notes, "daily note", "daily notes")}` : "")}</b>
       <p>{status.error ? status.error : line}</p>
       {failed.filter(f => shownWhy(f.error)).map(f => <p key={f.agentId} className="lib-bad" role="alert">{f.trunk}: {f.error}</p>)}
       {shows(level, "advanced") && s && !status.error && <small className="lib-third">{engineName(s.provider)} · {s.embedding.ok ? "searches by meaning and words" : "searches by words only"}</small>}
@@ -134,7 +135,8 @@ function MemorySearch(props: SearchProps) {
     setResult({ q, hits, mode, errors: answers.flatMap(a => (a.e ? [`${a.t.identity?.name || a.t.id}: ${a.e}`] : [])) });
     setBusy(false);
   }
-  const scopeItems: MenuItem[] = [{ label: "Every Trunk", run: () => setScope("") }, { kind: "sep" }, ...trunks.map(t => ({ label: trunkDisplayName(t), run: () => setScope(t.id) }))];
+  // The scope in use is checked, so choosing it again reads as a no-op by design.
+  const scopeItems: MenuItem[] = [{ label: "Every Trunk", radio: true, checked: !scope, run: () => setScope("") }, { kind: "sep" }, ...trunks.map(t => ({ label: trunkDisplayName(t), radio: true, checked: scope === t.id, run: () => setScope(t.id) }))];
   return <div className="lib-search">
     <form className="lib-search-row" role="search" onSubmit={search}>
       <label className="lib-field"><LibIcon name="search" /><input aria-label="Search memory" type="search" placeholder={`Search what ${scopeName ?? "every Trunk"} remembers`} value={query} onChange={e => setQuery(e.target.value)} /></label>

@@ -7,6 +7,7 @@ import { chatTime } from '../chats/chatTime';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { OfflineBanner } from '../ui/OfflineBanner';
 import { useNow } from '../ui/useNow';
 
 const AVATAR = 52;
@@ -244,6 +245,7 @@ export function ChatsScreen({
   online,
   onRefresh,
   onComputer,
+  onSettings,
   onOpen,
   searchMessages,
   needsYou,
@@ -253,7 +255,10 @@ export function ChatsScreen({
   list: ChatListSnapshot;
   online: boolean;
   onRefresh: () => Promise<void>;
+  /** Opens Computers. */
   onComputer: () => void;
+  /** Opens Settings. */
+  onSettings?: () => void;
   /** Opens a chat. */
   onOpen?: (row: ChatRow) => void;
   /** Searches every chat's messages (sessions.search); without it, search matches names and last lines. */
@@ -321,19 +326,35 @@ export function ChatsScreen({
             ) : null}
           </Pressable>
         ) : null}
-        <Pressable
-          testID="computer-button"
-          accessibilityRole="button"
-          accessibilityLabel={online ? 'Your computer, connected' : 'Your computer, reconnecting'}
-          onPress={onComputer}
-          hitSlop={8}
-          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, gap: space.xs + 2, opacity: pressed ? 0.6 : 1 })}
-        >
-          <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: online ? color.ok : color.warn }} />
-          <ThemedText variant="body" tone="accentInk">
-            Computer
-          </ThemedText>
-        </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          {onSettings ? (
+            <Pressable
+              testID="settings-button"
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              onPress={onSettings}
+              hitSlop={8}
+              style={({ pressed }) => ({ minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+            >
+              <ThemedText variant="body" tone="accentInk">
+                Settings
+              </ThemedText>
+            </Pressable>
+          ) : null}
+          <Pressable
+            testID="computer-button"
+            accessibilityRole="button"
+            accessibilityLabel={online ? 'Computers, connected' : 'Computers, reconnecting'}
+            onPress={onComputer}
+            hitSlop={8}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, gap: space.xs + 2, opacity: pressed ? 0.6 : 1 })}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: online ? color.ok : color.warn }} />
+            <ThemedText variant="body" tone="accentInk">
+              Computers
+            </ThemedText>
+          </Pressable>
+        </View>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
         <ThemedText variant="largeTitle" accessibilityRole="header">
@@ -404,14 +425,7 @@ export function ChatsScreen({
           {messages.note}
         </ThemedText>
       ) : null}
-      {online ? null : (
-        <View testID="chats-offline" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, backgroundColor: color.warnTint, borderRadius: radius.md, padding: space.md }}>
-          <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: color.warn }} />
-          <ThemedText variant="footnote" tone="ink2" style={{ flex: 1 }}>
-            Reconnecting to your computer… These chats may be out of date.
-          </ThemedText>
-        </View>
-      )}
+      {online ? null : <OfflineBanner testID="chats-offline" message="Reconnecting to your computer… These chats may be out of date." />}
     </View>
   );
 

@@ -1,0 +1,2 @@
+engine:src/agents/build-worktrees/cleanup.test.ts
+window:src/places/settings/set2/computer-cleanup.test.tsx

@@ -212,18 +212,23 @@ it("#1049: draws the preview's Your phone tile after the app groups, and Pair a 
   expect(document.querySelector('[data-testid="pair"]')).not.toBeNull();
 });
 
-it("#1049: every app card shows its set-up time (preview TIME_T5); apps not wired yet keep the Coming action", async () => {
+it("drops the per-tile set-up times, and folds the apps that don't work yet into one More chat apps row", async () => {
   const { host } = await render("regular");
   const cards = [...host.querySelectorAll<HTMLElement>(".r1-ca-card")];
-  const sub = (name: string) => cards.find((c) => c.querySelector(".r1-ca-text b")?.textContent === name)?.querySelector(".r1-ca-text small")?.textContent;
-  expect(sub("WhatsApp Business")).toBe("About 15 minutes · needs a Meta business account");
-  expect(sub("iMessage")).toBe("About 5 minutes · needs a Mac");
-  expect(sub("Viber")).toBe("About 5 minutes");
-  expect(sub("A webhook of your own")).toBe("About 2 minutes");
-  // The catalogue's cards (an app only the engine lists keeps the engine's own line under its name).
-  const idle = cards.filter((c) => !/Connected|Manage/.test(c.textContent ?? "") && c.closest("section")?.querySelector("h3, b")?.textContent !== "Also in Branch" && !/Nostrish/.test(c.textContent ?? ""));
-  expect(idle.length).toBeGreaterThan(40);
-  expect(idle.filter((c) => !/^About \d+ minutes?/.test(c.querySelector(".r1-ca-text small")?.textContent ?? "")).map((c) => c.textContent)).toEqual([]);
+  expect(cards.some((c) => /About \d+ minutes?/.test(c.textContent ?? ""))).toBe(false);
+  const fold = host.querySelector<HTMLElement>("[data-later-rows]");
+  expect(fold?.querySelector(".r1s-later-btn")?.textContent).toMatch(/^More chat apps \(\d+\)$/);
+  // Apps that work lead: the first chat-app card is not greyed, and the greyed catalogue sits inside the fold.
+  expect(cards[0].getAttribute("aria-disabled")).not.toBe("true");
+  expect(fold?.querySelectorAll(".r1-ca-card").length).toBeGreaterThan(40);
   expect(host.textContent).not.toContain("Coming in a later update");
-  expect(cards.find((c) => c.querySelector(".r1-ca-text b")?.textContent === "Viber")?.querySelector(".r1-ca-action")?.textContent).toBe("Coming");
+});
+
+it("names the raw key behind Show progress as reactions only at Technical", async () => {
+  const advanced = await render("advanced");
+  expect(advanced.host.textContent).toContain("Branch has one switch for every app.");
+  expect(advanced.host.textContent).not.toContain("messages.statusReactions");
+  await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = "";
+  const technical = await render("technical");
+  expect(technical.host.textContent).toContain("messages.statusReactions.enabled");
 });

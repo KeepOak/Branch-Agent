@@ -9,6 +9,7 @@ import { undeclaredControls } from "../../../glass/coming-registry";
 import { PAGES, pageFor } from "../nav";
 import { SettingsFrame } from "../SettingsFrame";
 import { R1_PAGES } from "./plugged";
+import { FIND_ANYTHING_EVENT } from "../../find/find-event";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -75,5 +76,30 @@ describe("R1 Settings › Updates & about is a native R1 page with the preview's
     await click([...s.querySelectorAll("button")].find((b) => b.textContent === "Show the welcome tour"));
     expect(seen).toEqual(["tour"]);
     expect(undeclaredControls(host.querySelector(".r1s-col")!).filter((e) => !e.closest("[data-classic-block]"))).toEqual([]);
+  });
+});
+
+// Shortcuts, guide & apps: "Find anything" opens the window's palette, and "Get the apps" scrolls its section into view.
+// Both fail on main: Find anything dispatched a keydown the window never read, and Get the apps had no jump marker.
+describe("Updates & about: the rows that open or jump", () => {
+  const rowButton = (text: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(text));
+  afterEach(() => { delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView; });
+
+  it("Find anything asks the window to open the palette", async () => {
+    await mount();
+    const opened = vi.fn();
+    window.addEventListener(FIND_ANYTHING_EVENT, opened);
+    await click(rowButton("Find anything"));
+    window.removeEventListener(FIND_ANYTHING_EVENT, opened);
+    expect(opened).toHaveBeenCalledTimes(1);
+  });
+
+  it("Get the apps is a jump that scrolls to its section", async () => {
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function scrollIntoView(this: Element) { scrolled.push(this); };
+    await mount();
+    expect(rowButton("Get the apps")?.hasAttribute("data-jump-to")).toBe(true);
+    await click(rowButton("Get the apps"));
+    expect(scrolled.map((el) => el.id)).toEqual(["sec-updates-Branch on your other devices"]);
   });
 });

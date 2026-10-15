@@ -7,9 +7,12 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Keyboa
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
+import { TrunkHost } from "../../places-nav/TrunkHost";
 import { lookStore } from "../../places/settings/set1/appearance-store";
-import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
-import { ROWS, cardRows, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
+import { pinsOf } from "../../places/settings/pins";
+import { GOTO_SUB, LEVELS, PAGES, navAt, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
+import { COMING_FROM, ROWS, cardRows, comingRow, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
+import { LaterRows } from "../../glass/LaterRows";
 import { RowView, Segmented } from "./RowView";
 import { mergeRows, type PageSlots, type SlotControl } from "./slots";
 import { NOTHING_MATCHES, SEARCH_PLACEHOLDER, firstHit, searchSettings, type SearchHit, type SearchInput } from "./search";
@@ -20,6 +23,10 @@ import "./settings.css";
 const LEVEL_WORD = ["regular", "advanced", "technical"] as const;
 const LEVEL_KEY = "branch.level";
 export const SECTION_COMING = (card: string) => `${card} comes to this page in a later update.`;
+/** What a page is for, for a page with nothing at the level shown: the empty state says what would go here. */
+const NOTHING_AT_REGULAR: Partial<Record<PageId, string>> = {
+  signins: "This page keeps the sign-ins and API keys your Trunks use to reach other services. Nothing here needs a change at this level. Show Advanced to see what is stored and to add or remove one.",
+};
 export const ASK_COMING = "Asking a Trunk from Settings comes in a later update.";
 export const MAKE_DEFAULT_COMING = "Making a Trunk the default from Settings comes in a later update.";
 const FINE = "Fine-tune each part";
@@ -75,11 +82,58 @@ export type SettingsFrameProps = {
   pages?: PageSlots;
 };
 
+/** The narrow layout hides group names and shows every page in one strip (settings.css, max-width 760px). */
+function useNarrowNav(): boolean {
+  const query = "(max-width: 760px)";
+  const [narrow, setNarrow] = useState(() => {
+    try { return typeof matchMedia === "function" && matchMedia(query).matches; } catch { return false; }
+  });
+  useEffect(() => {
+    let list: MediaQueryList;
+    try { list = matchMedia(query); } catch { return; }
+    const apply = () => setNarrow(list.matches);
+    list.addEventListener?.("change", apply);
+    return () => list.removeEventListener?.("change", apply);
+  }, []);
+  return narrow;
+}
+
 function NavButton({ page, current, onOpen, sub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string }) {
   return (
     <button type="button" className="r1s-nav" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} onClick={onOpen}>
       <span>{page.title}</span>{sub ? <small>{sub}</small> : null}
     </button>
+  );
+}
+
+/** Regular: four group buttons, and the open group's pages. Advanced and Technical: the full nav, every group open. */
+function NavList({ level, narrow, shownPage, onOpen }: { level: Level; narrow: boolean; shownPage: PageId; onOpen: (id: PageId) => void }) {
+  const shown = navAt(level);
+  const openGroup = shown.groups.find((g) => g.pages.some((p) => p.id === shownPage))?.title;
+  const sub = (id: PageId) => id === "goto" ? GOTO_SUB : undefined;
+  return (
+    <>
+      {shown.top.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={sub(p.id)} onOpen={() => onOpen(p.id)} />)}
+      {shown.groups.map((g) => {
+        const pages = g.pages.filter((p) => pageShown(p.id, level));
+        if (!pages.length) return null;
+        const open = level > 0 || narrow || g.title === openGroup;
+        return (
+          <div key={g.title} className="r1s-fold" role="group" aria-label={g.title} data-open={open ? "true" : "false"} style={{ display: "contents" }}>
+            {level === 0 ? (
+              <div role="button" tabIndex={0} className="r1s-grp g-label" aria-expanded={open} onClick={() => onOpen(pages[0].id)} onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();
+                onOpen(pages[0].id);
+              }}>{g.title}</div>
+            ) : (
+              <div className="r1s-grp g-label">{g.title}</div>
+            )}
+            {open ? pages.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={sub(p.id)} onOpen={() => onOpen(p.id)} />) : null}
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -162,6 +216,7 @@ function CardRows({ rows, ...host }: RowHost & { rows: Row[] }) {
 
 export function SettingsFrame(props: SettingsFrameProps) {
   const { engine } = props;
+  const narrow = useNarrowNav();
   const slots = props.pages ?? NO_SLOTS;
   const rows = useMemo(() => mergeRows(props.rows ?? ROWS, slots), [props.rows, slots]);
   const [level, setLevel] = useLevel(engine);
@@ -209,13 +264,20 @@ export function SettingsFrame(props: SettingsFrameProps) {
   };
 
   const spec = PAGES[shownPage];
-  const sections = spec.cards.flatMap((card) => {
+  // General's Pinned card shows only once the person has pinned a row, as in the preview.
+  const pinCount = pinsOf(lookStore(engine).snap.look).length;
+  const cards = spec.cards.filter((card) => !(shownPage === "general" && card === "Pinned" && !pinCount));
+
+  const controls = slots[shownPage]?.controls;
+  const sections = cards.flatMap((card) => {
     const all = rows.filter((r) => r.page === shownPage && r.card === card);
-    const visible = cardRows(shownPage, card, level, hints, rows);
+    const visible = cardRows(shownPage, card, level, hints, rows, controls);
     if (all.length && !visible.length) return [];
+    // A section with no rows yet is all Coming: Regular shows only what works today.
+    if (!all.length && level < COMING_FROM) return [];
     return [{ card, visible }];
   });
-  const first = pageFirstLevel(shownPage, hints, rows);
+  const first = pageFirstLevel(shownPage, hints, rows, controls);
   const loadFailed = typeof config === "string";
   const invalid = config && typeof config === "object" && config.valid === false ? configIssues(config.issues) : null;
   const levelLine = LEVELS[level].line;
@@ -234,18 +296,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </div>
         <nav className="r1s-list" aria-label="Settings pages">
           {q.trim() ? <Results engine={engine} hits={hits} onOpen={open} onMakeDefault={props.onTrunk ? (id) => { setQ(""); props.onTrunk?.(id, "makeDefault"); } : undefined} /> : (
-            <>
-              {TOP_PAGES.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={p.id === "goto" ? GOTO_SUB : undefined} onOpen={() => go(p.id)} />)}
-              {NAV.map((g) => {
-                const pages = g.pages.filter((p) => pageShown(p.id, level));
-                return pages.length ? (
-                  <div key={g.title} role="group" aria-label={g.title} style={{ display: "contents" }}>
-                    <div className="r1s-grp g-label">{g.title}</div>
-                    {pages.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} onOpen={() => go(p.id)} />)}
-                  </div>
-                ) : null;
-              })}
-            </>
+            <NavList level={level} narrow={narrow} shownPage={shownPage} onOpen={go} />
           )}
         </nav>
       </aside>
@@ -283,21 +334,28 @@ export function SettingsFrame(props: SettingsFrameProps) {
               {invalid.length ? <ul>{invalid.map((line, i) => <li key={i}>{line}</li>)}</ul> : null}
             </div>
           ) : null}
-          {sections.length ? sections.map(({ card, visible }) => (
+          {sections.length ? sections.map(({ card, visible }) => {
+            // The section's later-update rows fold into one line; its live rows draw as they always did.
+            const later = visible.filter((row) => comingRow(row, controls));
+            const live = visible.filter((row) => !comingRow(row, controls));
+            return (
+            // A section with no rows yet collapses to one quiet line, not an empty card: nothing hollow to look at.
+            visible.length ? (
             <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title}>
               {card ? <h2 className="g-label">{card}</h2> : null}
-              {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} /> : (
-                // A section with no rows in the table yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
-                <Coming engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
-                  <div className="r1s-row">
-                    <b className="g-label">Coming</b>
-                    <small className="r1s-note g-label" data-lines>{SECTION_COMING(card || spec.title)}</small>
-                  </div>
-                </Coming>
-              )}
+              {live.length ? <CardRows engine={engine} rows={live} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} /> : null}
+              {later.length ? <LaterRows count={later.length}><CardRows engine={engine} rows={later} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} /></LaterRows> : null}
             </section>
-          )) : (
+            ) : (
+              // Nothing to show yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
+              <Coming key={card} engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
+                <p id={`sec-${shownPage}-${card}`} className="r1s-quiet g-label" aria-label={card || spec.title} data-lines><b>{card || spec.title}</b> · Coming. {SECTION_COMING(card || spec.title)}</p>
+              </Coming>
+            )
+            );
+          }) : (
             <div className="r1s-empty g-clear">
+              {NOTHING_AT_REGULAR[shownPage] ? <p className="g-label" data-lines>{NOTHING_AT_REGULAR[shownPage]}</p> : null}
               <p className="g-label">These settings show at {first !== null && first > level ? LEVELS[first].label : "Advanced"}.</p>
               <button type="button" className="r1s-btn" data-local="" onClick={() => setLevel(first !== null && first > level ? first : 1)}>Show {first !== null && first > level ? LEVELS[first].label : "Advanced"}</button>
             </div>
@@ -305,6 +363,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </div>
         </>}
       </div>
+      <TrunkHost engine={engine} level={LEVEL_WORD[level]} openSettings={(page) => go(pageFor(page))} openPlace={(place) => props.onOpenPlace?.(place)} />
     </div>
   );
 }

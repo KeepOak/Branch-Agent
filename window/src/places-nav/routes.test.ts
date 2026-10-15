@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PLACES, loadRoute, parseRoute, saveRoute, windowTitle } from "./routes";
+import { PLACE_NAMES, PLACES, loadRoute, parseRoute, placeTitle, saveRoute, windowTitle, type PlaceId } from "./routes";
 
 describe("routes", () => {
   it("parses saved routes and refuses damaged ones", () => {
@@ -33,5 +33,24 @@ describe("routes", () => {
       history.replaceState({}, "", original);
       sessionStorage.removeItem("branch.route");
     }
+  });
+});
+
+describe("place titles", () => {
+  const every: PlaceId[] = ["overview", "canopy", "inbox", "automations", "library", "people", "customize", "office", "seedbank"];
+  it("gives every place a human title, never its raw id", () => {
+    for (const id of every) {
+      const title = placeTitle(id);
+      expect(title).toBe(PLACE_NAMES[id]);
+      expect(title).not.toBe(id);
+      expect(title).toMatch(/^[A-Z][a-z]+$/);
+    }
+  });
+  it("names the places in the sidebar the same way the registry does", () => {
+    for (const place of PLACES) expect(placeTitle(place.id)).toBe(place.name);
+  });
+  it("names Grove and Seedbank, which have no sidebar row", () => {
+    expect(placeTitle("office")).toBe("Grove");
+    expect(placeTitle("seedbank")).toBe("Seedbank");
   });
 });
