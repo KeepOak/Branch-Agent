@@ -77,11 +77,11 @@ describe("read-only model runtime information", () => {
   });
 
   it.each([
-    ["cooldown", "resting after a limit"],
-    ["auth-failed", "sign-in needs attention"],
-    ["missing-auth", "sign-in needed"],
-    ["unsupported-runtime", "runtime unavailable"],
-    [undefined, "unavailable"],
+    ["cooldown", "Resting after a limit"],
+    ["auth-failed", "Sign-in needs attention"],
+    ["missing-auth", "Sign-in needed"],
+    ["unsupported-runtime", "Runtime unavailable"],
+    [undefined, "Unavailable"],
   ])("shows the known unavailable reason %s in the actual model option", async (unavailableReason, expected) => {
     const model = readModel({ id: "test-model", provider: "test-provider", available: false, unavailableReason });
     if (!model) throw new Error("Model fixture must be valid");

@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { readScreens } from './manifest.mjs';
 import { checkedStep } from './dead-click.mjs';
 import { gatewayPort } from './gateway-port.mjs';
-import { previewState } from './preview.mjs';
+import { drivePreview } from './preview.mjs';
 
 const require = createRequire(new URL('../../engine/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
@@ -35,6 +35,9 @@ try {
     page.on('pageerror', (error) => consoleErrors.push(`${theme}/${width}: ${error.message}`));
     await page.addInitScript(([url, key, look]) => {
       window.branchDesktop = { gatewayUrl: url, gatewayToken: key };
+      // screens.json drives the Classic window until each R1 screen port lands; ?r1 opens the R1 frame.
+      if (new URLSearchParams(location.search).has('r1')) localStorage.removeItem('branch.classic');
+      else localStorage.setItem('branch.classic', '1');
       localStorage.setItem('branch.theme', look);
       localStorage.setItem('branch-proto-welcomed', '1');
       localStorage.setItem('branch-proto-seen13', '1');
@@ -51,13 +54,28 @@ try {
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.locator('[data-connection=ready]').waitFor({ timeout: 60000 });
         await page.getByText('Researcher', { exact: true }).first().waitFor({ state: 'attached', timeout: 30000 });
-        if (width === 700 && ['main-chat', 'new-menu', 'settings-general', 'settings-accounts', 'add-claude-account', 'settings-updates', 'group-chat', 'topics', 'row-menu'].includes(screen.id)) {
+        if (width === 700 && ['main-chat', 'new-menu', 'new-trunk-menu', 'settings-general', 'settings-accounts', 'add-claude-account', 'settings-updates', 'group-chat', 'topics', 'row-menu'].includes(screen.id)) {
           const list = page.getByTestId('list-toggle');
           // At narrow widths the button opens a slide-out drawer. aria-pressed
           // describes the desktop rail, not the drawer's open state.
           if (!(await page.locator('.frame').evaluate((node) => node.classList.contains('slide-open')))) await list.click();
         }
         for (const step of screen.steps) await checkedStep(page, step, locate);
+        await page.screenshot({ path: resolve(out, `${stem}.png`) });
+        shots.push(`${stem}.png`);
+      } catch (error) {
+        failures.push(`${stem}: ${error.message}`);
+        await page.screenshot({ path: resolve(out, `${stem}-failed.png`) }).catch(() => {});
+      }
+    }
+    {
+      const stem = `${theme}-${width}-r1-frame`;
+      try {
+        await page.evaluate(() => localStorage.setItem('branch.route', JSON.stringify({ kind: 'chat', key: null })));
+        await page.goto(`${windowUrl}/?r1`, { waitUntil: 'domcontentloaded' });
+        await page.locator('.r1-frame .g-pill').waitFor({ timeout: 60000 });
+        await page.getByText('Reconnecting…', { exact: true }).waitFor({ state: 'detached', timeout: 60000 });
+        if (await page.locator('[data-connection]').count()) throw new Error('?r1 rendered the Classic window');
         await page.screenshot({ path: resolve(out, `${stem}.png`) });
         shots.push(`${stem}.png`);
       } catch (error) {
@@ -72,23 +90,17 @@ try {
       for (const screen of screens) {
         const stem = `${theme}-${width}-${screen.id}`;
         try {
-          await preview.evaluate((state) => {
-            closePop(); closeDlg();
-            if (state.kind === 'grove') { openGroveT5(); return; }
-            if (state.kind === 'settings') { S.view = 'settings'; S.setPage = state.page; render(); return; }
-            S.view = state.view;
-            if (state.chat) S.chat = state.chat;
-            if (state.tabs) Object.assign(S.tabs, state.tabs);
-            if (state.tools9) S.tools9 = { ...S.tools9, ...state.tools9 };
-            if (state.stage) S.stage = state.stage;
-            if ('pane' in state) S.pane = state.pane;
-            render();
-          }, previewState(screen.id));
+          await drivePreview(preview, screen.id);
           if (screen.id === 'add-claude-account') await preview.getByText('Add a Claude account', { exact: true }).first().click().catch(() => {});
           if (screen.id === 'row-menu') await preview.locator('.row[data-id]').first().click({ button: 'right' }).catch(() => {});
           await preview.screenshot({ path: resolve(out, `${stem}-preview.png`) });
           pairs.push({ app: `${stem}.png`, preview: `${stem}-preview.png` });
-        } catch (error) { failures.push(`${stem} preview: ${error.message}`); }
+        } catch (error) {
+          const message = error.message.includes(`preview for ${screen.id}`)
+            ? error.message
+            : `Cannot drive preview for ${screen.id}: ${error.message}`;
+          failures.push(`${stem} preview: ${message}`);
+        }
       }
       await preview.close();
     }
@@ -101,6 +113,6 @@ if (pairs.length) {
   const cells = pairs.map(({ app, preview }) => `<figure><img src="${app}"><img src="${preview}"><figcaption>${app.replace('.png', '')}</figcaption></figure>`).join('\n');
   await writeFile(resolve(out, 'pairs.html'), `<!doctype html><meta charset="utf-8"><title>Visual tour parity</title><style>body{font:14px system-ui;background:#111;color:white}figure{margin:28px 0;display:grid;grid-template-columns:1fr 1fr;gap:12px}img{width:100%}figcaption{grid-column:1/-1}</style><h1>App / v23 preview</h1>${cells}`);
 }
-await writeFile(resolve(out, 'report.md'), `# Visual tour\n\n${shots.length}/${screens.length * 4} captures.\n\n## Dead controls\n${failures.map((x) => `- ${x}`).join('\n') || 'None'}\n\n## Console errors\n${consoleErrors.map((x) => `- ${x}`).join('\n') || 'None'}\n`);
-console.log(`${shots.length}/${screens.length * 4} captures; ${failures.length} dead controls; ${consoleErrors.length} console errors`);
+await writeFile(resolve(out, 'report.md'), `# Visual tour\n\n${shots.length}/${(screens.length + 1) * 4} captures.\n\n## Dead controls\n${failures.map((x) => `- ${x}`).join('\n') || 'None'}\n\n## Console errors\n${consoleErrors.map((x) => `- ${x}`).join('\n') || 'None'}\n`);
+console.log(`${shots.length}/${(screens.length + 1) * 4} captures; ${failures.length} dead controls; ${consoleErrors.length} console errors`);
 if (failures.length || consoleErrors.length) process.exitCode = 1;

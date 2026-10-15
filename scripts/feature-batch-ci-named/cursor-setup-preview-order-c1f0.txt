@@ -1,0 +1,4 @@
+window:src/places/settings/set2/developer.test.tsx
+window:src/setup/setup-preview.test.tsx
+window:src/setup/setup.test.tsx
+window:src/setup/talk-setup.test.ts

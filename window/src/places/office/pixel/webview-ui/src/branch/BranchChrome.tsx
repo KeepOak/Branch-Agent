@@ -2,15 +2,20 @@
  * The office's toolbar and settings — upstream components/BottomToolbar.tsx and SettingsModal.tsx
  * with Branch's entries. Upstream's VS Code / CLI-only entries (Open Sessions Folder, Watch All
  * Sessions, Instant Detection hooks, external asset directories) have no Branch counterpart.
+ * The toolbar is app chrome, not part of the room: it uses the app's button look and type
+ * (.pa-btn in office.css, built from the app's theme tokens), and its menu is "Grove options"
+ * so it is never mistaken for the app's Settings. Pixel art stays in the room itself.
  */
 import { useRef, useState } from 'react';
 
-import { Button } from '../components/ui/Button.js';
 import { Checkbox } from '../components/ui/Checkbox.js';
 import { MenuItem } from '../components/ui/MenuItem.js';
 import { Modal } from '../components/ui/Modal.js';
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { transport } from '../transport/index.js';
+
+/** Name of the office's own options (export / import / reset layout, sound, names, areas). */
+const GROVE_OPTIONS = 'Grove options';
 
 export function BranchToolbar(p: {
   isEditMode: boolean;
@@ -22,21 +27,21 @@ export function BranchToolbar(p: {
   onNewAgent?: () => void;
 }) {
   return (
-    <div className="absolute bottom-10 left-10 z-20 flex items-center gap-4 pixel-panel p-4 pa-ui" data-testid="office-toolbar">
+    <div className="absolute bottom-10 left-10 z-20 pa-bar" role="toolbar" aria-label="Grove" data-testid="office-toolbar">
       {p.onNewAgent && (
-        <Button variant="accent" size="md" onClick={p.onNewAgent} title="Make a new Trunk">
-          + Trunk
-        </Button>
+        <button type="button" className="pa-btn pri" onClick={p.onNewAgent} aria-label="New Trunk" title="Make a new Trunk">
+          Trunk
+        </button>
       )}
-      <Button size="md" variant={p.isEditMode ? 'active' : 'default'} onClick={p.onToggleEditMode} title="Edit office layout">
+      <button type="button" className="pa-btn" aria-pressed={p.isEditMode} onClick={p.onToggleEditMode} title="Edit the office layout">
         Layout
-      </Button>
-      <Button size="md" variant={p.isTrunksOpen ? 'active' : 'default'} onClick={p.onOpenTrunks} title="Looks and desks">
+      </button>
+      <button type="button" className="pa-btn" aria-pressed={p.isTrunksOpen} onClick={p.onOpenTrunks} title="Looks and desks">
         Trunks
-      </Button>
-      <Button size="md" variant={p.isSettingsOpen ? 'active' : 'default'} onClick={p.onToggleSettings} title="Settings">
-        Settings
-      </Button>
+      </button>
+      <button type="button" className="pa-btn" aria-pressed={p.isSettingsOpen} onClick={p.onToggleSettings} title="Options for this office: layout file, sound, names, areas">
+        {GROVE_OPTIONS}
+      </button>
     </div>
   );
 }
@@ -58,7 +63,7 @@ export function BranchSettings(p: {
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
   const fileRef = useRef<HTMLInputElement>(null);
   return (
-    <Modal isOpen={p.isOpen} onClose={p.onClose} title="Settings" className="pa-panel">
+    <Modal isOpen={p.isOpen} onClose={p.onClose} title={GROVE_OPTIONS} className="pa-panel">
       <MenuItem
         onClick={() => {
           p.onExportLayout();

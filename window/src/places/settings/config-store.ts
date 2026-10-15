@@ -43,7 +43,7 @@ export class ConfigStore {
   error: string | undefined;
   private chain: Promise<unknown> = Promise.resolve();
   private listeners = new Set<Listener>();
-  private loading: Promise<void> | null = null;
+  private loading: Promise<boolean> | null = null;
   private revision = 0;
   private engine: WindowEngine;
   constructor(engine: WindowEngine) {
@@ -58,11 +58,12 @@ export class ConfigStore {
     this.listeners.forEach((fn) => fn());
   }
 
-  load(): Promise<void> {
+  /** Resolves true when the settings were read; a failure is kept in `error` and resolves false. */
+  load(): Promise<boolean> {
     const revision = this.revision;
     this.loading ??= this.engine.request<ConfigSnapshot>("config.get", {}).then(
-      (snap) => { if (revision === this.revision) { this.snap = snap; this.error = undefined; } },
-      (e: unknown) => { if (revision === this.revision) this.error = errorText(e); },
+      (snap) => { if (revision === this.revision) { this.snap = snap; this.error = undefined; } return true; },
+      (e: unknown) => { if (revision === this.revision) this.error = errorText(e); return false; },
     ).finally(() => { this.loading = null; this.emit(); });
     return this.loading;
   }

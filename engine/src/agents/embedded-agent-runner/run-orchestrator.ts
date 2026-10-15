@@ -25,10 +25,7 @@ import {
 } from "../../plugins/hook-agent-context.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { loadPluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.js";
-import {
-  runOutsidePluginRuntimeGenerationScope,
-  withPluginRuntimeGenerationScope,
-} from "../../plugins/runtime/generation-scope.js";
+import { runOutsidePluginRuntimeGenerationScope } from "../../plugins/runtime/generation-scope.js";
 import {
   AsyncWorkScope,
   captureAsyncWorkTracker,
@@ -59,6 +56,7 @@ import {
   acquireReadOnlyPreparedModelRuntime,
 } from "../prepared-model-runtime.js";
 import { settleFailedRequesterRun, settleRequesterRun } from "../requester-run-settlement.js";
+import { withPreparedRunJournal } from "../run-journal.js";
 import {
   applyAgentRunSessionTargetIdentity,
   resolveAgentRunSessionTarget,
@@ -99,6 +97,7 @@ import { createEmbeddedRunProgressController } from "./run/progress-controller.j
 import { createRecoveryMessageActionTurnCapability } from "./run/recovery-message-action-capability.js";
 import { resolveInitialEmbeddedRunModel } from "./run/runtime-resolution.js";
 import { assertAgentHarnessRunAdmission, backfillSessionKey } from "./run/session-bootstrap.js";
+import { createSupersededSetupRetry } from "./run/superseded-setup-retry.js";
 import type { EmbeddedAgentRunResult } from "./types.js";
 import {
   createUsageAccumulator,
@@ -249,12 +248,13 @@ async function runEmbeddedAgentInternal(
       const refresh = createEmbeddedAgentPluginRuntimeRefresh(params);
       const usage = createUsageAccumulator();
       let refreshed = false;
+      const setupRetry = createSupersededSetupRetry(() => params);
       let generationCleanup = Promise.resolve();
       let terminal: ReturnType<typeof createAgentLifecycleTerminalBackstop> | undefined;
       let assistantErrorTranscript: ReturnType<typeof createAssistantErrorTranscript> | undefined;
       const ownsAssistantErrorTranscript = params.assistantErrorTranscript === undefined;
       const onAgentEvent = params.onAgentEvent;
-      const onAttemptStart = params.onAttemptStart;
+      const onAttemptStart = setupRetry.observeAttemptStart(params.onAttemptStart);
       const runGeneration = async (): Promise<EmbeddedAgentRunResult> => {
         throwIfAborted();
         assertInitialOperatorModelPolicy(params, sessionAdmission?.entry);
@@ -265,7 +265,7 @@ async function runEmbeddedAgentInternal(
           ...params,
           // Preserve the admitted writer claim alongside the already resolved storage identity.
           sessionTarget: { ...params.sessionTarget, ...runSessionTarget },
-        });
+        }).catch(setupRetry.failAttempt);
         if (cliDispatched) {
           return cliDispatched;
         }
@@ -341,7 +341,10 @@ async function runEmbeddedAgentInternal(
           agentDir: requestedAgentDir,
           // Shared credential inheritance stays anchored to its compatibility owner;
           // the selected session agent already owns this prepared runtime.
-          inheritedAuthDir: resolveLegacyInheritedAuthDir(config),
+          inheritedAuthDir: resolveLegacyInheritedAuthDir(config, undefined, undefined, {
+            agentId: requestedWorkspaceResolution.agentId,
+            agentDir: requestedAgentDir,
+          }),
           workspaceDir: runtimeWorkspaceResolution.workspaceDir,
           preserveWorkspaceDirOnRefresh: !runtimeWorkspaceResolution.isCanonicalWorkspace,
           ...(params.allowGatewaySubagentBinding ? { allowGatewaySubagentBinding: true } : {}),
@@ -591,7 +594,7 @@ async function runEmbeddedAgentInternal(
               });
             };
             const runWithPreparedRuntime = () =>
-              withPluginRuntimeGenerationScope(preparedModelRuntime, () => {
+              withPreparedRunJournal(params, preparedModelRuntime, () => {
                 context = AsyncLocalStorage.snapshot();
                 return runPrepared();
               });
@@ -651,7 +654,7 @@ async function runEmbeddedAgentInternal(
         let result: EmbeddedAgentRunResult;
         try {
           for (;;) {
-            const run = () => refresh.run(runGeneration);
+            const run = () => setupRetry.run(refresh, runGeneration, () => generationCleanup);
             result = await (refreshed
               ? runOutsidePreparedModelRuntimePluginGenerationScope(() =>
                   runOutsidePluginRuntimeGenerationScope(run),

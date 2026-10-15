@@ -1,9 +1,10 @@
+import { computerActionLabel, isComputerToolName, isScreenToolName, screenActionLabel } from "./computer-action-label";
 import { readBrowserPresentation, type BrowserPresentation } from "./browser-presentation";
 // The thread's blocks, built from a live run's `agent` events (in seq order) and from `chat.history`.
 import type { RunEvent } from "../connect/stream-order";
 import type { Sender } from "../rooms/sender";
 
-export type ApprovalState = "pending" | "allowed" | "denied";
+type ApprovalState = "pending" | "allowed" | "denied";
 export type StepStatus = "running" | "ok" | "failed" | "denied";
 export type ApprovalDecision = "allow-once" | "allow-always" | "deny";
 
@@ -40,17 +41,23 @@ export type MessageMeta = {
   owner?: boolean;
   /** The engine omits this message from future model context while keeping it in the transcript. */
   excluded?: boolean;
+  /** Pinned in this conversation (sessions.messages.pin). */
+  pinned?: boolean;
 };
 
 /** A picture, sound, video or file carried by a message. `src` is a data: or http(s) address. */
 export type Attachment = {
   kind: "image" | "audio" | "video" | "file";
+  artifactId?: string;
   name: string;
   mimeType?: string;
   src?: string;
   sizeBytes?: number;
   /** False when the engine left the bytes out of the history ("Not kept in the history"). */
   kept: boolean;
+  /** True when `src` is a gateway-host file path from the canonical `__branch.media` envelope. Only such
+   *  paths go through the authenticated media-ticket flow; other single-slash srcs render as before. */
+  local?: boolean;
 };
 
 export type FileChange = { path: string; added: number; removed: number; diff?: string };
@@ -78,19 +85,19 @@ export type Block =
   | { kind: "user"; key: string; text: string; meta?: MessageMeta; attachments?: Attachment[] }
   /** Words you sent while the turn worked, which it took at its next step (`__branch.steerTargetRunId`). Part of
    *  that turn, not a turn of its own. */
-  | { kind: "steer"; key: string; text: string; meta?: MessageMeta }
+  | { kind: "steer"; key: string; text: string; meta?: MessageMeta; attachments?: Attachment[] }
   | { kind: "text"; key: string; text: string; streaming: boolean; meta?: MessageMeta; attachments?: Attachment[] }
   | { kind: "thinking"; key: string; text: string; live: boolean }
   | { kind: "preamble"; key: string; text: string }
   | { kind: "plan"; key: string; steps: { step: string; status: "pending" | "in_progress" | "completed" }[] }
   | { kind: "usage"; key: string; input: number; output: number; total: number }
   /** `codeMode`: an `exec` running code (Code Mode); its result's own status says whether the code failed. */
-  | { kind: "step"; key: string; outputKey?: string; tool: string; title: string; detail: string; status: StepStatus; input?: string; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number; codeMode?: boolean }
+  | { kind: "step"; key: string; outputKey?: string; tool: string; originalTool?: string; title: string; detail: string; status: StepStatus; input?: string; output?: string; changes?: FileChange[]; browser?: BrowserPresentation; at?: number; codeMode?: boolean }
   | { kind: "approval"; key: string; approval: Approval }
   /** The end of a turn. `stopped`: you (or the engine) stopped it; the thread says so instead of "Done in". */
   | { kind: "done"; key: string; runId: string; durationMs?: number; stopped?: boolean }
   | { kind: "error"; key: string; runId?: string; message: string }
-  | { kind: "notice"; key: string; text: string; at?: number }
+  | { kind: "notice"; key: string; text: string; at?: number; topicKey?: string }
   | { kind: "status"; key: string; phase: string; attempt?: number; maxAttempts?: number };
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -106,6 +113,12 @@ export function recordedAt(value: unknown): { at?: number } {
 export function describeToolCall(_name: string, args: unknown): string {
   const a = record(args);
   const nested = record(a.args);
+  if (isComputerToolName(_name)) {
+    return computerActionLabel(str(a.action) || str(nested.action));
+  }
+  if (isScreenToolName(_name)) {
+    return screenActionLabel(str(a.action) || str(nested.action));
+  }
   const command = str(a.command) || str(nested.command);
   if (command) {
     return command;
@@ -141,7 +154,7 @@ export function wrapperFailed(isError: unknown, text: string, details?: unknown)
  * (`details`, and the text) says `"status":"failed"` (engine code-mode-execution.ts, tool-search-runtime.ts). When
  * the code read web content the text is wrapped in external-content markers, so the JSON is found inside it.
  */
-export function codeModeStatus(text: string, details?: unknown): string | null {
+function codeModeStatus(text: string, details?: unknown): string | null {
   const fromDetails = record(details).status;
   if (typeof fromDetails === "string") return fromDetails;
   try {
@@ -213,7 +226,7 @@ function addThinking(b: Builder, event: RunEvent): void {
 function startStep(b: Builder, id: string, name: string, args: unknown, at: number, runId: string): void {
   b.text = null;
   b.thinking = null;
-  b.blocks.push({ kind: "step", key: id, outputKey: `${runId}:${id}`, tool: name, title: describeToolCall(name, args), detail: "", status: "running", input: toolInput(args), changes: readFileChanges(args), ...recordedAt(at), ...(isCodeModeCall(name, args) ? { codeMode: true } : {}) });
+  b.blocks.push({ kind: "step", key: id, outputKey: `${runId}:${id}`, tool: name, originalTool: name, title: describeToolCall(name, args), detail: "", status: "running", input: toolInput(args), changes: readFileChanges(args), ...recordedAt(at), ...(isCodeModeCall(name, args) ? { codeMode: true } : {}) });
   b.steps.set(id, b.blocks.length - 1);
 }
 
@@ -230,7 +243,7 @@ function onTool(b: Builder, event: RunEvent): void {
     else {
       const at = b.steps.get(id)!;
       const step = b.blocks[at] as Extract<Block, { kind: "step" }>;
-      b.blocks[at] = { ...step, tool: name || step.tool, title: describeToolCall(name, d.args) || step.title, input: toolInput(d.args), changes: readFileChanges(d.args), ...(isCodeModeCall(name || step.tool, d.args) ? { codeMode: true } : {}) };
+      b.blocks[at] = { ...step, tool: name || step.tool, originalTool: name || step.originalTool, title: describeToolCall(name, d.args) || step.title, input: toolInput(d.args), changes: readFileChanges(d.args), ...(isCodeModeCall(name || step.tool, d.args) ? { codeMode: true } : {}) };
     }
     return;
   }
@@ -354,6 +367,9 @@ function onLifecycle(b: Builder, event: RunEvent, approvals: ReadonlyMap<string,
   }
 }
 
+/** `run_status` phases that explain an account change in plain words and stay in the thread. */
+const NOTICE_PHASES = new Set(["account_switched", "account_limited"]);
+
 /** The run's startup phase (`run_status`), while nothing else has come after it. */
 function lastStatus(events: readonly RunEvent[]): Extract<Block, { kind: "status" }> | null {
   for (let i = events.length - 1; i >= 0; i -= 1) {
@@ -361,7 +377,7 @@ function lastStatus(events: readonly RunEvent[]): Extract<Block, { kind: "status
     if (e.stream === "assistant" || e.stream === "tool" || e.stream === "thinking") {
       return null;
     }
-    if (e.stream === "run_status" && str(e.data.phase)) {
+    if (e.stream === "run_status" && str(e.data.phase) && !NOTICE_PHASES.has(str(e.data.phase))) {
       const retry = record(e.data.retry);
       return {
         kind: "status",
@@ -375,7 +391,7 @@ function lastStatus(events: readonly RunEvent[]): Extract<Block, { kind: "status
   return null;
 }
 
-function settle(blocks: Block[]): Block[] {
+export function settleRunBlocks(blocks: Block[]): Block[] {
   return blocks.map((block) =>
     block.kind === "text" ? { ...block, streaming: false } : block.kind === "thinking" ? { ...block, live: false } : block,
   );
@@ -410,6 +426,10 @@ export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<s
       const block: Block = { kind: "usage", key, input, output, total };
       if (at < 0) b.blocks.push(block);
       else b.blocks[at] = block;
+    } else if (event.stream === "run_status" && NOTICE_PHASES.has(str(event.data.phase)) && str(event.data.message)) {
+      // "Claude account 1 hit its limit until Sat 2:00 AM. Moved to Claude account 2." stays after later events.
+      b.text = null;
+      b.blocks.push({ kind: "notice", key: `${event.runId}:${str(event.data.phase)}:${event.seq}`, text: str(event.data.message), ...recordedAt(event.ts) });
     } else if (event.stream === "lifecycle") {
       onLifecycle(b, event, approvals);
       ended ||= event.data.phase === "end" || event.data.phase === "error";
@@ -419,7 +439,7 @@ export function projectRun(events: readonly RunEvent[], approvals: ReadonlyMap<s
   // row for the same command, and the finished turn (history.ts) doesn't have it either.
   const blocks = b.wrappers.size ? b.blocks.filter((block) => block.kind !== "step" || !b.wrappers.has(block.key)) : b.blocks;
   if (ended) {
-    return settle(blocks);
+    return settleRunBlocks(blocks);
   }
   const status = lastStatus(events);
   return status ? [...blocks, status] : blocks;

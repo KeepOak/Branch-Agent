@@ -3,7 +3,7 @@
 // Each is raised on a real change: the connection's phase, or channels.status read again.
 import { useEffect, useRef } from "react";
 import type { SaplingSession } from "../connect/session";
-import { raiseBanner } from "./Banner";
+import { clearBanner, currentBanner, raiseBanner } from "./Banner";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -79,4 +79,31 @@ export function useProblemBanners({ session, phase, machineName, defaultName, op
       clearInterval(timer);
     };
   }, [session, phase]);
+}
+
+export const DISK_FULL_TITLE = "Your disk is full";
+export const DISK_FULL_TEXT = "Branch paused saving until you free space.";
+const DISK_FULL_KEY = "disk-full";
+
+/**
+ * The desktop's disk-full notice (desktop/src/disk-full.ts, relayed by the preload as branch:disk-full and
+ * branch:disk-ok): one sticky problem banner while saving is paused, gone once saving resumes.
+ */
+export function useDiskFullBanner(): void {
+  useEffect(() => {
+    const full = () => {
+      if (currentBanner()?.sameAs === DISK_FULL_KEY) return;
+      raiseBanner({ icon: "alert", title: DISK_FULL_TITLE, text: DISK_FULL_TEXT, sameAs: DISK_FULL_KEY, sticky: true });
+    };
+    const back = () => {
+      const shown = currentBanner();
+      if (shown?.sameAs === DISK_FULL_KEY) clearBanner(shown.id);
+    };
+    window.addEventListener("branch:disk-full", full);
+    window.addEventListener("branch:disk-ok", back);
+    return () => {
+      window.removeEventListener("branch:disk-full", full);
+      window.removeEventListener("branch:disk-ok", back);
+    };
+  }, []);
 }

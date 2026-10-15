@@ -1,8 +1,10 @@
-// Library (DESIGN-SPEC §4.6.4; preview 40-places, 42-placesbp, 93-g3p, 94-g4p, 96-appopsp): the head with Canvas,
+// Library (DESIGN-SPEC §4.6.4; preview 40-places, 42-placesbp, 93-g3p, 94-g4p, 96-appopsp): the head with
 // "Translate a document…" and "Make pictures…", then Memory, Documents, Meetings, Made for you and Logbook.
+// No "Clearing" pill under the heading (DA-42): it told a person nothing. Bring Clearings back here only as a real
+// list once the engine can list them; canvas.document.view opens one only by its id.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import type { PlaceProps } from "../../places-nav/PlaceFrame";
+import { PlaceScroll, type PlaceProps } from "../../places-nav/PlaceFrame";
 import { optStr, rec, trunksOf, useResource } from "./data";
 import { DocumentsTab } from "./documents";
 import { MeetingsTab } from "./meetings";
@@ -14,8 +16,7 @@ import { LogbookTab } from "./logbook";
 import { Status } from "./ui";
 import "./library.css";
 
-export const HEAD_REASONS = {
-  canvas: "Needs an engine method that lists Clearings: canvas.document.view opens one only by its id.",
+const HEAD_REASONS = {
   translate: "Needs the engine’s document translation method.",
   pictures: "Needs the engine’s picture-making method.",
 };
@@ -61,9 +62,8 @@ export function LibraryPlace({ engine, level, openSettings, openConversation }: 
   const memory = useMemoryFiles(engine, list);
   const defaultId = engine.agentId || optStr(rec(trunks.data).defaultId) || list?.[0]?.id || "";
   const facts = memory.files?.reduce((n, f) => n + f.facts.length, 0);
-  return <div className="place-scroll" data-testid="place"><div className="place lib">
+  return <PlaceScroll><div className="place lib">
     <h1>Library</h1>
-    <Grey label="Clearing" reason={HEAD_REASONS.canvas} className="lib-canvas" />
     <p className="lede">What your Trunks remember, the documents they read, your meetings, and everything they made.</p>
     <div className="lib-head-acts"><Grey label="Translate a document…" reason={HEAD_REASONS.translate} /><Grey label="Make pictures…" reason={HEAD_REASONS.pictures} /></div>
     <div className="lib-body">
@@ -75,5 +75,5 @@ export function LibraryPlace({ engine, level, openSettings, openConversation }: 
         : tab === "meetings" ? <MeetingsTab engine={engine} level={level} trunks={list} openSettings={openSettings} />
         : <LogbookTab engine={engine} openSettings={openSettings} />)}
     </div>
-  </div></div>;
+  </div></PlaceScroll>;
 }

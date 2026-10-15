@@ -32,6 +32,7 @@ import {
   type CuaLastFrame,
   type CuaScreenSize,
 } from "./frame.js";
+import { detectComputerInputBackends, mustUseFocusedInput } from "./input-routing.js";
 import { createCuaMcpDriver } from "./mcp-driver-client.js";
 import { closeRecordingExecution } from "./recording-actions.js";
 import { handleWindowAct } from "./window-actions.js";
@@ -43,6 +44,7 @@ const CUA_WIRE_ACTION_NAMES = COMPUTER_USE_V2_ACTION_NAMES.slice(1, 14);
 // display; budget above it so full-resolution snapshots reach the downscaler.
 const MAX_IMAGE_PIXELS = 40_000_000;
 const CUA_DRIVER_ENDPOINT_ENV = "BRANCH_CUA_DRIVER_ENDPOINT";
+const CUA_DRIVER_ENDPOINT_FILE_ENV = "BRANCH_CUA_DRIVER_ENDPOINT_FILE";
 
 const CuaDriverEndpointSchema = z.strictObject({
   v: z.literal(2),
@@ -85,14 +87,30 @@ type CuaComputerProviderOptions = {
   imageProcessor?: ImageProcessor;
   setInterval?: typeof setInterval;
   clearInterval?: typeof clearInterval;
+  /** Test seam for the available input backends. Production probes the host. */
+  inputBackends?: readonly string[];
 };
 
 function resolveMacOsMcpEndpoint(
   env: NodeJS.ProcessEnv,
 ): { port: number; secret: string } | undefined {
-  const rawEndpoint = env[CUA_DRIVER_ENDPOINT_ENV] ??
-    (globalThis as Record<symbol, unknown>)[Symbol.for("branch.macComputerEndpoint")];
-  if (typeof rawEndpoint !== "string") return undefined;
+  let rawEndpoint: unknown;
+  const endpointFile = env[CUA_DRIVER_ENDPOINT_FILE_ENV];
+  if (endpointFile) {
+    try {
+      const stat = fs.statSync(endpointFile);
+      if (!stat.isFile() || stat.size > 4 * 1024 || (process.platform !== "win32" && (stat.mode & 0o077) !== 0)) {
+        return undefined;
+      }
+      rawEndpoint = fs.readFileSync(endpointFile, "utf8");
+    } catch { return undefined; }
+  } else {
+    rawEndpoint = env[CUA_DRIVER_ENDPOINT_ENV] ??
+      (globalThis as Record<symbol, unknown>)[Symbol.for("branch.macComputerEndpoint")];
+  }
+  if (typeof rawEndpoint !== "string") {
+    return undefined;
+  }
   if (!rawEndpoint || Buffer.byteLength(rawEndpoint, "utf8") > 4 * 1024) {
     return undefined;
   }
@@ -412,6 +430,8 @@ export function createCuaComputerProvider(
   const clear = options.clearInterval ?? clearInterval;
   const isSupportedPlatform =
     platform === "linux" || platform === "win32" || macOsEndpoint !== undefined;
+  const inputBackends =
+    options.inputBackends ?? detectComputerInputBackends({ platform, env });
   // The app injects the endpoint only after the host-owned daemon socket is
   // accepting connections. Node-host manifests are one-shot, so the validated
   // endpoint is the synchronous macOS readiness lease; invocation still
@@ -433,7 +453,9 @@ export function createCuaComputerProvider(
       },
       actions: platformActions(platform),
       targets: ["screen", "window", "element", "browser"],
-      deliveryModes: ["background", "foreground"],
+      deliveryModes: mustUseFocusedInput(inputBackends)
+        ? (["foreground"] as const)
+        : (["background", "foreground"] as const),
       observations: ["image", "accessibility", "browser"],
       features: { recording: true, agentCursor: false, multiDisplay: false },
     }),
@@ -465,7 +487,7 @@ export function createCuaComputerProvider(
       }
       const executionDriver = options.driver ?? createDriver();
       const resources = createLazyCuaExecutionResources();
-      const executionState = { resources, recording: {} };
+      const executionState = { resources, recording: {}, inputBackends };
       const queue = new KeyedAsyncQueue();
       const frameState: CuaFrameState = { generation: executionDriver.generation };
       let closing = false;

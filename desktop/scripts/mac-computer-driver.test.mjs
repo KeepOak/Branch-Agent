@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import { createConnection, createServer } from "node:net";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { MacComputerDriver, macScreenControlEnabled } from "../dist/mac-computer-driver.js";
+import * as driverModule from "../dist/mac-computer-driver.js";
+const { MacComputerDriver, describeDriverError, macScreenControlEnabled } = driverModule;
 
 test("Mac screen control remains off until explicitly enabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "branch-mac-screen-setting-"));
@@ -28,12 +28,12 @@ test("Mac app requests both permissions before supplying a live embedded driver 
   await writeFile(binary, "fixture");
   const events = [];
   let granted = false;
-  const exit = new EventEmitter();
   const sdk = () => ({
     currentMacOsPermissionStatus: () => ({ accessibility: granted, screenRecording: granted }),
     requestMacOSPermissions: () => { events.push("permission request"); return { accessibility: granted, screenRecording: granted }; },
     hasRequiredMacOSPermissions: status => status.accessibility && status.screenRecording,
     EmbeddedPermissionMode: { Standard: 0 },
+    EmbeddedDriverHostState: { Ready: 2 },
     EmbeddedCuaDriverHost: class {
       static withOptions(options) {
         assert.equal(options.binaryPath, binary);
@@ -44,7 +44,8 @@ test("Mac app requests both permissions before supplying a live embedded driver 
       }
       async start() { events.push("start"); return { socketPath, generation: "one" }; }
       async stop() { events.push("stop"); }
-      waitForExit() { return new Promise(resolve => exit.once("exit", resolve)); }
+      state() { return 2; }
+      waitForExit() { throw new Error("the exit watch must never leave waitForExit pending (trycua/cua#4339)"); }
       uniffiDestroy() { events.push("destroy"); }
     },
   });
@@ -76,6 +77,146 @@ test("Mac app requests both permissions before supplying a live embedded driver 
     assert.deepEqual(events, ["start"]);
     await driver.stop();
     assert.deepEqual(events.slice(-2), ["stop", "destroy"]);
-    exit.emit("exit");
   } finally { await driver.stop(); backend.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
+// The shipped SDK accepts only these environment names for an embedded host (its safe allowlist).
+const EMBEDDED_ENVIRONMENT_ALLOWLIST = new Set(["CUA_DRIVER_RS_TELEMETRY_ENABLED"]);
+function allowlistedSdk(events, reasonFor = () => undefined) {
+  return {
+    currentMacOsPermissionStatus: () => ({ accessibility: true, screenRecording: true }),
+    requestMacOSPermissions: () => ({ accessibility: true, screenRecording: true }),
+    hasRequiredMacOSPermissions: status => status.accessibility && status.screenRecording,
+    EmbeddedPermissionMode: { Standard: 0 },
+    EmbeddedDriverHostState: { Ready: 2 },
+    EmbeddedCuaDriverHost: class {
+      static withOptions(options) {
+        for (const { name } of options.environment) {
+          const reason = reasonFor(name);
+          if (!EMBEDDED_ENVIRONMENT_ALLOWLIST.has(name)) {
+            const error = new Error("EmbeddedDriverError.Configuration");
+            error.inner = { reason: reason ?? `environment variable ${name} is not in the embedded safe allowlist` };
+            events.push("rejected");
+            throw error;
+          }
+        }
+        return new this();
+      }
+      async start() { events.push("start"); return { socketPath: "/nonexistent.sock", generation: "one" }; }
+      async stop() {}
+      state() { return 2; }
+      waitForExit() { throw new Error("the exit watch must never leave waitForExit pending (trycua/cua#4339)"); }
+      uniffiDestroy() {}
+    },
+  };
+}
+
+test("the embedded driver is configured only with environment the SDK accepts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-env-"));
+  await writeFile(join(dir, "cua-driver"), "fixture");
+  const lines = [];
+  const events = [];
+  const driver = new MacComputerDriver(line => lines.push(line), () => allowlistedSdk(events), () => "ai.branch.mac");
+  try {
+    assert.equal(JSON.parse(await driver.start(dir)).v, 2);
+    assert.deepEqual(events, ["start"]);
+    assert.deepEqual(lines, []);
+  } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("a rejected embedded configuration surfaces the SDK's reason, not just its name", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-reason-"));
+  await writeFile(join(dir, "cua-driver"), "fixture");
+  const sdk = {
+    currentMacOsPermissionStatus: () => ({ accessibility: true, screenRecording: true }),
+    requestMacOSPermissions: () => ({ accessibility: true, screenRecording: true }),
+    hasRequiredMacOSPermissions: status => status.accessibility && status.screenRecording,
+    EmbeddedPermissionMode: { Standard: 0 },
+    EmbeddedDriverHostState: { Ready: 2 },
+    EmbeddedCuaDriverHost: {
+      withOptions() {
+        throw Object.assign(new Error("EmbeddedDriverError.Configuration"), { inner: { reason: "rejected for test" } });
+      },
+    },
+  };
+  const driver = new MacComputerDriver(() => {}, () => sdk, () => "ai.branch.mac");
+  try {
+    const error = await driver.start(dir).then(() => undefined, reason => reason);
+    assert.ok(error, "start should reject when the SDK rejects the configuration");
+    assert.equal(describeDriverError(error), "rejected for test");
+    assert.equal(describeDriverError(new Error("plain")), "Error: plain");
+  } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("the Coming reasons are the preview's copy: none for a missing driver, its permission line for permissions", () => {
+  assert.equal(driverModule.DRIVER_NOT_PACKAGED, "");
+  assert.equal(driverModule.DRIVER_START_FAILED, "");
+  assert.equal(driverModule.DRIVER_NEEDS_PERMISSION, "macOS asks you to allow this once, in System Settings.");
+});
+
+test("the driver keeps a plain reason while it has no endpoint, and clears it once ready", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-why-"));
+  let granted = false;
+  let reject = true;
+  const sdk = {
+    currentMacOsPermissionStatus: () => ({ accessibility: granted, screenRecording: granted }),
+    requestMacOSPermissions: () => ({ accessibility: granted, screenRecording: granted }),
+    hasRequiredMacOSPermissions: status => status.accessibility && status.screenRecording,
+    EmbeddedPermissionMode: { Standard: 0 },
+    EmbeddedDriverHostState: { Ready: 2 },
+    EmbeddedCuaDriverHost: {
+      withOptions(options) {
+        if (reject) throw Object.assign(new Error("EmbeddedDriverError.Configuration"), { inner: { reason: "X is not in the embedded safe allowlist" } });
+        return allowlistedSdk([]).EmbeddedCuaDriverHost.withOptions(options);
+      },
+    },
+  };
+  const driver = new MacComputerDriver(() => {}, () => sdk, () => "ai.branch.mac");
+  try {
+    assert.equal(await driver.start(dir), undefined);
+    assert.equal(driver.reason, "");
+    await writeFile(join(dir, "cua-driver"), "fixture");
+    assert.equal(await driver.start(dir), undefined);
+    assert.equal(driver.reason, "macOS asks you to allow this once, in System Settings.");
+    granted = true;
+    const failure = await driver.start(dir).then(() => assert.fail("start should reject"), error => error);
+    // A driver that fails to start shows no reason sentence; its SDK reason stays for desktop.log only.
+    assert.equal(driver.reason, "");
+    assert.equal(driverModule.describeDriverError(failure), "X is not in the embedded safe allowlist");
+    reject = false;
+    assert.equal(JSON.parse(await driver.start(dir)).v, 2);
+    assert.equal(driver.reason, undefined);
+  } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("the driver notices an exit by checking its state, never by a pending waitForExit, and stop ends the checks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-exit-"));
+  await writeFile(join(dir, "cua-driver"), "fixture");
+  const lines = [];
+  let state = 2;
+  let checks = 0;
+  const base = allowlistedSdk([]);
+  const Host = base.EmbeddedCuaDriverHost;
+  const sdk = { ...base, EmbeddedCuaDriverHost: class extends Host { state() { checks += 1; return state; } } };
+  const tick = () => new Promise(resolve => setTimeout(resolve, 30));
+  const driver = new MacComputerDriver(line => lines.push(line), () => sdk, () => "ai.branch.mac", 5);
+  try {
+    const endpoint = await driver.start(dir);
+    assert.equal(JSON.parse(endpoint).v, 2);
+    await tick();
+    assert.ok(checks > 0, "the state is checked while the driver runs");
+    assert.equal(await driver.start(dir), endpoint, "a ready driver keeps its endpoint");
+    state = 0;
+    await tick();
+    assert.deepEqual(lines, ["Mac computer driver exited; restart Branch Agent to reconnect computer control"]);
+    const after = checks;
+    await tick();
+    assert.equal(checks, after, "checks stop once the exit is seen");
+    state = 2;
+    await driver.start(dir);
+    await driver.stop();
+    const stopped = checks;
+    await tick();
+    assert.equal(checks, stopped, "stop ends the checks");
+  } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
 });

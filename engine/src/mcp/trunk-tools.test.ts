@@ -21,7 +21,9 @@ function fakeGateway(answers: Record<string, (params: Record<string, unknown>) =
     async request(method, params) {
       calls.push({ method, params });
       const answer = answers[method];
-      if (!answer) throw new Error(`unexpected ${method}`);
+      if (!answer) {
+        throw new Error(`unexpected ${method}`);
+      }
       return (await answer(params)) as never;
     },
     onGatewayEvent(listener) {
@@ -30,8 +32,9 @@ function fakeGateway(answers: Record<string, (params: Record<string, unknown>) =
     },
   };
   const emit = (payload: Record<string, unknown>) => {
-    for (const listener of listeners)
+    for (const listener of listeners) {
       listener({ type: "event", event: "agent", payload } as EventFrame);
+    }
   };
   return { gw, calls, emit };
 }
@@ -39,7 +42,9 @@ function fakeGateway(answers: Record<string, (params: Record<string, unknown>) =
 const claude = { id: "claude-code", name: "Claude Code", version: "2.1.0", where: "LEGION" };
 const clients: Client[] = [];
 afterEach(async () => {
-  for (const client of clients.splice(0)) await client.close();
+  for (const client of clients.splice(0)) {
+    await client.close();
+  }
 });
 
 async function connect(gw: TrunkGateway, agent: typeof claude | null = claude) {
@@ -58,6 +63,28 @@ async function call(client: Client, name: string, args: Record<string, unknown>,
 }
 
 describe("branch mcp serve Trunk tools", () => {
+  it("lists installed skills through the stable bridge for structured and text-only clients", async () => {
+    const { gw, calls } = fakeGateway({
+      "skills.status": () => ({
+        skills: [{ name: "weather", source: "branch-bundled", eligible: true, disabled: false }],
+      }),
+    });
+    const client = await connect(gw);
+    expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("skills_status");
+    const result = await client.callTool({ name: "skills_status", arguments: {} });
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      total: 1,
+      eligible: 1,
+      skills: [{ name: "weather", enabled: true, eligible: true }],
+    });
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(JSON.parse(content.find((item) => item.type === "text")!.text)).toEqual(
+      result.structuredContent,
+    );
+    expect(calls).toEqual([{ method: "skills.status", params: {} }]);
+  });
+
   it("trunks_list shows each Trunk's live state, thread, model and account, plus outside contacts", async () => {
     const { gw } = fakeGateway({
       "agents.list": () => ({
@@ -114,6 +141,32 @@ describe("branch mcp serve Trunk tools", () => {
     ]);
   });
 
+  it("trunks_list says a Trunk whose startup stopped retrying needs attention", async () => {
+    const pending = (state: string) => ({
+      agentId: "x",
+      paths: ["db"],
+      code: "agent-database-inspection-pending",
+      reason: "pending",
+      repairHint: "wait",
+      preparation: { state, failures: 30, restarts: 4 },
+    });
+    const { gw } = fakeGateway({
+      "agents.list": () => ({
+        agents: [
+          { id: "spruce", name: "Spruce", admissionRefusal: pending("needs-attention") },
+          { id: "elm", name: "Elm", admissionRefusal: pending("retrying") },
+        ],
+      }),
+      "sessions.list": () => ({ sessions: [] }),
+      "contacts.list": () => ({ contacts: [] }),
+    });
+    const out = await call(await connect(gw), "trunks_list", {});
+    expect(out.trunks).toEqual([
+      { id: "spruce", name: "Spruce", state: "needs-attention" },
+      { id: "elm", name: "Elm", state: "idle" },
+    ]);
+  });
+
   it("trunk_send opens a new labelled thread and sends as the outside agent", async () => {
     const { gw, calls } = fakeGateway({
       "sessions.create": () => ({ ok: true }),
@@ -154,6 +207,22 @@ describe("branch mcp serve Trunk tools", () => {
     });
     expect(calls.map((c) => c.method)).toEqual(["chat.send"]);
     expect(calls[0]?.params).not.toHaveProperty("outsideAgent");
+  });
+
+  it("trunk_send into a thread queues behind its active run instead of inheriting the session queue mode", async () => {
+    const { gw, calls } = fakeGateway({
+      "chat.send": () => ({ runId: "run-3", status: "queued" }),
+    });
+    await call(await connect(gw), "trunk_send", {
+      agent_id: "builder-oak",
+      text: "Also check the migration",
+      thread_key: "agent:builder-oak:claude-code-1700",
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.params).toMatchObject({
+      sessionKey: "agent:builder-oak:claude-code-1700",
+      queueMode: "followup",
+    });
   });
 
   it("trunk_steer steers the busy run and run_abort stops it", async () => {
@@ -363,7 +432,9 @@ describe("branch mcp serve identity and gateway", () => {
   it("stops acting for the agent once Settings › Grafts turns it away", async () => {
     let refuse = false;
     const presence = new OutsidePresence(async () => {
-      if (refuse) throw new Error("Claude Code was disconnected in Settings › Connected agents.");
+      if (refuse) {
+        throw new Error("Claude Code was disconnected in Settings › Connected agents.");
+      }
       return { mayDriveWindow: true };
     });
     presence.start(claude);
@@ -371,7 +442,9 @@ describe("branch mcp serve identity and gateway", () => {
     expect(presence.mayDriveWindow()).toBe(true);
     refuse = true;
     presence.activity("Messaging oak");
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
     await expect(presence.identity()).rejects.toThrow(/disconnected/);
     presence.stop();
     const older = new OutsidePresence(async () => {
@@ -439,7 +512,9 @@ describe("Settings › Grafts applies to every tool", () => {
   it("a disconnected agent can no longer read Trunks or answer approvals, and takes the id Branch assigns", async () => {
     let refuse = false;
     const presence = new OutsidePresence(async (agent) => {
-      if (refuse) throw new Error("Claude Code was disconnected in Settings › Grafts.");
+      if (refuse) {
+        throw new Error("Claude Code was disconnected in Settings › Grafts.");
+      }
       return { contact: { id: `a2a:${agent.id}-2` } };
     });
     presence.start(claude);
@@ -447,7 +522,10 @@ describe("Settings › Grafts applies to every tool", () => {
     const server = new McpServer({ name: "branch", version: "gate" });
     gateEveryTool(server, () => presence.assertAllowed());
     let answered = 0;
-    server.tool("permissions_respond", "x", {}, async () => (answered++, { content: [] }));
+    server.tool("permissions_respond", "x", {}, async () => {
+      answered++;
+      return { content: [] };
+    });
     registerTrunkMcpTools(
       server,
       fakeGateway({ "agents.list": () => ({ agents: [] }), "contacts.list": () => ({}) }).gw,
@@ -462,7 +540,9 @@ describe("Settings › Grafts applies to every tool", () => {
     expect((await client.callTool({ name: "trunks_list", arguments: {} })).isError).toBeFalsy();
     refuse = true;
     presence.activity("Reading Trunks");
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
     const listed = await client.callTool({ name: "trunks_list", arguments: {} });
     const approved = await client.callTool({ name: "permissions_respond", arguments: {} });
     expect(listed.isError).toBe(true);
@@ -513,7 +593,7 @@ describe("leaving", () => {
     const stuck = new OutsidePresence(
       async () => ({}),
       () => undefined,
-      () => new Promise(() => undefined),
+      () => new Promise(() => {}),
     );
     stuck.start(claude);
     await stuck.identity();

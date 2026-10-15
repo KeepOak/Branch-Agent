@@ -3,6 +3,7 @@
 // (holder gone, PID reused, or older than SESSION_HANDOFF_LEASE_MAX_AGE_MS), or the bounded wait runs out. Every
 // other session runs at once. With no leases on disk this costs one directory read per second.
 import { toErrorObject } from "../infra/errors.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import {
   isLeaseHolderAlive,
@@ -26,6 +27,7 @@ export {
 } from "./session-handoff-lease-files.js";
 const RESCAN_MS = 1_000;
 const POLL_MS = 100;
+const log = createSubsystemLogger("gateway/handoff");
 
 export class SessionHandoffLeaseTimeoutError extends Error {
   constructor(lane: string, waitedMs: number) {
@@ -55,6 +57,10 @@ const gate = resolveGlobalSingleton(Symbol.for("branch.sessionHandoffLeaseGate")
   env: undefined as NodeJS.ProcessEnv | undefined,
   /** When this process started stepping down (its own hold), if it is. */
   ownHoldStartedAt: undefined as number | undefined,
+  /** Successor recovery hooks: a lane is free after its last predecessor died, expired, or released. */
+  releasedListeners: new Set<(lane: string) => void>(),
+  /** Releases that settled with no listener; replayed when a watcher registers. */
+  releasedWhileUnwatched: [] as string[],
 }));
 
 /**
@@ -129,11 +135,14 @@ export function refreshSessionHandoffLeases(env: NodeJS.ProcessEnv = process.env
   }
 }
 
-function holderStillHolds({ file, lease }: Holder): boolean {
-  if (isSessionHandoffLeaseExpired(lease) || !isLeaseHolderAlive(lease.pid)) return false;
+function holderStillHolds(holder: Holder): boolean {
+  if (!isLeaseHolderAlive(holder.lease.pid)) return false;
   // A lease file that is there but unreadable for now still holds; its expiry bounds that.
-  const current = readHeldSessionHandoffLease(file);
-  return current === "busy" || current?.ownerId === lease.ownerId;
+  const current = readHeldSessionHandoffLease(holder.file);
+  // A holder renews its lease while the session's run is still in flight (Private #1038): follow the renewal.
+  if (current !== "busy" && current?.ownerId === holder.lease.ownerId) holder.lease = current;
+  if (isSessionHandoffLeaseExpired(holder.lease)) return false;
+  return current === "busy" || current?.ownerId === holder.lease.ownerId;
 }
 
 /** Drops holders that no longer hold the lane; frees the lane (and its waiters) once none is left. */
@@ -155,7 +164,42 @@ function settleLane(lane: string, held: HeldLane): boolean {
   if (held.holders.size > 0) return false;
   gate.lanes.delete(lane);
   held.release();
+  if (gate.releasedListeners.size === 0) {
+    gate.releasedWhileUnwatched.push(lane);
+    return true;
+  }
+  for (const listener of gate.releasedListeners) {
+    try {
+      listener(lane);
+    } catch (error) {
+      log.warn(`session handoff lease release hook failed (${lane}): ${String(error)}`);
+    }
+  }
   return true;
+}
+
+/**
+ * Fires once a predecessor lane is free (holder gone, lease expired, or the file was released).
+ * The successor uses this to recover conversations that were skipped by the startup orphan scan.
+ */
+export function onSessionHandoffLaneReleased(listener: (lane: string) => void): () => void {
+  gate.releasedListeners.add(listener);
+  const pending = gate.releasedWhileUnwatched.splice(0);
+  for (const lane of pending) {
+    try {
+      listener(lane);
+    } catch (error) {
+      log.warn(`session handoff lease release hook failed (${lane}): ${String(error)}`);
+    }
+  }
+  return () => {
+    gate.releasedListeners.delete(listener);
+  };
+}
+
+/** Tests only: run the same poll that notices a dead or expired predecessor. */
+export function pollSessionHandoffLeasesForTest(): void {
+  pollSessionHandoffLeases();
 }
 
 function pollSessionHandoffLeases(): void {
@@ -179,6 +223,58 @@ export function isSessionLaneHeldByPredecessor(lane: string): boolean {
   if (Date.now() - gate.scannedAt >= RESCAN_MS) refreshSessionHandoffLeases(gate.env);
   const held = gate.lanes.get(lane);
   return held !== undefined && !(Date.now() >= laneExpiresAt(held) && settleLane(lane, held));
+}
+
+/** The session lanes of `agentId` (`session:agent:<id>:...`) a predecessor still holds now. */
+export function listPredecessorAgentLanes(agentId: string): string[] {
+  const prefix = `${SESSION_LANE_PREFIX}agent:${agentId.trim().toLowerCase()}:`;
+  return listLeasedSessionLanes().filter(
+    (lane) => lane.toLowerCase().startsWith(prefix) && isSessionLaneHeldByPredecessor(lane),
+  );
+}
+
+/**
+ * Resolves once no predecessor holds any session lane of `agentId`, so the successor starts that agent's database
+ * inspection only after the old engine released the agent's databases (#951). It waits on the release itself, or
+ * on the lease's own expiry for a holder that died: never on a fixed timeout, which would only race a held lock.
+ * Rejects when `signal` aborts. `onWaiting` runs once, with the held lanes, if it has to wait at all.
+ */
+export async function waitForPredecessorAgentLeases(
+  agentId: string,
+  options: { signal?: AbortSignal; onWaiting?: (lanes: string[]) => void } = {},
+): Promise<{ waitedMs: number }> {
+  const startedAt = Date.now();
+  let reported = false;
+  for (;;) {
+    options.signal?.throwIfAborted();
+    const lanes = listPredecessorAgentLanes(agentId);
+    if (lanes.length === 0) {
+      return { waitedMs: Date.now() - startedAt };
+    }
+    if (!reported) {
+      reported = true;
+      options.onWaiting?.(lanes);
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        // A released lane wakes this at once; the rescan catches a holder that died or a lease that expired.
+        for (const lane of lanes) {
+          void gate.lanes.get(lane)?.released.then(resolve);
+        }
+        timer = setTimeout(resolve, RESCAN_MS);
+        timer.unref?.();
+        onAbort = () => reject(toErrorObject(options.signal?.reason, "Agent lease wait aborted"));
+        options.signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    } finally {
+      clearTimeout(timer);
+      if (onAbort) {
+        options.signal?.removeEventListener("abort", onAbort);
+      }
+    }
+  }
 }
 
 /** Turns parked behind a lease, per lane: they count as queued work for this engine's activity inventory. */
@@ -259,4 +355,6 @@ export function resetSessionHandoffLeaseGateForTest(
   gate.maxWaitMs = maxWaitMs;
   gate.env = undefined;
   gate.ownHoldStartedAt = undefined;
+  gate.releasedListeners.clear();
+  gate.releasedWhileUnwatched.length = 0;
 }

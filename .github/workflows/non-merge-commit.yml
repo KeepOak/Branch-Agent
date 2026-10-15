@@ -1,0 +1,70 @@
+name: Non-merge-commit landing
+
+# Backup if repo settings ever allow squash, rebase, or auto-merge again.
+# On main, record squash or rebase PR landings. Never revert.
+# On pull requests that touch these guards, run the detector tests.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - '.github/workflows/non-merge-commit.yml'
+      - 'scripts/detect-non-merge-commit.mjs'
+      - 'scripts/detect-non-merge-commit.test.mjs'
+      - 'scripts/check-merge-command.mjs'
+      - 'scripts/check-merge-command.test.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: non-merge-commit-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Merge-commit guard tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Test non-merge-commit detection
+        run: node --test scripts/detect-non-merge-commit.test.mjs scripts/check-merge-command.test.mjs
+
+  track:
+    name: Track non-merge-commit landing
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up reviewed Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+        run: node scripts/detect-non-merge-commit.mjs
