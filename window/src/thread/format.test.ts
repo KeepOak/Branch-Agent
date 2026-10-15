@@ -21,7 +21,7 @@ describe("thread words", () => {
     expect(stepsSummary([step("exec")], { title: "text", durationMs: 59_000 })).toBe("Ran a command");
     expect(stepLabel({ ...step("computer"), title: "list_windows" })).toBe("Listed open windows");
     expect(stepLabel({ ...step("computer"), title: "frob_widget" })).toBe("Used the computer");
-    expect(stepLabel({ ...step("sessions_yield"), status: "done" })).toBe("Waited for its helpers");
+    expect(stepLabel({ ...step("sessions_yield"), status: "ok" })).toBe("Waited for its helpers");
     expect(stepLabel({ ...step("computer"), title: "list_windows" })).not.toContain("list_windows");
     expect(stepLabel({ ...step("screen"), title: "desktop_show" })).toBe("Showed the desktop");
     expect(stepLabel({ ...step("screen"), title: "browser_show" })).toBe("Showed the browser");
