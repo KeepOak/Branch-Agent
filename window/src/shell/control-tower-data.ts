@@ -4,7 +4,8 @@ import type { Conversation } from "../connect/conversations";
 import { scheduleWords } from "../places/automations/model";
 import { agents, runMs, runs } from "../places/overview/engine";
 import { runLength } from "../places/overview/format";
-import { ageWords, clockWords, readLimits, type Limits } from "./status-data";
+import { ageWords, clockWords, plainJobName, readLimits, type Limits } from "./status-data";
+import { isEngineJob } from "../connect/engine-jobs";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -48,7 +49,7 @@ export type TowerAccount = {
 };
 
 /** Preview's "5-hour" / "Week" from status-data's "This 5-hour window" / "This week". */
-export function shortWindow(name: string): string {
+function shortWindow(name: string): string {
   const hours = /(\d+)-hour/i.exec(name);
   if (hours) return `${hours[1]}-hour`;
   if (/week/i.test(name)) return "Week";
@@ -84,18 +85,18 @@ export function checkedLine(updatedAt: number, now = Date.now()): string {
 
 export type TowerComing = { id: string; name: string; when: string; trunkId: string };
 
-/** Next 3 enabled automations, soonest first (towerHtmlT5 Coming up). */
+/** Next 3 enabled automations, soonest first (towerHtmlT5 Coming up). The row's second line names the Trunk. */
 export function towerComingUp(jobs: unknown[], now = Date.now()): TowerComing[] {
   return jobs
     .map(rec)
-    .filter((job) => job.enabled !== false && num(rec(job.state).nextRunAtMs) > 0)
+    .filter((job) => !isEngineJob(job) && job.enabled !== false && num(rec(job.state).nextRunAtMs) > 0)
     .sort((a, b) => num(rec(a.state).nextRunAtMs) - num(rec(b.state).nextRunAtMs))
     .slice(0, 3)
     .map((job) => {
       const schedule = rec(job.schedule);
       return {
         id: str(job.id) || str(job.name),
-        name: str(job.displayName) || str(job.name) || str(job.id),
+        name: plainJobName(job),
         when: str(schedule.kind) ? scheduleWords(schedule) : dueFallback(num(rec(job.state).nextRunAtMs), now),
         trunkId: str(job.agentId),
       };
@@ -177,7 +178,7 @@ export function towerFinished(rows: Conversation[], audit: unknown, now = Date.n
   return out;
 }
 
-export type TowerNeedKind = "approval" | "question" | "waiting";
+type TowerNeedKind = "approval" | "question" | "waiting";
 
 export type TowerNeed = {
   id: string;

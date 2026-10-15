@@ -16,6 +16,7 @@ import {
 } from "./heartbeat-config.js";
 import { recordRunStart, shouldDeferWake, type DeferDecision } from "./heartbeat-cooldown.js";
 import { heartbeatLog as log } from "./heartbeat-log.js";
+import { startBatteryPoliteness, type BatteryPoliteness } from "./power-state.js";
 import type { runHeartbeatOnce } from "./heartbeat-runner-run.js";
 import { isConfiguredHeartbeatAgent, isTargetedUnscheduledWake } from "./heartbeat-wake-policy.js";
 import {
@@ -56,6 +57,7 @@ export function startHeartbeatRunner(opts: {
   runtime?: RuntimeEnv;
   abortSignal?: AbortSignal;
   runOnce?: typeof runHeartbeatOnce;
+  battery?: BatteryPoliteness;
 }): HeartbeatRunner {
   const runtime = opts.runtime ?? defaultRuntime;
   const runOnce = opts.runOnce;
@@ -69,6 +71,8 @@ export function startHeartbeatRunner(opts: {
   };
   const readCurrentConfig = opts.readCurrentConfig ?? (() => state.cfg);
   let initialized = false;
+  // Polite on battery (Private #454 D): lower priority and stretch interval polls while the app says so.
+  const battery = opts.battery ?? startBatteryPoliteness({ log: (message) => log.info(message) });
 
   const createAgentState = (
     agentId: string,
@@ -95,7 +99,7 @@ export function startHeartbeatRunner(opts: {
     now: number,
     reason?: string,
     intent: HeartbeatWakeIntent = "event",
-    options: { authoritativeScheduledTick?: boolean; retainedWork?: boolean } = {},
+    options: { authoritativeScheduledTick?: boolean; retainedWork?: boolean; deferrable?: boolean } = {},
   ): DeferDecision => {
     const decision = shouldDeferWake({
       intent,
@@ -104,6 +108,7 @@ export function startHeartbeatRunner(opts: {
       lastRunStartedAtMs: agent.lastRunStartedAtMs,
       recentRunStarts: agent.recentRunStarts,
       retainedWork: options.retainedWork,
+      batteryBackoffMs: options.deferrable ? battery.backoffMs(agent.intervalMs) : undefined,
     });
     if (decision.defer && decision.reason === "flood") {
       if (!agent.floodLoggedSinceLastRun) {
@@ -216,6 +221,8 @@ export function startHeartbeatRunner(opts: {
       const deferral = evaluateWakeDeferral(agent, now, reason, intent, {
         authoritativeScheduledTick,
         retainedWork,
+        // Only the plain interval poll can wait on battery; a persisted monitor tick keeps its slot.
+        deferrable: isInterval && !authoritativeScheduledTick && !retainedWork,
       });
       if (deferral.defer) {
         // Retained exec work never owns cadence unless a scheduled tick joined it.
@@ -399,6 +406,7 @@ export function startHeartbeatRunner(opts: {
     state.stopped = true;
     opts.abortSignal?.removeEventListener("abort", cleanup);
     disposeWakeHandler();
+    battery.stop();
   };
 
   if (opts.abortSignal?.aborted) {

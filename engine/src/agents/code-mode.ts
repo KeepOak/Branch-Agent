@@ -8,6 +8,10 @@ import type { BranchConfig } from "../config/types.branch.js";
 import { finalizeAgentToolAvailability } from "./agent-tool-availability.js";
 import type { HookContext } from "./agent-tools.before-tool-call.js";
 import { CODE_MODE_NODES_TOOL_ID, isCodeModeSwarmAvailable } from "./code-mode-bridge.js";
+import {
+  MAX_CODE_MODE_CALL_TIMEOUT_SECONDS,
+  readCodeModeCallTimeoutMs,
+} from "./code-mode-call-timeout.js";
 import { createCodeModeCatalogBindings, type CodeModeCatalogBinding } from "./code-mode-catalog.js";
 import {
   CODE_MODE_EXEC_TOOL_NAME,
@@ -51,7 +55,7 @@ import {
   type ToolSearchCatalogRef,
   type ToolSearchToolContext,
 } from "./tool-search-types.js";
-import type { AnyAgentTool } from "./tools/common.js";
+import { asToolParamsRecord, type AnyAgentTool } from "./tools/common.js";
 
 export { CODE_MODE_EXEC_TOOL_NAME, CODE_MODE_WAIT_TOOL_NAME };
 export {
@@ -132,6 +136,15 @@ function formatCodeModeCatalogIndex(bindings: readonly CodeModeCatalogBinding[])
   return renderCodeModeCatalogIndex(included, lines.length);
 }
 
+function codeModeTimeoutSecondsSchema() {
+  return Type.Optional(
+    Type.Number({
+      exclusiveMinimum: 0,
+      description: `Wall-clock budget in seconds for this call, replacing the default; max ${MAX_CODE_MODE_CALL_TIMEOUT_SECONDS}. Set it for long commands such as test suites. A timeout error includes the last output lines of unfinished tool calls.`,
+    }),
+  );
+}
+
 function createCodeModeExecDescription(
   ctx: CodeModeToolContext,
   catalog?: readonly ToolSearchCatalogEntry[],
@@ -182,9 +195,9 @@ function createCodeModeExecDescription(
     ? ` Use the shell tool \`${shellTool.callableName}\` for heavier computation.`
     : "";
   return (
-    `Run JavaScript in Branch Agent. Each \`exec\` runs in a fresh JavaScript context; variables, functions and imports never carry over between cells. Set \`title\` to a 3–7 word purpose. Guest work and inline tool waits share a ${timeoutMs} ms wall-clock budget per \`exec\`/\`wait\`; approvals pause it. Guest computation over this budget times out. awaitResults:true keeps needed results owned and pauses only off-VM tool waits; run/tool deadlines still apply. Other pending tools may return \`waiting\` for \`wait\`.` +
+    `Run JavaScript in Branch Agent. Each \`exec\` runs in a fresh JavaScript context; variables, functions and imports never carry over between cells. Set \`title\` to a 3–7 word purpose. Guest work and inline tool waits share a ${timeoutMs} ms wall-clock budget per \`exec\`/\`wait\`; approvals pause it. Pass \`timeoutSeconds\` (max ${MAX_CODE_MODE_CALL_TIMEOUT_SECONDS}) on a call that needs longer, such as a test suite. Guest computation over this budget times out. awaitResults:true keeps needed results owned and pauses only off-VM tool waits; run/tool deadlines still apply. Other pending tools may return \`waiting\` for \`wait\`.` +
     shellGuidance +
-    ` Enabled tools are async global functions. Await dependent calls in order; independent calls may run with Promise.all. Declared output fields may feed later calls in the same program; avoid extra inspection calls. Emit output with \`text(value)\` or \`json(value)\`. Return the final value, otherwise \`null\`. Oversized final objects/arrays may return \`value.reference\`. \`-> ?\` means unknown output: do not feed it into guessed field-dependent logic in the same program. Return it raw or \`await results.save(value)\`; use a later \`exec\` for dependent composition. Save returns \`{id,bytes,count,shape,preview,previewTruncated}\`: emit that descriptor directly; full JSON stays stored. Load/delete with \`results.load(id)\`/\`results.delete(id)\`. Saved results references expire when the current reply ends; never reuse reference ids from earlier turns; use \`store\` for data needed later. \`await store(key, value)\`/\`await load(key)\` keep small JSON values across cells and turns in this session (survive restarts); contract: \`API.read("results.d.ts")\`. For omitted tools, use \`catalog.search(query)\`; results are callable: \`const [tool] = await catalog.search("..."); return await tool({...});\`. Use handle \`describe()\` for schemas. \`setTimeout\` and \`clearTimeout\` work. \`TextEncoder\`/\`TextDecoder\` convert local text and bytes. Console log/info/warn/error/debug emit bounded text. Nested calls enforce normal tool policy and approvals. Tool failures are catchable; inspect possible effects before retrying. Nested results are intact or throw resource errors. Cell reply inbox: ${Math.min(config.memoryLimitBytes, config.maxSnapshotBytes)} bytes; consume replies or paginate if full. Output/value/errors share ${maxOutputBytes} bytes across waits. Other truncation reports original JSON prefixes/omitted bytes; rerun with narrower args. Output is incremental; changed cumulative summaries replace earlier ones. Node.js modules and \`require\`/\`import\` are NOT available; use tools for external actions.` +
+    ` Enabled tools are async global functions. Await dependent calls in order; independent calls may run with Promise.all. Declared output fields may feed later calls in the same program; avoid extra inspection calls. Emit output with \`text(value)\` or \`json(value)\`. Return the final value, otherwise \`null\`. Oversized final objects/arrays may return \`value.reference\`. \`-> ?\` means unknown output: do not feed it into guessed field-dependent logic in the same program. Return it raw or \`await results.save(value)\`; use a later \`exec\` for dependent composition. Save returns \`{id,bytes,count,shape,preview,previewTruncated}\`: emit that descriptor directly; full JSON stays stored. Load/delete with \`results.load(id)\`/\`results.delete(id)\`. Saved results references expire when the current reply ends; never reuse reference ids from earlier turns; use \`store\` for data needed later. \`await store(key, value)\`/\`await load(key)\` keep small JSON values across cells and turns in this session (survive restarts); contract: \`API.read("results.d.ts")\`. For omitted tools, use \`catalog.search(query)\`; results are callable: \`const [tool] = await catalog.search("..."); return await tool({...});\`. Use handle \`describe()\` for schemas. \`setTimeout\` and \`clearTimeout\` work. \`TextEncoder\`/\`TextDecoder\` convert local text and bytes; \`atob\`/\`btoa\` handle base64; \`crypto.randomUUID()\` and \`crypto.getRandomValues()\` give secure random values. Console log/info/warn/error/debug emit bounded text. Nested calls enforce normal tool policy and approvals. Tool failures are catchable; inspect possible effects before retrying. Nested results are intact or throw resource errors. Cell reply inbox: ${Math.min(config.memoryLimitBytes, config.maxSnapshotBytes)} bytes; consume replies or paginate if full. Output/value/errors share ${maxOutputBytes} bytes across waits. Other truncation reports original JSON prefixes/omitted bytes; rerun with narrower args. Output is incremental; changed cumulative summaries replace earlier ones. Node.js modules and \`require\`/\`import\` are NOT available; use tools for external actions.` +
     apiGuidance +
     mcpGuidance +
     swarmGuidance +
@@ -238,6 +251,7 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
             "Required task results: keep this call owned through event-driven tool waits, without model polling. Explicit background services stay detached. Guest budget and run/tool deadlines still apply.",
         }),
       ),
+      timeoutSeconds: codeModeTimeoutSecondsSchema(),
       restartSafe: Type.Optional(
         Type.Boolean({
           description:
@@ -269,6 +283,7 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
           executionContext?.assistantMessage.turnId?.trim(),
         restartSafe: ctx.forceRestartSafeTools === true || input.restartSafe,
         awaitResults: input.awaitResults,
+        timeoutMs: input.timeoutMs,
         signal,
         onUpdate,
         onRuntime: (value) => {
@@ -289,6 +304,7 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
         description:
           'Top-level runId from an exec result with status "waiting", never a nested tool sessionId.',
       }),
+      timeoutSeconds: codeModeTimeoutSecondsSchema(),
     }),
     execute: async (
       toolCallId: string,
@@ -303,6 +319,7 @@ export function createCodeModeTools(ctx: CodeModeToolContext): AnyAgentTool[] {
         toolCallId,
         ctx,
         runId: readRunId(args),
+        timeoutMs: readCodeModeCallTimeoutMs(asToolParamsRecord(args)),
         signal,
         onUpdate,
         onRuntime: (value) => {

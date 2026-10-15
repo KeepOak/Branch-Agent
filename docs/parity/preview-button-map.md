@@ -8,7 +8,7 @@ Statuses: `same` (app matches the preview), `different` (exists but destination 
 
 Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Later-pass interpolated `data-act` keys that are not distinct product destinations are omitted; `scripts/parity/extract-preview-acts.mjs` lists raw act keys.
 
-**379 controls.** Totals: same 263, different 98, missing 5, extra 9, dead 0, unknown 4.
+**379 controls.** Totals: same 263, different 97, missing 6, extra 9, dead 0, unknown 4.
 
 ## Non-`same` entries
 
@@ -17,7 +17,7 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 | id | label | status | preview | app |
 |---|---|---|---|---|
 | `titlebar-guide` | Guide | different | Opens the Guide popover (design notes / critique pins) and toggles the notes layer. | Opens the Guide menu: What's new, Set up Branch, walkthrough, Docs, Get help, Community — not the prototype notes layer. |
-| `titlebar-theme` | Switch light or dark | different | Toggles document theme between light and dark. | Toggles light/dark. Shown on place/settings headers; chat uses the conversation ⋯ or person menu Look instead. |
+| `titlebar-theme` | Switch light or dark | different | Toggles document theme between light and dark. | No titlebar theme button and no header menu row (DA-09). Light or dark lives in the person menu Look row and the Appearance page in Settings; the command palette keeps Switch light or dark. |
 | `titlebar-focus` | Clear the view (Ctrl .) | missing | Toggles focus mode (hides sidebar and status bar). | Focus mode exists via Ctrl+. and Leave focus mode. No titlebar eye button. |
 | `titlebar-minimize` | Minimize | different | Shows a toast: Branch keeps working from the tray. | Minimize is the OS/Electron window button, not a React control. In a browser there is no minimize control. |
 | `titlebar-window-focus` | Focus mode | missing | Same as Clear the view: toggles focus mode. | No maximize/focus window button in the React chrome; focus is Ctrl+. |
@@ -181,9 +181,9 @@ Demo labels only (Scout, Ledger, Sapling, Ada, Fieldnotes, Supplier quotes). Lat
 |---|---|---|---|---|
 | `lib-tab-meetings` | Meetings | extra | Not in the early preview library tabs. | Shows Meetings. |
 | `lib-tab-logbook` | Logbook | extra | Not in the early preview library tabs. | Shows Logbook. |
-| `lib-write` | Write a new document | different | Toasts: Opens a blank document a Trunk can help write. | Head actions Canvas / Translate / Make pictures are greyed (engine gaps). No toast-only Write button. |
+| `lib-write` | Write a new document | different | Toasts: Opens a blank document a Trunk can help write. | Head actions Translate / Make pictures are greyed (engine gaps). No Clearing pill and no toast-only Write button. |
 | `lib-open` | Open | different | Toasts: Opens in its own app. | Opens the document when the engine can; not a toast-only stub. |
-| `lib-canvas` | Canvas | different | Later preview Clearings/canvas. | Greyed: needs an engine method that lists Clearings. |
+| `lib-canvas` | Canvas | missing | Later preview Clearings/canvas. | Not shown: a greyed Clearing pill told a person nothing (DA-42). Returns once the engine can list Clearings. |
 
 ### customize
 

@@ -39,10 +39,9 @@ export type ToolsCtx = {
   openConversation: (key: string) => void;
 };
 
-export function ToolsTab({ engine, level, trunks, kind, setKind, openConversation }: { engine: WindowEngine; level: Level; trunks: Trunk[]; kind: Kind; setKind: (k: Kind) => void; openConversation: (key: string) => void }) {
+export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGetting, openConversation }: { engine: WindowEngine; level: Level; trunks: Trunk[]; kind: Kind; setKind: (k: Kind) => void; getting: boolean; setGetting: (getting: boolean) => void; openConversation: (key: string) => void }) {
   const [whose, setWhose] = useState<string | null>(null);
   const [adding, setAdding] = useState<Kind | null>(null);
-  const [getting, setGetting] = useState(false);
   const scope = whose ? { agentId: whose } : {};
   const ctx: ToolsCtx = {
     engine, level, trunks, whose, openConversation,

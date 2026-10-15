@@ -29,7 +29,7 @@ export type ActionId =
 /** `off`: why the action can't run in this window yet; its row shows the keys greyed with that reason.
  *  `pane`: the side panel tab or full-size view it opens (the dialog's "Side panel" group). */
 export type KeyAction = { id: ActionId; name: string; keys: string; off?: string; pane?: PaneTarget };
-export type PaneTarget = "Terminal" | "Files" | "Side chat" | "Browser" | "Computer";
+export type PaneTarget = "Terminal" | "Files" | "Side chat" | "Dashboard" | "Browser" | "Computer";
 
 const DESKTOP = "Keys that work from any app belong to the desktop app, which doesn't offer them yet.";
 const NO_TAB = (tab: string) => `The side panel has no ${tab} tab in this window yet.`;
@@ -58,7 +58,7 @@ export function keyActions(defaultName: string): KeyAction[] {
     { id: "paneSideChat", name: "Side chat", keys: "Ctrl Alt Shift S", pane: "Side chat" },
     { id: "paneReview", name: "Review", keys: "Ctrl Alt Shift E", off: NO_TAB("Review") },
     { id: "paneDiscussion", name: "Discussion", keys: "Ctrl Alt Shift J", off: NO_TAB("Discussion") },
-    { id: "paneDashboard", name: "Dashboard", keys: "Ctrl Alt Shift G", off: NO_TAB("Dashboard") },
+    { id: "paneDashboard", name: "Dashboard", keys: "Ctrl Alt Shift G", pane: "Dashboard" },
     { id: "stageBrowser", name: "Browser, full size", keys: "Ctrl Alt Shift U", pane: "Browser" },
     { id: "stageComputer", name: "Computer, full size", keys: "Ctrl Alt Shift D", pane: "Computer" },
   ];
@@ -117,4 +117,19 @@ export function checkCombo(combo: string, id: ActionId, actions: KeyAction[], ke
 /** How keys read on this computer: ⌘ for Ctrl on a Mac. */
 export function shown(combo: string, mac: boolean): string[] {
   return combo.split(" ").map((k) => (mac && k === "Ctrl" ? "⌘" : mac && k === "Alt" ? "⌥" : k));
+}
+
+/** A side-panel key written the way the preview writes its side keys: "Ctrl+Alt+Shift+G" (the spaced form stays the stored combo). */
+export function plusLabel(combo: string, mac: boolean): string {
+  return shown(combo, mac).join("+");
+}
+
+/** Keys inside a sentence, matching the shortcuts dialog: "⌘K" or "⌘⇧K" on a Mac, "Ctrl K" elsewhere. */
+export function shownInline(combo: string, mac: boolean): string {
+  return mac ? shown(combo, true).map((k) => (k === "Shift" ? "⇧" : k)).join("") : combo;
+}
+
+/** True on a Mac (and iPhone or iPad), where Ctrl reads ⌘. */
+export function onMac(): boolean {
+  return typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 }

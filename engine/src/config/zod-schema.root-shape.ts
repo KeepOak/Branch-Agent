@@ -370,6 +370,22 @@ export const BranchSchemaShape = {
     .optional(),
   worktreeAcceleration: z.boolean().optional(),
   worktreeMaxCount: z.number().int().positive().optional(),
+  buildWorktreeRoots: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .refine(
+          (value) =>
+            path.isAbsolute(value) ||
+            value === "~" ||
+            value.startsWith("~/") ||
+            value.startsWith(`~${path.sep}`),
+          "buildWorktreeRoots entries must be absolute paths or paths starting with ~",
+        ),
+    )
+    .optional(),
   tools: ToolsSchema,
   security: SecuritySchema,
   bindings: BindingsSchema,

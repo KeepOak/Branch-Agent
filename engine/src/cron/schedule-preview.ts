@@ -1,5 +1,4 @@
-/** Advisory occurrence previews adapted from DeerFlow scheduled_tasks.py.
- * bytedance/deer-flow@f840e843d3e2db1485cb65ceae73a5525aa80193.
+/** Advisory occurrence previews.
  * The existing Branch scheduler owns cron grammar and DST semantics.
  */
 import { computeNextRunAtMs } from "./schedule.js";
