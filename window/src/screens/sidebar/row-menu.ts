@@ -1,7 +1,8 @@
 // The row ••• menu (HANDOFF R1-02, owner item 20): four quick tiles (Pin, Unread, Snooze ›, Archive) and the rows
 // Rename, Move to ›, New conversation ›, Copy ›, Open in new window, the Trunk's own submenu, then Delete in red. Each
 // entry calls the engine through the Classic actions (shell/conversation-actions.ts, contacts-model.ts); one that this
-// window can't run yet says why instead of pretending. Each entry names the engine method it calls (R1-10), so an engine
+// window can't run yet says why instead of pretending. A pinned face opens the same menu (preview `.pinTileT5` ›
+// rowmorePA18) plus "Replace with a different Trunk…", which swaps the pin for a Trunk picked from a list. Each entry names the engine method it calls (R1-10), so an engine
 // without it shows Coming; entries that only copy, open or navigate are local.
 import type { Conversation } from "../../connect/conversations";
 import { snoozeChoices, snoozeTime, wakeWords, type Actions } from "../../shell/conversation-actions";
@@ -37,6 +38,8 @@ export type RowMenuContext = {
   keepLast?: (row: Conversation) => void;
   removeTrunk: (agentId: string, name: string) => void;
   confirmDelete: (row: Conversation) => void;
+  /** A pinned face: pick a Trunk to take this pin's place (the picker, then the swap, live in Sidebar.tsx). */
+  replacePin: (row: SideRow) => void;
 };
 
 export const FIRST_MESSAGE = "Send a first message first.";
@@ -45,6 +48,8 @@ export const DEFAULT_LISTED = "Always listed";
 export const TRUNK_LISTED = "Always listed";
 export const PAUSE_OFF = "Pausing a Trunk needs an engine method it doesn't have yet.";
 export const NO_PROJECTS = "No projects yet.";
+export const DEFAULT_FIRST = "Always first";
+export const REPLACE_PIN = "Replace with a different Trunk…";
 
 /** The engine calls behind each entry (HANDOFF R1-02 "Engine calls"; shell/conversation-actions.ts). */
 export const NEED = {
@@ -62,6 +67,8 @@ export const NEED = {
   ask: "chat.send",
   tidy: "sessions.compact",
   history: "chat.history",
+  /** Replace a pin: pin the picked Trunk (sessions.patch), then unpin this one and its topics (sessions.patchMany, contacts.topics). */
+  replace: ["sessions.patch", "sessions.patchMany", "contacts.topics"],
 } as const;
 
 const icon = (name: Parameters<typeof menuIcon>[0]) => menuIcon(name);
@@ -124,6 +131,9 @@ export function rowMenu(row: SideRow, c: RowMenuContext): { tiles: MenuEntry[]; 
       { label: "Conversation ID", icon: icon("copy"), local: true, onSelect: () => c.copyText(key) },
     ] },
     c.ownWindowOff ? null : { label: "Open in new window", icon: icon("panel"), local: true, onSelect: () => c.ownWindow(key) },
+    row.pinned ? row.isDefault
+      ? { label: REPLACE_PIN, icon: icon("pin"), off: DEFAULT_FIRST }
+      : { label: REPLACE_PIN, icon: icon("pin"), need: NEED.replace, onSelect: () => c.replacePin(row) } : null,
     trunk && agentId ? { label: row.name, icon: icon("users"), gap: true, submenu: present([
       { label: "What can it do?", icon: icon("info"), need: NEED.ask, onSelect: () => c.ask(key) },
       { label: "Pause", icon: icon("pause"), need: NEED.pause, off: PAUSE_OFF },
