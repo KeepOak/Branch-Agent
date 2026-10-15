@@ -85,6 +85,31 @@ phone or emulator in one step.
 - Light and dark follow the phone's setting (`userInterfaceStyle: automatic`, which needs
   `expo-system-ui` in a built app).
 
+## Build with EAS (optional)
+
+`eas.json` has three cloud-build profiles. None of them submit to a store. Android `preview`
+and `production` builds are sideloadable APKs. iOS builds are for the simulator only — no
+ad-hoc, TestFlight or store distribution. Android signing for those APKs uses EAS-managed
+credentials (`credentialsSource: remote`) or a keystore supplied through CI / EAS secrets;
+nothing is committed here (`credentials.json` is git-ignored).
+
+The local `npm run build:android` path above does not use EAS and is unchanged.
+
+```bash
+cd mobile
+npx eas-cli build --profile development --platform android
+npx eas-cli build --profile preview --platform android
+npx eas-cli build --profile production --platform android
+npx eas-cli build --profile preview --platform ios
+```
+
+- **development** — Expo dev client; Android internal APK; iOS simulator.
+- **preview** — Android internal APK; iOS simulator.
+- **production** — Android internal APK (sideload, not an app bundle); iOS simulator.
+
+Link the Expo / EAS project outside this repository. Do not add a personal project id,
+Apple team id, or keystore path to `app.json` or `eas.json`.
+
 ## Check approvals end to end
 
 You don't need a Trunk to ask for something, or to change what your computer lets Trunks run. Development
