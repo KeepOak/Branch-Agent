@@ -1,0 +1,2 @@
+window:src/stage/pane/ActivityTab.helper-facts.test.tsx
+window:src/stage/pane/ActivityTab.plain.test.ts

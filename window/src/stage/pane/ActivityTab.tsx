@@ -11,6 +11,7 @@ import { Face } from "../../face/Face";
 import { SIcon } from "../stage-icons";
 import { activityRecordedAt, activityState, money } from "./pane-model";
 import { shortReason, stepLabel } from "../../thread/format";
+import { isInternalStep } from "../../thread/internal-steps";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -125,6 +126,15 @@ function HelperCard({ h, asks, facts, onStop, onAnswer }: { h: Helper; asks: App
  * last turn end, or your last message), or else the last task, the newest turn that had steps. A plain reply after
  * it is not a task, so it doesn't empty the list.
  */
+/** A step's sub-line: the reason when it failed or was refused, and a finished step's raw output only at Technical, so file
+ *  contents, tool replies and ids ("Sent visible reply … via internal-ui", "no_change") stay out of normal views. */
+export function stepDetail(step: Extract<Block, { kind: "step" }>, level: Level): string | null {
+  const detail = step.detail?.trim();
+  if (!detail || /^[[{]/.test(detail)) return null;
+  if (step.status === "failed" || step.status === "denied" || level === "technical") return shortReason(detail);
+  return null;
+}
+
 export function currentTask(blocks: readonly Block[], running: boolean): Block[] {
   const kinds = blocks.map((b) => b.kind);
   if (running) return blocks.slice(Math.max(kinds.lastIndexOf("user"), kinds.lastIndexOf("done"), kinds.lastIndexOf("error")) + 1);
@@ -139,7 +149,7 @@ export function currentTask(blocks: readonly Block[], running: boolean): Block[]
 }
 
 /** Activity: what it's doing now, the Canopy card it works on, its recent steps and its helpers. */
-export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, onError }: { engine: WindowEngine; name: string; blocks: Block[]; running: boolean; level: Level; focusHelpers?: number; onError: (m: string) => void }) {
+export function ActivityTab({ engine, name, blocks, running, level, focusHelpers = 0, onError }: { engine: WindowEngine; name: string; blocks: Block[]; running: boolean; level: Level; focusHelpers?: number; onError: (m: string) => void }) {
   const helperSection = useRef<HTMLElement>(null);
   const { helpers } = useHelpers(engine);
   const native = useMemo(() => nativeHelpers(blocks), [blocks]);
@@ -154,7 +164,8 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
   const asOf = activityRecordedAt(blocks);
   const stepByKey = new Map<string, Extract<Block, { kind: "step" }>>();
   for (const block of currentTask(blocks, running)) {
-    if (block.kind !== "step") continue;
+    // The engine's own check-in (heartbeat_respond) never shows, here or in the transcript (thread/internal-steps.ts).
+    if (block.kind !== "step" || isInternalStep(block)) continue;
     const previous = stepByKey.get(block.key);
     if (!previous || (block.at ?? 0) >= (previous.at ?? 0)) stepByKey.set(block.key, block);
   }
@@ -186,7 +197,7 @@ export function ActivityTab({ engine, name, blocks, running, focusHelpers = 0, o
               <SIcon name={b.status === "ok" ? "check" : b.status === "running" ? "spin" : b.status === "denied" || b.status === "failed" ? "x" : "info"} small className={b.status === "running" ? "spin-st" : undefined} />
               <span>
                 {stepLabel(b)}
-                {b.detail && !/^\s*[\[{]/.test(b.detail) ? <small>{shortReason(b.detail)}</small> : null}
+                {stepDetail(b, level) ? <small>{stepDetail(b, level)}</small> : null}
               </span>
               <time>{b.at ? new Date(b.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }) : `Step ${first + i + 1}`}</time>
             </li>
