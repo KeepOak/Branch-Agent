@@ -2,11 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchConfig } from "../../config/types.branch.js";
 
 const mocks = vi.hoisted(() => ({
+  // The owner's answer on the approval record, given after `gate` opens. "unavailable" means no approval surface.
+  answer: "allow" as "allow" | "deny" | "unavailable" | "expired",
+  /** When set, the approval fails to register: the record is never handed out. */
+  registerFails: false,
+  gate: Promise.resolve() as Promise<void>,
+  records: 0,
   approval: vi.fn(),
   createAgent: vi.fn(),
   rooms: new Map<string, unknown>(),
   queue: [] as Array<{ title: string; brief_text: string }>,
   cfg: {} as BranchConfig,
+  connected: [] as string[],
 }));
 
 vi.mock("./model-choice-approval.js", () => ({
@@ -29,195 +36,289 @@ vi.mock("../../agents/trunk-queue.js", () => ({
 }));
 vi.mock("./trunk-queue.js", () => ({ wakeEligibleTrunks: vi.fn() }));
 vi.mock("../../agents/trunk-team-registry.js", () => ({ registerTeam: vi.fn() }));
+vi.mock("../../agents/trunk-team-proposals.js", () => {
+  const records = new Map<string, Record<string, unknown>>();
+  return {
+    readProposal: (hash: string) => records.get(hash),
+    saveProposal: (record: { hash: string }) => {
+      records.set(record.hash, { ...record, updatedAt: Date.now() });
+      return records.get(record.hash);
+    },
+    forgetProposal: (hash: string) => {
+      records.delete(hash);
+    },
+    proposalRecords: records,
+  };
+});
+vi.mock("./trunk-team-progress.js", () => ({ publishTeamChange: vi.fn() }));
 
 const { trunkTeamHandlers } = await import("./trunk-team.js");
 
-function context(connected: string[] = []) {
+let goal = "Ship the Q3 newsletter";
+let goals = 0;
+const flush = () =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+
+function context() {
   return {
     getRuntimeConfig: () => mocks.cfg,
-    nodeRegistry: { listConnected: () => connected.map((nodeId) => ({ nodeId })) },
+    nodeRegistry: { listConnected: () => mocks.connected.map((nodeId) => ({ nodeId })) },
     logGateway: { warn: vi.fn() },
   } as never;
 }
 
 async function call(
-  method: "trunks.team.propose" | "trunks.team.approve",
+  method: "trunks.team.propose" | "trunks.team.open" | "trunks.team.retry",
   params: object,
-  connected: string[] = [],
 ) {
   const respond = vi.fn();
-  await trunkTeamHandlers[method]!({ params, respond, context: context(connected) } as never);
+  await trunkTeamHandlers[method]!({ params, respond, context: context() } as never);
   return respond;
 }
 
-async function proposalHash(goal: string, connected: string[] = []): Promise<string> {
-  const respond = await call("trunks.team.propose", { goal }, connected);
-  const payload = respond.mock.calls[0]?.[1] as { proposal: { hash: string } };
-  return payload.proposal.hash;
+function payloadOf(respond: ReturnType<typeof vi.fn>): Record<string, unknown> {
+  const [ok, payload, error] = respond.mock.calls[0] ?? [];
+  if (!ok) {
+    throw new Error((error as { message?: string } | undefined)?.message ?? "failed");
+  }
+  return payload as Record<string, unknown>;
+}
+
+async function proposalHash(roles?: object[]): Promise<string> {
+  const respond = await call("trunks.team.propose", { goal, ...(roles ? { roles } : {}) });
+  return (payloadOf(respond).proposal as { hash: string }).hash;
 }
 
 beforeEach(() => {
+  // Each test gets its own goal: an open approval stays in the registry until the owner answers it.
+  goal = `Ship newsletter ${++goals}`;
   mocks.rooms.clear();
   mocks.queue.length = 0;
   mocks.createAgent.mockReset();
   mocks.approval.mockReset();
+  mocks.answer = "allow";
+  mocks.registerFails = false;
+  mocks.gate = Promise.resolve();
+  mocks.records = 0;
+  mocks.connected = [];
   mocks.cfg = {
     agents: {
       defaults: { model: "anthropic/claude-sonnet" },
       entries: { main: {} },
     },
   };
-  mocks.createAgent.mockImplementation(async (params: { entry: { id: string; name: string } }) => {
-    mocks.cfg.agents!.entries![params.entry.id] = {};
-    return { status: "created", agentId: params.entry.id, name: params.entry.name };
+  mocks.approval.mockImplementation(async (params: { onRecord?: (id: string) => void }) => {
+    if (mocks.answer === "unavailable") {
+      return "unavailable";
+    }
+    if (mocks.registerFails) {
+      throw new Error("register failed");
+    }
+    params.onRecord?.(`appr-${++mocks.records}`);
+    await mocks.gate;
+    return mocks.answer;
   });
+  mocks.createAgent.mockImplementation(
+    async (params: { entry: { id: string; tools?: unknown } }) => {
+      mocks.cfg.agents!.entries![params.entry.id] = { tools: params.entry.tools };
+      return { status: "created", agentId: params.entry.id, name: params.entry.id };
+    },
+  );
 });
-
-const goal = "Ship the Q3 newsletter";
 
 describe("trunks.team.propose", () => {
   it("only proposes: nothing is created and nothing is asked", async () => {
     const respond = await call("trunks.team.propose", { goal });
 
-    expect(respond.mock.calls[0]?.[0]).toBe(true);
-    expect(respond.mock.calls[0]?.[1]).toMatchObject({ proposal: expect.anything() });
+    expect(payloadOf(respond)).toMatchObject({
+      proposal: expect.anything(),
+      choices: expect.anything(),
+    });
     expect(mocks.approval).not.toHaveBeenCalled();
     expect(mocks.createAgent).not.toHaveBeenCalled();
-    expect(mocks.rooms.size).toBe(0);
-    expect(mocks.queue).toHaveLength(0);
   });
 });
 
-describe("trunks.team.approve", () => {
-  it("refuses a proposal whose team changed since it was shown, and asks nothing", async () => {
-    const hash = await proposalHash(goal);
+describe("trunks.team.open", () => {
+  it("opens the approval the Inbox shows, and creates nothing until the owner allows it", async () => {
+    const hash = await proposalHash();
+    mocks.gate = new Promise<void>(() => {});
+
+    const respond = await call("trunks.team.open", { goal, proposalHash: hash });
+
+    expect(payloadOf(respond)).toEqual({ status: "pending", approvalId: "appr-1" });
+    expect(mocks.approval).toHaveBeenCalledTimes(1);
+    expect(mocks.createAgent).not.toHaveBeenCalled();
+    expect(mocks.rooms.size).toBe(0);
+  });
+
+  it("refuses a proposal whose team changed since it was shown, and opens nothing", async () => {
+    const hash = await proposalHash();
     mocks.cfg.agents!.defaults = { model: "openai/gpt" };
 
-    const respond = await call("trunks.team.approve", { goal, proposalHash: hash });
+    const respond = await call("trunks.team.open", { goal, proposalHash: hash });
 
     expect(respond.mock.calls[0]?.[0]).toBe(false);
     expect(mocks.approval).not.toHaveBeenCalled();
-    expect(mocks.createAgent).not.toHaveBeenCalled();
   });
 
-  it("creates nothing when the owner declines the card", async () => {
-    const hash = await proposalHash(goal);
-    mocks.approval.mockResolvedValue("deny");
+  it("shows the same approval for a proposal that is already open", async () => {
+    const hash = await proposalHash();
+    mocks.gate = new Promise<void>(() => {});
 
-    const respond = await call("trunks.team.approve", { goal, proposalHash: hash });
+    const first = payloadOf(await call("trunks.team.open", { goal, proposalHash: hash }));
+    const second = payloadOf(await call("trunks.team.open", { goal, proposalHash: hash }));
 
-    expect(respond.mock.calls[0]).toEqual([true, { status: "declined" }]);
+    expect(second).toEqual(first);
+    expect(mocks.approval).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates nothing when the owner declines the record", async () => {
+    const hash = await proposalHash();
+    mocks.answer = "deny";
+
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    await flush();
+
     expect(mocks.createAgent).not.toHaveBeenCalled();
     expect(mocks.rooms.size).toBe(0);
     expect(mocks.queue).toHaveLength(0);
   });
 
-  it("creates nothing when no approval surface is available", async () => {
-    const hash = await proposalHash(goal);
-    mocks.approval.mockResolvedValue("unavailable");
+  it("reports unavailable when no approval surface exists, and creates nothing", async () => {
+    const hash = await proposalHash();
+    mocks.answer = "unavailable";
 
-    const respond = await call("trunks.team.approve", { goal, proposalHash: hash });
+    const respond = await call("trunks.team.open", { goal, proposalHash: hash });
+    await flush();
 
-    expect(respond.mock.calls[0]).toEqual([true, { status: "unavailable" }]);
+    expect(payloadOf(respond)).toMatchObject({ status: "unavailable" });
     expect(mocks.createAgent).not.toHaveBeenCalled();
   });
 
-  it("applies an allowed team once: three Trunks, one room, three jobs", async () => {
-    const hash = await proposalHash(goal);
-    mocks.approval.mockResolvedValue("allow");
+  it("applies the team once the owner allows the record: three Trunks, one room, three jobs", async () => {
+    const hash = await proposalHash();
 
-    const respond = await call("trunks.team.approve", { goal, proposalHash: hash });
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    await vi.waitFor(() => expect(mocks.createAgent).toHaveBeenCalledTimes(3));
 
-    expect(respond.mock.calls[0]?.[1]).toMatchObject({ status: "applied" });
-    expect(mocks.createAgent).toHaveBeenCalledTimes(3);
     for (const [params] of mocks.createAgent.mock.calls) {
       expect(params).toMatchObject({ skipBootstrap: true, model: "anthropic/claude-sonnet" });
     }
-    const ids = mocks.createAgent.mock.calls.map(([params]) => params.entry.id);
-    expect(ids).toEqual(expect.arrayContaining([expect.stringMatching(/^builder-scout-/)]));
     expect(mocks.rooms.size).toBe(1);
     expect(mocks.queue).toHaveLength(3);
   });
 
-  it("does not repeat anything when the same team is approved again", async () => {
-    const hash = await proposalHash(goal);
-    mocks.approval.mockResolvedValue("allow");
-    await call("trunks.team.approve", { goal, proposalHash: hash });
+  it("creates each Trunk once when the owner allows the same team twice", async () => {
+    const hash = await proposalHash();
+    let release: () => void = () => undefined;
+    mocks.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
 
-    const again = await call("trunks.team.approve", { goal, proposalHash: hash });
-
-    expect(again.mock.calls[0]?.[1]).toMatchObject({ status: "applied", created: [] });
-    expect(mocks.createAgent).toHaveBeenCalledTimes(3);
-    expect(mocks.rooms.size).toBe(1);
-    expect(mocks.queue).toHaveLength(3);
-  });
-});
-
-describe("placement on create", () => {
-  it("binds a remote computer into the Trunk's config, and leaves this computer as the default", async () => {
-    const hash = await proposalHash(goal, ["node-a"]);
-    mocks.approval.mockResolvedValue("allow");
-
-    await call("trunks.team.approve", { goal, proposalHash: hash }, ["node-a"]);
-
-    const byId = Object.fromEntries(
-      mocks.createAgent.mock.calls.map(([params]) => [params.entry.id, params.entry]),
-    );
-    const remote = Object.values(byId).filter((entry) => entry.tools?.exec?.node === "node-a");
-    expect(remote).toHaveLength(1);
-    expect(remote[0]?.tools?.exec).toEqual({ host: "node", node: "node-a" });
-    const local = Object.values(byId).filter((entry) => entry.tools === undefined);
-    expect(local).toHaveLength(2);
-  });
-});
-
-describe("concurrent approvals", () => {
-  it("runs a different proposal for the same team on its own, without its answer", async () => {
-    const hashAlone = await proposalHash(goal, []);
-    const hashPaired = await proposalHash(goal, ["node-a"]);
-    expect(hashPaired).not.toBe(hashAlone);
-    mocks.approval.mockResolvedValue("allow");
-
-    const [alone, paired] = await Promise.all([
-      call("trunks.team.approve", { goal, proposalHash: hashAlone }, []),
-      call("trunks.team.approve", { goal, proposalHash: hashPaired }, ["node-a"]),
-    ]);
-
-    expect(mocks.approval).toHaveBeenCalledTimes(2);
-    expect(alone.mock.calls[0]?.[1]).toMatchObject({ status: "applied" });
-    expect(paired.mock.calls[0]?.[1]).toMatchObject({ status: "applied" });
-    const remote = mocks.createAgent.mock.calls.filter(([params]) => params.entry.tools !== undefined);
-    expect(remote.length).toBeGreaterThan(0);
-  });
-  it("creates each Trunk once when the same team is approved twice at the same time", async () => {
-    const hash = await proposalHash(goal);
-    let release: (value: string) => void = () => undefined;
-    mocks.approval.mockImplementation(
-      () =>
-        new Promise<string>((resolve) => {
-          release = resolve;
-        }),
-    );
-
-    const first = call("trunks.team.approve", { goal, proposalHash: hash });
-    const second = call("trunks.team.approve", { goal, proposalHash: hash });
-    await vi.waitFor(() => expect(mocks.approval).toHaveBeenCalled());
-    release("allow");
-    const [firstRespond, secondRespond] = await Promise.all([first, second]);
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    release();
+    await vi.waitFor(() => expect(mocks.createAgent).toHaveBeenCalledTimes(3));
+    await flush();
 
     expect(mocks.approval).toHaveBeenCalledTimes(1);
     expect(mocks.createAgent).toHaveBeenCalledTimes(3);
     expect(mocks.rooms.size).toBe(1);
     expect(mocks.queue).toHaveLength(3);
-    expect(firstRespond.mock.calls[0]?.[1]).toMatchObject({ status: "applied" });
-    expect(secondRespond.mock.calls[0]?.[1]).toMatchObject({ status: "applied" });
+  });
+
+  it("answers an applied team from its record, and asks nothing again", async () => {
+    const hash = await proposalHash();
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    await vi.waitFor(() => expect(mocks.createAgent).toHaveBeenCalledTimes(3));
+    await flush();
+
+    const again = payloadOf(await call("trunks.team.open", { goal, proposalHash: hash }));
+
+    expect(again).toMatchObject({ status: "applied", created: expect.any(Array) });
+    expect(mocks.approval).toHaveBeenCalledTimes(1);
+    expect(mocks.createAgent).toHaveBeenCalledTimes(3);
+  });
+
+  it("never reopens a declined proposal, and asks the owner nothing again", async () => {
+    const hash = await proposalHash();
+    mocks.answer = "deny";
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    await flush();
+
+    const again = payloadOf(await call("trunks.team.open", { goal, proposalHash: hash }));
+
+    expect(again).toEqual({ status: "declined" });
+    expect(mocks.approval).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a new approval once the old one expired, and never applies the expired one", async () => {
+    const hash = await proposalHash();
+    mocks.answer = "expired";
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    await flush();
+    expect(mocks.createAgent).not.toHaveBeenCalled();
+
+    mocks.answer = "allow";
+    const reopened = payloadOf(await call("trunks.team.open", { goal, proposalHash: hash }));
+
+    expect(reopened).toEqual({ status: "pending", approvalId: "appr-2" });
+    expect(mocks.approval).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps no record id when the approval does not register, and says so", async () => {
+    const hash = await proposalHash();
+    mocks.registerFails = true;
+
+    const respond = await call("trunks.team.open", { goal, proposalHash: hash });
+
+    expect(respond.mock.calls[0]?.[0]).toBe(false);
+    expect(respond.mock.calls[0]?.[2]).toMatchObject({
+      message: expect.stringContaining("could not be opened"),
+    });
+    expect(mocks.createAgent).not.toHaveBeenCalled();
+  });
+
+  it("refuses to apply a team whose computers or models changed while the card waited", async () => {
+    const hash = await proposalHash();
+    mocks.gate = new Promise<void>(() => {});
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    mocks.cfg.agents!.defaults = { model: "openai/gpt" };
+
+    mocks.gate = Promise.resolve();
+    await vi.waitFor(() => expect(mocks.approval).toHaveBeenCalled());
+    await flush();
+
+    expect(mocks.createAgent).not.toHaveBeenCalled();
+  });
+});
+
+describe("placement on create", () => {
+  it("binds a remote computer into the Trunk's config, and leaves this computer as the default", async () => {
+    mocks.connected = ["node-a"];
+    const hash = await proposalHash();
+
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    await vi.waitFor(() => expect(mocks.createAgent).toHaveBeenCalledTimes(3));
+
+    const entries = mocks.createAgent.mock.calls.map(
+      ([params]) => params.entry as { id: string; tools?: unknown },
+    );
+    const remote = entries.filter(
+      (entry) => (entry.tools as { exec?: { node?: string } } | undefined)?.exec?.node === "node-a",
+    );
+    expect(remote).toHaveLength(1);
+    expect(remote[0]?.tools).toEqual({ exec: { host: "node", node: "node-a" } });
+    expect(entries.filter((entry) => entry.tools === undefined)).toHaveLength(2);
   });
 });
 
 describe("retry after a partial failure", () => {
-  it("finishes the team on the next approve without creating a Trunk twice", async () => {
-    const hash = await proposalHash(goal);
-    mocks.approval.mockResolvedValue("allow");
+  it("shows the failure on the record, and finishes the team only when retried", async () => {
+    const hash = await proposalHash();
     let failNext = true;
     mocks.createAgent.mockImplementation(async (params: { entry: { id: string } }) => {
       if (failNext) {
@@ -228,17 +329,30 @@ describe("retry after a partial failure", () => {
       return { status: "created", agentId: params.entry.id, name: "x" };
     });
 
-    const failed = await call("trunks.team.approve", { goal, proposalHash: hash });
-    expect(failed.mock.calls[0]?.[0]).toBe(false);
+    await call("trunks.team.open", { goal, proposalHash: hash });
+    await vi.waitFor(() => expect(mocks.createAgent).toHaveBeenCalledTimes(1));
+    await flush();
+    expect(payloadOf(await call("trunks.team.open", { goal, proposalHash: hash }))).toMatchObject({
+      status: "failed",
+      message: expect.stringContaining("Retry"),
+    });
     expect(mocks.rooms.size).toBe(0);
-    expect(mocks.queue).toHaveLength(0);
 
-    const retried = await call("trunks.team.approve", { goal, proposalHash: hash });
+    const retried = payloadOf(await call("trunks.team.retry", { goal, proposalHash: hash }));
 
-    expect(retried.mock.calls[0]?.[1]).toMatchObject({ status: "applied" });
+    expect(retried).toMatchObject({ status: "applied" });
     expect(mocks.createAgent).toHaveBeenCalledTimes(4);
     expect(new Set(Object.keys(mocks.cfg.agents!.entries!)).size).toBe(4);
     expect(mocks.rooms.size).toBe(1);
     expect(mocks.queue).toHaveLength(3);
+  });
+
+  it("refuses a retry for a team that has not failed", async () => {
+    const hash = await proposalHash();
+
+    const respond = await call("trunks.team.retry", { goal, proposalHash: hash });
+
+    expect(respond.mock.calls[0]?.[0]).toBe(false);
+    expect(mocks.createAgent).not.toHaveBeenCalled();
   });
 });

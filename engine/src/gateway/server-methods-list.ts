@@ -51,6 +51,7 @@ export const GATEWAY_EVENTS = [
   "sessions.changed",
   "rooms.changed",
   "rooms.event",
+  "trunks.team.changed",
   "controlUi.sessionPullRequests.changed",
   "plugins.controlUi.changed",
   "presence",

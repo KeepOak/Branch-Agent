@@ -48,7 +48,7 @@ const TEAM_STATES=['asking','applied','declined','unavailable'] as const;
 function TeamPreview({state}:{state:string}){const shown=(TEAM_STATES as readonly string[]).includes(state)?state as typeof TEAM_STATES[number]:'asking';return <div style={{padding:24,background:'var(--bg,#f6f6f4)'}}><TeamApprovalCard goal="Ship the Q3 newsletter" members={TEAM_MEMBERS} state={shown}/></div>;}
 const TEAM_CHOICES={models:['anthropic/claude-sonnet','openai/gpt'],machines:['this','node-a']};
 const TEAM_RESULT={proposal:{teamId:'2d60428e',goal:'Ship the Q3 newsletter',hash:'fixture',roomId:'team-2d60428e',members:TEAM_MEMBERS},choices:TEAM_CHOICES};
-const threadEngine={request:async(method:string)=>method==='trunks.team.approve'?{status:'waiting'}:{proposal:TEAM_RESULT.proposal,choices:TEAM_CHOICES}};
+const threadEngine={request:async(method:string)=>method==='trunks.team.open'?{status:'pending',approvalId:'appr-fixture'}:method==='approval.resolve'?{applied:true}:{proposal:TEAM_RESULT.proposal,choices:TEAM_CHOICES}};
 function ThreadTeamPreview(){return <div style={{padding:24,background:'var(--bg,#f6f8f9)',maxWidth:560}}><ThreadContext.Provider value={{name:'Sapling',toast:()=>undefined,running:false,engine:threadEngine as any}}><TeamProposalBlock block={{kind:'team',key:'t1:team',result:TEAM_RESULT}}/></ThreadContext.Provider></div>;}
 const params=new URLSearchParams(window.location.search);
 const teamState=params.get('team');

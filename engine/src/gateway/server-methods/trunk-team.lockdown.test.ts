@@ -4,10 +4,10 @@ import { decideLockdownAdmission } from "../../config/lockdown-policy.js";
 const owner = () => true;
 
 describe("team methods under Lockdown", () => {
-  it("refuses trunks.team.approve, the write that creates Trunks, rooms and jobs", () => {
+  it("refuses trunks.team.open, the write that opens the approval for a team", () => {
     expect(
       decideLockdownAdmission({
-        method: "trunks.team.approve",
+        method: "trunks.team.open",
         params: { goal: "x", proposalHash: "h" },
         scope: "operator.write",
         isOwner: owner,

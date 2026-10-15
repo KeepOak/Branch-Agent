@@ -81,6 +81,7 @@ const EVENT_SCOPE_GUARDS: Record<string, string[]> = {
   // Group chats (rooms.*): a room changed or something was posted in it. Readable like rooms.get / rooms.log.
   "rooms.changed": [READ_SCOPE],
   "rooms.event": [READ_SCOPE],
+  "trunks.team.changed": [READ_SCOPE],
   "controlUi.sessionPullRequests.changed": [READ_SCOPE],
   "plugins.controlUi.changed": [READ_SCOPE],
   "mcp.app.resourceUpdated": [READ_SCOPE],
