@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
@@ -10,6 +11,7 @@ import { assertHoistedDeployment, extractProductionArchive, productionDeployArgu
 import { makeComponentRelease } from "./make-component-release.mjs";
 import { formatPayload, measurePayload, payloadBudgetProblems, pruneCodexPlatformPackages, pruneProductionDependencies } from "./release-payload.mjs";
 import { installLinuxLauncher } from "./linux-launcher.mjs";
+import { WINDOWS_LAUNCHER_RESOURCE, windowsLauncherCompileArgs, windowsLauncherCompiler, windowsLauncherSource } from "./windows-launcher.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { MAC_ADHOC_NOTICE, macSignCommand, macSigningPlan } from "./mac-release-signing.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
@@ -84,6 +86,18 @@ async function deployEngine(pnpm, scratch, identity, macSigning) {
   return deployment;
 }
 
+/**
+ * The stable Windows launcher (windows-launcher.mjs), compiled with the C# compiler that ships with Windows into the
+ * package's resources/. The installer and the desktop app copy it to the install root, where every shortcut points.
+ */
+async function buildWindowsLauncher(resources, scratch) {
+  const source = join(scratch, "branch-launcher.cs");
+  await writeFile(source, windowsLauncherSource());
+  const out = join(resources, WINDOWS_LAUNCHER_RESOURCE);
+  await run(windowsLauncherCompiler(process.env, existsSync), windowsLauncherCompileArgs({ source, out, icon: join(desktopRoot, "assets/branch.ico") }), scratch);
+  assert.ok(existsSync(out), `The Windows launcher was not built: ${out}`);
+}
+
 async function packageDesktop(scratch, output, identity, macSigning) {
   const npmDirectory = process.platform === "win32" ? dirname(process.execPath) : join(dirname(process.execPath), "../lib");
   await run(process.execPath, [join(npmDirectory, "node_modules/npm/bin/npm-cli.js"), "ci", "--no-audit", "--no-fund"], desktopRoot);
@@ -111,6 +125,7 @@ async function packageDesktop(scratch, output, identity, macSigning) {
   if (identity.platform === "linux") await installLinuxLauncher(app);
   const resources = identity.platform === "darwin" ? join(app, `${MAC_ARCHIVE_BUNDLE_FOLDER}/Contents/Resources`) : join(app, "resources");
   let node = await bundleNode(resources, undefined, identity);
+  if (identity.platform === "win32") await buildWindowsLauncher(resources, scratch);
   // Outside app.asar so a fresh package can prove its executable already has the Keeper icon.
   await writeFile(join(resources, "keeper-icon-revision"), "keeper-v1\n");
   // The desktop update component: app.asar alone, plus the whole app (the bootstrap package) for Electron changes.

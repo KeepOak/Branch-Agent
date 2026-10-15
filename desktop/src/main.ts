@@ -27,7 +27,7 @@ import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
-import { confirmDesktopUpdate, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, type DesktopInstall } from "./desktop-update";
+import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
@@ -1010,6 +1010,9 @@ function createWindow(): BrowserWindow {
     },
   });
   w.setMenuBarVisibility(false);
+  // Windows: pinning this window to the taskbar pins the stable launcher, not this version folder's exe.
+  const relaunch = install && !TEST_COPY && process.platform === "win32" ? windowsRelaunchDetails(install) : undefined;
+  if (relaunch) w.setAppDetails(relaunch);
   if (place.maximized) w.once("show", () => w.maximize());
   if (TEST_COPY) w.on("page-title-updated", (event, title) => { event.preventDefault(); w.setTitle(`Test — ${title}`); });
   if (!HIDDEN && !QUIET && !TEST_COPY) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
@@ -1282,6 +1285,8 @@ async function start(): Promise<void> {
   const desktopVersion = await confirmDesktopUpdate(cfg);
   if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
   if (install) await pruneWindowsInstall(install, log).catch((error: unknown) => log(`desktop version prune: ${String(error)}`));
+  // Shortcuts open the stable launcher at the install root, never a version folder that a prune can remove.
+  if (install && !TEST_COPY) void ensureWindowsLauncher(cfg, install, log).catch((error: unknown) => log(`windows launcher: ${String(error)}`));
   // Engines the last session started and left running (a crash mid-update): retire them before starting our own.
   await retireRecordedEngines(cfg.dataDir, log);
   // Always on: an engine service already serving the gateway port is attached to, never replaced.
