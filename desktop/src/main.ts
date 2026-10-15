@@ -1025,6 +1025,39 @@ function installBrowserGuestSession(): void {
   })
 }
 
+/** A second R1 window that shows one page from the browser pane, sharing the guest partition (cookies and logins). */
+function openBrowserPopout(url: string): void {
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 760,
+    title: TEST_COPY ? "Test — Branch Agent" : "Branch Agent",
+    show: false,
+    icon: ICON,
+    ...titleBarOptions(),
+    webPreferences: {
+      ...r1WebPreferences(join(__dirname, "preload.js")),
+      backgroundThrottling: !HIDDEN,
+    },
+  });
+  installBrowserGuestHost(win.webContents);
+  win.once("ready-to-show", () => win.show());
+  const target = new URL(windowUrl());
+  target.searchParams.set("browser", "popout");
+  target.searchParams.set("url", url);
+  void win.loadURL(target.toString());
+}
+
+ipcMain.handle("branch-desktop:browser-popout", (event, url: unknown) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || !isOwnedComponentWindow(event, owner.webContents, windowUrl())) {
+    throw new Error("Only a Branch window can open a browser window");
+  }
+  if (typeof url !== "string" || popupDecision(url) !== "open-tab") {
+    throw new Error("That address isn't allowed in the browser.");
+  }
+  openBrowserPopout(url);
+});
+
 function createWindow(): BrowserWindow {
   // First launch opens maximized; later launches restore the last state, size, position and display.
   const place = placeWindow(readWindowState(cfg.dataDir), screen.getAllDisplays());
