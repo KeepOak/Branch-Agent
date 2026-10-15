@@ -175,3 +175,14 @@ describe("P54 composer plus menu", () => {
     expect(host.querySelector('[data-testid="plus-background"]')).not.toBeNull();
   });
 });
+
+// Who answers here: the Trunk that answers this conversation is the checked row. Choosing it again changes nothing, so the
+// button crawl skips it as already selected; this test is the per-control check for that row.
+describe("P54 composer plus menu: who answers", () => {
+  it("checks the Trunk that answers this conversation and leaves the others unchecked", async () => {
+    const { host } = await renderMenu({ onPicture: vi.fn() });
+    await openMore(host);
+    expect(rowNamed(host, "Research").getAttribute("aria-checked")).toBe("true");
+    expect(rowNamed(host, "Builder").getAttribute("aria-checked")).toBe("false");
+  });
+});

@@ -10,7 +10,7 @@ import { Sidebar, type SidebarProps } from "./Sidebar";
 import { buildContactSections, projectContact } from "./contacts-model";
 import { readPrefs } from "./FilterSort";
 import { rowMenuItems } from "./row-menu";
-import { GroupDropPopover, createDroppedGroup, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useRoomNotices, type GroupContact, type GroupRoom } from "./group-drop";
+import { GroupDropPopover, createDroppedGroup, groupHint, groupPlan, mergeRoomNotices, moveContactToProject, roomContact, useGroupRooms, useRoomNotices, type GroupContact, type GroupRoom } from "./group-drop";
 import type { SidebarDrop } from "./sidebar-drag";
 
 vi.mock("../face/Face", () => ({ Face: ({ size }: { size: number }) => <span style={{ width: size, height: size }} /> }));
@@ -328,5 +328,26 @@ describe("drag to group", () => {
     expect(scroll.scrollTop).toBeLessThan(80);
     await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(document.getElementById("sidebar-drag-ghost")).toBeNull();
+  });
+});
+
+describe("useGroupRooms", () => {
+  it("reads peers once per burst of contacts.changed, not once per event", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = vi.fn(async (method: string) => (method === "rooms.list" ? { rooms: [] } : { peers: [] }));
+      let emit: (event: string) => void = () => {};
+      const session = { request, onGatewayEvent: (handler: typeof emit) => { emit = handler; return () => {}; } } as unknown as SaplingSession;
+      function Probe() { useGroupRooms(session, true); return null; }
+      const host = document.body.appendChild(document.createElement("div"));
+      root = createRoot(host);
+      await act(async () => root!.render(<Probe />));
+      const peers = () => request.mock.calls.filter(([method]) => method === "a2a.peers.list").length;
+      expect(peers()).toBe(1);
+      await act(async () => { for (let i = 0; i < 10; i++) emit("contacts.changed"); });
+      expect(peers()).toBe(1);
+      await act(async () => { vi.advanceTimersByTime(2_000); });
+      expect(peers()).toBe(2);
+    } finally { vi.useRealTimers(); }
   });
 });

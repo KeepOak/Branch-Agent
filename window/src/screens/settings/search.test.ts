@@ -37,6 +37,12 @@ describe("settings search", () => {
     expect(searchSettings("new", { level: 0, hints: {}, rows: [], trunks }).trunks).toEqual([{ kind: "newTrunk", id: "new-trunk", label: "New Trunk" }]);
   });
 
+  it("finds a row that waits for a later update only from Advanced, so Regular search never switches the level for it", () => {
+    const later: Row[] = [{ id: "general.writing.later", page: "general", card: "Writing", label: "Spell later", level: 0, control: "toggle", source: { kind: "coming", need: "x.y", reason: "Spell later comes in a later update." } }];
+    expect(searchSettings("spell later", { level: 0, hints: {}, rows: later }).settings).toEqual([]);
+    expect(searchSettings("spell later", { level: 1, hints: {}, rows: later }).settings[0]).toMatchObject({ kind: "row", id: "general.writing.later", level: 1 });
+  });
+
   it("ranks a label that starts with the query first", () => {
     const g = searchSettings("send", { level: 1, hints: {} });
     expect(firstHit(g)).toMatchObject({ kind: "row", id: "general.conversation.send" });

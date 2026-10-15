@@ -13,7 +13,7 @@ vi.mock("../../../face/Face", () => ({ Face: ({ label }: { label?: string }) => 
 const BASE: Record<string, unknown> = {
   "agents.list": { defaultId: "main", mainKey: "main", agents: [{ id: "main", name: "Sapling" }, { id: "oak", name: "Oak" }] },
   "node.list": { nodes: [{ nodeId: "n1", displayName: "Desk", platform: "win32", connected: true }] },
-  "device.pair.list": { pending: [], paired: [{ deviceId: "d1", displayName: "Phone", platform: "ios", deviceFamily: "iPhone" }] },
+  "device.pair.list": { pending: [], paired: [{ deviceId: "d1", displayName: "Phone", platform: "ios", deviceFamily: "iPhone", connected: true }] },
   "channels.status": { channelOrder: ["telegram", "discord"], channelLabels: { telegram: "Telegram", discord: "Discord" }, channelAccounts: { telegram: [{ accountId: "default", configured: true, running: false, connected: false }], discord: [{ accountId: "default", configured: true, running: true, connected: true }] } },
 };
 
