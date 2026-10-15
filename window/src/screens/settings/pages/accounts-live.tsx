@@ -25,6 +25,7 @@ import { Menu, type MenuAnchor, type MenuItem } from "../../../shell/Menu";
 import { Segmented, Toggle } from "../RowView";
 import type { SlotControlProps } from "../slots";
 import { Failed, Needs, useFailure } from "./appearance-live";
+import { STALL_TEXT, stallAfter } from "../../../places/settings/stall";
 
 // One engine read shared by every row that shows it (the accounts list, Select accounts, Which goes next…): a change
 // made in one row reloads it once, and every row redraws. It reads again when a row first shows after none did.
@@ -45,10 +46,12 @@ class SharedRead {
   async reload(): Promise<void> {
     const gen = ++this.gen;
     if (!this.snap.loading) this.set({ ...this.snap, loading: true });
+    const stop = stallAfter(() => { if (gen === this.gen && this.snap.data === undefined) this.set({ loading: false, error: STALL_TEXT }); });
     try {
       const data = record(await this.engine.request(this.method, this.params));
+      stop();
       if (gen === this.gen) this.set({ data, loading: false });
-    } catch (e) { if (gen === this.gen) this.set({ loading: false, error: errorText(e) }); }
+    } catch (e) { stop(); if (gen === this.gen) this.set({ loading: false, error: errorText(e) }); }
   }
   private set(next: Read) { this.snap = next; for (const fn of [...this.subs]) fn(); }
 }
@@ -457,7 +460,7 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
   const { store, snap, config } = useConfigSnap(engine);
   const [failed, run] = useFailure();
   const f = foundState(app, detect.data);
-  const word = detect.loading ? "Looking…" : PILL[f.state][1];
+  const word = detect.error ? "Couldn’t check" : detect.loading ? "Looking…" : PILL[f.state][1];
   const claude = list(usage.data?.providers).find((row) => row.provider === "claude-code");
   const pluginOn = app.plugin ? record(record(record(config.plugins).entries)[app.plugin]).enabled === true : f.state === "ready";
   const sub = detect.loading ? "Looking on this computer…" : appSub(app, f, pluginOn);
@@ -467,6 +470,7 @@ function CodingApp({ engine, app }: SlotControlProps & { app: App }) {
       <span className="r1s-item-t g-label" data-lines>
         <b>{word}{app.kind === "claude-cli" && claude?.accountEmail ? " · " + text(claude.accountEmail) : ""}</b>
         <small>{detect.error ? visible(detect.error) : sub}</small>
+        {detect.error ? <button type="button" className="r1s-btn" onClick={() => void detect.reload()}>Try again</button> : null}
       </span>
       {app.plugin ? (
         <Needs engine={engine} need={["config.patch"]} where={"Use " + app.name}>
