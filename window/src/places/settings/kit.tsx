@@ -9,6 +9,7 @@ import { configStore, pathKeys, type ConfigPath } from "./config-store";
 import { Icon } from "../../shell/icons";
 import { PIN_MAX, type Pins } from "./pins";
 import { isDevNote, shownWhy } from "../../shell/shown-why";
+import { plainCopy } from "./internals";
 import "./kit.css";
 
 /** 0 = Regular, 1 = Advanced, 2 = Technical. */
@@ -202,8 +203,9 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   const why = off ?? (locked ? NOSETUP : undefined);
   const name = typeof title === "string" ? title : id;
   const shown = shownWhy(why);
-  const line = sub ?? shown;
-  useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help);
+  const raw = sub ?? shown;
+  const line = typeof raw === "string" ? plainCopy(raw, level) : raw;
+  useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help ? plainCopy(help, level) : help);
   const kept = keep && level >= 1 ? KEEP_LINE[keep] : null;
   return (
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>

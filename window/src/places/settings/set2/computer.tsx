@@ -5,6 +5,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { Acts, Btn, Ctl, Hint, Page, Pill, Plist, Sec, useConfig, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { Dialog } from "../../../shell/Dialog";
@@ -164,6 +165,9 @@ function usersOf(node: Node, agents: RecordValue, cfgAgents: RecordValue[]): str
 
 function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: number; nodes: Res; agents: RecordValue }) {
   const status = useLive<RecordValue>(engine, "computer.status", {}, []);
+  // Refresh stamps "Checked at" only when both reads succeed (checked-at.tsx: a check that failed shows no time).
+  const [checked, stamp] = useCheckedAt();
+  const refresh = () => { void Promise.all([nodes.reload(), status.reload()]).then((oks) => { if (oks.every(Boolean)) stamp(); }, () => undefined); };
   const config = useConfig(engine);
   // Each Trunk's own entry, keyed by id in agents.entries.
   const cfgAgents = Object.entries(rec(config.get("agents.entries"))).map(([id, entry]) => ({ ...rec(entry), id }));
@@ -182,7 +186,7 @@ function Computers({ engine, lv, nodes, agents }: SettingsPageProps & { lv: numb
   return (
     <Sec title="Computers they may use">
       {nodes.error ? <p className="hint s2-err" role="alert">{nodes.error}</p> : null}
-      {lv >= 1 ? <FindRow find={find} onFind={setFind} onRefresh={() => { void nodes.reload(); void status.reload(); }} /> : null}
+      {lv >= 1 ? <FindRow find={find} onFind={setFind} onRefresh={refresh} checked={checked} /> : null}
       {lv >= 1 && paired.length && !all.length ? <Hint>No computer matches.</Hint> : null}
       {here.length || (usableHere && !find.q) ? <div className="s2-grp">On this computer</div> : null}
       <div className="s2-comps">
@@ -235,7 +239,7 @@ function arrange(nodes: Node[], f: Find): Node[] {
     .filter((n) => f.show === "All" || (f.show === "Online") === (n.connected === true))
     .sort((a, b) => f.sort === "A to Z" ? name(a).localeCompare(name(b)) : f.sort === "Online first" ? on(b) - on(a) : on(a) - on(b));
 }
-function FindRow({ find, onFind, onRefresh }: { find: Find; onFind: (f: Find) => void; onRefresh: () => void }) {
+function FindRow({ find, onFind, onRefresh, checked }: { find: Find; onFind: (f: Find) => void; onRefresh: () => void; checked: number | null }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const items: MenuItem[] = [
     { kind: "head", label: "Sort by" },
@@ -248,6 +252,7 @@ function FindRow({ find, onFind, onRefresh }: { find: Find; onFind: (f: Find) =>
       <input className="inp" type="search" placeholder="Find a computer…" aria-label="Find a computer" value={find.q} onChange={(e) => onFind({ ...find, q: e.target.value })} />
       <Btn sm ghost aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.bottom + 4 }); }}><Icon name="sliders" small />{find.sort} · {find.show}</Btn>
       <button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={onRefresh}><Ico name="retry" s /></button>
+      <CheckedAt at={checked} />
       {menu ? <Menu at={menu} items={items} label="Sort and show" onClose={() => setMenu(null)} /> : null}
     </div>
   );
