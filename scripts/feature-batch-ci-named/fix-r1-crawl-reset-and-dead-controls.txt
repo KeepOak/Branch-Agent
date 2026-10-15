@@ -1,0 +1,2 @@
+window:scripts/button-crawl-state.test.ts
+window:src/places/settings/checked-at.test.tsx

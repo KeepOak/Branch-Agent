@@ -11,6 +11,7 @@ import { configStore } from "../../../places/settings/config-store";
 import { errorText, list, record, text, visible, type RecordValue } from "../../../places/settings/adapter";
 import { GitHubConnection, type GitHubView } from "../../../places/settings/github-connection";
 import { KitProvider } from "../../../places/settings/kit";
+import { CheckedAt, CheckButton, useCheckedAt } from "../../../places/settings/checked-at";
 import {
   accountName, accountsOf, accountSub, anotherOffers, answerFirstWhy, firstOrder, isLimited, limitedLabel, movedUp, providersOf, saveOrder,
   signInOffers, signOut, signOutWhy, takeAddRequest, testAccount, type Account, type Provider,
@@ -491,8 +492,12 @@ export const GeminiCli = (p: SlotControlProps) => <CodingApp {...p} app={appOf("
 /** Check again: looks for the coding apps on this computer again (branch.setup.detect). */
 export function CheckApps({ engine }: SlotControlProps) {
   const detect = useRead(engine, "branch.setup.detect");
+  const [checked, stamp] = useCheckedAt();
   return <Needs engine={engine} need={["branch.setup.detect"]} where="Check again">
-    <button type="button" className="r1s-btn" disabled={detect.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void detect.reload()}>Check again</button>
+    <span className="r1s-own-ctl">
+      <button type="button" className="r1s-btn" disabled={detect.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void detect.reload().then(stamp, () => undefined)}>Check again</button>
+      <CheckedAt at={checked} />
+    </span>
   </Needs>;
 }
 
@@ -560,7 +565,7 @@ export function GitHubRow({ engine }: SlotControlProps) {
           </Needs>
         ) : null}
         <Needs engine={engine} need={["tools.github.status"]} where="Refresh GitHub">
-          <button type="button" className="r1s-btn" disabled={!connection || Boolean(view?.busy) || loading} onClick={() => void connection?.refresh()}>Refresh</button>
+          <CheckButton run={() => connection?.refresh() ?? Promise.resolve()} disabled={!connection || Boolean(view?.busy) || loading}>Refresh</CheckButton>
         </Needs>
       </span>
     </div>

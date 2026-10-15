@@ -417,7 +417,7 @@ function Flags({ config }: Ctx) {
     <Ctl title="Detailed logs for" sub="Flags such as telegram.*" after={
       <div className="s2developer-lst">
         {flags.length ? flags.map((f) => <span key={f} className="chip6">{f}<button type="button" className="s2-x" aria-label={`Remove ${f}`} onClick={() => remove(f)}>×</button></span>) : <span className="hint">Nothing here yet.</span>}
-        <span className="s2developer-add"><input className="inp s2developer-mono" aria-label="Detailed logs for: new item" placeholder="telegram.*" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm disabled={config.loading} onClick={add}>Add</Btn></span>
+        <span className="s2developer-add"><input className="inp s2developer-mono" aria-label="Detailed logs for: new item" placeholder="telegram.*" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm disabled={config.loading || !draft.trim()} onClick={add}>Add</Btn></span>
       </div>
     } />
   );

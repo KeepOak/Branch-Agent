@@ -1,5 +1,6 @@
 // Voice › Voice, technical (Technical): the real commands for speaking into a file and for phone calls, and "All
 // voice settings", the engine's own talk.* and tts.* keys in one form with Save and Reload (the preview's form).
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { useState } from "react";
 import { errorText, text } from "../adapter";
 import { Btn, Ctl, Sec, Switch } from "../kit";
@@ -53,6 +54,7 @@ export function toValue(kind: Kind, v: string | boolean): unknown {
 }
 
 function AllVoiceSettings({ cfg }: { cfg: Cfg }) {
+  const [checked, stamp] = useCheckedAt();
   const [draft, setDraft] = useState<Record<string, string | boolean>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -81,7 +83,7 @@ function AllVoiceSettings({ cfg }: { cfg: Cfg }) {
               </label>
             );
           })}
-          <div className="acts"><Btn pri sm disabled={!dirty || busy || cfg.loading} onClick={() => void save()}>Save</Btn><Btn ghost sm disabled={busy} onClick={() => { setDraft({}); setErr(""); void cfg.reload(); }}>Reload</Btn>{err ? <small className="bad-k" role="alert">{err}</small> : null}</div>
+          <div className="acts"><Btn pri sm disabled={!dirty || busy || cfg.loading} onClick={() => void save()}>Save</Btn><Btn ghost sm disabled={busy} onClick={() => { setDraft({}); setErr(""); void cfg.reload().then(stamp, () => undefined); }}>Reload</Btn><CheckedAt at={checked} />{err ? <small className="bad-k" role="alert">{err}</small> : null}</div>
         </div>
       )} />
   );

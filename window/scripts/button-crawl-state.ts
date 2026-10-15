@@ -3,6 +3,10 @@
 
 export type CrawlConfig = { hash: string; config: Record<string, unknown> };
 export type CrawlPrefs = { status: string; entries: Record<string, unknown> };
+/** Reply voice: tts.status, tts.enable and tts.disable, and the speaking engine (tts.providers, tts.setProvider). */
+export type CrawlVoice = { enabled: boolean; auto: 'off' | 'inbound' | 'always'; persona: string; personas: string[]; provider: string; providers: { id: string; label: string }[] };
+/** The engine's exec approvals file (exec.approvals.get / set), as the Permissions page reads and saves it. */
+export type CrawlApprovals = { path: string; exists: boolean; hash: string; file: Record<string, unknown>; resolvedDefaults: Record<string, unknown> };
 
 const INITIAL_CONFIG: CrawlConfig = {
   hash: 'fixture',
@@ -11,12 +15,37 @@ const INITIAL_CONFIG: CrawlConfig = {
 
 const INITIAL_PREFS: CrawlPrefs = { status: 'ok', entries: {} };
 
+const INITIAL_VOICE: CrawlVoice = {
+  enabled: false, auto: 'off', persona: '', personas: [], provider: 'local', providers: [{ id: 'local', label: 'On this computer' }],
+};
+
+const INITIAL_APPROVALS: CrawlApprovals = {
+  path: 'exec-approvals.json',
+  exists: true,
+  hash: 'approvals-0',
+  file: { version: 1, defaults: { security: 'full', ask: 'off', askFallback: 'deny', autoAllowSkills: false } },
+  resolvedDefaults: { security: 'full', ask: 'off', askFallback: 'deny', autoAllowSkills: false },
+};
+
 export function freshConfig(): CrawlConfig {
   return structuredClone(INITIAL_CONFIG);
 }
 
 export function freshPrefs(): CrawlPrefs {
   return structuredClone(INITIAL_PREFS);
+}
+
+export function freshApprovals(): CrawlApprovals {
+  return structuredClone(INITIAL_APPROVALS);
+}
+
+/** exec.approvals.set: refuses a stale base hash (as the engine does), otherwise saves the file and returns the new snapshot. */
+export function applyApprovalsSet(current: CrawlApprovals, params: { file?: Record<string, unknown>; baseHash?: string }): CrawlApprovals {
+  if (params.baseHash !== current.hash) throw new Error('The approvals file changed since last load; reload and try again.');
+  const next = { ...current, file: params.file ?? current.file, hash: `approvals-${Date.now().toString(36)}` };
+  const defaults = (next.file.defaults ?? {}) as Record<string, unknown>;
+  next.resolvedDefaults = { ...INITIAL_APPROVALS.resolvedDefaults, ...defaults };
+  return next;
 }
 
 /** Deep merge for config.patch: null deletes a key, arrays and scalars replace. Never mutates its inputs. */
@@ -45,4 +74,13 @@ export function applyPrefsSet(current: CrawlPrefs, entries: Record<string, unkno
     else next[key] = value;
   }
   return { status: 'ok', entries: next };
+}
+
+export function freshVoice(): CrawlVoice {
+  return structuredClone(INITIAL_VOICE);
+}
+
+/** tts.enable turns reading aloud on for every reply; tts.disable turns it off. */
+export function applyVoiceToggle(current: CrawlVoice, enabled: boolean): CrawlVoice {
+  return { ...current, enabled, auto: enabled ? 'always' : 'off' };
 }

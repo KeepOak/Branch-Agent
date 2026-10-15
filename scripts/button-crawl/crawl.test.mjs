@@ -233,3 +233,25 @@ test('a control that opens its own window is a real result, not dead', () => {
   assert.deepEqual(classifyClick({ before, after: surface({ popups: 1, requests: [{ method: 'users.prefs.set', ok: true }], requestCount: 1 }), elapsedMs: 20 }).problems, []);
   assert.deepEqual(classifyClick({ before, after: surface({ popups: 0 }), elapsedMs: 20 }).problems, ['dead']);
 });
+
+test('a control that scrolls the page to a section is a real result', () => {
+  const before = surface({ scroll: 'window:0' });
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'window:420' }), elapsedMs: 20 }).problems, []);
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'window:0' }), elapsedMs: 20 }).problems, ['dead']);
+});
+
+test('a smooth scroll to a section is not a slow click', () => {
+  const before = surface({ scroll: 'window:0' });
+  assert.deepEqual(classifyClick({ before, after: surface({ scroll: 'window:420' }), elapsedMs: 900 }).problems, []);
+});
+
+test('a control that saves a file is a real result', () => {
+  const before = surface({ downloads: 0 });
+  assert.deepEqual(classifyClick({ before, after: surface({ downloads: 1 }), elapsedMs: 20 }).problems, []);
+});
+
+test('a setting saved to the engine is a real result even when its menu closes', () => {
+  const before = surface({ configRevision: 'fixture' });
+  assert.deepEqual(classifyClick({ before, after: surface({ configRevision: 'fixturex' }), elapsedMs: 20 }).problems, []);
+  assert.deepEqual(classifyClick({ before, after: surface({ configRevision: 'fixture' }), elapsedMs: 20 }).problems, ['dead']);
+});

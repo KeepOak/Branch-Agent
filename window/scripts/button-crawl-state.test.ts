@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyConfigPatch, applyPrefsSet, freshConfig, freshPrefs, mergeConfig } from "./button-crawl-state";
+import { applyApprovalsSet, applyConfigPatch, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshPrefs, freshVoice, mergeConfig } from "./button-crawl-state";
 
 describe("button crawl mock engine state", () => {
   it("a config.patch from one click does not reach the next click's fresh config", () => {
@@ -34,5 +34,26 @@ describe("button crawl mock engine state", () => {
     const merged = mergeConfig(base, { a: { b: null, c: [3] }, d: 2 }) as Record<string, unknown>;
     expect(merged).toEqual({ a: { c: [3] }, d: 2 });
     expect(base).toEqual({ a: { b: 1, c: [1, 2] }, d: "x" });
+  });
+});
+
+describe("button crawl exec approvals state", () => {
+  it("a saved Ask choice is read back, and a write with a stale base hash is refused", () => {
+    const start = freshApprovals();
+    const file = { ...(start.file as object), defaults: { ...(start.file.defaults as object), ask: "always" } };
+    const saved = applyApprovalsSet(start, { file, baseHash: start.hash });
+    expect(saved.resolvedDefaults.ask).toBe("always");
+    expect(saved.hash).not.toBe(start.hash);
+    expect(() => applyApprovalsSet(saved, { file, baseHash: start.hash })).toThrow(/changed since last load/);
+    expect(freshApprovals().resolvedDefaults.ask).toBe("off");
+  });
+});
+
+describe("button crawl voice state", () => {
+  it("turning reading aloud on is read back as always, and off is read back as off", () => {
+    const on = applyVoiceToggle(freshVoice(), true);
+    expect(on).toMatchObject({ enabled: true, auto: "always" });
+    expect(applyVoiceToggle(on, false)).toMatchObject({ enabled: false, auto: "off" });
+    expect(freshVoice().auto).toBe("off");
   });
 });

@@ -12,7 +12,7 @@ import '../src/theme/base.css';
 import '../src/shell/shell.css';
 import '../src/shell/frame.css';
 import '../src/shell/controls.css';
-import { applyConfigPatch, applyPrefsSet, freshConfig, freshPrefs, type CrawlConfig, type CrawlPrefs } from './button-crawl-state';
+import { applyApprovalsSet, applyConfigPatch, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshPrefs, freshVoice, type CrawlApprovals, type CrawlConfig, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
 
 type Call = { method: string; ok: boolean; error?: string };
 
@@ -69,6 +69,14 @@ let historyMoves = 0;
 // A control that opens a window (Open in its own window) is a visible result: the browser fallback calls window.open.
 let popups = 0;
 window.open = (() => { popups += 1; return null; }) as typeof window.open;
+// A control that saves a file (Export) is a visible result too. The download is cancelled, and the click counted.
+let downloads = 0;
+document.addEventListener('click', (event) => {
+  const link = (event.target as Element | null)?.closest?.('a[download]');
+  if (!link) return;
+  downloads += 1;
+  event.preventDefault();
+}, true);
 const historyBack = history.back.bind(history);
 const historyForward = history.forward.bind(history);
 history.back = () => { historyMoves += 1; historyBack(); };
@@ -100,8 +108,10 @@ function snapshot(key: string) {
 }
 
 let prefs: CrawlPrefs = freshPrefs();
+let approvals: CrawlApprovals = freshApprovals();
+let voice: CrawlVoice = freshVoice();
 
-function request(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown> } | undefined) {
+function request(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown>; file?: Record<string, unknown>; baseHash?: string; provider?: string; probe?: boolean } | undefined) {
   const started = performance.now();
   try {
     const result = respond(method, params);
@@ -115,7 +125,7 @@ function request(method: string, params: { key?: string; sessionKey?: string; ra
   }
 }
 
-function respond(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown> } | undefined) {
+function respond(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown>; file?: Record<string, unknown>; baseHash?: string; provider?: string; probe?: boolean } | undefined) {
   if (method === 'agents.list') return AGENTS;
   if (method === 'sessions.subscribe') return { list: { sessions: SESSIONS } };
   if (method === 'sessions.list') return { sessions: SESSIONS, defaults: { modelProvider: 'local', model: 'fixture', thinkingLevel: 'medium' } };
@@ -135,6 +145,17 @@ function respond(method: string, params: { key?: string; sessionKey?: string; ra
   if (method === 'config.patch') {
     config = applyConfigPatch(config, params?.raw || '{}');
     return { ok: true, hash: config.hash, config: config.config };
+  }
+  if (method === 'tts.status') return voice;
+  if (method === 'tts.enable' || method === 'tts.disable') { voice = applyVoiceToggle(voice, method === 'tts.enable'); return { ok: true }; }
+  if (method === 'tts.providers') return { active: voice.provider, providers: voice.providers };
+  if (method === 'tts.setProvider') { voice = { ...voice, provider: String(params?.provider ?? voice.provider) }; return { ok: true }; }
+  // The engine's memory probe answers with the meaning-search check; a plain status read has no embedding yet.
+  if (method === 'doctor.memory.status' && (params as { probe?: boolean } | undefined)?.probe) return { embedding: { checked: true, ok: true } };
+  if (method === 'exec.approvals.get') return approvals;
+  if (method === 'exec.approvals.set') {
+    approvals = applyApprovalsSet(approvals, params as { file?: Record<string, unknown>; baseHash?: string } ?? {});
+    return approvals;
   }
   if (method === 'users.prefs.get') return prefs;
   if (method === 'users.prefs.set') {
@@ -253,6 +274,7 @@ function collect(overlay = false) {
       // by design, so the crawl skips it ("already-selected") instead of calling it dead.
       selected: el.getAttribute('role') === 'tab' && el.getAttribute('aria-selected') === 'true'
         || el.getAttribute('role') === 'radio' && el.getAttribute('aria-checked') === 'true'
+        || el.getAttribute('aria-pressed') === 'true' && Boolean(el.closest('[role="group"], [role="radiogroup"]'))
         || Boolean(el.closest('.sseg') && (el.getAttribute('aria-pressed') === 'true' || el.getAttribute('aria-checked') === 'true')),
       occurrence,
       region,
@@ -314,10 +336,18 @@ function screenText() {
   return textOf(main).slice(0, 4000);
 }
 
+// The whole visible text, reduced to a length and a hash: a change anywhere on a long page is seen, not only in
+// the first few thousand characters.
+function digest(text: string) {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
+  return `${text.length}:${hash}`;
+}
+
 function viewText() {
   const main = document.querySelector('#main .set-col') ?? document.querySelector('#main');
   const side = document.querySelector('[data-testid="sidebar"]');
-  return [textOf(main), textOf(side)].filter(Boolean).join(' ').slice(0, 8000);
+  return digest([textOf(main), textOf(side)].filter(Boolean).join(' '));
 }
 
 function controlState(el: Element) {
@@ -325,6 +355,15 @@ function controlState(el: Element) {
   const checked = el.getAttribute('aria-checked');
   const input = el instanceof HTMLInputElement ? String(el.checked) : '';
   return [pressed, checked, input].join('|');
+}
+
+// Scroll position of every scrollable element in the page, so a control that scrolls to a section is a visible result.
+function scrollOf() {
+  const scrolled: string[] = [`window:${Math.round(window.scrollY)}`];
+  for (const el of document.querySelectorAll<HTMLElement>('#main *')) {
+    if (el.scrollTop > 0 && el.scrollHeight > el.clientHeight) scrolled.push(`${el.className || el.tagName}:${Math.round(el.scrollTop)}`);
+  }
+  return scrolled.join('|');
 }
 
 function surface() {
@@ -341,7 +380,7 @@ function surface() {
     route: routeId(readRoute()),
     dialog: dialog instanceof HTMLElement ? (dialog.getAttribute('aria-label') || dialog.textContent || 'dialog').replace(/\s+/g, ' ').trim().slice(0, 80) : null,
     menu: menu instanceof HTMLElement ? (menu.getAttribute('aria-label') || 'menu') : null,
-    panel: document.querySelector('.side-pane, .panel') instanceof HTMLElement ? 'panel' : null,
+    panel: document.querySelector('.side-pane, .panel, .character-panel') instanceof HTMLElement ? 'panel' : null,
     toast: toast instanceof HTMLElement ? toast.textContent?.replace(/\s+/g, ' ').trim().slice(0, 120) || null : null,
     mainText,
     viewText: viewText(),
@@ -359,6 +398,9 @@ function surface() {
     chrome: document.documentElement.getAttribute('data-theme') || '',
     historyMoves,
     popups,
+    downloads,
+    scroll: scrollOf(),
+    configRevision: config.hash,
     alreadyCurrent: target?.getAttribute('aria-current') === 'true',
     menuItems,
     requests: calls.slice(),
@@ -396,9 +438,12 @@ function openKind(key: string) {
 function resetMockEngine() {
   config = freshConfig();
   prefs = freshPrefs();
+  approvals = freshApprovals();
+  voice = freshVoice();
   calls.length = 0;
   historyMoves = 0;
   popups = 0;
+  downloads = 0;
   try { localStorage.clear(); sessionStorage.clear(); } catch { /* storage blocked: the defaults below still apply */ }
 }
 
@@ -432,11 +477,14 @@ function trackPermissionRequest<T>(call: () => Promise<T>): Promise<T> {
 }
 // The crawl has no microphone or camera. Each capture request resolves to a silent stream of the kind it
 // asked for, so a voice note really starts recording and the crawl observes that state.
+// One audio context per page: creating it on every capture took most of a click's time on a loaded machine.
+let silentAudio: AudioContext | null = null;
 function fakeCapture(constraints: MediaStreamConstraints): Promise<MediaStream> {
   if (constraints.video) {
     return Promise.resolve(document.createElement("canvas").captureStream());
   }
-  return Promise.resolve(new AudioContext().createMediaStreamDestination().stream);
+  silentAudio ??= new AudioContext();
+  return Promise.resolve(silentAudio.createMediaStreamDestination().stream);
 }
 if (navigator.mediaDevices) {
   navigator.mediaDevices.getUserMedia = (constraints: MediaStreamConstraints) =>
@@ -447,6 +495,10 @@ if (typeof Notification !== 'undefined') {
   Notification.requestPermission = (...args: Parameters<typeof Notification.requestPermission>) =>
     trackPermissionRequest(() => nativeRequestPermission(...args));
 }
+
+// Headless Chromium leaves a clipboard write pending, so a Copy button never shows its result. The crawl's write
+// succeeds at once, and the Copied line is the visible result.
+if (navigator.clipboard) navigator.clipboard.writeText = () => Promise.resolve();
 
 const nativeFetch = window.fetch.bind(window);
 window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
