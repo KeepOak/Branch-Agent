@@ -9,6 +9,7 @@ import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } fro
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
 import { createRunKeepAwake, POWER_STATE_REFRESH_MS, writePowerState } from "./keep-awake";
+import { applyGuestWebPreferences, BRANCH_BROWSER_PARTITION, guestAttachDecision, guestPermissionDecision, guestUrlDecision, popupDecision, r1WebPreferences } from "./browser-guest-policy";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, rollbackReadyBudgetMs, standbyReadyBudgetMs } from "./readiness-budget";
@@ -988,6 +989,42 @@ const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
   "<!doctype html><title>Branch Agent</title><body style=\"-webkit-app-region:drag;font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch…</body>",
 )}`;
 
+// The R1 browser guest. Only R1 windows may host the webview tag. A guest may attach only on the Branch partition,
+// with no preload, no Node and the sandbox on. Guests get no permissions and no downloads, and popups become tabs.
+let browserGuestSessionReady = false
+
+function installBrowserGuestHost(host: Electron.WebContents): void {
+  installBrowserGuestSession()
+  host.on("will-attach-webview", (event, webPreferences, params) => {
+    if (!guestAttachDecision(params)) {
+      event.preventDefault()
+      return
+    }
+    applyGuestWebPreferences(webPreferences as Record<string, unknown>)
+  })
+}
+
+function installBrowserGuestSession(): void {
+  if (browserGuestSessionReady) return
+  browserGuestSessionReady = true
+  const guests = session.fromPartition(BRANCH_BROWSER_PARTITION)
+  guests.setPermissionRequestHandler((_contents, _permission, callback) => callback(guestPermissionDecision()))
+  guests.setPermissionCheckHandler(() => guestPermissionDecision())
+  guests.on("will-download", (event) => event.preventDefault())
+  app.on("web-contents-created", (_event, contents) => {
+    if (contents.getType() !== "webview" || contents.session !== guests) return
+    contents.setWindowOpenHandler(({ url }) => {
+      if (popupDecision(url) === "open-tab") contents.hostWebContents?.send("branch-desktop:browser-open-tab", url)
+      return { action: "deny" }
+    })
+    const refuseBlocked = (event: Electron.Event, url: string) => {
+      if (guestUrlDecision(url) === "block") event.preventDefault()
+    }
+    contents.on("will-navigate", refuseBlocked)
+    contents.on("will-redirect", refuseBlocked)
+  })
+}
+
 function createWindow(): BrowserWindow {
   // First launch opens maximized; later launches restore the last state, size, position and display.
   const place = placeWindow(readWindowState(cfg.dataDir), screen.getAllDisplays());
@@ -1001,16 +1038,14 @@ function createWindow(): BrowserWindow {
     // Windows: no native title bar; the window's header carries the minimise, maximise and close buttons.
     ...titleBarOptions(),
     webPreferences: {
-      preload: join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
+      ...r1WebPreferences(join(__dirname, "preload.js")),
       // Idle CPU: keep Chromium's throttling, except in the hidden test run where the page counts as hidden.
       backgroundThrottling: !HIDDEN,
     },
   });
   w.setMenuBarVisibility(false);
   if (place.maximized) w.once("show", () => w.maximize());
+  installBrowserGuestHost(w.webContents)
   if (TEST_COPY) w.on("page-title-updated", (event, title) => { event.preventDefault(); w.setTitle(`Test — ${title}`); });
   if (!HIDDEN && !QUIET && !TEST_COPY) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
   trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
@@ -1061,11 +1096,12 @@ function openConversationWindow(key: string): void {
     icon: ICON,
     ...titleBarOptions(),
     webPreferences: {
-      preload: join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true,
+      ...r1WebPreferences(join(__dirname, "preload.js")),
       backgroundThrottling: !HIDDEN,
     },
   });
   pendingSavedConversationKeys = pendingSavedConversationKeys.filter((saved) => saved !== key);
+  installBrowserGuestHost(child.webContents);
   conversationWindows.set(key, child);
   saveConversationWindows();
   child.on("closed", () => {
