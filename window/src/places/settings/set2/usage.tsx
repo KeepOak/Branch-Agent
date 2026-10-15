@@ -7,6 +7,7 @@ import type { SettingsPageProps } from "../index";
 import type { WindowEngine } from "../../../connect/engine";
 import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, type RowEntry } from "../kit";
 import { errorText, list } from "../adapter";
+import { STALL_TEXT, stallAfter } from "../stall";
 import { Dialog } from "../../../shell/Dialog";
 import { Menu, type MenuAnchor } from "../../../shell/Menu";
 import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span, str, useCall, useLive, useResource, when, type RecordValue } from "./common";
@@ -49,11 +50,13 @@ function useQuery(engine: WindowEngine, method: string, params: unknown) {
     if (!key) { setSt({ loading: false }); return; }
     let live = true;
     setSt((s) => ({ data: s.data, loading: true }));
+    // No answer by the stall deadline says so; a late answer still replaces that line.
+    const stop = stallAfter(() => { if (live) setSt((s) => (s.data === undefined ? { loading: false, error: STALL_TEXT } : s)); });
     engine.request(method, JSON.parse(key)).then(
-      (d) => { if (live) setSt({ data: rec(d), loading: false }); },
-      (e: unknown) => { if (live) setSt({ error: errorText(e), loading: false }); },
+      (d) => { stop(); if (live) setSt({ data: rec(d), loading: false }); },
+      (e: unknown) => { stop(); if (live) setSt({ error: errorText(e), loading: false }); },
     );
-    return () => { live = false; };
+    return () => { live = false; stop(); };
   }, [engine, method, key]);
   return st;
 }
@@ -320,14 +323,17 @@ function ReportDialog({ engine, lv, days, names, onClose }: { engine: WindowEngi
   const year = useQuery(engine, "usage.cost", lv >= 1 ? { days: 365, ...ALL, ...LOCAL } : null);
   const [menu, setMenu] = useState<MenuAnchor | null>(null);
   const error = period.error ?? picked.error;
+  // Export needs the counted numbers: it stays off while the report counts, and when no count ever arrived.
+  const counting = (period.loading && !period.data) || (sel !== null && !picked.data && !picked.error);
+  const exportOff = waiting || counting || !period.data;
   return (
-    <Dialog title={title(s)} wide onClose={onClose} footer={<><Btn ghost aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 120 }); }}>Export</Btn></>}>
+    <Dialog title={title(s)} wide onClose={onClose} footer={<><Btn ghost aria-haspopup="menu" disabled={exportOff} title={exportOff ? "Export is ready once the numbers are counted." : undefined} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 120 }); }}>Export</Btn></>}>
       <ReportTop s={s} set={set} lv={lv} />
       {lv >= 1 ? <ReportFilters s={s} set={set} names={names} creators={list(rec(period.data).creatorOptions)} all={all} /> : null}
       {lv >= 2 ? <QueryBox s={s} set={set} /> : null}
       {error ? <p className="s2usage-err" role="alert">{error}</p> : null}
       {waiting ? <p className="hint">Pick both dates.</p> : null}
-      {(period.loading && !period.data) || (sel && !picked.data && !picked.error) ? <p className="hint">Counting…</p> : null}
+      {counting ? <p className="hint">Counting…</p> : null}
       {period.data && !waiting && (!sel || picked.data) ? <ReportBody s={s} set={set} lv={lv} data={data} all={all} year={rec(year.data)} names={names} filtered={Boolean(sel || s.agent || s.creator)} engine={engine} /> : null}
       <p className="hint">Estimated from each model’s published price. Plans are billed by their own sites.</p>
       {menu ? <Menu label="Export" at={menu} onClose={() => setMenu(null)} items={exportItems(data, all, names)} /> : null}
