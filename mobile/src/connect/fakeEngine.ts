@@ -2,9 +2,9 @@
 // protocol (connect.challenge, the connect request, hello-ok or a PAIRING_REQUIRED error) and checks the
 // phone's Ed25519 signature over the engine's v3 device-auth payload, so the engine's own client code in
 // PhoneGateway runs exactly as it would against a computer. After the handshake it answers the reads the
-// Chats screen makes (sessions.subscribe, sessions.list, agents.list, sessions.search), the Chat screen's
-// chat.history, chat.send, chat.abort and sessions.patch, the approvals' exec/plugin .approval.list and
-// .approval.resolve, and pushes events. A reply streamed with `streamReply` reaches each connection the way the
+// Chats screen makes (sessions.subscribe, sessions.list, agents.list, sessions.search), the Computers
+// screen's environments.list, the Chat screen's chat.history, chat.send, chat.abort and sessions.patch,
+// the approvals' exec/plugin .approval.list and .approval.resolve, and pushes events. A reply streamed with `streamReply` reaches each connection the way the
 // engine sends it: the whole text in that connection's first frame for the run and in replacements, and only the
 // addition once the connection holds the frame before it. Approval events and methods follow the engine's
 // per-connection rules: only a connection holding operator.approvals hears *.approval.* or may list and resolve,
@@ -43,6 +43,8 @@ export type FakeEngine = {
   requests: Array<{ method: string; params: unknown }>;
   /** The sessions.list rows the engine reports from now on. */
   setSessions: (rows: unknown[]) => void;
+  /** The environments.list rows the engine reports from now on. */
+  setEnvironments: (rows: unknown[]) => void;
   /** Pushes one event to every connected phone, as it is. A `final`, `error` or `aborted` chat event ends that run's reply. */
   emit: (event: string, payload?: unknown) => void;
   /**
@@ -84,6 +86,8 @@ export type FakeEngineOptions = {
   bootstrapToken?: string;
   deviceToken?: string;
   sessions?: unknown[];
+  /** The environments.list rows. */
+  environments?: unknown[];
   /** The agents.list payload. */
   agents?: unknown;
   approvals?: { exec?: FakeApproval[]; plugin?: FakeApproval[] };
@@ -99,6 +103,7 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   let revoked = false;
   let refusal: { code: string; message: string } | null = null;
   let sessions = options.sessions ?? [];
+  let environments = options.environments ?? [];
   const agents = options.agents ?? { defaultId: 'main', mainKey: 'main', scope: 'per-sender', agents: [{ id: 'main', name: 'Branch Agent' }] };
   const failures = new Map<string, { message: string; details?: unknown; code?: string }>();
   const histories = new Map<string, { messages: unknown[]; inFlightRun?: unknown }>();
@@ -145,6 +150,8 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         return { ok: true, payload: { sessions } };
       case 'agents.list':
         return { ok: true, payload: agents };
+      case 'environments.list':
+        return { ok: true, payload: { environments } };
       case 'sessions.search': {
         // The last line of each chat stands in for its transcript.
         const q = String((params as { query?: unknown } | null)?.query ?? '').toLowerCase();
@@ -218,6 +225,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     delivered: [],
     setSessions: (rows) => {
       sessions = rows;
+    },
+    setEnvironments: (rows) => {
+      environments = rows;
     },
     emit: (event, payload = {}) => {
       const { runId, state } = (payload ?? {}) as { runId?: unknown; state?: unknown };

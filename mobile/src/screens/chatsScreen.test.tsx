@@ -128,10 +128,10 @@ describe('chats screen', () => {
     expect(screen.getByTestId('chats-waiting')).toBeOnTheScreen();
   });
 
-  it('opens on Chats once paired, follows the computer live, and goes to Your computer and back', async () => {
+  it('opens on Chats once paired, follows the computer live, and goes to Computers and back', async () => {
     const { session, engine } = await pairedApp();
     expect(screen.getByTestId('settings-button')).toBeOnTheScreen();
-    expect(screen.getByTestId('computer-button')).toHaveProp('accessibilityLabel', 'Your computer, connected');
+    expect(screen.getByTestId('computer-button')).toHaveProp('accessibilityLabel', 'Computers, connected');
     expect(screen.queryByTestId('chats-offline')).toBeNull();
 
     engine.setSessions([...fixtureSessions, { key: 'agent:oak:new', agentId: 'oak', label: 'Plan the launch', updatedAt: Date.now(), lastMessagePreview: 'On it' }]);
@@ -144,8 +144,9 @@ describe('chats screen', () => {
     await eventually(() => expect(screen.queryByTestId('chats-offline')).toBeNull());
 
     await fireEvent.press(screen.getByTestId('computer-button'));
-    expect(screen.getByText('Your computer')).toBeOnTheScreen();
-    await fireEvent.press(screen.getByTestId('back-to-chats'));
+    expect(screen.getByTestId('computers-screen')).toBeOnTheScreen();
+    expect(screen.getByText('Computers')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('computers-back'));
     expect(screen.getByText('Plan the launch')).toBeOnTheScreen();
     expect(screen.queryByTestId('chats-loading')).toBeNull();
     session.dispose();
