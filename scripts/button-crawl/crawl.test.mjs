@@ -1,4 +1,5 @@
 import './permission-wait.test.mjs';
+import './observe.test.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
