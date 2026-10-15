@@ -22,6 +22,7 @@ import { MAP_PATH, isInformationalStatus, isThreadLayoutMenu, previewDestination
 import { markdownReport } from './report.mjs';
 import { REQUEST_WAIT_CAP_MS, waitForPermissionRequests as waitForRequests } from './permission-wait.mjs';
 import { viteLaunch } from './vite-launch.mjs';
+import { SettingsTwins, twinSkips } from './twins.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const windowDir = resolve(root, 'window');
@@ -223,7 +224,7 @@ async function main() {
     const chromeNames = new Set();
     let sidebarDone = false;
     let navDone = false;
-    const settingsTwins = new Map();
+    const settingsTwins = new SettingsTwins();
     while (queue.length && screenCount < caps.maxScreens) {
       const screen = queue.shift();
       screenCount += 1;
@@ -284,15 +285,15 @@ async function main() {
       // A Settings page at a level whose controls are the same as a page already crawled (the same page at another level,
       // or the same rows) is not clicked again: the same controls ran there. The screen is still opened and named in the
       // report, and its keys stay out of the gate (no check is complete for it), so a change still shows on the first one.
-      if (screen.route.kind === 'settings' && screen.depth === 0 && sidebarDone && navDone) {
-        const signature = `${screen.route.page}\n${[...new Set(wanted.map((el) => el.name))].sort().join('\n')}`;
-        const twin = settingsTwins.get(signature);
-        if (twin) {
-          skipped.push({ screen: screen.id, label: '(all controls)', reason: `same-controls-as ${twin}` });
-          checks.push({ screenId: screen.id, complete: false, keys: [] });
-          continue;
-        }
-        settingsTwins.set(signature, screen.id);
+      // A Settings page whose controls match a page that clicked all of its controls is a twin: it is not clicked again,
+      // and each of its controls is listed in the report as the same as that page.
+      const twinEligible = screen.route.kind === 'settings' && screen.depth === 0 && sidebarDone && navDone;
+      const wantedNames = wanted.map((el) => el.name);
+      const twin = twinEligible ? settingsTwins.twinOf(screen.route.page, wantedNames) : undefined;
+      if (twin) {
+        skipped.push(...twinSkips(screen.id, twin, wantedNames));
+        checks.push({ screenId: screen.id, complete: false, keys: [] });
+        continue;
       }
       const screenCap = screen.route.kind === 'settings' && (screen.level === 'regular' || screen.level === 'advanced') ? caps.maxPerScreenLevel : caps.maxPerScreen;
       const room = Math.min(screenCap, Math.max(0, caps.maxClicks - clickCount));
@@ -300,6 +301,7 @@ async function main() {
       // Controls over the per-screen cap are not clicked: the report names them, so no coverage is dropped silently.
       if (ordered.length > chosen.length) truncated.push({ screen: screen.id, notClicked: ordered.slice(chosen.length).map((el) => el.name) });
       const shared = [];
+      let clickedAll = chosen.length === wanted.length;
       if (screen.depth === 0 && chromeNames.size < caps.maxChrome) {
         const fresh = chooseRegion(elements, 'chrome', {
           limit: caps.maxChrome - chromeNames.size,
@@ -327,10 +329,10 @@ async function main() {
       }
       const screenKeys = openErrors.length ? [elementKey(screen.id, '(open)')] : [];
       for (const el of [...chosen, ...shared]) {
-        if (clickCount >= caps.maxClicks) break;
+        if (clickCount >= caps.maxClicks) { clickedAll = false; break; }
         await show(page, screen);
         const result = await clickOne(page, errors, el);
-        if (!result) continue;
+        if (!result) { clickedAll = false; continue; }
         clickCount += 1;
         const key = elementKey(screen.id, el.name);
         screenKeys.push(key);
@@ -369,6 +371,7 @@ async function main() {
           });
         }
       }
+      if (twinEligible) settingsTwins.record(screen.route.page, wantedNames, screen.id, clickedAll);
       checks.push({ screenId: screen.id, complete: chosen.length === wanted.length, keys: screenKeys });
     }
     const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
