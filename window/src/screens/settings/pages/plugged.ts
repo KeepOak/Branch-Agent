@@ -9,6 +9,7 @@ import {
   GitHubExpires, GitHubPermissions, GitHubRow, HubCommand, OwnAccountList, OwnFolder, RestingNow, SelectAccounts, SignInSources, SignOut, TestIt, WhichNext,
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
+import { permissionsSlot } from "./permissions-approvals";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { INSTRUCTIONS_ROWS } from "./instructions";
 import { AboutYou, Files } from "./instructions-live";
@@ -53,6 +54,7 @@ export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> =
 
 export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
+  permissions: permissionsSlot,
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
