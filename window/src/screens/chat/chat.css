@@ -115,6 +115,7 @@
 /* empty chat and chips */
 .r1c-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 12vh; text-align: center; }
 .r1c-empty-title { margin: 0; font-size: var(--fs-17, 17px); font-weight: 600; color: var(--ink); }
+.r1c-empty-line { margin: 0; max-width: 420px; font-size: var(--fs-13); color: var(--ink-2); }
 .r1c-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .r1c-suggest { justify-content: flex-start; padding-left: 38px; }
 .r1c-chip { padding: 6px 14px; border: 0; border-radius: var(--r-pill); color: var(--ink-2); font-size: var(--fs-13); cursor: pointer; transition: background var(--ease17, .14s); }
@@ -148,12 +149,12 @@
    Every piece of text and every control on it sits on a small frosted pill with a 1px outline (--gp-* tokens, 4.5:1 ink).
    Menus and popovers opened from the conversation are clear too: their rows are the pills. ===== */
 :is(.r1c-u, .r1c-txt, .r1c-pre, .r1c-from, .r1c-when, .r1c-out-line, .r1c-pin-line, .r1c-time, .r1c-notice, .r1c-typing, .r1c-steps > summary, .r1c-steps-list,
-  .r1c-empty-title, .r1c-chip, .r1c-bar, .r1c-menu-meta, .r1c-mi, .r1c-react button, .r1c-out) {
+  .r1c-empty-title, .r1c-empty-line, .r1c-chip, .r1c-bar, .r1c-menu-meta, .r1c-mi, .r1c-react button, .r1c-out) {
   background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
   box-shadow: inset 0 0 0 1px var(--gp-edge); --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); --mute17c: var(--gp-ink-2);
 }
 /* text blocks: round ends on one line, a 14px radius when they wrap; only as wide as their words */
-:is(.r1c-txt, .r1c-pre) { width: fit-content; max-width: 100%; padding: 5px 11px; border-radius: 14px; }
+:is(.r1c-txt, .r1c-pre, .r1c-empty-line) { width: fit-content; max-width: 100%; padding: 5px 11px; border-radius: 14px; }
 :is(.r1c-from, .r1c-when, .r1c-out-line, .r1c-pin-line, .r1c-time, .r1c-empty-title, .r1c-menu-meta) { width: fit-content; max-width: 100%; padding: 2px 9px; border-radius: 999px; }
 .r1c-me > .r1c-when { align-self: flex-end; }
 .r1c-time { margin-inline: auto; }

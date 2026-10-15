@@ -102,8 +102,8 @@ describe("New group chat", () => {
     await act(async () => undefined);
     expect(document.querySelector<HTMLInputElement>(".rm-fld input")?.value).toBe("Scout and Ledger");
     const chip = (label: string) => [...document.querySelectorAll<HTMLButtonElement>(".rm-chip")].find((b) => b.textContent === label)!;
-    expect(chip("Birch").getAttribute("aria-pressed")).toBe("true");
-    expect(chip("Oak").getAttribute("aria-pressed")).toBe("false");
+    expect(chip("Birch").getAttribute("aria-checked")).toBe("true");
+    expect(chip("Oak").getAttribute("aria-checked")).toBe("false");
     expect(chip("Rowan").getAttribute("aria-pressed")).toBe("true");
     const event = new CustomEvent("branch:new-group-chat", { detail: { name: "Scout and Ledger", trunk: "birch", people: ["p-2"] } });
     expect(readGroupPrefill(event)).toEqual({ name: "Scout and Ledger", trunk: "birch", people: ["p-2"] });
@@ -126,8 +126,8 @@ describe("New group chat", () => {
     const chip = (label: string) => [...document.querySelectorAll<HTMLButtonElement>(".rm-chip")].find((b) => b.textContent === label)!;
     expect(document.body.textContent).toContain(GROUP_REASONS.secondTrunk);
     await act(async () => chip("Birch").click());
-    expect(chip("Birch").getAttribute("aria-pressed")).toBe("true");
-    expect(chip("Oak").getAttribute("aria-pressed")).toBe("false");
+    expect(chip("Birch").getAttribute("aria-checked")).toBe("true");
+    expect(chip("Oak").getAttribute("aria-checked")).toBe("false");
     expect(chip("helper").disabled).toBe(true);
     await act(async () => chip("Rowan").click());
     const name = document.querySelector<HTMLInputElement>(".rm-fld input")!;
@@ -141,5 +141,24 @@ describe("New group chat", () => {
     expect(request).toHaveBeenCalledWith("session.members.add", { sessionKey: "agent:birch:new", agentId: "birch", identityId: "p-2" });
     expect(onOpen).toHaveBeenCalledWith("agent:birch:new");
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+// The Trunk chips are one choice of several (a radio group). The default Trunk starts checked; choosing another moves the
+// check, and choosing the checked one changes nothing. Before this, the chips were toggles that read as dead when repeated.
+describe("New group chat: the Trunk choice", () => {
+  it("checks the default Trunk and moves the check when another Trunk is chosen", async () => {
+    const request = vi.fn(async (m: string) => responses[m]);
+    const host = document.body.appendChild(document.createElement("div")); root = createRoot(host);
+    await act(async () => root!.render(<NewGroupChat engine={{ request } as unknown as WindowEngine} onClose={() => {}} onOpen={() => {}} />));
+    await act(async () => {});
+    const group = host.querySelector('[role="radiogroup"][aria-label="Trunk"]');
+    expect(group).not.toBeNull();
+    const radios = () => [...group!.querySelectorAll<HTMLButtonElement>('[role="radio"]')];
+    expect(radios().map(r => r.getAttribute("aria-checked"))).toEqual(["true", "false"]);
+    await act(async () => radios()[1]!.click());
+    expect(radios().map(r => r.getAttribute("aria-checked"))).toEqual(["false", "true"]);
+    await act(async () => radios()[1]!.click());
+    expect(radios().map(r => r.getAttribute("aria-checked"))).toEqual(["false", "true"]);
   });
 });

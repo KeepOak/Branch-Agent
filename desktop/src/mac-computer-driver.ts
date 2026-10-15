@@ -27,7 +27,8 @@ type Connection = { socketPath: string; generation: string | number };
 type EmbeddedHost = {
   start(): Promise<Connection>;
   stop(): Promise<void>;
-  waitForExit(generation: Connection["generation"]): Promise<unknown>;
+  /** Synchronous; one of EmbeddedDriverHostState. */
+  state(): number;
   uniffiDestroy(): void;
 };
 type MacSdk = {
@@ -35,6 +36,7 @@ type MacSdk = {
   requestMacOSPermissions(): PermissionStatus;
   hasRequiredMacOSPermissions(status: PermissionStatus): boolean;
   EmbeddedPermissionMode: { Standard: number };
+  EmbeddedDriverHostState: { Ready: number };
   EmbeddedCuaDriverHost: {
     withOptions(options: {
       binaryPath: string;
@@ -57,7 +59,7 @@ function loadSdk(engineDir: string): MacSdk {
   if (!packageDir) throw new Error("The Mac computer driver SDK is missing from this engine");
   const permissions = require(join(packageDir, "dist", "electron.js")) as Pick<MacSdk, "requestMacOSPermissions" | "hasRequiredMacOSPermissions">;
   const native = require(join(packageDir, "dist", "native", "index.js")) as Pick<MacSdk, "currentMacOsPermissionStatus">;
-  const embedded = require(join(packageDir, "dist", "embedded.js")) as Pick<MacSdk, "EmbeddedCuaDriverHost" | "EmbeddedPermissionMode">;
+  const embedded = require(join(packageDir, "dist", "embedded.js")) as Pick<MacSdk, "EmbeddedCuaDriverHost" | "EmbeddedPermissionMode" | "EmbeddedDriverHostState">;
   return { ...permissions, ...native, ...embedded };
 }
 
@@ -107,7 +109,17 @@ function hostBundleId(): string {
   }).trim();
 }
 
+/** The computer pane's Coming reason line; the Gateway gets the current one with its environment.
+ * Copy is the design preview's own: its permission ask says "macOS asks you to allow this once, in System Settings."
+ * The preview has no line for a missing driver or a driver that fails to start, so those reasons are empty and the pane
+ * shows the preview's bare "Coming" alone. A start failure's SDK reason goes only to desktop.log (bootEngine logs it). */
+export const DRIVER_NOT_PACKAGED = "";
+export const DRIVER_NEEDS_PERMISSION = "macOS asks you to allow this once, in System Settings.";
+export const DRIVER_START_FAILED = "";
+
 export class MacComputerDriver {
+  /** Why the last start gave no endpoint; cleared once the driver is ready. */
+  reason?: string;
   /** A verified download, keyed by the files' size and change time so a changed file is checked again. */
   private verified?: { key: string; location: MacDriverLocation };
   private host?: EmbeddedHost;
@@ -115,6 +127,7 @@ export class MacComputerDriver {
   private selectedEngine?: string;
   private starting?: Promise<string | undefined>;
   private proxy?: Server;
+  private exitWatch?: ReturnType<typeof setInterval>;
 
   /** Only a location already checked (bundled, or verified this run): never loads unchecked native code. */
   permissionsGranted(engineDir: string): boolean {
@@ -133,6 +146,7 @@ export class MacComputerDriver {
     /** The Branch Agent state dir, where the engine keeps the downloaded driver. */
     private readonly stateDir: () => string | undefined = () => undefined,
     private readonly arch: string = process.arch,
+    private readonly exitPollMs = 2_000,
   ) {}
 
   /** Cheap: whether a driver is there to start (bundled, or a finished download), without checking digests. */
@@ -195,7 +209,13 @@ export class MacComputerDriver {
   async start(engineDir: string): Promise<string | undefined> {
     if (this.selectedEngine === engineDir && this.endpoint) return this.endpoint;
     if (this.starting) return this.starting;
-    this.starting = this.startSelected(engineDir).finally(() => { this.starting = undefined; });
+    this.starting = this.startSelected(engineDir).then(endpoint => {
+      if (endpoint) this.reason = undefined;
+      return endpoint;
+    }, error => {
+      this.reason = DRIVER_START_FAILED;
+      throw error;
+    }).finally(() => { this.starting = undefined; });
     return this.starting;
   }
 
@@ -204,6 +224,8 @@ export class MacComputerDriver {
     const location = await this.locate(engineDir);
     if ("reason" in location) {
       this.log(location.reason);
+      // Not downloaded yet, or refused: the pane shows the preview's bare "Coming"; the why stays in desktop.log.
+      this.reason = DRIVER_NOT_PACKAGED;
       return undefined;
     }
     const binary = location.binary;
@@ -212,6 +234,7 @@ export class MacComputerDriver {
     const permissions = sdk.hasRequiredMacOSPermissions(current) ? current : sdk.requestMacOSPermissions();
     if (!sdk.hasRequiredMacOSPermissions(permissions)) {
       this.log("Mac computer driver is waiting for Accessibility and Screen Recording permission");
+      this.reason = DRIVER_NEEDS_PERMISSION;
       return undefined;
     }
     // The native driver must enforce its own approval policy even if the Gateway
@@ -262,12 +285,7 @@ export class MacComputerDriver {
       this.proxy = proxy;
       this.selectedEngine = engineDir;
       this.endpoint = JSON.stringify({ v: 2, port: address.port, secret });
-      void host.waitForExit(connection.generation).then(() => {
-        if (this.host === host) {
-          this.endpoint = undefined;
-          this.log("Mac computer driver exited; restart Branch Agent to reconnect computer control");
-        }
-      }).catch(error => this.log(`Mac computer driver exit watch: ${String(error)}`));
+      this.watchExit(host, sdk.EmbeddedDriverHostState.Ready);
       return this.endpoint;
     } catch (error) {
       this.proxy?.close();
@@ -279,7 +297,36 @@ export class MacComputerDriver {
     }
   }
 
+  /** Notices the driver exiting. The SDK's waitForExit re-polls every 50 ms and its pinned Node binding leaks a libuv
+   *  handle per poll (trycua/cua#4339), which spun the app's main loop near 100% CPU within hours. A synchronous state
+   *  check every two seconds costs nothing and never leaves a native call pending. */
+  private watchExit(host: EmbeddedHost, ready: number): void {
+    this.clearExitWatch();
+    const watch = setInterval(() => {
+      let state: number;
+      try { state = host.state(); } catch (error) {
+        this.clearExitWatch();
+        this.log(`Mac computer driver exit watch: ${String(error)}`);
+        return;
+      }
+      if (state === ready) return;
+      this.clearExitWatch();
+      if (this.host === host) {
+        this.endpoint = undefined;
+        this.log("Mac computer driver exited; restart Branch Agent to reconnect computer control");
+      }
+    }, this.exitPollMs);
+    watch.unref?.();
+    this.exitWatch = watch;
+  }
+
+  private clearExitWatch(): void {
+    if (this.exitWatch) clearInterval(this.exitWatch);
+    this.exitWatch = undefined;
+  }
+
   async stop(): Promise<void> {
+    this.clearExitWatch();
     const host = this.host;
     const proxy = this.proxy;
     this.host = undefined;
