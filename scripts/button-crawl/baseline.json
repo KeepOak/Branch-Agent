@@ -82,6 +82,12 @@
     "settings:accounts :: Refresh": [
       "dead"
     ],
+    "settings:achievements :: All": [
+      "dead"
+    ],
+    "settings:advanced :: Add": [
+      "dead"
+    ],
     "settings:advanced :: All": [
       "dead"
     ],
@@ -97,11 +103,17 @@
     "settings:appearance :: The theme’s own accent": [
       "dead"
     ],
+    "settings:computer :: Cloud computers": [
+      "dead"
+    ],
     "settings:computer :: Refresh": [
       "dead"
     ],
     "settings:computer :: Save": [
       "dead"
+    ],
+    "settings:computer :: Turn it off": [
+      "toast-only"
     ],
     "settings:gateway :: Open in a browser": [
       "dead"
@@ -111,6 +123,9 @@
     ],
     "settings:general :: Folded": [
       "dead"
+    ],
+    "settings:general :: On this computer": [
+      "unimplemented"
     ],
     "settings:general :: Technical": [
       "dead"
@@ -122,6 +137,9 @@
       "dead"
     ],
     "settings:models :: Check now": [
+      "dead"
+    ],
+    "settings:models :: Connections": [
       "dead"
     ],
     "settings:notifications :: Every Trunk": [
