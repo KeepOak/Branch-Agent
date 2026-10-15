@@ -1,6 +1,7 @@
 // Accounts › Coding apps on this computer (§4.7.8): Claude Code, Codex and Gemini CLI as branch.setup.detect finds
 // them. Codex runs through the engine's codex plugin, so its switch is plugins.entries.codex.enabled; the other
 // two follow their own sign-in on this computer.
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import type { WindowEngine } from "../../../connect/engine";
 import { list, text, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
@@ -32,6 +33,7 @@ export function appSub(app: App, f: Found, on: boolean): string {
 }
 
 export function CodingApps({ engine }: { engine: WindowEngine }) {
+  const [checked, stamp] = useCheckedAt();
   const scope = useScope();
   const detect = useResource<RecordValue>(engine, "branch.setup.detect", scope ? { agentId: scope } : {});
   const usage = useResource<RecordValue>(engine, "usage.status");
@@ -51,7 +53,7 @@ export function CodingApps({ engine }: { engine: WindowEngine }) {
           </Ctl>
         );
       })}
-      <div className="acts"><Btn sm disabled={detect.loading} onClick={() => void detect.reload()}>Check again</Btn></div>
+      <div className="acts"><Btn sm disabled={detect.loading} onClick={() => void detect.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</Btn><CheckedAt at={checked} /></div>
     </Sec>
   );
 }

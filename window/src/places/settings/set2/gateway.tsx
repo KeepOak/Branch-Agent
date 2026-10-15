@@ -304,7 +304,7 @@ function Origins({ config }: { config: Config }) {
     <Ctl title="Allowed browser addresses" sub="Default: the public address, if set." stack after={
       <div className="gw-x">
         <div className="gw-list">{origins.length ? origins.map((o) => <span key={o} className="chip6">{o}<button type="button" className="s2-x" aria-label={`Remove ${o}`} onClick={() => void config.set("gateway.controlUi.allowedOrigins", origins.filter((x) => x !== o))}>×</button></span>) : <small>None.</small>}</div>
-        <Acts><input className="inp" aria-label="Allowed browser addresses: add" placeholder="https://branch.example.com" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm onClick={add}>Add</Btn></Acts>
+        <Acts><input className="inp" aria-label="Allowed browser addresses: add" placeholder="https://branch.example.com" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm disabled={!draft.trim()} onClick={add}>Add</Btn></Acts>
         {err ? <small className="s2-err" role="alert">{err}</small> : null}
       </div>
     } />

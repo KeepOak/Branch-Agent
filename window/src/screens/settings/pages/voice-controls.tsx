@@ -3,6 +3,7 @@
 // wake words (voicewake.get/set), the speaking engine and its preview (tts.providers, tts.setProvider, tts.speak), live
 // voice (talk.catalog, talk.* through config), meeting notes (the meeting plugins), the test call (voicecall.initiate),
 // the listening engine and the Technical commands and key list.
+import { CheckedAt, useCheckedAt } from "../../../places/settings/checked-at";
 import { useEffect, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { errorText, list, record, text, visible } from "../../../places/settings/adapter";
@@ -337,6 +338,7 @@ const KEYS: [string, Kind, string][] = [
 ];
 /** All voice settings: each talk.* and tts.* key the engine has, with Save and Reload (Classic Voice, technical). */
 export function AllVoiceSettings({ engine, row }: SlotControlProps) {
+  const [checked, stamp] = useCheckedAt();
   const cfg = useConfig(engine);
   const [draft, setDraft] = useState<Record<string, string | boolean>>({});
   const [busy, setBusy] = useState(false);
@@ -356,7 +358,7 @@ export function AllVoiceSettings({ engine, row }: SlotControlProps) {
           : <input className="r1s-inp" aria-label={key} value={String(v)} placeholder="Default" onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} />}
         <small className="g-label">{what}</small></li>); })}</ul>
     <span className="r1s-acts"><button type="button" className="r1s-btn" disabled={!Object.keys(draft).length || busy || cfg.loading} onClick={() => void save()}>Save</button>
-      <button type="button" className="r1s-btn" disabled={busy} onClick={() => { setDraft({}); setErr(""); void cfg.reload(); }}>Reload</button></span>
+      <button type="button" className="r1s-btn" disabled={busy} onClick={() => { setDraft({}); setErr(""); void cfg.reload().then((ok) => { if (ok) stamp(); }, () => undefined); }}>Reload</button><CheckedAt at={checked} /></span>
     {err ? <Line bad>{err}</Line> : null}
   </div></Needs>;
 }

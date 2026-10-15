@@ -8,7 +8,9 @@ export function useResource<T>(engine: WindowEngine, method: string, params: unk
   const paramsKey = JSON.stringify(params);
   const generation = useRef(0);
   const [state, setState] = useState<{ data?: T; loading: boolean; error?: string }>({ loading: true });
-  const reload = useCallback(async () => {
+  // Resolves true only when the read succeeded; a failure is shown in `error` and resolves false, so a caller can
+  // tell a finished check from a failed one.
+  const reload = useCallback(async (): Promise<boolean> => {
     const current = ++generation.current;
     setState({ loading: true });
     const stop = stallAfter(() => {
@@ -18,7 +20,8 @@ export function useResource<T>(engine: WindowEngine, method: string, params: unk
       const data = await engine.request<T>(method, JSON.parse(paramsKey));
       stop();
       if (current === generation.current) setState({ data, loading: false });
-    } catch (error) { stop(); if (current === generation.current) setState({ error: errorText(error), loading: false }); }
+      return true;
+    } catch (error) { stop(); if (current === generation.current) setState({ error: errorText(error), loading: false }); return false; }
   }, [engine, method, paramsKey]);
   useEffect(() => { void reload(); return () => { generation.current++; }; }, [reload]);
   return { ...state, reload };

@@ -12,6 +12,7 @@ import '../src/theme/base.css';
 import '../src/shell/shell.css';
 import '../src/shell/frame.css';
 import '../src/shell/controls.css';
+import { applyApprovalsSet, applyConfigPatch, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshPrefs, freshVoice, voiceProviders, voiceStatus, type CrawlApprovals, type CrawlConfig, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
 
 type Call = { method: string; ok: boolean; error?: string };
 
@@ -63,8 +64,19 @@ const SELECTOR = [
   '[role="tab"]', '[role="switch"]', 'input[type="checkbox"]', '.chip', '.ib',
 ].join(',');
 
-let config = { hash: 'fixture', config: { wizard: { lastRunAt: '2026-10-01T00:00:00Z' }, agents: { defaults: { model: { primary: 'local/fixture' } } } } };
+let config: CrawlConfig = freshConfig();
 let historyMoves = 0;
+// A control that opens a window (Open in its own window) is a visible result: the browser fallback calls window.open.
+let popups = 0;
+window.open = (() => { popups += 1; return null; }) as typeof window.open;
+// A control that saves a file (Export) is a visible result too. The download is cancelled, and the click counted.
+let downloads = 0;
+document.addEventListener('click', (event) => {
+  const link = (event.target as Element | null)?.closest?.('a[download]');
+  if (!link) return;
+  downloads += 1;
+  event.preventDefault();
+}, true);
 const historyBack = history.back.bind(history);
 const historyForward = history.forward.bind(history);
 history.back = () => { historyMoves += 1; historyBack(); };
@@ -95,20 +107,11 @@ function snapshot(key: string) {
   };
 }
 
-function mergeConfig(base: unknown, patch: unknown): unknown {
-  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return patch;
-  const out: Record<string, unknown> = base && typeof base === 'object' && !Array.isArray(base) ? { ...(base as Record<string, unknown>) } : {};
-  for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
-    if (value === null) delete out[key];
-    else if (value && typeof value === 'object' && !Array.isArray(value)) out[key] = mergeConfig(out[key], value);
-    else out[key] = value;
-  }
-  return out;
-}
+let prefs: CrawlPrefs = freshPrefs();
+let approvals: CrawlApprovals = freshApprovals();
+let voice: CrawlVoice = freshVoice();
 
-let prefs: { status: string; entries: Record<string, unknown> } = { status: 'ok', entries: {} };
-
-function request(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown> } | undefined) {
+function request(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown>; file?: Record<string, unknown>; baseHash?: string; provider?: string; probe?: boolean } | undefined) {
   const started = performance.now();
   try {
     const result = respond(method, params);
@@ -122,7 +125,7 @@ function request(method: string, params: { key?: string; sessionKey?: string; ra
   }
 }
 
-function respond(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown> } | undefined) {
+function respond(method: string, params: { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown>; file?: Record<string, unknown>; baseHash?: string; provider?: string; probe?: boolean } | undefined) {
   if (method === 'agents.list') return AGENTS;
   if (method === 'sessions.subscribe') return { list: { sessions: SESSIONS } };
   if (method === 'sessions.list') return { sessions: SESSIONS, defaults: { modelProvider: 'local', model: 'fixture', thinkingLevel: 'medium' } };
@@ -140,18 +143,23 @@ function respond(method: string, params: { key?: string; sessionKey?: string; ra
   if (method === 'a2a.peers.list') return { peers: [] };
   if (method === 'config.get') return config;
   if (method === 'config.patch') {
-    const patch = JSON.parse(params?.raw || '{}') as unknown;
-    config = { ...config, hash: `${config.hash}x`, config: mergeConfig(config.config, patch) as typeof config.config };
+    config = applyConfigPatch(config, params?.raw || '{}');
     return { ok: true, hash: config.hash, config: config.config };
+  }
+  if (method === 'tts.status') return voiceStatus(voice);
+  if (method === 'tts.enable' || method === 'tts.disable') { voice = applyVoiceToggle(voice, method === 'tts.enable'); return { enabled: voice.auto !== 'off' }; }
+  if (method === 'tts.providers') return voiceProviders(voice);
+  if (method === 'tts.setProvider') { voice = { ...voice, provider: String(params?.provider ?? voice.provider) }; return { provider: voice.provider }; }
+  // The engine's memory probe (gateway doctor.ts) answers with the embedding check; a plain status read has none yet.
+  if (method === 'doctor.memory.status' && (params as { probe?: boolean } | undefined)?.probe) return { agentId: 'main', searchRuntimeRegistered: true, embedding: { ok: true, checked: true } };
+  if (method === 'exec.approvals.get') return approvals;
+  if (method === 'exec.approvals.set') {
+    approvals = applyApprovalsSet(approvals, params as { file?: Record<string, unknown>; baseHash?: string } ?? {});
+    return approvals;
   }
   if (method === 'users.prefs.get') return prefs;
   if (method === 'users.prefs.set') {
-    const entries = { ...prefs.entries };
-    for (const [key, value] of Object.entries(params?.entries || {})) {
-      if (value === null) delete entries[key];
-      else entries[key] = value;
-    }
-    prefs = { status: 'ok', entries };
+    prefs = applyPrefsSet(prefs, params?.entries || {});
     return { status: 'ok' };
   }
   if (method === 'models.list') return { models: [{ id: 'fixture', provider: 'local', name: 'Local model', contextWindow: 32768 }] };
@@ -262,7 +270,11 @@ function collect(overlay = false) {
       name,
       href: el instanceof HTMLAnchorElement ? el.href : '',
       disabled: control.disabled === true || el.getAttribute('aria-disabled') === 'true',
+      // A tab, or a radio option that is already the chosen value, has nothing to change: clicking it is a no-op
+      // by design, so the crawl skips it ("already-selected") instead of calling it dead.
       selected: el.getAttribute('role') === 'tab' && el.getAttribute('aria-selected') === 'true'
+        || el.getAttribute('role') === 'radio' && el.getAttribute('aria-checked') === 'true'
+        || el.getAttribute('aria-pressed') === 'true' && Boolean(el.closest('[role="group"], [role="radiogroup"]'))
         || Boolean(el.closest('.sseg') && (el.getAttribute('aria-pressed') === 'true' || el.getAttribute('aria-checked') === 'true')),
       occurrence,
       region,
@@ -324,10 +336,18 @@ function screenText() {
   return textOf(main).slice(0, 4000);
 }
 
+// The whole visible text, reduced to a length and a hash: a change anywhere on a long page is seen, not only in
+// the first few thousand characters.
+function digest(text: string) {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
+  return `${text.length}:${hash}`;
+}
+
 function viewText() {
   const main = document.querySelector('#main .set-col') ?? document.querySelector('#main');
   const side = document.querySelector('[data-testid="sidebar"]');
-  return [textOf(main), textOf(side)].filter(Boolean).join(' ').slice(0, 8000);
+  return digest([textOf(main), textOf(side)].filter(Boolean).join(' '));
 }
 
 function controlState(el: Element) {
@@ -335,6 +355,17 @@ function controlState(el: Element) {
   const checked = el.getAttribute('aria-checked');
   const input = el instanceof HTMLInputElement ? String(el.checked) : '';
   return [pressed, checked, input].join('|');
+}
+
+// Scroll positions inside the main content only (the sidebar and the window itself are not measured). A scroll is a
+// result only for an in-page jump (see surface): a control that scrolls the sidebar leaves this value unchanged.
+function scrollOf() {
+  const main = document.querySelector<HTMLElement>('#main');
+  if (!main) return '';
+  return [main, ...main.querySelectorAll<HTMLElement>('*')]
+    .filter((el) => el.scrollTop > 0)
+    .map((el) => `${el.className || el.tagName}:${Math.round(el.scrollTop)}`)
+    .join('|');
 }
 
 function surface() {
@@ -351,7 +382,7 @@ function surface() {
     route: routeId(readRoute()),
     dialog: dialog instanceof HTMLElement ? (dialog.getAttribute('aria-label') || dialog.textContent || 'dialog').replace(/\s+/g, ' ').trim().slice(0, 80) : null,
     menu: menu instanceof HTMLElement ? (menu.getAttribute('aria-label') || 'menu') : null,
-    panel: document.querySelector('.side-pane, .panel') instanceof HTMLElement ? 'panel' : null,
+    panel: document.querySelector('.side-pane, .panel, .character-panel') instanceof HTMLElement ? 'panel' : null,
     toast: toast instanceof HTMLElement ? toast.textContent?.replace(/\s+/g, ' ').trim().slice(0, 120) || null : null,
     mainText,
     viewText: viewText(),
@@ -368,6 +399,12 @@ function surface() {
     hash: location.hash,
     chrome: document.documentElement.getAttribute('data-theme') || '',
     historyMoves,
+    popups,
+    downloads,
+    // An in-page jump: a link to an anchor, or a button that scrolls to a section (data-jump-to).
+    jump: Boolean(target?.closest('a[href^="#"], [data-jump-to]')),
+    scroll: target?.closest('a[href^="#"], [data-jump-to]') ? scrollOf() : '',
+    configRevision: config.hash,
     alreadyCurrent: target?.getAttribute('aria-current') === 'true',
     menuItems,
     requests: calls.slice(),
@@ -399,17 +436,31 @@ function openKind(key: string) {
   return 'popover';
 }
 
+// Every click starts from the same mock engine and storage. Without this, a config.patch or a stored pref from one
+// control leaks into the next click's result. Module-level app singletons survive a remount, so the crawl also
+// reloads the page once per screen (crawl.mjs).
+function resetMockEngine() {
+  config = freshConfig();
+  prefs = freshPrefs();
+  approvals = freshApprovals();
+  voice = freshVoice();
+  calls.length = 0;
+  historyMoves = 0;
+  popups = 0;
+  downloads = 0;
+  try { localStorage.clear(); sessionStorage.clear(); } catch { /* storage blocked: the defaults below still apply */ }
+}
+
 function mount(route: Route) {
+  resetMockEngine();
   localStorage.setItem('branch.route', JSON.stringify(route));
   localStorage.setItem('branch.level', 'technical');
   localStorage.setItem('branch.theme', 'light');
   for (const toast of getToasts()) dismiss(toast.id);
-  calls.length = 0;
   cachedEngine = null;
   marked = null;
   markedEl = null;
   if (location.hash) history.replaceState(null, '', `${location.pathname}${location.search}`);
-  historyMoves = 0;
   const key = route.kind === 'chat' && route.key ? route.key : SESSIONS[0].key;
   snap = snapshot(key);
   nonce += 1;
@@ -430,11 +481,14 @@ function trackPermissionRequest<T>(call: () => Promise<T>): Promise<T> {
 }
 // The crawl has no microphone or camera. Each capture request resolves to a silent stream of the kind it
 // asked for, so a voice note really starts recording and the crawl observes that state.
+// One audio context per page: creating it on every capture took most of a click's time on a loaded machine.
+let silentAudio: AudioContext | null = null;
 function fakeCapture(constraints: MediaStreamConstraints): Promise<MediaStream> {
   if (constraints.video) {
     return Promise.resolve(document.createElement("canvas").captureStream());
   }
-  return Promise.resolve(new AudioContext().createMediaStreamDestination().stream);
+  silentAudio ??= new AudioContext();
+  return Promise.resolve(silentAudio.createMediaStreamDestination().stream);
 }
 if (navigator.mediaDevices) {
   navigator.mediaDevices.getUserMedia = (constraints: MediaStreamConstraints) =>
@@ -445,6 +499,10 @@ if (typeof Notification !== 'undefined') {
   Notification.requestPermission = (...args: Parameters<typeof Notification.requestPermission>) =>
     trackPermissionRequest(() => nativeRequestPermission(...args));
 }
+
+// Headless Chromium leaves a clipboard write pending, so a Copy button never shows its result. The crawl's write
+// succeeds at once, and the Copied line is the visible result.
+if (navigator.clipboard) navigator.clipboard.writeText = () => Promise.resolve();
 
 const nativeFetch = window.fetch.bind(window);
 window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {

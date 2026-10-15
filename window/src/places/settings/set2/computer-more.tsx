@@ -5,6 +5,7 @@
 // connected now (system-presence). The browser rows are in computer-browser.tsx, the code and git rows in
 // computer-code.tsx.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { Fragment, useRef, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Pick, Pill, Sec, Seg, Switch, Tabs, useConfig, type RowEntry } from "../kit";
@@ -833,6 +834,7 @@ const MODE: Record<string, string> = { ui: "the window", webchat: "a browser", c
 const IDLE_S = 300;
 
 function Who({ c }: { c: Ctx }) {
+  const [checked, stamp] = useCheckedAt();
   const pres = useLive<unknown>(c.engine, "system-presence", {}, ["presence"]);
   const nodes = useLive<RecordValue>(c.engine, "node.list", {}, PAIR_EVENTS);
   const devs = useLive<RecordValue>(c.engine, "device.pair.list", {}, PAIR_EVENTS);
@@ -841,7 +843,7 @@ function Who({ c }: { c: Ctx }) {
   const pending = list(rec(devs.data).pending);
   return (
     <>
-      <Acts><button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => { void pres.reload(); void nodes.reload(); }}><Ico name="retry" s /></button></Acts>
+      <Acts><button type="button" className="icon-btn" aria-label="Refresh" title="Refresh" onClick={() => { void Promise.all([pres.reload(), nodes.reload()]).then(([presOk, nodesOk]) => { if (presOk && nodesOk) stamp(); }, () => undefined); }}><Ico name="retry" s /></button><CheckedAt at={checked} /></Acts>
       {pres.error ? <p className="hint s2-err" role="alert">{pres.error}</p> : null}
       {pres.data && !rows.length && !pending.length ? <Empty>Nothing is reporting in right now.</Empty> : null}
       <div className="rows">
@@ -850,7 +852,7 @@ function Who({ c }: { c: Ctx }) {
           <div key={str(r.requestId)} className="prow">
             <Tile><Ico name="monitor" s /></Tile>
             <span className="grow"><b>{str(r.displayName) || str(r.clientId) || "A device"}</b><small>Waiting for your yes. Its abilities stay off until you allow it.</small></span>
-            <Btn sm onClick={() => document.getElementById("s2-waiting")?.scrollIntoView({ behavior: "smooth" })}>Review</Btn>
+            <Btn sm data-jump-to="#s2-waiting" onClick={() => document.getElementById("s2-waiting")?.scrollIntoView({ behavior: "smooth" })}>Review</Btn>
           </div>
         ))}
       </div>

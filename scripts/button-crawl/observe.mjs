@@ -47,7 +47,12 @@ export function classifyClick({ before, after, elapsedMs = 0, consoleErrors = []
   const focusChanged = Boolean(after.focus) && before.focus !== after.focus && !menuClosed;
   const hashChanged = (before.hash || '') !== (after.hash || '');
   const chromeChanged = (before.chrome || '') !== (after.chrome || '');
-  const real = routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || textChanged || focusChanged || hashChanged || chromeChanged;
+  const windowOpened = (after.popups ?? 0) > (before.popups ?? 0) || (after.downloads ?? 0) > (before.downloads ?? 0);
+  // A scroll is a result only when the control is an in-page jump; a sidebar scroll by any other control is not.
+  const scrolled = after.jump === true && (after.scroll ?? '') !== (before.scroll ?? '') && after.scroll !== undefined;
+  // A saved setting is a result even when the menu that changed it closes: the engine kept the new value.
+  const settingSaved = (after.configRevision ?? '') !== (before.configRevision ?? '') && after.configRevision !== undefined;
+  const real = routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || textChanged || focusChanged || hashChanged || chromeChanged || windowOpened || scrolled || settingSaved;
 
   if (!real && !after.alreadyCurrent) {
     if (toastChanged) problems.push('toast-only');
@@ -58,7 +63,9 @@ export function classifyClick({ before, after, elapsedMs = 0, consoleErrors = []
   if (after.unimplemented && !before.unimplemented && UNIMPLEMENTED.test(after.mainText || '')) problems.push('unimplemented');
   if (after.blank && !before.blank) problems.push('blank');
   if (routeChanged && after.blank) problems.push('empty-route');
-  if (real && elapsedMs > SLOW_MS) problems.push('slow');
+  // A smooth scroll to a section takes longer than a click should; only other results are timed.
+  const changedBesidesScroll = routeChanged || dialogOpened || dialogClosed || menuOpened || panelOpened || stateChanged || textChanged || focusChanged || hashChanged || chromeChanged || windowOpened || settingSaved;
+  if (changedBesidesScroll && elapsedMs > SLOW_MS) problems.push('slow');
   if (consoleErrors.filter((line) => !isNoise(line)).length) problems.push('console-error');
   // failedCalls stay on the click record. They block only when they also surface as a console error.
 

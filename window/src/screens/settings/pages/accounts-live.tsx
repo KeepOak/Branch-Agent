@@ -11,6 +11,7 @@ import { configStore } from "../../../places/settings/config-store";
 import { errorText, list, record, text, visible, type RecordValue } from "../../../places/settings/adapter";
 import { GitHubConnection, type GitHubView } from "../../../places/settings/github-connection";
 import { KitProvider } from "../../../places/settings/kit";
+import { CheckedAt, CheckButton, useCheckedAt } from "../../../places/settings/checked-at";
 import {
   accountName, accountsOf, accountSub, anotherOffers, answerFirstWhy, firstOrder, isLimited, limitedLabel, movedUp, providersOf, saveOrder,
   signInOffers, signOut, signOutWhy, takeAddRequest, testAccount, type Account, type Provider,
@@ -43,7 +44,8 @@ class SharedRead {
     this.subs.add(fn);
     return () => void this.subs.delete(fn);
   }
-  async reload(): Promise<void> {
+  /** Resolves true when the read succeeded; a failure is kept as the read's error and resolves false. */
+  async reload(): Promise<boolean> {
     const gen = ++this.gen;
     if (!this.snap.loading) this.set({ ...this.snap, loading: true });
     const stop = stallAfter(() => { if (gen === this.gen && this.snap.data === undefined) this.set({ loading: false, error: STALL_TEXT }); });
@@ -51,7 +53,8 @@ class SharedRead {
       const data = record(await this.engine.request(this.method, this.params));
       stop();
       if (gen === this.gen) this.set({ data, loading: false });
-    } catch (e) { stop(); if (gen === this.gen) this.set({ loading: false, error: errorText(e) }); }
+      return true;
+    } catch (e) { stop(); if (gen === this.gen) this.set({ loading: false, error: errorText(e) }); return false; }
   }
   private set(next: Read) { this.snap = next; for (const fn of [...this.subs]) fn(); }
 }
@@ -491,8 +494,12 @@ export const GeminiCli = (p: SlotControlProps) => <CodingApp {...p} app={appOf("
 /** Check again: looks for the coding apps on this computer again (branch.setup.detect). */
 export function CheckApps({ engine }: SlotControlProps) {
   const detect = useRead(engine, "branch.setup.detect");
+  const [checked, stamp] = useCheckedAt();
   return <Needs engine={engine} need={["branch.setup.detect"]} where="Check again">
-    <button type="button" className="r1s-btn" disabled={detect.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void detect.reload()}>Check again</button>
+    <span className="r1s-own-ctl">
+      <button type="button" className="r1s-btn" disabled={detect.loading || Boolean(adminWhy(engine))} title={adminWhy(engine)} onClick={() => void detect.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</button>
+      <CheckedAt at={checked} />
+    </span>
   </Needs>;
 }
 
@@ -560,7 +567,7 @@ export function GitHubRow({ engine }: SlotControlProps) {
           </Needs>
         ) : null}
         <Needs engine={engine} need={["tools.github.status"]} where="Refresh GitHub">
-          <button type="button" className="r1s-btn" disabled={!connection || Boolean(view?.busy) || loading} onClick={() => void connection?.refresh()}>Refresh</button>
+          <CheckButton run={() => connection?.refresh() ?? Promise.resolve(false)} disabled={!connection || Boolean(view?.busy) || loading}>Refresh</CheckButton>
         </Needs>
       </span>
     </div>

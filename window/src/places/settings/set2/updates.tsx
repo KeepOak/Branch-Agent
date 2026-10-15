@@ -2,6 +2,7 @@
 // running tasks, or stopping them first), the update schedule in config `update.*`, history from update.runs.*,
 // failure reports through update.report, and the parts that only the Branch app can do, greyed with why.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { Acts, Btn, Ctl, Empty, Hint, Page, Pill, Plist, Prow, Sec, Seg, Status, Switch, useConfig, useHeadless, type RowEntry } from "../kit";
@@ -48,7 +49,7 @@ export const ROWS: RowEntry[] = [
   ["Update status for scripts", "Help and updates, more", 2],
 ].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), group: ({ "In your editors and notes": "Branch on your other devices", "Help and updates, more": "Updating", Technical: "Updating" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
-type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => void };
+type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => Promise<boolean> };
 
 export function UpdatesPage(props: SettingsPageProps) {
   return componentDesktop(props.engine.gatewayUrl) ? <DesktopUpdatesPage {...props} /> : <GatewayUpdatesPage {...props} />;
@@ -73,7 +74,7 @@ function GatewayUpdating(props: SettingsPageProps) {
   const info = useLive<RecordValue>(props.engine, "status", {}, []);
   const sys = useLive<RecordValue>(props.engine, "system.info", {}, []);
   const version = useBranchVersion(props.engine.gatewayUrl);
-  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
+  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => status.reload() };
   return <>
     {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
     {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
@@ -91,7 +92,7 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
   const version = useBranchVersion(props.engine.gatewayUrl);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
   const lede = version ? `Branch ${versionParts(version).short}${os ? ` on ${os}` : ""}.` : props.title;
-  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => void status.reload() };
+  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => status.reload() };
   return (
     <Page title={props.title} lede={lede}>
       {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
@@ -414,6 +415,7 @@ function Privacy({ openSettings }: Pick<SettingsPageProps, "openSettings">) {
 
 /** Help and updates, more (Advanced): the last attempt, every update (update.runs.list) and the engine's version. */
 function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: Data; version: string }) {
+  const [checked, stamp] = useCheckedAt();
   const [history, setHistory] = useState(false);
   const last = rec(data.status.lastRun);
   const kind = str(rec(rec(data.status.schedule).install).kind);
@@ -434,7 +436,7 @@ function HelpMore({ engine, level, data, version }: SettingsPageProps & { data: 
       <Ctl title="The engine" sub={version ? "The engine is installed and answering." : undefined}>
         <span className="val-k">{version ? `Installed ${version}` : ""}</span>
         <Btn sm disabled title={APP_ONLY}>Repair</Btn>
-        <Btn sm ghost onClick={data.reload}>Check again</Btn>
+        <Btn sm ghost onClick={() => void data.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check again</Btn><CheckedAt at={checked} />
       </Ctl>
       {lvOf(level) >= 2 ? <CodeRow title="Update status for scripts" code="branch update status --json" /> : null}
       {history ? <HistoryDialog engine={engine} onClose={() => setHistory(false)} /> : null}
