@@ -8,6 +8,7 @@ import { Attachments } from "./Attachments";
 import { copyText, useThread } from "./context";
 import { useFreshClass } from "./fresh";
 import { Dialog } from "./Dialog";
+import { shows, useLevel } from "../places-nav/level";
 import {
   formatDuration,
   parseDiffLines,
@@ -396,6 +397,7 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
   const { name, toast } = useThread();
   const screenSwitch = isScreenControlSetupError(block.message);
   const noAccount = isModelAccountMissingError(block.message);
+  const level = useLevel();
   return (
     <div className="strip indent" data-testid="run-error" role="alert">
       <div className="strip-line">
@@ -407,13 +409,15 @@ export function ErrorBlock({ block, onDismiss }: { block: Of<"error">; onDismiss
           <Icon d={ICONS.x} />
         </button>
       </div>
-      <details className="fold">
-        <summary>
-          <Icon d={ICONS.chev} className="chev" />
-          Details
-        </summary>
-        <pre className="fold-body mono">{block.message}</pre>
-      </details>
+      {shows(level, "technical") ? (
+        <details className="fold">
+          <summary>
+            <Icon d={ICONS.chev} className="chev" />
+            Details
+          </summary>
+          <pre className="fold-body mono">{block.message}</pre>
+        </details>
+      ) : null}
       <div className="row-buttons">
         <button type="button" className="btn sm ghost" onClick={() => void copyText(block.message, toast)}>
           Copy error

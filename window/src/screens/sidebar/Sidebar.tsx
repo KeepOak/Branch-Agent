@@ -138,6 +138,8 @@ export function Sidebar(p: SidebarProps) {
   const query = search.query, setQuery = search.setQuery;
   const [folder, setFolder] = useState<Folder>("all"), [foldOpen, setFoldOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
+  // Deleting is final, so nothing is kept to list here yet; the bin still opens to say so.
+  const [deletedOpen, setDeletedOpen] = useState(false);
   // Filter and sort (Classic shell/FilterSort.tsx): the choices narrow and order the rows; the search looks past them.
   const [prefs, setPrefs] = useState<ListPrefs>(readR1Prefs);
   const changePrefs = (next: ListPrefs) => { setPrefs(next); saveR1Prefs(next); };
@@ -301,14 +303,15 @@ export function Sidebar(p: SidebarProps) {
           <span className="r1sb-bin-chev">{icons.chevron}</span><span>Archived</span>{sections.archived.length ? <i>{sections.archived.length}</i> : null}
         </button>
         {binsOpen ? sections.archived.length ? sections.archived.map(row => <SideRowView key={row.id} row={row} current={row.key === p.currentKey} now={now} handlers={handlers} picked={row.key !== null && selection.picked.has(row.key)} />) : <p className="r1sb-bin-none">Nothing here</p> : null}
-        <Coming need="sessions.restore" reason="Recently deleted comes in a later update. Deleting is final for now.">
-          <button type="button" className="r1sb-bin"><span className="r1sb-bin-chev">{icons.chevron}</span><span>Recently deleted</span></button>
-        </Coming>
+        <button type="button" className="r1sb-bin" data-local="" aria-expanded={deletedOpen} onClick={() => setDeletedOpen(open => !open)}>
+          <span className="r1sb-bin-chev">{icons.chevron}</span><span>Recently deleted</span>
+        </button>
+        {deletedOpen ? <p className="r1sb-bin-none">Nothing here</p> : null}
       </div>
       </>}
       <div className="r1sb-rail-bins">
         <button type="button" className="r1sb-cap" data-local="" aria-label={`Archived, ${sections.archived.length}`} title="Archived" onClick={() => { setArchivedOpen(true); toggleRail(); }}>{icons.archive}{sections.archived.length ? <i className="r1sb-badge">{sections.archived.length}</i> : null}</button>
-        <Coming need="sessions.restore" reason="Recently deleted comes in a later update. Deleting is final for now."><button type="button" className="r1sb-cap" aria-label="Recently deleted">{icons.trash}</button></Coming>
+        <button type="button" className="r1sb-cap" data-local="" aria-label="Recently deleted" title="Recently deleted" onClick={() => { setDeletedOpen(true); toggleRail(); }}>{icons.trash}</button>
       </div>
     </nav>
     <div className="r1sb-foot">

@@ -74,7 +74,7 @@ describe("Menu", () => {
       { label: "Pin", letter: "p", onSelect: () => spy("pin") },
       { label: "Unread", letter: "u", onSelect: () => spy("unread") },
       { label: "Snooze", submenu: [{ label: "In 1 hour", onSelect: () => spy("1h") }] },
-      { label: "Archive", letter: "a", off: "Your default stays in the list" },
+      { label: "Archive", letter: "a", off: "Always listed" },
     ],
     rows: [
       { label: "Rename", letter: "r", onSelect: () => spy("rename") },
@@ -84,7 +84,7 @@ describe("Menu", () => {
   it("opens with tiles and rows, runs a row and closes", async () => {
     const spy = vi.fn(), onClose = vi.fn();
     const host = await render(<Menu label="Conversation" {...build(spy)} onClose={onClose} />);
-    expect([...host.querySelectorAll(".g-menu-tile")].map(tile => tile.getAttribute("aria-label") ?? tile.textContent)).toEqual(["Pin", "Unread", "Snooze ›", "ArchiveYour default stays in the list"]);
+    expect([...host.querySelectorAll(".g-menu-tile")].map(tile => tile.getAttribute("aria-label") ?? tile.textContent)).toEqual(["Pin", "Unread", "Snooze ›", "ArchiveAlways listed"]);
     expect(host.querySelector("[data-danger]")?.hasAttribute("data-gap")).toBe(true);
     await act(async () => host.querySelector<HTMLButtonElement>(".g-menu-row")!.click());
     expect(spy).toHaveBeenCalledWith("rename");
