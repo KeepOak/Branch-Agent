@@ -27,6 +27,7 @@ function useMessageRows(request: Request, query: string, rowName: (k: string) =>
       return;
     }
     let current = true;
+    setHits([]);
     setSearching(true);
     setNote("Searching…");
     const timer = setTimeout(() => {

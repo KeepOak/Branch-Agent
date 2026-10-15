@@ -52,9 +52,11 @@ describe("Settings › Achievements", () => {
     await render(engine);
     expect(BADGES.length).toBe(128);
     expect(new Set(BADGES.map((b) => b.name)).size).toBe(BADGES.length);
-    expect(lede()).toContain("0 of 128 unlocked.");
+    expect(lede()).not.toContain("unlocked.");
+    expect(host.querySelector(".ach-sum")).toBeNull();
+    expect(host.textContent).toContain("Nothing unlocked yet.");
     expect(lede()).not.toContain("505");
-    expect(chips()).toEqual(["Bronze · 0/42", "Silver · 0/44", "Gold · 0/9", "Diamond · 0/20", "Godly · 0/8", "SSS+ · 0/5"]);
+    expect(chips()).toEqual([]);
     expect(badgeCards()).toHaveLength(128);
     expect(unlocked()).toEqual([]);
     expect(host.textContent).toContain("Branch doesn’t count most achievements yet.");
@@ -89,7 +91,7 @@ describe("Settings › Achievements", () => {
       const { engine } = engineOf();
       await render(engine, level);
       seen.push(sections());
-      if (level === 0) { expect(unlocked()).toEqual([]); expect(lede()).toContain("0 of 128"); }
+      if (level === 0) { expect(unlocked()).toEqual([]); expect(lede()).not.toContain("of 128"); }
       if (level === 1) { expect(unlocked()).toEqual(["Advanced"]); expect(chips()).toContain("Diamond · 1/20"); }
       if (level === 2) {
         expect(unlocked()).toEqual(["Technical", "Advanced"]);
@@ -114,7 +116,8 @@ describe("Settings › Achievements", () => {
     await act(async () => petCard("px-squirrel").click());
     await act(async () => { await Promise.resolve(); });
     expect(prefs[LOOK_PREF]).toMatchObject({ petsHad: ["px-squirrel", "otter"] });
-    expect((prefs[LOOK_PREF] as Record<string, unknown>).pet).toBeUndefined();
+    // No pet is the default now, so picking Squirrel stores it as a real choice.
+    expect((prefs[LOOK_PREF] as Record<string, unknown>).pet).toBe("px-squirrel");
     expect(open).toHaveBeenCalledWith("appearance");
   });
 });

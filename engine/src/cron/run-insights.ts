@@ -1,5 +1,4 @@
-/** Adapted from OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f
- * src/manifests/automation-insights.ts summarizeAutomationRuns.
+/**
  * Metrics describe the authorized returned sample; partial pages never imply lifetime totals.
  */
 import type { CronRunLogEntry } from "./run-log-types.js";

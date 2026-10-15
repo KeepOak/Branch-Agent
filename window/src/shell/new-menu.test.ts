@@ -52,6 +52,20 @@ describe("new conversation drafts", () => {
     });
   });
 
+  it("offers one New Trunk item with the random character hint, and Have Branch make a Trunk beside it", () => {
+    const ctx = context(vi.fn());
+    const items = newMenuItems(ctx);
+    const labels = items.map((entry) => "label" in entry ? entry.label : "");
+    expect(labels.filter((label) => /trunk/i.test(label))).toEqual(["New Trunk", "Have Branch make a Trunk"]);
+    const row = items.find((entry) => "label" in entry && entry.label === "New Trunk")!;
+    expect(row).toMatchObject({ hint: "random character", testid: "new-trunk" });
+    if ("run" in row) row.run();
+    expect(ctx.newTrunk).toHaveBeenCalledOnce();
+    const branch = items.find((entry) => "label" in entry && entry.label === "Have Branch make a Trunk")!;
+    if ("run" in branch) branch.run();
+    expect(ctx.makeTrunk).toHaveBeenCalledOnce();
+  });
+
   it("rejects a blank first message without making an untitled session", async () => {
     const request = vi.fn();
     await expect(createTopic(request, "oak", "main", " \n ")).rejects.toThrow("Write a message");

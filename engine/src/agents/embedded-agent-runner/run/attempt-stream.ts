@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/agents/embedded-agent-runner/run/attempt-stream.ts (atlas AGENT-LOOP-0098). Changed for Branch: inject target instructions at a mid-session model transition.
+// Changed for Branch: inject target instructions at a mid-session model transition.
 import type { OpenAIResponsesCompactionRejection } from "@branch/ai/transports";
 import { resolveDiagnosticModelContentCapturePolicy } from "../../../infra/diagnostic-llm-content.js";
 import { DEFAULT_UNDICI_STREAM_TIMEOUT_MS } from "../../../infra/net/undici-global-dispatcher.js";
@@ -450,7 +450,7 @@ export function installEmbeddedAttemptStreamGuards(
   return {
     onModelRequest: cacheObserver.onModelRequest,
     onModelUsage: (usage: NormalizedUsage | undefined) => {
-      // Async-tool fragments also end messages. result() marks the terminal
+      // Async-tool fragments also end messages. result marks the terminal
       // response before core commits its final fragment with normalized usage.
       if (modelResponseTerminal) {
         modelResponseTerminal = false;

@@ -1,5 +1,4 @@
-// Extracted from openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3
-// ui/src/pages/usage/query.ts. Shared by engine UI and the native window.
+// Shared by engine UI and the native window.
 import { timestampMsToIsoString } from "@branch/normalization-core/number-coercion";
 import type { CostUsageSummary } from "../infra/session-cost-usage.types.js";
 import type { SessionUsageEntry } from "./usage-types.js";

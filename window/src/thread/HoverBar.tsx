@@ -22,6 +22,10 @@ export type HoverActions = {
   inspect?: Act;
   branch?: Act;
   context?: Act & { excluded: boolean };
+  /** Pin or Unpin this message (sessions.messages.pin). */
+  pin?: Act & { pinned: boolean };
+  /** Delete this message, after a confirm (sessions.messages.delete). */
+  remove?: Act;
   startConversation?: Act;
   /** Read aloud / Stop reading on a reply (§4.2.6). */
   read?: Act & { reading: boolean };
@@ -34,7 +38,7 @@ const QUICK = ["👍", "❤️", "🎉", "👀", "🚀", "😂"];
 const emojiSegmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
 const emojiSequence =
   /^(?:\p{Regional_Indicator}{2}|[#*0-9]️?⃣|\u{1F3F4}[\u{E0061}-\u{E007A}]+\u{E007F}|\p{Extended_Pictographic}️?\p{Emoji_Modifier}?(?:‍\p{Extended_Pictographic}️?\p{Emoji_Modifier}?)*)$/u;
-export function isReactionEmoji(emoji: string): boolean {
+function isReactionEmoji(emoji: string): boolean {
   return Array.from(emoji).length <= 32 && [...emojiSegmenter.segment(emoji)].length === 1 && emojiSequence.test(emoji);
 }
 

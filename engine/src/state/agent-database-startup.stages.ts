@@ -1,5 +1,6 @@
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { waitForPredecessorAgentLeases } from "../process/session-handoff-lease-gate.js";
 import type { AgentDatabaseAdmissionRefusal } from "./agent-database-admission.js";
 
 const log = createSubsystemLogger("state/agent-admission");
@@ -139,4 +140,52 @@ export async function waitForStage<T>(params: {
       params.onExpired();
     }
   }
+}
+
+/**
+ * #951: after a handoff the previous engine may still be finishing a kept session of this agent, holding its
+ * databases. A preparation stage that timed out meanwhile timed out against that lock, so this waits on the release
+ * itself (no stage clock runs) instead of retrying against the held lock with a doubled limit. "free": nothing was
+ * held, the timeout is a real failure. "stopped": startup stopped during the wait.
+ */
+export async function waitForPreviousEngineRelease(params: {
+  agentId: string;
+  refusal: AgentDatabaseAdmissionRefusal;
+  statusReason: string;
+  signal: AbortSignal;
+}): Promise<"waited" | "free" | "stopped"> {
+  const { agentId, refusal, statusReason, signal } = params;
+  let waited = false;
+  try {
+    const { waitedMs } = await waitForPredecessorAgentLeases(agentId, {
+      signal,
+      onWaiting: (lanes) => {
+        waited = true;
+        recordStage(refusal, statusReason, "waiting for the previous engine to release it");
+        log.info("agent database preparation waits for the previous engine's session leases", {
+          agentId,
+          lanes,
+        });
+      },
+    });
+    if (waited) {
+      log.info("previous engine released the agent's sessions; preparing", { agentId, waitedMs });
+    }
+    return waited ? "waited" : "free";
+  } catch (error) {
+    if (signal.aborted) {
+      return "stopped";
+    }
+    throw error;
+  }
+}
+
+/** True when `error` is a stage timeout and this agent's sessions were held by the previous engine until now. */
+export async function waitedForPreviousEngine(
+  error: unknown,
+  params: Parameters<typeof waitForPreviousEngineRelease>[0],
+): Promise<boolean> {
+  return (
+    error instanceof StageTimeoutError && (await waitForPreviousEngineRelease(params)) === "waited"
+  );
 }
