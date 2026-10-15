@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { assertBrowserNavigationAllowed } from "../browser/navigation-guard.js";
 import { GUEST_ADDRESS_REFUSAL, toGuestOp } from "./guest-args.js";
 import {
+  GUEST_DROPPED_NOTICE,
   GUEST_NOT_OPEN_NOTICE,
   GUEST_TIMEOUT_NOTICE,
   isGuestEligible,
@@ -57,7 +58,7 @@ function setup(options: { answer?: GuestAnswer | (() => GuestAnswer | undefined)
       registry,
       ...input,
     });
-  return { pane, route };
+  return { pane, route, registry };
 }
 
 describe("guest route: ready pane", () => {
@@ -161,6 +162,47 @@ describe("guest route: fallback", () => {
     await expect(pending).resolves.toEqual({ kind: "playwright", notice: GUEST_TIMEOUT_NOTICE });
     expect(GUEST_TIMEOUT_NOTICE).toBe("The browser pane didn't answer, so I used Branch's own browser.");
     expect(pane.sent).toHaveLength(1);
+  });
+
+  it("says the not-open sentence once per conversation, then stays silent", async () => {
+    const { route } = setup({ ready: false });
+    const first = await route({ action: "tabs" });
+    const second = await route({ action: "tabs" });
+    const otherConversation = await route({ action: "tabs", sessionKey: "agent:other:one" });
+
+    expect(first.notice).toBe(GUEST_NOT_OPEN_NOTICE);
+    expect(second.notice).toBeUndefined();
+    expect(otherConversation.notice).toBe(GUEST_NOT_OPEN_NOTICE);
+  });
+
+  it("says nothing when the pane answers", async () => {
+    const { route } = setup({ answer: { ok: true, result: { tabs: [], activeTargetId: null } } });
+    const decision = await route({ action: "tabs" });
+    expect(decision.kind).toBe("guest");
+  });
+
+  it("says the timeout sentence once, then stays silent when the pane does not answer again", async () => {
+    vi.useFakeTimers();
+    const { route } = setup({ answer: undefined });
+    const first = route({ action: "navigate", url: "https://example.com/" });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await expect(first).resolves.toEqual({ kind: "playwright", notice: GUEST_TIMEOUT_NOTICE });
+
+    const second = route({ action: "navigate", url: "https://example.com/" });
+    await vi.advanceTimersByTimeAsync(30_000);
+    const again = await second;
+    expect(again.kind).toBe("playwright");
+    expect(again.notice).toBeUndefined();
+  });
+
+  it("says the dropped sentence when the pane closes during a request", async () => {
+    const { pane, route, registry } = setup({ answer: undefined });
+    const pending = route({ action: "navigate", url: "https://example.com/" });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(pane.sent).toHaveLength(1);
+
+    registry!.clearConnection(pane.host.connId);
+    await expect(pending).resolves.toEqual({ kind: "playwright", notice: GUEST_DROPPED_NOTICE });
   });
 
   it("uses Playwright without a notice when the call is not eligible", async () => {

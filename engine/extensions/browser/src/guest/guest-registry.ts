@@ -38,6 +38,8 @@ export type GuestRegistry = {
   setReady(sessionKey: string, ready: boolean, host: GuestHostConnection): void;
   clearConnection(connId: string): void;
   request(input: GuestRequestInput): Promise<GuestOutcome>;
+  /** True only the first time for a conversation, so a fallback sentence is said once. */
+  claimFallbackNotice(sessionKey: string): boolean;
   respond(input: { requestId: string; connId: string; answer: GuestAnswer }): GuestRespondResult;
 };
 
@@ -51,6 +53,7 @@ type PendingRequest = { connId: string; settle: (outcome: GuestOutcome) => void 
 class GuestRegistryImpl implements GuestRegistry {
   private readonly hosts = new Map<string, GuestHostConnection>();
   private readonly pending = new Map<string, PendingRequest>();
+  private readonly noticed = new Set<string>();
   private readonly timeoutMs: number;
   private readonly createRequestId: () => string;
 
@@ -61,6 +64,12 @@ class GuestRegistryImpl implements GuestRegistry {
 
   isReady(sessionKey: string): boolean {
     return this.hosts.has(sessionKey);
+  }
+
+  claimFallbackNotice(sessionKey: string): boolean {
+    if (this.noticed.has(sessionKey)) return false;
+    this.noticed.add(sessionKey);
+    return true;
   }
 
   setReady(sessionKey: string, ready: boolean, host: GuestHostConnection): void {

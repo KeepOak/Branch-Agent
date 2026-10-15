@@ -21,6 +21,7 @@ import { formatGuestResult, readGuestResultUrl } from "./guest-result.js";
 
 export const GUEST_NOT_OPEN_NOTICE = "Your browser pane isn't open, so I used Branch's own browser.";
 export const GUEST_TIMEOUT_NOTICE = "The browser pane didn't answer, so I used Branch's own browser.";
+export const GUEST_DROPPED_NOTICE = "The browser pane closed, so I used Branch's own browser.";
 
 export type GuestRouteDecision =
   | { kind: "playwright"; notice?: string }
@@ -78,16 +79,25 @@ async function assertNavigationAllowed(url: string, input: GuestRouteInput): Pro
   });
 }
 
+/**
+ * The Playwright fallback. The sentence is said once per conversation, so a later fallback in the same conversation
+ * stays silent. Explicit profiles never reach here.
+ */
+function fallback(registry: GuestRegistry, sessionKey: string, notice: string): GuestRouteDecision {
+  return { kind: "playwright", notice: registry.claimFallbackNotice(sessionKey) ? notice : undefined };
+}
+
 async function settleOutcome(
   op: GuestOp,
   outcome: GuestOutcome,
   input: GuestRouteInput,
+  registry: GuestRegistry,
 ): Promise<GuestRouteDecision> {
   switch (outcome.kind) {
     case "timeout":
-      return { kind: "playwright", notice: GUEST_TIMEOUT_NOTICE };
+      return fallback(registry, input.sessionKey, GUEST_TIMEOUT_NOTICE);
     case "unavailable":
-      return { kind: "playwright", notice: GUEST_NOT_OPEN_NOTICE };
+      return fallback(registry, input.sessionKey, GUEST_DROPPED_NOTICE);
     case "aborted":
       input.signal?.throwIfAborted();
       throw new Error("The browser request was cancelled.");
@@ -127,7 +137,7 @@ export async function routeBrowserActionToGuest(
     if (op === "navigate" && !built.ok) {
       throw new Error(built.error);
     }
-    return { kind: "playwright", notice: GUEST_NOT_OPEN_NOTICE };
+    return fallback(registry, input.sessionKey, GUEST_NOT_OPEN_NOTICE);
   }
   if (!built.ok) {
     throw new Error(built.error);
@@ -141,5 +151,5 @@ export async function routeBrowserActionToGuest(
     args: built.args,
     signal: input.signal,
   });
-  return settleOutcome(op, outcome, input);
+  return settleOutcome(op, outcome, input, registry);
 }
