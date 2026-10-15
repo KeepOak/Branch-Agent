@@ -66,7 +66,17 @@ function hostBundleId(): string {
   }).trim();
 }
 
+/** The computer pane's Coming reason line; the Gateway gets the current one with its environment.
+ * Copy is the design preview's own: its permission ask says "macOS asks you to allow this once, in System Settings."
+ * The preview has no line for a missing driver or a driver that fails to start, so those reasons are empty and the pane
+ * shows the preview's bare "Coming" alone. A start failure's SDK reason goes only to desktop.log (bootEngine logs it). */
+export const DRIVER_NOT_PACKAGED = "";
+export const DRIVER_NEEDS_PERMISSION = "macOS asks you to allow this once, in System Settings.";
+export const DRIVER_START_FAILED = "";
+
 export class MacComputerDriver {
+  /** Why the last start gave no endpoint; cleared once the driver is ready. */
+  reason?: string;
   private host?: EmbeddedHost;
   private endpoint?: string;
   private selectedEngine?: string;
@@ -89,7 +99,13 @@ export class MacComputerDriver {
   async start(engineDir: string): Promise<string | undefined> {
     if (this.selectedEngine === engineDir && this.endpoint) return this.endpoint;
     if (this.starting) return this.starting;
-    this.starting = this.startSelected(engineDir).finally(() => { this.starting = undefined; });
+    this.starting = this.startSelected(engineDir).then(endpoint => {
+      if (endpoint) this.reason = undefined;
+      return endpoint;
+    }, error => {
+      this.reason = DRIVER_START_FAILED;
+      throw error;
+    }).finally(() => { this.starting = undefined; });
     return this.starting;
   }
 
@@ -98,6 +114,7 @@ export class MacComputerDriver {
     const binary = join(engineDir, "cua-driver");
     if (!existsSync(binary)) {
       this.log(`Mac computer driver is not packaged in ${engineDir}`);
+      this.reason = DRIVER_NOT_PACKAGED;
       return undefined;
     }
     const sdk = this.sdk(engineDir);
@@ -105,6 +122,7 @@ export class MacComputerDriver {
     const permissions = sdk.hasRequiredMacOSPermissions(current) ? current : sdk.requestMacOSPermissions();
     if (!sdk.hasRequiredMacOSPermissions(permissions)) {
       this.log("Mac computer driver is waiting for Accessibility and Screen Recording permission");
+      this.reason = DRIVER_NEEDS_PERMISSION;
       return undefined;
     }
     // The native driver must enforce its own approval policy even if the Gateway
