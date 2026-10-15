@@ -15,11 +15,11 @@ import '../src/shell/shell.css';
 import '../src/shell/frame.css';
 import '../src/shell/controls.css';
 import { createCrawlCapture } from './button-crawl-capture';
-import { applyApprovalsSet, applyConfigPatch, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshPrefs, freshVoice, voiceProviders, voiceStatus, type CrawlApprovals, type CrawlConfig, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
+import { applyApprovalsSet, applyConfigPatch, applyOutsideSet, applyPrefsSet, applyVoiceToggle, freshApprovals, freshConfig, freshOutside, freshPrefs, freshVoice, voiceProviders, voiceStatus, type CrawlApprovals, type CrawlConfig, type CrawlOutside, type CrawlPrefs, type CrawlVoice } from './button-crawl-state';
 
 type Call = { method: string; ok: boolean; error?: string };
 // The request params the mock reads. Path and method are the browser route's (browser-request.ts:567).
-type CrawlParams = { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown>; file?: Record<string, unknown>; baseHash?: string; provider?: string; probe?: boolean; method?: string; path?: string };
+type CrawlParams = { key?: string; sessionKey?: string; raw?: string; entries?: Record<string, unknown>; file?: Record<string, unknown>; baseHash?: string; provider?: string; probe?: boolean; method?: string; path?: string; enabled?: boolean; id?: string; revoked?: boolean; mayDriveWindow?: boolean };
 // The window under test. The shipped app opens R1 (R1Window) unless the Classic escape is set, so R1 is the default
 // and Classic is crawled only with ?window=classic (see crawl.mjs BUTTON_CRAWL_WINDOW).
 const WINDOW_KIND: 'r1' | 'classic' = new URLSearchParams(location.search).get('window') === 'classic' ? 'classic' : 'r1';
@@ -148,6 +148,7 @@ let prefs: CrawlPrefs = freshPrefs();
 let browserRunning = false;
 let approvals: CrawlApprovals = freshApprovals();
 let voice: CrawlVoice = freshVoice();
+let outside: CrawlOutside = freshOutside();
 
 function request(method: string, params: CrawlParams | undefined) {
   const started = performance.now();
@@ -176,6 +177,11 @@ function respond(method: string, params: CrawlParams | undefined) {
     return { messages: MESSAGES[key] ?? [], sessionId: `sess-${key}` };
   }
   if (method === 'contacts.list') return { contacts: CONTACTS };
+  if (method === 'contacts.outside.list') return outside;
+  if (method === 'contacts.outside.set') {
+    outside = applyOutsideSet(outside, params ?? {});
+    return { ok: true };
+  }
   if (method === 'contacts.topics') return { topics: [] };
   if (method === 'rooms.list') return { rooms: [] };
   if (method === 'a2a.peers.list') return { peers: [] };
@@ -241,6 +247,7 @@ function respond(method: string, params: CrawlParams | undefined) {
 // crawl never clicks it. canopy.cards.list is left out on purpose: Canopy is off by default, so its controls stay Coming.
 const ADVERTISED_METHODS = [
   'agents.list', 'sessions.list', 'sessions.describe', 'sessions.subscribe', 'sessions.preview', 'sessions.search',
+  'contacts.outside.list', 'contacts.outside.set',
   'sessions.branches.list', 'sessions.diff', 'chat.history', 'contacts.list', 'contacts.topics', 'rooms.list', 'a2a.peers.list',
   'config.get', 'config.patch', 'tts.status', 'tts.enable', 'tts.disable', 'tts.providers', 'tts.setProvider',
   'doctor.memory.status', 'exec.approvals.get', 'exec.approvals.set', 'exec.approval.list', 'plugin.approval.list',
@@ -583,6 +590,7 @@ function resetMockEngine() {
   prefs = freshPrefs();
   approvals = freshApprovals();
   voice = freshVoice();
+  outside = freshOutside();
   browserRunning = false;
   calls.length = 0;
   historyMoves = 0;
