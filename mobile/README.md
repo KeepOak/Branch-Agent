@@ -78,10 +78,11 @@ phone or emulator in one step.
 
 ## Install a release APK (sideload)
 
-Each GitHub release can include a signed `branch-android-<version>.apk` and, next to it,
-`branch-android-<version>.apk.sha256` (the APK's hex SHA-256). Those are the only Android assets
-attached to the release. CI still builds when the signing secrets are missing, but that APK stays
-a workflow artifact and is never published.
+Each GitHub release can include a signed `branch-android-<version>.apk`, next to it
+`branch-android-<version>.apk.sha256` (the APK's hex SHA-256), and
+`branch-android-<version>.apk.versioncode.<runNumber>` (the Android APK workflow's run
+number, also baked into the APK as `versionCode`). CI still builds when the signing secrets
+are missing, but that APK stays a workflow artifact and is never published.
 
 1. On the phone, open the [GitHub release](https://github.com/KeepOak/Branch-Agent/releases) and
    download `branch-android-<version>.apk`.
@@ -105,6 +106,43 @@ debug-signed local build will not replace a release APK.
   `usesCleartextTraffic`), as Expo Go allows it.
 - Light and dark follow the phone's setting (`userInterfaceStyle: automatic`, which needs
   `expo-system-ui` in a built app).
+- Pairing, the device key and the engine token live in Keystore-backed storage, not cache, so they
+  survive an update that installs over this app. Don't change `android.package` (`com.keepoak.branch`)
+  or the signing key, or Android will treat the new APK as a different app.
+
+## In-app update (sideloaded Android APK)
+
+A built Android app checks GitHub releases for a newer `branch-android-<version>.apk`. Newer means a
+higher `versionCode` (the Android APK release workflow's run number). The APK filename stays
+`branch-android-<version>.apk`; that workflow publishes the run number as
+`branch-android-<version>.apk.versioncode.<runNumber>` next to the APK and checksum. When one is
+ready, Chats (and Welcome) show an **Update** banner, and **Computer → This phone** has a manual
+**Check for update**. Tapping Update downloads the APK, checks its SHA-256 against the release's
+`.sha256` asset, checks that the APK's signing certificate matches this install, then opens the
+system installer through a FileProvider content URI. The first time, Android asks to allow installs
+from Branch; the app explains that, opens the setting, and continues when you come back.
+
+## Publishing the APK checksum
+
+The Android APK release workflow (`.github/workflows/mobile-android-release.yml`) publishes
+`branch-android-<version>.apk`, `branch-android-<version>.apk.sha256`, and
+`branch-android-<version>.apk.versioncode.<runNumber>` on each GitHub release. Without the
+checksum file, the phone will not offer the update. Without the versionCode sidecar, a later APK
+with the same dotted version is not offered. If you attach an APK by hand:
+
+1. Upload `branch-android-<version>.apk` (version is the release tag without a leading `v`).
+2. Upload `branch-android-<version>.apk.sha256` whose first 64-character hex is the SHA-256 of the
+   APK, for example `sha256sum branch-android-0.4.4.apk > branch-android-0.4.4.apk.sha256`.
+3. Upload `branch-android-<version>.apk.versioncode.<runNumber>` where `runNumber` is that workflow
+   run's `github.run_number`, the same integer baked into the APK as `versionCode`.
+4. Keep the package `com.keepoak.branch` and the same signing certificate as the previous APK.
+
+## JS-only updates (EAS Update)
+
+`expo-updates` is wired so a JS-only fix can land without a new APK. It is a no-op unless the build
+sets `EXPO_UPDATE_URL` (and `EAS_PROJECT_ID` if the hosting needs it). Those values are read from the
+environment in `app.config.js` and are not committed. `runtimeVersion` is `<version>.<versionCode>`,
+so an OTA from an older native build never applies after a native change.
 
 ## Build with EAS (optional)
 
