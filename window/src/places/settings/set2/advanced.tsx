@@ -122,6 +122,17 @@ function slotOpts(c: Ctx, kind: string, base: Opt[]): Opt[] {
   const found = c.plugins.filter((p) => Array.isArray(p.kind) && p.kind.map(String).includes(kind) && !base.some((b) => b.id === p.id));
   return [...base, ...found.map((p) => ({ id: str(p.id), label: str(p.name) || str(p.id) }))];
 }
+/** LanceDB memory applies only while that plugin is on. The rows stay visible either way. */
+function lanceNote(c: Ctx): string | undefined {
+  if (c.config.loading) return undefined;
+  const saved = c.config.get(["plugins", "entries", "memory-lancedb", "enabled"]);
+  const entry = c.plugins.find((p) => str(p.id) === "memory-lancedb");
+  const enabled = typeof saved === "boolean" ? saved : entry?.enabled === true;
+  return enabled ? undefined : "Turn on LanceDB memory for this to apply.";
+}
+const LANCE = "plugins.entries.memory-lancedb.config";
+const whole = (v: unknown) => Math.round(Number(v));
+
 function MemoryEngine({ c, same }: { c: Ctx; same?: boolean }) {
   const value = str(c.config.get("plugins.slots.memory")) || "memory-core";
   const sub = same ? "The same row as in Memory." : value === "none" ? "Memory is off. Trunks remember nothing new between conversations." : "One engine stores and searches memory. Choosing one turns the others off.";
@@ -153,6 +164,16 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   no("Keep a history in Git", "Every change to memory as a commit, on this computer."),
   { t: "Recall before replying", s: "Searches memory more deeply when quick recall finds nothing strong.", help: "Before a reply about the past, a Trunk searches memory more deeply. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
   { t: "Memory wiki", s: "Keeps what Trunks know as linked Markdown pages.", help: "Each fact has its source. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", plug: "memory-wiki" },
+  { t: "Meaning service for LanceDB", s: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", k: `${LANCE}.embedding.provider`, kind: "text", ph: "openai", note: lanceNote },
+  { t: "Meaning model", s: "The model that turns text into something searchable. Changing it rebuilds the index.", k: `${LANCE}.embedding.model`, kind: "text", ph: "text-embedding-3-small", note: lanceNote },
+  { t: "Key for the meaning service", s: "Optional. Leave empty to use the account already connected.", k: `${LANCE}.embedding.apiKey`, kind: "text", secret: true, note: lanceNote },
+  { t: "Address of the meaning service", s: "Only when the service lives at its own address.", k: `${LANCE}.embedding.baseUrl`, kind: "text", mono: true, ph: "https://api.openai.com/v1", note: lanceNote },
+  { t: "How many numbers describe each memory", s: "Needed when Branch doesn’t already know this model. Changing it rebuilds the index.", k: `${LANCE}.embedding.dimensions`, kind: "num", min: 1, ph: "The model’s own", write: whole, note: lanceNote },
+  { t: "Save memories from the conversation", s: "Writes down what is worth keeping as you talk.", help: "Off until you choose: a Trunk saves what is worth keeping as the conversation goes.", k: `${LANCE}.autoCapture`, kind: "sw", def: false, note: lanceNote },
+  { t: "How long a saved memory may be", s: "A note longer than this is not stored.", k: `${LANCE}.captureMaxChars`, kind: "num", unit: "characters", def: 500, min: 100, max: 10_000, write: whole, note: lanceNote },
+  { t: "Phrases that mean remember this", s: "A message that contains one of these is considered worth keeping.", k: `${LANCE}.customTriggers`, kind: "list", ph: "a phrase, like remember this", itemMax: 100, maxItems: 50, note: lanceNote },
+  { t: "Recall memories before a reply", s: "Looks up memories that fit this message and includes them before the Trunk replies.", k: `${LANCE}.autoRecall`, kind: "sw", def: true, note: lanceNote },
+  { t: "How long a recalled memory may be", s: "Each memory brought back, and the search for it, stay within this many characters.", k: `${LANCE}.recallMaxChars`, kind: "num", unit: "characters", def: 1000, min: 100, max: 10_000, write: whole, note: lanceNote },
 ], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "Plugins")}>Open Plugins</LinkBtn></p> };
 
 /* ---------- Automations ---------- */

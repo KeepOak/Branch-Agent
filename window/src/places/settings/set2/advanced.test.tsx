@@ -213,6 +213,88 @@ describe("Settings › Advanced", () => {
     expect(row("Meaning search").textContent).toContain("Working");
   });
 
+  it("reads and writes each LanceDB memory setting through config.patch", async () => {
+    const entry = (config: Record<string, unknown>) => ({ plugins: { entries: { "memory-lancedb": { config } } } });
+    const fill = async (title: string, value: string) => {
+      const input = row(title).querySelector("input") as HTMLInputElement;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+      await flush();
+    };
+    const toggle = (title: string) => click(row(title).querySelector("input") as HTMLElement);
+
+    const unset = engineWith(CONFIG);
+    await show(unset.engine, "advanced");
+    expect(row("Recall memories before a reply").textContent).toContain("Turn on LanceDB memory for this to apply.");
+    expect((row("Recall memories before a reply").querySelector("input") as HTMLInputElement).checked).toBe(true);
+    expect((row("Save memories from the conversation").querySelector("input") as HTMLInputElement).checked).toBe(false);
+    expect((row("Key for the meaning service").querySelector("input") as HTMLInputElement).type).toBe("password");
+    expect((row("Meaning service for LanceDB").querySelector("input") as HTMLInputElement).placeholder).toBe("openai");
+    await toggle("Recall memories before a reply");
+    await toggle("Save memories from the conversation");
+    await fill("Meaning service for LanceDB", "ollama");
+    await fill("Meaning model", "mxbai-embed-large");
+    await fill("Key for the meaning service", "sk-test");
+    await fill("Address of the meaning service", "http://127.0.0.1:11434");
+    await fill("How many numbers describe each memory", "1024");
+    await fill("How long a saved memory may be", "200");
+    await fill("Phrases that mean remember this", "remember this");
+    await fill("How long a recalled memory may be", "400");
+    expect(patches(unset.request)).toEqual([
+      entry({ autoRecall: false }),
+      entry({ autoCapture: true }),
+      entry({ embedding: { provider: "ollama" } }),
+      entry({ embedding: { model: "mxbai-embed-large" } }),
+      entry({ embedding: { apiKey: "sk-test" } }),
+      entry({ embedding: { baseUrl: "http://127.0.0.1:11434" } }),
+      entry({ embedding: { dimensions: 1024 } }),
+      entry({ captureMaxChars: 200 }),
+      entry({ customTriggers: ["remember this"] }),
+      entry({ recallMaxChars: 400 }),
+    ]);
+
+    const saved = {
+      autoRecall: false,
+      autoCapture: true,
+      captureMaxChars: 200,
+      recallMaxChars: 400,
+      customTriggers: ["remember this"],
+      embedding: { provider: "ollama", model: "mxbai-embed-large", apiKey: "sk-test", baseUrl: "http://127.0.0.1:11434", dimensions: 1024 },
+    };
+    const set = engineWith({ ...CONFIG, "config.get": { hash: "h", valid: true, config: { plugins: { entries: { "memory-lancedb": { enabled: true, config: saved } } } } } });
+    await show(set.engine, "advanced");
+    expect(row("Recall memories before a reply").textContent).not.toContain("Turn on LanceDB memory");
+    expect((row("Recall memories before a reply").querySelector("input") as HTMLInputElement).checked).toBe(false);
+    expect((row("Save memories from the conversation").querySelector("input") as HTMLInputElement).checked).toBe(true);
+    expect((row("Meaning service for LanceDB").querySelector("input") as HTMLInputElement).value).toBe("ollama");
+    expect(row("Phrases that mean remember this").textContent).toContain("remember this");
+    await toggle("Recall memories before a reply");
+    await toggle("Save memories from the conversation");
+    await fill("Meaning service for LanceDB", "github-copilot");
+    await fill("Meaning model", "text-embedding-3-small");
+    await fill("Key for the meaning service", "sk-next");
+    await fill("Address of the meaning service", "http://127.0.0.1:11435");
+    await fill("How many numbers describe each memory", "2048");
+    await fill("How long a saved memory may be", "600");
+    await fill("Phrases that mean remember this", "prefer");
+    await fill("How long a recalled memory may be", "800");
+    expect(patches(set.request)).toEqual([
+      entry({ autoRecall: true }),
+      entry({ autoCapture: false }),
+      entry({ embedding: { provider: "github-copilot" } }),
+      entry({ embedding: { model: "text-embedding-3-small" } }),
+      entry({ embedding: { apiKey: "sk-next" } }),
+      entry({ embedding: { baseUrl: "http://127.0.0.1:11435" } }),
+      entry({ embedding: { dimensions: 2048 } }),
+      entry({ captureMaxChars: 600 }),
+      entry({ customTriggers: ["remember this", "prefer"] }),
+      entry({ recallMaxChars: 800 }),
+    ]);
+  });
+
   it("lists every row for the settings search", () => {
     expect(ROWS.find((r) => r.title === "Logs")).toBeUndefined();
     expect(ROWS.find((r) => r.title === "How much the log keeps")).toMatchObject({ sec: "Logs", lv: 2 });
