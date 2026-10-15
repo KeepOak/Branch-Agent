@@ -10,6 +10,7 @@ import type {
 } from "../../plugins/registry-types.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { parseNodeWorkerComputerInput } from "../../worker/node-computer-protocol.js";
+import { computerHostEnvironment, hasDriverEndpoint } from "./computer-driver-endpoint.js";
 import { computerRunOwner } from "./computer-owner.js";
 import { startComputerHostProcess, type ComputerHostProcess } from "./computer-process.js";
 import {
@@ -32,10 +33,16 @@ export type GatewayComputerStatus = {
 
 /** Set by the desktop app when it starts the Gateway without a native driver endpoint. */
 const DRIVER_REASON_ENV = "BRANCH_COMPUTER_DRIVER_REASON";
+/** Said when this Gateway holds no driver address to pass its computer host. */
+const DRIVER_ADDRESS_MISSING = "The screen driver's address is missing. Quit Branch Agent and open it again.";
 /** An empty reason still means Coming: the pane then shows the preview's bare "Coming" with no reason line. */
 function appDriverReason(env: NodeJS.ProcessEnv): string | undefined {
   const reason = env[DRIVER_REASON_ENV]?.trim();
   return reason !== undefined && reason.length <= 300 ? reason : undefined;
+}
+/** The plain reason for a stopped computer host: the desktop's own reason first, then a missing address. */
+function nativeDriverReason(env: NodeJS.ProcessEnv): string | undefined {
+  return appDriverReason(env) ?? (hasDriverEndpoint(computerHostEnvironment(env)) ? undefined : DRIVER_ADDRESS_MISSING);
 }
 type ComputerInvokeRequest = ComputerInvokeParams & {
   owner: string;
@@ -216,7 +223,7 @@ export function createGatewayComputerService(options: {
     };
     current = runtime;
     const preparation = (async () => {
-      let env = process.env;
+      let env = computerHostEnvironment(process.env);
       if (runtime.desktopTarget === "managed") {
         if (!options.hostDesktopService) {
           throw new Error("Managed Gateway desktop is unavailable");
@@ -287,7 +294,7 @@ export function createGatewayComputerService(options: {
         const reason =
           configuredDesktopTarget() === "native" &&
           message.startsWith("COMPUTER_DRIVER_UNAVAILABLE:")
-            ? appDriverReason(options.env ?? process.env)
+            ? nativeDriverReason(options.env ?? process.env)
             : undefined;
         return {
           configured,

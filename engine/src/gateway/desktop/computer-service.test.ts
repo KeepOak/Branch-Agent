@@ -177,6 +177,22 @@ function createFixture(env?: NodeJS.ProcessEnv) {
 }
 
 describe("Gateway computer service", () => {
+  it("passes the desktop's driver address to the computer host even though the Gateway's environment lacks it", async () => {
+    const lease = JSON.stringify({ v: 2, port: 1, secret: "a".repeat(64) });
+    const key = Symbol.for("branch.macComputerEndpoint");
+    (globalThis as Record<symbol, unknown>)[key] = lease;
+    try {
+      const f = createFixture({});
+      delete f.config.desktop;
+      expect(await f.service.status()).toMatchObject({ available: true });
+      const hostEnv = vi.mocked(startComputerHostProcess).mock.calls[0]![0].env;
+      expect(hostEnv.BRANCH_CUA_DRIVER_ENDPOINT).toBe(lease);
+      expect(process.env.BRANCH_CUA_DRIVER_ENDPOINT).toBeUndefined();
+    } finally {
+      delete (globalThis as Record<symbol, unknown>)[key];
+    }
+  });
+
   it("names the desktop app's reason when this machine's own driver is not ready", async () => {
     const unavailable = () => {
       const ready = Promise.reject(
@@ -201,10 +217,13 @@ describe("Gateway computer service", () => {
     vi.mocked(startComputerHostProcess).mockImplementation(unavailable);
     expect(await bare.service.status()).toMatchObject({ available: false, reason: "" });
 
+    // No desktop reason and no driver address at all: say the address is missing, in plain words.
     const plain = createFixture({});
     delete plain.config.desktop;
     vi.mocked(startComputerHostProcess).mockImplementation(unavailable);
-    expect(await plain.service.status()).not.toHaveProperty("reason");
+    expect(await plain.service.status()).toMatchObject({
+      reason: "The screen driver's address is missing. Quit Branch Agent and open it again.",
+    });
 
     // A managed desktop is not this machine's own driver: its errors keep no app reason.
     const managed = createFixture({ BRANCH_COMPUTER_DRIVER_REASON: reason });
