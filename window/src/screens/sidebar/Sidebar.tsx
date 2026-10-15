@@ -45,7 +45,8 @@ import { filterFacts, filterSideRows, R1FilterSort, readR1Prefs, saveR1Prefs, so
 import { buildSections, contactRows, personRows, type Folder, type Person, type SideRow } from "./model";
 import { FolderChip, icons, PinnedGrid, SectionHead, SideRowView, TopCapsules, type RowHandlers } from "./parts";
 import { orderPins, pinKey } from "./pin-order";
-import { NEED, rowMenu } from "./row-menu";
+import { FIRST_MESSAGE, NEED, rowMenu } from "./row-menu";
+import { Face } from "../../face/Face";
 import { QUICK_ASK_EVENT, QUICK_ASK_NEED } from "../quickask/QuickAskHost";
 import "./sidebar.css";
 
@@ -145,7 +146,7 @@ export function Sidebar(p: SidebarProps) {
   const [menu, setMenu] = useState<SideRow | null>(null), menuAnchor = useRef<HTMLElement | null>(null);
   const [plusOpen, setPlusOpen] = useState(false), plusRef = useRef<HTMLButtonElement>(null);
   const [personOpen, setPersonOpen] = useState(false), meRef = useRef<HTMLButtonElement>(null);
-  const [dialog, setDialog] = useState<null | { kind: "rename"; row: SideRow } | { kind: "group"; key: string; name: string } | { kind: "studio" } | { kind: "delete"; row: Conversation } | { kind: "deleteMany"; rows: Conversation[] } | { kind: "keep"; row: Conversation } | { kind: "remove"; agentId: string; name: string } | { kind: "shortcuts" | "apps" | "pair" }>(null);
+  const [dialog, setDialog] = useState<null | { kind: "rename"; row: SideRow } | { kind: "group"; key: string; name: string } | { kind: "studio" } | { kind: "delete"; row: Conversation } | { kind: "deleteMany"; rows: Conversation[] } | { kind: "keep"; row: Conversation } | { kind: "remove"; agentId: string; name: string } | { kind: "replace"; row: SideRow } | { kind: "shortcuts" | "apps" | "pair" }>(null);
   const [batchOpen, setBatchOpen] = useState(false), batchAnchor = useRef<HTMLElement | null>(null);
   const [theme, setTheme] = useState<ThemeChoice>(readThemeChoice);
 
@@ -196,6 +197,18 @@ export function Sidebar(p: SidebarProps) {
   };
   const newTrunk = () => p.onNewTrunk();
   const newConversation = (agentId: string) => void actions.create(agentId).then(key => { if (key) p.onOpen(key); });
+  // Replace with a different Trunk (a pinned face's menu): pin the picked Trunk, give it this pin's place in the saved
+  // order, then unpin this one, through the same calls Pin and Unpin make.
+  const swapPin = async (old: SideRow, next: Contact) => {
+    if (!old.contact) return;
+    const nextKey = next.threadKey;
+    await pinContact(next, p.sessions, actions, request, () => undefined);
+    if (pinOrder.canSave) {
+      const visible = orderPins(sections.pinned, pinOrder.order).filter(row => !row.isDefault).map(pinKey);
+      await pinOrder.move({ source: nextKey, target: pinKey(old), zone: "before" }, [...visible.filter(key => key !== nextKey), nextKey]);
+    }
+    await pinContact(old.contact, p.sessions, actions, request, refreshContacts);
+  };
 
   const menuItems = menu ? rowMenu(menu, {
     now, actions, projects, ownWindowOff: ownWindowUnavailable(), open: p.onOpen,
@@ -218,6 +231,7 @@ export function Sidebar(p: SidebarProps) {
     keepLast: row => setDialog({ kind: "keep", row }),
     removeTrunk: (agentId, name) => setDialog({ kind: "remove", agentId, name }),
     confirmDelete: row => (askBeforeDelete() ? setDialog({ kind: "delete", row }) : void actions.remove(row).then(refreshContacts)),
+    replacePin: row => setDialog({ kind: "replace", row }),
   }) : null;
   const ordered = [...trunks.list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
   const plusRows: MenuEntry[] = [
@@ -348,6 +362,11 @@ export function Sidebar(p: SidebarProps) {
     {dialog?.kind === "delete" ? <ConfirmDelete clear row={dialog.row} onCancel={() => setDialog(null)} onDelete={() => { const row = dialog.row; setDialog(null); void actions.remove(row).then(refreshContacts); }} /> : null}
     {dialog?.kind === "deleteMany" && dialog.rows.length ? <ConfirmDelete clear row={dialog.rows[0]} count={dialog.rows.length} onCancel={() => setDialog(null)} onDelete={() => { const rows = dialog.rows; setDialog(null); void actions.removeMany(rows).then(() => { selection.clear(); refreshContacts(); }); }} /> : null}
     {dialog?.kind === "keep" ? <KeepLastDialog onCancel={() => setDialog(null)} onKeep={() => { const row = dialog.row; setDialog(null); void tidy({ session, list: p.list }, row, true); }} /> : null}
+    {dialog?.kind === "replace" ? <ReplacePinDialog row={dialog.row} contacts={contacts} onClose={() => setDialog(null)} onPick={next => {
+      const row = dialog.row;
+      setDialog(null);
+      void swapPin(row, next).catch((error: unknown) => notify(`Couldn't replace ${row.name}: ${reason(error)}.`, { tone: "bad" }));
+    }} /> : null}
     {dialog?.kind === "remove" ? <RemoveTrunkDialog clear engine={engine} agentId={dialog.agentId} name={dialog.name} onClose={() => setDialog(null)} /> : null}
     {dialog?.kind === "shortcuts" ? <ShortcutsDialog onClose={() => setDialog(null)} defaultName={trunks.list.find(trunk => trunk.isDefault)?.name} /> : null}
     {dialog?.kind === "apps" ? <GetAppsDialog onClose={() => setDialog(null)} onPair={() => setDialog({ kind: "pair" })} /> : null}
@@ -380,6 +399,25 @@ function GroupDialog({ request, name, onClose, onMove }: { request: <T>(method: 
       {groups.map(choice => <button key={choice} type="button" className="btn ghost" data-local="" aria-pressed={choice === group} onClick={() => setValue(choice)}><span>{choice}</span></button>)}
     </div> : null}
     <input className="inp" data-local="" aria-label="Group name" placeholder={groups.length ? "Or a new group" : "Group name"} value={value} autoFocus onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === "Enter") move(); }} />
+  </Dialog>;
+}
+
+/** Replace with a different Trunk: the Trunks not pinned yet, each with its face. One with no conversation yet can't be
+ *  pinned, so it says why, as the Pin tile does. */
+function ReplacePinDialog({ row, contacts, onClose, onPick }: { row: SideRow; contacts: readonly Contact[]; onClose: () => void; onPick: (next: Contact) => void }) {
+  const choices = contacts.filter(contact => contact.kind === "trunk" && !contact.pinnedAt && !contact.archivedAt && contact.id !== row.id);
+  return <Dialog title={`Replace ${row.name}`} onClose={onClose} testid="replace-pin" clear footer={<button type="button" className="btn ghost" data-local="" onClick={onClose}>Cancel</button>}>
+    {choices.length ? <div className="r1sb-swap" role="group" aria-label="Trunks">
+      {choices.map(choice => {
+        const face = <span className="r1sb-swap-face" aria-hidden="true"><Face size={32} label={choice.name} /></span>;
+        if (!choice.thread) return <button key={choice.id} type="button" className="r1sb-swap-pick" data-local="" disabled title={FIRST_MESSAGE}>
+          {face}<span className="r1sb-swap-name">{choice.name}<small>{FIRST_MESSAGE}</small></span>
+        </button>;
+        return <Coming key={choice.id} need={NEED.replace} where={`Replace › ${choice.name}`}>
+          <button type="button" className="r1sb-swap-pick" onClick={() => onPick(choice)}>{face}<span className="r1sb-swap-name">{choice.name}</span></button>
+        </Coming>;
+      })}
+    </div> : <p className="r1sb-swap-none">Every Trunk is pinned already.</p>}
   </Dialog>;
 }
 
