@@ -3,12 +3,12 @@
 // double-click. Signing goes through release-signing.mjs and stays off until the owner adds its secrets
 // (desktop/INSTALLERS.md, "Left for the owner"); until then the installers are built unsigned and the log says so.
 //   node desktop/scripts/release-installers.mjs --assets <release-assets> --version <version> --target <target> --out <dir>
-// win32-x64: a per-user Inno Setup installer (no admin prompt; the desktop updater must be able to swap its own folder).
+// win32-x64: a per-user Inno Setup installer (no admin prompt; each update lands in a version folder under that root).
 // darwin-arm64: a .dmg holding the already-signed Branch Agent.app and an Applications link.
 // linux-x64: a per-user AppImage (install.sh puts it at ~/.local/bin/branch-agent), built with a pinned appimagetool.
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -93,11 +93,35 @@ export function numericVersion(version) {
 
 const iss = (value) => String(value).replace(/"/g, '""');
 
+/** Same naming as desktop-update-helper: a version folder under the user-writable install root. */
+export function windowsInstallerFolderName(version) {
+  const safe = String(version).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "build";
+  return `app-${safe}`;
+}
+
+/** Cmd stub the Start-menu shortcut can keep pointing at; it reads current.txt. */
+export function windowsLauncherScript() {
+  return [
+    "@echo off",
+    "setlocal EnableDelayedExpansion",
+    'set "ROOT=%~dp0"',
+    'set "VER="',
+    'if exist "%ROOT%current.txt" set /p VER=<"%ROOT%current.txt"',
+    'if defined VER if exist "%ROOT%!VER!\\Branch Agent.exe" (',
+    '  start "" "%ROOT%!VER!\\Branch Agent.exe" %*',
+    "  exit /b 0",
+    ")",
+    'if exist "%ROOT%Branch Agent.exe" start "" "%ROOT%Branch Agent.exe" %*',
+    "",
+  ].join("\r\n");
+}
+
 /**
- * Per-user install under %LOCALAPPDATA%\Programs, like the portable folder the desktop updater already swaps. The
- * uninstaller lives outside {app} because a whole-app update renames {app}; uninstall removes {app} and its .previous.
+ * Per-user install under %LOCALAPPDATA%\Programs. Each build lives in a version folder; current.txt is the pointer
+ * the launcher reads. The uninstaller lives outside {app} so leftover {app}.previous from older swaps still goes.
  */
-export function innoSetupScript({ version, source, out }) {
+export function innoSetupScript({ version, source, out, folder = windowsInstallerFolderName(version) }) {
+  const exe = `{app}\\${folder}\\Branch Agent.exe`;
   return [
     "[Setup]",
     `AppId=${WINDOWS_APP_ID}`,
@@ -114,7 +138,7 @@ export function innoSetupScript({ version, source, out }) {
     `MinVersion=${WINDOWS_MIN_VERSION}`,
     "ArchitecturesAllowed=x64compatible",
     "ArchitecturesInstallIn64BitMode=x64compatible",
-    "UninstallDisplayIcon={app}\\Branch Agent.exe",
+    `UninstallDisplayIcon=${exe}`,
     "UninstallDisplayName=Branch Agent",
     "CloseApplications=yes",
     "WizardStyle=modern",
@@ -130,11 +154,11 @@ export function innoSetupScript({ version, source, out }) {
     `Source: "${iss(source)}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs`,
     "",
     "[Icons]",
-    'Name: "{autoprograms}\\Branch Agent"; Filename: "{app}\\Branch Agent.exe"',
-    'Name: "{autodesktop}\\Branch Agent"; Filename: "{app}\\Branch Agent.exe"; Tasks: desktopicon',
+    `Name: "{autoprograms}\\Branch Agent"; Filename: "${exe}"`,
+    `Name: "{autodesktop}\\Branch Agent"; Filename: "${exe}"; Tasks: desktopicon`,
     "",
     "[Run]",
-    'Filename: "{app}\\Branch Agent.exe"; Description: "Open Branch Agent"; Flags: nowait postinstall skipifsilent',
+    `Filename: "${exe}"; Description: "Open Branch Agent"; Flags: nowait postinstall skipifsilent`,
     "",
     "[UninstallDelete]",
     'Type: filesandordirs; Name: "{app}"',
@@ -185,8 +209,15 @@ export async function main(argv = process.argv.slice(2), request = fetch) {
     if (target === "win32-x64") {
       if (!existsSync(join(payload, "Branch Agent.exe"))) throw new Error("The Windows package has no Branch Agent.exe at its root");
       signer.signApp(join(payload, "Branch Agent.exe"));
+      const folder = windowsInstallerFolderName(version);
+      const root = join(work, "install-root");
+      const app = join(root, folder);
+      mkdirSync(app, { recursive: true });
+      for (const name of readdirSync(payload)) renameSync(join(payload, name), join(app, name));
+      writeFileSync(join(root, "current.txt"), `${folder}\n`);
+      writeFileSync(join(root, "Branch Agent.cmd"), windowsLauncherScript());
       const script = join(work, "branch-agent.iss");
-      writeFileSync(script, "\ufeff" + innoSetupScript({ version, source: payload, out: resolve(out) }));
+      writeFileSync(script, "\ufeff" + innoSetupScript({ version, source: root, folder, out: resolve(out) }));
       run(innoCompiler(), ["/Qp", script]);
     } else if (target === "linux-x64") {
       const appDir = assembleAppDir(payload, join(work, "Branch-Agent.AppDir"));
