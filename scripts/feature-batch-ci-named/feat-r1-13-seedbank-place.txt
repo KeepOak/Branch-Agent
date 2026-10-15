@@ -1,0 +1,3 @@
+window:src/places-nav/PlaceView.test.tsx
+window:src/places-nav/routes.test.ts
+window:src/screens/sidebar/Sidebar.test.tsx

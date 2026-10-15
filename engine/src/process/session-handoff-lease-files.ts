@@ -37,8 +37,21 @@ export const SESSION_HANDOFF_LEASE_MAX_WAIT_MS = 330_000;
  * never run later, so this stays well below that. In-process dispatch waits up to its own deadline instead.
  */
 export const SESSION_HANDOFF_LEASE_REQUEST_WAIT_MS = 15_000;
-/** A lease older than this guards nothing, whoever holds it: the successor runs the session from then on. */
+/**
+ * A lease not renewed for this long guards nothing, whoever holds it: the successor runs the session from then on.
+ * Without renewal that is this long after it was acquired.
+ */
 export const SESSION_HANDOFF_LEASE_MAX_AGE_MS = SESSION_HANDOFF_LEASE_MAX_WAIT_MS + 30_000;
+/**
+ * Private #1038: a stepping-down engine renews the lease of a session whose run is still in flight this often, so a
+ * long helper run finishes on the engine that started it instead of dying at the fixed lease age.
+ */
+export const SESSION_HANDOFF_LEASE_RENEW_MS = 30_000;
+/**
+ * However often it is renewed, a lease guards nothing this long after it was acquired: the generous hard cap on how
+ * long a retiring engine may keep a session (the age after which an unended helper run counts as stale).
+ */
+export const SESSION_HANDOFF_LEASE_HARD_CAP_MS = 2 * 60 * 60_000;
 const START_TIME_TIMEOUT_MS = 1_000;
 const FILE_RETRIES = 3;
 const FILE_RETRY_DELAY_MS = 50;
@@ -51,6 +64,8 @@ export type SessionHandoffLease = {
   pid: number;
   ownerId: string;
   acquiredAt: number;
+  /** When the holder last renewed it because its run was still in flight (absent until the first renewal). */
+  renewedAt?: number;
   /** The holder's process start time, so a reused PID never keeps a lease alive; null where unreadable. */
   startTime: number | null;
 };
@@ -116,6 +131,7 @@ function parseSessionHandoffLease(file: string, text: string): SessionHandoffLea
     (value.pid ?? 0) <= 0 ||
     typeof value.ownerId !== "string" ||
     typeof value.acquiredAt !== "number" ||
+    !(value.renewedAt === undefined || typeof value.renewedAt === "number") ||
     !(value.startTime === null || typeof value.startTime === "number") ||
     path.basename(file) !== `${laneHash(value.lane)}.${value.ownerId}.json`
   ) {
@@ -156,7 +172,11 @@ export function isLeaseHolderAlive(pid: number): boolean {
 }
 
 export function sessionHandoffLeaseExpiresAt(lease: SessionHandoffLease): number {
-  return lease.acquiredAt + SESSION_HANDOFF_LEASE_MAX_AGE_MS;
+  const renewedAt = Math.max(lease.acquiredAt, lease.renewedAt ?? lease.acquiredAt);
+  return Math.min(
+    renewedAt + SESSION_HANDOFF_LEASE_MAX_AGE_MS,
+    lease.acquiredAt + SESSION_HANDOFF_LEASE_HARD_CAP_MS,
+  );
 }
 
 export function isSessionHandoffLeaseExpired(
@@ -266,6 +286,29 @@ export function writeSessionHandoffLease(
     throw error;
   }
   return { file, lease };
+}
+
+/**
+ * Renews this holder's own lease (Private #1038): rewrites it whole with `renewedAt`. Undefined, and the lease left
+ * as it was, when the file is no longer this holder's (a successor removed it as stale) or cannot be written now.
+ */
+export function renewSessionHandoffLease(
+  file: string,
+  lease: SessionHandoffLease,
+  now = Date.now(),
+): SessionHandoffLease | undefined {
+  if (readSessionHandoffLease(file)?.ownerId !== lease.ownerId) return undefined;
+  const renewed: SessionHandoffLease = { ...lease, renewedAt: now };
+  const temp = `${file}.tmp`;
+  try {
+    fs.writeFileSync(temp, JSON.stringify(renewed));
+    withFileRetries(() => fs.renameSync(temp, file));
+    return renewed;
+  } catch (error) {
+    removeFile(temp, { quiet: true });
+    log.warn(`session handoff lease ${file} could not be renewed: ${String(error)}`);
+    return undefined;
+  }
 }
 
 /** Removes this holder's own lease file; false (and logged unless `quiet`) when it is still there. */

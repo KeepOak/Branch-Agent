@@ -27,14 +27,16 @@ function resolveHeartbeatPromptRaw(cfg: BranchConfig, heartbeat?: HeartbeatConfi
   return heartbeat?.prompt ?? cfg.agents?.defaults?.heartbeat?.prompt;
 }
 
+/** True when config sets its own heartbeat prompt instead of the default monitor prompt. */
+export function hasCustomHeartbeatPrompt(cfg: BranchConfig, heartbeat?: HeartbeatConfig): boolean {
+  return normalizeOptionalString(resolveHeartbeatPromptRaw(cfg, heartbeat)) !== undefined;
+}
+
 export function resolveConfiguredHeartbeatPrompt(cfg: BranchConfig, heartbeat?: HeartbeatConfig) {
   return resolveHeartbeatPromptText(resolveHeartbeatPromptRaw(cfg, heartbeat));
 }
 
-export function resolveHeartbeatResponseToolPrompt(
-  cfg: BranchConfig,
-  heartbeat?: HeartbeatConfig,
-) {
+export function resolveHeartbeatResponseToolPrompt(cfg: BranchConfig, heartbeat?: HeartbeatConfig) {
   return resolveHeartbeatPromptForResponseTool(resolveHeartbeatPromptRaw(cfg, heartbeat));
 }
 

@@ -1,31 +1,23 @@
-// Guide menu external links: Docs, Get help and Community.
+// The Guide menu's external destinations. Every row that leaves the app carries the same hint.
 
-/** No docs site exists yet, so Docs opens the same Help page. */
+/** Reserved for a real docs site. Docs is left out of the menu until it exists, because today it would open the same Help page as Ask for help. */
 export const docsUrl = "https://keepoak.com/help";
 
-/** KeepOak's real Help & contact page. */
+/** KeepOak's Help & contact page. */
 export const helpUrl = "https://keepoak.com/help";
 
-/** Community has no real address yet. */
-export const communityUrl: string | null = null;
-
-export const communityDisabledReason = "There's no community site yet.";
+/** Shown on every row that opens the browser; labels stay plain. */
+export const externalHint = "opens in browser";
 
 export type GuideLinkItem = {
   label: string;
   run: () => void;
-  disabled?: string;
+  hint?: string;
 };
 
-/** Docs, Get help and Community. `open` is the window's existing external-open helper. */
+/** `open` is the window's existing external-open helper. */
 export function guideLinkItems(open: (url: string) => void): GuideLinkItem[] {
   return [
-    { label: "Docs", run: () => { open(docsUrl); } },
-    { label: "Get help", run: () => { open(helpUrl); } },
-    {
-      label: "Community",
-      run: () => { if (communityUrl) open(communityUrl); },
-      disabled: communityUrl ? undefined : communityDisabledReason,
-    },
+    { label: "Ask for help", hint: externalHint, run: () => { open(helpUrl); } },
   ];
 }
