@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type Keyboa
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
+import { TrunkHost } from "../../places-nav/TrunkHost";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { pinsOf } from "../../places/settings/pins";
 import { GOTO_SUB, LEVELS, NAV, PAGES, TOP_PAGES, pageFor, pageShown, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
@@ -292,18 +293,18 @@ export function SettingsFrame(props: SettingsFrameProps) {
             </div>
           ) : null}
           {sections.length ? sections.map(({ card, visible }) => (
+            // A section with no rows yet collapses to one quiet line, not an empty card: nothing hollow to look at.
+            visible.length ? (
             <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title}>
               {card ? <h2 className="g-label">{card}</h2> : null}
-              {visible.length ? <CardRows engine={engine} rows={visible} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} /> : (
-                // A section with no rows in the table yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
-                <Coming engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
-                  <div className="r1s-row">
-                    <b className="g-label">Coming</b>
-                    <small className="r1s-note g-label" data-lines>{SECTION_COMING(card || spec.title)}</small>
-                  </div>
-                </Coming>
-              )}
+              <CardRows engine={engine} rows={visible} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} />
             </section>
+            ) : (
+              // Nothing to show yet: Coming through <Coming>, naming the call it waits for (nav sectionNeed).
+              <Coming key={card} engine={engine} need={sectionNeed(shownPage, card)} unwired reason={SECTION_COMING(card || spec.title)} where={`${spec.title} › ${card || spec.title}`}>
+                <p id={`sec-${shownPage}-${card}`} className="r1s-quiet g-label" aria-label={card || spec.title} data-lines><b>{card || spec.title}</b> · Coming. {SECTION_COMING(card || spec.title)}</p>
+              </Coming>
+            )
           )) : (
             <div className="r1s-empty g-clear">
               <p className="g-label">These settings show at {first !== null && first > level ? LEVELS[first].label : "Advanced"}.</p>
@@ -313,6 +314,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         </div>
         </>}
       </div>
+      <TrunkHost engine={engine} level={LEVEL_WORD[level]} openSettings={(page) => go(pageFor(page))} openPlace={(place) => props.onOpenPlace?.(place)} />
     </div>
   );
 }
