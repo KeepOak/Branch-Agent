@@ -106,6 +106,8 @@ describe("method scope resolution", () => {
     ["tools.invoke", ["operator.write"]],
     ["sessions.messages.subscribe", ["operator.read"]],
     ["sessions.messages.unsubscribe", ["operator.read"]],
+    ["sessions.messages.pin", ["operator.write"]],
+    ["sessions.messages.delete", ["operator.write"]],
     ["environments.list", ["operator.read"]],
     ["environments.create", ["operator.admin"]],
     ["environments.destroy", ["operator.admin"]],

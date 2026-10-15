@@ -144,7 +144,7 @@
 .ib-card .ib-grow > b { font-weight:700; }
 .ib-row.ib-unread .ib-grow > b { font-weight:700; }
 /* the Recent notices bell and its popover (preview .bellPD18 / .ntlPD18) */
-.ib-bell { flex:none; margin-left:auto; width:30px; height:30px; padding:0; display:grid; place-items:center; border:0; border-radius:10px; background:none; color:var(--ink-2); cursor:pointer; }
+.ib-bell { flex:none; margin-left:auto; height:30px; padding:0 10px 0 8px; display:inline-flex; align-items:center; gap:6px; border:0; border-radius:10px; background:none; font:inherit; font-size:13px; font-weight:500; color:var(--ink-2); white-space:nowrap; cursor:pointer; }
 .ib-bell:hover, .ib-bell[aria-expanded="true"] { background:var(--wash17); color:var(--ink); }
 .ib-bell + .ib-mar { margin-left:4px; }
 .ib-ntl { display:grid; gap:2px; max-height:300px; overflow:auto; min-width:280px; max-width:340px; }

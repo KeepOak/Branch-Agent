@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { parseDocument } from "yaml";
 import { buildSkillResourceGraph } from "./resource-graph.js";
 
-// Structural rules ported from bytedance/deer-flow f840e843 analyzer.py.
 export type SkillReadinessFinding = {
   ruleId: string;
   severity: "blocker" | "error" | "warning";

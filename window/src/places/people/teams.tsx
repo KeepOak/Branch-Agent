@@ -14,7 +14,7 @@ const PILL: Record<string, { cls: string; word: string }> = {
 };
 
 /** Teams with work still going: a swarm group that has something queued or running. */
-export function teams(all: Row[]): Team[] {
+function teams(all: Row[]): Team[] {
   return all.flatMap(row => {
     const groups = recs(row.swarm?.groups);
     const live = groups.filter(g => (num(g.running) ?? 0) + (num(g.queued) ?? 0) > 0);

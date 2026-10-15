@@ -10,6 +10,8 @@ export const CORE_FIELD_HELP: Record<string, string> = {
     "Global directory for new managed worktrees. Use an absolute path or ~ for your home directory; defaults to <state-dir>/worktrees. Existing worktrees keep their recorded paths when this changes.",
   worktreeAcceleration:
     "Use filesystem acceleration for new managed worktrees when supported (default: true). Set false to use normal Git checkout and file copying. Applies only to new worktrees.",
+  buildWorktreeRoots:
+    'Folders where build worktrees are made by hand with git worktree add (default: ["~/branch-work"]; [] turns cleanup off). Every 30 minutes and after each merge, Branch removes a worktree here once its pull request is merged or closed, its branch is gone from origin, or nobody touched it for 48 hours, and only when it has no uncommitted changes, no unpushed commits, is not a parent repo and is not in use. Under 15% free disk it first clears node_modules from idle worktrees.',
   worktreeMaxCount:
     "Maximum live managed worktrees across all agents and repositories (default: 4096). Evicts merged or squashed branches first, then oldest idle worktrees, including unsaved data. Live runs are protected; raise this value if they occupy the cap. Disk-space admission still applies.",
   ...META_FIELD_HELP,
@@ -341,6 +343,8 @@ export const CORE_FIELD_HELP: Record<string, string> = {
     "Optional per-agent overrides for skills subsystem budgets. Use this when an agent needs a different skills prompt budget without introducing a second generic context-limits path.",
   "agents.entries.*.skillsLimits.maxSkillsPromptChars":
     "Per-agent override for the skills prompt character budget. This extends the existing skills.limits.maxSkillsPromptChars path instead of routing the same budget through contextLimits.",
+  "agents.entries.*.toolsets":
+    "Per-Trunk on and off switches for named toolsets such as browser, files, shell and web. Omit a toolset or set it true to keep it on. Set it false to remove that toolset's tools from this Trunk's offer. Switches only remove tools; Lockdown and exec approvals still apply, and message, ask_user and session_status stay on.",
   "agents.entries.*.contextLimits":
     "Optional per-agent overrides for the focused context budget knobs. Omitted fields inherit agents.defaults.contextLimits.",
   "agents.entries.*.contextLimits.memoryGetMaxChars":

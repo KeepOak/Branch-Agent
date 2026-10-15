@@ -10,6 +10,9 @@ import { assertLocalModules, engineRoot, gitHead, preparePnpm, publishWindowDepe
   toolingRoot, verifiedExceptionFlags, windowRoot } from './feature-batch-ci-runtime.mjs';
 
 const nodeHeap = '--max-old-space-size=1024';
+// The strict window build type-checks the whole R1 renderer in one tsc process; 1 GB stopped being enough
+// once R1 landed (heap out-of-memory on #1363, #1367, #1373). Hosted runners have 16 GB.
+const windowTscHeap = '--max-old-space-size=3072';
 const baseEnv = { ...process.env, NODE_OPTIONS: nodeHeap, TSX_DISABLE_CACHE: '1',
   TSX_TSCONFIG_PATH: path.join(engineRoot, 'tsconfig.json'), GOMEMLIMIT: '2GiB', GOMAXPROCS: '2',
   // Cold hosted Mac source graphs can exceed 150s; the owner still joins before the outer 330s deadline.
@@ -93,6 +96,12 @@ export async function windowInventory() {
     if (error.code !== 'ENOENT') throw error;
     return false;
   }), async file => crypto.createHash('sha256').update(await fs.readFile(path.join(windowRoot, file))).digest('hex'), windowSlices);
+}
+
+// The strict typecheck is the same on every OS; Linux and Windows PR slice jobs already run it.
+// Cold hosted macOS tsgo hits BRANCH_TSGO_TIMEOUT_MS and fails the 15-minute job.
+export function shouldRunStrictChecks(platform = process.platform) {
+  return platform !== 'darwin';
 }
 
 function execute(command, args, cwd, env, scratch, receipt, label, timeoutMs = 180_000) {
@@ -225,7 +234,7 @@ async function windowChecks(selected, pnpm, scratch, receipt, env) {
     [nodeHeap, '--import', './scripts/tsx.mjs', 'scripts/build-workspace-package.mts', name],
     engineRoot, env, scratch, receipt, `canonical-${name}-build`);
   // Use both original renderer project profiles. Build-info caches live in owned node_modules.
-  await execute(process.execPath, [nodeHeap, path.join(windowRoot, 'node_modules/typescript/bin/tsc'),
+  await execute(process.execPath, [windowTscHeap, path.join(windowRoot, 'node_modules/typescript/bin/tsc'),
     '--build', path.join(windowRoot, 'tsconfig.json'), '--verbose'], windowRoot, env, scratch, receipt, 'strict-window');
   const files = selected.flatMap(slice => slice.vitest);
   const config = path.join(scratch, 'window-vitest.config.mjs');
@@ -279,7 +288,7 @@ async function all() {
         'const { withDistArtifactOwnership } = await import("./scripts/lib/dist-artifact-ownership.mts");\n' +
         'const { ensureKyselyTypes } = await import("./scripts/generate-kysely-types.mts");\n' +
         'await withDistArtifactOwnership(process.cwd(), () => ensureKyselyTypes(process.cwd()));'], engineRoot, env, scratch, receipt, 'canonical-kysely-types');
-      await strictChecks(selected, scratch, receipt, env);
+      if (shouldRunStrictChecks()) await strictChecks(selected, scratch, receipt, env);
       for (const slice of selected) {
         if (slice.native.length) await execute(process.execPath, [nodeHeap, '--import', pathToFileURL(path.join(engineRoot, 'scripts/tsx.mjs')).href,
           '--test', '--test-concurrency=1', '--test-timeout=30000', ...slice.native], engineRoot, env, scratch, receipt, `native-${slice.id}`);
@@ -320,6 +329,10 @@ async function selfTest() {
   assert.deepEqual(shardSelection(''), { index: 0, total: 1 });
   assert.deepEqual(shardSelection('2/2'), { index: 1, total: 2 });
   assert.throws(() => shardSelection('3/2'), /Invalid FEATURE_SLICE_SHARD/);
+  controls += 3;
+  assert.equal(shouldRunStrictChecks('linux'), true);
+  assert.equal(shouldRunStrictChecks('win32'), true);
+  assert.equal(shouldRunStrictChecks('darwin'), false);
   controls += 3;
   const empty = await inventory(async () => false);
   assert(empty.every(slice => slice.state === 'absent'));
