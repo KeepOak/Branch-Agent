@@ -41,6 +41,11 @@ import {
   type HandoffModelProvider,
   startHandoffModelProvider,
 } from "./helpers/handoff-model-provider.js";
+import {
+  createWindowsTaskSchedulerPreflightRunner,
+  decideTaskSchedulerPreflight,
+  TASK_SCHEDULER_PREFLIGHT_BUDGET_MS,
+} from "./helpers/task-scheduler-preflight.js";
 
 // The desktop's own bounds for each step (desktop/src/main.ts): a request answers within 20 s.
 const DESKTOP_REQUEST_MS = 20_000;
@@ -417,8 +422,18 @@ describe("in-place engine handoff between real engines", () => {
 
   it(
     "keeps A alive on drain-stop while it holds S, then stops after its reply",
-    { timeout: 420_000 },
-    async ({ signal }) => {
+    { timeout: 420_000 + (process.platform === "win32" ? TASK_SCHEDULER_PREFLIGHT_BUDGET_MS : 0) },
+    async ({ signal, skip }) => {
+      if (process.platform === "win32") {
+        // Hosted Windows runners can stall the cold Task Scheduler probe; see the helper for when this skips.
+        const preflight = decideTaskSchedulerPreflight(createWindowsTaskSchedulerPreflightRunner(step));
+        if (preflight.action === "skip") {
+          step(`SKIPPED held-drain: ${preflight.reason}`);
+          console.warn(`::warning title=held-drain skipped::${preflight.reason}`);
+          skip(preflight.reason);
+        }
+        if (preflight.action === "fail") throw new Error(preflight.reason);
+      }
       const current = await startScenario(signal);
       const { a, b, portA, portB, clientB } = await handOverWithRunInFlight(current, signal);
       await sendDesktopRequest(a, DESKTOP_DRAIN_STOP, DESKTOP_REQUEST_MS);
