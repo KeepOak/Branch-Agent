@@ -90,22 +90,28 @@ phone or emulator in one step.
 
 ## In-app update (sideloaded Android APK)
 
-A built Android app checks GitHub releases for a newer `branch-android-<version>.apk`. When one is
-ready, Chats (and Welcome) show an **Update** banner, and **Computer → This phone** has a manual
-**Check for update**. Tapping Update downloads the APK, checks its SHA-256 against the release's
-`.sha256` asset, checks that the APK's signing certificate matches this install, then opens the
-system installer through a FileProvider content URI. The first time, Android asks to allow installs
-from Branch; the app explains that, opens the setting, and continues when you come back.
+A built Android app checks GitHub releases for a newer `branch-android-<version>.apk`. Newer means a
+higher `versionCode` (the Android APK release workflow's run number). The APK filename stays
+`branch-android-<version>.apk`; the run number is on a sibling
+`branch-android-<version>.apk.versioncode.<runNumber>` asset. When one is ready, Chats (and Welcome)
+show an **Update** banner, and **Computer → This phone** has a manual **Check for update**. Tapping
+Update downloads the APK, checks its SHA-256 against the release's `.sha256` asset, checks that the
+APK's signing certificate matches this install, then opens the system installer through a FileProvider
+content URI. The first time, Android asks to allow installs from Branch; the app explains that, opens
+the setting, and continues when you come back.
 
 ## Publishing the APK checksum
 
 The Android APK release workflow is not on main yet. When it lands, publish a SHA-256 sidecar next to
-the APK so the phone can verify the download. Without that file, the phone will not offer the update.
+the APK so the phone can verify the download, and a versionCode sidecar so a later APK with the same
+dotted version is still offered. Without the checksum file, the phone will not offer the update.
 
-1. Upload `branch-android-<version>.apk` (version is the app version, optionally `+<versionCode>`).
+1. Upload `branch-android-<version>.apk` (version is the release tag without a leading `v`).
 2. Upload `branch-android-<version>.apk.sha256` whose first 64-character hex is the SHA-256 of the
-   APK, for example `sha256sum branch-android-0.2.0.apk > branch-android-0.2.0.apk.sha256`.
-3. Keep the package `com.keepoak.branch` and the same signing certificate as the previous APK.
+   APK, for example `sha256sum branch-android-0.4.4.apk > branch-android-0.4.4.apk.sha256`.
+3. Upload `branch-android-<version>.apk.versioncode.<runNumber>` where `runNumber` is that workflow
+   run's `github.run_number`, the same integer baked into the APK as `versionCode`.
+4. Keep the package `com.keepoak.branch` and the same signing certificate as the previous APK.
 
 ## JS-only updates (EAS Update)
 

@@ -26,4 +26,14 @@ describe('GitHub APK releases', () => {
     expect(findNewerApk(releases, { version: '0.1.0', versionCode: 1 })?.version).toBe('0.3.0');
     expect(findNewerApk(releases, { version: '0.3.0', versionCode: 3 })).toBeNull();
   });
+
+  it('reads versionCode from the run-number sidecar while the APK stays branch-android-<version>.apk', () => {
+    const release = apk('branch-android-0.4.4.apk', [
+      'branch-android-0.4.4.apk.sha256',
+      'branch-android-0.4.4.apk.versioncode.13',
+    ]);
+    expect(offerFromRelease(release)?.remote).toEqual({ name: '0.4.4', versionCode: 13 });
+    expect(findNewerApk([release], { version: '0.4.4', versionCode: 12 })?.remote.versionCode).toBe(13);
+    expect(findNewerApk([release], { version: '0.4.4', versionCode: 13 })).toBeNull();
+  });
 });

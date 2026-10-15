@@ -33,7 +33,25 @@ export function parseRemoteVersion(version: string): RemoteVersion {
   return { name: trimmed };
 }
 
-/** True when the GitHub APK is newer than what is installed. Prefers versionCode when the filename has one. */
+/**
+ * Installed version from PackageManager (`nativeBuildVersion` is Android versionCode, the release
+ * workflow's run number) with the Expo config as fallback.
+ */
+export function installedVersion(input: {
+  nativeVersion?: string | null;
+  nativeBuild?: string | number | null;
+  expoVersion?: string | null;
+  expoVersionCode?: number | null;
+}): { version: string; versionCode: number } {
+  const version = String(input.nativeVersion ?? '').trim() || String(input.expoVersion ?? '').trim() || '0.0.0';
+  const fromNative = Number.parseInt(String(input.nativeBuild ?? ''), 10);
+  const versionCode = Number.isInteger(fromNative) && fromNative > 0
+    ? fromNative
+    : (input.expoVersionCode ?? 1);
+  return { version, versionCode };
+}
+
+/** True when the GitHub APK is newer than what is installed. Prefers versionCode (release run number). */
 export function isNewerApk(
   remote: RemoteVersion,
   local: { version: string; versionCode: number },

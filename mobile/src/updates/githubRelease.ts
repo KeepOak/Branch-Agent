@@ -27,15 +27,40 @@ function sha256AssetFor(apk: ReleaseAsset, assets: ReleaseAsset[]): ReleaseAsset
   return assets.find((asset) => names.has(asset.name));
 }
 
+/**
+ * The APK is named `branch-android-<version>.apk`. versionCode is the release workflow's run
+ * number, published as `branch-android-<version>.apk.versioncode.<runNumber>` (or `+<runNumber>`
+ * in the version string).
+ */
+export function versionCodeFromAssets(version: string, assets: ReleaseAsset[]): number | undefined {
+  const parsed = parseRemoteVersion(version);
+  if (parsed.versionCode != null) return parsed.versionCode;
+  const prefix = `branch-android-${version}.apk.versioncode.`;
+  for (const asset of assets) {
+    if (!asset.name.toLowerCase().startsWith(prefix.toLowerCase())) continue;
+    const n = Number(asset.name.slice(prefix.length));
+    if (Number.isInteger(n) && n > 0) return n;
+  }
+  return undefined;
+}
+
 export function offerFromRelease(release: GithubRelease): ApkOffer | null {
   if (release.draft) return null;
-  const apk = release.assets.find((asset) => ANDROID_APK_RE.test(asset.name));
+  const apk = release.assets.find((asset) => ANDROID_APK_RE.test(asset.name) && !asset.name.toLowerCase().includes('.apk.'));
   if (!apk) return null;
   const sha256 = sha256AssetFor(apk, release.assets);
   if (!sha256) return null;
   const version = ANDROID_APK_RE.exec(apk.name)?.[1];
   if (!version) return null;
-  return { version, remote: parseRemoteVersion(version), apk, sha256, tag: release.tag_name };
+  const versionCode = versionCodeFromAssets(version, release.assets);
+  const parsed = parseRemoteVersion(version);
+  return {
+    version,
+    remote: versionCode != null ? { name: parsed.name, versionCode } : { name: parsed.name },
+    apk,
+    sha256,
+    tag: release.tag_name,
+  };
 }
 
 /** Newest published `branch-android-<version>.apk` that is newer than this install and has a `.sha256` sidecar. */

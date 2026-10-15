@@ -1,15 +1,20 @@
+import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { AppState, Platform } from 'react-native';
 import { cacheDir, downloadToFile, readRemoteText } from './download';
 import { loadApkInstaller } from './native';
 import { createUpdateFlow, type UpdateFlow, type UpdateFlowDeps, type UpdateFlowState } from './updateFlow';
+import { installedVersion } from './versionCompare';
 
 function localVersion(): { version: string; versionCode: number } {
   const expo = Constants.expoConfig;
-  const version = expo?.version ?? '0.0.0';
-  const versionCode = expo?.android?.versionCode ?? 1;
-  return { version, versionCode };
+  return installedVersion({
+    nativeVersion: Application.nativeApplicationVersion,
+    nativeBuild: Application.nativeBuildVersion,
+    expoVersion: expo?.version,
+    expoVersionCode: expo?.android?.versionCode,
+  });
 }
 
 async function deviceDeps(): Promise<UpdateFlowDeps | null> {

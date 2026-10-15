@@ -1,4 +1,4 @@
-import { compareVersions, isNewerApk, parseRemoteVersion, versionParts } from './versionCompare';
+import { compareVersions, installedVersion, isNewerApk, parseRemoteVersion, versionParts } from './versionCompare';
 
 describe('version compare', () => {
   it('splits dotted versions and ignores a build suffix', () => {
@@ -27,5 +27,22 @@ describe('version compare', () => {
     expect(isNewerApk({ name: '0.1.0', versionCode: 2 }, local)).toBe(true);
     expect(isNewerApk({ name: '0.9.0', versionCode: 1 }, local)).toBe(false);
     expect(isNewerApk({ name: '12', versionCode: 12 }, local)).toBe(true);
+  });
+
+  it('uses the release workflow run number as versionCode, even when the dotted name stays the same', () => {
+    const local = { version: '0.4.4', versionCode: 12 };
+    expect(isNewerApk({ name: '0.4.4', versionCode: 13 }, local)).toBe(true);
+    expect(isNewerApk({ name: '0.4.4', versionCode: 12 }, local)).toBe(false);
+    expect(isNewerApk({ name: '0.4.4' }, local)).toBe(false);
+  });
+
+  it('reads PackageManager versionCode (the run number) ahead of the Expo config fallback', () => {
+    expect(installedVersion({
+      nativeVersion: '0.4.4',
+      nativeBuild: '42',
+      expoVersion: '0.1.0',
+      expoVersionCode: 1,
+    })).toEqual({ version: '0.4.4', versionCode: 42 });
+    expect(installedVersion({ expoVersion: '0.1.0', expoVersionCode: 1 })).toEqual({ version: '0.1.0', versionCode: 1 });
   });
 });
