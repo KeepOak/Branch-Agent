@@ -13,6 +13,7 @@ import { resetFree } from "./free-widths";
 import { patchTopicSession } from "../../shell/topic-session";
 import { TopicRail } from "../../shell/TopicRail";
 import type { Block } from "../../thread/model";
+import { coalesce } from "../../shell/coalesce";
 
 /** The Trunk whose threads show: the open conversation's own Trunk, from its main conversation or a thread of it. */
 export type TopicContact = { id: string; key: string; name: string };
@@ -43,8 +44,9 @@ function useTopics(session: SaplingSession, ready: boolean, contactId: string | 
       } catch (error) { if (live) console.warn("contacts.topics failed", error); }
     };
     void load();
-    const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") void load(); });
-    return () => { live = false; off(); };
+    const loadSoon = coalesce(() => void load(), 1_000);
+    const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") loadSoon(); });
+    return () => { live = false; off(); loadSoon.cancel(); };
   }, [session, ready, contactId, state.tick]);
   const topics = ready && contactId && state.id === contactId ? state.topics : [];
   return { topics, reload: () => setState((old) => ({ ...old, tick: old.tick + 1 })) };

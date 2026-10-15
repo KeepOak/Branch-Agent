@@ -8,6 +8,7 @@ import { openNewGroupChat } from "../rooms/NewGroupChat";
 import type { SidebarDrop } from "./sidebar-drag";
 import "./group-drop.css";
 import { joinNames } from "./join-names";
+import { coalesce } from "./coalesce";
 
 export type GroupMember = { kind: "trunk" | "person" | "a2a"; id: string; role?: "lead" | "member" };
 export type GroupRoom = { roomId: string; name: string; lead?: string; rule?: "lead" | "everyone" | "mentions"; createdAt: number; archivedAt?: number; members: GroupMember[] };
@@ -54,7 +55,10 @@ export function useGroupRooms(session: SaplingSession, ready: boolean, includeAr
   useEffect(() => {
     if (!ready) { setRooms([]); setPeerOnline(new Map()); return; }
     void reload(); void reloadPeers();
-    return session.onGatewayEvent((event) => { if (event === "rooms.changed") void reload(); else if (event === "contacts.changed") void reloadPeers(); });
+    // contacts.changed arrives about once a second while a Trunk works; online dots need no more than one read per burst.
+    const peersSoon = coalesce(() => void reloadPeers(), 2_000);
+    const off = session.onGatewayEvent((event) => { if (event === "rooms.changed") void reload(); else if (event === "contacts.changed") peersSoon(); });
+    return () => { off(); peersSoon.cancel(); };
   }, [session, ready, includeArchived]);
   return { rooms, peerOnline, reload };
 }
