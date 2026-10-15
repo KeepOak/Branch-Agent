@@ -11,6 +11,7 @@ import {
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { OfflineBanner } from '../ui/OfflineBanner';
 
 function statusTone(status: AgentStatus): 'ok' | 'warn' | 'ink3' {
   if (status === 'running') return 'ok';
@@ -201,14 +202,7 @@ export function AgentsScreen({
         <ThemedText variant="subhead" tone="ink2" style={{ marginTop: space.xs }}>
           The Trunks on your computer, and whether each one is running, paused or idle.
         </ThemedText>
-        {online ? null : (
-          <View testID="agents-offline" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, backgroundColor: color.warnTint, borderRadius: radius.md, padding: space.md }}>
-            <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: color.warn }} />
-            <ThemedText variant="footnote" tone="ink2" style={{ flex: 1 }}>
-              Reconnecting to your computer… These agents may be out of date.
-            </ThemedText>
-          </View>
-        )}
+        {online ? null : <OfflineBanner testID="agents-offline" message="Reconnecting to your computer… These agents may be out of date." />}
         {list.loaded && !list.canControl ? (
           <View testID="agents-readonly" style={{ marginTop: space.md, backgroundColor: color.fill, borderRadius: radius.md, padding: space.md }}>
             <ThemedText variant="footnote" tone="ink2">
