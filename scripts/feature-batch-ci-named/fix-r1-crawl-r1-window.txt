@@ -1,0 +1,4 @@
+window:scripts/button-crawl-capture.test.ts
+window:src/places/canopy/canopy.test.tsx
+window:src/screens/frame/R1ExtraDialogs.test.tsx
+window:src/screens/settings/pages/remote-restart.test.tsx
