@@ -34,10 +34,15 @@ function useFitInWindow(ref: React.RefObject<HTMLDivElement | null>, at: MenuAnc
   return pos;
 }
 
+const focusQuietly = (el: HTMLElement | null | undefined) => {
+  if (!el || !el.isConnected) return;
+  el.focus({ preventScroll: true });
+};
+
 function moveFocus(el: HTMLElement | null, step: number) {
   const list = focusables(el);
   const i = list.indexOf(document.activeElement as HTMLButtonElement);
-  list[(i + step + list.length) % list.length]?.focus();
+  focusQuietly(list[(i + step + list.length) % list.length]);
 }
 
 export function Menu({ at, items, onClose, label, testid, upward }: Props) {
@@ -54,7 +59,7 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
   useEffect(() => {
     const back = document.activeElement as HTMLElement | null;
     const trigger = back && back !== document.body ? back : null;
-    focusables(ref.current)[0]?.focus();
+    focusQuietly(focusables(ref.current)[0]);
     const away = (e: PointerEvent) => {
       // The button that opened the menu toggles it on its own click (§5.4 behaviour 1).
       if (!(e.target as Element).closest?.(".pop") && !trigger?.contains(e.target as Node)) {
@@ -66,8 +71,9 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
       document.removeEventListener("pointerdown", away, true);
       // Focus returns to the opener unless what the menu ran already moved it (for example a rename field).
       const now = document.activeElement;
+      if (now instanceof HTMLElement && ref.current?.contains(now)) now.blur();
       if (!now || now === document.body || ref.current?.contains(now)) {
-        back?.focus?.();
+        focusQuietly(back);
       }
     };
   }, []);
@@ -83,7 +89,7 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
     } else if (e.key === "Home" || e.key === "End") {
       e.preventDefault();
       const list = focusables(ref.current);
-      (e.key === "Home" ? list[0] : list.at(-1))?.focus();
+      focusQuietly(e.key === "Home" ? list[0] : list.at(-1));
     } else if (e.key === "Escape" || e.key === "ArrowLeft") {
       e.preventDefault();
       e.stopPropagation();
