@@ -45,10 +45,10 @@ export function ExchangeLine({ talk, names, onOpen }: { talk: TalkItem; names: E
     <span className="r1x-who">
       <span className="r1x-faces">{ids.slice(0, 3).map((id) => {
         const name = nameOf(id, names);
-        return <button key={id ?? ""} type="button" className="r1x-face" data-local="" aria-label={`Open the messages with ${name}`} title={name}
+        return <button key={id ?? ""} type="button" className="r1x-face" data-local="" data-solid="" aria-label={`Open the messages with ${name}`} title={name}
           onClick={(e) => onOpen({ talk, who: id, opener: e.currentTarget })}><Face size={18} label={name} priority={PRIORITY.row} /></button>;
       })}</span>
-      <button ref={words} type="button" className="r1x-names" data-local="" aria-haspopup="dialog" aria-expanded={menu} title="See who talked" onClick={() => setMenu((v) => !v)}>{exchangeNames(ids, names)}</button>
+      <button ref={words} type="button" className="r1x-names" data-local="" data-solid="" aria-haspopup="dialog" aria-expanded={menu} title="See who talked" onClick={() => setMenu((v) => !v)}>{exchangeNames(ids, names)}</button>
     </span>
     {menu ? <Popover anchor={words} label="Who talked" onClose={close} width={240} align="start">
       <div className="r1c-menu r1x-pop">
