@@ -58,6 +58,7 @@ declare module '@branch/gateway-client/browser' {
     protocol: number;
     server: { version: string };
     auth: { role: string; scopes: string[]; deviceToken?: string };
+    features?: { methods?: string[]; events?: string[] };
     snapshot?: { sessionDefaults?: { mainSessionKey?: string } } & Record<string, unknown>;
   };
 

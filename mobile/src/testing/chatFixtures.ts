@@ -11,7 +11,7 @@ export const fixtureAgents = {
   agents: [
     { id: 'main', name: 'Branch Agent', identity: { name: 'Branch Agent', emoji: '🌿' } },
     { id: 'oak', name: 'Oak' },
-    { id: 'researcher', identity: { name: 'Researcher', emoji: '🔎' } },
+    { id: 'researcher', identity: { name: 'Researcher', emoji: '🔎' }, paused: true },
   ],
 };
 

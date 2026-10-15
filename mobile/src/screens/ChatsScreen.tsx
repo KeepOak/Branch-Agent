@@ -244,6 +244,7 @@ export function ChatsScreen({
   online,
   onRefresh,
   onComputer,
+  onAgents,
   onOpen,
   searchMessages,
   needsYou,
@@ -254,6 +255,8 @@ export function ChatsScreen({
   online: boolean;
   onRefresh: () => Promise<void>;
   onComputer: () => void;
+  /** Opens Agents. With it, the top bar has an Agents button next to Computer. */
+  onAgents?: () => void;
   /** Opens a chat. */
   onOpen?: (row: ChatRow) => void;
   /** Searches every chat's messages (sessions.search); without it, search matches names and last lines. */
@@ -299,7 +302,7 @@ export function ChatsScreen({
 
   const header = (
     <View style={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
-      <View style={{ flexDirection: 'row', justifyContent: onNeedsYou ? 'space-between' : 'flex-end' }}>
+      <View style={{ flexDirection: 'row', justifyContent: onNeedsYou || onAgents ? 'space-between' : 'flex-end', alignItems: 'center' }}>
         {onNeedsYou ? (
           <Pressable
             testID="approvals-button"
@@ -320,20 +323,38 @@ export function ChatsScreen({
               </View>
             ) : null}
           </Pressable>
-        ) : null}
-        <Pressable
-          testID="computer-button"
-          accessibilityRole="button"
-          accessibilityLabel={online ? 'Your computer, connected' : 'Your computer, reconnecting'}
-          onPress={onComputer}
-          hitSlop={8}
-          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, gap: space.xs + 2, opacity: pressed ? 0.6 : 1 })}
-        >
-          <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: online ? color.ok : color.warn }} />
-          <ThemedText variant="body" tone="accentInk">
-            Computer
-          </ThemedText>
-        </Pressable>
+        ) : (
+          <View />
+        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          {onAgents ? (
+            <Pressable
+              testID="agents-button"
+              accessibilityRole="button"
+              accessibilityLabel="Agents"
+              onPress={onAgents}
+              hitSlop={8}
+              style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, opacity: pressed ? 0.6 : 1 })}
+            >
+              <ThemedText variant="body" tone="accentInk">
+                Agents
+              </ThemedText>
+            </Pressable>
+          ) : null}
+          <Pressable
+            testID="computer-button"
+            accessibilityRole="button"
+            accessibilityLabel={online ? 'Your computer, connected' : 'Your computer, reconnecting'}
+            onPress={onComputer}
+            hitSlop={8}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, gap: space.xs + 2, opacity: pressed ? 0.6 : 1 })}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: online ? color.ok : color.warn }} />
+            <ThemedText variant="body" tone="accentInk">
+              Computer
+            </ThemedText>
+          </Pressable>
+        </View>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
         <ThemedText variant="largeTitle" accessibilityRole="header">
