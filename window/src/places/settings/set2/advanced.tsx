@@ -272,7 +272,7 @@ const TRUNKS_MORE: SecSpec = { title: "Trunks, more", group: "Trunks", lv: 1, ro
 const LIBRARY_MORE: SecSpec = { title: "Library, more", group: "Library", lv: 1, rows: [
   no("Search documents by meaning", "Finds the lease clause about repairs when you ask “who fixes the boiler”."),
   no("A local index of mail, calendar and messages", "Built and kept on this computer, for faster answers."),
-  no("Keep versions of what Trunks make", "Every file in Made for you keeps its versions and a checksum."),
+  no("Keep versions of what Trunks make", "Every file in Library › Activity keeps its versions and a checksum."),
   { t: "Rewrite short notes", draw: () => <Ctl title="Rewrite short notes" sub="Clearer, shorter, fixed or more formal."><Btn sm onClick={() => openPlace("library")}>Try it</Btn></Ctl> },
 ] };
 const PINNED: SecSpec = { title: "Pinned skills", lv: 1, rows: [{ t: "Always read in full", s: "A pinned skill’s whole instructions go with every message, not only when it seems to fit.", kind: "seg", off: "The engine can’t pin a skill.", opts: [{ id: "none", label: "None" }] }] };
