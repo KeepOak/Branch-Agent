@@ -17,7 +17,7 @@ import { useLockdown } from "../../shell/use-lockdown";
 import { Face } from "../../face/Face";
 import { Icon } from "../../shell/icons";
 import { PlaceView } from "../../places-nav/PlaceView";
-import { PLACES, loadRoute, parseRoute, saveRoute, windowTitle, type PlaceId, type Route } from "../../places-nav/routes";
+import { PLACES, loadRoute, parseRoute, placeTitle, saveRoute, windowTitle, type PlaceId, type Route } from "../../places-nav/routes";
 import { SettingsFrame as ClassicSettingsFrame } from "../../places-nav/SettingsFrame";
 import { PAGES as R1_PAGE_SPECS, r1PageFor } from "../settings/nav";
 import { SettingsFrame } from "../settings";
@@ -71,8 +71,6 @@ const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }
 
 /** Header and window title for a place. Seedbank has no sidebar row, so it has no PLACES name. */
 /** The header title of a place that has no sidebar row (preview: the Grove button reads "Grove"). */
-const PLACE_TITLES: Partial<Record<PlaceId, string>> = { office: "Grove", seedbank: "Seedbank" };
-export const placeTitle = (place: PlaceId) => PLACE_TITLES[place] ?? place;
 
 /**
  * Pages that keep the Classic page although R1 has a slot for them, because the R1 port still lacks working Classic
@@ -469,7 +467,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       row={current ?? null} isDefault={Boolean(snapshot.sessionKey && snapshot.sessionKey === snapshot.mainKey)} list={list} name={name || "Conversation"} history={snapshot.history}
       work={work} onOpen={openConversation} mainKey={snapshot.mainKey} onPlace={place => navigate({ kind: "place", place })} room={room.menu}
       changesNeed={CHANGES_NEED} onChanges={() => { setStage(null); setPip(null); setChanges(true); setConvMenu(false); }} /> : null}
-    {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent}><div className="r1-agent-details g-clear">
+    {agentOpen && <Popover anchor={pill} label="Agent details" onClose={closeAgent} closeOnScroll><div className="r1-agent-details g-clear">
       <strong className="g-label">{name}</strong>{agentLine ? <p className="g-label">{agentLine}</p> : null}
       {room.header && chat ? <p className="g-label" data-testid="room-members">{room.header.line}</p> : null}
       {/* Clicking a Trunk's name is where people look to change it (owner, 2026-10-15): Customize opens its editor and Profile

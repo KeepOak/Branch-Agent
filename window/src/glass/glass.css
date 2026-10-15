@@ -67,7 +67,7 @@
 .g-menu-tile-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .g-menu-tile[data-off] { opacity: .55; cursor: default; height: auto; min-height: 58px; justify-content: flex-start; gap: 1px; padding-top: 8px; }
 .g-menu-tile[data-off] .g-menu-tile-label { line-height: 1.15; }
-.g-menu-tile small { display: block; max-width: 84px; font-size: 9.5px; line-height: 1.15; color: var(--ink-3); text-align: center; }
+.g-menu-tile small { display: block; max-width: 100%; font-size: var(--fs-11); line-height: 1.2; color: var(--ink-3); text-align: center; }
 .g-menu-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 6px 10px; border: 0; border-radius: var(--r-menu-row); background: transparent; color: var(--ink); font-size: var(--fs-13-5); text-align: left; }
 .g-menu-row:hover:not([aria-disabled="true"]), .g-menu-row:focus-visible { background: var(--fill); outline: none; }
 .g-menu-row[data-gap] { margin-top: 6px; }

@@ -40,9 +40,9 @@ export type RowMenuContext = {
 };
 
 export const FIRST_MESSAGE = "Send a first message first.";
-export const DEFAULT_AWAKE = "Your default stays awake";
-export const DEFAULT_LISTED = "Your default stays in the list";
-export const TRUNK_LISTED = "Trunks stay in the list";
+export const DEFAULT_AWAKE = "Always awake";
+export const DEFAULT_LISTED = "Always listed";
+export const TRUNK_LISTED = "Always listed";
 export const PAUSE_OFF = "Pausing a Trunk needs an engine method it doesn't have yet.";
 export const NO_PROJECTS = "No projects yet.";
 

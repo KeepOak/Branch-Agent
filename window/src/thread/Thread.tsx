@@ -41,7 +41,7 @@ import { fromName, otherSender, type ThreadRoom } from "../rooms/thread-room";
 import "./prefs.css";
 import { QueuedMessages, useOwnWaitingLine } from "./QueuedMessages";
 import type { QueuedMessage, RunEnd, SteeredNote as Steered } from "../connect/session";
-import { dayStamp, formatDuration, fullTime, messageTime, modelName, stepLabel } from "./format";
+import { dayStamp, formatDuration, fullTime, messageTime, modelName, shortReason, stepLabel } from "./format";
 import { TopicCard, TopicOrigin, topicPosition, type TopicUpdate } from "./TopicCard";
 import { suggestionsFor } from "./suggestions";
 import type { EarlierPage } from "../shell/useContactSegments";
@@ -338,7 +338,7 @@ export function Thread(props: Props) {
             <div className="stamp">New start · {page.startedAt ? new Date(page.startedAt).toLocaleDateString() : "Earlier"}</div>
             {page.blocks.filter((block) => ["user", "text", "thinking", "step", "notice", "error"].includes(block.kind)).map((block) => <div key={block.key} className="segment-line">
               <strong>{block.kind === "user" ? "You" : block.kind === "text" ? name : block.kind === "step" ? stepLabel(block) : "Activity"}</strong>
-              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? [block.title, block.detail].filter(Boolean).join(" · ") : block.kind === "error" ? isPreparationPending(block.message) ? "Branch retried a startup delay." : block.message : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
+              <span>{block.kind === "user" || block.kind === "text" || block.kind === "thinking" || block.kind === "notice" ? block.text : block.kind === "step" ? [block.title, block.detail].filter(Boolean).join(" · ") : block.kind === "error" ? isPreparationPending(block.message) ? "Branch retried a startup delay." : shortReason(block.message) : block.kind === "status" ? block.phase : block.kind === "approval" ? block.approval.command : ""}</span>
             </div>)}
           </div>)}
           {(props.earlierPages?.length || props.hasEarlierPages) ? <div className="stamp">New start · {props.currentStartedAt ? new Date(props.currentStartedAt).toLocaleDateString() : "Current"}</div> : null}
