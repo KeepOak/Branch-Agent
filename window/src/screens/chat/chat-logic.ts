@@ -65,6 +65,12 @@ export function stepsLine(steps: readonly Step[]): { text: string; meta: string;
   return { text, meta: count, failed, live: false };
 }
 
+/** Regular's one quiet link on the steps: the count alone ("6 steps", "3 steps so far"), never the step words. */
+export function stepCount(n: number, live: boolean): string {
+  const words = n === 1 ? "1 step" : n + " steps";
+  return live ? words + " so far" : words;
+}
+
 /** "Show agents' work as" (owner item 26): Normal hides thoughts, Thinking adds them as quiet rows inside the steps,
  *  Verbose opens every fold. Settings keeps the default; a conversation can differ. */
 export type WorkMode = "normal" | "thinking" | "verbose";

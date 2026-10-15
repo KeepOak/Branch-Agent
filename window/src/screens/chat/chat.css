@@ -50,7 +50,7 @@
 .r1c-react button { width: 36px; height: 36px; border: 0; border-radius: var(--r-menu-row, 10px); background: transparent; font-size: 20px; cursor: pointer; }
 .r1c-react button:hover { background: var(--fill); }
 
-/* time divider, thin notice, typing line */
+/* time divider, thin notice, working line */
 .r1c-time { align-self: center; font-size: var(--fs-12); color: var(--ink-3); text-align: center; }
 .r1c-notice { align-self: center; display: flex; align-items: center; justify-content: center; gap: 6px; width: fit-content; max-width: min(100%, 680px); margin: 6px auto; padding: 3px 12px;
   border-radius: var(--r-pill); font-size: var(--fs-12-5); color: var(--ink-3); white-space: nowrap; transition: background .2s; }
@@ -64,11 +64,6 @@
 .r1c-link:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 .r1c-link:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; border-radius: 4px; }
 .r1c-more { align-self: flex-end; margin-top: 4px; }
-.r1c-typing { display: flex; align-items: center; gap: 6px; margin: 10px 0 6px; padding-left: 4px; font-size: var(--fs-12-5); color: var(--ink-3); }
-.r1c-typing-face { display: inline-grid; flex: none; }
-.r1c-typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-3); animation: r1c-blink 1s infinite; }
-.r1c-typing i:nth-of-type(2) { animation-delay: .15s; }
-.r1c-typing i:nth-of-type(3) { animation-delay: .3s; }
 @keyframes r1c-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 
 /* the calm steps display */
@@ -128,10 +123,10 @@
 .r1c-grow { animation: r1c-grow 1s cubic-bezier(.25, .8, .3, 1); }
 @keyframes r1c-grow { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0); } }
 @media (prefers-reduced-motion: reduce) {
-  .r1c-tok, .r1c-grow, .r1c-spin, .r1c-steps-list, .r1c-typing i { animation: none; }
+  .r1c-tok, .r1c-grow, .r1c-spin, .r1c-steps-list { animation: none; }
   .r1c-bar, .r1c-chev, .r1c-rt { transition: none; }
 }
-:root[data-still] :is(.r1c-tok, .r1c-grow, .r1c-spin, .r1c-steps-list, .r1c-typing i) { animation: none; }
+:root[data-still] :is(.r1c-tok, .r1c-grow, .r1c-spin, .r1c-steps-list) { animation: none; }
 
 @media (max-width: 760px) {
   .r1c-thread { max-width: none; padding: 18px 16px; }
@@ -148,7 +143,7 @@
 /* ===== Item 48, the glass model (owner, final): the conversation is clear glass, so the wallpaper shows through sharply.
    Every piece of text and every control on it sits on a small frosted pill with a 1px outline (--gp-* tokens, 4.5:1 ink).
    Menus and popovers opened from the conversation are clear too: their rows are the pills. ===== */
-:is(.r1c-u, .r1c-txt, .r1c-pre, .r1c-from, .r1c-when, .r1c-out-line, .r1c-pin-line, .r1c-time, .r1c-notice, .r1c-typing, .r1c-steps > summary, .r1c-steps-list,
+:is(.r1c-u, .r1c-txt, .r1c-pre, .r1c-from, .r1c-when, .r1c-out-line, .r1c-pin-line, .r1c-time, .r1c-notice, .r1c-steps > summary, .r1c-steps-list,
   .r1c-empty-title, .r1c-empty-line, .r1c-chip, .r1c-bar, .r1c-menu-meta, .r1c-mi, .r1c-react button, .r1c-out) {
   background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
   box-shadow: inset 0 0 0 1px var(--gp-edge); --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); --mute17c: var(--gp-ink-2);
@@ -158,9 +153,11 @@
 :is(.r1c-from, .r1c-when, .r1c-out-line, .r1c-pin-line, .r1c-time, .r1c-empty-title, .r1c-menu-meta) { width: fit-content; max-width: 100%; padding: 2px 9px; border-radius: 999px; }
 .r1c-me > .r1c-when { align-self: flex-end; }
 .r1c-time { margin-inline: auto; }
-.r1c-typing { width: fit-content; padding: 3px 12px 3px 4px; border-radius: 999px; }
 .r1c-notice:hover { background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
 .r1c-steps > summary { border-radius: 999px; }
+/* Regular: the steps are one quiet small link, with no pill or fill behind it. It opens the same list. */
+.r1c-steps.r1c-steps-quiet > summary { padding: 2px 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; font-size: var(--fs-12-5); color: var(--ink-3); }
+.r1c-steps.r1c-steps-quiet > summary:hover { background: none; box-shadow: none; color: var(--ink-2); text-decoration: underline; }
 .r1c-steps > summary:hover, .r1c-chip:hover, .r1c-mi:hover:not([aria-disabled="true"]), .r1c-mi:focus-visible, .r1c-react button:hover, .r1c-bar button:hover {
   box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
 .r1c-bar button:hover { background: transparent; }
