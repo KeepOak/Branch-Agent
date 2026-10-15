@@ -39,6 +39,7 @@ import {
   loadProtectedGatePaths,
   listCoreWorkflows,
   missingCoreWorkflows,
+  MUST_RUN_WORKFLOWS,
   nameStatusFromPrFiles,
   parsePullRequestTrigger,
   parseTrustedWorkflowPolicy,
@@ -1946,6 +1947,13 @@ test('listCoreWorkflows reads main workflow path filters and skips the trusted g
     item.path === HANDOFF_WORKFLOW_PATH
     && item.pullRequestPaths?.includes('engine/test/gateway-desktop-handoff.e2e.test.ts')
     && item.pullRequestPaths?.includes('desktop/src/main.ts')));
+  assert.ok(workflows.some((item) =>
+    item.path === '.github/workflows/mobile-checks.yml'
+    && item.pullRequestPaths?.includes('mobile/**')
+    && item.pullRequestPaths?.includes('engine/packages/gateway-client/**')
+    && item.pullRequestPaths?.includes('engine/packages/gateway-protocol/**')
+    && item.pullRequestPaths?.includes('engine/packages/normalization-core/**')
+    && item.pullRequestPaths?.includes('engine/packages/retry/**')));
   assert.ok(!workflows.some((item) => item.path === TRUSTED_WORKFLOW_PATH));
 });
 
@@ -2740,6 +2748,89 @@ test('the PR file list waits out rate limits inside a 10-minute cap, and the pol
   assert.match(source, /startedAt: jobStartedAt/);
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
   assert.match(yaml, /merge-gate-trusted:\n[\s\S]*timeout-minutes: 35/);
+});
+
+test('a desktop-only change does not require mobile-checks, and a skipped mobile job is a pass', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/mobile-checks.yml', import.meta.url), 'utf8');
+  const trigger = parsePullRequestTrigger(yaml);
+  assert.equal(trigger.enabled, true);
+  const mobilePaths = trigger.paths;
+  assert.ok(mobilePaths.includes('mobile/**'));
+  assert.ok(mobilePaths.includes('engine/packages/gateway-client/**'));
+  assert.ok(mobilePaths.includes('engine/packages/gateway-protocol/**'));
+  assert.ok(mobilePaths.includes('engine/packages/normalization-core/**'));
+  assert.ok(mobilePaths.includes('engine/packages/retry/**'));
+  assert.equal(MUST_RUN_WORKFLOWS.has('.github/workflows/mobile-checks.yml'), false);
+
+  const desktopOnly = ['desktop/scripts/hidden-processes.test.mjs'];
+  const windowOnly = ['window/src/App.tsx'];
+  const engineSrcOnly = ['engine/src/gateway/contacts.ts'];
+  assert.equal(workflowAppliesToChanges(desktopOnly, mobilePaths), false);
+  assert.equal(workflowAppliesToChanges(windowOnly, mobilePaths), false);
+  assert.equal(workflowAppliesToChanges(engineSrcOnly, mobilePaths), false);
+  assert.equal(workflowAppliesToChanges(['mobile/App.tsx'], mobilePaths), true);
+  assert.equal(workflowAppliesToChanges(['engine/packages/gateway-client/src/index.ts'], mobilePaths), true);
+  assert.equal(workflowAppliesToChanges(['engine/packages/retry/src/index.ts'], mobilePaths), true);
+
+  const mobileCore = { path: '.github/workflows/mobile-checks.yml', pullRequestPaths: mobilePaths };
+  const cores = [...coreWorkflows, mobileCore];
+  const skippedMobile = {
+    id: 901,
+    name: 'Mobile',
+    status: 'completed',
+    conclusion: 'skipped',
+    check_suite: { id: 901 },
+    details_url: 'https://github.com/example/repo/actions/runs/901/job/901',
+  };
+  const neutralMobile = { ...skippedMobile, id: 902, conclusion: 'neutral', check_suite: { id: 902 } };
+  const mobileWorkflows = {
+    901: { path: '.github/workflows/mobile-checks.yml', event: 'pull_request', id: 901 },
+    902: { path: '.github/workflows/mobile-checks.yml', event: 'pull_request', id: 902 },
+  };
+
+  const noRunDesktop = evaluateTrustedGate({
+    checkRuns: passCheckRuns,
+    workflowsByCheckId: passWorkflows,
+    changedFiles: desktopOnly,
+    coreWorkflows: cores,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(noRunDesktop.ok, true, noRunDesktop.errors.join('\n'));
+  assert.equal(noRunDesktop.missingCore.some((item) => item.includes('mobile-checks.yml')), false);
+
+  for (const conclusion of ['skipped', 'neutral']) {
+    const run = conclusion === 'skipped' ? skippedMobile : neutralMobile;
+    const result = evaluateTrustedGate({
+      checkRuns: [...passCheckRuns, run],
+      workflowsByCheckId: { ...passWorkflows, ...mobileWorkflows },
+      changedFiles: desktopOnly,
+      coreWorkflows: cores,
+      currentRunId: CURRENT_RUN_ID,
+    });
+    assert.equal(result.ok, true, result.errors.join('\n'));
+    assert.equal(result.failed.length, 0);
+    assert.equal(result.missingCore.some((item) => item.includes('mobile-checks.yml')), false);
+    assert.equal(PASS_CONCLUSIONS.has(conclusion), true);
+  }
+
+  const missingWhenMobileChanged = missingCoreWorkflows({
+    checkRuns: passCheckRuns,
+    workflowsByCheckId: passWorkflows,
+    changedFiles: ['mobile/App.tsx'],
+    coreWorkflows: cores,
+  });
+  assert.ok(
+    missingWhenMobileChanged.some((item) => item.includes('mobile-checks.yml') && item.includes(PATH_FILTER_NO_CHECK_RUN)),
+    missingWhenMobileChanged.join('\n'),
+  );
+
+  const presentWhenMobileChanged = missingCoreWorkflows({
+    checkRuns: [...passCheckRuns, { ...skippedMobile, conclusion: 'success' }],
+    workflowsByCheckId: { ...passWorkflows, ...mobileWorkflows },
+    changedFiles: ['mobile/App.tsx'],
+    coreWorkflows: cores,
+  });
+  assert.equal(presentWhenMobileChanged.filter((item) => item.includes('mobile-checks.yml')).length, 0);
 });
 
 test('a skipped feature-batch job is missing, not a pass, when its paths changed', () => {
