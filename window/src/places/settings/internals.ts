@@ -14,10 +14,25 @@ export function showsInternals(level: number | (typeof WORDS)[number]): boolean 
 }
 
 /** A raw settings key such as messages.statusReactions.enabled or agents.entries.main.model.fallbacks[0]. */
-const RAW_KEY = /\b[a-z][\w-]*(?:\.[\w*:@-]+|\[\d+\])+/;
+const RAW_KEY = /\b[a-z][\w-]*(?:\.[\w*:@-]+|\[\d+\])+/g;
 
-/** Whether a line names a raw settings key. */
-export const hasRawKey = (text: string): boolean => RAW_KEY.test(text);
+/** File extensions that look like a last key segment (memory.md, session.json) but name a file a person reads. */
+const FILE_EXTENSIONS = new Set([
+  "md", "markdown", "txt", "json", "json5", "jsonl", "yaml", "yml", "toml", "ini", "csv", "log", "xml", "html", "css",
+  "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "sh", "rs", "go", "rb", "java", "swift", "kt", "c", "h", "cpp",
+  "png", "jpg", "jpeg", "gif", "webp", "svg", "heic", "pdf", "doc", "docx", "xlsx", "pptx", "zip", "tar", "gz", "mp3",
+  "mp4", "mov", "wav", "seed", "lock", "env", "bak",
+]);
+
+/** Whether a matched token ends in a file extension, so it names a file and not a settings key. */
+const isFileName = (token: string): boolean => {
+  const dot = token.lastIndexOf(".");
+  return dot > 0 && !token.endsWith("]") && FILE_EXTENSIONS.has(token.slice(dot + 1));
+};
+
+/** Whether a line names a raw settings key. Plain file names (memory.md, skills.yaml) are not keys. */
+export const hasRawKey = (text: string): boolean =>
+  [...text.matchAll(RAW_KEY)].some((match) => !isFileName(match[0]));
 
 /** A Branch version as a person reads it ("0.4.4"), with its build hash only at Technical. */
 export function versionLabel(version: string, level: number | (typeof WORDS)[number]): string {

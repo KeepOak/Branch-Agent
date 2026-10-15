@@ -15,6 +15,15 @@ describe("engine internals show only at Technical", () => {
     expect(hasRawKey("You have Branch 0.4.4.")).toBe(false);
   });
 
+  it("does not take a file name for a settings key", () => {
+    expect(hasRawKey("Updated memory.md with the week's notes")).toBe(false);
+    expect(hasRawKey("Saved session.json and skills.yaml")).toBe(false);
+    expect(hasRawKey("Read notes.txt, build.ts and logo.png")).toBe(false);
+    expect(hasRawKey("Exported the report.pdf")).toBe(false);
+    expect(hasRawKey("Changed agents.entries.main.model.fallbacks[0]")).toBe(true);
+    expect(hasRawKey("Set tools.exec.mode and session.json")).toBe(true);
+  });
+
   it("names a Branch version without its build hash below Technical", () => {
     expect(versionLabel("0.4.4-build-d1225fcd", 0)).toBe("0.4.4");
     expect(versionLabel("0.4.4-build-d1225fcd", "advanced")).toBe("0.4.4");
