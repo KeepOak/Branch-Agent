@@ -49,6 +49,8 @@ describe('pairing screens', () => {
     engine.approve();
     await eventually(() => expect(screen.getByTestId('chats-screen')).toBeOnTheScreen());
     await fireEvent.press(screen.getByTestId('computer-button'));
+    expect(screen.getByTestId('computers-screen')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('this-phone'));
     expect(screen.getByText('Connected to your computer')).toBeOnTheScreen();
     expect(screen.getByText('computer.local:19031')).toBeOnTheScreen();
     expect(screen.getByText('2026.10.8')).toBeOnTheScreen();
