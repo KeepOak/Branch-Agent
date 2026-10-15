@@ -1,7 +1,6 @@
 import type { QueueTransition } from "./trunk-queue.js";
 
-/** The marker buildTeamProposal puts in each team job's brief. Jobs without it are not team work. */
-const TEAM_MARKER = /<!-- team:([0-9a-f]{8}):([a-z0-9-]+)\|([^<>|]{1,40}) -->/;
+import { teamMarkerOf } from "./trunk-team-marker.js";
 
 export type RoomProgressPost = { roomId: string; actorId: string; text: string };
 
@@ -9,8 +8,7 @@ export type RoomProgressPost = { roomId: string; actorId: string; text: string }
 export function teamOfJob(
   briefText: string,
 ): { teamId: string; slug: string; role: string } | undefined {
-  const match = TEAM_MARKER.exec(briefText);
-  return match ? { teamId: match[1]!, slug: match[2]!, role: match[3]! } : undefined;
+  return teamMarkerOf(briefText);
 }
 
 const VERB: Record<QueueTransition["kind"], (name: string, title: string) => string> = {
