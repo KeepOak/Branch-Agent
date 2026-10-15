@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/agentsapi/agentsapi-client.test.ts (atlas AGENT-LOOP-0024). Changed for Branch: apply scripts/rebrand-map.json.
+// Changed for Branch: apply scripts/rebrand-map.json.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentsApiClient } from "./agentsapi-client.js";
 

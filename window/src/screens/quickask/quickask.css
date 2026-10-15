@@ -1,0 +1,3 @@
+/* README item 48: while the clear Quick ask box is open, the conversation it covers steps aside (hidden, out of the
+   Tab order) so text never runs into text, and comes back when it closes. */
+body:has(.qa-box.g-clear) .r1-conversation > .r1-scroll { visibility: hidden; }

@@ -23,9 +23,11 @@ import {
   trunkList,
   type TowerNeed,
 } from "./control-tower-data";
+import { activityRowLines } from "./activity-label";
 import { syncWaitingNotices } from "./notify";
 import { usagePollResult, type Limits } from "./status-data";
 import { whoItKnowsItems } from "./who-it-knows-menu";
+import { CheckedAt } from "../places/settings/checked-at";
 import "./v23-layout.css";
 
 type Props = {
@@ -45,6 +47,7 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
   const [endedKeys, setEndedKeys] = useState<string[]>([]);
   const [locked, setLocked] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
   const [usageFailed, setUsageFailed] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [questions, setQuestions] = useState<Record<string, unknown>[]>([]);
@@ -131,6 +134,7 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
       const next = readUsage(result);
       setUsageFailed(false);
       setLimits(next);
+      setCheckedAt(Date.now());
       window.dispatchEvent(new CustomEvent("branch:usage-checked", { detail: next }));
     } catch {
       setUsageFailed(true);
@@ -145,7 +149,7 @@ function useTowerLive(engine: WindowEngine, rows: Conversation[]) {
     setQuestions((current) => current.filter((row) => str(row.id) !== id));
   }, []);
 
-  return { limits, jobs, audit, endedKeys, locked, checking, usageFailed, checkError, trunks, questions, dropQuestion, checkNow };
+  return { limits, jobs, audit, endedKeys, locked, checking, checkedAt, usageFailed, checkError, trunks, questions, dropQuestion, checkNow };
 }
 
 /** Live Control tower. The preview's sample approvals and jobs are never shown as real data. */
@@ -218,10 +222,14 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
     </section>
     <section><h3>Working now <span>{working.length + jobs.length}</span></h3>
       {working.length || jobs.length ? <>
-        {working.map((row) => <button type="button" className="v23-tower-row" key={row.key} onClick={() => onOpen(row.key)}><Face size={26} label={trunkName(row.agentId)} /><span className="v23-tower-row-text"><b>{row.title || trunkName(row.agentId)}</b><small>{row.headline || row.preview || "Working"}</small></span><time className="v23-tower-time">{towerClock(row.updatedAt)}</time></button>)}
+        {working.map((row) => {
+          const line = activityRowLines(row.title, row.headline, row.preview);
+          return <button type="button" className="v23-tower-row" key={row.key} onClick={() => onOpen(row.key)}><Face size={26} label={trunkName(row.agentId)} /><span className="v23-tower-row-text"><b>{line.title || trunkName(row.agentId)}</b><small>{line.detail || "Working"}</small></span><time className="v23-tower-time">{towerClock(row.updatedAt)}</time></button>;
+        })}
         {jobs.map((row) => {
           const progress = jobProgress(row.headline, row.preview);
-          return <button type="button" className="v23-tower-row" key={row.key} onClick={() => onOpen(row.key)}><Face size={26} label={trunkName(row.agentId)} /><span className="v23-tower-row-text"><b>{row.title || trunkName(row.agentId)}</b><small>{trunkName(row.agentId)}{progress !== null ? ` · ${progress}%` : ""}</small></span>{progress !== null ? <span className="v23-tower-bar" aria-hidden="true"><i style={{ width: `${progress}%` }} /></span> : null}</button>;
+          const line = activityRowLines(row.title, row.headline, row.preview);
+          return <button type="button" className="v23-tower-row" key={row.key} onClick={() => onOpen(row.key)}><Face size={26} label={trunkName(row.agentId)} /><span className="v23-tower-row-text"><b>{line.title || trunkName(row.agentId)}</b><small>{trunkName(row.agentId)}{progress !== null ? ` · ${progress}%` : ""}</small></span>{progress !== null ? <span className="v23-tower-bar" aria-hidden="true"><i style={{ width: `${progress}%` }} /></span> : null}</button>;
         })}
       </> : <p>No Trunk is working right now.</p>}
     </section>
@@ -235,7 +243,7 @@ export function ControlTower({ engine, rows, needsCount, trunkName, onOpen, onIn
     <section><h3>Coming up <button type="button" className="v23-link" onClick={() => openTowerPlace("automations")}>Automations</button></h3>
       {coming.length ? coming.map((job) => <button type="button" className="v23-tower-row" key={job.id} onClick={() => openTowerPlace("automations")}><Face size={26} label={trunkName(job.trunkId)} /><span className="v23-tower-row-text"><b>{job.name}</b><small>{[job.when, trunkName(job.trunkId)].filter(Boolean).join(" · ")}</small></span></button>) : <p>Nothing scheduled.</p>}
     </section>
-    <section><h3>Accounts <button type="button" className="v23-link" disabled={live.checking} onClick={() => void live.checkNow()}>{live.checking ? "Checking…" : "Check now"}</button></h3>
+    <section><h3>Accounts <button type="button" className="v23-link" disabled={live.checking} onClick={() => void live.checkNow()}>{live.checking ? "Checking…" : "Check now"}</button><CheckedAt at={live.checkedAt} /></h3>
       {accounts.map((account) => {
         const five = account.fiveLeft !== null ? `${account.windowLabel}: ${account.fiveLeft}% left${account.reset ? ` · ${account.reset}` : ""}` : account.line;
         const week = account.weekLeft !== null ? `Week: ${account.weekLeft}% left` : "";

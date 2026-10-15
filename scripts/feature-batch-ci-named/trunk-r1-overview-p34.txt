@@ -1,0 +1,6 @@
+window:src/places/overview/dashboard.test.tsx
+window:src/places/overview/overview.test.tsx
+window:src/places/overview/setup.test.tsx
+window:src/shell/lockdown-confirmation.test.tsx
+window:src/places/inbox/full-access.test.tsx
+window:src/screens/chat/examples-greeting.test.tsx

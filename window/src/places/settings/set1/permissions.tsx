@@ -58,8 +58,6 @@ export function PermissionsPage(props: SettingsPageProps) {
 
 const TOP: RowEntry[] = [
   ...THIS_PC_ROWS.map(([title]) => ({ page: "permissions", title, sec: "This computer", group: "This computer", lv: 0 as const })),
-  { page: "permissions", title: "Location access", sec: "This computer", group: "This computer", lv: 0 },
-  { page: "permissions", title: "Precise location", sec: "This computer", group: "This computer", lv: 0 },
   { page: "permissions", title: "Lockdown", sec: "Locks and records", group: "Locks and records", lv: 0, words: "stop everything" },
   { page: "permissions", title: "Access", group: "Access", lv: 0, words: "auto ask first plan first read only full access mode screen mouse computer browser" },
 ];

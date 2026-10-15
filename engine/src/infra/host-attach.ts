@@ -1,4 +1,4 @@
-/** The host-attach ladder ported from Hermes' gateway/host_attach.py. */
+/** The host-attach ladder. */
 export type HostGateway = {
   pid: number;
   home: string;
@@ -46,7 +46,7 @@ export async function decideHostAttach(params: {
     };
   }
   // Branch currently runs distinct profiles from distinct state directories.
-  // Until one process can serve both, keep Hermes' standalone coexistence path.
+  // Until one process can serve both, keep ' standalone coexistence path.
   if (owner.servedKnown && owner.standalone) {
     return { outcome: "start", message: "" };
   }

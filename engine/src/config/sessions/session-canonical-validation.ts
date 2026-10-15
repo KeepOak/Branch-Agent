@@ -17,6 +17,7 @@ import {
   readCanonicalSessionMainKey,
 } from "./session-canonical-key.js";
 import {
+  SessionRowRepairRequiredError,
   validateCanonicalSessionRow,
   type CanonicalSessionValidationRow,
 } from "./session-canonical-row.js";
@@ -32,9 +33,24 @@ export type CanonicalSessionValidationBatch = {
   oversizedRows: number;
 };
 
+/** A pending row that failed validation; its exact inputs gate the quarantine decision. */
+export type QuarantinedCanonicalSessionRow = {
+  readonly row: Readonly<CanonicalSessionValidationRow>;
+  readonly reason: string;
+  readonly error: SessionRowRepairRequiredError;
+};
+
 const validatedBatch = Symbol("validatedCanonicalSessionBatch");
 export type ValidatedCanonicalSessionValidationBatch = Readonly<CanonicalSessionValidationBatch> & {
+  readonly quarantinedRows: readonly QuarantinedCanonicalSessionRow[];
   readonly [validatedBatch]: true;
+};
+
+export type CanonicalSessionCertificationHooks = {
+  /** Persist quarantine records; throwing keeps the rows pending and refuses readiness. */
+  quarantine?: (rows: readonly QuarantinedCanonicalSessionRow[]) => void;
+  /** Keys that validated or became absent in this batch, so stale records can be retired. */
+  onCertified?: (sessionKeys: readonly string[]) => void;
 };
 
 export function hasPendingCanonicalSessionValidation(database: ValidationDatabase): boolean {
@@ -148,14 +164,28 @@ export function readPendingCanonicalSessionValidationBatch(
 export function validateCanonicalSessionValidationBatch(
   batch: CanonicalSessionValidationBatch,
 ): ValidatedCanonicalSessionValidationBatch {
-  const rows = batch.rows.map((row) => {
-    const snapshot = { ...row };
-    validateCanonicalSessionRow(snapshot);
-    return Object.freeze(snapshot);
-  });
+  const rows: CanonicalSessionValidationRow[] = [];
+  const quarantinedRows: QuarantinedCanonicalSessionRow[] = [];
+  for (const row of batch.rows) {
+    const snapshot = Object.freeze({ ...row });
+    try {
+      validateCanonicalSessionRow(snapshot);
+      rows.push(snapshot);
+    } catch (error) {
+      // One damaged row must not hold every other session hostage at startup. Only the
+      // row's own bytes qualify; non-canonical keys still refuse for doctor's key migration.
+      // A "{}" row never qualifies: -1 with "{}" is the retained-placeholder encoding, so
+      // quarantining it would turn an invalid row into an absent one. It keeps refusing.
+      if (!(error instanceof SessionRowRepairRequiredError) || snapshot.entry_json === "{}") {
+        throw error;
+      }
+      quarantinedRows.push(Object.freeze({ row: snapshot, reason: error.message, error }));
+    }
+  }
   const validated: ValidatedCanonicalSessionValidationBatch = {
     ...batch,
     rows: Object.freeze(rows),
+    quarantinedRows: Object.freeze(quarantinedRows),
     absentKeys: Object.freeze([...batch.absentKeys]),
     [validatedBatch]: true,
   };
@@ -182,6 +212,7 @@ function sameCanonicalRow(
 export function compareAndCertifyCanonicalSessionValidationBatch(
   database: ValidationDatabase,
   batch: ValidatedCanonicalSessionValidationBatch,
+  hooks: CanonicalSessionCertificationHooks = {},
 ): number {
   if (!database.db.isTransaction) {
     throw new Error("Canonical validation certification requires write admission");
@@ -192,7 +223,11 @@ export function compareAndCertifyCanonicalSessionValidationBatch(
   ) {
     return 0;
   }
-  const keys = [...batch.rows.map((row) => row.session_key), ...batch.absentKeys];
+  const keys = [
+    ...batch.rows.map((row) => row.session_key),
+    ...batch.quarantinedRows.map(({ row }) => row.session_key),
+    ...batch.absentKeys,
+  ];
   if (keys.length === 0) {
     return 0;
   }
@@ -211,12 +246,39 @@ export function compareAndCertifyCanonicalSessionValidationBatch(
     return candidate && sameCanonicalRow(row, candidate) ? [row.session_key] : [];
   });
   certifiedKeys.push(...batch.absentKeys.filter((key) => !current.has(key)));
+  // Changed rows stay pending and are revalidated from their new bytes.
+  const quarantined = batch.quarantinedRows.filter(({ row }) => {
+    const candidate = current.get(row.session_key);
+    return candidate !== undefined && sameCanonicalRow(row, candidate);
+  });
+  const [firstQuarantined] = quarantined;
+  const db = getNodeSqliteKysely<PendingDatabase>(database.db);
+  if (firstQuarantined) {
+    if (!hooks.quarantine) {
+      throw firstQuarantined.error;
+    }
+    hooks.quarantine(quarantined);
+    // Leaving pending must not make the row readable: -1 is the settled-invalid proof every
+    // reader refuses. Doctor's repair rewrites the row, which makes it pending again.
+    executeSqliteQuerySync(
+      database.db,
+      db
+        .updateTable("session_nodes")
+        .set({ entry_valid: -1 })
+        .where("session_key", "in", sqliteStringSet(quarantined.map(({ row }) => row.session_key))),
+    );
+  }
+  // Valid and absent (deleted or archived by doctor) keys both retire their records.
+  if (certifiedKeys.length > 0) {
+    hooks.onCertified?.([...certifiedKeys]);
+  }
+  certifiedKeys.push(...quarantined.map(({ row }) => row.session_key));
   if (certifiedKeys.length === 0) {
     return 0;
   }
   const result = executeSqliteQuerySync(
     database.db,
-    getNodeSqliteKysely<PendingDatabase>(database.db)
+    db
       .deleteFrom("session_canonical_validation_pending")
       .where("session_key", "in", sqliteStringSet(certifiedKeys)),
   );

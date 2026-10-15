@@ -79,6 +79,20 @@ describe("Settings › Voice", () => {
     expect(request).toHaveBeenCalledWith("tts.disable", {});
   });
 
+  it("Answer aloud: Always turns reading aloud on (tts.enable)", async () => {
+    const { engine, request } = engineOf({ "tts.status": { ...STATUS, auto: "off", enabled: false } });
+    await render(engine, 1);
+    await act(async () => button("Always", row("Answer aloud")).click());
+    expect(request).toHaveBeenCalledWith("tts.enable", {});
+  });
+
+  it("Answer aloud: Never turns reading aloud off (tts.disable)", async () => {
+    const { engine, request } = engineOf({ "tts.status": { ...STATUS, auto: "always", enabled: true } });
+    await render(engine, 1);
+    await act(async () => button("Never", row("Answer aloud")).click());
+    expect(request).toHaveBeenCalledWith("tts.disable", {});
+  });
+
   it("with no named voices, Voice offers the engine's own voices and Off", async () => {
     const { engine, request } = engineOf({ "tts.status": { ...STATUS, enabled: false, personas: [], persona: null },
       "tts.providers": { active: "openai", providers: [{ id: "openai", name: "OpenAI", configured: true, voices: ["alloy", "coral", "sage"] }] } });
@@ -137,7 +151,7 @@ describe("Settings › Voice", () => {
   it("with no live-voice service installed, the list says so", async () => {
     const { engine } = engineOf({ "talk.catalog": { ...CATALOG, realtime: { providers: [] } } });
     await render(engine, 2);
-    expect(host.textContent).toContain("No live-voice service is installed.");
+    expect(host.textContent).toContain("No live-voice service is set up yet.");
     expect(row("Live voice").textContent).toContain("No live-voice service is set up yet.");
   });
 

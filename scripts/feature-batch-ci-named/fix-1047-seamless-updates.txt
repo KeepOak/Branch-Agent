@@ -1,0 +1,2 @@
+window:src/connect/update-probe.test.ts
+window:src/connect/desktop-component-updates.test.tsx
