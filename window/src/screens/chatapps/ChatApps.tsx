@@ -6,6 +6,8 @@ import { ChatLogo } from "../../places/settings/set1/chatapps-logo";
 import { appOf, catalogue, trunksOf } from "../../places/settings/set1/chatapps-data";
 import { appRoute, bindingsOf } from "../../places/settings/set1/chatapps-who";
 import { useResource } from "../../places/settings/hooks";
+import { PairDialog } from "../../places/customize/pairing";
+import { Icon } from "../../shell/icons";
 import "../../places/settings/set1/chatapps.css";
 import { has } from "../../places/inbox/data";
 import { useLevel } from "../settings/SettingsFrame";
@@ -30,6 +32,7 @@ const ALSO = "Also in Branch";
 
 export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsProps) {
   const [query, setQuery] = useState("");
+  const [pairing, setPairing] = useState(false);
   const live = useChatApps(engine);
   const cfg = useCfg(engine);
   const [level] = useLevel(engine);
@@ -103,6 +106,14 @@ export function ChatApps({ engine, onSetup, onManage, renderAccess }: ChatAppsPr
       {groupsOf(leading)}
       {later.length ? <LaterRows count={later.length} label={`More chat apps (${later.length})`}>{groupsOf(later)}</LaterRows> : null}
       {!shown.length && <p className="g-label" data-lines>No chat app matches “{query}”. “A webhook of your own” connects anything else.</p>}
+    </section>
+    {/* preview: the "Your phone" tile after the app groups; Pair a phone opens the pairing code (device.pair.setupCode). */}
+    <section className="r1-ca-phone" aria-label="Your phone">
+      <span className="r1-ca-app"><Icon name="phone" size={20} /><span className="g-label" data-lines><b>Your phone</b> <small>Answer approvals and talk to Trunks from the Branch app.</small></span>
+        <Coming engine={engine} need="device.pair.setupCode" reason="Pair a phone comes in a later update." where="Chat apps › Pair a phone">
+          <button type="button" onClick={() => setPairing(true)}>Pair a phone</button>
+        </Coming></span>
+      {pairing ? <PairDialog engine={engine} close={() => setPairing(false)} /> : null}
     </section>
     </div>{renderAccess && <section aria-label="Who answers and who may message"><h2 className="g-label">Who answers</h2>{connected.length ? connected.map(c => <div key={c.state.id}>{renderAccess(c.app)}</div>) : <p className="r1-ca-hint g-label" data-lines>{live.loading ? "Checking…" : "No chat app is connected yet."}</p>}</section>}
     {level >= 1 ? <More engine={engine} cfg={cfg} apps={connected.map(c => c.state)} all={engineApps} trunks={trunks} level={level} /> : null}
