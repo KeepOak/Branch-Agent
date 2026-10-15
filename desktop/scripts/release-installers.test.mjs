@@ -8,8 +8,6 @@ import { test } from "node:test";
 import { APPIMAGE_DESKTOP_ENTRY, APPIMAGE_TOOLS, appImageToolArgs, appImageToolEnv, assembleAppDir, dmgArgs, fetchPinned, innoCompiler, innoSetupScript,
   installerName, layoutWindowsInstallRoot, main, numericVersion, parseArgs, WINDOWS_APP_ID, windowsInstallerFolderName, windowsLauncherScript } from "./release-installers.mjs";
 import * as launcher from "./windows-launcher.mjs";
-import { stampWindowsLauncherIcon, withWindowsIcon } from "./windows-launcher-icon.mjs";
-import { Data, NtExecutable, NtExecutableResource, Resource } from "resedit";
 
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 
@@ -228,29 +226,6 @@ test("the shared cmd stub is byte for byte the one #1586 shipped", () => {
   assert.equal(windowsLauncherScript(), CMD_STUB_1586);
 });
 
-test("the Windows release build never hands csc the PNG-compressed icon; the icon is stamped on after", () => {
-  const icon = join(import.meta.dirname, "..", "assets", "branch.ico");
-  const ico = Data.IconFile.from(readFileSync(icon));
-  // Every image in branch.ico is PNG-compressed: the .NET Framework csc cannot read it with /win32icon.
-  assert.ok(ico.icons.length > 0 && ico.icons.every(item => !item.data.isIcon()), "branch.ico holds only PNG images");
-  // Whatever a caller passes, the compile arguments carry no icon (an icon here failed the native Windows build).
-  const args = launcher.windowsLauncherCompileArgs({ source: "l.cs", out: "o.exe", icon });
-  assert.equal(args.some(arg => /^\/win32icon/i.test(arg)), false, args.join(" "));
-  // The stamp gives an icon-less exe (what csc builds) the app's icon group, every image unchanged.
-  const stamped = withWindowsIcon(Buffer.from(NtExecutable.createEmpty(false, false).generate()), readFileSync(icon));
-  const entries = NtExecutableResource.from(NtExecutable.from(stamped)).entries;
-  const groups = Resource.IconGroupEntry.fromEntries(entries);
-  assert.equal(groups.length, 1);
-  assert.deepEqual(groups[0].icons.map(item => [item.width, item.height]), ico.icons.map(item => [item.width, item.height]));
-  const images = entries.filter(entry => entry.type === 3).map(entry => Buffer.from(entry.bin));
-  assert.deepEqual(images, ico.icons.map(item => Buffer.from(item.data.bin)));
-  // Stamping again replaces the group instead of adding a second one.
-  assert.equal(Resource.IconGroupEntry.fromEntries(NtExecutableResource.from(NtExecutable.from(withWindowsIcon(stamped, readFileSync(icon)))).entries).length, 1);
-});
-
-/** PE optional-header Subsystem: 2 is a windowed program (no console), 3 a console one. */
-const peSubsystem = file => { const bytes = readFileSync(file); const pe = bytes.readUInt32LE(0x3c); return bytes.readUInt16LE(pe + 4 + 20 + 68); };
-
 test("Windows: the built launcher has no console, starts the folder current.txt names and survives a prune", { skip: process.platform !== "win32" }, async () => {
   const csc = launcher.windowsLauncherCompiler(process.env, existsSync);
   const work = mkdtempSync(join(tmpdir(), "branch-win-launcher-"));
@@ -265,8 +240,10 @@ test("Windows: the built launcher has no console, starts the folder current.txt 
     };
     build("launcher.cs", launcher.windowsLauncherSource(), join(root, launcher.WINDOWS_LAUNCHER_EXE));
     // As release-build.mjs does: the app icon goes on after csc, and the exe stays a windowed one.
+    // The icon stamp needs the desktop's dev dependencies, which this Windows-only test has (desktop-checks installs them).
+    const { stampWindowsLauncherIcon, launcherIconGroups } = await import("./windows-launcher-icon.mjs");
     await stampWindowsLauncherIcon(join(root, launcher.WINDOWS_LAUNCHER_EXE), join(import.meta.dirname, "..", "assets", "branch.ico"));
-    assert.equal(Resource.IconGroupEntry.fromEntries(NtExecutableResource.from(NtExecutable.from(readFileSync(join(root, launcher.WINDOWS_LAUNCHER_EXE)))).entries).length, 1);
+    assert.equal(launcherIconGroups(readFileSync(join(root, launcher.WINDOWS_LAUNCHER_EXE))), 1);
     assert.equal(peSubsystem(join(root, launcher.WINDOWS_LAUNCHER_EXE)), 2, "a windowed exe: opening it shows no console");
     // A stand-in Branch Agent.exe that records where it ran from and what it was given.
     // It writes its own process id first, so the test can wait for it to exit before removing the folder.

@@ -23,3 +23,8 @@ export function withWindowsIcon(exeBytes, icoBytes) {
 export async function stampWindowsLauncherIcon(exe, icon) {
   await writeFile(exe, withWindowsIcon(await readFile(exe), await readFile(icon)));
 }
+
+/** How many icon groups an exe carries (used by tests). */
+export function launcherIconGroups(exeBytes) {
+  return Resource.IconGroupEntry.fromEntries(NtExecutableResource.from(NtExecutable.from(exeBytes)).entries).length;
+}

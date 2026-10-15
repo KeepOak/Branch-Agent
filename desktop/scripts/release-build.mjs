@@ -12,7 +12,6 @@ import { makeComponentRelease } from "./make-component-release.mjs";
 import { formatPayload, measurePayload, payloadBudgetProblems, pruneCodexPlatformPackages, pruneProductionDependencies } from "./release-payload.mjs";
 import { installLinuxLauncher } from "./linux-launcher.mjs";
 import { WINDOWS_LAUNCHER_RESOURCE, windowsLauncherCompileArgs, windowsLauncherCompiler, windowsLauncherSource } from "./windows-launcher.mjs";
-import { stampWindowsLauncherIcon } from "./windows-launcher-icon.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
 import { MAC_ADHOC_NOTICE, macSignCommand, macSigningPlan } from "./mac-release-signing.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
@@ -98,6 +97,8 @@ async function buildWindowsLauncher(resources, scratch) {
   const out = join(resources, WINDOWS_LAUNCHER_RESOURCE);
   await run(windowsLauncherCompiler(process.env, existsSync), windowsLauncherCompileArgs({ source, out }), scratch);
   assert.ok(existsSync(out), `The Windows launcher was not built: ${out}`);
+  // Loaded only here, on the Windows release build: resedit is a build-only dev dependency that tests never import.
+  const { stampWindowsLauncherIcon } = await import("./windows-launcher-icon.mjs");
   await stampWindowsLauncherIcon(out, join(desktopRoot, "assets/branch.ico"));
 }
 
