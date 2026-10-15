@@ -1,2 +1,4 @@
-window:src/stage/computer-status-problem.test.ts
+engine:src/gateway/desktop/computer-driver-endpoint.test.ts
+engine:src/gateway/desktop/computer-service.test.ts
 window:src/stage/computer-screen-setup.test.tsx
+window:src/stage/computer-status-problem.test.ts
