@@ -6,6 +6,7 @@ import { InboxPlace } from "../places/inbox";
 import { LibraryPlace } from "../places/library";
 import { OverviewPlace } from "../places/overview";
 import { PeoplePlace } from "../places/people";
+import { SeedbankPlace } from "../screens/seedbank/SeedbankPlace";
 import { useLevel } from "./level";
 import { TrunkHost } from "./TrunkHost";
 import type { PlaceProps } from "./PlaceFrame";
@@ -22,16 +23,19 @@ const MOUNTS: Record<PlaceId, (p: PlaceProps) => React.ReactNode> = {
   people: PeoplePlace,
   customize: CustomizePlace,
   office: OfficePlace,
+  seedbank: SeedbankPlace,
 };
 
-/** Routes to a place's mount point (window/src/places/<place>/index.tsx). */
+/** Routes to a place's mount point (window/src/places/<place>/index.tsx). Preview enter11: only the place remounts. */
 export function PlaceView({ place, ...props }: Omit<PlaceProps, "level"> & { place: PlaceId }) {
   const Mount = MOUNTS[place];
   const level = useLevel();
   return (
     <>
-      <Suspense fallback={<p role="status">Opening the office…</p>}><Mount {...props} level={level} /></Suspense>
-      <TrunkHost engine={props.engine} level={level} openSettings={props.openSettings} openPlace={props.openPlace} />
+      <div className="enter11" key={place}>
+        <Suspense fallback={<p role="status">Opening the office…</p>}><Mount {...props} level={level} /></Suspense>
+      </div>
+      <TrunkHost engine={props.engine} level={level} openSettings={props.openSettings} openPlace={props.openPlace} openConversation={props.openConversation} />
     </>
   );
 }

@@ -44,7 +44,7 @@ const FX: Record<string, unknown> = {
 };
 
 let root: Root | undefined;
-afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; });
+afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
 const engineWith = (request: WindowEngine["request"], scopes = ["operator.admin"]): WindowEngine => ({ request, onEvent: () => () => {}, sessionKey: null, scopes });
 function withoutUnrequestedRecaps(value: unknown): unknown {
@@ -101,8 +101,8 @@ describe("Inbox data", () => {
 describe("Inbox › Needs you", () => {
   it("lists a Trunk waiting for an answer under Recent notices, and opens its conversation", async () => {
     const { host, openConversation, openSettings } = await render();
-    const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Recent notices"]');
-    await click(bell!);
+    const bell = btn(host, "Notifications")[0];
+    await click(bell);
     const pop = document.querySelector('[data-testid="inbox-notices"]');
     expect(pop?.textContent).toContain("Rowan is waiting for your answer.");
     await click(btn(document, "Rowan is waiting for your answer.")[0]);
@@ -113,13 +113,37 @@ describe("Inbox › Needs you", () => {
   });
   it("says so when there are no notices", async () => {
     const { host } = await render({ fx: { ...FX, "question.list": { questions: [] } } });
-    await click(host.querySelector<HTMLButtonElement>('button[aria-label="Recent notices"]')!);
+    await click(btn(host, "Notifications")[0]);
     expect(document.querySelector('[data-testid="inbox-notices"]')?.textContent).toContain("No notices right now.");
+  });
+  it("labels the bell at the right of the tabs with visible Notifications text, not an icon alone (DA-35)", async () => {
+    const { host } = await render();
+    const bell = host.querySelector<HTMLButtonElement>("button.ib-bell");
+    expect(bell?.textContent?.trim()).toBe("Notifications");
+    expect(bell?.querySelector("svg")).toBeTruthy();
+    // no aria-label overriding the visible text: the accessible name is the word you see
+    expect(bell?.getAttribute("aria-label")).toBeNull();
+    expect(bell?.getAttribute("aria-haspopup")).toBe("dialog");
   });
   it("counts approvals, requests and questions in the chip, and Allow all only the approvals", async () => {
     const { host } = await render();
     expect(host.querySelector(".ib-n")?.textContent).toBe("6");
     expect(btn(host, "Allow all 2…")).toHaveLength(1);
+  });
+  it("reviews only the two approvable actions in a dialog before allowing them", async () => {
+    const { host, request } = await render({ fx: { ...FX, "approval.resolve": { applied: true } } });
+    await click(btn(host, "Allow all 2…")[0]);
+    const dialog = document.querySelector("[role=dialog]")!;
+    expect(dialog.textContent).toContain("Allow all 2?");
+    expect([...dialog.querySelectorAll(".allow18D li")].map(row => row.textContent)).toEqual(["Rowan: Run this command", "Rowan: Install a tool"]);
+    expect(dialog.textContent).not.toContain("Jordan Ellis");
+    expect(dialog.textContent).toContain("Each Trunk still asks next time.");
+    await click(btn(dialog, "Cancel")[0]);
+    expect(document.querySelector("[role=dialog]")).toBeNull();
+    expect(calls(request, "approval.resolve")).toHaveLength(0);
+    await click(btn(host, "Allow all 2…")[0]);
+    await click(btn(document.querySelector("[role=dialog]")!, "Allow all 2")[0]);
+    expect(calls(request, "approval.resolve")).toEqual([{ id: "x1", kind: "exec", decision: "allow-once" }, { id: "x2", kind: "plugin", decision: "allow-once" }]);
   });
   it("draws the status cards from the engine and greys what it cannot back", async () => {
     const { host, request } = await render({ scopes: ["operator.read", "operator.approvals", "operator.pairing", "operator.questions", "operator.write"] });

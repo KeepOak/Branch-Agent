@@ -1,0 +1,2 @@
+window:src/composer/composer-logic.test.ts
+window:src/composer/composer-no-model-chip.test.tsx

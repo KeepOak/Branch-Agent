@@ -1,0 +1,1 @@
+window:src/shell/sidebar-drag.logic.test.ts

@@ -81,7 +81,12 @@ export type SharedCodexAppServerClientEntry = {
   onStartedClientCallbacks: Set<(client: CodexAppServerClient) => void>;
   acquireBoundary?: CodexAppServerAcquireBoundary;
   acquireBoundaryObservers?: Set<(boundary: CodexAppServerAcquireBoundary) => void>;
+  // Armed when the last lease or pending acquire ends; cleared when the entry closes.
+  idleCloseTimer?: ReturnType<typeof setTimeout>;
 };
+
+/** Grace period after the last lease ends before its unused shared client is closed. */
+export const SHARED_CODEX_APP_SERVER_CLIENT_IDLE_MS = 60_000;
 
 export type SharedCodexAppServerClientStartup = {
   initialized: Promise<void>;
@@ -115,6 +120,7 @@ export function closeSharedClientEntryIfUnclaimed(entry: SharedCodexAppServerCli
   if (state.clients.get(entry.key) !== entry) {
     return false;
   }
+  clearIdleCloseTimer(entry);
   state.clients.delete(entry.key);
   entry.client?.close();
   return Boolean(entry.client);
@@ -381,11 +387,32 @@ export function retainSharedClientEntry(
   };
 }
 
+function clearIdleCloseTimer(entry: SharedCodexAppServerClientEntry): void {
+  if (entry.idleCloseTimer !== undefined) {
+    clearTimeout(entry.idleCloseTimer);
+    entry.idleCloseTimer = undefined;
+  }
+}
+
+/** Closes an unused client after the grace period. The close rechecks the counts, so a lease taken meanwhile keeps it open. */
+function armIdleCloseTimer(entry: SharedCodexAppServerClientEntry): void {
+  clearIdleCloseTimer(entry);
+  const timer = setTimeout(() => {
+    entry.idleCloseTimer = undefined;
+    closeSharedClientEntryIfUnclaimed(entry);
+  }, SHARED_CODEX_APP_SERVER_CLIENT_IDLE_MS);
+  timer.unref?.();
+  entry.idleCloseTimer = timer;
+}
+
 export function releaseSharedClientEntry(
   entry: SharedCodexAppServerClientEntry,
   counter: "activeLeases" | "pendingAcquires",
 ): void {
   entry[counter] -= 1;
   closeRetiredSharedClientEntryIfIdle(entry);
+  if (entry.activeLeases === 0 && entry.pendingAcquires === 0) {
+    armIdleCloseTimer(entry);
+  }
   notifyDesktopGenerationDrainChecks(getSharedCodexAppServerClientState());
 }

@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
 import { AdvancedPage, ROWS } from "./advanced";
 import { fieldsOf, mergePatch, parseLine } from "./advanced-tech";
+import { KitProvider } from "../kit";
+import type { Pins } from "../pins";
 
 type Answers = Record<string, unknown | ((params: Record<string, unknown>) => unknown)>;
 function engineWith(answers: Answers) {
@@ -32,6 +34,27 @@ const patches = (request: ReturnType<typeof vi.fn>) => request.mock.calls.filter
 const CONFIG = { "config.get": { hash: "h", valid: true, config: {} }, "config.patch": { ok: true } };
 
 describe("Settings › Advanced", () => {
+  it("keeps all six Technical section pins beside their titles and working", async () => {
+    const { engine } = engineWith(CONFIG);
+    const toggle = vi.fn();
+    const pins: Pins = { page: "advanced", list: [], has: (title) => title === "Talk", toggle, go: vi.fn(), unpin: vi.fn() };
+    const report = { saving: vi.fn(), saved: vi.fn(), failed: vi.fn() };
+    await act(async () => root.render(<KitProvider level={2} report={report} scope={null} pins={pins}><AdvancedPage page="advanced" title="Advanced" level="technical" engine={engine} /></KitProvider>));
+    await flush();
+    for (const title of ["Text to speech", "Attachments", "Messages", "Talk", "Web", "Media"]) {
+      const section = row(title);
+      const pin = section.querySelector<HTMLButtonElement>(":scope > b > .pin-k");
+      expect(pin, title).not.toBeNull();
+      expect(section.querySelector(":scope > .pin-k"), title).toBeNull();
+      expect(pin!.getAttribute("aria-pressed")).toBe(String(title === "Talk"));
+      expect(pin!.getAttribute("aria-label")).toBe(`${title === "Talk" ? "Unpin" : "Pin"} ${title}`);
+      await click(pin!);
+      expect(toggle).toHaveBeenLastCalledWith(title);
+    }
+    await click(button("Edit", row("Text to speech")));
+    expect(document.querySelector('[role="dialog"][aria-label="Text to speech"]')).not.toBeNull();
+  });
+
   it("lists the preview's sections in order, gated by level", async () => {
     const { engine } = engineWith(CONFIG);
     await show(engine, "advanced");
@@ -122,6 +145,19 @@ describe("Settings › Advanced", () => {
     expect(row("Send crash reports").getAttribute("aria-disabled")).toBe("true");
     expect(row("Send crash reports").textContent).not.toContain("The engine doesn’t send crash reports.");
     expect(row("Report for a bug").textContent).toContain("branch gateway diagnostics export");
+  });
+
+  it("a list's Add stays off until a folder is typed, then saves it", async () => {
+    const { engine, request } = engineWith(CONFIG);
+    await show(engine);
+    const section = row("Extra folders to search");
+    const add = button("Add a folder", section);
+    expect(add.disabled).toBe(true);
+    const field = section.querySelector("input") as HTMLInputElement;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "D:/Notes"); field.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(add.disabled).toBe(false);
+    await click(add);
+    expect(patches(request)).toContainEqual({ memory: { search: { extraPaths: ["D:/Notes"] } } });
   });
 
   it("the log window tails logs.tail and filters by level", async () => {

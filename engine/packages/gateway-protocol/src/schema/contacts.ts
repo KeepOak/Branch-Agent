@@ -59,6 +59,8 @@ export const TopicSchema = closedObject({
   key: NonEmptyString,
   contactId: NonEmptyString,
   title: NonEmptyString,
+  /** A person or agent explicitly named this thread; do not shorten its title in the UI. */
+  labelled: Type.Optional(Type.Boolean()),
   anchor: Type.Optional(
     closedObject({
       threadKey: NonEmptyString,

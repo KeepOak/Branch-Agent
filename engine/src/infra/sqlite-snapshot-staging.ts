@@ -14,6 +14,7 @@ import {
   resolvePrivateSqliteSnapshotStagingRoot,
 } from "./sqlite-private-directory.js";
 import {
+  createSyncRemovalBudget,
   registerSnapshotTempDirectory,
   removeTempDirectory,
   removeTempDirectoryAsync,
@@ -35,8 +36,10 @@ import type { SqliteStagingToken as SnapshotToken } from "./sqlite-staging-token
 
 type ReclamationPass = { controller: AbortController; done: Promise<void> };
 const pendingReclamations = new Map<string, ReclamationPass>();
-const currentAgeMs = 15 * 60 * 1000;
-const reclamationByteBudget = 512 * 1024 * 1024;
+const currentAgeMs = 10 * 60 * 1000;
+// Measured leak rate: about 560 dirs/hour, about 23 GB/hour. At the 5-minute sweep cadence that is
+// about 1.9 GB per pass, so a 4 GiB pass budget keeps about 2x headroom (48 GB/hour).
+const reclamationByteBudget = 4 * 1024 * 1024 * 1024;
 
 function stagingParent(root: string): string | undefined {
   const parent = path.basename(root) === "branch" ? path.dirname(root) : root;
@@ -105,13 +108,15 @@ export function* reclaimAbandonedSqliteSnapshots(root: string, report = warn): G
           throw new Error("Snapshot reclamation byte budget exhausted for this pass");
         }
         admittedBytes += bytes;
-        retireSqliteSnapshotPayload(retirement);
+        // One blocking-wait budget for this snapshot's payload and its directory together.
+        const budget = createSyncRemovalBudget();
+        retireSqliteSnapshotPayload(retirement, budget);
         const claimed = path.join(
           root,
           `${legacy ? `branch-sqlite-readonly-${process.pid}-` : prefix}${randomUUID()}`,
         );
         fs.renameSync(directory, claimed);
-        if (!removeTempDirectory(claimed)) {
+        if (!removeTempDirectory(claimed, undefined, undefined, budget)) {
           throw new Error("Snapshot removal failed; check private cache permissions");
         }
         report(`Reclaimed ${bytes} bytes of interrupted SQLite snapshot data.`);
@@ -143,6 +148,11 @@ export function reclaimAbandonedSqliteSnapshotsAsync(
     controller,
     done: (async () => {
       try {
+        const entries = await fs.promises.readdir(root, { withFileTypes: true }).catch(() => []);
+        // An empty pass needs no worker process; the next pass observes later allocations.
+        if (!entries.some((entry) => entry.isDirectory() && isStagingName(entry.name))) {
+          return;
+        }
         const { runSqliteReadOnlyWorker } = await import("./sqlite-readonly-worker.js");
         if (!controller.signal.aborted) {
           for (const message of await runSqliteReadOnlyWorker(root, {

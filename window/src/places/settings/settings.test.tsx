@@ -37,8 +37,11 @@ describe("Settings engine contracts", () => {
   });
   it("filters credential values from status rendering", () => { expect(safeEntries({ token: "hidden", apiKey: "hidden", secret: "hidden", password: "hidden", status: "connected" })).toEqual([["status", "connected"]]); });
   it("keeps numeric usage counts while hiding token strings", () => { expect(safeEntries({ totalTokens: 120, accessTokens: "hidden", refreshToken: "hidden", outputTokens: 40 })).toEqual([["totalTokens", 120], ["outputTokens", 40]]); });
-  it("renames engine feature labels while preserving outside service names", () => {
-    expect(visible("OpenClaw Workboard Dreaming Crabbox Peekaboo ClawHub")).toBe("Branch Canopy Rings Cuttings Knothole Seedbank");
+  it("maps each exact engine identifier to its Branch name and leaves free text alone", () => {
+    expect(visible("OpenClaw")).toBe("Branch");
+    expect(visible("Dreaming")).toBe("Rings");
+    expect(visible("ClawRouter")).toBe("Model router");
+    expect(visible("Dreaming on")).toBe("Dreaming on");
     expect(visible("OpenAI Anthropic Google Amazon Bitwarden GitHub Telegram OpenShell")).toBe("OpenAI Anthropic Google Amazon Bitwarden GitHub Telegram OpenShell");
   });
   it("never reports a refused file save or config patch as successful", async () => {
@@ -63,7 +66,7 @@ describe("Settings repeated and interrupted flows", () => {
   it("ignores an interrupted load and allows retry after a failed load", async () => {
     const first = deferred<string>(); const second = deferred<string>();
     const request = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise).mockRejectedValueOnce(new Error("disconnected")).mockResolvedValueOnce("recovered");
-    const connection = engine(request); let reload!: () => Promise<void>;
+    const connection = engine(request); let reload!: () => Promise<unknown>;
     function View({ method }: { method: string }) { const state = useResource<string>(connection, method); reload = state.reload; return <span>{state.loading ? "Loading" : state.error ?? state.data}</span>; }
     await act(async () => root.render(<View method="first" />));
     await act(async () => root.render(<View method="second" />));
@@ -86,6 +89,6 @@ describe("Settings repeated and interrupted flows", () => {
     const request = vi.fn().mockRejectedValue(new Error("Engine offline"));
     const connection = engine(request);
     const ids = ["general", "people", "appearance", "notifications", "instructions", "models", "local", "accounts", "voice", "chatapps", "permissions", "computer", "secrets", "usage", "backups", "gateway", "self", "seasons", "updates", "achievements", "advanced", "developer"];
-    for (const page of ids) { await act(async () => root.render(<SettingsPage page={page} title={page} level="regular" engine={connection} />)); expect(host.querySelector("h1")?.textContent).toBe(page); expect(host.querySelector(".bs-success")).toBeNull(); }
+    for (const page of ids) { await act(async () => root.render(<SettingsPage page={page} title={page} level="regular" engine={connection} />)); expect(host.querySelector("h1")?.textContent).toBe(["accounts", "models", "local"].includes(page) ? "Models & accounts" : page); expect(host.querySelector(".bs-success")).toBeNull(); }
   });
 });

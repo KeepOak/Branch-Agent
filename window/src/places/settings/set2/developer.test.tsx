@@ -173,4 +173,17 @@ describe("Settings › Developer", () => {
     expect(ROWS.every((r) => r.page === "developer" && r.lv === 2)).toBe(true);
     expect(ROWS.some((r) => r.title === "Device ID" && r.sec === "Local address")).toBe(true);
   });
+
+  it("enables Run setup again and restarts the setup flow", async () => {
+    const { engine } = engineWith(CONFIG());
+    await show(engine);
+    const btn = buttons("Run setup again")[0];
+    expect(btn).toBeTruthy();
+    expect(btn.disabled).toBe(false);
+    const seen = vi.fn();
+    addEventListener("branch:run-setup-again", seen);
+    await click(btn);
+    expect(seen).toHaveBeenCalled();
+    removeEventListener("branch:run-setup-again", seen);
+  });
 });

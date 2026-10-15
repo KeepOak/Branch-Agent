@@ -37,12 +37,12 @@ export function catalogue(s: ChannelsStatus | undefined): CatalogueApp[] {
   });
 }
 
-export function accountsOf(s: ChannelsStatus | undefined, id: string): Acct[] {
+function accountsOf(s: ChannelsStatus | undefined, id: string): Acct[] {
   return list(s?.channelAccounts?.[id]) as unknown as Acct[];
 }
 
 /** An app counts as connected when it is configured, running or connected (upstream channelSnapshotEntryIsActive). */
-export function isOn(s: ChannelsStatus | undefined, id: string): boolean {
+function isOn(s: ChannelsStatus | undefined, id: string): boolean {
   const sum = record(s?.channels?.[id]);
   if (sum.configured === true || sum.running === true || sum.connected === true) return true;
   return accountsOf(s, id).some((a) => a.configured === true || a.running === true || a.connected === true);

@@ -4,3 +4,5 @@
 *.webm binary
 *.gz binary
 *.blend binary
+docs/upstream/COPIED.csv merge=union
+

@@ -6,14 +6,22 @@ import { Icon, type IconName } from "../shell/icons";
 import type { Candidate, Detected, TestResult, Where } from "./setup-model";
 import { shownWhy } from "../shell/shown-why";
 
+export const WELCOME_SAFETY_TITLE = "How Branch stays safe";
+export const WELCOME_SAFETY_LINES = [
+  "It asks before it sends, deletes, spends or installs anything.",
+  "Your conversations and keys stay on your computers.",
+  "You can take over, stop it, or roll back any change.",
+] as const;
+export const WELCOME_PROMISE = "I understand Branch can act on this computer when I allow it";
+
 export function WelcomeBody({ promise, onPromise }: { promise: boolean; onPromise: (v: boolean) => void }) {
   return (
     <div className="ob-trust">
-      <b>How Branch stays safe</b>
+      <b>{WELCOME_SAFETY_TITLE}</b>
       <ul className="may6">
-        {["You choose how much Branch asks before it acts.", "Your conversations and keys stay on your computers.", "You can take over, stop it, or roll back any change."].map((line) => (
+        {WELCOME_SAFETY_LINES.map((line) => (
           <li key={line}>
-            <span className="i">
+            <span className="i" aria-hidden="true">
               <Icon name="check" size={13} />
             </span>
             {line}
@@ -21,7 +29,8 @@ export function WelcomeBody({ promise, onPromise }: { promise: boolean; onPromis
         ))}
       </ul>
       <label className="chk">
-        <input type="checkbox" data-testid="setup-promise" checked={promise} onChange={(e) => onPromise(e.target.checked)} /> I understand Branch can act on this computer when I allow it
+        <input type="checkbox" data-testid="setup-promise" checked={promise} onChange={(e) => onPromise(e.target.checked)} />
+        {WELCOME_PROMISE}
       </label>
     </div>
   );
@@ -100,7 +109,7 @@ type ModelsProps = {
 
 /** The service a found connection belongs to: its kind when the logos know it, else its model's provider. */
 /** A model on this computer shows its model family's logo (Qwen), as the preview does; an account shows its service's. */
-function logoId(c: Candidate): string {
+export function logoId(c: Candidate): string {
   const [provider = "", model = ""] = c.modelRef.split("/");
   if (c.kind === "existing-model") return model.toLowerCase().match(/^[a-z]+/)?.[0] ?? provider;
   return brandOf(c.kind) !== c.kind.toLowerCase() ? c.kind : provider || c.kind;

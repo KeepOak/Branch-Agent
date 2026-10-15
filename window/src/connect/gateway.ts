@@ -1,6 +1,6 @@
 // The window's connection to the engine's gateway. It drives Branch Agent's own wire client
 // (GatewayProtocolClient and GatewayBrowserDeviceAuthLifecycle from @branch/gateway-client/browser),
-// the way Branch Agent's Control UI does in ui/src/api/gateway.ts at openclaw/openclaw@57e0aaa1c190.
+// the way Branch Agent's Control UI does in ui/src/api/gateway.ts.
 import {
   ConnectErrorDetailCodes,
   GATEWAY_CLIENT_CAPS,
@@ -16,16 +16,36 @@ import {
   type ConnectParams,
   type EventFrame,
   type GatewayBrowserDeviceAuthPlan,
+  type GatewayBrowserDeviceTokenStore,
   type GatewayProtocolCloseContext,
+  type GatewayProtocolRequestOptions,
   type GatewayProtocolSocket,
   type GatewayProtocolSocketHandlers,
   type HelloOk,
 } from "@branch/gateway-client/browser";
 import { loadBrowserDeviceIdentity } from "./device-identity";
 import { createDeviceTokenStore } from "./device-token-store";
+import type { ScopeUpgradeOutcome } from "./engine";
+
+type ScopeUpgradeBinding = { clientId: string; deviceId: string; role: string };
+type ScopeUpgradeRuntime = {
+  requestScopeUpgrade: (options: {
+    binding: ScopeUpgradeBinding;
+    scopes: readonly string[];
+    onPending?: (requestId: string) => void;
+  }) => Promise<ScopeUpgradeOutcome>;
+  cancelScopeUpgrade: () => void;
+};
+
+import { recordRequest } from "../diagnostics/ui-log";
+
+function errorCodeOf(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === "string" ? code : "error";
+}
 
 export const OPERATOR_ROLE = "operator";
-/** The same scopes OpenClaw's own browser UI asks for (ui/src/api/gateway-connect-plan.ts, CONTROL_UI_OPERATOR_SCOPES). */
+/** The same scopes 's own browser UI asks for (ui/src/api/gateway-connect-plan.ts, CONTROL_UI_OPERATOR_SCOPES). */
 export const OPERATOR_SCOPES = [
   "operator.admin",
   "operator.read",
@@ -92,15 +112,19 @@ function isPairingRequired(details: unknown): boolean {
 export class BranchGateway {
   private readonly client: GatewayProtocolClient<GatewayBrowserDeviceAuthPlan>;
   private readonly auth: GatewayBrowserDeviceAuthLifecycle;
+  private readonly tokenStore: GatewayBrowserDeviceTokenStore;
   private readonly opts: Options;
 
   private connected = false;
+  private scopeUpgradeBinding: ScopeUpgradeBinding | null = null;
+  private scopeUpgradeRuntime: Promise<ScopeUpgradeRuntime> | null = null;
 
   constructor(opts: Options) {
     this.opts = opts;
+    this.tokenStore = createDeviceTokenStore(opts.url);
     this.auth = new GatewayBrowserDeviceAuthLifecycle({
       loadIdentity: loadBrowserDeviceIdentity,
-      tokenStore: createDeviceTokenStore(opts.url),
+      tokenStore: this.tokenStore,
     });
     this.client = new GatewayProtocolClient<GatewayBrowserDeviceAuthPlan>({
       createSocket: (handlers) => createBrowserSocket(opts.url, handlers),
@@ -115,7 +139,13 @@ export class BranchGateway {
           challengeTs,
         }),
       buildConnectParams: (plan) => this.connectParams(plan),
-      onConnectHello: (hello, context) => this.auth.acceptHello(hello, context.plan),
+      onConnectHello: (hello, context) => {
+        const plan = context.plan;
+        this.scopeUpgradeBinding = plan.identity
+          ? { clientId: plan.clientId, deviceId: plan.identity.deviceId, role: plan.role }
+          : null;
+        return this.auth.acceptHello(hello, plan);
+      },
       onHello: (hello) => {
         this.connected = true;
         opts.onStatus({ phase: "connected", hello });
@@ -145,6 +175,8 @@ export class BranchGateway {
   }
 
   stop(): void {
+    this.cancelScopeUpgrade();
+    this.scopeUpgradeBinding = null;
     this.client.stop();
   }
 
@@ -155,8 +187,48 @@ export class BranchGateway {
     this.start();
   }
 
-  request<T = unknown>(method: string, params?: unknown): Promise<T> {
-    return this.client.request<T>(method, params);
+  request<T = unknown>(method: string, params?: unknown, options?: GatewayProtocolRequestOptions): Promise<T> {
+    const started = Date.now();
+    const sent = this.client.request<T>(method, params, options);
+    // The diagnostics log keeps the method, the outcome and the time. Params and results are never recorded.
+    sent.then(
+      () => recordRequest(method, true, undefined, Date.now() - started),
+      (error: unknown) => recordRequest(method, false, errorCodeOf(error), Date.now() - started),
+    );
+    return sent;
+  }
+
+  /** Ask an owner for the full operator scopes; persist the rotated device key the way the upstream client does. */
+  async requestScopeUpgrade(options: { onPending?: (requestId: string) => void } = {}): Promise<ScopeUpgradeOutcome> {
+    const binding = this.scopeUpgradeBinding;
+    if (!this.connected || !binding) {
+      throw new Error("This window isn’t signed in as a device yet. Refresh and try again.");
+    }
+    const runtime = await this.loadScopeUpgrade();
+    return runtime.requestScopeUpgrade({
+      binding,
+      scopes: OPERATOR_SCOPES,
+      onPending: options.onPending,
+    });
+  }
+
+  cancelScopeUpgrade(): void {
+    void this.scopeUpgradeRuntime
+      ?.then((runtime) => runtime.cancelScopeUpgrade())
+      .catch(() => undefined);
+  }
+
+  private loadScopeUpgrade(): Promise<ScopeUpgradeRuntime> {
+    return (this.scopeUpgradeRuntime ??= import("@branch/gateway-client/scope-upgrade")
+      .then(({ GatewayScopeUpgrade }) => new GatewayScopeUpgrade({
+        request: (method, params, options) => this.request(method, params, options),
+        tokenStore: this.tokenStore,
+        reconnect: () => this.client.closeSocket(4000, "scope upgrade approved"),
+      }))
+      .catch((error: unknown) => {
+        this.scopeUpgradeRuntime = null;
+        throw error;
+      }));
   }
 
   private connectParams(plan: GatewayBrowserDeviceAuthPlan): ConnectParams {

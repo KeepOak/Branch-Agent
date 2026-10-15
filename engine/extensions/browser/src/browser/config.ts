@@ -32,6 +32,7 @@ import {
   DEFAULT_BROWSER_EVALUATE_ENABLED,
   DEFAULT_BROWSER_LOCAL_CDP_READY_TIMEOUT_MS,
   DEFAULT_BROWSER_LOCAL_LAUNCH_TIMEOUT_MS,
+  DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES,
   DEFAULT_BROWSER_TAB_CLEANUP_IDLE_MINUTES,
   DEFAULT_BROWSER_TAB_CLEANUP_MAX_TABS_PER_SESSION,
   DEFAULT_BROWSER_TAB_CLEANUP_SWEEP_MINUTES,
@@ -72,6 +73,8 @@ export type ResolvedBrowserConfig = Omit<ResolvedBrowserConfigContract, "profile
   extensionRelayInternalTokens: Record<string, string>;
   /** Host-local HMAC key last adopted by the relay lifecycle, not raw config resolution. */
   extensionRelayToken?: string;
+  /** Quiet minutes before an engine-launched headless Chrome is closed. 0 disables. */
+  idleTimeoutMinutes: number;
 };
 
 /** Read a named browser profile without falling through to inherited object keys. */
@@ -156,6 +159,14 @@ export function isLocalManagedProfile(profile: ResolvedBrowserProfile): boolean 
     profile.cdpIsLoopback &&
     !profile.attachOnly
   );
+}
+
+function resolveBrowserIdleTimeoutMinutes(cfg: BrowserConfig | undefined): number {
+  const raw = cfg?.idleTimeoutMinutes;
+  if (raw == null) {
+    return DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES;
+  }
+  return Math.max(0, Math.floor(raw));
 }
 
 function resolveBrowserTabCleanupConfig(
@@ -325,6 +336,7 @@ export function resolveBrowserConfig(
     defaultProfile,
     profiles,
     tabCleanup: resolveBrowserTabCleanupConfig(cfg),
+    idleTimeoutMinutes: resolveBrowserIdleTimeoutMinutes(cfg),
     ssrfPolicy: resolveBrowserSsrFPolicy(cfg),
     extraArgs,
     extensionRelayDefaultPort: controlPort + EXTENSION_RELAY_PORT_OFFSET,
@@ -501,7 +513,9 @@ export function resolveManagedBrowserHeadlessMode(
     return { headless: true, source: "linux-display-fallback" };
   }
 
-  return { headless: resolved.headless, source: "default" };
+  // Auto / unset: stay off the user's desktop. Watch in Branch's browser
+  // stage. Explicit browser.headless=false still opens a window.
+  return { headless: true, source: "default" };
 }
 
 export function getManagedBrowserMissingDisplayError(
