@@ -58,7 +58,13 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          git -c "http.extraheader=AUTHORIZATION: bearer ${GH_TOKEN}" fetch --no-tags --no-recurse-submodules --depth=2000 origin \
+          # persist-credentials: false leaves git without a token. GitHub git HTTP
+          # wants basic x-access-token extraheader, not a bearer token (that
+          # prompts for a username and fails closed).
+          auth_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+          printf '::add-mask::%s\n' "$auth_header"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
+            fetch --no-tags --no-recurse-submodules --depth=2000 origin \
             "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
 
       - name: Preflight the pull request body, commits and files with the local checks
