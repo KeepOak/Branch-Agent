@@ -84,12 +84,33 @@ const KEEP_CLASSIC: ReadonlySet<string> = new Set<string>();
 export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
   card: "people", // Your card: the person's own card on Classic People
   trunks: "advanced", // Trunks, Trunks' model and Trunks and other agents
-  customize: "advanced", // Tools and skills, Skills, Plugins, What it can do
-  memory: "advanced", // Memory, Recall and memory files, Documents it reads
-  autos: "advanced", // Automations, and Automations, steps and nudges
   browser: "computer", // Computer & browser: the screen and the browser
   coding: "computer", // Computer & browser: code and commits, repositories
 };
+
+/**
+ * Settings pages that are a place: Settings › Customize, Automations and Memory & documents open the place that has
+ * their controls (Memory & documents opens Library on its Memory tab), never a Settings page of their own.
+ */
+export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {
+  customize: { place: "customize" },
+  autos: { place: "automations" },
+  memory: { place: "library", tab: "memory" },
+};
+
+/** The route a link, a saved route or a nav item really opens: a Settings page that is a place (by its id or an old id
+ *  for it) opens that place; every other route is itself. */
+export function resolveRoute(route: Route): Route {
+  if (route.kind !== "settings") return route;
+  const target = SETTINGS_PLACE[r1PageFor(route.page)];
+  return target ? { kind: "place", place: target.place } : route;
+}
+
+/** The tab a Settings page that is a place opens on, told to the place after it shows (as WindowShell does). */
+function openPlaceTab(route: Route): void {
+  const target = route.kind === "settings" ? SETTINGS_PLACE[r1PageFor(route.page)] : undefined;
+  if (target?.tab) setTimeout(() => window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: target.place, tab: target.tab } })), 0);
+}
 
 /**
  * R1 Settings draws a page only once it has rows or its own slot and nothing working is left behind in Classic. Every
@@ -131,7 +152,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const machine = useMachine(session, ready);
   // The re-hosted Classic character panel (parity row 19), shown beside the conversation unless hidden.
   const [characterShown, setCharacterShown] = useR1CharacterShown(engine);
-  const [route, setRoute] = useState<Route>(loadRoute);
+  const [route, setRoute] = useState<Route>(() => resolveRoute(loadRoute()));
   // The re-hosted Classic computer stage (parity row 1): which side is open, and the small window it shrinks to.
   const [stage, setStage] = useState<StageMode | null>(null);
   const [pip, setPip] = useState<PipTarget | null>(null);
@@ -182,7 +203,8 @@ export function R1Window({ session }: { session: SaplingSession }) {
     window.history.replaceState({ ...window.history.state, r1Index: 0, r1Route: entries.current[0] }, "");
     const pop = (event: PopStateEvent) => {
       const index = event.state?.r1Index;
-      const next = parseRoute(JSON.stringify(event.state?.r1Route));
+      const saved = parseRoute(JSON.stringify(event.state?.r1Route));
+      const next = saved && resolveRoute(saved);
       if (typeof index !== "number" || index < 0 || index >= entries.current.length || !next) return;
       setHistory({ index, count: entries.current.length }); applyRoute(next);
     };
@@ -190,7 +212,9 @@ export function R1Window({ session }: { session: SaplingSession }) {
     return () => window.removeEventListener("popstate", pop);
     // This window owns only entries created during this mount; it never navigates outside them.
   }, [applyRoute]);
-  const navigate = (next: Route) => {
+  const navigate = (asked: Route) => {
+    const next = resolveRoute(asked);
+    openPlaceTab(asked);
     if (JSON.stringify(next) === JSON.stringify(route)) return;
     const index = history.index + 1;
     entries.current = [...entries.current.slice(0, index), next];
