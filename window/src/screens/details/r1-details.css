@@ -1,0 +1,28 @@
+/* The R1 details panel (GOD queue item 3), docked at the right from the header pill as Grok Bot docks a bot's details.
+   README item 48: a clear glass column; its words sit on frosted pills (.g-label) and its controls on .g-clear's pills.
+   No divider lines (R1 rule 1). The face is 84 px as the profile draws it (preview profileHTMLC18 .pfFaceC18). */
+.r1-details { position: relative; box-sizing: border-box; width: 340px; height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 56px 16px 16px; overflow: hidden; }
+.r1-details-x { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 999px; }
+.r1-details-x svg { width: 16px; height: 16px; }
+.r1-details-head { display: grid; justify-items: center; gap: 6px; text-align: center; }
+.r1-details-face { display: grid; place-items: center; min-width: 84px; min-height: 84px; }
+.r1-details-head strong { font-size: 18px; font-weight: 600; }
+.r1-details-head p { margin: 0; font-size: 13px; }
+.r1-details-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 4px; }
+.r1-details-tabs { display: flex; justify-content: center; gap: 4px; padding: 3px; border-radius: 999px; background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); align-self: center; }
+.r1-details-tabs [role="tab"] { padding: 5px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; background: transparent; box-shadow: none; }
+.r1-details-tabs [role="tab"][aria-selected="true"] { background: var(--raise); box-shadow: inset 0 0 0 1px var(--gp-edge); font-weight: 600; }
+.r1-details-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: grid; align-content: start; gap: 10px; }
+.r1-details-body .tk-sec { margin: 0; }
+.r1-details-empty, .r1-details-bad { margin: 0; font-size: 13px; }
+.r1-details-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.r1-details-rows li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.r1-details-members > .btn { justify-self: start; }
+/* Asleep: the preview's calm veil (.cl-veil17d): a centred word, one line under it and one button. */
+.r1-details-asleep { display: grid; justify-items: center; gap: 8px; padding: 28px 12px; text-align: center; border-radius: 16px; background: color-mix(in srgb, var(--gp-fill, transparent) 82%, transparent); }
+.r1-details-asleep b { font-size: 16px; }
+.r1-details-asleep small { font-size: 12.5px; max-width: 34ch; }
+.r1-details-asleep-ico svg { width: 28px; height: 28px; opacity: .55; }
+.r1-details-computer { display: grid; gap: 8px; min-height: 260px; }
+.r1-details-computer > .btn { justify-self: start; }
+@media (max-width: 760px) { .r1-details { width: 100%; padding-top: 48px; } }

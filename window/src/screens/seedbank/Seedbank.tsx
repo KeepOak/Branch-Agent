@@ -6,7 +6,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { Icon } from "../../shell/icons";
 import { featured, KINDS, kindOf, matches, SORTS, sortEntries, type Entry, type KindId, type Sort } from "./catalog";
 import { InstallSheet, PasteSheet } from "./InstallSheet";
-import { Adapters, Card, Row, Soon, UpcomingFeatures } from "./parts";
+import { Adapters, Card, Row, Soon } from "./parts";
 import { parseSeed, type Seed } from "./seed";
 import { looksLikeTeam, parseTeamMarkdown, type TeamFile } from "./team-markdown";
 import { TeamReview } from "./TeamReview";
@@ -91,8 +91,8 @@ export function Seedbank({ engine, variant = "place" }: Props) {
   const comingSection = (id: KindId, brief: boolean) => {
     const k = kindOf(id);
     return <div className="sb-sec-list" key={id} data-coming-kind={id}>
-      <div className="sb-sec-h"><b className="g-label">{k.label}</b><small className="g-label">Coming</small>{brief && (id === "adapters" || id === "upcoming") && <button type="button" className="sb-all" data-local="" onClick={() => setKind(id)}>View all</button>}</div>
-      {id === "adapters" ? <Adapters brief={brief} /> : id === "upcoming" ? <UpcomingFeatures brief={brief} /> : <p className="sb-hint g-label" data-lines>{k.coming}</p>}
+      <div className="sb-sec-h"><b className="g-label">{k.label}</b><small className="g-label">Coming</small>{brief && id === "adapters" && <button type="button" className="sb-all" data-local="" onClick={() => setKind(id)}>View all</button>}</div>
+      {id === "adapters" ? <Adapters brief={brief} /> : <p className="sb-hint g-label" data-lines>{k.coming}</p>}
     </div>;
   };
 

@@ -44,7 +44,7 @@ function electronFixture() {
     ipcMain: Object.assign(ipcMain, { handle(channel, fn) { handlers.set(channel, fn); } }), Menu: { buildFromTemplate: value => value },
     screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) },
     dialog: { showErrorBox: (...args) => errors.push(args) }, shell: { openExternal() {} },
-    session: { defaultSession: { setPermissionRequestHandler() {} } } } };
+    session: { fromPartition() { return { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} }; }, defaultSession: { setPermissionRequestHandler() {} } } } };
 }
 async function createFixtureFiles(root) {
   const engine = join(root, "engine"), windowDir = join(root, "window");
@@ -153,7 +153,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     }
     if (fastSupervisor && name === "./gateway-supervisor") {
       const source = originalLoad.call(this, name, ...args);
-      return { createGatewayCrashSupervisor: options => source.createGatewayCrashSupervisor({ ...options,
+      return { ...source, createGatewayCrashSupervisor: options => source.createGatewayCrashSupervisor({ ...options,
         policy: typeof fastSupervisor === "object" ? fastSupervisor :
           { maxAttempts: 1, initialDelayMs: 10, maxDelayMs: 10, stableAfterMs: 60_000 } }) };
     }
@@ -248,7 +248,7 @@ async function fixture(run, holdStartup = false, fastSupervisor = false, holdCan
     Module._load = originalLoad; globalThis.fetch = originalFetch;
     previous === undefined ? delete process.env.BRANCH_DESKTOP_DATA : process.env.BRANCH_DESKTOP_DATA = previous;
     previousCandidateMin === undefined ? delete process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB : process.env.BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB = previousCandidateMin;
-    for (const name of ["READY", "STEP_DOWN", "TAKE_OVER", "STANDBY_READY", "ROLLBACK"]) delete process.env[`BRANCH_DESKTOP_${name}_TIMEOUT_MS`];
+    for (const name of ["READY", "STEP_DOWN", "TAKE_OVER", "STANDBY_READY", "ROLLBACK", "ROLLBACK_READY"]) delete process.env[`BRANCH_DESKTOP_${name}_TIMEOUT_MS`];
     delete process.env.BRANCH_DESKTOP_RETIRE_KILL_AFTER_MS;
     delete process.env.BRANCH_DESKTOP_RETIRE_RECHECK_MS;
     delete process.env.BRANCH_DESKTOP_ADMISSION_ROLLBACK_MS;
@@ -601,6 +601,24 @@ test("an old engine restarting in place after rollback keeps its readiness budge
   assert.equal(alive(old), true, "the restarting old engine was killed before it became ready");
   assert.equal((await starts()).length, 2, "cold recovery replaced an engine that reclaimed the state");
 }, false, false, false, true, false, handoffOn({ STANDBY_READY_TIMEOUT_MS: 15_000, RETIRE_KILL_AFTER_MS: 4_000 })));
+test("an old engine whose in-place restart drains longer than the standby's budget keeps serving after rollback (Private #967)", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
+  const old = (await starts())[0];
+  await writeFile(join(root, "standby-exits-after-release"), "1");
+  // The old engine answers the rollback, then drains its kept runs: /readyz is ready only 11 s later.
+  await writeFile(join(root, "rollback-ready-delay"), "1");
+  restart();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 45_000);
+  const log = await readFile(join(root, "desktop.log"), "utf8");
+  // On the standby's 5 s budget the healthy old engine was killed and cold-started again ("nothing served after").
+  assert.equal(alive(old), true, "the old engine was killed while its restart drained");
+  assert.match(log, /the old engine took control back on port/);
+  assert.doesNotMatch(log, /nothing served after/);
+  assert.equal(await servingOn(gatewayPort), true);
+  await pause(1500);
+  assert.equal((await starts()).length, 2, "cold recovery replaced an engine that reclaimed the state");
+}, false, false, false, true, false, handoffOn({ STANDBY_READY_TIMEOUT_MS: 5_000, RETIRE_KILL_AFTER_MS: 4_000, READY_TIMEOUT_MS: 30_000 })));
 test("a handoff whose standby port was taken gives control back without rejecting the release", () => fixture(async ({ root, runtime, starts, restart }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
   const { gatewayPort } = JSON.parse(await readFile(join(root, "desktop.json"), "utf8"));
@@ -757,6 +775,31 @@ test("a standby that is ready keeps the state when only its update record fails:
   assert.deepEqual(sent.filter(([channel]) => channel === "branch-desktop:engine-handoff").map(([, url]) => url), [`ws://127.0.0.1:${standby.port}`]);
   assert.match(await readFile(join(root, "desktop.log"), "utf8"), /its update could not be confirmed .*keeping it/);
 }, false, false, false, true, false, handoffOn()));
+test("a failed update after a kept, unconfirmed one leaves the serving build selected, never the older one (Private #1048)", () => fixture(async ({ root, runtime, starts, restart }) => {
+  const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  const { engineDir, stagedEngine } = await stageFixtureUpdate(root, true);
+  const first = (await starts())[0];
+  // The staged build takes over, but its update cannot be confirmed: it serves, and its journal stays pending.
+  await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "fail-confirm"), "1");
+  restart();
+  await eventually(() => swapped(root), 40_000);
+  await eventually(() => !alive(first), 20_000);
+  assert.equal((await readFile(join(root, "engine-current.txt"), "utf8")).trim(), stagedEngine);
+  const serving = (await starts()).at(-1);
+  // The next attempt's standby never binds (it waits on a release that already happened), so it misses its budget and
+  // the serving build takes control back.
+  for (const name of [`released-${first}`, `drained-${first}`]) await rm(join(root, name), { force: true });
+  await writeFile(join(root, "standby-exits-after-release"), "1");
+  sent.length = 0;
+  restart();
+  await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 40_000);
+  assert.equal(alive(serving), true, "the serving build was stopped");
+  assert.match(await readFile(join(root, "desktop.log"), "utf8"), /the old engine took control back/);
+  // Every restart, the next launch and the branch command read these: they name the build that serves, not the older one.
+  assert.equal((await readFile(join(root, "engine-running.txt"), "utf8")).trim(), stagedEngine);
+  assert.notEqual((await readFile(join(root, "engine-current.txt"), "utf8")).trim(), engineDir, "the pointer went back past the serving build");
+  assert.equal((await readFile(join(root, "engine-current.txt"), "utf8")).trim(), stagedEngine);
+}, false, false, false, true, false, handoffOn({ STANDBY_READY_TIMEOUT_MS: 3000 })));
 test("a stepped-down engine still alive past its lease deadline is killed; a second update meanwhile uses the guarded swap", () => fixture(async ({ root, starts, restart }) => {
   const old = (await starts())[0];
   await writeFile(join(root, "release-ready"), "ready"); await writeFile(join(root, "retire-hangs"), "1");
@@ -1157,7 +1200,7 @@ for (const refusal of ["refuse-deactivate", "no-handoff"]) {
     process.env.BRANCH_DESKTOP_ROLLBACK_TIMEOUT_MS = "100";
   }));
 }
-test("an automatic update that arrives mid-run is deferred until idle, then hands off with one confirmed notice across reload (Private #951)", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
+test("an automatic update that arrives mid-run hands off at the next gap, with the run still going, and one confirmed notice survives reload (Private #951, #1047)", () => fixture(async ({ root, runtime, starts, offerStaged, clock }) => {
   const sent = idleWindow(runtime);
   const old = (await starts())[0];
   await writeFile(join(root, "busy-run"), "1");
@@ -1165,16 +1208,9 @@ test("an automatic update that arrives mid-run is deferred until idle, then hand
   await writeFile(join(root, "transcript.txt"), "");
   await stageFixtureUpdate(root); await writeFile(join(root, "release-ready"), "ready");
   offerStaged();
-  // A run in flight marks Trunk work: the update waits, however long the run takes.
-  await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("auto-apply: waiting for 1 active runs, 0 approvals; deferring fixture-next until Trunk work is idle"), 30_000);
-  clock.skew = 5 * 61_000; offerStaged();
-  await pause(300);
-  assert.equal((await starts()).length, 1, "the update started while a run was in flight");
-  assert.equal(sent.some(([channel]) => channel === "branch-desktop:update-applied"), false);
-  // Idle: after the idle hold, the handoff lands it and the old engine still finishes what it kept.
-  await unlink(join(root, "busy"));
-  offerStaged();
+  // A run in flight marks Trunk work, but it is not a gap: the update waits for the 30 s gap with no turn streaming.
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("auto-apply: idle hold for fixture-next"), 30_000);
+  // At the gap the handoff lands it, and the old engine still finishes the run it kept.
   clock.skew = 7 * 61_000; offerStaged();
   await eventually(() => sent.some(([channel]) => channel === "branch-desktop:update-applied"), 30_000);
   const notice = sent.find(([channel]) => channel === "branch-desktop:update-applied")[1];

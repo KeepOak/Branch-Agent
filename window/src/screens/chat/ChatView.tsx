@@ -13,6 +13,7 @@ import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { Face } from "../../face/Face";
 import { Coming } from "../../glass/coming";
 import { resolveApproval } from "../../thread/actions";
+import { EXAMPLES_GREETING_KEY, useExamplesHistory } from "./examples-greeting";
 import { ApprovalCard, ApprovalGroup } from "../../thread/ApprovalCard";
 import { ComputerActivityCard } from "../../thread/ComputerActivityCard";
 import { turnDoneLines } from "../../thread/computer-card";
@@ -20,7 +21,7 @@ import { copyText, ThreadContext, type ThreadContextValue } from "../../thread/c
 import { ReactionChips } from "../../thread/dialogs";
 import { startersFor } from "../../thread/EmptyState";
 import { FindBar, useFindKey } from "../../thread/FindBar";
-import { shortReason } from "../../thread/format";
+import { shortReason, workingLine } from "../../thread/format";
 import { HelpersChip } from "../../thread/Helpers";
 import { isComputerStep, layout, shownApprovalIds } from "../../thread/layout";
 import type { Approval, ApprovalDecision, Block } from "../../thread/model";
@@ -32,15 +33,16 @@ import { suggestionsFor } from "../../thread/suggestions";
 import { useApprovalDetails, useHelpers, useReactions, type ApprovalDetails } from "../../thread/useEngineData";
 import { useMessageActions, type MessageChanges, type ReplyTarget } from "../../thread/useMessageActions";
 import { Icon } from "../../shell/icons";
+import { shows, useLevel } from "../../places-nav/level";
 import { blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
 import { HoverBar } from "./HoverBar";
-import { NoticeLine, TimeDivider, TypingLine } from "./lines";
+import { NoticeLine, TimeDivider, WorkingLine } from "./lines";
 import { AgentReply, TimeLine, UserBubble } from "./Message";
 import { LoneThought, StepsList } from "./Steps";
 import { foldTalks } from "../../rooms/fold";
 import { RoomLine } from "../../rooms/RoomLine";
 import { RoomMessage } from "../../rooms/RoomMessage";
-import { TalkedFold } from "../../rooms/TalkedFold";
+import { ExchangeLine, ExchangeView, type ExchangeNames, type OpenExchange } from "./Exchange";
 import { fromName, otherSender, type ThreadRoom } from "../../rooms/thread-room";
 import { roomEntries, type RoomEntry } from "./room-entries";
 import "../../thread/thread.css";
@@ -71,8 +73,10 @@ export type ChatViewProps = {
   onStart?: (text: string) => void;
   /** Puts "Replying to …" on the composer (chat.send replyToId). */
   onReply?: (target: ReplyTarget) => void;
-  /** Who else writes here (rooms/useShellRoom): their rows, the talked-it-through fold and the room line (§4.2.4). */
+  /** Who else writes here (rooms/useShellRoom): their rows, the Trunk-to-Trunk exchange lines and the room line (§4.2.4). */
   room?: ThreadRoom;
+  /** An examples conversation with no messages yet: why this Trunk is here (examples-greeting.ts). */
+  examplesWhy?: string;
 };
 
 function entryTime(entry: RoomEntry): number | undefined {
@@ -149,7 +153,9 @@ function Starters({ engine, onStart }: { engine?: WindowEngine; onStart: (text: 
 }
 
 export function ChatView(props: ChatViewProps) {
-  const { name, history, live, pendingUser, running, engine, onToast } = props;
+  const { name, live, pendingUser, running, engine, onToast } = props;
+  // In an examples conversation the empty history shows the Trunk's introduction instead (examples-greeting.ts).
+  const history = useExamplesHistory({ history: props.history, live, why: props.examplesWhy, historyReady: props.historyReady !== false, name, engine });
   const toast = useCallback((text: string) => onToast?.(text), [onToast]);
   const prefs = useConversationPrefs(engine);
   const work = useWorkMode(engine, props.sessionKey);
@@ -184,10 +190,18 @@ export function ChatView(props: ChatViewProps) {
   const historyReady = props.historyReady !== false;
   const waitingCount = (props.queued?.length ?? 0) + ownLine.length;
   const empty = historyReady && !history.length && !pendingUser && !running && !waitingCount && !props.loadError;
-  // As in the Classic thread: with a room, exchanges between Trunks fold into one row (rooms/fold.ts).
+  // As in the Classic thread: with a room, exchanges between Trunks fold (rooms/fold.ts), here into one centred line.
   const inRoom = Boolean(props.room), ownAgentId = props.room?.ownAgentId;
   const entries = useMemo<RoomEntry[]>(() => (inRoom ? roomEntries(foldTalks(layout(history), ownAgentId)) : entriesOf(layout(history))), [history, inRoom, ownAgentId]);
   const times = useMemo(() => entries.map(entryTime), [entries]);
+  // Trunk-to-Trunk exchanges: one centred line each, opened read-only over the chat (./Exchange).
+  const [exchange, setExchange] = useState<OpenExchange | null>(null);
+  const trunkName = props.room?.trunkName;
+  const exchangeNames = useMemo<ExchangeNames>(() => {
+    const at = new Map(history.map((b) => [b.key, blockTime(b)]));
+    return { ownName: name, trunkName: trunkName ?? ((id: string) => id), timeOf: (key) => at.get(key) };
+  }, [history, name, trunkName]);
+  useEffect(() => { setExchange(null); }, [props.sessionKey]);
   const dividers = useMemo(() => dividerPositions(times), [times]);
   const lastUser = history.map((b) => b.kind).lastIndexOf("user");
   const lastReply = [...history].reverse().find((b) => b.kind === "text");
@@ -200,6 +214,10 @@ export function ChatView(props: ChatViewProps) {
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
   // The run's token count (the engine's usage block), as Classic's live-run header shows it; once something visible arrives.
   const usage = running ? live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage") : undefined;
+  // Regular, live: a steps row that ends the run carries the working line in its own summary (one line, a disclosure).
+  const full = shows(useLevel(), "advanced");
+  const workText = workingLine(live);
+  const inlineSteps = running && !full && liveEntries.at(-1)?.type === "steps";
   const liveShows = live.some((b) => b.kind === "text" || b.kind === "step" || b.kind === "plan" || b.kind === "preamble" || (b.kind === "approval") || (b.kind === "thinking" && work.mode !== "normal"));
   return <CapabilityProvider engine={capabilities}><ThreadContext.Provider value={ctx}>
     <div className="r1c" ref={root} data-mode={work.mode} data-times={prefs.messageTimes} dir={prefs.dir}>
@@ -209,13 +227,13 @@ export function ChatView(props: ChatViewProps) {
         {empty ? <EmptyChat name={name} engine={engine} onStart={props.onStart} /> : !historyReady && !history.length && !props.loadError ? <NoticeLine text="Opening this conversation…" testid="opening" /> : null}
         {entries.map((entry, i) => <Fragment key={entry.type === "item" ? entry.item.block.key : entry.key}>
           {dividers.has(i) && times[i] ? <TimeDivider at={times[i]!} /> : null}
-          {entry.type === "talk" ? <div className="r1c-row r1c-talk"><TalkedFold talk={entry.talk} ownName={name} trunkName={props.room?.trunkName ?? ((id: string) => id)} /></div> : <EntryView entry={entry} view={view} live={false} />}
+          {entry.type === "talk" ? <ExchangeLine talk={entry.talk} names={exchangeNames} onOpen={setExchange} /> : <EntryView entry={entry} view={view} live={false} />}
         </Fragment>)}
         {props.room ? <RoomLine history={history} room={props.room} ownName={name} /> : null}
         {pendingUser ? <UserBubble block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="delivered" />
-        {running ? liveEntries.map((entry) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live />) : null}
-        {running && !liveShows && !waitingTwo.length ? <TypingLine name={name} /> : null}
+        {running ? liveEntries.map((entry, i) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live working={inlineSteps && i === liveEntries.length - 1 ? workText : undefined} />) : null}
+        {running && !waitingTwo.length && !inlineSteps ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
         {running && liveShows && usage?.total ? <NoticeLine text={usage.total.toLocaleString() + " tokens so far"} testid="live-usage" /> : null}
         {running ? (props.steered ?? []).map((note) => <NoticeLine key={note.runId} text={"You steered " + name + ": “" + note.text + "”. It takes this at its next step."} testid="steered-note" />) : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
@@ -227,6 +245,7 @@ export function ChatView(props: ChatViewProps) {
         </div> : null}
       </div>
       <Rail scroller={scroller} blocks={all} sessionKey={props.sessionKey} />
+      {exchange ? <ExchangeView key={exchange.talk.key} open={exchange} names={exchangeNames} host={root.current?.closest<HTMLElement>(".r1-conversation") ?? null} onClose={() => setExchange(null)} /> : null}
     </div>
     {dialog}
   </ThreadContext.Provider></CapabilityProvider>;
@@ -263,14 +282,14 @@ function postedFace(block: Extract<Block, { kind: "text" }>, view: View): ReactN
   return <Face size={28} label={view.room.trunkName(sender.agentId)} priority={100} />;
 }
 
-function EntryView({ entry, view, live }: { entry: Entry; view: View; live: boolean }) {
+function EntryView({ entry, view, live, working }: { entry: Entry; view: View; live: boolean; working?: string }) {
   if (entry.type === "thought") return <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><LoneThought thought={entry.thought} mode={view.mode} /></div></div>;
   if (entry.type === "steps") {
     const computer = entry.steps.some(isComputerStep);
     return <div className="r1c-row r1c-b" data-block-key={entry.steps[0]?.key} data-block-keys={entry.steps.map((s) => s.key).join(" ")}>
       <div className="r1c-gut" data-working={(live && view.running) || undefined}>{entry.face ? faceFor(view, live) : null}</div>
       <div className="r1c-body">
-        <StepsList steps={entry.steps} thoughts={entry.thoughts} live={live} run={entry.run} mode={view.mode} />
+        <StepsList steps={entry.steps} thoughts={entry.thoughts} live={live} mode={view.mode} working={working} />
         {computer ? <ComputerActivityCard blocks={[...entry.steps, ...turnDoneLines(entry.steps, view.all)]} running={view.running} name={view.name} engine={view.engine} gatewayUrl={view.engine?.gatewayUrl} onWatch={() => undefined} /> : null}
       </div>
     </div>;
@@ -282,7 +301,7 @@ function EntryView({ entry, view, live }: { entry: Entry; view: View; live: bool
     case "text": {
       const entryId = block.meta?.entryId;
       if (entryId && view.changes.gone.has(entryId)) return null;
-      const actions = live ? null : view.actionsFor(view.all, index);
+      const actions = live || block.key === EXAMPLES_GREETING_KEY ? null : view.actionsFor(view.all, index);
       const pinned = (entryId ? view.changes.pinned.get(entryId) : undefined) ?? block.meta?.pinned === true;
       const chips = entryId ? view.reactions.get(entryId) ?? [] : [];
       const isReply = block.kind === "text";

@@ -360,6 +360,7 @@ export {
   UpdateReportResultSchema,
   SystemAgentChatParamsSchema,
   SystemAgentChatQuestionSchema,
+  SystemAgentChatProposalSchema,
   SystemAgentChatResultSchema,
   SystemAgentChatHistoryParamsSchema,
   SystemAgentChatHistoryResultSchema,

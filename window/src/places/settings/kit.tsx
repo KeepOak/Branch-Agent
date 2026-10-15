@@ -9,6 +9,7 @@ import { configStore, pathKeys, type ConfigPath } from "./config-store";
 import { Icon } from "../../shell/icons";
 import { PIN_MAX, type Pins } from "./pins";
 import { isDevNote, shownWhy } from "../../shell/shown-why";
+import { plainCopy } from "./internals";
 import "./kit.css";
 
 /** 0 = Regular, 1 = Advanced, 2 = Technical. */
@@ -84,8 +85,17 @@ function useHelpEntry(key: string, label: string, help?: string): void {
   }, [help, key, label, register]);
 }
 
+const HeadlessContext = createContext(false);
+/** Inside an R1 card, a whole Classic page draws only its body. */
+export const useHeadless = (): boolean => useContext(HeadlessContext);
+
 /** A page head with one help affordance and the original ask action inside it. */
 export function Page({ title, lede, help, children, top }: { title: string; lede: ReactNode; help?: string; children?: ReactNode; top?: ReactNode }) {
+  if (useContext(HeadlessContext)) return <>{top}{children}</>;
+  return <PageWithHead title={title} lede={lede} help={help} top={top}>{children}</PageWithHead>;
+}
+
+function PageWithHead({ title, lede, help, children, top }: { title: string; lede: ReactNode; help?: string; children?: ReactNode; top?: ReactNode }) {
   const { ask, askName } = useContext(KitContext);
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<Record<string, HelpEntry>>({});
@@ -142,13 +152,21 @@ export function Page({ title, lede, help, children, top }: { title: string; lede
   );
 }
 
+/** Inside an R1 Settings row that uses a Classic block as its control: the R1 card is the section, so a Classic section
+ *  inside draws only its hint and rows, with no heading or box of its own. */
+export function Headless({ children }: { children: ReactNode }) {
+  return <HeadlessContext.Provider value={true}>{children}</HeadlessContext.Provider>;
+}
+
 /** A section: sentence-case heading, an optional hint and its rows. */
 export function Sec({ title, group, showHeading = true, hint, help, right, children, id, personal }: { title: string; group?: string; showHeading?: boolean; hint?: ReactNode; help?: string; right?: ReactNode; children?: ReactNode; id?: string; personal?: boolean }) {
+  const headless = useContext(HeadlessContext);
   const locked = useContext(LockContext);
   const helpKey = useId();
   useHelpEntry(helpKey, title, help);
   const heading = group ?? title;
   if (personal && locked) return <SetupLock locked={false}><Sec title={title} group={group} showHeading={showHeading} hint={hint} help={help} right={right} id={id}>{children}</Sec></SetupLock>;
+  if (headless) return <>{hint ? <p className="hint">{hint}</p> : null}{children}</>;
   return (
     <div className="sec" data-sec={title || undefined} id={id}>
       {showHeading && (title || right) ? <h2 tabIndex={-1}>{heading}{right}</h2> : null}
@@ -185,8 +203,9 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   const why = off ?? (locked ? NOSETUP : undefined);
   const name = typeof title === "string" ? title : id;
   const shown = shownWhy(why);
-  const line = sub ?? shown;
-  useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help);
+  const raw = sub ?? shown;
+  const line = typeof raw === "string" ? plainCopy(raw, level) : raw;
+  useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help ? plainCopy(help, level) : help);
   const kept = keep && level >= 1 ? KEEP_LINE[keep] : null;
   return (
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>

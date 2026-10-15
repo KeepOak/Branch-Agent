@@ -88,7 +88,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
   const close = () => setOpen(null);
   const removeRow = (gone: Conversation) => void actions.remove(gone).then(() => { if (p.mainKey && p.mainKey !== gone.key) p.onOpen(p.mainKey); });
   const items = conversationMenu({
-    row, isDefault: p.isDefault, now, hasReply: Boolean(lastReply), work: { global: p.work.global, override: p.work.override }, ownWindowOff: ownWindowUnavailable(),
+    row, hasMessages: p.history.length > 0, isDefault: p.isDefault, now, hasReply: Boolean(lastReply), work: { global: p.work.global, override: p.work.override }, ownWindowOff: ownWindowUnavailable(),
     room: p.room ? { ruleWords: p.room.ruleWords, rules: roomRuleEntries(p.room.rules()) } : null,
     run: {
       pin: () => { if (row) void actions.pin(row); },

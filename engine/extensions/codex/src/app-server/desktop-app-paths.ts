@@ -32,7 +32,8 @@ const MACOS_DESKTOP_CODEX_APP_PATH_CANDIDATES: readonly MacOSDesktopCodexAppPath
   return [
     {
       ...candidate,
-      appServerCommandPath: path.join(
+      // macOS paths: posix joins, so the candidates read the same on any host.
+      appServerCommandPath: path.posix.join(
         appBundlePath,
         "Contents",
         "Resources",

@@ -60,6 +60,17 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     expect(sec("Lent computer, technical")).not.toBeNull();
   });
 
+  it("folds identical pairings of one window into one row, with a count, and removes nothing", async () => {
+    const copy = (approvedAtMs: number) => ({ deviceId: `win-${approvedAtMs}`, publicKey: "k", displayName: "Branch", platform: "MacIntel", clientId: "webchat-ui", clientMode: "webchat", roles: ["operator"], scopes: [], approvedAtMs, createdAtMs: approvedAtMs, connected: false });
+    const copies = [1, 2, 3, 4, 5].map(copy);
+    const { engine, request } = engineWith({ ...CONFIG, "device.pair.list": { pending: [], paired: copies }, "node.list": { nodes: [] } });
+    await show(engine, "technical");
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-row='Branch']")];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain("4 older copies of this folded in");
+    expect(request).not.toHaveBeenCalledWith("device.pair.remove", expect.anything());
+  });
+
   it("does not draw a row the engine can't back yet, and shows no developer note", async () => {
     const { engine } = engineWith(CONFIG);
     await show(engine, "regular");
@@ -179,6 +190,18 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     const chip = [...dialog.querySelectorAll<HTMLButtonElement>("[aria-label='Computers Scout uses'] button")].find((b) => b.textContent === "Desk")!;
     await click(chip);
     expect(patches(request)).toContainEqual({ agents: { entries: { scout: { tools: { exec: { node: "n1" } } } } } });
+  });
+
+  it("Most spares at once: Save stays off until the number changes", async () => {
+    const { engine } = engineWith({ ...CONFIG, "config.get": { hash: "h", valid: true, config: { cloudWorkers: { preparedPool: { maxTotal: 3 } } } } });
+    await show(engine, "advanced");
+    const save = () => [...row("Most spares at once")!.querySelectorAll("button")].find((b) => b.textContent === "Save") as HTMLButtonElement;
+    const input = row("Most spares at once")!.querySelector("input") as HTMLInputElement;
+    expect(save().disabled).toBe(true);
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "3"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(save().disabled).toBe(true);
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "5"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(save().disabled).toBe(false);
   });
 
   it("saves Most spares at once with Save and adds an extra folder from its dialog", async () => {

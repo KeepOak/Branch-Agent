@@ -68,7 +68,8 @@ export const APPEARANCE_ROWS: Row[] = [
   fromClassic("appearance.reading.messages", "Reading", "msgLook"),
   fromClassic("appearance.reading.direction", "Reading", "dir"),
   fromClassic("appearance.reading.math", "Reading", "math"),
-  fromClassic("appearance.reading.scroll", "Reading", "scroll"),
+  // No Scroll bars row: the window hides scroll bars everywhere, so "Always" did nothing and "While scrolling" was the only
+  // choice left. A saved "scroll" choice stays in the person's look untouched.
   fromClassic("appearance.reading.code", "Reading", "codeCol"),
   coming("appearance.reading.editor-theme", "Reading", rowOf("edTheme").title, "editor: the VS Code and JetBrains panels passing their theme to the window", rowOf("edTheme").off ?? "", { help: rowOf("edTheme").sub, control: "toggle" }),
   { id: "appearance.reading.font-ui", page: "appearance", card: "Reading", label: "Interface font", level: 1, control: "select", options: FONTS.map((f) => ({ v: f.id, label: f.label })),
@@ -81,14 +82,15 @@ export const APPEARANCE_ROWS: Row[] = [
     source: { kind: "look", key: "pet" }, codec: orDefault(DEFAULT_PET) },
   { id: "appearance.pet.name", page: "appearance", card: "The pet", label: "Name", help: "Shown on the pet’s tips and menu.", level: 0, control: "text", source: { kind: "look", key: "petName" },
     codec: { read: (v) => (typeof v === "string" && v ? v : "Hazel"), write: (x) => { const t = typeof x === "string" ? x.trim().slice(0, 40) : ""; return t && t !== "Hazel" ? t : null; } } },
-  fromClassic("appearance.pet.roam", "The pet", "roam"),
   fromClassic("appearance.pet.sounds", "The pet", "petSounds"),
   slot("appearance.pet.had", "The pet", "Pets you’ve had", [], { control: "text" }),
 
   // Characters: Classic's Agents section and the Advanced Characters section.
   { id: "appearance.characters.shown", page: "appearance", card: CHAR, label: "Show the agent beside the conversation", help: "The Trunk’s character shows what it is doing.", level: 0, control: "toggle",
-    source: { kind: "look", key: "agentShown" }, fallback: true },
+    source: { kind: "look", key: "agentShown" }, fallback: false },
   fromClassic("appearance.characters.size", CHAR, "agentSize"),
+  { id: "appearance.characters.cheer", page: "appearance", card: CHAR, label: "Celebrate when a task finishes", help: "A small card with the Trunk’s face shows when a task is done.", level: 0, control: "toggle",
+    source: { kind: "look", key: "cheer" }, fallback: false },
   slot("appearance.characters.each-trunk", CHAR, "Each Trunk’s model and stage", ["agents.list", "models.list", "agents.update", "users.prefs.set"], { level: 1 }),
   fromClassic("appearance.characters.act", CHAR, "ch.act"),
   fromClassic("appearance.characters.move", CHAR, "ch.move"),
@@ -101,7 +103,7 @@ export const APPEARANCE_ROWS: Row[] = [
 
   // The list
   slot("appearance.list.threads", "The list", "Threads show as", [], { help: "How a contact’s threads show beside its chat. A contact’s ⋯ › View can differ.", control: "segmented",
-    options: [{ v: "column", label: "Column" }, { v: "rail", label: "Emoji rail" }, { v: "side", label: "Side tabs" }, { v: "tabs", label: "Tabs" }] }),
+    options: [{ v: "tabs", label: "Tabs" }, { v: "free", label: "Freedom Mode" }] }),
   { id: "appearance.list.ask-delete", page: "appearance", card: "The list", label: "Ask before deleting a conversation", help: "Removing a kept working copy always asks.", level: 1, control: "toggle",
     source: { kind: "look", key: "askDelete" }, fallback: true },
   fromClassic("appearance.list.headlines", "The list", "headlines"),

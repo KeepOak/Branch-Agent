@@ -1,4 +1,4 @@
-// Let it roam (Appearance › Pet): while the pet roams, the Trunk card is hidden, so the card comes back through these two.
+// A picked pet roams (Appearance › Pet): while it roams, the Trunk card is hidden, so the card comes back through these two.
 import { notify } from "./notify";
 
 export type RoamSetting = { set(key: string, value: unknown): Promise<unknown> };

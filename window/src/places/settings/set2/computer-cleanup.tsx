@@ -3,6 +3,7 @@
 import type { SettingsPageProps } from "../index";
 import { Sec } from "../kit";
 import { rec, str, useLive, when, type RecordValue } from "./common";
+import "./computer-cleanup.css";
 
 const HINT = "Branch removes finished build copies by itself: only clean, fully pushed ones whose work is merged, whose branch is gone, or that sat untouched for two days.";
 
@@ -19,7 +20,7 @@ export function BuildCleanup({ engine }: Pick<SettingsPageProps, "engine">) {
     : "Nothing to clean up yet. Branch checks every 30 minutes and after each merge.";
   return (
     <Sec title="Build folders" hint={HINT} id="s2-build-cleanup">
-      <p className="hint" data-row="Build folder cleanup">{text}</p>
+      <p className="s2-build-line" data-row="Build folder cleanup">{text}</p>
     </Sec>
   );
 }

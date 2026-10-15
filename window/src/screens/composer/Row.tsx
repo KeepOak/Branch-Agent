@@ -16,6 +16,13 @@ import { Popover } from "../../glass/Popover";
 import { serviceName } from "../../places/settings/set1/service";
 import type { TopicRow } from "./Composer";
 
+/** The account a model runs on, as a person names it in the footer: its display name, never the engine's profile id
+ *  (`provider:email`) or an email. Empty when the account has no plain name. */
+export function footerAccount(a: { displayName?: string } | undefined): string {
+  const name = a?.displayName?.trim() ?? "";
+  return name && !/[@:]/.test(name) ? name : "";
+}
+
 export type RowMenu = "perm" | "tools" | "model" | "think" | "target";
 
 type Props = {
@@ -100,7 +107,7 @@ export function Row(p: Props) {
       <Sep />
       <MenuItem icon="users" label="Accounts and order…" onClick={() => open("settings/accounts")} />
       <MenuItem icon="sliders" label="Manage models…" onClick={() => open("settings/models")} />
-      <div className="r1c-runs"><i aria-hidden="true" /><span>Runs on <b>{p.current?.local ? "this computer" : p.current ? serviceName(p.current.provider) : "no model"}{account ? ` · ${account.a.displayName || account.a.profileId}` : ""}</b></span>
+      <div className="r1c-runs"><i aria-hidden="true" /><span>Runs on <b>{p.current?.local ? "this computer" : p.current ? serviceName(p.current.provider) : "no model"}{footerAccount(account?.a) ? ` · ${footerAccount(account?.a)}` : ""}</b></span>
         <button type="button" className="r1c-chip" onClick={() => open("settings/accounts")}>Change</button></div>
     </Menu> : null}
     {p.menu === "think" ? <Menu anchor={think} label="How hard it thinks" onClose={p.close} width={300} align="end">

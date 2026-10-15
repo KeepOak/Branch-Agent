@@ -17,7 +17,7 @@ vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: () => <p>Place content
 vi.mock("../../face/Face", () => ({ Face: () => <span /> }));
 vi.mock("../sidebar/Sidebar", () => ({ Sidebar: () => <nav aria-label="Sidebar stub" /> }));
 vi.mock("../../places/settings/set1/appearance-store", () => ({ lookStore: () => ({ load: async () => undefined }) }));
-vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: [] }], usePendingApprovals: () => new Map(), useMachine: () => null, useTrunks: () => ({ list: [], defaultId: null }), useListPeople: () => ({ selfId: null, names: new Map() }) }));
+vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: [] }], usePendingApprovals: () => new Map(), useMachine: () => null, useContacts: () => [[], () => undefined, false], useTrunks: () => ({ list: [], defaultId: null }), useListPeople: () => ({ selfId: null, names: new Map() }) }));
 vi.mock("../../shell/group-drop", async (real) => ({ ...(await real<object>()), useGroupRooms: () => ({ rooms: [], peerOnline: new Map(), reload: async () => undefined }) }));
 vi.mock("../approvals/ProblemBanners", () => ({ useProblemBannerRows: () => [] }));
 // Each Classic tab view stands in as a marker, so the tests see which Classic component each tab draws.
@@ -41,7 +41,9 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 const flush = async () => { for (let i = 0; i < 4; i++) await act(async () => { await Promise.resolve(); }); };
 const ALL = ["sessions.list", "board.get", "portal.list", "sessions.branches.list", "progressCard.get", "sessions.files.list", "memory.search", "terminal.open", "sessions.companion.ask", "sessions.diff", "agent.identity.get"];
-const TABS: PaneTab[] = ["Activity", "Dashboard", "Preview", "Timeline", "Branches", "Plan", "Files", "Memory", "Terminal", "Side chat"];
+// The preview's fixed side panel tabs, in order (preview.html §4.5.8): Preview shows because the mock has a portal, and Branches
+// because it has two paths.
+const TABS: PaneTab[] = ["Activity", "Dashboard", "Preview", "Timeline", "Branches", "Plan", "Files", "Memory", "Terminal"];
 function live(methods = ALL) {
   const snapshot = { status: { phase: "connected" }, name: "Scout", sessionKey: "agent:scout:main", mainKey: "agent:scout:main", history: [], live: [], queued: [] };
   const request = vi.fn(async () => ({}));
@@ -53,7 +55,7 @@ const pane = () => host.querySelector(".r1-pane-slot .r1-pane");
 async function openTab(name: PaneTab) {
   const button = [...host.querySelectorAll<HTMLButtonElement>('.r1-pane [role="tab"]')].find(b => b.textContent === name);
   if (button) { await act(async () => button.click()); return; }
-  // Side chat is added from + Add a tab, as in Classic.
+  // Side chat and Changes are added from + Add a tab, as in the preview.
   await act(async () => host.querySelector<HTMLButtonElement>('.r1-pane [aria-label="Add a tab"]')!.click());
   const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(b => b.textContent?.includes(name));
   await act(async () => item!.click());
@@ -98,7 +100,7 @@ it("keeps a tab Coming when this engine lacks its call, and the rest of the pane
   await act(async () => root.render(<R1Window session={live(ALL.filter(m => m !== "memory.search" && m !== "terminal.open" && m !== "board.get"))} />));
   await act(async () => header("Side panel")!.click());
   await flush();
-  for (const name of ["Memory", "Terminal", "Dashboard"] as PaneTab[]) {
+  for (const name of ["Dashboard", "Memory", "Terminal"] as PaneTab[]) {
     await openTab(name);
     expect(host.querySelector(`.r1-pane [data-classic-tab="${name}"]`), name).toBeNull();
     const row = host.querySelector(`.r1-pane-coming[data-tab="${name}"]`);
@@ -129,6 +131,13 @@ it("Ctrl Shift K shows and hides the side panel, as in Classic", async () => {
   expect(pane()).toBeNull();
 });
 
+it("Ctrl Alt Shift G opens the Dashboard tab, as the preview's side keys do", async () => {
+  await act(async () => root.render(<R1Window session={live()} />));
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "G", code: "KeyG", ctrlKey: true, altKey: true, shiftKey: true, bubbles: true })));
+  await flush();
+  expect(shown("Dashboard")).not.toBeNull();
+});
+
 it("Classic still renders the same unchanged side panel component the R1 frame re-hosts", async () => {
   expect(windowShell).toContain('import { SidePane, type PaneTab } from "../stage/SidePane"');
   expect(windowShell).toContain("<SidePane key={s.sessionKey}");
@@ -139,11 +148,32 @@ it("Classic still renders the same unchanged side panel component the R1 frame r
   await flush();
   expect(host.querySelector('[role="tabpanel"] [data-classic-tab="Memory"]')).not.toBeNull();
   const classic = host.querySelector("aside.conversation-pane")?.className;
-  const tabs = [...host.querySelectorAll('[role="tab"]')].map(t => t.textContent);
   await act(async () => root.render(<R1Window session={session} />));
   await act(async () => header("Side panel")!.click());
   await flush();
   await openTab("Memory");
   expect(host.querySelector(".r1-pane > aside.conversation-pane")?.className).toBe(classic);
-  expect([...host.querySelectorAll('.r1-pane [role="tab"]')].map(t => t.textContent)).toEqual(tabs);
+  expect([...host.querySelectorAll('.r1-pane [role="tab"]')].map(t => t.textContent)).toEqual(TABS);
+});
+
+it("adds Side chat with + Add a tab; the added tab stays in the row after the fixed tabs", async () => {
+  await act(async () => root.render(<R1Window session={live()} />));
+  await act(async () => header("Side panel")!.click());
+  await flush();
+  await act(async () => host.querySelector<HTMLButtonElement>('.r1-pane [aria-label="Add a tab"]')!.click());
+  const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(b => b.textContent === "Side chat");
+  await act(async () => item!.click());
+  await flush();
+  const row = [...host.querySelectorAll('.r1-pane [role="tab"]')].map(t => t.textContent);
+  expect(row).toEqual([...TABS, "Side chat"]);
+  expect(shown("Side chat")).not.toBeNull();
+});
+
+it("draws the preview's tab row in one scrolling row: no More menu", async () => {
+  await act(async () => root.render(<R1Window session={live()} />));
+  await act(async () => header("Side panel")!.click());
+  await flush();
+  expect([...host.querySelectorAll('.r1-pane [role="tab"]')].map(t => t.textContent)).toEqual(TABS);
+  expect(host.querySelector('.r1-pane [aria-label="More tabs"]')).toBeNull();
+  expect(host.querySelector('.r1-pane [aria-label="Add a tab"]')).not.toBeNull();
 });
