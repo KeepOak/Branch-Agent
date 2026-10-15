@@ -49,7 +49,7 @@ function setup(responses: Record<string, unknown>, ready = true, over: Partial<S
   const engine = { request, features: { methods, events: [] } };
   const session = { request, onGatewayEvent: () => () => undefined, engine, gatewayUrl: "ws://127.0.0.1:1", open: vi.fn(async () => undefined), send: vi.fn() } as unknown as SaplingSession;
   const props: SidebarProps = {
-    session, ready, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
+    onNewTrunk: vi.fn(), session, ready, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
     sessions: [], mainKey: "main", currentKey: null, waiting: new Map(), searchRef: { current: null },
     onOpen: vi.fn(), onSettings: vi.fn(), onPlace: vi.fn(), ...over,
   };
@@ -136,11 +136,15 @@ describe("R1 sidebar", () => {
     expect(host.querySelector(".r1sb-fold")).toBeNull();
   });
 
-  it("marks Recently deleted and New folder Coming (preview foldP11), and opens Seedbank, Grove and Settings", async () => {
+  it("opens Recently deleted to a Nothing here state, marks New folder Coming (preview foldP11), and opens Seedbank, Grove and Settings", async () => {
     const { render, props } = setup(FULL);
     await render();
-    const deleted = [...host.querySelectorAll(".r1sb-bins .r1sb-bin")].find(bin => bin.textContent?.includes("Recently deleted"))!;
-    expect(deleted.getAttribute("aria-disabled")).toBe("true");
+    const deleted = [...host.querySelectorAll<HTMLButtonElement>(".r1sb-bins .r1sb-bin")].find(bin => bin.textContent?.includes("Recently deleted"))!;
+    expect(deleted.getAttribute("aria-disabled")).toBeNull();
+    expect(deleted.getAttribute("aria-expanded")).toBe("false");
+    await click(deleted);
+    expect(deleted.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelector(".r1sb-bins")!.textContent).toContain("Nothing here");
     // #1049: the preview's folder strip ends in a "New folder" chip; it is Coming here, never moved off to Seedbank.
     const add = host.querySelector(".r1sb-fold")!.querySelector('[aria-label="New folder"]')!;
     expect(add.getAttribute("aria-disabled")).toBe("true");

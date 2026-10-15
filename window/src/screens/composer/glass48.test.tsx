@@ -6,6 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../composer/engine";
 import type { Limits } from "../../shell/status-data";
 import { Composer } from "./Composer";
+// A real window reaches the microphone and audio; jsdom does not, and the live entry needs both.
+Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia: () => Promise.resolve({ getTracks: () => [] }) }, configurable: true });
+(globalThis as { AudioContext?: unknown }).AudioContext ??= class {};
 
 /* README item 48 (owner, final): only the window's left sidebar is frosted. The composer's menus (the + menu and its submenus,
    the permission, tools, send-to, model and reasoning menus, and the ring popover) are clear glass, and every heading, line of

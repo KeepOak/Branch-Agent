@@ -48,7 +48,7 @@ export function useContacts(session: SaplingSession, ready: boolean): [Contact[]
     const load = () => {
       const current = ++generation;
       void session.request<{ contacts: Contact[] }>("contacts.list", { includeArchived: true }).then(
-        (result) => { if (current === generation) { setContacts(result.contacts); setLoaded(true); } },
+        (result) => { if (current === generation) { setContacts(Array.isArray(result?.contacts) ? result.contacts : []); setLoaded(true); } },
         (error: unknown) => console.warn("contacts.list failed", error),
       );
     };

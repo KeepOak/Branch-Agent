@@ -291,6 +291,15 @@ describe("keeping things", () => {
     await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Remove D:/old"]')!.click()); await flush();
     expect(patched(request)).toContainEqual({ plugins: { entries: { codex: { config: { sessionCatalog: { homes: [] } } } } } });
   });
+  it("More Codex folders Add is disabled while the folder box is empty, and enabled once a folder is typed", async () => {
+    const { engine } = engineWith({ ...BASE, ...CFG({ plugins: { entries: { codex: { config: { sessionCatalog: { homes: [] } } } } } }) });
+    await show(engine, "technical");
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="More Codex folders: add"]')!;
+    const add = () => [...row("More Codex folders")!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add")!;
+    expect(add().disabled).toBe(true);
+    await act(async () => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!; set.call(input, "D:/new"); input.dispatchEvent(new Event("input", { bubbles: true })); }); await flush();
+    expect(add().disabled).toBe(false);
+  });
   it("Technical: every session key saves at its real path, and bad JSON is refused", async () => {
     const { engine, request } = engineWith({ ...BASE, ...CFG() });
     await show(engine, "technical");

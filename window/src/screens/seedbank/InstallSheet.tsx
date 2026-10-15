@@ -168,7 +168,7 @@ export function PasteSheet({ onClose, onSeed, initial = "" }: { onClose: () => v
   const open = () => { const failed = onSeed(text); if (failed) setError(failed); };
   return <Sheet title="Paste a seed" onClose={onClose} footer={<><button type="button" className="sb-btn" data-local="" onClick={onClose}>Cancel</button><button type="button" className="sb-btn" data-primary="" data-local="" onClick={open}>Open</button></>}>
     <p className="sb-hint g-label" data-lines>Paste a seed’s text. ⌘V anywhere on this page works too, and you can drop a .seed file on the window.</p>
-    <textarea className="sb-input" rows={3} aria-label="Seed link or text" placeholder="Paste a seed" value={text} data-local="" onChange={e => { setText(e.target.value); setError(null); }} />
+    <textarea className="sb-input" rows={3} aria-label="Seed link or text" placeholder="For example: a keepoak.com seed link" value={text} data-local="" onChange={e => { setText(e.target.value); setError(null); }} />
     {error && <p className="sb-error g-label" data-lines role="alert">{error}</p>}
   </Sheet>;
 }

@@ -288,3 +288,7 @@ button.r1sb-person-chip i { background: var(--fill); color: var(--ink-2); }
 .r1-fs .pop hr:not(#g48) { border: 0; height: 6px; margin: 0; }
 .r1-fs .pop .switch:not(#g48) { box-shadow: inset 0 0 0 1px var(--gp-edge); }
 :root[data-transparency="reduce"] .r1-fs .pop :is(.ph, .mi, .row-in, .fsw, .hint, .fpq, .tgrid) { background: var(--raise, var(--bg)); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* The sticky section labels (Pinned, Trunks…) are as opaque as the sidebar they sit in (frame.css .r1-sidebar: --side at
+   80% over the canvas), so rows scrolling under them never show through (owner, 2026-10-15). */
+.r1sb-head { background: color-mix(in srgb, var(--side) 80%, var(--bg)); }
