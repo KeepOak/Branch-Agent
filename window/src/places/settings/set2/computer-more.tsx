@@ -418,7 +418,7 @@ function CheckDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =>
   const caps = Object.entries(use).filter(([k, v]) => k !== "provider" && typeof v !== "object").map(([k, v]): [string, ReactNode] => [k, String(v)]);
   return (
     <Dialog title="Check what works" onClose={onClose} footer={<><Btn ghost onClick={() => void st.reload()}>Check again</Btn></>}>
-      {st.error ? <p className="hint s2-err" role="alert">{st.error}</p> : null}
+      {st.error ? <p className="hint s2-err" role="alert">{st.error}{st.data ? null : <> <Btn sm onClick={() => void st.reload()}>Try again</Btn></>}</p> : null}
       {st.loading && !st.data ? <p>Checking…</p> : null}
       {st.data ? (
         <>

@@ -51,6 +51,7 @@ export function Runtimes({ engine, hw, detect, models, found }: Props) {
   };
   return (
     <Sec title="Runtimes">
+      {detect.error ? <p className="hint" role="alert">{visible(detect.error)}</p> : null}
       <div className="rows rt-k">
         {RUNTIMES.map((r) => {
           const on = found.has(r.id);

@@ -421,7 +421,7 @@ export function OwnAccountList({ engine }: SlotControlProps) {
   const mine = list(own.data?.accounts).filter((a) => a.selected === true);
   const stop = (a: RecordValue) => void run(async () => { await engine.request("users.unlinkAuthProfile", { profileId: own.data?.profileId, authProfileId: a.authProfileId }); await own.reload(); });
   return <>
-    {own.error ? <Line bad>{visible(own.error)}</Line> : null}
+    {own.error ? <span className="r1s-own-ctl"><Line bad>{visible(own.error)}</Line><button type="button" className="r1s-btn" onClick={() => void own.reload()}>Try again</button></span> : null}
     {mine.length ? (
       <div className="r1s-items">
         {mine.map((a) => (

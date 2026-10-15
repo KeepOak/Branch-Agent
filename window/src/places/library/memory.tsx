@@ -63,7 +63,7 @@ export function MemoryTab(props: MemoryProps) {
 
 type CardProps = MemoryProps & { scope: string; status: { data: MemoryStatus | null; error: string | null }; check: () => void };
 
-function MemoryCard({ engine, level, files, scope, status, check }: CardProps) {
+function MemoryCard({ engine, level, files, scope, status, check, reloadFiles }: CardProps) {
   const config = useResource<unknown>(engine, "config.get");
   const own = config.data ? configuredLimit(config.data, scope || null) : null;
   const lookup = useResource<unknown>(engine, config.data && own === null ? "config.schema.lookup" : null, { path: "agents.defaults.bootstrapMaxChars" });
@@ -84,6 +84,7 @@ function MemoryCard({ engine, level, files, scope, status, check }: CardProps) {
       <b>{status.error ? "Memory needs attention" : plural(count, "memory", "memories") + (notes ? ` · ${plural(notes, "daily note", "daily notes")}` : "")}</b>
       <p>{status.error ? status.error : line}</p>
       {failed.filter(f => shownWhy(f.error)).map(f => <p key={f.agentId} className="lib-bad" role="alert">{f.trunk}: {f.error}</p>)}
+      {failed.some(f => shownWhy(f.error)) ? <button type="button" onClick={reloadFiles}>Try again</button> : null}
       {shows(level, "advanced") && s && !status.error && <small className="lib-third">{engineName(s.provider)} · {s.embedding.ok ? "searches by meaning and words" : "searches by words only"}</small>}
     </div>
     <span className="lib-card-acts">
