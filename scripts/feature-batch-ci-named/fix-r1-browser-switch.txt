@@ -1,3 +1,3 @@
-window:src/guest/guest-bridge.test.ts
 window:src/guest/GuestBrowser.test.tsx
+window:src/guest/guest-bridge.test.ts
 window:src/stage/BrowserPanes.test.tsx
