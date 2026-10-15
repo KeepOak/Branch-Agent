@@ -226,6 +226,15 @@ test("the shared cmd stub is byte for byte the one #1586 shipped", () => {
   assert.equal(windowsLauncherScript(), CMD_STUB_1586);
 });
 
+test("the Windows release build never hands csc an icon (branch.ico is PNG-compressed; the icon is stamped on after)", () => {
+  const icon = join(import.meta.dirname, "..", "assets", "branch.ico");
+  const args = launcher.windowsLauncherCompileArgs({ source: "l.cs", out: "o.exe", icon });
+  assert.equal(args.some(arg => /^\/win32icon/i.test(arg)), false, args.join(" "));
+});
+
+/** PE optional-header Subsystem: 2 is a windowed program (no console), 3 a console one. */
+const peSubsystem = file => { const bytes = readFileSync(file); const pe = bytes.readUInt32LE(0x3c); return bytes.readUInt16LE(pe + 4 + 20 + 68); };
+
 test("Windows: the built launcher has no console, starts the folder current.txt names and survives a prune", { skip: process.platform !== "win32" }, async () => {
   const csc = launcher.windowsLauncherCompiler(process.env, existsSync);
   const work = mkdtempSync(join(tmpdir(), "branch-win-launcher-"));
