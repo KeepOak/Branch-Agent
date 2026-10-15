@@ -8,6 +8,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { canAll, requestOrComing } from "../../connect/capabilities";
 import { errorText, list, record, text, visible, type RecordValue } from "../../places/settings/adapter";
 import { useResource } from "../../places/settings/hooks";
+import { showsInternals } from "../../places/settings/internals";
 import { LogsDialog } from "../../places/settings/set2/advanced-tech";
 import { ChatLogo } from "../../places/settings/set1/chatapps-logo";
 import { acctLine, acctTone, ago, PILL_WORDS, type Acct, type App, type CatalogueApp, type Trunk } from "../../places/settings/set1/chatapps-data";
@@ -95,7 +96,7 @@ function Part({ ctx, id, row }: { ctx: Ctx; id: string; row: ClassicRow }): Reac
     case "queueByApp": return apps.length ? <><Hint>Per app</Hint>{apps.map((a) => <KeyLine key={a.id} cfg={cfg} row={{ t: a.name, kind: "pick", opts: [["As above", undefined], ...QUEUE_MODES], ...(QUEUE_SURFACES.has(a.id) ? { path: "messages.queue.byChannel." + a.id } : { off: a.name + " follows the choice above." }) }} />)}</> : null;
     case "progress": {
       const on = cfg.get("messages.statusReactions.enabled");
-      return <Line label={row.t} help="The reaction on your message changes as the Trunk works and finishes. Slack keeps its own “is thinking” status as well." coming="Branch has one switch for every app (Technical › messages.statusReactions.enabled).">
+      return <Line label={row.t} help="The reaction on your message changes as the Trunk works and finishes. Slack keeps its own “is thinking” status as well." coming={showsInternals(ctx.level) ? "Branch has one switch for every app (messages.statusReactions.enabled)." : "Branch has one switch for every app."}>
         <span className="r1-ca-chips">{PROGRESS_APPS.map((n) => <button key={n} type="button" aria-pressed={n === "Discord" ? on !== false : on === true} disabled>{n}</button>)}</span>
       </Line>;
     }

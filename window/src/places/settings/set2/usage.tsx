@@ -1,6 +1,7 @@
 // Settings › Data & usage (DESIGN-SPEC §4.7.14): the spend card and its report (sessions.usage, usage.cost,
 // sessions.usage.timeseries/logs), what each connection has left (usage.status), spend per Trunk, keeping
 // conversations (config `session.*`), backups (backup.status) and the rest, greyed with why where the engine has none.
+import { CheckedAt, useCheckedAt } from "../checked-at";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import type { WindowEngine } from "../../../connect/engine";
@@ -981,7 +982,7 @@ function CodexFolders({ config }: { config: Cfg }) {
     <Ctl title="More Codex folders" sub="Folders Branch also reads Codex conversations from." help="Folders Branch also reads Codex conversations from. Takes effect after the Gateway restarts." after={
       <div className="s2usage-x">
         <div className="s2usage-list">{homes.length ? homes.map((h) => <span className="chip6" key={name(h)}>{name(h)}<button type="button" className="ib" aria-label={`Remove ${name(h)}`} onClick={() => void config.set(path, homes.filter((x) => x !== h))}><Ico name="x" s /></button></span>) : <small>None.</small>}</div>
-        <div className="acts"><input className="inp" aria-label="More Codex folders: add" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm onClick={add}>Add</Btn></div>
+        <div className="acts"><input className="inp" aria-label="More Codex folders: add" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} /><Btn sm disabled={!draft.trim()} onClick={add}>Add</Btn></div>
         {err ? <small className="s2-err" role="alert">{err}</small> : null}
       </div>
     } />
@@ -1030,6 +1031,7 @@ export function MoveInDialog({ engine, onClose }: { engine: WindowEngine; onClos
 // a workspace folder on a schedule, or now). The artifact has no row for it; add one here, styled like "Backups",
 // once the engine has the method.
 function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
+  const [checked, stamp] = useCheckedAt();
   const [backups, setBackups] = useState(false);
   const usage = useLive<RecordValue>(engine, "usage.status", {}, []);
   const balances = list(rec(usage.data).providers).flatMap((p) => list(p.billing).filter((b) => b.type === "balance").map((b) => `${str(p.displayName)}: ${str(b.unit) === "USD" ? money(b.amount) : `${num(b.amount)} ${str(b.unit)}`}`));
@@ -1037,7 +1039,7 @@ function MoneyMore({ engine, lv }: { engine: WindowEngine; lv: number }) {
     <Sec title="Money and keeping, more" group="Keeping things" showHeading={false}>
       <Ctl title="Spend caps per service" sub="Pauses work when a service reaches its monthly limit." help="A monthly limit for each service that bills per use; work pauses and asks when one is reached." off={NO_CAPS}><Btn sm>Set caps</Btn></Ctl>
       <Ctl title="Prepaid balances" sub={balances.length ? balances.join(" · ") : "For services that sell credit, how much is left, checked when you open this page."}>
-        <Btn sm disabled={usage.loading} onClick={() => void usage.reload()}>Check now</Btn>
+        <Btn sm disabled={usage.loading} onClick={() => void usage.reload().then((ok) => { if (ok) stamp(); }, () => undefined)}>Check now</Btn><CheckedAt at={checked} />
       </Ctl>
       <Ctl title="What each project cost" sub="Spend by project and by conversation, for the period you pick." off={NO_PROJECT}><Btn sm>See projects</Btn></Ctl>
       <Ctl title="Backups" sub="Back up conversations, memory and settings on a schedule." help="A copy of your conversations, memory and settings, on a schedule you choose."><Btn sm onClick={() => setBackups(true)}>See backups</Btn></Ctl>

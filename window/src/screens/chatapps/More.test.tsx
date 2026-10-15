@@ -193,3 +193,12 @@ it("#1049: every app card shows its set-up time (preview TIME_T5); apps not wire
   expect(host.textContent).not.toContain("Coming in a later update");
   expect(cards.find((c) => c.querySelector(".r1-ca-text b")?.textContent === "Viber")?.querySelector(".r1-ca-action")?.textContent).toBe("Coming");
 });
+
+it("names the raw key behind Show progress as reactions only at Technical", async () => {
+  const advanced = await render("advanced");
+  expect(advanced.host.textContent).toContain("Branch has one switch for every app.");
+  expect(advanced.host.textContent).not.toContain("messages.statusReactions");
+  await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = "";
+  const technical = await render("technical");
+  expect(technical.host.textContent).toContain("messages.statusReactions.enabled");
+});

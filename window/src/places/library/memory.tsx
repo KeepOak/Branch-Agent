@@ -134,7 +134,8 @@ function MemorySearch(props: SearchProps) {
     setResult({ q, hits, mode, errors: answers.flatMap(a => (a.e ? [`${a.t.identity?.name || a.t.id}: ${a.e}`] : [])) });
     setBusy(false);
   }
-  const scopeItems: MenuItem[] = [{ label: "Every Trunk", run: () => setScope("") }, { kind: "sep" }, ...trunks.map(t => ({ label: trunkDisplayName(t), run: () => setScope(t.id) }))];
+  // The scope in use is checked, so choosing it again reads as a no-op by design.
+  const scopeItems: MenuItem[] = [{ label: "Every Trunk", radio: true, checked: !scope, run: () => setScope("") }, { kind: "sep" }, ...trunks.map(t => ({ label: trunkDisplayName(t), radio: true, checked: scope === t.id, run: () => setScope(t.id) }))];
   return <div className="lib-search">
     <form className="lib-search-row" role="search" onSubmit={search}>
       <label className="lib-field"><LibIcon name="search" /><input aria-label="Search memory" type="search" placeholder={`Search what ${scopeName ?? "every Trunk"} remembers`} value={query} onChange={e => setQuery(e.target.value)} /></label>
