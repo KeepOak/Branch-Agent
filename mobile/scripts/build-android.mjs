@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gradleAssembleArgs, writeAppJsonReleaseMeta } from './android-release.mjs';
+import { gradleAssembleArgs, gradleSigningEnv, writeAppJsonReleaseMeta } from './android-release.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const windows = process.platform === 'win32';
@@ -20,9 +20,15 @@ function printableArgs(args) {
   return args.map((arg) => (/signing\.(store|key)\.password=/.test(arg) ? arg.replace(/=.*/, '=***') : arg));
 }
 
-function run(command, args, cwd) {
+function run(command, args, cwd, extraEnv) {
   console.log(`\n> ${command} ${printableArgs(args).join(' ')}`);
-  const result = spawnSync(command, args, { cwd, stdio: 'inherit', windowsHide: true, shell: windows, env: { ...process.env, CI: '1' } });
+  const result = spawnSync(command, args, {
+    cwd,
+    stdio: 'inherit',
+    windowsHide: true,
+    shell: windows,
+    env: { ...process.env, CI: '1', ...extraEnv },
+  });
   if (result.status !== 0) throw new Error(`${command} ${args[0]} failed (exit ${result.status ?? result.signal})`);
 }
 
@@ -38,7 +44,7 @@ function main() {
   }
 
   const android = path.join(root, 'android');
-  run(windows ? 'gradlew.bat' : './gradlew', gradleAssembleArgs(), android);
+  run(windows ? 'gradlew.bat' : './gradlew', gradleAssembleArgs(), android, gradleSigningEnv());
 
   const apk = path.join(android, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
   if (!existsSync(apk)) throw new Error(`Gradle finished but ${apk} is missing.`);

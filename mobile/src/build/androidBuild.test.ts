@@ -39,13 +39,15 @@ describe('the installable Android build', () => {
     expect(Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).filter((name) => name.startsWith('eas'))).toEqual([]);
   });
 
-  it('passes CI signing through gradle -P properties and never logs passwords', () => {
+  it('passes CI signing through gradle env and never logs passwords', () => {
     const src = readFileSync(path.join(__dirname, '../../scripts/build-android.mjs'), 'utf8');
     expect(src).toContain("from './android-release.mjs'");
     expect(src).toContain('gradleAssembleArgs()');
+    expect(src).toContain('gradleSigningEnv()');
     expect(src).toContain('writeAppJsonReleaseMeta');
     expect(src).toContain('printableArgs');
     expect(src).toContain('=***');
     expect(src).not.toMatch(/ANDROID_KEYSTORE_PASSWORD|ANDROID_KEY_PASSWORD/);
+    expect(src).not.toMatch(/-Pandroid\.injected\.signing\.(store|key)\.password/);
   });
 });

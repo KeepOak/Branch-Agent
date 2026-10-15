@@ -67,13 +67,25 @@ export function shouldAttachToRelease({ signed, releaseTag } = {}) {
   return Boolean(signed && String(releaseTag ?? '').trim());
 }
 
-export function gradleSigningArgs({ keystorePath, storePassword, keyAlias, keyPassword } = {}) {
-  if (!keystorePath || !storePassword || !keyAlias || !keyPassword) return [];
+// Passwords and the key alias never go on argv. Gradle maps ORG_GRADLE_PROJECT_<name>
+// to the same project properties Android Studio would set with -P.
+export const GRADLE_SIGNING_STORE_PASSWORD_ENV = 'ORG_GRADLE_PROJECT_android.injected.signing.store.password';
+export const GRADLE_SIGNING_KEY_PASSWORD_ENV = 'ORG_GRADLE_PROJECT_android.injected.signing.key.password';
+export const GRADLE_SIGNING_KEY_ALIAS_ENV = 'ORG_GRADLE_PROJECT_android.injected.signing.key.alias';
+
+export function gradleSigningEnv(env = process.env) {
+  if (!signingReady(env) || !env.ANDROID_KEYSTORE_PATH) return {};
+  return {
+    [GRADLE_SIGNING_STORE_PASSWORD_ENV]: env.ANDROID_KEYSTORE_PASSWORD,
+    [GRADLE_SIGNING_KEY_PASSWORD_ENV]: env.ANDROID_KEY_PASSWORD,
+    [GRADLE_SIGNING_KEY_ALIAS_ENV]: env.ANDROID_KEY_ALIAS,
+  };
+}
+
+export function gradleSigningArgs({ keystorePath } = {}) {
+  if (!keystorePath) return [];
   return [
     `-Pandroid.injected.signing.store.file=${keystorePath}`,
-    `-Pandroid.injected.signing.store.password=${storePassword}`,
-    `-Pandroid.injected.signing.key.alias=${keyAlias}`,
-    `-Pandroid.injected.signing.key.password=${keyPassword}`,
     '-Pandroid.injected.signing.store.type=PKCS12',
   ];
 }
@@ -91,12 +103,7 @@ export function gradleAssembleArgs(env = process.env) {
     versionName: env.ANDROID_VERSION_NAME,
   })];
   if (signingReady(env) && env.ANDROID_KEYSTORE_PATH) {
-    args.push(...gradleSigningArgs({
-      keystorePath: env.ANDROID_KEYSTORE_PATH,
-      storePassword: env.ANDROID_KEYSTORE_PASSWORD,
-      keyAlias: env.ANDROID_KEY_ALIAS,
-      keyPassword: env.ANDROID_KEY_PASSWORD,
-    }));
+    args.push(...gradleSigningArgs({ keystorePath: env.ANDROID_KEYSTORE_PATH }));
   }
   return args;
 }

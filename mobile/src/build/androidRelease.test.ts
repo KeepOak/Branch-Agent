@@ -70,17 +70,43 @@ describe('Android release version and signing plan', () => {
 
   it('passes PKCS12 signing to gradle only when the keystore path and secrets are set', () => {
     expect(call('gradleAssembleArgs', {})).toEqual(['assembleRelease']);
-    const args: string[] = call('gradleAssembleArgs', {
+    expect(call('gradleSigningEnv', {})).toEqual({});
+    const env = {
       ...secrets,
       ANDROID_KEYSTORE_PATH: '/tmp/android-release.p12',
       ANDROID_VERSION_CODE: '4',
       ANDROID_VERSION_NAME: '0.4.4',
-    });
+    };
+    const args: string[] = call('gradleAssembleArgs', env);
     expect(args[0]).toBe('assembleRelease');
     expect(args).toContain('-Pandroid.injected.version.code=4');
     expect(args).toContain('-Pandroid.injected.signing.store.type=PKCS12');
     expect(args).toContain('-Pandroid.injected.signing.store.file=/tmp/android-release.p12');
-    expect(args.some((arg) => arg.includes('store-secret'))).toBe(true);
+    const signingEnv = call('gradleSigningEnv', env);
+    expect(signingEnv[call('GRADLE_SIGNING_STORE_PASSWORD_ENV')]).toBe('store-secret');
+    expect(signingEnv[call('GRADLE_SIGNING_KEY_PASSWORD_ENV')]).toBe('key-secret');
+    expect(signingEnv[call('GRADLE_SIGNING_KEY_ALIAS_ENV')]).toBe('branch');
+  });
+
+  it('never puts a signing password or key alias on any gradle command line', () => {
+    const env = {
+      ...secrets,
+      ANDROID_KEYSTORE_PATH: '/tmp/android-release.p12',
+      ANDROID_VERSION_CODE: '4',
+      ANDROID_VERSION_NAME: '0.4.4',
+    };
+    const args: string[] = call('gradleAssembleArgs', env);
+    const joined = args.join('\0');
+    expect(joined).not.toContain('store-secret');
+    expect(joined).not.toContain('key-secret');
+    expect(args.some((arg) => /signing\.(store|key)\.password=/.test(arg))).toBe(false);
+    expect(args.some((arg) => /signing\.key\.alias=/.test(arg))).toBe(false);
+    expect(call('gradleSigningArgs', {
+      keystorePath: env.ANDROID_KEYSTORE_PATH,
+      storePassword: env.ANDROID_KEYSTORE_PASSWORD,
+      keyAlias: env.ANDROID_KEY_ALIAS,
+      keyPassword: env.ANDROID_KEY_PASSWORD,
+    }).join('\0')).not.toMatch(/password=|alias=/);
   });
 
   it('writes versionCode onto a copy of app.json and leaves the original shape intact', () => {
