@@ -1,4 +1,16 @@
 window:scripts/button-crawl-capture.test.ts
+window:src/composer/plus-menu-redesign.test.tsx
+window:src/composer/tune-redesign.test.tsx
 window:src/places/canopy/canopy.test.tsx
+window:src/places/library/memory.test.tsx
+window:src/places/settings/set2/computer.test.tsx
+window:src/rooms/new-group-chat.test.tsx
 window:src/screens/frame/R1ExtraDialogs.test.tsx
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/settings/pages/developer-live.test.tsx
+window:src/screens/settings/pages/history-backup-folder.test.tsx
 window:src/screens/settings/pages/remote-restart.test.tsx
+window:src/screens/settings/pages/signins-live.test.tsx
+window:src/screens/settings/pages/updates-live.test.tsx
+window:src/shell/StatusPopovers.test.tsx
+window:src/shell/TopicRail.test.tsx
