@@ -180,13 +180,14 @@ describe("R1 sidebar", () => {
     expect(chip?.getAttribute("title")).toBe("Update ready. It applies when no Trunk is working");
   });
 
-  it("opens the person menu with the update banner on top and no Settings row", async () => {
+  it("opens the person menu with no update banner (updates apply in place) and no Settings row", async () => {
     update.value = { current: "0.4.4", latest: "0.5.0", notes: [], installing: false, waiting: null };
     const { render } = setup(FULL);
     await render();
     await click(host.querySelector(".r1sb-me"));
     const menu = document.querySelector(".r1sb-person")!;
-    expect(menu.firstElementChild?.textContent).toContain("Update to 0.5.0");
+    expect(menu.textContent).not.toContain("Update to 0.5.0");
+    expect(menu.querySelector(".r1sb-upd-ban")).toBeNull();
     expect(menu.textContent).toContain("Who is using Branch");
     expect(text(".r1sb-person .g-menu-row .g-menu-label")).toEqual(["Keyboard shortcuts", "Get the apps", "Guide", "About Branch", "Lock Branch"]);
   });

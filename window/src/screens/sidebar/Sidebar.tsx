@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { createPortal } from "react-dom";
 import type { Conversation, ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
-import { componentDesktop, stageWindowUpdate } from "../../connect/desktop-component-updates";
 import { useBranchVersion, versionParts } from "../../connect/branch-version";
 import { Coming } from "../../glass/coming";
 import { Menu, type MenuEntry } from "../../glass/Menu";
@@ -149,7 +148,6 @@ export function Sidebar(p: SidebarProps) {
   const [dialog, setDialog] = useState<null | { kind: "rename"; row: SideRow } | { kind: "group"; key: string; name: string } | { kind: "studio" } | { kind: "delete"; row: Conversation } | { kind: "deleteMany"; rows: Conversation[] } | { kind: "keep"; row: Conversation } | { kind: "remove"; agentId: string; name: string } | { kind: "shortcuts" | "apps" | "pair" }>(null);
   const [batchOpen, setBatchOpen] = useState(false), batchAnchor = useRef<HTMLElement | null>(null);
   const [theme, setTheme] = useState<ThemeChoice>(readThemeChoice);
-  const [installing, setInstalling] = useState(false);
 
   const contacts: Contact[] = useMemo(() => {
     const base = contactRowsFor(gatewayContacts, contactsLoaded, trunks.list, p.sessions, p.mainKey, false);
@@ -196,11 +194,6 @@ export function Sidebar(p: SidebarProps) {
       (error: unknown) => notify(`Couldn't mark them read: ${reason(error)}.`, { tone: "bad" }),
     );
   };
-  const install = () => {
-    if (!componentDesktop(session.gatewayUrl)?.componentUpdates) { p.onSettings("updates"); return; }
-    setInstalling(true);
-    void stageWindowUpdate(engine).catch((error: unknown) => notify(`Couldn't install the update: ${reason(error)}`, { tone: "bad" })).finally(() => setInstalling(false));
-  };
   const newTrunk = () => p.onNewTrunk();
   const newConversation = (agentId: string) => void actions.create(agentId).then(key => { if (key) p.onOpen(key); });
 
@@ -241,7 +234,7 @@ export function Sidebar(p: SidebarProps) {
     { label: narrow ? "Close the list" : "Collapse the list to faces", icon: menuIcon("panel"), hint: "Ctrl B", gap: true, local: true, onSelect: toggleRail },
   ];
   const short = update?.latest ? versionParts(update.latest).short : "";
-  const busy = installing || Boolean(update?.installing);
+  const busy = Boolean(update?.installing);
   const personRows_: MenuEntry[] = [
     { label: "Keyboard shortcuts", icon: menuIcon("list"), hint: "?", local: true, onSelect: () => setDialog({ kind: "shortcuts" }) },
     { label: "Get the apps", icon: menuIcon("monitor"), local: true, onSelect: () => setDialog({ kind: "apps" }) },
@@ -322,7 +315,7 @@ export function Sidebar(p: SidebarProps) {
         <span className="r1sb-seed-icons" aria-hidden="true"><i>{icons.apps}</i><i>{icons.term}</i><i>{icons.leaf}</i></span><span className="r1sb-seed-t">Seedbank</span>
       </button>
       {update?.latest ? <button type="button" className="r1sb-upd" data-local="" data-busy={busy || undefined} data-ready={update.ready && !busy || undefined}
-        aria-label={busy ? `Downloading ${short}` : update.ready ? `Update ready, ${short}` : `Update to ${short}`} title={update.waiting ?? `Update to ${short}`} disabled={busy} onClick={install}>{icons.cloud}</button> : null}
+        aria-label={busy ? `Downloading ${short}` : update.ready ? `Update ready, ${short}` : `Update to ${short}`} title={update.waiting ?? `Update to ${short}`} disabled={busy} onClick={() => p.onSettings("updates")}>{icons.cloud}</button> : null}
     </div>
 
     {menu && menuItems ? <Popover anchor={menuAnchor} label={`${menu.name} menu`} width={300} onClose={() => setMenu(null)}><div className="r1sb-pop"><Menu label={menu.name} tiles={menuItems.tiles} rows={menuItems.rows} onClose={() => setMenu(null)} /></div></Popover> : null}
@@ -330,7 +323,6 @@ export function Sidebar(p: SidebarProps) {
     {plusOpen ? <Popover anchor={plusRef} label="New, places and more" width={270} align="end" onClose={() => setPlusOpen(false)}><div className="r1sb-pop"><Menu label="New, places and more" rows={plusRows} onClose={() => setPlusOpen(false)} /></div></Popover> : null}
     {personOpen ? <Popover anchor={meRef} label="Who is using Branch" width={280} placement="above" onClose={() => setPersonOpen(false)}>
       <div className="r1sb-person r1sb-pop">
-        {update?.latest ? <div className="r1sb-upd-ban"><span>Update to {short}</span><button type="button" data-local="" disabled={busy} onClick={() => { setPersonOpen(false); install(); }}>{busy ? "Installing…" : "Install"}</button></div> : null}
         <div className="r1sb-ph">Who is using Branch</div>
         <div className="r1sb-people">
           <span className="r1sb-person-chip" aria-current="true"><i>{person.slice(0, 1).toUpperCase()}</i><span>{person}</span></span>
