@@ -7,6 +7,7 @@ import { comingControls, undeclaredControls } from "../../glass/coming-registry"
 import { NAV, PAGES, TOP_PAGES } from "../settings/nav";
 import { levelFor, pageAtLevel, settingsGroups } from "../../places-nav/settings-nav";
 import { CLASSIC_PAGE, r1SettingsPage, r1Window, R1Window, resolveRoute } from "./R1Window";
+import { FIND_ANYTHING_EVENT } from "../find/find-event";
 vi.mock("../chat/ChatView", () => ({ ChatView: ({ name }: { name: string }) => <p>{name}</p> }));
 vi.mock("../composer/Composer", () => ({ Composer: () => <textarea aria-label="Message" /> }));
 vi.mock("../../shell/use-status", () => ({ useLimits: () => null, useUpdate: () => null }));
@@ -257,6 +258,21 @@ it("the conversation menu's View › \"Show agents' work as\" rows turn Coming w
   }
   await act(async () => rows[1].click());
   expect(setOverride).not.toHaveBeenCalled();
+});
+
+// Settings' "Find anything" row dispatches FIND_ANYTHING_EVENT; the window opens the palette the same way Ctrl K does.
+// Before the fix nothing listened for the event, so the row read as dead in the button crawl.
+it("opens Find anything when Settings asks for it", async () => {
+  const snapshot = { status: { phase: "connected" }, name: "Scout", sessionKey: "agent:scout:main", mainKey: "agent:scout:main", history: [], live: [], queued: [] };
+  const request = vi.fn(async () => ({}));
+  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", features: { methods: ["users.prefs.get"], events: [] } } } as unknown as SaplingSession;
+  // jsdom has no scrollIntoView; the palette scrolls its active row into view.
+  Element.prototype.scrollIntoView = () => {};
+  await act(async () => root.render(<R1Window session={session as never} />));
+  expect(document.querySelector(".r1-find")).toBeNull();
+  await act(async () => { window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); });
+  expect(document.querySelector(".r1-find")).not.toBeNull();
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
 });
 
 it("opens the R1 onboarding card on first run, with the window behind it stepped aside, and never once setup is recorded", async () => {

@@ -11,6 +11,7 @@ import "./status.css";
 import { shownWhy } from "./shown-why";
 import { branchVersionDetail, branchVersionLabel, isNewerBranchVersion } from "../connect/branch-version";
 import { installOnComputer } from "../connect/desktop-component-updates";
+import { CheckedAt, useCheckedAt } from "../places/settings/checked-at";
 
 type Request = <T = unknown>(method: string, params?: unknown) => Promise<T>;
 type Base = { above: Above; onClose: () => void };
@@ -146,6 +147,7 @@ export function EveryAccount({ limits, request, onOpenUsage, onSignIn }: EveryAc
   const [checked, setChecked] = useState<Limits | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState<string | null>(null);
+  const [checkedAt, stampChecked] = useCheckedAt();
   useEffect(() => setChecked(null), [limits]);
   const data = checked ?? limits;
   const rows = data?.rows ?? [];
@@ -157,6 +159,7 @@ export function EveryAccount({ limits, request, onOpenUsage, onSignIn }: EveryAc
       .then((auth) => request("usage.status", { refresh: true }).then((result) => ({ auth, result })))
       .then(({ auth, result }) => {
         setChecked(withAccountEmails(readLimits(result), accountEmails(auth)));
+        stampChecked();
         window.dispatchEvent(new Event("branch:usage-checked"));
       })
       .catch((error: unknown) => setCheckError(error instanceof Error ? error.message : String(error)))
@@ -192,6 +195,7 @@ export function EveryAccount({ limits, request, onOpenUsage, onSignIn }: EveryAc
         {checkError ? <p className="sp-note">Couldn’t check accounts right now. Branch will try again.</p> : null}
         <hr />
         <Item icon="retry" label={checking ? "Checking…" : "Check every account now"} testid="usage-check" onClick={() => check()} off={checking ? "Checking accounts now." : undefined} />
+        <CheckedAt at={checkedAt} />
         <Item icon="gear" label="Accounts and usage…" testid="open-usage" onClick={onOpenUsage} />
       </div>
   );

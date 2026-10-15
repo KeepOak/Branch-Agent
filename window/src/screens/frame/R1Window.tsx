@@ -31,6 +31,7 @@ import { lookStore } from "../../places/settings/set1/appearance-store";
 import { Popover } from "../../glass/Popover";
 import { Sidebar } from "../sidebar/Sidebar";
 import { Toasts } from "../../shell/Toasts";
+import { R1ExtraDialogs } from "./R1ExtraDialogs";
 import { ApprovalsLayer } from "../approvals";
 import { useProblemBannerRows } from "../approvals/ProblemBanners";
 import { Coming } from "../../glass/coming";
@@ -46,6 +47,7 @@ import { R1Tour, type R1TourKind } from "../onboarding/R1Tour";
 import { useR1Topics } from "./Topics";
 import { useMarkRead } from "./use-mark-read";
 import { FindAnything } from "../find/FindAnything";
+import { FIND_ANYTHING_EVENT } from "../find/find-event";
 import { ShortcutsDialog } from "../../shell/ShortcutsDialog";
 import { ConversationMenu } from "./ConversationMenu";
 import { R1Stage, R1StagePip } from "../stage/R1Stage";
@@ -265,6 +267,12 @@ export function R1Window({ session }: { session: SaplingSession }) {
   // Re-hosted Classic Settings pages open a place with branch:navigate-place (Classic WindowShell's event): R1 opens it here.
   const navigateTo = useRef(navigate);
   useEffect(() => { navigateTo.current = navigate; });
+  // Settings' "Find anything" row opens the same palette as Ctrl K.
+  useEffect(() => {
+    const open = () => setFinding(true);
+    window.addEventListener(FIND_ANYTHING_EVENT, open);
+    return () => window.removeEventListener(FIND_ANYTHING_EVENT, open);
+  }, []);
   useEffect(() => {
     // Ctrl/Cmd+Shift+T opens the Inbox, as in the preview (preview.html:40670, 42502).
     const key = (event: KeyboardEvent) => {
@@ -371,6 +379,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const markRequest = useCallback((method: string, params?: unknown) => session.request(method, params), [session]);
   const refreshList = useCallback(() => { void list.refresh(); }, [list]);
   useMarkRead(markRequest, current ?? null, ready && route.kind === "chat", refreshList);
+  const workingKeys = useMemo(() => conversations.rows.filter(row => row.working).map(row => row.key), [conversations.rows]);
   const running = conversations.rows.filter(row => row.working).map(row => ({ key: row.key, title: row.isMain && row.agentId ? displayTrunkTitle(row.title, row.agentId) : row.title, line: row.preview, needsYou: row.needsYou }));
   // The roaming pet's tip names the first Trunk waiting on a yes, as in Classic.
   const waitingRow = conversations.rows.find(row => (waiting.get(row.key) ?? 0) > 0);
@@ -461,6 +470,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     <QuickAskHost session={session} ready={ready} list={list} onOpen={openConversation} onNotice={setNotice} />
     {pip && chat && !stage ? <R1StagePip key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={name} computer={pip} blocks={[...snapshot.history, ...snapshot.live]} onOpen={() => { setStage(pip.kind === "browser" ? "Browser" : "Computer"); setPip(null); }} onClose={() => setPip(null)} /> : null}
     <Toasts />
+    <R1ExtraDialogs engine={engine} ready={ready} limits={limits} working={workingKeys} />
     <ApprovalsLayer engine={engine} ready={ready} more={problems} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
     {/* The approved ••• menu (Pin, Rename, Snooze, Archive, Send to the board, Export, View, Start over, Delete) and its dialogs. */}
     {chat ? <ConversationMenu session={session} open={convMenu} anchor={convAnchor} onClose={() => setConvMenu(false)} sessionKey={snapshot.sessionKey}
