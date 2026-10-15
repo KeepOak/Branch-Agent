@@ -14,7 +14,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const NO_FRAME = "Its live view opens in a later version of this window.";
 const KIND: Record<string, string> = { html: "Widget", "mcp-app": "App", plugin: "Plugin" };
 
-export type BoardWidgetCard = { name: string; tabId: string; title: string; kind: string; w: number; h: number; position: number; pending: boolean };
+type BoardWidgetCard = { name: string; tabId: string; title: string; kind: string; w: number; h: number; position: number; pending: boolean };
 export type BoardView = { tabs: { tabId: string; title: string }[]; widgets: BoardWidgetCard[] };
 
 /** board.get read into tabs in order and widgets in order. */

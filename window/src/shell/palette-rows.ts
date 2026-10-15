@@ -17,6 +17,7 @@ type Ctx = {
   shortcuts: () => void;
   setup: () => void;
   tour: () => void;
+  canDo?: () => void;
   quickAsk: () => void;
   openConversation: (key: string) => void;
   openPlace: (p: PlaceId) => void;
@@ -73,9 +74,15 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     { id: "a:help", group: "Actions", label: "Get help setting up", hint: "", run: c.setup },
     { id: "a:tour", group: "Actions", label: "Take the walkthrough", hint: "2 min", run: c.tour },
     { id: "a:skins", group: "Actions", label: "Browse themes", hint: "", run: () => c.openSettings("appearance") },
+    ...(c.canDo ? [{ id: "a:cando", group: "Actions", label: "What Branch can do", hint: "", run: c.canDo }] : []),
     ...conversationCommands(c),
   ];
-  const conversations = c.conversations.map((r) => ({
+  const seen = new Set<string>();
+  const conversations = c.conversations.filter((r) => {
+    if (seen.has(r.key)) return false;
+    seen.add(r.key);
+    return true;
+  }).map((r) => ({
     id: `c:${r.key}`,
     group: "Conversations",
     label: r.isMain ? c.trunkName(r.agentId) : r.title || "New conversation",
@@ -83,6 +90,11 @@ export function paletteRows(c: Ctx): PaletteRow[] {
     run: () => c.openConversation(r.key),
   }));
   const places = PLACES.map((p) => ({ id: `p:${p.id}`, group: "Places", label: p.name, hint: "Place", run: () => c.openPlace(p.id) }));
+  for (const tab of ["Skills", "Get capabilities"]) {
+    places.push({ id: `p:customize:${tab}`, group: "Places", label: tab, hint: "Customize · Tools", run: () => {
+      window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "customize", tab } }));
+    } });
+  }
   const settings = settingsGroups("technical").flatMap((g) =>
     g.pages.map((p) => ({ id: `s:${p.id}`, group: "Settings", label: p.name, hint: "Settings", run: () => c.openSettings(p.id) })),
   );

@@ -1,0 +1,3 @@
+window:src/places/settings/set2/computer-browser-doctor.test.tsx
+window:src/places/settings/set2/computer-more.test.tsx
+window:src/places/settings/set2/computer.test.tsx

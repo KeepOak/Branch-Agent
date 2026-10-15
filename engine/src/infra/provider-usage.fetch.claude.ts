@@ -240,6 +240,10 @@ export async function fetchClaudeUsage(
       status: res.status,
       message,
     });
+    if (res.status === 403 && message?.includes("scope requirement user:profile")) {
+      // Retrying cannot add the scope to a setup-token; only a fresh full sign-in can.
+      return { ...snapshot, signInNeeded: true };
+    }
     if (res.status === 429) {
       const retryAfterMs =
         (parseRetryAfterHeaderSeconds(res.headers.get("retry-after")) ?? 0) * 1000;

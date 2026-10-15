@@ -60,13 +60,10 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     expect(sec("Lent computer, technical")).not.toBeNull();
   });
 
-  it("greys a row the engine can't back yet, without its developer note", async () => {
+  it("does not draw a row the engine can't back yet, and shows no developer note", async () => {
     const { engine } = engineWith(CONFIG);
     await show(engine, "regular");
-    const r = row("Ask before a site it hasn’t visited");
-    expect(r?.getAttribute("aria-disabled")).toBe("true"); expect(r?.classList.contains("off-k")).toBe(true);
-    expect(r?.querySelector(".right")?.hasAttribute("inert")).toBe(true); expect(r?.querySelector<HTMLInputElement>("input[role=switch]")?.disabled).toBe(true);
-    expect(r?.textContent).toContain("You say yes once per site."); expect(r?.querySelector(".why-k")).toBeNull();
+    expect(row("Ask before a site it hasn’t visited")).toBeNull();
     expect(visibleDevNotes(document.body)).toEqual([]);
   });
 
@@ -166,19 +163,34 @@ describe("Settings › Computer & browser, below Which Trunk uses which", () => 
     expect(sec("Waiting for your yes")).toBeNull();
   });
 
-  it("Which Trunk uses which shows every Trunk, the main one last, and pins one to a computer", async () => {
+  it("Which Trunk uses which is one summary row; Change opens every Trunk and pins one to a computer", async () => {
     window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
     const agents = { defaultId: "main", agents: [{ id: "main", identity: { name: "Sapling" } }, { id: "scout", identity: { name: "Scout" } }] };
     const { engine: bare } = engineWith({ ...CONFIG, "agents.list": agents });
     await show(bare, "regular");
     const which = sec("Which Trunk uses which");
-    expect(which?.querySelector(".hint")?.textContent).toBe("A Trunk can use several computers side by side.");
-    expect([...which!.querySelectorAll(".prow b")].map((b) => b.textContent)).toEqual(["Scout", "Sapling"]);
+    expect(which?.textContent).toContain("Every Trunk uses any computer that is ready");
+    expect(which?.querySelector(".prow")).toBeNull();
     const { engine, request } = engineWith({ ...CONFIG, "agents.list": agents, "config.get": { hash: "h", valid: true, config: { agents: { entries: { scout: {} } } } }, "node.list": { nodes: [{ nodeId: "n1", displayName: "Desk", connected: true }] } });
     await show(engine, "regular");
-    const chip = [...sec("Which Trunk uses which")!.querySelectorAll<HTMLButtonElement>("[aria-label='Computers Scout uses'] button")].find((b) => b.textContent === "Desk")!;
+    await click(buttons("Change")[0]);
+    const dialog = document.querySelector("[role=dialog]") as HTMLElement;
+    expect([...dialog.querySelectorAll(".prow b")].map((b) => b.textContent)).toEqual(["Scout", "Sapling"]);
+    const chip = [...dialog.querySelectorAll<HTMLButtonElement>("[aria-label='Computers Scout uses'] button")].find((b) => b.textContent === "Desk")!;
     await click(chip);
     expect(patches(request)).toContainEqual({ agents: { entries: { scout: { tools: { exec: { node: "n1" } } } } } });
+  });
+
+  it("Most spares at once: Save stays off until the number changes", async () => {
+    const { engine } = engineWith({ ...CONFIG, "config.get": { hash: "h", valid: true, config: { cloudWorkers: { preparedPool: { maxTotal: 3 } } } } });
+    await show(engine, "advanced");
+    const save = () => [...row("Most spares at once")!.querySelectorAll("button")].find((b) => b.textContent === "Save") as HTMLButtonElement;
+    const input = row("Most spares at once")!.querySelector("input") as HTMLInputElement;
+    expect(save().disabled).toBe(true);
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "3"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(save().disabled).toBe(true);
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "5"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(save().disabled).toBe(false);
   });
 
   it("saves Most spares at once with Save and adds an extra folder from its dialog", async () => {

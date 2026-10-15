@@ -11,9 +11,7 @@ import type { StatusItem } from "./StatusBar";
 import { GatewayPopover, RoomPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
 import type { Limits, UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
-import { componentDesktop, stageWindowUpdate } from "../connect/desktop-component-updates";
-import { useDesktopComponentStatus } from "../connect/desktop-component-updates";
-import { useDesktopControls } from "../connect/desktop-controls";
+import { componentDesktop } from "../connect/desktop-component-updates";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { safeStorage, saveDraft } from "../composer/drafts";
 
@@ -117,17 +115,6 @@ export async function tidy(ctx: Pick<StatusContext, "session" | "list">, row: Co
   }
 }
 
-async function install(ctx: StatusContext): Promise<void> {
-  try {
-    const result = rec(await stageWindowUpdate(ctx.session.engine));
-    if (result.ok === false) {
-      notify(`Couldn't install the update: ${String(rec(result.result).reason ?? result.reason ?? "the engine refused")}`, { tone: "bad" });
-    }
-  } catch (e) {
-    notify(`Couldn't install the update: ${message(e)}`, { tone: "bad" });
-  }
-}
-
 /** Stop each run the live sessions list reports, including runs in other Trunks. */
 export async function pauseAll(ctx: Pick<StatusContext, "session" | "list" | "working">): Promise<void> {
   const entries = await Promise.all(ctx.working.map(async (row) => {
@@ -185,8 +172,6 @@ export function KeepLastDialog({ onCancel, onKeep }: { onCancel: () => void; onK
 
 /** The open status-bar popover, and the confirm for "Keep only the last 400 lines…". */
 export function StatusPopover({ item, above, onClose, ctx }: Props) {
-  const desktopUpdate = useDesktopComponentStatus(ctx.session.gatewayUrl);
-  const desktopControls = useDesktopControls();
   const [confirm, setConfirm] = useState<Conversation | null>(null);
   const level = readLevel();
   const request = useMemo(() => ctx.session.request.bind(ctx.session) as <T = unknown>(m: string, p?: unknown) => Promise<T>, [ctx.session]);
@@ -202,7 +187,13 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
     return <GatewayPopover {...base} facts={ctx.gateway} level={level} onRestart={close(() => void restart(ctx))} onSettings={close(() => ctx.openSettings("gateway"))} />;
   }
   if (item === "usage") {
-    return <UsagePopover {...base} limits={ctx.limits} request={request} onOpenUsage={close(() => ctx.openSettings("usage"))} />;
+    // Keep the intent for a fresh page, and notify Accounts when it is already mounted.
+    const signIn = (provider: string) => close(() => {
+      sessionStorage.setItem("branch.openAddAccount", provider);
+      window.dispatchEvent(new Event("branch:open-add-account"));
+      ctx.openSettings("accounts");
+    })();
+    return <UsagePopover {...base} limits={ctx.limits} request={request} onOpenUsage={close(() => ctx.openSettings("usage"))} onSignIn={signIn} />;
   }
   if (item === "room" && ctx.openRow) {
     const row = ctx.openRow;
@@ -214,9 +205,8 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
   }
   if (item === "version") {
     return <VersionPopover {...base} update={ctx.update} version={ctx.version}
-      desktopPending={desktopUpdate.status?.pendingVersion ?? null} autoApply={desktopControls.state?.autoApplyUpdates !== false}
       desktopInstall={Boolean(componentDesktop(ctx.session.gatewayUrl)?.componentUpdates)} computerName={ctx.computerName}
-      onWhatsNew={close(ctx.onWhatsNew)} onInstall={close(() => void install(ctx))} onRemind={close(() => (remindTomorrow(ctx.update?.latest ?? ctx.version), ctx.onReminded()))} />;
+      onWhatsNew={close(ctx.onWhatsNew)} onRemind={close(() => (remindTomorrow(ctx.update?.latest ?? ctx.version), ctx.onReminded()))} />;
   }
   return null;
 }

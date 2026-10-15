@@ -1,0 +1,2 @@
+window:src/glass/smart-glass.test.ts
+window:src/screens/g48-ids.test.ts
