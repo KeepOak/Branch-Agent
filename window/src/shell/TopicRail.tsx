@@ -6,7 +6,7 @@ import { Menu, type MenuAnchor, type MenuItem } from "./Menu";
 import { menuIcon } from "./menu-icons";
 import { notify } from "./notify";
 import { emojiList, emojiScores, emojisForTopics } from "./topic-emoji-logic";
-import { distinctNames, isRawSessionKey, readableTitle, sessionKeyName, splitKeyTag } from "./topic-name";
+import { distinctNames, isRawSessionKey, plainTopicTitle, readableTitle, sessionKeyName, splitKeyTag } from "./topic-name";
 import { readTopicSettings, saveTopicSettings, setContactTopicLayout, setDefaultTopicLayout, topicLayoutDefaults as defaults, topicLayoutNames as names, TOPIC_LAYOUT_KEY as key, r1TopicLayoutNames, type R1TopicLayout, type TopicLayout as Layout } from "./topic-layout";
 import { DeleteTopicDialog, NewTopicSheet } from "./TopicDialogs";
 import { r1TopicMenuItems } from "./topic-menu";
@@ -36,11 +36,11 @@ const clock = (at: number) => at ? new Date(at).toLocaleTimeString([], { hour: "
 export function shortTopicTitle(name: string): string {
   const verb = /^(fix|watch|save|match|tidy|refactor|add|test|find|check|make|book|read|write|plan|send|put|sort|clean|update|review|build|run)\s+(?:the|a|an|my|every|all)?\s*/i;
   if (isRawSessionKey(name)) return sessionKeyName(name.trim());
-  const start = String(name || "").split(" · ")[0]!.trim();
+  const start = plainTopicTitle(name).split(" · ")[0]!.trim();
   const action = start.match(verb)?.[1] ?? "";
   let title = start.replace(verb, "").replace(/\s+(through|on|for|to|since|from|with|before|after|in|into)\s+.*$/i, "").trim();
   if (action && title.split(" ").length === 1 && /^(test|check|review)$/i.test(action)) title += ` ${action.toLowerCase()}`;
-  return (title || name || "Thread").replace(/^./, (x) => x.toUpperCase());
+  return (title || plainTopicTitle(name) || "Thread").replace(/^./, (x) => x.toUpperCase());
 }
 /** R1 hosts pass this; Classic passes nothing and keeps its own layout menu, rows and resizer. */
 export type R1RailHost = {

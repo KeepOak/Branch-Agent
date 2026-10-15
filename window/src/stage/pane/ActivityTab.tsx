@@ -177,7 +177,7 @@ export function ActivityTab({ engine, name, blocks, running, level, focusHelpers
     <>
       <p className="hg-pn">
         <i className={`dot-pn ${state.tone}`} />
-        {state.text}{asOf === undefined ? "" : ` · as of ${new Date(asOf).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+        {state.text}{state.tone === "idle" && asOf !== undefined ? ` · last active ${new Date(asOf).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}
       </p>
       {card ? (
         <div className="prow-pn">
