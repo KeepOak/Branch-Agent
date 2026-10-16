@@ -4,7 +4,7 @@ import type { MenuItem } from "./Menu";
 import { openNewGroupChat } from "../rooms/NewGroupChat";
 import { requestCustomize } from "../places/customize/r1-request";
 
-type Ctx = { newWith: (agentId: string) => void; trunks: { id: string; name: string }[]; defaultId: string | null; newTrunk: () => void; openPlace: (p: PlaceId) => void;  quickAsk: () => void };
+type Ctx = { newWith: (agentId: string) => void; trunks: { id: string; name: string }[]; defaultId: string | null; newTrunk: () => void; openPlace: (p: PlaceId) => void; makeTrunk: () => void; quickAsk: () => void };
 
 /** A contact's configured main key owns every new topic. The first send creates and titles it atomically. */
 export async function createTopic(request: (method: string, params: unknown) => Promise<unknown>, agentId: string, mainKey: string, message: string, options: Record<string, unknown> = {}): Promise<string> {

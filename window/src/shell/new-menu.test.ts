@@ -7,7 +7,7 @@ import { createTopic, newMenuItems } from "./new-menu";
 
 const context = (newWith: (id: string) => void) => ({
   newWith, trunks: [{ id: "elm", name: "Builder Elm" }, { id: "oak", name: "TK" }], defaultId: "oak",
-  newTrunk: vi.fn(), openPlace: vi.fn(), quickAsk: vi.fn(),
+  newTrunk: vi.fn(), openPlace: vi.fn(), makeTrunk: vi.fn(), quickAsk: vi.fn(),
 });
 
 describe("new conversation drafts", () => {
