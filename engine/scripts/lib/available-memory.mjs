@@ -75,7 +75,8 @@ export function availableMemory(probe = {}) {
     const injected = probe.windowsAvailable !== undefined;
     const bytes = injected
       ? windowsAvailableBytes(probe.windowsAvailable)
-      : windowsReading && (probe.now ?? Date.now()) - windowsReading.at < WINDOWS_AVAILABLE_MAX_AGE_MS
+      : windowsReading &&
+          (probe.now ?? Date.now()) - windowsReading.at < WINDOWS_AVAILABLE_MAX_AGE_MS
         ? windowsReading.bytes
         : undefined;
     if (bytes !== undefined) {

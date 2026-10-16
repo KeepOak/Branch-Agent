@@ -19,7 +19,9 @@ export interface WindowsAvailableRefresh {
 }
 export const WINDOWS_AVAILABLE_REUSE_MS: number;
 export const WINDOWS_AVAILABLE_MAX_AGE_MS: number;
-export function refreshWindowsAvailableMemory(options?: WindowsAvailableRefresh): Promise<number | undefined>;
+export function refreshWindowsAvailableMemory(
+  options?: WindowsAvailableRefresh,
+): Promise<number | undefined>;
 export interface AvailableMemory {
   bytes: number;
   measure: MemoryMeasure;
