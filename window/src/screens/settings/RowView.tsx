@@ -3,7 +3,7 @@
 // reason, and is listed by data-coming with the call it waits for (R1-10). Rules lines never separate rows. The control
 // goes through <Coming> with the calls the row makes (useRow callsOf), so an engine without config.patch or
 // users.prefs.set shows Coming instead of a live control; a row that stays on this computer says data-local.
-import { useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type KeyboardEvent } from "react";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { plainCopy } from "../../places/settings/internals";
 import type { WindowEngine } from "../../connect/engine";
@@ -59,8 +59,8 @@ export function Segmented({ label, value, options, disabled, onChange }: { label
   );
 }
 
-export function Toggle({ label, on, disabled, onChange }: { label: string; on: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
-  return <button type="button" className="r1s-sw" role="switch" aria-label={label} aria-checked={on} disabled={disabled} onClick={() => onChange(!on)} />;
+export function Toggle({ label, on, disabled, onChange, ...rest }: { label: string; on: boolean; disabled?: boolean; onChange: (v: boolean) => void } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onChange">) {
+  return <button type="button" className="r1s-sw" role="switch" aria-label={label} aria-checked={on} disabled={disabled} onClick={() => onChange(!on)} {...rest} />;
 }
 
 /** A field that saves when it is left or Enter is pressed, and only when the text changed. */
@@ -106,6 +106,8 @@ export function RowView({ engine, row }: { engine: WindowEngine; row: Row }) {
       );
       case "number": case "text": return <Field label={r.label} value={r.value} kind={row.control} unit={row.unit} disabled={off} onSave={save} />;
       case "secret": return <Field label={r.label} value={r.sensitive ? "" : r.value} kind="secret" disabled={off} placeholder={r.value ? "Saved" : undefined} onSave={save} />;
+      // Only Coming rows are buttons in the table: a button that does something is its page's own control (slots.ts).
+      case "button": return <button type="button" className="r1s-btn" disabled={off}>{row.button ?? r.label}</button>;
       default: return null;
     }
   })();

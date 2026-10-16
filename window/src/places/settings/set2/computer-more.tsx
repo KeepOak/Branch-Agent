@@ -155,7 +155,7 @@ const PHONES_SMALL: SecSpec = { t: "Phones and small devices", group: "Lending",
 ] };
 
 const MORE_PLACES: SecSpec = { t: "More places to run work", lv: 1, rows: [
-  { t: "A screen in the safe box", sub: "A Trunk gets a desktop inside its box that you can watch and take over. Off until you choose: it drives that desktop’s screen and keyboard.", k: "sw", off: "Needs the engine to give a safe box its own desktop." },
+  { t: "A screen in the sealed box", k: "sw", key: "cloudWorkers.desktop", def: false, sub: "A Trunk gets a desktop inside its box that you can watch and take over. Off until you choose: it drives that desktop’s screen and keyboard." },
   { t: "Free memory a screen needs", sub: "A desktop doesn’t start while less is free. 0 turns the check off.", k: "num", lv: 2, unit: "MB", off: "Needs the engine to give a safe box its own desktop." },
   { t: "Bring your skills into the box", sub: "Your skills are copied into each running box and back, so a Trunk has them there too.", k: "sw", off: "Needs the engine to copy skills into a safe box." },
   { t: "An editor inside the box", sub: "Opens a code editor running in the box, in Branch’s browser.", k: "btn", btn: "Open", off: "Needs the engine to run an editor in a safe box." },

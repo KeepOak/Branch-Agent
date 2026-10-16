@@ -213,10 +213,186 @@ describe("Settings › Advanced", () => {
     expect(row("Meaning search").textContent).toContain("Working");
   });
 
+  it("reads and writes each LanceDB memory setting through config.patch", async () => {
+    const entry = (config: Record<string, unknown>) => ({ plugins: { entries: { "memory-lancedb": { config } } } });
+    const fill = async (title: string, value: string) => {
+      const input = row(title).querySelector("input") as HTMLInputElement;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+      await flush();
+    };
+    const toggle = (title: string) => click(row(title).querySelector("input") as HTMLElement);
+
+    const unset = engineWith(CONFIG);
+    await show(unset.engine, "advanced");
+    expect(row("Recall memories before a reply").textContent).toContain("Turn on LanceDB memory for this to apply.");
+    expect((row("Recall memories before a reply").querySelector("input") as HTMLInputElement).checked).toBe(true);
+    expect((row("Save memories from the conversation").querySelector("input") as HTMLInputElement).checked).toBe(false);
+    expect((row("Key for the meaning service").querySelector("input") as HTMLInputElement).type).toBe("password");
+    expect((row("Meaning service for LanceDB").querySelector("input") as HTMLInputElement).placeholder).toBe("openai");
+    await toggle("Recall memories before a reply");
+    await toggle("Save memories from the conversation");
+    await fill("Meaning service for LanceDB", "ollama");
+    await fill("Meaning model", "mxbai-embed-large");
+    await fill("Key for the meaning service", "sk-test");
+    await fill("Address of the meaning service", "http://127.0.0.1:11434");
+    await fill("How many numbers describe each memory", "1024");
+    await fill("How long a saved memory may be", "200");
+    await fill("Phrases that mean remember this", "remember this");
+    await fill("How long a recalled memory may be", "400");
+    expect(patches(unset.request)).toEqual([
+      entry({ autoRecall: false }),
+      entry({ autoCapture: true }),
+      entry({ embedding: { provider: "ollama" } }),
+      entry({ embedding: { model: "mxbai-embed-large" } }),
+      entry({ embedding: { apiKey: "sk-test" } }),
+      entry({ embedding: { baseUrl: "http://127.0.0.1:11434" } }),
+      entry({ embedding: { dimensions: 1024 } }),
+      entry({ captureMaxChars: 200 }),
+      entry({ customTriggers: ["remember this"] }),
+      entry({ recallMaxChars: 400 }),
+    ]);
+
+    const saved = {
+      autoRecall: false,
+      autoCapture: true,
+      captureMaxChars: 200,
+      recallMaxChars: 400,
+      customTriggers: ["remember this"],
+      embedding: { provider: "ollama", model: "mxbai-embed-large", apiKey: "sk-test", baseUrl: "http://127.0.0.1:11434", dimensions: 1024 },
+    };
+    const set = engineWith({ ...CONFIG, "config.get": { hash: "h", valid: true, config: { plugins: { entries: { "memory-lancedb": { enabled: true, config: saved } } } } } });
+    await show(set.engine, "advanced");
+    expect(row("Recall memories before a reply").textContent).not.toContain("Turn on LanceDB memory");
+    expect((row("Recall memories before a reply").querySelector("input") as HTMLInputElement).checked).toBe(false);
+    expect((row("Save memories from the conversation").querySelector("input") as HTMLInputElement).checked).toBe(true);
+    expect((row("Meaning service for LanceDB").querySelector("input") as HTMLInputElement).value).toBe("ollama");
+    expect(row("Phrases that mean remember this").textContent).toContain("remember this");
+    await toggle("Recall memories before a reply");
+    await toggle("Save memories from the conversation");
+    await fill("Meaning service for LanceDB", "github-copilot");
+    await fill("Meaning model", "text-embedding-3-small");
+    await fill("Key for the meaning service", "sk-next");
+    await fill("Address of the meaning service", "http://127.0.0.1:11435");
+    await fill("How many numbers describe each memory", "2048");
+    await fill("How long a saved memory may be", "600");
+    await fill("Phrases that mean remember this", "prefer");
+    await fill("How long a recalled memory may be", "800");
+    expect(patches(set.request)).toEqual([
+      entry({ autoRecall: true }),
+      entry({ autoCapture: false }),
+      entry({ embedding: { provider: "github-copilot" } }),
+      entry({ embedding: { model: "text-embedding-3-small" } }),
+      entry({ embedding: { apiKey: "sk-next" } }),
+      entry({ embedding: { baseUrl: "http://127.0.0.1:11435" } }),
+      entry({ embedding: { dimensions: 2048 } }),
+      entry({ captureMaxChars: 600 }),
+      entry({ customTriggers: ["remember this", "prefer"] }),
+      entry({ recallMaxChars: 800 }),
+    ]);
+  });
+
   it("lists every row for the settings search", () => {
     expect(ROWS.find((r) => r.title === "Logs")).toBeUndefined();
     expect(ROWS.find((r) => r.title === "How much the log keeps")).toMatchObject({ sec: "Logs", lv: 2 });
     expect(ROWS.find((r) => r.title === "Show the thinking")).toMatchObject({ sec: "Seeing more", lv: 1 });
+  });
+});
+
+const STRUCTURED = {
+  plugins: {
+    entries: {
+      "llm-task": {
+        enabled: true,
+        llm: { allowModelOverride: true, allowedCompletionModels: ["openai/gpt-5"] },
+        config: { defaultProvider: "openai", defaultModel: "gpt-5", maxTokens: 800, timeoutMs: 10000 },
+      },
+    },
+  },
+  tools: { alsoAllow: ["llm-task"] },
+};
+const MODELS = { "models.list": { models: [{ provider: "openai", id: "gpt-5", name: "GPT-5", available: true }, { provider: "openai", id: "gpt-5-mini", name: "GPT-5 mini", available: true }] } };
+async function typeNum(input: HTMLInputElement, value: string) {
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+  await flush();
+}
+
+describe("Settings › Advanced › structured answers", () => {
+  it("reads unset values as off and writes the engine keys when they change", async () => {
+    const { engine, request } = engineWith({ ...CONFIG, ...MODELS });
+    await show(engine, "advanced");
+    const sw = row("Structured answers").querySelector("input[role=switch]") as HTMLInputElement;
+    expect(sw.checked).toBe(false);
+    expect(row("Structured answers").textContent).toContain("Off until you choose");
+    expect((row("Model for structured answers").querySelector("select") as HTMLSelectElement).value).toBe("");
+    expect((row("Longest structured answer").querySelector("input") as HTMLInputElement).value).toBe("");
+    expect((row("Longest structured answer").querySelector("input") as HTMLInputElement).placeholder).toBe("No limit");
+    expect((row("Answer time limit").querySelector("input") as HTMLInputElement).placeholder).toBe("30,000");
+    expect(row("Models it may use").textContent).toContain("Nothing here yet.");
+
+    await click(sw);
+    expect(patches(request)).toEqual([
+      { plugins: { entries: { "llm-task": { enabled: true } } } },
+      { tools: { alsoAllow: ["llm-task"] } },
+    ]);
+
+    const model = row("Model for structured answers").querySelector("select") as HTMLSelectElement;
+    await act(async () => { model.value = "openai/gpt-5"; model.dispatchEvent(new Event("change", { bubbles: true })); });
+    await flush();
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { defaultProvider: "openai" } } } } });
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { defaultModel: "gpt-5" } } } } });
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { llm: { allowModelOverride: true } } } } });
+
+    await typeNum(row("Longest structured answer").querySelector("input") as HTMLInputElement, "800");
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { maxTokens: 800 } } } } });
+    await typeNum(row("Answer time limit").querySelector("input") as HTMLInputElement, "10000");
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { timeoutMs: 10000 } } } } });
+
+    const models = row("Models it may use");
+    const field = models.querySelector("input") as HTMLInputElement;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "openai/gpt-5"); field.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click(button("Add", models));
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { llm: { allowedCompletionModels: ["openai/gpt-5"] } } } } });
+  });
+
+  it("reads set values and writes the next change", async () => {
+    const { engine, request } = engineWith({ ...CONFIG, ...MODELS, "config.get": { hash: "h", valid: true, config: STRUCTURED } });
+    await show(engine, "advanced");
+    const sw = row("Structured answers").querySelector("input[role=switch]") as HTMLInputElement;
+    expect(sw.checked).toBe(true);
+    expect((row("Model for structured answers").querySelector("select") as HTMLSelectElement).value).toBe("openai/gpt-5");
+    expect((row("Longest structured answer").querySelector("input") as HTMLInputElement).value).toBe("800");
+    expect((row("Answer time limit").querySelector("input") as HTMLInputElement).value).toBe("10,000");
+    expect(row("Models it may use").textContent).toContain("openai/gpt-5");
+
+    const model = row("Model for structured answers").querySelector("select") as HTMLSelectElement;
+    await act(async () => { model.value = "openai/gpt-5-mini"; model.dispatchEvent(new Event("change", { bubbles: true })); });
+    await flush();
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { defaultModel: "gpt-5-mini" } } } } });
+
+    await typeNum(row("Longest structured answer").querySelector("input") as HTMLInputElement, "400");
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { maxTokens: 400 } } } } });
+    await typeNum(row("Answer time limit").querySelector("input") as HTMLInputElement, "5000");
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { config: { timeoutMs: 5000 } } } } });
+
+    await click(sw);
+    expect(patches(request)).toContainEqual({ plugins: { entries: { "llm-task": { enabled: false } } } });
+    expect(patches(request)).toContainEqual({ tools: { alsoAllow: null } });
+  });
+
+  it("adds the tool to the existing allow list instead of a second list", async () => {
+    const { engine, request } = engineWith({ ...CONFIG, "config.get": { hash: "h", valid: true, config: { tools: { allow: ["read"] } } } });
+    await show(engine, "advanced");
+    expect((row("Structured answers").querySelector("input[role=switch]") as HTMLInputElement).checked).toBe(false);
+    await click(row("Structured answers").querySelector("input") as HTMLElement);
+    expect(patches(request)).toEqual([
+      { plugins: { entries: { "llm-task": { enabled: true } } } },
+      { tools: { allow: ["read", "llm-task"] } },
+    ]);
   });
 });
 

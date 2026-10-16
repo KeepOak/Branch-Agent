@@ -64,6 +64,24 @@ describe("sidebar + menu after a re-render (N1)", () => {
     expect(byId("new-menu")).not.toBeNull();
   });
 
+  it("focuses the first row without scrolling the page under it", async () => {
+    const calls: unknown[] = [];
+    const native = HTMLElement.prototype.focus;
+    HTMLElement.prototype.focus = function (this: HTMLElement, options?: FocusOptions) {
+      calls.push(options);
+      return native.call(this, options);
+    };
+    try {
+      root = createRoot(document.body.appendChild(document.createElement("div")));
+      await show(0);
+      await press(byId("new")!);
+      expect(byId("new-menu")).not.toBeNull();
+      expect(calls.some((options) => options && typeof options === "object" && (options as FocusOptions).preventScroll === true)).toBe(true);
+    } finally {
+      HTMLElement.prototype.focus = native;
+    }
+  });
+
   it("a click outside still closes the menu with the latest onClose after a re-render", async () => {
     root = createRoot(document.body.appendChild(document.createElement("div")));
     const outside = document.body.appendChild(document.createElement("button"));
