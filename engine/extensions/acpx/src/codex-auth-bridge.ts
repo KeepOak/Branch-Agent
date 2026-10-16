@@ -29,6 +29,7 @@ import { splitCommandParts, type AcpxAgentCommand } from "./command-line.js";
 import { resolveAcpxPluginRoot } from "./config.js";
 import type { ResolvedAcpxPluginConfig } from "./config.js";
 import { BRANCH_ACPX_LEASE_ID_ARG, BRANCH_GATEWAY_INSTANCE_ID_ARG } from "./process-lease.js";
+import { WRAPPER_NPM_CLI_SOURCE } from "./wrapper-command.js";
 
 const CLAUDE_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
 const CLAUDE_ACP_BIN = "claude-agent-acp";
@@ -419,20 +420,8 @@ if (stderrLogPath) {
 
 const configuredArgs = stripBranchWrapperArgs(rawConfiguredArgs);
 
-function resolveNpmCliPath() {
-  const candidate = path.resolve(
-    path.dirname(process.execPath),
-    "..",
-    "lib",
-    "node_modules",
-    "npm",
-    "bin",
-    "npm-cli.js",
-  );
-  return existsSync(candidate) ? candidate : undefined;
-}
-
-const npmCliPath = resolveNpmCliPath();
+${WRAPPER_NPM_CLI_SOURCE}
+const npmCliPath = resolveNpmCliPath(process.execPath, process.platform, existsSync);
 const installedBinPath = ${params.installedBinPath ? JSON.stringify(params.installedBinPath) : "undefined"};
 let defaultCommand;
 let defaultArgs;
