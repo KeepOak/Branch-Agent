@@ -51,7 +51,7 @@ import { historyToBlocks } from "../thread/history";
 import { lastSpeakerWho, topicSpeakerKeys } from "./topic-who";
 import { topicLayoutFor, readTopicSettings, setContactTopicLayout, type TopicLayout } from "./topic-layout";
 import { patchTopicSession } from "./topic-session";
-import { loadAllTopicTranscripts } from "./topic-all";
+import { createSerialReloader, loadAllTopicTranscripts, type TopicTranscriptCache } from "./topic-all";
 import { useContactSegments } from "./useContactSegments";
 import { contactAlert, contactAlertTarget, noticesHereOn, notify, readMutedContacts, saveMutedContacts } from "./notify";
 import { headerFace, stopRoaming } from "./pet-roam";
@@ -927,21 +927,40 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   });
   const topicMainRow = topicContact ? lists.rows.find((row) => row.key === topicContact.threadKey) : null;
   const showingAll = Boolean(allTopics && topicContact && allTopics.contactId === topicContact.id && openKey === topicContact.threadKey);
+  const allTopicLoader = useRef<{ contactId: string; transcripts: TopicTranscriptCache; reloader: ReturnType<typeof createSerialReloader> } | null>(null);
+  const allTopicInput = useRef<Parameters<typeof loadAllTopicTranscripts> | null>(null);
+  const allTopicSignature = useRef("");
+  useEffect(() => {
+    if (!showingAll || !topicContact) return;
+    const main = { key: topicContact.threadKey, title: "General", updatedAt: topicMainRow?.updatedAt ?? topicContact.lastActivityAt, preview: topicMainRow?.preview ?? "" };
+    const topics = topicItems.map(({ topic, updatedAt, preview }) => ({ key: topic.key, title: topic.title, labelled: topic.labelled, updatedAt, preview }));
+    allTopicInput.current = [request, main, topics];
+    // The contact and row objects are rebuilt on every render, so reload only when what the load reads has changed;
+    // otherwise each finished load would re-render, re-run this effect and start the next one.
+    const signature = JSON.stringify([topicContact.id, main, topics]);
+    if (signature === allTopicSignature.current) return;
+    allTopicSignature.current = signature;
+    if (allTopicLoader.current?.contactId === topicContact.id) allTopicLoader.current.reloader.trigger();
+  }, [showingAll, topicContact, activeTopics, lists.rows, request, ready]);
   useEffect(() => {
     if (!showingAll || !topicContact) return;
     const contactId = topicContact.id;
-    const main = { key: topicContact.threadKey, title: "General", updatedAt: topicMainRow?.updatedAt ?? topicContact.lastActivityAt, preview: topicMainRow?.preview ?? "" };
-    const topics = topicItems.map(({ topic, updatedAt, preview }) => ({ key: topic.key, title: topic.title, labelled: topic.labelled, updatedAt, preview }));
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const reload = () => {
+    // One load at a time: live events that arrive during a load collapse into one follow-up load, and
+    // threads whose rows have not moved reuse their blocks from this view's cache.
+    const transcripts: TopicTranscriptCache = new Map();
+    const reloader = createSerialReloader(() => new Promise<void>((settled) => {
       let picks: Record<string, string> = {};
       try { picks = JSON.parse(localStorage.getItem("branch-topic-emoji-t5") || "{}"); } catch { /* A damaged local preference does not hide All. */ }
-      void loadAllTopicTranscripts(request, main, topics, picks).then(
-        (history) => { if (live) setAllTopics((value) => value?.contactId === contactId ? { contactId, history, loading: false, error: "" } : value); },
-        (error: unknown) => { if (live) setAllTopics((value) => value && value.contactId === contactId ? { ...value, loading: false, error: error instanceof Error ? error.message : String(error) } : value); },
+      const [read, main, topics] = allTopicInput.current!;
+      void loadAllTopicTranscripts(read, main, topics, picks, transcripts).then(
+        (history) => { if (live) setAllTopics((value) => value?.contactId === contactId ? { contactId, history, loading: false, error: "" } : value); settled(); },
+        (error: unknown) => { if (live) setAllTopics((value) => value && value.contactId === contactId ? { ...value, loading: false, error: error instanceof Error ? error.message : String(error) } : value); settled(); },
       );
-    };
+    }));
+    allTopicLoader.current = { contactId, transcripts, reloader };
+    const reload = () => reloader.trigger();
     reload();
     const off = session.onGatewayEvent((event) => {
       if (event !== "contacts.changed" && event !== "chat") return;
@@ -950,8 +969,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     });
     const storage = (event: StorageEvent) => { if (event.key === "branch-topic-emoji-t5") reload(); };
     window.addEventListener("storage", storage);
-    return () => { live = false; if (timer) clearTimeout(timer); off(); window.removeEventListener("storage", storage); };
-  }, [showingAll, topicContact?.id, session, activeTopics, lists.rows, ready]);
+    return () => { live = false; reloader.cancel(); allTopicLoader.current = null; allTopicSignature.current = ""; if (timer) clearTimeout(timer); off(); window.removeEventListener("storage", storage); };
+  }, [showingAll, topicContact?.id, session]);
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);
   // The main conversation is still navigable while contacts.list is loading (or unavailable).
