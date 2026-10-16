@@ -102,6 +102,8 @@ export const FAKE_ENGINE_METHODS = [
   'sessions.describe',
   'sessions.goal.update',
   'browser.request',
+  'talk.session.create',
+  'talk.session.close',
 ] as const;
 
 /** 1×1 PNG; tests and screenshots use the snapshot payload's width and height as the picture size. */
@@ -284,6 +286,21 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         }
         return { ok: true, payload: { payload: { ok: true } } };
       }
+      case 'talk.session.create': {
+        const sessionId = `talk-${++asked}`;
+        return {
+          ok: true,
+          payload: {
+            sessionId,
+            relaySessionId: sessionId,
+            provider: 'local',
+            voice: 'Oak',
+            audio: { inputEncoding: 'pcm16', outputEncoding: 'pcm16', inputSampleRateHz: 24000, outputSampleRateHz: 24000 },
+          },
+        };
+      }
+      case 'talk.session.close':
+        return { ok: true, payload: { ok: true } };
       case 'exec.approval.resolve':
       case 'plugin.approval.resolve': {
         const { id, decision } = (params ?? {}) as { id?: string; decision?: string };
