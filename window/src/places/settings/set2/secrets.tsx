@@ -79,11 +79,33 @@ function Where({ onePassword, config }: Pick<SettingsPageProps, "engine"> & { on
           options={[{ id: "bitwarden", label: "Bitwarden", off: "Bitwarden needs its engine plugin." }, { id: "onepassword", label: "1Password" }, { id: "windows", label: "Windows", off: "Windows Credential Manager needs its engine plugin." }]} />
       </Ctl>
       <Ctl title="Keys kept apart from settings" sub="Keys stay in a locker only the engine can read." help="Keys live in a locker only the engine reads, so sharing your settings never shares a key.">
-        <Btn sm data-jump-to="#s2-keys" onClick={() => (document.getElementById("s2-keys") ?? document.getElementById("sec-signins-Keys Branch holds"))?.scrollIntoView({ block: "start" })}>Show where</Btn>
+        <ShowWhere />
       </Ctl>
       <Ctl title="Sign-in tokens" sub="Sign-in tokens are encrypted, refreshed and revoked." help="Tokens from “sign in with…” are encrypted, refreshed before they expire, and revoked when removed." off="Checking them needs the engine’s token report."><Btn sm>Check them</Btn></Ctl>
     </Sec>
   );
+}
+
+export const KEYS_SHOWN = "Your keys are listed below, under “Keys Branch holds”.";
+export const KEYS_ELSEWHERE = "Your keys are listed under “Keys Branch holds” on Sign-ins & keys, at Advanced.";
+const FLASH_MS = 2000;
+
+/** Show where (B-047): scrolls to Keys Branch holds, marks it for a moment and says where it is; when the list isn't on
+ *  this page it says where to find it, so the button never looks like it did nothing. */
+function ShowWhere() {
+  const [line, setLine] = useState("");
+  const show = () => {
+    const target = document.getElementById("s2-keys") ?? document.getElementById("sec-signins-Keys Branch holds");
+    if (!target) { setLine(KEYS_ELSEWHERE); return; }
+    target.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    target.setAttribute("data-flash", "");
+    setTimeout(() => target.removeAttribute("data-flash"), FLASH_MS);
+    setLine(KEYS_SHOWN);
+  };
+  return <>
+    <Btn sm data-jump-to="#s2-keys" onClick={show}>Show where</Btn>
+    {line ? <small className="g-label checked-at" role="status">{line}</small> : null}
+  </>;
 }
 
 type Res = ReturnType<typeof useLive<RecordValue>>;
