@@ -33,7 +33,7 @@ import { ScanScreen } from './src/screens/ScanScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
-import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
+import { PairingTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import type { ColorScheme } from './src/theme/tokens';
 import { applyQuietJsUpdate } from './src/updates/ota';
 import { SettingsUpdateCard, UpdateBanner } from './src/updates/UpdateBanner';
@@ -217,17 +217,27 @@ function Shell({
     case 'unpaired':
       screen =
         route === 'scan' ? (
-          <ScanScreen onCode={begin} onEnterCode={() => setRoute('code')} onCancel={toWelcome} />
+          <PairingTheme>
+            <ScanScreen onCode={begin} onEnterCode={() => setRoute('code')} onCancel={toWelcome} />
+          </PairingTheme>
         ) : route === 'code' ? (
-          <EnterCodeScreen onCode={begin} onScan={() => setRoute('scan')} onCancel={toWelcome} />
+          <PairingTheme>
+            <EnterCodeScreen onCode={begin} onScan={() => setRoute('scan')} onCancel={toWelcome} />
+          </PairingTheme>
         ) : (
-          <WelcomeScreen onPair={() => setRoute('scan')} updateBanner={updateBanner} />
+          <PairingTheme>
+            <WelcomeScreen onPair={() => setRoute('scan')} updateBanner={updateBanner} />
+          </PairingTheme>
         );
       break;
     case 'connecting':
     case 'approval':
     case 'failed':
-      screen = <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />;
+      screen = (
+        <PairingTheme>
+          <ApprovalScreen state={state} onCancel={toWelcome} onScanAgain={scanAgain} />
+        </PairingTheme>
+      );
       break;
     case 'paired':
       if (pairedRoute.name === 'computers') {
@@ -311,7 +321,11 @@ function Shell({
       }
       break;
     case 'refused':
-      screen = <RefusedScreen state={state} onPairAgain={pairAgain} onRetry={() => session.retry()} onForget={() => void session.unpair()} />;
+      screen = (
+        <PairingTheme>
+          <RefusedScreen state={state} onPairAgain={pairAgain} onRetry={() => session.retry()} onForget={() => void session.unpair()} />
+        </PairingTheme>
+      );
   }
 
   return (

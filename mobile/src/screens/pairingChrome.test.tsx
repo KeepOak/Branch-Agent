@@ -1,0 +1,82 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { ScrollView, StyleSheet } from 'react-native';
+import App from '../../App';
+import { bytesToBase64Url, utf8ToBytes } from '../connect/base64url';
+import { createFakeSession } from '../testing/fakeSession';
+import { PairingTheme, ThemeProvider } from '../theme/ThemeProvider';
+import { pairingTheme, themeFor } from '../theme/tokens';
+import { contrastRatio } from '../theme/contrast';
+import { Button } from '../ui/Button';
+import { Screen } from '../ui/Screen';
+import { WelcomeScreen } from './WelcomeScreen';
+
+jest.mock('expo-camera', () => ({
+  CameraView: () => null,
+  useCameraPermissions: () => [{ granted: false, canAskAgain: true, status: 'undetermined' }, jest.fn()],
+}));
+
+const code = (value: unknown) => bytesToBase64Url(utf8ToBytes(JSON.stringify(value)));
+const eventually = (check: () => void) => waitFor(check, { timeout: 3000 });
+jest.setTimeout(20_000);
+
+describe('pairing chrome', () => {
+  it('paints pairing with ink, not indigo, in both modes', () => {
+    for (const scheme of ['light', 'dark'] as const) {
+      const base = themeFor(scheme);
+      const pairing = pairingTheme(base);
+      expect(pairing.color.accent).toBe(base.color.ink);
+      expect(pairing.color.accentInk).toBe(base.color.ink);
+      expect(pairing.color.accent).not.toBe(base.color.accent);
+      expect(contrastRatio(pairing.color.onAccent, pairing.color.accent)).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(pairing.color.ink, pairing.color.grouped)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('hides scrollbars on pairing screens while still scrolling', () => {
+    const view = render(
+      <ThemeProvider scheme="light">
+        <Screen hideScrollbars testID="hidden-scroll">
+          <Button title="Go" onPress={() => undefined} />
+        </Screen>
+      </ThemeProvider>,
+    );
+    expect(view.UNSAFE_getByType(ScrollView).props.showsVerticalScrollIndicator).toBe(false);
+    expect(view.UNSAFE_getByType(ScrollView).props.showsHorizontalScrollIndicator).toBe(false);
+  });
+
+  it('draws the preview welcome: mark, promise, how pairing works, one pair button', async () => {
+    await render(
+      <ThemeProvider scheme="light">
+        <PairingTheme>
+          <WelcomeScreen onPair={() => undefined} />
+        </PairingTheme>
+      </ThemeProvider>,
+    );
+    expect(screen.getByRole('header')).toHaveTextContent('Branch');
+    expect(screen.getByText('Your Trunks, in your pocket.')).toBeOnTheScreen();
+    expect(screen.getByTestId('pairing-promise')).toHaveTextContent('Your Trunks run on your own computer.');
+    expect(screen.getByTestId('pairing-promise')).toHaveTextContent('Connect this phone by scanning a code.');
+    expect(screen.getByTestId('pairing-steps')).toHaveTextContent('How pairing works');
+    expect(screen.getByTestId('pair-button')).toHaveTextContent('Pair with your computer');
+    expect(StyleSheet.flatten(screen.getByTestId('pair-button').props.style).backgroundColor).toBe(themeFor('light').color.ink);
+  });
+
+  it('pairs from the connect screen’s code field without leaving the camera step', async () => {
+    const { session, engine } = createFakeSession();
+    await render(<App scheme="light" session={session} />);
+    await eventually(() => expect(screen.getByTestId('welcome-screen')).toBeOnTheScreen());
+    await fireEvent.press(screen.getByTestId('pair-button'));
+    expect(screen.getByTestId('camera-permission')).toBeOnTheScreen();
+    expect(screen.getByText('Connect to your Branch')).toBeOnTheScreen();
+    expect(screen.getByText('Scan the square code on the computer, or paste the code it shows.')).toBeOnTheScreen();
+    expect(screen.getByTestId('connect-code')).toBeOnTheScreen();
+    expect(screen.getByTestId('allow-camera')).toBeOnTheScreen();
+    expect(screen.getByTestId('enter-code')).toBeOnTheScreen();
+
+    await fireEvent.changeText(screen.getByTestId('code-input'), code({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' }));
+    await fireEvent.press(screen.getByTestId('submit-code'));
+    await eventually(() => expect(screen.getByTestId('pairing-approval')).toBeOnTheScreen());
+    engine.approve();
+    await eventually(() => expect(screen.getByTestId('chats-screen')).toBeOnTheScreen());
+  });
+});

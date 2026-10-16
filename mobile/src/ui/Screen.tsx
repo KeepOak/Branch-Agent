@@ -9,7 +9,20 @@ import { useTheme } from '../theme/ThemeProvider';
  * for them never lands on a key. Padding works on both platforms now that Android draws edge to edge and no
  * longer resizes the window for the keyboard.
  */
-export function Screen({ children, footer, testID, avoidKeyboard = false }: { children: ReactNode; footer?: ReactNode; testID?: string; avoidKeyboard?: boolean }) {
+export function Screen({
+  children,
+  footer,
+  testID,
+  avoidKeyboard = false,
+  hideScrollbars = false,
+}: {
+  children: ReactNode;
+  footer?: ReactNode;
+  testID?: string;
+  avoidKeyboard?: boolean;
+  /** Pairing (and r50) never paints a scrollbar; scrolling still works. */
+  hideScrollbars?: boolean;
+}) {
   const { color, space, layout } = useTheme();
   const insets = useSafeAreaInsets();
   const Root = avoidKeyboard ? KeyboardAvoidingView : View;
@@ -19,6 +32,8 @@ export function Screen({ children, footer, testID, avoidKeyboard = false }: { ch
         style={styles.fill}
         contentContainerStyle={{ paddingTop: insets.top + space.xxl, paddingHorizontal: layout.screenInset, paddingBottom: space.xl }}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={!hideScrollbars}
+        showsHorizontalScrollIndicator={!hideScrollbars}
       >
         {children}
       </ScrollView>

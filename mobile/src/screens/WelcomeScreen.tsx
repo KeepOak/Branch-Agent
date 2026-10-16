@@ -1,13 +1,19 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { Image, View } from 'react-native';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { Card, Screen } from '../ui/Screen';
 
+const PROMISE = [
+  'Your Trunks run on your own computer.',
+  'Connect this phone by scanning a code.',
+  'Chat, talk and answer from anywhere.',
+];
+
 const STEPS = [
   'On your computer, open Branch and choose Get the apps, then Pair a phone.',
-  'Scan the code it shows with this phone.',
+  'Scan the code it shows with this phone, or paste it here.',
   'Choose Allow when Branch on your computer asks about this phone. That’s it.',
 ];
 
@@ -17,6 +23,7 @@ export function WelcomeScreen({ onPair, updateBanner }: { onPair: () => void; up
   return (
     <Screen
       testID="welcome-screen"
+      hideScrollbars
       footer={
         <>
           <Button title="Pair with your computer" onPress={onPair} testID="pair-button" />
@@ -26,13 +33,23 @@ export function WelcomeScreen({ onPair, updateBanner }: { onPair: () => void; up
         </>
       }
     >
-      <ThemedText variant="largeTitle" accessibilityRole="header">
-        Branch
-      </ThemedText>
-      <ThemedText variant="body" tone="ink2" style={{ marginTop: space.xs }}>
-        Your Trunks and Branch Agent, in your pocket.
-      </ThemedText>
+      <View style={{ alignItems: 'center' }}>
+        <Image source={require('../../assets/icon.png')} accessibilityIgnoresInvertColors style={{ width: 72, height: 72, borderRadius: radius.lg }} />
+        <ThemedText variant="largeTitle" accessibilityRole="header" style={{ marginTop: space.md, textAlign: 'center' }}>
+          Branch
+        </ThemedText>
+        <ThemedText variant="body" tone="ink2" style={{ marginTop: space.xs, textAlign: 'center' }}>
+          Your Trunks, in your pocket.
+        </ThemedText>
+      </View>
       {updateBanner}
+      <View testID="pairing-promise" style={{ marginTop: space.xxl, gap: space.md }}>
+        {PROMISE.map((line) => (
+          <ThemedText key={line} variant="subhead" tone="ink2">
+            {line}
+          </ThemedText>
+        ))}
+      </View>
       <Card testID="pairing-steps">
         <ThemedText variant="headline">How pairing works</ThemedText>
         {STEPS.map((step, index) => (

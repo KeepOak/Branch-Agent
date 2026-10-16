@@ -143,3 +143,21 @@ export interface Theme {
 export function themeFor(scheme: ColorScheme): Theme {
   return { scheme, color: palettes[scheme], type, space, layout, radius, motion };
 }
+
+/**
+ * Pairing chrome is black and white: primary actions use ink on the screen background, never the
+ * indigo accent. Status colours (ok / warn / bad) stay so a failed or expired code still reads.
+ */
+export function pairingTheme(theme: Theme): Theme {
+  const { color, scheme } = theme;
+  return {
+    ...theme,
+    color: {
+      ...color,
+      accent: color.ink,
+      accentInk: color.ink,
+      accentTint: color.fill,
+      onAccent: scheme === 'dark' ? color.bg : '#ffffff',
+    },
+  };
+}
