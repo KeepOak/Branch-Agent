@@ -12,6 +12,7 @@ import { rec, str, useLive, type RecordValue } from "./common";
 import { WhatsNewRow } from "./whats-new-row";
 import { versionLabel } from "../internals";
 import { isNewerBranchVersion, runningBranchVersion, useBranchVersion, useShippedWindowVersion, versionParts } from "../../../connect/branch-version";
+import { latestVersionLine, useMinuteClock } from "./version-line";
 
 const OS: Record<string, string> = { win32: "Windows", darwin: "macOS", linux: "Linux" };
 
@@ -22,8 +23,11 @@ export function DesktopUpdatesPage({ title, engine, level }: SettingsPageProps) 
   const data = useDesktopComponentStatus(engine.gatewayUrl);
   const shipped = useShippedWindowVersion();
   const auto = useDesktopControls();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"" | "check" | "stage">("");
   const [error, setError] = useState<string | null>(null);
+  // The finished Check now, in case an older desktop's answer carries no checkedAt of its own.
+  const [checkedHere, setCheckedHere] = useState<number | null>(null);
+  const now = useMinuteClock();
   const [installRequested, setInstallRequested] = useState(false);
   const [outcome, setOutcome] = useState<EngineUpdateEvent | null>(null);
   const bar = outcome?.state ?? null;
@@ -39,10 +43,10 @@ export function DesktopUpdatesPage({ title, engine, level }: SettingsPageProps) 
   useEffect(() => { if (!staged) setInstallRequested(false); }, [staged]);
   const run = async (method: "check" | "stage") => {
     if (!bridge || busy) return;
-    setBusy(true); setError(null);
-    try { const status = await bridge[method](); data.setStatus(status); setError(status.error); }
+    setBusy(method); setError(null);
+    try { const status = await bridge[method](); data.setStatus(status); setError(status.error); if (method === "check" && !status.error) setCheckedHere(Date.now()); }
     catch (error) { setError(error instanceof Error ? error.message : String(error)); }
-    finally { setBusy(false); }
+    finally { setBusy(""); }
   };
   if (!bridge) return <HourlyUpdates title={title} engine={engine} level={level} reason={desktop?.unavailableReason} />;
   const running = runningBranchVersion(data.status?.currentVersion, shipped);
@@ -57,7 +61,8 @@ export function DesktopUpdatesPage({ title, engine, level }: SettingsPageProps) 
     : failed ? "The update didn’t finish"
     : bar === "kept" ? "Update postponed; Branch kept the current version"
     : stagedWaiting ? `${pendingLabel} is staged`
-    : statusLine(data.status, level);
+    : busy === "check" ? "Checking for updates…"
+    : statusLine(data.status, level, Math.max(data.status?.checkedAt ?? 0, checkedHere ?? 0) || null, now);
   return <Page title={title} lede={lede}>
     <div className="s2-keeper"><KeeperMark size={64} /></div>
     {error || data.error ? <Status tone="bad" title="Branch couldn’t update">{error || data.error}</Status> : null}
@@ -73,8 +78,8 @@ export function DesktopUpdatesPage({ title, engine, level }: SettingsPageProps) 
         <Switch label="Apply updates automatically" checked={autoApply}
           disabled={auto.busy !== null} onChange={on => void auto.set("autoApplyUpdates", on)} />
       </Ctl>
-      <Ctl title="Check for updates"><Btn sm disabled={busy} onClick={() => void run("check")}>{busy ? "Working…" : "Check now"}</Btn></Ctl>
-      {data.status?.phase === "available" ? <Ctl title="Update available"><Btn disabled={busy} onClick={() => void run("stage")}>Download update</Btn></Ctl> : null}
+      <Ctl title="Check for updates"><Btn sm disabled={busy !== ""} onClick={() => void run("check")}>{busy === "check" ? "Checking…" : busy ? "Working…" : "Check now"}</Btn></Ctl>
+      {data.status?.phase === "available" ? <Ctl title="Update available"><Btn disabled={busy !== ""} onClick={() => void run("stage")}>Download update</Btn></Ctl> : null}
       {stagedWaiting && install ? <Ctl title="Staged update" sub="Applies in place. A safety copy is kept first, and nothing restarts.">
         <Btn pri sm disabled={installRequested} onClick={requestInstall}>{installRequested ? "Updating…" : "Apply now, in place"}</Btn>
       </Ctl> : null}
@@ -107,10 +112,11 @@ function HourlyUpdates({ title, engine, level, reason }: Pick<SettingsPageProps,
   </Page>;
 }
 
-function statusLine(status: ComponentUpdateStatus | null, level: SettingsPageProps["level"]): string {
+/** The headline. Up to date (or a staged copy that is the running version, B-052) reads plainly with the check's time. */
+function statusLine(status: ComponentUpdateStatus | null, level: SettingsPageProps["level"], checkedAt: number | null, now: number): string {
   if (!status) return "Reading desktop update status…";
   if (status.phase === "available") return "A Branch update is ready";
-  if (status.phase === "current" || status.phase === "staged") return "Updates apply in place.";
+  if (status.phase === "current" || status.phase === "staged") return latestVersionLine(checkedAt, now);
   if (status.phase === "checking") return "Checking…";
   if (status.phase === "staging") return "Downloading and checking the update…";
   return status.currentVersion ? `Branch ${versionLabel(status.currentVersion, level)}` : "Check for updates";
