@@ -7,14 +7,14 @@ import { desktopControls, IN_BROWSER } from "../connect/desktop-controls";
 
 /** In a plain browser there is no Branch app to open the page from. */
 export const GET_IT_OFF = "Opens the download page in your browser from the Branch app on your computer.";
-// [icon, name, where, the Branch app's download id (desktop/src/desktop-controls.ts DOWNLOAD_PAGES)]
-const APPS: [IconName, string, string, string][] = [
-  ["phone", "iPhone", "The App Store", "iphone"],
-  ["phone", "Android", "Google Play", "android"],
-  ["monitor", "Mac", "A download for macOS", "mac"],
-  ["monitor", "Windows", "A download for Windows", "windows"],
-  ["term", "Linux", "AppImage and .deb", "linux"],
-  ["globe", "Browser extension", "Chrome and Edge web stores", "extension"],
+// [icon, name, where, download id. No id: Coming soon, with no button and no link.]
+const APPS: [IconName, string, string, string | undefined][] = [
+  ["phone", "iPhone", "Coming soon", undefined],
+  ["phone", "Android", "Signed APK", "android"],
+  ["monitor", "Mac", "macOS disk image", "mac"],
+  ["monitor", "Windows", "Windows setup", "windows"],
+  ["term", "Linux", "AppImage", "linux"],
+  ["globe", "Browser extension", "Coming soon", undefined],
 ];
 
 export function GetAppsDialog({ onClose, onPair }: { onClose: () => void; onPair: () => void }) {
@@ -34,7 +34,7 @@ export function GetAppsDialog({ onClose, onPair }: { onClose: () => void; onPair
           <div className="tile" key={name}>
             <div className="th"><span className="ico-tile"><Icon name={icon} small /></span><b>{name}</b></div>
             <p>{where}</p>
-            <button type="button" className="btn sm" disabled={off !== undefined} title={shownWhy(off)} onClick={() => open(id)}>Get it</button>
+            {id ? <button type="button" className="btn sm" disabled={off !== undefined} title={shownWhy(off)} onClick={() => open(id)}>Get it</button> : null}
           </div>
         ))}
       </div>

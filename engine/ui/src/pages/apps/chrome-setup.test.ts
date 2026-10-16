@@ -8,6 +8,7 @@ import { i18n } from "../../i18n/index.ts";
 import { createApplicationContextProvider } from "../../test-helpers/application-context.ts";
 import { createChromeExtensionSetupResult } from "../../test-helpers/chrome-extension-setup.ts";
 import { createNativeDeviceSettingsSnapshot } from "../../test-helpers/native-device-settings.ts";
+import { useReleaseListingsForTests } from "./release-downloads.ts";
 import { renderApps } from "./view.ts";
 
 type SetupElement = HTMLElement & { updateComplete: Promise<boolean> };
@@ -51,9 +52,11 @@ function click(setup: HTMLElement, label: string) {
   button!.click();
 }
 beforeEach(async () => {
+  useReleaseListingsForTests([]);
   await i18n.setLocale("en");
 });
 afterEach(() => {
+  useReleaseListingsForTests(undefined);
   document.body.replaceChildren();
   for (const capability of capabilities) {
     capability.dispose();
@@ -103,13 +106,12 @@ describe("Apps local Chrome setup", () => {
     expect(setup.textContent).toContain("does not mean eligible tabs");
     expect(post.mock.calls).toEqual(["inspect", "install", "verify"].map((action) => [{ action }]));
   });
-  it("keeps only Store and docs in an ordinary browser", async () => {
+  it("shows Coming soon and no store link in an ordinary browser", async () => {
     const { card, setup } = await mount();
     expect(setup.querySelector("button")).toBeNull();
-    expect([...card.querySelectorAll("a")].map((a) => a.href)).toEqual([
-      "https://chromewebstore.google.com/detail/branch/kcdjddhmeafeomebliikmbpblkmkfoig",
-      "https://docs.openclaw.ai/tools/chrome-extension",
-    ]);
+    expect(card.textContent).toContain("Coming soon");
+    expect([...card.querySelectorAll("a")]).toEqual([]);
+    expect(card.querySelector("button")).toBeNull();
   });
   it.each([0, 1])("recognizes an installed extension with %i enabled profiles", async (enabled) => {
     bridge(async () =>

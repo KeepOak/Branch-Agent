@@ -18,6 +18,7 @@ const enApps = {
     ctaAppStore: "App Store",
     ctaPlayStore: "Google Play",
     ctaDownload: "Download",
+    comingSoon: "Coming soon",
     ctaOpenMac: "Open in Mac app",
     ctaDocs: "Docs",
     ctaSetupGuide: "Setup guide",

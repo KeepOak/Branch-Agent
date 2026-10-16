@@ -36,16 +36,50 @@ export type ControlName = { [K in keyof ControlsState]-?: ControlsState[K] exten
 
 export const DEFAULT_SETTINGS: DesktopSettings = { keepWorking: true, keepAwake: true, keepAwakeOnBattery: false, trayUsage: false, autoApplyUpdates: true, agentControl: false };
 
-/** The engine's own app links (engine/ui/src/pages/apps/view.ts); desktops come from Branch's releases. */
-const DESKTOP_RELEASES = `https://github.com/${RELEASE_REPOSITORY}/releases/latest`;
-export const DOWNLOAD_PAGES: Readonly<Record<string, string>> = {
-  iphone: "https://apps.apple.com/app/branch-ai-that-does-things/id6780396132",
-  android: "https://play.google.com/store/apps/details?id=ai.branch.app",
-  mac: DESKTOP_RELEASES,
-  windows: DESKTOP_RELEASES,
-  linux: DESKTOP_RELEASES,
-  extension: "https://chromewebstore.google.com/detail/branch/kcdjddhmeafeomebliikmbpblkmkfoig",
-};
+/** Asset names already published on Branch releases. Stable download names are not on main yet. */
+export const RELEASE_DOWNLOADS = {
+  mac: /^Branch-Agent-.+-darwin-arm64\.dmg$/,
+  windows: /^Branch-Agent-Setup-.+-win32-x64\.exe$/,
+  linux: /^Branch-Agent-.+-linux-x64\.AppImage$/,
+  android: /^branch-android-.+\.apk$/,
+} as const;
+export type ReleaseDownloadId = keyof typeof RELEASE_DOWNLOADS;
+export interface ReleaseAsset { name?: string; browser_download_url?: string }
+export interface ReleaseListing { assets?: readonly ReleaseAsset[] }
+
+const RELEASES_API = `https://api.github.com/repos/${RELEASE_REPOSITORY}/releases?per_page=100`;
+
+/** A GitHub release asset URL for this repository, or nothing when the URL is not one. */
+export function trustedReleaseAsset(value: string): string | undefined {
+  let url: URL;
+  try { url = new URL(value); } catch { return undefined; }
+  const prefix = `/${RELEASE_REPOSITORY}/releases/download/`;
+  if (url.protocol !== "https:" || url.hostname !== "github.com" || url.username || url.password || url.search || url.hash) return undefined;
+  if (!url.pathname.startsWith(prefix)) return undefined;
+  return url.toString();
+}
+
+/** The newest signed asset whose name is one Branch already publishes. Listings are newest first. */
+export function releaseDownloadUrl(id: ReleaseDownloadId, releases: readonly ReleaseListing[]): string | undefined {
+  const pattern = RELEASE_DOWNLOADS[id];
+  for (const release of releases) {
+    for (const asset of release.assets ?? []) {
+      if (typeof asset.name !== "string" || typeof asset.browser_download_url !== "string") continue;
+      if (!pattern.test(asset.name) || asset.name.toLowerCase().includes("unsigned")) continue;
+      const url = trustedReleaseAsset(asset.browser_download_url);
+      if (url) return url;
+    }
+  }
+  return undefined;
+}
+
+async function publishedReleases(): Promise<readonly ReleaseListing[]> {
+  const response = await fetch(RELEASES_API, { headers: { Accept: "application/vnd.github+json", "User-Agent": "Branch-Agent" } });
+  if (!response.ok) throw new Error(`Branch releases could not be read (${response.status})`);
+  const body: unknown = await response.json();
+  if (!Array.isArray(body)) throw new Error("Branch releases could not be read");
+  return body as ReleaseListing[];
+}
 
 export interface ControlDeps {
   settingsFile: string;
@@ -61,6 +95,8 @@ export interface ControlDeps {
   };
   tray: { usage(left: number | null, on: boolean): void };
   openExternal(url: string): Promise<void>;
+  /** Newest-first Branch release listings. Tests inject this; the app reads the public releases. */
+  releases?: () => Promise<readonly ReleaseListing[]>;
   /** Writes the settings file; tests inject a failing one. */
   writeFile?: (path: string, text: string) => void;
   onChange?: (settings: DesktopSettings) => void;
@@ -125,8 +161,10 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
   return {
     settings: () => ({ ...saved }), get, set,
     openDownload: async (id) => {
-      const url = Object.hasOwn(DOWNLOAD_PAGES, id) ? DOWNLOAD_PAGES[id] : undefined;
-      if (!url) throw new Error(`No download page for ${id}`);
+      if (id === "iphone" || id === "extension") throw new Error("Coming soon");
+      if (!Object.hasOwn(RELEASE_DOWNLOADS, id)) throw new Error(`No download page for ${id}`);
+      const url = releaseDownloadUrl(id as ReleaseDownloadId, await (deps.releases ?? publishedReleases)());
+      if (!url) throw new Error(`No Branch release download for ${id}`);
       await deps.openExternal(url);
     },
     trayUsage: (left) => {

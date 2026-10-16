@@ -10,6 +10,8 @@ import "../../styles/apps.css";
 import "../../components/native-chrome-setup.ts";
 import { COMMUNITY_DISCORD_URL } from "../../lib/product-links.ts";
 import { appsBrandIcons } from "./brand-icons.ts";
+import type { ReleaseDownloadId } from "./release-downloads.ts";
+import "./release-downloads.ts";
 
 registerAppsEnglish();
 
@@ -22,7 +24,9 @@ type AppsProps = {
 
 type AppCardCta =
   | { kind: "external"; href: string; labelKey: string }
-  | { kind: "internal"; routeId: RouteId; labelKey: string };
+  | { kind: "internal"; routeId: RouteId; labelKey: string }
+  | { kind: "release"; id: ReleaseDownloadId; labelKey: string }
+  | { kind: "soon" };
 
 type AppCard = {
   id: string;
@@ -45,6 +49,12 @@ const externalCta = (href: string, labelKey: string): AppCardCta => ({
   href,
   labelKey,
 });
+const releaseCta = (id: ReleaseDownloadId): AppCardCta => ({
+  kind: "release",
+  id,
+  labelKey: "appsPage.ctaDownload",
+});
+const comingSoon: AppCardCta = { kind: "soon" };
 const docsCta = (path: string) =>
   externalCta(`https://docs.openclaw.ai${path}`, "appsPage.ctaDocs");
 
@@ -58,26 +68,14 @@ const APP_SECTIONS: readonly AppSection[] = [
         gradient: ["#38bdf8", "#1d4ed8"],
         icon: appsBrandIcons.apple,
         copyKey: "appsPage.cards.ios",
-        ctas: [
-          externalCta(
-            "https://apps.apple.com/app/branch-ai-that-does-things/id6780396132",
-            "appsPage.ctaAppStore",
-          ),
-          docsCta("/platforms/ios"),
-        ],
+        ctas: [comingSoon],
       },
       {
         id: "android",
         gradient: ["#34d399", "#047857"],
         icon: appsBrandIcons.android,
         copyKey: "appsPage.cards.android",
-        ctas: [
-          externalCta(
-            "https://play.google.com/store/apps/details?id=ai.branch.app",
-            "appsPage.ctaPlayStore",
-          ),
-          docsCta("/platforms/android"),
-        ],
+        ctas: [releaseCta("android"), docsCta("/platforms/android")],
       },
     ],
   },
@@ -112,33 +110,21 @@ const APP_SECTIONS: readonly AppSection[] = [
         gradient: ["#a855f7", "#6b21a8"],
         icon: appsBrandIcons.apple,
         copyKey: "appsPage.cards.macos",
-        ctas: [
-          externalCta("https://github.com/openclaw/openclaw/releases", "appsPage.ctaDownload"),
-          docsCta("/platforms/macos"),
-        ],
+        ctas: [releaseCta("mac"), docsCta("/platforms/macos")],
       },
       {
         id: "windows",
         gradient: ["#818cf8", "#4338ca"],
         icon: appsBrandIcons.windows,
         copyKey: "appsPage.cards.windows",
-        ctas: [
-          externalCta(
-            "https://github.com/openclaw/openclaw-windows-node/releases/latest",
-            "appsPage.ctaDownload",
-          ),
-          docsCta("/platforms/windows"),
-        ],
+        ctas: [releaseCta("windows"), docsCta("/platforms/windows")],
       },
       {
         id: "linux",
         gradient: ["#fbbf24", "#b45309"],
         icon: appsBrandIcons.linux,
         copyKey: "appsPage.cards.linux",
-        ctas: [
-          externalCta("https://github.com/openclaw/openclaw/releases", "appsPage.ctaDownload"),
-          docsCta("/platforms/linux"),
-        ],
+        ctas: [releaseCta("linux"), docsCta("/platforms/linux")],
       },
     ],
   },
@@ -151,13 +137,7 @@ const APP_SECTIONS: readonly AppSection[] = [
         gradient: ["#f59e0b", "#ea580c"],
         icon: appsBrandIcons.chrome,
         copyKey: "appsPage.cards.chrome",
-        ctas: [
-          externalCta(
-            "https://chromewebstore.google.com/detail/branch/kcdjddhmeafeomebliikmbpblkmkfoig",
-            "appsPage.ctaChromeWebStore",
-          ),
-          externalCta("https://docs.openclaw.ai/tools/chrome-extension", "appsPage.ctaSetupGuide"),
-        ],
+        ctas: [comingSoon],
       },
       {
         id: "plugins",
@@ -184,6 +164,16 @@ const COMMUNITY_LINKS: ReadonlyArray<{ href: string; icon: TemplateResult; label
 
 function renderCta(cta: AppCardCta, index: number, props: AppsProps) {
   const className = index === 0 ? "apps-card__cta apps-card__cta--primary" : "apps-card__cta";
+  if (cta.kind === "soon") {
+    return html`<span class="apps-card__soon">${t("appsPage.comingSoon")}</span>`;
+  }
+  if (cta.kind === "release") {
+    return html`<branch-release-download
+      download-id=${cta.id}
+      label-key=${cta.labelKey}
+      ?primary=${index === 0}
+    ></branch-release-download>`;
+  }
   if (cta.kind === "internal") {
     return html`
       <button type="button" class=${className} @click=${() => props.onNavigate(cta.routeId)}>

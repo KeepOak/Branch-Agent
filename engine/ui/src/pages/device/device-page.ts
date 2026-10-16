@@ -219,12 +219,7 @@ class DevicePage extends BranchLightDomElement {
             <div class="device-extension-setup">
               <branch-native-chrome-setup auto-inspect></branch-native-chrome-setup>
               <div class="device-extension-setup__actions">
-                <a
-                  href="https://chromewebstore.google.com/detail/branch/kcdjddhmeafeomebliikmbpblkmkfoig"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  >${t("appsPage.ctaChromeWebStore")}</a
-                >
+                <span>${t("appsPage.comingSoon")}</span>
                 ${renderLearnMoreLink("https://docs.openclaw.ai/tools/chrome-extension")}
               </div>
             </div>

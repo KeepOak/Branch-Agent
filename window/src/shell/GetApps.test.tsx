@@ -18,10 +18,15 @@ const render = () => act(async () => root.render(<GetAppsDialog onClose={() => u
 const getIt = () => [...document.querySelectorAll<HTMLButtonElement>(".appsPA18 .tile button")];
 
 describe("Get the apps", () => {
-  it("greys Get it in a plain browser", async () => {
+  it("greys Get it in a plain browser, and Coming soon has no button", async () => {
     await render();
-    expect(getIt()).toHaveLength(6);
+    expect(getIt()).toHaveLength(4);
     for (const b of getIt()) { expect(b.disabled).toBe(true); expect(b.title).toBe(GET_IT_OFF); }
+    const soon = [...document.querySelectorAll(".appsPA18 .tile")].filter((tile) => tile.textContent?.includes("Coming soon"));
+    expect(soon.map((tile) => tile.querySelector("b")?.textContent)).toEqual(["iPhone", "Browser extension"]);
+    for (const tile of soon) {
+      expect(tile.querySelector("button, a")).toBeNull();
+    }
   });
 
   it("greys Get it for an older Branch app, without a developer note", async () => {
@@ -36,6 +41,6 @@ describe("Get the apps", () => {
     (window as { branchDesktop?: unknown }).branchDesktop = { controls: { openDownload } };
     await render();
     for (const b of getIt()) { expect(b.disabled).toBe(false); await act(async () => b.click()); }
-    expect(openDownload.mock.calls.map(([id]) => id)).toEqual(["iphone", "android", "mac", "windows", "linux", "extension"]);
+    expect(openDownload.mock.calls.map(([id]) => id)).toEqual(["android", "mac", "windows", "linux"]);
   });
 });
