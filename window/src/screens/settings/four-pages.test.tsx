@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // Regular Settings is four pages (General, Computer, Usage, Updates). Every other page stays reachable
-// under Advanced on its page. Developer stays on Technical. Advanced and Technical keep the full nav.
+// under "Also in <page>" on its page. Developer stays on Technical. Advanced and Technical keep the full nav.
 import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -61,7 +61,7 @@ describe("Settings four pages", () => {
     expect($$(".r1s-grp[aria-expanded]")).toEqual([]);
     expect(host.querySelector(".r1s-nav[aria-current=page]")?.textContent).toBe("General");
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("General");
-    expect(host.querySelector(".r1s-advanced h2")?.textContent).toBe("Advanced");
+    expect(host.querySelector(".r1s-advanced h2")?.textContent).toBe("Also in General");
   });
 
   it("renders each of the four pages when that page is opened", async () => {
