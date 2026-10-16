@@ -306,8 +306,32 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('EXPECTED_CERT_SHA256');
     expect(workflow).toContain('Signer #1 certificate SHA-256 digest');
     expect(workflow).toContain('Certificate fingerprint mismatch');
+    expect(workflow).toContain('--normalize-cert-sha256');
+    expect(workflow).toMatch(/actual_normalized="\$\(node mobile\/scripts\/android-release\.mjs --normalize-cert-sha256 "\$actual_sha256"\)"/);
+    expect(workflow).toMatch(/expected_normalized="\$\(node mobile\/scripts\/android-release\.mjs --normalize-cert-sha256 "\$EXPECTED_CERT_SHA256"\)"/);
     expect(workflow).toMatch(/Verify APK signature[\s\S]*apksigner verify --print-certs/);
     expect(workflow).toMatch(/Verify APK signature[\s\S]*Upload the APK as a workflow artifact/);
+  });
+
+  it('matches a colon-free expected fingerprint to a colon-separated digest, and the reverse', () => {
+    const colonFree = 'c0ffee00aabbccddeeff00112233445566778899aabbccddeeff001122334455';
+    const colonSeparated = 'C0:FF:EE:00:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55';
+    const spaced = ` ${colonSeparated} \n`;
+    const other = 'ff'.repeat(32);
+    const viaCli = (value: string) => execFileSync(process.execPath, [helper, '--normalize-cert-sha256', value], {
+      cwd: mobileRoot,
+      encoding: 'utf8',
+    }).trim();
+
+    expect(call('normalizeCertSha256', colonFree)).toBe(call('normalizeCertSha256', colonSeparated));
+    expect(call('normalizeCertSha256', colonSeparated)).toBe(call('normalizeCertSha256', colonFree));
+    expect(call('normalizeCertSha256', colonFree)).toBe(colonFree);
+    expect(call('normalizeCertSha256', colonSeparated)).toBe(colonFree);
+    expect(call('normalizeCertSha256', spaced)).toBe(colonFree);
+    expect(viaCli(colonFree)).toBe(viaCli(colonSeparated));
+    expect(viaCli(colonSeparated)).toBe(viaCli(colonFree));
+    expect(viaCli(spaced)).toBe(colonFree);
+    expect(call('normalizeCertSha256', colonFree)).not.toBe(call('normalizeCertSha256', other));
   });
 
   it('fails the verification step if the APK is unsigned or the fingerprint check fails', () => {
