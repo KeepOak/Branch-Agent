@@ -165,9 +165,9 @@ export class MacComputerDriver {
       const secret = randomBytes(32).toString("hex");
       const proxy = createServer(client => {
         let pending = Buffer.alloc(0);
-        const reject = () => client.destroy();
+        const reject = (): void => { client.destroy(); };
         client.setTimeout(5_000, reject);
-        client.on("data", function authenticate(chunk) {
+        const authenticate = (chunk: Buffer): void => {
           pending = Buffer.concat([pending, chunk]);
           const newline = pending.indexOf(10);
           if (newline > 4_096 || newline < 0 && pending.length > 4_096) return reject();
@@ -191,7 +191,8 @@ export class MacComputerDriver {
           if (pending.length > newline + 1) mcp.stdin!.write(pending.subarray(newline + 1));
           client.pipe(mcp.stdin!);
           mcp.stdout!.pipe(client);
-        });
+        };
+        client.on("data", authenticate);
       });
       await new Promise<void>((resolve, reject) => {
         proxy.once("error", reject);
