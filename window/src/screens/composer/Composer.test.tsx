@@ -61,6 +61,20 @@ describe("R1-04 composer", () => {
     expect(button("Talk live with voice")?.getAttribute("data-coming")).toBeTruthy();
   });
 
+  it("fills the open conversation when another place sends branch:compose, and keeps another conversation's words as a draft", async () => {
+    const { host } = await mount();
+    const box = host.querySelector<HTMLTextAreaElement>('[data-testid="composer"]')!;
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("branch:compose", { detail: { sessionKey: "agent:scout:main", text: "/weekly " } }));
+    });
+    expect(box.value).toBe("/weekly ");
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("branch:compose", { detail: { sessionKey: "agent:other:main", text: "/later " } }));
+    });
+    expect(box.value).toBe("/weekly ");
+    expect(localStorage.getItem("branch.composer.draft:agent:other:main")).toBe("/later ");
+  });
+
   it("morphs voice into send when there is text, and sends through onSend", async () => {
     const { host, send } = await mount();
     expect(host.querySelector(".r1c-send")).toBeNull();

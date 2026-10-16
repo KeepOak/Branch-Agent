@@ -62,11 +62,22 @@ const patches = (request: ReturnType<typeof vi.fn>) => request.mock.calls.filter
 describe("Tools, three panes", () => {
   it("lists the kinds with counts and the Whose tools chips, Connectors first", async () => {
     await open("Connectors");
-    expect([...host.querySelectorAll("[data-kind]")].map(k => k.getAttribute("data-kind"))).toEqual(["Connectors", "Skills", "Plugins", "Command-line tools", "Agents", "Toolsets"]);
+    expect([...host.querySelectorAll("[data-kind]")].map(k => k.getAttribute("data-kind"))).toEqual(["Connectors", "Skills", "Plugins", "Command-line tools", "Agents", "Toolsets", "Prompts"]);
     expect(host.querySelector('[data-kind="Connectors"] em')?.textContent).toBe("2");
     expect(host.querySelector('[data-kind="Skills"] em')?.textContent).toBe("1");
     expect([...host.querySelectorAll(".cz-whose .cz-chip")].map(c => c.textContent)).toEqual(["Every Trunk", "Sapling", "Oak"]);
     expect(button("Add a server")).toBeTruthy();
+  });
+  it("groups the Whose tools chips as one choice: Every Trunk starts chosen and is picked again after another Trunk", async () => {
+    await open("Connectors");
+    const group = host.querySelector('[role="group"][aria-label="Whose tools"]')!;
+    expect(group).toBeTruthy();
+    const pressed = () => [...group.querySelectorAll("button")].filter(b => b.getAttribute("aria-pressed") === "true").map(b => b.textContent);
+    expect(pressed()).toEqual(["Every Trunk"]);
+    await click(button("Oak", group));
+    expect(pressed()).toEqual(["Oak"]);
+    await click(button("Every Trunk", group));
+    expect(pressed()).toEqual(["Every Trunk"]);
   });
   it("switches a connector off and limits which Trunks may use it, through config.patch", async () => {
     const request = await open("Connectors");
@@ -142,7 +153,7 @@ describe("Tools › Skills", () => {
     expect(request).toHaveBeenCalledWith("skills.install", { name: "voice", installId: "brew" });
     await click(button("Add a skill"));
     const provs = [...document.querySelectorAll<HTMLElement>(".cz-provs .cz-prov")];
-    for (const label of ["Choose a file", "Add from GitHub", "Draft it"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toBe(""); }
+    for (const label of ["Choose a file", "Add from GitHub", "Draft it"]) { expect(button(label)!.disabled).toBe(true); expect(button(label)!.title).toMatch(/in a later update\.$/); }
     expect(provs.every(p => p.title === "")).toBe(true); expect(visibleDevNotes(document.body)).toEqual([]);
     await click(button("From the skill librarySearch skills others have shared and install one."));
     await click(button("Install"));

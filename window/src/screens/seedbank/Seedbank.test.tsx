@@ -6,6 +6,7 @@ import { CapabilityProvider } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { CustomizeWithCommunity, Seedbank } from "./index";
+import { requestCustomize } from "../../places/customize/r1-request";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 window.matchMedia ??= ((query: string) => ({ matches: false, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
@@ -161,15 +162,15 @@ describe("Seedbank", () => {
     expect(host.textContent).toContain("Nothing matches. Try another word.");
   });
 
-  it("opens Community from Customize's switch and from a place-tab event", async () => {
+  it("opens Community from Customize's switch and from a requestCustomize call", async () => {
     const { engine } = engineOf([]);
     const host = await render(engine, <CustomizeWithCommunity engine={engine} personal={<p>Personal page</p>} />);
     expect(host.textContent).toContain("Personal page");
     await click(buttons(host, "Community")[0]);
     expect(host.querySelector(".sb")).not.toBeNull();
-    await act(async () => void dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Tools" } })));
+    await click(buttons(host, "Personal")[0]);
     expect(host.textContent).toContain("Personal page");
-    await act(async () => void dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Community" } })));
+    await act(async () => requestCustomize({ mode: "community" }));
     expect(host.querySelector(".sb")).not.toBeNull();
   });
 

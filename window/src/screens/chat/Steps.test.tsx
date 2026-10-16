@@ -17,7 +17,7 @@ let n = 0;
 /** Fresh step keys per test: a fold keeps the open/closed choice made for its key while the window lives. */
 const fresh = (list: Step[]) => list.map((s) => ({ ...s, key: s.key + ":" + n }));
 const freshThoughts = () => thoughts.map((t) => ({ ...t, key: t.key + ":" + n }));
-beforeEach(() => { n += 1; host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
+beforeEach(() => { localStorage.clear(); n += 1; host = document.body.appendChild(document.createElement("div")); root = createRoot(host); });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
 it("Normal: one closed summary line with the failure count, no thoughts", async () => {
@@ -45,9 +45,74 @@ it("Verbose: every fold is open, with the failure's exit code in its detail", as
   expect(host.querySelector('[data-testid="thought"] details')!.hasAttribute("open")).toBe(true);
 });
 
-it("a live run shows the spinner and what it is doing now", async () => {
+it("a live run shows how many steps so far, with no spinner in the summary", async () => {
   await act(async () => root.render(<StepsList steps={fresh([steps[0], { ...steps[1], status: "running", detail: "" }])} live mode="normal" />));
   const summary = host.querySelector('[data-testid="steps"] summary')!;
-  expect(summary.querySelector(".r1c-spin")).not.toBeNull();
-  expect(summary.textContent).toContain("2 so far");
+  expect(summary.querySelector(".r1c-spin")).toBeNull();
+  expect(summary.textContent).toContain("2 steps so far");
+});
+
+it("Regular, live with a working label: the label is the disclosure, and the count stays inside", async () => {
+  await act(async () => root.render(<StepsList steps={fresh([steps[0], { ...steps[1], status: "running", detail: "" }])} live mode="normal" working="Working in GitHub" />));
+  const fold = host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!;
+  expect(fold.querySelector(".r1c-steps-text")!.textContent).toBe("Working in GitHub");
+  expect(fold.querySelector("summary")!.textContent).not.toContain("so far");
+  fold.querySelector("summary")!.click();
+  expect(host.querySelectorAll('[data-testid="step"]')).toHaveLength(2);
+});
+
+it("Advanced, live: the app in plain words and the count, never a tool's name", async () => {
+  localStorage.setItem("branch.level", "advanced");
+  await act(async () => root.render(<StepsList steps={fresh([steps[0], { ...steps[1], status: "running", detail: "" }])} live mode="normal" />));
+  const summary = host.querySelector('[data-testid="steps"] summary')!;
+  expect(summary.querySelector(".r1c-steps-text")!.textContent).toBe("Working on your computer · 2 steps so far");
+  expect(summary.textContent).not.toContain("Running a command");
+});
+
+it("Advanced, live with a connected tool: its app, with no tool id", async () => {
+  localStorage.setItem("branch.level", "advanced");
+  const github: Step[] = [{ kind: "step", key: "g1", tool: "mcp__plugin_github_github__list_pull_requests", title: "", detail: "", status: "running" }];
+  await act(async () => root.render(<StepsList steps={fresh(github)} live mode="normal" />));
+  const text = host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent!;
+  expect(text).toBe("Working in GitHub · 1 step so far");
+  expect(text).not.toContain("mcp__");
+  expect(text).not.toContain("list pull requests");
+});
+
+it("Technical, live: the step words stay as they were", async () => {
+  localStorage.setItem("branch.level", "technical");
+  await act(async () => root.render(<StepsList steps={fresh([steps[0], { ...steps[1], status: "running", detail: "" }])} live mode="normal" />));
+  expect(host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent).toBe("Running a command…");
+});
+
+it("Regular: the finished steps are one quiet count, and the list still opens", async () => {
+  localStorage.setItem("branch.level", "regular");
+  await act(async () => root.render(<StepsList steps={fresh(steps)} thoughts={[]} live={false} mode="normal" />));
+  const fold = host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!;
+  expect(fold.className).toContain("r1c-steps-quiet");
+  expect(fold.querySelector(".r1c-steps-text")!.textContent).toBe("2 steps");
+  expect(fold.querySelector("summary")!.textContent).toContain("1 failed");
+  expect(fold.querySelector("summary")!.textContent).not.toMatch(/read a file|ran a command/i);
+  fold.querySelector("summary")!.click();
+  expect(fold.open).toBe(true);
+  expect(host.querySelectorAll('[data-testid="step"]')).toHaveLength(2);
+});
+
+it.each(["advanced", "technical"])("%s: the full sentence stays, with the failure count", async (level) => {
+  localStorage.setItem("branch.level", level);
+  await act(async () => root.render(<StepsList steps={fresh(steps)} thoughts={[]} live={false} mode="normal" />));
+  const fold = host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!;
+  expect(fold.querySelector(".r1c-steps-text")!.textContent).toBe("Ran a command and read a file");
+  expect(fold.querySelector("summary")!.textContent).toContain("1 failed");
+  expect(fold.className).not.toContain("r1c-steps-quiet");
+});
+
+it("a failed step gives a plain reason and never a local path, at every level", async () => {
+  const failing: Step[] = [{ kind: "step", key: "f1", tool: "read", title: "notes", detail: "Permission denied: /Users/someone/Secret/notes.txt", status: "failed" }];
+  for (const level of ["regular", "advanced", "technical"]) {
+    localStorage.setItem("branch.level", level);
+    await act(async () => root.render(<StepsList steps={fresh(failing)} thoughts={[]} live={false} mode="normal" />));
+    expect(host.querySelector(".r1c-step-err")!.textContent).toBe("Permission denied: a local file");
+    expect(host.textContent).not.toContain("/Users");
+  }
 });

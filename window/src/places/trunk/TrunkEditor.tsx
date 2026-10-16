@@ -83,16 +83,22 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
     if (body) body.scrollTop = 0;
   }, []);
   const set = (d: Partial<Draft>) => setDraft((x) => ({ ...x, ...d }));
+  // What Shuffle chose, said in words beside the face it redraws (the face is a picture only, so a screen reader hears it here).
+  const [shuffled, setShuffled] = useState("");
   const shuffle = () => {
     if (draft.look === "classic") {
       const combinations = COLOURS.flatMap((colour) => SHAPES.flatMap((shape) => EYES.map((eyes) => ({ colour, shape, eyes }))));
       const alternatives = combinations.filter((look) => look.colour !== draft.colour || look.shape !== draft.shape || look.eyes !== draft.eyes);
-      set(alternatives[Math.floor(Math.random() * alternatives.length)]);
+      const next = alternatives[Math.floor(Math.random() * alternatives.length)];
+      set(next);
+      setShuffled(`Shuffled: ${next.shape}, ${next.eyes.toLowerCase()} eyes, colour ${next.colour}.`);
     } else {
       const worn = new Set(data.roster.agents.filter((a) => a.id !== agentId).map((a) => lookOf(a.avatar, a.name)));
       const free = LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look && !worn.has(l.id));
       const pool = free.length ? free : LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look);
-      set({ look: pool[Math.floor(Math.random() * pool.length)].id, emoji: "" });
+      const next = pool[Math.floor(Math.random() * pool.length)];
+      set({ look: next.id, emoji: "" });
+      setShuffled(`Shuffled: ${next.name}.`);
     }
   };
   const changed = JSON.stringify(draft) !== JSON.stringify(initial);
@@ -113,6 +119,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
         <div className="tk-big">
           <TrunkFace name={draft.name || initial.name} look={draft.look} emoji={draft.emoji} pebbleLook={draft} size={84} draft />
           <button type="button" className="btn sm" onClick={shuffle}>Shuffle</button>
+          <span className="vh" role="status" data-testid="trunk-shuffled">{shuffled}</span>
         </div>
         <div className="tk-col">
           <TabRow tab={tab} setTab={setTab} />

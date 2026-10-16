@@ -101,14 +101,14 @@ describe("R1 sidebar", () => {
     expect(host.querySelector('.r1sb-rw[data-kind="person"] .r1sb-more')).toBeNull();
   });
 
-  it("opens the row ••• menu with four tiles and pins through sessions.patch", async () => {
+  it("opens the row menu as the preview's list and pins through sessions.patch", async () => {
     const ledger = { key: "agent:ledger:main", title: "Ledger", agentId: "ledger", pinned: false, archived: false, unread: true, snoozedUntil: null, createdAt: 1, updatedAt: 10, preview: "", working: false, kind: "direct", system: false, automation: false, totalTokens: 0, contextTokens: 0 };
     const { render, request } = setup(FULL, true, { sessions: [ledger] as unknown as SidebarProps["sessions"] });
     await render();
     await click(host.querySelector('[aria-label="More for Ledger"]'));
-    expect(text(".g-menu-tile-label")).toEqual(["Pin", "Read", "Snooze ›", "Archive"]);
-    expect(text(".g-menu-row .g-menu-label")).toContain("Delete conversation…");
-    await click(document.querySelector(".g-menu-tile"));
+    expect(text(".g-menu-tile-label")).toEqual([]);
+    expect(text(".g-menu-row .g-menu-label")).toContain("Delete…");
+    await click([...document.querySelectorAll(".g-menu-row")].find(node => node.querySelector(".g-menu-label")?.firstChild?.textContent === "Pin to top")!);
     expect(request).toHaveBeenCalledWith("sessions.patch", expect.objectContaining({ key: "agent:ledger:main", pinned: true }));
   });
 
@@ -167,7 +167,7 @@ describe("R1 sidebar", () => {
     expect(props.onSettings).toHaveBeenCalledWith("updates");
     await click(host.querySelector('[aria-label="New, places and more"]'));
     expect(text(".g-menu-row .g-menu-label")).toEqual(["New conversation", "New Trunk", "New group", "Have Branch make a Trunk", "New automation", "Quick ask", "Collapse the list to faces"]);
-    expect(text(".g-menu-row .g-menu-end small")).toEqual(["random character", "Ctrl Shift Space", "Ctrl B"]);
+    expect(text(".g-menu-row .g-menu-end small")).toEqual(["name and face", "Ctrl Shift Space", "Ctrl B"]);
   });
 
   it("shows a downloaded update as a calm ready chip, never as installing", async () => {
