@@ -1,0 +1,3 @@
+window:src/screens/seedbank/glass48.test.tsx
+window:src/screens/g48-ids.test.ts
+window:src/glass/smart-glass.test.ts
