@@ -16,9 +16,12 @@ export function Screen({ children, footer, testID, avoidKeyboard = false }: { ch
   return (
     <Root testID={testID} {...(avoidKeyboard ? { behavior: 'padding' as const } : {})} style={[styles.fill, { backgroundColor: color.grouped }]}>
       <ScrollView
+        testID={testID ? `${testID}-scroll` : undefined}
         style={styles.fill}
         contentContainerStyle={{ paddingTop: insets.top + space.xxl, paddingHorizontal: layout.screenInset, paddingBottom: space.xl }}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
       >
         {children}
       </ScrollView>
