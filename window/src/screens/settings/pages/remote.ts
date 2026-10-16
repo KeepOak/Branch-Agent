@@ -4,6 +4,14 @@
 // Classic's chat-app sections belong to Chat apps (preview PG chatapps) and are not drawn here.
 import type { Level } from "../nav";
 import type { Codec, Control, Row, RowOption } from "../rows";
+import { clientOs, type ClientOs } from "../../../connect/client-os";
+
+/** Where the terminal opens, in this computer's words: WSL is a Windows part, so only Windows names it (B-053). */
+export function terminalHelp(os: ClientOs): string {
+  return os === "windows"
+    ? "Opens a terminal on the Gateway’s computer: in WSL on this PC, or over SSH on another computer."
+    : "Opens a terminal on the Gateway’s computer: this one, or another one over SSH.";
+}
 
 type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[]; unit?: string; codec?: Codec; bare?: true };
 /** A Coming row says only that it comes later, in the row's own words (R1-10); the call it waits for stays in `need`. */
@@ -86,7 +94,7 @@ export const REMOTE_ROWS: Row[] = [
   slot("remote.doing.lately", DOING, DOING, ["health", "system.info", "presence.query"], { bare: true }),
   slot("remote.doing.restart", DOING, "Restart the engine", ["gateway.restart.request"]),
   coming("remote.doing.terminal", DOING, "A terminal where Branch runs", "desktop: opening a terminal on the Gateway’s computer",
-    { level: 1, help: "Opens a terminal on the Gateway’s computer: in WSL on this PC, or over SSH on another computer." }),
+    { level: 1, help: terminalHelp(clientOs()) }),
 
   // Another computer (Advanced; fingerprint, host key and proxy are Technical)
   config("remote.another.how", ANOTHER, "How to reach it", "gateway.remote.transport", "segmented", { level: 1,
