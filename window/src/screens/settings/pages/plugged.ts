@@ -9,6 +9,7 @@ import {
   GitHubPermissions, GitHubRow, HubCommand, OwnAccountList, OwnFolder, RestingNow, SelectAccounts, SignInSources, SignOut, TestIt, WhichNext,
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
+import { CUSTOMIZE_PAGE } from "./customize-live";
 import { permissionsSlot } from "./permissions-approvals";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { INSTRUCTIONS_ROWS } from "./instructions";
@@ -57,6 +58,8 @@ export const R1_PAGES: PageSlots = {
   permissions: permissionsSlot,
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Customize is a row page: the kinds hub, Saved prompts and Connected agents are its own cards (customize-live.tsx).
+  customize: CUSTOMIZE_PAGE,
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
   instructions: { rows: INSTRUCTIONS_ROWS, controls: { "instructions.you.file": AboutYou, "instructions.project.files": Files } },
   // Voice & calls: native R1 cards in the preview's order; Classic Voice draws behind its rows (voice-controls.tsx).

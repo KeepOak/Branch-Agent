@@ -297,7 +297,76 @@ const LIBRARY_MORE: SecSpec = { title: "Library, more", group: "Library", lv: 1,
   { t: "Rewrite short notes", draw: () => <Ctl title="Rewrite short notes" sub="Clearer, shorter, fixed or more formal."><Btn sm onClick={() => openPlace("library")}>Try it</Btn></Ctl> },
 ] };
 const PINNED: SecSpec = { title: "Pinned skills", lv: 1, rows: [{ t: "Always read in full", s: "A pinned skill’s whole instructions go with every message, not only when it seems to fit.", kind: "seg", off: "The engine can’t pin a skill.", opts: [{ id: "none", label: "None" }] }] };
+
+// The bundled llm-task tool: one JSON model call, with its own model and limits. It ships off
+// (not enabled by default, and the tool is optional). Turning it on writes plugins.entries.llm-task.enabled
+// and adds the tool to tools.alsoAllow, or to tools.allow when that list is already in use — the engine
+// rejects both lists at once. Automations is work that runs on its own; this is a model tool, so it sits here.
+const TASK = "plugins.entries.llm-task";
+const TASK_TOOL = "llm-task";
+const whole = (v: unknown) => Math.round(Number(v));
+function nameList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+function structuredOn(c: Ctx): boolean {
+  if (c.config.get(`${TASK}.enabled`) !== true) return false;
+  const allow = nameList(c.config.get("tools.allow"));
+  if (allow.length > 0) return allow.includes(TASK_TOOL);
+  return nameList(c.config.get("tools.alsoAllow")).includes(TASK_TOOL);
+}
+function setToolList(c: Ctx, path: "tools.allow" | "tools.alsoAllow", on: boolean) {
+  const current = nameList(c.config.get(path));
+  const next = on ? (current.includes(TASK_TOOL) ? current : [...current, TASK_TOOL]) : current.filter((name) => name !== TASK_TOOL);
+  if (next.join("\0") !== current.join("\0")) void c.config.set(path, next.length ? next : null);
+}
+function setStructured(c: Ctx, on: boolean) {
+  if (c.config.get(`${TASK}.enabled`) !== on) void c.config.set(`${TASK}.enabled`, on);
+  const allow = nameList(c.config.get("tools.allow"));
+  if (allow.length > 0) { setToolList(c, "tools.allow", on); return; }
+  setToolList(c, "tools.alsoAllow", on);
+}
+function StructuredAnswers({ c }: { c: Ctx }) {
+  return (
+    <Ctl title="Structured answers" sub="Asks a model for one answer in a fixed shape (JSON), so a workflow can use the result. Off until you choose: it spends a model call outside the conversation.">
+      <Switch label="Structured answers" checked={structuredOn(c)} disabled={c.config.loading} onChange={(on) => setStructured(c, on)} />
+    </Ctl>
+  );
+}
+function taskModelValue(c: Ctx): string {
+  const provider = str(c.config.get(`${TASK}.config.defaultProvider`));
+  const model = str(c.config.get(`${TASK}.config.defaultModel`));
+  if (provider && model) return `${provider}/${model}`;
+  return model || provider;
+}
+function TaskModel({ c }: { c: Ctx }) {
+  const models = useLive<RecordValue>(c.engine, "models.list", {}, []);
+  const pick = (id: string) => {
+    if (!id) {
+      void c.config.set(`${TASK}.config.defaultProvider`, null);
+      void c.config.set(`${TASK}.config.defaultModel`, null);
+      return;
+    }
+    const slash = id.indexOf("/");
+    const provider = slash > 0 ? id.slice(0, slash) : "";
+    const model = slash > 0 ? id.slice(slash + 1) : id;
+    void c.config.set(`${TASK}.config.defaultProvider`, provider || null);
+    void c.config.set(`${TASK}.config.defaultModel`, model || null);
+    // A chosen model is sent as an override, which the engine refuses until this is on.
+    void c.config.set(`${TASK}.llm.allowModelOverride`, true);
+  };
+  return (
+    <Ctl title="Model for structured answers" sub="Empty uses the Trunk’s own model. Choosing one lets this tool use that model.">
+      <Pick label="Model for structured answers" value={taskModelValue(c)} disabled={c.config.loading} onChange={pick} options={[{ id: "", label: "The Trunk’s own model" }, ...modelOpts(models.data)]} />
+    </Ctl>
+  );
+}
+
 const WHAT: SecSpec = { title: "What it can do", lv: 1, hint: "Model tools. Each one is used only when a task needs it.", rows: [
+  { t: "Structured answers", draw: (c) => <StructuredAnswers c={c} /> },
+  { t: "Model for structured answers", draw: (c) => <TaskModel c={c} /> },
+  { t: "Longest structured answer", s: "How long the answer may be. Empty sets no limit here.", k: `${TASK}.config.maxTokens`, kind: "num", unit: "tokens", min: 1, ph: "No limit", write: whole },
+  { t: "Answer time limit", s: "How long to wait for the answer. Empty waits 30 seconds.", k: `${TASK}.config.timeoutMs`, kind: "num", unit: "milliseconds", def: 30000, min: 1, write: whole },
+  { t: "Models it may use", s: "Empty allows any model. A list limits every structured answer, including the Trunk’s own model.", k: `${TASK}.llm.allowedCompletionModels`, kind: "list", ph: "openai/gpt-5" },
   { t: "Read links you paste", s: "Opens the page and reads it, including PDFs and videos with captions.", k: "tools.links", w: "tools.links.enabled", kind: "sw", read: (v) => typeof v === "object" && v !== null && rec(v).enabled !== false },
   no("Deep research reports", "Many searches, then a brief with numbered sources."),
   no("Edit documents exactly", "Word, Excel and PowerPoint changes that leave everything else as it was."),
