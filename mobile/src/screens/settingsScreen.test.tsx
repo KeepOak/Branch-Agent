@@ -211,6 +211,7 @@ describe('r50 settings parity', () => {
     const advanced = laterRowsAt(1);
     expect(advanced.length).toBeGreaterThan(0);
     expect(advanced.some((row) => row.label === 'Lend this phone to Branch')).toBe(true);
+    expect(screen.getByTestId('later-keepoak-reason')).toHaveTextContent('Sign in with KeepOak comes in a later update.');
     for (const row of advanced) {
       expect(screen.getByTestId(row.testID)).toBeOnTheScreen();
       expect(screen.getByTestId(`${row.testID}-reason`)).toHaveTextContent(laterUpdate(row.label));

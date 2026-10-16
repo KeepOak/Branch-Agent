@@ -28,6 +28,9 @@ export function laterUpdate(label: string): string {
   return `${label} comes in a later update.`;
 }
 
+/** Pairing restore that has no backend yet. Shown only at Advanced and above; never as a working sign-in. */
+export const KEEPOAK_SIGN_IN = 'Sign in with KeepOak';
+
 export type LaterRow = {
   testID: string;
   label: string;
@@ -54,7 +57,7 @@ export const LATER_ROWS: LaterRow[] = [
   { testID: 'later-connect-another', label: 'Connect another Branch', group: 'Computer', minLevel: 1 },
   { testID: 'later-on-phone-engine', label: 'Run Branch on this phone', group: 'Computer', minLevel: 2 },
 
-  { testID: 'later-keepoak', label: 'Sign in with keepoak.com', group: 'Usage', minLevel: 1 },
+  { testID: 'later-keepoak', label: KEEPOAK_SIGN_IN, group: 'Usage', minLevel: 1 },
   { testID: 'later-accounts', label: 'Accounts', group: 'Usage', minLevel: 1 },
   { testID: 'later-models', label: 'Models on this computer', group: 'Usage', minLevel: 1 },
   { testID: 'later-chat-apps', label: 'Chat apps', group: 'Usage', minLevel: 1 },

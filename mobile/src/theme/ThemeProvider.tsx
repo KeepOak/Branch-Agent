@@ -12,7 +12,7 @@ import {
   writeThemePreference,
   type ThemePreference,
 } from './preference';
-import { themeFor, type ColorScheme, type Theme } from './tokens';
+import { pairingTheme, themeFor, type ColorScheme, type Theme } from './tokens';
 
 type PreferenceApi = {
   preference: ThemePreference;
@@ -112,6 +112,13 @@ export function ThemeProvider({
 
 export function useTheme(): Theme {
   return useContext(ThemeContext);
+}
+
+/** Pairing screens: ink primary, no indigo. Wraps the current theme so light/dark still follow the phone. */
+export function PairingTheme({ children }: { children: ReactNode }) {
+  const theme = useTheme();
+  const pairing = useMemo(() => pairingTheme(theme), [theme]);
+  return <ThemeContext.Provider value={pairing}>{children}</ThemeContext.Provider>;
 }
 
 export function useThemePreference(): PreferenceApi {

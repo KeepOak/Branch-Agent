@@ -7,7 +7,7 @@ import { useTheme } from '../theme/ThemeProvider';
  * A screen with the iOS large-title margins: scrolling content above, actions pinned to the bottom. With
  * `avoidKeyboard`, the actions ride above the on-screen keyboard instead of sitting under it, so a tap meant
  * for them never lands on a key. Padding works on both platforms now that Android draws edge to edge and no
- * longer resizes the window for the keyboard.
+ * longer resizes the window for the keyboard. r50 never paints a scrollbar; scrolling still works.
  */
 export function Screen({ children, footer, testID, avoidKeyboard = false }: { children: ReactNode; footer?: ReactNode; testID?: string; avoidKeyboard?: boolean }) {
   const { color, space, layout } = useTheme();
