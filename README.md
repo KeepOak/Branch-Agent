@@ -1,0 +1,1 @@
+Proof for feat/1100-languages (Private #1100, languages). The R1 Settings frame with Language set to Deutsch: the picker on Appearance, nav and card titles that have a translation in German, the rest in English. 1440 and 390, light and dark.
