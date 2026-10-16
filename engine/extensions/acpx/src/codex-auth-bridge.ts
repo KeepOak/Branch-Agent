@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { tryReadJson } from "@openclaw/fs-safe/json";
+import { resolveStateDir } from "branch/plugin-sdk/state-paths";
 import { isRecord as isConfigRecord } from "branch/plugin-sdk/string-coerce-runtime";
 import { escapeRegExp } from "branch/plugin-sdk/text-utility-runtime";
 import {
@@ -601,8 +602,8 @@ const env = {
   ...process.env,
   CODEX_HOME: codexHome,
 };
-// Release builds ship no Codex binary. Point codex-acp at the Codex installed on this
-// computer (the first codex on PATH) unless CODEX_PATH is already chosen.
+// Release builds ship no Codex binary. Point codex-acp at a codex on PATH, else the
+// verified first-use download, unless CODEX_PATH is already chosen.
 if (!env.CODEX_PATH) {
   const codexName = process.platform === "win32" ? "codex.exe" : "codex";
   for (const dir of (env.PATH || env.Path || "").split(path.delimiter)) {
@@ -610,6 +611,16 @@ if (!env.CODEX_PATH) {
       env.CODEX_PATH = path.join(dir, codexName);
       break;
     }
+  }
+}
+if (!env.CODEX_PATH) {
+  try {
+    const downloadedCodex = JSON.parse(readFileSync(${JSON.stringify(path.join(resolveStateDir(), "tools", "codex", "current.json"))}, "utf8"));
+    if (typeof downloadedCodex?.native === "string" && existsSync(downloadedCodex.native)) {
+      env.CODEX_PATH = downloadedCodex.native;
+    }
+  } catch {
+    // No verified download yet: codex-acp keeps its own launcher.
   }
 }`,
     envConfigSetup: `function isCodexConfigObject(value) {

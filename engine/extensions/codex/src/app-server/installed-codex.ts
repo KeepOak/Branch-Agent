@@ -8,8 +8,9 @@
  *    checkouts);
  * 3. the Codex desktop app on macOS, as before.
  *
- * With none of them, starting Codex fails with the same sentence Settings ›
- * Accounts › Coding apps shows on the Codex row. Nothing is downloaded.
+ * With none of them, the registered first-use download (on-demand.ts) fetches
+ * the pinned package. With no download registered, starting Codex fails with
+ * the same sentence Settings › Accounts › Coding apps shows on the Codex row.
  */
 import { execFile } from "node:child_process";
 import { constants as fsConstants } from "node:fs";

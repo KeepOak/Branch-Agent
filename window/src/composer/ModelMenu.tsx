@@ -14,6 +14,8 @@ import { Logo, serviceName as brandName } from "../places/settings/set1/service"
 import { accountName, type Account } from "../places/settings/set1/accounts";
 import { shows, useLevel } from "../places-nav/level";
 import type { WindowEngine } from "./engine";
+import { Coming } from "../glass/coming";
+import { CODEX_DOWNLOAD_METHOD, codexDownloadOffered, useCodexDownload } from "../places/settings/set1/codex-get";
 import { NOT_ON_PLAN, offPlan, planOrder, runsOnCodex, useCodexPlan } from "./codex-plan";
 import { useModelAccounts } from "./useModelAccount";
 
@@ -87,6 +89,12 @@ export function ModelMenu(p: Props) {
   const advanced = shows(useLevel(), "advanced");
   const allAccounts = useModelAccounts(p.engine, p.trunkId ?? "", false);
   const plan = useCodexPlan(p.engine, p.trunkId, p.models.some(runsOnCodex));
+  const codex = useCodexDownload(p.engine, codexDownloadOffered(p.engine) && p.models.some(runsOnCodex));
+  const pickModel = (m: ModelChoice) => {
+    void p.patch({ model: m.ref, thinkingLevel: null }).then(() => {
+      if (runsOnCodex(m)) void codex.start();
+    });
+  };
   const accounts = accountsFor(allAccounts, p.current?.provider);
   const levels = thinkingChoices(p.current);
   const speeds = p.current?.serviceTiers.includes("ultrafast") ? [...SPEEDS, { id: "ultrafast", label: "Ultrafast" }] : SPEEDS;
@@ -125,6 +133,7 @@ export function ModelMenu(p: Props) {
           )
         ) : null}
         {p.models.length > 0 && groups.length === 0 ? <p className="c-pp">No models match.</p> : null}
+        {codex.view?.line ? <p className="c-pp" data-testid="codex-progress">{codex.view.line}{codex.view.action === "Try again" ? <> <Coming need={CODEX_DOWNLOAD_METHOD} where="Try again"><button type="button" className="c-link" onClick={() => void codex.start()}>Try again</button></Coming></> : null}</p> : null}
         <div className="c-scroll">
           {groups.map((g) => (
             <div key={g.service} role="group" aria-label={g.service}>
@@ -141,7 +150,7 @@ export function ModelMenu(p: Props) {
                   disabled={locked || off}
                   reason={off ? NOT_ON_PLAN : undefined}
                   reasonLine={off}
-                  onClick={() => void p.patch({ model: m.ref, thinkingLevel: null })}
+                  onClick={() => pickModel(m)}
                 />
               ); })}
             </div>
@@ -154,7 +163,7 @@ export function ModelMenu(p: Props) {
               label={`Use ${p.current.name} for ${p.trunkName} from now on`}
               disabled={!p.isAdmin}
               reason={p.isAdmin ? undefined : "This needs admin access on this computer."}
-              onClick={() => void p.onKeepForTrunk(p.current as ModelChoice)}
+              onClick={() => void p.onKeepForTrunk(p.current as ModelChoice).then(() => { if (p.current && runsOnCodex(p.current)) void codex.start(); })}
             />
             <LinkRow icon="gear" label={`Use ${p.current.name} everywhere from now on…`} target="settings/models" onOpen={p.onOpen} open={open} />
           </>
