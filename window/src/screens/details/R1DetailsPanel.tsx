@@ -40,11 +40,11 @@ function saveDetailsTab(kind: DetailsKind, tab: DetailsTab) {
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
-/** The Coming copy (one plain line, no dates, as the preview's WHY_F18 lines read). */
-const ROUTINES_COMING = "This connection can’t list a Trunk’s routines.";
+/** Coming reasons name the preview label: "<label> comes in a later update." */
+const ROUTINES_COMING = "Routines comes in a later update.";
 /** The Details tab's own line, under the routines list and on its own when there are none yet. */
 const ASK_ROUTINE = "Ask it in chat to set one up";
-const LIBRARY_COMING = "This connection can’t list the files a Trunk made.";
+const LIBRARY_COMING = "Made by Trunks comes in a later update.";
 const MEMBERS_COMING = "Adding and removing members works in Branch group chats.";
 
 type Props = {

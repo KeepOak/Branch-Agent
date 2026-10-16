@@ -36,10 +36,10 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 
-function session(sessionKey: string) {
+function session(sessionKey: string, methods?: readonly string[]) {
   const snapshot = { status: { phase: "connected" }, name: "Ledger", sessionKey, mainKey: "agent:ledger:main", history: [], live: [], queued: [], liveRunId: null };
   const request = vi.fn(async (method: string) => (method === "cron.list" ? { jobs: data.jobs } : method === "environments.list" ? { environments: [] } : {}));
-  const engine = { agentId: "ledger", sessionKey, scopes: ["operator.admin"], request, onEvent: () => () => undefined };
+  const engine = { agentId: "ledger", sessionKey, scopes: ["operator.admin"], request, onEvent: () => () => undefined, ...(methods ? { features: { methods, events: [] } } : {}) };
   return { subscribe: () => () => undefined, getSnapshot: () => snapshot, open: vi.fn(async () => undefined), request, onGatewayEvent: () => () => undefined, engine, gatewayUrl: "ws://gateway.test" } as unknown as SaplingSession;
 }
 const pill = () => host.querySelector<HTMLButtonElement>(".g-pill")!;
@@ -102,6 +102,17 @@ it("gives a group Details, Library and Members, with Add a Trunk and a Remove fo
   const removes = [...panel()!.querySelectorAll("button")].map((b) => b.getAttribute("aria-label")).filter((label) => label?.startsWith("Remove "));
   expect(removes).toEqual(["Remove Ledger", "Remove Scout"]);
   expect([...panel()!.querySelectorAll("button")].some((b) => b.textContent === "Add a Trunk")).toBe(true);
+});
+
+it("names Routines and Made by Trunks in the later-update line when those calls are missing", async () => {
+  data.rows = [{ key: "agent:ledger:main", agentId: "ledger", title: "Ledger", isMain: true, kind: "trunk" }];
+  await act(async () => root.render(<R1Window session={session("agent:ledger:main", [])} />));
+  await act(async () => pill().click());
+  await settle();
+  expect(panel()!.querySelector(".r1-details-routines")?.getAttribute("data-coming")).toBe("Routines comes in a later update.");
+  await act(async () => tab("Library").click());
+  await settle();
+  expect(panel()!.querySelector(".r1-details-library")?.getAttribute("data-coming")).toBe("Made by Trunks comes in a later update.");
 });
 
 it("remembers the last tab for a Trunk and a group separately", async () => {
