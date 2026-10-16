@@ -61,8 +61,9 @@ function leasedRuntime(
 ) {
   const baseStore = sessionStore(record);
   const leaseStore = makeLeaseStore();
+  const nativeWrapperRoot = wrapperRoot !== "/tmp/branch/acpx";
   return {
-    ...(cleanup || wrapperRoot !== "/tmp/branch/acpx"
+    ...(cleanup || nativeWrapperRoot
       ? makeRuntime(
           baseStore,
           {
@@ -74,7 +75,12 @@ function leasedRuntime(
               list: () => ["codex"],
             },
           },
-          cleanup,
+          // A native temp root is quoted for the host shell, so command parsing must see the
+          // host platform; the default linux fixture would read Windows separators as escapes.
+          cleanup ??
+            (nativeWrapperRoot
+              ? { branchProcessCleanup: { platform: process.platform } }
+              : undefined),
         )
       : makeLeasedRuntime(baseStore, leaseStore)),
     baseStore,

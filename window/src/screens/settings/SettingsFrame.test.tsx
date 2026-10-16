@@ -50,10 +50,11 @@ const type = async (text: string) => {
 const level = (name: string) => [...$$(".r1s-level button")].find((b) => b.textContent === name)!;
 
 describe("SettingsFrame", () => {
-  it("draws the nav groups in order with search and How much to show at the top", async () => {
+  it("draws the four Settings pages in order with search and How much to show at the top", async () => {
     await mount(engineOf().engine);
-    expect($$(".r1s-grp").map((g) => g.textContent)).toEqual(["You", "Your Trunks", "Talking", "Accounts & models", "Permissions & safety", "Computers", "Branch"]);
-    expect($<HTMLInputElement>(".r1s-search input").placeholder).toBe("Search settings, places, Trunks, features");
+    expect($$(".r1s-list .r1s-nav").map((g) => g.textContent)).toEqual(["General", "Computer", "Usage", "Updates"]);
+    expect($$(".r1s-grp[aria-expanded]")).toEqual([]);
+    expect($<HTMLInputElement>(".r1s-search input").placeholder).toBe("Search settings");
     expect($(".r1s-level small").textContent).toBe("The essentials, in plain words.");
     expect($(".r1s-nav[aria-current=page]").textContent).toBe("General");
     expect($("[data-page=developer]")).toBeNull();
@@ -96,7 +97,8 @@ describe("SettingsFrame", () => {
     expect(fine.getAttribute("aria-label")).toBe("Fine-tune each part");
     expect(fine.querySelector("h3")?.textContent).toBe("Fine-tune each part");
     expect(fine.querySelector("[data-row='general.work.thinking']")).not.toBeNull();
-    expect(fine.querySelector("[data-row='general.work.chat-steps-shown']")?.getAttribute("data-coming")).toBeTruthy();
+    // A later-update row folds under its own line after the live rows, so it is found in the card, not in the Fine group.
+    expect(work.querySelector("[data-row='general.work.chat-steps-shown']")?.getAttribute("data-coming")).toBeTruthy();
     expect(fine.querySelector("[data-row='general.work.mode']")).toBeNull();
     expect(work.querySelector(":scope > [data-row='general.work.mode']")).not.toBeNull();
   });
@@ -227,7 +229,7 @@ describe("SettingsFrame", () => {
 });
 
 describe("SettingsFrame custom pages", () => {
-  const extra = (id: string, label: string, level: 0 | 1 | 2 = 0): Row => ({ id, page: "chatapps", card: "Commands", label, level, ownerLevel: true, control: "toggle", source: { kind: "coming", need: "x", reason: "x" } });
+  const extra = (id: string, label: string, level: 0 | 1 | 2 = 0): Row => ({ id, page: "chatapps", card: "Commands", label, level, ownerLevel: true, control: "toggle", source: { kind: "slot", calls: [], reason: "x" } }); // drawn by its page, as Chat apps rows are
   async function mountSlots(engine: WindowEngine, pages: PageSlots, extras: Partial<SettingsFrameProps> = {}) {
     await act(async () => root.render(<SettingsFrame engine={engine} pages={pages} {...extras} />));
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
@@ -240,7 +242,8 @@ describe("SettingsFrame custom pages", () => {
     await mountSlots(engine, { chatapps: { component: Page } }, { page: "chatapps" });
     expect($("[data-slot=chatapps] [data-testid=chat-slot]").textContent).toBe("same engine");
     expect(Page.mock.calls.every(([props]) => props.engine === engine)).toBe(true);
-    expect($(".r1s-nav[aria-current=page]").textContent).toBe("Chat apps");
+    expect($(".r1s-nav[aria-current=page]").textContent).toBe("General");
+    expect($(".r1s-advanced [data-page=chatapps]")?.getAttribute("aria-current")).toBe("true");
     expect($(".r1s-search input")).not.toBeNull();
     expect($$(".r1s-level button").map((b) => b.textContent)).toEqual(["Regular", "Advanced", "Technical"]);
     expect($$(".r1s-sec")).toHaveLength(0);

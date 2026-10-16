@@ -3,9 +3,11 @@
 // rewritten); this file only draws it the approved way and joins the parts. Every control is wired or shows Coming.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
 import type { Conversation as ListRow } from "../../connect/conversations";
-import { isPreparationPending, preparationLabel } from "../../connect/preparation-status";
+import { isPreparationPending, isPreparationStalled, preparationLabel } from "../../connect/preparation-status";
 import { PASTED_TEXT_CHIP_CHARS } from "../../composer/attachments";
+import { COMPOSE_EVENT } from "../../composer/Composer";
 import { folderContext } from "../../composer/context";
+import { safeStorage, saveDraft } from "../../composer/drafts";
 import { DockRow, type Goal } from "../../composer/DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "../../composer/engine";
 import { Icon, StopMark } from "../../composer/icons";
@@ -83,6 +85,8 @@ type Props = {
   placeholder?: string;
   /** The first Trunk waiting on a yes, for the roaming pet's tip (QUEUE item 18). */
   petWaiting?: string | null;
+  /** The window already shows the Trunk getting ready (frame/StartupLine.tsx), so the composer adds no second line for it. */
+  startupShown?: boolean;
 };
 
 type Menu = RowMenu | "plus" | "ring" | null;
@@ -111,6 +115,19 @@ export function Composer(props: Props) {
   const textNow = useRef("");
   useEffect(() => { setTarget(null); setMenu(null); }, [sessionKey]);
   const box = useRef<HTMLTextAreaElement>(null), fileInput = useRef<HTMLInputElement>(null), folderInput = useRef<HTMLInputElement>(null);
+  // Places fill this box with branch:compose (Customize's Use). The open conversation takes the words; any other one keeps them as its draft.
+  useEffect(() => {
+    const fill = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionKey?: unknown; text?: unknown }>).detail;
+      if (typeof detail?.sessionKey !== "string" || typeof detail.text !== "string") return;
+      if (detail.sessionKey === sessionKey) {
+        draft.setText(detail.text);
+        requestAnimationFrame(() => box.current?.focus());
+      } else saveDraft(safeStorage(), detail.sessionKey, detail.text);
+    };
+    window.addEventListener(COMPOSE_EVENT, fill);
+    return () => window.removeEventListener(COMPOSE_EVENT, fill);
+  }, [sessionKey, draft.setText]);
   const plus = useRef<HTMLButtonElement>(null), ring = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setMenu(null), []);
   // HANDOFF R1-04: at a dock 300 px wide or less, Dictate and Improve fold into the + menu (size only, read from a ref).
@@ -355,7 +372,7 @@ export function Composer(props: Props) {
   const summary = ringSummary(usage, runningCount, context);
   const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : noModel ? "Connect a model to start." : working && hasDraft ? sendTooltip(queueMode) : undefined;
   const placeholder = noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`;
-  const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n));
+  const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n) && !(props.startupShown && (isPreparationPending(n) || isPreparationStalled(n))));
 
   return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
     {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}

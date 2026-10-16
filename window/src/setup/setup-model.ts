@@ -23,6 +23,10 @@ export const STEPS = [
 ] as const;
 export const LAST = STEPS.length - 1;
 
+/** The four steps of the R1 first run (preview item 37, obRailP37): the pre-connect screens draw these on their rail. Kept here, not
+ *  imported from the onboarding module, which pulls in the templates and composer code. */
+export const FIRST_RUN_STEP_NAMES = ["Welcome", "Your models", "How much it may do", "Your first Trunk"] as const;
+
 /** Settings › Developer › Run setup again, and Guide › Set up Branch, reopen at Welcome. */
 export const RUN_SETUP_AGAIN = "branch:run-setup-again";
 export function rerunSetup(): void {

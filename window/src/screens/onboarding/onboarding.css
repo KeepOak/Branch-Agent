@@ -6,7 +6,7 @@
   background: color-mix(in srgb, var(--bg) 58%, transparent); -webkit-backdrop-filter: blur(26px) saturate(170%); backdrop-filter: blur(26px) saturate(170%); }
 .r1-ob-card { width: min(560px, 100%); max-height: calc(100dvh - 32px); box-sizing: border-box; padding: 26px 30px 18px; border-radius: 28px; display: grid; gap: 16px; overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto auto;
   background: color-mix(in srgb, var(--bg) 74%, transparent); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
-  box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi), 0 30px 80px rgba(0,0,0,.24); animation: r1-ob-in .42s cubic-bezier(.2,.9,.25,1.15); }
+  box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi), var(--gw-dlg-sh); animation: r1-ob-in .42s cubic-bezier(.2,.9,.25,1.15); }
 /* Controls keep the preview's chip: a faint fill, a 1px edge and a top highlight. Text never takes this. */
 :is(.r1-ob-row, .r1-ob-promise, .r1-ob-mode, .r1-ob-btn:not(.r1-ob-pri), .r1-ob-pick, .r1-ob-chip, .r1-ob-text) {
   background: var(--gw-chip); box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi); border: 0; color: var(--ink);
@@ -84,7 +84,7 @@
 body:has(> .r1-ob-dlg) .r1-ob > .r1-ob-card { visibility: hidden; }
 .r1-ob-sheet { width: min(440px, 100%); box-sizing: border-box; padding: 20px 22px 16px; border-radius: 22px; display: grid; gap: 12px;
   background: color-mix(in srgb, var(--bg) 74%, transparent); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
-  box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi), 0 30px 80px rgba(0,0,0,.24); animation: r1-ob-in .32s cubic-bezier(.3,1.5,.5,1); }
+  box-shadow: inset 0 0 0 .5px var(--gw-edge), inset 0 1px 0 var(--gw-hi), var(--gw-dlg-sh); animation: r1-ob-in .32s cubic-bezier(.3,1.5,.5,1); }
 .r1-ob-sheet h2 { margin: 0; font-size: 17px; font-weight: 700; text-align: center; }
 
 .r1-ob-sheet-foot { display: flex; justify-content: flex-end; }

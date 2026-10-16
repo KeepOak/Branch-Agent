@@ -21,6 +21,18 @@ export const PLACES: { id: PlaceId; name: string; icon: IconName }[] = [
   { id: "customize", name: "Customize", icon: "sliders" },
 ];
 
+/** Grove and Seedbank have no sidebar row, so their titles sit beside the registry. */
+const UNLISTED_PLACE_NAMES: Record<"office" | "seedbank", string> = { office: "Grove", seedbank: "Seedbank" };
+
+/** Every place's title as a person reads it, from the registry above. */
+export const PLACE_NAMES: Record<PlaceId, string> = {
+  ...Object.fromEntries(PLACES.map((p) => [p.id, p.name])),
+  ...UNLISTED_PLACE_NAMES,
+} as Record<PlaceId, string>;
+
+/** A place's title for the header and the window title: its name, never its route id. */
+export const placeTitle = (place: PlaceId): string => PLACE_NAMES[place] ?? place;
+
 const KEY = "branch.route";
 
 export function isPlace(id: string): id is PlaceId {

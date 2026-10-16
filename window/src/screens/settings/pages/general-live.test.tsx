@@ -38,7 +38,7 @@ async function mount(engine: WindowEngine, level: "regular" | "advanced" | "tech
 }
 const remount = async () => { await act(async () => root.unmount()); root = createRoot(host); forgetLookStore(); };
 const cards = () => [...host.querySelectorAll<HTMLElement>(".r1s-sec")].map((s) => s.querySelector(":scope > h2")?.textContent ?? "");
-const labels = (card: string) => [...host.querySelectorAll<HTMLElement>(`.r1s-sec[aria-label="${card}"] > .r1s-row > b, .r1s-sec[aria-label="${card}"] > .r1s-fine > .r1s-row > b`)].map((b) => b.textContent);
+const labels = (card: string) => [...host.querySelectorAll<HTMLElement>(`.r1s-sec[aria-label="${card}"] .r1s-row > b`)].map((b) => b.textContent);
 
 it("draws the preview's General cards at each level, and Pinned only once a row is pinned", async () => {
   const { engine } = engineOf();
@@ -58,16 +58,23 @@ it("draws the preview's General cards at each level, and Pinned only once a row 
 
 it("uses the preview's rows and words in Writing, The conversation, Summaries, History repair and Waiting line", async () => {
   await mount(engineOf().engine, "regular");
-  expect(labels("Writing")).toEqual(["Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Add my location to messages", "Replies in", "After a plan", "Open Branch on", "Show “Finish setting up”"]);
+  // Regular shows only what works today; Writing's other Regular rows wait for a later update and show from Advanced.
+  expect(labels("Writing")).toEqual(["Show “Finish setting up”"]);
+  await remount();
+  await mount(engineOf().engine, "advanced");
+  // The live row comes first; the later-update rows fold under their own line after it, in the table order.
+  expect(labels("Writing").slice(0, 8)).toEqual(["Show “Finish setting up”", "Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Add my location to messages", "Replies in", "After a plan", "Open Branch on"]);
+  await remount();
+  await mount(engineOf().engine, "regular");
   expect(labels("Show agents’ work")).toEqual(["Show agents’ work as"]);
   await remount();
   await mount(engineOf().engine, "technical");
-  expect(labels("The conversation")).toEqual(["Vim keys in the message box", "Message times", "When you send while it works", "Send with", "Open past sessions in", "Ask before deleting a conversation", "All conversations"]);
-  expect(labels("Summaries of older turns")).toEqual(["Summarise older turns by themselves", "Summarise when the room left is under", "Always keep the latest", "Model for summaries", "Room to plan for", "How it summarises",
-    "Summary time limit", "Keep names and numbers exact", "Trim old tool results", "Trim after", "How to write the summary", "If a summary can’t be made", "Keep the originals of what it summarises", "A receipt for each thing left out"]);
-  expect(labels("History repair")).toEqual(["Repair the history before each call", "Check the history now"]);
+  expect(labels("The conversation")).toEqual(["Vim keys in the message box", "Message times", "When you send while it works", "Send with", "Ask before deleting a conversation", "All conversations", "Open past sessions in"]);
+  expect(labels("Summaries of older turns")).toEqual(["Summarise older turns by themselves", "Always keep the latest", "Model for summaries", "How it summarises",
+    "Summary time limit", "Keep names and numbers exact", "Trim old tool results", "Trim after", "Summarise when the room left is under", "Room to plan for", "How to write the summary", "If a summary can’t be made", "Keep the originals of what it summarises", "A receipt for each thing left out"]);
+  expect(labels("History repair")).toEqual(["Check the history now", "Repair the history before each call"]);
   expect(labels("Waiting line")).toEqual(["Wait before sending what’s in line", "Most messages in line", "When the line is full"]);
-  expect(labels("Quick ask")).toEqual(["Quick ask from anywhere", "Quick ask shortcut"]);
+  expect(labels("Quick ask")).toEqual(["Quick ask shortcut", "Quick ask from anywhere"]);
   expect(labels("Cover the screen")).toEqual(["Cover now"]);
 });
 

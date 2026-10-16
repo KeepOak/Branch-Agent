@@ -80,13 +80,19 @@ export function featureRoute(home: FeatureHome): Route {
   return { kind: "chat", key: null };
 }
 
+/** Opens a feature's home. A place home that names a tab goes out as a navigate-place request, which carries the tab. */
+export function openFeature(home: FeatureHome, go: (route: Route) => void): void {
+  if (home.kind === "place" && home.tab) window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: home.place, tab: home.tab } }));
+  else go(featureRoute(home));
+}
+
 /** All features: the atlas, with Technical areas shown when "How much to show" is Technical. */
 function Features({ engine, go }: { engine: WindowEngine; go: (route: Route) => void }) {
   const [level] = useLevel(engine);
   return (
     <>
       <p className="r1s-lede g-label r1s-features-lede" data-lines>{FEATURES_LEDE}</p>
-      <FeaturesPage technical={level === 2} onOpen={(home) => go(featureRoute(home))} />
+      <FeaturesPage technical={level === 2} onOpen={(home) => openFeature(home, go)} />
     </>
   );
 }

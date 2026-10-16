@@ -136,7 +136,12 @@ export function createAutoApplyUpdate(options: {
       const version = await options.pendingVersion();
       if (version !== heldVersion) {
         idleSince = undefined; retryAfter = 0; failedVersion = undefined; notifiedVersion = undefined;
-        appliedVersion = undefined; heldVersion = version ?? undefined; pendingSince = version ? now() : undefined;
+        appliedVersion = undefined;
+        // A newer release that replaces a pending one keeps the wait: the cap counts from when an update first became
+        // pending, so releases that keep coming every few hours cannot postpone the update forever.
+        if (!version) pendingSince = undefined;
+        else if (heldVersion === undefined) pendingSince = now();
+        heldVersion = version ?? undefined;
       }
       if (!version || !options.enabled() || appliedVersion === version) {
         idleSince = undefined;

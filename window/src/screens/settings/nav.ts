@@ -100,7 +100,7 @@ export const PAGES: Record<PageId, PageSpec> = {
   who: { title: "Who uses Branch", lede: "The people who use Branch on this computer, and how they sign in.", cards: ["People", "Records", "Signing in to Branch"] },
   trunks: { title: "Trunks", lede: "Your Trunks, groups and grafted agents: make one the default, change it, package it or remove it.", cards: ["", "Defaults for every Trunk", "Trunks’ own databases"] },
   instructions: { title: "Instructions & personality", lede: "What every Trunk knows about you, and how it writes.", cards: ["Just about you", "Project instructions", "Kits", "How replies are written", "Prompts behind quick actions", "What goes with every message", "Rules"] },
-  customize: { title: "Customize", lede: "Toolsets, connectors, skills, plugins, command-line tools, agents and prompts, for every Trunk or one.", cards: ["", "Saved prompts", "Tools and skills", "Skills", "Plugins", "Helpers and other agents", "What it can do"] },
+  customize: { title: "Customize", lede: "Toolsets, connectors, skills, plugins, command-line tools, agents and prompts, for every Trunk or one.", cards: ["", "Saved prompts", "Tools and skills", "Skills", "Plugins", "Helpers and other agents", "What it can do", "Allow", "Connected agents", "Connect an agent", "Another Branch"] },
   seedbank: { title: "Seedbank", lede: "Agents, skills, connectors, plugins, command-line tools and toolsets shared by people who use Branch.", cards: [""] },
   memory: { title: "Memory & documents", lede: "What Trunks remember, what they read, and your Library.", cards: ["Memory", "Recall and memory files", "Documents it reads", "Library"] },
   autos: { title: "Automations", lede: "Routines that run on their own: when, how, and what they may do.", cards: ["Automations", "Steps and nudges"] },
@@ -142,6 +142,34 @@ export function pageFor(id: string | null | undefined): PageId {
 }
 
 const ALL_PAGES: NavPage[] = [...TOP_PAGES, ...NAV.flatMap((g) => g.pages)];
+const BY_ID = new Map(ALL_PAGES.map((page) => [page.id, page]));
+function pagesOf(...ids: PageId[]): NavPage[] {
+  return ids.map((id) => BY_ID.get(id)!);
+}
+
+/** Regular's four pages. Every page except Developer lives in one of them.
+ *  Developer stays on Technical, inside NAV's Branch group. The first page in a group is what that
+ *  Regular page shows. The others stay reachable under an Advanced section on that page. */
+export const REGULAR_GROUPS: NavGroup[] = [
+  { title: "General", pages: pagesOf("general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps") },
+  { title: "Computer", pages: pagesOf("devices", "browser", "coding", "remote", "permissions") },
+  { title: "Usage", pages: pagesOf("accounts", "models", "privacy", "signins") },
+  { title: "Updates", pages: pagesOf("updates", "history", "learning", "features") },
+];
+
+/** The Regular page a settings page belongs to, or none (Developer). */
+export function regularHub(id: PageId): NavGroup | undefined {
+  return REGULAR_GROUPS.find((g) => g.pages.some((p) => p.id === id));
+}
+
+/** The sidebar for a level. Regular is the four pages. Advanced and Technical keep the full nav. */
+export function navAt(level: Level): { top: NavPage[]; groups: NavGroup[] } {
+  if (level === 0) {
+    return { top: REGULAR_GROUPS.map((g) => ({ ...g.pages[0], title: g.title })), groups: [] };
+  }
+  return { top: TOP_PAGES, groups: NAV };
+}
+
 /** A page's nav entry. */
 export const navPage = (id: PageId): NavPage | undefined => ALL_PAGES.find((p) => p.id === id);
 /** Whether a page is in the nav at this level (Developer needs Technical). */
