@@ -4,6 +4,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { ComputerStage } from "./ComputerStage";
+import { PERMISSION_POLL_MS } from "./screen-permission";
+
+const blank = vi.hoisted(() => ({ frames: new Set<string>() }));
+vi.mock("./blank-frame", () => ({ frameIsBlank: async (_format: string, base64: string) => blank.frames.has(base64) }));
+const PERMISSION_LINE = "Branch needs permission to see this screen. Turn on Screen Recording for Branch Agent in System Settings.";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | undefined;
@@ -102,7 +107,7 @@ describe("computer screen setup", () => {
   });
   it("shows the app's reason as one centered line while this computer isn't ready, then the screen once it is", async () => {
     vi.useFakeTimers();
-    const driver: { reason?: string } = { reason: "macOS asks you to allow this once, in System Settings." };
+    const driver: { reason?: string } = { reason: "Waiting for the driver." };
     const { engine, request } = fixture(undefined, false, driver);
     await render(engine);
     await act(async () => screenButton()!.click());
@@ -118,6 +123,77 @@ describe("computer screen setup", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     expect(document.querySelector(".pane-note")).toBeNull();
     expect(document.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
+  });
+  it("Private #1103: asks for Screen Recording with Open System Settings, then shows the screen by itself once it's on", async () => {
+    vi.useFakeTimers();
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const driver: { reason?: string } = { reason: "macOS asks you to allow this once, in System Settings." };
+    const { engine, request } = fixture(undefined, false, driver);
+    await render(engine);
+    await act(async () => screenButton()!.click());
+    const note = document.querySelector(".pane-note[data-pane-state='stopped']")!;
+    expect(note.querySelector("p")?.textContent).toBe(PERMISSION_LINE);
+    expect([...note.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Open System Settings"]);
+    expect(document.body.textContent).not.toContain("Try again");
+    // Regular: nothing raw.
+    expect(document.body.textContent).not.toContain("COMPUTER_DRIVER_UNAVAILABLE");
+    expect(note.querySelector(".pane-technical")).toBeNull();
+    await act(async () => note.querySelector("button")!.click());
+    expect(open).toHaveBeenCalledWith("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture", "_blank");
+    const statuses = () => request.mock.calls.filter(([method]) => method === "computer.status").length;
+    const asked = statuses();
+    await act(async () => { await vi.advanceTimersByTimeAsync(PERMISSION_POLL_MS); });
+    expect(statuses()).toBe(asked + 1);
+    expect(document.querySelector(".pane-note[data-permission]")).not.toBeNull();
+    driver.reason = undefined; // the person turned it on; the desktop restarts its driver
+    await act(async () => { await vi.advanceTimersByTimeAsync(PERMISSION_POLL_MS); });
+    expect(document.querySelector(".pane-note")).toBeNull();
+    expect(document.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
+    open.mockRestore();
+  });
+  it("Private #1103: a capture refused for Screen Recording asks for it, with the raw error only at Technical", async () => {
+    const raw = "COMPUTER_DRIVER_ERROR: Screen Recording permission is not granted";
+    const { engine } = fixture(async () => { throw new Error(raw); });
+    await render(engine);
+    await act(async () => screenButton()!.click());
+    const note = document.querySelector(".pane-note[data-permission]")!;
+    expect(note.querySelector("p")?.textContent).toBe(PERMISSION_LINE);
+    expect(document.body.textContent).not.toContain(raw);
+    await act(async () => root!.unmount());
+    localStorage.setItem("branch.level", "technical");
+    try {
+      await render(engine);
+      // Screen access is already on from the first look, so the pane may capture without the switch.
+      await act(async () => screenButton()?.click());
+      await act(async () => { await Promise.resolve(); });
+      expect(document.querySelector(".pane-technical code")?.textContent).toBe(raw);
+    } finally { localStorage.removeItem("branch.level"); }
+  });
+  it("Private #1103: an all-black capture on a Mac asks for Screen Recording and keeps trying until a real frame comes", async () => {
+    vi.useFakeTimers();
+    const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+    Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
+    blank.frames.add("blackframe");
+    let shots = 0;
+    const { engine, request } = fixture(async () => ({ payload: { ...frame, base64: ++shots === 1 ? "blackframe" : frame.base64 } }));
+    try {
+      await render(engine);
+      await act(async () => screenButton()!.click());
+      expect(document.querySelector(".pane-note[data-permission] p")?.textContent).toBe(PERMISSION_LINE);
+      expect(document.querySelector("img")).toBeNull();
+      // The black frame's execution is released like any other.
+      expect(request.mock.calls.some(([method, params]) => method === "computer.invoke" && (params as { params: { action?: string } }).params.action === "__close_execution")).toBe(true);
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      expect(shots).toBe(1);
+      await act(async () => { await vi.advanceTimersByTimeAsync(PERMISSION_POLL_MS - 1000); });
+      expect(shots).toBe(2);
+      expect(document.querySelector(".pane-note")).toBeNull();
+      expect(document.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
+    } finally {
+      blank.frames.clear();
+      delete (navigator as { platform?: string }).platform;
+      if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
+    }
   });
   it("says Branch can't see this computer's screen in plain words when the driver isn't running, with no Try again", async () => {
     const { engine, request } = fixture(undefined, false, { reason: "" });

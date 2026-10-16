@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { createConnection, createServer } from "node:net";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,10 +24,18 @@ test("Mac app requests both permissions before supplying a live embedded driver 
   const dir = await mkdtemp(join(tmpdir(), "branch-mac-driver-test-"));
   const binary = join(dir, "cua-driver");
   const socketPath = process.platform === "win32" ? `\\\\.\\pipe\\branch-driver-test-${process.pid}` : join(dir, "driver.sock");
-  const backend = createServer(socket => socket.pipe(socket));
+  // The daemon's private socket speaks the driver's own protocol, never MCP: anything piped straight to it fails.
+  let daemonConnections = 0;
+  const backend = createServer(socket => { daemonConnections += 1; socket.end('{"ok":false,"error":"Unknown method: initialize","exit_code":65}\n'); });
   await new Promise((resolve, reject) => { backend.once("error", reject); backend.listen(socketPath, resolve); });
   await writeFile(binary, "fixture");
   const events = [];
+  const proxies = [];
+  // Stands in for `cua-driver mcp --embedded --socket <daemon>`: an echoing MCP proxy.
+  const spawnProxy = (command, args, options) => {
+    proxies.push({ command, args, env: options.env });
+    return spawn(process.execPath, ["-e", "process.stdin.pipe(process.stdout)"], { ...options, env: process.env });
+  };
   let granted = false;
   const sdk = () => ({
     currentMacOsPermissionStatus: () => ({ accessibility: granted, screenRecording: granted }),
@@ -49,7 +58,7 @@ test("Mac app requests both permissions before supplying a live embedded driver 
       uniffiDestroy() { events.push("destroy"); }
     },
   });
-  const driver = new MacComputerDriver(() => {}, sdk, () => "ai.branch.mac");
+  const driver = new MacComputerDriver(() => {}, sdk, () => "ai.branch.mac", 2_000, spawnProxy);
   try {
     assert.equal(await driver.start(dir), undefined);
     assert.deepEqual(events, ["permission request"]);
@@ -71,6 +80,13 @@ test("Mac app requests both permissions before supplying a live embedded driver 
       admitted.write(`${endpoint.secret}\nping`);
       assert.equal((await new Promise(resolve => admitted.once("data", resolve))).toString(), "ping");
     } finally { admitted.destroy(); }
+    // Private #1103 item 5: the engine's MCP goes through the driver's MCP proxy, never raw into the daemon socket.
+    assert.equal(daemonConnections, 0);
+    assert.equal(proxies.length, 1);
+    assert.equal(proxies[0].command, binary);
+    assert.deepEqual(proxies[0].args, ["mcp", "--embedded", "--socket", socketPath]);
+    assert.equal(proxies[0].env.CUA_DRIVER_RS_TELEMETRY_ENABLED, "false");
+    assert.equal(proxies[0].env.CUA_DRIVER_RS_UPDATE_CHECK, "false");
     await driver.stop();
     events.length = 0;
     await driver.start(dir);
@@ -146,6 +162,12 @@ test("a rejected embedded configuration surfaces the SDK's reason, not just its 
     assert.equal(describeDriverError(error), "rejected for test");
     assert.equal(describeDriverError(new Error("plain")), "Error: plain");
   } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("the MCP proxy's environment drops driver overrides and the broker's own variables", () => {
+  const env = driverModule.mcpProxyEnvironment({ PATH: "/bin", HOME: "/h", CUA_DRIVER_SOCKET: "x", CUA_TELEMETRY_ENABLED: "true", BRANCH_CUA_BROKER_SECRET: "s" });
+  assert.deepEqual(env, { PATH: "/bin", HOME: "/h", CUA_DRIVER_RS_TELEMETRY_ENABLED: "false", CUA_DRIVER_RS_UPDATE_CHECK: "false" });
+  assert.deepEqual(driverModule.mcpProxyArgs("/tmp/d.sock"), ["mcp", "--embedded", "--socket", "/tmp/d.sock"]);
 });
 
 test("the Coming reasons are the preview's copy: none for a missing driver, its permission line for permissions", () => {
