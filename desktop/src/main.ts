@@ -220,9 +220,9 @@ function runConfirmedReleasePrune(): void {
   if (prune) void prune().catch(error => log(`Confirmed update cleanup: ${String(error)}`));
 }
 function rememberHealthyEngine(engineDir: string): void {
-  void recordHealthyEngineLaunch(cfg, engineDir)
-    .then(() => prunePreviousEngineAfterHealth(cfg, log))
-    .catch(error => log(`Update cleanup: ${String(error)}`));
+  // Record only: prune runs at startup so ready/crash-recovery is not sharing data-dir I/O.
+  // A long-running app still drops the predecessor via pruneEndedProbation after the 3-day Undo window.
+  void recordHealthyEngineLaunch(cfg, engineDir).catch(error => log(`Update cleanup: ${String(error)}`));
 }
 /** The window build the static server serves: the staged one only once its engine runs. */
 let servedWindowDir = cfg.windowDir;
