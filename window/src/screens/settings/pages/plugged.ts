@@ -11,6 +11,7 @@ import {
 import { classicSlot } from "./classic-host";
 import { CUSTOMIZE_PAGE } from "./customize-live";
 import { permissionsSlot } from "./permissions-approvals";
+import { privacySlot } from "./privacy-town";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { INSTRUCTIONS_ROWS } from "./instructions";
 import { AboutYou, Files } from "./instructions-live";
@@ -56,6 +57,7 @@ export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> =
 export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   permissions: permissionsSlot,
+  privacy: privacySlot,
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
   // Customize is a row page: the kinds hub, Saved prompts and Connected agents are its own cards (customize-live.tsx).

@@ -57,16 +57,6 @@ async function mount(config?: Record<string, unknown>) {
   return env;
 }
 const row = (id: string) => host.querySelector<HTMLElement>(`[data-row="${id}"]`);
-const field = (id: string) => row(id)?.querySelector("input");
-async function typeIn(input: HTMLInputElement, value: string) {
-  await act(async () => {
-    input.focus();
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
-  });
-  await settle();
-}
 const sections = () => [...host.querySelectorAll<HTMLElement>("section.r1s-sec")].map((s) => s.getAttribute("aria-label"));
 
 describe("R1 Settings › Developer is a native R1 page with the preview's cards", () => {
@@ -95,32 +85,18 @@ describe("R1 Settings › Developer is a native R1 page with the preview's cards
     expect(undeclaredControls(host).filter((el) => !el.closest("[data-classic-block]"))).toEqual([]);
   });
 
-  it("shows the usual city list, saves a change, and greys the workspace path command", async () => {
-    const { request } = await mount();
-    expect(field("developer.everything-else.city-list-source")?.value).toBe("https://download.db-ip.com/free/dbip-city-lite-{yyyy}-{mm}.mmdb.gz");
-    expect(field("developer.everything-else.credit-for-the-city-list")?.value).toBe("IP Geolocation by DB-IP");
-    expect(field("developer.everything-else.credit-link")?.value).toBe("https://db-ip.com");
-    expect(field("developer.everything-else.refresh-the-city-list")?.value).toBe("30");
+  it("greys the workspace path command until a later update", async () => {
+    await mount();
     const path = row("developer.everything-else.workspace-path-command");
     expect(path?.querySelector(".r1s-note")?.textContent).toBe("Workspace path command comes in a later update.");
     expect(path?.querySelector<HTMLButtonElement>("[role=switch]")?.disabled).toBe(true);
-    await typeIn(field("developer.everything-else.refresh-the-city-list")!, "14");
-    expect(field("developer.everything-else.refresh-the-city-list")?.value).toBe("14");
-    const refresh = request.mock.calls.find(([method, params]) => method === "config.patch" && String((params as { raw?: string }).raw).includes("refreshDays"));
-    expect(JSON.parse((refresh![1] as { raw: string }).raw)).toEqual({ plugins: { entries: { geolocation: { config: { refreshDays: 14 } } } } });
-    await typeIn(field("developer.everything-else.credit-link")!, "https://example.com/credit");
-    expect(field("developer.everything-else.credit-link")?.value).toBe("https://example.com/credit");
-    const link = request.mock.calls.find(([method, params]) => method === "config.patch" && String((params as { raw?: string }).raw).includes("attributionUrl"));
-    expect(JSON.parse((link![1] as { raw: string }).raw)).toEqual({ plugins: { entries: { geolocation: { config: { attributionUrl: "https://example.com/credit" } } } } });
+    expect(host.textContent).not.toContain("Where the town lookup list comes from");
   });
 
-  it("shows a saved city list, and the workspace path command still waits", async () => {
-    await mount({ plugins: { entries: { geolocation: { config: { databaseUrl: "https://example.com/cities.mmdb.gz", attributionText: "City list by Example", attributionUrl: "https://example.com/credit", refreshDays: 7 } }, "oc-path": { enabled: true } } } });
-    expect(field("developer.everything-else.city-list-source")?.value).toBe("https://example.com/cities.mmdb.gz");
-    expect(field("developer.everything-else.credit-for-the-city-list")?.value).toBe("City list by Example");
-    expect(field("developer.everything-else.credit-link")?.value).toBe("https://example.com/credit");
-    expect(field("developer.everything-else.refresh-the-city-list")?.value).toBe("7");
+  it("keeps the workspace path command grey when that command is switched on", async () => {
+    await mount({ plugins: { entries: { "oc-path": { enabled: true } } } });
     expect(row("developer.everything-else.workspace-path-command")?.querySelector(".r1s-note")?.textContent).toBe("Workspace path command comes in a later update.");
+    expect(row("developer.everything-else.workspace-path-command")?.querySelector<HTMLButtonElement>("[role=switch]")?.disabled).toBe(true);
   });
 });
 

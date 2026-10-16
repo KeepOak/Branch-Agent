@@ -16,6 +16,7 @@ import { mergeRows } from "../slots";
 import { SECTION_COMING, SettingsFrame } from "../SettingsFrame";
 import { classicList } from "./classic-host";
 import { COMING, R1_PAGES, REHOSTED } from "./plugged";
+import { TOWN_ROWS } from "./privacy-town";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root, host: HTMLDivElement;
@@ -147,7 +148,8 @@ it("adds each re-hosted page's Classic rows to the R1 table, so R1 search finds 
   for (const [page, classic] of Object.entries(REHOSTED)) {
     const titles = new Set(SETTINGS_ROWS.filter((r) => classicList(classic).includes(r.page)).map((r) => r.title));
     expect(titles.size, classicList(classic).join(" ")).toBeGreaterThan(0);
-    expect(new Set(merged.filter((r) => r.page === page).map((r) => r.label))).toEqual(titles);
+    const extra = page === "privacy" ? TOWN_ROWS.map((row) => row.label) : [];
+    expect(new Set(merged.filter((r) => r.page === page).map((r) => r.label))).toEqual(new Set([...titles, ...extra]));
     const first = [...titles][0]!;
     const hits = searchSettings(first, { level: 2, hints: {}, rows: merged }).settings;
     expect(hits.some((hit) => hit.kind === "row" && hit.page === page), `${page}: ${first}`).toBe(true);
