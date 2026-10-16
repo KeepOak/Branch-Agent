@@ -155,6 +155,11 @@ export const CHROME_MCP_NAVIGATE_TIMEOUT_MS = 20_000;
 export const CHROME_MCP_HANDSHAKE_TIMEOUT_MS = 30_000;
 export const CHROME_MCP_STDERR_MAX_BYTES = 8 * 1024;
 export const CHROME_MCP_PROCESS_EXIT_GRACE_MS = 250;
+export const CHROME_MCP_UNIX_PROCESS_SNAPSHOT_TIMEOUT_MS = 2_000;
+// Windows PowerShell one-shots pay cold first-use costs (module analysis, NGEN) that exceeded
+// 10 seconds on loaded CI runners. Cleanup proof fails closed, so the CIM snapshot must out-wait
+// a cold start; this bound, like WINDOWS_POWERSHELL_COLD_SPAWN_TIMEOUT_MS, only stops true hangs.
+export const CHROME_MCP_WINDOWS_PROCESS_SNAPSHOT_TIMEOUT_MS = 60_000;
 export const DEVTOOLS_ACTIVE_PORT_RE = /\bDevToolsActivePort\b/i;
 export const CHROME_CONNECTION_TOOL_ERROR_RE =
   /(?:Could not connect to Chrome|DevToolsActivePort|ECONNREFUSED|ECONNRESET|websocket|timed out)/i;

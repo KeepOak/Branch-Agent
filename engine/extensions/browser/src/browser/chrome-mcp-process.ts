@@ -7,6 +7,8 @@ import { runExec } from "branch/plugin-sdk/process-runtime";
 import { normalizeOptionalString } from "branch/plugin-sdk/string-coerce-runtime";
 import {
   CHROME_MCP_PROCESS_EXIT_GRACE_MS,
+  CHROME_MCP_UNIX_PROCESS_SNAPSHOT_TIMEOUT_MS,
+  CHROME_MCP_WINDOWS_PROCESS_SNAPSHOT_TIMEOUT_MS,
   ChromeMcpProcessSnapshotError,
   type ChromeMcpOwnedProcess,
   type ChromeMcpProcessCleanupDeps,
@@ -107,7 +109,10 @@ async function listChromeMcpPlatformProcesses(
         env: windows ? undefined : { ...process.env, LC_ALL: "C", TZ: "UTC" },
         logOutput: false,
         maxBuffer: 4 * 1024 * 1024,
-        timeoutMs: 2_000,
+        // A timed-out census leaves cleanup uncertain for good once the SDK drops its PID.
+        timeoutMs: windows
+          ? CHROME_MCP_WINDOWS_PROCESS_SNAPSHOT_TIMEOUT_MS
+          : CHROME_MCP_UNIX_PROCESS_SNAPSHOT_TIMEOUT_MS,
       },
     );
     if (windows) {

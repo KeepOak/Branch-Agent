@@ -1,5 +1,6 @@
 engine:extensions/acpx/src/codex-auth-bridge.test.ts
 engine:extensions/acpx/src/wrapper-command.test.ts
+engine:extensions/browser/src/browser/chrome-mcp-process.windows-snapshot.test.ts
 engine:extensions/browser/src/browser/chrome-mcp.test.ts
 engine:extensions/codex/src/app-server/config.test.ts
 engine:src/agents/mcp-oauth-refresh-issuer.test.ts
