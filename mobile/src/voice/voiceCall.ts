@@ -19,24 +19,37 @@ export const CALL_UNAVAILABLE = 'Live voice isn’t available right now.';
 export const OFFLINE_VOICE = 'No voice service is reachable: your computer isn’t connected.';
 export const OFFLINE_VOICE_START = 'Couldn’t start live voice';
 
+/** r50 Voice states: Listening, Thinking, Speaking, Muted, Not connected. Starting maps to Listening. */
+export const MUTED = 'Muted';
+export const NOT_CONNECTED = 'Not connected';
+
 export const STATE_WORDS: Record<CallState, string> = {
-  starting: 'Starting…',
-  listening: 'Listening…',
-  thinking: 'Thinking…',
-  speaking: 'Speaking…',
-  ended: 'Ended',
-  error: 'Stopped',
+  starting: 'Listening',
+  listening: 'Listening',
+  thinking: 'Thinking',
+  speaking: 'Speaking',
+  ended: 'Listening',
+  error: 'Not connected',
 };
 
-/** Voices the preview's Android Voice menu offers. Changing one changes the voice everywhere. */
-export const VOICE_CHOICES = ['Oak', 'Birch'] as const;
-export type VoiceChoice = (typeof VOICE_CHOICES)[number];
+/**
+ * The word the screen shows for this call. Muted replaces Listening; Thinking and Speaking still show
+ * while the Trunk is working, even if the microphone is off.
+ */
+export function voiceWord(state: CallState, muted: boolean): string {
+  if (state === 'error') return NOT_CONNECTED;
+  if (state === 'thinking') return STATE_WORDS.thinking;
+  if (state === 'speaking') return STATE_WORDS.speaking;
+  if (muted) return MUTED;
+  return STATE_WORDS.listening;
+}
 
 /**
  * A live Talk session through the engine, as the window's VoiceCall does
  * (window/src/composer/voice.ts): talk.session.create in realtime mode, captions from talk.event.
  * This phone has no Web Audio graph, so it does not pump the microphone or play PCM; Mute still
- * stops us treating the call as live-to-the-engine, and captions still arrive.
+ * stops us treating the call as live-to-the-engine, and captions still arrive. Assistant captions
+ * and audio events are Speaking; a consult toolCall is Thinking.
  */
 export class VoiceCall {
   private relay = '';
@@ -96,9 +109,12 @@ export class VoiceCall {
     if (this.relay && str(p.relaySessionId) !== this.relay && str(p.sessionId) !== this.relay) return;
     const type = p.type;
     if (type === 'ready') this.on.onState('listening');
+    else if (type === 'audio') this.on.onState('speaking');
     else if (type === 'transcript' && (p.role === 'user' || p.role === 'assistant') && str(p.text)) {
       this.on.onCaption(p.role, str(p.text));
-    } else if (type === 'error') this.on.onState('error', str(p.message) || 'The voice service stopped.');
+      this.on.onState(p.role === 'assistant' ? 'speaking' : 'listening');
+    } else if (type === 'toolCall') this.on.onState('thinking');
+    else if (type === 'error') this.on.onState('error', str(p.message) || 'The voice service stopped.');
     else if (type === 'close') void this.end();
   }
 }

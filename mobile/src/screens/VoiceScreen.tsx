@@ -1,33 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, Text, View, type TextProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Approval, ApprovalDecision } from '../approvals/approvals';
 import { actionWords } from '../approvals/approvalWords';
 import type { ChatRow } from '../chats/chatList';
 import type { EngineLink } from '../pairing/pairingSession';
-import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
+import { voice, voiceRadius, voiceSans, voiceType, type VoiceTypeName } from '../voice/chrome';
+import { later, shows, type Level } from '../voice/level';
+import { spokenAnswer } from '../voice/spokenAnswer';
 import {
   CALL_UNAVAILABLE,
+  NOT_CONNECTED,
   OFFLINE_VOICE,
-  STATE_WORDS,
-  VOICE_CHOICES,
   VoiceCall,
   voiceError,
+  voiceWord,
   type CallState,
-  type VoiceChoice,
 } from '../voice/voiceCall';
-import { spokenAnswer } from '../voice/spokenAnswer';
 
-/** Black and white call chrome (r50 default). No green glow, no orange rings. */
-const voice = {
-  bg: '#000000',
-  ink: '#ffffff',
-  ink2: '#c9d1d8',
-  ink3: '#9aa4ad',
-  fill: 'rgba(255,255,255,0.12)',
-  ring: 'rgba(255,255,255,0.35)',
-} as const;
+function VoiceText({
+  size,
+  color = voice.ink,
+  weight,
+  style,
+  ...rest
+}: TextProps & { size: VoiceTypeName; color?: string; weight?: '400' | '500' | '600' }) {
+  return <Text {...rest} style={[voiceType[size], { color, fontFamily: voiceSans, fontWeight: weight ?? voiceType[size].fontWeight }, style]} />;
+}
 
 function VoiceAvatar({ row, size }: { row: ChatRow; size: number }) {
   return (
@@ -37,14 +37,16 @@ function VoiceAvatar({ row, size }: { row: ChatRow; size: number }) {
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: voice.fill,
+        backgroundColor: voice.gcFill,
+        borderWidth: 1,
+        borderColor: voice.gcEdge,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <ThemedText variant="title1" style={{ color: voice.ink, lineHeight: size * 0.45 }}>
+      <VoiceText size="fs26" style={{ lineHeight: size * 0.45 }}>
         {row.avatar}
-      </ThemedText>
+      </VoiceText>
     </View>
   );
 }
@@ -84,16 +86,18 @@ function Round({
         height: size,
         minWidth: layout.rowMinHeight,
         minHeight: layout.rowMinHeight,
-        borderRadius: 999,
+        borderRadius: voiceRadius.pill,
+        borderWidth: inverted ? 0 : 1,
+        borderColor: voice.gcEdge,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: on ? voice.ink : voice.fill,
+        backgroundColor: on ? (inverted ? voice.ink : voice.gkOn) : voice.gcFill,
         opacity: down ? 0.7 : 1,
       })}
     >
-      <ThemedText variant={large ? 'title1' : 'title3'} style={{ color: on ? voice.bg : voice.ink, fontWeight: '500' }}>
+      <VoiceText size={large ? 'fs26' : 'fs17'} color={on && inverted ? voice.bg : voice.ink} weight="500">
         {children}
-      </ThemedText>
+      </VoiceText>
       {slashed ? (
         <View
           accessibilityElementsHidden
@@ -102,7 +106,7 @@ function Round({
             position: 'absolute',
             width: 26,
             height: 2,
-            backgroundColor: on ? voice.bg : voice.ink,
+            backgroundColor: on && inverted ? voice.bg : voice.ink,
             transform: [{ rotate: '-45deg' }],
             borderRadius: 1,
           }}
@@ -128,8 +132,9 @@ function sayWord(ask: Approval): string {
 }
 
 /**
- * Android Voice (preview phone §4.11.8 / PG18): full-screen talk with this Trunk, Mute, Speaker, End,
- * Keyboard, a Voice menu (Oak / Birch), and this conversation's own approval. Black and white by default.
+ * Android Voice: full-screen talk with this Trunk. States Listening, Thinking, Speaking, Muted,
+ * Not connected; the transcript; mute, speaker, end and keyboard. Black and white with the
+ * desktop's type, glass and radii. Unfinished features use later() and only show at Advanced+.
  */
 export function VoiceScreen({
   row,
@@ -137,6 +142,7 @@ export function VoiceScreen({
   link,
   pending = [],
   now = Date.now(),
+  level = 'regular',
   onAnswer,
   onClose,
   onEnd,
@@ -147,20 +153,20 @@ export function VoiceScreen({
   link: EngineLink;
   pending?: Approval[];
   now?: number;
+  level?: Level;
   onAnswer?: (id: string, decision: ApprovalDecision) => void;
   onClose: () => void;
   onEnd: () => void;
   onKeyboard: () => void;
 }) {
-  const { space, radius, layout } = useTheme();
+  const { space, layout } = useTheme();
   const insets = useSafeAreaInsets();
   const [state, setState] = useState<CallState>(online ? 'starting' : 'error');
-  const [message, setMessage] = useState<string | null>(online ? null : OFFLINE_VOICE);
+  const [message, setMessage] = useState<string | null>(null);
   const [userLine, setUserLine] = useState('');
   const [assistantLine, setAssistantLine] = useState('');
   const [muted, setMuted] = useState(false);
   const [speakerOff, setSpeakerOff] = useState(false);
-  const [voiceName, setVoiceName] = useState<VoiceChoice>('Oak');
   const [menuOpen, setMenuOpen] = useState(false);
   const call = useRef<VoiceCall | null>(null);
   const ask = waitingAsk(pending, row.key, now);
@@ -168,6 +174,7 @@ export function VoiceScreen({
   askRef.current = ask;
   const answerRef = useRef(onAnswer);
   answerRef.current = onAnswer;
+  const extra = shows(level, 'advanced');
 
   const finish = useCallback(
     (how: 'close' | 'end' | 'keyboard') => {
@@ -217,8 +224,10 @@ export function VoiceScreen({
   }, [link, row.key, online]);
 
   const broken = !online || state === 'error';
-  const caption = broken ? message ?? OFFLINE_VOICE : assistantLine || STATE_WORDS[state];
+  const word = broken ? NOT_CONNECTED : voiceWord(state, muted);
+  const note = extra && broken ? (message ?? OFFLINE_VOICE) : null;
   const allow = ask && onAnswer && canAnswer(ask, 'allow-once', now);
+  const hasTranscript = Boolean((userLine || assistantLine) && !broken);
 
   return (
     <View testID="voice-screen" style={{ flex: 1, backgroundColor: voice.bg }}>
@@ -235,17 +244,17 @@ export function VoiceScreen({
           <Round testID="voice-close" label="Close" onPress={() => finish('close')}>
             ⌄
           </Round>
-          {broken ? null : (
+          {extra && !broken ? (
             <Round testID="voice-more" label="Voice" onPress={() => setMenuOpen((v) => !v)}>
               ⋯
             </Round>
-          )}
-          <ThemedText testID="voice-title" variant="subhead" numberOfLines={1} style={{ flex: 1, color: voice.ink2, textAlign: 'center' }}>
+          ) : null}
+          <VoiceText testID="voice-title" size="fs15" color={voice.ink2} numberOfLines={1} style={{ flex: 1, textAlign: 'center' }}>
             {row.title} · voice
-          </ThemedText>
-          <ThemedText testID="voice-on-phone" variant="caption1" style={{ color: voice.ink3 }}>
+          </VoiceText>
+          <VoiceText testID="voice-on-phone" size="fs12" color={voice.ink3}>
             On this phone
-          </ThemedText>
+          </VoiceText>
         </View>
 
         <View testID="voice-orb" style={{ width: 200, height: 200, alignItems: 'center', justifyContent: 'center', marginTop: space.xl }}>
@@ -285,20 +294,41 @@ export function VoiceScreen({
           <VoiceAvatar row={row} size={110} />
         </View>
 
-        <View testID="voice-caption" style={{ width: '100%', marginTop: space.xl, gap: space.sm, alignItems: 'center' }}>
-          {userLine && !broken ? (
-            <ThemedText variant="subhead" style={{ color: voice.ink3, textAlign: 'center' }}>
-              {userLine}
-            </ThemedText>
-          ) : null}
-          <ThemedText
-            variant="callout"
-            accessibilityRole={broken ? 'alert' : undefined}
-            style={{ color: voice.ink, textAlign: 'center' }}
+        <VoiceText
+          testID="voice-state"
+          size="fs17"
+          accessibilityRole={broken ? 'alert' : undefined}
+          accessibilityLiveRegion="polite"
+          style={{ marginTop: space.xl, textAlign: 'center' }}
+        >
+          {word}
+        </VoiceText>
+        {note ? (
+          <VoiceText testID="voice-note" size="fs13" color={voice.ink3} style={{ marginTop: space.sm, textAlign: 'center' }}>
+            {note}
+          </VoiceText>
+        ) : null}
+
+        {hasTranscript ? (
+          <ScrollView
+            testID="voice-transcript"
+            style={{ width: '100%', maxHeight: 140, marginTop: space.md }}
+            contentContainerStyle={{ gap: space.sm, alignItems: 'center' }}
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
           >
-            {caption}
-          </ThemedText>
-        </View>
+            {userLine ? (
+              <VoiceText size="fs15" color={voice.ink3} style={{ textAlign: 'center' }}>
+                {userLine}
+              </VoiceText>
+            ) : null}
+            {assistantLine ? (
+              <VoiceText size="fs17" style={{ textAlign: 'center' }}>
+                {assistantLine}
+              </VoiceText>
+            ) : null}
+          </ScrollView>
+        ) : null}
 
         {allow ? (
           <Pressable
@@ -310,16 +340,18 @@ export function VoiceScreen({
               marginTop: space.lg,
               paddingHorizontal: space.lg,
               paddingVertical: space.sm + 2,
-              borderRadius: radius.pill,
-              backgroundColor: voice.fill,
+              borderRadius: voiceRadius.pill,
+              backgroundColor: voice.gkChip,
+              borderWidth: 1,
+              borderColor: voice.gcEdge,
               opacity: pressed ? 0.7 : 1,
               minHeight: layout.rowMinHeight,
               justifyContent: 'center',
             })}
           >
-            <ThemedText variant="subhead" style={{ color: voice.ink, fontWeight: '600' }}>
+            <VoiceText size="fs15" weight="600">
               Say “{sayWord(ask)}” to answer {row.title}
-            </ThemedText>
+            </VoiceText>
           </Pressable>
         ) : null}
 
@@ -367,57 +399,25 @@ export function VoiceScreen({
 
       {menuOpen ? (
         <View testID="voice-menu" accessibilityViewIsModal style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0, justifyContent: 'flex-end' }}>
-          <Pressable testID="voice-menu-dismiss" accessibilityRole="button" accessibilityLabel="Dismiss" onPress={() => setMenuOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} />
+          <Pressable testID="voice-menu-dismiss" accessibilityRole="button" accessibilityLabel="Dismiss" onPress={() => setMenuOpen(false)} style={{ flex: 1, backgroundColor: voice.scrim }} />
           <View
             style={{
               backgroundColor: voice.bg,
+              borderTopLeftRadius: voiceRadius.r4,
+              borderTopRightRadius: voiceRadius.r4,
               borderTopWidth: 1,
-              borderTopColor: 'rgba(255,255,255,0.14)',
+              borderColor: voice.gfEdge,
               paddingHorizontal: layout.screenInset,
               paddingBottom: insets.bottom + space.lg,
               paddingTop: space.md,
             }}
           >
-            <ThemedText variant="headline" style={{ color: voice.ink, marginBottom: space.sm }}>
+            <VoiceText size="fs17" weight="600" style={{ marginBottom: space.sm }}>
               Voice
-            </ThemedText>
-            <ScrollView testID="voice-menu-list" showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
-              {VOICE_CHOICES.map((name) => {
-                const on = voiceName === name;
-                return (
-                  <Pressable
-                    key={name}
-                    testID={`voice-choice-${name}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: on }}
-                    accessibilityLabel={name}
-                    onPress={() => {
-                      setVoiceName(name);
-                      setMenuOpen(false);
-                    }}
-                    style={({ pressed }) => ({
-                      minHeight: layout.rowMinHeight,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      opacity: pressed ? 0.7 : 1,
-                    })}
-                  >
-                    <ThemedText variant="body" style={{ color: voice.ink }}>
-                      {name}
-                    </ThemedText>
-                    {on ? (
-                      <ThemedText variant="body" style={{ color: voice.ink }}>
-                        ✓
-                      </ThemedText>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-            <ThemedText variant="footnote" style={{ color: voice.ink3, marginTop: space.sm }}>
-              Changing it changes the voice everywhere.
-            </ThemedText>
+            </VoiceText>
+            <VoiceText testID="voice-later" size="fs15" color={voice.ink3}>
+              {later('Voice')}
+            </VoiceText>
           </View>
         </View>
       ) : null}

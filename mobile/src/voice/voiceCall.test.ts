@@ -1,7 +1,7 @@
 import { waitFor } from '@testing-library/react-native';
 import { createFakeEngine } from '../connect/fakeEngine';
 import { createFakeSession } from '../testing/fakeSession';
-import { VoiceCall } from './voiceCall';
+import { MUTED, NOT_CONNECTED, VoiceCall, voiceWord } from './voiceCall';
 
 const KEY = 'agent:main:main';
 const eventually = (check: () => void) => waitFor(check, { timeout: 3000 });
@@ -48,4 +48,27 @@ describe('VoiceCall', () => {
     await call.end();
     session.dispose();
   });
+
+  it('maps toolCall to thinking, assistant captions to speaking, and audio to speaking', async () => {
+    const { engine, session } = await paired();
+    const states: string[] = [];
+    const call = new VoiceCall(session, KEY, { onState: (s) => states.push(s), onCaption: () => undefined });
+    await call.start();
+    engine.emit('talk.event', { relaySessionId: 'talk-1', type: 'toolCall', name: 'branch_agent_consult' });
+    engine.emit('talk.event', { relaySessionId: 'talk-1', type: 'audio', audioBase64: 'AA==' });
+    await eventually(() => expect(states).toEqual(['starting', 'listening', 'thinking', 'speaking']));
+    await call.end();
+    session.dispose();
+  });
+
+  it('names Listening, Thinking, Speaking, Muted and Not connected', () => {
+    expect(voiceWord('listening', false)).toBe('Listening');
+    expect(voiceWord('starting', false)).toBe('Listening');
+    expect(voiceWord('thinking', false)).toBe('Thinking');
+    expect(voiceWord('speaking', false)).toBe('Speaking');
+    expect(voiceWord('listening', true)).toBe(MUTED);
+    expect(voiceWord('speaking', true)).toBe('Speaking');
+    expect(voiceWord('error', false)).toBe(NOT_CONNECTED);
+  });
 });
+
