@@ -2,6 +2,8 @@
 // the chosen person's card, Each person, and at Advanced the records. Reads users.list,
 // users.self, system-presence and gateway.roles; the card's actions and your own name and picture save through
 // users.setRole, device.pair.setupCode, device.token.revoke, users.setDisplayName and users.setAvatar.
+// Visitors (invite, revoke, list and the access policy) use visitor.invite, visitor.revoke, visitor.list
+// and visitor.policy. The Gateway holds the access token; People never asks for it.
 import { useRef, useState } from "react";
 import type { SettingsPageProps } from "../index";
 import { list, record, visible, type RecordValue } from "../adapter";
@@ -13,6 +15,7 @@ import { PersonCard } from "./people-card";
 import { InviteDialog } from "../../people/person-dialogs";
 import { usePicture, type Picture } from "./people-mine";
 import { EachPerson, Records } from "./people-more";
+import { VisitorAccess } from "./visitor-access";
 import "./people.css";
 
 export type People = {
@@ -41,6 +44,7 @@ export function PeoplePage(props: SettingsPageProps) {
         {sel ? <PersonCard key={sel.id} ctx={ctx} p={sel} /> : null}
       </div>
       <Hint>Separation on one computer, not separate accounts. Each person’s conversations and memory are their own.</Hint>
+      <VisitorAccess engine={props.engine} admin={ctx.admin} />
       <EachPerson roles={ctx.roles} />
       {lv >= 1 ? <Records engine={props.engine} trunks={ctx.trunks} /> : null}
       {invite ? <InviteDialog engine={props.engine} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
@@ -127,6 +131,7 @@ function PersonItem({ ctx, p, current, onSel }: { ctx: People; p: Profile; curre
 const row = (sec: string, lv: 0 | 1 | 2, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "people", title, sec, group: sec, lv }));
 export const PEOPLE_ROWS: RowEntry[] = [
   ...row("You", 0, ["Your own instructions", "Your own accounts"]),
+  ...row("Visitors", 0, ["Access policy", "Invite a visitor"]),
   ...row("Each person", 0, ["Ask for a PIN when switching person", "Keep conversations separate", "Open People"]),
   ...row("Records", 1, ["Signed household records"]),
 ];
