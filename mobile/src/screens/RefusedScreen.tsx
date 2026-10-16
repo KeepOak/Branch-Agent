@@ -24,7 +24,6 @@ export function RefusedScreen({
   return (
     <Screen
       testID="pairing-refused"
-      hideScrollbars
       footer={
         <>
           <Button title="Pair again" onPress={onPairAgain} testID="pair-again" />

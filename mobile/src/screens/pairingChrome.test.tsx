@@ -8,7 +8,7 @@ import { pairingTheme, themeFor } from '../theme/tokens';
 import { contrastRatio } from '../theme/contrast';
 import { Button } from '../ui/Button';
 import { Screen } from '../ui/Screen';
-import { WelcomeScreen } from './WelcomeScreen';
+import { KEEPOAK_SIGN_IN_LATER, WelcomeScreen } from './WelcomeScreen';
 
 jest.mock('expo-camera', () => ({
   CameraView: () => null,
@@ -35,7 +35,7 @@ describe('pairing chrome', () => {
   it('hides scrollbars on pairing screens while still scrolling', async () => {
     await render(
       <ThemeProvider scheme="light">
-        <Screen hideScrollbars testID="hidden-scroll">
+        <Screen testID="hidden-scroll">
           <Button title="Go" onPress={() => undefined} />
         </Screen>
       </ThemeProvider>,
@@ -62,6 +62,29 @@ describe('pairing chrome', () => {
     expect(screen.getByTestId('pairing-steps')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Pair with your computer' })).toBeOnTheScreen();
     expect(StyleSheet.flatten(screen.getByTestId('pair-button').props.style).backgroundColor).toBe(themeFor('light').color.ink);
+    expect(screen.queryByTestId('keepoak-later')).toBeNull();
+    expect(screen.queryByText(KEEPOAK_SIGN_IN_LATER)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Sign in with KeepOak/i })).toBeNull();
+  });
+
+  it('shows Sign in with KeepOak as a later update only at Advanced, and never as a working sign-in', async () => {
+    await render(
+      <ThemeProvider scheme="light">
+        <PairingTheme>
+          <WelcomeScreen onPair={() => undefined} />
+        </PairingTheme>
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId('keepoak-later')).toBeNull();
+    await fireEvent.press(screen.getByTestId('pairing-level-advanced'));
+    expect(screen.getByTestId('keepoak-later')).toBeOnTheScreen();
+    expect(screen.getByTestId('keepoak-later-reason')).toHaveTextContent(KEEPOAK_SIGN_IN_LATER);
+    expect(KEEPOAK_SIGN_IN_LATER).toBe('Sign in with KeepOak comes in a later update.');
+    expect(screen.queryByRole('button', { name: /Sign in with KeepOak/i })).toBeNull();
+    await fireEvent.press(screen.getByTestId('pairing-level-technical'));
+    expect(screen.getByTestId('keepoak-later-reason')).toHaveTextContent(KEEPOAK_SIGN_IN_LATER);
+    await fireEvent.press(screen.getByTestId('pairing-level-regular'));
+    expect(screen.queryByTestId('keepoak-later')).toBeNull();
   });
 
   it('pairs from the connect screen’s code field without leaving the camera step', async () => {

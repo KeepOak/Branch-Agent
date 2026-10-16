@@ -28,7 +28,6 @@ export function EnterCodeScreen({ onCode, onScan, onCancel }: { onCode: (setup: 
     <Screen
       testID="enter-code-screen"
       avoidKeyboard
-      hideScrollbars
       footer={
         <>
           <Button title="Pair" onPress={submit} disabled={!text.trim()} testID="submit-code" />

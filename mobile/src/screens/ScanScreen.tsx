@@ -57,7 +57,6 @@ export function ScanScreen({
     return (
       <Screen
         testID="camera-permission"
-        hideScrollbars
         avoidKeyboard
         footer={
           <>

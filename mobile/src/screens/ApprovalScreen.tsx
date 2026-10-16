@@ -68,7 +68,6 @@ export function ApprovalScreen({
     return (
         <Screen
         testID="pairing-failed"
-        hideScrollbars
         footer={
           <>
             <Button title="Scan a new code" onPress={onScanAgain} />
@@ -89,7 +88,7 @@ export function ApprovalScreen({
   const approval = state.step === 'approval';
   const checkCode = approval && state.requestId ? pairingCheckCode(state.requestId) : '';
   return (
-    <Screen testID={approval ? 'pairing-approval' : 'pairing-connecting'} hideScrollbars footer={<Button title="Cancel" kind="secondary" onPress={onCancel} />}>
+    <Screen testID={approval ? 'pairing-approval' : 'pairing-connecting'} footer={<Button title="Cancel" kind="secondary" onPress={onCancel} />}>
       <ThemedText variant="largeTitle" accessibilityRole="header">
         {approval ? 'Allow on your computer' : 'Reaching your computer'}
       </ThemedText>

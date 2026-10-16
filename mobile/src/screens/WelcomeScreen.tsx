@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
-import { Image, View } from 'react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Image, Pressable, View } from 'react-native';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
 import { Card, Screen } from '../ui/Screen';
+import { KEEPOAK_SIGN_IN, SETTINGS_LEVELS, laterUpdate, type SettingsLevel } from './settingsExtras';
 
 const PROMISE = [
   'Your Trunks run on your own computer.',
@@ -13,17 +14,32 @@ const PROMISE = [
 
 const STEPS = [
   'On your computer, open Branch and choose Get the apps, then Pair a phone.',
-  'Scan the code it shows with this phone, or paste it here.',
+  'Scan the square code it shows with this phone, or type the code.',
   'Choose Allow when Branch on your computer asks about this phone. That’s it.',
 ];
 
-/** First launch: what Branch on the phone is, how pairing works, and one way forward. */
-export function WelcomeScreen({ onPair, updateBanner }: { onPair: () => void; updateBanner?: ReactNode }) {
-  const { color, space, radius } = useTheme();
+export const KEEPOAK_SIGN_IN_LATER = laterUpdate(KEEPOAK_SIGN_IN);
+
+/** First launch: one pairing flow (scan or type, then trust, then paired). KeepOak sign-in waits for Advanced. */
+export function WelcomeScreen({
+  onPair,
+  updateBanner,
+  level: pinnedLevel,
+}: {
+  onPair: () => void;
+  updateBanner?: ReactNode;
+  level?: SettingsLevel;
+}) {
+  const { color, space, radius, layout } = useTheme();
+  const [level, setLevel] = useState<SettingsLevel>(pinnedLevel ?? 0);
+
+  useEffect(() => {
+    if (pinnedLevel !== undefined) setLevel(pinnedLevel);
+  }, [pinnedLevel]);
+
   return (
     <Screen
       testID="welcome-screen"
-      hideScrollbars
       footer={
         <>
           <Button title="Pair with your computer" onPress={onPair} testID="pair-button" />
@@ -75,6 +91,57 @@ export function WelcomeScreen({ onPair, updateBanner }: { onPair: () => void; up
           </View>
         ))}
       </Card>
+      <View
+        testID="pairing-level"
+        accessibilityRole="radiogroup"
+        accessibilityLabel="How much to show"
+        style={{
+          marginTop: space.xxl,
+          flexDirection: 'row',
+          backgroundColor: color.fill,
+          borderRadius: radius.md,
+          padding: space.xs,
+          gap: space.xs,
+        }}
+      >
+        {SETTINGS_LEVELS.map((option) => {
+          const on = level === option.v;
+          return (
+            <Pressable
+              key={option.label}
+              testID={`pairing-level-${option.label.toLowerCase()}`}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={option.label}
+              onPress={() => setLevel(option.v)}
+              style={({ pressed }) => ({
+                flex: 1,
+                minHeight: layout.rowMinHeight,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: radius.sm,
+                backgroundColor: on ? color.ink : 'transparent',
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <ThemedText variant="subhead" style={{ fontWeight: on ? '600' : '400', color: on ? color.raise : color.ink }}>
+                {option.label}
+              </ThemedText>
+            </Pressable>
+          );
+        })}
+      </View>
+      <ThemedText variant="footnote" tone="ink3" style={{ marginTop: space.sm, textAlign: 'center' }}>
+        {SETTINGS_LEVELS[level]?.line}
+      </ThemedText>
+      {level >= 1 ? (
+        <Card testID="keepoak-later">
+          <ThemedText variant="headline">{KEEPOAK_SIGN_IN}</ThemedText>
+          <ThemedText variant="subhead" tone="ink3" testID="keepoak-later-reason" style={{ marginTop: space.xs }}>
+            {KEEPOAK_SIGN_IN_LATER}
+          </ThemedText>
+        </Card>
+      ) : null}
     </Screen>
   );
 }
