@@ -21,7 +21,6 @@ export const BACKGROUND_HEX = '#153a28';
 // Android adaptive-icon viewport is 108dp; the inner 72dp circle is the safe zone (66.67%).
 const SAFE_ZONE = 72 / 108;
 const ADAPTIVE_FIT = SAFE_ZONE * 0.88;
-const SPLASH_FIT = 0.62;
 
 const signature = Buffer.from('89504e470d0a1a0a', 'hex');
 const crcTable = Array.from({ length: 256 }, (_, n) => {
@@ -199,9 +198,11 @@ function pixelDouble(source) {
 export function generateBrandIcons({ sourcePath = SOURCE, outDir = OUT } = {}) {
   const tile = decode(readFileSync(sourcePath));
   const mark = keyed(tile);
-  writeFileSync(join(outDir, 'icon.png'), encode(ICON_SIZE, pixelDouble(tile).pixels));
+  const tile1024 = pixelDouble(tile);
+  writeFileSync(join(outDir, 'icon.png'), encode(ICON_SIZE, tile1024.pixels));
   writeFileSync(join(outDir, 'adaptive-icon.png'), encode(ICON_SIZE, placeMark(mark, ICON_SIZE, ADAPTIVE_FIT).pixels));
-  writeFileSync(join(outDir, 'splash-icon.png'), encode(ICON_SIZE, placeMark(mark, ICON_SIZE, SPLASH_FIT).pixels));
+  // Opaque branded tile so the splash mark stays visible on both #f6f8f9 and #0b0f12.
+  writeFileSync(join(outDir, 'splash-icon.png'), encode(ICON_SIZE, tile1024.pixels));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
