@@ -11,11 +11,15 @@ import { Button } from '../ui/Button';
 import { Screen } from '../ui/Screen';
 import {
   ASSISTANT_EXTRAS,
+  CONNECTION_EXTRAS,
   HELP_PAGES,
+  KEEPOAK_EXTRA,
   LANGUAGE_DISABLED_REASON,
   LANGUAGE_OPTIONS,
   ON_PHONE_EXTRAS,
+  PHONE_MORE_EXTRAS,
   SETTINGS_EXTRAS,
+  SETUP_TALK_EXTRA,
   TEXT_SIZE_DEFAULT,
   TEXT_SIZE_REASON,
   THIS_BRANCH_EXTRAS,
@@ -373,6 +377,10 @@ export function SettingsScreen({
         Settings
       </ThemedText>
 
+      <Group testID="keepoak-card">
+        <ExtraRow extra={KEEPOAK_EXTRA} last />
+      </Group>
+
       <Group testID="app-card">
         <Row label="Version" value={identity.version} />
         <Row label="Build" value={identity.build ?? '—'} last />
@@ -412,6 +420,10 @@ export function SettingsScreen({
         {THIS_BRANCH_EXTRAS.map((extra, index) => (
           <ExtraRow key={extra.testID} extra={extra} last={index === THIS_BRANCH_EXTRAS.length - 1} />
         ))}
+      </Group>
+
+      <Group testID="setup-talk-card">
+        <ExtraRow extra={SETUP_TALK_EXTRA} last />
       </Group>
 
       <Group title="Your assistant" testID="appearance-card">
@@ -507,6 +519,12 @@ export function SettingsScreen({
         ))}
       </Group>
 
+      <Group title="Connections" testID="settings-connections">
+        {CONNECTION_EXTRAS.map((extra, index) => (
+          <ExtraRow key={extra.testID} extra={extra} last={index === CONNECTION_EXTRAS.length - 1} />
+        ))}
+      </Group>
+
       <Group title="On this phone" testID="settings-notifications">
         <ThemedText variant="headline" style={{ paddingHorizontal: 14, paddingTop: space.md }}>
           Notifications
@@ -535,6 +553,12 @@ export function SettingsScreen({
         <Hairline last={false} />
         {ON_PHONE_EXTRAS.map((extra, index) => (
           <ExtraRow key={extra.testID} extra={extra} last={index === ON_PHONE_EXTRAS.length - 1} />
+        ))}
+      </Group>
+
+      <Group title="This phone, more" testID="settings-phone-more">
+        {PHONE_MORE_EXTRAS.map((extra, index) => (
+          <ExtraRow key={extra.testID} extra={extra} last={index === PHONE_MORE_EXTRAS.length - 1} />
         ))}
       </Group>
 

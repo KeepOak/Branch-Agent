@@ -7,6 +7,13 @@ export type SettingsExtra = {
   reason: string;
 };
 
+export const KEEPOAK_EXTRA: SettingsExtra = {
+  testID: 'extra-keepoak',
+  title: 'Sign in with keepoak.com',
+  detail: 'Reach every computer and your team.',
+  reason: 'keepoak.com has no sign-in Branch can use yet.',
+};
+
 export const THIS_BRANCH_EXTRAS: SettingsExtra[] = [
   {
     testID: 'extra-connect-another',
@@ -16,6 +23,13 @@ export const THIS_BRANCH_EXTRAS: SettingsExtra[] = [
   },
 ];
 
+export const SETUP_TALK_EXTRA: SettingsExtra = {
+  testID: 'extra-setup-talk',
+  title: 'Set up and fix by talking',
+  detail: 'Talk it through with a Trunk.',
+  reason: 'Talk is not wired from Settings yet. Open a chat from Chats.',
+};
+
 export const ASSISTANT_EXTRAS: SettingsExtra[] = [
   {
     testID: 'extra-accounts',
@@ -23,11 +37,41 @@ export const ASSISTANT_EXTRAS: SettingsExtra[] = [
     detail: 'Model sign-ins used on the computer.',
     reason: 'Add accounts on the computer, under Settings, Accounts.',
   },
+];
+
+export const CONNECTION_EXTRAS: SettingsExtra[] = [
   {
-    testID: 'extra-setup-talk',
-    title: 'Set up and fix by talking',
-    detail: 'Talk it through with a Trunk.',
-    reason: 'Talk is not wired from Settings yet. Open a chat from Chats.',
+    testID: 'extra-chat-apps',
+    title: 'Chat apps',
+    detail: 'Message Branch from other apps.',
+    reason: 'Chat apps are set up on the computer, not on this phone.',
+  },
+  {
+    testID: 'extra-local-models',
+    title: 'Models on this computer',
+    detail: 'What runs on the paired computer.',
+    reason: 'Models are chosen on the computer, not on this phone.',
+  },
+  {
+    testID: 'extra-skills',
+    title: 'Skills',
+    detail: 'What this Branch can do.',
+    reason: 'Skills are managed on the computer, not on this phone.',
+  },
+];
+
+export const PHONE_MORE_EXTRAS: SettingsExtra[] = [
+  {
+    testID: 'extra-haptics',
+    title: 'Vibrate on taps',
+    detail: 'A light buzz when you send, allow or switch.',
+    reason: 'Haptics are not wired in this app yet.',
+  },
+  {
+    testID: 'extra-on-phone-engine',
+    title: 'Run Branch on this phone',
+    detail: 'Its own engine on the phone, kept running in the background.',
+    reason: 'This phone is a remote for the computer. It does not run an engine.',
   },
 ];
 
@@ -104,9 +148,13 @@ export const VOICE_EXTRAS: SettingsExtra[] = [
 ];
 
 export const SETTINGS_EXTRAS: SettingsExtra[] = [
+  KEEPOAK_EXTRA,
   ...THIS_BRANCH_EXTRAS,
+  SETUP_TALK_EXTRA,
   ...ASSISTANT_EXTRAS,
+  ...CONNECTION_EXTRAS,
   ...ON_PHONE_EXTRAS,
+  ...PHONE_MORE_EXTRAS,
   ...VOICE_EXTRAS,
 ];
 

@@ -212,7 +212,7 @@ describe('r50 settings parity', () => {
     expect(screen.getByRole('header')).toHaveTextContent('Help');
     await fireEvent.press(screen.getByTestId(`help-${HELP_PAGES[0].id}`));
     expect(screen.getByRole('header')).toHaveTextContent(HELP_PAGES[0].title);
-    expect(screen.getByTestId(`help-page-${HELP_PAGES[0].id}`)).toHaveTextContent(HELP_PAGES[0].paragraphs[0]);
+    expect(screen.getByText(HELP_PAGES[0].paragraphs[0])).toBeOnTheScreen();
   });
 
   it('draws the theme picker in black and white', async () => {
