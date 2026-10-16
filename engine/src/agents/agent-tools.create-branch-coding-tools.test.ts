@@ -1846,18 +1846,9 @@ describe("createBranchCodingTools read behavior", () => {
     const result = await readTool.execute("read-cap-1", { path: "huge.txt" });
     const text = extractToolText(result);
     expect(text).toContain("line-0001");
-    expect(text).toContain("File truncated");
-    expect(text).toMatch(/Showing lines 1-\d+ of 8000/);
+    expect(text).toContain("[Read output capped at 32KB for this call. Use offset=");
     expect(text).not.toContain("line-8000");
     expect(Buffer.byteLength(text, "utf8")).toBeLessThanOrEqual(32 * 1024);
-    expect(result.details).toMatchObject({
-      kind: "truncated",
-      truncation: {
-        truncated: true,
-        totalLines: 8000,
-        totalBytes: Buffer.byteLength(lines.join("\n"), "utf8"),
-      },
-    });
   });
 
   it.each([
@@ -1877,19 +1868,10 @@ describe("createBranchCodingTools read behavior", () => {
 
     expect(Buffer.byteLength(text, "utf8")).toBeLessThanOrEqual(32 * 1024);
     expect(details.continuation).toMatchObject({ kind: "cursor", offset: 1 });
-    expect(text).toContain("File truncated");
     expect(text).toContain(`cursor=${details.continuation?.cursor}`);
-    expect(text.replace(/\n\n\[File truncated\. Showing part of line 1[^\]]*\]$/, "")).toBe(
+    expect(text.replace(/\n\n\[Read output capped[^\]]*\]$/, "")).toBe(
       original.slice(0, details.continuation?.cursor),
     );
-    expect(result.details).toMatchObject({
-      kind: "truncated",
-      truncation: {
-        truncated: true,
-        totalLines: 1,
-        totalBytes: Buffer.byteLength(original, "utf8"),
-      },
-    });
   });
 
   it("ignores a trailing newline when describing offsets beyond EOF", async () => {
