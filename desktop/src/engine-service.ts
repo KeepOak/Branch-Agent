@@ -2,7 +2,8 @@
 // The service itself is the engine's own `branch gateway install|start` (engine/src/daemon: a LaunchAgent, a
 // systemd --user unit or a logon Scheduled Task, all per user), so there is one service implementation. This file
 // drives that command, attaches to the engine it runs, and records the one fallback: a child engine when the service
-// cannot be installed (a locked-down computer).
+// cannot be installed (a locked-down computer). With Keep working on, the desktop detaches that child and quit leaves
+// it (fallback-engine.ts). Keep working off keeps today's child, which quit stops.
 import { execFile } from "node:child_process";
 import { closeSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { open, realpath, stat } from "node:fs/promises";
@@ -200,10 +201,18 @@ export function plainServiceReason(reason: string): string {
   return first.replace(/[.!?]$/, "").trim() || reason.trim();
 }
 
-/** The Settings line for the engine running inside the app, from the reason takeChildModeNotice gives. */
-export function childModeSettingsLine(notice: string): string {
-  if (SELF_EXPLAINING_LINES.has(notice)) return `${notice} Quitting Branch stops your Trunks.`;
-  return `Branch runs inside the app on this computer because its background service couldn't be installed (${notice}). Quitting Branch stops your Trunks.`;
+const QUIT_STOPS_LINE = "Quitting Branch stops your Trunks.";
+/** Keep working left the fallback running. It is not a service, so sign-out and reboot do not start it again. */
+const QUIT_LEAVES_LINE = "Closing Branch leaves your Trunks running. They won't restart after you sign out or reboot.";
+
+/**
+ * The one-time Settings line for the engine running inside the app, from the reason takeChildModeNotice gives.
+ * `keepsWorking`: the fallback was detached, so the line says it will not restart after sign-out or reboot.
+ */
+export function childModeSettingsLine(notice: string, keepsWorking = false): string {
+  const ending = keepsWorking ? QUIT_LEAVES_LINE : QUIT_STOPS_LINE;
+  if (SELF_EXPLAINING_LINES.has(notice)) return `${notice} ${ending}`;
+  return `Branch runs inside the app on this computer because its background service couldn't be installed (${notice}). ${ending}`;
 }
 
 /** The reason the engine runs inside the app, the first time it is asked for; later calls return undefined. */
