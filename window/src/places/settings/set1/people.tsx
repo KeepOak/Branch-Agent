@@ -26,6 +26,30 @@ export type People = {
 const LEDE = "Everyone who uses Branch, on this computer or their own.";
 const HELP = "Everyone who uses Branch: on this computer, on their own devices, and your keepoak.com team. The same list as People › People in the People place.";
 
+/** The list of everyone who uses Branch with the chosen person's card and Invite someone, as the preview draws them at
+ *  the top of Who uses Branch (R1 pages/who.ts). */
+export function PeopleBlock(props: SettingsPageProps) {
+  const ctx = usePeople(props);
+  const [selId, setSel] = useState<string | null>(null);
+  const [invite, setInvite] = useState(false);
+  const sel = ctx.people.find((p) => p.id === selId) ?? ctx.self ?? ctx.people[0] ?? null;
+  return (
+    <>
+      {ctx.error ? <Status tone="bad" title={`Couldn’t read: ${visible(ctx.error)}`} /> : null}
+      <div className="t10-pp">
+        <div className="plist-pp">
+          {ctx.self ? <ProfileHead ctx={ctx} me={ctx.self} /> : null}
+          <PersonList ctx={ctx} sel={sel} onSel={setSel} loading={ctx.loading} />
+          <Btn pri className="invite-pp" onClick={() => setInvite(true)}><Icon name="plus" small />Invite someone</Btn>
+        </div>
+        {sel ? <PersonCard key={sel.id} ctx={ctx} p={sel} /> : null}
+      </div>
+      <Hint>Separation on one computer, not separate accounts. Each person’s conversations and memory are their own.</Hint>
+      {invite ? <InviteDialog engine={props.engine} onClose={() => { setInvite(false); void ctx.reload(); }} /> : null}
+    </>
+  );
+}
+
 export function PeoplePage(props: SettingsPageProps) {
   const lv = useLevel();
   const ctx = usePeople(props);
@@ -34,7 +58,7 @@ export function PeoplePage(props: SettingsPageProps) {
   const sel = ctx.people.find((p) => p.id === selId) ?? ctx.self ?? ctx.people[0] ?? null;
   return (
     <Page title={props.title} lede={LEDE} help={HELP}>
-      {ctx.error ? <Status tone="bad" title="Branch couldn’t read who uses it">{visible(ctx.error)}</Status> : null}
+      {ctx.error ? <Status tone="bad" title={`Couldn’t read: ${visible(ctx.error)}`} /> : null}
       <div className="t10-pp">
         <div className="plist-pp">
           {ctx.self ? <ProfileHead ctx={ctx} me={ctx.self} /> : null}
