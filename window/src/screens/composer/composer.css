@@ -55,7 +55,7 @@
   border: 1px solid transparent; transition: box-shadow .15s; }
 .r1c-pill[data-temp] { border-style: dashed; border-color: var(--r1c-p-edge); box-shadow: none; }
 .r1c-pill textarea { flex: 1; min-width: 0; align-self: center; height: auto; min-height: 35.75px; max-height: 160px; padding: 7px 6px; border: 0; outline: 0; resize: none;
-  background: transparent; color: var(--ink); font: inherit; font-size: 15px; line-height: 1.45; field-sizing: content; overflow-y: auto; }
+  background: transparent; color: var(--ink); font: inherit; font-size: calc(15px * var(--chat-text, 1)); line-height: 1.45; field-sizing: content; overflow-y: auto; }
 .r1c-pill textarea::placeholder { color: var(--ink-3); }
 .r1c-btn, .g-ring { position: relative; display: grid; place-items: center; flex: none; width: 34px; height: 34px; margin-block: 1px; padding: 0; border: 0; border-radius: 50%;
   background: transparent; color: var(--ink-3); cursor: pointer; transition: background-color .14s cubic-bezier(.2,.8,.2,1), color .14s cubic-bezier(.2,.8,.2,1); }
