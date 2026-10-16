@@ -874,7 +874,9 @@ const autoApply = createAutoApplyUpdate({
     const version = (await readComponentUpdateStatus(cfg)).pendingVersion;
     return version === withdrawnUpdateVersion ? null : version;
   },
-  enabled: () => controls.settings().autoApplyUpdates && !updateLock.held,
+  enabled: () => controls.settings().autoApplyUpdates,
+  // Crash recovery or a staged-update replacement only postpones the update; the setting stays on (Private #1054).
+  busy: () => updateLock.purpose,
   seamlessHandoff,
   // Private #951: no automatic update starts under 10% free disk or 20% free RAM.
   health: () => readUpdateHealth(cfg.dataDir, availableMemory().bytes, totalmem()),

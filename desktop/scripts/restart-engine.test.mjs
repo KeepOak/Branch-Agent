@@ -1484,10 +1484,11 @@ test("an Update click or an automatic update during a staged-update replacement 
   let releaseGuard;
   const held = new Promise(resolve => { releaseGuard = resolve; });
   const replacement = swapGuard(async () => { await held; return true; });
-  // Past the hold, auto-apply skips the replacement lock instead of trying the update.
+  // Past the hold, auto-apply waits out the replacement lock instead of trying the update, and stays on (Private #1054).
   clock.skew = 61_000;
   offerStaged();
-  await eventually(async () => (await log()).includes("auto-apply: off; awaiting Restart"));
+  await eventually(async () => (await log()).includes("auto-apply: waiting; replace the staged update in progress; fixture-next applies once it ends"));
+  assert.doesNotMatch(await log(), /auto-apply: off/);
   await pause(100);
   assert.doesNotMatch(await log(), /auto-apply: restarting for fixture-next/);
   assert.doesNotMatch(await log(), /auto-apply: waiting; activity check failed: The desktop is not ready to update/);

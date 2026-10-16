@@ -12,6 +12,11 @@ export const AUTO_APPLY_POLL_MS = 30_000;
 /** A gap: no turn streams, no approval waits and no draft is unsaved for this long (Private #1047). */
 export const AUTO_APPLY_GAP_MS = 30_000;
 export const AUTO_APPLY_RETRY_MS = 60_000;
+/**
+ * A failed activity check (a probe that timed out, an engine that is restarting) backs off from AUTO_APPLY_POLL_MS,
+ * doubling up to this cap, and retries with the setting left on (Private #1054). Auto-apply never turns itself off.
+ */
+export const AUTO_APPLY_CHECK_BACKOFF_MAX_MS = 5 * 60_000;
 /** An update pending this long applies at the next gap, without waiting for the Trunk-work batch (Private #1047). */
 export const AUTO_APPLY_PENDING_CAP_MS = 6 * 60 * 60_000;
 
@@ -62,7 +67,13 @@ export function updateHealthRefusal(health: UpdateHealth): string | undefined {
 
 export function createAutoApplyUpdate(options: {
   pendingVersion(): Promise<string | null>;
+  /** The owner's "apply updates automatically" setting, and nothing else. */
   enabled(): boolean;
+  /**
+   * What holds the desktop's update lock now (crash recovery, a staged-update replacement, Undo), or undefined. A held
+   * lock only postpones the update: auto-apply stays on and retries once it is released (Private #1054).
+   */
+  busy?(): string | undefined;
   activity(): Promise<UpdateActivity>;
   /** `drain`: stop the old engine by its drain (it refuses new work and finishes its runs), not only while idle. */
   restart(version: string, handoffOnly: boolean, drain?: boolean): Promise<void>;
@@ -89,6 +100,8 @@ export function createAutoApplyUpdate(options: {
   let restarting = false;
   let appliedVersion: string | undefined;
   let retryAfter = 0;
+  /** Activity checks that failed in a row; each one doubles the wait before the next (Private #1054). */
+  let checkFailures = 0;
   let failedVersion: string | undefined;
   let notifiedVersion: string | undefined;
   let stopped = false;
@@ -111,6 +124,7 @@ export function createAutoApplyUpdate(options: {
   /** Every activity read notes a run in flight, which marks this machine as running Trunk work. */
   const readActivity = async (): Promise<UpdateActivity> => {
     const activity = await options.activity();
+    checkFailures = 0;
     lastSampleAt = now();
     if (activity.activeRuns > 0) lastRunSeenAt = lastSampleAt;
     return activity;
@@ -135,7 +149,7 @@ export function createAutoApplyUpdate(options: {
     try {
       const version = await options.pendingVersion();
       if (version !== heldVersion) {
-        idleSince = undefined; retryAfter = 0; failedVersion = undefined; notifiedVersion = undefined;
+        idleSince = undefined; retryAfter = 0; checkFailures = 0; failedVersion = undefined; notifiedVersion = undefined;
         appliedVersion = undefined;
         // A newer release that replaces a pending one keeps the wait: the cap counts from when an update first became
         // pending, so releases that keep coming every few hours cannot postpone the update forever.
@@ -153,6 +167,12 @@ export function createAutoApplyUpdate(options: {
         return;
       }
       if (now() < retryAfter) return;
+      const holder = options.busy?.();
+      if (holder) {
+        idleSince = undefined;
+        decision(`waiting; ${holder} in progress; ${version} applies once it ends`);
+        return;
+      }
       const health = await options.health?.();
       const refusal = health && updateHealthRefusal(health);
       if (refusal) {
@@ -204,7 +224,7 @@ export function createAutoApplyUpdate(options: {
       }
       // A fresh gateway snapshot closes the gap after the hold timer and before relaunch.
       const final = await readActivity();
-      if (turnWaiting(final) || !options.enabled()) {
+      if (turnWaiting(final) || !options.enabled() || options.busy?.()) {
         idleSince = undefined;
         decision(`waiting for ${final.activeRuns} active runs, ${final.pendingApprovals} approvals`);
         return;
@@ -235,7 +255,11 @@ export function createAutoApplyUpdate(options: {
       }
     } catch (error) {
       idleSince = undefined;
-      decision(`waiting; activity check failed: ${error instanceof Error ? error.message : String(error)}`);
+      // A failed check is unknown, not "off": the setting stays on, and the next check waits a little longer.
+      checkFailures++;
+      const wait = Math.min(AUTO_APPLY_POLL_MS * 2 ** (checkFailures - 1), AUTO_APPLY_CHECK_BACKOFF_MAX_MS);
+      retryAfter = Math.max(retryAfter, now() + wait);
+      decision(`waiting; activity check failed: ${error instanceof Error ? error.message : String(error)}; retrying in ${Math.round(wait / 1000)} s`);
     } finally { checking = false; }
   };
   return {

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const { createAutoApplyUpdate, readUpdateHealth, updateHealthRefusal, AUTO_APPLY_POLL_MS, AUTO_APPLY_GAP_MS, AUTO_APPLY_RETRY_MS,
-  TRUNK_UPDATE_MIN_INTERVAL_MS, TRUNK_WORK_SAMPLE_MS, AUTO_APPLY_PENDING_CAP_MS } = await import(
+  TRUNK_UPDATE_MIN_INTERVAL_MS, TRUNK_WORK_SAMPLE_MS, AUTO_APPLY_PENDING_CAP_MS, AUTO_APPLY_CHECK_BACKOFF_MAX_MS } = await import(
   pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "auto-apply-update.js"))
 );
 const { COMPONENT_UPDATE_CHECK_MS } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update.js")));
@@ -252,4 +253,66 @@ test("a pending update that keeps being replaced by newer releases still lands o
   }
   assert.ok(f.restarts.length >= 1, "the capped update drained at a gap");
   assert.match(f.restarts[0], /^0\.4\.4-build-\d+$/);
+});
+
+test("repeated probe timeouts leave auto-apply on and back off before each retry (Private #1054)", async () => {
+  let now = 0; let probes = 0; let timingOut = true; let enabledReads = 0;
+  const restarts = []; const logs = [];
+  const controller = createAutoApplyUpdate({
+    pendingVersion: async () => "0.4.4-build-next",
+    enabled: () => { enabledReads++; return true; },
+    activity: async () => {
+      probes++;
+      if (timingOut) throw new Error("The window activity check timed out");
+      return { activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false };
+    },
+    restart: async version => { restarts.push(version); },
+    log: line => logs.push(line),
+    now: () => now,
+  });
+  assert.equal(AUTO_APPLY_CHECK_BACKOFF_MAX_MS, 5 * 60_000);
+  const waits = [30_000, 60_000, 120_000, 240_000, 300_000, 300_000];
+  for (const [i, wait] of waits.entries()) {
+    await controller.tick();
+    assert.equal(probes, i + 1, "each scheduled retry probes once");
+    assert.equal(logs.at(-1), `auto-apply: waiting; activity check failed: The window activity check timed out; retrying in ${wait / 1000} s`);
+    now += wait - 1; await controller.tick();
+    assert.equal(probes, i + 1, "no probe before the back-off ends");
+    now += 1;
+  }
+  assert.ok(enabledReads > 0);
+  assert.ok(logs.every(line => !line.includes("off")), logs.join("\n"));
+  timingOut = false;
+  await controller.tick();
+  now += AUTO_APPLY_GAP_MS; await controller.tick();
+  assert.deepEqual(restarts, ["0.4.4-build-next"]);
+});
+
+test("crash recovery holding the update lock postpones auto-apply without turning it off (Private #1054)", async () => {
+  let now = 0; let holder = "crash recovery";
+  const restarts = []; const logs = [];
+  const controller = createAutoApplyUpdate({
+    pendingVersion: async () => "0.4.4-build-next",
+    enabled: () => true,
+    busy: () => holder,
+    activity: async () => ({ activeRuns: 0, pendingApprovals: 0, streaming: false, unsavedDraftFiles: false }),
+    restart: async version => { restarts.push(version); },
+    log: line => logs.push(line),
+    now: () => now,
+  });
+  await controller.tick(); now += AUTO_APPLY_GAP_MS; await controller.tick();
+  assert.deepEqual(restarts, []);
+  assert.deepEqual(logs, ["auto-apply: waiting; crash recovery in progress; 0.4.4-build-next applies once it ends"]);
+  holder = undefined;
+  await controller.tick(); now += AUTO_APPLY_GAP_MS; await controller.tick();
+  assert.deepEqual(restarts, ["0.4.4-build-next"]);
+  assert.ok(logs.every(line => !line.includes("off")), logs.join("\n"));
+});
+
+test("the desktop's auto-apply setting is never tied to the update lock (Private #1054)", () => {
+  const main = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
+  const wiring = main.slice(main.indexOf("const autoApply = createAutoApplyUpdate({"));
+  const enabled = /\n  enabled: \(\) => ([^\n]*),\n/.exec(wiring)?.[1];
+  assert.equal(enabled, "controls.settings().autoApplyUpdates");
+  assert.match(wiring, /\n  busy: \(\) => updateLock\.purpose,\n/);
 });
