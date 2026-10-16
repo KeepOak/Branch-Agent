@@ -67,15 +67,14 @@ describe("R1 sidebar, the Coming contract", () => {
 
     await click(host.querySelector('[aria-label="More for Ledger"]'));
     expect(undeclared()).toEqual([]);
-    for (const label of ["Pin", "Read", "Archive", "Delete conversation…"]) expect(row(label).getAttribute("aria-disabled"), label).toBe("true");
+    for (const label of ["Pin", "Mark as read", "Archive", "Delete"]) expect(row(label).getAttribute("aria-disabled"), label).toBe("true");
     await click(row("Pin"));
     await press(document.querySelector(".g-menu")!, "p");
     await press(document.querySelector(".g-menu")!, "d");
     expect(request).not.toHaveBeenCalled();
     expect(needs()).toEqual(expect.arrayContaining(["sessions.patch", "contacts.markRead", "sessions.delete"]));
-    await click(row("Ledger"));
     expect(undeclared()).toEqual([]);
-    expect(row("Pause").title).toBe("Pausing a Trunk needs an engine method it doesn't have yet.");
+    expect(row("Pause").title).toBe("Pause comes in a later update.");
     expect(needs()).toEqual(expect.arrayContaining(["chat.send", "agents.update", "agents.delete"]));
     await press(document.querySelector(".g-menu")!, "Escape");
 
@@ -107,14 +106,10 @@ describe("R1 sidebar, the Coming contract", () => {
     await click(host.querySelector('[aria-label="More for Ledger"]'));
     expect(row("Pin").getAttribute("aria-disabled")).toBeNull();
     expect(row("Pin").dataset.need).toBe("sessions.patch");
-    await click(row("Move to"));
-    expect(row("Group…").getAttribute("aria-disabled")).toBeNull();
-    expect(row("Group…").dataset.need).toBe("sessions.groups.list sessions.patch");
-    await press(document.querySelector(".g-menu")!, "ArrowLeft");
-    await click(row("Ledger"));
+    expect(row("Move to group…").getAttribute("aria-disabled")).toBeNull();
+    expect(row("Move to group…").dataset.need).toBe("sessions.groups.list sessions.patch");
     expect(row("Pause").getAttribute("aria-disabled")).toBe("true");
     expect(comingControls()).toEqual(expect.arrayContaining([expect.objectContaining({ need: ["agents.update"], where: "Pause" })]));
-    await press(document.querySelector(".g-menu")!, "ArrowLeft");
     await click(row("Pin"));
     expect(request).toHaveBeenCalledWith("sessions.patch", expect.objectContaining({ key: "agent:ledger:main", pinned: true }));
   });

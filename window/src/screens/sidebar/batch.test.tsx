@@ -98,8 +98,7 @@ describe("R1 sidebar: select several and the batch menu (Classic batch-menu.ts r
     const { render } = setup();
     await render();
     await act(async () => host.querySelector<HTMLElement>('[aria-label="More for Ledger"]')!.click());
-    await act(async () => [...document.querySelectorAll<HTMLElement>(".g-menu-row")].find(node => node.textContent?.startsWith("Ledger"))!.click());
-    await act(async () => [...document.querySelectorAll<HTMLElement>(".g-menu-row")].find(node => node.textContent?.startsWith("Tidy up"))!.click());
+    await act(async () => [...document.querySelectorAll<HTMLElement>(".g-menu-row")].find(node => node.querySelector(".g-menu-label")?.firstChild?.textContent === "Tidy up…")!.click());
     expect([...document.querySelectorAll(".g-menu-label")].map(node => node.textContent)).toContain("Keep only the last 400 lines…");
   });
 

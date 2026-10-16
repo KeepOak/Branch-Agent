@@ -63,7 +63,7 @@ async function render(methods = ALL) {
 }
 const click = async (node: Element | null) => act(async () => { (node as HTMLElement).click(); });
 const key = async (node: Element | null, init: KeyboardEventInit) => act(async () => { (node as HTMLElement).dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init })); });
-const entry = (label: string) => [...document.querySelectorAll<HTMLElement>(".g-menu-row, .g-menu-tile")].find(item => item.querySelector(".g-menu-label, .g-menu-tile-label")?.firstChild?.textContent?.startsWith(label))!;
+const entry = (label: string) => [...document.querySelectorAll<HTMLElement>(".g-menu-row, .g-menu-tile")].find(item => item.querySelector(".g-menu-label, .g-menu-tile-label")?.firstChild?.textContent === label)!;
 const tileLabels = () => [...document.querySelectorAll(".g-menu-tile .g-menu-tile-label")].map(label => label.textContent);
 const rowLabels = () => [...document.querySelectorAll(".g-menu-row .g-menu-label")].map(label => label.firstChild?.textContent);
 const scoutRow = () => [...host.querySelectorAll<HTMLButtonElement>(".r1sb-row")].find(row => row.title === "Scout")!;
@@ -74,27 +74,27 @@ describe("R1 sidebar right-click menus", () => {
   it("opens the preview's row menu on a Trunk row, exactly these items in this order", async () => {
     await render();
     await act(async () => { scoutRow().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); });
-    expect(tileLabels()).toEqual(["Pin", "Unread", "Snooze ›", "Archive"]);
-    expect(rowLabels()).toEqual(["Rename", "Move to", "New conversation", "Copy", "Open in new window", "Scout", "Delete conversation…"]);
+    expect(tileLabels()).toEqual([]);
+    expect(rowLabels()).toEqual(["Open", "Mark as unread", "Pin to top", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Archive", "Move to project", "Tidy up…", "New conversation with Scout", "What can Scout do?", "Pause", "Edit Trunk…", "Delete…", "Remove…"]);
     await click(entry("Copy"));
-    expect(rowLabels()).toEqual(["Copy", "Link to this conversation", "Conversation as Markdown", "Conversation ID"]);
+    expect(rowLabels()).toEqual(["Copy", "Link to this conversation", "Link with a preview card", "Conversation as Markdown", "Conversation ID"]);
     expect(undeclaredControls(document)).toEqual([]);
   });
 
   it("opens the same menu on a pinned face, with Unpin and Replace with a different Trunk…", async () => {
     await render();
     await act(async () => { ledgerFace().dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); });
-    expect(tileLabels()).toEqual(["Unpin", "Unread", "Snooze ›", "Archive"]);
-    expect(rowLabels()).toEqual(["Rename", "Move to", "New conversation", "Copy", "Open in new window", "Replace with a different Trunk…", "Ledger", "Delete conversation…"]);
+    expect(tileLabels()).toEqual([]);
+    expect(rowLabels()).toEqual(["Open", "Mark as unread", "Unpin", "Move to group…", "Rename", "Open in its own window", "Copy into a new conversation", "Copy", "Snooze", "Mark done", "Archive", "Move to project", "Tidy up…", "New conversation with Ledger", "What can Ledger do?", "Pause", "Edit Trunk…", "Replace with a different Trunk…", "Delete…", "Remove…"]);
   });
 
   it("runs the existing actions: Pin, Unread, Copy › Conversation ID and Rename", async () => {
     const { request, onPlace } = await render();
     await click(host.querySelector('[aria-label="More for Scout"]'));
-    await click(entry("Pin"));
+    await click(entry("Pin to top"));
     expect(calls(request, "sessions.patch")).toContainEqual({ key: "agent:scout:main", agentId: "scout", pinned: true, snoozedUntil: null });
     await click(host.querySelector('[aria-label="More for Scout"]'));
-    await click(entry("Unread"));
+    await click(entry("Mark as unread"));
     expect(calls(request, "sessions.patch")).toContainEqual({ key: "agent:scout:main", agentId: "scout", unread: true });
     await click(host.querySelector('[aria-label="More for Scout"]'));
     await click(entry("Copy"));
@@ -113,7 +113,7 @@ describe("R1 sidebar right-click menus", () => {
   it("asks before Delete conversation… deletes, and deletes only on yes", async () => {
     const { request } = await render();
     await click(host.querySelector('[aria-label="More for Scout"]'));
-    await click(entry("Delete conversation…"));
+    await click(entry("Delete…"));
     expect(document.querySelector('[data-testid="confirm-delete"]')).not.toBeNull();
     expect(calls(request, "sessions.delete")).toEqual([]);
     await click(document.querySelector('[data-testid="confirm-delete-yes"]'));
