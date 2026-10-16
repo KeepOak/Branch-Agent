@@ -1,5 +1,7 @@
 Reading fonts bundled with the Branch window (Settings > Appearance > Reading).
-Each is used unchanged under the SIL Open Font License, Version 1.1. Its notice and licence follow.
+Each is used unchanged under the SIL Open Font License, Version 1.1. Its notice and licence follow; each font
+file also carries its full original copyright notice and licence in its own metadata (OFL condition 2).
+The OpenDyslexic notice below gives its author's web address only; the font's metadata has the full contact line.
 
 - OpenDyslexic-Regular.woff2, OpenDyslexic-Bold.woff2: OpenDyslexic by Abbie Gonzalez,
   from https://github.com/antijingoist/opendyslexic (compiled/), unmodified.
@@ -13,7 +15,7 @@ Each is used unchanged under the SIL Open Font License, Version 1.1. Its notice 
 OpenDyslexic
 ==============================================================================
 
-Copyright (c) 2019-07-29, Abbie Gonzalez (https://abbiecod.es|support@abbiecod.es),
+Copyright (c) 2019-07-29, Abbie Gonzalez (https://abbiecod.es),
 with Reserved Font Name OpenDyslexic.
 Copyright (c) 12/2012 - 2019
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
