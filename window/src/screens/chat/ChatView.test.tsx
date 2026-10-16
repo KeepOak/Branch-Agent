@@ -72,11 +72,14 @@ it("adds a divider after 15 quiet minutes and keeps thoughts inside the steps", 
   expect(steps && steps.type === "steps" ? steps.thoughts.map((t) => t.key) : []).toEqual(["th1"]);
 });
 
-it("keeps the working line under the latest message while the reply streams in word by word", async () => {
+it("keeps one working line above the reply while it streams in word by word", async () => {
   await show({ history: history.slice(0, 1), running: true, live: [] });
-  expect(host.querySelector('[data-testid="working-line"]')!.textContent).toBe("Working");
+  expect(host.querySelector('[data-testid="working-line"]')!.textContent).toMatch(/^Working…/);
   await show({ history: history.slice(0, 1), running: true, live: [{ kind: "text", key: "r2:text:1", text: "Looking in Outlook now", streaming: true }] });
-  expect(host.querySelector('[data-testid="working-line"]')!.textContent).toBe("Working");
+  const line = host.querySelector('[data-testid="working-line"]')!;
+  expect(line.textContent).toMatch(/^Working…/);
+  const reply = host.querySelector('[data-role="assistant"]')!;
+  expect(line.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   const words = [...host.querySelectorAll('[data-testid="streaming"] .r1c-tok')];
   expect(words.map((w) => w.textContent).join("")).toBe("Looking in Outlook now");
   const first = words[0];
@@ -151,17 +154,20 @@ it("follows the item 48 glass model: clear conversation and menus, text and cont
   expect(css).toContain(".g-popover:has(> .r1c-menu, > .r1c-react) { background: transparent; backdrop-filter: none;");
 });
 
-it("Regular: a live run is one line, the steps disclosure that says what it works in", async () => {
-  const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: t0 + 40_000 }];
+it("Regular: a live run is one line, the steps disclosure, with the current step in plain words", async () => {
+  const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: Date.now() - 12_000 }];
   await show({ history: history.slice(0, 1), live, running: true }, ["chat.send"]);
   expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
   const disclosure = host.querySelector('[data-testid="steps"] .r1c-steps-text')!;
-  expect(disclosure.textContent).toBe("Working in GitHub");
+  expect(disclosure.textContent).toMatch(/^Working… Using list pull requests · \d+s$/);
   expect(disclosure.classList.contains("r1c-shimmer")).toBe(true);
   expect(host.textContent).not.toContain("so far");
   expect(host.textContent).not.toContain("mcp__");
+  expect(host.querySelectorAll('[data-testid="steps"]')).toHaveLength(1);
+  expect(host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!.open).toBe(false);
   await show({ history }, ["chat.send"]);
   expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
+  expect(host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent).toBe("Worked for 48s · 2 steps");
 });
 
 it("Advanced: the full live row stays, and the working line sits aligned in the message column", async () => {

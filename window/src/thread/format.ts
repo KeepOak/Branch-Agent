@@ -276,6 +276,30 @@ export function workingLine(blocks: readonly Block[]): string {
   return (current && workingWords(current.tool)) || "Working";
 }
 
+/** Plain words for the step at work, else the last step. Undefined when the run has no steps. */
+export function currentStepWords(blocks: readonly Block[]): string | undefined {
+  const steps = blocks.filter((b): b is Step => b.kind === "step");
+  const current = steps.find((s) => s.status === "running") ?? steps.at(-1);
+  return current ? stepLabel(current) : undefined;
+}
+
+/** One quiet live line: "Working… Reading a file · 12s". The clock appears once a second has passed. */
+export function liveWorkingLine(step: string | undefined, elapsedMs: number): string {
+  const words = step?.trim() ?? "";
+  const clock = elapsedMs >= 1000 ? formatDuration(elapsedMs) : "";
+  if (words && clock) return `Working… ${words} · ${clock}`;
+  if (words) return `Working… ${words}`;
+  if (clock) return `Working… · ${clock}`;
+  return "Working…";
+}
+
+/** A finished turn, collapsed: "Worked for 42s · 6 steps". Without a duration, the count alone. */
+export function workedForLine(count: number, durationMs?: number): string {
+  const steps = count === 1 ? "1 step" : `${count} steps`;
+  const clock = durationMs && durationMs > 0 ? formatDuration(durationMs) : "";
+  return clock ? `Worked for ${clock} · ${steps}` : steps;
+}
+
 /** The thread's day stamp (§4.2.2 Stamp): "Today 10:05", "Yesterday 4:18 PM", else "Sep 30 4:18 PM". */
 export function dayStamp(ms: number, now = Date.now()): string {
   const d = new Date(ms);
