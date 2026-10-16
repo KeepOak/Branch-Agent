@@ -54,6 +54,7 @@ async function renderVoice(opts: { online?: boolean; pending?: Approval[] } = {}
 describe('voice screen', () => {
   it('draws the Android Voice layout: title, on this phone, mute, speaker, end and keyboard', async () => {
     const { session } = await renderVoice();
+    await eventually(() => expect(screen.getByTestId('voice-caption')).toHaveTextContent('Listening…'));
     expect(screen.getByTestId('voice-screen')).toBeOnTheScreen();
     expect(screen.getByTestId('voice-title')).toHaveTextContent('Branch Agent · voice');
     expect(screen.getByTestId('voice-on-phone')).toHaveTextContent('On this phone');
@@ -63,12 +64,12 @@ describe('voice screen', () => {
     expect(screen.getByLabelText('Speaker')).toBeOnTheScreen();
     expect(screen.getByLabelText('End')).toBeOnTheScreen();
     expect(screen.getByLabelText('Keyboard')).toBeOnTheScreen();
-    await eventually(() => expect(screen.getByTestId('voice-caption')).toHaveTextContent('Listening…'));
     session.dispose();
   });
 
   it('mutes, turns the speaker off, and picks Oak or Birch from Voice', async () => {
     const { session } = await renderVoice();
+    await eventually(() => expect(screen.getByTestId('voice-caption')).toHaveTextContent('Listening…'));
     await fireEvent.press(screen.getByTestId('voice-mute'));
     expect(screen.getByLabelText('Unmute')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('voice-speaker'));
@@ -84,6 +85,7 @@ describe('voice screen', () => {
 
   it('Close, End and Keyboard each leave through their own callback', async () => {
     const first = await renderVoice();
+    await eventually(() => expect(screen.getByTestId('voice-caption')).toHaveTextContent('Listening…'));
     await fireEvent.press(screen.getByTestId('voice-close'));
     expect(first.onClose).toHaveBeenCalled();
     expect(first.onEnd).not.toHaveBeenCalled();
@@ -91,6 +93,7 @@ describe('voice screen', () => {
     first.session.dispose();
 
     const second = await renderVoice();
+    await eventually(() => expect(screen.getByTestId('voice-caption')).toHaveTextContent('Listening…'));
     await fireEvent.press(screen.getByTestId('voice-end'));
     expect(second.onEnd).toHaveBeenCalled();
     expect(second.onClose).not.toHaveBeenCalled();
@@ -98,6 +101,7 @@ describe('voice screen', () => {
     second.session.dispose();
 
     const third = await renderVoice();
+    await eventually(() => expect(screen.getByTestId('voice-caption')).toHaveTextContent('Listening…'));
     await fireEvent.press(screen.getByTestId('voice-keyboard'));
     expect(third.onKeyboard).toHaveBeenCalled();
     third.unmount();

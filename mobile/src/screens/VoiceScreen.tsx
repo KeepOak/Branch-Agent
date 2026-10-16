@@ -76,7 +76,7 @@ function Round({
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ pressed: Boolean(pressed) }}
+      accessibilityState={{ selected: Boolean(pressed) }}
       onPress={onPress}
       hitSlop={8}
       style={({ pressed: down }) => ({
@@ -170,10 +170,11 @@ export function VoiceScreen({
   answerRef.current = onAnswer;
 
   const finish = useCallback(
-    async (how: 'close' | 'end' | 'keyboard') => {
+    (how: 'close' | 'end' | 'keyboard') => {
       setMenuOpen(false);
-      await call.current?.end();
+      const running = call.current;
       call.current = null;
+      void running?.end();
       if (how === 'keyboard') onKeyboard();
       else if (how === 'end') onEnd();
       else onClose();
@@ -183,12 +184,15 @@ export function VoiceScreen({
 
   useEffect(() => {
     if (!online) return;
+    let live = true;
     const next = new VoiceCall(link, row.key, {
       onState: (s, m) => {
+        if (!live) return;
         setState(s);
         if (m) setMessage(m);
       },
       onCaption: (role, text) => {
+        if (!live) return;
         if (role === 'user') {
           setUserLine(text);
           const waiting = askRef.current;
@@ -201,10 +205,12 @@ export function VoiceScreen({
     });
     call.current = next;
     next.start().catch((e: unknown) => {
+      if (!live || call.current !== next) return;
       setState('error');
       setMessage(voiceError(e) === 'Your computer isn’t connected right now.' ? OFFLINE_VOICE : CALL_UNAVAILABLE);
     });
     return () => {
+      live = false;
       void next.end();
       if (call.current === next) call.current = null;
     };
@@ -226,7 +232,7 @@ export function VoiceScreen({
         }}
       >
         <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-          <Round testID="voice-close" label="Close" onPress={() => void finish('close')}>
+          <Round testID="voice-close" label="Close" onPress={() => finish('close')}>
             ⌄
           </Round>
           {broken ? null : (
@@ -321,7 +327,7 @@ export function VoiceScreen({
 
         <View testID="voice-controls" style={{ flexDirection: 'row', alignItems: 'center', gap: 26, paddingBottom: space.sm }}>
           {broken ? (
-            <Round testID="voice-end" label="Close" large inverted onPress={() => void finish('end')}>
+            <Round testID="voice-end" label="Close" large inverted onPress={() => finish('end')}>
               ×
             </Round>
           ) : (
@@ -348,10 +354,10 @@ export function VoiceScreen({
               >
                 ≈
               </Round>
-              <Round testID="voice-end" label="End" large inverted onPress={() => void finish('end')}>
+              <Round testID="voice-end" label="End" large inverted onPress={() => finish('end')}>
                 ×
               </Round>
-              <Round testID="voice-keyboard" label="Keyboard" onPress={() => void finish('keyboard')}>
+              <Round testID="voice-keyboard" label="Keyboard" onPress={() => finish('keyboard')}>
                 ⌨
               </Round>
             </>
