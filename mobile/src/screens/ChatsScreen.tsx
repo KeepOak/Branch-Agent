@@ -239,7 +239,7 @@ function Note({ title, body, testID, action }: { title: string; body: string; te
   );
 }
 
-/** The paired home: every chat with your Trunks, newest first, live from the computer. */
+/** The paired chats list: every chat with your Trunks, newest first, live from the computer. */
 export function ChatsScreen({
   list,
   online,
@@ -253,6 +253,7 @@ export function ChatsScreen({
   onNeedsYou,
   now: fixedNow,
   updateBanner,
+  bottomExtra = 0,
 }: {
   list: ChatListSnapshot;
   online: boolean;
@@ -263,6 +264,8 @@ export function ChatsScreen({
   onAgents?: () => void;
   /** Opens Settings. */
   onSettings?: () => void;
+  /** Extra space above a places bar so the last row is not hidden. */
+  bottomExtra?: number;
   /** Opens a chat. */
   onOpen?: (row: ChatRow) => void;
   /** Searches every chat's messages (sessions.search); without it, search matches names and last lines. */
@@ -482,7 +485,9 @@ export function ChatsScreen({
         ItemSeparatorComponent={({ leadingItem }: { leadingItem?: Item }) =>
           leadingItem && leadingItem.kind !== 'header' ? <View style={{ height: layout.hairline, backgroundColor: color.line, marginLeft: layout.screenInset + AVATAR + space.md }} /> : null
         }
-        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.xl + bottomExtra }}
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={color.ink3} colors={[color.accent]} />}
