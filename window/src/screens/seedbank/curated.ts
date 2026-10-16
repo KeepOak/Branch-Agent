@@ -12,7 +12,7 @@ export const CURATED_PLUGINS: readonly (readonly [string, string])[] = [
   ["memory-wiki", "Memory wiki"], ["logbook", "Logbook"], ["snapshots", "Snapshots"], ["place-lookup", "Place lookup"], ["team-reports", "Team reports"],
   ["docs-search", "Docs search"], ["brave-search", "Brave web search"], ["river-map", "River map"], ["garden-lint", "garden-lint"], ["matrix", "Matrix"],
   ["mattermost", "Mattermost"], ["irc", "IRC"], ["zulip", "Zulip"], ["nostr", "Nostr"], ["ollama", "Ollama"], ["lmstudio", "LM Studio"],
-  ["openrouter", "OpenRouter"], ["vllm", "vLLM"], ["lancedb-memory", "LanceDB memory"], ["memory-graph", "Memory graph"], ["page-reader", "Page reader"],
+  ["openrouter", "OpenRouter"], ["vllm", "vLLM"], ["memory-lancedb", "Memory LanceDB"], ["memory-graph", "Memory graph"], ["page-reader", "Page reader"],
   ["searxng", "SearXNG search"], ["voice-call", "Voice calls"], ["local-transcribe", "Local transcription"], ["scan-reader", "Scan reader"],
   ["image-studio", "Image studio"], ["lease-check", "Lease check"], ["docker-sandbox", "Docker sandbox"], ["openshell", "OpenShell sandbox"],
   ["tailscale", "Tailscale reach"], ["webhooks", "Webhooks"], ["secret-scan", "Secret scanner"], ["blocklist", "Site blocklist"],

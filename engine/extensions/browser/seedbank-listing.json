@@ -1,0 +1,16 @@
+{
+  "id": "browser",
+  "name": "Browser",
+  "kind": "plugins",
+  "tier": "bundled",
+  "publisher": "KeepOak",
+  "badge": "Official",
+  "summary": "Opens web pages in a private browser on this computer, and lets your Trunks read and click the pages you open.",
+  "manifest": "engine/extensions/browser/branch.plugin.json",
+  "manifestSha256": "66b92de75b337debefa2a633ec1919412576e15e2ee68f26a287a36538396706",
+  "permissions": [
+    "Opens web pages in a private browser on this computer.",
+    "Lets your Trunks read and click the pages you open, after you allow it.",
+    "Refuses page permissions, downloads, and file, chrome and devtools addresses."
+  ]
+}

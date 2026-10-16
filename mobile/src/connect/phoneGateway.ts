@@ -36,6 +36,14 @@ const CONNECT_FAILED_CLOSE_CODE = 4008;
 const CHAT_BASELINE_MISSING_CLOSE_CODE = 4000;
 const PAIRING_RETRY_MS = 2000;
 const STARTING_RETRY_MS = 1000;
+/** How long the phone waits before trying the computer again after a drop (engine gateway-client RetrySupervisor). */
+export const PHONE_RECONNECT = { initialMs: 800, multiplier: 1.7, maxMs: 5_000 } as const;
+
+export type PhoneReconnect = {
+  initialMs: number;
+  multiplier: number;
+  maxMs: number;
+};
 
 export type Platform = 'ios' | 'android' | 'web';
 
@@ -58,6 +66,8 @@ export type PhoneGatewayOptions = {
   onStatus: (status: GatewayStatus) => void;
   /** How long to wait before asking again while the computer hasn't approved this phone yet. */
   pairingRetryMs?: number;
+  /** Backoff after a drop. Defaults to PHONE_RECONNECT. */
+  reconnect?: PhoneReconnect;
 };
 
 export function phoneClient(platform: Platform, appVersion: string): ConnectParams['client'] {
@@ -166,7 +176,7 @@ export class PhoneGateway {
         this.reportClose(context, decision.retry);
       },
       handshake: { mode: 'require-challenge', timeoutMs: 10_000 },
-      reconnect: { initialMs: 800, multiplier: 1.7, maxMs: 5_000 },
+      reconnect: opts.reconnect ?? PHONE_RECONNECT,
     });
     this.protocol.addEventListener((event) => this.dispatch(event));
   }

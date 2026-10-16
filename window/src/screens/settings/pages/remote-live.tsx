@@ -80,7 +80,7 @@ export function Lately({ engine, row }: SlotControlProps) {
           : h.ok || h.ts ? <Line>{`On.${up ? ` Up ${up}.` : ""}${chats.length ? ` ${chats.join(", ")} keep${chats.length === 1 ? "s" : ""} working when the window is closed.` : ""}`}</Line> : null}
         <ul className="r1s-items">
           {started ? <li className="r1s-item"><span className="r1s-item-t g-label">Started</span><small className="g-label">{when(started)}</small></li> : null}
-          {h.ts ? <li className="r1s-item"><span className="r1s-item-t g-label">Health check</span><small className="g-label">{`${typeof h.durationMs === "number" ? `Answered in ${h.durationMs} ms` : "Answered"} ${ago(h.ts)}`}</small></li> : null}
+          {h.ts ? <li className="r1s-item"><span className="r1s-item-t g-label">Health check</span><small className="g-label">{`${typeof h.durationMs === "number" ? `Answered in ${(h.durationMs / 1000).toFixed(1)} s` : "Answered"} ${ago(h.ts)}`}</small></li> : null}
           {presence.data ? <li className="r1s-item"><span className="r1s-item-t g-label">{`${devices} ${devices === 1 ? "app" : "apps"} connected`}</span>{total ? <small className="g-label">{`Chat apps: ${chats.length} of ${total} working`}</small> : null}</li> : null}
         </ul>
       </div>
@@ -142,7 +142,7 @@ export function Activity({ engine }: SlotControlProps) {
   return <Line>{kv([["Processor", typeof loop.cpuCoreRatio === "number" ? `${Math.round(Number(loop.cpuCoreRatio) * 100)}%` : ""], ["Memory", bytes(mem.rssBytes)],
     ["Event-loop delay", typeof loop.delayP99Ms === "number" ? `${Math.round(Number(loop.delayP99Ms))} ms` : ""], ["This computer", sys.uptimeMs ? `up ${span(sys.uptimeMs)}` : ""],
     ["Cores", sys.cpuCount ? str(sys.cpuCount) : ""], ["Disk", sys.diskTotalBytes ? `${bytes(sys.diskAvailableBytes)} free of ${bytes(sys.diskTotalBytes)}` : ""],
-    ["Node", sys.nodeVersion ? `${str(sys.nodeVersion)} · process ${str(sys.pid)}` : ""]]) || "Connect to see Gateway activity."}</Line>;
+    ["Node", sys.nodeVersion ? `${str(sys.nodeVersion)} · process ${str(sys.pid)}` : ""]]) || "Connect to see Branch’s activity."}</Line>;
 }
 
 /** Infrastructure settings: every engine setting lives on Developer. */
@@ -156,7 +156,7 @@ export function Https({ engine, row }: SlotControlProps) {
   const [failed, run] = useFailure();
   return <>
     <Needs engine={engine} need={CFG} where={row.label ?? ""}>
-      <span className="r1s-own-ctl"><Toggle label="HTTPS for the Gateway" on={config.get("gateway.tls.enabled") === true} disabled={config.loading}
+      <span className="r1s-own-ctl"><Toggle label="HTTPS for Branch" on={config.get("gateway.tls.enabled") === true} disabled={config.loading}
         onChange={(v) => void run(() => config.set("gateway.tls", v ? { enabled: true, autoGenerate: true } : { enabled: false }))} /></span>
     </Needs>
     <Failed text={failed} />

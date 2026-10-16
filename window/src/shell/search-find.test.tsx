@@ -76,7 +76,7 @@ describe("live search results", () => {
   it("opens a palette message hit with its query for in-conversation Find", () => {
     const opened: [string, string][] = [];
     const rows = messagePaletteRows([{ key: "agent:elm:main", role: "assistant", snippet: "Hartwell invoice", at: 1, messageId: "m" }],
-      "Hartwell invoice", () => "Elm's conversation", (key, query) => opened.push([key, query]));
+      "Hartwell invoice", () => "Elm's conversation", (key, query) => opened.push([key, query]), 1);
     rows[0]?.run();
     expect(opened).toEqual([["agent:elm:main", "Hartwell invoice"]]);
   });

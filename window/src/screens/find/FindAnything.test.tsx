@@ -41,18 +41,16 @@ const RESPONSES: Record<string, unknown> = {
 const engineFor = (request: ReturnType<typeof vi.fn>) => ({ request, onEvent: () => () => undefined, agentId: "ledger", sessionKey: "agent:ledger:main", features: { methods: ["sessions.search", "agents.list", "sessions.create"], events: [] } });
 
 describe("Find anything in the R1 window", () => {
-  it("Ctrl K focuses the sidebar search, and a second Ctrl K opens the Classic palette with the window stepped aside", async () => {
+  it("Ctrl K opens Find anything centered over the window, and Escape puts the window back", async () => {
     const snapshot = { status: { phase: "connected" }, name: "Ledger", sessionKey: "agent:ledger:main", mainKey: "agent:ledger:main", history: [], live: [], queued: [] };
     const request = vi.fn(async (method: string) => RESPONSES[method] ?? {});
     const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, request, onGatewayEvent: () => () => undefined, engine: engineFor(request) } as unknown as SaplingSession;
     await act(async () => root.render(<R1Window session={session} />));
-    const press = async () => { await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })); }); await wait(40); };
-    await press();
-    expect(document.activeElement?.getAttribute("aria-label")).toBe("Search stub");
-    expect(document.querySelector('[data-testid="palette"]')).toBeNull();
-    await press();
+    await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })); });
+    await wait(40);
     expect(document.querySelector('[data-testid="palette"]')?.getAttribute("aria-label")).toBe("Find anything");
     expect(document.querySelector(".r1-find [data-testid=\"palette\"]")).not.toBeNull();
+    expect(host.querySelector(".palette-scrim")).not.toBeNull();
     expect(host.querySelector(".r1-ob-behind")?.getAttribute("aria-hidden")).toBe("true");
     const input = document.querySelector<HTMLInputElement>('[data-testid="palette"] input')!;
     await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });

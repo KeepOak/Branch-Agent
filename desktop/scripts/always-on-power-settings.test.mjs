@@ -15,7 +15,7 @@ import test from 'node:test';
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error('Compile the exact desktop source before testing');
 const require = createRequire(import.meta.url);
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
-const { createRunKeepAwake, sleepBlockerCommand, writePowerState, POWER_STATE_FILE } = require(join(dist, 'keep-awake.js'));
+const { createRunKeepAwake, sleepBlockerCommand, writePowerState, POWER_STATE_FILE, claimServiceKeepAwake, handOffKeepAwake, appHoldsSleepBlock, KEEP_AWAKE_OWNER_FILE, DESKTOP_KEEP_AWAKE_FRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS } = require(join(dist, 'keep-awake.js'));
 const { createClosedWindowNotifier, readEngineLiveState, trayLabel, workNotices } = require(join(dist, 'tray-status.js'));
 const { engineLingerArgs, parseLingerAnswer, readEngineHealth } = require(join(dist, 'engine-service.js'));
 const { createDesktopControls } = require(join(dist, 'desktop-controls.js'));
@@ -192,4 +192,17 @@ test('the power source reaches the engine, for its battery politeness', t => {
   assert.deepEqual(JSON.parse(readFileSync(join(dir, POWER_STATE_FILE), 'utf8')), { onBattery: true, at: 1234 });
   writePowerState(dir, false, 5678);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, POWER_STATE_FILE), 'utf8')), { onBattery: false, at: 5678 });
+});
+
+test('the open app does not hold a second blocker, and quit hands sleep and power to the service engine', t => {
+  const dir = tempDir(t);
+  assert.equal(appHoldsSleepBlock(true), false, 'service path: the engine holds the blocker');
+  assert.equal(appHoldsSleepBlock(false), true, 'child engine: this app still holds it');
+  assert.equal(SERVICE_KEEP_AWAKE_CLAIM_MS < DESKTOP_KEEP_AWAKE_FRESH_MS, true);
+  claimServiceKeepAwake(dir, 1000);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, KEEP_AWAKE_OWNER_FILE), 'utf8')), { sleep: 'engine', power: 'desktop', at: 1000 });
+  let disposed = false;
+  handOffKeepAwake(dir, { dispose: () => { disposed = true; } }, 2000);
+  assert.equal(disposed, true, 'quit releases any blocker this app held before the engine takes it');
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, KEEP_AWAKE_OWNER_FILE), 'utf8')), { sleep: 'engine', power: 'engine', at: 2000 });
 });

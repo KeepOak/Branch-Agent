@@ -261,13 +261,13 @@ export function Pick({ value, options, onChange, label, disabled }: { value: str
 
 /** A text or number field that saves on Enter or when it loses focus; Escape puts the saved value back. */
 export function Field({ value, onCommit, label, placeholder, type = "text", disabled, wide }: {
-  value: string; onCommit: (v: string) => void; label: string; placeholder?: string; type?: "text" | "number"; disabled?: boolean; wide?: boolean;
+  value: string; onCommit: (v: string) => void; label: string; placeholder?: string; type?: "text" | "number" | "password"; disabled?: boolean; wide?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const commit = () => { if (draft !== value) onCommit(draft); };
   return (
-    <input className={`inp${wide ? " wide-k" : ""}`} aria-label={label} type={type} value={draft} placeholder={placeholder} disabled={disabled}
+    <input className={`inp${wide ? " wide-k" : ""}`} aria-label={label} type={type} autoComplete={type === "password" ? "off" : undefined} value={draft} placeholder={placeholder} disabled={disabled}
       onChange={(e) => setDraft(e.target.value)} onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") commit(); else if (e.key === "Escape") setDraft(value); }} />
   );

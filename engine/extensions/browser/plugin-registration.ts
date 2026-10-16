@@ -17,6 +17,8 @@ import { createSubsystemLogger, isTruthyEnvValue } from "branch/plugin-sdk/runti
 import { registerBrowserCliMetadata } from "./cli-metadata.js";
 import { bindBrowserDashboardEvents } from "./src/browser-dashboard-events.js";
 import {
+  BROWSER_GUEST_HOST_GATEWAY_METHOD,
+  BROWSER_GUEST_RESPOND_GATEWAY_METHOD,
   BROWSER_REQUEST_GATEWAY_METHOD,
   BROWSER_REQUEST_GATEWAY_SCOPE,
   SESSION_BROWSER_REQUEST_GATEWAY_METHOD,
@@ -331,6 +333,22 @@ export function registerBrowserPlugin(api: BranchPluginApi) {
     {
       scope: BROWSER_REQUEST_GATEWAY_SCOPE,
     },
+  );
+  api.registerGatewayMethod(
+    BROWSER_GUEST_HOST_GATEWAY_METHOD,
+    async (opts) => {
+      const { handleBrowserGuestHost } = await loadBrowserRegistrationRuntimeModule();
+      return handleBrowserGuestHost(opts);
+    },
+    { scope: "operator.write" },
+  );
+  api.registerGatewayMethod(
+    BROWSER_GUEST_RESPOND_GATEWAY_METHOD,
+    async (opts) => {
+      const { handleBrowserGuestRespond } = await loadBrowserRegistrationRuntimeModule();
+      return handleBrowserGuestRespond(opts);
+    },
+    { scope: "operator.write" },
   );
   api.registerGatewayMethod(
     SESSION_BROWSER_REQUEST_GATEWAY_METHOD,
