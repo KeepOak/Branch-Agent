@@ -16,7 +16,8 @@ import "./topic-rail.css";
 const emojiKey = "branch-topic-emoji-t5";
 const muteKey = "branch-topic-mute-t5";
 function stored<T>(name: string, fallback: T): T { try { return JSON.parse(localStorage.getItem(name) || "null") ?? fallback; } catch { return fallback; } }
-const displayTitle = (topic: Topic) => topic.labelled ? readableTitle(topic.title) : shortTopicTitle(topic.title);
+/** A thread the engine has no title for yet (it falls back to the thread's own key) is a new, empty conversation. */
+const displayTitle = (topic: Topic) => !topic.labelled && topic.title === topic.key ? "New conversation" : topic.labelled ? readableTitle(topic.title) : shortTopicTitle(topic.title);
 const tabLabel = (label: string) => { const { name, tag } = splitKeyTag(label); return <><span className="tpTabNameT5">{name}</span>{tag ? <span className="tpTabTagT5"> · {tag}</span> : null}</>; };
 /** Right-click, or a 500 ms press on touch, opens a topic tab's menu at that point. The click that ends a long press does nothing. */
 function menuGestures(open: (at: MenuAnchor) => void) {
