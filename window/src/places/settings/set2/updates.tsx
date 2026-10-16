@@ -17,6 +17,7 @@ import { KeeperMark } from "../../../brand/KeeperMark";
 import { WhatsNewRow } from "./whats-new-row";
 import { showsInternals, versionLabel } from "../internals";
 import { LaterRows } from "../../../glass/LaterRows";
+import { desktopControls, NEEDS_NEWER_APP, type AppRemovalPlan } from "../../../connect/desktop-controls";
 import { latestVersionLine, useMinuteClock } from "./version-line";
 import "./updates.css";
 
@@ -40,7 +41,7 @@ export const ROWS: RowEntry[] = [
   ["Install updates", "Updating", 0], ["Check for updates", "Updating", 0], ["Which updates", "Updating", 0],
   ["If tasks are still running after", "Updating", 1], ["Undo the last update", "Updating", 0],
   ["Already have the app?", "Branch on your other devices", 0], ["Add more to Branch", "Branch on your other devices", 0], ["Open-source licences", "About", 0],
-  ["Keep my conversations and settings", "Remove Branch", 0], ["Type Branch to confirm", "Remove Branch", 0],
+  ["Remove the app, keep my data", "Remove Branch", 0], ["Keep my conversations and settings", "Remove Branch", 0], ["Type Branch to confirm", "Remove Branch", 0],
   ["Send crash and update reports to KeepOak", "Reports", 0], ["What was sent", "Reports", 0],
   ["See the plan", "Before you install", 0], ["Window fixes without reinstalling", "Before you install", 0], ["Window changes", "Before you install", 0],
   ["Update work stays out of the way", "Before you install", 0], ["Privacy notice", "Privacy", 0],
@@ -356,6 +357,7 @@ function RemoveBranch() {
   return (
     <div className={headless ? "s2-danger" : "sec s2-danger"} data-sec="Remove Branch">
       {headless ? null : <h2>Remove Branch</h2>}
+      <RemoveAppKeepData />
       <div className="rows">
         {parts.map(([t, s]) => <Prow key={t} title={t} sub={s || undefined}><span className="s2-meta">Removed</span></Prow>)}
         <Ctl title="Keep my conversations and settings" sub="Branch finds them again if you install it later." off="The uninstaller asks."><Switch label="Keep my conversations and settings" checked onChange={() => undefined} /></Ctl>
@@ -364,6 +366,43 @@ function RemoveBranch() {
       <Acts><Btn className="s2-dz" disabled title="Removing Branch runs in the Branch app’s uninstaller.">Remove Branch and everything it installed</Btn></Acts>
     </div>
   );
+}
+
+/** Remove the app, keep my data (Private #1102, after Hermes A-159): the Branch app's own uninstall, behind a confirm
+ *  sheet that lists what goes and what stays. The desktop removes only what the installer put down. */
+export function RemoveAppKeepData() {
+  const [found] = useState(desktopControls);
+  const bridge = "bridge" in found ? found.bridge : undefined;
+  const [plan, setPlan] = useState<AppRemovalPlan | null>(null);
+  const [open, setOpen] = useState(false);
+  const call = useCall();
+  useEffect(() => {
+    if (!bridge?.removalPlan) return;
+    let live = true;
+    bridge.removalPlan().then((next) => { if (live) setPlan(next); }, () => { if (live) setPlan(null); });
+    return () => { live = false; };
+  }, [bridge]);
+  const why = "off" in found ? found.off : !bridge?.removalPlan || !bridge.removeApp ? NEEDS_NEWER_APP : plan && !plan.supported ? plan.reason : undefined;
+  const remove = () => void call.run(async () => { await bridge?.removeApp?.(); }, () => "Branch is closing to finish removing the app.");
+  return <>
+    <Ctl title="Remove the app, keep my data" sub="Your conversations, Trunks and settings stay. Install Branch again and it picks up where you left off." off={why}>
+      <Btn sm className="s2-dz" data-local="" disabled={!plan?.supported} onClick={() => setOpen(true)}>Remove the app…</Btn>
+    </Ctl>
+    {open && plan?.supported ? (
+      <Dialog title="Remove the Branch app?" onClose={() => { if (!call.busy) setOpen(false); }} footer={<>
+        <Btn ghost data-local="" disabled={call.busy} onClick={() => setOpen(false)}>Cancel</Btn>
+        <Btn className="s2-dz" data-local="" disabled={call.busy || Boolean(call.note)} onClick={remove}>{call.busy ? "Removing…" : "Remove the app"}</Btn>
+      </>}>
+        <p>Branch closes to finish. Nothing in your data is deleted.</p>
+        <h3 className="s2-h3">Removed</h3>
+        <ul className="s2-ul" data-testid="removal-removes">{plan.removes.map((line) => <li key={line}>{line}</li>)}</ul>
+        <h3 className="s2-h3">Kept on this computer</h3>
+        <ul className="s2-ul" data-testid="removal-keeps">{plan.keeps.map((line) => <li key={line}>{line}</li>)}</ul>
+        <p className="hint">Install Branch again and it finds them.</p>
+        <CallLine call={call} />
+      </Dialog>
+    ) : null}
+  </>;
 }
 
 function Reports() {
