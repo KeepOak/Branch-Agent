@@ -371,12 +371,52 @@ function ThreadApprovalCard({
         </ThemedText>
       ) : null}
       <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.xs }}>
-        <View style={{ flex: 1 }}>
-          <Button title={verbs.no} kind="secondary" busy={sending === 'deny'} disabled={busy} onPress={() => onAnswer(approval.id, 'deny')} testID={`deny-${approval.id}`} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Button title={verbs.yes} busy={sending === 'allow-once'} disabled={busy} onPress={() => onAnswer(approval.id, 'allow-once')} testID={`allow-${approval.id}`} />
-        </View>
+        <Pressable
+          testID={`deny-${approval.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={verbs.no}
+          accessibilityState={{ disabled: busy, busy: sending === 'deny' }}
+          disabled={busy}
+          onPress={() => onAnswer(approval.id, 'deny')}
+          style={({ pressed }) => ({
+            flex: 1,
+            minHeight: 40,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: space.md,
+            paddingVertical: space.xs + 2,
+            borderRadius: radius.pill,
+            backgroundColor: color.fill,
+            opacity: busy ? 0.45 : pressed ? 0.7 : 1,
+          })}
+        >
+          <ThemedText variant="footnote" style={{ fontWeight: '600' }}>
+            {verbs.no}
+          </ThemedText>
+        </Pressable>
+        <Pressable
+          testID={`allow-${approval.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={verbs.yes}
+          accessibilityState={{ disabled: busy, busy: sending === 'allow-once' }}
+          disabled={busy}
+          onPress={() => onAnswer(approval.id, 'allow-once')}
+          style={({ pressed }) => ({
+            flex: 1,
+            minHeight: 40,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: space.md,
+            paddingVertical: space.xs + 2,
+            borderRadius: radius.pill,
+            backgroundColor: color.ink,
+            opacity: busy ? 0.45 : pressed ? 0.7 : 1,
+          })}
+        >
+          <ThemedText variant="footnote" style={{ fontWeight: '600', color: color.bg }}>
+            {verbs.yes}
+          </ThemedText>
+        </Pressable>
       </View>
     </View>
   );
