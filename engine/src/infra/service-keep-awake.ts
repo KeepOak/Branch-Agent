@@ -272,7 +272,8 @@ export function createServiceKeepAwake(deps: ServiceKeepAwakeDeps): ServiceKeepA
     appPid: deps.pid,
     spawn:
       deps.spawn ??
-      ((file, args, options) => spawn(file, args, options) as unknown as BlockerProcess),
+      ((file, args, options) =>
+        spawn(file, args, { ...options, windowsHide: true }) as unknown as BlockerProcess),
     enabled: () => settings.keepAwake,
     onBatteryToo: () => settings.keepAwakeOnBattery,
     onBattery: () => battery,
