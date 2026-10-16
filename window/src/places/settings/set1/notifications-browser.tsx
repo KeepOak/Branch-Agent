@@ -123,6 +123,12 @@ export function useTestSend(engine: WindowEngine) {
   return { ...line, send };
 }
 
+/** A test send's answer ("Sent."), in a line the row keeps from its first frame: the answer fills it in place, so the
+ *  row never grows under the pointer (#1093 item 1), and the live region is there before it speaks. */
+export function TestLine({ text }: { text?: string }) {
+  return <span className="test-line" role="status" aria-live="polite">{text || "\u00a0"}</span>;
+}
+
 /** The desktop app has no push subscription: its own windows show this computer's notices directly. */
 export function isDesktopApp(): boolean {
   return typeof window !== "undefined" && (window as unknown as { branchDesktop?: unknown }).branchDesktop !== undefined;
@@ -162,7 +168,7 @@ export function DesktopNotices() {
       <Ctl title="Notifications on this computer" sub="Off keeps this computer quiet." off={off}>
         <Switch checked={live} disabled={Boolean(off)} label="Notifications on this computer" onChange={(v) => void flip(v)} />
       </Ctl>
-      <Ctl title="Send a test notification" sub={line || undefined} off={live ? undefined : "Turn on notifications here first."}>
+      <Ctl title="Send a test notification" sub={live ? <TestLine text={line} /> : undefined} off={live ? undefined : "Turn on notifications here first."}>
         <Btn sm disabled={!live} onClick={test}>Send test</Btn>
       </Ctl>
     </>

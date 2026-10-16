@@ -5,7 +5,7 @@ import type { SettingsPageProps } from "../index";
 import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Btn, Ctl, Page, Pick, Sec, Seg, Status, Switch, useLevel, type Opt, type RowEntry } from "../kit";
-import { DETAIL_OPTS, DesktopNotices, ThisBrowser, ThisDevice, isDesktopApp, useTestSend, useWebPush, deviceOff, type TellRow, type Trunk, type WebPush } from "./notifications-browser";
+import { DETAIL_OPTS, DesktopNotices, TestLine, ThisBrowser, ThisDevice, isDesktopApp, useTestSend, useWebPush, deviceOff, type TellRow, type Trunk, type WebPush } from "./notifications-browser";
 import { prefsOff, quietNow, useNotifyPrefs, type CategoryKey, type NotifyPrefs, type Quiet } from "./notifications-prefs";
 import "./notifications.css";
 
@@ -90,7 +90,7 @@ function TellMe({ engine, prefs, push, trunks, desktop }: TellProps) {
       ))}
       {level >= 1 && !desktop ? <TellMore prefs={prefs} trunks={trunks} /> : null}
       {desktop ? null : (
-        <Ctl title="Send a test notification" sub={test.text ?? ""}>
+        <Ctl title="Send a test notification" sub={<TestLine text={test.text} />}>
           <Btn sm disabled={test.busy} onClick={() => void test.send()}>Send test</Btn>
         </Ctl>
       )}
