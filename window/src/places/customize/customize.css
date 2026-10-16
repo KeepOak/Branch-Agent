@@ -216,3 +216,11 @@
 .get-row small { color: var(--ink-3); font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
 .get-row .cz-acts { display: flex; gap: 6px; flex: none; }
 .get-row .get-perm { color: var(--ink-2); }
+
+/* Get capabilities › Trunk templates: paste a link or pick a file to import a Trunk template. */
+.tpl-import { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Customize (R1): a Coming control is hidden below Technical (Grey); at Technical it carries the "Works in the app" tag. */
+.cz-r1 [data-coming]::after { content: "Works in the app"; margin-left: 6px; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--fill-2); color: var(--ink-3); }
+/* Customize (R1) Prompts: the count and the add button share one row above the list. */
+.cz-head-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

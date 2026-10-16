@@ -40,13 +40,20 @@ export function hideMenuItems(hide: () => void, choose: () => void): MenuItem[] 
   ];
 }
 
-/** The pet as Appearance sets it (look keys pet, petName, roam). */
+/** The pet as Appearance sets it (look keys pet, petName, roam). No pet ("none") until one is picked. */
 export function usePetLook(engine: WindowEngine): { id: string; name: string; roam: boolean } {
   const store = lookStore(engine);
   const look = useSyncExternalStore((fn) => store.subscribe(fn), () => store.snap.look, () => store.snap.look);
   return {
-    id: typeof look.pet === "string" ? look.pet : "px-squirrel",
+    id: typeof look.pet === "string" ? look.pet : "none",
     name: typeof look.petName === "string" && look.petName ? look.petName : "Hazel",
     roam: look.roam === true,
   };
+}
+
+/** Whether a finished task plays the done cheer: off until Settings › Appearance turns it on (look key cheer). */
+export function useCheerOn(engine: WindowEngine): boolean {
+  const store = lookStore(engine);
+  const look = useSyncExternalStore((fn) => store.subscribe(fn), () => store.snap.look, () => store.snap.look);
+  return look.cheer === true;
 }

@@ -9,7 +9,7 @@ import { Toasts } from "../shell/Toasts";
 import { INSTALL_NO_ANSWER_MS } from "../places/settings/set2/desktop-updates";
 import {
   componentDesktop, createUpdateNoticeHub, setupBlocksUpdateToast, showAppliedUpdateToast, stageWindowUpdate,
-  UPDATED_IN_PLACE, UPDATE_TOAST_SETUP_WAIT_MS, useDesktopAppliedUpdateNotice,
+  UPDATED_IN_PLACE, UPDATE_POSTPONED, UPDATE_TOAST_SETUP_WAIT_MS, useDesktopAppliedUpdateNotice, ENGINE_UPDATE_EVENT,
 } from "./desktop-component-updates";
 import { StatusPopover, type StatusContext } from "../shell/StatusLayer";
 import { useUpdate } from "../shell/use-status";
@@ -43,24 +43,24 @@ function button(text: string): HTMLButtonElement {
   return found;
 }
 
-it("Update now hands the staged update to the desktop and says what happens next", async () => {
+it("Apply now, in place hands the staged update to the desktop and says what happens next", async () => {
   const staged = { ...state, phase: "staged", currentVersion: "1.0", pendingVersion: "1.1", latestVersion: "1.1" };
   const install = vi.fn();
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged, install } };
   await show();
-  await click("Update now");
+  await click("Apply now, in place");
   expect(install).toHaveBeenCalledTimes(1);
-  expect(host.textContent).toContain("up to about 6 minutes");
+  expect(host.textContent).toContain("Running work moves across to the new engine");
   expect(host.textContent).not.toContain("safe switch");
   expect(host.textContent).not.toContain("Install now");
 });
 
-it("Update now shows Updating… and ignores a second click", async () => {
+it("Apply now, in place shows Updating… and ignores a second click", async () => {
   const staged = { ...state, phase: "staged", currentVersion: "1.0", pendingVersion: "1.1", latestVersion: "1.1" };
   const install = vi.fn();
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged, install } };
   await show();
-  await click("Update now");
+  await click("Apply now, in place");
   expect(install).toHaveBeenCalledTimes(1);
   expect(button("Updating…").disabled).toBe(true);
   expect(host.textContent).toContain("Updating Branch…");
@@ -68,23 +68,23 @@ it("Update now shows Updating… and ignores a second click", async () => {
   expect(install).toHaveBeenCalledTimes(1);
 });
 
-it("the desktop saying kept (postponed) ends Updating… and offers Update now again", async () => {
+it("the desktop saying kept (postponed) ends Updating… and offers Apply now, in place again", async () => {
   const staged = { ...state, phase: "staged", currentVersion: "1.0", pendingVersion: "1.1", latestVersion: "1.1" };
   const install = vi.fn();
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged, install } };
   await show();
-  await click("Update now");
+  await click("Apply now, in place");
   await act(async () => { window.dispatchEvent(new CustomEvent("branch:update-state", { detail: { state: "kept" } })); });
   expect(host.textContent).toContain("Update postponed; Branch kept the current version");
-  expect(button("Update now").disabled).toBe(false);
+  expect(button("Apply now, in place").disabled).toBe(false);
 });
 
-it("without an install bridge (an older desktop) the staged update shows and no Update now button", async () => {
+it("without an install bridge (an older desktop) the staged update shows and no Apply now, in place button", async () => {
   const staged = { ...state, phase: "staged", currentVersion: "1.0", pendingVersion: "1.1", latestVersion: "1.1" };
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged } };
   await show();
-  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
-  expect([...host.querySelectorAll("button")].some(b => b.textContent === "Update now")).toBe(false);
+  expect(host.textContent).toContain("1.1 is staged");
+  expect([...host.querySelectorAll("button")].some(b => b.textContent === "Apply now, in place")).toBe(false);
 });
 
 function stagedBridge(extra: Record<string, unknown> = {}) {
@@ -100,22 +100,22 @@ function fire(detail: Record<string, unknown>) {
 it("succeeded (updated): Updating… ends and the page is no longer waiting on the bar", async () => {
   stagedBridge();
   await show();
-  await click("Update now");
+  await click("Apply now, in place");
   expect(button("Updating…").disabled).toBe(true);
   await fire({ state: "updated" });
   expect(host.textContent).not.toContain("Updating Branch…");
-  expect(button("Update now").disabled).toBe(false);
+  expect(button("Apply now, in place").disabled).toBe(false);
 });
 
-it("failed: the page says the update didn't finish, shows the reason, and offers Update now again", async () => {
+it("failed: the page says the update didn't finish, shows the reason, and offers Apply now, in place again", async () => {
   stagedBridge();
   await show();
-  await click("Update now");
+  await click("Apply now, in place");
   await fire({ state: "failed", message: "Install stopped." });
   expect(host.textContent).toContain("The update didn’t finish");
   expect(host.textContent).toContain("Install stopped.");
   expect(host.textContent).not.toContain("Updating Branch…");
-  expect(button("Update now").disabled).toBe(false);
+  expect(button("Apply now, in place").disabled).toBe(false);
 });
 
 it("no answer from the desktop: after the drain bound plus a margin, Updating… ends with a plain reason", async () => {
@@ -123,38 +123,38 @@ it("no answer from the desktop: after the drain bound plus a margin, Updating…
   await show();
   vi.useFakeTimers();
   try {
-    await click("Update now");
+    await click("Apply now, in place");
     await act(async () => { await vi.advanceTimersByTimeAsync(INSTALL_NO_ANSWER_MS - 1); });
     expect(host.textContent).toContain("Updating Branch…");
     await act(async () => { await vi.advanceTimersByTimeAsync(2); });
     expect(host.textContent).toContain("The update didn’t finish");
     expect(host.textContent).toContain("Branch didn’t confirm the update");
-    expect(button("Update now").disabled).toBe(false);
+    expect(button("Apply now, in place").disabled).toBe(false);
   } finally {
     vi.useRealTimers();
   }
 });
 
-it("the staged update is cleared by a check: Updating… ends and the Update now row goes", async () => {
+it("the staged update is cleared by a check: Updating… ends and the Apply now, in place row goes", async () => {
   const current = { ...state, phase: "current", currentVersion: "1.1", latestVersion: "1.1", pendingVersion: null };
   const { install } = stagedBridge({ check: async () => current });
   await show();
-  await click("Update now");
+  await click("Apply now, in place");
   expect(install).toHaveBeenCalledTimes(1);
   await click("Check now");
   expect(host.textContent).not.toContain("Updating Branch…");
-  expect([...host.querySelectorAll("button")].some(b => b.textContent === "Update now")).toBe(false);
+  expect([...host.querySelectorAll("button")].some(b => b.textContent === "Apply now, in place")).toBe(false);
 });
 
-it("with auto-apply off the page says An update is ready and says Branch waits for you", async () => {
+it("with auto-apply off the page says the update is staged and says Branch waits for you", async () => {
   const staged = { ...state, phase: "staged", currentVersion: "1.0", pendingVersion: "1.1", latestVersion: "1.1" };
   desktopWindow.branchDesktop = { gatewayUrl: "ws://127.0.0.1:1", componentUpdates: { status: async () => staged, check: async () => staged, stage: async () => staged, install: vi.fn() },
     controls: { get: async () => ({ keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: false, startWithWindows: false, branchOnPath: false }), set: vi.fn() } };
   await show();
   await act(async () => {});
-  expect(host.textContent).toContain("An update is ready");
+  expect(host.textContent).toContain("1.1 is staged");
   expect(host.textContent).not.toContain("applying when your Trunks finish");
-  expect(host.textContent).toContain("Branch won’t apply a ready update until you choose");
+  expect(host.textContent).toContain("Branch won’t apply a staged update until you choose");
 });
 
 it("actual native Check now and Download update use component bridge and never generic gateway updates", async () => {
@@ -164,7 +164,7 @@ it("actual native Check now and Download update use component bridge and never g
   await show(); await click("Check now"); await click("Download update");
   expect(status).toHaveBeenCalledTimes(1); expect(check).toHaveBeenCalledTimes(1); expect(stage).toHaveBeenCalledTimes(1);
   expect(request).not.toHaveBeenCalled();
-  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+  expect(host.textContent).toContain("1.1 is staged");
   expect(localStorage.getItem("branch-draft")).toBe("unfinished input");
 });
 
@@ -177,10 +177,16 @@ it("Updates & about shows the running build and hides a leftover older staged sh
     status: async () => leftover, check: async () => leftover, stage: async () => leftover,
   } };
   await show();
+  // Regular names the running version; its build hash is an engine internal, shown only at Technical.
+  expect(host.textContent).toContain("Branch 0.4.4 on this computer");
+  expect(host.textContent).toContain("Branch 0.4.4. The window refreshes itself");
+  expect(host.textContent).not.toContain("c27f2be2");
+  expect(host.textContent).toContain("Updates apply in place.");
+  expect(host.textContent).not.toContain("applying when your Trunks finish");
+  expect(host.textContent).not.toContain("An update is ready");
+  await act(async () => root.render(<UpdatesPage page="updates" title="Updates & about" level="technical" engine={engine} />));
   expect(host.textContent).toContain("Branch 0.4.4 · build c27f2be2 on this computer");
-  expect(host.textContent).toContain("You have Branch 0.4.4 · build c27f2be2");
-  expect(host.textContent).toContain("Branch is up to date.");
-  expect(host.textContent).not.toContain("Update ready, applying when your Trunks finish");
+  expect(host.textContent).toContain("Branch 0.4.4 · build c27f2be2. The window refreshes itself");
   expect(host.textContent).not.toContain("An update is ready");
 });
 
@@ -195,7 +201,7 @@ it("Updates toggle is on by default and staged updates wait for Trunks in Settin
   await show();
   const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Apply updates automatically"]');
   expect(toggle?.checked).toBe(true);
-  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+  expect(host.textContent).toContain("1.1 is staged");
   if (!toggle) throw new Error("missing auto-apply toggle");
   await act(async () => toggle.click());
   expect(set).toHaveBeenCalledWith("autoApplyUpdates", false);
@@ -204,7 +210,7 @@ it("Updates toggle is on by default and staged updates wait for Trunks in Settin
   const session = { engine, gatewayUrl: engine.gatewayUrl, request } as unknown as SaplingSession;
   const ctx = { session, update: null, version: "1.0", onWhatsNew: vi.fn(), onReminded: vi.fn() } as unknown as StatusContext;
   await act(async () => root.render(<StatusPopover item="version" above={{ left: 10, right: 200, top: 700, align: "right" }} onClose={() => {}} ctx={ctx} />));
-  expect(host.textContent).toContain("Update ready, applying when your Trunks finish");
+  expect(host.textContent).not.toContain("Update ready, applying when your Trunks finish");
 });
 
 it("legacy native bootstrap says it checks every ten minutes, greys Check now, and never falls back to update.run or update.status", async () => {
@@ -245,16 +251,14 @@ it("unknown native connection cannot use local IPC or fall back to the generic u
   expect(stage).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
 });
 
-it("actual Version popover install uses the same native stage bridge", async () => {
+it("actual Version popover has no install control; updates apply in place (P45)", async () => {
   const stage = vi.fn(async () => ({ ...state, phase: "staged", pendingVersion: "1.1" }));
   desktopWindow.branchDesktop = { gatewayUrl: engine.gatewayUrl, componentUpdates: { status: async () => state, check: async () => state, stage } };
   const session = { engine, gatewayUrl: engine.gatewayUrl, request } as unknown as SaplingSession;
   const ctx = { session, update: { current: "1.0", latest: "1.1", notes: [], installing: false, waiting: null }, version: "1.0", onWhatsNew: vi.fn(), onReminded: vi.fn() } as unknown as StatusContext;
   await act(async () => root.render(<StatusPopover item="version" above={{ left: 10, right: 200, top: 700, align: "left" }} onClose={() => {}} ctx={ctx} />));
-  const button = document.querySelector<HTMLButtonElement>('[data-testid="ver-install"]');
-  if (!button) throw new Error("missing actual Version install control");
-  await act(async () => button.click());
-  expect(stage).toHaveBeenCalledTimes(1); expect(request).not.toHaveBeenCalled();
+  expect(document.querySelector('[data-testid="ver-install"]')).toBeNull();
+  expect(stage).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
 });
 
 it("remote and browser release notices show where to install, without an Install button", async () => {
@@ -274,7 +278,7 @@ it("remote and browser release notices show where to install, without an Install
 function UpdateProbe({ gatewayUrl }: { gatewayUrl: string }) {
   const session = useMemo(() => ({ gatewayUrl, request, getSnapshot: () => ({ status: { phase: "connected", hello: { snapshot: {} } } }), onGatewayEvent: () => () => {} }) as unknown as SaplingSession, [gatewayUrl]);
   const update = useUpdate(session, true, "1.0");
-  return <VersionPopover update={update} version="1.0" above={{ left: 10, right: 200, top: 700, align: "left" }} onClose={() => {}} onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />;
+  return <VersionPopover update={update} version="1.0" above={{ left: 10, right: 200, top: 700, align: "left" }} onClose={() => {}} onWhatsNew={() => {}} onRemind={() => {}} />;
 }
 
 it("native shell status uses component status and legacy shell reports unsupported truthfully", async () => {
@@ -387,4 +391,11 @@ it("dismisses the in-place toast when update-undone arrives through the new path
   expect(host.querySelector("[data-testid=toast]")?.textContent).toContain(UPDATED_IN_PLACE);
   await act(async () => hub.pushUndone());
   expect(host.querySelector("[data-testid=toast]")).toBeNull();
+});
+
+it("a postponed update says so in the window's toast layer", async () => {
+  function Notice() { useDesktopAppliedUpdateNotice(); return null; }
+  await act(async () => root.render(<><Notice /><Toasts /></>));
+  await act(async () => { window.dispatchEvent(new CustomEvent(ENGINE_UPDATE_EVENT, { detail: { state: "kept" } })); });
+  expect(host.querySelector("[data-testid=toast]")?.textContent).toContain(UPDATE_POSTPONED);
 });

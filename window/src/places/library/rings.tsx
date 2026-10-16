@@ -9,7 +9,7 @@ import { optStr, rec, useOperation, useResource } from "./data";
 import type { MemoryStatus } from "./memory-more";
 import { Grey, IcoTile, when } from "./parts";
 
-export const UNDO_NIGHT_REASON = "Needs the engine’s undo-last-night method for Rings.";
+const UNDO_NIGHT_REASON = "Needs the engine’s undo-last-night method for Rings.";
 /** The reason the person sees on the greyed undo; UNDO_NIGHT_REASON stays on the button as the engine-lane note. */
 const UNDO_NIGHT_WHY = "Undo isn’t available yet. See what it changed lists every change from last night.";
 /** "Rings" is the internal name; the person reads what it does. */

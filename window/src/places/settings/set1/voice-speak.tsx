@@ -9,6 +9,7 @@ import { Dialog } from "../../../shell/Dialog";
 import { APP, Greyed, NO_KEY, group, providersOf, type GreyRow, type Provider } from "./voice-kit";
 import type { Shared } from "./voice-more";
 import { Logo } from "./service";
+import { joinNames } from "../../../shell/join-names";
 
 export function SpeakingMore(props: Shared) {
   const { engine, tts, voices } = props;
@@ -23,7 +24,7 @@ export function SpeakingMore(props: Shared) {
         <Pick label="Speaking engine" value={current} options={providers.map((p) => ({ id: p.id, label: p.label }))} disabled={!voices.data} onChange={pick} />
       </Ctl>
       <PreviewRow {...props} />
-      <Ctl title="Voice services" sub={ready.length ? `On because ${ready.join(" and ")} ${ready.length > 1 ? "are" : "is"} connected.` : "Turns on when a voice service is connected."}
+      <Ctl title="Voice services" sub={ready.length ? `On because ${joinNames(ready)} ${ready.length > 1 ? "are" : "is"} connected.` : "Turns on when a voice service is connected."}
         after={<KeyList providers={providers} openSettings={props.openSettings} />} />
       <NamedVoices {...props} />
       <Greyed why="Change it with /tts limit in a conversation for now." rows={[{ t: "Read in full up to", sub: "Longer replies are shortened before they are read. /tts limit changes it for one conversation.", c: { field: "", ph: "1500", unit: "characters" } }]} />

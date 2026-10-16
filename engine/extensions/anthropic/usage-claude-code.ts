@@ -1,7 +1,7 @@
 // Claude Code owns its subscription token. Ask its control channel for limits;
 // never read or refresh its credential files from provider usage.
 import { spawn } from "node:child_process";
-import type { ProviderUsageSnapshot, UsageWindow } from "../../src/infra/provider-usage.types.js";
+import type { ProviderUsageSnapshot, UsageWindow } from "branch/plugin-sdk/provider-usage";
 import { resolveClaudeTerminalExecutable } from "./session-catalog-executable.js";
 
 const ARGS = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
