@@ -1,6 +1,9 @@
 // Always on (Private #454, part C): closing the window only hides it; the tray / menu-bar icon says what the engine is
-// doing and offers Open Branch, Pause all work and Stop Branch completely. Nothing here imports Electron: main.ts
+// doing and offers Open Branch, Pause all work and Quit, which stops Branch completely (Private #1095). Nothing here
+// imports Electron: main.ts
 // gives it the engine calls the app already makes (the engine's /readyz, the window's approval and session lists).
+
+import { fullStopRequested } from "./quit-intent";
 
 /**
  * What the tray shows. `running` false means no engine answers. `degraded` (Private #454 D, honest health) is the
@@ -104,22 +107,62 @@ export function createClosedWindowNotifier(deps: ClosedWindowNotifierDeps): { ob
 export interface TrayActions {
   open(): void;
   pauseAll?(): void;
-  /** Quits the app only: with the engine service, the engine keeps working. */
+  /** Quit: asks first while work runs, then stops the app, the engine and everything the engine started. */
   quit(): void;
-  stopCompletely?(): void;
 }
 
 export type TrayMenuItem = { label?: string; type?: "separator"; enabled?: boolean; click?: () => void };
 
-/** The tray menu: the live line, Open Branch, Pause all work, Quit Branch and Stop Branch completely. */
+/** The tray menu: the live line, Open Branch, Pause all work and Quit (the preview's tray menu). */
 export function trayMenu(state: EngineLiveState | undefined, actions: TrayActions): TrayMenuItem[] {
   const items: TrayMenuItem[] = [];
   if (state) items.push({ label: trayLabel(state), enabled: false }, { type: "separator" });
   items.push({ label: "Open Branch", click: actions.open });
   if (actions.pauseAll) items.push({ label: "Pause all work", enabled: Boolean(state?.running && state.workingTrunks > 0), click: actions.pauseAll });
-  items.push({ type: "separator" }, { label: "Quit Branch", click: actions.quit });
-  if (actions.stopCompletely) items.push({ label: "Stop Branch completely", click: actions.stopCompletely });
+  items.push({ type: "separator" }, { label: "Quit", click: actions.quit });
   return items;
+}
+
+/** What Quit asks while work runs, in the preview's words. Undefined: nothing runs, so Quit stops at once. */
+export interface QuitQuestion { message: string; detail: string; buttons: [quit: string, keep: string] }
+
+export function quitQuestion(state: EngineLiveState | undefined): QuitQuestion | undefined {
+  if (state && !state.running) return undefined;
+  const working = state?.workingTrunks ?? 0, waiting = state?.waitingOnYou ?? 0;
+  if (state && working === 0 && waiting === 0) return undefined;
+  const many = working > 1 || (working === 0 && waiting > 1);
+  const message = !state ? "Quit while Branch may still be working?"
+    : working > 0 ? `Quit while ${plural(working, "Trunk")} ${working === 1 ? "is" : "are"} working?`
+    : `Quit while ${plural(waiting, "request")} ${waiting === 1 ? "is" : "are"} waiting on you?`;
+  const detail = many
+    ? "If you quit, they stop and pick up next time you open Branch. Keep Branch in the tray to let them finish."
+    : "If you quit, it stops and picks up next time you open Branch. Keep Branch in the tray to let it finish.";
+  return { message, detail, buttons: ["Quit anyway", "Keep it running in the tray"] };
+}
+
+export interface QuitSteps {
+  /** The tray's last live state; undefined before the first read. */
+  state(): EngineLiveState | undefined;
+  /** Resolves true for Quit anyway, false for Keep it running in the tray. */
+  confirm(question: QuitQuestion): Promise<boolean>;
+  /** Keep it running in the tray: the window hides and the engine keeps working. */
+  keepInTray(): void;
+  /** Stops the app, the engine and its workers. */
+  stop(): void;
+  log(line: string): void;
+}
+
+/** Quit (tray, Branch menu, Ctrl/Cmd Q): asks first while work runs, then stops everything. */
+export async function quitBranch(steps: QuitSteps): Promise<"quit" | "kept"> {
+  const question = quitQuestion(steps.state());
+  if (question && !await steps.confirm(question)) {
+    steps.log("quit: kept running in the tray");
+    steps.keepInTray();
+    return "kept";
+  }
+  steps.log("quit: stopping the app, the engine and its workers");
+  steps.stop();
+  return "quit";
 }
 
 export interface StopCompletelySteps {
@@ -138,9 +181,11 @@ export interface StopCompletelySteps {
 
 /** "Stop Branch completely": warns first when work is running, then stops the service and quits the app. */
 export async function stopBranchCompletely(steps: StopCompletelySteps): Promise<"stopped" | "cancelled"> {
-  const state = await steps.state().catch(() => undefined);
+  // Quit already asked, in the preview's words: the same question is not asked twice, and nothing waits on a read.
+  const asked = fullStopRequested();
+  const state = asked ? undefined : await steps.state().catch(() => undefined);
   const working = state?.workingTrunks ?? 0, waiting = state?.waitingOnYou ?? 0;
-  if (!state || working > 0 || waiting > 0) {
+  if (!asked && (!state || working > 0 || waiting > 0)) {
     const message = !state ? "Branch may still be working."
       : working > 0 ? `${plural(working, "Trunk")} ${working === 1 ? "is" : "are"} still working.`
       : `${plural(waiting, "request")} ${waiting === 1 ? "is" : "are"} waiting on you.`;

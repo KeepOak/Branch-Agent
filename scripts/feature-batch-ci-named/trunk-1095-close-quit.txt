@@ -1,0 +1,2 @@
+# Desktop tests only: desktop/scripts/always-on-tray-updates.test.mjs and desktop/scripts/resident-window.test.mjs
+# already run from .github/workflows/desktop-checks.yml. No engine or window test changed.

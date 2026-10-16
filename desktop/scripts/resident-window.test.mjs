@@ -113,8 +113,8 @@ test('Dock activate restores the resident window without restarting its gateway 
   assert.equal((await readFile(join(root, 'desktop.log'), 'utf8')).match(/gateway started from/g).length, 1);
 }));
 test('tray Quit and session end perform normal owned-child shutdown', () => fixture(async ({ tray, window, pid }) => {
-  assert.ok(tray); tray.menu.find(item => item.label === 'Quit Branch').click();
-  assert.equal(window.destroyed, true); assert.equal(tray.destroyed, true);
+  assert.ok(tray); tray.menu.find(item => item.label === 'Quit').click();
+  await eventually(() => window.destroyed); assert.equal(tray.destroyed, true);
   await eventually(() => { try { process.kill(pid, 0); return false; } catch { return true; } });
 }));
 test('session-end quits instead of hiding a dying OS session', () => fixture(async ({ window, pid }) => {
