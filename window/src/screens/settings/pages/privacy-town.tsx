@@ -1,5 +1,5 @@
-// Town lookup on Settings › Privacy, at Technical only. The list, its credit and how often it refreshes read and write
-// the same settings the town lookup already uses. Adding your town to messages has no setting yet, so that row stays grey.
+// Town lookup on Settings › Privacy. The on/off switch is Regular, because town lookup is on unless turned off. The list,
+// its credit and how often it refreshes are Technical. Adding your town to messages has no setting yet, so that row stays grey.
 import type { ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { RowView } from "../RowView";
@@ -13,6 +13,9 @@ const CARD = "Town lookup";
 const CITY = "plugins.entries.geolocation.config";
 
 export const TOWN_ROWS: Row[] = [
+  { id: "privacy.town-lookup.look-up-your-town-from-a-local-list", page: "privacy", card: CARD, label: "Look up your town from a local list",
+    help: "On by default. Off stops looking up a town from the list on this computer.", level: 0, ownerLevel: true, control: "toggle",
+    fallback: true, source: { kind: "config", path: "plugins.entries.geolocation.enabled" } },
   { id: "privacy.town-lookup.where-the-town-lookup-list-comes-from", page: "privacy", card: CARD, label: "Where the town lookup list comes from",
     help: "Leave this empty to use the usual monthly list.", level: 2, ownerLevel: true, control: "text",
     fallback: "https://download.db-ip.com/free/dbip-city-lite-{yyyy}-{mm}.mmdb.gz", source: { kind: "config", path: `${CITY}.databaseUrl` } },

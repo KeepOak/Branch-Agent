@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// Settings › Privacy draws the town lookup at Technical only. The list, its credit and its refresh read and write
-// the same settings. Adding a town to messages stays grey, and only at Technical, until a later update.
+// Settings › Privacy draws the town-lookup switch at every level. The list, its credit and its refresh stay Technical
+// and read and write the same settings. Adding a town to messages stays grey, and only at Technical, until a later update.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -27,7 +27,7 @@ function merge(base: Record<string, unknown>, patch: Record<string, unknown>): R
   }
   return out;
 }
-function engineOf(config: Record<string, unknown> = {}) {
+function engineOf(config: Record<string, unknown> = {}, hints: Record<string, unknown> = {}) {
   let snap = { hash: "h1", valid: true, config };
   const request = vi.fn(async (method: string, params?: unknown) => {
     if (method === "config.get") return structuredClone(snap);
@@ -35,7 +35,7 @@ function engineOf(config: Record<string, unknown> = {}) {
       snap = { hash: `${snap.hash}x`, valid: true, config: merge(snap.config, JSON.parse((params as { raw: string }).raw) as Record<string, unknown>) };
       return { ok: true, hash: snap.hash, config: structuredClone(snap.config) };
     }
-    if (method === "config.schema") return { schema: {}, uiHints: {} };
+    if (method === "config.schema") return { schema: {}, uiHints: hints };
     if (method === "config.schema.lookup") return { reloadKind: "hot" };
     if (method === "users.prefs.get") return { status: "ok", entries: {} };
     return {};
@@ -44,9 +44,9 @@ function engineOf(config: Record<string, unknown> = {}) {
   return { engine, request };
 }
 const settle = () => act(async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0)); });
-async function mount(level: "regular" | "advanced" | "technical", config?: Record<string, unknown>) {
+async function mount(level: "regular" | "advanced" | "technical", config?: Record<string, unknown>, hints?: Record<string, unknown>) {
   localStorage.setItem("branch.level", level);
-  const env = engineOf(config);
+  const env = engineOf(config, hints);
   await act(async () => root.render(<SettingsFrame engine={env.engine} page="privacy" pages={R1_PAGES} />));
   await settle();
   return env;
@@ -54,6 +54,11 @@ async function mount(level: "regular" | "advanced" | "technical", config?: Recor
 const row = (id: string) => host.querySelector<HTMLElement>(`[data-row="${id}"]`);
 const field = (id: string) => row(id)?.querySelector("input");
 const shownLevel = () => [...host.querySelectorAll(".r1s-level [role=radio]")].find((b) => b.getAttribute("aria-checked") === "true")?.textContent;
+const toggle = (id: string) => row(id)?.querySelector<HTMLButtonElement>('[role="switch"]');
+async function press(button: HTMLButtonElement) {
+  await act(async () => { button.click(); });
+  await settle();
+}
 async function typeIn(input: HTMLInputElement, value: string) {
   await act(async () => {
     input.focus();
@@ -64,6 +69,7 @@ async function typeIn(input: HTMLInputElement, value: string) {
   await settle();
 }
 
+const LOOK = "privacy.town-lookup.look-up-your-town-from-a-local-list";
 const LIST = "privacy.town-lookup.where-the-town-lookup-list-comes-from";
 const CREDIT = "privacy.town-lookup.the-credit-line-for-the-town-list";
 const PAGE = "privacy.town-lookup.the-page-for-that-credit";
@@ -71,18 +77,30 @@ const REFRESH = "privacy.town-lookup.how-often-to-refresh-the-town-list";
 const LOCATION = "privacy.town-lookup.add-my-location-to-messages";
 const SAVED = { plugins: { entries: { geolocation: { config: { databaseUrl: "https://example.com/cities.mmdb.gz", attributionText: "Town list by Example", attributionUrl: "https://example.com/credit", refreshDays: 7 } } } } };
 
-it("hides the town list and adding a location below Technical", async () => {
-  await mount("regular");
+it("shows the town lookup switch on at Regular and saves turning it off", async () => {
+  const { request } = await mount("regular", {}, { "plugins.entries.*.enabled": { advanced: true, label: "Plugin Enabled", help: "Per-plugin enablement override." } });
   expect(shownLevel()).toBe("Regular");
   expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Privacy & data");
   expect(host.querySelector(".r1s-classic[data-classic='usage']")).not.toBeNull();
-  expect(host.querySelector('[aria-label="Town lookup"]')).toBeNull();
+  const look = row(LOOK);
+  expect(look?.querySelector("b")?.textContent).toBe("Look up your town from a local list");
+  expect(look?.textContent).not.toContain("Plugin Enabled");
+  expect(toggle(LOOK)?.getAttribute("aria-checked")).toBe("true");
+  expect(toggle(LOOK)?.hasAttribute("disabled")).toBe(false);
   for (const id of [LIST, CREDIT, PAGE, REFRESH, LOCATION]) expect(row(id)).toBeNull();
   expect(host.textContent).not.toContain("Where the town lookup list comes from");
   expect(host.textContent).not.toContain("Add my location to messages");
-  await mount("advanced", SAVED);
+  await press(toggle(LOOK)!);
+  expect(toggle(LOOK)?.getAttribute("aria-checked")).toBe("false");
+  const off = request.mock.calls.find(([method, params]) => method === "config.patch" && String((params as { raw?: string }).raw).includes("\"enabled\""));
+  expect(JSON.parse((off![1] as { raw: string }).raw)).toEqual({ plugins: { entries: { geolocation: { enabled: false } } } });
+});
+
+it("keeps the town lookup switch at Advanced and hides the town list there", async () => {
+  await mount("advanced", { plugins: { entries: { geolocation: { enabled: false, config: SAVED.plugins.entries.geolocation.config } } } });
   expect(shownLevel()).toBe("Advanced");
-  expect(host.querySelector('[aria-label="Town lookup"]')).toBeNull();
+  expect(row(LOOK)?.querySelector("b")?.textContent).toBe("Look up your town from a local list");
+  expect(toggle(LOOK)?.getAttribute("aria-checked")).toBe("false");
   for (const id of [LIST, CREDIT, PAGE, REFRESH, LOCATION]) expect(row(id)).toBeNull();
   expect(host.textContent).not.toContain("Town list by Example");
   expect(host.querySelector('[data-row="general.writing.location"]')).toBeNull();
@@ -91,6 +109,8 @@ it("hides the town list and adding a location below Technical", async () => {
 it("shows the usual town list at Technical and saves a change", async () => {
   const { request } = await mount("technical");
   expect(shownLevel()).toBe("Technical");
+  expect(row(LOOK)?.querySelector("b")?.textContent).toBe("Look up your town from a local list");
+  expect(toggle(LOOK)?.getAttribute("aria-checked")).toBe("true");
   expect(row(LIST)?.querySelector("b")?.textContent).toBe("Where the town lookup list comes from");
   expect(row(CREDIT)?.querySelector("b")?.textContent).toBe("The credit line for the town list");
   expect(row(PAGE)?.querySelector("b")?.textContent).toBe("The page for that credit");
@@ -112,6 +132,7 @@ it("shows the usual town list at Technical and saves a change", async () => {
 it("shows a saved town list at Technical, and greys adding a location to messages", async () => {
   await mount("technical", SAVED);
   expect(shownLevel()).toBe("Technical");
+  expect(toggle(LOOK)?.getAttribute("aria-checked")).toBe("true");
   expect(field(LIST)?.value).toBe("https://example.com/cities.mmdb.gz");
   expect(field(CREDIT)?.value).toBe("Town list by Example");
   expect(field(PAGE)?.value).toBe("https://example.com/credit");
