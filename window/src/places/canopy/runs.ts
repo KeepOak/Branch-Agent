@@ -38,7 +38,7 @@ function askRuns(d: CanopyData): Run[] {
   });
 }
 
-export function inWords(ms: number, now: number): string {
+function inWords(ms: number, now: number): string {
   const m = Math.round((ms - now) / 60000);
   if (m < 1) return "Now";
   if (m < 60) return `In ${m} min`;

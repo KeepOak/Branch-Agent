@@ -4,8 +4,9 @@ import { STATE_LABEL, type AgentState } from "../face/agentState";
 import { useTrunkAppearance } from "../face/appearance";
 import { Icon } from "./icons";
 import { syncTitleBar } from "../connect/title-bar";
+import { CONVERSATION_MORE_IDLE_LABEL, conversationMoreLabel } from "./conversation-more";
 
-export type FaceState = AgentState;
+type FaceState = AgentState;
 
 export type HeaderInfo = {
   name: string;
@@ -32,7 +33,6 @@ type Props = {
   header: HeaderInfo | null;
   dark: boolean;
   listHidden: boolean;
-  onTheme: () => void;
   onToggleList: () => void;
   onBack?: () => void;
   onForward?: () => void;
@@ -110,6 +110,25 @@ function HeaderFace({ header, onCharacter, size = 32 }: { header: HeaderInfo; on
   );
 }
 
+/** Preview headDotT5: the chat header ⋯, with a warn dot when this conversation needs you. */
+export function ConversationMoreButton({
+  need,
+  idleTitle,
+  onClick,
+}: {
+  need: number;
+  idleTitle?: string;
+  onClick: (event: MouseEvent<HTMLElement>) => void;
+}) {
+  const label = conversationMoreLabel(need, CONVERSATION_MORE_IDLE_LABEL);
+  return (
+    <button type="button" className={need > 0 ? "ib dotsT5" : "ib"} aria-label={label} title={need > 0 ? label : idleTitle ?? label} data-testid="conversation-menu-button" onClick={onClick}>
+      <Icon name="more" />
+      {need > 0 ? <span className="dotsDotT5" aria-hidden="true" /> : null}
+    </button>
+  );
+}
+
 /** The conversation header as its own row in the main column (narrow windows and focus mode, §3.2). */
 export function HeaderRow({ header, onCharacter, tools, onList, onBack, onForward }: { header: HeaderInfo; onCharacter?: () => void; tools?: ReactNode; onList?: () => void; onBack?: () => void; onForward?: () => void }) {
   const live = !header.room && ["think", "work", "search", "read", "wait"].includes(header.state);
@@ -151,7 +170,7 @@ export function PlaceHead({ onList, onSettings, onBack, onForward }: { onList: (
 
 /** The tint line's colour (§4.2.1): the conversation's colour at 40%; the classic pebble's --ink-2 when the Trunk wears it;
  *  none for a character without a colour (the tint is "drawn only when the conversation has a colour"). */
-export function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | "room"> | null): string | null {
+function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | "room"> | null): string | null {
   const appearance = useTrunkAppearance(header?.trunkName);
   if (!header || header.room) return null;
   if (header.colour) return /^#[0-9a-f]{6}$/i.test(header.colour) ? `${header.colour}66` : `color-mix(in srgb, ${header.colour} 40%, transparent)`;
@@ -159,7 +178,7 @@ export function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | 
 }
 
 /** The merged 52 px top bar (DESIGN-SPEC §3.2): the machine switcher over the sidebar, the conversation header, the global buttons. */
-export function TopBar({ compact, machine, header, dark, listHidden, onTheme, onToggleList, onBack, onForward, onCharacter, onGuide, conversationTools, ask, onSettings }: Props) {
+export function TopBar({ compact, machine, header, dark, listHidden, onToggleList, onBack, onForward, onCharacter, onGuide, conversationTools, ask, onSettings }: Props) {
   const live = header !== null && !header.room && ["think", "work", "search", "read", "wait"].includes(header.state);
   const tint = useHeaderTint(compact ? null : header);
   // The app's window buttons sit over this bar's top-right; keep their colours and height matched to it.
@@ -202,9 +221,6 @@ export function TopBar({ compact, machine, header, dark, listHidden, onTheme, on
               {ask.help ? "?" : <Icon name="ask" small />}
             </button>
           ) : null}
-          {!header ? <button type="button" className="ib" aria-label={dark ? "Light" : "Dark"} title="Switch light or dark" data-testid="theme" onClick={onTheme}>
-            <Icon name={dark ? "sun" : "moon"} small />
-          </button> : null}
           {!compact ? <button
             type="button"
             className="ib"

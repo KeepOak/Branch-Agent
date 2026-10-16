@@ -228,6 +228,79 @@ describe("computer card in the conversation", () => {
     expect(cards[1]?.textContent).toContain("Working");
     expect(cards[1]?.textContent).not.toContain("Stopped");
   });
+  it("shows list_windows as Listed open windows and Used Ada's computer", async () => {
+    const listed: Block = {
+      kind: "step",
+      key: "a",
+      tool: "computer",
+      title: "list_windows",
+      detail: "Checked what's open on the computer",
+      status: "ok",
+      outputKey: "r:a",
+    };
+    await render([listed, { kind: "done", key: "d", runId: "r" }], false);
+    expect(container.textContent).toContain("Used Ada's computer · 1 action");
+    expect(container.textContent).toContain("Listed open windows");
+    expect(container.textContent).not.toContain("list_windows");
+    expect(container.textContent).not.toContain("Used This computer");
+    await act(async () => container.querySelector<HTMLButtonElement>(".acts-head-st")!.click());
+    const row = container.querySelector(".acts-list-st li") as HTMLElement;
+    expect(row.querySelector("b")?.textContent).toBe("Listed open windows");
+    expect(row.querySelector("small")?.textContent).toBe("Checked what's open on the computer");
+    expect(container.textContent).not.toContain("list_windows");
+  });
+
+  it("uses the fallback label for an unknown computer action", async () => {
+    await render([step("a", "frob_widget", "ok")], false);
+    expect(container.textContent).toContain("Used Ada's computer · 1 action");
+    expect(container.textContent).toContain("Used the computer");
+    expect(container.textContent).not.toContain("frob_widget");
+    await act(async () => container.querySelector<HTMLButtonElement>(".acts-head-st")!.click());
+    expect(container.querySelector(".acts-list-st li b")?.textContent).toBe("Used the computer");
+    expect(container.textContent).not.toContain("frob_widget");
+  });
+
+  it("shows a screen-tool action as its own label, not Used the computer", async () => {
+    await render([
+      {
+        kind: "step",
+        key: "s",
+        tool: "screen",
+        title: "desktop_show",
+        detail: "",
+        status: "ok",
+      },
+    ], false);
+    expect(container.textContent).toContain("Showed the desktop");
+    expect(container.textContent).not.toContain("Used the computer");
+    expect(container.textContent).not.toContain("desktop_show");
+    await act(async () => container.querySelector<HTMLButtonElement>(".acts-head-st")!.click());
+    expect(container.querySelector(".acts-list-st li b")?.textContent).toBe("Showed the desktop");
+    expect(container.textContent).not.toContain("desktop_show");
+  });
+
+  it("keeps Used Ada's computer when the engine calls the host This computer", async () => {
+    const engine: WindowEngine = {
+      sessionKey: "agent:main:main",
+      scopes: [],
+      onEvent: () => () => {},
+      request: (async (method: string) => {
+        if (method === "sessions.describe") {
+          return { session: { key: "agent:main:main", placement: { state: "local" } } };
+        }
+        if (method === "environments.status") return { id: "gateway", label: "Studio host" };
+        return {};
+      }) as WindowEngine["request"],
+    };
+    await render([step("a", "list_windows", "ok")], false, vi.fn(), engine);
+    for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); });
+    expect(container.textContent).toContain("Used Ada's computer · 1 action");
+    expect(container.textContent).toContain("Listed open windows");
+    expect(container.textContent).not.toContain("Used This computer");
+    expect(container.textContent).not.toContain("Used Studio host");
+    expect(container.textContent).not.toContain("list_windows");
+  });
+
   it("shows a live thumbnail and Take over for the browser", async () => {
     const onWatch = await render([step("a", "Opened the inbox", "running", "browser")], true, vi.fn(), engineWith());
     expect(container.querySelector("[aria-label='Open the browser full size']")).toBeTruthy();

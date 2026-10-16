@@ -21,7 +21,7 @@ import { Sheet } from "./Sheet";
 import { RemoveDialog } from "./Dialogs";
 import { errorText, rec, rows, str, usePlaceData, type Row } from "./runtime";
 
-export const TRIGGER_NEEDS = {
+const TRIGGER_NEEDS = {
   words: "Needs the engine to write the check from your words; at Technical you can write the check yourself.",
   tellApp: "Needs the engine’s web addresses for task events.",
   afterAnswer: "Needs the engine’s after-answer hook setup.",

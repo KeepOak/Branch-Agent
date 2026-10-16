@@ -29,7 +29,11 @@ import { resolveCompactionLiveModelSelection } from "./compaction-live-model-sel
 import type { createEmbeddedRunCompactionRuntime } from "./compaction-runtime.js";
 import type { createEmbeddedRunContextRecoveryState } from "./context-recovery-state.js";
 import type { PreparedEmbeddedRunInput } from "./execution-context.js";
-import type { createEmbeddedRunFailoverRetryController } from "./failover-retry-controller.js";
+import type {
+  createEmbeddedRunFailoverRetryController,
+  RateLimitAccountSwitch,
+  RateLimitAccountWait,
+} from "./failover-retry-controller.js";
 import { buildErrorAgentMeta } from "./helpers.js";
 import { resolveSettledToolBatchEvidence } from "./incomplete-turn-recovery.js";
 import { recoverEmbeddedRunOverflow } from "./overflow-context-recovery.js";
@@ -49,6 +53,35 @@ type Dispatch = Awaited<ReturnType<typeof prepareAndDispatchEmbeddedRunAttempt>>
 type SessionPromptState = Awaited<ReturnType<typeof createEmbeddedRunSessionPromptState>>;
 type FailoverRetryController = ReturnType<typeof createEmbeddedRunFailoverRetryController>;
 type CompactionRuntime = ReturnType<typeof createEmbeddedRunCompactionRuntime>;
+
+/** "Sat 2:00 AM", in this computer's time zone. */
+function formatLimitReset(resetAt: number): string {
+  return new Date(resetAt).toLocaleString("en-US", {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function describeLimit(label: string, resetAt: number | undefined): string {
+  return resetAt === undefined
+    ? `${label} hit its limit.`
+    : `${label} hit its limit until ${formatLimitReset(resetAt)}.`;
+}
+
+/** Plain words for the thread when a long rate limit moved the run to another subscription. */
+export function formatAccountSwitchedMessage(change: RateLimitAccountSwitch): string {
+  return `${describeLimit(change.from.label, change.resetAt)} Moved to ${change.to.label}.`;
+}
+
+/** Plain words for the thread when a long rate limit has to wait on the same account. */
+export function formatAccountLimitedMessage(wait: RateLimitAccountWait): string {
+  const limited = describeLimit(wait.account?.label ?? "This account", wait.resetAt);
+  const until = wait.resetAt === undefined ? "it resets" : "then";
+  return wait.reason === "pinned"
+    ? `${limited} This conversation is set to use only that account, so it waits until ${until}.`
+    : `${limited} No other subscription is free, so it waits until ${until}.`;
+}
 
 export async function recoverEmbeddedRunAttempt(input: {
   runInput: PreparedEmbeddedRunInput;
@@ -417,7 +450,36 @@ export async function recoverEmbeddedRunAttempt(input: {
       // Fallback and rotation both require a replay-safe attempt; without one the
       // only recovery left is to wait out the floor and continue the transcript.
       failoverEligible: currentAttemptReplaySafe,
-      onRetry: async ({ attempt: retryAttempt, maxRetries, delayMs, reason }) => {
+      profileCandidates: preparedRuntime.profileCandidates,
+      onAccountSwitch: async (change) => {
+        const event = {
+          stream: "run_status",
+          data: {
+            phase: "account_switched",
+            message: formatAccountSwitchedMessage(change),
+            fromProfileId: change.from.profileId,
+            toProfileId: change.to.profileId,
+            ...(change.resetAt !== undefined ? { limitedUntil: change.resetAt } : {}),
+          },
+        };
+        emitAgentEvent({ runId: params.runId, sessionKey: params.sessionKey, ...event });
+        await params.onAgentEvent?.(event);
+      },
+      onRetry: async ({ attempt: retryAttempt, maxRetries, delayMs, reason, limit }) => {
+        if (limit) {
+          const limitEvent = {
+            stream: "run_status",
+            data: {
+              phase: "account_limited",
+              message: formatAccountLimitedMessage(limit),
+              ...(limit.account ? { profileId: limit.account.profileId } : {}),
+              ...(limit.resetAt !== undefined ? { limitedUntil: limit.resetAt } : {}),
+              reason: limit.reason,
+            },
+          };
+          emitAgentEvent({ runId: params.runId, sessionKey: params.sessionKey, ...limitEvent });
+          await params.onAgentEvent?.(limitEvent);
+        }
         const event = {
           stream: "run_status",
           data: {

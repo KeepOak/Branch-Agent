@@ -43,11 +43,11 @@ const CODE_MORE: SecSpec = { t: "Code, more", group: "Code", showHeading: false,
   sw(NO_CODE)("Edit by function and class", "Replace or rename a whole function or class across the project, instead of by line."),
   sw(NO_CODE)("Copy .env files into new copies", "A separate copy gets the same local settings files."),
   off("text", NO_CODE)("Setup script for new copies", { ph: "pnpm install", sub: "Runs once in each new copy." }), off("text", NO_CODE)("Run script", { ph: "pnpm dev", sub: "How “Run the app” starts this project from a copy." }),
-  sw(NO_CODE)("Merge helpers’ copies back", "Finished helpers’ work is merged in order; a clash goes back to that helper."),
+  sw(NO_CODE)("Merge Trunks’ copies back", "Finished Trunks’ work is merged in order; a clash goes back to that Trunk."),
   sw(NO_CODE)("Fix errors it sees in previews", "Errors in a preview’s console go back to the Trunk, which fixes them and reloads."),
   sw(NO_CODE)("Bring the running app’s errors in", "Errors, console output and screenshots from the app you are building reach the conversation."),
   sw(NO_CODE)("Let it see pages it makes", "It can turn its own HTML into a picture to check how it looks."),
-  off("pick", NO_CODE)("Run code it writes", { sub: "Output and pictures stream into the conversation.", opts: [{ v: "box", l: "In a sealed box" }] }),
+  off("pick", NO_CODE)("Run code it writes", { sub: "Output and pictures stream into the conversation.", opts: [{ v: "box", l: "In a safe box" }] }),
   off("btn", "Needs the engine to export and import a Trunk through a repository.")("Share a Trunk through git", { sub: "Export a Trunk to a repository, or bring one in from one.", btns: ["Export…", "Import…"] }),
 ] };
 
@@ -88,9 +88,9 @@ const GIT: SecSpec = { t: "Git", lv: 1, rows: [
 
 const CHECKS: SecSpec = { t: "Checks before done", lv: 1, rows: [
   sw(NO_CHECK)("Check before saying done", "After editing, it must show fresh evidence (tests, a build) before it finishes."),
-  sw(NO_CHECK)("Review my work in the background", "A separate helper reviews recent changes while the Trunk carries on."),
+  sw(NO_CHECK)("Review my work in the background", "A separate Trunk reviews recent changes while this one carries on."),
   sw(NO_CHECK)("A second Trunk checks the work", "Read only: it runs the tests and reads the files, then says pass or fail."),
-  sw(NO_CHECK)("Judge helpers’ work against the goal", "A helper’s result is checked against the goal and what counts as done."),
+  sw(NO_CHECK)("Judge Trunks’ work against the goal", "A Trunk’s result is checked against the goal and what counts as done."),
   sw(NO_CHECK)("Check a change before it becomes a pull request", "Empty, huge or unrelated changes don’t become pull requests."),
   sw(NO_CHECK)("Plugins may add checks", "After code edits, plugins can ask for checks of their own."),
   sw(NO_CHECK)("Project rules as checks", "Structure and behaviour rules kept in the repository must pass before done."),
@@ -169,7 +169,7 @@ export const CODE_TECH: SecSpec = { t: "Code, technical", group: "Code", showHea
   off("pick", NO_CODE)("Where conversations work", { sub: "New coding conversations start here.", opts: [{ v: "folder", l: "In the folder" }] }),
   sw(NO_CODE)("A full app stack per copy", "Each copy gets its own services on its own ports."), sw(NO_CODE)("Open projects in their dev container", "A project with a dev container runs inside it."),
   off("pick", NO_CODE)("Build on another computer", { sub: "Heavy builds are sent there and the results come back.", opts: [{ v: "here", l: "This computer" }] }),
-  sw(NO_CODE)("Projects in their own folder store", "Each project gets a sealed folder store with its own history and rollback."),
+  sw(NO_CODE)("Projects in their own folder store", "Each project gets a safe folder store with its own history and rollback."),
   sw("Needs the engine to let Branch edit its own files.")("Let Branch change its own code", "Branch may edit its own files and restart; some paths stay locked."),
 ] };
 
@@ -230,7 +230,7 @@ function Credit({ c }: { c: Ctx }) {
   const call = useCall();
   const d = rec(res.data);
   const sub = "Adds your GitHub no-reply address as co-author on commits from shared conversations. Turning it off affects later commits only.";
-  if (d.status === "no_durable_identity") return <Ctl title="Credit you on commits" off="Needs you signed in as a person on this Branch."><Switch label="Credit you on commits" checked={false} onChange={() => undefined} /></Ctl>;
+  if (d.status === "no_durable_identity") return null; // needs a person sign-in; nothing to switch yet, so no greyed row
   const value = rec(d.entries)[COAUTHOR];
   const on = value === undefined || value === true;
   const save = (v: boolean) => void call.run(async () => { await c.engine.request("users.prefs.set", { entries: { [COAUTHOR]: v } }); void res.reload(); });

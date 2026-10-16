@@ -14,6 +14,8 @@ import {
   setFleetSuiteRoot,
 } from "./service.runtime.test-helpers.js";
 
+const TEST_FLEET_IMAGE = "registry.example.test/branch-fleet:test";
+
 describe("fleet service upgrade and restore", () => {
   let env: NodeJS.ProcessEnv;
 
@@ -64,7 +66,7 @@ describe("fleet service upgrade and restore", () => {
       now: () => 1000,
       generateAttemptId: () => NEXT_ATTEMPT_ID,
     });
-    await service.create({ tenant: "acme", gatewayToken: "old-token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "old-token" });
     containers.run.mockClear();
     // The disk limit replays from the fleet label because Podman inspect has no
     // HostConfig.StorageOpt; the label is the cross-runtime carrier.
@@ -144,7 +146,7 @@ describe("fleet service upgrade and restore", () => {
   it("restores the immutable old image when replacement fails", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "old-token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "old-token" });
     containers.run.mockClear();
     containers.inspect
       .mockResolvedValueOnce(runningInspection())
@@ -155,13 +157,13 @@ describe("fleet service upgrade and restore", () => {
 
     expect(containers.run).toHaveBeenCalledTimes(2);
     expect(containers.run.mock.calls[1]?.[0].image).toBe("sha256:old-image-id");
-    expect((await getFleetCell(env, "acme"))?.image).toBe("ghcr.io/openclaw/openclaw:latest");
+    expect((await getFleetCell(env, "acme"))?.image).toBe(TEST_FLEET_IMAGE);
   });
 
   it("restarts the old cell when removal fails after stop", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "old-token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "old-token" });
     containers.run.mockClear();
     containers.start.mockClear();
     containers.inspect
@@ -188,7 +190,7 @@ describe("fleet service upgrade and restore", () => {
         throw new Error("state database is full");
       },
     });
-    await service.create({ tenant: "acme", gatewayToken: "old-token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "old-token" });
     containers.run.mockClear();
     containers.remove.mockClear();
     // The replacement carries its own container id, so the recovery removal is
@@ -208,7 +210,7 @@ describe("fleet service upgrade and restore", () => {
     expect(containers.run.mock.calls[1]?.[0].image).toBe("sha256:old-image-id");
     expect(containers.remove).toHaveBeenCalledWith("docker", "replacement-container-id", true);
     expect(containers.removeNetwork).not.toHaveBeenCalled();
-    expect((await getFleetCell(env, "acme"))?.image).toBe("ghcr.io/openclaw/openclaw:latest");
+    expect((await getFleetCell(env, "acme"))?.image).toBe(TEST_FLEET_IMAGE);
   });
 
   it("restores the previous cell when the replacement container is not running", async () => {
@@ -219,7 +221,7 @@ describe("fleet service upgrade and restore", () => {
       now: () => 1000,
       generateAttemptId: () => NEXT_ATTEMPT_ID,
     });
-    await service.create({ tenant: "acme", gatewayToken: "old-token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "old-token" });
     containers.run.mockClear();
     const crashLooping = runningInspection({
       labels: fleetLabels("acme", NEXT_ATTEMPT_ID),
@@ -235,7 +237,7 @@ describe("fleet service upgrade and restore", () => {
 
     expect(containers.run).toHaveBeenCalledTimes(2);
     expect(containers.run.mock.calls[1]?.[0].image).toBe("sha256:old-image-id");
-    expect((await getFleetCell(env, "acme"))?.image).toBe("ghcr.io/openclaw/openclaw:latest");
+    expect((await getFleetCell(env, "acme"))?.image).toBe(TEST_FLEET_IMAGE);
   });
 
   it("restores the previous cell when the replacement crashes after starting", async () => {
@@ -252,7 +254,7 @@ describe("fleet service upgrade and restore", () => {
       now: () => 1000,
       generateAttemptId: () => NEXT_ATTEMPT_ID,
     });
-    await service.create({ tenant: "acme", gatewayToken: "old-token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "old-token" });
     containers.run.mockClear();
     const crashed = runningInspection({
       labels: fleetLabels("acme", NEXT_ATTEMPT_ID),
@@ -269,7 +271,7 @@ describe("fleet service upgrade and restore", () => {
 
     expect(containers.run).toHaveBeenCalledTimes(2);
     expect(containers.run.mock.calls[1]?.[0].image).toBe("sha256:old-image-id");
-    expect((await getFleetCell(env, "acme"))?.image).toBe("ghcr.io/openclaw/openclaw:latest");
+    expect((await getFleetCell(env, "acme"))?.image).toBe(TEST_FLEET_IMAGE);
   });
 
   it("restores the previous cell when the replacement never becomes healthy", async () => {
@@ -287,7 +289,7 @@ describe("fleet service upgrade and restore", () => {
       now: () => (clock += 50_000),
       generateAttemptId: () => NEXT_ATTEMPT_ID,
     });
-    await service.create({ tenant: "acme", gatewayToken: "old-token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "old-token" });
     containers.run.mockClear();
     const hung = runningInspection({ labels: fleetLabels("acme", NEXT_ATTEMPT_ID) });
     containers.inspect
@@ -300,13 +302,13 @@ describe("fleet service upgrade and restore", () => {
 
     expect(containers.run).toHaveBeenCalledTimes(2);
     expect(containers.run.mock.calls[1]?.[0].image).toBe("sha256:old-image-id");
-    expect((await getFleetCell(env, "acme"))?.image).toBe("ghcr.io/openclaw/openclaw:latest");
+    expect((await getFleetCell(env, "acme"))?.image).toBe(TEST_FLEET_IMAGE);
   });
 
   it("refuses upgrade before pull or removal when the inspected token is missing", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "old-token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "old-token" });
     containers.inspect.mockResolvedValue(
       runningInspection({ environment: { HOME: "/home/node" } }),
     );
@@ -320,7 +322,7 @@ describe("fleet service upgrade and restore", () => {
   it("refuses upgrade when an unexpected container is attached to the cell network", async () => {
     const containers = createContainerMock();
     const service = createFleetService({ env, containers: containers.runtime, now: () => 1000 });
-    await service.create({ tenant: "acme", gatewayToken: "old-token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "old-token" });
     containers.inspect.mockResolvedValue(runningInspection());
     containers.inspectNetwork.mockResolvedValue({
       kind: "ok",
@@ -348,7 +350,7 @@ describe("fleet service upgrade and restore", () => {
     expect(await getFleetCell(env, "bad-image")).toBeUndefined();
     expect(containers.run).not.toHaveBeenCalled();
 
-    await service.create({ tenant: "acme", gatewayToken: "token" });
+    await service.create({ image: TEST_FLEET_IMAGE, tenant: "acme", gatewayToken: "token" });
     containers.inspect.mockResolvedValue(runningInspection());
     await expect(service.upgrade("acme", "--help")).rejects.toThrow(/image must not begin/iu);
     expect(containers.pull).not.toHaveBeenCalled();

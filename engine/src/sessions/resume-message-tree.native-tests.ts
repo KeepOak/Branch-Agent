@@ -1,322 +1,185 @@
-/** Original pinned eleven graph tests; only runner/import adaptation. */
-import { describe, it } from 'node:test'
-import assert from 'node:assert/strict'
-import { isDeepStrictEqual } from 'node:util'
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import { buildTopicMessageFlowGraph } from "./resume-message-tree.js";
+import type { TopicMessageFlowGraph, TreeNode, TreeResponse } from "./resume-tree-types.js";
 
-import type { TreeNode, TreeResponse } from './resume-tree-types.js'
+type GoldenCase = { id: string; source: string; input: unknown[]; output: unknown };
 
-import { buildTopicMessageFlowGraph } from './resume-message-tree.js'
+const SUBSET_URL = new URL("./resume-message-tree.golden.subset.json", import.meta.url);
+const goldenCases = JSON.parse(readFileSync(SUBSET_URL, "utf8")) as GoldenCase[];
 
-
-function expect(actual: unknown) {
-  return {
-    toBe: (value: unknown) => assert.strictEqual(actual, value),
-    toEqual: (value: unknown) => assert.deepStrictEqual(actual, value),
-    toHaveLength: (value: number) => assert.strictEqual((actual as unknown[]).length, value),
-    toContainEqual: (value: unknown) => assert.ok((actual as unknown[]).some(item => isDeepStrictEqual(item, value)))
-  }
+function isUndefinedMarker(value: object): boolean {
+  const keys = Object.keys(value);
+  return keys.length === 1 && keys[0] === "$undef" && (value as Record<string, unknown>)["$undef"] === true;
 }
 
-const createdAt = '2026-05-22T00:00:00.000Z'
+function decodeValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(decodeValue);
+  if (value === null || typeof value !== "object") return value;
+  if (isUndefinedMarker(value)) return undefined;
+  return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, decodeValue(inner)]));
+}
 
-function treeNode({ id, ...overrides }: Partial<TreeNode> & Pick<TreeNode, 'id'>): TreeNode {
+for (const golden of goldenCases) {
+  test(`golden ${golden.id} (${golden.source})`, () => {
+    const tree = decodeValue(golden.input[0]) as TreeResponse;
+    const expected = decodeValue(golden.output) as TopicMessageFlowGraph;
+    assert.deepStrictEqual(buildTopicMessageFlowGraph(tree), expected);
+  });
+}
+
+function baseFields(id: string): Omit<TreeNode, "parentId"> {
   return {
     id,
-    // Roots hang off the unrendered virtual root; use a non-node sentinel id so the
-    // edge guard skips the edge and the node still renders as a graph root.
-    parentId: 'vroot',
-    role: 'user',
-    preview: id,
+    role: "user",
+    preview: `p-${id}`,
     modelId: null,
-    status: 'success',
-    createdAt,
+    status: "success",
+    createdAt: "2026-01-01T00:00:00Z",
     hasChildren: false,
-    ...overrides
+  };
+}
+
+function node(id: string, parentId: string | null | undefined, extra: Partial<TreeNode> = {}): TreeNode {
+  return { ...baseFields(id), parentId, ...extra };
+}
+
+function member(id: string, extra: Partial<Omit<TreeNode, "parentId">> = {}): Omit<TreeNode, "parentId"> {
+  return { ...baseFields(id), ...extra };
+}
+
+function tree(
+  nodes: TreeNode[],
+  activeNodeId: string | null = null,
+  siblingsGroups: TreeResponse["siblingsGroups"] = [],
+): TreeResponse {
+  return { nodes, siblingsGroups, activeNodeId, rootId: null };
+}
+
+test("empty tree gives an empty graph and echoes the active id", () => {
+  assert.deepStrictEqual(buildTopicMessageFlowGraph(tree([], "zzz")), {
+    nodes: [],
+    edges: [],
+    activeNodeId: "zzz",
+    stats: { nodeCount: 0, branchCount: 0, activePathLength: 0 },
+  });
+});
+
+test("single active node is on the active path and has no edges", () => {
+  const graph = buildTopicMessageFlowGraph(tree([node("a", null)], "a"));
+  assert.equal(graph.nodes.length, 1);
+  assert.equal(graph.nodes[0]?.data.isActive, true);
+  assert.equal(graph.nodes[0]?.data.isOnActivePath, true);
+  assert.deepStrictEqual(graph.edges, []);
+  assert.equal(graph.stats.activePathLength, 1);
+});
+
+test("chain ends on the active leaf with every node on the path and no branches", () => {
+  const graph = buildTopicMessageFlowGraph(tree([node("a", null), node("b", "a"), node("c", "b")], "c"));
+  assert.deepStrictEqual(graph.nodes.map((n) => n.data.isOnActivePath), [true, true, true]);
+  assert.deepStrictEqual(graph.edges.map((e) => e.data.isInactiveBranch), [false, false]);
+  assert.equal(graph.stats.branchCount, 0);
+  assert.equal(graph.stats.activePathLength, 3);
+});
+
+test("active id absent from the graph marks nothing active, on path, or inactive", () => {
+  const graph = buildTopicMessageFlowGraph(tree([node("a", null), node("b", "a")], "zz"));
+  for (const n of graph.nodes) {
+    assert.equal(n.data.isActive, false);
+    assert.equal(n.data.isOnActivePath, false);
+    assert.equal(n.data.isInactiveBranch, false);
   }
-}
+  assert.equal(graph.activeNodeId, "zz");
+  assert.equal(graph.stats.activePathLength, 0);
+});
 
-function siblingNode(
-  overrides: Partial<Omit<TreeNode, 'parentId'>> & Pick<TreeNode, 'id'>
-): Omit<TreeNode, 'parentId'> {
-  const { parentId: _parentId, ...node } = treeNode(overrides)
-  void _parentId
+test("orphan keeps its dangling parent id and gets no edge", () => {
+  const graph = buildTopicMessageFlowGraph(tree([node("a", null), node("b", "missing")], "b"));
+  assert.equal(graph.nodes.find((n) => n.id === "b")?.parentId, "missing");
+  assert.deepStrictEqual(graph.edges, []);
+  assert.equal(graph.stats.activePathLength, 1);
+});
 
-  return node
-}
+test("undefined parentId is output as null", () => {
+  const graph = buildTopicMessageFlowGraph(tree([node("a", undefined)], "a"));
+  assert.equal(graph.nodes[0]?.parentId, null);
+});
 
-describe('buildTopicMessageFlowGraph', () => {
-  it('preserves clear markers as explicit graph nodes', () => {
-    const tree: TreeResponse = {
-      nodes: [
-        treeNode({ id: 'user-1', hasChildren: true }),
-        treeNode({ id: 'clear-1', parentId: 'user-1', isContextBoundary: true })
-      ],
-      siblingsGroups: [],
-      activeNodeId: 'clear-1',
-      rootId: 'vroot'
-    }
+test("sibling group parentId overrides the parent of a node also listed at top level", () => {
+  const graph = buildTopicMessageFlowGraph(
+    tree([node("a", null), node("b", "a"), node("c", null)], "b", [
+      { parentId: "a", siblingsGroupId: 1, nodes: [member("c")] },
+    ]),
+  );
+  assert.equal(graph.nodes.find((n) => n.id === "c")?.parentId, "a");
+  assert.ok(graph.edges.some((e) => e.id === "edge:a:c"));
+});
 
-    const graph = buildTopicMessageFlowGraph(tree)
+test("group members missing from nodes are appended after top-level nodes", () => {
+  const graph = buildTopicMessageFlowGraph(
+    tree([node("a", null)], "a", [{ parentId: "a", siblingsGroupId: 1, nodes: [member("b"), member("c")] }]),
+  );
+  assert.deepStrictEqual(graph.nodes.map((n) => [n.id, n.parentId]), [["a", null], ["b", "a"], ["c", "a"]]);
+});
 
-    expect(graph.nodes.find((node) => node.id === 'clear-1')?.data.isContextBoundary).toBe(true)
-    expect(graph.edges.map((edge) => [edge.source, edge.target])).toContainEqual(['user-1', 'clear-1'])
-  })
+test("duplicate ids collapse to one node with the last occurrence winning the parent", () => {
+  const graph = buildTopicMessageFlowGraph(tree([node("a", null), node("a", "a"), node("b", "a")], "b"));
+  assert.deepStrictEqual(graph.nodes.map((n) => [n.id, n.parentId]), [["a", "a"], ["b", "a"]]);
+  assert.deepStrictEqual(graph.edges.map((e) => e.id), ["edge:a:a", "edge:a:b"]);
+});
 
-  it('projects a persisted empty branch into an awaiting-input graph node', () => {
-    const tree: TreeResponse = {
-      nodes: [
-        treeNode({ id: 'assistant-1', role: 'assistant', hasChildren: true }),
-        treeNode({ id: 'awaiting-input-user', parentId: 'assistant-1', isAwaitingInput: true })
-      ],
-      siblingsGroups: [],
-      activeNodeId: 'awaiting-input-user',
-      rootId: 'vroot'
-    }
+test("parent cycle terminates, keeps both edges, and walks the active path once", () => {
+  const graph = buildTopicMessageFlowGraph(tree([node("a", "b"), node("b", "a")], "a"));
+  assert.equal(graph.edges.length, 2);
+  assert.equal(graph.stats.activePathLength, 2);
+});
 
-    const graph = buildTopicMessageFlowGraph(tree)
+test("self-parent produces a self-loop edge", () => {
+  const graph = buildTopicMessageFlowGraph(tree([node("a", "a")], "a"));
+  assert.deepStrictEqual(graph.edges.map((e) => [e.id, e.source, e.target]), [["edge:a:a", "a", "a"]]);
+});
 
-    expect(graph.nodes.find((node) => node.id === 'awaiting-input-user')?.data.isAwaitingInput).toBe(true)
-  })
+test("context and awaiting flags pass through only when present on the input", () => {
+  const graph = buildTopicMessageFlowGraph(
+    tree([node("a", null, { isContextBoundary: true, isAwaitingInput: false }), node("b", "a")], "b"),
+  );
+  assert.equal(graph.nodes[0]?.data.isContextBoundary, true);
+  assert.equal(graph.nodes[0]?.data.isAwaitingInput, false);
+  assert.equal(graph.nodes[1]?.data.isContextBoundary, undefined);
+  assert.equal("isAwaitingInput" in (graph.nodes[1]?.data ?? {}), false);
+});
 
-  it('builds nodes and edges for a linear tree', () => {
-    const tree: TreeResponse = {
-      nodes: [
-        treeNode({ id: 'root', hasChildren: true }),
-        treeNode({ id: 'assistant-1', parentId: 'root', role: 'assistant', hasChildren: true }),
-        treeNode({ id: 'user-2', parentId: 'assistant-1' })
-      ],
-      siblingsGroups: [],
-      activeNodeId: 'user-2',
-      rootId: null
-    }
+test("siblingsGroupId is never emitted", () => {
+  const graph = buildTopicMessageFlowGraph(
+    tree([node("a", null)], "a", [{ parentId: "a", siblingsGroupId: 7, nodes: [member("b")] }]),
+  );
+  assert.equal(JSON.stringify(graph).includes("siblingsGroupId"), false);
+});
 
-    const graph = buildTopicMessageFlowGraph(tree)
+test("branchCount counts the leaves when there are at least two", () => {
+  const graph = buildTopicMessageFlowGraph(
+    tree([node("a", null), node("b", "a"), node("c", "a"), node("d", "a")], "b"),
+  );
+  assert.equal(graph.stats.branchCount, 3);
+});
 
-    expect(graph.nodes.map((node) => node.id)).toEqual(['root', 'assistant-1', 'user-2'])
-    expect(graph.edges.map((edge) => [edge.source, edge.target])).toEqual([
-      ['root', 'assistant-1'],
-      ['assistant-1', 'user-2']
-    ])
-    expect(graph.stats).toEqual({
-      nodeCount: 3,
-      branchCount: 0,
-      activePathLength: 3
-    })
-    expect(graph.nodes.every((node) => node.data.isOnActivePath)).toBe(true)
-    expect(graph.edges.every((edge) => edge.data.isActivePath)).toBe(true)
-  })
+test("two top-level nodes count as two branches", () => {
+  const graph = buildTopicMessageFlowGraph(tree([node("a", null), node("b", null)], "a"));
+  assert.equal(graph.stats.branchCount, 2);
+});
 
-  it('expands sibling groups into branch nodes and marks sibling edges', () => {
-    const tree: TreeResponse = {
-      nodes: [treeNode({ id: 'root', hasChildren: true })],
-      siblingsGroups: [
-        {
-          parentId: 'root',
-          siblingsGroupId: 7,
-          nodes: [
-            siblingNode({ id: 'assistant-a', role: 'assistant', modelId: 'model-a' }),
-            siblingNode({ id: 'assistant-b', role: 'assistant', modelId: 'model-b' })
-          ]
-        }
-      ],
-      activeNodeId: 'assistant-b',
-      rootId: null
-    }
+test("branchCount separates leaves from sibling pairs: three roots with two children under one gives 4", () => {
+  const graph = buildTopicMessageFlowGraph(
+    tree([node("a", null), node("b", null), node("c", null), node("d", "a"), node("e", "a")], "a"),
+  );
+  assert.equal(graph.stats.branchCount, 4);
+});
 
-    const graph = buildTopicMessageFlowGraph(tree)
-
-    expect(graph.nodes.map((node) => [node.id, node.parentId, node.data.siblingsGroupId])).toEqual([
-      ['root', 'vroot', undefined],
-      ['assistant-a', 'root', 7],
-      ['assistant-b', 'root', 7]
-    ])
-    expect(graph.edges).toHaveLength(2)
-    expect(graph.edges.every((edge) => edge.data.isSiblingBranch)).toBe(true)
-    expect(graph.stats.branchCount).toBe(2)
-  })
-
-  it('expands root sibling groups into independent root trees', () => {
-    const tree: TreeResponse = {
-      nodes: [
-        treeNode({ id: 'assistant-original', parentId: 'root-original', role: 'assistant' }),
-        treeNode({ id: 'assistant-edited', parentId: 'root-edited', role: 'assistant' })
-      ],
-      siblingsGroups: [
-        {
-          parentId: 'vroot',
-          siblingsGroupId: 9,
-          nodes: [siblingNode({ id: 'root-original' }), siblingNode({ id: 'root-edited' })]
-        }
-      ],
-      activeNodeId: 'assistant-edited',
-      rootId: null
-    }
-
-    const graph = buildTopicMessageFlowGraph(tree)
-
-    expect(graph.nodes.map((node) => [node.id, node.parentId, node.data.siblingsGroupId])).toEqual([
-      ['assistant-original', 'root-original', undefined],
-      ['assistant-edited', 'root-edited', undefined],
-      ['root-original', 'vroot', undefined],
-      ['root-edited', 'vroot', undefined]
-    ])
-    expect(graph.edges.map((edge) => [edge.source, edge.target])).toEqual([
-      ['root-original', 'assistant-original'],
-      ['root-edited', 'assistant-edited']
-    ])
-    expect(graph.nodes.find((node) => node.id === 'root-edited')?.data.isOnActivePath).toBe(true)
-    expect(graph.nodes.find((node) => node.id === 'root-original')?.data.isInactiveBranch).toBe(true)
-    expect(graph.stats.branchCount).toBe(2)
-  })
-
-  it('counts ungrouped same-topic root trees as separate branch paths', () => {
-    const tree: TreeResponse = {
-      nodes: [
-        treeNode({ id: 'root-a', hasChildren: true }),
-        treeNode({ id: 'answer-a', parentId: 'root-a', role: 'assistant' }),
-        treeNode({ id: 'root-b', hasChildren: true }),
-        treeNode({ id: 'answer-b', parentId: 'root-b', role: 'assistant' })
-      ],
-      siblingsGroups: [],
-      activeNodeId: 'answer-b',
-      rootId: null
-    }
-
-    const graph = buildTopicMessageFlowGraph(tree)
-
-    expect(graph.nodes.map((node) => [node.id, node.parentId])).toEqual([
-      ['root-a', 'vroot'],
-      ['answer-a', 'root-a'],
-      ['root-b', 'vroot'],
-      ['answer-b', 'root-b']
-    ])
-    expect(graph.edges.map((edge) => [edge.source, edge.target])).toEqual([
-      ['root-a', 'answer-a'],
-      ['root-b', 'answer-b']
-    ])
-    expect(graph.stats.branchCount).toBe(2)
-  })
-
-  it('counts user sibling branches as branch paths without marking them as assistant branch displays', () => {
-    const tree: TreeResponse = {
-      nodes: [
-        treeNode({ id: 'root', hasChildren: true }),
-        treeNode({ id: 'assistant-1', parentId: 'root', role: 'assistant', hasChildren: true }),
-        treeNode({ id: 'user-web', parentId: 'assistant-1', createdAt: '2026-05-22T14:17:00.000Z', hasChildren: true }),
-        treeNode({
-          id: 'assistant-web',
-          parentId: 'user-web',
-          role: 'assistant',
-          createdAt: '2026-05-22T14:17:01.000Z'
-        }),
-        treeNode({
-          id: 'user-scenes',
-          parentId: 'assistant-1',
-          createdAt: '2026-05-22T14:20:00.000Z',
-          hasChildren: true
-        }),
-        treeNode({
-          id: 'assistant-scenes',
-          parentId: 'user-scenes',
-          role: 'assistant',
-          createdAt: '2026-05-22T14:20:01.000Z'
-        })
-      ],
-      siblingsGroups: [],
-      activeNodeId: 'assistant-web',
-      rootId: null
-    }
-
-    const graph = buildTopicMessageFlowGraph(tree)
-
-    expect(graph.stats.branchCount).toBe(2)
-    expect(graph.nodes.map((node) => node.id)).toEqual([
-      'root',
-      'assistant-1',
-      'user-web',
-      'assistant-web',
-      'user-scenes',
-      'assistant-scenes'
-    ])
-    expect(graph.edges.every((edge) => !edge.data.isSiblingBranch)).toBe(true)
-  })
-
-  it('counts same-parent assistant siblings as message-list branch displays without requiring a sibling group', () => {
-    const tree: TreeResponse = {
-      nodes: [
-        treeNode({ id: 'root', hasChildren: true }),
-        treeNode({ id: 'assistant-a', parentId: 'root', role: 'assistant' }),
-        treeNode({ id: 'assistant-b', parentId: 'root', role: 'assistant' })
-      ],
-      siblingsGroups: [],
-      activeNodeId: 'assistant-a',
-      rootId: null
-    }
-
-    const graph = buildTopicMessageFlowGraph(tree)
-
-    expect(graph.stats.branchCount).toBe(2)
-    expect(graph.edges.every((edge) => edge.data.isSiblingBranch)).toBe(true)
-  })
-
-  it('marks the active node and its ancestors as the active path', () => {
-    const tree: TreeResponse = {
-      nodes: [
-        treeNode({ id: 'root', hasChildren: true }),
-        treeNode({ id: 'assistant-1', parentId: 'root', role: 'assistant', hasChildren: true }),
-        treeNode({ id: 'user-2', parentId: 'assistant-1' }),
-        treeNode({ id: 'side-branch', parentId: 'root', role: 'assistant' })
-      ],
-      siblingsGroups: [],
-      activeNodeId: 'user-2',
-      rootId: null
-    }
-
-    const graph = buildTopicMessageFlowGraph(tree)
-
-    const activePath = graph.nodes.filter((node) => node.data.isOnActivePath).map((node) => node.id)
-    expect(activePath).toEqual(['root', 'assistant-1', 'user-2'])
-    expect(graph.nodes.find((node) => node.id === 'user-2')?.data.isActive).toBe(true)
-    expect(graph.stats.activePathLength).toBe(3)
-  })
-
-  it('returns an empty graph for an empty tree', () => {
-    const graph = buildTopicMessageFlowGraph({
-      nodes: [],
-      siblingsGroups: [],
-      activeNodeId: null,
-      rootId: null
-    })
-
-    expect(graph).toEqual({
-      nodes: [],
-      edges: [],
-      activeNodeId: null,
-      stats: {
-        nodeCount: 0,
-        branchCount: 0,
-        activePathLength: 0
-      }
-    })
-  })
-
-  it('marks nodes and edges outside the active path as inactive branches', () => {
-    const tree: TreeResponse = {
-      nodes: [
-        treeNode({ id: 'root', hasChildren: true }),
-        treeNode({ id: 'active-leaf', parentId: 'root', role: 'assistant' }),
-        treeNode({ id: 'inactive-leaf', parentId: 'root', role: 'assistant' })
-      ],
-      siblingsGroups: [],
-      activeNodeId: 'active-leaf',
-      rootId: null
-    }
-
-    const graph = buildTopicMessageFlowGraph(tree)
-
-    expect(graph.nodes.find((node) => node.id === 'inactive-leaf')?.data.isInactiveBranch).toBe(true)
-    expect(graph.nodes.find((node) => node.id === 'active-leaf')?.data.isInactiveBranch).toBe(false)
-    expect(graph.edges.find((edge) => edge.target === 'inactive-leaf')?.data.isInactiveBranch).toBe(true)
-    expect(graph.edges.find((edge) => edge.target === 'active-leaf')?.data.isInactiveBranch).toBe(false)
-  })
-})
+test("assistant reply is a sibling branch only when another assistant reply shares its parent", () => {
+  const graph = buildTopicMessageFlowGraph(
+    tree([node("a", null), node("b", "a", { role: "assistant" }), node("c", "a", { role: "assistant" }), node("d", "a", { role: "user" })], "b"),
+  );
+  const flags = Object.fromEntries(graph.edges.map((e) => [e.target, e.data.isSiblingBranch]));
+  assert.deepStrictEqual(flags, { b: true, c: true, d: false });
+});

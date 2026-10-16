@@ -1,0 +1,4 @@
+window:src/screens/chatapps/More.test.tsx
+window:src/screens/chatapps/ChatApps.test.tsx
+window:src/screens/settings/search.test.ts
+window:src/screens/settings/rows.test.ts

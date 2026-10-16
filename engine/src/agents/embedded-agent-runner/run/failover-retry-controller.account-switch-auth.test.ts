@@ -1,0 +1,331 @@
+// A long rate limit switching subscriptions through the real embedded auth controller.
+import type { Model } from "branch/plugin-sdk/llm";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { sleepWithAbort } from "../../../infra/backoff.js";
+import type { AuthProfileStore } from "../../auth-profiles.js";
+import type { ResolvedProviderAuth } from "../../model-auth.js";
+
+const mocks = vi.hoisted(() => ({
+  prepareProviderRuntimeAuth: vi.fn(),
+  getApiKeyForModelCore: vi.fn(),
+}));
+
+vi.mock("../../../infra/backoff.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../infra/backoff.js")>()),
+  sleepWithAbort: vi.fn(async () => {}),
+}));
+
+vi.mock("../../../plugins/provider-runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../plugins/provider-runtime.js")>()),
+  prepareProviderRuntimeAuth: mocks.prepareProviderRuntimeAuth,
+}));
+
+vi.mock("../../model-auth.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../model-auth.js")>()),
+  getApiKeyForModelCore: mocks.getApiKeyForModelCore,
+}));
+
+// mock-isolation: keep the limited mark in memory; usage.blocked-retry-after.test.ts covers the write.
+vi.mock("../../auth-profiles.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../auth-profiles.js")>()),
+  markAuthProfileBlockedUntil: vi.fn(
+    async (params: { store: AuthProfileStore; profileId: string; blockedUntil: number }) => {
+      params.store.usageStats ??= {};
+      params.store.usageStats[params.profileId] = {
+        ...params.store.usageStats[params.profileId],
+        blockedUntil: params.blockedUntil,
+        blockedReason: "subscription_limit",
+        blockedSource: "provider_retry_after",
+      };
+    },
+  ),
+}));
+
+import { createEmbeddedRunAuthController, type EmbeddedRunAuthState } from "./auth-controller.js";
+import {
+  createEmbeddedRunFailoverRetryController,
+  type RateLimitAccountWait,
+} from "./failover-retry-controller.js";
+
+const PROVIDER = "anthropic";
+const MODEL = "claude-fixture-1";
+const USAGE_LIMIT_MESSAGE = "429 subscription usage limit. Retry after 108000 seconds.";
+const USAGE_LIMIT_MS = 108_000 * 1000;
+const ORDER = ["anthropic:first", "anthropic:key", "anthropic:second"];
+
+function fixtureModel(): Model {
+  return {
+    id: MODEL,
+    name: MODEL,
+    provider: PROVIDER,
+    api: "anthropic-messages",
+    baseUrl: "https://api.anthropic.example",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 200_000,
+    maxTokens: 8_000,
+  } as Model;
+}
+
+/** Credentials as the auth store resolves them; a signed-out profile resolves without a token. */
+function resolvedAuth(profileId: string, secondSignedIn: boolean): ResolvedProviderAuth {
+  switch (profileId) {
+    case "anthropic:first":
+      return { apiKey: "fixture-token-first", mode: "token", profileId, source: "profile" };
+    case "anthropic:key":
+      return { apiKey: "fixture-api-key", mode: "api-key", profileId, source: "profile" };
+    default:
+      return secondSignedIn
+        ? { apiKey: "fixture-token-second", mode: "token", profileId, source: "profile" }
+        : { mode: "token", profileId, source: "profile" };
+  }
+}
+
+/** The run's auth state and controller, with the first sign-in already applied. */
+type RunSetup = {
+  secondSignedIn: boolean;
+  subscriptionsOnly: boolean;
+  /** The run's own candidate list; a harness-owned run gets its prepared list from prepare-auth. */
+  candidates?: string[];
+  harnessOwnsTransport?: boolean;
+};
+
+async function setUpRun(params: RunSetup) {
+  const store = {
+    version: 1,
+    profiles: {
+      "anthropic:first": { type: "token", provider: PROVIDER, token: "fixture-token-first" },
+      "anthropic:key": { type: "api_key", provider: PROVIDER, key: "fixture-api-key" },
+      "anthropic:second": { type: "token", provider: PROVIDER, token: "fixture-token-second" },
+    },
+  } as AuthProfileStore;
+  mocks.getApiKeyForModelCore.mockImplementation(async ({ profileId }: { profileId: string }) =>
+    resolvedAuth(profileId, params.secondSignedIn),
+  );
+  mocks.prepareProviderRuntimeAuth.mockResolvedValue(undefined);
+  const setRuntimeApiKey = vi.fn<(provider: string, apiKey: string) => void>();
+  const state: EmbeddedRunAuthState = {
+    models: { runtime: fixtureModel(), effective: fixtureModel() },
+    apiKeyInfo: null,
+    lastProfileId: undefined,
+    runtimeAuthState: null,
+    runtimeAuthRefreshCancelled: false,
+    profileIndex: 0,
+    thinkLevel: "off",
+  };
+  const authController = createEmbeddedRunAuthController({
+    config: undefined,
+    agentDir: "/tmp/account-switch-auth",
+    workspaceDir: "/tmp/account-switch-auth-workspace",
+    authStore: store,
+    authStorage: { setRuntimeApiKey },
+    profileCandidates: params.candidates ?? ORDER,
+    initialThinkLevel: "off",
+    attemptedThinking: new Set(),
+    fallbackConfigured: true,
+    allowTransientCooldownProbe: false,
+    provider: PROVIDER,
+    modelId: MODEL,
+    state,
+    log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
+  });
+  await authController.initializeAuthProfile();
+  const controller = createEmbeddedRunFailoverRetryController({
+    runParams: {
+      runId: "run:account-switch-auth",
+      config: { agents: { defaults: { subscriptionsOnly: params.subscriptionsOnly } } },
+    } as Parameters<typeof createEmbeddedRunFailoverRetryController>[0]["runParams"],
+    provider: PROVIDER,
+    modelId: MODEL,
+    globalLane: "test",
+    agentDir: "/tmp/account-switch-auth",
+    fallbackConfigured: true,
+    profileFailureStore: store,
+    getLastProfileId: () => state.lastProfileId,
+    getSessionId: () => "session:account-switch-auth",
+    harnessOwnsTransport: () => params.harnessOwnsTransport === true,
+    getRuntimeAuthOwnerId: () => "embedded",
+    getApiKeyInfo: () => state.apiKeyInfo,
+    advanceAuthProfile: authController.advanceAuthProfile,
+  });
+  return { controller, state, setRuntimeApiKey };
+}
+
+/** One short rate-limit rotation (below the wait threshold) from the first sign-in. */
+/** One automatic move from the first sign-in: a short rate limit, or an auth failure when rateLimit is false. */
+async function rotateOnce(params: RunSetup & { rateLimit?: boolean }) {
+  const { controller, state, setRuntimeApiKey } = await setUpRun(params);
+  const rotated =
+    params.rateLimit === false
+      ? await controller.advanceAuthProfile()
+      : await controller.advanceRateLimitAuthProfile({
+          failoverProvider: PROVIDER,
+          failoverModel: MODEL,
+          logFallbackDecision: () => undefined,
+        });
+  const runtimeKeys = setRuntimeApiKey.mock.calls.map(([, key]) => key);
+  return { rotated, state, runtimeKeys };
+}
+
+async function limitedRun(params: {
+  secondSignedIn: boolean;
+  replaySafe: boolean;
+  subscriptionsOnly: boolean;
+}) {
+  const { controller, state, setRuntimeApiKey } = await setUpRun(params);
+  const limits: RateLimitAccountWait[] = [];
+  const switches: string[] = [];
+  const retried = await controller.maybeRetryTransient({
+    reason: "rate_limit",
+    message: USAGE_LIMIT_MESSAGE,
+    retryAfterMs: USAGE_LIMIT_MS,
+    failoverEligible: params.replaySafe,
+    profileCandidates: ORDER,
+    onRetry: ({ limit }) => {
+      if (limit) {
+        limits.push(limit);
+      }
+    },
+    onAccountSwitch: (change) => {
+      switches.push(change.to.profileId);
+    },
+  });
+  const runtimeKeys = setRuntimeApiKey.mock.calls.map(([, key]) => key);
+  return { retried, state, limits, switches, runtimeKeys };
+}
+
+describe("rate-limit account switch with the embedded auth controller", () => {
+  beforeEach(() => {
+    vi.mocked(sleepWithAbort).mockClear();
+    mocks.getApiKeyForModelCore.mockReset();
+    mocks.prepareProviderRuntimeAuth.mockReset();
+  });
+
+  it("waits on the limited account when the next subscription can't sign in and tools ran", async () => {
+    const run = await limitedRun({
+      secondSignedIn: false,
+      replaySafe: false,
+      subscriptionsOnly: true,
+    });
+
+    expect(run.retried).toBe(true);
+    const slept = vi.mocked(sleepWithAbort).mock.calls.reduce((total, [ms]) => total + ms, 0);
+    expect(slept).toBeGreaterThanOrEqual(USAGE_LIMIT_MS);
+    expect(run.limits).toEqual([
+      expect.objectContaining({
+        reason: "no_other_subscription",
+        account: { profileId: "anthropic:first", label: "Claude account 1" },
+      }),
+    ]);
+    expect(run.switches).toEqual([]);
+    // The run still signs in as the limited account; the API key was never applied.
+    expect(run.state.lastProfileId).toBe("anthropic:first");
+    expect(run.state.apiKeyInfo?.profileId).toBe("anthropic:first");
+    expect(run.runtimeKeys).not.toContain("fixture-api-key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-token-first");
+  });
+
+  it("hands a replay-safe run to fallback without applying the API key", async () => {
+    const run = await limitedRun({
+      secondSignedIn: false,
+      replaySafe: true,
+      subscriptionsOnly: true,
+    });
+
+    expect(run.retried).toBe(false);
+    expect(sleepWithAbort).not.toHaveBeenCalled();
+    expect(run.switches).toEqual([]);
+    expect(run.state.lastProfileId).toBe("anthropic:first");
+    expect(run.state.apiKeyInfo?.profileId).toBe("anthropic:first");
+    expect(run.runtimeKeys).not.toContain("fixture-api-key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-token-first");
+  });
+
+  it("passes over the API key to the next subscription that signs in", async () => {
+    const run = await limitedRun({
+      secondSignedIn: true,
+      replaySafe: false,
+      subscriptionsOnly: true,
+    });
+
+    expect(run.retried).toBe(true);
+    expect(sleepWithAbort).not.toHaveBeenCalled();
+    expect(run.switches).toEqual(["anthropic:second"]);
+    expect(run.state.lastProfileId).toBe("anthropic:second");
+    expect(run.runtimeKeys).not.toContain("fixture-api-key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-token-second");
+  });
+
+  it("never rotates a short rate limit onto an API-key sign-in when subscriptionsOnly is set", async () => {
+    const run = await rotateOnce({ secondSignedIn: true, subscriptionsOnly: true });
+
+    // The rotation really happens (no cap throw): it lands on the next subscription, not the key.
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:second");
+    expect(run.runtimeKeys).not.toContain("fixture-api-key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-token-second");
+  });
+
+  it("rotates a short rate limit onto the API-key sign-in when subscriptionsOnly is off", async () => {
+    const run = await rotateOnce({ secondSignedIn: true, subscriptionsOnly: false });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
+  });
+
+  it("never rotates an auth failure onto an API-key sign-in when subscriptionsOnly is set", async () => {
+    const run = await rotateOnce({
+      secondSignedIn: true,
+      subscriptionsOnly: true,
+      rateLimit: false,
+    });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:second");
+    expect(run.runtimeKeys).not.toContain("fixture-api-key");
+  });
+
+  it("rotates an auth failure onto the API-key sign-in when subscriptionsOnly is off", async () => {
+    const run = await rotateOnce({
+      secondSignedIn: true,
+      subscriptionsOnly: false,
+      rateLimit: false,
+    });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
+  });
+
+  it("a harness-owned run takes the next entry of its own list without re-filtering it", async () => {
+    // The guard is skipped here on purpose: prepare-auth builds a harness-owned run's list without
+    // API-key sign-ins when subscriptionsOnly is set (see prepare-auth.test.ts), so this list is what
+    // the run was given and the controller only moves along it.
+    const run = await rotateOnce({
+      secondSignedIn: true,
+      subscriptionsOnly: true,
+      rateLimit: false,
+      harnessOwnsTransport: true,
+    });
+
+    expect(run.rotated).toBe(true);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
+  });
+
+  it("moves a limited run onto the API-key sign-in when subscriptionsOnly is off", async () => {
+    const run = await limitedRun({
+      secondSignedIn: false,
+      replaySafe: false,
+      subscriptionsOnly: false,
+    });
+
+    expect(run.retried).toBe(true);
+    expect(sleepWithAbort).not.toHaveBeenCalled();
+    expect(run.switches).toEqual(["anthropic:key"]);
+    expect(run.state.lastProfileId).toBe("anthropic:key");
+    expect(run.runtimeKeys.at(-1)).toBe("fixture-api-key");
+  });
+});

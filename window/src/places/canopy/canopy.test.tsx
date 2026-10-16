@@ -43,15 +43,15 @@ function fx(over: Record<string, unknown> = {}): Record<string, unknown> {
 let root: Root | undefined, host: HTMLElement, emit: (event: string, payload: unknown) => void = () => {};
 afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; });
 
-async function mount(responses = fx(), level: Level = "regular") {
+async function mount(responses = fx(), level: Level = "regular", scopes = ["operator.admin"]) {
   const calls: [string, unknown][] = [];
   const request = vi.fn(async (method: string, params?: unknown) => {
     calls.push([method, params]);
-    if (method in responses) { const v = responses[method]; if (v instanceof Error) throw v; return v; }
+    if (method in responses) { const v = responses[method]; if (v instanceof Error) throw v; return typeof v === "function" ? v(params) : v; }
     return { applied: true, ok: true };
   });
   const listeners = new Set<(e: { event: string; payload?: unknown }) => void>();
-  const engine: WindowEngine = { request: request as WindowEngine["request"], onEvent: fn => { listeners.add(fn); return () => listeners.delete(fn); }, sessionKey: null, scopes: ["operator.admin"] };
+  const engine: WindowEngine = { request: request as WindowEngine["request"], onEvent: fn => { listeners.add(fn); return () => listeners.delete(fn); }, sessionKey: null, scopes };
   emit = (event, payload) => listeners.forEach(fn => fn({ event, payload }));
   const open = vi.fn();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -266,15 +266,70 @@ describe("Canopy states", () => {
     const chip = [...document.querySelectorAll(".cn-chip")].find(c => c.textContent?.includes("Private computer"))!;
     expect(chip.textContent).not.toContain("running");
   });
+  it("draws no '0 running' on idle computers and keeps the empty line (CN2)", async () => {
+    const idle = { "sessions.list": { sessions: [], hasMore: false }, "exec.approval.list": [], "cron.list": { jobs: [], hasMore: false }, "canopy.cards.list": { cards: [], boards: [] } };
+    await mount(fx({ ...idle, "node.list": { nodes: [{ nodeId: "n1", displayName: "Office box", connected: true }, { nodeId: "n2", displayName: "Spare box", connected: false }] } }));
+    const chips = [...document.querySelectorAll(".cn-chip")].map(c => c.textContent ?? "");
+    expect(chips).toHaveLength(3);
+    for (const text of chips) expect(text).not.toContain("0 running");
+    expect(host.textContent).toContain("Nothing is running right now.");
+  });
+  it("counts runs on a computer only when some are running there", async () => {
+    await mount();
+    const chip = (name: string) => [...document.querySelectorAll(".cn-chip")].find(c => c.textContent?.includes(name))!.textContent;
+    expect(chip("Office box")).toContain("1 running");
+    expect(chip("This computer")).toContain("2 running");
+  });
+  it("says nothing matches, with Clear filters, when a computer filter empties Now (CN2)", async () => {
+    await mount(fx({ "node.list": { nodes: [{ nodeId: "n1", displayName: "Office box", connected: true }, { nodeId: "n2", displayName: "Spare box", connected: true }] } }));
+    await click([...document.querySelectorAll<HTMLElement>(".cn-chip")].find(c => c.textContent?.includes("Spare box"))!);
+    expect(host.textContent).toContain("Nothing running matches these filters.");
+    expect(host.querySelector(".cn-board")).toBeNull();
+    await click(button("Clear filters"));
+    expect(runCard("Check the invoice")).toBeTruthy();
+  });
   it("reports a failing source on its own line and keeps the rest", async () => {
     await mount(fx({ "plugin.approval.list": new Error("not connected") }));
     expect(host.textContent).toContain("Add-on approvals: not connected");
     expect(runCard("Check the invoice")).toBeTruthy();
   });
   it("shows the Cards error when the canopy add-on can't be read", async () => {
-    await mount(fx({ "canopy.cards.list": new Error("unknown method: canopy.cards.list") }));
+    await mount(fx({ "canopy.cards.list": new Error("not connected") }));
     await click(button("Cards"));
-    expect(host.querySelector("[role=alert]")?.textContent).toContain("Cards: unknown method: canopy.cards.list");
+    expect(host.querySelector("[role=alert]")?.textContent).toContain("Cards: not connected");
+  });
+  it("shows a switched-off empty state, not the raw error, when the Canopy plugin is off", async () => {
+    const off = fx({ "canopy.cards.list": new Error("unknown method: canopy.cards.list") });
+    const { calls } = await mount(off);
+    await click(button("Cards"));
+    expect(host.textContent).not.toContain("unknown method");
+    expect(host.querySelector("[role=alert]")).toBeNull();
+    expect(host.textContent).toContain("Cards need the Canopy plugin, which is switched off.");
+    off["canopy.cards.list"] = { cards: CARDS, boards: [{ id: "default", total: 2 }] };
+    await click(button("Switch on Canopy"));
+    expect(calls).toContainEqual(["plugins.setEnabled", { pluginId: "canopy", enabled: true }]);
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(host.textContent).toContain("Ready card");
+    expect(host.textContent).not.toContain("switched off");
+  });
+  it("asks for the capability review before switching Canopy on when the engine wants one", async () => {
+    const refusal = Object.assign(new Error("Canopy adds tools for your Trunks."), { details: { capabilityConsentCode: "review", reviewToken: "rt" } });
+    let tries = 0;
+    const { calls } = await mount(fx({
+      "canopy.cards.list": new Error("unknown method: canopy.cards.list"),
+      "plugins.setEnabled": () => { if (++tries === 1) throw refusal; return { ok: true }; },
+    }));
+    await click(button("Cards"));
+    await click(button("Switch on Canopy"));
+    expect(document.body.textContent).toContain("Canopy adds tools for your Trunks.");
+    await click(button("Allow"));
+    expect(calls).toContainEqual(["plugins.setEnabled", { pluginId: "canopy", enabled: true, acknowledgeCapabilities: { reviewToken: "rt" } }]);
+  });
+  it("keeps Switch on Canopy disabled, with its reason, for a viewer who cannot change settings", async () => {
+    await mount(fx({ "canopy.cards.list": new Error("unknown method: canopy.cards.list") }), "regular", ["operator.read"]);
+    await click(button("Cards"));
+    expect(button("Switch on Canopy").disabled).toBe(true);
+    expect(host.textContent).toContain("Only someone who can change settings can switch Canopy on.");
   });
   it("lists a conversation that finished today in Done today", async () => {
     await mount(fx({ "sessions.list": { sessions: [...SESSIONS, { key: "agent:c:old", agentId: "c", label: "Sorted the receipts", status: "done", endedAt: now, runtimeMs: 65000 }], hasMore: false } }));
@@ -350,5 +405,18 @@ describe("Canopy data", () => {
     expect(dispatchLine({})).toBe("No cards were started.");
     expect(boardIdFor("Website!", [{ id: "website" }])).toBe("website-2");
     expect(convState({ status: "todo" }, [], now)[0]).toBe("No conversation");
+  });
+});
+
+// Every step, live: with no steps, Open all, Fold all and Clear have nothing to act on, so they are off rather than silent.
+// Fails on main, where the three buttons stayed on and did nothing (the button crawl read them as dead).
+describe("Canopy Every step bulk controls with no steps", () => {
+  it("disables Open all, Fold all and Clear", async () => {
+    // The [A] sections show from Advanced (see the test above).
+    await mount(fx({ "sessions.list": { sessions: [], hasMore: false }, "cron.list": { jobs: [], hasMore: false }, "exec.approval.list": [] }), "advanced");
+    const live = host.querySelector<HTMLElement>('[aria-label="Every step, live"]');
+    expect(live).not.toBeNull();
+    const bulk = ["Open all", "Fold all", "Clear"].map((text) => [...live!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === text));
+    expect(bulk.map((b) => b?.disabled)).toEqual([true, true, true]);
   });
 });

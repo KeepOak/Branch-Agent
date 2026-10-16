@@ -12,7 +12,7 @@ import { Status } from "../library/ui";
 import { Grey, list, Logo, rec, str, type Rec } from "./common";
 import { shownWhy } from "../../shell/shown-why";
 
-type Item = { id: string; name: string; summary: string; author: string; categories: string[]; action: string; enabled: boolean; installed: boolean; install: Rec | null };
+export type Item = { id: string; name: string; summary: string; author: string; categories: string[]; action: string; enabled: boolean; installed: boolean; install: Rec | null };
 export function readItems(result: unknown): Item[] {
   return list(rec(result).items).map(i => {
     const c = rec(i.catalog), l = rec(i.local);
@@ -68,7 +68,7 @@ export function CatalogDialog({ mode, engine, close, ownServer, done }: { mode: 
     footer={mode === "connector" ? <><button type="button" className="btn ghost" onClick={close}>Cancel</button><button type="button" className="btn" onClick={ownServer}>Add your own server</button></> : null}>
     <p className="dlg-p">{mode === "connector" ? "Connectors in curated groups, or add your own server." : "A plugin adds everything in it at once, and you can switch parts off afterwards."}</p>
     <div className="cz-top"><label className="cz-search"><Icon name="search" small /><input type="search" aria-label={mode === "connector" ? "Search connectors" : "Search plugins"} placeholder={mode === "connector" ? "Search connectors" : "Search plugins"} value={query} onChange={e => setQuery(e.target.value)} /></label>
-      {mode === "connector" && <><Grey reason="Needs the engine's public registry search.">Public registry</Grey><Grey reason="Needs the engine's import from other apps.">Bring in from other apps</Grey></>}</div>
+      {mode === "connector" && <><Grey reason="Searching the public registry comes in a later update.">Public registry</Grey><Grey reason="Bringing connectors in from other apps comes in a later update.">Bring in from other apps</Grey></>}</div>
     <div className="cz-tabs" role="tablist" aria-label="Groups">{tabs.map(t => <button key={t.id} type="button" role="tab" aria-selected={filter === t.id} onClick={() => setFilter(t.id)}>{t.name}</button>)}</div>
     <Status {...browse} />{remote && <p className="cz-hint">{remote}</p>}
     {action.error && <p role="alert" className="cz-error">{action.error}</p>}

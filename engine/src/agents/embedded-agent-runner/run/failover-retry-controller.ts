@@ -3,10 +3,13 @@ import { sleepWithAbort } from "../../../infra/backoff.js";
 import { emitDiagnosticsTimelineEvent } from "../../../infra/diagnostics-timeline.js";
 import {
   type AuthProfileFailureReason,
+  isProfileInCooldown,
+  markAuthProfileBlockedUntil,
   markAuthProfileFailure,
   markInlineProviderApiKeyFailure,
 } from "../../auth-profiles.js";
 import { revokeRuntimeAuthMaterializations } from "../../auth-profiles/runtime-materializations.js";
+import { isSubscriptionsOnly } from "../../auth-profiles/subscription-only.js";
 import {
   FailoverError,
   resolveFailoverReasonFromError,
@@ -60,6 +63,66 @@ const MAX_RATE_LIMIT_ATTEMPTS = 10;
 const MAX_OVERLOAD_PROFILE_ROTATIONS = 1;
 const MAX_RATE_LIMIT_PROFILE_ROTATIONS = 1;
 const RETRY_SLEEP_CHUNK_MS = 24 * 60 * 60 * 1000;
+/** A rate or usage limit that resets further away than this moves the run to the next free
+ *  subscription instead of waiting. Shorter waits keep the same-account retry. */
+export const RATE_LIMIT_ACCOUNT_SWITCH_AFTER_MS = 5 * 60 * 1000;
+
+/** Why a long rate limit waits on the same account instead of switching. */
+export type RateLimitWaitReason = "pinned" | "no_other_subscription";
+export type RateLimitAccount = { profileId: string; label: string };
+export type RateLimitAccountSwitch = {
+  from: RateLimitAccount;
+  to: RateLimitAccount;
+  /** When the limited account resets; absent when the provider's floor is unrepresentable. */
+  resetAt?: number;
+};
+export type RateLimitAccountWait = {
+  account?: RateLimitAccount;
+  resetAt?: number;
+  reason: RateLimitWaitReason;
+};
+
+const SERVICE_NAMES: Record<string, string> = {
+  anthropic: "Claude",
+  "claude-cli": "Claude",
+  openai: "ChatGPT",
+  "openai-codex": "ChatGPT",
+};
+
+/**
+ * A stored sign-in a rate-limited run may move to. API keys count only when allowApiKeys is set
+ * (subscriptionsOnly off); keyless runs never count.
+ */
+function isSwitchableProfile(
+  store: PreparedRuntime["profileFailureStore"],
+  profileId: string | undefined,
+  allowApiKeys: boolean,
+): profileId is string {
+  const type = profileId ? store.profiles[profileId]?.type : undefined;
+  return type !== undefined && (allowApiKeys || type !== "api_key");
+}
+
+/** "Claude account 2": the service and the account's place among this run's subscriptions. */
+function describeAccount(
+  store: PreparedRuntime["profileFailureStore"],
+  provider: string,
+  candidates: readonly (string | undefined)[],
+  profileId: string,
+  allowApiKeys: boolean,
+): RateLimitAccount {
+  const service =
+    SERVICE_NAMES[store.profiles[profileId]?.provider ?? provider] ??
+    SERVICE_NAMES[provider] ??
+    provider;
+  const subscriptions = [...new Set(candidates)].filter((id) =>
+    isSwitchableProfile(store, id, allowApiKeys),
+  );
+  const place = subscriptions.indexOf(profileId);
+  return {
+    profileId,
+    label: `${service} account ${place < 0 ? subscriptions.length + 1 : place + 1}`,
+  };
+}
 
 type PreparedRuntime = Awaited<ReturnType<typeof prepareEmbeddedRunRuntime>>;
 export type EmbeddedRunFailoverRetryController = ReturnType<
@@ -68,6 +131,7 @@ export type EmbeddedRunFailoverRetryController = ReturnType<
 type AuthRetryTrace = TraceAttempt & { reason: FailoverReason };
 type TransientRetryReason = FailoverReason | "output_limit";
 
+type AuthAdvanceOptions = Parameters<PreparedRuntime["advanceAttemptAuthProfile"]>[0];
 type RateLimitAuthProfileContext = {
   failoverProvider: string;
   failoverModel: string;
@@ -172,6 +236,99 @@ export function createEmbeddedRunFailoverRetryController(input: {
     });
   };
 
+  // A long rate limit marks the limited subscription blocked until its reset (so it isn't
+  // picked next anywhere) and moves this run to the next free subscription in order. The
+  // caller continues the same transcript, so finished tool calls never run again.
+  // Every automatic move in this run goes through here. With subscriptionsOnly, a stored API-key
+  // sign-in is passed over by rate-limit, auth-failure and recovery rotations alike. Harness-owned
+  // runs cannot pass over a profile, and their attempt list is already filtered in prepare-auth.
+  const advanceAutomaticAuthProfile = (options?: AuthAdvanceOptions): Promise<boolean> => {
+    if (!isSubscriptionsOnly(params.config) || input.harnessOwnsTransport()) {
+      return input.advanceAuthProfile(options);
+    }
+    const accept = options?.accept;
+    return input.advanceAuthProfile({
+      accept: (candidate) =>
+        !(candidate !== undefined && profileFailureStore.profiles[candidate]?.type === "api_key") &&
+        (accept ? accept(candidate) : true),
+    });
+  };
+  const switchLimitedSubscription = async (limit: {
+    retryAfterMs: number;
+    candidates: readonly (string | undefined)[];
+  }): Promise<
+    | { action: "switched"; change: RateLimitAccountSwitch }
+    | { action: "wait"; wait: RateLimitAccountWait }
+  > => {
+    const store = profileFailureStore;
+    const allowApiKeys = !isSubscriptionsOnly(params.config);
+    const limitedProfileId = input.getLastProfileId();
+    const resetAt = Number.isFinite(limit.retryAfterMs)
+      ? Date.now() + Math.ceil(limit.retryAfterMs)
+      : undefined;
+    const from = limitedProfileId
+      ? describeAccount(store, provider, limit.candidates, limitedProfileId, allowApiKeys)
+      : undefined;
+    if (limitedProfileId && resetAt !== undefined && params.authProfileStateMode !== "read-only") {
+      try {
+        await markAuthProfileBlockedUntil({
+          store,
+          profileId: limitedProfileId,
+          blockedUntil: resetAt,
+          source: "provider_retry_after",
+          agentDir,
+          runId: params.runId,
+        });
+      } catch (markError) {
+        log.warn(`limited profile mark failed: ${String(markError)}`);
+      }
+    }
+    if (
+      limitedProfileId &&
+      params.authProfileIdSource === "user" &&
+      limitedProfileId === params.authProfileId
+    ) {
+      return { action: "wait", wait: { account: from, resetAt, reason: "pinned" } };
+    }
+    const position = limitedProfileId ? limit.candidates.indexOf(limitedProfileId) : -1;
+    const target =
+      position < 0
+        ? undefined
+        : limit.candidates
+            .slice(position + 1)
+            .find(
+              (candidate) =>
+                candidate !== limitedProfileId &&
+                isSwitchableProfile(store, candidate, allowApiKeys) &&
+                !isProfileInCooldown(store, candidate, undefined, modelId),
+            );
+    if (!from || !target) {
+      return { action: "wait", wait: { account: from, resetAt, reason: "no_other_subscription" } };
+    }
+    // Move only to another sign-in the switch allows: with subscriptionsOnly, API keys are passed
+    // over without applying their credentials. When no such sign-in works, the run stays on (and waits for) this one.
+    const advanced = await input.advanceAuthProfile({
+      accept: (candidate) =>
+        candidate !== limitedProfileId && isSwitchableProfile(store, candidate, allowApiKeys),
+    });
+    const current = input.getLastProfileId();
+    if (
+      advanced &&
+      current !== limitedProfileId &&
+      isSwitchableProfile(store, current, allowApiKeys)
+    ) {
+      return {
+        action: "switched",
+        change: {
+          from,
+          to: describeAccount(store, provider, limit.candidates, current, allowApiKeys),
+          ...(resetAt !== undefined ? { resetAt } : {}),
+        },
+      };
+    }
+    return { action: "wait", wait: { account: from, resetAt, reason: "no_other_subscription" } };
+  };
+
   return {
     overloadProfileRotationLimit: MAX_OVERLOAD_PROFILE_ROTATIONS,
     get transientRetryCount() {
@@ -188,7 +345,7 @@ export function createEmbeddedRunFailoverRetryController(input: {
         transientRetryWindowStartMs = null;
       }
     },
-    advanceAuthProfile: input.advanceAuthProfile,
+    advanceAuthProfile: advanceAutomaticAuthProfile,
     advanceRateLimitAuthProfile: async (context: RateLimitAuthProfileContext): Promise<boolean> => {
       if (rateLimitProfileRotations >= MAX_RATE_LIMIT_PROFILE_ROTATIONS && fallbackConfigured) {
         const status = resolveFailoverStatus("rate_limit");
@@ -209,7 +366,7 @@ export function createEmbeddedRunFailoverRetryController(input: {
           },
         );
       }
-      const rotated = await input.advanceAuthProfile();
+      const rotated = await advanceAutomaticAuthProfile();
       if (rotated) {
         rateLimitProfileRotations += 1;
       }
@@ -231,7 +388,7 @@ export function createEmbeddedRunFailoverRetryController(input: {
       const profileFailureReason = resolveProfileFailureReason(failoverReason);
       const userPinnedProfile =
         params.authProfileIdSource === "user" && failedProfileId === params.authProfileId;
-      const rotated = userPinnedProfile ? false : await input.advanceAuthProfile();
+      const rotated = userPinnedProfile ? false : await advanceAutomaticAuthProfile();
       try {
         await maybeMarkAuthProfileFailure({
           profileId: failedProfileId,
@@ -265,7 +422,13 @@ export function createEmbeddedRunFailoverRetryController(input: {
         maxRetries: number;
         delayMs: number;
         reason: TransientRetryReason;
+        /** Set when a long rate limit waits on the same account; names it and its reset. */
+        limit?: RateLimitAccountWait;
       }) => void | Promise<void>;
+      /** The run's auth profile order; enables switching to another subscription on long limits. */
+      profileCandidates?: readonly (string | undefined)[];
+      /** Called after a long rate limit moved the run to another subscription. */
+      onAccountSwitch?: (change: RateLimitAccountSwitch) => void | Promise<void>;
     }): Promise<boolean> => {
       const recordDecision = (
         decision: "accepted" | "rejected",
@@ -276,6 +439,8 @@ export function createEmbeddedRunFailoverRetryController(input: {
           | "retry_budget_exhausted"
           | "retry_delay_unavailable"
           | "retry_delay_exceeds_cap"
+          | "account_switched"
+          | "no_other_subscription"
           | "wait_interrupted"
           | "backoff_completed",
       ) =>
@@ -307,7 +472,49 @@ export function createEmbeddedRunFailoverRetryController(input: {
         return false;
       }
       const rateLimit = retry.reason === "rate_limit";
-      if (rateLimit && hasLongWindowRateLimitEvidence(retry.message)) {
+      let limitWait: RateLimitAccountWait | undefined;
+      // Only a run on a stored sign-in switches (API keys too, unless subscriptionsOnly); keyless runs keep the waits below.
+      if (
+        rateLimit &&
+        retry.retryAfterMs !== undefined &&
+        retry.retryAfterMs > RATE_LIMIT_ACCOUNT_SWITCH_AFTER_MS &&
+        isSwitchableProfile(
+          profileFailureStore,
+          input.getLastProfileId(),
+          !isSubscriptionsOnly(params.config),
+        )
+      ) {
+        const switched = await switchLimitedSubscription({
+          retryAfterMs: retry.retryAfterMs,
+          candidates: retry.profileCandidates ?? [],
+        });
+        if (switched.action === "switched") {
+          recordDecision("accepted", "account_switched");
+          log.warn(
+            `rate limit on ${sanitizeForLog(provider)}/${sanitizeForLog(modelId)} resets in ${retry.retryAfterMs === Infinity ? "an unrepresentable time" : `${retry.retryAfterMs}ms`}; moved to the next free sign-in`,
+          );
+          await retry.onAccountSwitch?.(switched.change);
+          return true;
+        }
+        if (
+          switched.wait.reason === "no_other_subscription" &&
+          fallbackConfigured &&
+          retry.failoverEligible !== false
+        ) {
+          // Hand the replay-safe attempt to the fallback chain. Profile rotation could only
+          // reach an API key now, so the next rate-limit rotation escalates straight to fallback.
+          rateLimitProfileRotations = MAX_RATE_LIMIT_PROFILE_ROTATIONS;
+          recordDecision("rejected", "no_other_subscription");
+          log.warn(
+            `rate limit on ${sanitizeForLog(provider)}/${sanitizeForLog(modelId)} is long and no other subscription is free; failing over`,
+          );
+          return false;
+        }
+        limitWait = switched.wait;
+      }
+      // A long limit that must wait on its account (pinned, or no free subscription and not
+      // replay-safe) waits even on usage-window wording; declining would end the run unnoticed.
+      if (rateLimit && !limitWait && hasLongWindowRateLimitEvidence(retry.message)) {
         recordDecision("rejected", "long_window_rate_limit");
         return false;
       }
@@ -323,6 +530,8 @@ export function createEmbeddedRunFailoverRetryController(input: {
         rateLimit &&
         fallbackConfigured &&
         retry.failoverEligible !== false &&
+        // A user-pinned account never leaves its account for the fallback chain.
+        limitWait?.reason !== "pinned" &&
         retryDelayCapMs !== undefined &&
         retry.retryAfterMs !== undefined &&
         retry.retryAfterMs > retryDelayCapMs
@@ -378,6 +587,7 @@ export function createEmbeddedRunFailoverRetryController(input: {
             : retryBudget,
         delayMs,
         reason: retry.reason,
+        ...(limitWait ? { limit: limitWait } : {}),
       });
       const closeRetryWait = params.onRetryWait?.(Date.now() + delayMs, params.abortSignal);
       let completed = false;
@@ -394,7 +604,7 @@ export function createEmbeddedRunFailoverRetryController(input: {
         if (!completed) {
           recordDecision("rejected", "wait_interrupted");
         }
-        closeRetryWait?.(completed);
+        await closeRetryWait?.(completed);
       }
       recordDecision("accepted", "backoff_completed");
       transientRetryCount += 1;

@@ -78,6 +78,7 @@ import {
 import {
   createApiKeyCredential,
   createAuthProfileStoreFixture,
+  oauthCred,
 } from "../auth-profiles/credential-fixtures.test-support.js";
 import { resolveApiKeyForProfile as resolveApiKeyForProfileImpl } from "../auth-profiles/oauth.js";
 import {
@@ -1431,9 +1432,9 @@ describe("prepareCliRunContext", () => {
     saveAuthProfileStore(
       createAuthProfileStoreFixture({
         [authProfileId]: {
-          type: "api_key",
+          type: "token",
           provider: "claude-cli",
-          key: "stored-key",
+          token: "stored-token",
         },
       }),
       agentDir,
@@ -1452,7 +1453,7 @@ describe("prepareCliRunContext", () => {
       config: {
         auth: {
           profiles: {
-            [authProfileId]: { provider: "claude-cli", mode: "api_key" },
+            [authProfileId]: { provider: "claude-cli", mode: "token" },
           },
         },
       },
@@ -1462,6 +1463,115 @@ describe("prepareCliRunContext", () => {
     expect(prepareExecution).toHaveBeenCalledWith(
       expect.objectContaining({ authProfileId: testCase.expectedAuthProfileId }),
     );
+  });
+
+  describe("unpinned Trunk sign-in pick", () => {
+    const apiKeyProfileId = "claude-cli:fixture-key";
+    const planProfileId = "claude-cli:fixture-plan";
+
+    function saveClaudeSignIns(profiles: Parameters<typeof createAuthProfileStoreFixture>[0]) {
+      const agentDir = path.join(fixture.session.dir, "agents", "main", "agent");
+      fs.mkdirSync(agentDir, { recursive: true });
+      saveAuthProfileStore(
+        {
+          ...createAuthProfileStoreFixture(profiles),
+          order: { "claude-cli": Object.keys(profiles as Record<string, unknown>) },
+        },
+        agentDir,
+      );
+      return agentDir;
+    }
+
+    it("runs on the subscription sign-in when an API key is first in order and subscriptionsOnly is set", async () => {
+      const prepareExecution = vi.fn(async () => ({ env: { TEST_PREPARED_ENV: "1" } }));
+      const agentDir = saveClaudeSignIns({
+        [apiKeyProfileId]: createApiKeyCredential("claude-cli", "fixture-key"),
+        [planProfileId]: oauthCred({
+          provider: "claude-cli",
+          access: "fixture-access",
+          refresh: "fixture-refresh",
+          expires: 4_102_444_800_000,
+        }),
+      });
+      setCliBackendForPrepareTest({ prepareExecution, authEpochMode: "profile-only" });
+
+      const context = await fixture.prepare({
+        sessionKey: "agent:main:main",
+        agentDir,
+        provider: "claude-cli",
+        model: "sonnet",
+        config: { agents: { defaults: { subscriptionsOnly: true } } },
+      });
+
+      expect(context.effectiveAuthProfileId).toBe(planProfileId);
+      expect(prepareExecution).toHaveBeenCalledWith(
+        expect.objectContaining({ authProfileId: planProfileId }),
+      );
+    });
+
+    it("fails with a plain message when only API-key sign-ins exist and subscriptionsOnly is set", async () => {
+      const prepareExecution = vi.fn(async () => ({ env: { TEST_PREPARED_ENV: "1" } }));
+      const agentDir = saveClaudeSignIns({
+        [apiKeyProfileId]: createApiKeyCredential("claude-cli", "fixture-key"),
+      });
+      setCliBackendForPrepareTest({ prepareExecution, authEpochMode: "profile-only" });
+
+      await expect(
+        fixture.prepare({
+          sessionKey: "agent:main:main",
+          agentDir,
+          provider: "claude-cli",
+          model: "sonnet",
+          config: { agents: { defaults: { subscriptionsOnly: true } } },
+        }),
+      ).rejects.toThrow("Trunks only use subscription sign-ins.");
+      expect(prepareExecution).not.toHaveBeenCalled();
+    });
+
+    it("runs on an API-key sign-in when it is the only one and subscriptionsOnly is off", async () => {
+      const prepareExecution = vi.fn(async () => ({ env: { TEST_PREPARED_ENV: "1" } }));
+      const agentDir = saveClaudeSignIns({
+        [apiKeyProfileId]: createApiKeyCredential("claude-cli", "fixture-key"),
+      });
+      setCliBackendForPrepareTest({ prepareExecution, authEpochMode: "profile-only" });
+
+      const context = await fixture.prepare({
+        sessionKey: "agent:main:main",
+        agentDir,
+        provider: "claude-cli",
+        model: "sonnet",
+        config: {},
+      });
+
+      expect(context.effectiveAuthProfileId).toBe(apiKeyProfileId);
+      expect(prepareExecution).toHaveBeenCalledWith(
+        expect.objectContaining({ authProfileId: apiKeyProfileId }),
+      );
+    });
+
+    it("keeps the first API-key sign-in in order when subscriptionsOnly is off", async () => {
+      const prepareExecution = vi.fn(async () => ({ env: { TEST_PREPARED_ENV: "1" } }));
+      const agentDir = saveClaudeSignIns({
+        [apiKeyProfileId]: createApiKeyCredential("claude-cli", "fixture-key"),
+        [planProfileId]: oauthCred({
+          provider: "claude-cli",
+          access: "fixture-access",
+          refresh: "fixture-refresh",
+          expires: 4_102_444_800_000,
+        }),
+      });
+      setCliBackendForPrepareTest({ prepareExecution, authEpochMode: "profile-only" });
+
+      const context = await fixture.prepare({
+        sessionKey: "agent:main:main",
+        agentDir,
+        provider: "claude-cli",
+        model: "sonnet",
+        config: { agents: { defaults: { subscriptionsOnly: false } } },
+      });
+
+      expect(context.effectiveAuthProfileId).toBe(apiKeyProfileId);
+    });
   });
 
   it("lets Gemini CLI preparation override generated MCP system settings auth", async () => {
@@ -3387,7 +3497,8 @@ describe("prepareCliRunContext", () => {
       resolveExecutionArgs: ({ baseArgs }) => [...baseArgs],
       prepareExecution: async () => ({ execute }),
       config: {
-        command: "/bin/sh",
+        // Any executable that resolves on every OS; the fake execute never spawns it.
+        command: process.execPath,
         args: [],
         input: "stdin",
         output: "jsonl",
@@ -3467,7 +3578,7 @@ describe("prepareCliRunContext", () => {
         const processRun = executePluginOwnedProcess({
           context,
           execute: target.execute,
-          executionCommand: "/bin/sh",
+          executionCommand: process.execPath,
           executionArgs: [],
           env: { PATH: "/bin:/usr/bin" },
           prompt: context.params.prompt,
@@ -4294,7 +4405,7 @@ describe("prepareCliRunContext", () => {
           : null;
       },
       config: {
-        command: "/bin/sh",
+        command: process.execPath,
         args: [],
         resumeArgs: ["--resume", "{sessionId}"],
         input: "stdin",
@@ -4821,8 +4932,9 @@ describe("prepareCliRunContext", () => {
       },
     });
 
-    expect(context.systemPrompt).not.toContain("cold-skill/SKILL.md");
-    expect(context.systemPrompt).toContain("healthy-skill/SKILL.md");
+    // The prompt lists skill files with this OS's path separator.
+    expect(context.systemPrompt).not.toContain(path.join("cold-skill", "SKILL.md"));
+    expect(context.systemPrompt).toContain(path.join("healthy-skill", "SKILL.md"));
   });
 
   it("keeps prompt skills when native plugin materialization returns no args", async () => {
@@ -4946,7 +5058,7 @@ describe("prepareCliRunContext", () => {
           resolveExecutionArgs: ({ baseArgs }) => [...baseArgs],
           autoSelectAuthProfile: false,
           config: {
-            command: "/bin/echo",
+            command: process.execPath,
             args: [],
             resumeArgs: ["--resume", "{sessionId}"],
             output: "jsonl",

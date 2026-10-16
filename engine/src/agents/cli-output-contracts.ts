@@ -58,6 +58,8 @@ export type CliOutput = {
   terminalFailure?: CliTerminalFailure;
   /** A caller interruption that ended the turn after usable assistant text was streamed. */
   terminalInterruption?: CliTerminalInterruption;
+  /** The turn's last output was a tool call: no final message followed it. */
+  endedAfterToolCall?: true;
   diagnostics?: {
     process?: CliProcessDiagnostics;
   };

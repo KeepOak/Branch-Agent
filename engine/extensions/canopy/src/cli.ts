@@ -1,12 +1,13 @@
 import { CANOPY_STATUSES, type CanopyCard } from "@branch/canopy-contract";
-import type { Command } from "commander";
 import { formatErrorMessage } from "branch/plugin-sdk/error-runtime";
 import { addGatewayClientOptions, callGatewayFromCli } from "branch/plugin-sdk/gateway-runtime";
 import { parseStrictPositiveInteger } from "branch/plugin-sdk/number-runtime";
 import { getRuntimeConfig } from "branch/plugin-sdk/runtime-config-snapshot";
 import { isRecord } from "branch/plugin-sdk/string-coerce-runtime";
+import type { Command } from "commander";
 import { resolveCanopyCardByIdOrPrefix } from "./card-lookup.js";
 import { redactClaimToken, redactDispatchResult } from "./card-redaction.js";
+import { registerCanopyGitHubSyncCli } from "./cli-github-sync.js";
 import type { CanopyStore } from "./store.js";
 
 type JsonOptions = {
@@ -121,6 +122,8 @@ export function registerCanopyCli(params: { program: Command; store: CanopyStore
   const canopy = params.program
     .command("canopy")
     .description("Manage Canopy cards and worker dispatch");
+
+  registerCanopyGitHubSyncCli({ canopy, callGateway: callCanopyGateway });
 
   canopy
     .command("list")

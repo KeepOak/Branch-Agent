@@ -5,7 +5,7 @@ import "./source-native-test-loader.mts";
 const first = await import("./source-streaming-context.ts?copy=1");
 const second = await import("./source-streaming-context.ts?copy=2");
 
-// Three source cases from eliza's streaming-context.test.ts, adapted to Node.
+// Three source cases, adapted to Node.
 test("shares one context manager between copies", async () => {
   assert.notEqual(first, second);
   assert.equal(second.getStreamingContextManager(), first.getStreamingContextManager());

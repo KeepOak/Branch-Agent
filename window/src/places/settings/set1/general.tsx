@@ -8,12 +8,14 @@ import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
-import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
+import { currentKeys, keyActions, onMac, readCustomKeys, shownInline } from "../../../shell/keymap";
+import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Status, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
 import { PinnedSection } from "../pins";
-import { useDesktopControls } from "../../../connect/desktop-controls";
-import { ClipboardHistory, Controllers, CoverScreen, ThisComputer, Writing, OS } from "./general-more";
+import { showsInternals } from "../internals";
+import { NEEDS_NEWER_APP, useDesktopControls } from "../../../connect/desktop-controls";
+import { OS, Writing } from "./general-more";
 import { Conversation } from "./general-conversation";
-import { OlderTurns, SummariesMore, SummariesTechnical, WaitingLine } from "./general-summaries";
+import { OlderTurns, SummariesTechnical, WaitingLine } from "./general-summaries";
 import "./general.css";
 
 export function GeneralPage(props: SettingsPageProps) {
@@ -25,26 +27,35 @@ export function GeneralPage(props: SettingsPageProps) {
       <Projects engine={props.engine} />
       <Keyboard />
       <Writing engine={props.engine} />
-      {lv >= 1 ? <ClipboardHistory /> : null}
-      <CoverScreen />
-      {lv >= 1 ? <><Controllers /><Conversation engine={props.engine} /><Sec title="Summaries">
+      {lv >= 1 ? <><Conversation engine={props.engine} /><Sec title="Summaries">
         <OlderTurns engine={props.engine} grouped />
-        {lv >= 2 ? <><SummariesTechnical engine={props.engine} grouped /><SummariesMore grouped /></> : null}
+        {lv >= 2 ? <SummariesTechnical engine={props.engine} grouped /> : null}
       </Sec></> : null}
-      {lv >= 1 ? <ThisComputer /> : null}
       {lv >= 2 ? <WaitingLine engine={props.engine} /> : null}
     </Page>
   );
 }
 
+/** Said under Start with … when the Branch app on this computer is too old to change it (DA-78): the app's own note is a
+ *  developer note that is never shown, so a greyed switch would otherwise sit there with no reason. */
+const START_NEEDS_UPDATE = "Update the Branch app on this computer to change this.";
+
 function StartingUp() {
   const desk = useDesktopControls();
-  const why = desk.off;
+  const why = desk.off === NEEDS_NEWER_APP ? START_NEEDS_UPDATE : desk.off;
+  const start = `Start with ${OS()}`;
+  const signedOut = "Keep working when nobody is signed in";
   return (
     <Sec title="Starting up">
-      <Ctl title={`Start with ${OS}`} sub="Opens quietly in the tray." off={why}>
-        <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={`Start with ${OS}`} onChange={(on) => void desk.set("startWithWindows", on)} />
+      <Ctl title={start} sub="Opens quietly in the tray." off={why}>
+        <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={start} onChange={(on) => void desk.set("startWithWindows", on)} />
       </Ctl>
+      {/* Always on (Private #454 F), Linux with the engine service only: the app says so by sending the switch. */}
+      {desk.state?.keepWorkingSignedOut !== undefined ? (
+        <Ctl title={signedOut} sub="Your Trunks start after a restart, before anyone signs in." off={why}>
+          <Switch checked={desk.state.keepWorkingSignedOut} disabled={desk.busy !== null} label={signedOut} onChange={(on) => void desk.set("keepWorkingSignedOut", on)} />
+        </Ctl>
+      ) : null}
       {desk.state && desk.error ? <small className="why-k" role="alert">{visible(desk.error)}</small> : null}
     </Sec>
   );
@@ -57,22 +68,37 @@ function Projects({ engine }: { engine: SettingsPageProps["engine"] }) {
   return (
     <Sec title="Projects">
       {res.loading ? <p className="hint">Reading your projects…</p>
-        : res.error ? <p className="hint">{visible(res.error)}</p>
+        : res.error ? <Status tone="warn" title="Couldn’t read your projects just now." action={<Btn sm onClick={res.reload}>Try again</Btn>} />
         : projects.length ? <Plist>{projects.map((p) => <ProjectRow key={p.id} engine={engine} project={p} />)}</Plist>
         : <Empty>No projects yet.</Empty>}
     </Sec>
   );
 }
 
+/** A project's folder name as a person reads it: "sample-project" is "Sample project". Technical keeps the folder name. */
+export function plainProjectName(name: string, technical: boolean): string {
+  if (technical || !/^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(name)) return name;
+  const words = name.replace(/-/g, " ");
+  return words[0].toUpperCase() + words.slice(1);
+}
+
 function ProjectRow({ engine, project }: { engine: SettingsPageProps["engine"]; project: Project }) {
+  const technical = showsInternals(useLevel());
   const res = useResource<RecordValue>(engine, "sessions.list", { projectId: project.id, limit: 1, excludeSubagents: true, excludeCron: true });
   const total = record(res.data).totalCount;
-  const sub = typeof total === "number" ? `${total} ${total === 1 ? "conversation" : "conversations"}` : res.loading ? "Counting conversations…" : "";
+  // A count of zero is not shown: the project's conversations are not always the ones this count reads.
+  const sub = typeof total === "number" ? (total > 0 ? `${total} ${total === 1 ? "conversation" : "conversations"}` : "") : res.loading ? "Counting conversations…" : "";
   return (
-    <Prow icon={<span className="ico-tile gen-k"><Icon name="folder" small /></span>} title={visible(project.displayName)} sub={sub || undefined}>
+    <Prow icon={<span className="ico-tile gen-k"><Icon name="folder" small /></span>} title={plainProjectName(visible(project.displayName), technical)} sub={sub || undefined}>
       <Btn sm disabled title="Branch can’t open a project’s own instructions from here yet.">Edit</Btn>
     </Prow>
   );
+}
+
+/** The two most-used shortcuts in a sentence, written the way the Show all dialog writes them on this computer. */
+function keyboardSub(mac: boolean): string {
+  const keys = currentKeys(keyActions(""), readCustomKeys());
+  return `${shownInline(keys.palette, mac)} to find anything, ${shownInline(keys.newConversation, mac)} for a new conversation.`;
 }
 
 function Keyboard() {
@@ -80,7 +106,7 @@ function Keyboard() {
   return (
     <>
       <Sec title="Keyboard">
-        <Ctl title="Keyboard shortcuts" sub="Ctrl K to find anything, Ctrl N for a new conversation.">
+        <Ctl title="Keyboard shortcuts" sub={keyboardSub(onMac())}>
           <Btn sm onClick={() => setOpen(true)}>Show all</Btn>
         </Ctl>
       </Sec>
@@ -91,18 +117,12 @@ function Keyboard() {
 
 const rows = (sec: string, lv: Lv, titles: string[]): RowEntry[] => titles.map((title) => ({ page: "general", title, sec, group: sec, lv }));
 export const GENERAL_ROWS: RowEntry[] = [
-  ...rows("Starting up", 0, [`Start with ${OS}`]),
+  ...rows("Starting up", 0, [`Start with ${OS()}`]),
   ...rows("Projects", 0, []),
   ...rows("Keyboard", 0, ["Keyboard shortcuts"]),
-  ...rows("Writing", 0, ["Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Add my location to messages", "Replies in", "After a plan", "Open Branch on", "Show “Finish setting up”"]),
-  ...rows("Writing", 1, ["Write long messages in your own editor", "Rounds before it checks in"]),
-  ...rows("Clipboard history", 1, ["Keep after restart"]),
-  ...rows("Cover the screen", 0, ["Cover now"]),
-  ...rows("Controllers", 1, ["Use a gamepad or macro pad"]),
-  ...rows("The conversation", 1, ["Vim keys in the message box", "Message times", "When you send while it works", "Send with", "Task progress above the message box", "Task progress starts", "Open past sessions in", "Ask before deleting a conversation"]),
-  ...rows("Summaries", 1, ["Summarise older turns by themselves", "Summarise when context left is under", "Always keep the latest", "Model for summaries"]),
-  ...rows("Summaries", 2, ["Context to plan for", "Repair the history before each call", "How it summarises", "Summary time limit", "Keep names and numbers exact", "Trim old tool results", "Trim after"]),
-  ...rows("This computer", 1, ["Quick ask from anywhere", "Quick ask shortcut"]),
-  ...rows("Waiting line", 2, ["Wait before sending what’s in line", "Most messages in line", "When the line is full"]),
-  ...rows("Summaries", 2, ["How to write the summary", "If a summary can’t be made", "Keep the originals of what it summarises", "A receipt for each thing left out"]),
+  ...rows("Writing", 0, ["Show “Finish setting up”"]),
+  ...rows("The conversation", 1, ["Vim keys in the message box", "Message times", "When you send while it works", "Send with", "Task progress above the message box", "Task progress starts", "Ask before deleting a conversation"]),
+  ...rows("Summaries", 1, ["Summarise older turns by themselves", "Always keep the latest", "Model for summaries"]),
+  ...rows("Summaries", 2, ["How it summarises", "Summary time limit", "Keep names and numbers exact", "Trim old tool results", "Trim after"]),
+  ...rows("Waiting line", 2, ["Most messages in line", "When the line is full"]),
 ];

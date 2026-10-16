@@ -14,6 +14,11 @@ import {
   resolveDefaultAgentId,
 } from "../agents/agent-scope.js";
 import {
+  isApiKeyAuthProfile,
+  isSubscriptionsOnly,
+  SUBSCRIPTION_ONLY_SIGN_IN_MESSAGE,
+} from "../agents/auth-profiles/subscription-only.js";
+import {
   requiresAgentHarnessPluginSelection,
   resolveAgentHarnessOwnerPluginIds,
 } from "../agents/harness/runtime-plugin-load-plan.js";
@@ -593,6 +598,21 @@ function* projectSessionPatchSteps(
           };
         }
         params.personalModelSelection.assertCurrent();
+      }
+      // With subscriptionsOnly, agents may only move a session onto a subscription sign-in, never an API key.
+      if (
+        isSubscriptionsOnly(cfg) &&
+        selection.profile &&
+        (statusModelPatch || isAgentSessionModelPatchOrigin()) &&
+        isApiKeyAuthProfile({
+          agentDir: resolveAgentDir(cfg, sessionAgentId),
+          profileId: selection.profile,
+        })
+      ) {
+        return {
+          ok: false,
+          error: errorShape(ErrorCodes.FORBIDDEN, SUBSCRIPTION_ONLY_SIGN_IN_MESSAGE),
+        };
       }
       // Catalog membership does not guarantee an activatable harness. Reject before
       // committing the session so sticky defaults cannot retain an unusable selection.

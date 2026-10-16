@@ -6,6 +6,7 @@ import { SIcon } from "../stage/stage-icons";
 import { useDesktopView } from "../stage/use-desktop";
 import { describePlacement, placementComputer } from "../stage/computers";
 import "../stage/stage.css";
+import { computerSafeCaption, plainStepTitle } from "./computer-action-label";
 import {
   announceComputerControl,
   computerCardState,
@@ -130,7 +131,9 @@ export function ComputerActivityCard({
   const computer = useComputerName(steps.length ? engine : undefined);
   if (!latest) return null;
   const mode: Mode = /browser/i.test(latest.tool) ? "Browser" : "Computer";
-  const where = mode === "Browser" ? `${name}'s browser` : computer.name || `${name}'s computer`;
+  const where = `${name}'s ${mode === "Browser" ? "browser" : "computer"}`;
+  const actionTitle = (step: Step) => (/browser/i.test(step.tool) ? step.title : plainStepTitle(step));
+  const actionCaption = (step: Step) => (/browser/i.test(step.tool) ? step.detail : computerSafeCaption(step.detail));
   const controlling = controllingProp ?? takeOver;
   const state = computerCardState({
     running,
@@ -195,7 +198,7 @@ export function ComputerActivityCard({
   const count = steps.length;
   const summary = steps
     .slice(0, 3)
-    .map((s) => s.title)
+    .map((s) => actionTitle(s))
     .join(", ");
   if (state === "done") {
     return (
@@ -224,8 +227,8 @@ export function ComputerActivityCard({
                 <li key={s.key} className={s.status}>
                   <SIcon name={s.status === "ok" ? "check" : s.status === "running" ? "spin" : "x"} small />
                   <span className="grow">
-                    <b>{s.title}</b>
-                    {s.detail ? <small>{s.detail}</small> : null}
+                    <b>{actionTitle(s)}</b>
+                    {actionCaption(s) ? <small>{actionCaption(s)}</small> : null}
                   </span>
                 </li>
               ))}
@@ -253,7 +256,7 @@ export function ComputerActivityCard({
           {pill.text}
         </span>
       </div>
-      <p className="card-sub-st">{latest.title}</p>
+      <p className="card-sub-st">{actionTitle(latest)}</p>
       {thumb}
       {acts ? <div className="card-acts-st">{acts}</div> : null}
     </section>

@@ -1,4 +1,4 @@
-// From cline/cline@0809928ab28783c0d2b41c1e56edaf0951dadcab:apps/vscode/src/core/controller/slash/condense.test.ts and apps/vscode/src/shared/slashCommands.ts (atlas AGENT-LOOP-0101). Adapted to Branch's real authorized command; alias and authorization assertions added.
+// Adapted to Branch's real authorized command; alias and authorization assertions added.
 import { beforeEach, expect, it, vi } from "vitest";
 import { resolveTextCommand } from "../commands-registry.js";
 import {

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Branch mark: one trunk that forks into two branches. Light strokes on a transparent canvas, scaled
+     into the Android adaptive-icon safe zone. Regenerate the PNGs in this folder from this file:
+       adaptive-icon.png   rsvg-convert -w 1024 -h 1024 branch-mark.svg -o adaptive-icon.png
+       icon.png            magick -size 1024x1024 xc:'#4f46e5' adaptive-icon.png -composite -alpha off icon.png
+       splash-icon.png     sed 's/#f6f8f9/#4f46e5/g' branch-mark.svg | rsvg-convert -w 1024 -h 1024 -o splash-icon.png -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <g transform="translate(512 512) scale(0.8) translate(-512 -512)" fill="none" stroke="#f6f8f9" stroke-width="56" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M512 840 V500"/>
+    <path d="M512 500 Q512 380 330 280"/>
+    <path d="M512 500 Q512 380 694 280"/>
+    <circle cx="330" cy="280" r="60" fill="#f6f8f9"/>
+    <circle cx="694" cy="280" r="60" fill="#f6f8f9"/>
+  </g>
+</svg>

@@ -48,7 +48,6 @@ const P: Record<string, string> = {
   "wand": "<path d=\"M5 19l10-10M14 5l1 2 2 1-2 1-1 2-1-2-2-1 2-1zM18.5 12l.6 1.2 1.2.6-1.2.6-.6 1.2-.6-1.2-1.2-.6 1.2-.6z\"/>",
   "cloud": "<path d=\"M7 18.5h10a4 4 0 0 0 .6-7.95A5.5 5.5 0 0 0 7 9.5a4.5 4.5 0 0 0 0 9z\"/>",
 };
-export type Ic = keyof typeof P;
 
 /** A preview icon; s = the 15 px small size. */
 export function Ico({ name, s }: { name: string; s?: boolean }) {

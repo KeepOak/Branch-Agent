@@ -157,6 +157,35 @@ describe("runEmbeddedAgent incomplete-turn safety", () => {
     expect(instruction).toBe(SETTLED_TOOL_TERMINAL_CONTINUATION_INSTRUCTION);
   });
 
+  it("continues a Codex turn that ended on a settled tool call with only commentary (#847)", () => {
+    const toolUseAssistant = makeLastAssistant({
+      stopReason: "toolUse",
+      content: [
+        { type: "text", text: "Running tests now" },
+        { type: "toolCall", id: "tool_tests", name: "exec", arguments: {} },
+      ],
+    });
+    const instruction = resolveSettledToolTerminalContinuationInstruction(
+      makeSettledContinuationParams(
+        {
+          assistantTexts: ["Running tests now"],
+          toolMetas: [{ toolName: "exec", toolCallId: "tool_tests", replaySafe: false }],
+          itemLifecycle: { startedCount: 1, completedCount: 1, activeCount: 0 },
+          messagesSnapshot: [
+            { role: "user", content: [{ type: "text", text: "run the tests" }] },
+            toolUseAssistant,
+            { role: "toolResult", toolCallId: "tool_tests", toolName: "exec", isError: false },
+          ] as unknown as EmbeddedRunAttemptResult["messagesSnapshot"],
+          lastAssistant: toolUseAssistant,
+          currentAttemptAssistant: toolUseAssistant,
+        },
+        { modelApi: "openai-codex-responses" },
+      ),
+    );
+
+    expect(instruction).toBe(SETTLED_TOOL_TERMINAL_CONTINUATION_INSTRUCTION);
+  });
+
   it("tells the finalizer that tools are unavailable", () => {
     // The settled-turn finalization pass runs with disableTools: true. If the instruction
     // does not say so, the model reaches for a tool, the denied call registers as capability

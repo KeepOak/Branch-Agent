@@ -93,6 +93,16 @@ describe("resolveConfiguredDesktopGatewayPort", () => {
     expect(resolveConfiguredDesktopGatewayPort({ BRANCH_DESKTOP_DATA: dataDir })).toBeUndefined();
   });
 
+  it("defaults a missing desktop.json to 19031 for a standby", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "branch-configured-port-"));
+    expect(
+      resolveConfiguredDesktopGatewayPort({
+        BRANCH_GATEWAY_STANDBY: "1",
+        BRANCH_DESKTOP_DATA: dataDir,
+      }),
+    ).toBe(DESKTOP_GATEWAY_PORT);
+  });
+
   it("is undefined when this process is not a desktop engine", async () => {
     const home = await mkdtemp(join(tmpdir(), "branch-configured-port-home-"));
     expect(
@@ -209,6 +219,29 @@ describe("reclaimConfiguredGatewayPort", () => {
     });
     await closeServer(successor);
     await expect(scheduled.done).resolves.toBe("stopped");
+  });
+
+  it("schedules reclaim of 19031 when desktop.json is missing", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "branch-configured-port-"));
+    const livePort = await getFreePort();
+    const successor = createReadyzServer(200);
+    servers.push(successor);
+    await listen(successor, livePort);
+    const attach = vi.fn().mockResolvedValue({ close() {} });
+    const isPortFree = vi.fn().mockResolvedValue(true);
+    const scheduled = scheduleConfiguredPortReclaim({
+      httpServer: successor,
+      currentPort: livePort,
+      env: { BRANCH_GATEWAY_STANDBY: "1", BRANCH_DESKTOP_DATA: dataDir },
+      log: logs,
+      deps: { pollMs: 20, giveUpMs: 5_000, isPortFree, attach },
+    });
+    await expect(scheduled.done).resolves.toBe("bound");
+    expect(isPortFree).toHaveBeenCalledWith(DESKTOP_GATEWAY_PORT);
+    expect(attach).toHaveBeenCalledWith(successor, DESKTOP_GATEWAY_PORT);
+    expect(logs.info).toHaveBeenCalledWith(
+      expect.stringContaining(`also listening on the configured port ${DESKTOP_GATEWAY_PORT}`),
+    );
   });
 });
 
