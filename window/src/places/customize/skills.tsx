@@ -6,7 +6,7 @@ import { useState, type ReactNode } from "react";
 import { displayName } from "../../display-names";
 import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
-import { KindHead } from "./kind-chrome";
+import { KindHead, TechnicalOnly } from "./kind-chrome";
 import { TechRows } from "./tech-rows";
 import { shows } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
@@ -115,10 +115,10 @@ function SkillList({ ctx, tabs, count, rows }: { ctx: ToolsCtx; tabs: ReactNode;
         </button>
         <Switch label={`${r.name} on or off`} on={!r.disabled} onChange={on => void op.run("skills.update", { skillKey: r.key, enabled: on }, ctx.skills.reload)} />
       </div>)}
-      <div className="cz-bottom">
+      <TechnicalOnly><div className="cz-bottom">
         <div className="cz-line"><span>Let Trunks find and add their own</span><Grey className="switch" reason="Letting Trunks add skills on their own comes in a later update."><span /></Grey></div>
         <div className="cz-line"><span>Keep skills in step across computers</span><Grey className="switch" reason="Keeping skills in step across computers comes in a later update."><span /></Grey></div>
-      </div>
+      </div></TechnicalOnly>
       <TechRows ctx={ctx} kind="Skills" />
     </KindHead>
     {skill ? <SkillDetail key={skill.key} ctx={ctx} skill={skill} /> : <div className="t9-detail cz-empty-detail" />}
@@ -172,10 +172,10 @@ function SkillDetail({ ctx, skill }: { ctx: ToolsCtx; skill: Skill }) {
       <div className="cz-acts">{skill.registry ? <button type="button" className="btn sm" disabled={op.busy} onClick={() => void op.run("skills.update", { ...scopeOf(ctx), source: "clawhub", slug: skill.key }, ctx.skills.reload)}>Check for updates</button> : <Grey reason="Checking a skill for updates comes in a later update.">Check for updates</Grey>}
         <Grey reason="Putting an older version back comes in a later update.">Put an older version back</Grey></div>
     </Sec>
-    <div className="cz-acts cz-actions">
+    <TechnicalOnly><div className="cz-acts cz-actions">
       <Grey reason="Copying a skill’s seed comes in a later update.">Copy seed</Grey><Grey reason="Downloading a skill comes in a later update.">Download</Grey>
       <Grey reason="Copying a skill to another Trunk comes in a later update.">Copy to another Trunk</Grey><Grey reason="Testing a skill comes in a later update.">Test it</Grey>
-      <span className="cz-grow" /><Grey className="btn ghost sm" reason="Removing a skill from here comes in a later update.">Remove</Grey></div>
+      <span className="cz-grow" /><Grey className="btn ghost sm" reason="Removing a skill from here comes in a later update.">Remove</Grey></div></TechnicalOnly>
   </div>;
 }
 
@@ -236,9 +236,9 @@ export function AddSkill({ ctx, close }: { ctx: ToolsCtx; close: () => void }) {
   return <Dialog wide title="Add a skill" onClose={close} footer={<button type="button" className="btn ghost" onClick={close}>Cancel</button>}>
     <div className="cz-provs">
       <button type="button" className="cz-prov" onClick={() => setLibrary(true)}><b>From the skill library</b><small>Search skills others have shared and install one.</small></button>
-      <div className="cz-prov"><b>From a file</b><small>A SKILL.md or a folder.</small><Grey reason="Adding a skill from a file comes in a later update.">Choose a file</Grey></div>
+      <TechnicalOnly><div className="cz-prov"><b>From a file</b><small>A SKILL.md or a folder.</small><Grey reason="Adding a skill from a file comes in a later update.">Choose a file</Grey></div>
       <div className="cz-prov"><b>From GitHub</b><small>A repository with a SKILL.md.</small><Grey reason="Adding a skill from GitHub comes in a later update.">Add from GitHub</Grey></div>
-      <div className="cz-prov"><b>Write one with Branch</b><small>Say what it should know how to do.</small><Grey reason="Writing a skill with Branch comes in a later update.">Draft it</Grey></div>
+      <div className="cz-prov"><b>Write one with Branch</b><small>Say what it should know how to do.</small><Grey reason="Writing a skill with Branch comes in a later update.">Draft it</Grey></div></TechnicalOnly>
     </div>
   </Dialog>;
 }

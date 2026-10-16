@@ -9,7 +9,7 @@ import { Switch } from "../../shell/Popover";
 import { useResource } from "../library/data";
 import { Status } from "../library/ui";
 import { Grey, list, Pill, rec, Sec, str, type Rec } from "./common";
-import { KindHead } from "./kind-chrome";
+import { KindHead, TechnicalOnly } from "./kind-chrome";
 import { TechRows } from "./tech-rows";
 import { CatalogDialog, ConsentDialog, usePluginAction } from "./catalog";
 import { Glyph } from "./glyphs";
@@ -67,8 +67,8 @@ function PluginDetail({ ctx, plugin }: { ctx: ToolsCtx; plugin: Plugin }) {
       <Switch label={`${plugin.name} on or off`} on={plugin.enabled} onChange={on => void action.run("toggle", "plugins.setEnabled", { pluginId: plugin.id, enabled: on }, reload)} /></div>
     {action.error && <p role="alert" className="cz-error">{action.error}</p>}
     {plugin.error && <div className="cz-card warn"><b>Needs a look</b><small>{plugin.error}</small></div>}
-    <div className="cz-tabs" role="tablist" aria-label="Plugin"><button type="button" role="tab" aria-selected={tab === "installed"} onClick={() => setTab("installed")}>Installed</button><button type="button" role="tab" aria-selected={tab === "settings"} onClick={() => setTab("settings")}>Plugin settings</button></div>
-    {tab === "settings" ? <PluginSettings /> : <>
+    <TechnicalOnly><div className="cz-tabs" role="tablist" aria-label="Plugin"><button type="button" role="tab" aria-selected={tab === "installed"} onClick={() => setTab("installed")}>Installed</button><button type="button" role="tab" aria-selected={tab === "settings"} onClick={() => setTab("settings")}>Plugin settings</button></div></TechnicalOnly>
+    {tab === "settings" && shows(ctx.level, "technical") ? <PluginSettings /> : <>
     <Status {...inspect} />
     {inspect.data != null && <Sec title="Set it up">{PACK.map(([key, word]) => { const items = Array.isArray(declared[key]) ? (declared[key] as unknown[]).map(String) : []; return items.length ? <div key={key} className="cz-pack"><span>{word}</span><div>{items.map(i => <code key={i}>{i}</code>)}</div></div> : null; })}
       {PACK.every(([key]) => !(Array.isArray(declared[key]) && (declared[key] as unknown[]).length)) && <p className="cz-hint">Nothing here for this Trunk.</p>}</Sec>}

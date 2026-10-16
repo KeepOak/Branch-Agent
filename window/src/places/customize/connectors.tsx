@@ -12,7 +12,7 @@ import { trunkName, useResource } from "../library/data";
 import { Status } from "../library/ui";
 import { denyList, denyPatch, Grey, list, PermRow, rec, Sec, Seg, str, WhoChips, withItem, type Rec } from "./common";
 import { CatalogDialog } from "./catalog";
-import { KindHead } from "./kind-chrome";
+import { KindHead, TechnicalOnly } from "./kind-chrome";
 import { TechRows } from "./tech-rows";
 import { Glyph } from "./glyphs";
 import type { ToolsCtx } from "./tools";
@@ -74,8 +74,8 @@ function ConnectorActs({ server, onRemove }: { server?: Server; onRemove?: () =>
     <Grey reason={testWhy}>Test it</Grey>
     <Grey reason={updateWhy}>Check for updates</Grey>
     {onRemove && <><span className="cz-grow" /><button type="button" className="btn ghost sm" onClick={onRemove}>Remove</button></>}
-    {shownWhy(testWhy) && <span className="cz-hint">{shownWhy(testWhy)}</span>}
-    {shownWhy(updateWhy) && updateWhy !== testWhy && <span className="cz-hint">{shownWhy(updateWhy)}</span>}
+    <TechnicalOnly>{shownWhy(testWhy) && <span className="cz-hint">{shownWhy(testWhy)}</span>}
+      {shownWhy(updateWhy) && updateWhy !== testWhy && <span className="cz-hint">{shownWhy(updateWhy)}</span>}</TechnicalOnly>
   </div>;
 }
 
@@ -134,10 +134,12 @@ function ConnectorDetail({ ctx, server }: { ctx: ToolsCtx; server: Server }) {
         <h3 className="cz-h3">Connection</h3>
         <div className="cz-line"><span>Several calls at once</span><Switch label="Several calls at once" on={server.parallel} onChange={on => setServer({ supportsParallelToolCalls: on })} /></div>
         {!server.local && <div className="cz-line"><span>Check the server’s certificate</span><Switch label="Check the server’s certificate" on={server.sslVerify} onChange={on => setServer({ sslVerify: on })} /></div>}
+        <TechnicalOnly>
         <div className="cz-line"><span>Only these tools<small>None picked: every tool.</small></span><Grey reason="Choosing which tools a connector may offer comes in a later update.">Choose</Grey></div>
         <div className="cz-line"><span>Never these tools<small>Hidden tools are not offered at all.</small></span><Grey reason="Choosing tools a connector may never offer comes in a later update.">Choose</Grey></div>
         <div className="cz-line"><span>Client certificate</span><Grey reason="Choosing a client certificate comes in a later update.">Choose a file</Grey></div>
         <div className="cz-line"><span>Client key</span><Grey reason="Choosing a client key comes in a later update.">Choose a file</Grey></div>
+        </TechnicalOnly>
       </>}
       {shows(level, "technical") && <>
         <h3 className="cz-h3">Its settings</h3>
@@ -157,7 +159,7 @@ function ConnectorDetail({ ctx, server }: { ctx: ToolsCtx; server: Server }) {
       </>}
     </Sec>
     <Sec title="Safety check"><dl className="cz-kv"><dt>Preflight</dt><dd>Not checked yet</dd><dt>Malware scan</dt><dd>Not checked yet</dd><dt>Fingerprint</dt><dd>Not checked yet</dd><dt>Hidden instructions</dt><dd>Not checked yet</dd></dl></Sec>
-    <Sec title="Version & updates"><div className="cz-acts"><Grey reason={UPDATE_WHY}>Check for updates</Grey></div></Sec>
+    <TechnicalOnly><Sec title="Version & updates"><div className="cz-acts"><Grey reason={UPDATE_WHY}>Check for updates</Grey></div></Sec></TechnicalOnly>
     <Sec title="Actions"><div className="cz-acts">
       <Grey reason="Copying a connector’s seed comes in a later update.">Copy seed</Grey><Grey reason="Downloading a connector comes in a later update.">Download</Grey>
       <Grey reason="Copying a connector to another Trunk comes in a later update.">Copy to another Trunk</Grey><Grey reason={TEST_WHY}>Test it</Grey>

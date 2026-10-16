@@ -164,16 +164,29 @@ describe("Customize (R1): the place", () => {
     expect(sw).toBeTruthy();
     expect(host.querySelector(".cz-tag")?.textContent).toBe("This project");
   });
-  it("opens the Plugin settings tab with its sections in the preview's order", async () => {
+  it("opens the Plugin settings tab with its sections in the preview's order, at Technical only", async () => {
     const plugins = { "plugins.list": { plugins: [{ id: "pack", name: "Pack", installed: true, enabled: true, state: "ok", origin: "clawhub" }] }, "plugins.inspect": { ok: true, declared: {}, overview: {} } };
-    await open("regular", undefined, plugins);
+    await open("advanced", undefined, plugins);
+    await click(host.querySelector("[data-kind=Plugins]"));
+    expect(button("Plugin settings", host)).toBeUndefined();
+    await act(async () => root!.unmount());
+    root = null;
+    host.remove();
+    await open("technical", undefined, plugins);
     await click(host.querySelector("[data-kind=Plugins]"));
     await click(button("Plugin settings", host));
     const titles = [...host.querySelectorAll(".cz-sec h2")].map(h => h.textContent);
     expect(titles).toEqual(["How it runs", "On in", "A start link", "Test against your tasks first", "Permissions"]);
   });
-  it("shows the Found on this computer strip and the by-path field with its Add", async () => {
+  it("shows the by-path field with its Add at every level, and the Found on this computer strip at Technical", async () => {
     await open("regular");
+    await click(host.querySelector('[data-kind="Command-line tools"]'));
+    expect(host.querySelector(".cz-found")).toBeNull();
+    expect(host.querySelector<HTMLInputElement>("#cz-clis-path")?.placeholder).toBe("Or add one by its path, like /usr/local/bin/rg");
+    await act(async () => root!.unmount());
+    root = null;
+    host.remove();
+    await open("technical");
     await click(host.querySelector('[data-kind="Command-line tools"]'));
     expect(host.querySelector(".cz-found b")?.textContent).toBe("Found on this computer");
     expect(host.querySelector<HTMLInputElement>("#cz-clis-path")?.placeholder).toBe("Or add one by its path, like /usr/local/bin/rg");
@@ -217,11 +230,18 @@ describe("Customize (R1): the place", () => {
   });
 
 
-  it("draws Specialists, How Trunks work together and the rest of the Agents kind in the preview's copy", async () => {
+  it("draws only what works in the Agents kind at Regular", async () => {
     await open("regular");
     await click(host.querySelector('[data-kind="Agents"]'));
     const heads = [...host.querySelectorAll("[data-kind-list=Agents] h3")].map(h => h.textContent);
-    expect(heads).toEqual(["Connected agents", "Specialists", "How Trunks work together", "Other coding agents", "Built in", "Let specialists argue it out"]);
+    expect(heads).toEqual(["Connected agents", "Specialists"]);
+    expect(host.textContent).toContain("Helpers a Trunk calls in for one job, then lets go.");
+  });
+  it("draws Specialists, How Trunks work together and the rest of the Agents kind in the preview's copy at Technical", async () => {
+    await open("technical");
+    await click(host.querySelector('[data-kind="Agents"]'));
+    const heads = [...host.querySelectorAll("[data-kind-list=Agents] h3")].map(h => h.textContent);
+    expect(heads).toEqual(["Connected agents", "Specialists", "How Trunks work together", "Other coding agents", "Built in", "Let specialists argue it out", "Use Branch as an MCP server Technical"]);
     expect(host.textContent).toContain("The pattern a room or a big task uses. Branch picks one; you can choose.");
     expect(host.textContent).toContain("Helpers a Trunk calls in for one job, then lets go.");
     expect(host.textContent).toContain("Any task, with the Trunk’s own tools · comes with Branch, can’t be edited");
@@ -235,11 +255,38 @@ describe("Customize (R1): the place", () => {
     expect(host.textContent).toContain("Where these are used");
     expect(host.textContent).toContain("Accounts");
   });
-  it("orders the command-line tool sheet as the preview does", async () => {
-    await open("regular", undefined, { "skills.status": { skills: [{ name: "gh", skillKey: "gh", description: "GitHub", disabled: false, eligible: true, requirements: { bins: ["gh"] }, missing: {} }] } });
+  it("orders the command-line tool sheet as the preview does; Regular leaves out the sections that only hold later controls", async () => {
+    const skills = { "skills.status": { skills: [{ name: "gh", skillKey: "gh", description: "GitHub", disabled: false, eligible: true, requirements: { bins: ["gh"] }, missing: {} }] } };
+    await open("regular", undefined, skills);
+    await click(host.querySelector('[data-kind="Command-line tools"]'));
+    const regular = [...host.querySelectorAll("[data-testid=cli-detail] .cz-sec h2")].map(h => h.textContent);
+    expect(regular).toEqual(["What it may do", "Set it up", "Safety check", "Version & updates"]);
+    await act(async () => root!.unmount());
+    root = null;
+    host.remove();
+    await open("technical", undefined, skills);
     await click(host.querySelector('[data-kind="Command-line tools"]'));
     const titles = [...host.querySelectorAll("[data-testid=cli-detail] .cz-sec h2")].map(h => h.textContent);
     expect(titles).toEqual(["Who may use it", "What it may do", "Set it up", "Safety check", "Version & updates", "Actions"]);
+  });
+  it("shows no later-update reason or Coming control at Regular or Advanced, in any kind", async () => {
+    const extra = {
+      "config.get": { hash: "h1", sourceConfig: { mcp: { servers: { gh: { url: "https://x.test" } } } }, runtimeConfig: { mcp: { servers: { gh: { url: "https://x.test" } } } } },
+      "skills.status": { skills: [{ name: "gh", skillKey: "gh", description: "GitHub", disabled: false, eligible: true, requirements: { bins: ["gh"] }, missing: {} }] },
+      "plugins.list": { plugins: [{ id: "pack", name: "Pack", installed: true, enabled: true, state: "ok", origin: "clawhub" }] },
+      "plugins.inspect": { ok: true, declared: {}, overview: {} },
+    };
+    for (const level of ["regular", "advanced"] as const) {
+      await open(level, undefined, extra);
+      for (const kind of ["Toolsets", "Connectors", "Skills", "Plugins", "Command-line tools", "Agents", "Prompts"]) {
+        await click(host.querySelector(`[data-kind="${kind}"]`));
+        expect(host.querySelector("[data-coming]"), `${level} ${kind}`).toBeNull();
+        expect(host.textContent, `${level} ${kind}`).not.toContain("comes in a later update");
+      }
+      await act(async () => root!.unmount());
+      root = null;
+      host.remove();
+    }
   });
   it("orders the installed plugin sheet as the preview does", async () => {
     const plugins = { "plugins.list": { plugins: [{ id: "pack", name: "Pack", installed: true, enabled: true, state: "ok", origin: "clawhub" }] }, "plugins.inspect": { ok: true, declared: { skills: ["a"] }, overview: {} } };

@@ -1,10 +1,11 @@
 // The chrome every Customize kind shares (R1), drawn as the preview draws it (preview.html 44908-45060): the kind's
 // order and names, one kind head with its count and "＋ Add", the "＋ Get more … in Community →" link under the list,
 // and the "For:" faces row above the kinds.
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
+import { shows } from "../../places-nav/level";
 import { TrunkFace } from "../trunk/TrunkFace";
 import { trunkName, type Trunk } from "../library/data";
-import { Grey } from "./common";
+import { CustomizeLevelContext, Grey } from "./common";
 import type { ToolsCtx } from "./tools";
 
 export type Kind = "Toolsets" | "Connectors" | "Skills" | "Plugins" | "Command-line tools" | "Agents" | "Prompts";
@@ -42,6 +43,13 @@ export function KindHead({ ctx, kind, count, children }: { ctx: ToolsCtx; kind: 
     {children}
     {ctx.toCommunity && <button type="button" className="cz-get" onClick={() => ctx.toCommunity?.(info.community)}>＋ Get more {info.label.toLowerCase()} in Community →</button>}
   </div>;
+}
+
+/** Rows and sections whose only controls are Coming ("… comes in a later update."): drawn at Technical only, so Regular
+ *  and Advanced show only what works. Classic has no level and draws them, as before. */
+export function TechnicalOnly({ children }: { children: ReactNode }) {
+  const level = useContext(CustomizeLevelContext);
+  return shows(level, "technical") ? <>{children}</> : null;
 }
 
 /** "For:" and a face per Trunk, plus All: whose tools the kinds show (preview 24129, the faces row). */

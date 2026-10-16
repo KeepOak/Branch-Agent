@@ -4,6 +4,7 @@
 import { Fleet, PATTERNS } from "./specialists";
 import { Grey } from "./common";
 import { Glyph } from "./glyphs";
+import { TechnicalOnly } from "./kind-chrome";
 import type { ToolsCtx } from "./tools";
 
 const BUILT_IN: [string, string][] = [
@@ -19,9 +20,10 @@ export function AgentsTeamwork({ ctx }: { ctx: ToolsCtx }) {
   return <>
     <h3 className="cz-h3">Specialists</h3>
     <p className="cz-hint">Helpers a Trunk calls in for one job, then lets go.</p>
-    <div className="cz-acts"><Grey reason="Adding a specialist comes in a later update.">＋ Add</Grey></div>
+    <TechnicalOnly><div className="cz-acts"><Grey reason="Adding a specialist comes in a later update.">＋ Add</Grey></div></TechnicalOnly>
     <Fleet engine={ctx.engine} trunks={ctx.trunks} />
 
+    <TechnicalOnly>
     <h3 className="cz-h3">How Trunks work together</h3>
     <p className="cz-hint">The pattern a room or a big task uses. Branch picks one; you can choose.</p>
     <div className="cz-pats">{PATTERNS.map(p => <Grey key={p.id} className="cz-pat" reason="Choosing how Trunks work together comes in a later update.">
@@ -40,5 +42,6 @@ export function AgentsTeamwork({ ctx }: { ctx: ToolsCtx }) {
     <h3 className="cz-h3">Let specialists argue it out</h3>
     <div className="cz-line"><span>Two or three specialists take sides on a question<small>Each answers the others in turn, then you get both sides and where they agree.</small></span>
       <Grey className="switch" reason="Letting specialists argue it out comes in a later update."><span /></Grey></div>
+    </TechnicalOnly>
   </>;
 }
