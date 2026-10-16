@@ -97,6 +97,8 @@ export const FAKE_ENGINE_METHODS = [
   'plugin.approval.list',
   'exec.approval.resolve',
   'plugin.approval.resolve',
+  'talk.session.create',
+  'talk.session.close',
 ] as const;
 
 export type FakeEngineOptions = {
@@ -223,6 +225,21 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         return { ok: true, payload: approvals.exec };
       case 'plugin.approval.list':
         return { ok: true, payload: approvals.plugin };
+      case 'talk.session.create': {
+        const sessionId = `talk-${++asked}`;
+        return {
+          ok: true,
+          payload: {
+            sessionId,
+            relaySessionId: sessionId,
+            provider: 'local',
+            voice: 'Oak',
+            audio: { inputEncoding: 'pcm16', outputEncoding: 'pcm16', inputSampleRateHz: 24000, outputSampleRateHz: 24000 },
+          },
+        };
+      }
+      case 'talk.session.close':
+        return { ok: true, payload: { ok: true } };
       case 'exec.approval.resolve':
       case 'plugin.approval.resolve': {
         const { id, decision } = (params ?? {}) as { id?: string; decision?: string };
