@@ -18,9 +18,23 @@ const { acquireEngineStartLock, attachOrStartEngine, engineAnswers, engineServic
 const { EXTERNAL_VOLUME_SERVICE_LINE, SERVICE_BLOCKED_LINE, childModeSettingsLine, parseLaunchdJob, readServiceLogsSince, serviceCannotRunReason, serviceLogPaths, serviceVolumeBlock } = service;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+/** Windows keeps a directory locked until the process that used it as its cwd has exited. */
+async function removeDataDir(dir) {
+  const end = Date.now() + 5_000;
+  for (;;) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!['EPERM', 'EBUSY', 'ENOTEMPTY'].includes(error.code) || Date.now() > end) throw error;
+      await pause(50);
+    }
+  }
+}
+
 function dataDir(t) {
   const dir = mkdtempSync(join(tmpdir(), 'branch-always-on-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  t.after(() => removeDataDir(dir));
   return dir;
 }
 
@@ -441,11 +455,16 @@ http.createServer((req, res) => {
 
 test('quit leaves the detached fallback, and the next launch attaches when that pid still owns the port', async t => {
   const { writeFileSync } = await import('node:fs');
+  let pid;
+  // Registered before dataDir's removal, so the child is dead before the folder is removed.
+  t.after(async () => {
+    stopPid(pid);
+    const end = Date.now() + 5_000;
+    while (pid && alive(pid) && Date.now() < end) await pause(50);
+  });
   const dir = dataDir(t);
   writeFileSync(join(dir, 'branch.mjs'), ENGINE_SCRIPT);
   const port = await freePort();
-  let pid;
-  t.after(() => stopPid(pid));
   pid = await runQuitUi(dir, port, true, true);
   assert.ok(Number.isInteger(pid) && pid > 0);
   await pause(500);
