@@ -7,6 +7,7 @@ import { join } from "node:path";
 import test from "node:test";
 import * as driverModule from "../dist/mac-computer-driver.js";
 const { MacComputerDriver, describeDriverError, macScreenControlEnabled } = driverModule;
+import { externalUrlAllowed, MAC_SCREEN_RECORDING_SETTINGS } from "../dist/external-url.js";
 
 test("Mac screen control remains off until explicitly enabled", async () => {
   const dir = await mkdtemp(join(tmpdir(), "branch-mac-screen-setting-"));
@@ -241,4 +242,16 @@ test("the driver notices an exit by checking its state, never by a pending waitF
     await tick();
     assert.equal(checks, stopped, "stop ends the checks");
   } finally { await driver.stop(); await rm(dir, { recursive: true, force: true }); }
+});
+
+// Private #1103 item 5: the computer pane's Open System Settings reaches the Screen Recording pane, and nothing else
+// outside the web gets out of the window.
+test("the window may open web pages and the Screen Recording pane, nothing else", () => {
+  assert.equal(MAC_SCREEN_RECORDING_SETTINGS, "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
+  assert.equal(externalUrlAllowed("https://github.com/KeepOak/Branch-Agent"), true);
+  assert.equal(externalUrlAllowed(MAC_SCREEN_RECORDING_SETTINGS), true);
+  for (const url of ["http://example.com", "file:///etc/passwd", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture&x=1", "javascript:alert(1)", "smb://host/share"]) {
+    assert.equal(externalUrlAllowed(url), false, url);
+  }
 });
