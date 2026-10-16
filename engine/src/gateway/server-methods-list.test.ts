@@ -331,6 +331,7 @@ describe("listGatewayMethods", () => {
       "buildWorktrees.status",
       "sessions.messages.pin",
       "sessions.messages.delete",
+      "agents.documents.set",
     ];
     expect(listGatewayMethods().slice(-expectedSuffix.length)).toEqual(expectedSuffix);
     const methods = listGatewayMethods();
@@ -738,6 +739,7 @@ describe("listGatewayMethods", () => {
       "buildWorktrees.status",
       "sessions.messages.pin",
       "sessions.messages.delete",
+      "agents.documents.set",
     ];
     expect(coreMethods.slice(-expectedCoreSuffix.length)).toEqual(expectedCoreSuffix);
     expect(methods.indexOf("approval.get")).toBeGreaterThan(methods.indexOf("tts.speak"));
