@@ -194,6 +194,11 @@ function PinBtn({ title }: { title: string }) {
 
 /** One settings row: title, sub-line and the control on the right. `off` greys the control and says why on its own line.
  *  Every row with a plain title has a pin, except General's Pinned list itself (noPin). */
+/** The repo's plain reason for a greyed control whose own reason is a developer note: "<label> comes in a later update." */
+export function laterWhy(label: string | undefined): string {
+  return `${(label ?? "This").trim().replace(/[….]+$/, "")} comes in a later update.`;
+}
+
 export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, after, noPin }: {
   title: ReactNode; sub?: ReactNode; help?: string; children?: ReactNode; off?: string; keep?: Keep; icon?: ReactNode; stack?: boolean; id?: string; after?: ReactNode; noPin?: boolean;
 }) {
@@ -202,7 +207,16 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   const locked = useContext(LockContext);
   const why = off ?? (locked ? NOSETUP : undefined);
   const name = typeof title === "string" ? title : id;
-  const shown = shownWhy(why);
+  // A greyed row always says why in one visible line (Private #1093 item 7): its own plain reason, or, when that reason
+  // is a developer note shownWhy keeps out of sight, the repo's "<label> comes in a later update."
+  const shown = why ? shownWhy(why) ?? laterWhy(name) : undefined;
+  const whyId = useId();
+  const right = useRef<HTMLSpanElement>(null);
+  // The greyed controls inside name that line with aria-describedby, so a screen reader says why too.
+  useEffect(() => {
+    const controls = right.current ? [...right.current.querySelectorAll<HTMLElement>("button, input, select, textarea, [role=switch]")] : [];
+    for (const el of controls) { if (shown) el.setAttribute("aria-describedby", whyId); else if (el.getAttribute("aria-describedby") === whyId) el.removeAttribute("aria-describedby"); }
+  });
   const raw = sub ?? shown;
   const line = typeof raw === "string" ? plainCopy(raw, level) : raw;
   useHelpEntry(helpKey, typeof title === "string" ? title : id ?? "Setting", help ? plainCopy(help, level) : help);
@@ -210,9 +224,9 @@ export function Ctl({ title, sub, help, children, off, keep, icon, stack, id, af
   return (
     <div className={`ctl${why ? " off-k" : ""}${stack ? " stack-k" : ""}`} data-row={name} aria-disabled={why ? true : undefined}>
       <b>{icon}{title}{typeof title === "string" && !noPin ? <PinBtn title={title} /> : null}</b>
-      {children ? <span className="right" inert={why ? true : undefined}>{children}</span> : null}
-      {line || kept ? <small>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
-      {shown && sub ? <small className="why-k">{shown}</small> : null}
+      {children ? <span className="right" ref={right} inert={why ? true : undefined}>{children}</span> : null}
+      {line || kept ? <small id={shown && !sub ? whyId : undefined}>{line}{line && kept ? " " : null}{kept ? <span className="kept-k">{kept}</span> : null}</small> : null}
+      {shown && sub ? <small className="why-k" id={whyId}>{shown}</small> : null}
       {after}
     </div>
   );

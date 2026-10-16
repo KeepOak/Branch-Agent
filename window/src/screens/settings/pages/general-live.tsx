@@ -59,7 +59,7 @@ function ProjectRow({ engine, project }: { engine: WindowEngine; project: Projec
       <b className="g-label">{visible(project.displayName)}</b>
       {typeof total === "number" ? <small className="g-label">{total} {total === 1 ? "conversation" : "conversations"}</small> : null}
       <div className="r1s-ctl">
-        <Coming engine={engine} need="engine: a project's own instructions" unwired reason="Editing a project’s own instructions comes in a later update.">
+        <Coming engine={engine} need="engine: a project's own instructions" unwired show reason="Editing a project’s own instructions comes in a later update.">
           <button type="button" className="r1s-btn">Edit</button>
         </Coming>
       </div>

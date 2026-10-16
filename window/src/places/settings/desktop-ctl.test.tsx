@@ -33,13 +33,15 @@ describe("DesktopCtl", () => {
     expect(row("Keep this computer awake").querySelector(".why-k")?.textContent).toBe(IN_BROWSER);
   });
 
-  it("is greyed for an older Branch app without controls, without a developer note", async () => {
+  it("is greyed for an older Branch app without controls, and says why in plain words instead of the developer note", async () => {
     (window as { branchDesktop?: unknown }).branchDesktop = {};
     await render();
     const r = row("Type branch in any terminal");
     expect(r.getAttribute("aria-disabled")).toBe("true"); expect(r.classList.contains("off-k")).toBe(true);
     expect(r.querySelector(".right")?.hasAttribute("inert")).toBe(true);
-    expect(r.querySelector(".why-k")).toBeNull(); expect(r.textContent).not.toContain(NEEDS_NEWER_APP);
+    // Private #1093 item 7: a greyed row always says why; the developer note becomes the plain "comes in a later update" line.
+    expect(r.querySelector(".why-k")?.textContent).toBe("Type branch in any terminal comes in a later update."); expect(r.textContent).not.toContain(NEEDS_NEWER_APP);
+    expect(r.querySelector("[role=switch], input")?.getAttribute("aria-describedby")).toBe(r.querySelector(".why-k")?.id);
     expect(visibleDevNotes(host)).toEqual([]);
   });
 

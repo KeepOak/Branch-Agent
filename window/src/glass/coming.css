@@ -1,0 +1,2 @@
+/* A Coming control's reason, in one visible line after it (Private #1093 item 7). */
+.coming-why { display: block; margin-top: 4px; font-size: 12px; line-height: 1.4; color: var(--ink-3); }

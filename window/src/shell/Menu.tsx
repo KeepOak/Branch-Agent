@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { shownWhy } from "./shown-why";
 import "./menu.css";
 
@@ -46,6 +46,7 @@ function moveFocus(el: HTMLElement | null, step: number) {
 }
 
 export function Menu({ at, items, onClose, label, testid, upward }: Props) {
+  const idBase = useId();
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<{ index: number; at: MenuAnchor } | null>(null);
   const pos = useFitInWindow(ref, at, upward);
@@ -106,7 +107,7 @@ export function Menu({ at, items, onClose, label, testid, upward }: Props) {
   return (
     <>
       <div ref={ref} className="pop menu in17" role="menu" aria-label={label} data-testid={testid} style={{ left: pos.x, top: pos.y }} onKeyDown={onKey}>
-        {items.map((it, i) => renderItem(it, i, onClose, openSub, sub?.index === i))}
+        {items.map((it, i) => renderItem(it, i, onClose, openSub, sub?.index === i, idBase))}
       </div>
       {sub ? <SubMenu parent={items[sub.index]} at={sub.at} onClose={() => setSub(null)} onDone={onClose} /> : null}
     </>
@@ -121,7 +122,14 @@ function SubMenu({ parent, at, onClose, onDone }: { parent: MenuItem; at: MenuAn
   return <Menu at={at} items={wrap} onClose={onClose} label={parent.label} />;
 }
 
-function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: number, el: HTMLElement) => void, subOpen: boolean): ReactNode {
+/** Why a greyed row is greyed, in one visible line (Private #1093 item 7): its own plain reason, or, when that reason is a
+ *  developer note shownWhy keeps out of sight, the repo's "<label> comes in a later update." */
+export function menuWhy(label: string, disabled: string | undefined): string | undefined {
+  if (!disabled) return undefined;
+  return shownWhy(disabled) ?? `${label.replace(/[….]+$/, "")} comes in a later update.`;
+}
+
+function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: number, el: HTMLElement) => void, subOpen: boolean, idBase = "mi"): ReactNode {
   if (it.kind === "sep") {
     return <hr key={i} className="msep" />;
   }
@@ -158,18 +166,21 @@ function renderItem(it: MenuItem, i: number, onClose: () => void, openSub: (i: n
       </button>
     );
   }
+  const why = menuWhy(it.label, it.disabled);
+  const whyId = why ? `${idBase}-why-${i}` : undefined;
   return (
-    <button key={i} type="button" role={it.checked !== undefined ? it.radio ? "menuitemradio" : "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={shownWhy(it.disabled)}
+    <button key={i} type="button" role={it.checked !== undefined ? it.radio ? "menuitemradio" : "menuitemcheckbox" : "menuitem"} aria-checked={it.checked} className={it.danger ? "mi bad" : "mi"} data-index={i} data-testid={it.testid} disabled={Boolean(it.disabled)} title={why} aria-describedby={whyId}
       onClick={() => {
         onClose();
         it.run();
       }}>
       {it.icon ? <i className="mi-ico" aria-hidden="true">{it.icon}</i> : null}
       {it.checked !== undefined ? <span className="mi-tick" aria-hidden="true">{it.checked ? "✓" : ""}</span> : null}
-      {it.sub ? (
+      {it.sub || why ? (
         <span className="mi-text">
           <span>{it.label}</span>
-          <small className="mi-s">{it.sub}</small>
+          {it.sub ? <small className="mi-s">{it.sub}</small> : null}
+          {why ? <small className="mi-s mi-why" id={whyId}>{why}</small> : null}
         </span>
       ) : (
         <span>{it.label}</span>

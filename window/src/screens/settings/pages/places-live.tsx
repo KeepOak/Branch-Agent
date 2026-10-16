@@ -64,7 +64,7 @@ function GoTo({ engine, go }: { engine: WindowEngine; go: (route: Route) => void
                 {tile.place ? (
                   <button type="button" className="r1s-nav r1s-tile" data-local="" data-place={tile.place} onClick={() => go({ kind: "place", place: tile.place! })}>{body}</button>
                 ) : (
-                  <Coming engine={engine} need={`window: the ${tile.name} place`} unwired reason={`${tile.name} comes in a later update.`} where={tile.name}>
+                  <Coming engine={engine} need={`window: the ${tile.name} place`} unwired show reason={`${tile.name} comes in a later update.`} where={tile.name}>
                     <button type="button" className="r1s-nav r1s-tile" data-tile={tile.id}>{body}</button>
                   </Coming>
                 )}
