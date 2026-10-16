@@ -790,7 +790,7 @@ async function prepareUpdateStandby(label: string, explicit: boolean): Promise<v
     return;
   }
   try {
-    standby = await prepareStandbyGateway(cfg, resolveEngineDir(cfg), token, standbyWarmTimeoutMs());
+    standby = await prepareStandbyGateway(cfg, resolveEngineDir(cfg), token, standbyWarmTimeoutMs(), fallbackDetached);
     standbyFailures.delete(label);
     log(`update ${label}: standby engine ${standby.child.pid} prepared on port ${standby.port} while the current engine kept serving`);
   } catch (error) {

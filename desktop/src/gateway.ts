@@ -214,9 +214,11 @@ export function stopWarmingStandby(): void {
  * new address. Resolves once the standby has warmed; a standby that exits, cannot report or times out is stopped,
  * so nothing is left behind and the live engine keeps serving.
  */
-export async function prepareStandbyGateway(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number): Promise<PreparedGateway> {
+export async function prepareStandbyGateway(cfg: DesktopConfig, engineDir: string, token: string, timeoutMs: number, surviveQuit = false): Promise<PreparedGateway> {
   const port = await freeLoopbackPort();
-  const child = startGateway(cfg, engineDir, token, true, port);
+  // The successor has to outlive the engine it replaces. When that engine is the detached
+  // fallback, the standby is detached too, or Windows' job ends it when the old engine stops.
+  const child = startGateway(cfg, engineDir, token, true, port, undefined, undefined, surviveQuit);
   // POSIX cannot raise a lowered process back without privileges, and a promoted standby must run at full speed.
   if (process.platform === "win32") setEnginePriority(child, true);
   warmingStandby = child;
