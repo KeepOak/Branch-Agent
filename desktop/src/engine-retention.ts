@@ -6,7 +6,7 @@ import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promis
 import { basename, dirname, join } from "node:path";
 import type { DesktopConfig } from "./config";
 
-/** How long a newly confirmed engine must run healthy before its predecessor is removed. */
+/** How long a newly confirmed engine must run healthy before its predecessor is removed. One named window. */
 export const PREVIOUS_ENGINE_HEALTHY_MS = 24 * 60 * 60 * 1000;
 
 const healthyFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "engine-retention-healthy.json");
