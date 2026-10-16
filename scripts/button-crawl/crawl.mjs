@@ -84,6 +84,36 @@ function add(found, key, problems) {
   found[key] = [...new Set([...(found[key] || []), ...problems])].sort();
 }
 
+// A click that leaves the page is not a console error. clickOne already ignores these.
+function navigationFailure(error) {
+  return /Execution context was destroyed|Navigation|Target closed|frame was detached/i.test(String(error));
+}
+
+function childScreen(screen, el) {
+  return {
+    id: `${screen.id} > ${el.name}`,
+    route: screen.route,
+    // Settings Regular and Advanced are different screens. An overlay opened there has to
+    // come back to that same level; otherwise the replay mounts Technical.
+    level: screen.level,
+    depth: screen.depth + 1,
+    path: [...(screen.path || []), { name: el.name, occurrence: el.occurrence, region: el.region }],
+  };
+}
+
+async function attemptOpen(page, screen, errors) {
+  const from = errors.length;
+  await loadScreen(page).catch((error) => {
+    if (!navigationFailure(error)) errors.push(String(error));
+  });
+  const opened = await show(page, screen).catch((error) => {
+    if (!navigationFailure(error)) errors.push(String(error));
+    return false;
+  });
+  const lines = errors.slice(from).filter((line) => !isNoise(line));
+  return { opened, lines, from };
+}
+
 async function waitForUrl(url) {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     try {
@@ -239,20 +269,24 @@ async function main() {
     while (queue.length && screenCount < caps.maxScreens) {
       const screen = queue.shift();
       screenCount += 1;
-      const errorFrom = errors.length;
-      await loadScreen(page).catch((error) => errors.push(String(error)));
-      const opened = await show(page, screen).catch((error) => {
-        errors.push(String(error));
-        return false;
-      });
+      let attempt = await attemptOpen(page, screen, errors);
+      // One screen in a long run can fail to open, or log once while the page is still starting.
+      // Try that screen again and keep the second result.
+      if (!attempt.opened || attempt.lines.length) {
+        errors.splice(attempt.from);
+        attempt = await attemptOpen(page, screen, errors);
+      }
+      const opened = attempt.opened;
+      const openErrors = attempt.lines;
+      if (openErrors.length) {
+        console.log(`button-crawl: ${screen.id} (open)`);
+        for (const line of openErrors) console.log(`  ${line}`);
+        add(found, elementKey(screen.id, '(open)'), ['console-error']);
+      }
       if (!opened) {
-        const openErrors = errors.slice(errorFrom).filter((line) => !isNoise(line));
-        if (openErrors.length) add(found, elementKey(screen.id, '(open)'), ['console-error']);
         checks.push({ screenId: screen.id, complete: true, keys: openErrors.length ? [elementKey(screen.id, '(open)')] : [] });
         continue;
       }
-      const openErrors = errors.slice(errorFrom).filter((line) => !isNoise(line));
-      if (openErrors.length) add(found, elementKey(screen.id, '(open)'), ['console-error']);
       const shot = resolve(outDir, `${screen.id.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 80) || 'screen'}.jpg`);
       await page.screenshot({ path: shot, type: 'jpeg', quality: 40 }).catch(() => undefined);
       const keys = [];
@@ -367,25 +401,13 @@ async function main() {
         if (!threadMenu && isThreadLayoutMenu(result.after.menu, el.name)) {
           threadMenu = { items: result.after.menuItems || [], ...threadLayoutDiff(result.after.menuItems || []) };
         }
-        if (isPlusMoreRow(el, screen)) {
-          queue.push({
-            id: `${screen.id} > ${el.name}`,
-            route: screen.route,
-            depth: screen.depth + 1,
-            path: [...(screen.path || []), { name: el.name, occurrence: el.occurrence, region: el.region }],
-          });
-        }
+        if (isPlusMoreRow(el, screen)) queue.push(childScreen(screen, el));
         const menuOpened = Boolean(result.after.menu) && result.after.menu !== result.before.menu;
         const dialogOpened = Boolean(result.after.dialog) && result.after.dialog !== result.before.dialog;
         const hasMenuItems = (result.after.menuItems || []).length > 0;
         if ((menuOpened || dialogOpened) && (dialogOpened || hasMenuItems) && screen.depth < caps.maxDepth && overlays < caps.maxOverlays) {
           overlays += 1;
-          queue.push({
-            id: `${screen.id} > ${el.name}`,
-            route: screen.route,
-            depth: screen.depth + 1,
-            path: [...(screen.path || []), { name: el.name, occurrence: el.occurrence, region: el.region }],
-          });
+          queue.push(childScreen(screen, el));
         }
       }
       if (twinEligible) settingsTwins.record(screen.route.page, wantedNames, screen.id, clickedAll);
