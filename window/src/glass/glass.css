@@ -114,8 +114,8 @@
 /* the chosen one in a group, and a hovered control: a light lift over the same frost, outline kept */
 :is(.g-frost, .g-clear :is(button, a[href])):is([aria-current="true"], [aria-current="step"], [aria-current="page"], [aria-selected="true"], [aria-pressed="true"], :hover:not(:disabled, [aria-disabled="true"])):not([role="switch"], [data-solid], #g48#g48) {
   box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
-/* a switch that is off sits on the same frost; one that is on keeps its accent fill */
-.g-clear [role="switch"]:not([aria-checked="true"]):not(#g48) { background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); }
+/* a switch that is off sits on the same frost; one that is on keeps its accent fill (a native checkbox switch says it with :checked) */
+.g-clear [role="switch"]:not([aria-checked="true"], :checked):not(#g48) { background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge); }
 /* a clear dialog's title hugs its words; the close button stays at the end */
 .dlg.g-clear .dlg-h > h2 { flex: 0 1 auto; margin-right: auto; }
 :root[data-transparency="reduce"] .g-clear:not(#g48#g48) { background: var(--bg); }
