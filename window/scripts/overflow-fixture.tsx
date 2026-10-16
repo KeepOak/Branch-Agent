@@ -12,7 +12,7 @@ import "../src/places/customize/customize.css";
 
 type Step = Extract<Block, { kind: "step" }>;
 const LONG_TOKEN = "eyJ1cmwiOiJ3c3M6Ly9icmFuY2gtZ2F0ZXdheS5leGFtcGxlLnRzLm5ldDoxODc4OSIsImJvb3RzdHJhcFRva2VuIjoi" + "Zm9vYmFyYmF6cXV4".repeat(14);
-const LONG_PATH = "/Users/someone/Documents/projects/example-app/src/screens/chat/very-long-folder-name-without-any-breaks/" + "a".repeat(80) + ".tsx";
+const LONG_PATH = "workspace/example-app/src/screens/chat/very-long-folder-name-without-any-breaks/" + "a".repeat(80) + ".tsx";
 const LONG_COMMAND = "./node_modules/.bin/vitest run --reporter=verbose --pool=forks " + "src/screens/chat/" + "x".repeat(140) + ".test.tsx";
 
 const OVERFLOW_STEPS: Step[] = [
