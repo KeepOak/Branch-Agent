@@ -105,7 +105,7 @@ async function createFixtureFiles(root) {
   const script = `import fs from "node:fs";import http from "node:http";
 const root=${JSON.stringify(root)}, file=root+"/starts.json";
 const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
-starts.push(process.pid);fs.writeFileSync(file,JSON.stringify(starts));
+starts.push(process.pid);const tmp=file+"."+process.pid+".tmp";fs.writeFileSync(tmp,JSON.stringify(starts));fs.renameSync(tmp,file);
 const peers=starts.filter(p=>p!==process.pid&&(()=>{try{process.kill(p,0);return true;}catch{return false;}})());
 fs.writeFileSync(root+"/launch-"+process.pid+".json",JSON.stringify({port:Number(process.argv.at(-1)),standby:process.env.BRANCH_GATEWAY_STANDBY==="1",token:process.env.BRANCH_GATEWAY_TOKEN,peers}));
 if(starts.length===2&&fs.existsSync(root+"/fail-next"))process.exit(1);
@@ -370,10 +370,12 @@ test("a crashed ready gateway restarts without closing or reloading the window",
 }));
 test("crash recovery keeps the running engine and staged engine/window update pending", () => fixture(async ({ root, runtime, starts, offerStaged }) => {
   const sent = []; runtime.window.webContents.send = (channel, value) => sent.push([channel, value]);
+  // The pid is the engine that became ready. Staging must not be what makes it visible.
+  let first;
+  await eventually(async () => Number.isInteger(first = (await starts())[0]));
   const { engineDir, stagedEngine, previousWindow, windowDir } = await stageFixtureUpdate(root);
   offerStaged();
   await eventually(() => sent.some(([channel, value]) => channel === "branch-desktop:engine-update" && value === "auto-wait"));
-  const first = (await starts())[0];
   await writeFile(join(root, "release-ready"), "ready");
   process.kill(first, "SIGTERM");
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("gateway recovered after unexpected exit"));
