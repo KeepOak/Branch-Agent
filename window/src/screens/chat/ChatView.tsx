@@ -5,7 +5,7 @@
 // the plan card, helpers, the waiting line, find and the turn rail) are imported, not copied, so nothing that works
 // today is lost.
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { CapabilityProvider, useCapabilityEngine } from "../../connect/capabilities";
+import { CapabilityProvider, useCan, useCapabilityEngine } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import type { QueuedMessage, RunEnd, SteeredNote } from "../../connect/session";
 import { currentModelRef } from "../../composer/model";
@@ -260,13 +260,18 @@ export function ChatView(props: ChatViewProps) {
   const lastReply = [...history].reverse().find((b) => b.kind === "text");
   const suggestionKey = lastReply ? (props.sessionKey ?? "") + ":" + lastReply.key : null;
   // The latest turn you stopped offers Continue on its "Response stopped" line (Private #1102): it sends "Continue" with
-  // chat.send, and the engine kept the stopped reply's partial text, so the Trunk resumes where it stopped.
+  // chat.send. On abort the engine saves the reply's partial text as an ordinary assistant message
+  // (chat-transcript-inject.ts, stopReason "stop", not left out of context), so the next turn reads it and resumes.
+  // Continue is offered only when that partial is in the conversation and the engine has chat.send; otherwise the
+  // stopped line stands alone and the usual suggestions (with "Carry on") stay.
   const turnEnd = [...history].reverse().find((b) => b.kind === "user" || b.kind === "done");
   const stoppedKey = turnEnd?.kind === "done" && turnEnd.stopped && !running && !pendingUser && !waitingHere ? turnEnd.key : null;
-  const continueKey = props.onStart && stoppedKey && stoppedKey !== usedSuggestion ? stoppedKey : null;
+  const canSend = useCan(capabilities, CONTINUE.need);
+  const offerContinue = Boolean(props.onStart && stoppedKey && canSend && keptPartial(history));
+  const continueKey = offerContinue && stoppedKey !== usedSuggestion ? stoppedKey : null;
   const onContinue = continueKey ? () => { setUsedSuggestion(continueKey); props.onStart?.(CONTINUE_MESSAGE); } : undefined;
   // Continue stands in for the "Carry on" chip there, so the stopped turn offers one way to resume, not two.
-  const suggestions = props.onStart && !waitingHere && suggestionKey !== usedSuggestion && !stoppedKey ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
+  const suggestions = props.onStart && !waitingHere && suggestionKey !== usedSuggestion && !offerContinue ? suggestionsFor(history, running, Boolean(pendingUser)) : [];
   const helperChip = helpers.length && engine?.sessionKey ? <HelpersChip helpers={helpers} approvals={[...details.values()]} root={engine.sessionKey} onAnswer={answer} onOpenSession={props.onOpenSession} onOpenActivity={props.onOpenHelpers}
     onStop={(h) => engine.request("sessions.abort", { key: h.key }).then(() => toast("Stopped " + h.name + ". " + name + " carries on without it."), (e: unknown) => toast(e instanceof Error ? e.message : String(e)))} /> : null;
 
@@ -340,7 +345,13 @@ type View = {
 
 /** What Continue sends after a stop: the reply's partial is kept in the conversation, so the Trunk picks up from it. */
 export const CONTINUE_MESSAGE = "Continue";
-const CONTINUE = { need: "chat.send", reason: "This engine can’t send messages." };
+const CONTINUE = { need: "chat.send", reason: "Continue comes in a later update." };
+
+/** True when the latest turn kept some of its reply (the engine saves a stopped reply's partial; a blank one it skips). */
+function keptPartial(history: readonly Block[]): boolean {
+  const user = history.map((b) => b.kind).lastIndexOf("user");
+  return history.slice(user + 1).some((b) => b.kind === "text" && b.text.trim().length > 0);
+}
 
 /** "Put back" under a message left out of context calls the same method as the menu row. */
 const PUT_BACK = { need: "session.context.set", reason: "This engine can’t put a message back in context." };

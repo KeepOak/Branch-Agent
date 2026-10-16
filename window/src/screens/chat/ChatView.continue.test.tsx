@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Private #1102 (Hermes A-179): after Stop, the conversation says "Response stopped", and the latest stopped turn offers
-// Continue. Continue sends through chat.send (the engine keeps the stopped reply's partial, so the Trunk resumes from it);
-// an engine without chat.send shows it under the Coming contract instead.
+// Continue. Continue sends through chat.send (the engine keeps the stopped reply's partial, so the Trunk resumes from it).
+// Without chat.send, or when nothing of the reply was kept, there is no Continue: the line stands alone and "Carry on" stays.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -65,12 +65,30 @@ it("offers Continue only on the latest stopped turn, and not while a run works",
   expect(continueButton()).toBeUndefined();
 });
 
-it("an engine without chat.send shows Continue under the Coming contract, and it sends nothing", async () => {
+it("an engine without chat.send shows no Continue and no Coming row, only the Response stopped line", async () => {
   const onStart = vi.fn();
   await show({ history: stoppedTurn(1), onStart }, []);
-  const button = continueButton();
-  expect(button).toBeDefined();
-  expect(button!.closest("[data-coming]")?.getAttribute("data-coming")).toBe("This engine can’t send messages.");
-  await act(async () => button!.click());
+  expect(stopped().map((line) => line.querySelector(".r1c-notice-text")?.textContent)).toEqual(["Response stopped"]);
+  expect(continueButton()).toBeUndefined();
+  expect(stopped()[0].querySelector("[data-coming]")).toBeNull();
+  expect(host.textContent).not.toContain("Continue comes in a later update.");
   expect(onStart).not.toHaveBeenCalled();
+});
+
+it("a stop that kept nothing of the reply offers no Continue, and the Carry on chip stays", async () => {
+  const onStart = vi.fn();
+  const earlier: Block[] = [
+    { kind: "user", key: "u0", text: "Hi", meta: { entryId: "e0", timestamp: t0 } },
+    { kind: "text", key: "a0", text: "Hello there.", streaming: false, meta: { entryId: "f0", timestamp: t0 + 1 } },
+    { kind: "done", key: "r0:done", runId: "r0", stopped: false },
+  ];
+  const blank: Block[] = [
+    { kind: "user", key: "u1", text: "Tell me a story about a cat.", meta: { entryId: "e1", timestamp: t0 + 2 } },
+    { kind: "done", key: "r1:done", runId: "r1", stopped: true },
+  ];
+  await show({ history: [...earlier, ...blank], onStart }, ["chat.send"]);
+  expect(stopped().map((line) => line.querySelector(".r1c-notice-text")?.textContent)).toEqual(["Response stopped"]);
+  expect(continueButton()).toBeUndefined();
+  const chips = [...host.querySelectorAll('[data-testid="suggestion-row"] button')].map((b) => b.textContent);
+  expect(chips).toEqual(["“Carry on”"]);
 });
