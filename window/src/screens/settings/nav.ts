@@ -106,7 +106,7 @@ export const PAGES: Record<PageId, PageSpec> = {
   autos: { title: "Automations", lede: "Routines that run on their own: when, how, and what they may do.", cards: ["Automations", "Steps and nudges"] },
   voice: { title: "Voice & calls", lede: "Talking to Branch, hearing it back, live voice and calls.", cards: ["Talking", "Listening", "Speaking back", "Live voice", "Calls & meetings", "Voice services"] },
   chatapps: { title: "Chat apps", lede: "Telegram, WhatsApp, Slack and 71 more: who answers, who may message, and how replies arrive.", cards: ["Your chat apps", "Who answers", "Who may message", "How replies look & arrive", "Groups", "Commands", "Approvals & what Trunks may do", "Each app", "Limits & quiet"] },
-  accounts: { title: "Accounts & usage", lede: "Your model accounts, what each has left, the order Branch uses them in, and your keepoak.com account.", cards: ["Usage by account", "Order Branch uses them in", "When one runs out", "Which account goes next", "Your own accounts", "Coding apps on this computer", "Where each sign-in comes from", "Terms", "GitHub", "keepoak.com", "Accounts, more", "Accounts, technical"] },
+  accounts: { title: "Accounts & usage", lede: "Your model accounts, what each has left, the order Branch uses them in, and your keepoak.com account.", cards: ["Usage by account", "Linked accounts", "Order Branch uses them in", "When one runs out", "Which account goes next", "Your own accounts", "Coding apps on this computer", "Where each sign-in comes from", "Terms"] },
   models: { title: "Models", lede: "Which models answer, for which jobs, with what budget, and how turns run.", cards: ["Defaults and picking models", "Models for smaller jobs", "Compare models", "Testing models", "Mixtures and savings", "Decision models", "Pictures, video and music", "Finishing well", "Budgets", "Retries and timeouts", "Per connection", "How turns run", "How turns are planned", "Try early", "Attachments", "Each model"] },
   permissions: { title: "Permissions", lede: "What Trunks may do without asking, what they must ask for, and what they may never do.", cards: ["Mode", "Lockdown", "Without asking", "Rules for each tool and folder", "Commands by default", "Checks before anything runs", "Approvals", "Guards", "Money", "What each connector may do", "Isolation and sandbox", "Network and sandbox", "Company policy", "Privacy"] },
   signins: { title: "Sign-ins & keys", lede: "Passwords and keys Branch may use, where they come from, and how narrow they are.", cards: ["Branch may fill", "Where passwords come from", "Keys Branch holds", "Narrow keys"] },
@@ -147,8 +147,9 @@ function pagesOf(...ids: PageId[]): NavPage[] {
   return ids.map((id) => BY_ID.get(id)!);
 }
 
-/** Regular's sidebar, four groups. Every page except Developer lives in one of them.
- *  Developer stays on Technical, inside NAV's Branch group. */
+/** Regular's four pages. Every page except Developer lives in one of them.
+ *  Developer stays on Technical, inside NAV's Branch group. The first page in a group is what that
+ *  Regular page shows. The others stay reachable under an Advanced section on that page. */
 export const REGULAR_GROUPS: NavGroup[] = [
   { title: "General", pages: pagesOf("general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps") },
   { title: "Computer", pages: pagesOf("devices", "browser", "coding", "remote", "permissions") },
@@ -156,9 +157,17 @@ export const REGULAR_GROUPS: NavGroup[] = [
   { title: "Updates", pages: pagesOf("updates", "history", "learning", "features") },
 ];
 
-/** The sidebar for a level. Regular is the four groups. Advanced and Technical keep the full nav. */
+/** The Regular page a settings page belongs to, or none (Developer). */
+export function regularHub(id: PageId): NavGroup | undefined {
+  return REGULAR_GROUPS.find((g) => g.pages.some((p) => p.id === id));
+}
+
+/** The sidebar for a level. Regular is the four pages. Advanced and Technical keep the full nav. */
 export function navAt(level: Level): { top: NavPage[]; groups: NavGroup[] } {
-  return level === 0 ? { top: [], groups: REGULAR_GROUPS } : { top: TOP_PAGES, groups: NAV };
+  if (level === 0) {
+    return { top: REGULAR_GROUPS.map((g) => ({ ...g.pages[0], title: g.title })), groups: [] };
+  }
+  return { top: TOP_PAGES, groups: NAV };
 }
 
 /** A page's nav entry. */
