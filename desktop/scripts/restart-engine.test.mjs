@@ -25,9 +25,9 @@ const EVENTUALLY_DEFAULT_MS = 8000;
 // windows-latest keeps a killed engine's exclusive loopback socket. A short bind burst
 // makes that engine exit, crash recovery spends its attempts, and the fixture then waits
 // out a 30–41s deadline for a process that will never start. Linux and macOS free the
-// socket at once. The serving engine below keeps closing and binding for 75s, and this
-// deadline stays past that plus waitForGatewayPort (40 × 250ms) so the same attempt can
-// become ready.
+// socket at once. The engine below keeps closing and binding for 75s, and a standby stays
+// in that loop unless a live holder accepts a connection. This deadline stays past that
+// plus waitForGatewayPort (40 × 250ms) so the same attempt can become ready.
 const WINDOWS_FIXTURE_DEADLINE_MS = 75_000 + 10_000 + 5_000;
 function fixtureDeadline(timeout = EVENTUALLY_DEFAULT_MS) {
   return process.platform === "win32" ? Math.max(timeout, WINDOWS_FIXTURE_DEADLINE_MS) : timeout;
@@ -39,6 +39,30 @@ async function eventually(predicate, timeout = EVENTUALLY_DEFAULT_MS) {
 async function freePort() {
   const server = createServer(); await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port;
+}
+// The desktop's free-port probe has closed, and Windows can still report that port in use. The squatter
+// closes and binds again on the error event until it is the listener, or the fixture deadline passes.
+function listenLoopback(server, port) {
+  const end = Date.now() + fixtureDeadline();
+  return new Promise((resolve, reject) => {
+    let waiting = false;
+    const bind = () => server.listen(port, "127.0.0.1");
+    const onError = (error) => {
+      if (error?.code === "EADDRINUSE" && Date.now() <= end) {
+        if (waiting) return;
+        waiting = true;
+        const retry = () => { waiting = false; setTimeout(bind, 50); };
+        try { server.close(() => retry()); } catch { retry(); }
+        return;
+      }
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => { server.off("error", onError); resolve(); };
+    server.on("error", onError);
+    server.once("listening", onListening);
+    bind();
+  });
 }
 
 // A failed test used to leave engines, IPC, poll timers or the window server open.
@@ -118,7 +142,7 @@ async function createFixtureFiles(root) {
   const engine = join(root, "engine"), windowDir = join(root, "window");
   await mkdir(join(engine, "dist"), { recursive: true }); await mkdir(windowDir);
   await writeFile(join(engine, "dist/build-info.json"), '{"version":"fixture"}');
-  const script = `import fs from "node:fs";import http from "node:http";
+  const script = `import fs from "node:fs";import http from "node:http";import net from "node:net";
 const root=${JSON.stringify(root)}, file=root+"/starts.json";
 const starts=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):[];
 starts.push(process.pid);const tmp=file+"."+process.pid+".tmp";fs.writeFileSync(tmp,JSON.stringify(starts));fs.renameSync(tmp,file);
@@ -151,10 +175,10 @@ if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
   const announce=()=>process.send?.({type:"branch-desktop:standby-ready",pid:process.pid});
   if(fs.existsSync(root+"/hold-standby")){const timer=setInterval(()=>{if(!fs.existsSync(root+"/hold-standby")){clearInterval(timer);announce();}},10);}else announce();
 }
-// A standby listens once, so a taken port fails it. The serving engine closes and binds again on the error event.
-// Giving up after a short burst exits the process while Windows still holds the exclusive socket, and recovery
-// never starts another one. 1500 × 50ms stays inside the Windows fixture deadline above.
-const listen=()=>{const port=Number(process.argv.at(-1));const bind=()=>listener.listen(port,"127.0.0.1");listener.on("error",error=>{if(error&&error.code==="EADDRINUSE"&&process.env.BRANCH_GATEWAY_STANDBY!=="1"&&(globalThis.rebinds=(globalThis.rebinds||0)+1)<1500){listener.close(()=>setTimeout(bind,50));return;}process.exit(1)});bind();};
+// Windows keeps a just-closed exclusive socket: bind reports the address in use while nothing accepts.
+// A standby exits only when a connection is accepted (the test squatter). Otherwise both roles close and
+// bind again. 1500 × 50ms stays inside the Windows fixture deadline above.
+const listen=()=>{const port=Number(process.argv.at(-1));const bind=()=>listener.listen(port,"127.0.0.1");const again=()=>{if((globalThis.rebinds=(globalThis.rebinds||0)+1)>=1500)process.exit(1);else listener.close(()=>setTimeout(bind,50));};listener.on("error",error=>{if(!error||error.code!=="EADDRINUSE"){process.exit(1);return;}if(process.env.BRANCH_GATEWAY_STANDBY!=="1"){again();return;}const probe=net.connect({host:"127.0.0.1",port});let settled=false;const finish=taken=>{if(settled)return;settled=true;probe.destroy();if(taken)process.exit(1);else again();};probe.setTimeout(200,()=>finish(false));probe.once("connect",()=>finish(true));probe.once("error",()=>finish(false));});bind();};
 // As the real engine: a standby binds only after the old engine released state (stepped down, or drained).
 const released=()=>fs.existsSync(root+"/released-"+starts[0])||fs.existsSync(root+"/drained-"+starts[0]);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);process.exit(1);}},10);}
@@ -732,7 +756,7 @@ test("a handoff whose standby port was taken gives control back without rejectin
   };
   await eventually(async () => Boolean(await standbyLaunch()), 30_000);
   const { port } = await standbyLaunch();
-  const squatter = createServer(socket => socket.destroy()); await new Promise(resolve => squatter.listen(port, "127.0.0.1", resolve));
+  const squatter = createServer(socket => socket.destroy()); await listenLoopback(squatter, port);
   try {
     await unlink(join(root, "hold-standby"));
     await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 40_000);
@@ -1006,7 +1030,7 @@ test("a standby port taken before the engine binds it falls back to the live por
   await eventually(() => existsSync(join(root, `launch-${standby}.json`)));
   const { port } = JSON.parse(await readFile(join(root, `launch-${standby}.json`), "utf8"));
   // Readiness probes connect to the squatter too: drop them at once, so closing it never waits on a lingering socket.
-  const squatter = createServer(socket => socket.destroy()); await new Promise(resolve => squatter.listen(port, "127.0.0.1", resolve));
+  const squatter = createServer(socket => socket.destroy()); await listenLoopback(squatter, port);
   try {
     await unlink(join(root, "hold-standby"));
     await eventually(() => swapped(root), 70_000);
