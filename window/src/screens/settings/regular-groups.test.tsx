@@ -76,7 +76,7 @@ describe("Regular settings pages", () => {
       expect(host.querySelector(".r1s-nav[aria-current=page]")?.textContent).toBe(name);
       expect(advancedPages()).toEqual(ids.slice(1));
       expect(host.querySelector(".r1s-head h1")?.textContent).toBe(PAGES[ids[0]].title);
-      expect(host.querySelector(".r1s-advanced h2")?.textContent).toBe("Advanced");
+      expect(host.querySelector(".r1s-advanced h2")?.textContent).toBe(`Also in ${name}`);
     }
   });
 
