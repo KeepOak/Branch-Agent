@@ -37,15 +37,19 @@ export const TRUNK_DEFAULTS: { id: string; label: string; help?: string; button?
 const openPlace = (place: string) => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place } }));
 
 function DefaultRow({ engine, item }: { engine: SlotPageProps["engine"]; item: (typeof TRUNK_DEFAULTS)[number] }): ReactElement {
+  const reason = `${item.label} comes in a later update.`;
   return (
     <div className="r1s-row" data-row={`trunks.defaults.${item.id}`} data-lv="Advanced">
       <b className="g-label" data-lv="Advanced">{item.label}</b>
       {item.help ? <small className="g-label" data-lines>{item.help}</small> : null}
       <div className="r1s-ctl">
-        <Coming engine={engine} need={item.need} unwired reason={`${item.label} comes in a later update.`} where={item.label}>
-          {item.button ? <button type="button" className="r1s-btn">{item.button}</button> : <span className="r1s-own-ctl"><Toggle label={item.label} on={false} onChange={() => undefined} /></span>}
+        <Coming engine={engine} need={item.need} unwired reason={reason} where={item.label}>
+          {item.button
+            ? <button type="button" className="r1s-btn">{item.button}</button>
+            : <span className="r1s-own-ctl"><Toggle label={item.label} on={false} disabled aria-disabled="true" title={reason} onChange={() => undefined} /></span>}
         </Coming>
       </div>
+      {item.button ? null : <small className="r1s-note g-label" data-lines>{reason}</small>}
     </div>
   );
 }
