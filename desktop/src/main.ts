@@ -8,7 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
-import { createRunKeepAwake, POWER_STATE_REFRESH_MS, writePowerState } from "./keep-awake";
+import { appHoldsSleepBlock, claimServiceKeepAwake, createRunKeepAwake, handOffKeepAwake, POWER_STATE_REFRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, writePowerState } from "./keep-awake";
 import { applyGuestWebPreferences, BRANCH_BROWSER_PARTITION, guestAttachDecision, guestPermissionDecision, guestUrlDecision, popupDecision, r1WebPreferences } from "./browser-guest-policy";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
@@ -1508,6 +1508,9 @@ async function attachServiceEngine(): Promise<boolean> {
   });
   if (result.mode === "child") return rolledBack;
   serviceEngine = true;
+  // The service holds the sleep blocker. Drop any hold taken before attach, and claim power for this app at once.
+  keepAwake.update(false);
+  claimServiceKeepAwake(stateDir);
   // publish-engine.sh never removes the folder named here, and the service runs from it. An engine that was already
   // running keeps its record: after a window-only update the service still runs the folder it started from.
   const running = result.via === "attached" ? serviceEngineDir() : engineDir;
@@ -1807,7 +1810,7 @@ function watchTrayStatus(): void {
     void liveEngineState().then(state => {
       working = state.running && state.workingTrunks > 0;
       showTrayStatus(tray, state);
-      keepAwake.update(working);
+      keepAwake.update(appHoldsSleepBlock(serviceEngine) && working);
       notifier.observe(state);
     }).finally(() => { reading = false; schedule(working); });
   };
@@ -1820,6 +1823,7 @@ function watchTrayStatus(): void {
 function watchPowerSource(): void {
   const stateDir = join(cfg.dataDir, "home", ".branch");
   const tell = () => {
+    if (serviceEngine) claimServiceKeepAwake(stateDir);
     writePowerState(stateDir, onBatteryPower());
     keepAwake.refresh();
   };
@@ -1830,7 +1834,11 @@ function watchPowerSource(): void {
   }
   const timer = setInterval(tell, POWER_STATE_REFRESH_MS);
   timer.unref();
-  app.once("will-quit", () => clearInterval(timer));
+  // serviceEngine is still false here; it becomes true only after the service attaches. The interval checks the
+  // live flag so the claim stays inside the engine's 20 second window for the whole time this app is open.
+  const claim = setInterval(() => { if (serviceEngine) claimServiceKeepAwake(stateDir); }, SERVICE_KEEP_AWAKE_CLAIM_MS);
+  claim.unref();
+  app.once("will-quit", () => { clearInterval(timer); clearInterval(claim); });
 }
 
 /** Tray "Pause all work": the window stops every live run through the same calls as its own Pause all. */
@@ -1892,7 +1900,8 @@ function shutdown(): void {
   autoApply.stop();
   stopWindowWatch?.();
   controls.dispose();
-  keepAwake.dispose();
+  if (serviceEngine) handOffKeepAwake(join(cfg.dataDir, "home", ".branch"), keepAwake);
+  else keepAwake.dispose();
   stopCandidate();
   stopWarmingStandby();
   // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.
