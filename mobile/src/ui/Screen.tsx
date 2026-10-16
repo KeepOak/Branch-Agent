@@ -19,6 +19,8 @@ export function Screen({ children, footer, testID, avoidKeyboard = false }: { ch
         style={styles.fill}
         contentContainerStyle={{ paddingTop: insets.top + space.xxl, paddingHorizontal: layout.screenInset, paddingBottom: space.xl }}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
       >
         {children}
       </ScrollView>
