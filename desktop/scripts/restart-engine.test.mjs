@@ -15,6 +15,11 @@ const require = createRequire(import.meta.url), Module = require("node:module");
 const originalLoad = Module._load, originalFetch = globalThis.fetch;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+// Windows TerminateProcess throws ESRCH when the pid has already exited. The exit already happened.
+function signalExit(pid) {
+  try { process.kill(pid, "SIGTERM"); }
+  catch (error) { if (error?.code !== "ESRCH") throw error; }
+}
 const servingOn = async (port) => (await originalFetch(`http://127.0.0.1:${port}/readyz`).then(response => response.status, () => 0)) === 200;
 const EVENTUALLY_DEFAULT_MS = 8000;
 async function eventually(predicate, timeout = EVENTUALLY_DEFAULT_MS) {
@@ -119,7 +124,7 @@ if(starts.length===1&&fs.existsSync(root+"/slow-drain-reply")){if(m.type==="bran
 // late-drain-ack: a saturated first engine answers nothing, yet the drain request lands and it exits 12 s later.
 if(starts.length===1&&fs.existsSync(root+"/late-drain-ack")){if(m.type==="branch-desktop:drain-stop"&&!globalThis.draining){globalThis.draining=true;setTimeout(()=>{fs.writeFileSync(root+"/drained-"+process.pid,"1");process.exit(0);},12000);}return;}// A current engine steps down for its standby: it releases the state and keeps its run in flight (busy-run).
 // fenced: a stepped-down engine admits nothing new (fence-readyz: its /readyz says so). slow-deactivate: it answers late.
-if(m.type==="branch-desktop:deactivate"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;if(starts.length===1&&fs.existsSync(root+"/refuse-deactivate-exit")){process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:false},()=>process.exit(1));return;}if(fs.existsSync(root+"/deactivate-overrun-exit")){globalThis.fenced=true;setTimeout(()=>process.exit(1),100);return;}globalThis.fenced=true;fs.writeFileSync(root+"/released-"+process.pid,"1");if(fs.existsSync(root+"/busy-run")&&!globalThis.run){globalThis.run=new Promise(r=>setTimeout(()=>{fs.appendFileSync(root+"/transcript.txt","old run final\\n");r();},2000));}setTimeout(()=>process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:!fs.existsSync(root+"/refuse-deactivate")}),fs.existsSync(root+"/slow-deactivate")?3000:0);return;}
+if(m.type==="branch-desktop:deactivate"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;if(starts.length===1&&fs.existsSync(root+"/refuse-deactivate-exit")){process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:false},()=>process.exit(1));return;}if(fs.existsSync(root+"/deactivate-overrun-exit")){globalThis.fenced=true;setTimeout(()=>{try{listener.close()}catch{}process.exit(1)},100);return;}globalThis.fenced=true;fs.writeFileSync(root+"/released-"+process.pid,"1");if(fs.existsSync(root+"/busy-run")&&!globalThis.run){globalThis.run=new Promise(r=>setTimeout(()=>{fs.appendFileSync(root+"/transcript.txt","old run final\\n");r();},2000));}setTimeout(()=>process.send({type:"branch-desktop:deactivate-result",id:m.id,ok:!fs.existsSync(root+"/refuse-deactivate")}),fs.existsSync(root+"/slow-deactivate")?3000:0);return;}
 // rollback records which other engines were still alive when it ran: the failed standby must already be gone.
 if(m.type==="branch-desktop:rollback"){if(fs.existsSync(root+"/older-engine")||fs.existsSync(root+"/no-handoff"))return;const ok=!fs.existsSync(root+"/refuse-rollback");if(ok){globalThis.fenced=false;if(fs.existsSync(root+"/rollback-ready-delay"))globalThis.rollbackReadyAt=Date.now()+11000;try{fs.unlinkSync(root+"/released-"+process.pid);}catch{}}fs.writeFileSync(root+"/rolled-back-"+process.pid,JSON.stringify(starts.filter(p=>p!==process.pid&&(()=>{try{process.kill(p,0);return true;}catch{return false;}})())));process.send({type:"branch-desktop:rollback-result",id:m.id,ok});return;}
 if(m.type==="branch-desktop:drain-stop"&&fs.existsSync(root+"/older-engine"))return;process.send({type:"branch-desktop:activity-result",id:m.id,idle:!fs.existsSync(root+"/busy"),activeRuns:fs.existsSync(root+"/busy")?1:0,pendingReplies:0,totalActive:0});
@@ -135,8 +140,8 @@ if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
   const announce=()=>process.send?.({type:"branch-desktop:standby-ready",pid:process.pid});
   if(fs.existsSync(root+"/hold-standby")){const timer=setInterval(()=>{if(!fs.existsSync(root+"/hold-standby")){clearInterval(timer);announce();}},10);}else announce();
 }
-// No EADDRINUSE retry: an engine listens once on the port the desktop gave it, so a standby on the live port fails.
-const listen=()=>listener.listen(Number(process.argv.at(-1)),"127.0.0.1");
+// A standby listens once, so a taken port fails it. The serving engine retries a busy port briefly: on Windows the previous process can still hold the socket after it has exited.
+const listen=()=>{const port=Number(process.argv.at(-1));const bind=()=>listener.listen(port,"127.0.0.1");listener.on("error",error=>{if(error&&error.code==="EADDRINUSE"&&process.env.BRANCH_GATEWAY_STANDBY!=="1"&&(globalThis.rebinds=(globalThis.rebinds||0)+1)<40){setTimeout(bind,50);return;}process.exit(1)});bind();};
 // As the real engine: a standby binds only after the old engine released state (stepped down, or drained).
 const released=()=>fs.existsSync(root+"/released-"+starts[0])||fs.existsSync(root+"/drained-"+starts[0]);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);process.exit(1);}},10);}
@@ -1042,7 +1047,7 @@ test("an engine that exits while an update warms its standby is recovered before
   await eventually(async () => (await starts()).length === 2);
   const warming = (await starts())[1];
   await writeFile(join(root, "release-ready"), "ready");
-  process.kill(old, "SIGTERM");
+  signalExit(old);
   await eventually(() => !alive(old));
   await eventually(async () => (await readFile(join(root, "desktop.log"), "utf8")).includes("update failed"), 30_000);
   await eventually(async () => { const latest = (await starts()).at(-1); return ![old, warming].includes(latest) && alive(latest) && await servingOn(gatewayPort); }, 30_000);
