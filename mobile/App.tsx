@@ -13,7 +13,7 @@ import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
 import { AgentList } from './src/agents/agentList';
 import { appIdentity, type AppIdentity } from './src/build/appIdentity';
 import { Conversation } from './src/chat/conversation';
-import { ChatList, type ChatRow } from './src/chats/chatList';
+import { ChatList, filterRows, type ChatRow } from './src/chats/chatList';
 import { ComputerList } from './src/computers/computerList';
 import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
@@ -303,6 +303,11 @@ function Shell({
             onAgents={() => setPairedRoute({ name: 'agents' })}
             onSettings={() => setPairedRoute({ name: 'settings' })}
             onOpen={(row) => setPairedRoute({ name: 'chat', row })}
+            onNewChat={() => {
+              const shown = filterRows(chatList.rows, 'all', Date.now());
+              const main = shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
+              if (main) setPairedRoute({ name: 'chat', row: main });
+            }}
             needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
             onNeedsYou={() => setPairedRoute({ name: 'approvals' })}
             updateBanner={updateBanner}
