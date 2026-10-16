@@ -1,13 +1,13 @@
 // The real OS calls behind the desktop controls (desktop-controls.ts): Electron's login items,
 // the user Path in HKCU\Environment (kept unexpanded, as REG_EXPAND_SZ, then broadcast), and the tray.
 import { nativeImage, shell, type App, type Tray } from "electron";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { DesktopConfig } from "./config";
-import { branchPosixShim, branchShim, branchShShim, editUserPath, pathHas, posixBranchCommand, ringBitmap, type ControlDeps } from "./desktop-controls";
+import { appRemoval, branchPosixShim, branchShim, branchShShim, editUserPath, pathHas, posixBranchCommand, ringBitmap, type AppRemoval, type ControlDeps } from "./desktop-controls";
 import { menuBarIcon } from "./resident-window";
 
 const run = promisify(execFile);
@@ -29,7 +29,28 @@ const writeUserPath = (value: string): Promise<string> => powershell([
   "[Environment]::SetEnvironmentVariable('BRANCH_PATH_REFRESH',$null,'User')",
 ].join("; "), { BRANCH_NEW_PATH: value });
 
-export function desktopOs(app: App, cfg: DesktopConfig, tray: () => Tray | undefined, icon: string): ControlDeps {
+/** Windows: the uninstaller can't remove files the app still holds, so a hidden PowerShell waits for this process to
+ *  end, then runs it silently. It deletes only the install folders ([UninstallDelete] in release-installers.mjs). */
+export const WINDOWS_UNINSTALL_SCRIPT = "Wait-Process -Id $env:BRANCH_APP_PID -ErrorAction SilentlyContinue; Start-Sleep -Seconds 3; "
+  + "Start-Process -FilePath $env:BRANCH_UNINSTALLER -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'";
+
+async function launchRemoval(removal: Exclude<AppRemoval, { kind: "none" }>): Promise<void> {
+  if (removal.kind === "windows") {
+    spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", WINDOWS_UNINSTALL_SCRIPT], {
+      detached: true, stdio: "ignore", windowsHide: true,
+      env: { ...process.env, BRANCH_APP_PID: String(process.pid), BRANCH_UNINSTALLER: removal.uninstaller },
+    }).unref();
+  } else if (removal.kind === "mac") {
+    // To the Trash, so a change of mind is one drag away; a running bundle can be moved.
+    for (const bundle of removal.bundles) await shell.trashItem(bundle);
+  } else {
+    // The AppImage runs from a mount, so its file can go while it runs.
+    for (const file of removal.files) rmSync(file, { force: true });
+  }
+}
+
+export function desktopOs(app: App, cfg: DesktopConfig, tray: () => Tray | undefined, icon: string,
+  remove?: { service?: () => Promise<void>; quit(): void }): ControlDeps {
   const login = { path: process.execPath, args: [START_IN_TRAY] };
   // branch.cmd for cmd and PowerShell, an extensionless sh script for Git Bash (as npm's cmd-shim writes both).
   const binDir = join(cfg.dataDir, "bin"), shim = join(binDir, "branch.cmd"), shShim = join(binDir, "branch");
@@ -72,5 +93,13 @@ export function desktopOs(app: App, cfg: DesktopConfig, tray: () => Tray | undef
       },
     },
     openExternal: (url) => shell.openExternal(url),
+    ...(remove ? { removeApp: {
+      dataDir: cfg.dataDir,
+      removal: () => appRemoval({ platform: process.platform, execPath: process.execPath, packaged: app.isPackaged,
+        localAppData: process.env.LOCALAPPDATA, appImage: process.env.APPIMAGE, exists: existsSync }),
+      ...(remove.service ? { service: remove.service } : {}),
+      launch: launchRemoval,
+      quit: remove.quit,
+    } } : {}),
   };
 }
