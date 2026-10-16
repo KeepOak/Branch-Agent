@@ -17,6 +17,7 @@ import { KeeperMark } from "../../../brand/KeeperMark";
 import { WhatsNewRow } from "./whats-new-row";
 import { showsInternals, versionLabel } from "../internals";
 import { LaterRows } from "../../../glass/LaterRows";
+import { clientOs } from "../../../connect/client-os";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -346,7 +347,9 @@ function Editors({ gatewayUrl, technical }: { gatewayUrl?: string; technical?: b
 
 function RemoveBranch() {
   const headless = useHeadless();
-  const parts: [string, string][] = [["The app", ""], ["Programs it downloaded to run models", ""], ["Models on this computer", ""], ["Branch’s Linux system (WSL)", "Its WSL system, disk image and start-up entry."]];
+  // WSL is Windows-only: on Linux or a Mac the panel never names it (B-053).
+  const parts: [string, string][] = [["The app", ""], ["Programs it downloaded to run models", ""], ["Models on this computer", ""],
+    ...(clientOs() === "windows" ? [["Branch’s Linux system (WSL)", "Its WSL system, disk image and start-up entry."] as [string, string]] : [])];
   return (
     <div className={headless ? "s2-danger" : "sec s2-danger"} data-sec="Remove Branch">
       {headless ? null : <h2>Remove Branch</h2>}
