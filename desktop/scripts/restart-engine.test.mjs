@@ -22,13 +22,13 @@ function signalExit(pid) {
 }
 const servingOn = async (port) => (await originalFetch(`http://127.0.0.1:${port}/readyz`).then(response => response.status, () => 0)) === 200;
 const EVENTUALLY_DEFAULT_MS = 8000;
-// windows-latest keeps a killed engine's exclusive loopback socket. Crash recovery then
-// spends the supervisor delays (1s + 2s + 4s + 8s + 16s = 31s) around waitForGatewayPort
-// (40 × 250ms). Linux and macOS free the socket at once, so the same checks return in a
-// few seconds. On windows-latest they are still running when a 30s or 40s Fixture deadline
-// fires (observed at 30–41s). The deadline outlasts that pass, including the serving bind
-// retries below (400 × 50ms).
-const WINDOWS_FIXTURE_DEADLINE_MS = 31_000 + 10_000 + 20_000;
+// windows-latest keeps a killed engine's exclusive loopback socket. A short bind burst
+// makes that engine exit, crash recovery spends its attempts, and the fixture then waits
+// out a 30–41s deadline for a process that will never start. Linux and macOS free the
+// socket at once. The serving engine below keeps closing and binding for 75s, and this
+// deadline stays past that plus waitForGatewayPort (40 × 250ms) so the same attempt can
+// become ready.
+const WINDOWS_FIXTURE_DEADLINE_MS = 75_000 + 10_000 + 5_000;
 function fixtureDeadline(timeout = EVENTUALLY_DEFAULT_MS) {
   return process.platform === "win32" ? Math.max(timeout, WINDOWS_FIXTURE_DEADLINE_MS) : timeout;
 }
@@ -44,8 +44,8 @@ async function freePort() {
 // A failed test used to leave engines, IPC, poll timers or the window server open.
 // node --test then never exited (PR #637: 8.5 minutes of silence until the 15-minute job cap).
 // Per-test budget is above the longest in-file wait (30s ready + 70s drain/swap) on slow runners.
-// Windows floors each fixture deadline at WINDOWS_FIXTURE_DEADLINE_MS, so that chain is 61s + 70s.
-const TEST_TIMEOUT_MS = process.platform === "win32" ? 180_000 : 120_000;
+// Windows floors each fixture deadline at WINDOWS_FIXTURE_DEADLINE_MS, so that chain is 90s + 70s.
+const TEST_TIMEOUT_MS = process.platform === "win32" ? 200_000 : 120_000;
 let failedTests = 0;
 function test(name, options, fn) {
   if (typeof options === "function") {
@@ -151,10 +151,10 @@ if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
   const announce=()=>process.send?.({type:"branch-desktop:standby-ready",pid:process.pid});
   if(fs.existsSync(root+"/hold-standby")){const timer=setInterval(()=>{if(!fs.existsSync(root+"/hold-standby")){clearInterval(timer);announce();}},10);}else announce();
 }
-// A standby listens once, so a taken port fails it. The serving engine closes and binds again when the listen errors.
-// A 2s burst is not enough on Windows: the exclusive socket can outlast it, the candidate exits, the update is rejected,
-// and the standby this fixture waits for never starts (Fixture deadline). 400 × 50ms covers that hold. The error and close events drive the retry.
-const listen=()=>{const port=Number(process.argv.at(-1));const bind=()=>listener.listen(port,"127.0.0.1");listener.on("error",error=>{if(error&&error.code==="EADDRINUSE"&&process.env.BRANCH_GATEWAY_STANDBY!=="1"&&(globalThis.rebinds=(globalThis.rebinds||0)+1)<400){listener.close(()=>setTimeout(bind,50));return;}process.exit(1)});bind();};
+// A standby listens once, so a taken port fails it. The serving engine closes and binds again on the error event.
+// Giving up after a short burst exits the process while Windows still holds the exclusive socket, and recovery
+// never starts another one. 1500 × 50ms stays inside the Windows fixture deadline above.
+const listen=()=>{const port=Number(process.argv.at(-1));const bind=()=>listener.listen(port,"127.0.0.1");listener.on("error",error=>{if(error&&error.code==="EADDRINUSE"&&process.env.BRANCH_GATEWAY_STANDBY!=="1"&&(globalThis.rebinds=(globalThis.rebinds||0)+1)<1500){listener.close(()=>setTimeout(bind,50));return;}process.exit(1)});bind();};
 // As the real engine: a standby binds only after the old engine released state (stepped down, or drained).
 const released=()=>fs.existsSync(root+"/released-"+starts[0])||fs.existsSync(root+"/drained-"+starts[0]);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);process.exit(1);}},10);}
