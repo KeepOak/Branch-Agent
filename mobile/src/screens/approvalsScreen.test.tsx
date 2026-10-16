@@ -151,7 +151,7 @@ describe('needs you screen', () => {
     await fireEvent.press(screen.getByTestId('inbox-tab-history'));
     expect(screen.getByTestId('inbox-history')).toBeOnTheScreen();
     expect(screen.getByTestId('history-exec-1')).toHaveTextContent(/Oak · Run a command/);
-    expect(screen.getByTestId('history-exec-1')).toHaveTextContent('Allowed on this phone');
+    expect(screen.getByTestId('history-exec-1')).toHaveTextContent(/Allowed on this phone/);
   });
 
   it('says when Finished and History are empty', async () => {
