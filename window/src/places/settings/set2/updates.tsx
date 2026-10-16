@@ -18,6 +18,7 @@ import { WhatsNewRow } from "./whats-new-row";
 import { showsInternals, versionLabel } from "../internals";
 import { LaterRows } from "../../../glass/LaterRows";
 import { clientOs } from "../../../connect/client-os";
+import { latestVersionLine, useMinuteClock } from "./version-line";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -51,7 +52,8 @@ export const ROWS: RowEntry[] = [
   ["Update status for scripts", "Help and updates, more", 2],
 ].map(([title, sec, lv]) => ({ page: "updates", title: String(title), sec: String(sec), group: ({ "In your editors and notes": "Branch on your other devices", "Help and updates, more": "Updating", Technical: "Updating" } as Record<string, string>)[String(sec)] ?? String(sec), lv: lv as 0 | 1 | 2 }));
 
-type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => Promise<boolean> };
+/** checkedAt: when this page's Check now (update.status refreshCheckout) last finished; the engine keeps no check time. */
+type Data = { status: RecordValue; info: RecordValue; sys: RecordValue; reload: () => Promise<boolean>; checkedAt: number | null; setCheckedAt: (at: number) => void };
 
 export function UpdatesPage(props: SettingsPageProps) {
   return componentDesktop(props.engine.gatewayUrl) ? <DesktopUpdatesPage {...props} /> : <GatewayUpdatesPage {...props} />;
@@ -76,7 +78,8 @@ function GatewayUpdating(props: SettingsPageProps) {
   const info = useLive<RecordValue>(props.engine, "status", {}, []);
   const sys = useLive<RecordValue>(props.engine, "system.info", {}, []);
   const version = useBranchVersion(props.engine.gatewayUrl);
-  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => status.reload() };
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
+  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => status.reload(), checkedAt, setCheckedAt };
   return <>
     {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
     {status.loading && !status.data ? <Hint>Checking…</Hint> : null}
@@ -94,7 +97,8 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
   const version = useBranchVersion(props.engine.gatewayUrl);
   const os = OS[str(rec(sys.data).platform)] ?? str(rec(sys.data).osLabel);
   const lede = version ? `Branch ${versionParts(version).short}${os ? ` on ${os}` : ""}.` : props.title;
-  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => status.reload() };
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
+  const data: Data = { status: rec(status.data), info: rec(info.data), sys: rec(sys.data), reload: () => status.reload(), checkedAt, setCheckedAt };
   return (
     <Page title={props.title} lede={lede}>
       {status.error ? <Status tone="bad" title={`Couldn’t read: ${status.error}`} /> : null}
@@ -144,6 +148,7 @@ function Waiting({ engine, data, version, level }: SettingsPageProps & { data: D
   const campaign = rec(schedule.campaign);
   const started = Boolean(str(campaign.id));
   const now = useNow(started);
+  const clock = useMinuteClock();
   const latest = str(available.latestVersion) || str(rec(schedule.target).version);
   const holdIt = () => void hold.run(() => engine.request<RecordValue>("update.hold", {}), (r) => {
     data.reload();
@@ -176,7 +181,7 @@ function Waiting({ engine, data, version, level }: SettingsPageProps & { data: D
       ) : latest ? (
         <Status title="A Branch update is ready">It waits for running tasks, up to the update deadline, and keeps a safety copy first.</Status>
       ) : (
-        <Status title="Branch is up to date.">{version ? `You have Branch ${versionLabel(version, level)}.` : "You have the newest version."}</Status>
+        <Status title={latestVersionLine(data.checkedAt, clock)}>{version ? `You have Branch ${versionLabel(version, level)}.` : "You have the newest version."}</Status>
       )}
       {latest && !str(active.runId) ? (
         <Acts>
@@ -232,7 +237,6 @@ function ReportDialog({ engine, run, onClose }: Pick<SettingsPageProps, "engine"
 function Updating({ engine, level, data }: SettingsPageProps & { data: Data }) {
   const config = useConfig(engine);
   const schedule = rec(data.status.schedule);
-  const [checked, setChecked] = useState<number | null>(null);
   const call = useCall();
   const autoSaved = config.get("update.auto.enabled");
   const auto = typeof autoSaved === "boolean" ? autoSaved : schedule.autoEnabled === true;
@@ -245,7 +249,9 @@ function Updating({ engine, level, data }: SettingsPageProps & { data: Data }) {
   })();
   const channelSaved = str(config.get("update.channel")) || str(data.status.effectiveChannel) || str(schedule.channel);
   const channel = channelSaved === "beta" || channelSaved === "dev" ? "beta" : "stable";
-  const check = () => void call.run(async () => { await engine.request("update.status", { refreshCheckout: true }); setChecked(Date.now()); data.reload(); });
+  const check = () => void call.run(async () => { await engine.request("update.status", { refreshCheckout: true }); data.setCheckedAt(Date.now()); data.reload(); });
+  // Up to date, the headline above carries the check's time; with an update waiting, the time stays beside the button.
+  const waiting = Boolean(str(rec(data.status.updateAvailable).latestVersion) || str(rec(schedule.target).version));
   const lastRun = rec(data.status.lastRun);
   return (
     <Sec title="Updating">
@@ -253,7 +259,7 @@ function Updating({ engine, level, data }: SettingsPageProps & { data: Data }) {
         <Seg label="Install updates" value={install} disabled={config.loading} onChange={setInstall} options={[{ id: "automatic", label: "Automatically" }, { id: "ask", label: "Ask me first" }, { id: "never", label: "Never" }]} />
       </Ctl>
       <Ctl title="Check for updates" sub={call.error}>
-        {checked ? <span className="val-k">Last checked {when(checked)}</span> : null}
+        {data.checkedAt && waiting ? <span className="val-k">Last checked {when(data.checkedAt)}</span> : null}
         <Btn sm disabled={call.busy} onClick={check}>{call.busy ? "Checking…" : "Check now"}</Btn>
       </Ctl>
       <Ctl title="Which updates" sub="Stable is tested longer." help="Stable is tested longer. Beta gets new things first and may have rough edges.">
