@@ -72,7 +72,7 @@ describe("Settings › Updates & about", () => {
   it("says it is up to date when the engine reports no update", async () => {
     const { engine } = engineWith({ "update.status": { ...READY, updateAvailable: null }, status: { runtimeVersion: "1.0.0" } });
     await show("updates", engine);
-    expect(document.body.textContent).toContain("Branch is up to date.");
+    expect(document.body.textContent).toContain("You’re on the latest version");
     expect(document.body.textContent).not.toContain("Install when idle");
   });
   it("installs without a dialog or stopping running work", async () => {
