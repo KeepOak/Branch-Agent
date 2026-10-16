@@ -20,6 +20,10 @@ engine:extensions/telegram/src/security-audit.test.ts
 engine:extensions/telegram/src/telegram-ingress-spool.test.ts
 engine:extensions/telegram/src/telegram-ingress-worker.deadline.test.ts
 engine:extensions/telegram/src/telegram-ingress-worker.test.ts
+engine:extensions/telegram/src/webhook.admission.test.ts
+engine:extensions/telegram/src/webhook.callback-guards.test.ts
+engine:extensions/telegram/src/webhook.dispatch.test.ts
 engine:extensions/telegram/src/webhook.host-floor.test.ts
-engine:extensions/telegram/src/webhook.test.ts
+engine:extensions/telegram/src/webhook.registration.test.ts
+engine:extensions/telegram/src/webhook.topic-lanes.test.ts
 engine:src/auto-reply/group-thread.test.ts

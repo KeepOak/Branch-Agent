@@ -18,6 +18,7 @@ import {
 } from "../auth-profiles/order.js";
 import { resolveStoredCredentialReadOnlyAvailability } from "../auth-profiles/read-only-availability.js";
 import { createSelectedAuthProfileUnavailableError } from "../auth-profiles/selection-error.js";
+import { isSubscriptionsOnly } from "../auth-profiles/subscription-only.js";
 import type { AuthProfileStore } from "../auth-profiles/types.js";
 import { isProfileInCooldown } from "../auth-profiles/usage-state.js";
 import { resolveProviderDirectAuthPlanningEvidence } from "../model-auth-env.js";
@@ -352,10 +353,19 @@ export function prepareAgentRuntimeAuth(
           readinessMode: "read-only",
           includePendingOAuthRefresh: true,
         });
-  const automaticOrderResolution = prependAuthProfilePin(
-    resolvedAutomaticOrder,
-    userPinnedProfileId,
-  );
+  const pinnedAutomaticOrder = prependAuthProfilePin(resolvedAutomaticOrder, userPinnedProfileId);
+  // With subscriptionsOnly, stored API-key sign-ins are not automatic candidates. A user pin is an
+  // explicit choice and stays, as does any config-bound or keyless profile.
+  const automaticOrderResolution =
+    store && isSubscriptionsOnly(params.config)
+      ? {
+          ...pinnedAutomaticOrder,
+          profileIds: pinnedAutomaticOrder.profileIds.filter(
+            (profileId) =>
+              profileId === userPinnedProfileId || store.profiles[profileId]?.type !== "api_key",
+          ),
+        }
+      : pinnedAutomaticOrder;
   const providerPreferredProfileId =
     harnessAllowsAuthProfileForwarding &&
     !selectedProfileId &&

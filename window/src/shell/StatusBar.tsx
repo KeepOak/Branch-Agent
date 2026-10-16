@@ -8,7 +8,7 @@ export type ConnectionPhase = "connected" | "connecting" | "offline";
 export type GatewayPhase = "on" | "checking" | "offline";
 export type StatusItem = "connection" | "gateway" | "room" | "running" | "usage" | "version";
 
-export type StatusFacts = {
+type StatusFacts = {
   connection: ConnectionPhase;
   gateway: GatewayPhase;
   machineName: string;
@@ -23,7 +23,7 @@ export type StatusFacts = {
 type Props = StatusFacts & {
   open: StatusItem | null;
   onItem: (item: StatusItem, e: MouseEvent<HTMLElement>) => void;
-  /** Appearance › What's shown › The gateway in the status bar (on unless switched off). */
+  /** Appearance › What's shown › Whether Branch is running, in the status bar (on unless switched off). */
   gatewayShown?: boolean;
   usageShown?: boolean;
   /** Paused Trunks and live calls (after "N running"), and the graphics readout (after the spacer). */
@@ -41,9 +41,9 @@ export function roomColour(used: number): string {
   return used >= 0.5 ? "var(--warn)" : "var(--ok)";
 }
 
-const WORDS: Record<ConnectionPhase, string> = { connected: "", connecting: "Connecting", offline: "Offline" };
+const WORDS: Record<ConnectionPhase, string> = { connected: "", connecting: "Reconnecting", offline: "Offline" };
 /** Preview GLYPH_T5.ringUse: 16px viewBox, r=6, stroke 2, arc 37.7. */
-export const USAGE_RING_ARC = 37.7;
+const USAGE_RING_ARC = 37.7;
 export function usageRingDash(left: number): string {
   return `${((Math.max(0, Math.min(100, left)) / 100) * USAGE_RING_ARC).toFixed(1)} 40`;
 }

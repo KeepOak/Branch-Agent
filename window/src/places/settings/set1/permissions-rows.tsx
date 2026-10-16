@@ -17,7 +17,7 @@ export type Ctx = {
   /** "Rules for": this computer, or a node id. */
   rulesFor: string; setRulesFor: (id: string) => void;
   /** agents.list as read, and a re-read after the mode changes. */
-  agents?: RecordValue; reloadAgents: () => Promise<void>;
+  agents?: RecordValue; reloadAgents: () => Promise<unknown>;
 };
 
 /** A greyed control: what to draw, disabled, beside the reason. */
@@ -95,7 +95,7 @@ export function deadControl(d: Dead, label: string): ReactNode {
   return null;
 }
 
-export function RowView({ r, x }: { r: Row; x: Ctx }) {
+function RowView({ r, x }: { r: Row; x: Ctx }) {
   const c = x.cfg;
   if (r.when && !r.when(c)) return null;
   switch (r.k) {

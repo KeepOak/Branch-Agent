@@ -8,7 +8,7 @@ import type { Draft } from "./api";
 import type { Computer } from "./data";
 import type { May } from "./may";
 
-export const ALLOW_WHY = "Every Trunk may use every paired computer; the engine keeps no list per Trunk.";
+const ALLOW_WHY = "Every Trunk may use every paired computer; the engine keeps no list per Trunk.";
 const OS: Record<string, string> = { darwin: "macOS", macos: "macOS", win32: "Windows", windows: "Windows", linux: "Linux", ios: "iPhone", android: "Android" };
 const iconFor = (platform: string) => (/darwin|mac/i.test(platform) ? "laptop" : /linux/i.test(platform) ? "server" : "monitor");
 

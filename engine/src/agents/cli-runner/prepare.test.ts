@@ -1482,7 +1482,7 @@ describe("prepareCliRunContext", () => {
       return agentDir;
     }
 
-    it("runs on the subscription sign-in when an API key is first in order", async () => {
+    it("runs on the subscription sign-in when an API key is first in order and subscriptionsOnly is set", async () => {
       const prepareExecution = vi.fn(async () => ({ env: { TEST_PREPARED_ENV: "1" } }));
       const agentDir = saveClaudeSignIns({
         [apiKeyProfileId]: createApiKeyCredential("claude-cli", "fixture-key"),
@@ -1500,7 +1500,7 @@ describe("prepareCliRunContext", () => {
         agentDir,
         provider: "claude-cli",
         model: "sonnet",
-        config: {},
+        config: { agents: { defaults: { subscriptionsOnly: true } } },
       });
 
       expect(context.effectiveAuthProfileId).toBe(planProfileId);
@@ -1509,7 +1509,7 @@ describe("prepareCliRunContext", () => {
       );
     });
 
-    it("fails with a plain message when only API-key sign-ins exist", async () => {
+    it("fails with a plain message when only API-key sign-ins exist and subscriptionsOnly is set", async () => {
       const prepareExecution = vi.fn(async () => ({ env: { TEST_PREPARED_ENV: "1" } }));
       const agentDir = saveClaudeSignIns({
         [apiKeyProfileId]: createApiKeyCredential("claude-cli", "fixture-key"),
@@ -1522,10 +1522,55 @@ describe("prepareCliRunContext", () => {
           agentDir,
           provider: "claude-cli",
           model: "sonnet",
-          config: {},
+          config: { agents: { defaults: { subscriptionsOnly: true } } },
         }),
       ).rejects.toThrow("Trunks only use subscription sign-ins.");
       expect(prepareExecution).not.toHaveBeenCalled();
+    });
+
+    it("runs on an API-key sign-in when it is the only one and subscriptionsOnly is off", async () => {
+      const prepareExecution = vi.fn(async () => ({ env: { TEST_PREPARED_ENV: "1" } }));
+      const agentDir = saveClaudeSignIns({
+        [apiKeyProfileId]: createApiKeyCredential("claude-cli", "fixture-key"),
+      });
+      setCliBackendForPrepareTest({ prepareExecution, authEpochMode: "profile-only" });
+
+      const context = await fixture.prepare({
+        sessionKey: "agent:main:main",
+        agentDir,
+        provider: "claude-cli",
+        model: "sonnet",
+        config: {},
+      });
+
+      expect(context.effectiveAuthProfileId).toBe(apiKeyProfileId);
+      expect(prepareExecution).toHaveBeenCalledWith(
+        expect.objectContaining({ authProfileId: apiKeyProfileId }),
+      );
+    });
+
+    it("keeps the first API-key sign-in in order when subscriptionsOnly is off", async () => {
+      const prepareExecution = vi.fn(async () => ({ env: { TEST_PREPARED_ENV: "1" } }));
+      const agentDir = saveClaudeSignIns({
+        [apiKeyProfileId]: createApiKeyCredential("claude-cli", "fixture-key"),
+        [planProfileId]: oauthCred({
+          provider: "claude-cli",
+          access: "fixture-access",
+          refresh: "fixture-refresh",
+          expires: 4_102_444_800_000,
+        }),
+      });
+      setCliBackendForPrepareTest({ prepareExecution, authEpochMode: "profile-only" });
+
+      const context = await fixture.prepare({
+        sessionKey: "agent:main:main",
+        agentDir,
+        provider: "claude-cli",
+        model: "sonnet",
+        config: { agents: { defaults: { subscriptionsOnly: false } } },
+      });
+
+      expect(context.effectiveAuthProfileId).toBe(apiKeyProfileId);
     });
   });
 

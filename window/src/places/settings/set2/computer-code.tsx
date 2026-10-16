@@ -47,7 +47,7 @@ const CODE_MORE: SecSpec = { t: "Code, more", group: "Code", showHeading: false,
   sw(NO_CODE)("Fix errors it sees in previews", "Errors in a preview’s console go back to the Trunk, which fixes them and reloads."),
   sw(NO_CODE)("Bring the running app’s errors in", "Errors, console output and screenshots from the app you are building reach the conversation."),
   sw(NO_CODE)("Let it see pages it makes", "It can turn its own HTML into a picture to check how it looks."),
-  off("pick", NO_CODE)("Run code it writes", { sub: "Output and pictures stream into the conversation.", opts: [{ v: "box", l: "In a sealed box" }] }),
+  off("pick", NO_CODE)("Run code it writes", { sub: "Output and pictures stream into the conversation.", opts: [{ v: "box", l: "In a safe box" }] }),
   off("btn", "Needs the engine to export and import a Trunk through a repository.")("Share a Trunk through git", { sub: "Export a Trunk to a repository, or bring one in from one.", btns: ["Export…", "Import…"] }),
 ] };
 
@@ -169,7 +169,7 @@ export const CODE_TECH: SecSpec = { t: "Code, technical", group: "Code", showHea
   off("pick", NO_CODE)("Where conversations work", { sub: "New coding conversations start here.", opts: [{ v: "folder", l: "In the folder" }] }),
   sw(NO_CODE)("A full app stack per copy", "Each copy gets its own services on its own ports."), sw(NO_CODE)("Open projects in their dev container", "A project with a dev container runs inside it."),
   off("pick", NO_CODE)("Build on another computer", { sub: "Heavy builds are sent there and the results come back.", opts: [{ v: "here", l: "This computer" }] }),
-  sw(NO_CODE)("Projects in their own folder store", "Each project gets a sealed folder store with its own history and rollback."),
+  sw(NO_CODE)("Projects in their own folder store", "Each project gets a safe folder store with its own history and rollback."),
   sw("Needs the engine to let Branch edit its own files.")("Let Branch change its own code", "Branch may edit its own files and restart; some paths stay locked."),
 ] };
 

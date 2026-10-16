@@ -1,4 +1,4 @@
-// Library › Made for you (preview 40-places made + 42-placesbp libDashHtmlPQ18 / libImgHtmlPQ18 + 94-g4p apps):
+// Library › Activity › Made by Trunks, once the Made for you tab (preview 40-places made + 42-placesbp libDashHtmlPQ18 / libImgHtmlPQ18 + 94-g4p apps):
 // Dashboards (sessions.list hasBoard + board.get), every Trunk's made files (artifacts.list per conversation),
 // Images (artifacts.list type image, four at a time), Apps with Publish.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
@@ -10,20 +10,20 @@ import { errorText, num, optStr, rec, recs, str, trunkName, useOperation, useRes
 import { useMenu } from "./memory";
 import { EmptyIcon, Grey, LibIcon, mapLimited, plural, Row, Section, TypeBadge, when } from "./parts";
 
-export const APPS_REASON = "Needs the engine’s apps list with publish and roll back.";
+const APPS_REASON = "Needs the engine’s apps list with publish and roll back.";
 const PAGE = 20;
 const DASH_PAGE = 24;
 
-export type SessionRow = { key: string; agentId?: string; label?: string; derivedTitle?: string; displayName?: string; updatedAt?: number | null; status?: string };
+type SessionRow = { key: string; agentId?: string; label?: string; derivedTitle?: string; displayName?: string; updatedAt?: number | null; status?: string };
 type Artifact = { id: string; title: string; type: string; mimeType?: string; sizeBytes?: number; sessionKey?: string; image?: { url: string }; download: { mode: "bytes" | "url" | "unsupported" } };
 type Widget = { name: string; sizeW: number; sizeH: number; title?: string };
 
 /** sessions.list rows that have a key; other fields read as missing. */
-export function sessionsOf(result: unknown): SessionRow[] {
+function sessionsOf(result: unknown): SessionRow[] {
   return recs(rec(result).sessions).filter(r => typeof r.key === "string" && r.key).map(r => ({ key: r.key as string, agentId: optStr(r.agentId), label: optStr(r.label), derivedTitle: optStr(r.derivedTitle), displayName: optStr(r.displayName), updatedAt: num(r.updatedAt) ?? null, status: optStr(r.status) }));
 }
 /** artifacts.list entries with an id and a title; a missing download reads as not downloadable. */
-export function artifactsOf(result: unknown): Artifact[] {
+function artifactsOf(result: unknown): Artifact[] {
   return recs(rec(result).artifacts).filter(a => typeof a.id === "string" && typeof a.title === "string").map(a => {
     const mode = rec(a.download).mode, url = optStr(rec(a.image).url);
     return { id: a.id as string, title: a.title as string, type: str(a.type), mimeType: optStr(a.mimeType), sizeBytes: num(a.sizeBytes), ...(url ? { image: { url } } : {}), download: { mode: mode === "bytes" || mode === "url" ? mode : "unsupported" } };
@@ -32,7 +32,7 @@ export function artifactsOf(result: unknown): Artifact[] {
 const pageOf = (result: unknown): SessionPage => { const r = rec(result); return { sessions: sessionsOf(r), totalCount: num(r.totalCount), hasMore: typeof r.hasMore === "boolean" ? r.hasMore : undefined, nextOffset: num(r.nextOffset) ?? null }; };
 
 const agentOf = (row: SessionRow) => row.agentId ?? /^agent:([^:]+):/.exec(row.key)?.[1] ?? "";
-export const sessionTitle = (row: SessionRow) => row.label || row.displayName || row.derivedTitle || row.key;
+const sessionTitle = (row: SessionRow) => row.label || row.displayName || row.derivedTitle || row.key;
 
 type Props = { engine: WindowEngine; trunks: Trunk[]; openConversation: (key: string) => void };
 
@@ -102,7 +102,7 @@ function DashTile({ engine, row, trunk, open }: { engine: WindowEngine; row: Ses
 
 type Group = { row: SessionRow; trunk: string; files: Artifact[]; hasImages: boolean; error: string | null };
 
-function useMadeFiles(engine: WindowEngine, trunks: Trunk[]) {
+function useMadeFiles(engine: WindowEngine, trunks: Trunk[], agentId?: string) {
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
@@ -110,7 +110,7 @@ function useMadeFiles(engine: WindowEngine, trunks: Trunk[]) {
   useEffect(() => {
     let current = true;
     const name = (id: string) => { const t = trunks.find(x => x.id === id); return t ? trunkName(t) : id; };
-    void engine.request<unknown>("sessions.list", { excludeSubagents: true, limit: PAGE, offset }).then(pageOf).then(async page => {
+    void engine.request<unknown>("sessions.list", { excludeSubagents: true, limit: PAGE, offset, ...(agentId ? { agentId } : {}) }).then(pageOf).then(async page => {
       const found = await mapLimited(page.sessions ?? [], 4, async (row): Promise<Group> => {
         try {
           const r = { artifacts: artifactsOf(await engine.request<unknown>("artifacts.list", { sessionKey: row.key, ...(agentOf(row) ? { agentId: agentOf(row) } : {}), messageRole: "assistant" })) };
@@ -122,12 +122,13 @@ function useMadeFiles(engine: WindowEngine, trunks: Trunk[]) {
       setGroups(g => [...(offset && g ? g : []), ...found]);
     }, e => { if (current) setError(errorText(e)); });
     return () => { current = false; };
-  }, [engine, trunks, offset]);
+  }, [engine, trunks, offset, agentId]);
   return { groups, error, more, loadMore: () => setOffset(o => o + PAGE) };
 }
 
-function MadeFiles({ engine, trunks, openConversation }: Props) {
-  const made = useMadeFiles(engine, trunks);
+/** Every made file, or with `agentId` only that Trunk's (the R1 details panel's Library tab). */
+export function MadeFiles({ engine, trunks, openConversation, agentId }: Props & { agentId?: string }) {
+  const made = useMadeFiles(engine, trunks, agentId);
   const op = useOperation(engine);
   const files = made.groups?.flatMap(g => g.files.map(f => ({ f, g }))) ?? [];
   const withImages = made.groups?.filter(g => g.hasImages) ?? [];

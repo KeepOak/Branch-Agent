@@ -1,4 +1,4 @@
-// Written by Branch for AGENT-LOOP-0008 from mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421:packages/core/src/agent/__tests__/processor-retry-budget.test.ts; resolver and native finalization coverage, not the complete generate/API-error test-file port.
+// Written by Branch; resolver and native finalization coverage, not the complete generate/API-error test-file port.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHookRunner } from "../plugins/hooks.js";
 import { createMockPluginRegistry } from "../plugins/hooks.test-fixtures.js";

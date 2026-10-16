@@ -45,5 +45,5 @@ export function usePinOrder(engine: SaplingSession, ready: boolean) {
       notify(`Couldn't save the Pinned order: ${error instanceof Error ? error.message : String(error)}.`, { tone: "bad" });
     }
   };
-  return { order, move };
+  return { order, move, canSave };
 }

@@ -1,4 +1,3 @@
-// From OpenHands/OpenHands@a8c05584ec6bb063a0857460b9cbff48e136919f:src/utils/markdown-fence.ts (atlas SESSIONS-0047).
 const longestBacktickRun = (content: string): number =>
   Math.max(
     0,
