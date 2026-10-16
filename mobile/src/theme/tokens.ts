@@ -1,6 +1,6 @@
 // Branch phone theme tokens. Every colour, size and motion value the app draws with lives here;
-// screens read them through useTheme() and never hardcode their own. Colours follow the desktop
-// Branch Slate palette (window/src/theme/tokens.css) so the phone and the window feel like one product;
+// screens read them through useTheme() and never hardcode their own. Colours are grayscale
+// (black, white and greys only) so the Android r50 rebuild stays black-and-white by default;
 // type, spacing and radii follow Apple's Human Interface Guidelines for iPhone.
 
 export type ColorScheme = 'light' | 'dark';
@@ -43,48 +43,48 @@ export interface Palette {
 }
 
 const light: Palette = {
-  bg: '#f6f8f9',
-  grouped: '#edf1f3',
+  bg: '#f8f8f8',
+  grouped: '#f0f0f0',
   raise: '#ffffff',
-  ink: '#141d24',
-  ink2: '#3a4751',
-  ink3: '#5f6c76',
-  line: '#dfe5e9',
-  fill: '#ecf0f3',
-  accent: '#484ce5',
-  accentInk: '#3a3eba',
-  accentTint: '#e9efff',
+  ink: '#1c1c1c',
+  ink2: '#454545',
+  ink3: '#6a6a6a',
+  line: '#e4e4e4',
+  fill: '#efefef',
+  accent: '#565656',
+  accentInk: '#464646',
+  accentTint: '#efefef',
   onAccent: '#ffffff',
-  ok: '#2f8f5b',
-  okTint: '#e2f0e7',
-  warn: '#a86e12',
-  warnTint: '#f6ebd5',
-  bad: '#c2412d',
-  badTint: '#f8e3df',
-  scrim: 'rgba(14, 20, 26, 0.3)',
+  ok: '#777777',
+  okTint: '#ececec',
+  warn: '#747474',
+  warnTint: '#ececec',
+  bad: '#5b5b5b',
+  badTint: '#e7e7e7',
+  scrim: 'rgba(19, 19, 19, 0.3)',
   camera: '#000000',
 };
 
 // Dark is near-black like Grok and iOS dark mode: deep enough for OLED, with raised surfaces a step lighter.
 const dark: Palette = {
-  bg: '#0b0f12',
-  grouped: '#0b0f12',
-  raise: '#161d22',
-  ink: '#e6ecf0',
-  ink2: '#aebac3',
-  ink3: '#85929b',
-  line: '#232d34',
-  fill: '#182026',
-  accent: '#6064e4',
-  accentInk: '#b4bbfe',
-  accentTint: '#1e2144',
+  bg: '#0e0e0e',
+  grouped: '#0e0e0e',
+  raise: '#1c1c1c',
+  ink: '#ebebeb',
+  ink2: '#b8b8b8',
+  ink3: '#909090',
+  line: '#2b2b2b',
+  fill: '#1f1f1f',
+  accent: '#6c6c6c',
+  accentInk: '#bebebe',
+  accentTint: '#232323',
   onAccent: '#ffffff',
-  ok: '#5cc08a',
-  okTint: '#16291d',
-  warn: '#e0af3b',
-  warnTint: '#2e2412',
-  bad: '#f0806c',
-  badTint: '#361c17',
+  ok: '#a7a7a7',
+  okTint: '#242424',
+  warn: '#b1b1b1',
+  warnTint: '#252525',
+  bad: '#969696',
+  badTint: '#212121',
   scrim: 'rgba(0, 0, 0, 0.52)',
   camera: '#000000',
 };
