@@ -8,7 +8,17 @@ import { KeyRow, NO_KEY, type Cfg, type Row } from "./chatapps-kit";
 
 const off = (t: string, sub: string | undefined, kind: Row["kind"], def?: unknown, opts?: string[]): Row => ({ t, sub, kind, def, off: NO_KEY, ...(opts ? { opts: opts.map((l, i) => [l, i] as [string, unknown]) } : {}) });
 const SCAN = "Instead of copying IDs and secrets.";
-/** Each app's own rows, keyed by the engine's channel id; a row with `key` saves channels.<id>.<key>. */
+/** Personal Zalo is its own engine channel (`zalouser`), not a key under official `zalo`. */
+const ZALO_CONNECT_AS: Row & { key?: string } = {
+  t: "Connect as",
+  sub: "A bot is the official Zalo app. Your personal account is the Zalo Personal channel.",
+  kind: "seg",
+  path: "channels.zalouser.enabled",
+  opts: [["A bot", false], ["My personal account", true]],
+  def: false,
+};
+
+/** Each app's own rows, keyed by the engine's channel id; a row with `key` saves channels.<id>.<key>. A row may set `path` to a real engine key on another channel. */
 export const DEPTH: Record<string, (Row & { key?: string })[]> = {
   telegram: [
     { t: "Live typing", sub: "The reply appears as it is written, in one message that only notifies when done.", kind: "seg", key: "streaming.mode", opts: [["Off", "off"], ["One message", "partial"], ["Steps too", "progress"]] },
@@ -66,10 +76,11 @@ export const DEPTH: Record<string, (Row & { key?: string })[]> = {
     off("Unsending a message stops its task", undefined, "sw", true),
   ],
   line: [off("Use free replies first", "A slow answer waits behind a button, so it doesn’t cost a paid message.", "sw", true)],
-  zalo: [off("Connect as", undefined, "seg", 0, ["A bot", "My personal account"])],
+  zalo: [ZALO_CONNECT_AS],
+  zalouser: [ZALO_CONNECT_AS],
   sms: [off("Send texts through", undefined, "seg", 0, ["Twilio", "An Android phone"])],
 };
-export const DEPTH_TITLES = Object.values(DEPTH).flat().map((r) => r.t);
+export const DEPTH_TITLES = [...new Set(Object.values(DEPTH).flat().map((r) => r.t))];
 
 export function Depth({ catalogue, connected, cfg }: { catalogue: CatalogueApp[]; connected: Set<string>; cfg: Cfg }) {
   const apps = catalogue.filter((c) => DEPTH[c.id]);
