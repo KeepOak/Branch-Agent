@@ -1,0 +1,1 @@
+Proof for feat/1100-ui-scale (Private #1100, UI scale). Settings > Appearance > Reading > Interface scale at 125%, whole window zoomed. 1440 and 390, light and dark.
