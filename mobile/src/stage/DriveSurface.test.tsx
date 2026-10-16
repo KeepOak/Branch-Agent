@@ -41,6 +41,25 @@ describe('DriveSurface', () => {
     expect(sent).toEqual([{ kind: 'click', x: 640, y: 400, button: 'left' }]);
   });
 
+  it('sends a two-finger move as a scroll while active', async () => {
+    const sent: RemoteAction[] = [];
+    const live = await render(
+      <DriveSurface active frame={frame} remote={frame} send={(action) => sent.push(action)} typingLabel="Type on this computer">
+        <Text>picture</Text>
+      </DriveSurface>,
+    );
+    const surface = live.getByTestId('drive-surface');
+    await fireEvent(surface, 'layout', { persist: () => undefined, nativeEvent: { layout: { x: 0, y: 0, width: 640, height: 400 } } });
+    const a = { identifier: 1, pageX: 200, pageY: 200 };
+    const b = { identifier: 2, pageX: 280, pageY: 200 };
+    await fireEvent(surface, 'responderGrant', { persist: () => undefined, nativeEvent: { ...a, changedTouches: [a] } });
+    await fireEvent(surface, 'responderGrant', { persist: () => undefined, nativeEvent: { ...b, changedTouches: [b] } });
+    const a2 = { identifier: 1, pageX: 200, pageY: 160 };
+    const b2 = { identifier: 2, pageX: 280, pageY: 160 };
+    await fireEvent(surface, 'responderMove', { persist: () => undefined, nativeEvent: { ...a2, changedTouches: [a2, b2] } });
+    expect(sent.some((action) => action.kind === 'scroll' && action.dy !== 0)).toBe(true);
+  });
+
   it('shows the Trackpad pointer after a finger moves', async () => {
     setTouchMode('trackpad');
     const view = await render(

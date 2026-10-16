@@ -24,7 +24,7 @@ export type NativeScreenState = {
   send: (action: RemoteAction) => void;
 };
 
-export function useNativeScreen(link: EngineLink, control: boolean, newId: () => string, retry = 0): NativeScreenState {
+export function useNativeScreen(link: EngineLink, control: boolean, newId: () => string, retry = 0, enabled = true): NativeScreenState {
   const [image, setImage] = useState<string | null>(null);
   const [problem, setProblem] = useState<StatusProblem | null>(null);
   const [inputNote, setInputNote] = useState("");
@@ -56,6 +56,13 @@ export function useNativeScreen(link: EngineLink, control: boolean, newId: () =>
     else captureNow.current();
   }, [control, closeShared]);
   useEffect(() => {
+    if (!enabled) {
+      setImage(null);
+      setProblem(null);
+      setFrameSize(null);
+      closeShared();
+      return;
+    }
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let busy = false,
@@ -150,7 +157,7 @@ export function useNativeScreen(link: EngineLink, control: boolean, newId: () =>
       captureNow.current = () => undefined;
       closeShared();
     };
-  }, [link, enqueue, closeShared, newId, retry]);
+  }, [link, enqueue, closeShared, newId, retry, enabled]);
 
   const pendingMove = useRef<RemoteAction | null>(null);
   const send = useCallback(

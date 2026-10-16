@@ -49,8 +49,9 @@ export function DriveSurface({ active, frame, remote, send, typingLabel, childre
   live.current = { active, send, frame, remote, box };
 
   const bounds = useCallback((): { box: Rect; content: Rect } | null => {
-    const f = live.current.frame, b = live.current.box;
-    if (!f || b.width <= 0 || b.height <= 0) return null;
+    const b = live.current.box;
+    if (b.width <= 0 || b.height <= 0) return null;
+    const f = live.current.frame ?? { width: b.width, height: b.height };
     const content = contentRect(b, f, viewRef.current);
     return content ? { box: b, content } : null;
   }, []);
@@ -72,9 +73,10 @@ export function DriveSurface({ active, frame, remote, send, typingLabel, childre
   }, [active, mode]);
 
   const remotePoint = useCallback((p: Point, clamp = false): Point | null => {
-    const { frame: f, remote: r, box: b } = live.current;
-    if (!f || !r || b.width <= 0) return null;
-    return toRemote(p, b, f, r, viewRef.current, clamp);
+    const { frame: given, remote: r, box: b } = live.current;
+    if (b.width <= 0) return null;
+    const f = given ?? { width: b.width, height: b.height };
+    return toRemote(p, b, f, r ?? f, viewRef.current, clamp);
   }, []);
 
   const apply = useCallback(
