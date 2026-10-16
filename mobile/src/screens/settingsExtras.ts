@@ -1,162 +1,85 @@
-/** Preview extras on Settings. They stay Off until a later PR wires them. */
+/** Android Settings catalogue: desktop Regular groups plus Appearance, later-update rows, Help. */
 
-export type SettingsExtra = {
+export type SettingsLevel = 0 | 1 | 2;
+export type SettingsGroup = 'General' | 'Computer' | 'Usage' | 'Updates' | 'Appearance';
+
+export const SETTINGS_GROUPS: readonly SettingsGroup[] = ['General', 'Computer', 'Usage', 'Updates', 'Appearance'];
+
+/** Copied from the desktop Settings frame (Regular / Advanced / Technical). */
+export const SETTINGS_LEVELS: { v: SettingsLevel; label: string; line: string }[] = [
+  { v: 0, label: 'Regular', line: 'The essentials, in plain words.' },
+  { v: 1, label: 'Advanced', line: 'Every feature and the fine controls.' },
+  { v: 2, label: 'Technical', line: 'File paths, raw keys, launch variables, config and logs.' },
+];
+
+export const SETTINGS_LEVEL_KEY = 'branch.level';
+
+export function parseSettingsLevel(value: string | null | undefined): SettingsLevel {
+  if (value === 'advanced' || value === '1') return 1;
+  if (value === 'technical' || value === '2') return 2;
+  return 0;
+}
+
+export function settingsLevelWord(level: SettingsLevel): string {
+  return SETTINGS_LEVELS[level]?.label ?? 'Regular';
+}
+
+export function laterUpdate(label: string): string {
+  return `${label} comes in a later update.`;
+}
+
+export type LaterRow = {
   testID: string;
-  title: string;
-  detail: string;
-  reason: string;
+  label: string;
+  group: SettingsGroup;
+  minLevel: 1 | 2;
 };
 
-export const KEEPOAK_EXTRA: SettingsExtra = {
-  testID: 'extra-keepoak',
-  title: 'Sign in with keepoak.com',
-  detail: 'Reach every computer and your team.',
-  reason: 'keepoak.com has no sign-in Branch can use yet.',
-};
+/** Unfinished rows. Regular never shows them; Advanced and Technical show the later-update line. */
+export const LATER_ROWS: LaterRow[] = [
+  { testID: 'later-setup-talk', label: 'Set up and fix by talking', group: 'General', minLevel: 1 },
+  { testID: 'later-talk', label: 'Talk button', group: 'General', minLevel: 1 },
+  { testID: 'later-wake', label: 'Listen for the wake word', group: 'General', minLevel: 1 },
+  { testID: 'later-talk-bg', label: 'Keep talking in the background', group: 'General', minLevel: 1 },
+  { testID: 'later-speaker', label: 'Use speakerphone', group: 'General', minLevel: 1 },
+  { testID: 'later-test-sound', label: 'Test sound', group: 'General', minLevel: 1 },
+  { testID: 'later-haptics', label: 'Vibrate on taps', group: 'General', minLevel: 1 },
+  { testID: 'later-lock', label: 'Lock with fingerprint', group: 'General', minLevel: 1 },
+  { testID: 'later-share', label: 'Send to Branch from other apps', group: 'General', minLevel: 1 },
+  { testID: 'later-push', label: 'Alerts while the app is closed', group: 'General', minLevel: 1 },
+  { testID: 'later-awake', label: 'Keep the screen awake', group: 'General', minLevel: 1 },
+  { testID: 'later-assistant', label: 'Use as the phone’s assistant', group: 'General', minLevel: 1 },
 
-export const THIS_BRANCH_EXTRAS: SettingsExtra[] = [
-  {
-    testID: 'extra-connect-another',
-    title: 'Connect another Branch',
-    detail: 'Pair a second computer from this phone.',
-    reason: 'This phone is already paired. Unpair from This phone first.',
-  },
+  { testID: 'later-lend', label: 'Lend this phone to Branch', group: 'Computer', minLevel: 1 },
+  { testID: 'later-connect-another', label: 'Connect another Branch', group: 'Computer', minLevel: 1 },
+  { testID: 'later-on-phone-engine', label: 'Run Branch on this phone', group: 'Computer', minLevel: 2 },
+
+  { testID: 'later-keepoak', label: 'Sign in with keepoak.com', group: 'Usage', minLevel: 1 },
+  { testID: 'later-accounts', label: 'Accounts', group: 'Usage', minLevel: 1 },
+  { testID: 'later-models', label: 'Models on this computer', group: 'Usage', minLevel: 1 },
+  { testID: 'later-chat-apps', label: 'Chat apps', group: 'Usage', minLevel: 1 },
+  { testID: 'later-skills', label: 'Skills', group: 'Usage', minLevel: 1 },
+  { testID: 'later-signins', label: 'Sign-ins & keys', group: 'Usage', minLevel: 1 },
+  { testID: 'later-privacy', label: 'Privacy & data', group: 'Usage', minLevel: 1 },
+
+  { testID: 'later-history', label: 'History', group: 'Updates', minLevel: 1 },
+  { testID: 'later-learning', label: 'Learning', group: 'Updates', minLevel: 1 },
+  { testID: 'later-features', label: 'Features', group: 'Updates', minLevel: 1 },
+
+  { testID: 'later-pet', label: 'Pet', group: 'Appearance', minLevel: 1 },
+  { testID: 'later-cheer', label: 'Celebrate when a task finishes', group: 'Appearance', minLevel: 1 },
+  { testID: 'later-text-size', label: 'Text size', group: 'Appearance', minLevel: 1 },
+  { testID: 'later-other-languages', label: 'Other languages', group: 'Appearance', minLevel: 1 },
+  { testID: 'later-make-theme', label: 'Make your own theme', group: 'Appearance', minLevel: 1 },
 ];
 
-export const SETUP_TALK_EXTRA: SettingsExtra = {
-  testID: 'extra-setup-talk',
-  title: 'Set up and fix by talking',
-  detail: 'Talk it through with a Trunk.',
-  reason: 'Talk is not wired from Settings yet. Open a chat from Chats.',
-};
+export function laterRowsAt(level: SettingsLevel, group?: SettingsGroup): LaterRow[] {
+  return LATER_ROWS.filter((row) => row.minLevel <= level && (group === undefined || row.group === group));
+}
 
-export const ASSISTANT_EXTRAS: SettingsExtra[] = [
-  {
-    testID: 'extra-accounts',
-    title: 'Accounts',
-    detail: 'Model sign-ins used on the computer.',
-    reason: 'Add accounts on the computer, under Settings, Accounts.',
-  },
-];
-
-export const CONNECTION_EXTRAS: SettingsExtra[] = [
-  {
-    testID: 'extra-chat-apps',
-    title: 'Chat apps',
-    detail: 'Message Branch from other apps.',
-    reason: 'Chat apps are set up on the computer, not on this phone.',
-  },
-  {
-    testID: 'extra-local-models',
-    title: 'Models on this computer',
-    detail: 'What runs on the paired computer.',
-    reason: 'Models are chosen on the computer, not on this phone.',
-  },
-  {
-    testID: 'extra-skills',
-    title: 'Skills',
-    detail: 'What this Branch can do.',
-    reason: 'Skills are managed on the computer, not on this phone.',
-  },
-];
-
-export const PHONE_MORE_EXTRAS: SettingsExtra[] = [
-  {
-    testID: 'extra-haptics',
-    title: 'Vibrate on taps',
-    detail: 'A light buzz when you send, allow or switch.',
-    reason: 'Haptics are not wired in this app yet.',
-  },
-  {
-    testID: 'extra-on-phone-engine',
-    title: 'Run Branch on this phone',
-    detail: 'Its own engine on the phone, kept running in the background.',
-    reason: 'This phone is a remote for the computer. It does not run an engine.',
-  },
-];
-
-export const ON_PHONE_EXTRAS: SettingsExtra[] = [
-  {
-    testID: 'extra-lock',
-    title: 'Lock with fingerprint',
-    detail: 'Ask before showing Branch.',
-    reason: 'The phone’s lock is not wired in this app yet.',
-  },
-  {
-    testID: 'extra-share',
-    title: 'Send to Branch from other apps',
-    detail: 'Puts Branch in the share sheet.',
-    reason: 'The share sheet is not wired in this app yet.',
-  },
-  {
-    testID: 'extra-push',
-    title: 'Alerts while the app is closed',
-    detail: 'Needs a store account first.',
-    reason: 'Closed-app push is not wired. Approvals still reach you while Branch is open.',
-  },
-  {
-    testID: 'extra-awake',
-    title: 'Keep the screen awake',
-    detail: 'Keeps the screen on while a Trunk is working.',
-    reason: 'Keeping the screen awake is not wired in this app yet.',
-  },
-  {
-    testID: 'extra-assistant',
-    title: 'Use as the phone’s assistant',
-    detail: 'Hold the home button, or say “Hey Google, ask Branch …”.',
-    reason: 'Android picks the assistant in its own settings.',
-  },
-  {
-    testID: 'extra-lend',
-    title: 'Lend this phone to Branch',
-    detail: 'Camera and location, when a Trunk asks.',
-    reason: 'Lending this phone is not wired in this app yet.',
-  },
-];
-
-export const VOICE_EXTRAS: SettingsExtra[] = [
-  {
-    testID: 'extra-talk',
-    title: 'Talk button',
-    detail: 'Shows the button that turns what you say into a message.',
-    reason: 'Talk is not wired in this app yet.',
-  },
-  {
-    testID: 'extra-wake',
-    title: 'Listen for the wake word',
-    detail: 'Heard on this phone, only while Branch is open.',
-    reason: 'The wake word is not wired in this app yet.',
-  },
-  {
-    testID: 'extra-talk-bg',
-    title: 'Keep talking in the background',
-    detail: 'The microphone stays on while you use other apps.',
-    reason: 'Background talk is not wired in this app yet.',
-  },
-  {
-    testID: 'extra-speaker',
-    title: 'Use speakerphone',
-    detail: 'Plays the Trunk’s voice from the loudspeaker.',
-    reason: 'Speakerphone is not wired in this app yet.',
-  },
-  {
-    testID: 'extra-test-sound',
-    title: 'Test sound',
-    detail: 'Check that Branch speaks clearly on this phone.',
-    reason: 'Playing sound is not wired in this app yet.',
-  },
-];
-
-export const SETTINGS_EXTRAS: SettingsExtra[] = [
-  KEEPOAK_EXTRA,
-  ...THIS_BRANCH_EXTRAS,
-  SETUP_TALK_EXTRA,
-  ...ASSISTANT_EXTRAS,
-  ...CONNECTION_EXTRAS,
-  ...ON_PHONE_EXTRAS,
-  ...PHONE_MORE_EXTRAS,
-  ...VOICE_EXTRAS,
-];
+/** Desktop look defaults: no pet and no cheer until the person turns them on. */
+export const PET_DEFAULT = 'none';
+export const CHEER_DEFAULT = false;
 
 export const HELP_PAGES: { id: string; title: string; paragraphs: string[] }[] = [
   {
@@ -189,13 +112,6 @@ export const HELP_PAGES: { id: string; title: string; paragraphs: string[] }[] =
 
 export const LANGUAGE_OPTIONS: { value: string; enabled: boolean }[] = [
   { value: 'Same as this phone', enabled: true },
-  { value: 'English', enabled: false },
-  { value: 'Français', enabled: false },
-  { value: 'Español', enabled: false },
-  { value: 'Deutsch', enabled: false },
-  { value: 'Yorùbá', enabled: false },
 ];
-
-export const LANGUAGE_DISABLED_REASON = 'This app only has its English words.';
-export const TEXT_SIZE_DEFAULT = '100%';
-export const TEXT_SIZE_REASON = 'Only this phone’s text size is used.';
+export const APK_UPDATE_HELP =
+  'Android updates check the file’s checksum and signing certificate, and need install permission.';

@@ -1,7 +1,7 @@
 // Branch phone theme tokens. Every colour, size and motion value the app draws with lives here;
 // screens read them through useTheme() and never hardcode their own. Colours follow the desktop
-// Branch Slate palette (window/src/theme/tokens.css) so the phone and the window feel like one product;
-// type, spacing and radii follow Apple's Human Interface Guidelines for iPhone.
+// Branch Slate palette (window/src/theme/tokens.css). Type, glass and radii on Settings follow
+// that same desktop token file (--fs-*, --glass17, --r1-17 through --r-row).
 
 export type ColorScheme = 'light' | 'dark';
 
@@ -40,6 +40,8 @@ export interface Palette {
   scrim: string;
   /** Behind the live camera, before the first frame arrives. */
   camera: string;
+  /** Desktop --glass17: raised surface at 90% (cards on Settings). */
+  glass: string;
 }
 
 const light: Palette = {
@@ -63,6 +65,7 @@ const light: Palette = {
   badTint: '#f8e3df',
   scrim: 'rgba(14, 20, 26, 0.3)',
   camera: '#000000',
+  glass: 'rgba(255, 255, 255, 0.9)',
 };
 
 // Dark is near-black like Grok and iOS dark mode: deep enough for OLED, with raised surfaces a step lighter.
@@ -87,6 +90,7 @@ const dark: Palette = {
   badTint: '#361c17',
   scrim: 'rgba(0, 0, 0, 0.52)',
   camera: '#000000',
+  glass: 'rgba(22, 29, 34, 0.9)',
 };
 
 export const palettes: Record<ColorScheme, Palette> = { light, dark };
@@ -111,6 +115,12 @@ export const type = {
   footnote: { fontSize: 13, lineHeight: 18, fontWeight: '400', letterSpacing: -0.08 },
   caption1: { fontSize: 12, lineHeight: 16, fontWeight: '400', letterSpacing: 0 },
   caption2: { fontSize: 11, lineHeight: 13, fontWeight: '400', letterSpacing: 0.06 },
+  /** Desktop --fs-26, the Settings page title. */
+  settingsTitle: { fontSize: 26, lineHeight: 32, fontWeight: '600', letterSpacing: -0.4 },
+  /** Desktop settings body (15 / 20). */
+  settingsBody: { fontSize: 15, lineHeight: 20, fontWeight: '400', letterSpacing: -0.2 },
+  /** Desktop --fs-label, uppercase group titles. */
+  settingsLabel: { fontSize: 11, lineHeight: 14, fontWeight: '500', letterSpacing: 0.6 },
 } as const satisfies Record<string, TextStyleToken>;
 
 export type TypeName = keyof typeof type;
@@ -121,7 +131,8 @@ export const space = { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xx
 /** Margins that line up with iOS navigation bars and inset grouped lists. */
 export const layout = { screenInset: 20, cardInset: 16, rowMinHeight: 44, hairline: 0.5 } as const;
 
-export const radius = { sm: 8, md: 12, lg: 16, bubble: 20, pill: 999 } as const;
+/** Desktop radii (--r1-17 8, --r2-17 12, --r3-17 16, --r4-17 20, --r-row 14). */
+export const radius = { sm: 8, md: 12, lg: 16, bubble: 20, row: 14, pill: 999 } as const;
 
 /** Spring settings for native-feeling motion (React Native Animated.spring). */
 export const motion = {
@@ -140,6 +151,17 @@ export interface Theme {
   motion: typeof motion;
 }
 
-export function themeFor(scheme: ColorScheme): Theme {
-  return { scheme, color: palettes[scheme], type, space, layout, radius, motion };
+export function glassOf(raise: string): string {
+  const hex = /^#([0-9a-f]{6})$/i.exec(raise);
+  if (!hex) return raise;
+  const n = hex[1];
+  const r = Number.parseInt(n.slice(0, 2), 16);
+  const g = Number.parseInt(n.slice(2, 4), 16);
+  const b = Number.parseInt(n.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, 0.9)`;
+}
+
+export function themeFor(scheme: ColorScheme, overlay?: Partial<Palette>): Theme {
+  const color = overlay ? { ...palettes[scheme], ...overlay, glass: overlay.glass ?? glassOf(overlay.raise ?? palettes[scheme].raise) } : palettes[scheme];
+  return { scheme, color, type, space, layout, radius, motion };
 }

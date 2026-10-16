@@ -6,18 +6,19 @@ import { fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier';
 import { createFakeSession } from '../testing/fakeSession';
 import { memoryStore } from '../storage/keyValueStore';
-import { THEME_PREFERENCE_KEY } from '../theme/preference';
+import { DESKTOP_THEMES } from '../theme/desktopThemes';
+import { THEME_LOOK_KEY, THEME_PREFERENCE_KEY } from '../theme/preference';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { themeFor } from '../theme/tokens';
-import { permissionLabel, SettingsScreen, SETTINGS_EXTRAS } from './SettingsScreen';
-import { HELP_PAGES, TEXT_SIZE_DEFAULT } from './settingsExtras';
+import { permissionLabel, SettingsScreen, LATER_ROWS, SETTINGS_GROUPS } from './SettingsScreen';
+import { CHEER_DEFAULT, HELP_PAGES, PET_DEFAULT, laterRowsAt, laterUpdate } from './settingsExtras';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
 jest.setTimeout(20_000);
 
 const paired = {
   step: 'paired' as const,
-  url: 'ws://computer.local:19031',
+  url: 'ws://paired.example:18765',
   online: true,
   serverVersion: '2026.10.8',
 };
@@ -56,7 +57,7 @@ async function pairedApp(extra: Parameters<typeof App>[0] = {}) {
       {...extra}
     />,
   );
-  await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' }));
+  await act(() => session.begin({ url: 'ws://paired.example:18765', bootstrapToken: 'boot-1' }));
   engine.approve();
   await eventually(() => expect(screen.getByTestId('chats-screen')).toBeOnTheScreen());
   return { session, engine, fake, unmount: view.unmount };
@@ -78,8 +79,9 @@ describe('settings screen', () => {
     expect(screen.getByRole('header')).toHaveTextContent('Settings');
     expect(within(screen.getByTestId('app-card')).getByText('0.1.0')).toBeOnTheScreen();
     expect(within(screen.getByTestId('app-card')).getByText('14')).toBeOnTheScreen();
+    expect(screen.getByText('This Branch')).toBeOnTheScreen();
     expect(screen.getByText('Connected to your computer')).toBeOnTheScreen();
-    expect(screen.getByText('computer.local:19031')).toBeOnTheScreen();
+    expect(screen.getByText('paired.example:18765')).toBeOnTheScreen();
     expect(screen.getByText('2026.10.8')).toBeOnTheScreen();
     expect(screen.getByTestId('this-phone')).toHaveTextContent(/This phone/);
     expect(screen.getByTestId('about-card')).toHaveTextContent(/Your Trunks and Branch Agent, in your pocket/);
@@ -119,10 +121,15 @@ describe('settings in the app', () => {
     expect(within(screen.getByTestId('app-card')).getByText('0.1.0')).toBeOnTheScreen();
     expect(within(screen.getByTestId('app-card')).getByText('14')).toBeOnTheScreen();
     expect(screen.getByTestId('settings-notifications-status')).toHaveTextContent('On');
+    expect(screen.getByTestId('update-settings-card')).toBeOnTheScreen();
+    expect(screen.getByTestId('apk-update-help')).toHaveTextContent(/checksum/);
+    expect(screen.getByTestId('apk-update-help')).toHaveTextContent(/signing certificate/);
+    expect(screen.getByTestId('apk-update-help')).toHaveTextContent(/install permission/);
 
     await fireEvent.press(screen.getByTestId('this-phone'));
     expect(screen.getByTestId('paired-screen')).toBeOnTheScreen();
     expect(screen.getByText('Your computer')).toBeOnTheScreen();
+    expect(screen.getByTestId('update-settings-card')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('back-to-settings'));
     expect(screen.getByTestId('settings-screen')).toBeOnTheScreen();
 
@@ -146,7 +153,7 @@ describe('settings in the app', () => {
     }
   });
 
-  it('keeps System, Light or Dark on this phone and uses it on the next open', async () => {
+  it('keeps Match this phone, Light or Dark on this phone and uses it on the next open', async () => {
     const store = memoryStore();
     const first = await pairedApp({ themeStore: store });
     await fireEvent.press(screen.getByTestId('settings-button'));
@@ -179,32 +186,101 @@ describe('r50 settings parity', () => {
     expect(screen.getByTestId('settings-screen-scroll')).toHaveProp('showsHorizontalScrollIndicator', false);
   });
 
-  it('keeps preview extras Off and disabled, each with a reason', async () => {
+  it('uses the desktop Regular groups plus Appearance', async () => {
     await renderSettings();
-    expect(SETTINGS_EXTRAS.length).toBeGreaterThan(0);
-    for (const extra of SETTINGS_EXTRAS) {
-      const row = screen.getByTestId(extra.testID);
-      expect(row).toHaveProp('accessibilityState', { disabled: true });
-      expect(row).toHaveTextContent(/Off/);
-      expect(screen.getByTestId(`${extra.testID}-reason`)).toHaveTextContent(extra.reason);
+    expect([...SETTINGS_GROUPS]).toEqual(['General', 'Computer', 'Usage', 'Updates', 'Appearance']);
+    for (const name of SETTINGS_GROUPS) {
+      expect(screen.getByText(name)).toBeOnTheScreen();
     }
+    expect(screen.getByTestId('general-card')).toBeOnTheScreen();
+    expect(screen.getByTestId('computer-card')).toBeOnTheScreen();
+    expect(screen.getByTestId('usage-card')).toBeOnTheScreen();
+    expect(screen.getByTestId('updates-card')).toBeOnTheScreen();
+    expect(screen.getByTestId('appearance-card')).toBeOnTheScreen();
   });
 
-  it('opens Help and Language, with Same as this phone selected and other sizes left at 100%', async () => {
+  it('hides unfinished rows at Regular, and never draws them as Off', async () => {
     await renderSettings();
-    expect(screen.getByTestId(`text-size-${TEXT_SIZE_DEFAULT}`)).toHaveProp('accessibilityState', {
-      selected: true,
-      disabled: false,
-    });
-    expect(screen.getByTestId('text-size-90%')).toHaveProp('accessibilityState', { selected: false, disabled: true });
+    expect(laterRowsAt(0)).toEqual([]);
+    for (const row of LATER_ROWS) {
+      expect(screen.queryByTestId(row.testID)).toBeNull();
+    }
+    expect(screen.queryByText('Off')).toBeNull();
+    expect(screen.queryByText(/comes in a later update/)).toBeNull();
+  });
 
+  it('shows later-update copy at Advanced, including Lend this phone to Branch', async () => {
+    await renderSettings({ level: 1 });
+    const advanced = laterRowsAt(1);
+    expect(advanced.length).toBeGreaterThan(0);
+    expect(advanced.some((row) => row.label === 'Lend this phone to Branch')).toBe(true);
+    for (const row of advanced) {
+      expect(screen.getByTestId(row.testID)).toBeOnTheScreen();
+      expect(screen.getByTestId(`${row.testID}-reason`)).toHaveTextContent(laterUpdate(row.label));
+      expect(screen.getByTestId(row.testID)).not.toHaveTextContent(/^Off$/);
+    }
+    expect(screen.queryByTestId('later-on-phone-engine')).toBeNull();
+  });
+
+  it('shows Technical rows only at Technical', async () => {
+    await renderSettings({ level: 2 });
+    expect(screen.getByTestId('later-on-phone-engine-reason')).toHaveTextContent(
+      laterUpdate('Run Branch on this phone'),
+    );
+  });
+
+  it('keeps pets and cheer off by default, and only names them at Advanced', async () => {
+    expect(PET_DEFAULT).toBe('none');
+    expect(CHEER_DEFAULT).toBe(false);
+    await renderSettings();
+    expect(screen.queryByTestId('later-pet')).toBeNull();
+    expect(screen.queryByTestId('later-cheer')).toBeNull();
+    await fireEvent.press(screen.getByTestId('settings-level-advanced'));
+    expect(screen.getByTestId('later-pet-reason')).toHaveTextContent(laterUpdate('Pet'));
+    expect(screen.getByTestId('later-cheer-reason')).toHaveTextContent(laterUpdate('Celebrate when a task finishes'));
+  });
+
+  it('offers the same desktop themes, with Branch Slate selected', async () => {
+    await renderSettings();
+    expect(DESKTOP_THEMES.map((theme) => theme.name)).toEqual(
+      expect.arrayContaining(['Branch Slate', 'Paper', 'Knot', 'Forest', 'Dracula']),
+    );
+    expect(screen.getByTestId('settings-themes')).toHaveTextContent(/Branch Slate/);
+    await fireEvent.press(screen.getByTestId('settings-themes'));
+    expect(screen.getByRole('header')).toHaveTextContent('Theme');
+    expect(screen.getByTestId('desktop-theme-grove')).toHaveProp('accessibilityState', { selected: true });
+    expect(screen.getByTestId('desktop-theme-paper')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('desktop-theme-paper'));
+    expect(screen.getByTestId('desktop-theme-paper')).toHaveProp('accessibilityState', { selected: true });
+    await fireEvent.press(screen.getByTestId('settings-themes-back'));
+    expect(screen.getByTestId('settings-themes')).toHaveTextContent(/Paper/);
+  });
+
+  it('keeps a chosen desktop theme on the next open', async () => {
+    const store = memoryStore();
+    const first = await pairedApp({ themeStore: store });
+    await fireEvent.press(screen.getByTestId('settings-button'));
+    await fireEvent.press(screen.getByTestId('settings-themes'));
+    await fireEvent.press(screen.getByTestId('desktop-theme-beacon'));
+    expect(store.dump()[THEME_LOOK_KEY]).toBe('beacon');
+    first.session.dispose();
+    await first.unmount();
+
+    const second = await pairedApp({ themeStore: store });
+    await fireEvent.press(screen.getByTestId('settings-button'));
+    await eventually(() => expect(screen.getByTestId('settings-themes')).toHaveTextContent(/Beacon/));
+    second.session.dispose();
+  });
+
+  it('opens Help and Language, with Same as this phone selected', async () => {
+    await renderSettings();
     await fireEvent.press(screen.getByTestId('settings-language'));
     expect(screen.getByRole('header')).toHaveTextContent('Language');
     expect(screen.getByTestId('language-Same as this phone')).toHaveProp('accessibilityState', {
       selected: true,
       disabled: false,
     });
-    expect(screen.getByTestId('language-Français')).toHaveProp('accessibilityState', { selected: false, disabled: true });
+    expect(screen.queryByTestId('language-Français')).toBeNull();
     await fireEvent.press(screen.getByTestId('settings-language-back'));
     expect(screen.getByRole('header')).toHaveTextContent('Settings');
 
@@ -215,10 +291,20 @@ describe('r50 settings parity', () => {
     expect(screen.getByText(HELP_PAGES[0].paragraphs[0])).toBeOnTheScreen();
   });
 
-  it('draws the theme picker in black and white', async () => {
+  it('draws the theme picker and level control in black and white', async () => {
     await renderSettings();
     const style = screen.getByTestId('theme-system').props.style;
     const selected = StyleSheet.flatten(typeof style === 'function' ? style({ pressed: false }) : style);
     expect(selected.backgroundColor).toBe(themeFor('light').color.ink);
+    const level = screen.getByTestId('settings-level-regular').props.style;
+    const levelOn = StyleSheet.flatten(typeof level === 'function' ? level({ pressed: false }) : level);
+    expect(levelOn.backgroundColor).toBe(themeFor('light').color.ink);
+  });
+
+  it('uses desktop glass and radii on Settings groups', async () => {
+    await renderSettings();
+    const card = StyleSheet.flatten(screen.getByTestId('general-card-surface').props.style);
+    expect(card.backgroundColor).toBe(themeFor('light').color.glass);
+    expect(card.borderRadius).toBe(themeFor('light').radius.md);
   });
 });

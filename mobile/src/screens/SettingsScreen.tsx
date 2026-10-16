@@ -4,32 +4,29 @@ import type { NotificationPermission } from '../approvals/approvalAlerts';
 import { appIdentity, versionLine, type AppIdentity } from '../build/appIdentity';
 import type { PairingState } from '../pairing/pairingSession';
 import { gatewayHost } from '../pairing/setupCode';
+import { DESKTOP_THEMES, desktopThemeName } from '../theme/desktopThemes';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme, useThemePreference } from '../theme/ThemeProvider';
 import { THEME_OPTIONS } from '../theme/preference';
 import { Button } from '../ui/Button';
 import { Screen } from '../ui/Screen';
 import {
-  ASSISTANT_EXTRAS,
-  CONNECTION_EXTRAS,
+  APK_UPDATE_HELP,
   HELP_PAGES,
-  KEEPOAK_EXTRA,
-  LANGUAGE_DISABLED_REASON,
   LANGUAGE_OPTIONS,
-  ON_PHONE_EXTRAS,
-  PHONE_MORE_EXTRAS,
-  SETTINGS_EXTRAS,
-  SETUP_TALK_EXTRA,
-  TEXT_SIZE_DEFAULT,
-  TEXT_SIZE_REASON,
-  THIS_BRANCH_EXTRAS,
-  VOICE_EXTRAS,
-  type SettingsExtra,
+  LATER_ROWS,
+  SETTINGS_GROUPS,
+  SETTINGS_LEVELS,
+  laterRowsAt,
+  laterUpdate,
+  type LaterRow,
+  type SettingsGroup,
+  type SettingsLevel,
 } from './settingsExtras';
 
-export { SETTINGS_EXTRAS };
+export { LATER_ROWS, SETTINGS_GROUPS };
 
-type Page = 'main' | 'help' | 'language' | `help-${string}`;
+type Page = 'main' | 'help' | 'language' | 'themes' | `help-${string}`;
 
 function Group({
   title,
@@ -40,19 +37,28 @@ function Group({
   testID?: string;
   children: ReactNode;
 }) {
-  const { color, space, radius } = useTheme();
+  const { color, space, radius, layout } = useTheme();
   return (
     <View testID={testID} style={{ marginTop: space.xxl }}>
       {title ? (
         <ThemedText
-          variant="caption1"
+          variant="settingsLabel"
           tone="ink3"
-          style={{ textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: space.sm, marginLeft: space.sm }}
+          style={{ textTransform: 'uppercase', marginBottom: space.sm, marginLeft: space.sm }}
         >
           {title}
         </ThemedText>
       ) : null}
-      <View style={{ backgroundColor: color.raise, borderRadius: radius.md, borderWidth: 1, borderColor: color.line, overflow: 'hidden' }}>
+      <View
+        testID={testID ? `${testID}-surface` : undefined}
+        style={{
+          backgroundColor: color.glass,
+          borderRadius: radius.md,
+          borderWidth: layout.hairline,
+          borderColor: color.line,
+          overflow: 'hidden',
+        }}
+      >
         {children}
       </View>
     </View>
@@ -89,8 +95,8 @@ function Row({
           gap: space.md,
         }}
       >
-        <ThemedText variant="body">{label}</ThemedText>
-        <ThemedText variant="body" tone="ink2" testID={testID} style={{ flexShrink: 1, textAlign: 'right' }}>
+        <ThemedText variant="settingsBody">{label}</ThemedText>
+        <ThemedText variant="settingsBody" tone="ink2" testID={testID} style={{ flexShrink: 1, textAlign: 'right' }}>
           {value}
         </ThemedText>
       </View>
@@ -106,7 +112,6 @@ function GoRow({
   onPress,
   testID,
   last = false,
-  destructive = false,
   accessibilityLabel,
 }: {
   title: string;
@@ -115,7 +120,6 @@ function GoRow({
   onPress: () => void;
   testID: string;
   last?: boolean;
-  destructive?: boolean;
   accessibilityLabel?: string;
 }) {
   const { layout, space } = useTheme();
@@ -137,9 +141,7 @@ function GoRow({
         })}
       >
         <View style={{ flex: 1, minWidth: 0 }}>
-          <ThemedText variant="body" tone={destructive ? 'bad' : 'ink'}>
-            {title}
-          </ThemedText>
+          <ThemedText variant="settingsBody">{title}</ThemedText>
           {detail ? (
             <ThemedText variant="footnote" tone="ink3">
               {detail}
@@ -160,56 +162,41 @@ function GoRow({
   );
 }
 
-/** Extra preview rows: shown, Off, and disabled with the reason they do not work yet. */
-function ExtraRow({ extra, last = false }: { extra: SettingsExtra; last?: boolean }) {
-  const { color, layout, space, radius } = useTheme();
+function LaterRowView({ row, last = false }: { row: LaterRow; last?: boolean }) {
+  const { layout, space } = useTheme();
+  const reason = laterUpdate(row.label);
   return (
     <View>
       <View
-        testID={extra.testID}
+        testID={row.testID}
         accessibilityRole="text"
-        accessibilityState={{ disabled: true }}
-        accessibilityLabel={`${extra.title}, Off. ${extra.reason}`}
+        accessibilityLabel={reason}
         style={{
-          flexDirection: 'row',
-          alignItems: 'center',
           minHeight: layout.rowMinHeight,
           paddingHorizontal: 14,
           paddingVertical: space.sm,
-          gap: space.md,
-          opacity: 0.55,
+          justifyContent: 'center',
         }}
       >
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <ThemedText variant="body">{extra.title}</ThemedText>
-          <ThemedText variant="footnote" tone="ink3">
-            {extra.detail}
-          </ThemedText>
-          <ThemedText variant="caption1" tone="ink3" testID={`${extra.testID}-reason`}>
-            {extra.reason}
-          </ThemedText>
-        </View>
-        <View
-          testID={`${extra.testID}-value`}
-          style={{
-            width: 44,
-            height: 26,
-            borderRadius: radius.pill,
-            backgroundColor: color.fill,
-            borderWidth: 1,
-            borderColor: color.line,
-            justifyContent: 'center',
-            paddingHorizontal: 3,
-          }}
-        >
-          <View style={{ width: 20, height: 20, borderRadius: radius.pill, backgroundColor: color.raise, borderWidth: 1, borderColor: color.line }} />
-        </View>
-        <ThemedText variant="subhead" tone="ink3">
-          Off
+        <ThemedText variant="settingsBody">{row.label}</ThemedText>
+        <ThemedText variant="footnote" tone="ink3" testID={`${row.testID}-reason`}>
+          {reason}
         </ThemedText>
       </View>
       <Hairline last={last} />
     </View>
+  );
+}
+
+function LaterRows({ group, level }: { group: SettingsGroup; level: SettingsLevel }) {
+  const rows = laterRowsAt(level, group);
+  if (rows.length === 0) return null;
+  return (
+    <>
+      {rows.map((row, index) => (
+        <LaterRowView key={row.testID} row={row} last={index === rows.length - 1} />
+      ))}
+    </>
   );
 }
 
@@ -230,7 +217,7 @@ function BackRow({ label, onPress, testID }: { label: string; onPress: () => voi
         opacity: pressed ? 0.6 : 1,
       })}
     >
-      <ThemedText variant="body">← {label}</ThemedText>
+      <ThemedText variant="settingsBody">← {label}</ThemedText>
     </Pressable>
   );
 }
@@ -250,7 +237,7 @@ export function permissionLabel(permission: NotificationPermission | null): stri
   }
 }
 
-/** Android Settings: preview groups, every working control kept, extras Off until they are wired. */
+/** Android Settings: desktop Regular groups plus Appearance. Working controls stay; unfinished rows wait for Advanced. */
 export function SettingsScreen({
   state,
   permission,
@@ -259,6 +246,8 @@ export function SettingsScreen({
   onOpenSettings,
   onTurnOnNotifications,
   onBack,
+  updateCard,
+  level: pinnedLevel,
 }: {
   state: Extract<PairingState, { step: 'paired' }>;
   permission: NotificationPermission | null;
@@ -267,15 +256,22 @@ export function SettingsScreen({
   onOpenSettings: () => void;
   onTurnOnNotifications?: () => void;
   onBack: () => void;
+  updateCard?: ReactNode;
+  level?: SettingsLevel;
 }) {
   const { color, space, radius, layout } = useTheme();
-  const { preference, setPreference } = useThemePreference();
+  const { preference, setPreference, lookId, setLookId } = useThemePreference();
   const [page, setPage] = useState<Page>('main');
+  const [level, setLevel] = useState<SettingsLevel>(pinnedLevel ?? 0);
   const host = gatewayHost(state.url);
   const connected = state.online ? 'Connected' : 'Reconnecting';
   const status = permissionLabel(permission);
   const canAsk = permission === 'undetermined' && onTurnOnNotifications;
   const helpPage = HELP_PAGES.find((item) => page === `help-${item.id}`);
+
+  useEffect(() => {
+    if (pinnedLevel !== undefined) setLevel(pinnedLevel);
+  }, [pinnedLevel]);
 
   useEffect(() => {
     if (page === 'main') return;
@@ -290,7 +286,7 @@ export function SettingsScreen({
     return (
       <Screen testID="settings-screen">
         <BackRow label="Settings" onPress={() => setPage('main')} testID="settings-language-back" />
-        <ThemedText variant="title2" accessibilityRole="header">
+        <ThemedText variant="settingsTitle" accessibilityRole="header">
           Language
         </ThemedText>
         <Group testID="language-card">
@@ -303,7 +299,7 @@ export function SettingsScreen({
                   testID={`language-${option.value}`}
                   accessibilityRole="radio"
                   accessibilityState={{ selected, disabled: !option.enabled }}
-                  accessibilityLabel={option.enabled ? option.value : `${option.value}. ${LANGUAGE_DISABLED_REASON}`}
+                  accessibilityLabel={option.value}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -312,11 +308,11 @@ export function SettingsScreen({
                     opacity: option.enabled ? 1 : 0.45,
                   }}
                 >
-                  <ThemedText variant="body" style={{ flex: 1 }}>
+                  <ThemedText variant="settingsBody" style={{ flex: 1 }}>
                     {option.value}
                   </ThemedText>
                   {selected ? (
-                    <ThemedText variant="body" testID="language-selected">
+                    <ThemedText variant="settingsBody" testID="language-selected">
                       ✓
                     </ThemedText>
                   ) : null}
@@ -326,9 +322,51 @@ export function SettingsScreen({
             );
           })}
         </Group>
-        <ThemedText variant="footnote" tone="ink3" style={{ marginTop: space.md, marginHorizontal: space.sm }}>
-          {LANGUAGE_DISABLED_REASON}
+      </Screen>
+    );
+  }
+
+  if (page === 'themes') {
+    return (
+      <Screen testID="settings-screen">
+        <BackRow label="Settings" onPress={() => setPage('main')} testID="settings-themes-back" />
+        <ThemedText variant="settingsTitle" accessibilityRole="header">
+          Theme
         </ThemedText>
+        <Group testID="themes-card">
+          {DESKTOP_THEMES.map((theme, index) => {
+            const selected = lookId === theme.id;
+            const last = index === DESKTOP_THEMES.length - 1;
+            return (
+              <View key={theme.id}>
+                <Pressable
+                  testID={`desktop-theme-${theme.id}`}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={theme.name}
+                  onPress={() => setLookId(theme.id)}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    minHeight: layout.rowMinHeight,
+                    paddingHorizontal: 14,
+                    opacity: pressed ? 0.6 : 1,
+                  })}
+                >
+                  <ThemedText variant="settingsBody" style={{ flex: 1 }}>
+                    {theme.name}
+                  </ThemedText>
+                  {selected ? (
+                    <ThemedText variant="settingsBody" testID="desktop-theme-selected">
+                      ✓
+                    </ThemedText>
+                  ) : null}
+                </Pressable>
+                <Hairline last={last} />
+              </View>
+            );
+          })}
+        </Group>
       </Screen>
     );
   }
@@ -342,13 +380,13 @@ export function SettingsScreen({
           onPress={() => setPage(topic ? 'help' : 'main')}
           testID={topic ? 'settings-help-page-back' : 'settings-help-back'}
         />
-        <ThemedText variant="title2" accessibilityRole="header">
+        <ThemedText variant="settingsTitle" accessibilityRole="header">
           {topic ? topic.title : 'Help'}
         </ThemedText>
         {topic ? (
           <View testID={`help-page-${topic.id}`} style={{ marginTop: space.xl, gap: space.md }}>
             {topic.paragraphs.map((paragraph) => (
-              <ThemedText key={paragraph} variant="body" tone="ink2">
+              <ThemedText key={paragraph} variant="settingsBody" tone="ink2">
                 {paragraph}
               </ThemedText>
             ))}
@@ -370,24 +408,116 @@ export function SettingsScreen({
     );
   }
 
+  const generalLater = laterRowsAt(level, 'General');
+  const computerLater = laterRowsAt(level, 'Computer');
+  const usageLater = laterRowsAt(level, 'Usage');
+  const updatesLater = laterRowsAt(level, 'Updates');
+  const appearanceLater = laterRowsAt(level, 'Appearance');
+
   return (
     <Screen testID="settings-screen">
       <BackRow label="Chats" onPress={onBack} testID="settings-back" />
-      <ThemedText variant="title2" accessibilityRole="header">
+      <ThemedText variant="settingsTitle" accessibilityRole="header">
         Settings
       </ThemedText>
 
-      <Group testID="keepoak-card">
-        <ExtraRow extra={KEEPOAK_EXTRA} last />
+      <View
+        testID="settings-level"
+        accessibilityRole="radiogroup"
+        accessibilityLabel="How much to show"
+        style={{
+          marginTop: space.xl,
+          flexDirection: 'row',
+          backgroundColor: color.fill,
+          borderRadius: radius.md,
+          borderWidth: layout.hairline,
+          borderColor: color.line,
+          padding: space.xs,
+          gap: space.xs,
+        }}
+      >
+        {SETTINGS_LEVELS.map((option) => {
+          const on = level === option.v;
+          return (
+            <Pressable
+              key={option.label}
+              testID={`settings-level-${option.label.toLowerCase()}`}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={option.label}
+              onPress={() => setLevel(option.v)}
+              style={({ pressed }) => ({
+                flex: 1,
+                minHeight: layout.rowMinHeight,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: radius.sm,
+                backgroundColor: on ? color.ink : 'transparent',
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <ThemedText variant="subhead" style={{ fontWeight: on ? '600' : '400', color: on ? color.raise : color.ink }}>
+                {option.label}
+              </ThemedText>
+            </Pressable>
+          );
+        })}
+      </View>
+      <ThemedText variant="footnote" tone="ink3" style={{ marginTop: space.sm, marginHorizontal: space.sm }}>
+        {SETTINGS_LEVELS[level]?.line}
+      </ThemedText>
+
+      <Group title="General" testID="general-card">
+        <View testID="app-card">
+          <Row label="Version" value={identity.version} />
+          <Row label="Build" value={identity.build ?? '—'} />
+        </View>
+        <View testID="settings-notifications">
+          <ThemedText variant="headline" style={{ paddingHorizontal: 14, paddingTop: space.md }}>
+            Notifications
+          </ThemedText>
+          <ThemedText variant="subhead" tone="ink2" style={{ marginTop: space.xs, paddingHorizontal: 14 }}>
+            Approvals can reach you on the lock screen when they are on.
+          </ThemedText>
+          <Row label="Status" value={status} testID="settings-notifications-status" last={permission === 'unavailable'} />
+          {permission === 'unavailable' ? (
+            <ThemedText testID="settings-notifications-unavailable" variant="footnote" tone="ink2" style={{ margin: space.md }}>
+              Notifications need the installed Branch app. Approvals still show up in the app.
+            </ThemedText>
+          ) : (
+            <View style={{ margin: space.md, gap: space.sm }}>
+              {canAsk ? (
+                <Button title="Turn on notifications" kind="ink" onPress={onTurnOnNotifications} testID="settings-notifications-turn-on" />
+              ) : null}
+              <Button
+                title="Open Settings"
+                kind={canAsk ? 'inkSecondary' : 'ink'}
+                onPress={onOpenSettings}
+                testID="notifications-system-settings"
+              />
+            </View>
+          )}
+        </View>
+        <Hairline last={false} />
+        <View testID="about-card">
+          <ThemedText variant="headline" style={{ paddingHorizontal: 14, paddingTop: space.md }}>
+            About
+          </ThemedText>
+          <ThemedText variant="subhead" tone="ink2" style={{ marginTop: space.xs, paddingHorizontal: 14 }}>
+            Your Trunks and Branch Agent, in your pocket.
+          </ThemedText>
+          <Row label="This app" value={versionLine(identity)} />
+          <Row label="By" value="KeepOak" />
+        </View>
+        <GoRow title="Help" testID="settings-help" onPress={() => setPage('help')} last={generalLater.length === 0} />
+        <LaterRows group="General" level={level} />
       </Group>
 
-      <Group testID="app-card">
-        <Row label="Version" value={identity.version} />
-        <Row label="Build" value={identity.build ?? '—'} last />
-      </Group>
-
-      <Group title="This Branch" testID="computer-card">
+      <Group title="Computer" testID="computer-card">
         <View
+          testID="this-branch"
+          accessibilityRole="text"
+          accessibilityLabel={`This Branch, ${host}, ${connected}`}
           style={{
             flexDirection: 'row',
             alignItems: 'center',
@@ -404,9 +534,12 @@ export function SettingsScreen({
               backgroundColor: state.online ? color.ink : color.ink3,
             }}
           />
-          <ThemedText variant="headline" style={{ flex: 1 }}>
-            {state.online ? 'Connected to your computer' : 'Reconnecting to your computer…'}
-          </ThemedText>
+          <View style={{ flex: 1 }}>
+            <ThemedText variant="headline">This Branch</ThemedText>
+            <ThemedText variant="footnote" tone="ink3">
+              {state.online ? 'Connected to your computer' : 'Reconnecting to your computer…'}
+            </ThemedText>
+          </View>
         </View>
         <Hairline last={false} />
         <Row label="Computer" value={host} />
@@ -416,26 +549,42 @@ export function SettingsScreen({
           testID="this-phone"
           accessibilityLabel={`This phone, ${host}, ${connected}`}
           onPress={onThisPhone}
+          last={computerLater.length === 0}
         />
-        {THIS_BRANCH_EXTRAS.map((extra, index) => (
-          <ExtraRow key={extra.testID} extra={extra} last={index === THIS_BRANCH_EXTRAS.length - 1} />
-        ))}
+        <LaterRows group="Computer" level={level} />
       </Group>
 
-      <Group testID="setup-talk-card">
-        <ExtraRow extra={SETUP_TALK_EXTRA} last />
+      <Group title="Usage" testID="usage-card">
+        {usageLater.length === 0 ? (
+          <ThemedText variant="footnote" tone="ink3" style={{ paddingHorizontal: 14, paddingVertical: space.md }}>
+            Accounts, models and sign-ins live on the paired computer.
+          </ThemedText>
+        ) : (
+          <LaterRows group="Usage" level={level} />
+        )}
       </Group>
 
-      <Group title="Your assistant" testID="appearance-card">
+      <Group title="Updates" testID="updates-card">
         <View style={{ paddingHorizontal: 14, paddingTop: space.md, paddingBottom: space.sm }}>
-          <ThemedText variant="body">Theme</ThemedText>
+          {updateCard}
+          <ThemedText variant="footnote" tone="ink3" style={{ marginTop: space.md }} testID="apk-update-help">
+            {APK_UPDATE_HELP}
+          </ThemedText>
+        </View>
+        {updatesLater.length > 0 ? <Hairline last={false} /> : null}
+        <LaterRows group="Updates" level={level} />
+      </Group>
+
+      <Group title="Appearance" testID="appearance-card">
+        <View style={{ paddingHorizontal: 14, paddingTop: space.md, paddingBottom: space.sm }}>
+          <ThemedText variant="settingsBody">Light or dark</ThemedText>
           <ThemedText variant="footnote" tone="ink3" style={{ marginTop: space.xxs, marginBottom: space.md }}>
-            System follows this phone. Light and Dark stay on this phone.
+            Match this phone follows the phone. Light and Dark stay on this phone.
           </ThemedText>
           <View
             testID="theme-picker"
             accessibilityRole="radiogroup"
-            accessibilityLabel="Theme"
+            accessibilityLabel="Light or dark"
             style={{
               flexDirection: 'row',
               backgroundColor: color.fill,
@@ -473,116 +622,15 @@ export function SettingsScreen({
           </View>
         </View>
         <Hairline last={false} />
-        <GoRow title="Language" value="Same as this phone" testID="settings-language" onPress={() => setPage('language')} />
-        <View>
-          <View style={{ paddingHorizontal: 14, paddingVertical: space.sm }}>
-            <ThemedText variant="body">Text size</ThemedText>
-            <ThemedText variant="footnote" tone="ink3" style={{ marginTop: space.xxs }}>
-              {TEXT_SIZE_REASON}
-            </ThemedText>
-            <View
-              testID="text-size-picker"
-              accessibilityRole="radiogroup"
-              accessibilityLabel="Text size"
-              style={{ flexDirection: 'row', gap: space.xs, marginTop: space.sm }}
-            >
-              {['90%', '100%', '110%', '125%', '140%'].map((size) => {
-                const on = size === TEXT_SIZE_DEFAULT;
-                return (
-                  <View
-                    key={size}
-                    testID={`text-size-${size}`}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: on, disabled: !on }}
-                    style={{
-                      flex: 1,
-                      minHeight: 36,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: radius.sm,
-                      backgroundColor: on ? color.ink : color.fill,
-                      opacity: on ? 1 : 0.45,
-                    }}
-                  >
-                    <ThemedText variant="caption1" style={{ color: on ? color.raise : color.ink }}>
-                      {size}
-                    </ThemedText>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-          <Hairline last={false} />
-        </View>
-        {ASSISTANT_EXTRAS.map((extra, index) => (
-          <ExtraRow key={extra.testID} extra={extra} last={index === ASSISTANT_EXTRAS.length - 1} />
-        ))}
-      </Group>
-
-      <Group title="Connections" testID="settings-connections">
-        {CONNECTION_EXTRAS.map((extra, index) => (
-          <ExtraRow key={extra.testID} extra={extra} last={index === CONNECTION_EXTRAS.length - 1} />
-        ))}
-      </Group>
-
-      <Group title="On this phone" testID="settings-notifications">
-        <ThemedText variant="headline" style={{ paddingHorizontal: 14, paddingTop: space.md }}>
-          Notifications
-        </ThemedText>
-        <ThemedText variant="subhead" tone="ink2" style={{ marginTop: space.xs, paddingHorizontal: 14 }}>
-          Approvals can reach you on the lock screen when they are on.
-        </ThemedText>
-        <Row label="Status" value={status} testID="settings-notifications-status" last={permission === 'unavailable'} />
-        {permission === 'unavailable' ? (
-          <ThemedText testID="settings-notifications-unavailable" variant="footnote" tone="ink2" style={{ margin: space.md }}>
-            Notifications need the installed Branch app. Approvals still show up in the app.
-          </ThemedText>
-        ) : (
-          <View style={{ margin: space.md, gap: space.sm }}>
-            {canAsk ? (
-              <Button title="Turn on notifications" kind="ink" onPress={onTurnOnNotifications} testID="settings-notifications-turn-on" />
-            ) : null}
-            <Button
-              title="Open Settings"
-              kind={canAsk ? 'inkSecondary' : 'ink'}
-              onPress={onOpenSettings}
-              testID="notifications-system-settings"
-            />
-          </View>
-        )}
-        <Hairline last={false} />
-        {ON_PHONE_EXTRAS.map((extra, index) => (
-          <ExtraRow key={extra.testID} extra={extra} last={index === ON_PHONE_EXTRAS.length - 1} />
-        ))}
-      </Group>
-
-      <Group title="This phone, more" testID="settings-phone-more">
-        {PHONE_MORE_EXTRAS.map((extra, index) => (
-          <ExtraRow key={extra.testID} extra={extra} last={index === PHONE_MORE_EXTRAS.length - 1} />
-        ))}
-      </Group>
-
-      <Group title="Voice" testID="settings-voice">
-        {VOICE_EXTRAS.map((extra, index) => (
-          <ExtraRow key={extra.testID} extra={extra} last={index === VOICE_EXTRAS.length - 1} />
-        ))}
-      </Group>
-
-      <Group testID="settings-help-group">
-        <GoRow title="Help" testID="settings-help" onPress={() => setPage('help')} last />
-      </Group>
-
-      <Group testID="about-card">
-        <ThemedText variant="headline" style={{ paddingHorizontal: 14, paddingTop: space.md }}>
-          About
-        </ThemedText>
-        <ThemedText variant="subhead" tone="ink2" style={{ marginTop: space.xs, paddingHorizontal: 14 }}>
-          Your Trunks and Branch Agent, in your pocket.
-        </ThemedText>
-        <View style={{ marginTop: space.sm }}>
-          <Row label="This app" value={versionLine(identity)} />
-          <Row label="By" value="KeepOak" last />
-        </View>
+        <GoRow title="Theme" value={desktopThemeName(lookId)} testID="settings-themes" onPress={() => setPage('themes')} />
+        <GoRow
+          title="Language"
+          value="Same as this phone"
+          testID="settings-language"
+          onPress={() => setPage('language')}
+          last={appearanceLater.length === 0}
+        />
+        <LaterRows group="Appearance" level={level} />
       </Group>
     </Screen>
   );

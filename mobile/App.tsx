@@ -263,6 +263,7 @@ function Shell({
             onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
             onTurnOnNotifications={turnOnNotifications}
             onBack={() => setPairedRoute(CHATS)}
+            updateCard={updateCard}
           />
         );
       } else if (pairedRoute.name === 'chat') {
