@@ -113,6 +113,22 @@ it("names Routines and Made by Trunks in the later-update line when those calls 
   await act(async () => tab("Library").click());
   await settle();
   expect(panel()!.querySelector(".r1-details-library")?.getAttribute("data-coming")).toBe("Made by Trunks comes in a later update.");
+  await act(async () => tab("Computer").click());
+  await settle();
+  const wake = [...panel()!.querySelectorAll("button")].find((b) => b.textContent === "Wake it");
+  expect(wake?.getAttribute("data-coming")).toBe("Wake it comes in a later update.");
+  data.rows = [{ key: "agent:ledger:room:r1", agentId: "ledger", title: "Launch crew", isMain: false, kind: "group", groupChat: true }];
+  data.rooms = [{ roomId: "r1", name: "Launch crew", lead: "ledger", createdAt: 1, members: [{ kind: "trunk", id: "ledger", role: "lead" }, { kind: "trunk", id: "scout" }] }];
+  await remount();
+  await act(async () => root.render(<R1Window session={session("agent:ledger:room:r1", [])} />));
+  await act(async () => pill().click());
+  await settle();
+  await act(async () => tab("Members").click());
+  const removes = [...panel()!.querySelectorAll("button")].filter((b) => b.textContent === "Remove");
+  expect(removes.length).toBeGreaterThan(0);
+  expect(removes.every((b) => b.getAttribute("data-coming") === "Remove comes in a later update.")).toBe(true);
+  const add = [...panel()!.querySelectorAll("button")].find((b) => b.textContent === "Add a Trunk");
+  expect(add?.getAttribute("data-coming")).toBe("Add a Trunk comes in a later update.");
 });
 
 it("remembers the last tab for a Trunk and a group separately", async () => {

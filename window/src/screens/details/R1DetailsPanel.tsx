@@ -45,7 +45,9 @@ const ROUTINES_COMING = "Routines comes in a later update.";
 /** The Details tab's own line, under the routines list and on its own when there are none yet. */
 const ASK_ROUTINE = "Ask it in chat to set one up";
 const LIBRARY_COMING = "Made by Trunks comes in a later update.";
-const MEMBERS_COMING = "Adding and removing members works in Branch group chats.";
+const WAKE_COMING = "Wake it comes in a later update.";
+const ADD_TRUNK_COMING = "Add a Trunk comes in a later update.";
+const REMOVE_COMING = "Remove comes in a later update.";
 
 type Props = {
   session: SaplingSession; engine: WindowEngine; ready: boolean; kind: DetailsKind;
@@ -165,7 +167,7 @@ function ComputerTab({ engine, name, gatewayUrl, blocks, running, onOpenStage, o
     <span className="r1-details-asleep-ico" aria-hidden="true"><Icon name="monitor" /></span>
     <b className="g-label">Asleep</b>
     <small className="g-label">It wakes by itself when {name || "it"} has work.</small>
-    <Coming engine={engine} need="computer.wake" unwired reason="Waking a computer from here comes in a later update." where="Details · Computer · Wake it">
+    <Coming engine={engine} need="computer.wake" unwired reason={WAKE_COMING} where="Details · Computer · Wake it">
       <button type="button" className="btn sm">Wake it</button>
     </Coming>
   </div>;
@@ -189,18 +191,18 @@ function MembersTab({ session, engine, ready, roomId, memberNames, trunks, name,
   };
   if (!roomId) return <section className="r1-details-members" aria-label="Members">
     <ul className="r1-details-rows">{(memberNames ?? []).map((n) => <li key={n}><span className="g-label">{n}</span>
-      <Coming engine={engine} need="rooms.members.remove" unwired reason={MEMBERS_COMING} where="Details · Members · Remove"><button type="button" className="btn ghost sm" aria-label={`Remove ${n}`}>Remove</button></Coming></li>)}</ul>
-    <Coming engine={engine} need="rooms.members.add" unwired reason={MEMBERS_COMING} where="Details · Members · Add a Trunk"><button type="button" className="btn sm">Add a Trunk</button></Coming>
+      <Coming engine={engine} need="rooms.members.remove" unwired reason={REMOVE_COMING} where="Details · Members · Remove"><button type="button" className="btn ghost sm" aria-label={`Remove ${n}`}>Remove</button></Coming></li>)}</ul>
+    <Coming engine={engine} need="rooms.members.add" unwired reason={ADD_TRUNK_COMING} where="Details · Members · Add a Trunk"><button type="button" className="btn sm">Add a Trunk</button></Coming>
   </section>;
   const outside = trunks.filter((t) => !room?.members.some((m) => m.kind === "trunk" && m.id === t.id));
   return <section className="r1-details-members" aria-label="Members">
     {!room ? <p className="g-label" role="status">Loading…</p> : <ul className="r1-details-rows">{room.members.map((m) => <li key={`${m.kind}:${m.id}`}>
       <span className="g-label">{nameOf(m)}{m.role === "lead" ? " · lead" : ""}</span>
-      <Coming engine={engine} need="rooms.members.remove" where="Details · Members · Remove">
+      <Coming engine={engine} need="rooms.members.remove" reason={REMOVE_COMING} where="Details · Members · Remove">
         <button type="button" className="btn ghost sm" aria-label={`Remove ${nameOf(m)}`} disabled={busy} onClick={() => run("rooms.members.remove", { roomId, kind: m.kind, id: m.id })}>Remove</button>
       </Coming>
     </li>)}</ul>}
-    <Coming engine={engine} need="rooms.members.add" where="Details · Members · Add">
+    <Coming engine={engine} need="rooms.members.add" reason={ADD_TRUNK_COMING} where="Details · Members · Add a Trunk">
       <button type="button" className="btn sm" aria-haspopup="menu" disabled={busy || !room} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.bottom + 4 }); }}>Add a Trunk</button>
     </Coming>
     {menu ? <Menu at={menu} label={`Add a Trunk to ${name}`} onClose={() => setMenu(null)} items={outside.length
