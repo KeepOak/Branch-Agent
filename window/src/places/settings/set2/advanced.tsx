@@ -304,6 +304,7 @@ const PINNED: SecSpec = { title: "Pinned skills", lv: 1, rows: [{ t: "Always rea
 // rejects both lists at once. Automations is work that runs on its own; this is a model tool, so it sits here.
 const TASK = "plugins.entries.llm-task";
 const TASK_TOOL = "llm-task";
+const whole = (v: unknown) => Math.round(Number(v));
 function nameList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
