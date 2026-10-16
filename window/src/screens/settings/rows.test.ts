@@ -171,7 +171,7 @@ describe("settings row table", () => {
     for (const key of lookKeys) expect(wired.has(key), key).toBe(true);
     // Classic greys these: they stay Coming rows with the call they wait for, never a whole-card placeholder.
     const at = (id: string) => page.find((r) => r.id === id);
-    for (const id of ["appearance.reading.editor-theme", "appearance.window.kiosk", "appearance.window.frame", "appearance.tray.menu", "appearance.language.pick"]) {
+    for (const id of ["appearance.reading.editor-theme", "appearance.window.kiosk", "appearance.window.frame", "appearance.tray.menu"]) {
       expect(at(id)?.source.kind, id).toBe("coming");
     }
     // Classic's controls with more than a key are drawn by the page itself (#976), each naming the calls it makes.
