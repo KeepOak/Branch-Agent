@@ -631,7 +631,9 @@ async function listKeptDownloads(cfg: DesktopConfig): Promise<KeptDownload[]> {
       kept.push({ release: parseComponentRelease(JSON.parse(await readFile(join(folder, keptMarker), "utf8"))), engine, window: windowDir });
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code && code !== "ENOENT") throw error;
+      // A scanner can hold the marker, or a failed write left a directory where the file should be.
+      // Skip it this pass; the next check reads it again. One bad folder must not fail the check.
+      if (code && code !== "ENOENT" && code !== "EISDIR" && !windowsLock(error)) throw error;
     }
   }
   return kept;
@@ -658,10 +660,38 @@ async function selectRelease(cfg: DesktopConfig, release: ComponentRelease): Pro
   return kept ? { release: kept.release, kept } : { release };
 }
 
+/** Windows reports one directory under more than one spelling (case, a short name, a trailing slash). */
+async function sameFolder(left: string, right: string): Promise<boolean> {
+  const canonical = async (folder: string): Promise<string> => {
+    const resolved = resolve(folder);
+    try { return await realpath(resolved); }
+    catch { return resolved; }
+  };
+  const [a, b] = await Promise.all([canonical(left), canonical(right)]);
+  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+const windowsLockCodes = new Set(["EPERM", "EBUSY", "EACCES"]);
+
+function windowsLock(error: unknown): boolean {
+  return process.platform === "win32" && windowsLockCodes.has((error as NodeJS.ErrnoException).code ?? "");
+}
+
+/** A just-written marker is often still open in a scanner. Retry, then let the caller keep the download. */
+async function retryWindowsLock(work: () => Promise<void>): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try { await work(); return; }
+    catch (error) {
+      if (!windowsLock(error) || attempt === 3) throw error;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+}
+
 async function dropOlderKept(cfg: DesktopConfig, version: string, except: string | undefined, log?: (line: string) => void): Promise<void> {
   for (const kept of await listKeptDownloads(cfg)) {
     const folder = dirname(kept.engine);
-    if (except && folder === except) continue;
+    if (except && await sameFolder(folder, except)) continue;
     if (kept.release.version === version || olderVersion(kept.release.version, version)) await removeStagedFolder(cfg, folder, log);
   }
 }
@@ -706,6 +736,7 @@ async function replaceStaged(cfg: DesktopConfig, held: Publication, release: Com
   const next = kept ? { engine: kept.engine, window: kept.window } : await stage(cfg, chosen, request);
   let superseded: string[] = [];
   let retainDownload = false;
+  let published = false;
   try {
     const replaced = await options.underSwapGuard(async () => {
       // Re-checked under the guard: the staged pair may have been applied or changed while downloading.
@@ -716,22 +747,27 @@ async function replaceStaged(cfg: DesktopConfig, held: Publication, release: Com
       return true;
     });
     if (replaced === undefined) {
-      // The update lock is held. Keep the download and stage it on the next check.
-      await writeFile(join(dirname(next.engine), keptMarker), JSON.stringify(chosen));
+      // The update lock is held. Keep the download even if the marker write hits a Windows file lock.
       retainDownload = true;
+      const marker = join(dirname(next.engine), keptMarker);
+      await retryWindowsLock(() => writeFile(marker, JSON.stringify(chosen)));
       await dropOlderKept(cfg, chosen.version, dirname(next.engine), options.log);
       options.log?.(`Skipped staging ${chosen.version} because the update lock is held. The download stays and staging will retry.`);
       return { ok: false };
     }
     if (replaced === true) {
-      await rm(join(dirname(next.engine), keptMarker), { force: true });
+      // The journal already names this folder. A locked marker must not make cleanup delete the staged engine.
+      published = true;
+      const marker = join(dirname(next.engine), keptMarker);
+      try { await retryWindowsLock(() => rm(marker, { force: true })); }
+      catch (error) { options.log?.(`Kept update marker could not be removed: ${error instanceof Error ? error.message : String(error)}`); }
       await dropOlderKept(cfg, chosen.version, dirname(next.engine), options.log);
       return { ok: "replaced", release: chosen };
     }
     superseded = [dirname(next.engine)];
     return { ok: false };
   } catch (error) {
-    if (!retainDownload) superseded = [dirname(next.engine)];
+    if (!retainDownload && !published) superseded = [dirname(next.engine)];
     throw error;
   } finally {
     // Outside the guard: removing an engine folder can take seconds on Windows, and crash recovery waits on the guard.
@@ -762,7 +798,9 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
       && (options.retryRejected || !await componentReleaseRejected(cfg, chosen))) {
     const next = selected.kept ? { engine: selected.kept.engine, window: selected.kept.window } : await stage(cfg, chosen, request);
     await publish(cfg, chosen, next);
-    await rm(join(dirname(next.engine), keptMarker), { force: true });
+    const marker = join(dirname(next.engine), keptMarker);
+    try { await retryWindowsLock(() => rm(marker, { force: true })); }
+    catch (error) { options.log?.(`Kept update marker could not be removed: ${error instanceof Error ? error.message : String(error)}`); }
     await dropOlderKept(cfg, chosen.version, dirname(next.engine), options.log);
     staged = true;
   } else if (selected.kept) await dropOlderKept(cfg, installed, undefined, options.log);

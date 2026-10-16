@@ -191,6 +191,26 @@ test("a release downloaded while the update lock is held is staged once the lock
   assert.match(logs.join("\n"), /Skipped staging 0\.4\.3 because 0\.4\.4 is newer\./);
 }));
 
+test("a marker that cannot be written while the lock is held does not delete the download", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  // The download is in place before the guard returns. A directory where the marker file should go
+  // makes the write fail the way a Windows lock does, after the download exists.
+  const guard = async () => {
+    const updates = join(cfg.dataDir, "updates");
+    for (const name of await readdir(updates)) {
+      if (name.startsWith("release-0.4.4-")) await mkdir(join(updates, name, ".update-kept"));
+    }
+    return undefined;
+  };
+  await assert.rejects(() => source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: guard }), { code: "EISDIR" });
+  assert.equal((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")).length, 1,
+    "the download was deleted when the kept marker could not be written");
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.3");
+}));
+
 /** Fails the replacement's folder moves chosen by `fails(from, to)`; every other move runs for real. */
 async function withFailingMoves(fails, run) {
   const files = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "component-update-files.js")));
