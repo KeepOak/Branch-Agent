@@ -5,6 +5,7 @@ import { agentOf, errorText, list, rec, str, type Rec, type WindowEngine } from 
 import { readModels, type ModelChoice } from "./model";
 import { isPreparationPending, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { trunkDisplayName } from "../connect/trunk-name";
+import { ensureNoKeyDefault } from "./no-key-default";
 
 export type Trunk = { id: string; name: string; defaultMode: string; theme: string; model: string };
 
@@ -127,6 +128,15 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
     const retry = setTimeout(() => void load(), delay);
     return () => clearTimeout(retry);
   }, [load, state.error, state.modelsError, retryGeneration, draftAgentId, engine?.agentId]);
+
+  const hasAvailableModel = state.models.some((m) => m.available);
+  useEffect(() => {
+    if (!engine || !key || !state.loaded || !state.modelsLoaded || state.modelsError || state.error) return;
+    if (hasAvailableModel) return;
+    void ensureNoKeyDefault(engine).then((ok) => {
+      if (ok && live.current === key) void readModelList();
+    });
+  }, [engine, key, state.loaded, state.modelsLoaded, state.modelsError, state.error, hasAvailableModel, readModelList]);
 
   useEffect(() => {
     if (!engine || !key) return;

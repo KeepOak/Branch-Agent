@@ -21,6 +21,7 @@ import { buildExtras, planSend, sendTooltip, type Reply } from "../../composer/s
 import { newPick, pickText, reconcilePicks, resolveSend, trimMessage, type Message, type SkillPick } from "../../composer/skill-picks";
 import { Drawer } from "../../composer/SlashDrawer";
 import { useBackground } from "../../composer/useBackground";
+import { FREE_MODEL_READY } from "../../composer/no-key-default";
 import { hasNoModel, useConversation } from "../../composer/useConversation";
 import { useDraft } from "../../composer/useDraft";
 import { useDrawer, type Pick } from "../../composer/useDrawer";
@@ -370,8 +371,8 @@ export function Composer(props: Props) {
   const context = contextUse(props.row?.totalTokens, props.row?.contextTokens);
   const runningCount = props.running.length;
   const summary = ringSummary(usage, runningCount, context);
-  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : noModel ? "Connect a model to start." : working && hasDraft ? sendTooltip(queueMode) : undefined;
-  const placeholder = noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`;
+  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : noModel ? FREE_MODEL_READY : working && hasDraft ? sendTooltip(queueMode) : undefined;
+  const placeholder = noModel ? FREE_MODEL_READY : props.placeholder ?? `Message ${name}`;
   const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n) && !(props.startupShown && (isPreparationPending(n) || isPreparationStalled(n))));
 
   return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>

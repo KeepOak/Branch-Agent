@@ -49,7 +49,7 @@ describe("composer chip with no connected model", () => {
     expect(tune.getAttribute("title")).toContain("No model");
     expect(tune.getAttribute("title")).not.toMatch(/gpt-6-astra|openai\//i);
     await act(async () => tune.click());
-    expect(host.textContent).toContain("No model account connected yet.");
+    expect(host.textContent).toContain("Connecting an account makes answers smarter and faster.");
     expect(host.textContent).toContain("Runs on no model");
     expect(host.textContent).not.toContain("No models are allowed here.");
     expect(host.textContent).not.toContain("This model has one speed.");

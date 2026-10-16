@@ -42,7 +42,7 @@ async function show(engine: WindowEngine, props: Partial<Parameters<typeof Onboa
 it("shows the example Trunks from trunks.template.starters and lets Continue go on without a model", async () => {
   const { engine, request } = fakeEngine();
   const host = await show(engine, { startAt: 1 });
-  expect(button(host, "Continue").getAttribute("aria-disabled")).toBe("true");
+  expect(button(host, "Continue").getAttribute("aria-disabled")).toBeNull();
   const tryIt = button(host, "Try it with examples");
   expect(tryIt.getAttribute("aria-disabled")).toBeNull();
   expect(tryIt.dataset.need).toBe("trunks.template.starters");

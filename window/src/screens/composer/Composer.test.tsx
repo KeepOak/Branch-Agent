@@ -160,10 +160,10 @@ describe("R1-04 composer", () => {
     for (const part of ["This computer", "Running", "Context", "36k / 256k (14%)", "Every account", "Check every account now", "Accounts and usage…"]) expect(text).toContain(part);
   });
 
-  it("with no model connected says so in the field and the row", async () => {
+  it("with no model connected keeps chat open and suggests an account", async () => {
     const { host, opened } = await mount({ models: false });
-    expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Connect a model to start");
-    await act(async () => button("Connect a model")!.click());
+    expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Getting a free model ready…");
+    await act(async () => button("Smarter with an account")!.click());
     expect(opened).toHaveBeenCalledWith("settings/accounts/add");
   });
 
@@ -179,7 +179,7 @@ describe("R1-04 composer", () => {
     root = undefined;
     document.body.innerHTML = "";
     const noModel = await mount({ models: false, placeholder: "Message the group · @ to call a Trunk" });
-    expect(noModel.host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Connect a model to start");
+    expect(noModel.host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Getting a free model ready…");
   });
 
   it("disables send with its reason while offline", async () => {

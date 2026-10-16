@@ -24,6 +24,7 @@ import { PlusMenu } from "./PlusMenu";
 import { buildExtras, planSend, sendTooltip, type Reply } from "./sending";
 import { Drawer } from "./SlashDrawer";
 import { useBackground } from "./useBackground";
+import { ACCOUNT_FASTER, FREE_MODEL_READY } from "./no-key-default";
 import { hasNoModel, useConversation } from "./useConversation";
 import { safeStorage, saveDraft } from "./drafts";
 import { useConversationPrefs } from "../thread/prefs";
@@ -541,7 +542,7 @@ export function Composer(props: Props) {
           data-has-draft={draft.text.trim() || draft.files.length ? "" : undefined}
           rows={1}
           value={draft.text}
-          placeholder={props.placeholder ?? `Message ${name}`}
+          placeholder={noModel ? FREE_MODEL_READY : props.placeholder ?? `Message ${name}`}
           aria-label={`Message ${name}`}
           onChange={(e) => {
             draft.setText(e.target.value);
@@ -724,11 +725,11 @@ function ToolButton({ refEl, icon, label, tip, open, onClick, disabled, testId }
   );
 }
 
-/** The no-model line (DESIGN-SPEC §4.2.9, §4.3.1 States; DECISIONS.md item 36), with its two links. */
+/** Suggestion while a free local model is getting ready: connecting an account is optional. */
 function NoModelLine({ onOpen }: { onOpen?: (target: OpenTarget) => void }) {
   return (
     <p className="c-nomodel" data-testid="no-model">
-      Trunks can’t answer until a model is connected.{" "}
+      {ACCOUNT_FASTER}{" "}
       <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("settings/accounts/add")}>Add an account</button>
     </p>
   );

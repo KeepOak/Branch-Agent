@@ -231,6 +231,10 @@ export async function activateSetupInference(
 ): Promise<ActivateSetupInferenceResult> {
   try {
     return await withSetupInferenceErrorRedaction(async () => {
+      if (params.kind === "no-key-default") {
+        const { ensureNoKeyDefaultModel } = await import("./no-key-default.js");
+        return ensureNoKeyDefaultModel(params);
+      }
       const onActivationCompletion = params.onActivationCompletion;
       const result = await activateCandidate({
         ...params,
