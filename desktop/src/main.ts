@@ -20,7 +20,7 @@ import { watchEngineBuild, watchWindowBuild } from "./updates";
 import { keepWindowResident, showTrayStatus } from "./resident-window";
 import { createClosedWindowNotifier, readEngineLiveState, stopBranchCompletely, type EngineLiveState } from "./tray-status";
 import { sameEngineBuild, updateServiceEngine, type ServiceWork } from "./service-update";
-import { canUndoComponentUpdate, COMPONENT_UPDATE_CHECK_MS, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
+import { canUndoComponentUpdate, readUndoAvailability, confirmComponentUpdate, confirmComponentUpdateUndo, prepareComponentUpdateUndo, pruneStartupUpdates, readComponentUpdateStatus, recordComponentUpdateTimeout, recoverComponentUpdate, refreshComponentUpdate, rejectFailedComponentUpdate, rollbackComponentUpdate, rollbackComponentUpdateUndo, settleFailedComponentUpdate, watchComponentUpdates } from "./component-update";
 import { prunePreviousEngineAfterHealth, recordHealthyEngineLaunch } from "./engine-retention";
 import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
@@ -1414,9 +1414,6 @@ async function start(): Promise<void> {
   if (pendingReleasePrune) runConfirmedReleasePrune();
   else void pruneStartupUpdates(cfg, log);
   void prunePreviousEngineAfterHealth(cfg, log);
-  const retentionTimer = setInterval(() => { void prunePreviousEngineAfterHealth(cfg, log); }, COMPONENT_UPDATE_CHECK_MS);
-  retentionTimer.unref();
-  app.once("will-quit", () => clearInterval(retentionTimer));
   autoApply.start();
   stopComponentWatch = watchComponentUpdates(cfg, log, { desktop: install, underSwapGuard, log,
     onWithdrawal: version => {
