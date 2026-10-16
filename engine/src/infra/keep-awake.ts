@@ -2,7 +2,6 @@
 // engine. The per-user engine service runs this copy itself, because the desktop package is not imported here.
 // One child process waits on this process, so the blocker cannot outlive the engine. It is taken when a run
 // starts and released when the last run ends. By default it is not taken on battery.
-import type { SpawnOptions } from "node:child_process";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -69,10 +68,18 @@ export interface BlockerProcess {
   on(event: "error", listener: (error: Error) => void): unknown;
 }
 
+/** The only options a sleep-blocker child is started with. Windows must not flash a console. */
+export interface SleepBlockerSpawnOptions {
+  stdio: "ignore";
+  windowsHide: true;
+  detached: false;
+}
+
 export interface KeepAwakeDeps {
   platform: NodeJS.Platform;
   appPid: number;
-  spawn(file: string, args: string[], options: SpawnOptions): BlockerProcess;
+  /** Starts the blocker. This file does not call child_process itself. */
+  spawn(file: string, args: string[], options: SleepBlockerSpawnOptions): BlockerProcess;
   /** "Keep this computer awake while Trunks work". */
   enabled(): boolean;
   /** Also on battery (off by default). */
