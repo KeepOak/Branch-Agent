@@ -86,3 +86,44 @@ it("does not report success after provider ownership ends during a write", async
   expect((await create())[0]).toBe(false);
   expect(await fs.readdir(workspace)).toEqual([]);
 });
+
+// Card #1095, walkthrough B-073: "Write a new document" opens a document you can type in, so its text can be saved.
+async function save(overrides: Record<string, unknown> = {}) {
+  const respond = vi.fn();
+  await agentsDocumentsHandlers["agents.documents.set"]({
+    params: { agentId: "main", name: "Conversation.md", content: "Shopping: eggs", expectedHash: EMPTY, ...overrides },
+    respond,
+    context: { getRuntimeConfig: () => ({}) },
+  } as never);
+  return respond.mock.calls[0];
+}
+const EMPTY = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+it("saves typed text into a new blank document and returns its new hash", async () => {
+  expect((await create({ content: "" }))[0]).toBe(true);
+  const [ok, result] = await save();
+  expect(ok).toBe(true);
+  expect(result.file).toMatchObject({ name: "Conversation.md", path: "Documents/Conversation.md", size: 14 });
+  expect(await fs.readFile(path.join(workspace, "Documents/Conversation.md"), "utf8")).toBe("Shopping: eggs");
+  const [again] = await save({ content: "Shopping: eggs, milk", expectedHash: result.file.hash });
+  expect(again).toBe(true);
+  expect(await fs.readFile(path.join(workspace, "Documents/Conversation.md"), "utf8")).toBe("Shopping: eggs, milk");
+});
+it("never overwrites a document that changed since it was opened, and never creates one", async () => {
+  expect((await create({ content: "changed by a Trunk" }))[0]).toBe(true);
+  const changed = await save();
+  expect(changed[0]).toBe(false);
+  expect(changed[2].details.type).toBe("document_changed");
+  expect(await fs.readFile(path.join(workspace, "Documents/Conversation.md"), "utf8")).toBe("changed by a Trunk");
+  const missing = await save({ name: "Gone.md" });
+  expect(missing[2].details.type).toBe("document_missing");
+  await expect(fs.stat(path.join(workspace, "Documents/Gone.md"))).rejects.toThrow();
+});
+it("saves only a portable name in Documents, through a remote workspace when there is one", async () => {
+  expect((await save({ name: "../escape.md" }))[0]).toBe(false);
+  expect((await save({ destination: "elsewhere" }))[0]).toBe(false);
+  const bridge = remote();
+  bridge.stat.mockResolvedValue({ size: 0 });
+  bridge.readFile.mockResolvedValue(Buffer.alloc(0));
+  expect((await save())[0]).toBe(true);
+  expect(bridge.writeFile).toHaveBeenCalledWith({ filePath: "Documents/Conversation.md", data: "Shopping: eggs", mkdir: false });
+});

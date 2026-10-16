@@ -467,6 +467,7 @@ describe("listGatewayMethods", () => {
       "buildWorktrees.status",
       "sessions.messages.pin",
       "sessions.messages.delete",
+      "agents.documents.set",
     ]);
   });
 

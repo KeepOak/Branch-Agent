@@ -18,5 +18,15 @@ export const AgentsDocumentsCreateResultSchema = closedObject({
     hash: Sha256String,
   }),
 });
+/** Save a Library document's text, only while it still holds the text the editor opened (expectedHash). */
+export const AgentsDocumentsSetParamsSchema = closedObject({
+  agentId: NonEmptyString,
+  name: NonEmptyString,
+  content: Type.String(),
+  expectedHash: Sha256String,
+});
+export const AgentsDocumentsSetResultSchema = AgentsDocumentsCreateResultSchema;
 export type AgentsDocumentsCreateParams = Static<typeof AgentsDocumentsCreateParamsSchema>;
+export type AgentsDocumentsSetParams = Static<typeof AgentsDocumentsSetParamsSchema>;
+export type AgentsDocumentsSetResult = Static<typeof AgentsDocumentsSetResultSchema>;
 export type AgentsDocumentsCreateResult = Static<typeof AgentsDocumentsCreateResultSchema>;
