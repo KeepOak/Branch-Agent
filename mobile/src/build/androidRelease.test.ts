@@ -3,7 +3,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -44,6 +44,32 @@ function callModule(source: string) {
   return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', source], {
     encoding: 'utf8',
   }));
+}
+
+function readProjectNdkVersion(): string | null {
+  const app = JSON.parse(readFileSync(path.join(mobileRoot, 'app.json'), 'utf8')) as {
+    expo?: { plugins?: Array<string | [string, { android?: { ndkVersion?: string } }]> };
+  };
+  for (const plugin of app.expo?.plugins ?? []) {
+    if (Array.isArray(plugin) && plugin[0] === 'expo-build-properties') {
+      const version = plugin[1]?.android?.ndkVersion;
+      if (typeof version === 'string' && version.trim()) return version.trim();
+    }
+  }
+  const files = [
+    path.join(mobileRoot, 'node_modules/react-native/gradle/libs.versions.toml'),
+    path.join(mobileRoot, 'node_modules/react-native/ReactAndroid/gradle/libs.versions.toml'),
+    path.join(mobileRoot, 'node_modules/react-native/ReactAndroid/gradle.properties'),
+  ];
+  for (const file of files) {
+    if (!existsSync(file)) continue;
+    const text = readFileSync(file, 'utf8');
+    const toml = /^\s*ndkVersion\s*=\s*"([^"]+)"/m.exec(text);
+    if (toml) return toml[1];
+    const props = /^\s*ndkVersion\s*=\s*(\S+)/m.exec(text);
+    if (props) return props[1].replace(/"/g, '');
+  }
+  return null;
 }
 
 function planCliResult(env: NodeJS.Dict<string>) {
@@ -253,6 +279,39 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).not.toMatch(/merge-gate/);
     expect(workflow).not.toMatch(/^\s+pull_request:/m);
     expect(workflow).not.toMatch(/pull_request_target/);
+  });
+
+  it('installs the project NDK with sdkmanager before Gradle and caches that version', () => {
+    const ndkInstall = workflow.indexOf('- name: Install the Android NDK');
+    const gradleBuild = workflow.indexOf('npm run build:android');
+    expect(ndkInstall).toBeGreaterThan(-1);
+    expect(gradleBuild).toBeGreaterThan(ndkInstall);
+    expect(workflow.indexOf('- name: Read the Android NDK version')).toBeGreaterThan(-1);
+    expect(workflow.indexOf('- name: Read the Android NDK version')).toBeLessThan(ndkInstall);
+    expect(workflow.indexOf('- name: Cache the Android NDK')).toBeGreaterThan(-1);
+    expect(workflow.indexOf('- name: Cache the Android NDK')).toBeLessThan(ndkInstall);
+    expect(workflow.indexOf('- name: Cache the Android NDK')).toBeLessThan(gradleBuild);
+    expect(workflow).toMatch(/actions\/cache@[0-9a-f]{40}/);
+    expect(workflow).toMatch(/key: android-ndk-\$\{\{\s*runner\.os\s*\}\}-\$\{\{\s*steps\.ndk\.outputs\.version\s*\}\}/);
+    expect(workflow).toContain('libs.versions.toml');
+    expect(workflow).toContain('expo-build-properties');
+    expect(workflow).toContain('ndkVersion');
+    expect(workflow).toMatch(/sdkmanager --sdk_root="\$\{ANDROID_SDK_ROOT\}" --install "ndk;\$\{NDK_VERSION\}"/);
+    expect(workflow).toMatch(/attempt=1/);
+    expect(workflow).toMatch(/attempt" -ge 3/);
+    expect(workflow).toMatch(/delay=\$\(\(delay \* 2\)\)/);
+    expect(workflow).toMatch(/sleep "\$\{delay\}"/);
+    const sdkPackages = workflow.slice(
+      workflow.indexOf('- name: Install Android SDK packages'),
+      workflow.indexOf('- name: Install the phone app'),
+    );
+    expect(sdkPackages).not.toMatch(/ndk;/);
+    const projectNdk = readProjectNdkVersion();
+    if (projectNdk) {
+      expect(projectNdk).toMatch(/^\d+\.\d+\.\d+$/);
+      const fallback = /const fallback = '(\d+\.\d+\.\d+)'/.exec(workflow)?.[1];
+      expect(fallback).toBe(projectNdk);
+    }
   });
 
   it('decodes the PKCS12 keystore and fails when the secret is missing or empty', () => {

@@ -152,6 +152,102 @@ jobs:
           test -s "$keystore_path"
           echo "ANDROID_KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
 
+      - name: Read the Android NDK version
+        id: ndk
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          if [[ -z "${ANDROID_SDK_ROOT:-}" ]]; then
+            echo "ANDROID_SDK_ROOT is not set" >&2
+            exit 1
+          fi
+          NDK_VERSION="$(node --input-type=module <<'EOF'
+          import { existsSync, readFileSync } from 'node:fs';
+
+          const fallback = '27.1.12297006';
+
+          function fromAppJson() {
+            try {
+              const app = JSON.parse(readFileSync('app.json', 'utf8'));
+              for (const plugin of app.expo?.plugins ?? []) {
+                if (Array.isArray(plugin) && plugin[0] === 'expo-build-properties') {
+                  const version = plugin[1]?.android?.ndkVersion;
+                  if (typeof version === 'string' && version.trim()) return version.trim();
+                }
+              }
+            } catch {
+              // app.json is optional for this lookup
+            }
+            return null;
+          }
+
+          function fromReactNative() {
+            const files = [
+              'node_modules/react-native/gradle/libs.versions.toml',
+              'node_modules/react-native/ReactAndroid/gradle/libs.versions.toml',
+              'node_modules/react-native/ReactAndroid/gradle.properties',
+            ];
+            for (const file of files) {
+              if (!existsSync(file)) continue;
+              const text = readFileSync(file, 'utf8');
+              const toml = /^\s*ndkVersion\s*=\s*"([^"]+)"/m.exec(text);
+              if (toml) return toml[1];
+              const props = /^\s*ndkVersion\s*=\s*(\S+)/m.exec(text);
+              if (props) return props[1].replaceAll('"', '');
+            }
+            return null;
+          }
+
+          const version = fromAppJson() || fromReactNative() || fallback;
+          if (!/^\d+\.\d+\.\d+$/.test(version)) {
+            console.error(`Invalid Android NDK version: ${version}`);
+            process.exit(1);
+          }
+          process.stdout.write(version);
+          EOF
+          )"
+          NDK_DIR="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
+          echo "NDK_VERSION=${NDK_VERSION}" >> "${GITHUB_ENV}"
+          echo "NDK_DIR=${NDK_DIR}" >> "${GITHUB_ENV}"
+          echo "version=${NDK_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "dir=${NDK_DIR}" >> "${GITHUB_OUTPUT}"
+          echo "Using Android NDK ${NDK_VERSION}"
+
+      - name: Cache the Android NDK
+        id: ndk-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.ndk.outputs.dir }}
+          key: android-ndk-${{ runner.os }}-${{ steps.ndk.outputs.version }}
+
+      - name: Install the Android NDK
+        run: |
+          set -euo pipefail
+          package="ndk;${NDK_VERSION}"
+          ndk_dir="${NDK_DIR}"
+          if [[ -f "${ndk_dir}/source.properties" ]]; then
+            echo "Android NDK ${NDK_VERSION} already present"
+          else
+            attempt=1
+            delay=8
+            while true; do
+              if sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --install "${package}"; then
+                break
+              fi
+              if [[ "${attempt}" -ge 3 ]]; then
+                echo "Failed to install ${package} after 3 attempts" >&2
+                exit 1
+              fi
+              echo "NDK download failed (attempt ${attempt}/3); retrying in ${delay}s" >&2
+              sleep "${delay}"
+              delay=$((delay * 2))
+              attempt=$((attempt + 1))
+            done
+            test -f "${ndk_dir}/source.properties"
+          fi
+          echo "ANDROID_NDK_HOME=${ndk_dir}" >> "${GITHUB_ENV}"
+          echo "ANDROID_NDK_ROOT=${ndk_dir}" >> "${GITHUB_ENV}"
+
       - name: Build the Android APK
         working-directory: mobile
         env:
