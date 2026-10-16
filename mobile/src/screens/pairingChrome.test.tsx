@@ -65,26 +65,34 @@ describe('pairing chrome', () => {
     expect(screen.queryByTestId('keepoak-later')).toBeNull();
     expect(screen.queryByText(KEEPOAK_SIGN_IN_LATER)).toBeNull();
     expect(screen.queryByRole('button', { name: /Sign in with KeepOak/i })).toBeNull();
+    expect(screen.queryByTestId('pairing-level')).toBeNull();
   });
 
   it('shows Sign in with KeepOak as a later update only at Advanced, and never as a working sign-in', async () => {
+    expect(KEEPOAK_SIGN_IN_LATER).toBe('Sign in with KeepOak comes in a later update.');
     await render(
       <ThemeProvider scheme="light">
         <PairingTheme>
-          <WelcomeScreen onPair={() => undefined} />
+          <WelcomeScreen onPair={() => undefined} level={1} />
         </PairingTheme>
       </ThemeProvider>,
     );
-    expect(screen.queryByTestId('keepoak-later')).toBeNull();
-    await fireEvent.press(screen.getByTestId('pairing-level-advanced'));
-    expect(screen.getByTestId('keepoak-later')).toBeOnTheScreen();
-    expect(screen.getByTestId('keepoak-later-reason')).toHaveTextContent(KEEPOAK_SIGN_IN_LATER);
-    expect(KEEPOAK_SIGN_IN_LATER).toBe('Sign in with KeepOak comes in a later update.');
+    expect(screen.getByTestId('keepoak-later')).toHaveTextContent(KEEPOAK_SIGN_IN_LATER);
     expect(screen.queryByRole('button', { name: /Sign in with KeepOak/i })).toBeNull();
-    await fireEvent.press(screen.getByTestId('pairing-level-technical'));
-    expect(screen.getByTestId('keepoak-later-reason')).toHaveTextContent(KEEPOAK_SIGN_IN_LATER);
-    await fireEvent.press(screen.getByTestId('pairing-level-regular'));
-    expect(screen.queryByTestId('keepoak-later')).toBeNull();
+    expect(screen.queryByText(/restores your linked setup/i)).toBeNull();
+    expect(screen.queryByText(/KeepOak’s Devices/i)).toBeNull();
+  });
+
+  it('keeps the KeepOak later-update at Technical, still without a sign-in control', async () => {
+    await render(
+      <ThemeProvider scheme="light">
+        <PairingTheme>
+          <WelcomeScreen onPair={() => undefined} level={2} />
+        </PairingTheme>
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId('keepoak-later')).toHaveTextContent(KEEPOAK_SIGN_IN_LATER);
+    expect(screen.queryByRole('button', { name: /Sign in with KeepOak/i })).toBeNull();
   });
 
   it('pairs from the connect screen’s code field without leaving the camera step', async () => {
@@ -94,7 +102,7 @@ describe('pairing chrome', () => {
     await fireEvent.press(screen.getByTestId('pair-button'));
     expect(screen.getByTestId('camera-permission')).toBeOnTheScreen();
     expect(screen.getByText('Connect to your Branch')).toBeOnTheScreen();
-    expect(screen.getByText('Scan the square code on the computer, or paste the code it shows.')).toBeOnTheScreen();
+    expect(screen.getByText('Scan the square code on the computer, or type the code.')).toBeOnTheScreen();
     expect(screen.getByTestId('connect-code')).toBeOnTheScreen();
     expect(screen.getByTestId('allow-camera')).toBeOnTheScreen();
     expect(screen.getByTestId('enter-code')).toBeOnTheScreen();

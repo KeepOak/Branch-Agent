@@ -40,7 +40,7 @@ export function EnterCodeScreen({ onCode, onScan, onCancel }: { onCode: (setup: 
         Connect to your Branch
       </ThemedText>
       <ThemedText variant="body" tone="ink2" style={{ marginTop: space.xs }}>
-        Scan the square code on the computer, or paste the code it shows.
+        Scan the square code on the computer, or type the code.
       </ThemedText>
       <Card>
         <PairingCodeField
