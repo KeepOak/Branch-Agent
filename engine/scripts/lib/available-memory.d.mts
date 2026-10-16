@@ -6,6 +6,8 @@ export interface MemoryProbe {
   windowsAvailable?: string;
   /** Clock for the age of the last Windows reading, in ms. */
   now?: number;
+  /** Oldest Windows reading to trust, in ms (default WINDOWS_AVAILABLE_MAX_AGE_MS). */
+  maxAgeMs?: number;
   freemem?: number;
   totalmem?: number;
   envMb?: string;
@@ -14,10 +16,11 @@ export type MemoryMeasure = "vm_stat" | "MemAvailable" | "AvailableBytes" | "os.
 export interface WindowsAvailableRefresh {
   platform?: NodeJS.Platform;
   now?: () => number;
+  /** Reuse a reading or failed read younger than this, in ms (default WINDOWS_AVAILABLE_MAX_AGE_MS). */
+  maxAgeMs?: number;
   /** Replaces the PowerShell counter query (tests). */
   query?: () => string | Promise<string>;
 }
-export const WINDOWS_AVAILABLE_REUSE_MS: number;
 export const WINDOWS_AVAILABLE_MAX_AGE_MS: number;
 export function refreshWindowsAvailableMemory(
   options?: WindowsAvailableRefresh,

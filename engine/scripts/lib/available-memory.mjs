@@ -14,8 +14,11 @@ function pages(value) {
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 }
 
-/** A refresh reuses a reading this recent; a gate trusts a reading only this long. */
-export const WINDOWS_AVAILABLE_REUSE_MS = 15_000;
+/**
+ * A refresh reuses a reading (or a failed read) this recent, and a gate trusts a reading
+ * this long, so a caller polling every few seconds starts PowerShell at most once a minute.
+ * A caller may pass a longer maxAgeMs (the desktop health poll uses 5 minutes).
+ */
 export const WINDOWS_AVAILABLE_MAX_AGE_MS = 60_000;
 const WINDOWS_AVAILABLE_TIMEOUT_MS = 5_000;
 const WINDOWS_AVAILABLE_QUERY = "(Get-CimInstance Win32_PerfRawData_PerfOS_Memory).AvailableBytes";
@@ -40,14 +43,16 @@ function queryWindowsAvailable() {
 /**
  * Refresh the Windows Available Bytes reading without blocking the caller's event loop.
  * Resolves to the bytes, or undefined off Windows or when the counter cannot be read
- * (availableMemory() then falls back to os.freemem()). Concurrent calls share one query.
+ * (availableMemory() then falls back to os.freemem()). Concurrent calls share one query,
+ * and a reading or failure younger than maxAgeMs is reused without a new query.
  */
 export function refreshWindowsAvailableMemory(options = {}) {
   if ((options.platform ?? process.platform) !== "win32") {
     return Promise.resolve(undefined);
   }
   const now = options.now ?? Date.now;
-  if (windowsReading && now() - windowsReading.at < WINDOWS_AVAILABLE_REUSE_MS) {
+  const maxAgeMs = options.maxAgeMs ?? WINDOWS_AVAILABLE_MAX_AGE_MS;
+  if (windowsReading && now() - windowsReading.at < maxAgeMs) {
     return Promise.resolve(windowsReading.bytes);
   }
   windowsRefresh ??= Promise.resolve()
@@ -55,11 +60,11 @@ export function refreshWindowsAvailableMemory(options = {}) {
     .then(
       (text) => {
         const bytes = windowsAvailableBytes(text);
-        windowsReading = bytes === undefined ? undefined : { bytes, at: now() };
+        windowsReading = { bytes, at: now() };
         return bytes;
       },
       () => {
-        windowsReading = undefined;
+        windowsReading = { bytes: undefined, at: now() };
         return undefined;
       },
     )
@@ -76,7 +81,8 @@ export function availableMemory(probe = {}) {
     const bytes = injected
       ? windowsAvailableBytes(probe.windowsAvailable)
       : windowsReading &&
-          (probe.now ?? Date.now()) - windowsReading.at < WINDOWS_AVAILABLE_MAX_AGE_MS
+          (probe.now ?? Date.now()) - windowsReading.at <
+            (probe.maxAgeMs ?? WINDOWS_AVAILABLE_MAX_AGE_MS)
         ? windowsReading.bytes
         : undefined;
     if (bytes !== undefined) {

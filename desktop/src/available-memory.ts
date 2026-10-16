@@ -18,9 +18,16 @@ export const CANDIDATE_MIN_FREE_MB_DEFAULT = 6144;
  * availableMemory() as before.
  */
 export async function measureAvailableMemory(probe: MemoryProbe = {}, refresh: WindowsAvailableRefresh = {}): Promise<AvailableMemory> {
-  await refreshWindowsAvailableMemory({ platform: probe.platform, ...refresh });
+  await refreshWindowsAvailableMemory({ platform: probe.platform, maxAgeMs: probe.maxAgeMs, ...refresh });
   return availableMemory(probe);
 }
+
+/**
+ * The 20% health rule runs on every 30-second auto-apply tick while an update waits for a
+ * gap, which can last hours. It reuses a Windows reading for 5 minutes, so the wait starts
+ * PowerShell at most 12 times an hour. The candidate and standby gates keep the 1-minute age.
+ */
+export const HEALTH_MEMORY_MAX_AGE_MS = 5 * 60_000;
 
 /** Skip line written to desktop.log when there is not enough room for a second engine. */
 export function candidateCheckSkippedLine(bytes: number, measure: MemoryMeasure): string {

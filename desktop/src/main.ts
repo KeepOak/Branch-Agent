@@ -30,7 +30,7 @@ import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
-import { candidateCheckSkippedLine, candidateMinFreeBytes, measureAvailableMemory } from "./available-memory";
+import { candidateCheckSkippedLine, candidateMinFreeBytes, HEALTH_MEMORY_MAX_AGE_MS, measureAvailableMemory } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 import { readTail, recentLines, reportReadme } from "./diagnostics-report";
@@ -877,7 +877,7 @@ const autoApply = createAutoApplyUpdate({
   enabled: () => controls.settings().autoApplyUpdates && !updateLock.held,
   seamlessHandoff,
   // Private #951: no automatic update starts under 10% free disk or 20% free RAM.
-  health: async () => readUpdateHealth(cfg.dataDir, (await measureAvailableMemory()).bytes, totalmem()),
+  health: async () => readUpdateHealth(cfg.dataDir, (await measureAvailableMemory({ maxAgeMs: HEALTH_MEMORY_MAX_AGE_MS })).bytes, totalmem()),
   // Runs in flight mark a machine running Trunk work, whose updates are batched (hourly at most, only when idle).
   activeRuns: async () => {
     // The service engine has no app channel: its runs come from the same read as `activity` (Private #454 E).
