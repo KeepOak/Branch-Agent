@@ -6,6 +6,7 @@ import { fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
 import { createFakeAppState, createFakeNotifier } from '../testing/fakeNotifier';
 import { createFakeSession } from '../testing/fakeSession';
 import { memoryStore } from '../storage/keyValueStore';
+import { SHOW_LEVEL_KEY } from '../settings/showLevel';
 import { THEME_PREFERENCE_KEY } from '../theme/preference';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { themeFor } from '../theme/tokens';
@@ -77,10 +78,12 @@ describe('settings screen', () => {
     expect(screen.getByRole('header')).toHaveTextContent('Settings');
     expect(within(screen.getByTestId('app-card')).getByText('0.1.0')).toBeOnTheScreen();
     expect(within(screen.getByTestId('app-card')).getByText('14')).toBeOnTheScreen();
+    expect(within(screen.getByTestId('app-card')).getByText('This install of Branch on this phone')).toBeOnTheScreen();
     expect(screen.getByText('Connected to your computer')).toBeOnTheScreen();
     expect(screen.getByText('computer.local:19031')).toBeOnTheScreen();
     expect(screen.getByText('2026.10.8')).toBeOnTheScreen();
     expect(screen.getByTestId('this-phone')).toHaveTextContent(/This phone/);
+    expect(screen.getByTestId('this-phone')).toHaveTextContent(/This phone’s pairing, updates and unpair/);
     expect(screen.getByTestId('about-card')).toHaveTextContent(/Your Trunks and Branch Agent, in your pocket/);
     expect(within(screen.getByTestId('about-card')).getByText('0.1.0 (14)')).toBeOnTheScreen();
     expect(within(screen.getByTestId('about-card')).getByText('KeepOak')).toBeOnTheScreen();
@@ -167,6 +170,22 @@ describe('settings in the app', () => {
     expect(screen.getByTestId('theme-dark')).toHaveProp('accessibilityState', { selected: true });
     await fireEvent.press(screen.getByTestId('theme-system'));
     expect(store.dump()[THEME_PREFERENCE_KEY]).toBeUndefined();
+    second.session.dispose();
+  });
+
+  it('keeps Regular, Advanced or Technical on this phone and uses it on the next open', async () => {
+    const store = memoryStore();
+    const first = await pairedApp({ themeStore: store });
+    await fireEvent.press(screen.getByTestId('settings-button'));
+    await fireEvent.press(screen.getByTestId('show-level-advanced'));
+    expect(store.dump()[SHOW_LEVEL_KEY]).toBe('advanced');
+    first.session.dispose();
+    await first.unmount();
+
+    const second = await pairedApp({ themeStore: store });
+    await fireEvent.press(screen.getByTestId('more-button'));
+    await eventually(() => expect(screen.getByTestId('more-canopy')).toBeOnTheScreen());
+    expect(screen.getByTestId('more-canopy')).toHaveTextContent(/Canopy comes in a later update/);
     second.session.dispose();
   });
 });

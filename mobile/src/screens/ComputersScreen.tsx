@@ -80,6 +80,7 @@ export function ComputersScreen({
   onBack,
   onThisPhone,
   now: fixedNow,
+  backTo = 'Chats',
 }: {
   list: ComputerListSnapshot;
   online: boolean;
@@ -88,6 +89,7 @@ export function ComputersScreen({
   /** Opens the pairing card for this phone (unpair lives there, not on this list). */
   onThisPhone?: () => void;
   now?: number;
+  backTo?: 'Chats' | 'More' | 'Profile';
 }) {
   const { color, space, radius, layout } = useTheme();
   useNow(30_000);
@@ -127,18 +129,20 @@ export function ComputersScreen({
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl }}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={color.ink3} colors={[color.accent]} />}
       >
         <Pressable
           testID="computers-back"
           accessibilityRole="button"
-          accessibilityLabel="Back to Chats"
+          accessibilityLabel={`Back to ${backTo}`}
           onPress={onBack}
           hitSlop={8}
           style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
         >
           <ThemedText variant="body" tone="accentInk">
-            ‹ Chats
+            {`‹ ${backTo}`}
           </ThemedText>
         </Pressable>
         <ThemedText variant="largeTitle" accessibilityRole="header">
