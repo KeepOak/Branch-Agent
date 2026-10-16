@@ -82,7 +82,7 @@ it("••• opens the message menu with its time and model, and every row runs
   await act(async () => root.render(<CapabilityProvider engine={engine}><HoverBar text="**Hi** there" isReply actions={a} meta={{ timestamp: Date.now(), model: "openai/gpt-6.1-sol" }} /></CapabilityProvider>));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const labels = menuRows().map((b) => b.textContent);
-  expect(labels).toEqual(["Copy›", "Pin", "Try again", "Read aloud", "Branch from here", "Leave out of context", "Look inside", "Share as a picture…", "Continue in a coding app…", "Delete"]);
+  expect(labels).toEqual(["Copy›", "Reply", "Retry", "Pin", "Read aloud", "Branch from here", "Leave out of context", "Look inside", "Share as a picture…", "Continue in a coding app…", "Delete"]);
   expect(document.querySelector(".r1c-menu-meta")!.textContent).toMatch(/·/);
   const row = (label: string) => menuRows().find((b) => b.textContent === label)!;
   for (const wired of ["Pin", "Delete"]) expect(row(wired).getAttribute("aria-disabled"), wired).toBeNull();
@@ -90,7 +90,7 @@ it("••• opens the message menu with its time and model, and every row runs
   expect(row("Branch from here").title).toBe("Available when the agent finishes.");
   await act(async () => row("Branch from here").click());
   expect(a.branch!.run).not.toHaveBeenCalled();
-  await act(async () => row("Try again").click());
+  await act(async () => row("Retry").click());
   expect(a.retry!.run).toHaveBeenCalledOnce();
   expect(document.querySelector('[role="menu"]')).toBeNull();
 });
@@ -99,7 +99,8 @@ it("every engine-calling row declares its method: with all of them each row runs
   await act(async () => root.render(<CapabilityProvider engine={engine}><HoverBar text="Hi" isReply actions={actions()} /></CapabilityProvider>));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const row = (label: string) => menuRows().find((b) => b.textContent === label)!;
-  expect(row("Try again").dataset.need).toBe("sessions.rewind chat.send");
+  expect(row("Reply").dataset.need).toBe("chat.send");
+  expect(row("Retry").dataset.need).toBe("sessions.rewind chat.send");
   expect(row("Read aloud").dataset.need).toBe("talk.speak");
   expect(row("Branch from here").dataset.need).toBe("sessions.fork");
   expect(row("Leave out of context").dataset.need).toBe("session.context.set");
@@ -108,19 +109,19 @@ it("every engine-calling row declares its method: with all of them each row runs
   expect(menuRows().filter((b) => b.hasAttribute("data-local")).map((b) => b.textContent)).toEqual(["Copy›", "Look inside"]);
 });
 
-it("on an engine without those methods, Try again, Edit, Read aloud, Branch from here, Leave out of context, Pin and Delete turn Coming and run nothing", async () => {
+it("on an engine without those methods, Reply, Retry, Edit, Read aloud, Branch from here, Leave out of context, Pin and Delete turn Coming and run nothing", async () => {
   const none = { features: { methods: [], events: [] } };
   const a = actions();
   await act(async () => root.render(<CapabilityProvider engine={none}><HoverBar text="Hi" isReply actions={{ ...a, branch: { run: vi.fn(), disabled: null } }} /></CapabilityProvider>));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const row = (label: string) => menuRows().find((b) => b.textContent === label)!;
-  for (const label of ["Try again", "Read aloud", "Branch from here", "Leave out of context", "Pin", "Delete"]) {
+  for (const label of ["Reply", "Retry", "Read aloud", "Branch from here", "Leave out of context", "Pin", "Delete"]) {
     expect(row(label).getAttribute("aria-disabled"), label).toBe("true");
     expect(row(label).dataset.coming, label).toBeTruthy();
     expect(row(label).title, label).toBe(row(label).dataset.coming);
     expect(row(label).hasAttribute("data-local"), label).toBe(false);
   }
-  await act(async () => row("Try again").click());
+  await act(async () => row("Retry").click());
   expect(a.retry!.run).not.toHaveBeenCalled();
   await act(async () => row("Leave out of context").click());
   expect(a.context!.run).not.toHaveBeenCalled();
@@ -151,6 +152,21 @@ it("reactions turn to Coming when the engine has no reactions method", async () 
   expect(react.getAttribute("aria-disabled")).toBe("true");
   await act(async () => react.click());
   expect(document.querySelector('[aria-label="Quick reactions"]')).toBeNull();
+});
+
+it("Technical shows Show what it did instead of Look inside", async () => {
+  localStorage.setItem("branch.level", "technical");
+  const a = actions();
+  await act(async () => root.render(<CapabilityProvider engine={engine}><HoverBar text="Hi" isReply actions={a} /></CapabilityProvider>));
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+  const labels = menuRows().map((b) => b.textContent);
+  expect(labels).toContain("Show what it did");
+  expect(labels).not.toContain("Look inside");
+  const work = menuRows().find((b) => b.textContent === "Show what it did")!;
+  expect(work.hasAttribute("data-local")).toBe(true);
+  await act(async () => work.click());
+  expect(a.inspect!.run).toHaveBeenCalledOnce();
+  localStorage.removeItem("branch.level");
 });
 
 it("copies plain words without Markdown marks", () => {

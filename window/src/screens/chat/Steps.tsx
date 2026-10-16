@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { copyText, useThread } from "../../thread/context";
 import { Dialog } from "../../thread/Dialog";
-import { shortReason, stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename, workingLine } from "../../thread/format";
+import { shortReason, stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename, workedForLine, workingLine } from "../../thread/format";
 import { StepKindIcon } from "../../thread/icons";
 import { Icon } from "../../shell/icons";
 import { fullOutput, type Block } from "../../thread/model";
@@ -22,8 +22,8 @@ function useFold(id: string, initial: boolean): [boolean, (open: boolean) => voi
   return [open, (next) => { opened.set(id, next); setOpen(next); }];
 }
 
-/** Regular shows the count as one quiet link; Advanced and Technical keep the full sentence. Either opens the same list. */
-export function StepsList({ steps, thoughts = [], mode, working }: { steps: Step[]; thoughts?: Thought[]; live: boolean; mode: WorkMode; working?: string }) {
+/** Regular shows one quiet line; Advanced and Technical keep the full sentence. Either opens the same list. */
+export function StepsList({ steps, thoughts = [], mode, working, durationMs }: { steps: Step[]; thoughts?: Thought[]; live: boolean; mode: WorkMode; working?: string; durationMs?: number }) {
   const id = steps[0]?.key ?? thoughts[0]?.key ?? "steps";
   const [open, setOpen] = useFold(id, mode === "verbose");
   const level = useLevel();
@@ -31,11 +31,13 @@ export function StepsList({ steps, thoughts = [], mode, working }: { steps: Step
   const line = stepsLine(steps);
   const count = stepCount(steps.length, line.live);
   const failed = line.failed ? line.failed + " failed" : "";
-  // Regular, live: this line is the working line too. It says what the run is in, and the count moves inside the list.
+  // Regular, live: this line is the working line. It stays closed until the person opens the steps.
   const inline = working !== undefined && !full;
   // Advanced, live: the app in plain words, never the tool's name. Technical keeps the step words as they are.
   const liveWords = full && line.live && level !== "technical" ? workingLine(steps) + " · " + stepCount(steps.length, true) : undefined;
-  const text = inline ? working : liveWords ?? (full ? line.text : count);
+  // Regular, finished: "Worked for 42s · 6 steps" when the run recorded a length, else the count.
+  const finished = !line.live && !full ? workedForLine(steps.length, durationMs) : undefined;
+  const text = inline ? working : liveWords ?? finished ?? (full ? line.text : count);
   const label = inline || !full
     ? [text, failed].filter(Boolean).join(", ")
     : [liveWords ?? (line.live ? "Working: " : "") + line.text, failed, liveWords ? "" : line.meta].filter(Boolean).join(", ");
@@ -49,7 +51,7 @@ export function StepsList({ steps, thoughts = [], mode, working }: { steps: Step
     </summary>
     <ol className="r1c-steps-list">
       {shownThoughts.filter((t) => t.text.trim()).map((t) => <ThoughtRow key={t.key} thought={t} mode={mode} />)}
-      {steps.map((step) => <StepRow key={step.key} step={step} mode={mode} />)}
+      {steps.map((step) => <StepRow key={step.key} step={step} mode={mode} showDetail={full} />)}
     </ol>
   </details>;
 }
@@ -85,7 +87,7 @@ function save(name: string, text: string, toast: (t: string) => void) {
   toast("Saved " + name + ".");
 }
 
-function StepRow({ step, mode }: { step: Step; mode: WorkMode }) {
+function StepRow({ step, mode, showDetail }: { step: Step; mode: WorkMode; showDetail: boolean }) {
   const { toast } = useThread();
   const [open, setOpen] = useFold(step.key, mode === "verbose");
   const [full, setFull] = useState(false);
@@ -94,7 +96,8 @@ function StepRow({ step, mode }: { step: Step; mode: WorkMode }) {
   const whole = (fullOutput(step.outputKey ?? step.key) ?? step.output ?? "").replace(/\s+$/u, "");
   const input = step.input ? stepInputLines(step.input) : [];
   const title = stepLabel(step);
-  const sub = step.title && step.title !== title ? step.title : "";
+  // Advanced and Technical keep the step's own detail beside the plain words. Regular leaves it out.
+  const sub = showDetail && step.title && step.title !== title ? step.title : "";
   return <li className="r1c-step" data-testid="step" data-status={step.status} data-kind={step.tool}>
     <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary data-local="">

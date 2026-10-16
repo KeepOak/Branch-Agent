@@ -76,6 +76,16 @@ function build(): PageSlot {
         source: { kind: "coming", need, reason: `${t} comes in a later update.` } });
     }
   }
+  // The path command stays grey: Developer already has every switch the page can click, so a live one would not run.
+  const pathId = idOf("Everything else", "Workspace path command");
+  rows.push({ id: pathId, page: "developer", card: "Everything else", label: "Workspace path command", level: 2, ownerLevel: true, control: "toggle",
+    help: "Looks up and changes files in a workspace by their path.", source: { kind: "slot", calls: [], reason: "Workspace path command comes in a later update." } });
+  controls[pathId] = () => (
+    <div data-coming="a workspace path command">
+      <button type="button" className="r1s-sw" role="switch" aria-label="Workspace path command" aria-checked="false" disabled />
+      <small className="r1s-note g-label" data-lines>Workspace path command comes in a later update.</small>
+    </div>
+  );
   return { rows, controls };
 }
 

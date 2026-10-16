@@ -26,3 +26,15 @@
 .r1-details-computer { display: grid; gap: 8px; min-height: 260px; }
 .r1-details-computer > .btn { justify-self: start; }
 @media (max-width: 760px) { .r1-details { width: 100%; padding-top: 48px; } }
+/* Docked at the right, the same way the preview's .body.pane-on gives the pane its own column: the conversation is the
+   flexible column, so it narrows to make room. A phone keeps the one-column cover the side panel already uses. */
+.r1-frame[data-pane="true"]:has(> .r1-pane-slot > .r1-details) { grid-template-columns: 292px minmax(0, 1fr) 340px; }
+.r1-frame[data-pane="true"][data-wide="false"]:has(> .r1-pane-slot > .r1-details) { grid-template-columns: 68px minmax(0, 1fr) 340px; }
+.r1-frame[data-topics="true"][data-pane="true"]:has(> .r1-pane-slot > .r1-details) { grid-template-columns: 292px 300px minmax(0, 1fr) 340px; }
+.r1-frame[data-topics="true"][data-pane="true"][data-wide="false"]:has(> .r1-pane-slot > .r1-details) { grid-template-columns: 68px 300px minmax(0, 1fr) 340px; }
+@media (max-width: 760px) {
+  .r1-frame[data-pane="true"]:has(> .r1-pane-slot > .r1-details),
+  .r1-frame[data-pane="true"][data-wide="false"]:has(> .r1-pane-slot > .r1-details),
+  .r1-frame[data-topics="true"][data-pane="true"]:has(> .r1-pane-slot > .r1-details),
+  .r1-frame[data-topics="true"][data-pane="true"][data-wide="false"]:has(> .r1-pane-slot > .r1-details) { grid-template-columns: minmax(0, 1fr); }
+}
