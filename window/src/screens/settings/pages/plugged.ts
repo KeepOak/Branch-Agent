@@ -11,6 +11,7 @@ import {
 import { classicSlot } from "./classic-host";
 import { CUSTOMIZE_PAGE } from "./customize-live";
 import { permissionsSlot } from "./permissions-approvals";
+import { privacySlot } from "./privacy-town";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
 import { WHO_ROWS } from "./who";
 import { Everyone, PeopleButtons, SignedRecords } from "./who-live";
@@ -58,6 +59,7 @@ export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> =
 export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   permissions: permissionsSlot,
+  privacy: privacySlot,
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
   // Who uses Branch: the preview's three cards, with Classic's list of everyone at the top of People.
