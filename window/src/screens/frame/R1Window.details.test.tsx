@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// GOD queue item 3: the header pill docks the details panel at the right. A Trunk gets Details (its routines, each with
-// an on/off switch), Library and Computer; a group gets Members with Add and Remove. The panel remembers its last tab,
-// and Escape closes it and hands focus back to the pill.
+// The header pill docks the details panel at the right. A Trunk gets Details (its routines, each with an on/off switch),
+// Library and Computer; a group gets Details, Library and Members, with Add a Trunk and Remove. The panel remembers its
+// last tab, and Escape closes it and hands focus back to the pill.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -88,18 +88,19 @@ it("shows the calm Asleep state on Computer when there is no screen", async () =
   expect(document.querySelector('[data-testid="computer-stage"]')).toBeNull();
 });
 
-it("gives a group Members, and Add and Remove call rooms.members.add and rooms.members.remove", async () => {
+it("gives a group Details, Library and Members, and Add a Trunk and Remove call rooms.members.add and rooms.members.remove", async () => {
   data.rows = [{ key: "agent:ledger:room:r1", agentId: "ledger", title: "Launch crew", isMain: false, kind: "group", groupChat: true }];
   data.rooms = [{ roomId: "r1", name: "Launch crew", lead: "ledger", createdAt: 1, members: [{ kind: "trunk", id: "ledger", role: "lead" }, { kind: "trunk", id: "scout" }] }];
   const { session: s, request } = session("agent:ledger:room:r1");
   await act(async () => root.render(<R1Window session={s} />));
   await act(async () => pill().click());
   await settle();
-  expect(tabs().map((b) => b.textContent)).toEqual(["Members"]);
+  expect(tabs().map((b) => b.textContent)).toEqual(["Details", "Library", "Members"]);
+  await act(async () => tab("Members").click());
   await act(async () => panel()!.querySelector<HTMLButtonElement>('[aria-label="Remove Scout"]')!.click());
   expect(request).toHaveBeenCalledWith("rooms.members.remove", { roomId: "r1", kind: "trunk", id: "scout" });
   await settle();
-  const add = [...panel()!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add")!;
+  const add = [...panel()!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Add a Trunk")!;
   await act(async () => add.click());
   const ada = [...document.querySelectorAll<HTMLElement>("[role=menu] [role^=menuitem], [role=menu] button")].find((b) => b.textContent?.includes("Ada"))!;
   expect(ada).toBeTruthy();
