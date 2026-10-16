@@ -269,6 +269,13 @@ describe("Customize (R1): the place", () => {
     const titles = [...host.querySelectorAll("[data-testid=cli-detail] .cz-sec h2")].map(h => h.textContent);
     expect(titles).toEqual(["Who may use it", "What it may do", "Set it up", "Safety check", "Version & updates", "Actions"]);
   });
+  it("re-reads the skills on Refresh and moves focus to the refreshed count", async () => {
+    await open("advanced");
+    const before = lastRequest.mock.calls.filter(([m]) => m === "skills.status").length;
+    await click(button("Refresh"));
+    expect(lastRequest.mock.calls.filter(([m]) => m === "skills.status").length).toBeGreaterThan(before);
+    expect(document.activeElement?.classList.contains("cz-shown")).toBe(true);
+  });
   it("shows no later-update reason or Coming control at Regular or Advanced, in any kind", async () => {
     const extra = {
       "config.get": { hash: "h1", sourceConfig: { mcp: { servers: { gh: { url: "https://x.test" } } } }, runtimeConfig: { mcp: { servers: { gh: { url: "https://x.test" } } } } },

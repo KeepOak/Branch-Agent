@@ -16,6 +16,11 @@ import type { PlaceId } from "./routes";
 
 const OfficePlace = lazy(() => import("../places/office").then(m => ({ default: m.OfficePlace })));
 
+/** While the Grove's code loads, its own header in the preview's words, so the place is never blank. */
+const OFFICE_LOADING = <section className="pixel-office-view" aria-label="Grove" aria-busy="true">
+  <header className="pixel-office-head"><b>Grove</b><span>Your Trunks at their desks. Click one to open its chat; drag one to another desk.</span></header>
+</section>;
+
 type Mount = (p: PlaceProps & { usePrompt?: PromptHandoff }) => React.ReactNode;
 const MOUNTS: Record<PlaceId, Mount> = {
   overview: OverviewPlace,
@@ -39,7 +44,7 @@ export function PlaceView({ place, r1 = false, usePrompt, ...props }: Omit<Place
   return (
     <>
       <div className="enter11" key={place}>
-        <Suspense fallback={null}><Mount {...props} level={level} usePrompt={usePrompt} /></Suspense>
+        <Suspense fallback={place === "office" ? OFFICE_LOADING : null}><Mount {...props} level={level} usePrompt={usePrompt} /></Suspense>
       </div>
       <TrunkHost engine={props.engine} level={level} openSettings={props.openSettings} openPlace={props.openPlace} openConversation={props.openConversation} />
     </>

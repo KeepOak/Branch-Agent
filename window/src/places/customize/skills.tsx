@@ -2,7 +2,7 @@
 // (skills.gardener.status), Suggested and Drafts (skills.proposals.*), the detail with skills.update and
 // skills.install, kept versions (skills.library.*), and "Add a skill" (skills.search / skills.install).
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { displayName } from "../../display-names";
 import { shownWhy } from "../../shell/shown-why";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -90,6 +90,7 @@ function SkillList({ ctx, tabs, count, rows }: { ctx: ToolsCtx; tabs: ReactNode;
   const skill = shown.find(r => r.key === chosen) ?? shown[0];
   const scopeName = SCOPES.find(x => x.id === scope)?.name ?? "All";
   const advanced = shows(ctx.level, "advanced");
+  const shownLine = useRef<HTMLParagraphElement>(null);
   return <>
     <KindHead ctx={ctx} kind="Skills" count={count}>
       {tabs}
@@ -97,9 +98,10 @@ function SkillList({ ctx, tabs, count, rows }: { ctx: ToolsCtx; tabs: ReactNode;
       {advanced && <div className="cz-scope"><Seg label="Scope" value={scope} options={SCOPES} change={setScope} />
         <div className="cz-acts"><Grey className="btn sm" reason="Writing a skill with Branch comes in a later update.">Write a skill</Grey>
           <button type="button" className="btn sm" onClick={() => (ctx.toCommunity ? ctx.toCommunity("skills") : ctx.openAdd("Skills"))}>Bring one in</button>
-          <button type="button" className="btn sm" onClick={() => ctx.skills.reload()}>Refresh</button></div>
+          <button type="button" className="btn sm" onClick={() => { ctx.skills.reload(); shownLine.current?.focus(); }}>Refresh</button></div>
         <small>New conversations pick up to 150 skills by default.</small></div>}
-      <p className="cz-shown">{shown.length} of {rows.length} shown · {advanced ? scopeName : "All"}</p>
+      {/* Refresh re-reads the skills and moves focus here, so the refreshed count is read out. */}
+      <p className="cz-shown" ref={shownLine} tabIndex={-1} role="status">{shown.length} of {rows.length} shown · {advanced ? scopeName : "All"}</p>
       <Status {...ctx.skills} />
       <div className="cz-chips" role="group" aria-label="Show">{([["all", "All"], ["ready", "Ready"], ["setup", "Needs setup"], ["off", "Off"]] as [St, string][]).map(([id, name]) =>
         <button key={id} type="button" className="cz-chip" aria-pressed={st === id} onClick={() => setSt(id)}>{name} <em>{countOf(id)}</em></button>)}</div>
