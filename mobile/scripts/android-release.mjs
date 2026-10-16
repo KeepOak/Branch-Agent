@@ -59,6 +59,11 @@ export function assertNotDebugSigner(certText) {
   return true;
 }
 
+/** GitHub vars, apksigner, and keytool all print SHA-256 fingerprints; formats differ by colon and case. */
+export function normalizeCertSha256(value) {
+  return String(value ?? '').toLowerCase().replace(/[:\s]/g, '');
+}
+
 export function releaseVersion({ tag, runNumber, fallbackVersion } = {}) {
   const raw = String(tag ?? '').trim();
   if (raw) return raw.replace(/^v/i, '');
@@ -266,6 +271,12 @@ function printSha256Output(sidecar) {
 }
 
 function main() {
+  const normalizeIndex = process.argv.indexOf('--normalize-cert-sha256');
+  if (normalizeIndex !== -1) {
+    process.stdout.write(`${normalizeCertSha256(process.argv[normalizeIndex + 1] ?? '')}\n`);
+    return;
+  }
+
   const shaIndex = process.argv.indexOf('--sha256');
   if (shaIndex !== -1) {
     const apkPath = process.argv[shaIndex + 1];
