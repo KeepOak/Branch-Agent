@@ -168,6 +168,8 @@
   .r1s-sec { padding: 2px 0; }
   .r1s-row:has(.r1s-seg) { grid-template-columns: minmax(0, 1fr); }
   .r1s-row:has(.r1s-seg) > .r1s-ctl { grid-row: auto; grid-column: 1; justify-self: start; max-width: 100%; overflow-x: auto; scrollbar-width: none; margin-top: 6px; }
+  /* A list with long choices (the reading fonts) keeps its title and sub-line readable on a phone. */
+  .r1s-row > .r1s-ctl > select.r1s-inp { max-width: 48vw; text-overflow: ellipsis; }
 }
 
 /* Accounts & usage: Classic's usage list and spend card sit in a row, not a page column. */
