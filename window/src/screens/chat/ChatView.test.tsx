@@ -128,14 +128,14 @@ it("every control is wired to the engine or shows Coming, even with no methods a
   await act(async () => bars[bars.length - 1].querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const rows = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')];
   const row = (label: string) => rows.find((b) => b.textContent === label);
-  for (const label of ["Try again", "Read aloud", "Leave out of context"]) expect(coming(row(label)), label).toEqual(["true", true, false]);
+  for (const label of ["Reply", "Retry", "Read aloud", "Leave out of context"]) expect(coming(row(label)), label).toEqual(["true", true, false]);
   expect(rows.filter((b) => !b.dataset.coming).map((b) => b.textContent)).toEqual(["Copy›", "Look inside"]);
   expect(undeclared()).toEqual([]);
   // Your own message: Edit, Branch from here and Put back in context are Coming too.
   await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await act(async () => bars[0].querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const mine = [...document.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Message"] [role="menuitem"]')];
-  for (const label of ["Edit", "Branch from here", "Put back in context"]) expect(coming(mine.find((b) => b.textContent === label)), label).toEqual(["true", true, false]);
+  for (const label of ["Reply", "Edit", "Branch from here", "Put back in context"]) expect(coming(mine.find((b) => b.textContent === label)), label).toEqual(["true", true, false]);
   expect(undeclared()).toEqual([]);
 });
 
@@ -181,6 +181,49 @@ it("opens find in this conversation with the words a search result asked for", a
   await act(async () => { window.dispatchEvent(new CustomEvent(FIND_EVENT, { detail: { query: "Hartwell" } })); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
   expect(host.querySelector<HTMLInputElement>(".find-bar input")?.value).toBe("Hartwell");
+});
+
+it("offers Edit only on your own last message, Retry on a reply, and Show what it did only at Technical", async () => {
+  const methods = ["chat.send", "sessions.rewind", "session.reactions.set"];
+  const two: Block[] = [
+    { kind: "user", key: "u1", text: "First note.", meta: { entryId: "e1", timestamp: t0 } },
+    { kind: "text", key: "a1", text: "Noted.", streaming: false, meta: { entryId: "e2", timestamp: t0 + 1_000 } },
+    { kind: "user", key: "u2", text: "Second note.", meta: { entryId: "e3", timestamp: t0 + 2_000 } },
+  ];
+  await show({ history: two, onReply: () => undefined }, methods);
+  const open = async (n: number) => {
+    const bars = host.querySelectorAll('[data-testid="hover-bar"]');
+    await act(async () => bars[n].querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+    return [...document.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Message"] [role="menuitem"]')].map((b) => b.textContent);
+  };
+  expect(await open(0)).not.toContain("Edit");
+  expect(await open(0)).not.toContain("Retry");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  const reply = await open(1);
+  expect(reply).toContain("Retry");
+  expect(reply).not.toContain("Edit");
+  expect(reply).toContain("Look inside");
+  expect(reply).not.toContain("Show what it did");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(await open(2)).toContain("Edit");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+
+  const room = { isRoom: true, selfId: "me", trunkName: () => "Scout", whereRuns: () => null };
+  const shared: Block[] = [
+    { kind: "user", key: "u1", text: "Mine.", meta: { entryId: "e1", timestamp: t0 } },
+    { kind: "user", key: "u2", text: "Dana wrote this.", meta: { entryId: "e2", timestamp: t0 + 1_000, sender: { kind: "person", id: "dana", name: "Dana" } } },
+  ];
+  await show({ history: shared, room, onReply: () => undefined }, methods);
+  expect(await open(0)).toContain("Edit");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(await open(1)).not.toContain("Edit");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+
+  localStorage.setItem("branch.level", "technical");
+  await show({ history: two, onReply: () => undefined }, methods);
+  const technical = await open(1);
+  expect(technical).toContain("Show what it did");
+  expect(technical).not.toContain("Look inside");
 });
 
 it("leaves the Trunk-getting-ready line to the window: no Opening line and no start screen while it waits", async () => {
