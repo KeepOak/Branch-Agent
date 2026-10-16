@@ -89,19 +89,24 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
     }
   }, [engine, key]);
 
+  /** agents.list: the Trunks, their defaults (the permission chip's "as set" mode) and the default Trunk. */
+  const readTrunkList = useCallback(async () => {
+    if (!engine || !key) return;
+    const { trunks, defaultId } = readTrunks(await engine.request("agents.list", {}));
+    if (live.current === key) setState((s) => ({ ...s, trunks, defaultTrunkId: defaultId }));
+  }, [engine, key]);
+
   const load = useCallback(async () => {
     if (!engine || !key) return;
     try {
-      const agents = await engine.request("agents.list", {});
-      const { trunks, defaultId } = readTrunks(agents);
-      if (live.current === key) setState((s) => ({ ...s, trunks, defaultTrunkId: defaultId }));
+      await readTrunkList();
       await Promise.all([readRow(), readModelList()]);
     } catch (error) {
       if (live.current === key) setState((s) => ({ ...s, loaded: true, error: errorText(error) }));
     } finally {
       if (live.current === key) setRetryGeneration((n) => n + 1);
     }
-  }, [engine, key, readRow, readModelList]);
+  }, [engine, key, readTrunkList, readRow, readModelList]);
 
   useEffect(() => {
     setState(EMPTY);
@@ -129,8 +134,11 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
       if ((event === "sessions.changed" && touches(payload, key)) || (event === "chat" && str(rec(payload).state) === "final")) {
         readRow().catch((error: unknown) => setState((s) => ({ ...s, error: errorText(error) })));
       }
+      // A saved config (setup's "How much it may do", Settings › Permissions) changes what each Trunk's default mode resolves
+      // to. The engine announces every committed write as config.changed; the chip reads the Trunk list, so it re-reads it here.
+      if (event === "config.changed" || event === "agents.changed") readTrunkList().catch(() => undefined);
     });
-  }, [engine, key, readRow]);
+  }, [engine, key, readRow, readTrunkList]);
 
   /** sessions.patch on this conversation, then the row read back. Returns the engine's error words, or null. */
   const patch = useCallback(

@@ -35,8 +35,9 @@ function Rows({ title, rows, close, clear }: { title: string; rows: NewRow[]; cl
     <div className="wn-g">
       <h3 className={clear ? "g-label" : undefined}>{title}</h3>
       <div className="new13">
-        {rows.map((r) => (
-          <button key={r.title} type="button" className="new-row13" onClick={() => (close(), r.run())}>
+        {rows.map((r, i) => (
+          // Update notes can repeat a line, so the title alone is not a unique key.
+          <button key={`${i}:${r.title}`} type="button" className="new-row13" onClick={() => (close(), r.run())}>
             <span className="ico-tile">
               <Icon name={r.icon} small />
             </span>

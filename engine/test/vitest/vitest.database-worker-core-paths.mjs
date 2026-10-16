@@ -609,6 +609,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/tools/transcripts-tool.selection.test.ts",
   "src/agents/tools/transcripts-tool.session-id.test.ts",
   "src/agents/tools/transcripts-tool.test.ts",
+  "src/meeting-bot/slack-huddle-notes.test.ts",
   "src/meeting-bot/session-runtime.test.ts",
   "src/meeting-bot/transcripts-bridge.provenance.test.ts",
   "src/meeting-bot/transcripts-bridge.test.ts",

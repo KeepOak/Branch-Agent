@@ -41,6 +41,24 @@ describe("settings frame heading", () => {
 });
 
 describe("settings frame level", () => {
+  it("follows the originating Trunk at every detail level", async () => {
+    const request = vi.fn(async (method: string) => method === "agents.list" ? { defaultId: "main", agents: [{ id: "main", name: "Default" }, { id: "writer", name: "Writer" }] } : {});
+    const scoped = { ...engine, agentId: "writer", request } as WindowEngine;
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="instructions" backName="Writer" engine={scoped} onPage={() => {}} onBack={() => {}} />));
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click());
+    // Regular: no "Settings for" picker, and the page reads the Trunk Settings was opened from.
+    expect(document.querySelector('[aria-label="Settings for"]')).toBeNull();
+    expect(request).toHaveBeenCalledWith("agents.files.list", { agentId: "writer" });
+    expect(request).not.toHaveBeenCalledWith("agents.files.list", { agentId: "main" });
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="advanced"]')!.click());
+    expect(document.querySelector<HTMLSelectElement>('[aria-label="Settings for"]')?.value).toBe("writer");
+    request.mockClear();
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click());
+    expect(document.querySelector('[aria-label="Settings for"]')).toBeNull();
+    expect(request).not.toHaveBeenCalledWith("agents.files.list", { agentId: "main" });
+  });
+
   it("keeps the Helpers working count live across Settings and detail levels", async () => {
     const connection: WindowEngine = {
       ...engine,
@@ -79,6 +97,34 @@ describe("settings frame level", () => {
     expect(document.querySelector('.set-item[data-page="advanced"]')?.getAttribute("aria-current")).toBe("true");
     expect(localStorage.getItem("branch.level")).toBe("advanced");
     expect(onPage).not.toHaveBeenCalledWith("general");
+  });
+
+  it("in a host that keeps the level (R1), opening an Advanced page at Regular never changes or saves the level", async () => {
+    localStorage.setItem("branch.level", "regular");
+    const onPage = vi.fn();
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame keepLevel page="advanced" backName="Sapling" engine={engine} onPage={onPage} onBack={() => {}} />));
+    expect(document.querySelector('[data-level="regular"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(localStorage.getItem("branch.level")).toBe("regular");
+    // What Regular shows, and one line that offers Advanced: choosing it is the person's own change.
+    const more = document.querySelector<HTMLElement>(".set-more");
+    expect(more?.textContent).toContain("More in Advanced.");
+    await act(async () => more!.querySelector("button")!.click());
+    expect(document.querySelector('[data-level="advanced"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(localStorage.getItem("branch.level")).toBe("advanced");
+    expect(document.querySelector(".set-more")).toBeNull();
+    expect(onPage).not.toHaveBeenCalled();
+  });
+
+  it("choosing Technical raises the level, saves it, and marks Technical as the one chosen", async () => {
+    localStorage.setItem("branch.level", "regular");
+    await open("general");
+    const technical = document.querySelector('[data-level="technical"]') as HTMLButtonElement;
+    expect(technical.getAttribute("aria-checked")).toBe("false");
+    await act(async () => technical.click());
+    expect(localStorage.getItem("branch.level")).toBe("technical");
+    expect((document.querySelector('[data-level="technical"]') as HTMLButtonElement).getAttribute("aria-checked")).toBe("true");
+    expect((document.querySelector('[data-level="regular"]') as HTMLButtonElement).getAttribute("aria-checked")).toBe("false");
   });
 
   it("lowering the level by hand still moves a hidden page to General", async () => {
@@ -278,10 +324,10 @@ describe("DA-73 settings destinations", () => {
   it("keeps exactly five main destinations at every detail level", async () => {
     await open("general");
     const names = () => [...document.querySelectorAll(".set-nav .set-item")].map((item) => item.textContent);
-    expect(names()).toEqual(["General", "Trunks", "Safety", "Data", "About"]);
+    expect(names()).toEqual(["This app", "Trunks", "Safety", "Data", "About"]);
     for (const level of ["advanced", "technical"]) {
       await act(async () => document.querySelector<HTMLButtonElement>(`[data-level="${level}"]`)!.click());
-      expect(names()).toEqual(["General", "Trunks", "Safety", "Data", "About"]);
+      expect(names()).toEqual(["This app", "Trunks", "Safety", "Data", "About"]);
     }
   });
 

@@ -6,6 +6,7 @@ import type { RoomPick } from "../rooms/RoomFaces";
 import type { Actions } from "./conversation-actions";
 import type { ListPrefs, ListSection } from "./list-model";
 import type { Trunk } from "./engine-data";
+import { displayTrunkTitle } from "../connect/trunk-name";
 
 export type Contact = GatewayContact & { thread: Conversation | null; roomId?: string; offline?: boolean; roomPicks?: RoomPick[] };
 
@@ -27,7 +28,10 @@ export function fallbackTrunkContacts(trunks: readonly Trunk[], sessions: readon
 
 /** An empty loaded roster is authoritative; only the first-run bootstrap owner is window-local. */
 export function contactRowsFor(gateway: readonly GatewayContact[], loaded: boolean, trunks: readonly Trunk[], sessions: readonly Conversation[], mainKey: string | null, firstRun: boolean, bootstrapDefault?: Trunk): GatewayContact[] {
-  const rows = loaded ? collapseGrafted([...gateway]) : firstRun ? fallbackTrunkContacts(trunks, sessions, mainKey) : [];
+  // A Trunk row reads its display name: the engine names the default Trunk "main" when it has no name of its own.
+  const rows = loaded
+    ? collapseGrafted([...gateway]).map((row) => (row.kind === "trunk" ? { ...row, name: displayTrunkTitle(row.name, row.id.slice("trunk:".length)) } : row))
+    : firstRun ? fallbackTrunkContacts(trunks, sessions, mainKey) : [];
   if (bootstrapDefault && !rows.some((row) => row.id === `trunk:${bootstrapDefault.id}`)) {
     rows.push(...fallbackTrunkContacts([bootstrapDefault], sessions, mainKey));
   }

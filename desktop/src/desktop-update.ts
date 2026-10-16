@@ -2,19 +2,37 @@
 // Like electron-updater's quitAndInstall: a release is downloaded, size/SHA256-checked and extracted beside the
 // other components while the app runs; the swap happens only once this app has exited. A small helper (written
 // outside app.asar, run by plain Node) waits for the exit, swaps app.asar (or the whole app when Electron changes
-// or macOS requires a sealed bundle), relaunches, and restores the previous copy if the new one never confirms.
-import { spawn } from "node:child_process";
+// or macOS requires a sealed bundle; on Windows, a fresh version folder plus current.txt), relaunches, and restores
+// the previous copy if the new one never confirms. Windows never renames a folder that is still in use.
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import type * as NodeFs from "node:fs";
-import { chmod, copyFile, mkdir, mkdtemp, open, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative } from "node:path";
+import { chmod, copyFile, mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import type { DesktopConfig } from "./config";
 import { extractComponentArchive } from "./component-update-archive";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 import { downloadComponent, replaceFile } from "./component-update-files";
 import { trustedDownloadResponse, type ComponentRelease, type DesktopAsset } from "./component-update-manifest";
 import type { HelperPlan } from "./desktop-update-helper";
+import {
+  WINDOWS_POINTER, WINDOWS_PREVIOUS, isWindowsVersionFolder, pruneWindowsVersionFolders, usesWindowsVersionedLayout,
+  windowsInstallRoot, windowsVersionFolderName,
+} from "./desktop-update-helper";
 import { assertNoMacSigningDowngrade, chooseStagedMacBundle, ensureMacApplicationsInstall, readMacSignature } from "./mac-applications";
+import {
+  WINDOWS_APP_USER_MODEL_ID, WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION,
+  WINDOWS_LAUNCHER_REVISION_FILE, windowsLauncherScript, windowsShortcutNeedsLauncher,
+} from "./windows-launcher.mjs";
+
+export {
+  WINDOWS_POINTER, WINDOWS_PREVIOUS, isWindowsVersionFolder, pruneWindowsVersionFolders,
+  usesWindowsVersionedLayout, windowsInstallRoot, windowsVersionFolderName,
+} from "./desktop-update-helper";
+export {
+  WINDOWS_LAUNCHER, WINDOWS_LAUNCHER_EXE, WINDOWS_LAUNCHER_RESOURCE, WINDOWS_LAUNCHER_REVISION, windowsLaunchTarget,
+  windowsLauncherScript, windowsShortcutNeedsLauncher,
+} from "./windows-launcher.mjs";
 
 /** Where the running desktop app lives. Only a packaged app has one; development runs never update themselves. */
 export interface DesktopInstall {
@@ -51,6 +69,12 @@ export interface DesktopJournal {
   heldUntil?: number;
   /** The update's own folder under updates/, when the staged file lives elsewhere (an AppImage beside its target). */
   work?: string;
+  /** Windows side-by-side: user-writable root that holds version folders and current.txt. */
+  installRoot?: string;
+  /** Folder name under installRoot for this update. A single relative segment, never a path. */
+  versionFolder?: string;
+  /** Previous version folder name, or empty when the live app is the legacy root itself. */
+  previousFolder?: string;
 }
 
 const journalFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-update-pending.json");
@@ -112,7 +136,12 @@ function choose(release: ComponentRelease, install: DesktopInstall, iconUpgrade 
   const desktop = release.components.desktop;
   if (!desktop) return undefined;
   // macOS seals app.asar in the code signature; replacing that resource alone invalidates the app.
-  if (!sealedMacInstall(install) && desktop.electronVersion === install.electronVersion && !iconUpgrade) return { asset: desktop, kind: "asar" };
+  // Windows lands each update in a fresh version folder, so a same-Electron release still takes the whole app when
+  // the release publishes one: copying the live tree would recurse into the new folder and can fail on locked files.
+  if (!sealedMacInstall(install) && desktop.electronVersion === install.electronVersion && !iconUpgrade
+    && !(usesWindowsVersionedLayout(install.platform, install.appImage) && release.components.desktopRuntime)) {
+    return { asset: desktop, kind: "asar" };
+  }
   const runtime = release.components.desktopRuntime;
   if (!runtime || runtime.electronVersion !== desktop.electronVersion) {
     throw new Error(`Release ${release.version} moves the desktop to Electron ${desktop.electronVersion}; install the new desktop package from the release page`);
@@ -267,7 +296,14 @@ async function stageAppImageUpdate(cfg: DesktopConfig, release: ComponentRelease
 
 /** Downloads, verifies and extracts the release's desktop component; nothing in the running app changes. */
 export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentRelease, request: typeof fetch, install?: DesktopInstall): Promise<boolean> {
-  if (!install || await readDesktopJournal(cfg)) return false;
+  if (!install) return false;
+  const held = await readDesktopJournal(cfg);
+  // A staged app that was never applied is replaced by a newer release. Left alone, it would be applied after the newer
+  // engine and window, and roll the app back to an older build.
+  if (held) {
+    if (held.phase !== "staged" || held.version === release.version) return false;
+    await dropStagedDesktop(cfg, held, `replaced by ${release.version}`);
+  }
   if (install.appImage) {
     if (await readOrEmpty(versionFile(cfg)) === release.version) return false;
     return stageAppImageUpdate(cfg, release, request, install.appImage);
@@ -316,12 +352,36 @@ export async function stageDesktopUpdate(cfg: DesktopConfig, release: ComponentR
       }
     }
     const recorded: DesktopJournal = { version: release.version, sha256: choice.asset.sha256, kind: choice.kind, staged, target, phase: "staged" };
+    const versioned = usesWindowsVersionedLayout(install.platform, install.appImage) && choice.kind === "runtime";
+    if (versioned) {
+      const installRoot = windowsInstallRoot(install.appDir);
+      recorded.installRoot = installRoot;
+      recorded.versionFolder = windowsVersionFolderName(release.version, choice.asset.sha256);
+      recorded.previousFolder = isWindowsVersionFolder(basename(install.appDir)) ? basename(install.appDir) : "";
+      if (!recorded.previousFolder) {
+        const pointed = await readOrEmpty(join(installRoot, WINDOWS_POINTER));
+        if (isWindowsVersionFolder(pointed)) recorded.previousFolder = pointed;
+      }
+    }
     const journal: DesktopJournal = { ...recorded, stagedSha256: await fileSha256(checkedFile(recorded, install)) };
     await replaceFile(journalFile(cfg), JSON.stringify(journal));
     await writeFile(join(directory, ".desktop-complete"), "");
     await rm(join(directory, ".update-staging"), { force: true });
     return true;
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
+}
+
+/**
+ * Removes a staged desktop update that was never applied: its record, and its folder under updates/ (only a folder
+ * inside updates/ is ever removed). The log says why, so an owner who looks sees the replacement.
+ */
+export async function dropStagedDesktop(cfg: DesktopConfig, journal: DesktopJournal, reason: string): Promise<void> {
+  const updates = join(cfg.dataDir, "updates");
+  await rm(journalFile(cfg), { force: true });
+  if (journal.kind === "appimage" && typeof journal.staged === "string") await rm(journal.staged, { force: true }).catch(() => undefined);
+  const inside = typeof journal.work === "string" ? relative(updates, journal.work) : "";
+  if (inside && !inside.startsWith("..") && !isAbsolute(inside)) await rm(journal.work!, { recursive: true, force: true }).catch(() => undefined);
+  try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version} dropped: ${reason}\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
 }
 
 /** A staged desktop update waits for the next start (or the owner's Restart); the version it will become. */
@@ -388,12 +448,23 @@ async function handOffJournal(cfg: DesktopConfig, install: DesktopInstall, helpe
   const helper = join(work, "desktop-update-helper.js");
   // Read, not copied: the source sits inside app.asar, which only Electron's own fs can read.
   await writeFile(helper, await readFile(helperSource));
+  // The Windows layout's helper writes the cmd stub and points shortcuts at the launcher from the one shared module.
+  // Without it the helper still swaps, so a failed copy only logs.
+  if (journal.installRoot) {
+    const launcherModule = join(dirname(helperSource), "windows-launcher.mjs");
+    await readFile(launcherModule).then(bytes => writeFile(join(work, "windows-launcher.mjs"), bytes)).catch((error: unknown) => {
+      try { appendCappedLog(join(cfg.dataDir, "desktop.log"), `${new Date().toISOString()} desktop update ${journal.version}: windows launcher module not copied (${String(error)})\n`, BRANCH_LOG_LIMITS); } catch { /* ignore */ }
+    });
+  }
   // A whole-folder swap must not run the helper from inside the folder it renames, nor an AppImage swap from its
   // mount, which goes away when the app exits.
   const ownNode = journal.kind !== "asar";
   const node = ownNode ? join(work, basename(install.nodePath)) : install.nodePath;
   if (ownNode) await copyFile(install.nodePath, node);
+  const versionedExe = journal.installRoot && journal.versionFolder
+    ? join(journal.installRoot, journal.versionFolder, basename(install.executable)) : undefined;
   const relaunchExecutable = journal.kind === "appimage" ? journal.target
+    : versionedExe ? versionedExe
     : journal.kind === "runtime" && !sealedMacInstall(install) ? join(install.appDir, basename(install.executable)) : install.executable;
   // A Linux runtime swap extracts as the user, so its new chrome-sandbox cannot retain root:4755.
   // Relaunch through the packaged helper, which requests that setup before Electron starts.
@@ -401,7 +472,7 @@ async function handOffJournal(cfg: DesktopConfig, install: DesktopInstall, helpe
     && rawFs.existsSync(join(journal.staged, "branch-agent")) ? join(install.appDir, "branch-agent") : undefined;
   const plan: HelperPlan = { journal: journalFile(cfg), versionFile: versionFile(cfg), rejectedFile: rejectedFile(cfg),
     log: join(cfg.dataDir, "desktop.log"), waitPid: process.pid,
-    relaunch: { command: linuxLauncher ?? relaunchExecutable, fallback: linuxLauncher ? relaunchExecutable : undefined, args },
+    relaunch: { command: linuxLauncher ?? relaunchExecutable, fallback: linuxLauncher ? relaunchExecutable : versionedExe ? install.executable : undefined, args },
     confirmTimeoutMs: CONFIRM_TIMEOUT_MS };
   const planFile = join(work, "desktop-update-plan.json");
   await replaceFile(planFile, JSON.stringify(plan));
@@ -424,6 +495,107 @@ export async function confirmDesktopUpdate(cfg: DesktopConfig): Promise<string |
   await replaceFile(receipt, JSON.stringify([folder, ...retained.filter(path => path !== folder)].slice(0, 2)));
   await replaceFile(versionFile(cfg), `${journal.version}\n`);
   if (journal.kind === "runtime" && process.platform === "win32") await replaceFile(iconFile(cfg), ICON_REVISION);
+  if (journal.installRoot && journal.versionFolder) {
+    await pruneWindowsVersionFolders(journal.installRoot, [journal.versionFolder, journal.previousFolder ?? ""]).catch(() => undefined);
+  }
   await rm(journalFile(cfg), { force: true });
   return journal.version;
+}
+
+/** At launch: drop unused Windows version folders, skipping any that are still locked. */
+export async function pruneWindowsInstall(install: DesktopInstall, log?: (line: string) => void): Promise<void> {
+  if (!usesWindowsVersionedLayout(install.platform, install.appImage)) return;
+  const root = windowsInstallRoot(install.appDir);
+  const keep = new Set<string>();
+  if (isWindowsVersionFolder(basename(install.appDir))) keep.add(basename(install.appDir));
+  for (const file of [WINDOWS_POINTER, WINDOWS_PREVIOUS]) {
+    const name = await readOrEmpty(join(root, file));
+    if (isWindowsVersionFolder(name)) keep.add(name);
+  }
+  if (!keep.size) return;
+  await pruneWindowsVersionFolders(root, keep, { log });
+}
+
+/** A Windows shortcut (.lnk) and the file it opens. */
+export interface WindowsShortcut { path: string; target: string }
+/** Reads and rewrites Branch's Windows shortcuts; tests pass their own. */
+export interface WindowsShortcuts {
+  list(): Promise<WindowsShortcut[]>;
+  retarget(paths: string[], launcher: string): Promise<void>;
+}
+/** The Start menu, the desktop and the taskbar pins: where a Branch Agent.lnk can live. */
+const SHORTCUT_FOLDERS = "@([Environment]::GetFolderPath('Desktop'),[Environment]::GetFolderPath('Programs'),"
+  + "(Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar'))";
+const psQuote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
+function powershell(script: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
+      { windowsHide: true, timeout: 15_000 }, (error, stdout) => error ? reject(error) : resolve(String(stdout)));
+  });
+}
+/** WScript.Shell, as the installer's own shortcuts use: no elevation, and only links named Branch Agent.lnk. */
+export const powershellShortcuts: WindowsShortcuts = {
+  list: async () => {
+    const out = await powershell("[Console]::OutputEncoding=[Text.Encoding]::UTF8; $shell=New-Object -ComObject WScript.Shell; $found=@(); "
+      + `foreach($dir in ${SHORTCUT_FOLDERS}) { if(!$dir) { continue }; $path=Join-Path $dir 'Branch Agent.lnk'; `
+      + "if(Test-Path -LiteralPath $path) { $found += [pscustomobject]@{path=$path;target=$shell.CreateShortcut($path).TargetPath} } }; "
+      + "ConvertTo-Json -Compress -InputObject @($found)");
+    const parsed: unknown = JSON.parse(out.trim() || "[]");
+    return (Array.isArray(parsed) ? parsed : [parsed]) as WindowsShortcut[];
+  },
+  retarget: async (paths, launcher) => {
+    await powershell(`$shell=New-Object -ComObject WScript.Shell; $exe=${psQuote(launcher)}; foreach($path in @(${paths.map(psQuote).join(",")})) { `
+      + "$link=$shell.CreateShortcut($path); $link.TargetPath=$exe; $link.WorkingDirectory=[IO.Path]::GetDirectoryName($exe); "
+      + "$link.IconLocation=\"$exe,0\"; $link.Save() }");
+  },
+};
+const shortcutMarker = (cfg: DesktopConfig): string => join(cfg.dataDir, "desktop-shortcut-launcher.txt");
+
+/** The stable launcher at this install's root, when it is there (Windows only). */
+export function windowsStableLauncher(install: DesktopInstall): string | undefined {
+  if (!usesWindowsVersionedLayout(install.platform, install.appImage)) return undefined;
+  const launcher = join(windowsInstallRoot(install.appDir), WINDOWS_LAUNCHER_EXE);
+  return rawFs.existsSync(launcher) ? launcher : undefined;
+}
+
+/** What a pin of a running window should start: the launcher, so the pin never names a version folder. */
+export function windowsRelaunchDetails(install: DesktopInstall): { appId: string; relaunchCommand: string; relaunchDisplayName: string; appIconPath: string } | undefined {
+  const launcher = windowsStableLauncher(install);
+  return launcher ? { appId: WINDOWS_APP_USER_MODEL_ID, relaunchCommand: `"${launcher}"`, relaunchDisplayName: "Branch Agent", appIconPath: launcher } : undefined;
+}
+
+/**
+ * At launch on Windows: place the stable launcher at the install root from this package's resources/ (a newer
+ * revision replaces it, the same one never does), then, once per launcher path, point every Branch Agent.lnk that
+ * still opens a Branch Agent.exe under the root (a version folder or a legacy root copy) at the launcher. Links that
+ * already open the launcher, or open anything else, are left alone. Returns the links it changed. A failure leaves
+ * the marker unwritten, so the next launch tries again.
+ */
+export async function ensureWindowsLauncher(cfg: DesktopConfig, install: DesktopInstall, log: (line: string) => void = () => undefined,
+  shortcuts: WindowsShortcuts = powershellShortcuts): Promise<string[]> {
+  if (!usesWindowsVersionedLayout(install.platform, install.appImage)) return [];
+  const root = windowsInstallRoot(install.appDir);
+  const launcher = join(root, WINDOWS_LAUNCHER_EXE);
+  const revisionFile = join(root, WINDOWS_LAUNCHER_REVISION_FILE);
+  const bundled = join(install.resourcesDir, WINDOWS_LAUNCHER_RESOURCE);
+  if ((!rawFs.existsSync(launcher) || await readOrEmpty(revisionFile) !== WINDOWS_LAUNCHER_REVISION) && rawFs.existsSync(bundled)) {
+    const temporary = `${launcher}.${process.pid}.tmp`;
+    try {
+      await copyFile(bundled, temporary);
+      await rename(temporary, launcher);
+      await writeFile(revisionFile, `${WINDOWS_LAUNCHER_REVISION}\n`);
+    } catch (error) {
+      await rm(temporary, { force: true }).catch(() => undefined);
+      log(`windows launcher: could not place ${WINDOWS_LAUNCHER_EXE} (${String(error)})`);
+    }
+  }
+  // A package without the launcher (a development build) leaves the shortcuts as they are.
+  if (!rawFs.existsSync(launcher)) return [];
+  if (!rawFs.existsSync(join(root, WINDOWS_LAUNCHER))) await writeFile(join(root, WINDOWS_LAUNCHER), windowsLauncherScript()).catch(() => undefined);
+  if (await readOrEmpty(shortcutMarker(cfg)) === launcher) return [];
+  const stale = (await shortcuts.list()).filter(link => windowsShortcutNeedsLauncher(link.target, root)).map(link => link.path);
+  if (stale.length) await shortcuts.retarget(stale, launcher);
+  await replaceFile(shortcutMarker(cfg), `${launcher}\n`);
+  if (stale.length) log(`windows launcher: pointed ${stale.length} shortcut(s) at ${WINDOWS_LAUNCHER_EXE}`);
+  return stale;
 }

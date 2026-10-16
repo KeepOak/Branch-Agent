@@ -15,7 +15,7 @@ vi.mock("../../places-nav/PlaceView", () => ({ PlaceView: () => <p>Place content
 vi.mock("../../face/Face", () => ({ Face: () => <span /> }));
 vi.mock("../sidebar/Sidebar", () => ({ Sidebar: () => <nav aria-label="Sidebar stub" /> }));
 vi.mock("../../places/settings/set1/appearance-store", () => ({ lookStore: () => ({ load: async () => undefined }) }));
-vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: [] }], usePendingApprovals: () => new Map(), useMachine: () => null, useTrunks: () => ({ list: [], defaultId: null }), useListPeople: () => ({ selfId: null, names: new Map() }) }));
+vi.mock("../../shell/engine-data", () => ({ useConversations: () => [{ loaded: true, error: null, rows: [] }], usePendingApprovals: () => new Map(), useMachine: () => null, useContacts: () => [[], () => undefined, false], useTrunks: () => ({ list: [], defaultId: null }), useListPeople: () => ({ selfId: null, names: new Map() }) }));
 vi.mock("../../shell/group-drop", async (real) => ({ ...(await real<object>()), useGroupRooms: () => ({ rooms: [], peerOnline: new Map(), reload: async () => undefined }) }));
 vi.mock("../approvals/ProblemBanners", () => ({ useProblemBannerRows: () => undefined }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,7 +41,7 @@ it("opens the re-hosted helpers view beside the conversation from the chip, and 
   const panel = host.querySelector(".r1-with-helpers > .r1-helpers");
   expect(panel?.classList.contains("g-clear")).toBe(true);
   expect(host.querySelector('.r1-with-helpers [data-testid="chat"]')).not.toBeNull();
-  expect(panel?.textContent).toContain("No steps yet. What Scout does shows here as it works.");
+  expect(panel?.textContent).toContain("No steps yet.");
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close activity"]')!.click());
   expect(host.querySelector(".r1-helpers")).toBeNull();
   expect(host.querySelector('[data-testid="chat"]')).not.toBeNull();

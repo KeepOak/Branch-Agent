@@ -4,7 +4,7 @@
 import { ConnectErrorDetailCodes, type GatewayBrowserDeviceIdentity, type HelloOk } from '@branch/gateway-client/browser';
 import type { KeyValueStore } from '../storage/keyValueStore';
 import { createDeviceTokenStore } from '../connect/deviceTokenStore';
-import { OPERATOR_ROLE, PhoneGateway, phoneClient, type GatewayStatus, type PhoneGatewayOptions, type Platform } from '../connect/phoneGateway';
+import { OPERATOR_ROLE, PhoneGateway, phoneClient, type GatewayStatus, type PhoneGatewayOptions, type PhoneReconnect, type Platform } from '../connect/phoneGateway';
 import { isGatewayUrl, type SetupPayload } from './setupCode';
 
 export const PAIRING_RECORD_KEY = 'branch.pairing.v1';
@@ -35,6 +35,7 @@ export type PairingDeps = {
   createRequestId: () => string;
   createSocket?: PhoneGatewayOptions['createSocket'];
   pairingRetryMs?: number;
+  reconnect?: PhoneReconnect;
 };
 
 type PairingRecord = { version: 1; url: string; pairedAtMs: number };
@@ -237,6 +238,7 @@ export class PairingSession implements EngineLink {
       createRequestId: this.deps.createRequestId,
       createSocket: this.deps.createSocket,
       pairingRetryMs: this.deps.pairingRetryMs,
+      ...(this.deps.reconnect ? { reconnect: this.deps.reconnect } : {}),
       onStatus: (status) => {
         if (this.gateway === gateway) void this.onStatus(url, status);
       },

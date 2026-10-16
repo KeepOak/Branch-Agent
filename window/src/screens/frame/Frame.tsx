@@ -65,7 +65,7 @@ export function Frame({ sidebar, main, composer, topics, notice, pane, header, n
       else if (action === "settings" || action === "nextConversation" || action === "palette" || action === "focusSearch") {
         if (onShortcut) {
           event.preventDefault();
-          if (action === "palette" || action === "focusSearch") {
+          if (action === "focusSearch") {
             if (narrow) setDrawer(true); else setWide(true);
             requestAnimationFrame(() => onShortcut(action));
           } else onShortcut(action);
@@ -100,7 +100,7 @@ export function Frame({ sidebar, main, composer, topics, notice, pane, header, n
     {topics && <section className="r1-topics" aria-label="Topics" style={free ? { overflowX: "hidden", minWidth: 0 } : undefined}><Region>{topics}</Region></section>}
     <section className="r1-conversation" aria-label="Conversation" data-beside={beside?.dock} style={beside ? { ["--r1-beside" as string]: `${beside.size}px` } : undefined}>
       <Header {...header} onToggleSidebar={toggle} />
-      <div className="r1-scroll edge-fade" ref={scroll}><div ref={content} className="r1-content"><Region>{notice && <div className="r1-notice g-label" role="status">{notice}</div>}{main}</Region></div></div>
+      <div className="r1-scroll edge-fade" ref={scroll}><div className="r1-scroll-edge" aria-hidden="true" /><div ref={content} className="r1-content"><div className="r1-top-space" aria-hidden="true" /><Region>{notice && <div className="r1-notice g-label" role="status">{notice}</div>}{main}</Region></div></div>
       {composer && <div className="r1-composer-slot"><Region>{composer}</Region></div>}
       {beside && <div className="r1-beside"><Region>{beside.node}</Region></div>}
     </section>

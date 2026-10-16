@@ -50,7 +50,7 @@
 .r1c-react button { width: 36px; height: 36px; border: 0; border-radius: var(--r-menu-row, 10px); background: transparent; font-size: 20px; cursor: pointer; }
 .r1c-react button:hover { background: var(--fill); }
 
-/* time divider, thin notice, typing line */
+/* time divider, thin notice, working line */
 .r1c-time { align-self: center; font-size: var(--fs-12); color: var(--ink-3); text-align: center; }
 .r1c-notice { align-self: center; display: flex; align-items: center; justify-content: center; gap: 6px; width: fit-content; max-width: min(100%, 680px); margin: 6px auto; padding: 3px 12px;
   border-radius: var(--r-pill); font-size: var(--fs-12-5); color: var(--ink-3); white-space: nowrap; transition: background .2s; }
@@ -64,11 +64,6 @@
 .r1c-link:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 .r1c-link:focus-visible { outline: 2px solid var(--ink-3); outline-offset: 2px; border-radius: 4px; }
 .r1c-more { align-self: flex-end; margin-top: 4px; }
-.r1c-typing { display: flex; align-items: center; gap: 6px; margin: 10px 0 6px; padding-left: 4px; font-size: var(--fs-12-5); color: var(--ink-3); }
-.r1c-typing-face { display: inline-grid; flex: none; }
-.r1c-typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-3); animation: r1c-blink 1s infinite; }
-.r1c-typing i:nth-of-type(2) { animation-delay: .15s; }
-.r1c-typing i:nth-of-type(3) { animation-delay: .3s; }
 @keyframes r1c-blink { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 
 /* the calm steps display */
@@ -115,6 +110,7 @@
 /* empty chat and chips */
 .r1c-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 12vh; text-align: center; }
 .r1c-empty-title { margin: 0; font-size: var(--fs-17, 17px); font-weight: 600; color: var(--ink); }
+.r1c-empty-line { margin: 0; max-width: 420px; font-size: var(--fs-13); color: var(--ink-2); }
 .r1c-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .r1c-suggest { justify-content: flex-start; padding-left: 38px; }
 .r1c-chip { padding: 6px 14px; border: 0; border-radius: var(--r-pill); color: var(--ink-2); font-size: var(--fs-13); cursor: pointer; transition: background var(--ease17, .14s); }
@@ -127,10 +123,10 @@
 .r1c-grow { animation: r1c-grow 1s cubic-bezier(.25, .8, .3, 1); }
 @keyframes r1c-grow { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0); } }
 @media (prefers-reduced-motion: reduce) {
-  .r1c-tok, .r1c-grow, .r1c-spin, .r1c-steps-list, .r1c-typing i { animation: none; }
+  .r1c-tok, .r1c-grow, .r1c-spin, .r1c-steps-list { animation: none; }
   .r1c-bar, .r1c-chev, .r1c-rt { transition: none; }
 }
-:root[data-still] :is(.r1c-tok, .r1c-grow, .r1c-spin, .r1c-steps-list, .r1c-typing i) { animation: none; }
+:root[data-still] :is(.r1c-tok, .r1c-grow, .r1c-spin, .r1c-steps-list) { animation: none; }
 
 @media (max-width: 760px) {
   .r1c-thread { max-width: none; padding: 18px 16px; }
@@ -147,19 +143,21 @@
 /* ===== Item 48, the glass model (owner, final): the conversation is clear glass, so the wallpaper shows through sharply.
    Every piece of text and every control on it sits on a small frosted pill with a 1px outline (--gp-* tokens, 4.5:1 ink).
    Menus and popovers opened from the conversation are clear too: their rows are the pills. ===== */
-:is(.r1c-u, .r1c-txt, .r1c-pre, .r1c-from, .r1c-when, .r1c-out-line, .r1c-pin-line, .r1c-time, .r1c-notice, .r1c-typing, .r1c-steps > summary, .r1c-steps-list,
-  .r1c-empty-title, .r1c-chip, .r1c-bar, .r1c-menu-meta, .r1c-mi, .r1c-react button, .r1c-out) {
+:is(.r1c-u, .r1c-txt, .r1c-pre, .r1c-from, .r1c-when, .r1c-out-line, .r1c-pin-line, .r1c-time, .r1c-notice, .r1c-steps > summary, .r1c-steps-list,
+  .r1c-empty-title, .r1c-empty-line, .r1c-chip, .r1c-bar, .r1c-menu-meta, .r1c-mi, .r1c-react button, .r1c-out) {
   background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
   box-shadow: inset 0 0 0 1px var(--gp-edge); --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2); --mute17c: var(--gp-ink-2);
 }
 /* text blocks: round ends on one line, a 14px radius when they wrap; only as wide as their words */
-:is(.r1c-txt, .r1c-pre) { width: fit-content; max-width: 100%; padding: 5px 11px; border-radius: 14px; }
+:is(.r1c-txt, .r1c-pre, .r1c-empty-line) { width: fit-content; max-width: 100%; padding: 5px 11px; border-radius: 14px; }
 :is(.r1c-from, .r1c-when, .r1c-out-line, .r1c-pin-line, .r1c-time, .r1c-empty-title, .r1c-menu-meta) { width: fit-content; max-width: 100%; padding: 2px 9px; border-radius: 999px; }
 .r1c-me > .r1c-when { align-self: flex-end; }
 .r1c-time { margin-inline: auto; }
-.r1c-typing { width: fit-content; padding: 3px 12px 3px 4px; border-radius: 999px; }
 .r1c-notice:hover { background: var(--gp-fill); box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
 .r1c-steps > summary { border-radius: 999px; }
+/* Regular: the steps are one quiet small link, with no pill or fill behind it. It opens the same list. */
+.r1c-steps.r1c-steps-quiet > summary { padding: 2px 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; font-size: var(--fs-12-5); color: var(--ink-3); }
+.r1c-steps.r1c-steps-quiet > summary:hover { background: none; box-shadow: none; color: var(--ink-2); text-decoration: underline; }
 .r1c-steps > summary:hover, .r1c-chip:hover, .r1c-mi:hover:not([aria-disabled="true"]), .r1c-mi:focus-visible, .r1c-react button:hover, .r1c-bar button:hover {
   box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
 .r1c-bar button:hover { background: transparent; }
@@ -176,28 +174,58 @@
 .r1c-react { gap: 4px; }
 .r1c-react button { border-radius: 999px; }
 
-/* Rooms (rooms/RoomMessage, TalkedFold, RoomLine re-hosted): Classic's layout, on clear glass. A person or outside agent
-   is their avatar in the 32px gutter and a frosted bubble; the talked-it-through fold is one pill that opens in place. */
+/* Rooms (rooms/RoomMessage, RoomLine re-hosted): Classic's layout, on clear glass. A person or outside agent is their avatar
+   in the 32px gutter and a frosted bubble. Trunk-to-Trunk exchanges are the centred line below (./Exchange). */
 .r1c .r1c-room .rm-msg { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; align-items: start; max-width: 620px; }
 .r1c .r1c-room .rm-bubble { width: fit-content; max-width: 100%; min-width: 0; padding: 7px 12px; border-radius: 6px 18px 18px 18px; }
 .r1c .r1c-room .rm-ext .rm-bubble { box-shadow: inset 0 0 0 1px var(--gp-edge), 0 0 0 1px var(--gp-edge); }
 .r1c .r1c-room .rm-bubble b { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
 .r1c .r1c-room .rm-bubble p { margin: 2px 0 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .r1c .r1c-room > .r1c-when { margin-left: 42px; }
-.r1c .r1c-talk .rm-talk-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; }
-.r1c .r1c-talk .rm-talk { min-width: 0; max-width: 560px; }
-.r1c .r1c-talk .rm-talk summary { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 12px; border-radius: 999px; font-size: 12.5px; cursor: pointer; list-style: none; }
-.r1c .r1c-talk .rm-talk summary::-webkit-details-marker { display: none; }
-.r1c .r1c-talk .rm-talk summary:hover { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }
-.r1c .r1c-talk .rm-talk-n { font-weight: 500; white-space: nowrap; }
-.r1c .r1c-talk .rm-talk-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.r1c .r1c-talk .rm-talk[open] { display: grid; gap: 6px; }
-.r1c .r1c-talk .rm-talk-l { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; width: fit-content; max-width: 100%; padding: 5px 12px 5px 6px; border-radius: 14px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
-.r1c .r1c-talk .rm-talk-l b { font-weight: 600; margin-right: 4px; }
 .r1c .rm-line { align-self: center; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: 12px; }
 .r1c .rm-line-n { display: inline-flex; align-items: center; gap: 6px; }
-:is(.r1c .r1c-room .rm-bubble, .r1c .r1c-talk .rm-talk summary, .r1c .r1c-talk .rm-talk-l, .r1c .rm-line) {
+:is(.r1c .r1c-room .rm-bubble, .r1c .rm-line) {
   background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur);
   box-shadow: inset 0 0 0 1px var(--gp-edge); color: var(--ink); --ink-2: var(--gp-ink-2); --ink-3: var(--gp-ink-2);
 }
-.r1c .r1c-talk .rm-talk-who, .r1c .rm-line { color: var(--gp-ink-2); }
+
+/* Trunk-to-Trunk exchanges (./Exchange, preview item 23 .xLineP17 / .xchP17): a quiet centred line "N messages with [faces]
+   A and B"; the faces and names get a glass pill on hover. Opened, the exchange covers the conversation column, header and
+   composer included: the "A ⇄ B" pill, each message with its sender's face and name, and a centred "Close Chat" pill. */
+.r1x-line { align-self: center; display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; max-width: 100%; font-size: 12.5px; color: var(--ink-3); }
+.r1x-who { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 10px 3px 4px; border-radius: 999px; box-shadow: inset 0 0 0 .5px transparent; color: var(--ink-2);
+  transition: background .2s, box-shadow .2s; }
+.r1x-who:hover, .r1x-who:focus-within, .r1x-who:has([aria-expanded="true"]) { background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge), var(--r1x-lift-xs); }
+.r1x-faces { display: inline-flex; align-items: center; }
+.r1x-faces > * { margin-left: -6px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--bg); }
+.r1x-faces > :first-child { margin-left: 0; }
+.r1x-face { display: inline-grid; place-items: center; padding: 0; border: 0; background: transparent; cursor: pointer; line-height: 0; }
+.r1x-face:hover { transform: scale(1.12); position: relative; z-index: 1; }
+.r1x-face:focus-visible { outline: 2px solid var(--focus, var(--ink-2)); outline-offset: 1px; position: relative; z-index: 1; }
+.r1x-names { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.r1x-transcript { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.r1x-pop .r1c-mi { gap: 10px; }
+.r1x-view { position: absolute; inset: 0; z-index: 40; display: flex; flex-direction: column; color: var(--ink);
+  background: color-mix(in srgb, var(--bg) 80%, transparent); backdrop-filter: blur(30px) saturate(170%); -webkit-backdrop-filter: blur(30px) saturate(170%);
+  animation: r1x-in .3s cubic-bezier(.3, 1.3, .5, 1); }
+.r1x-head { position: absolute; top: 8px; left: 50%; z-index: 2; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 8px; height: 36px; max-width: calc(100% - 32px);
+  padding: 0 14px 0 6px; border-radius: 999px; font-size: 14px; white-space: nowrap;
+  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge), var(--r1x-lift-sm); }
+.r1x-head b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.r1x-arrow { color: var(--ink-3); }
+.r1x-list { flex: 1 1 auto; overflow: auto; padding: 64px max(16px, calc((100% - 760px) / 2)) 90px; outline: none; }
+.r1x-list .r1c-time { margin: 14px auto 10px; }
+.r1x-msg { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0; }
+.r1x-gap { width: 28px; flex: 0 0 28px; }
+.r1x-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 80%; }
+.r1x-body b { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.r1x-body p { margin: 0; padding: 8px 12px; border-radius: 16px; background: var(--fill); font-size: 14.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.r1x-msg[data-me] .r1x-body p { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ink) 18%, transparent); }
+.r1x-close { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); height: 36px; padding: 0 18px; border: 0; border-radius: 999px; color: var(--ink);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  background: var(--gp-fill); backdrop-filter: var(--gp-blur); -webkit-backdrop-filter: var(--gp-blur); box-shadow: inset 0 0 0 1px var(--gp-edge), var(--r1x-lift); }
+.r1x-close:hover { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on), var(--r1x-lift); }
+@keyframes r1x-in { from { opacity: 0; transform: scale(.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .r1x-view { animation: none; } .r1x-face:hover { transform: none; } }
+:root[data-transparency="reduce"] .r1x-view { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]) .r1x-view { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; } }

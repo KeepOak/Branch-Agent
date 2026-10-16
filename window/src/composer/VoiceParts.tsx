@@ -10,9 +10,15 @@ import type { ApprovalDecision } from "../thread/model";
 import { canAnswer, isCurrent, useNow } from "../thread/approval-guard";
 import { useApprovalDetails, type ApprovalDetails } from "../thread/useEngineData";
 import { useLookSwitches } from "../shell/sidebar-state";
+import { useLevel } from "../places-nav/level";
 import "./voice.css";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+
+/** A live call needs this window to reach a microphone and play audio. Without both, the call can never start, so no entry is offered. */
+export function windowCanCall(): boolean {
+  return typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function" && typeof AudioContext === "function";
+}
 
 /** Whether the engine has a voice service ready for each (talk.catalog, as OpenClaw's microphone picker reads it). */
 export function useVoiceCatalog(engine: WindowEngine | undefined) {
@@ -21,7 +27,7 @@ export function useVoiceCatalog(engine: WindowEngine | undefined) {
     if (!engine) return;
     let on = true;
     engine.request("talk.catalog", {}).then(
-      (r) => on && setReady({ dictation: rec(rec(r).transcription).ready === true, live: rec(rec(r).realtime).ready === true, loaded: true }),
+      (r) => on && setReady({ dictation: rec(rec(r).transcription).ready === true, live: rec(rec(r).realtime).ready === true && windowCanCall(), loaded: true }),
       () => on && setReady({ dictation: false, live: false, loaded: true }),
     );
     return () => {
@@ -213,8 +219,8 @@ function useCallAnswer(engine: WindowEngine, details: Map<string, ApprovalDetail
   }, [engine, onError]);
 }
 
-/** "Turn camera on" stays greyed: the window's calls go through the engine's relay, which carries voice only. */
-const CALL_CAMERA_OFF = "The engine’s relayed calls carry voice only; showing your camera needs a call the engine runs in the browser.";
+/** The words for a call that cannot start: one plain line. The engine's own text stays at Technical. */
+export const CALL_UNAVAILABLE = "Live voice isn’t available right now.";
 
 /** The call screen: the Trunk's face, what is being said, an approval to answer by voice or tap, Mute and End. */
 export function VoiceScreen({ engine, name, onClose }: { engine: WindowEngine; name: string; onClose: () => void }) {
@@ -230,6 +236,7 @@ export function VoiceScreen({ engine, name, onClose }: { engine: WindowEngine; n
   const askRef = useRef(ask);
   askRef.current = ask;
   const { captions } = useLookSwitches();
+  const level = useLevel();
   const answer = useCallAnswer(engine, details, setMessage);
   const clock = useClock(state !== "starting" && state !== "ended" && state !== "error");
   const end = useCallback(() => {
@@ -270,7 +277,7 @@ export function VoiceScreen({ engine, name, onClose }: { engine: WindowEngine; n
         <div className="v-top"><span>Talking with {name} · <span>{clock}</span></span></div>
         <div className="v-fig"><Face size={180} label={name} state={face} priority={400} /></div>
         {muted ? <span className="v-muted">Muted</span> : null}
-        {captions || state === "error" ? <p className="v-cap" aria-live="polite">{state === "error" ? message : caption || STATE_WORDS[state]}</p> : null}
+        {state === "error" ? null : captions ? <p className="v-cap" aria-live="polite">{caption || STATE_WORDS[state]}</p> : null}
         {ask ? (
           <div className="v-ask" data-testid="voice-ask">
             <b>{name} needs you</b>
@@ -282,11 +289,18 @@ export function VoiceScreen({ engine, name, onClose }: { engine: WindowEngine; n
             </div>
           </div>
         ) : null}
-        <div className="acts">
-          <button type="button" className="btn" disabled={state === "error"} onClick={() => { call.current?.mute(!muted); setMuted(!muted); }}>{muted ? "Unmute" : "Mute"}</button>
-          <button type="button" className="btn" disabled title={CALL_CAMERA_OFF} aria-label={`Turn camera on. ${CALL_CAMERA_OFF}`}>Turn camera on</button>
-          <button type="button" className="btn bad" onClick={end}>End</button>
-        </div>
+        {state === "error" ? (
+          <>
+            <p className="v-cap" role="alert">{CALL_UNAVAILABLE}</p>
+            {level === "technical" && message ? <p className="v-cap v-detail">{message}</p> : null}
+            <div className="acts"><button type="button" className="btn" onClick={end}>Close</button></div>
+          </>
+        ) : (
+          <div className="acts">
+            <button type="button" className="btn" onClick={() => { call.current?.mute(!muted); setMuted(!muted); }}>{muted ? "Unmute" : "Mute"}</button>
+            <button type="button" className="btn bad" onClick={end}>End</button>
+          </div>
+        )}
         {voice ? <span className="v-voice">Voice: {voice}</span> : null}
       </div>
     </div>,

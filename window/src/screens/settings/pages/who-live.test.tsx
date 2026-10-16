@@ -55,7 +55,8 @@ describe("R1 Settings › Who uses Branch is a native R1 page with the preview's
     expect(host.querySelector(".r1s-custom, .r1s-classic, [data-classic]")).toBeNull();
     expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Who uses Branch");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(["People"]);
-    expect(labels(sections()[0])).toEqual(["Ask for a PIN when switching person", "Keep conversations separate"]);
+    // Both People rows are Coming, so Regular hides them (rows.ts COMING_FROM); they show from Advanced.
+    expect(labels(sections()[0])).toEqual([]);
     expect([...sections()[0].querySelectorAll("button")].map((b) => b.textContent)).toEqual(expect.arrayContaining(["Groups", "Signing in from other devices", "What you share"]));
     // The preview opens People with everyone who uses Branch and Invite someone, with no heading of its own.
     expect(sections()[0].textContent).toContain("Invite someone");
@@ -68,6 +69,7 @@ describe("R1 Settings › Who uses Branch is a native R1 page with the preview's
     await mount();
     await setLevel("Advanced");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
+    expect(labels(sections()[0])).toEqual(["Ask for a PIN when switching person", "Keep conversations separate"]);
     expect(labels(sections()[2])).toHaveLength(14);
   });
 

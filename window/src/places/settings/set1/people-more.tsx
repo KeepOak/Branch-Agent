@@ -28,7 +28,7 @@ export function EachPerson({ roles }: { roles: Roles }) {
         <Ctl title="Ask for a PIN when switching person" sub="At least four digits, kept on this computer." help="At least four digits, kept on this computer. Five wrong tries in a row tell the owner." off={NO_KEY}>
           <Switch checked label="Ask for a PIN when switching person" onChange={() => undefined} />
         </Ctl>
-        <Ctl title="Keep conversations separate" sub="People can’t read each other’s conversations unless they share one." off={roles.names.length ? "Each role sets this in the settings file." : "No roles are set up on this Gateway yet."}>
+        <Ctl title="Keep conversations separate" sub="People can’t read each other’s conversations unless they share one." off={roles.names.length ? "Each role sets this in the settings file." : "No roles are set up yet."}>
           <Switch checked={separate(roles)} label="Keep conversations separate" onChange={() => undefined} />
         </Ctl>
         <Ctl title="Open People" sub="The People place: who’s here now, groups, what you share, and signing in from other devices.">
