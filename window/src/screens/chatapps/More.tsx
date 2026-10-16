@@ -19,6 +19,7 @@ import { QUEUE_MODES } from "../../places/settings/set1/chatapps-tables";
 import { NATIVE } from "../../places/settings/set1/chatapps-parts";
 import { actionsAfter } from "../../places/settings/set1/chatapps-people";
 import { DEPTH as DEPTH_APPS, MSG_KEYS } from "../../places/settings/set1/chatapps-depth";
+import { joinHuddlesOn, setJoinHuddles } from "../../places/settings/set1/slack-huddles";
 import { fieldsOf } from "../../places/settings/set1/chatapps-manage-more";
 import { RowView, Segmented, Toggle } from "../settings/RowView";
 import type { Level } from "../settings/nav";
@@ -297,7 +298,9 @@ function Depth({ ctx: { cfg, apps, all } }: { ctx: Ctx }) {
     const rows = DEPTH_APPS[c.id].map(({ key, ...r }): ClassicRow => (!key ? r : on ? { ...r, path: "channels." + c.id + "." + key } : { ...r, off: "Connect " + c.name + " first." }));
     return <details key={c.id} className="r1-ca-fold" open={on}>
       <summary className="g-frost"><ChatLogo id={c.id} name={c.name} size={24} /><span className="g-label"><b>{c.name}</b> · {rows.length} setting{rows.length > 1 ? "s" : ""}{on ? " · connected" : ""}</span></summary>
-      {rows.map((r) => r.kind === "custom" ? <Line key={r.t} label={r.t} help={r.sub} coming={NO_KEY}><button type="button" disabled>{(r.id ?? "").slice(4)}</button></Line> : <KeyLine key={r.t} cfg={cfg} row={r} />)}
+      {rows.map((r) => r.id === "join-huddles"
+        ? <Line key={r.t} label={r.t} help={r.sub} ctlNeed="config.patch"><Toggle label={r.t} on={joinHuddlesOn(cfg.get)} disabled={!cfg.ready} onChange={(on) => void setJoinHuddles(cfg.set, on)} /></Line>
+        : r.kind === "custom" ? <Line key={r.t} label={r.t} help={r.sub} coming={NO_KEY}><button type="button" disabled>{(r.id ?? "").slice(4)}</button></Line> : <KeyLine key={r.t} cfg={cfg} row={r} />)}
     </details>;
   })}</>;
 }
