@@ -39,7 +39,9 @@ export function ShortcutButtons({ engine }: SlotControlProps) {
     </Coming>
     {btn("Show the welcome tour", () => window.dispatchEvent(new CustomEvent(TOUR_EVENT)))}
     {btn("Get the apps", () => document.getElementById("sec-updates-Branch on your other devices")?.scrollIntoView({ block: "start" }), undefined, true)}
-    {btn("Find anything", () => window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)), "Ctrl K")}
+    <Coming engine={engine} need="sessions.search" where="Find anything">
+      {btn("Find anything", () => window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)), "Ctrl K")}
+    </Coming>
     {btn("Collapse the list to faces", () => document.querySelector<HTMLButtonElement>(".r1-side-top button")?.click(), "Ctrl B")}
     {btn("Quick ask", () => window.dispatchEvent(new CustomEvent(QUICK_ASK_EVENT)))}
     {keys ? <ShortcutsDialog onClose={() => setKeys(false)} /> : null}

@@ -172,6 +172,13 @@
 
 /* Accounts & usage: Classic's usage list and spend card sit in a row, not a page column. */
 .r1s-usage.set-col { max-width: none; margin: 0; padding: 0; }
+
+/* Go to (preview): the line above, then a tile per page with its subtitle and badge. */
+.r1s-goto:has(.r1s-tile) { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); max-width: none; }
+.r1s-goto .r1s-tile { height: auto; width: 100%; align-items: flex-start; padding: 10px 14px; border-radius: 16px; }
+.r1s-goto .r1s-tile .r1s-item-t { padding: 0; }
+.r1s-badge { margin-left: 8px; padding: 0 7px; border-radius: 999px; background: var(--accent); color: var(--on-btn); font: 600 11px/18px var(--sans); font-style: normal; }
+.r1s-features-lede { margin: 0 32px 8px; }
 /* A card a page draws itself (slots.ts cards): Customize's kinds hub sits in its card as the preview's two panes (kinds
    on the left, the kind's list on the right, the chosen item's detail under them); connected agents are one block each. */
 .r1s-card-own { min-width: 0; padding: 6px 0; }

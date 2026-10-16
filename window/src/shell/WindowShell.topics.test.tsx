@@ -151,7 +151,10 @@ describe("Settings sidebar rail", () => {
     const host = await show("agent:oak:main", [], [], false);
     const frame = host.querySelector<HTMLElement>(".frame")!;
     await act(async () => host.querySelector<HTMLButtonElement>(".rail-search")!.click());
-    await vi.waitFor(() => expect(document.activeElement).toBe(host.querySelector("[data-testid=search] input")));
+    expect(host.querySelector("[data-testid=palette]")).not.toBeNull();
+    await act(async () => host.querySelector<HTMLInputElement>("[data-testid=palette] input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector("[data-testid=palette]")).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=list-toggle]")!.click());
     expect(frame.classList.contains("rail")).toBe(false);
     await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=list-toggle]")!.click());
     expect(frame.classList.contains("rail")).toBe(true);

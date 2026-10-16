@@ -5,6 +5,7 @@ import type { Topic } from "@branch/gateway-protocol";
 import type { TopicUpdate } from "../thread/TopicCard";
 import type { SendExtras } from "../connect/engine";
 import { firstSendEcho } from "../composer/sending";
+import { availability } from "../connect/capabilities";
 import { roomIdOf, type SaplingSession } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
 import { isPreparationPending, isPreparationStalled, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
@@ -122,6 +123,7 @@ import { TALK_EVENT, useVoiceCatalog } from "../composer/VoiceParts";
 import { DockQuestion } from "../thread/QuestionCard";
 import { CHECK_STATUS_EVENT } from "../thread/blocks";
 import { WhereChips } from "../thread/WhereChips";
+import { FIND_ANYTHING_EVENT } from "../screens/find/find-event";
 import { FIND_EVENT } from "../thread/FindBar";
 import { useQuestions } from "../thread/questions";
 import { Walkthrough } from "./Walkthrough";
@@ -430,6 +432,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     window.addEventListener("branch:whats-new", openNews);
     return () => window.removeEventListener("branch:whats-new", openNews);
   }, []);
+  useEffect(() => {
+    const open = () => {
+      if (availability(session.engine, "sessions.search") === "no") return;
+      setOverlay((current) => (current?.kind === "palette" ? current : { kind: "palette" }));
+    };
+    window.addEventListener(FIND_ANYTHING_EVENT, open);
+    return () => window.removeEventListener(FIND_ANYTHING_EVENT, open);
+  }, [session.engine]);
   const [characterShown, setCharacterShown] = useCharacterShown();
   // The card and Appearance › Agents › "Show the agent beside the conversation" are one switch: keep both in step.
   const setCharacterVisible = (on: boolean) => { setCharacterShown(on); void lookStore(session.engine).set("agentShown", on).catch(() => undefined); };
@@ -1578,7 +1588,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           ) : null
         }
         emptyLine={emptyLineFor(prefs, shownCount) ?? (contactsLoaded && trunks.loaded && contactRows.length === 0 ? "No contacts yet. Use + to create one." : null)}
-        search={<SearchBox query={search.query} onQuery={search.setQuery} />}
+        search={<SearchBox query={search.query} onQuery={search.setQuery} engine={session.engine} />}
         searchResults={
           search.query.trim() ? (
             <SearchResultsView
@@ -1620,7 +1630,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             setGroupDrop({ kind, source: drop.source, target: drop.target, roomId: target?.roomId ?? source?.roomId, anchor });
           }
         }}
-        onRailSearch={focusSearch}
+        engine={session.engine}
+        onRailSearch={() => { if (availability(session.engine, "sessions.search") !== "no") setOverlay((current) => (current?.kind === "palette" ? current : { kind: "palette" })); }}
         onOpen={(key) => {
           selection.clear();
           setTopicReturnKey(null);
