@@ -133,7 +133,7 @@ function PairedComputers({ engine, sessionKey, agentId, session, allowed, can, c
   const loadGroups = useCallback(async () => {
     const store = configStore(engine);
     const ok = await store.load();
-    if (!ok || !store.snap) throw new Error(store.error ?? "The engine did not give the settings.");
+    if (!ok || !store.snap) throw new Error(store.error ?? "Branch didn’t send the settings.");
     setPlug({ groups: shareGroupsOf(store.snap), enabled: pairedShareEnabled(store.snap) });
   }, [engine]);
   useEffect(() => {
@@ -159,7 +159,7 @@ function PairedComputers({ engine, sessionKey, agentId, session, allowed, can, c
       }
       const store = configStore(engine);
       await store.load();
-      if (!store.snap?.hash) throw new Error(store.error ?? "The engine did not give a settings revision.");
+      if (!store.snap?.hash) throw new Error(store.error ?? "Branch didn’t send a settings revision.");
       const write = pairedShareWrites(store.snap, group, on);
       await store.set(PAIRED_SHARE_GROUPS_PATH, write.groups);
       if (write.enabled !== undefined) await store.set(PAIRED_SHARE_ENABLED_PATH, write.enabled);
@@ -176,7 +176,7 @@ function PairedComputers({ engine, sessionKey, agentId, session, allowed, can, c
           <small className={pill("hint")}>{hint}</small>
         </span>
         {block ? null : (
-          <Coming need={PAIRED_SHARE_NEED} reason="This engine can’t share a conversation with a paired computer.">
+          <Coming need={PAIRED_SHARE_NEED} reason="Branch can’t share a conversation with a paired computer.">
             <Toggle label="Let paired computers read it" on={published} disabled={busy || plug === null || draftHeld} onChange={turn} />
           </Coming>
         )}
