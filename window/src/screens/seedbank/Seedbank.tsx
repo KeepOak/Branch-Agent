@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { Icon } from "../../shell/icons";
-import { featured, KINDS, kindOf, matches, SORTS, sortEntries, type Entry, type KindId, type Sort } from "./catalog";
+import { featured, KINDS, kindOf, matches, SEED_WHAT, SORTS, sortEntries, type Entry, type KindId, type Sort } from "./catalog";
 import { InstallSheet, PasteSheet } from "./InstallSheet";
 import { Adapters, Card, Row, Soon } from "./parts";
 import { parseSeed, type Seed } from "./seed";
@@ -92,7 +92,7 @@ export function Seedbank({ engine, variant = "place" }: Props) {
     const k = kindOf(id);
     return <div className="sb-sec-list" key={id} data-coming-kind={id}>
       <div className="sb-sec-h"><b className="g-label">{k.label}</b><small className="g-label">Coming</small>{brief && id === "adapters" && <button type="button" className="sb-all" data-local="" onClick={() => setKind(id)}>View all</button>}</div>
-      {id === "adapters" ? <Adapters brief={brief} /> : <p className="sb-hint g-label" data-lines>{k.coming}</p>}
+      {id === "adapters" ? <Adapters brief={brief} /> : <p className="sb-hint g-label" data-lines>{k.what ? k.what + " " : ""}{k.coming}</p>}
     </div>;
   };
 
@@ -136,9 +136,9 @@ export function Seedbank({ engine, variant = "place" }: Props) {
       <div>{variant === "place" && <h2 className="sb-title g-label">Seedbank</h2>}<p className="sb-hint g-label" data-lines>{LEDE}</p></div>
       <Soon className="sb-web" need="seedbank.web" reason={KEEPOAK_COMING} label="Open on keepoak.com (coming)">Open on keepoak.com ↗</Soon>
     </div>
-    <div className="sb-paste"><button type="button" className="sb-btn" data-local="" onClick={() => setPaste("")}>＋ Paste a seed</button><small className="g-label">Or ⌘V on this page, or drop a .seed file on the window.</small></div>
+    <div className="sb-paste"><button type="button" className="sb-btn" data-local="" onClick={() => setPaste("")}>＋ Paste a seed</button><small className="g-label" data-lines>{SEED_WHAT} Paste one here, press ⌘V on this page, or drop a .seed file on the window.</small></div>
     <div className="sb-chips" role="tablist" aria-label="Kinds" data-local="">
-      {[{ id: "all" as const, label: "All" }, ...KINDS].map(k => <button key={k.id} type="button" role="tab" className="sb-chip" aria-selected={kind === k.id} onClick={() => { setKind(k.id); setCat("All"); }}>{k.label}</button>)}
+      {[{ id: "all" as const, label: "All" }, ...KINDS].map(k => <button key={k.id} type="button" role="tab" className="sb-chip" aria-selected={kind === k.id} title={"what" in k ? k.what : undefined} onClick={() => { setKind(k.id); setCat("All"); }}>{k.label}</button>)}
     </div>
     <label className="sb-search g-frost"><Icon name="search" size={16} /><input type="search" placeholder="Search by name or creator" aria-label="Search Seedbank by name or creator" autoComplete="off" data-local="" value={query} onChange={e => setQuery(e.target.value)} /></label>
     <div className="sb-sort" role="group" aria-label="Sort">
