@@ -111,6 +111,8 @@
 .r1c-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 12vh; text-align: center; }
 .r1c-empty-title { margin: 0; font-size: var(--fs-17, 17px); font-weight: 600; color: var(--ink); }
 .r1c-empty-line { margin: 0; max-width: 420px; font-size: var(--fs-13); color: var(--ink-2); }
+.r1c-connect { display: grid; justify-items: center; gap: 10px; }
+.r1c-connect p { margin: 0; max-width: 420px; font-size: var(--fs-13); color: var(--ink-2); }
 .r1c-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .r1c-suggest { justify-content: flex-start; padding-left: 38px; }
 .r1c-chip { padding: 6px 14px; border: 0; border-radius: var(--r-pill); color: var(--ink-2); font-size: var(--fs-13); cursor: pointer; transition: background var(--ease17, .14s); }

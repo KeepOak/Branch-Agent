@@ -214,7 +214,6 @@ export function Composer(props: Props) {
       setProblem(draft.text.trim().startsWith("!") ? "Lockdown is on: commands can't run." : "Lockdown is on: Trunks cannot run or send anything.");
       return;
     }
-    if (noModel && plan.kind !== "command" && !draft.text.trim().startsWith("/")) return;
     if (nextAsJob && draft.files.length) {
       setProblem("A job starts with words. Send attachments in this conversation instead.");
       return;
@@ -234,7 +233,6 @@ export function Composer(props: Props) {
       void runBackground(plan.text);
       return;
     }
-    if (noModel && plan.kind !== "command") return;
     if (props.draftAgentId) {
       void Promise.resolve(sendMessage(draftMessage(), { files: draft.files, people: draft.people, replyTo: props.replyTo })).then((created) => {
         if (created) draft.clear();
@@ -415,7 +413,7 @@ export function Composer(props: Props) {
   const hasDraft = draft.text.trim().length > 0 || draft.files.length > 0;
   const stopMode = working && !hasDraft;
   // Sessions and history arrive before the engine finishes starting; sending waits for this Trunk.
-  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
+  const ready = hasDraft && !disabled && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem);
   // The session row's estimatedCostUsd is the latest run, not the conversation total.
   const [usageCost, setUsageCost] = useState<{ key: string; value: number } | null>(null);
   useEffect(() => {

@@ -167,6 +167,14 @@ describe("R1-04 composer", () => {
     expect(opened).toHaveBeenCalledWith("settings/accounts/add");
   });
 
+  it("lets you send when no model is usable", async () => {
+    const { host, send } = await mount({ models: false });
+    await type(host, "Hello");
+    expect(button("Send")?.disabled).toBe(false);
+    await act(async () => button("Send")!.click());
+    expect(send).toHaveBeenCalledWith("Hello", {}, undefined);
+  });
+
   it("says the room's words in a group chat, and the Trunk's name everywhere else", async () => {
     const room = await mount({ placeholder: "Message the group · @ to call a Trunk" });
     expect(room.host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Message the group · @ to call a Trunk");

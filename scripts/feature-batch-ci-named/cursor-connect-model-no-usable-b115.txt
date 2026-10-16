@@ -1,0 +1,10 @@
+engine:extensions/ollama/src/setup.test.ts
+window:src/composer/composer-logic.test.ts
+window:src/composer/connect-model.test.ts
+window:src/places/settings/set1/accounts.test.tsx
+window:src/places/settings/set1/add-account.test.ts
+window:src/places/settings/set1/models.test.tsx
+window:src/places/trunk/trunk.test.tsx
+window:src/screens/composer/Composer.test.tsx
+window:src/thread/EmptyState.connect-model.test.tsx
+window:src/thread/run-outcome.test.tsx

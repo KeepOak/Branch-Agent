@@ -3,7 +3,7 @@
 // The greyed reasons in this file say what is still missing, shown in plain words under each row.
 import { useState, type ReactNode } from "react";
 import { useResource } from "../settings/hooks";
-import type { ModelChoice } from "../../composer/model";
+import { usableModelName, type ModelChoice } from "../../composer/model";
 import type { WindowEngine } from "../../connect/engine";
 import { Menu, type MenuAnchor } from "../../shell/Menu";
 import { Segmented, Switch } from "../../shell/Popover";
@@ -18,12 +18,12 @@ function Row({ title, hint, children, off }: { title: string; hint: string; chil
   return <div className={off ? "tk-ctl off" : "tk-ctl"}><b>{title}</b><span className="tk-right">{children}</span><small>{hint}</small>{off ? <small className="tk-why">{off}</small> : null}</div>;
 }
 
-const modelName = (models: ModelChoice[], ref: string) => models.find((m) => m.ref === ref)?.name || ref.split("/").pop() || ref;
+const modelName = (models: ModelChoice[], ref: string) => usableModelName(ref, models);
 
 function ModelPick({ draft, models, setModel, openSettings }: { draft: Draft; models: ModelChoice[]; setModel: (ref: string) => void; openSettings?: (page: string) => void }) {
   if (!models.length) return <Row title="Which model" hint="No model is set up yet."><button type="button" className="btn sm" onClick={() => openSettings?.("models")} disabled={!openSettings}>Set up a model</button></Row>;
-  const options = models.some((m) => m.ref === draft.model) || !draft.model ? models : [{ ref: draft.model, name: modelName(models, draft.model) } as ModelChoice, ...models];
-  const value = draft.model || options[0].ref;
+  const options = models;
+  const value = models.some((m) => m.ref === draft.model) ? draft.model : options[0].ref;
   return (
     <Row title="Which model" hint="Where this Trunk thinks.">
       {options.length <= 3 && <span className="tk-wide"><Segmented label="Which model" value={value} options={options.map((m) => ({ id: m.ref, name: m.name }))} onChange={setModel} /></span>}
@@ -59,7 +59,7 @@ function Advanced({ engine, agentId, name, draft, models, setMay }: { engine: Wi
         <select className="inp" aria-label="Model for decisions" value={draft.may.decide} onChange={(e) => setMay({ decide: e.target.value })}>
           <option value="same">Same as everywhere</option>
           {models.map((m) => <option key={m.ref} value={m.ref}>{m.name}</option>)}
-          {!["same", "none"].includes(draft.may.decide) && !models.some((m) => m.ref === draft.may.decide) && <option value={draft.may.decide}>{draft.may.decide}</option>}
+          {!["same", "none"].includes(draft.may.decide) && !models.some((m) => m.ref === draft.may.decide) && <option value={draft.may.decide}>No model is set up</option>}
           <option value="none">None for {name}</option>
         </select>
       </Row>

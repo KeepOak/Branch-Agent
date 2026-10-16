@@ -226,7 +226,6 @@ export function Composer(props: Props) {
     }
     if (plan.kind === "stop") { onStop(); draft.clear(); return; }
     if (offline) return;
-    if (noModel && plan.kind !== "command") return;
     if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") { void runBackground(plan.text); return; }
     if (topic && plan.kind === "send") { void sendToTopic(topic.key, topic.title); return; }
@@ -365,7 +364,7 @@ export function Composer(props: Props) {
   };
   const hasDraft = hasText || draft.files.length > 0;
   const stopMode = working && !hasDraft;
-  const ready = hasDraft && !offline && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem) && (!noModel || draft.text.trim().startsWith("/"));
+  const ready = hasDraft && !offline && !props.lockdown && draft.preparing === 0 && !isPreparationPending(conversationProblem);
   const usage = tightest(props.limits);
   const context = contextUse(props.row?.totalTokens, props.row?.contextTokens);
   const runningCount = props.running.length;

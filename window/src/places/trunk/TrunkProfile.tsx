@@ -3,6 +3,7 @@
 // Pause / Make default / Edit. It loads its own data, so any place (the thread header too) can open it by id.
 // "What it can do" (parity row 16, owner placement 2026-10-14) re-hosts the Classic list from shell/CanDo.tsx as a section.
 import { useState, type ReactNode } from "react";
+import { usableModelName } from "../../composer/model";
 import { safeStorage, saveDraft } from "../../composer/drafts";
 import { CAN_DO, type CanDoGo } from "../../shell/CanDo";
 import { PairDialog } from "../customize/pairing";
@@ -88,7 +89,7 @@ export function Automations({ engine, data, reload }: { engine: WindowEngine; da
 function Rows({ row, data, level, edit, openPlace, showFiles }: { row: TrunkRow; data: ProfileData; level: Level; edit: (t: EditorTab) => void; openPlace?: (p: PlaceId) => void; showFiles: () => void }) {
   const may = readMay(data.snap, row.id);
   const where = may.startOn === "this" ? "This computer" : data.computers.find((c) => c.id === may.startOn)?.name || may.startOn;
-  const model = data.models.find((m) => m.ref === row.model)?.name || row.model.split("/").pop() || "Default model";
+  const model = usableModelName(row.model, data.models);
   const mayLine = [may.read ? "Reads your files" : "Only its own folder", may.browse ? "uses the browser" : "no browser"].join(" · ");
   return (
     <div className="tk-rows">

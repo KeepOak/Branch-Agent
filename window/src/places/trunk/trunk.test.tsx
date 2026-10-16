@@ -351,6 +351,26 @@ describe("Trunk profile and studio", () => {
     // Pause is not built yet, so the profile shows no Pause control at all rather than a live-looking one.
     expect(document.querySelector(".tk-pf-pause")).toBeNull();
   });
+  it("does not name a model that is not usable on the Juniper card", async () => {
+    const request = fake({
+      "agents.list": { defaultId: "oak", mainKey: "main", agents: [{ id: "oak", identity: { name: "Juniper" }, model: { primary: "openai/gpt-6-astra" } }] },
+      "models.list": { models: [] },
+      "sessions.list": { sessions: [] },
+    });
+    await mount(<TrunkProfile engine={engine(request)} agentId="oak" level="regular" onClose={() => {}} />);
+    expect(document.body.textContent).toContain("No model is set up");
+    expect(document.body.textContent).not.toMatch(/gpt-6-astra/i);
+  });
+  it("maps a missing inference route to connect a model, never the raw error", async () => {
+    const request = vi.fn(() => Promise.reject(new Error("Branch Agent could not verify a usable inference route. Check model setup and try again.")));
+    await mount(<TrunkStudio engine={engine(request)} onClose={() => {}} />);
+    const box = document.querySelector("textarea")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(box, "Watch renewals"); box.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click(byText("Propose it"));
+    expect(document.body.textContent).toContain("Connect a model to get answers");
+    expect(document.body.textContent).not.toContain("could not verify a usable inference route");
+    expect([...document.querySelectorAll('[data-testid="connect-model"] button')].map((b) => b.textContent)).toEqual(["Connect a model"]);
+  });
   it("asks Branch through branch.chat and shows its reply", async () => {
     const request = vi.fn(() => Promise.resolve({ sessionId: "s", reply: "Here is my proposal.", action: "none", needsApproval: true }));
     await mount(<TrunkStudio engine={engine(request)} onClose={() => {}} />);
