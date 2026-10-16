@@ -167,7 +167,7 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
   const wrong = ids.filter((id) => !ownPage(id, ...(opened[id].split(":") as [string, string])));
   expect(wrong.map((id) => `${id} → ${opened[id]}`)).toEqual([]);
   expect(opened).toEqual({
-    card: "classic:people", goto: "r1:goto",
+    card: "r1:card", goto: "r1:goto",
     general: "r1:general", appearance: "r1:appearance", notifications: "r1:notifications", who: "r1:who",
     trunks: "classic:advanced", instructions: "r1:instructions", customize: "r1:customize", seedbank: "r1:seedbank", memory: "place:library", autos: "place:automations",
     voice: "r1:voice", chatapps: "r1:chatapps",
