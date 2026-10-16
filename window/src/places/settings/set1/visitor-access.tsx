@@ -6,7 +6,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { isUnknownMethod } from "../../../connect/capabilities";
 import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
-import { Btn, Ctl, Empty, Plist, Prow, Sec, NOSETUP } from "../kit";
+import { Btn, Ctl, Empty, Plist, Prow, Sec, NOSETUP, useLevel } from "../kit";
 
 type Policy = {
   policyName: string;
@@ -30,14 +30,25 @@ function policyOf(data: unknown): Policy | null {
   };
 }
 
-function policyLine(policy: Policy): string {
+/** Regular and Advanced never show a raw role id or an internal policy name such as "(branch-managed)". */
+function plainPolicyName(name: string): string {
+  const stripped = name.replace(/\s*\(\s*branch-managed\s*\)/gi, "").replace(/\s{2,}/g, " ").trim();
+  return stripped && !/^branch-managed$/i.test(stripped) ? stripped : "Visitors";
+}
+
+function policyLine(policy: Policy, technical: boolean): string {
   const length = policy.defaultTtlDays === null || policy.defaultTtlDays === 0
     ? "Each invitation sets its own length"
     : `Invitations last ${policy.defaultTtlDays} ${policy.defaultTtlDays === 1 ? "day" : "days"}`;
-  const role = policy.roleBound && policy.roleId
-    ? `The ${policy.roleId} role uses this access policy.`
-    : "The default role is not using this access policy yet.";
-  return `${policy.policyName}. ${length}, up to ${policy.maxVisitors}. ${role}`;
+  const name = technical ? policy.policyName : plainPolicyName(policy.policyName);
+  const role = technical
+    ? (policy.roleBound && policy.roleId
+      ? `The ${policy.roleId} role uses this access policy.`
+      : "The default role is not using this access policy yet.")
+    : (policy.roleBound
+      ? "Guests you invite use this access policy."
+      : "Guests are not using this access policy yet.");
+  return `${name}. ${length}, up to ${policy.maxVisitors}. ${role}`;
 }
 
 function personTitle(row: RecordValue): string {
@@ -78,6 +89,7 @@ function rowSub(row: RecordValue, unmanaged = false): string {
 }
 
 export function VisitorAccess({ engine, admin }: { engine: WindowEngine; admin: boolean }) {
+  const technical = useLevel() >= 2;
   const policyRes = useResource<RecordValue>(engine, "visitor.policy", {});
   const listRes = useResource<RecordValue>(engine, "visitor.list", {});
   const policy = policyOf(policyRes.data);
@@ -132,7 +144,7 @@ export function VisitorAccess({ engine, admin }: { engine: WindowEngine; admin: 
 
   return (
     <Sec title="Visitors" hint="People you invite sign in with that email or GitHub account. Invitations are managed by this Branch, so you never paste a token.">
-      {policy ? <Ctl title="Access policy" sub={policyLine(policy)} /> : (
+      {policy ? <Ctl title="Access policy" sub={policyLine(policy, technical)} /> : (
         <Ctl title="Access policy" off={quiet ? MANAGED : policyRes.loading ? "Reading the access policy…" : visible(policyRes.error ?? MANAGED)} />
       )}
       {policy ? (

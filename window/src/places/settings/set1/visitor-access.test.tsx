@@ -84,8 +84,8 @@ describe("Settings › People › Visitors", () => {
       "visitor.revoke": { outcome: "revoked", emails: ["ada@example.test"] },
     });
     await render(engine);
-    expect(host.querySelector('[data-row="Access policy"] small')?.textContent).toContain("Visitors (branch-managed)");
-    expect(host.textContent).toContain("The external-work role uses this access policy.");
+    expect(host.querySelector('[data-row="Access policy"] small')?.textContent).toContain("Visitors. Invitations last 14 days, up to 50. Guests you invite use this access policy.");
+    expect(host.textContent).not.toMatch(/branch-managed|external-work/);
     expect(host.textContent).toContain("ada@example.test");
     expect(host.textContent).toContain("extra@example.test");
     expect(host.textContent).toContain("1 not recorded by Branch");
@@ -112,5 +112,14 @@ describe("Settings › People › Visitors", () => {
     await render(engineOf({ "visitor.policy": POLICY, "visitor.list": LIST }).engine, false);
     expect(button("Invite")?.disabled).toBe(true);
     expect(host.querySelector<HTMLButtonElement>('[aria-label="Revoke ada@example.test"]')?.disabled).toBe(true);
+  });
+
+  it("shows the configured policy name and role id only at Technical", async () => {
+    const { engine } = engineOf({ "visitor.policy": POLICY, "visitor.list": LIST });
+    await act(async () => root.render(
+      <KitProvider level={2} report={report} scope={null}><VisitorAccess engine={engine} admin /></KitProvider>,
+    ));
+    expect(host.textContent).toContain("Visitors (branch-managed)");
+    expect(host.textContent).toContain("The external-work role uses this access policy.");
   });
 });
