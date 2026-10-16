@@ -137,6 +137,30 @@ it("on an engine without those methods, Reply, Retry, Edit, Read aloud, Branch f
   expect(row("Edit").dataset.coming).toBeTruthy();
 });
 
+it("Copy › swaps to Text and Markdown in the same turn, without scrolling or the clipboard", async () => {
+  const writeText = vi.fn(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  const calls: unknown[] = [];
+  const native = HTMLElement.prototype.focus;
+  HTMLElement.prototype.focus = function (this: HTMLElement, options?: FocusOptions) {
+    calls.push(options);
+    return native.call(this, options);
+  };
+  try {
+    await act(async () => root.render(<HoverBar text="**Hi** there" isReply={false} actions={actions()} />));
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+    calls.length = 0;
+    await act(async () => menuRows()[0].click());
+    expect(menuRows().map((b) => b.textContent)).toEqual(["Copy", "Text", "Markdown"]);
+    expect(document.querySelector('[role="menu"]')?.getAttribute("aria-label")).toBe("Copy");
+    expect(writeText).not.toHaveBeenCalled();
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((options) => Boolean(options && typeof options === "object" && (options as FocusOptions).preventScroll))).toBe(true);
+  } finally {
+    HTMLElement.prototype.focus = native;
+  }
+});
+
 it("Copy › offers text and Markdown and no link row", async () => {
   await act(async () => root.render(<HoverBar text="Hi" isReply={false} actions={{ ...actions(), edit: { run: vi.fn(), disabled: null } }} />));
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
