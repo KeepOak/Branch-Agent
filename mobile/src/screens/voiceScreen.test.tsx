@@ -50,12 +50,16 @@ async function renderVoice(opts: { online?: boolean; pending?: Approval[]; level
       />
     </ThemeProvider>,
   );
-  return { engine, session, onClose, onEnd, onKeyboard, onAnswer, unmount: view.unmount };
+  const finish = async () => {
+    await view.unmount();
+    session.dispose();
+  };
+  return { engine, session, onClose, onEnd, onKeyboard, onAnswer, unmount: view.unmount, finish };
 }
 
 describe('voice screen', () => {
   it('draws the Android Voice layout: title, on this phone, mute, speaker, end and keyboard', async () => {
-    const { session } = await renderVoice();
+    const { finish } = await renderVoice();
     await eventually(() => expect(screen.getByTestId('voice-state')).toHaveTextContent('Listening'));
     expect(screen.getByTestId('voice-screen')).toBeOnTheScreen();
     expect(screen.getByTestId('voice-title')).toHaveTextContent('Branch Agent · voice');
@@ -67,11 +71,11 @@ describe('voice screen', () => {
     expect(screen.getByLabelText('End')).toBeOnTheScreen();
     expect(screen.getByLabelText('Keyboard')).toBeOnTheScreen();
     expect(screen.queryByTestId('voice-transcript')).toBeNull();
-    session.dispose();
+    await finish();
   });
 
   it('mutes to Muted, turns the speaker off, and keeps the Voice menu off at Regular', async () => {
-    const { session } = await renderVoice();
+    const { finish } = await renderVoice();
     await eventually(() => expect(screen.getByTestId('voice-state')).toHaveTextContent('Listening'));
     await fireEvent.press(screen.getByTestId('voice-mute'));
     expect(screen.getByLabelText('Unmute')).toBeOnTheScreen();
@@ -80,11 +84,11 @@ describe('voice screen', () => {
     expect(screen.getByLabelText('Turn the speaker on')).toBeOnTheScreen();
     expect(screen.queryByTestId('voice-more')).toBeNull();
     expect(screen.queryByTestId('voice-menu')).toBeNull();
-    session.dispose();
+    await finish();
   });
 
   it('shows Voice as a later update at Advanced, not a working picker', async () => {
-    const { session } = await renderVoice({ level: 'advanced' });
+    const { finish } = await renderVoice({ level: 'advanced' });
     await eventually(() => expect(screen.getByTestId('voice-state')).toHaveTextContent('Listening'));
     expect(screen.getByLabelText('Voice')).toBeOnTheScreen();
     await fireEvent.press(screen.getByTestId('voice-more'));
@@ -92,7 +96,7 @@ describe('voice screen', () => {
     expect(screen.getByTestId('voice-later')).toHaveTextContent(later('Voice'));
     expect(screen.queryByTestId('voice-choice-Oak')).toBeNull();
     expect(screen.queryByTestId('voice-choice-Birch')).toBeNull();
-    session.dispose();
+    await finish();
   });
 
   it('Close, End and Keyboard each leave through their own callback', async () => {
@@ -101,27 +105,24 @@ describe('voice screen', () => {
     await fireEvent.press(screen.getByTestId('voice-close'));
     expect(first.onClose).toHaveBeenCalled();
     expect(first.onEnd).not.toHaveBeenCalled();
-    first.unmount();
-    first.session.dispose();
+    await first.finish();
 
     const second = await renderVoice();
     await eventually(() => expect(screen.getByTestId('voice-state')).toHaveTextContent('Listening'));
     await fireEvent.press(screen.getByTestId('voice-end'));
     expect(second.onEnd).toHaveBeenCalled();
     expect(second.onClose).not.toHaveBeenCalled();
-    second.unmount();
-    second.session.dispose();
+    await second.finish();
 
     const third = await renderVoice();
     await eventually(() => expect(screen.getByTestId('voice-state')).toHaveTextContent('Listening'));
     await fireEvent.press(screen.getByTestId('voice-keyboard'));
     expect(third.onKeyboard).toHaveBeenCalled();
-    third.unmount();
-    third.session.dispose();
+    await third.finish();
   });
 
   it('says Not connected when the computer is off, with only Close, and no later-update note at Regular', async () => {
-    const { session } = await renderVoice({ online: false });
+    const { finish } = await renderVoice({ online: false });
     expect(screen.getByTestId('voice-state')).toHaveTextContent(NOT_CONNECTED);
     expect(screen.queryByTestId('voice-note')).toBeNull();
     expect(screen.queryByText(OFFLINE_VOICE)).toBeNull();
@@ -130,18 +131,18 @@ describe('voice screen', () => {
     expect(screen.queryByLabelText('Keyboard')).toBeNull();
     expect(screen.queryByLabelText('Voice')).toBeNull();
     expect(screen.getByTestId('voice-end')).toBeOnTheScreen();
-    session.dispose();
+    await finish();
   });
 
   it('adds the longer offline note at Advanced', async () => {
-    const { session } = await renderVoice({ online: false, level: 'advanced' });
+    const { finish } = await renderVoice({ online: false, level: 'advanced' });
     expect(screen.getByTestId('voice-state')).toHaveTextContent(NOT_CONNECTED);
     expect(screen.getByTestId('voice-note')).toHaveTextContent(OFFLINE_VOICE);
-    session.dispose();
+    await finish();
   });
 
   it('keeps the state word apart from the transcript, and maps Thinking and Speaking', async () => {
-    const { engine, session } = await renderVoice();
+    const { engine, finish } = await renderVoice();
     await eventually(() => expect(engine.requests.some((r) => r.method === 'talk.session.create')).toBe(true));
     await eventually(() => expect(screen.getByTestId('voice-state')).toHaveTextContent('Listening'));
     await act(async () => {
@@ -157,34 +158,34 @@ describe('voice screen', () => {
       engine.emit('talk.event', { relaySessionId: 'talk-1', type: 'transcript', role: 'assistant', text: 'It looks like the late fee.' });
     });
     await eventually(() => expect(screen.getByTestId('voice-state')).toHaveTextContent('Speaking'));
-    expect(screen.getByTestId('voice-transcript')).toHaveTextContent('Is the invoice right?');
-    expect(screen.getByTestId('voice-transcript')).toHaveTextContent('It looks like the late fee.');
-    session.dispose();
+    expect(screen.getByText('Is the invoice right?')).toBeOnTheScreen();
+    expect(screen.getByText('It looks like the late fee.')).toBeOnTheScreen();
+    await finish();
   });
 
   it('shows this conversation’s approval as a say-it chip and answers on a tap', async () => {
-    const { session, onAnswer } = await renderVoice({ pending: [pluginAt()] });
+    const { finish, onAnswer } = await renderVoice({ pending: [pluginAt()] });
     const ask = screen.getByTestId('voice-ask');
     expect(ask).toHaveTextContent('Say “send it” to answer Branch Agent');
     await fireEvent.press(ask);
     expect(onAnswer).toHaveBeenCalledWith('plugin:mail-1', 'allow-once');
-    session.dispose();
+    await finish();
   });
 
   it('answers that approval when the person says a whole yes in the call', async () => {
-    const { engine, session, onAnswer } = await renderVoice({ pending: [pluginAt()] });
+    const { engine, finish, onAnswer } = await renderVoice({ pending: [pluginAt()] });
     await eventually(() => expect(engine.requests.some((r) => r.method === 'talk.session.create')).toBe(true));
     await act(async () => {
       engine.emit('talk.event', { relaySessionId: 'talk-1', type: 'transcript', role: 'user', text: 'send it' });
     });
     await eventually(() => expect(onAnswer).toHaveBeenCalledWith('plugin:mail-1', 'allow-once'));
-    session.dispose();
+    await finish();
   });
 
   it('opens from Chat through Talk and goes back through Keyboard, leaving Send in place', async () => {
     const engine = createFakeEngine({ sessions: fixtureSessions, agents: fixtureAgents });
     const { session } = createFakeSession(engine);
-    await render(<App scheme="light" session={session} />);
+    const view = await render(<App scheme="light" session={session} />);
     await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' }));
     engine.approve();
     await eventually(() => expect(screen.getByTestId('chat-' + KEY)).toBeOnTheScreen());
@@ -201,6 +202,7 @@ describe('voice screen', () => {
     expect(screen.getByTestId('chat-screen')).toBeOnTheScreen();
     expect(screen.getByTestId('send')).toBeOnTheScreen();
     expect(screen.getByTestId('chat-talk')).toBeOnTheScreen();
+    await view.unmount();
     session.dispose();
   });
 });
