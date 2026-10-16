@@ -28,7 +28,7 @@ async function mount(engine: WindowEngine, level: Level = "regular", openSetting
   await act(async () => { root!.render(<LibraryPlace engine={engine} level={level} facts={{ running: 0, waiting: 0 }} openConversation={() => {}} openPlace={() => {}} openSettings={openSettings} />); });
   await act(async () => { await new Promise(r => setTimeout(r, 0)); });
 }
-const button = (label: string) => [...host.querySelectorAll("button")].find(b => b.textContent === label);
+const button = (label: string) => [...document.querySelectorAll("button")].find(b => b.textContent === label);
 async function click(label: string) { const b = button(label); expect(b, label).toBeTruthy(); await act(async () => { b!.click(); }); await act(async () => { await new Promise(r => setTimeout(r, 0)); }); }
 async function type(input: HTMLInputElement, value: string) {
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
@@ -154,6 +154,37 @@ describe("Library › Memory", () => {
   });
   // The scope in use is the checked radio in Whose memory: choosing it again changes nothing, and choosing another moves the
   // check. Before this, the items were plain menu rows, so the crawl read the repeat as dead.
+  // Whose memory and More for memory used to mount inside Library's overflow scroller. Focusing the first
+  // row scrolled that box (and its ResizeObserver), and Chrome logged an occasional console error.
+  it("opens Whose memory and More for memory on the body without a console error", async () => {
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args) => { errors.push(args.map(String).join(" ")); });
+    const press = async (el: HTMLElement) => {
+      await act(async () => {
+        el.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }));
+        el.focus();
+        el.click();
+      });
+      await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    };
+    const { engine } = engineOf(base());
+    await mount(engine);
+    const whose = () => host.querySelector<HTMLButtonElement>('button[aria-label="Whose memory"]')!;
+    const more = () => host.querySelector<HTMLButtonElement>('button[aria-label="More for memory"]')!;
+    await press(whose());
+    const whoseMenu = document.querySelector('[role="menu"][aria-label="Whose memory"]');
+    expect(whoseMenu).not.toBeNull();
+    expect(whoseMenu?.parentElement).toBe(document.body);
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+    await press(more());
+    const memoryMenu = document.querySelector('[role="menu"][aria-label="Memory"]');
+    expect(memoryMenu, errors.join("\n") || "Memory menu").not.toBeNull();
+    expect(memoryMenu?.parentElement).toBe(document.body);
+    await press(whose());
+    expect(document.querySelector('[role="menu"][aria-label="Whose memory"]')?.parentElement).toBe(document.body);
+    expect(errors, errors.join("\n")).toEqual([]);
+    spy.mockRestore();
+  });
   it("checks the scope in use in Whose memory, and moves the check when another Trunk is picked", async () => {
     const { engine } = engineOf(base());
     await mount(engine);

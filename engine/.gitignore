@@ -145,6 +145,7 @@ USER.md
 /client_secret_*.json
 package-lock.json
 !.github/release/clawhub-cli/package-lock.json
+!extensions/harvest/rea-pin/package-lock.json
 !src/commands/copilot-sdk-install-manifest/package-lock.json
 .claude/*
 # Track the shared Claude Code project config (worktree auto-install hook) and the

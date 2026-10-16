@@ -27,7 +27,7 @@ const NO_PERMISSIONS = {
   computerControl: false,
 };
 // Only the owner's pipeline may mark a pack official. Plugin ids listed here may be official; nothing else may.
-export const OFFICIAL_PLUGIN_IDS = new Set(["cerebras"]);
+export const OFFICIAL_PLUGIN_IDS = new Set(["cerebras", "harvest"]);
 const WINDOWS_RESERVED_STEM = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu;
 
 export function permissionsEqual(left, right) {
