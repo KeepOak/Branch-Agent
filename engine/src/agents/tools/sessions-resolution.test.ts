@@ -279,6 +279,25 @@ describe("resolveSessionReference", () => {
     expect(callGatewayMock).toHaveBeenCalledTimes(1);
   });
 
+  it("tells the model to report a missing session in plain words (C1)", async () => {
+    callGatewayMock.mockRejectedValue(new Error("No session found"));
+
+    const result = await resolveSessionReference({
+      action: "send",
+      sessionKey: "a2a:peer-branch--tester",
+      alias: "main",
+      mainKey: "main",
+      requesterInternalKey: "agent:main:main",
+      restrictToSpawned: false,
+    });
+
+    expect(result.ok).toBe(false);
+    const error = result.ok ? "" : result.error;
+    expect(error).toContain("Session not found: a2a:peer-branch--tester");
+    expect(error).toContain("say in plain words that you could not reach that conversation");
+    expect(error).toContain("do not quote this error or the session key");
+  });
+
   it("treats the TUI client label as the requester session", async () => {
     const result = await resolveSessionReference({
       action: "history",

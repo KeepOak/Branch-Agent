@@ -251,7 +251,7 @@ function* cleanSchemaArray(
   return result;
 }
 
-// Adapted from mastra-ai/mastra's GoogleSchemaCompatLayer: Google expects one
+// Google expects one
 // items schema rather than JSON Schema's legacy positional tuple array.
 function* cleanGeminiTupleItems(
   items: unknown[],

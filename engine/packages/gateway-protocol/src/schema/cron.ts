@@ -444,6 +444,8 @@ export const CronJobStateSchema = closedObject({
   runningAtMs: Type.Optional(CronDateTimestampMsSchema),
   lastRunAtMs: Type.Optional(CronDateTimestampMsSchema),
   lastRunStatus: Type.Optional(CronRunStatusSchema),
+  lastCompletionStatus: Type.Optional(CronCompletionStatusSchema),
+  failingSinceMs: Type.Optional(CronDateTimestampMsSchema),
   lastStatus: Type.Optional(DeprecatedCronRunStatusSchema),
   lastError: Type.Optional(Type.String()),
   lastDiagnostics: Type.Optional(CronRunDiagnosticsSchema),

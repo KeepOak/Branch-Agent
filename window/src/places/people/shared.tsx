@@ -10,7 +10,7 @@ import { useOperation, useResource } from "../library/data";
 import { num, rec, recs, rows, str, strs, type Row } from "./data";
 import { Avatar, Empty, Glyph, Section, Seg, Status, Sw } from "./ui";
 
-export const SNAPSHOTS_OFF = "Needs the engine's snapshot inbox.";
+const SNAPSHOTS_OFF = "Needs the engine's snapshot inbox.";
 const OPEN = new Set(["shared", "read-only", "suggest"]);
 const WHO: Record<string, string> = { shared: "Everyone on this Branch may write in it", "read-only": "Everyone on this Branch may read it", suggest: "Everyone on this Branch may suggest" };
 const VIS_NAME: Record<string, string> = { draft: "Only who I add", "read-only": "May read it", suggest: "May suggest", shared: "May write in it" };

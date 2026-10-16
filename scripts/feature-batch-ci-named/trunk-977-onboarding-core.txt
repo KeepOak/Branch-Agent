@@ -1,0 +1,5 @@
+window:src/screens/frame/R1Window.test.tsx
+window:src/screens/onboarding/Onboarding.test.tsx
+window:src/screens/onboarding/glass48.test.tsx
+window:src/screens/onboarding/talk-window.test.tsx
+window:src/screens/onboarding/wire-977.test.tsx

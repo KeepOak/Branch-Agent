@@ -1,2 +1,3 @@
+window:src/places-nav/SettingsFrame.test.tsx
 window:src/places-nav/settings-nav.test.ts
 window:src/places/settings/set1/general.test.tsx

@@ -3,18 +3,19 @@
 // backup.schedule.clear / backup.run; every backup made here leaves out passwords, keys and sign-ins.
 import { useEffect, useState } from "react";
 import type { SettingsPageProps } from "../index";
-import { Acts, Btn, Ctl, Field, Hint, Num, Page, Pill, Sec, Seg, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Field, Hint, Num, Page, Pill, Sec, Seg, Status, type RowEntry } from "../kit";
 import { list } from "../adapter";
 import { CallLine, lvOf, rec, str, useCall, useLive, when, type RecordValue } from "./common";
 
-const DAY = 86_400_000;
-const WEEK = 7 * DAY;
+export const DAY = 86_400_000;
+export const WEEK = 7 * DAY;
 const LEDE = "Save your conversations, memory, files, and settings on a schedule.";
 const LEDE_HELP = "A copy of your conversations, memory, Trunk workspaces (Library documents included), the pictures and other media Trunks made, and settings, on a schedule you choose. Passwords, keys and sign-ins are never included.";
 /** The backup command's media defaults (engine DEFAULT_MEDIA_MAX_FILE_MB / _TOTAL_MB). */
-const MEDIA_FILE_MB = 50;
-const MEDIA_TOTAL_MB = 1024;
+export const MEDIA_FILE_MB = 50;
+export const MEDIA_TOTAL_MB = 1024;
 const GIT_HINT = "A private Git repository you own, such as https://github.com/you/branch-backups.git. Branch pushes to its backups branch with your Git sign-in.";
+const FOLDER_HINT = "A folder on this computer. Branch keeps a Git history of your backups there, so each one can be restored.";
 
 export const ROWS: RowEntry[] = [
   ["Where backups go", "Where", 0], ["How often", "When", 0], ["Back up now", "When", 0], ["Last backup", "When", 0],
@@ -22,14 +23,14 @@ export const ROWS: RowEntry[] = [
 ].map(([title, sec, lv]) => ({ page: "backups", title: String(title), sec: String(sec), group: String(sec), lv: lv as 0 | 1 | 2, words: "backup copy restore git repository folder schedule" }));
 
 type Kind = "folder" | "git";
-type MediaLimits = { mediaMaxFileMb?: number; mediaMaxTotalMb?: number };
-type Destination = { kind: "folder"; path: string } | { kind: "git"; url: string };
+export type MediaLimits = { mediaMaxFileMb?: number; mediaMaxTotalMb?: number };
+export type Destination = { kind: "folder"; path: string } | { kind: "git"; url: string };
 
 /** The Settings-managed schedule: the Git one (backup.status lists one per mode). */
-function gitSchedule(status: RecordValue | undefined): RecordValue | undefined {
+export function gitSchedule(status: RecordValue | undefined): RecordValue | undefined {
   return list(rec(status).schedules).find((s) => s.mode === "git");
 }
-function destinationOf(schedule: RecordValue | undefined): Destination | undefined {
+export function destinationOf(schedule: RecordValue | undefined): Destination | undefined {
   if (!schedule) return undefined;
   if (schedule.push === true) return str(schedule.remote) ? { kind: "git", url: str(schedule.remote) } : undefined;
   return { kind: "folder", path: str(schedule.target) };
@@ -45,6 +46,7 @@ export function BackupsPage(props: SettingsPageProps) {
   const saved = destinationOf(schedule);
   const save = useCall(); const run = useCall();
   const lv = lvOf(props.level);
+  const suggested = str(rec(status.data).suggestedFolder);
   const media: MediaLimits = {
     ...(typeof schedule?.mediaMaxFileMb === "number" ? { mediaMaxFileMb: schedule.mediaMaxFileMb } : {}),
     ...(typeof schedule?.mediaMaxTotalMb === "number" ? { mediaMaxTotalMb: schedule.mediaMaxTotalMb } : {}),
@@ -60,11 +62,16 @@ export function BackupsPage(props: SettingsPageProps) {
     if (v === null) delete next[key]; else next[key] = Math.round(v);
     void save.run(() => set(saved, everyOf(schedule), next), () => "Saved.");
   };
+  const off = everyOf(schedule) === "off";
   return (
     <Page title={props.title} lede={LEDE} help={LEDE_HELP}>
       {status.error ? <p className="hint s2-err" role="alert">{status.error}</p> : null}
+      {off ? <Status tone="warn" title="Backups are off" help="Nothing is copied on a schedule until you turn it on.">
+        {saved ? "Turn on a daily backup to keep your conversations and settings copied." : "Choose a folder below and save it. Nothing is copied until then."}
+        {saved ? <Acts><Btn sm pri disabled={save.busy} onClick={() => void save.run(() => set(saved, "day"), () => "Saved.")}>Turn on daily backup</Btn></Acts> : null}
+      </Status> : null}
       <Sec title="Where">
-        <Where saved={saved} busy={save.busy} onSave={(d) => void save.run(() => set(d, saved ? everyOf(schedule) : "day"), () => "Saved.")}
+        <Where saved={saved} suggested={suggested} advanced={lv >= 1} busy={save.busy} onSave={(d) => void save.run(() => set(d, saved ? everyOf(schedule) : "day"), () => "Saved.")}
           onForget={() => void save.run(async () => { await props.engine.request("backup.schedule.clear", {}); await status.reload(); }, () => "Branch no longer backs up there.")} />
         <CallLine call={save} />
       </Sec>
@@ -95,22 +102,25 @@ export function BackupsPage(props: SettingsPageProps) {
   );
 }
 
-function Where({ saved, busy, onSave, onForget }: { saved?: Destination; busy: boolean; onSave: (d: Destination) => void; onForget: () => void }) {
-  const [kind, setKind] = useState<Kind>(saved?.kind ?? "git");
+function Where({ saved, suggested, advanced, busy, onSave, onForget }: { saved?: Destination; suggested: string; advanced: boolean; busy: boolean; onSave: (d: Destination) => void; onForget: () => void }) {
+  const [kind, setKind] = useState<Kind>(saved?.kind ?? "folder");
   const savedValue = saved ? (saved.kind === "git" ? saved.url : saved.path) : "";
-  const [value, setValue] = useState(savedValue);
+  const [value, setValue] = useState(savedValue || suggested);
   const savedKind = saved?.kind;
   useEffect(() => { if (savedKind) { setKind(savedKind); setValue(savedValue); } }, [savedKind, savedValue]);
+  // The engine's suggestion can arrive after the first render: fill it in while nothing is saved or typed.
+  useEffect(() => { if (!saved && suggested) setValue((current) => current || suggested); }, [saved, suggested]);
   const destination: Destination = kind === "git" ? { kind, url: value.trim() } : { kind, path: value.trim() };
   const changed = value.trim() !== "" && (kind !== saved?.kind || value.trim() !== savedValue);
+  const options = [{ id: "folder", label: "A folder on this computer" }, ...(advanced || kind === "git" ? [{ id: "git", label: "A Git repository" }] : [])];
   return (
     <>
-      <Ctl title="Where backups go" sub={kind === "git" ? "A private Git repository you own." : "A private folder on this computer."} help={kind === "git" ? GIT_HINT : "A private folder on this computer, outside Branch’s own data. It becomes a Git history of your backups."}>
-        <Seg label="Where backups go" value={kind} disabled={busy} options={[{ id: "git", label: "A Git repository" }, { id: "folder", label: "A folder on this computer" }]} onChange={(v) => setKind(v as Kind)} />
+      <Ctl title="Where backups go" sub={kind === "git" ? "A private Git repository you own." : "A folder on this computer."} help={kind === "git" ? GIT_HINT : FOLDER_HINT}>
+        <Seg label="Where backups go" value={kind} disabled={busy} options={options} onChange={(v) => setKind(v as Kind)} />
       </Ctl>
       <Ctl title={kind === "git" ? "Repository address" : "Folder"} stack>
         <Field wide label={kind === "git" ? "Repository address" : "Folder"} value={value} disabled={busy}
-          placeholder={kind === "git" ? "https://github.com/you/branch-backups.git" : "C:\\Users\\you\\Backups\\Branch"} onCommit={setValue} />
+          placeholder={kind === "git" ? "https://github.com/you/branch-backups.git" : suggested || "A folder on this computer"} onCommit={setValue} />
         <Acts>
           <Btn sm pri disabled={busy || !changed} onClick={() => onSave(destination)}>Save</Btn>
           {saved ? <Btn sm ghost disabled={busy} onClick={onForget}>Stop backing up here</Btn> : null}
@@ -120,19 +130,23 @@ function Where({ saved, busy, onSave, onForget }: { saved?: Destination; busy: b
   );
 }
 
-function LastBackup({ status, repository }: { status?: RecordValue; repository: string }) {
+/** The last backup to a repository, as Classic words it: when, what happened, and its pill (none when there is none). */
+export function lastBackup(status: RecordValue | undefined, repository: string): { sub: string; pill?: { tone: "ok" | "warn" | "bad"; label: string } } {
   const t = list(rec(status).targets).find((x) => x.kind === "git" && str(x.target) === repository);
   const latest = rec(t?.latest);
-  if (!repository || !t) return <Ctl title="Last backup" sub={repository ? "None yet." : "Nothing backed up yet."} />;
+  if (!repository || !t) return { sub: repository ? "None yet." : "Nothing backed up yet." };
   const ok = latest.status === "ok";
   const commit = str(latest.target);
-  // A successful run's error field holds its warnings, such as "3 large files skipped (…)".
   const notes = ok && latest.pushFailed !== true && str(latest.error) ? ` ${str(latest.error)}.` : "";
   const what = !ok ? str(latest.error) || "Failed." : latest.pushFailed === true ? `Saved here, but sending it to the repository failed: ${str(latest.error)}` : `${commit ? `Saved as ${commit.slice(0, 10)}.` : "Nothing changed since the one before."}${notes}`;
   const lastOk = rec(t.latestOk);
-  return (
-    <Ctl title="Last backup" sub={<>{when(latest.createdAt)} · {what}{!ok && lastOk.createdAt ? ` Last success: ${when(lastOk.createdAt)}.` : ""}</>}>
-      <Pill tone={ok ? (latest.pushFailed === true ? "warn" : "ok") : "bad"}>{ok ? (latest.pushFailed === true ? "Not sent" : "Succeeded") : "Failed"}</Pill>
-    </Ctl>
-  );
+  return {
+    sub: `${when(latest.createdAt)} · ${what}${!ok && lastOk.createdAt ? ` Last success: ${when(lastOk.createdAt)}.` : ""}`,
+    pill: ok ? (latest.pushFailed === true ? { tone: "warn", label: "Not sent" } : { tone: "ok", label: "Succeeded" }) : { tone: "bad", label: "Failed" },
+  };
+}
+
+function LastBackup({ status, repository }: { status?: RecordValue; repository: string }) {
+  const last = lastBackup(status, repository);
+  return <Ctl title="Last backup" sub={last.sub}>{last.pill ? <Pill tone={last.pill.tone}>{last.pill.label}</Pill> : null}</Ctl>;
 }

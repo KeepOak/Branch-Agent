@@ -1,5 +1,3 @@
-// Adapted from Aider-AI/aider@5dc9490bb35f9729ef2c95d00a19ccd30c26339c
-// aider/coders/wholefile_coder.py: WholeFileCoder.get_edits (update mode).
 export type WholeFileNameSource = "block" | "saw" | "chat";
 export interface WholeFileEdit {
   path: string;
@@ -7,7 +5,7 @@ export interface WholeFileEdit {
   content: string;
 }
 
-/** Aider's whole-file format parser. Paths remain proposals for the guarded writer. */
+/** 's whole-file format parser. Paths remain proposals for the guarded writer. */
 export function parseWholeFileEdits(
   content: string,
   chatFiles: readonly string[],

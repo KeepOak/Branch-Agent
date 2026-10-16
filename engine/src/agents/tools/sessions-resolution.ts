@@ -37,6 +37,15 @@ const CURRENT_SESSION_CLIENT_ALIAS_IDS = new Set<string>([
   GATEWAY_CLIENT_IDS.ANDROID_APP,
 ]);
 
+/** Model-facing miss text; the last sentence keeps raw keys out of owner replies. */
+export function sessionNotFoundError(key: string): string {
+  return (
+    `Session not found: ${key} (use the full sessionKey from sessions_list). ` +
+    "If you tell the user, say in plain words that you could not reach that conversation; " +
+    "do not quote this error or the session key."
+  );
+}
+
 export function resolveMainSessionAlias(cfg: BranchConfig) {
   const mainKey = normalizeMainKey(cfg.session?.mainKey);
   const scope = cfg.session?.scope ?? "per-sender";
@@ -327,7 +336,7 @@ export async function resolveSessionReference(params: {
       notFound: true,
       error: params.restrictToSpawned
         ? `Session not visible from this sandboxed agent session: ${raw}`
-        : `Session not found: ${raw} (use the full sessionKey from sessions_list)`,
+        : sessionNotFoundError(raw),
     };
   }
 
@@ -433,9 +442,7 @@ export async function resolveVisibleSessionReference(params: {
       return {
         ok: false,
         status: "error",
-        error:
-          formatErrorMessage(error) ||
-          `Session not found: ${params.visibilitySessionKey} (use the full sessionKey from sessions_list)`,
+        error: formatErrorMessage(error) || sessionNotFoundError(params.visibilitySessionKey),
         displayKey,
       };
     }

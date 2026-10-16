@@ -1,4 +1,4 @@
-// From NousResearch/hermes-agent@18d125cc1bd9d0e26188ab49bb325427d5945fa2:agent/context_compressor.py (atlas AGENT-LOOP-0102). Converted to TypeScript with Branch canonical messages; optional token tail protects R-1558. Canonical transcript and tool arguments are never edited.
+// Converted to TypeScript with Branch canonical messages; optional token tail protects R-1558. Canonical transcript and tool arguments are never edited.
 
 import { estimateMessagesTokens } from "./compaction-planning.js";
 import type { AgentMessage } from "./runtime/index.js";
