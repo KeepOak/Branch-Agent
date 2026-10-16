@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { AppState, BackHandler, Linking, Platform } from 'react-native';
+import { AppState, BackHandler, Linking, Platform, View } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApprovalAlerts, type AppStateSource, type Notifier, type NotificationPermission } from './src/approvals/approvalAlerts';
 import { ApprovalInbox, trunkOf } from './src/approvals/approvals';
@@ -26,6 +26,7 @@ import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { ChatsScreen } from './src/screens/ChatsScreen';
 import { ComputersScreen } from './src/screens/ComputersScreen';
+import { HomeScreen } from './src/screens/HomeScreen';
 import { EnterCodeScreen } from './src/screens/EnterCodeScreen';
 import { PairedScreen } from './src/screens/PairedScreen';
 import { RefusedScreen } from './src/screens/RefusedScreen';
@@ -35,6 +36,7 @@ import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import type { ColorScheme } from './src/theme/tokens';
+import { PlacesBar, type Place } from './src/ui/PlacesBar';
 import { applyQuietJsUpdate } from './src/updates/ota';
 import { SettingsUpdateCard, UpdateBanner } from './src/updates/UpdateBanner';
 import { useApkUpdate } from './src/updates/useApkUpdate';
@@ -44,6 +46,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 type Route = 'welcome' | 'scan' | 'code';
 type PairedRoute =
+  | { name: 'home' }
   | { name: 'chats' }
   | { name: 'computers' }
   | { name: 'computer'; from?: 'settings' }
@@ -183,9 +186,9 @@ function Shell({
     setRoute('welcome');
   }, [state.step, chats, agents, computers, inbox]);
 
-  // Android's back gesture leaves Computers, Agents, Your computer, Settings, a chat or Approvals for Chats, like the on-screen back button.
+  // Android's back gesture leaves Computers, Agents, Your computer, Settings, a chat or Approvals for Chats, like the on-screen back button. Home is a root, like Chats.
   useEffect(() => {
-    if (state.step !== 'paired' || pairedRoute.name === 'chats') return;
+    if (state.step !== 'paired' || pairedRoute.name === 'chats' || pairedRoute.name === 'home') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (pairedRoute.name === 'computer' && pairedRoute.from === 'settings') setPairedRoute({ name: 'settings' });
       else setPairedRoute(CHATS);
@@ -269,6 +272,31 @@ function Shell({
         // The header follows the list live (a rename, the working dot); the row it was opened from fills in until then.
         const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
         screen = <OpenChat key={row.key} session={session} row={row} online={state.online} onBack={() => setPairedRoute(CHATS)} />;
+      } else if (pairedRoute.name === 'home') {
+        const goPlace = (place: Place) => {
+          if (place === 'home') return;
+          if (place === 'chats') setPairedRoute(CHATS);
+          else if (place === 'inbox') setPairedRoute({ name: 'approvals' });
+          else setPairedRoute({ name: 'settings' });
+        };
+        screen = (
+          <HomeScreen
+            chats={chatList}
+            approvals={approvals}
+            online={state.online}
+            onNewChat={() => setPairedRoute(CHATS)}
+            onComputer={() => setPairedRoute({ name: 'computers' })}
+            onAnswer={(id, decision) => void inbox.answer(id, decision)}
+            onLookFirst={(_id, sessionKey) => {
+              const row = sessionKey ? chatList.rows.find((r) => r.key === sessionKey) : undefined;
+              if (row) setPairedRoute({ name: 'chat', row });
+              else setPairedRoute({ name: 'approvals', focus: _id });
+            }}
+            onPlace={goPlace}
+            onOpenChat={(row) => setPairedRoute({ name: 'chat', row })}
+            updateBanner={updateBanner}
+          />
+        );
       } else if (pairedRoute.name === 'approvals') {
         const chatFor = (key: string) => chatList.rows.find((r) => r.key === key);
         screen = (
@@ -293,20 +321,30 @@ function Shell({
       } else {
         const first = approvals.pending[0];
         const more = approvals.pending.length - 1;
+        const goPlace = (place: Place) => {
+          if (place === 'chats') return;
+          if (place === 'home') setPairedRoute({ name: 'home' });
+          else if (place === 'inbox') setPairedRoute({ name: 'approvals' });
+          else setPairedRoute({ name: 'settings' });
+        };
         screen = (
-          <ChatsScreen
-            list={chatList}
-            online={state.online}
-            searchMessages={searchMessages}
-            onRefresh={() => chats.refresh()}
-            onComputer={() => setPairedRoute({ name: 'computers' })}
-            onAgents={() => setPairedRoute({ name: 'agents' })}
-            onSettings={() => setPairedRoute({ name: 'settings' })}
-            onOpen={(row) => setPairedRoute({ name: 'chat', row })}
-            needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
-            onNeedsYou={() => setPairedRoute({ name: 'approvals' })}
-            updateBanner={updateBanner}
-          />
+          <View style={{ flex: 1 }}>
+            <ChatsScreen
+              list={chatList}
+              online={state.online}
+              searchMessages={searchMessages}
+              onRefresh={() => chats.refresh()}
+              onComputer={() => setPairedRoute({ name: 'computers' })}
+              onAgents={() => setPairedRoute({ name: 'agents' })}
+              onSettings={() => setPairedRoute({ name: 'settings' })}
+              onOpen={(row) => setPairedRoute({ name: 'chat', row })}
+              needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
+              onNeedsYou={() => setPairedRoute({ name: 'approvals' })}
+              updateBanner={updateBanner}
+              bottomExtra={64}
+            />
+            <PlacesBar current="chats" inboxCount={approvals.pending.length} onPlace={goPlace} />
+          </View>
         );
       }
       break;
