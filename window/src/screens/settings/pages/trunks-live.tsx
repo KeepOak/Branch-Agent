@@ -91,6 +91,7 @@ const row = (id: string, card: string, label: string, level: 0 | 1 | 2): Row =>
 /** What the page draws, as rows of the R1 table, so the R1 search finds them and opens Settings › Trunks. */
 export const TRUNK_ROWS: Row[] = [
   row("list.new", "", "A new Trunk", 0),
+  row("list.examples", "", "Try it with examples", 0),
   row("list.group", "", "New group chat", 0),
   row("list.make-default", "", "Make default", 0),
   row("list.share", "", "Share this Trunk", 0),

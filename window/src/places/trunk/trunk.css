@@ -128,6 +128,8 @@ button.tk-prow:disabled:hover { background: none; }
 
 /* Customize › Trunks */
 .tk-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+.tk-examples { display: grid; gap: 8px; margin: 8px 0 2px; }
+.tk-example { min-width: 0; }
 .tk-tab-root { display: flow-root; }
 .tk-list { display: grid; }
 .tk-row { display: flex; align-items: center; gap: 12px; padding: 13px 4px; border-bottom: 1px solid var(--hair17); min-width: 0; }

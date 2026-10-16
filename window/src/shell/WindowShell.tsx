@@ -72,6 +72,7 @@ import { PairDialog } from "../places/customize/pairing";
 import { guideMenuItems } from "./guide-menu";
 import { Palette } from "./Palette";
 import { paletteRows } from "./palette-rows";
+import { startTryExamples } from "../screens/onboarding/try-examples";
 import { PersonMenu, usePersonName } from "./PersonMenu";
 import { SideResizer } from "./Resizer";
 import { rowMenuItems, threadMenuItems } from "./row-menu";
@@ -1839,6 +1840,11 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             openSettings,
             toggleLockdown: lockdown.supported ? toggleLockdown : undefined,
             lockdownOn: lockdown.on,
+            tryExamples: () => {
+              startTryExamples(request);
+              openPlace("customize");
+              window.dispatchEvent(new CustomEvent("branch:place-tab", { detail: { place: "customize", tab: "Trunks" } }));
+            },
           })}
         />
       ) : null}
