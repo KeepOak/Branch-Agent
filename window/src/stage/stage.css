@@ -14,7 +14,7 @@
 .st7-hslot {display:inline-flex;min-width:0;}
 .st7-hslot > .guest-switch {padding:2px;gap:2px;border:0;border-radius:999px;background:var(--fill);}
 .st7-hslot > .guest-switch button {height:26px;padding:0 10px;border-radius:999px;font-weight:400;}
-.st7-hslot > .guest-switch button[aria-pressed="true"] {background:var(--raise);color:var(--ink);font-weight:400;box-shadow:0 1px 3px rgba(0,0,0,.12);}
+.st7-hslot > .guest-switch button[aria-pressed="true"] {background:var(--raise);color:var(--ink);font-weight:400;}
 .st7-sw {display:inline-flex;padding:2px;border-radius:999px;background:var(--fill);gap:2px;}
 .st7-sw button {display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:0;border-radius:999px;background:transparent;font:inherit;font-size:12.5px;color:var(--ink-2);}
 .st7-sw button[aria-pressed="true"] {background:var(--raise);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}

@@ -1429,7 +1429,6 @@ theme	window/src/stage/pane/pane.css	(--ok);border-color:var(--ok);color:#fff;}
 theme	window/src/stage/pane/pane.css	14px; overflow: hidden; background: #fff; }
 theme	window/src/stage/stage.css	(--ok);border-color:var(--ok);color:#fff;}
 theme	window/src/stage/stage.css	,0 0 0 1px var(--line-2);background:#0e1419;}
-theme	window/src/stage/stage.css	0 0;border-radius:9px 9px 0 0;color:#556666;max-width:220px;flex:0 1 auto;min-w
 theme	window/src/stage/stage.css	em {background:var(--accent);color:#fff;}
 theme	window/src/stage/stage.css	hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.55),0 0 0 1px var(--line-2);b
 theme	window/src/stage/stage.css	ius:10px;overflow:hidden;background:#0e1419;cursor:pointer;}
