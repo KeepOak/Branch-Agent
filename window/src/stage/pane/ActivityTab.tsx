@@ -204,7 +204,7 @@ export function ActivityTab({ engine, name, blocks, running, level, focusHelpers
           ))}
         </ol>
       ) : (
-        <p className="pane-empty">No steps yet. What {name} does shows here as it works.</p>
+        <p className="pane-empty">No steps yet.</p>
       )}
       {helpers.length || native.length ? (
         <section ref={helperSection} className="hp-pn" aria-label="Helpers on this task">
