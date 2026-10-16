@@ -98,21 +98,23 @@ export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
 };
 
 /**
- * Settings pages that are a place: Settings › Customize, Automations and Memory & documents open the place that has
- * their controls (Memory & documents opens Library on its Memory tab), never a Settings page of their own.
+ * Settings pages that are a place: Automations and Memory & documents open the place that has their controls
+ * (Memory & documents opens Library on its Memory tab). Customize is an R1 Settings page of its own.
  */
 export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {
-  customize: { place: "customize" },
   autos: { place: "automations" },
   memory: { place: "library", tab: "memory" },
 };
 
 /** The route a link, a saved route or a nav item really opens: a Settings page that is a place (by its id or an old id
- *  for it) opens that place; every other route is itself. */
+ *  for it) opens that place. An old id for Customize opens the R1 Customize page. Every other route is itself. */
 export function resolveRoute(route: Route): Route {
   if (route.kind !== "settings") return route;
-  const target = SETTINGS_PLACE[r1PageFor(route.page)];
-  return target ? { kind: "place", place: target.place } : route;
+  const page = r1PageFor(route.page);
+  const target = SETTINGS_PLACE[page];
+  if (target) return { kind: "place", place: target.place };
+  if (page === "customize" && route.page !== "customize") return { kind: "settings", page: "customize" };
+  return route;
 }
 
 /** Seedbank is Customize's Community now: the Seedbank pill and a saved seedbank route both open Customize in Community. */
