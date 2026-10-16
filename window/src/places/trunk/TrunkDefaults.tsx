@@ -23,7 +23,8 @@ function zones(current: string): string[] {
   return [...new Set([current, host, "UTC", ...all].filter(Boolean))];
 }
 
-export function TrunkDefaults({ engine }: { engine: WindowEngine }) {
+/** heading: false in Settings › Trunks, where these rows sit in the Trunks card with no heading of their own (preview). */
+export function TrunkDefaults({ engine, heading = true }: { engine: WindowEngine; heading?: boolean }) {
   const data = useLoad(async () => readConfig(await engine.request("config.get", {})), "defaults");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,7 +40,7 @@ export function TrunkDefaults({ engine }: { engine: WindowEngine }) {
   };
   return (
     <section className="tk-sec tk-defaults">
-      <h3 className="tk-h">Defaults for every Trunk</h3>
+      {heading ? <h3 className="tk-h">Defaults for every Trunk</h3> : null}
       <p className="tk-hint">A Trunk’s own value, set in its editor at Technical, wins over these.</p>
       {data.error && <p className="tk-error" role="alert">{data.error}</p>}
       {values && <div className="tk-rows">{ROWS.map((row) => (
