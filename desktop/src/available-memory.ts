@@ -1,7 +1,7 @@
 // Memory the OS can actually hand out for a second engine (candidate check / standby).
 // os.freemem() is only unused pages: on macOS that leaves out inactive and purgeable
-// memory, and on Linux it is MemFree rather than MemAvailable (#459). Windows
-// ullAvailPhys is already the right figure, so it stays on os.freemem().
+// memory, on Linux it is MemFree rather than MemAvailable, and on Windows it leaves
+// out standby (#459, #1054).
 import { defaultMemoryNeedBytes, type MemoryMeasure, type MemoryProbe } from "./available-memory-core.mjs";
 export { availableMemory, availableMemoryBytes, type AvailableMemory, type MemoryMeasure, type MemoryProbe } from "./available-memory-core.mjs";
 
@@ -10,7 +10,11 @@ export const CANDIDATE_MIN_FREE_MB_DEFAULT = 6144;
 
 /** Skip line written to desktop.log when there is not enough room for a second engine. */
 export function candidateCheckSkippedLine(bytes: number, measure: MemoryMeasure): string {
-  return `candidate check skipped; ${Math.round(bytes / 2 ** 20)} MB free (${measure})`;
+  const mb = Math.round(bytes / 2 ** 20);
+  if (measure === "available memory") {
+    return `candidate check skipped; ${mb} MB available, not enough to start a second engine`;
+  }
+  return `candidate check skipped; ${mb} MB free (${measure})`;
 }
 
 /**

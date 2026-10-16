@@ -65,10 +65,80 @@ test("macOS without a purgeable line still counts free and inactive pages", () =
   assert.equal(memory.measure, "vm_stat");
 });
 
-test("Windows stays on os.freemem()", () => {
+test("Windows uses available memory, so standby does not skip the candidate check", () => {
+  const strictlyFree = 389 * MIB;
+  let reads = 0;
+  const memory = availableMemory({
+    platform: "win32",
+    meminfo: linuxMeminfo,
+    vmStat: macReport,
+    freemem: strictlyFree,
+    readWindowsAvailable: () => {
+      reads += 1;
+      return "15728640\r\n";
+    },
+  });
+  const min = candidateMinFreeBytes({ envMb: undefined, totalmem: 16 * GIB });
+  assert.equal(reads, 1);
+  assert.equal(memory.bytes, 15 * GIB);
+  assert.equal(memory.measure, "available memory");
+  assert.ok(strictlyFree < min, "old os.freemem() gate would skip");
+  assert.ok(memory.bytes >= min);
+});
+
+test("Windows accepts a supplied FreePhysicalMemory reading", () => {
+  const memory = availableMemory({ platform: "win32", windowsAvailable: " 204800 ", freemem: 389 * MIB });
+  assert.equal(memory.bytes, 200 * MIB);
+  assert.equal(memory.measure, "available memory");
+  const empty = availableMemory({ platform: "win32", windowsAvailable: "0", freemem: 8 * GIB });
+  assert.equal(empty.bytes, 0);
+  assert.equal(empty.measure, "available memory");
+});
+
+test("a Windows probe without a reader stays on os.freemem()", () => {
   const memory = availableMemory({ platform: "win32", meminfo: linuxMeminfo, vmStat: macReport, freemem: 7 * GIB });
   assert.equal(memory.bytes, 7 * GIB);
   assert.equal(memory.measure, "os.freemem");
+});
+
+test("a failed or unreadable Windows reading falls back to os.freemem()", () => {
+  const timedOut = availableMemory({
+    platform: "win32",
+    freemem: 389 * MIB,
+    readWindowsAvailable: () => {
+      throw Object.assign(new Error("timed out"), { code: "ETIMEDOUT" });
+    },
+  });
+  assert.equal(timedOut.bytes, 389 * MIB);
+  assert.equal(timedOut.measure, "os.freemem");
+  const garbage = availableMemory({ platform: "win32", windowsAvailable: "no counter", freemem: 2 * GIB });
+  assert.equal(garbage.bytes, 2 * GIB);
+  assert.equal(garbage.measure, "os.freemem");
+  const blank = availableMemory({ platform: "win32", windowsAvailable: "\n", freemem: 1 * GIB });
+  assert.equal(blank.bytes, 1 * GIB);
+  assert.equal(blank.measure, "os.freemem");
+});
+
+test("Linux and macOS ignore the Windows available-memory reader", () => {
+  const readWindowsAvailable = () => {
+    throw new Error("Windows reader must not run");
+  };
+  const linux = availableMemory({ platform: "linux", meminfo: linuxMeminfo, freemem: 1, readWindowsAvailable });
+  assert.equal(linux.bytes, 8388608 * 1024);
+  assert.equal(linux.measure, "MemAvailable");
+  const darwin = availableMemory({ platform: "darwin", vmStat: macReport, freemem: 1, readWindowsAvailable });
+  assert.equal(darwin.bytes, (5120 + 371200 + 32768) * PAGE);
+  assert.equal(darwin.measure, "vm_stat");
+});
+
+test("the Windows reader is a hidden PowerShell query with a timeout", () => {
+  const source = readFileSync(new URL("../../engine/scripts/lib/available-memory.mjs", import.meta.url), "utf8");
+  assert.match(source, /powershell\.exe/);
+  assert.match(source, /Get-CimInstance Win32_OperatingSystem/);
+  assert.match(source, /FreePhysicalMemory/);
+  assert.match(source, /windowsHide:\s*true/);
+  assert.match(source, /timeout:\s*WINDOWS_AVAILABLE_TIMEOUT_MS/);
+  assert.equal(source.includes("WINDOWS_AVAILABLE_TIMEOUT_MS = 3_000"), true);
 });
 
 test("a failed or unreadable probe falls back to os.freemem()", () => {
@@ -114,6 +184,11 @@ test("the skip log names the measure that produced the byte count", () => {
   );
   const linux = availableMemory({ platform: "linux", meminfo: "unreadable", freemem: 324 * MIB });
   assert.equal(candidateCheckSkippedLine(linux.bytes, linux.measure), "candidate check skipped; 324 MB free (os.freemem)");
+  const windows = availableMemory({ platform: "win32", windowsAvailable: "204800", freemem: 389 * MIB });
+  assert.equal(
+    candidateCheckSkippedLine(windows.bytes, windows.measure),
+    "candidate check skipped; 200 MB available, not enough to start a second engine",
+  );
 });
 
 test("the candidate and standby gates use reclaimable memory and name the measure", () => {
@@ -122,4 +197,5 @@ test("the candidate and standby gates use reclaimable memory and name the measur
   assert.match(main, /availableMemory\(\)/);
   assert.match(main, /candidateMinFreeBytes\(\)/);
   assert.match(main, /candidateCheckSkippedLine\(available, measure\)/);
+  assert.match(main, /candidateCheckSkippedLine\(bytes, measure\)/);
 });
