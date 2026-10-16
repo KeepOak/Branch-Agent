@@ -1,6 +1,6 @@
 // Starts the Branch engine gateway as a child process (as the early copy's start.sh does) and stops it by PID.
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { closeSync, openSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
@@ -9,6 +9,7 @@ import type { DesktopConfig } from "./config";
 import { appendCappedLog, BRANCH_LOG_LIMITS, cappedLogStream } from "./log-rotation";
 import { prepareNormalProfile, readPreparedNormalProfile } from "./profile-migration";
 import { recordEngine } from "./engine-records";
+import { engineSpawnOptions } from "./engine-spawn";
 import { saveUnlessDiskFull } from "./disk-full";
 import { engineLingerArgs, engineServiceArgs, parseLingerAnswer, runEngineCli, type EngineServiceAction } from "./engine-service";
 import { HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
@@ -134,13 +135,15 @@ export function startGateway(cfg: DesktopConfig, engineDir: string, token: strin
   // The Mac driver secret must not leak to any child of the gateway.
   delete env.BRANCH_CUA_DRIVER_ENDPOINT;
   const args = ["branch.mjs", "gateway", ...(profile.legacyDevMode ? ["--dev"] : []), "--port", String(port)];
-  const child = spawn(cfg.nodePath, args, {
-    cwd: engineDir,
-    env,
-    windowsHide: true,
-    detached: process.platform !== "win32",
-    stdio: ["ignore", "pipe", "pipe", "ipc"],
-  });
+  // A detached engine writes to the log file itself: a pipe would break when the UI that owns it has exited.
+  const detachedEngine = cfg.detachedEngine === true;
+  const logFd = detachedEngine ? openSync(logPath, "a") : undefined;
+  let child: ChildProcess;
+  try {
+    child = spawn(cfg.nodePath, args, engineSpawnOptions({ platform: process.platform, detachedEngine, env, cwd: engineDir, logFd }));
+  } finally {
+    if (logFd !== undefined) closeSync(logFd);
+  }
   // Record the spawn before querying its start time, so a crash cannot lose the engine.
   recordEngine(cfg.dataDir, child, port, standby ? "standby" : "engine", cfg.nodePath);
   if (endpointFile) child.once("close", () => { try { unlinkSync(endpointFile); } catch { /* already removed */ } });

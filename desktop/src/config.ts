@@ -34,6 +34,12 @@ export interface DesktopConfig {
    * false keeps the engine inside the app as before. A service that cannot be installed falls back to that by itself.
    */
   alwaysOn?: boolean;
+  /**
+   * The engine outlives the app: it is started detached on every OS (outside Windows' kill-on-close job) and quit
+   * leaves it running; the next launch attaches to it. Off by default; set true in desktop.json to try it.
+   * While this is on, the desktop starts that detached child instead of the always-on service.
+   */
+  detachedEngine?: boolean;
 }
 
 function isFile(file: string): boolean {

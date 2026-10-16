@@ -40,7 +40,7 @@ import { DISK_FULL_MESSAGE, diskIsFull, installDiskFullGuard, onDiskFullChange, 
 /** How much of each log the report reads from the end. The time window then keeps only recent lines. */
 const REPORT_TAIL_BYTES = 4 * 1024 * 1024;
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
-import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
+import { clearEngineRecords, findSurvivingEngine, retireRecordedEngines } from "./engine-records";
 import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
@@ -610,6 +610,8 @@ function watchAdmission(label: string, knownRefused: ReadonlySet<string>): void 
 
 /** Seamless handoff is on by default; desktop.json can set seamlessHandoff to false for drain-first updates. */
 const seamlessHandoff = (): boolean => cfg.seamlessHandoff !== false;
+/** desktop.json detachedEngine: the engine outlives quit and the next launch attaches to it (off by default). */
+const detachedEngine = (): boolean => cfg.detachedEngine === true;
 
 /**
  * Old engines from the moment step-down is sent: quitting stops them (shutdown), a crash leaves their
@@ -1356,10 +1358,15 @@ async function start(): Promise<void> {
   if (install) await pruneWindowsInstall(install, log).catch((error: unknown) => log(`desktop version prune: ${String(error)}`));
   // Shortcuts open the stable launcher at the install root, never a version folder that a prune can remove.
   if (install && !TEST_COPY) void ensureWindowsLauncher(cfg, install, log).catch((error: unknown) => log(`windows launcher: ${String(error)}`));
+  // A detached engine the last session left running is attached to; every other engine from it is retired.
+  // The flag is off by default, so the always-on service path below is unchanged until desktop.json sets it.
+  const survivor = detachedEngine() ? await findSurvivingEngine(cfg.dataDir, cfg.gatewayPort) : undefined;
   // Engines the last session started and left running (a crash mid-update): retire them before starting our own.
-  await retireRecordedEngines(cfg.dataDir, log);
+  await retireRecordedEngines(cfg.dataDir, log, survivor?.pid);
   // Always on: an engine service already serving the gateway port is attached to, never replaced.
-  for (const port of cfg.alwaysOn ? [cfg.windowPort] : [cfg.gatewayPort, cfg.windowPort]) {
+  // With detachedEngine on, the desktop owns a detached child instead, so both ports are checked as before the service.
+  for (const port of cfg.alwaysOn && !detachedEngine() ? [cfg.windowPort] : [cfg.gatewayPort, cfg.windowPort]) {
+    if (survivor && port === cfg.gatewayPort) continue;
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
   }
   await refuseOrphanedEngine();
@@ -1373,7 +1380,9 @@ async function start(): Promise<void> {
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);
   await win.loadURL(windowUrl());
   log(`window loaded after ${Date.now() - launchStarted} ms`);
-  if (await (cfg.alwaysOn ? attachServiceEngine() : bootSelectedEngine())) {
+  if (survivor) {
+    log(`attached to the engine the last session left running (pid ${survivor.pid}, port ${survivor.port})`);
+  } else if (await (cfg.alwaysOn && !detachedEngine() ? attachServiceEngine() : bootSelectedEngine())) {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
@@ -1869,7 +1878,8 @@ async function stopCompletely(): Promise<void> {
 /** Quitting stops an idle engine cleanly, so the next launch skips the stale-lease integrity pass. */
 let quitAfterCleanStop = false;
 function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
-  if (quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
+  // A detached engine is left running on purpose: quit must not wait on its drain.
+  if (detachedEngine() || quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
   event.preventDefault();
   quitting = true;
   quitAfterCleanStop = true;
@@ -1883,8 +1893,12 @@ function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
 function shutdown(): void {
   quitting = true;
   admissionWatch?.abort();
+  // A detached engine keeps serving with its records, so the next launch attaches. A handoff in flight stops it as before.
+  const keepEngine = detachedEngine() && retiring.size === 0;
   // Quit is instant with the engine service: it keeps working and drains on its own timeline.
-  log(serviceEngine ? "quit; the engine service keeps running" : `quit; stopping gateway pid ${gateway?.pid}`);
+  log(keepEngine
+    ? `quit: the engine${gateway ? ` (pid ${gateway.pid})` : ""} keeps running`
+    : serviceEngine ? "quit; the engine service keeps running" : `quit; stopping gateway pid ${gateway?.pid}`);
   gatewaySupervisor.close();
   serviceWatch.stop();
   stopEngineWatch?.();
@@ -1899,8 +1913,11 @@ function shutdown(): void {
   for (const child of retiring.keys()) stopGateway(child);
   if (standby) stopGateway(standby.child);
   standby = undefined;
-  if (gateway) stopGateway(gateway);
-  clearEngineRecords(cfg.dataDir);
+  // A detached engine and its record stay, so the next launch can attach. Retiring engines and a standby were already stopped.
+  if (!keepEngine) {
+    if (gateway) stopGateway(gateway);
+    clearEngineRecords(cfg.dataDir);
+  }
   void macComputerDriver?.stop();
   server?.close();
   // The next launch starts on the configured port; never leave a moved, dead port for the branch command to dial.
