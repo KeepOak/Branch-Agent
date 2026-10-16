@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { ScrollView, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import App from '../../App';
 import { bytesToBase64Url, utf8ToBytes } from '../connect/base64url';
 import { createFakeSession } from '../testing/fakeSession';
@@ -32,16 +32,17 @@ describe('pairing chrome', () => {
     }
   });
 
-  it('hides scrollbars on pairing screens while still scrolling', () => {
-    const view = render(
+  it('hides scrollbars on pairing screens while still scrolling', async () => {
+    await render(
       <ThemeProvider scheme="light">
         <Screen hideScrollbars testID="hidden-scroll">
           <Button title="Go" onPress={() => undefined} />
         </Screen>
       </ThemeProvider>,
     );
-    expect(view.UNSAFE_getByType(ScrollView).props.showsVerticalScrollIndicator).toBe(false);
-    expect(view.UNSAFE_getByType(ScrollView).props.showsHorizontalScrollIndicator).toBe(false);
+    const scroll = screen.getByTestId('hidden-scroll-scroll');
+    expect(scroll.props.showsVerticalScrollIndicator).toBe(false);
+    expect(scroll.props.showsHorizontalScrollIndicator).toBe(false);
   });
 
   it('draws the preview welcome: mark, promise, how pairing works, one pair button', async () => {
@@ -54,10 +55,12 @@ describe('pairing chrome', () => {
     );
     expect(screen.getByRole('header')).toHaveTextContent('Branch');
     expect(screen.getByText('Your Trunks, in your pocket.')).toBeOnTheScreen();
-    expect(screen.getByTestId('pairing-promise')).toHaveTextContent('Your Trunks run on your own computer.');
-    expect(screen.getByTestId('pairing-promise')).toHaveTextContent('Connect this phone by scanning a code.');
-    expect(screen.getByTestId('pairing-steps')).toHaveTextContent('How pairing works');
-    expect(screen.getByTestId('pair-button')).toHaveTextContent('Pair with your computer');
+    expect(screen.getByText('Your Trunks run on your own computer.')).toBeOnTheScreen();
+    expect(screen.getByText('Connect this phone by scanning a code.')).toBeOnTheScreen();
+    expect(screen.getByTestId('pairing-promise')).toBeOnTheScreen();
+    expect(screen.getByText('How pairing works')).toBeOnTheScreen();
+    expect(screen.getByTestId('pairing-steps')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Pair with your computer' })).toBeOnTheScreen();
     expect(StyleSheet.flatten(screen.getByTestId('pair-button').props.style).backgroundColor).toBe(themeFor('light').color.ink);
   });
 
