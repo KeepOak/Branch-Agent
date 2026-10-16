@@ -289,7 +289,8 @@ export class VoiceCall {
   /** The Trunk's final words for a run (shared.ts waitForChatResult). */
   private waitFor(runId: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => done(() => reject(new Error("The Trunk took too long to answer."))), 120_000);
+      // Only this call stops waiting here; the engine run is not cancelled and may still be going.
+      const timer = setTimeout(() => done(() => reject(new VoiceWaitTimeout("The Trunk took too long to answer."))), 120_000);
       const off = this.engine.onEvent((e) => {
         const p = rec(e.payload);
         if (e.event !== "chat" || str(p.runId) !== runId) return;
@@ -305,10 +306,15 @@ export class VoiceCall {
   }
 }
 
+/** The call gave up waiting for the run's reply. Nothing cancelled the run, so it may still be working. */
+export class VoiceWaitTimeout extends Error {}
+
 /** The short line a call says when the Trunk's turn fails, is stopped or runs out of time (atlas VOICE-0126). */
 export function spokenEnding(e: unknown): string {
+  // The wait timing out is not the work stopping: never say it stopped, and don't invite a retry that could run it twice.
+  if (e instanceof VoiceWaitTimeout) return "That's taking longer than I can wait on this call. It may still be running, so check the chat before you ask again.";
   const why = e instanceof Error ? e.message : String(e);
-  if (/too long|timed? ?out|budget/i.test(why)) return "That took longer than I'm allowed, so I stopped. Ask me again if you still need it.";
+  if (/timed? ?out|budget/i.test(why)) return "That took longer than I'm allowed, so I stopped. Ask me again if you still need it.";
   if (/stopped|aborted|cancel/i.test(why)) return "I stopped that one. Tell me if you want me to try again.";
   return "Something went wrong and I couldn't finish that. You can ask me again.";
 }

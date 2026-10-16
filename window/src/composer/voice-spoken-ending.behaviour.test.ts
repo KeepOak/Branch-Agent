@@ -1,8 +1,8 @@
 // Atlas VOICE-0126 (built fresh): a spoken turn always ends with speech. When the Trunk's turn behind a call
 // fails, is stopped or runs out of time, the call hands the voice a short sentence to say, never silence.
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
-import { spokenEnding, VoiceCall } from "./voice";
+import { spokenEnding, VoiceCall, VoiceWaitTimeout } from "./voice";
 
 type Listener = (e: { event: string; payload?: unknown }) => void;
 
@@ -18,7 +18,9 @@ function callWith(toolCall: () => Promise<unknown>) {
     await vi.waitFor(() => expect(listener).not.toBeNull());
     listener?.({ event: "chat", payload });
   };
-  return { request, emit };
+  /** True once the call is subscribed to the run's chat events, which is when its wait timer starts. */
+  const listening = () => listener !== null;
+  return { request, emit, listening };
 }
 
 const spoken = (request: ReturnType<typeof vi.fn>) =>
@@ -45,9 +47,36 @@ describe("a spoken turn always ends with speech", () => {
     expect(spoken(request)[0]).toEqual({ result: "Something went wrong and I couldn't finish that. You can ask me again." });
   });
 
-  it("names running out of time or budget", () => {
-    expect(spokenEnding(new Error("The Trunk took too long to answer."))).toBe("That took longer than I'm allowed, so I stopped. Ask me again if you still need it.");
+  describe("when the call stops waiting before the run answers", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("says the work may still be running, not that it stopped, after the real 120-second wait", async () => {
+      vi.useFakeTimers();
+      const { request, emit, listening } = callWith(async () => ({ runId: "run3" }));
+      for (let i = 0; i < 20 && !listening(); i++) await Promise.resolve();
+      expect(listening()).toBe(true);
+      expect(request).toHaveBeenCalledWith("talk.client.toolCall", expect.anything());
+      await vi.advanceTimersByTimeAsync(119_999);
+      expect(spoken(request)).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      for (let i = 0; i < 20 && spoken(request).length === 0; i++) await Promise.resolve();
+      expect(spoken(request)).toEqual([{ result: "That's taking longer than I can wait on this call. It may still be running, so check the chat before you ask again." }]);
+      expect(String(spoken(request)[0]?.result)).not.toMatch(/stopped|try again|ask me again/i);
+      // The run is still pending: nothing claimed to cancel it, and a late answer is not spoken twice.
+      expect(request.mock.calls.map(([m]) => m)).toEqual(["talk.client.toolCall", "talk.session.submitToolResult"]);
+      await emit({ runId: "run3", state: "final", message: { content: "done late" } });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(spoken(request)).toHaveLength(1);
+    });
+  });
+
+  it("names a run the Trunk itself ended for time or budget", () => {
+    expect(spokenEnding(new VoiceWaitTimeout("The Trunk took too long to answer."))).toMatch(/may still be running/);
+    expect(spokenEnding(new Error("The Trunk took too long to answer."))).not.toMatch(/longer than I'm allowed/);
     expect(spokenEnding(new Error("token budget exhausted"))).toMatch(/longer than I'm allowed/);
+    expect(spokenEnding(new Error("run timed out"))).toMatch(/longer than I'm allowed/);
   });
 
   it("never hands the voice an empty line", () => {
