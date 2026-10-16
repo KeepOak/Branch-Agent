@@ -25,6 +25,7 @@ import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
+import { createShellRelaunch } from "./shell-relaunch";
 import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
@@ -886,6 +887,8 @@ const autoApply = createAutoApplyUpdate({
     const engine = await gatewayActivity(gateway);
     return Math.max(engine.activeRuns, engine.totalActive);
   },
+  // Only a staged desktop app left: it applies by a quit and relaunch, so it waits for no run in flight (Private #1054).
+  relaunchesApp: async version => (await readComponentUpdateStatus(cfg)).componentsPendingVersion !== version,
   // A release published as a security fix skips the Trunk-work batching.
   securityFix: async version => {
     const status = await readComponentUpdateStatus(cfg);
@@ -931,15 +934,22 @@ const autoApply = createAutoApplyUpdate({
 });
 
 /**
- * A staged desktop app applies at an idle gap (the auto-apply check already saw no Trunk working): the helper swaps it
- * in once this app has exited and relaunches it. The normal quit runs, so the engine stops as on any quit.
+ * A staged desktop app applies at an idle gap (the auto-apply check already saw no run in flight): the helper swaps it
+ * in once this app has exited and relaunches it, with the window open or in the tray as it was. The normal quit runs,
+ * so the engine is kept or stops cleanly as on any quit.
  */
+const shellRelaunch = createShellRelaunch({
+  handOff: async args => {
+    if (!install) throw new Error("this copy of Branch Agent cannot update itself");
+    return handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), args, false);
+  },
+  quit: () => app.quit(),
+  argv: process.argv.slice(1),
+  windowShown: () => Boolean(win && !win.isDestroyed() && win.isVisible()),
+  log,
+});
 async function relaunchForDesktopUpdate(): Promise<void> {
-  if (!install) throw new Error("this copy of Branch Agent cannot update itself");
-  const handed = await handOffDesktopUpdate(cfg, install, join(__dirname, "desktop-update-helper.js"), process.argv.slice(1), false);
-  if (!handed) throw new Error("the staged desktop update could not be handed to the update helper");
-  log("desktop update staged; handing off to the update helper at an idle gap and quitting");
-  app.quit();
+  await shellRelaunch();
 }
 
 /**
