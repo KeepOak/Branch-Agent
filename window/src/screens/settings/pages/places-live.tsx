@@ -11,11 +11,13 @@ import { FEATURES_LEDE, FeaturesPage } from "../../features/FeaturesPage";
 import type { FeatureHome } from "../../features/atlas";
 import { Seedbank } from "../../seedbank/Seedbank";
 import type { WindowEngine } from "../../../connect/engine";
+import { COMING_FROM } from "../rows";
 import { useLevel } from "../SettingsFrame";
 import type { PageSlots } from "../slots";
 
 /** Go to's tiles, in the approved preview's order and words (preview.html Go to, PG goto): each place with its one-line
- *  subtitle. Harvest, Workshop and This computer have no place in this window yet, so their tiles are Coming. */
+ *  subtitle. Harvest, Workshop and This computer have no place in this window yet, so their tiles are Coming, and like
+ *  every Coming row they show only from Advanced (rows.ts COMING_FROM). */
 export const GOTO_TILES: { id: string; name: string; sub: string; place?: PlaceId }[] = [
   { id: "overview", name: "Overview", sub: "Today at a glance", place: "overview" },
   { id: "canopy", name: "Canopy", sub: "Every Trunk’s work, side by side", place: "canopy" },
@@ -23,7 +25,7 @@ export const GOTO_TILES: { id: string; name: string; sub: string; place?: PlaceI
   { id: "automations", name: "Automations", sub: "What runs by itself", place: "automations" },
   { id: "library", name: "Library", sub: "Files, memory and knowledge", place: "library" },
   { id: "people", name: "People", sub: "Who your Trunks know", place: "people" },
-  { id: "customize", name: "Customize", sub: "What your Trunks can do", place: "customize" },
+  { id: "customize", name: "Customize", sub: "Trunks, tools, specialists, channels", place: "customize" },
   { id: "harvest", name: "Harvest", sub: "Everything your Trunks made" },
   { id: "grove", name: "Grove", sub: "Your Trunks at their desks", place: "office" },
   { id: "seedbank", name: "Seedbank", sub: "Agents, skills, tools, plugins, connections", place: "seedbank" },
@@ -45,15 +47,17 @@ function useBadges(engine: WindowEngine): Record<string, number> {
   return badges;
 }
 
-/** Go to: the preview's line, then every page in Branch, each opening its place. */
+/** Go to: the preview's line, then every page in Branch, each opening its place. Regular shows only what works today. */
 function GoTo({ engine, go }: { engine: WindowEngine; go: (route: Route) => void }) {
   const badges = useBadges(engine);
+  const [level] = useLevel(engine);
+  const tiles = level < COMING_FROM ? GOTO_TILES.filter((tile) => tile.place) : GOTO_TILES;
   return (
     <div className="r1s-col">
       <p className="r1s-lede g-label" data-lines>{GOTO_LEDE}</p>
       <section className="r1s-sec g-clear" aria-label="Places">
         <ul className="r1s-goto">
-          {GOTO_TILES.map((tile) => {
+          {tiles.map((tile) => {
             const body = <span className="r1s-item-t"><b>{tile.name}{badges[tile.id] ? <em className="r1s-badge" data-need={tile.id === "inbox" ? "sessions.list" : "users.list"}>{badges[tile.id]}</em> : null}</b><small>{tile.sub}</small></span>;
             return (
               <li key={tile.id}>
