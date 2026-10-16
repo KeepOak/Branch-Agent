@@ -59,6 +59,8 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=256'
         run: npm run build
+      - name: Check the owner's browser guest policy (partition, sandbox, navigation and popup rules)
+        run: node --test src/browser-guest-policy.test.ts
       - name: Check available memory
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
@@ -67,11 +69,44 @@ jobs:
         run: node --test scripts/component-release-readiness.test.mjs
       - name: Check release publication order and public latest retries
         run: node --test scripts/publish-component-release.test.mjs
+      - name: Check the installer builder and its signing hooks
+        run: node --test scripts/release-installers.test.mjs scripts/windows-launcher-icon.test.mjs scripts/release-signing.test.mjs
+      - name: Check the one-line install scripts against a fixture release
+        run: node --test scripts/install-scripts.test.mjs
+      - name: Check desktop auto-update end to end on each platform's path
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --test scripts/auto-update-e2e.test.mjs
+      - name: Lint install.sh with shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck -s sh install/install.sh
+      - name: Lint install.ps1 with PSScriptAnalyzer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        # PSScriptAnalyzer 1.23.0 pinned by digest (the PowerShell Gallery's own SHA-512 packageHash for that version,
+        # plus the SHA-256 of the same .nupkg). Checked before it is unpacked or imported.
+        env:
+          PSA_SHA256: b9969345f78251112fb75bdddc789be8689a343472a2e09762303aa03287afab
+        run: |
+          $nupkg = Join-Path $env:RUNNER_TEMP 'psscriptanalyzer.1.23.0.nupkg'
+          Invoke-WebRequest -Uri 'https://cdn.powershellgallery.com/packages/psscriptanalyzer.1.23.0.nupkg' -OutFile $nupkg
+          $actual = (Get-FileHash -Algorithm SHA256 -Path $nupkg).Hash.ToLowerInvariant()
+          if ($actual -ne $env:PSA_SHA256) { throw "PSScriptAnalyzer download does not match its pinned digest ($actual). Nothing was imported." }
+          $module = Join-Path $env:RUNNER_TEMP 'PSScriptAnalyzer'
+          Expand-Archive -Path $nupkg -DestinationPath $module -Force
+          Import-Module (Join-Path $module 'PSScriptAnalyzer.psd1') -Force
+          $issues = @(Invoke-ScriptAnalyzer -Path install/install.ps1 -Severity Warning,Error)
+          $issues | Format-Table -AutoSize | Out-String | Write-Output
+          if ($issues.Count -gt 0) { exit 1 }
       - name: Check updates, startup and owned process cleanup
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
           NODE_OPTIONS: '--max-old-space-size=96'
         run: node --max-old-space-size=96 --test scripts/auto-apply-update.test.mjs scripts/available-memory.test.mjs scripts/component-update-ipc.test.mjs scripts/component-update.test.mjs scripts/desktop-controls.test.mjs scripts/desktop-update.test.mjs scripts/gateway-ready.test.mjs scripts/gateway-supervisor.test.mjs scripts/hidden-processes.test.mjs scripts/mac-computer-driver.test.mjs scripts/profile-migration.test.mjs scripts/resident-window.test.mjs scripts/restart-engine.test.mjs scripts/update-lock.test.mjs scripts/window-state.test.mjs
+      - name: Check the always-on engine service (attach, one engine, fallback; Windows outlives the app; tray, stop, service updates; keep-awake, notifications, health, linger)
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --test scripts/engine-service.test.mjs scripts/engine-service-windows.test.mjs scripts/always-on-tray-updates.test.mjs scripts/always-on-power-settings.test.mjs
       - name: Check component release archive scale
         working-directory: ${{ github.workspace }}
         env:
@@ -84,11 +119,17 @@ jobs:
       - name: Check immutable release inventory and bootstrap targets
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
-        run: node --test scripts/brand-icons.test.mjs scripts/linux-launcher.test.mjs scripts/mac-applications.test.mjs scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs scripts/release-source-freeze.test.mjs scripts/release-production-layout.test.mjs
+        run: node --test scripts/brand-icons.test.mjs scripts/linux-launcher.test.mjs scripts/mac-applications.test.mjs scripts/mac-release-signing.test.mjs scripts/release-inventory.test.mjs scripts/production-engine-smoke.test.mjs scripts/release-source-freeze.test.mjs scripts/release-production-layout.test.mjs
+      - name: Check the engine payload prune and size budget
+        run: node --test scripts/release-payload.test.mjs
       - name: Check the diagnostics log, redaction, problem report and archive
         env:
           BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
         run: node --test scripts/diagnostics.test.mjs
+      - name: Check the desktop log caps and rotation
+        env:
+          BRANCH_DESKTOP_TEST_DIST: ${{ github.workspace }}/desktop/dist
+        run: node --test scripts/log-rotation.test.mjs
       - name: Check documentation merge command patterns
         working-directory: ${{ github.workspace }}
         run: node --test scripts/check-merge-command.test.mjs

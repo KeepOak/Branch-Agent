@@ -1,0 +1,135 @@
+// The message hover bar (owner item 40, HANDOFF §2 #17): exactly three buttons, React, Reply and •••, in control
+// glass. ••• opens the message menu. Copy, Reply and Retry are on every message that can use them. Edit is only
+// passed for your own last message. "Show what it did" replaces Look inside at the Technical level. The preview's
+// other rows stay: Pin, Read aloud, Branch from here, context, Share as a picture…, Continue in a coding app… and
+// Delete. Share and Continue stay greyed with their reason. Each row runs its engine call (thread/useMessageActions)
+// through <Coming need=…>, or shows Coming with its reason. Copy, its submenu, Look inside and Show what it did
+// are local (data-local): they make no engine call.
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Coming } from "../../glass/coming";
+import { Popover } from "../../glass/Popover";
+import { useLevel } from "../../places-nav/level";
+import { Icon, type IconName } from "../../shell/icons";
+import { copyText, useThread } from "../../thread/context";
+import { fullTime, messageTime, modelName } from "../../thread/format";
+import type { Act, HoverActions } from "../../thread/HoverBar";
+import { Icon as PathIcon, ICONS } from "../../thread/icons";
+import type { MessageMeta } from "../../thread/model";
+import { plainText } from "./chat-logic";
+import "./message-menu.css";
+
+const QUICK = ["👍", "❤️", "🎉", "👀", "🚀", "😂"];
+
+type Need = { need: string | readonly string[]; reason: string };
+
+/** Rows that work today, with the engine calls they make (thread/actions.ts, thread/useMessageActions.tsx,
+ *  thread/read-aloud.ts). On an engine without one of these calls the row turns Coming with its reason. */
+const NEEDS = {
+  again: { need: ["sessions.rewind", "chat.send"], reason: "This engine can’t go back in a conversation to try again." },
+  edit: { need: ["sessions.rewind", "chat.send"], reason: "This engine can’t go back in a conversation to edit a message." },
+  read: { need: "talk.speak", reason: "This engine has no voice to read replies aloud." },
+  branch: { need: "sessions.fork", reason: "This engine can’t branch a conversation." },
+  context: { need: "session.context.set", reason: "This engine can’t leave a message out of context." },
+  pin: { need: "sessions.messages.pin", reason: "This engine can’t pin a message." },
+  remove: { need: "sessions.messages.delete", reason: "This engine can’t delete one message." },
+} as const satisfies Record<string, Need>;
+
+/** One reason for Reply: it only sends, so without chat.send nothing can be sent at all. */
+const REPLY_NEED: Need = { need: "chat.send", reason: "This engine can’t send messages." };
+
+/** Rows this window doesn't make the call for yet. They stay greyed with their reason whatever the engine offers. */
+const SOON = {
+  picture: { need: "sessions.messages.share", reason: "Sharing a message as a picture comes in a later update." },
+  coding: { need: "sessions.handoff", reason: "Carrying a conversation into a coding app on this computer needs the Branch app." },
+} as const;
+
+function SoonRow({ icon, label, soon }: { icon: IconName; label: string; soon: { need: string; reason: string } }) {
+  return <Coming need={soon.need} unwired reason={soon.reason} where={label}>
+    <button type="button" role="menuitem" className="r1c-mi"><Icon name={icon} size={15} /><span className="r1c-mi-t">{label}</span></button>
+  </Coming>;
+}
+
+/** A row that runs now. With "need" it calls the engine and goes through Coming; without it the row is local
+ *  (Copy, Look inside) and says so with data-local. */
+function Row({ icon, label, act, onDone, danger, hint, need }: { icon: IconName; label: string; act?: Act | null; onDone: () => void; danger?: boolean; hint?: ReactNode; need?: Need }) {
+  if (!act) return null;
+  const why = act.disabled ? (act.waiting ? "Available when the agent finishes." : act.disabled) : null;
+  const row = <button type="button" role="menuitem" className="r1c-mi" data-danger={danger || undefined} data-local={need ? undefined : ""} aria-disabled={why ? "true" : undefined} title={why ?? undefined}
+    onClick={() => { if (why) return; act.run(); onDone(); }}>
+    <Icon name={icon} size={15} /><span className="r1c-mi-t">{label}</span>{hint ? <span className="r1c-mi-hint">{hint}</span> : null}
+  </button>;
+  return need ? <Coming need={need.need} reason={need.reason} where={label}>{row}</Coming> : row;
+}
+
+export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: string; isReply: boolean; actions: HoverActions; meta?: MessageMeta; onClose: () => void }) {
+  const { toast } = useThread();
+  const technical = useLevel() === "technical";
+  const [copyOpen, setCopyOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const at = meta?.timestamp;
+  const model = isReply ? modelName(meta?.model) : "";
+  const head = [at ? messageTime(at) : "", model].filter(Boolean).join(" · ");
+  // The row that was focused is about to unmount. Park focus on the popover first, without scrolling the
+  // conversation, then the layout effect focuses the new first row the same way.
+  const showCopy = (open: boolean) => (event: { currentTarget: HTMLElement }) => {
+    event.currentTarget.closest<HTMLElement>(".g-popover")?.focus({ preventScroll: true });
+    setCopyOpen(open);
+  };
+  useLayoutEffect(() => {
+    menuRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus({ preventScroll: true });
+  }, [copyOpen]);
+  if (copyOpen) {
+    return <div ref={menuRef} className="r1c-menu r1c-msgmenu" role="menu" aria-label="Copy">
+      <button type="button" role="menuitem" className="r1c-mi r1c-back" data-local="" onClick={showCopy(false)}><Icon name="back" size={15} /><span className="r1c-mi-t">Copy</span></button>
+      <button type="button" role="menuitem" className="r1c-mi" data-local="" onClick={() => { void copyText(plainText(text), toast); onClose(); }}><Icon name="copy" size={15} /><span className="r1c-mi-t">Text</span></button>
+      <button type="button" role="menuitem" className="r1c-mi" data-local="" onClick={() => { void copyText(text, toast); onClose(); }}><Icon name="code" size={15} /><span className="r1c-mi-t">Markdown</span></button>
+    </div>;
+  }
+  const read = actions.read;
+  const showWork = technical && Boolean(actions.inspect);
+  return <div ref={menuRef} className="r1c-menu r1c-msgmenu" role="menu" aria-label="Message">
+    {head ? <div className="r1c-menu-meta" title={at ? fullTime(at) : undefined}>{head}</div> : null}
+    <button type="button" role="menuitem" className="r1c-mi" data-local="" aria-haspopup="menu" onClick={showCopy(true)}><Icon name="copy" size={15} /><span className="r1c-mi-t">Copy</span><span className="r1c-mi-hint" aria-hidden="true">›</span></button>
+    <Row icon="reply" label="Reply" act={actions.reply} onDone={onClose} need={REPLY_NEED} />
+    {actions.retry ? <Row icon="retry" label="Retry" act={actions.retry} onDone={onClose} need={NEEDS.again} /> : null}
+    {actions.edit ? <Row icon="edit" label="Edit" act={actions.edit} onDone={onClose} need={NEEDS.edit} /> : null}
+    {showWork ? <Row icon="eye" label="Show what it did" act={actions.inspect} onDone={onClose} /> : null}
+    {actions.pin ? <Row icon="pin" label={actions.pin.pinned ? "Unpin" : "Pin"} act={actions.pin} onDone={onClose} need={NEEDS.pin} /> : null}
+    <div className="r1c-gap" />
+    {read ? <Row icon={read.reading ? "pause" : "play"} label={read.reading ? "Stop reading" : "Read aloud"} act={read} onDone={onClose} need={NEEDS.read} /> : null}
+    <Row icon="branch" label="Branch from here" act={actions.branch} onDone={onClose} need={NEEDS.branch} />
+    {actions.context ? <Row icon={actions.context.excluded ? "eye" : "eyeOff"} label={actions.context.excluded ? "Put back in context" : "Leave out of context"} act={actions.context} onDone={onClose} need={NEEDS.context} /> : null}
+    {actions.inspect && !showWork ? <Row icon="eye" label="Look inside" act={actions.inspect} onDone={onClose} /> : null}
+    <SoonRow icon="camera" label="Share as a picture…" soon={SOON.picture} />
+    <SoonRow icon="code" label="Continue in a coding app…" soon={SOON.coding} />
+    {actions.remove ? <><div className="r1c-gap" /><Row icon="trash" label="Delete" act={actions.remove} onDone={onClose} danger need={NEEDS.remove} /></> : null}
+  </div>;
+}
+
+function ReactMenu({ onPick }: { onPick: (emoji: string) => void }) {
+  return <div className="r1c-react" role="menu" aria-label="Quick reactions">
+    {QUICK.map((emoji) => <Coming key={emoji} need="session.reactions.set" reason="Reactions come in a later update.">
+      <button type="button" role="menuitem" aria-label={"React " + emoji} onClick={() => onPick(emoji)}>{emoji}</button>
+    </Coming>)}
+  </div>;
+}
+
+/** The three buttons; "replyLabel" is "Reply in <topic>" inside topics. */
+export function HoverBar({ text, isReply, actions, meta, replyLabel = "Reply" }: { text: string; isReply: boolean; actions: HoverActions; meta?: MessageMeta; replyLabel?: string }) {
+  const [menu, setMenu] = useState<"react" | "more" | null>(null);
+  const react = useRef<HTMLButtonElement>(null), more = useRef<HTMLButtonElement>(null);
+  const close = () => setMenu(null);
+  const reply = actions.reply;
+  return <div className="r1c-bar" data-held={menu ? "" : undefined} data-testid="hover-bar" role="toolbar" aria-label="Message actions">
+    <Coming need="session.reactions.set" reason="Reactions come in a later update.">
+      <button ref={react} type="button" aria-label="React" title={actions.reactDisabled ?? "React"} aria-disabled={actions.reactDisabled ? "true" : undefined} aria-haspopup="menu" aria-expanded={menu === "react"}
+        onClick={() => { if (!actions.reactDisabled) setMenu((m) => (m === "react" ? null : "react")); }}><PathIcon d={ICONS.react} size={15} /></button>
+    </Coming>
+    <Coming need={REPLY_NEED.need} reason={REPLY_NEED.reason}>
+      <button type="button" aria-label={replyLabel} title={reply.disabled ?? replyLabel} aria-disabled={reply.disabled ? "true" : undefined} onClick={() => { if (!reply.disabled) reply.run(); }}><PathIcon d={ICONS.reply} size={15} /></button>
+    </Coming>
+    <button ref={more} type="button" aria-label="More for this message" title="More" data-local="" aria-haspopup="menu" aria-expanded={menu === "more"} onClick={() => setMenu((m) => (m === "more" ? null : "more"))}><Icon name="more" size={15} /></button>
+    {menu === "react" ? <Popover anchor={react} label="Quick reactions" onClose={close} width={260} align={isReply ? "end" : "start"}><ReactMenu onPick={(emoji) => { actions.react(emoji); close(); }} /></Popover> : null}
+    {menu === "more" ? <Popover anchor={more} label="Message" onClose={close} width={260} align={isReply ? "end" : "start"}><MessageMenu text={text} isReply={isReply} actions={actions} meta={meta} onClose={close} /></Popover> : null}
+  </div>;
+}

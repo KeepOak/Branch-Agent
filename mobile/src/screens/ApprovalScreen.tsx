@@ -66,7 +66,7 @@ export function ApprovalScreen({
 
   if (state.step === 'failed') {
     return (
-      <Screen
+        <Screen
         testID="pairing-failed"
         footer={
           <>

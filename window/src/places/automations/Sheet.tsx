@@ -11,12 +11,12 @@ import { Proposal, type Trunk } from "./Proposal";
 import { draftFromJob, type Draft } from "./draft";
 import { errorText, rec, rows, str, type Row } from "./runtime";
 
-export const RUN_WORDS: Record<string, string> = { ok: "Done", error: "Failed", skipped: "Skipped" };
-export const SEND_WORDS: Record<string, string> = { delivered: "Sent", "not-delivered": "Not sent", "not-requested": "Nothing to send", unknown: "Unknown" };
+const RUN_WORDS: Record<string, string> = { ok: "Done", error: "Failed", skipped: "Skipped" };
+const SEND_WORDS: Record<string, string> = { delivered: "Sent", "not-delivered": "Not sent", "not-requested": "Nothing to send", unknown: "Unknown" };
 const PAGE = 5;
 type Filters = { query: string; status: string; delivery: string; dir: "desc" | "asc" };
 
-export function runsParams(id: string, f: Filters, offset: number): Row {
+function runsParams(id: string, f: Filters, offset: number): Row {
   return { scope: "job", id, limit: PAGE, offset, sortDir: f.dir, ...(f.query.trim() ? { query: f.query.trim() } : {}), ...(f.status !== "all" ? { status: f.status } : {}), ...(f.delivery !== "all" ? { deliveryStatus: f.delivery } : {}) };
 }
 
@@ -76,7 +76,7 @@ function textOf(m: Row): string {
 }
 
 /** One run's record, read-only (cron.history is bound to the recorded run, never a chosen conversation). */
-export function RunRecord({ engine, job, run, onClose, openConversation }: { engine: WindowEngine; job: Row; run: Row; onClose: () => void; openConversation: (key: string) => void }) {
+function RunRecord({ engine, job, run, onClose, openConversation }: { engine: WindowEngine; job: Row; run: Row; onClose: () => void; openConversation: (key: string) => void }) {
   const [state, setState] = useState<{ messages: Row[]; error: string; loading: boolean }>({ messages: [], error: "", loading: true });
   useEffect(() => {
     const params = { id: str(job.id), ...(run.runId ? { runId: str(run.runId) } : { runAtMs: run.runAtMs ?? run.ts }) };

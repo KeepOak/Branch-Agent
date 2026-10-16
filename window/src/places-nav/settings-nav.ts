@@ -5,10 +5,11 @@ export type SettingsGroup = { name: string; pages: { id: string; name: string }[
 
 const BASE: SettingsGroup[] = [
   {
-    name: "General",
+    name: "This app",
     pages: [
       { id: "general", name: "General" },
       { id: "people", name: "People" },
+      { id: "devices", name: "Devices & apps" },
       { id: "appearance", name: "Appearance" },
       { id: "notifications", name: "Notifications" },
     ],
@@ -22,6 +23,7 @@ const BASE: SettingsGroup[] = [
       { id: "accounts", name: "Accounts" },
       { id: "voice", name: "Voice" },
       { id: "chatapps", name: "Chat apps" },
+      { id: "helpers", name: "Helpers" },
     ],
   },
   {
@@ -50,6 +52,15 @@ const BASE: SettingsGroup[] = [
     ],
   },
 ];
+
+/** Pages that change setup (§4.7.0): config.patch needs operator.admin, so without it their rows grey. */
+export const SETUP_PAGES: readonly string[] = [
+  "general", "models", "local", "accounts", "chatapps", "permissions", "computer", "usage", "seasons", "updates", "advanced", "developer",
+  "computer-browser", "computer-coding", // Computer & browser's parts (set2/computer-parts.tsx), set up like the whole page.
+];
+
+/** Pages that hold keys or run the engine: without operator.admin they leave the nav (Classic) or say why (R1). */
+export const HIDDEN_PAGES: string[] = ["secrets", "gateway", "self"];
 
 export const LEVEL_LINES: Record<Level, string> = {
   regular: "The essentials, in plain words.",
@@ -102,6 +113,7 @@ export function levelFor(page: string, level: Level): Level {
 const KEYWORDS: Record<string, string> = {
   general: "start startup windows tray projects keyboard shortcuts vim summaries",
   people: "person family child pin invite profile sign in",
+  devices: "everywhere devices phone iphone android mac windows terminal pair pairing qr code keepoak.com browser widget snippet",
   appearance: "dark light moonlight daylight theme themes colour color accent contrast background scene pet font text size width language mirror skin",
   notifications: "quiet hours sound chime days off alerts ping",
   instructions: "soul identity user agents tools sop memory heartbeat files personality prompt",
@@ -110,6 +122,7 @@ const KEYWORDS: Record<string, string> = {
   accounts: "sign in plan pool order keepoak rotation",
   voice: "microphone mic push to talk wake word dictation speak call meeting",
   chatapps: "telegram whatsapp discord slack chat app bot routing who answers",
+  helpers: "specialists helpers subagents sub-agents teamwork swarm router lead parallel teams debate built in fleet",
   permissions: "lockdown ask first full access mode rules pin app lock pin sandbox",
   computer: "computers browser chrome sandbox sealed box cloud phone lend screen mouse",
   secrets: "passwords bitwarden 1password sign-ins keys tokens",

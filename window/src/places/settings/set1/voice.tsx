@@ -12,7 +12,7 @@ import { VOICE_DEFAULTS } from "./voice-defaults";
 import "./voice.css";
 
 /** The first wake word, quoted, for the sub-lines (the engine's own list; never a made-up phrase). */
-export function wakeWordOf(wake: RecordValue | undefined): string {
+function wakeWordOf(wake: RecordValue | undefined): string {
   const first = list(wake?.triggers).length ? String((wake?.triggers as unknown[])[0]) : "";
   return first ? `“${visible(first)}”` : "the wake word";
 }

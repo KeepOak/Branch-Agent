@@ -115,9 +115,43 @@ Do not hand-edit
 using its actual relative path. Preserve a user-supplied avatar instead of
 replacing it. Verify the command succeeds before saying the identity is saved.
 
+## 6. Offer Three Starter Teammates
+
+Only the main Trunk does this beat. Ask Branch Agent for the offer, passing the
+goal from beat 3 (leave `--goal` out if there is none):
+
+```bash
+branch trunks starters --agent "<this agent id>" --goal "<the goal>" --json
+```
+
+If `offer` is empty, skip this beat without commentary. Otherwise offer all
+three teammates in one message: one line each with its name and `pitch`, then
+ask which ones they want: any, all, or none. Never create a teammate the owner
+did not pick.
+
+For each pick, ask its `questions` in one message and show each default, so
+"defaults are fine" answers them all. In the same message, confirm the
+`timezone` from the output, for example "Its routines run in
+America/New_York, ok?". Then create it with one `--answer` per question:
+
+```bash
+branch trunks create --from-template "<id>" --answer "<question id>=<answer>" --timezone "<zone>" --json
+```
+
+Its routines arrive paused. Say in one line what it will do and when, then ask
+**"Start it now?"** Only after a clear yes, run:
+
+```bash
+branch trunks start "<the new agentId>"
+```
+
+Never start a teammate the owner did not say yes to. Each new teammate gets a
+card on Overview with Start, Open and Stop, so the owner can start it there
+later instead.
+
 <a id="6-finish-with-recommendations" />
 
-## 6. Finish With Recommendations
+## 7. Finish With Recommendations
 
 Read the pending app matches already stored by onboarding. This command is
 read-only, never scans the machine again, and returns an empty list if the user

@@ -46,7 +46,7 @@ function fromBase64(text: string): Uint8Array {
 }
 
 /** How loud a frame is, 0–1, for the level bars. */
-export function level(samples: Float32Array): number {
+function level(samples: Float32Array): number {
   let sum = 0;
   for (const s of samples) sum += s * s;
   return Math.min(1, Math.sqrt(sum / Math.max(1, samples.length)) * 4);

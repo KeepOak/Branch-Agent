@@ -33,7 +33,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
-          fetch-depth: 1
+          # Final head needs main's recent history, not only the tip commit.
+          fetch-depth: 2000
           persist-credentials: false
       - name: Set up reviewed Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -50,6 +51,15 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           MERGE_GATE_WAIT_SECONDS: '600'
         run: node scripts/check-commit-emails.mjs
+
+      - name: Fetch pull request history for the Final head check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git -c "http.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)" fetch --no-tags --no-recurse-submodules --depth=2000 origin \
+            "+refs/pull/${PR_NUMBER}/head:refs/remotes/pr/head"
 
       - name: Preflight the pull request body, commits and files with the local checks
         # The body is read live from the API, never from the event payload. All of its API calls share one
@@ -87,6 +97,11 @@ jobs:
         run: node --test scripts/merge-gate-trusted.test.mjs
       - name: Test the rate-limit wait helper
         run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
+      - name: Read the core API budget before this job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUDGET_LABEL: merge-gate-trusted
+        run: node scripts/github-api-budget.mjs before
       - name: Wait for checks and run main's coverage and merge-command gates
         env:
           GH_TOKEN: ${{ github.token }}
@@ -103,3 +118,9 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: node scripts/merge-gate-trusted.mjs
+      - name: Log the core API budget this job used
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUDGET_LABEL: merge-gate-trusted
+        run: node scripts/github-api-budget.mjs after

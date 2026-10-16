@@ -1,4 +1,3 @@
-// Ported from bytedance/deer-flow f840e843, skills/review/resource_graph.py.
 type Link = { start: number; end: number; target: string };
 
 function quotedTitleEnd(content: string, terminator: number): number {

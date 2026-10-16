@@ -41,9 +41,9 @@ One codebase gives us both iPhone and Android, and it ships as fast as an iOS-on
 
 ## Updates
 
-- **App code and design:** `expo-updates` checks quietly at launch. New code downloads in the background and applies the next time the app opens, the same calm pattern as the desktop's batched releases. There's no "update now" nag. A small "Updated" note in Settings lists what changed.
+- **App code and design:** `expo-updates` checks quietly at launch. New code downloads in the background and applies the next time the app opens, the same calm pattern as the desktop's batched releases. There's no "update now" nag. A small "Updated" note in Settings lists what changed. Hosting is EAS Update when `EXPO_UPDATE_URL` is set at build time; unconfigured, it is a no-op. `runtimeVersion` follows the native version so an OTA never applies across a native change. No project ID is committed.
+- **Sideloaded Android APK:** the app checks GitHub for `branch-android-<version>.apk`, verifies the `.sha256` sidecar and the signing certificate, then installs over itself through the system installer. Pairing survives because it is in Keystore storage, and because the package and signing stay the same.
 - **Native shell** (new permissions, a new SDK): TestFlight or App Store on iPhone, and the Play Store or a signed APK on Android. This is rare.
-- Where the update manifests are hosted (Expo's service or our own release pipeline) gets decided in the updates PR. It costs nothing on a subscription and needs no API key in the repo.
 
 ## Design direction
 
@@ -87,4 +87,4 @@ npx jest src/theme/theme.test.tsx
 npm run web                # browser preview at phone size; npm run ios / android need a Mac or an emulator
 ```
 
-CI: the desktop checks don't build `mobile/`. Gardener adds a separate `mobile/` check (`npm ci`, `npm run typecheck`, `npm test`) so the phone app can never break the desktop checks. It needs the whole repository checked out, because the app compiles the engine's gateway client from `engine/packages`.
+CI: the desktop checks don't build `mobile/`. `.github/workflows/mobile-checks.yml` runs `tsc --noEmit`, Jest and an `expo export` web smoke when `mobile/` or the compiled engine packages change. Other pull requests skip that job; merge-gate treats the skip as a pass. It needs the whole repository checked out, because the app compiles the engine's gateway client from `engine/packages`.

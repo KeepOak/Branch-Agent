@@ -545,7 +545,7 @@ describe("resolveTelegramToken", () => {
     );
   });
 
-  // Regression: https://github.com/openclaw/openclaw/issues/53876
+ // Regression:
   // Binding-created accountIds should inherit the channel-level token in
   // single-bot setups (no accounts section).
   it("falls through to channel-level token for binding-created accountId without accounts section", () => {

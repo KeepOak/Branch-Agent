@@ -28,7 +28,7 @@ export const NO_KEY = "Branch has no setting for this yet.";
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** The row's current value: what the engine has, else the source default. */
-export function current(row: Row, cfg: Cfg): unknown {
+function current(row: Row, cfg: Cfg): unknown {
   const v = row.path ? cfg.get(row.path) : undefined;
   return v === undefined ? row.def : v;
 }
@@ -68,7 +68,7 @@ function Num({ row, value, save, disabled }: { row: Row; value: unknown; save: (
 }
 
 /** One entry per line; saves when it loses focus. */
-export function Lines({ label, value, ph, disabled, onCommit }: { label: string; value: string[]; ph?: string; disabled?: boolean; onCommit: (lines: string[]) => void }) {
+function Lines({ label, value, ph, disabled, onCommit }: { label: string; value: string[]; ph?: string; disabled?: boolean; onCommit: (lines: string[]) => void }) {
   const joined = value.join("\n");
   const [draft, setDraft] = useState(joined);
   useEffect(() => setDraft(joined), [joined]);

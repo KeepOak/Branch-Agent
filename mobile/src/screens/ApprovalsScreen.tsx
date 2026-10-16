@@ -21,6 +21,7 @@ import { LIST_FAILED_MESSAGE, RECONNECT_WAIT_MS, trunkOf, type Answered, type Ap
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { OfflineBanner } from '../ui/OfflineBanner';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const LONG_COMMAND = 160;
@@ -451,13 +452,11 @@ export function ApprovalsScreen({
           ) : null}
         </View>
         {online ? null : (
-          <View testID="approvals-offline" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, backgroundColor: color.warnTint, borderRadius: radius.md, padding: space.md }}>
-            <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: color.warn }} />
-            <ThemedText variant="footnote" tone="ink2" style={{ flex: 1 }}>
-              {/* answer() waits RECONNECT_WAIT_MS for the computer, then gives up with "Try again when it’s back". */}
-              {`Reconnecting to your computer… An answer sent now waits up to ${Math.round(RECONNECT_WAIT_MS / 1000)} seconds for it, then asks you to try again.`}
-            </ThemedText>
-          </View>
+          // answer() waits RECONNECT_WAIT_MS for the computer, then gives up with "Try again when it’s back".
+          <OfflineBanner
+            testID="approvals-offline"
+            message={`Reconnecting to your computer… An answer sent now waits up to ${Math.round(RECONNECT_WAIT_MS / 1000)} seconds for it, then asks you to try again.`}
+          />
         )}
         <PermissionCard permission={permission} onTurnOn={onTurnOnNotifications} onSettings={onOpenSettings} />
         {body}

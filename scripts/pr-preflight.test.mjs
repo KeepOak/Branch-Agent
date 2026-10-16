@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -210,6 +210,122 @@ test('formatProblems prints one line per problem plus a count', () => {
   assert.equal(lines.at(-1), `preflight: ${problems.length} problem(s)`);
 });
 
+// Prior art: fix, perf and refactor PRs must name what they checked before changing code.
+const PRIOR_ART_OK = `${BODY}\nPrior art: upstream project sessions_send, the old steer path it replaces`;
+const priorArtProblemsOf = (overrides) => runPreflight(withInput(overrides)).filter((p) => p.check === 'prior-art');
+
+test('a fix, perf or refactor title needs a Prior art line in the body', () => {
+  for (const title of ['fix: stop the queue stall', 'fix(gateway): stop the queue stall', 'perf: cut lane waits', 'refactor(mcp): split the tool']) {
+    const problems = priorArtProblemsOf({ title, body: BODY });
+    assert.equal(problems.length, 1, title);
+    assert.match(problems[0].fix, /Prior art:/);
+  }
+});
+
+test('a Prior art line that names what was checked passes', () => {
+  assert.deepEqual(priorArtProblemsOf({ title: 'fix: stop the queue stall', body: PRIOR_ART_OK }), []);
+  assert.deepEqual(priorArtProblemsOf({ title: 'refactor: split the tool', body: `${BODY}\nPrior art: the old tool code it replaces and peer agents' steer paths` }), []);
+});
+
+test('none found passes only when it says what was checked', () => {
+  assert.deepEqual(priorArtProblemsOf({ title: 'fix: x', body: `${BODY}\nPrior art: none found: checked upstream project and hermes` }), []);
+  assert.equal(priorArtProblemsOf({ title: 'fix: x', body: `${BODY}\nPrior art: none found:` }).length, 1);
+});
+
+test('any named source after the label passes, not only a fixed keyword list', () => {
+  for (const line of [
+    'Prior art: openclaw sessions_send shape',
+    'Prior art: https://github.com/example/project/pull/12',
+    'Prior art: <https://github.com/example/project/pull/12>',
+    'Prior art: looked at how the settings page saved this before',
+  ]) {
+    assert.deepEqual(priorArtProblemsOf({ title: 'fix(x): y', body: `${BODY}\n${line}` }), [], line);
+  }
+});
+
+test('an empty, n/a, bare none or unfilled placeholder Prior art entry fails', () => {
+  for (const line of ['Prior art:', 'Prior art:   ', 'Prior art: n/a', 'Prior art: N/A', 'Prior art: none', 'Prior art: None.', 'Prior art: <what you checked>', 'Prior art: none found: <what you checked>', 'Prior art: none found']) {
+    const problems = priorArtProblemsOf({ title: 'fix(x): y', body: `${BODY}\n${line}` });
+    assert.equal(problems.length, 1, line);
+    assert.match(problems[0].fix, /Prior art:/);
+  }
+});
+
+test('the unfilled PR template fails the Prior art rule', () => {
+  const template = readFileSync(new URL('../.github/pull_request_template.md', import.meta.url), 'utf8');
+  assert.equal(priorArtProblemsOf({ title: 'fix(x): y', body: `${BODY}\n${template}` }).length, 1);
+  const filled = template.replace('Prior art: <what you checked>', 'Prior art: openclaw sessions_send shape');
+  assert.deepEqual(priorArtProblemsOf({ title: 'fix(x): y', body: `${BODY}\n${filled}` }), []);
+});
+
+test('a bold label, a Prior art heading with content, and bullets under a bare label all pass', () => {
+  for (const extra of [
+    '**Prior art:** upstream openclaw steer path',
+    '**Prior art**: upstream openclaw steer path',
+    '- Prior art: openclaw sessions_send shape',
+    '## Prior art\n\n- openclaw sessions_send shape\n- the old steer path it replaces\n\n## UI proof\nNo visible change: gate script.',
+    '## Prior art\n<!-- note -->\nChecked openclaw and hermes; neither handles this.',
+    'Prior art:\n- openclaw sessions_send shape\n- the old steer path',
+    'Prior art:\n\n- openclaw sessions_send shape',
+  ]) {
+    assert.deepEqual(priorArtProblemsOf({ title: 'fix(x): y', body: `${BODY}\n${extra}` }), [], extra);
+  }
+});
+
+test('a Prior art heading or bare label with nothing under it fails', () => {
+  for (const extra of [
+    '## Prior art\n\n## UI proof\nNo visible change: gate script.',
+    '## Prior art\n<!-- Required for fix PRs. -->\n\n## UI proof\nNo visible change: gate script.',
+    '## Prior art\n- n/a\n\n## UI proof\nNo visible change: gate script.',
+    'Prior art:\n\n## UI proof\nNo visible change: gate script.',
+  ]) {
+    assert.equal(priorArtProblemsOf({ title: 'fix(x): y', body: `${BODY}\n${extra}` }).length, 1, extra);
+  }
+});
+
+test('the title match ignores case, so a capitalised fix title cannot skip the rule', () => {
+  for (const title of ['Fix(settings): keep the theme', 'FIX: x', 'Perf: cut lane waits', 'Refactor(mcp)!: split the tool']) {
+    assert.equal(priorArtProblemsOf({ title, body: BODY }).length, 1, title);
+    assert.deepEqual(priorArtProblemsOf({ title, body: `${BODY}\nPrior art: openclaw sessions_send shape` }), [], title);
+  }
+});
+
+test('feat and docs titles are exempt from the Prior art rule', () => {
+  assert.deepEqual(priorArtProblemsOf({ title: 'feat: add a view', body: BODY }), []);
+  assert.deepEqual(priorArtProblemsOf({ title: 'docs: fix the readme', body: BODY }), []);
+});
+
+test('the CI input carries the PR title, so the Prior art rule runs in CI too', () => {
+  const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files: [], commits: [], listText: null, title: 'fix: x' });
+  assert.equal(input.title, 'fix: x');
+});
+
+test('PR body emails fail across providers, custom domains, and Markdown without leaking the address', () => {
+  for (const address of ['someone@gmail.com', 'first.last+tag@example.org', 'PERSON@CUSTOM.EXAMPLE', 'person@users.noreply.github.com.example.org']) {
+    for (const text of [address, `[contact](mailto:${address})`, `\`\`\`\n${address}\n\`\`\``]) {
+      const problems = runPreflight(withInput({ body: `${BODY}\n\n${text}` }));
+      assert.deepEqual(checksOf(problems), ['body-email']);
+      assert.doesNotMatch(formatProblems(problems), new RegExp(address.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+  }
+});
+
+test('PR bodies allow GitHub noreply identities and ordinary handles and package names', () => {
+  assert.deepEqual(runPreflight(withInput({ body: `${BODY}\n\n${NOREPLY}\n@owner @branch/tools` })), []);
+});
+
+test('PR body version pins are not email addresses', () => {
+  for (const pin of ['vitest@3.2.4', '@scope/pkg@1.2.3']) {
+    assert.deepEqual(runPreflight(withInput({ body: `${BODY}\n\nPinned ${pin}.` })), [], pin);
+  }
+});
+
+test('PR body email checks also run for API inputs without file changes', () => {
+  const input = inputFromApi({ headBranch: BRANCH, headSha: SHA, files: [], commits: [], listText: null });
+  const problems = runPreflight({ ...input, body: `${BODY}\n\ncontact: someone@example.org` });
+  assert.deepEqual(checksOf(problems), ['body-email']);
+});
+
 // CLI wiring: drive the real runCli against a temporary git repository.
 function fixtureRepo({ branchMessage, branchEmail, body }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'preflight-cli-'));
@@ -250,6 +366,29 @@ test('the CLI reports a personal commit email from the real git log', () => {
   const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
   assert.equal(result.exitCode, 1);
   assert.match(result.text, /\[commit-email\]/);
+});
+
+test('the CLI fails a fix commit whose body has no Prior art line', () => {
+  const { dir, bodyPath } = fixtureRepo({ branchMessage: 'fix: stop the stall', branchEmail: NOREPLY, body: (head) => BODY.replace(SHA, head) });
+  const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.text, /preflight FAIL \[prior-art\]/);
+});
+
+test('the CLI passes a fix commit whose body names what it checked', () => {
+  const body = (head) => `${BODY.replace(SHA, head)}\nPrior art: upstream project sessions_send, the old steer path`;
+  const { dir, bodyPath } = fixtureRepo({ branchMessage: 'fix: stop the stall', branchEmail: NOREPLY, body });
+  const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
+  assert.equal(result.exitCode, 0, result.text);
+});
+
+test('the CLI rejects an email in a PR body even when commits and files are clean', () => {
+  const body = (head) => `${BODY.replace(SHA, head)}\n\ncontact: someone@example.org`;
+  const { dir, bodyPath } = fixtureRepo({ branchMessage: 'feat: x', branchEmail: NOREPLY, body });
+  const result = runCli(['--body', bodyPath, '--base', 'HEAD~1'], dir);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.text, /preflight FAIL \[body-email\]/);
+  assert.doesNotMatch(result.text, /someone@example\.org/);
 });
 
 test('the CLI refuses to run without a body file', () => {
@@ -341,5 +480,65 @@ test('a CI read that outlasts the budget fails closed with a clear message, not 
   } finally {
     gateApiBudget.budgetSeconds = undefined;
     gateApiBudget.startedAt = undefined;
+  }
+});
+
+function cliHistoryRepo(after) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'preflight-final-head-'));
+  const git = (args) => execFileSync('git', [
+    '-C', dir,
+    '-c', 'user.name=Final Head',
+    '-c', `user.email=${NOREPLY}`,
+    '-c', 'commit.gpgsign=false',
+    ...args,
+  ], { encoding: 'utf8', windowsHide: true });
+  git(['init', '-q', '-b', 'main']);
+  writeFileSync(path.join(dir, 'base.txt'), 'base\n');
+  git(['add', 'base.txt']);
+  git(['commit', '-q', '-m', 'base']);
+  git(['checkout', '-q', '-b', 'gate/history']);
+  writeFileSync(path.join(dir, 'base.txt'), 'feature\n');
+  git(['add', 'base.txt']);
+  git(['commit', '-q', '-m', 'feature']);
+  const named = git(['rev-parse', 'HEAD']).trim();
+  git(['checkout', '-q', 'main']);
+  writeFileSync(path.join(dir, 'main-1.txt'), 'main 1\n');
+  git(['add', 'main-1.txt']);
+  git(['commit', '-q', '-m', 'main 1']);
+  git(['checkout', '-q', 'gate/history']);
+  after(git, dir);
+  const bodyDir = mkdtempSync(path.join(tmpdir(), 'preflight-body-'));
+  const bodyPath = path.join(bodyDir, 'body.md');
+  writeFileSync(bodyPath, `Final head: ${named}\n\nNo visible change: history check only.\n`);
+  return { dir, bodyDir, bodyPath };
+}
+
+test('the CLI accepts a Final head when the only later commit merges main', () => {
+  const { dir, bodyDir, bodyPath } = cliHistoryRepo((git) => {
+    git(['merge', '-q', '--no-ff', 'main', '-m', 'merge main']);
+  });
+  try {
+    const result = runCli(['--body', bodyPath, '--base', 'main'], dir);
+    assert.equal(result.exitCode, 0, result.text);
+    assert.equal(result.text, 'preflight: ok');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(bodyDir, { recursive: true, force: true });
+  }
+});
+
+test('the CLI rejects a Final head when a regular commit follows it', () => {
+  const { dir, bodyDir, bodyPath } = cliHistoryRepo((git, repo) => {
+    writeFileSync(path.join(repo, 'base.txt'), 'more\n');
+    git(['add', 'base.txt']);
+    git(['commit', '-q', '-m', 'regular']);
+  });
+  try {
+    const result = runCli(['--body', bodyPath, '--base', 'main'], dir);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.text, /\[self-check\].*not a merge commit/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(bodyDir, { recursive: true, force: true });
   }
 });

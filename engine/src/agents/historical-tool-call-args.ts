@@ -1,4 +1,4 @@
-// From bytedance/deer-flow@f840e843d3e2db1485cb65ceae73a5525aa80193:backend/packages/harness/deerflow/agents/middlewares/tool_call_args.py (atlas AGENT-LOOP-0097). Converted to TypeScript; also handles Branch canonical toolCall blocks and replay checkpoints.
+// Converted to TypeScript; also handles Branch canonical toolCall blocks and replay checkpoints.
 import { isRecord } from "@branch/normalization-core/record-coerce";
 
 type Args = Record<string, unknown>;

@@ -1,0 +1,2 @@
+engine:extensions/cua-computer/src/commands.test.ts
+engine:test/branch-mac-driver-lease.test.ts

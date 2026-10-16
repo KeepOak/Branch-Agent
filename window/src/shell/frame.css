@@ -616,6 +616,14 @@
 .search input::placeholder {
   color: var(--ink-3);
 }
+.search-mag {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+}
 .search-clear {
   display: grid;
   place-items: center;
@@ -652,7 +660,9 @@
   white-space: nowrap;
   overflow: hidden;
 }
-.sb {
+/* Status bar buttons only. Unscoped, this rule also hit Seedbank's root (.sb in screens/seedbank/seedbank.css) and turned
+   its grid into a 16px inline-flex row, so Seedbank showed nothing (owner, 2026-10-15). */
+.statusbar .sb {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -665,12 +675,12 @@
   color: inherit;
   transition: background var(--t-colour) var(--ease17), color var(--t-colour) var(--ease17);
 }
-button.sb:hover,
-button.sb[aria-expanded="true"] {
+.statusbar button.sb:hover,
+.statusbar button.sb[aria-expanded="true"] {
   background: var(--wash17);
   color: var(--ink);
 }
-.sb .num {
+.statusbar .sb .num {
   font-variant-numeric: tabular-nums;
 }
 .sb-spacer {
