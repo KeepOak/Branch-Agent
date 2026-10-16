@@ -1,0 +1,10 @@
+window:src/connect/trunk-name.test.ts
+window:src/connect/engine-jobs.test.ts
+window:src/shell/trunk-names.test.ts
+window:src/shell/control-tower-data.test.ts
+window:src/shell/status-data.test.ts
+window:src/shell/readers.test.ts
+window:src/screens/onboarding/Onboarding.test.tsx
+window:src/places/canopy/engine-jobs.test.ts
+window:src/places/trunk/engine-jobs-profile.test.ts
+window:src/screens/chat/examples-greeting.test.tsx

@@ -1,6 +1,6 @@
 // Settings › Appearance › The pet (§4.7.3): pick one (or none), its name, its sounds and the pets
 // you've had. The three pixel pets are drawn from their own pixel maps (the App Preview's PETS).
-import { Btn, Ctl, Field, Sec, useSaveRunner, Val } from "../kit";
+import { Ctl, Field, Sec, useSaveRunner, Val } from "../kit";
 import { rowOf } from "./appearance-rows";
 import { SpecRow, type Look } from "./appearance-sections";
 
@@ -25,7 +25,8 @@ export const PETS: Pet[] = [
   ...FRESH.map(([id, name]) => ({ id, name, still: `/assets/art17/pets/${id}.webp`, fresh: true })),
   ...Object.entries(PIXEL).map(([id, p]) => ({ id, name: p.name })),
 ];
-export const DEFAULT_PET = "px-squirrel";
+/** No pet until the person picks one in Settings › Appearance › Pet. */
+export const DEFAULT_PET = "none";
 
 /** A pixel pet as a small drawing (brand-free art colours from its pixel map). */
 export function PixelPet({ p }: { p: Px }) {
@@ -36,6 +37,17 @@ export function PixelPet({ p }: { p: Px }) {
   );
 }
 
+/** Picking a pet turns it on (the pick is the switch: there is no Let it roam). None turns the roam off. Keeps the pets
+ *  you've had and the day of the first, as Classic's pet gallery does. */
+export async function pickPet(look: Look, id: string): Promise<void> {
+  const had = petsHad(look);
+  const none = id === DEFAULT_PET;
+  await look.store.set("pet", none ? null : id);
+  await look.store.set("roam", none ? null : true);
+  if (!none && !had.includes(id)) await look.store.set("petsHad", [...had, id]);
+  if (!look.val("petFirst", "")) await look.store.set("petFirst", new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+}
+
 /** The pets you've had: every pet picked, the one you have now included. */
 export function petsHad(look: Look): string[] {
   const had = Array.isArray(look.val("petsHad", [])) ? (look.val("petsHad", []) as string[]) : [];
@@ -43,15 +55,11 @@ export function petsHad(look: Look): string[] {
   return now === "none" || had.includes(now) ? had : [...had, now];
 }
 
-export function PetSec({ look, openSettings }: { look: Look; openSettings?: (page: string) => void }) {
+export function PetSec({ look }: { look: Look }) {
   const save = useSaveRunner();
   const cur = String(look.val("pet", DEFAULT_PET));
   const had = petsHad(look), first = look.val("petFirst", "");
-  const pick = (id: string) => void save(async () => {
-    await look.store.set("pet", id === DEFAULT_PET ? null : id);
-    if (id !== "none" && !had.includes(id)) await look.store.set("petsHad", [...had, id]);
-    if (!first) await look.store.set("petFirst", new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" }));
-  });
+  const pick = (id: string) => void save(() => pickPet(look, id));
   return (
     <Sec title="The pet">
       <div className="pets12 ap-k" data-row="Pet">
@@ -65,11 +73,9 @@ export function PetSec({ look, openSettings }: { look: Look; openSettings?: (pag
       <Ctl title="Name" sub="Shown on the pet’s tips and menu.">
         <Field value={String(look.val("petName", "Hazel"))} label="Pet name" onCommit={(v) => void save(() => look.store.set("petName", v.trim() && v.trim() !== "Hazel" ? v.trim().slice(0, 40) : null))} />
       </Ctl>
-      <SpecRow r={rowOf("roam")} look={look} />
       <SpecRow r={rowOf("petSounds")} look={look} />
       <Ctl title="Pets you’ve had">
         <Val>{`${had.length} of ${PETS.length - 1}${first ? ` · first ${String(first)}` : ""}`}</Val>
-        <Btn sm disabled={!openSettings} onClick={() => openSettings?.("achievements")}>Open</Btn>
       </Ctl>
     </Sec>
   );

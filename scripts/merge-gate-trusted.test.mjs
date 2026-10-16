@@ -39,6 +39,7 @@ import {
   loadProtectedGatePaths,
   listCoreWorkflows,
   missingCoreWorkflows,
+  MUST_RUN_WORKFLOWS,
   nameStatusFromPrFiles,
   parsePullRequestTrigger,
   parseTrustedWorkflowPolicy,
@@ -1339,8 +1340,9 @@ test('ordinary merge gate jq preserves all checks and its polling budget', () =>
     }));
     assert.deepEqual(actual, [feature, analyzeCheck, latest, { ...feature, id: 90, conclusion: 'cancelled' }]);
   }
-  assert.match(yaml, /seq 1 64/);
-  assert.match(yaml, /if \[ "\$attempt" -lt 64 \]; then sleep 30; fi/);
+  // Single pass (event-driven): one evaluation, no 64-attempt poll loop.
+  assert.match(yaml, /seq 1 1\)/);
+  assert.doesNotMatch(yaml, /seq 1 64/);
   assert.doesNotMatch(yaml, /sleep 10/);
 });
 
@@ -1589,7 +1591,10 @@ test('failed or missing workflow lookups are retried instead of cached as unattr
       },
     };
     const first = resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, options);
-    assert.equal(findForeignTrustedChecks(checks, first, { allowedRunId: CURRENT_RUN_ID }).length, 1);
+    // A thrown lookup is pending (not forged); a lookup that finds no workflow is still forged.
+    const failedLookup = unavailable instanceof Error;
+    assert.equal(findForeignTrustedChecks(checks, first, { allowedRunId: CURRENT_RUN_ID }).length, failedLookup ? 0 : 1);
+    assert.equal(first[501]?.lookupFailed === true, failedLookup);
     const second = resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, options);
     assert.deepEqual(second, { 501: earlierTrustedWorkflow });
     assert.equal(findForeignTrustedChecks(checks, second, { allowedRunId: CURRENT_RUN_ID, ...prContext }).length, 0);
@@ -1919,9 +1924,11 @@ test('summarizeGateFileChanges lists workflows, gate scripts, and package.json f
     'package.json',
     'engine/src/gateway/contacts.ts',
   ];
+  // scripts/feature-batch-ci.mjs runs the feature tests from the PR checkout, so it is protected too.
   assert.deepEqual(summarizeGateFileChanges(files), [
     '.github/workflows/merge-gate.yml',
     'package.json',
+    'scripts/feature-batch-ci.mjs',
     'scripts/merge-gate-trusted.mjs',
   ]);
   assert.match(formatGateChangeSummary(['README.md']), /No /);
@@ -1940,6 +1947,13 @@ test('listCoreWorkflows reads main workflow path filters and skips the trusted g
     item.path === HANDOFF_WORKFLOW_PATH
     && item.pullRequestPaths?.includes('engine/test/gateway-desktop-handoff.e2e.test.ts')
     && item.pullRequestPaths?.includes('desktop/src/main.ts')));
+  assert.ok(workflows.some((item) =>
+    item.path === '.github/workflows/mobile-checks.yml'
+    && item.pullRequestPaths?.includes('mobile/**')
+    && item.pullRequestPaths?.includes('engine/packages/gateway-client/**')
+    && item.pullRequestPaths?.includes('engine/packages/gateway-protocol/**')
+    && item.pullRequestPaths?.includes('engine/packages/normalization-core/**')
+    && item.pullRequestPaths?.includes('engine/packages/retry/**')));
   assert.ok(!workflows.some((item) => item.path === TRUSTED_WORKFLOW_PATH));
 });
 
@@ -2009,6 +2023,7 @@ test('trusted gate re-runs the UI screenshot proof check from main', () => {
 test('trusted gate includes and runs the SELF-CHECK body check from main', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/check-self-check.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/check-self-check.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/final-head-history.mjs'));
   const source = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(source, /from '\.\/check-self-check\.mjs'/);
   assert.match(source, /if \(!runSelfCheckFromPr\(process\.env\.HEAD_BRANCH, body\)\) process\.exit\(1\)/);
@@ -2055,7 +2070,7 @@ test('merge-gate edited trigger does not cancel an in-progress wait', () => {
 
 test('merge-gate wait ignores merge-gate-trusted so the two gates cannot deadlock', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /select\(\.name != "merge-gate" and \.name != "merge-gate-trusted"\)/);
+  assert.match(yaml, /select\(\.name != "merge-gate" and \.name != "merge-gate-trusted"( and \.name != "recheck")?\)/);
 });
 
 const handoffPullRequestPaths = listCoreWorkflows(fileURLToPath(new URL('../.github/workflows', import.meta.url)))
@@ -2148,11 +2163,10 @@ test('trusted coverage counts the real-engine handoff e2e from engine-handoff-ch
   assert.ok(!withHandoff.uncovered.includes('engine/test/gateway-desktop-handoff.e2e.test.ts'));
 });
 
-test('merge-gate recheck fires when Visual tour and Engine build complete', () => {
+test('merge-gate recheck lists its workflows explicitly and reacts to their completed runs', () => {
   const yaml = readFileSync(new URL('../.github/workflows/merge-gate-recheck.yml', import.meta.url), 'utf8');
-  assert.match(yaml, /^\s+-\s+Visual tour\s*$/m);
-  assert.match(yaml, /^\s+-\s+Engine build \(PR\)\s*$/m);
-  assert.match(yaml, /^\s+-\s+Gate files fresh\s*$/m);
+  assert.match(yaml, /^\s+workflows:\n\s+- Button crawl\n/m);
+  assert.match(yaml, /types: \[completed\]/);
 });
 
 test('ordinary JS waiter additions stay aligned with the yaml jq filters', () => {
@@ -2638,4 +2652,419 @@ test('merge-gate-trusted still reruns when the pull request body is edited', () 
   assert.match(source, /evaluateGateChangeReview\(\{ changedFiles, body, headSha: sha, baselineGrew \}\)/);
   assert.match(source, /writeSummary\(formatGateChangeReviewSummary\(review\)\)/);
   assert.match(source, /if \(!review\.ok\)/);
+});
+
+// Attribution from one head runs listing: one API call per evaluation instead of one per check run.
+const attrRun = { id: 555, path: '.github/workflows/feature-batch-checks.yml', name: 'Feature batch checks', event: 'pull_request', check_suite_id: 900, head_sha: 'abc', pull_requests: [] };
+const attrCheck = (overrides = {}) => ({ id: 7001, name: 'Named feature tests', head_sha: 'abc', details_url: 'https://github.com/o/r/actions/runs/555/job/9', check_suite: { id: 900 }, ...overrides });
+
+test('a check run is attributed from the listing only when its check suite is the run\'s own suite', () => {
+  const runsById = new Map([['555', attrRun]]);
+  assert.equal(gate.runIdFromCheckRun(attrCheck()), '555');
+  assert.equal(gate.attributeFromRunList(attrCheck(), runsById).path, '.github/workflows/feature-batch-checks.yml');
+  assert.equal(gate.attributeFromRunList(attrCheck({ check_suite: { id: 901 } }), runsById), null, 'a different suite is not attributed');
+  assert.equal(gate.attributeFromRunList(attrCheck({ details_url: 'https://github.com/o/r/actions/runs/999' }), runsById), null);
+});
+
+test('one listing attributes every check it covers, and only the rest use a per-check lookup', () => {
+  const listing = { total_count: 1, workflow_runs: [attrRun] };
+  const calls = { list: 0, lookup: [] };
+  const fetchRuns = () => { calls.list += 1; return new Map(listing.workflow_runs.map((run) => [String(run.id), run])); };
+  const resolveWorkflow = (_repo, _token, check) => { calls.lookup.push(check.id); return { path: 'fallback.yml' }; };
+  const checks = [attrCheck(), attrCheck({ id: 7002, details_url: 'https://github.com/o/r/actions/runs/777/job/1' })];
+  const map = gate.resolveWorkflowsForCheckRuns('o/r', 't', checks, { fetchRuns, resolveWorkflow });
+  assert.equal(calls.list, 1, 'one listing per evaluation');
+  assert.deepEqual(calls.lookup, [7002], 'only the check the listing does not cover falls back');
+  assert.equal(map[7001].path, '.github/workflows/feature-batch-checks.yml');
+  assert.equal(map[7002].path, 'fallback.yml');
+});
+
+test('an incomplete head listing is not trusted: every check falls back to its own lookup', () => {
+  const api = () => ({ total_count: 250, workflow_runs: [attrRun] });
+  assert.equal(gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api }).size, 0);
+  const complete = () => ({ total_count: 1, workflow_runs: [attrRun] });
+  assert.equal(gate.fetchRunsByIdForHead('o/r', 't', 'abc', { api: complete }).get('555').id, 555);
+});
+
+test('regression: a thrown attribution lookup is never reported as a forged trusted check', () => {
+  const checkRuns = [...passCheckRuns, {
+    id: 777, name: 'merge-gate-trusted', status: 'completed', conclusion: 'success',
+    check_suite: { id: 909 }, details_url: 'https://github.com/example/repo/actions/runs/304/job/777',
+  }];
+  const result = evaluateTrustedGate({
+    checkRuns,
+    workflowsByCheckId: { ...passWorkflows, 777: { lookupFailed: true, error: 'API rate limit exceeded' } },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.foreignTrusted.length, 0);
+  assert.deepEqual(result.lookupFailed.map((run) => run.id), [777]);
+  assert.equal(result.ready, false);
+  assert.equal(result.ok, false);
+  assert.doesNotMatch(result.errors.join('\n'), /Forged/);
+});
+
+test('regression: a lookup still failing at the budget fails closed with an attribution message, not forged', () => {
+  const checkRuns = [...passCheckRuns, {
+    id: 777, name: 'merge-gate-trusted', status: 'completed', conclusion: 'success',
+    check_suite: { id: 909 }, details_url: 'https://github.com/example/repo/actions/runs/304/job/777',
+  }];
+  let clock = 0;
+  const logged = [];
+  const code = gate.pollTrustedGateWithBudget({
+    repo: 'example/repo', sha: 'abc', token: 'unused', changedFiles: ['README.md'], coreWorkflows,
+    currentRunId: CURRENT_RUN_ID, prNumber: '1', baseRef: 'main', maxAttempts: 64, pollSeconds: 30,
+    waitBudgetSeconds: 60, startedAt: 0,
+  }, {
+    fetchChecks: () => checkRuns,
+    resolveWorkflows: () => ({ ...passWorkflows, 777: { lookupFailed: true, error: 'API rate limit exceeded' } }),
+    sleep: (seconds) => { clock += seconds * 1000; },
+    now: () => clock,
+    log: () => {},
+    error: (message) => logged.push(message),
+  });
+  assert.equal(code, 1);
+  const text = logged.join('\n');
+  assert.match(text, /Attribution lookup failed for merge-gate-trusted check\(s\) 777/);
+  assert.doesNotMatch(text, /Forged/);
+});
+
+test('the PR file list waits out rate limits inside a 10-minute cap, and the poll budget counts from job start', () => {
+  const seen = [];
+  const files = gate.fetchPrFiles('example/repo', '7', 'unused', {
+    request: (requestPath, options) => {
+      seen.push({ requestPath, options });
+      return [{ filename: 'README.md' }];
+    },
+  });
+  assert.deepEqual(files, [{ filename: 'README.md' }]);
+  assert.equal(seen[0].requestPath, 'pulls/7/files?per_page=100');
+  assert.equal(seen[0].options.paginate, true);
+  assert.equal(seen[0].options.budgetSeconds, 600);
+  assert.equal(gate.PR_FILES_WAIT_SECONDS, 600);
+  const source = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
+  assert.match(source, /startedAt: jobStartedAt/);
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /merge-gate-trusted:\n[\s\S]*timeout-minutes: 35/);
+});
+
+test('a desktop-only change does not require mobile-checks, and a skipped mobile job is a pass', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/mobile-checks.yml', import.meta.url), 'utf8');
+  const trigger = parsePullRequestTrigger(yaml);
+  assert.equal(trigger.enabled, true);
+  const mobilePaths = trigger.paths;
+  assert.ok(mobilePaths.includes('mobile/**'));
+  assert.ok(mobilePaths.includes('engine/packages/gateway-client/**'));
+  assert.ok(mobilePaths.includes('engine/packages/gateway-protocol/**'));
+  assert.ok(mobilePaths.includes('engine/packages/normalization-core/**'));
+  assert.ok(mobilePaths.includes('engine/packages/retry/**'));
+  assert.equal(MUST_RUN_WORKFLOWS.has('.github/workflows/mobile-checks.yml'), false);
+
+  const desktopOnly = ['desktop/scripts/hidden-processes.test.mjs'];
+  const windowOnly = ['window/src/App.tsx'];
+  const engineSrcOnly = ['engine/src/gateway/contacts.ts'];
+  assert.equal(workflowAppliesToChanges(desktopOnly, mobilePaths), false);
+  assert.equal(workflowAppliesToChanges(windowOnly, mobilePaths), false);
+  assert.equal(workflowAppliesToChanges(engineSrcOnly, mobilePaths), false);
+  assert.equal(workflowAppliesToChanges(['mobile/App.tsx'], mobilePaths), true);
+  assert.equal(workflowAppliesToChanges(['engine/packages/gateway-client/src/index.ts'], mobilePaths), true);
+  assert.equal(workflowAppliesToChanges(['engine/packages/retry/src/index.ts'], mobilePaths), true);
+
+  const mobileCore = { path: '.github/workflows/mobile-checks.yml', pullRequestPaths: mobilePaths };
+  const cores = [...coreWorkflows, mobileCore];
+  const skippedMobile = {
+    id: 901,
+    name: 'Mobile',
+    status: 'completed',
+    conclusion: 'skipped',
+    check_suite: { id: 901 },
+    details_url: 'https://github.com/example/repo/actions/runs/901/job/901',
+  };
+  const neutralMobile = { ...skippedMobile, id: 902, conclusion: 'neutral', check_suite: { id: 902 } };
+  const mobileWorkflows = {
+    901: { path: '.github/workflows/mobile-checks.yml', event: 'pull_request', id: 901 },
+    902: { path: '.github/workflows/mobile-checks.yml', event: 'pull_request', id: 902 },
+  };
+
+  const noRunDesktop = evaluateTrustedGate({
+    checkRuns: passCheckRuns,
+    workflowsByCheckId: passWorkflows,
+    changedFiles: desktopOnly,
+    coreWorkflows: cores,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(noRunDesktop.ok, true, noRunDesktop.errors.join('\n'));
+  assert.equal(noRunDesktop.missingCore.some((item) => item.includes('mobile-checks.yml')), false);
+
+  for (const conclusion of ['skipped', 'neutral']) {
+    const run = conclusion === 'skipped' ? skippedMobile : neutralMobile;
+    const result = evaluateTrustedGate({
+      checkRuns: [...passCheckRuns, run],
+      workflowsByCheckId: { ...passWorkflows, ...mobileWorkflows },
+      changedFiles: desktopOnly,
+      coreWorkflows: cores,
+      currentRunId: CURRENT_RUN_ID,
+    });
+    assert.equal(result.ok, true, result.errors.join('\n'));
+    assert.equal(result.failed.length, 0);
+    assert.equal(result.missingCore.some((item) => item.includes('mobile-checks.yml')), false);
+    assert.equal(PASS_CONCLUSIONS.has(conclusion), true);
+  }
+
+  const missingWhenMobileChanged = missingCoreWorkflows({
+    checkRuns: passCheckRuns,
+    workflowsByCheckId: passWorkflows,
+    changedFiles: ['mobile/App.tsx'],
+    coreWorkflows: cores,
+  });
+  assert.ok(
+    missingWhenMobileChanged.some((item) => item.includes('mobile-checks.yml') && item.includes(PATH_FILTER_NO_CHECK_RUN)),
+    missingWhenMobileChanged.join('\n'),
+  );
+
+  const presentWhenMobileChanged = missingCoreWorkflows({
+    checkRuns: [...passCheckRuns, { ...skippedMobile, conclusion: 'success' }],
+    workflowsByCheckId: { ...passWorkflows, ...mobileWorkflows },
+    changedFiles: ['mobile/App.tsx'],
+    coreWorkflows: cores,
+  });
+  assert.equal(presentWhenMobileChanged.filter((item) => item.includes('mobile-checks.yml')).length, 0);
+});
+
+test('a skipped feature-batch job is missing, not a pass, when its paths changed', () => {
+  const featureBatch = {
+    path: '.github/workflows/feature-batch-checks.yml',
+    pullRequestPaths: ['engine/**', 'window/**'],
+  };
+  const checkRun = (conclusion) => ({ id: 9001, name: 'Named feature tests on ubuntu-latest (1/7)', status: 'completed', conclusion });
+  const workflows = { 9001: { id: 7, path: '.github/workflows/feature-batch-checks.yml', event: 'pull_request' } };
+  const skipped = missingCoreWorkflows({
+    checkRuns: [checkRun('skipped')],
+    workflowsByCheckId: workflows,
+    changedFiles: ['engine/src/gateway/contacts.ts'],
+    coreWorkflows: [featureBatch],
+  });
+  assert.ok(skipped.some((item) => item.includes('feature-batch-checks.yml') && item.includes('skipped')), skipped.join('\n'));
+  const passed = missingCoreWorkflows({
+    checkRuns: [checkRun('success')],
+    workflowsByCheckId: workflows,
+    changedFiles: ['engine/src/gateway/contacts.ts'],
+    coreWorkflows: [featureBatch],
+  });
+  assert.equal(passed.filter((item) => item.includes('feature-batch-checks.yml')).length, 0);
+});
+
+test('regression: an outage listing the head runs falls back to per-check lookups instead of crashing', () => {
+  const checks = [{ id: 601, name: 'merge-gate-trusted', check_suite: { id: 204 } }];
+  const workflows = gate.resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, {
+    attributionCache: new Map(),
+    fetchRuns: () => { throw new Error('gh: API rate limit exceeded (HTTP 403)'); },
+    resolveWorkflow: () => earlierTrustedWorkflow,
+  });
+  assert.deepEqual(workflows, { 601: earlierTrustedWorkflow });
+});
+
+test('regression: an outage on both the listing and the per-check lookups is pending, not forged', () => {
+  const checks = [{ id: 602, name: 'merge-gate-trusted', check_suite: { id: 205 } }];
+  const workflows = gate.resolveWorkflowsForCheckRuns('example/repo', 'unused', checks, {
+    attributionCache: new Map(),
+    fetchRuns: () => { throw new Error('gh: Server Error (HTTP 502)'); },
+    resolveWorkflow: () => { throw new Error('gh: Server Error (HTTP 502)'); },
+  });
+  assert.equal(workflows[602].lookupFailed, true);
+  assert.equal(gate.findForeignTrustedChecks(checks, workflows, { allowedRunId: CURRENT_RUN_ID }).length, 0);
+});
+
+test('fetchFileText fails closed on a non-404 read instead of treating main as an empty file', () => {
+  const rateLimited = Object.assign(new Error('gh: API rate limit exceeded (HTTP 403)'), { httpStatus: 403 });
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => {
+    throw rateLimited;
+  }), /rate limit/);
+  const serverError = Object.assign(new Error('gh: Server Error (HTTP 502)'), { httpStatus: 502 });
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => {
+    throw serverError;
+  }), /Server Error/);
+});
+
+test('fetchFileText returns null only for a 404, the file being absent at that ref', () => {
+  const notFound = Object.assign(new Error('gh: Not Found (HTTP 404)'), { httpStatus: 404 });
+  assert.equal(gate.fetchFileText('example/repo', 'fork0', 'unused', 'scripts/x.mjs', () => {
+    throw notFound;
+  }), null);
+  const textOnly = new Error('gh: Not Found (HTTP 404)');
+  assert.equal(gate.fetchFileText('example/repo', 'fork0', 'unused', 'scripts/x.mjs', () => {
+    throw textOnly;
+  }), null);
+  const content = Buffer.from('keep\n').toString('base64');
+  assert.equal(gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => ({
+    content, encoding: 'base64',
+  })), 'keep\n');
+});
+
+test('fetchFileText treats the real gh 404 stderr line as absent, and every other failure as fatal', () => {
+  const realStderr = new Error('Command failed: gh api contents/scripts/x.mjs?ref=fork0\ngh: Not Found (HTTP 404)');
+  assert.equal(gate.fetchFileText('example/repo', 'fork0', 'unused', 'scripts/x.mjs', () => {
+    throw realStderr;
+  }), null);
+  for (const [label, error] of [
+    ['server error', Object.assign(new Error('gh: Server Error (HTTP 500)'), { httpStatus: 500 })],
+    ['forbidden', new Error('gh: Forbidden (HTTP 403)')],
+    ['network reset', Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' })],
+  ]) {
+    assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/x.mjs', () => {
+      throw error;
+    }), (thrown) => thrown === error, label);
+  }
+});
+
+test('fetchFileText reads a file over 1 MB through its blob when the contents response is empty', () => {
+  const body = 'keep\n'.repeat(300000);
+  const calls = [];
+  const text = gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/big.mjs', (_repo, _token, requestPath) => {
+    calls.push(requestPath);
+    if (requestPath.startsWith('contents/')) return { content: '', encoding: 'none', sha: 'blob123' };
+    assert.equal(requestPath, 'git/blobs/blob123');
+    return { content: Buffer.from(body).toString('base64'), encoding: 'base64' };
+  });
+  assert.equal(text, body);
+  assert.deepEqual(calls, ['contents/scripts/big.mjs?ref=main', 'git/blobs/blob123']);
+});
+
+test('fetchFileText fails closed when an empty contents response has no readable blob', () => {
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/big.mjs', (_repo, _token, requestPath) => {
+    if (requestPath.startsWith('contents/')) return { content: '', encoding: 'none', sha: 'blob123' };
+    throw Object.assign(new Error('gh: Server Error (HTTP 502)'), { httpStatus: 502 });
+  }), /Server Error/);
+  assert.throws(() => gate.fetchFileText('example/repo', 'main', 'unused', 'scripts/big.mjs', () => ({
+    content: '', encoding: 'none',
+  })), /no content and no blob sha/);
+});
+
+test('regression: a running or failed recheck job from its own workflow does not hold the trusted gate red', () => {
+  const recheck = (conclusion, status = 'completed') => ({
+    id: 880, name: 'recheck', status, conclusion, check_suite: { id: 811 },
+    details_url: 'https://github.com/example/repo/actions/runs/305/job/880',
+  });
+  const ownWorkflow = { 880: { id: 305, path: '.github/workflows/merge-gate-recheck.yml', event: 'workflow_run' } };
+  for (const [label, check] of [
+    ['running', recheck(null, 'in_progress')],
+    ['failed', recheck('failure')],
+  ]) {
+    const result = evaluateTrustedGate({
+      checkRuns: [...passCheckRuns, check],
+      workflowsByCheckId: { ...passWorkflows, ...ownWorkflow },
+      changedFiles: ['README.md'],
+      coreWorkflows,
+      currentRunId: CURRENT_RUN_ID,
+      ...prContext,
+    });
+    assert.equal(result.pending.length, 0, label);
+    assert.equal(result.failed.length, 0, label);
+    assert.equal(result.ready, true, label);
+  }
+});
+
+test('regression: a failed recheck job from another workflow still fails the trusted gate', () => {
+  const otherRecheck = {
+    id: 881, name: 'recheck', status: 'completed', conclusion: 'failure', check_suite: { id: 812 },
+    details_url: 'https://github.com/example/repo/actions/runs/306/job/881',
+  };
+  const result = evaluateTrustedGate({
+    checkRuns: [...passCheckRuns, otherRecheck],
+    workflowsByCheckId: { ...passWorkflows, 881: { id: 306, path: '.github/workflows/feature-batch-checks.yml', event: 'pull_request' } },
+    changedFiles: ['README.md'],
+    coreWorkflows,
+    currentRunId: CURRENT_RUN_ID,
+    ...prContext,
+  });
+  assert.equal(result.failed.length, 1);
+  assert.equal(result.failed[0].name, 'recheck');
+  assert.equal(result.ok, false);
+});
+
+test('the ordinary merge gate skips only the recheck job proven by its workflow path', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /\.name != "recheck" or \(\(\$paths\[\.id \| tostring\] \/\/ ""\) != \$recheck\)/);
+  assert.match(yaml, /\.github\/workflows\/merge-gate-recheck\.yml/);
+  assert.doesNotMatch(yaml, /and \.name != "recheck"\)\]/);
+});
+
+test('the trusted preflight step reads the live body under one job budget and not the event payload', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
+  const step = yaml.slice(yaml.indexOf('name: Preflight the pull request body'));
+  const block = step.slice(0, step.indexOf('\n      - name:', 10) > 0 ? step.indexOf('\n      - name:', 10) : step.length);
+  assert.match(block, /PREFLIGHT_WAIT_SECONDS: '120'/);
+  assert.match(block, /run: node scripts\/pr-preflight\.mjs --ci/);
+  assert.doesNotMatch(block, /PR_BODY|github\.event\.pull_request\.body/);
+});
+
+test('the batch reads several files in one GraphQL request, with no REST read for clean answers', () => {
+  const requests = [];
+  const restReads = [];
+  const out = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['a.md', 'missing.md', 'b.yml'], {
+    graphql: (token, query, variables) => {
+      requests.push({ query, variables });
+      return { data: { repository: {
+        f0: { text: 'docs a', isBinary: false, isTruncated: false },
+        f1: null,
+        f2: { text: 'desk', isBinary: false, isTruncated: false },
+      } } };
+    },
+    fallback: (filePath) => { restReads.push(filePath); return 'rest'; },
+  });
+  assert.equal(requests.length, 1);
+  assert.deepEqual(restReads, []);
+  assert.deepEqual(out, { 'a.md': 'docs a', 'missing.md': null, 'b.yml': 'desk' });
+  assert.match(requests[0].query, /expression: "abc:a\.md"/);
+  assert.deepEqual(requests[0].variables, { owner: 'o', name: 'r' });
+});
+
+test('the batch reads over REST only the files GraphQL cannot answer cleanly', () => {
+  const restReads = [];
+  const out = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['a.md', 'big.bin', 'trunc.md'], {
+    graphql: () => ({ data: { repository: {
+      f0: { text: 'ok', isBinary: false, isTruncated: false },
+      f1: { text: null, isBinary: true, isTruncated: false },
+      f2: { text: 'cut', isBinary: false, isTruncated: true },
+    } } }),
+    fallback: (filePath) => { restReads.push(filePath); return `rest:${filePath}`; },
+  });
+  assert.deepEqual(restReads, ['big.bin', 'trunc.md']);
+  assert.deepEqual(out, { 'a.md': 'ok', 'big.bin': 'rest:big.bin', 'trunc.md': 'rest:trunc.md' });
+});
+
+test('a GraphQL error or outage reads every file over REST, never as empty', () => {
+  const restReads = [];
+  const fallback = (filePath) => { restReads.push(filePath); return `rest:${filePath}`; };
+  const partial = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['a.md', 'b.md'], {
+    graphql: () => ({ errors: [{ message: 'something' }], data: { repository: { f0: null, f1: null } } }),
+    fallback,
+  });
+  assert.deepEqual(partial, { 'a.md': 'rest:a.md', 'b.md': 'rest:b.md' });
+  const thrown = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['c.md'], {
+    graphql: () => { throw new Error('gh: API rate limit exceeded (HTTP 403)'); },
+    fallback,
+  });
+  assert.deepEqual(thrown, { 'c.md': 'rest:c.md' });
+  assert.deepEqual(restReads, ['a.md', 'b.md', 'c.md']);
+});
+
+test('named test lists: a rate limit is an error, not an empty list; a missing directory is empty', () => {
+  assert.throws(() => gate.fetchNamedTestLists('o/r', 'abc', 'tok', () => {
+    throw new Error('gh: API rate limit exceeded (HTTP 403)');
+  }), /rate limit/);
+  assert.deepEqual(gate.fetchNamedTestLists('o/r', 'abc', 'tok', () => {
+    throw Object.assign(new Error('gh: Not Found (HTTP 404)'), { httpStatus: 404 });
+  }), []);
+});
+
+test('the trusted gate gives its API calls their own rate-limit budget, separate from the zero poll budget', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /MERGE_GATE_WAIT_SECONDS: '0'/);
+  assert.match(yaml, /MERGE_GATE_API_WAIT_SECONDS: '600'/);
+  const main = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
+  assert.match(main, /gateApiBudget\.budgetSeconds = Number\(process\.env\.MERGE_GATE_API_WAIT_SECONDS \?\? DEFAULT_API_WAIT_SECONDS\)/);
+  assert.equal(gate.DEFAULT_API_WAIT_SECONDS, 600);
 });

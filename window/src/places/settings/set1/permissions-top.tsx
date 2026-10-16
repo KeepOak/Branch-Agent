@@ -1,6 +1,6 @@
 // Permissions, the custom rows: This PC (the computer's own permissions, which only the desktop app can read), the
 // mode box and "Mode everywhere" (tools.exec.mode, the same engine key behind the composer's modes), Work style,
-// Lockdown, Pinned settings, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
+// Lockdown, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
@@ -8,7 +8,7 @@ import { Dialog } from "../../../shell/Dialog";
 import { Icon } from "../../../shell/icons";
 import { useLockdown } from "../../../shell/use-lockdown";
 import { notify } from "../../../shell/notify";
-import { MODE_ROWS, blockedReason, modeName, isEngineMode, type EngineMode } from "../../../composer/mode";
+import { MODE_ROWS, blockedReason, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { platformName } from "../../../setup/steps-later";
 import { useOsPermissions, type OsPermission, type OsPermissionStatus } from "../../../connect/os-permissions";
 import { record, text, visible, type RecordValue } from "../adapter";
@@ -16,7 +16,7 @@ import { Btn, Ctl, Empty, Hint, Pick, Pill, Plist, Prow, Sec, Seg } from "../kit
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
 
 /** Wording and the open-settings label for This computer, from the real platform. Linux has no one settings app. */
-export function thisPcCopy(os = platformName()) {
+function thisPcCopy(os = platformName()) {
   if (os === "macOS") {
     return {
       hint: "macOS asks for very little. Branch asks before taking over.",
@@ -95,7 +95,7 @@ export function ThisPc() {
           const name = OS_NAME[t];
           const status = name && perms.state ? perms.state[name] : undefined;
           return (
-            <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : sub}>
+            <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : t === "Location" ? copy.locationHelp : sub}>
               {name && status ? (
                 <PermissionState name={name} status={status} openLabel={copy.open} busy={perms.busy === name} onAllow={() => void perms.request(name)} onOpen={() => void perms.open(name)} />
               ) : open && copy.open ? <Btn sm disabled title={copy.why}>{copy.open}</Btn> : null}
@@ -104,27 +104,22 @@ export function ThisPc() {
         })}
       </Plist>
       {perms.error ? <Hint>{perms.error}</Hint> : perms.state ? null : <Hint>{copy.why}</Hint>}
-      <div className="sec pm-loc">
-        <Ctl title="Location access" sub="Lets a Trunk ask where this computer is when a tool needs it." help={copy.locationHelp} off={WHY.key}>{deadControl({ seg: ["Off", "While using", "Always"], v: "While using" }, "Location access")}</Ctl>
-        <Ctl title="Precise location" sub="The exact spot, not just the area." off={WHY.key}>{deadControl({ sw: true }, "Precise location")}</Ctl>
-      </div>
     </Sec>
   );
 }
 
 /** The engine's exec mode for each composer mode (session permissionMode → tools.exec.mode). */
-export const EXEC_OF: Record<EngineMode, string> = { workspace: "auto", guarded: "ask", "read-only": "deny", full: "full" };
-const MODE_OF: Record<string, EngineMode> = { auto: "workspace", ask: "guarded", deny: "read-only", full: "full" };
+const EXEC_OF: Record<EngineMode, string> = { workspace: "auto", guarded: "ask", "read-only": "deny", full: "full" };
 
 /** The default Trunk's mode as the engine resolves it (agents.list defaultPermissionMode). */
-export function defaultMode(agents: RecordValue | undefined): EngineMode | null {
+function defaultMode(agents: RecordValue | undefined): EngineMode | null {
   const rows = Array.isArray(agents?.agents) ? (agents.agents as RecordValue[]) : [];
   const def = rows.find((a) => a.id === agents?.defaultId) ?? rows[0];
   return isEngineMode(def?.defaultPermissionMode) ? def.defaultPermissionMode : null;
 }
 
 /** The exec mode in force: the configured tools.exec.mode, or what the engine resolves without one. */
-export function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
+function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
   const set = cfg.get("tools.exec.mode");
   if (typeof set === "string") return set;
   const m = defaultMode(agents);
@@ -132,12 +127,12 @@ export function execMode(cfg: Cfg, agents: RecordValue | undefined): string {
 }
 
 /** Saves tools.exec.mode; the engine refuses mode beside the older security/ask keys, so those go. */
-export async function saveMode(cfg: Cfg, mode: string, after: () => Promise<void>) {
+async function saveMode(cfg: Cfg, mode: string, after: () => Promise<unknown>) {
   if (await cfg.set("tools.exec", { mode, security: null, ask: null })) await after();
 }
 
-const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
-export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<void> }) {
+const MODE_OPTS = MODE_ROWS.filter((r) => !r.gap).map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
+export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<unknown> }) {
   const selected = execMode(cfg, agents);
   const lockdown = cfg.get("security.lockdown") === true;
   return (
@@ -146,7 +141,6 @@ export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: Rec
     </Sec>
   );
 }
-export const modeLabel = (exec: string) => modeName(MODE_OF[exec]);
 
 /** The page's status box while locked (preview index.html:8494 statusBox markup, copy at :8540 and :30785). */
 export function LockdownStatus({ cfg }: { cfg: Cfg }) {
@@ -172,15 +166,6 @@ export function Lockdown({ engine }: { engine: WindowEngine }) {
       <Btn className={lockdown.on ? undefined : "bad"} disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Turn Lockdown on"}</Btn>
       {lockdown.confirmation}
     </div>
-  );
-}
-
-export function Pinned() {
-  return (
-    <>
-      <Empty>Nothing is pinned.</Empty>
-      <div className="acts" data-row="Pin a setting"><Btn sm disabled><Icon name="plus" small />Pin a setting</Btn><Hint>The engine can’t pin a setting yet.</Hint></div>
-    </>
   );
 }
 
@@ -213,7 +198,7 @@ function WhoDialog({ cfg, onClose }: { cfg: Cfg; onClose: () => void }) {
   const add = async () => { if (app && id.trim() && await put(app, [...(all[app] ?? []), id.trim()])) setId(""); };
   const rows = Object.entries(all).flatMap(([p, ids]) => ids.map((s) => ({ p, s })));
   return (
-    <Dialog title="Who may run commands outside the sealed box" onClose={onClose} footer={<button type="button" className="btn pri" onClick={onClose}>Done</button>}>
+    <Dialog title="Who may run commands outside the safe box" onClose={onClose} footer={<button type="button" className="btn pri" onClick={onClose}>Done</button>}>
       {rows.length ? <div className="rows">{rows.map(({ p, s }) => <Prow key={`${p}/${s}`} title={visible(s)} sub={visible(p)}><Btn sm ghost onClick={() => void put(p, all[p].filter((v) => v !== s))}>Remove</Btn></Prow>)}</div> : <p className="hint">No one yet.</p>}
       {apps.length ? (
         <div className="prow pm-add">

@@ -18,6 +18,8 @@ export interface DesktopAsset extends ComponentAsset {
 export interface ComponentRelease {
   schemaVersion: 1;
   version: string;
+  /** Published as a security fix: auto-apply lands it without waiting for the Trunk-work batch (Private #951). */
+  security?: true;
   components: { engine: ComponentAsset; window: ComponentAsset; desktop?: DesktopAsset; desktopRuntime?: DesktopAsset };
 }
 
@@ -52,9 +54,11 @@ export function parseComponentRelease(value: unknown): ComponentRelease {
   if (item?.schemaVersion !== 1 || typeof item.version !== "string" || !/^[\w.-]+$/.test(item.version)) {
     throw new Error("Unsupported release manifest");
   }
+  const security = (item as { security?: unknown }).security;
+  if (security !== undefined && typeof security !== "boolean") throw new Error("Invalid release security flag");
   const desktop = desktopAsset(item.components?.desktop);
   const desktopRuntime = desktopAsset(item.components?.desktopRuntime);
-  return { schemaVersion: 1, version: item.version,
+  return { schemaVersion: 1, version: item.version, ...(security ? { security: true as const } : {}),
     components: { engine: asset(item.components?.engine), window: asset(item.components?.window),
       ...(desktop ? { desktop } : {}), ...(desktopRuntime ? { desktopRuntime } : {}) } };
 }

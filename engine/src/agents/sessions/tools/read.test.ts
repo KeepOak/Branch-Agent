@@ -514,7 +514,7 @@ describe("read tool", () => {
       expect(continuation).toMatchObject({ kind: "cursor", offset: 1 });
       expect(continuation?.cursor).toBeGreaterThan(cursor ?? 0);
       expect(output).toContain(`offset=1, cursor=${continuation?.cursor}`);
-      reconstructed += output.replace(/\n\n\[Showing[^\]]*\]$/, "");
+      reconstructed += output.replace(/\n\n\[(?:File truncated\. )?Showing[^\]]*\]$/, "");
       cursor = continuation?.cursor;
     }
 

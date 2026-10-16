@@ -19,7 +19,7 @@ What the Notifications page controls depends on where you opened it:
 | Where Settings is open                            | Transport                                          | What you can do                                                                                         |
 | ------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | Supported web browser or installed Control UI PWA | Browser Push API via the Control UI service worker | Receive approvals and enabled attention categories, manage this browser's subscription, and send a test |
-| Branch Agent macOS app                                | Native macOS notifications                         | Grant app permission, jump to System Settings when blocked, send a local test                           |
+| Branch Agent macOS app                            | Native macOS notifications                         | Grant app permission, jump to System Settings when blocked, send a local test                           |
 | Browser without Push API support                  | None                                               | Status only. Enable and test stay unavailable                                                           |
 
 The macOS app deliberately uses the native permission flow instead of browser push. That is the notification system your Mac already respects.
@@ -49,7 +49,7 @@ After subscribing, **Settings → Notifications** exposes two preference layers:
 
 Single-user Gateways use their durable owner profile for account defaults, so those preferences follow the owner across devices. Connections without a profile keep the controls but store preferences only with the current browser subscription. Preferences never grant access: every delivery still rechecks the paired device, current role and scopes, authenticated profile, and session visibility. Multi-user events without an authoritative session owner are suppressed instead of being broadcast to every operator.
 
-By default, approval request and resolution notifications are enabled, and every other attention category is opt-in. Quiet hours suppress matching sends rather than queueing stale alerts for later delivery.
+By default, every attention category is enabled: approval requests and resolutions, agent completion, agent questions, human mentions, and scheduled-task failures. Turn any of them off in account defaults or for one browser. Quiet hours suppress matching sends rather than queueing stale alerts for later delivery.
 
 Selecting an attention notification opens its question, conversation, or automation run on the Gateway that produced it. **Agent finished** waits for completion. A parent waiting for child agents does not count as finished. Automation failures use **Scheduled task failures**, without also generating a **Background task failures** alert for the same run.
 
@@ -67,7 +67,7 @@ The Gateway sends Web Push directly to the browser vendor's push service. This w
 
 ### Receive human mention alerts
 
-After subscribing in a supported browser or installed Control UI PWA, turn on **Someone mentions me** under **Settings → Notifications**. The category is **off by default** and requires a signed-in Gateway profile. Account defaults can enable it across your devices. The current browser can override or mute it. These category controls appear for subscribed web clients, not the native macOS notification settings.
+After subscribing in a supported browser or installed Control UI PWA, **Someone mentions me** under **Settings → Notifications** is **on by default**. It requires a signed-in Gateway profile. Account defaults can turn it off across your devices. The current browser can override or mute it. These category controls appear for subscribed web clients, not the native macOS notification settings.
 
 Only browsers bound to the mentioned profile receive the alert. Each delivery rechecks the device, current profile and role, read scope, and session visibility. It then applies the category setting, quiet hours, and agent filter. Being online is not required. With **Private** detail, the alert says only that someone mentioned you in a conversation. **Names only** and **Detailed** may include the sanitized sender and session labels, never the message excerpt. Selecting it opens the session through the normal authenticated Control UI route.
 

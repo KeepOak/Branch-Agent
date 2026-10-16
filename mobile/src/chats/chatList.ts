@@ -41,6 +41,7 @@ export const CHAT_FILTERS = [
   ['all', 'All'],
   ['trunks', 'Trunks'],
   ['rooms', 'Rooms'],
+  ['unread', 'Unread'],
   ['needsYou', 'Needs you'],
   ['snoozed', 'Snoozed'],
   ['archived', 'Archived'],
@@ -49,26 +50,62 @@ export const CHAT_FILTERS = [
 
 export type ChatFilter = (typeof CHAT_FILTERS)[number][0];
 
+/** Extra narrowing from the preview's Filter sheet (status + include automation runs). */
+export type ChatStatusFilter = 'all' | 'working' | 'waiting' | 'idle';
+export type ChatSort = 'new' | 'old';
+export type ChatLayout = 'detailed' | 'compact';
+
+export type ChatListExtra = {
+  status?: ChatStatusFilter;
+  /** When on, automation chats stay in All / Trunks / Rooms / Unread / Needs you. */
+  includeAutos?: boolean;
+  sort?: ChatSort;
+};
+
 const asleep = (row: ChatRow, now: number) => row.snoozedUntil !== null && row.snoozedUntil > now;
 
-/** The rows a filter shows. All, Trunks, Rooms and Needs you leave out archived, snoozed and automation chats. */
-export function filterRows(rows: ChatRow[], filter: ChatFilter, now: number): ChatRow[] {
-  return rows.filter((row) => {
+function statusOf(row: ChatRow): Exclude<ChatStatusFilter, 'all'> {
+  if (row.working) return 'working';
+  if (row.needsYou) return 'waiting';
+  return 'idle';
+}
+
+function matchesStatus(row: ChatRow, status: ChatStatusFilter | undefined): boolean {
+  return !status || status === 'all' || statusOf(row) === status;
+}
+
+/** The rows a filter shows. All, Trunks, Rooms, Unread and Needs you leave out archived, snoozed and automation chats. */
+export function filterRows(rows: ChatRow[], filter: ChatFilter, now: number, extra?: ChatListExtra): ChatRow[] {
+  const includeAutos = extra?.includeAutos === true;
+  const shown = rows.filter((row) => {
     if (filter === 'archived') return row.archived;
     if (row.archived) return false;
     if (filter === 'snoozed') return asleep(row, now);
     if (filter === 'automations') return row.automation;
-    if (asleep(row, now) || row.automation) return false;
+    if (asleep(row, now) || (row.automation && !includeAutos)) return false;
     if (filter === 'trunks') return !row.room;
     if (filter === 'rooms') return row.room;
     if (filter === 'needsYou') return row.needsYou;
+    // Unread is exactly what the count beside the title counts, so a tap on the count lands here.
+    if (filter === 'unread') return row.unread || row.needsYou;
     return true;
   });
+  return shown.filter((row) => matchesStatus(row, extra?.status));
+}
+
+/** Newest first is the list's own order; Oldest first reverses it, as the preview's Sort sheet does. */
+export function sortRows(rows: ChatRow[], sort: ChatSort = 'new'): ChatRow[] {
+  return sort === 'old' ? [...rows].reverse() : rows;
+}
+
+/** Pinned Trunks for the horizontal pin row: pinned, not a room, and in All. */
+export function pinnedTrunks(rows: ChatRow[], now: number, extra?: ChatListExtra): ChatRow[] {
+  return filterRows(rows, 'all', now, extra).filter((row) => row.pinned && !row.room);
 }
 
 /** How many chats in All are unread or need you, for the count beside the title. */
 export function unreadCount(rows: ChatRow[], now: number): number {
-  return filterRows(rows, 'all', now).filter((row) => row.unread || row.needsYou).length;
+  return filterRows(rows, 'unread', now).length;
 }
 
 export type ChatListSnapshot = {

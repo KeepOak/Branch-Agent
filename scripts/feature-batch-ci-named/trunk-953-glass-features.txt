@@ -1,0 +1,3 @@
+window:src/screens/features/FeaturesPage.test.tsx
+window:src/screens/features/atlas.test.ts
+window:src/screens/features/glass48.test.tsx

@@ -1,13 +1,18 @@
 // + new › New Trunk (the preview's newTrunkC18 and ADD_Q1_C18): Branch makes the Trunk, opens a conversation with it and
-// asks, in a card above its message box, what it should take on first and how careful it should be. Each answer is
-// saved through the engine: the job as the Trunk's identity.theme (config.patch), the care as this conversation's
-// permissionMode (sessions.patch), and at the end a proper name (agents.update). Nothing is sent to a model.
+// asks, in a card above its message box, what it should take on first and how careful it should be, then which model
+// and which tools. The job is saved as identity.theme (config.patch), the care as this conversation's permissionMode
+// (sessions.patch), and a chosen model with agents.update. Tools stay on their usual setting unless details is opened.
 import { useState } from "react";
 import type { WindowEngine } from "../connect/engine";
+import { readModels } from "../composer/model";
 import { patchConfig, readConfig, readRoster } from "../places/trunk/model";
+import { nextTrunkChoice } from "../places/trunk/NewTrunkPreview";
+import { trunkAppearance } from "../face/appearance";
+import { CharacterFace } from "../face/CharacterFace";
+import { Face } from "../face/Face";
 import "../thread/questions.css";
 
-export type NewTrunk = { agentId: string; sessionKey: string; name: string };
+export type NewTrunk = { agentId: string; sessionKey: string; name: string; avatar?: string; colour?: string; shape?: string };
 type Opt = { label: string; line?: string };
 
 export const FIRST_JOB: Opt[] = [
@@ -17,7 +22,7 @@ export const FIRST_JOB: Opt[] = [
   { label: "Files on this computer", line: "Downloads, Documents, the desktop" },
   { label: "Something else", line: "Tell me in your own words" },
 ];
-export const FOLLOW = [
+const FOLLOW = [
   "I’ll need to sign in to your mail and calendar. I’ll ask before I send or accept anything.",
   "I’ll read card statements and receipts. I’ll never pay or move money.",
   "I’ll use the web and the files you point me to.",
@@ -45,9 +50,25 @@ const ok = (r: unknown) => {
 
 const KEYS = "ABCDE";
 
-export function NewTrunkCard({ engine, flow, onDone }: { engine: WindowEngine; flow: NewTrunk; onDone: (name: string) => void }) {
-  const [step, setStep] = useState<1 | 2>(1);
-  const [line, setLine] = useState(`Hi, I’m ${flow.name}. What should I take on first?`);
+/** The greeting the preview gives a new Trunk (preview.html:41518), with the name it has now. */
+const greeting = (name: string) => `Hi, I’m ${name}. Keep me as I am, or shuffle for another character and name. What should I take on first?`;
+
+type Ask = { label: string; line?: string };
+
+export function NewTrunkCard({ engine, flow, onDone, onChangeLook }: { engine: WindowEngine; flow: NewTrunk; onDone: (name: string) => void; onChangeLook?: () => void }) {
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [models, setModels] = useState<{ ref: string; name: string }[]>([]);
+  const [readyName, setReadyName] = useState(flow.name);
+  const [made, setMade] = useState({ name: flow.name, avatar: flow.avatar ?? "" });
+  const [line, setLine] = useState(greeting(flow.name));
+  const appearance = trunkAppearance(made.avatar || undefined, made.name);
+  // Shuffle: a new unused name and look, saved on the Trunk (agents.update), and the greeting follows it.
+  const shuffle = () => run(async () => {
+    const next = nextTrunkChoice(readRoster(await engine.request("agents.list", {})), { name: made.name, avatar: made.avatar });
+    ok(await engine.request("agents.update", { agentId: flow.agentId, name: next.name, avatar: next.avatar }));
+    setMade({ name: next.name, avatar: next.avatar });
+    setLine(greeting(next.name));
+  });
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,19 +86,49 @@ export function NewTrunkCard({ engine, flow, onDone }: { engine: WindowEngine; f
   const care = (i: number) => run(async () => {
     ok(await engine.request("sessions.patch", { key: flow.sessionKey, permissionMode: CARE[i].mode }));
     const roster = readRoster(await engine.request("agents.list", {}));
-    const name = roster.agents.find((a) => a.id === flow.agentId)?.name ?? flow.agentId;
-    onDone(name);
+    setReadyName(roster.agents.find((a) => a.id === flow.agentId)?.name ?? made.name);
+    let choices: { ref: string; name: string }[] = [];
+    try { choices = readModels(await engine.request("models.list", {})).filter((model) => model.available).slice(0, 3); }
+    catch { choices = []; }
+    setModels(choices);
+    setLine(choices.length ? "The job is saved." : "No model is set up yet. Add one in Settings.");
+    setStep(choices.length ? 3 : 4);
   });
-  const opts = step === 1 ? FIRST_JOB : CARE;
+  const pickModel = (ref: string) => run(async () => {
+    if (ref) ok(await engine.request("agents.update", { agentId: flow.agentId, model: ref }));
+    setLine(ref ? "That model is set for me." : "I’ll keep the usual model.");
+    setStep(4);
+  });
+  const modelAsks: Ask[] = [{ label: "The usual model", line: "Whatever Branch already uses" }, ...models.map((model) => ({ label: model.name, line: "This Trunk only" }))];
+  const toolAsks: Ask[] = [
+    { label: "The usual tools", line: "The same tools as your other Trunks" },
+    ...(onChangeLook ? [{ label: "Choose tools in details", line: "Files, the browser and the rest" }] : []),
+  ];
+  const question = step === 1 ? "What should I take on first?" : step === 2 ? "How careful should I be?" : step === 3 ? "Which model should I think with?" : "Which tools should I start with?";
+  const hint = step === 1 ? "Pick one for now. You can add more later." : step === 2 ? "Lockdown still stops me, whatever you pick." : step === 3 ? "You can change it later in details or Settings." : "Nothing turns off. The full list stays in details and Settings.";
+  const opts: Ask[] = step === 1 ? FIRST_JOB : step === 2 ? CARE : step === 3 ? modelAsks : toolAsks;
+  const choose = (index: number) => {
+    if (step === 1) void job(index);
+    else if (step === 2) void care(index);
+    else if (step === 3) void pickModel(index === 0 ? "" : models[index - 1]?.ref ?? "");
+    else if (index === 1) { onChangeLook?.(); onDone(readyName); }
+    else onDone(readyName);
+  };
   return (
     <div className="dock-q talk-setup" data-testid="new-trunk-card">
       <div className="card choice q-card" aria-busy={busy}>
+        <div className="meet">
+          {appearance ? <CharacterFace appearance={appearance} size={56} label={made.name} /> : flow.colour ? <Face size={56} label={made.name} pebbleLook={{ colour: flow.colour, shape: flow.shape, eyes: "Round" }} /> : null}
+          <span className="grow"><b>{made.name}</b><small>Model, instructions and tools stay in details and Settings.</small></span>
+          <button type="button" className="btn sm" disabled={busy} onClick={() => void shuffle()}>Shuffle</button>
+          <button type="button" className="btn ghost sm" disabled={busy || !onChangeLook} onClick={() => onChangeLook?.()}>Change the look</button>
+        </div>
         <p className="talk-done">{line}</p>
-        <div className="q">{step === 1 ? "What should I take on first?" : "Access for this Trunk"}</div>
-        <div className="sub">{step === 1 ? "Pick one for now. You can add more later." : "Lockdown still stops me, whatever you pick."}</div>
-        <div className="opts" role="radiogroup" aria-label={step === 1 ? "What should I take on first?" : "Access for this Trunk"}>
+        <div className="q">{question}</div>
+        <div className="sub">{hint}</div>
+        <div className="opts" role="radiogroup" aria-label={question}>
           {opts.map((o, j) => (
-            <button key={o.label} type="button" className="opt" role="radio" aria-checked={false} disabled={busy} onClick={() => void (step === 1 ? job(j) : care(j))}>
+            <button key={o.label} type="button" className="opt" role="radio" aria-checked={false} disabled={busy} onClick={() => choose(j)}>
               <kbd>{KEYS[j]}</kbd>
               <b>{o.label}</b>
               {o.line ? <small>{o.line}</small> : null}

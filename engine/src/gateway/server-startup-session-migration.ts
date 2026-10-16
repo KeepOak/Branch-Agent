@@ -199,6 +199,8 @@ export async function runStartupSessionMigration(params: {
   assertCurrent?: () => void;
   log: SessionStartupMigrationLogger;
   deps?: SessionMigrationDeps;
+  /** Receives each database whose transcript repair is deferred instead of run inline. */
+  deferTranscriptRepair?: (database: BranchAgentDatabaseOptions) => void;
 }): Promise<void> {
   let reconcile = params.deps?.reconcileSessionTranscriptIndexes;
   let reconciledSessions = 0;
@@ -222,6 +224,10 @@ export async function runStartupSessionMigration(params: {
           `session: retained startup orphans because ownership could not be verified: ${String(error)}`,
         );
       }
+      if (params.deferTranscriptRepair) {
+        params.deferTranscriptRepair(database);
+        return;
+      }
       reconcile ??= (await import("../config/sessions/session-transcript-reconcile.js"))
         .reconcileSessionTranscriptIndexes;
       params.assertCurrent?.();
@@ -238,6 +244,31 @@ export async function runStartupSessionMigration(params: {
   if (reconciledSessions > 0) {
     params.log.info(
       `session: rebuilt ${reconciledSessions} transcript projection(s) before serving history`,
+    );
+  }
+}
+
+/** Rebuilds the transcript projections that runStartupSessionMigration deferred, one database at a time. */
+export async function runDeferredTranscriptRepair(params: {
+  databases: readonly BranchAgentDatabaseOptions[];
+  assertCurrent?: () => void;
+  log: SessionStartupMigrationLogger;
+  deps?: SessionMigrationDeps;
+}): Promise<void> {
+  const reconcile =
+    params.deps?.reconcileSessionTranscriptIndexes ??
+    (await import("../config/sessions/session-transcript-reconcile.js"))
+      .reconcileSessionTranscriptIndexes;
+  let rebuiltSessions = 0;
+  for (const database of params.databases) {
+    params.assertCurrent?.();
+    const result = await reconcile(database);
+    params.assertCurrent?.();
+    rebuiltSessions += result.reconciledSessions;
+  }
+  if (rebuiltSessions > 0) {
+    params.log.info(
+      `session: rebuilt ${rebuiltSessions} transcript projection(s) after agent admission`,
     );
   }
 }

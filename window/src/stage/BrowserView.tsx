@@ -1,5 +1,5 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { WindowEngine } from "../connect/engine";
 import type { Block } from "../thread/model";
 import type { Level } from "../places-nav/settings-nav";
@@ -9,23 +9,49 @@ import { BrowserScreencastClient, type BrowserScreencastFrame } from "./browser-
 import { browserCall, readTabs, recordedBrowserTabs, routeKey, routeOf, scopedBrowserRequest, type BrowserRoute, type LiveTab } from "./browser-route";
 import { BrowserTools } from "./BrowserTools";
 import { SIcon } from "./stage-icons";
+import { resolveBrowserInput, scrollAtPoint } from "./browser-input";
+import { DriveSurface, type RemoteAction } from "./DriveSurface";
+import { toRemote } from "./remote-map";
 
-export { recordedBrowserTabs, scopedBrowserRequest } from "./browser-route";
+/** The page area's size, reported once it settles, so the Trunk's page can be sized to the pane. */
+const FIT_DELAY_MS = 300;
+const MIN_FIT = 100;
+function useFitReporter(box: RefObject<HTMLElement | null>, onFit?: (size: { width: number; height: number }) => void) {
+  useEffect(() => {
+    const el = box.current;
+    if (!el || !onFit || typeof ResizeObserver !== "function") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let last = "";
+    const send = () => {
+      const rect = el.getBoundingClientRect();
+      const size = { width: Math.round(rect.width), height: Math.round(rect.height) };
+      const key = `${size.width}x${size.height}`;
+      if (size.width < MIN_FIT || size.height < MIN_FIT || key === last) return;
+      last = key;
+      onFit(size);
+    };
+    const schedule = () => {
+      clearTimeout(timer);
+      timer = setTimeout(send, FIT_DELAY_MS);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(el);
+    schedule();
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [box, onFit]);
+}
 
+/** The page's CSS pixel under a client point on the fitted screencast frame, or null in the letterbox bands. */
 export function browserRemotePoint(
   rect: { left: number; top: number; width: number; height: number },
   image: { width: number; height: number; cssWidth: number; cssHeight: number },
   x: number,
   y: number,
 ) {
-  const scale = Math.min(rect.width / image.width, rect.height / image.height);
-  if (!Number.isFinite(scale) || scale <= 0) return null;
-  const left = rect.left + (rect.width - image.width * scale) / 2,
-    top = rect.top + (rect.height - image.height * scale) / 2;
-  const px = (x - left) / (image.width * scale),
-    py = (y - top) / (image.height * scale);
-  if (px < 0 || py < 0 || px > 1 || py > 1) return null;
-  return { x: Math.round(px * image.cssWidth), y: Math.round(py * image.cssHeight) };
+  return toRemote({ x, y }, rect, image, { width: image.cssWidth, height: image.cssHeight });
 }
 
 export type BrowserPhase = "loading" | "empty" | "connected" | "error";
@@ -59,9 +85,11 @@ function useBrowser(engine: WindowEngine, route: BrowserRoute | null, tick: numb
 type ViewState = { owner: WindowEngine; selection: string; phase: BrowserPhase; url?: string; title?: string; message?: string };
 
 /** The live picture of one tab (POST /screencast) on a canvas; clicks and keys go to /act only while `interact`. */
-function Screencast({ engine, gatewayUrl, entry, interact, onState }: { engine: WindowEngine; gatewayUrl: string; entry: BrowserPresentation | null; interact: boolean; onState: (s: Omit<ViewState, "owner" | "selection">) => void }) {
+function Screencast({ engine, gatewayUrl, entry, interact, driving = "", onState, onFit }: { engine: WindowEngine; gatewayUrl: string; entry: BrowserPresentation | null; interact: boolean; driving?: string; onState: (s: Omit<ViewState, "owner" | "selection">) => void; onFit?: (size: { width: number; height: number }) => void }) {
   const selection = entry ? `${routeKey(entry.tab)}:${entry.tab.targetId}:${entry.revision}` : "";
   const canvas = useRef<HTMLCanvasElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  useFitReporter(box, onFit);
   const metrics = useRef<{ width: number; height: number; cssWidth: number; cssHeight: number } | null>(null);
   const generation = useRef(0);
   const [retry, setRetry] = useState(0);
@@ -177,43 +205,52 @@ function Screencast({ engine, gatewayUrl, entry, interact, onState }: { engine: 
     // `entry` is identified by `selection`; onState is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, gatewayUrl, selection, retry]);
-  const act = async (body: Record<string, unknown>) => {
+  // Every key and text edit goes through one queue, so what was typed reaches the page in the order it was typed.
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const act = (body: Record<string, unknown>) => {
     if (!entry || !interact || current.phase !== "connected") return;
     const operation = generation.current;
-    try {
-      await scopedBrowserRequest(engine, entry, "POST", "/act", body);
-    } catch {
-      if (operation === generation.current) setState((old) => ({ ...old, message: "The browser input couldn't be sent. Check the connection and try again." }));
+    queue.current = queue.current
+      .then(() => scopedBrowserRequest(engine, entry, "POST", "/act", body))
+      .then(
+        () => undefined,
+        () => {
+          if (operation === generation.current) setState((old) => ({ ...old, message: "The browser input couldn't be sent. Check the connection and try again." }));
+        },
+      );
+  };
+  // What you do while you have the page, through the same /act route the Trunk uses (BrowserActRequest).
+  const drive = (action: RemoteAction) => {
+    switch (action.kind) {
+      case "click":
+        act({ kind: "clickCoords", x: action.x, y: action.y, ...(action.button === "right" ? { button: "right" } : {}) });
+        return;
+      case "type":
+        act({ kind: "insertText", text: action.text });
+        return;
+      case "key":
+        act({ kind: "press", key: action.key });
+        return;
+      case "scroll":
+        act({ kind: "evaluate", fn: scrollAtPoint(action.x, action.y, action.dx, action.dy) });
+        return;
+      default:
+        // The route has no pointer move or coordinate drag, so hover and drag stay on this side.
+        return;
     }
   };
   return (
-    <div className="br-page-st">
-      <canvas
-        ref={canvas}
-        aria-label="Live browser page"
-        tabIndex={interact ? 0 : -1}
-        onClick={(e) => {
-          if (!interact || !metrics.current) return;
-          const point = browserRemotePoint(e.currentTarget.getBoundingClientRect(), metrics.current, e.clientX, e.clientY);
-          if (point) {
-            e.currentTarget.focus();
-            void act({ kind: "clickCoords", ...point });
-          }
-        }}
-        onKeyDown={(e) => {
-          if (!interact || e.ctrlKey || e.metaKey || e.altKey || e.key === "Escape" || e.key === "Tab") return;
-          if (e.key.length === 1 || ["Enter", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(e.key)) {
-            e.preventDefault();
-            void act({ kind: "press", key: e.key });
-          }
-        }}
-        onPaste={(e) => {
-          if (!interact) return;
-          e.preventDefault();
-          const text = e.clipboardData.getData("text/plain");
-          if (text) void act({ kind: "insertText", text });
-        }}
-      />
+    <div className="br-page-st" ref={box}>
+      <DriveSurface
+        active={interact && current.phase === "connected"}
+        frame={() => (metrics.current ? { width: metrics.current.width, height: metrics.current.height } : null)}
+        remote={() => (metrics.current ? { width: metrics.current.cssWidth, height: metrics.current.cssHeight } : null)}
+        send={drive}
+        typingLabel="Type into the page"
+      >
+        <canvas ref={canvas} aria-label="Live browser page" />
+      </DriveSurface>
+      {interact && driving && current.phase === "connected" ? <span className="drive-st">{driving}</span> : null}
       {current.phase === "loading" || current.phase === "error" ? (
         <div className="blank-st">
           <SIcon name="globe" />
@@ -255,6 +292,8 @@ type Props = {
   running?: boolean;
   /** You have the page: clicks and keys go to it. */
   control?: boolean;
+  /** The line on the page while you drive it. */
+  driving?: string;
   onControl?: (control: boolean) => void;
   level?: Level;
   onState: (phase: BrowserPhase, title?: string) => void;
@@ -280,7 +319,7 @@ export function BrowserMini({ engine, gatewayUrl, blocks }: { engine: WindowEngi
   );
 }
 
-export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, onControl, level = "regular", onState }: Props) {
+export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running = false, control = false, driving = "", onControl, level = "regular", onState }: Props) {
   const entries = useMemo(() => recordedBrowserTabs(blocks), [blocks]);
   // Before the first tool call, use only Branch's managed browser, never the user's Chrome.
   const route = useMemo<BrowserRoute>(() => routeOf(entries) ?? { target: "host", profile: "branch" }, [routeKey(routeOf(entries))]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -311,6 +350,14 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   const tabs = browser.tabs.filter((t) => !closed.has(t.targetId));
   const tab = tabs.find((t) => t.targetId === picked) ?? tabs.find((t) => t.targetId === recordedNewest) ?? tabs[0];
   const entry: BrowserPresentation | null = route && tab ? { tab: { ...route, targetId: tab.targetId } as BrowserPresentation["tab"], revision: String(tick), url: tab.url, title: tab.title } : null;
+  const addressInput = useRef<HTMLInputElement>(null);
+  const emptyPage = !tab || tab.url === "about:blank";
+  useEffect(() => {
+    // An empty page is ready for an address at once, unless the person is already typing in another field.
+    const active = document.activeElement;
+    const typing = Boolean(active && active !== document.body && active.matches("input, textarea, [contenteditable='true']"));
+    if (emptyPage && engine.sessionKey && !typing) addressInput.current?.focus();
+  }, [emptyPage, engine.sessionKey]);
   const onView = useCallback(
     (s: { phase: BrowserPhase; url?: string; title?: string }) => {
       setView({ ...s, owner: engine, tabId: tab?.targetId });
@@ -352,9 +399,9 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     }
   };
   const go = (raw: string) => {
-    const target = raw.trim();
-    if (!target || opening) return;
-    const destination = /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : `https://${target}`;
+    const input = resolveBrowserInput(raw);
+    if (input.kind === "empty" || opening) return;
+    const destination = input.url;
     if (!tab) {
       void openTab(destination);
       return;
@@ -370,6 +417,21 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
     onControl?.(true);
     void call("POST", "/act", { targetId: tab.targetId, body: { kind: "evaluate", fn: `() => history.${step}()` } }).then(refresh, fail);
   };
+  const reload = () => {
+    if (!tab) return;
+    onControl?.(true);
+    void call("POST", "/act", { targetId: tab.targetId, body: { kind: "evaluate", fn: "() => location.reload()" } }).then(refresh, refresh);
+  };
+  // The Trunk's own managed browser is sized to this pane, so the page fills it. Other routes are never resized.
+  const fitTarget = tab?.targetId;
+  const fitPage = useCallback(
+    (size: { width: number; height: number }) => {
+      if (!route || route.profile !== "branch" || !fitTarget) return;
+      const width = Math.min(8192, size.width), height = Math.min(8192, size.height);
+      void browserCall(engine, route, "POST", "/act", { targetId: fitTarget, body: { kind: "resize", width, height } }).catch(() => undefined);
+    },
+    [engine, route, fitTarget],
+  );
   const newTab = () => void openTab("about:blank");
   const closeTab = (id: string) => {
     onControl?.(true);
@@ -406,11 +468,11 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   else if (!engine.sessionKey) page = <Blank title="Choose a conversation first" text="Open a conversation to browse pages with its Trunk." />;
   else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
   else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={browser.error ?? ""}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
-  else if (!tab || tab.url === "about:blank") page = <Blank title="Browse with your Trunk" text="See the pages your Trunk opens, or open a page yourself in this conversation.">
-    <small>Enter a website address above and press Enter. Then ask {name} to read, compare or work on the page, or click and type yourself.</small>
+  else if (!tab || tab.url === "about:blank") page = <Blank title={`${name}’s browser`} text="See the pages your Trunk opens, or open a page yourself in this conversation.">
+    <small>Type a website or a search above and press Enter. Then ask {name} to read, compare or work on the page, or click and type yourself.</small>
     <small>Branch's browser is separate from your personal browser.</small>
   </Blank>;
-  else page = <Screencast key={entry ? `${routeKey(route)}:${tab.targetId}` : "none"} engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={control} onState={onView} />;
+  else page = <Screencast key={entry ? `${routeKey(route)}:${tab.targetId}` : "none"} engine={engine} gatewayUrl={gatewayUrl} entry={entry} interact={control} driving={driving} onState={onView} onFit={fitPage} />;
   const showChrome = Boolean(engine.sessionKey);
   return (
     <div className="browser-st">
@@ -478,16 +540,31 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                     <button type="button" className="br-nav-st" aria-label="Forward" title="Forward" onClick={() => history("forward")}>
                       <SIcon name="forward" small />
                     </button>
-                    <button type="button" className="br-nav-st" aria-label="Reload" title="Reload" disabled={!tab || !url} onClick={() => go(url)}>
+                    <button type="button" className="br-nav-st" aria-label="Reload" title="Reload" disabled={!tab} onClick={reload}>
                       <SIcon name="reload" small />
                     </button></> : null}
                     <SIcon name="lock" small />
                     <input
+                      ref={addressInput}
                       className="br-addr-st"
                       value={shownAddress}
                       onChange={(e) => setAddress({ for: tab?.targetId ?? "", text: e.target.value })}
-                      placeholder="Enter an address and press Enter"
-                      aria-label="Enter an address and press Enter"
+                      onMouseDown={(e) => {
+                        // A first click selects the whole address, as Chrome does, instead of placing a caret.
+                        if (document.activeElement !== e.currentTarget) {
+                          e.preventDefault();
+                          e.currentTarget.focus();
+                          e.currentTarget.select();
+                        }
+                      }}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onBlur={(e) => {
+                        // Leaving for the Open button keeps what was typed; leaving the bar shows the page's address again.
+                        const next = e.relatedTarget as Node | null;
+                        if (!next || !e.currentTarget.form?.contains(next)) setAddress(null);
+                      }}
+                      placeholder="Search or enter an address"
+                      aria-label="Search or enter an address"
                       spellCheck={false}
                       autoComplete="off"
                       disabled={opening}
@@ -497,7 +574,6 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
                 </div>
               ) : null}
               {page}
-              {control && currentView.phase === "connected" ? <span className="drive-st">You're driving</span> : null}
             </div>
           </div>
           {drawer && route && tab ? (

@@ -1,6 +1,6 @@
 import * as Crypto from 'expo-crypto';
-import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { appIdentity } from '../build/appIdentity';
 import { loadDeviceIdentity } from '../connect/deviceIdentity';
 import type { Platform as PhonePlatform } from '../connect/phoneGateway';
 import { deviceStore } from '../storage/keyValueStore';
@@ -13,7 +13,7 @@ export function createDeviceSession(): PairingSession {
   return new PairingSession({
     store,
     platform: Platform.OS as PhonePlatform,
-    appVersion: Constants.expoConfig?.version ?? '0.0.0',
+    appVersion: appIdentity().version,
     loadIdentity: () => (identity ??= loadDeviceIdentity(store, (length) => Crypto.getRandomBytes(length))),
     createRequestId: () => Crypto.randomUUID(),
   });
