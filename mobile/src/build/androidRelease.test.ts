@@ -296,11 +296,13 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toContain('libs.versions.toml');
     expect(workflow).toContain('expo-build-properties');
     expect(workflow).toContain('ndkVersion');
-    expect(workflow).toMatch(/sdkmanager --sdk_root="\$\{ANDROID_SDK_ROOT\}" --install "ndk;\$\{NDK_VERSION\}"/);
-    expect(workflow).toMatch(/attempt=1/);
-    expect(workflow).toMatch(/attempt" -ge 3/);
-    expect(workflow).toMatch(/delay=\$\(\(delay \* 2\)\)/);
-    expect(workflow).toMatch(/sleep "\$\{delay\}"/);
+    expect(workflow).toContain('package="ndk;${NDK_VERSION}"');
+    expect(workflow).toMatch(/sdkmanager --sdk_root="\$\{ANDROID_SDK_ROOT\}" --install "\$\{package\}"/);
+    expect(workflow).toContain('attempt=1');
+    expect(workflow).toContain('-ge 3');
+    expect(workflow).toContain('after 3 attempts');
+    expect(workflow).toContain('delay=$((delay * 2))');
+    expect(workflow).toContain('sleep "${delay}"');
     const sdkPackages = workflow.slice(
       workflow.indexOf('- name: Install Android SDK packages'),
       workflow.indexOf('- name: Install the phone app'),
