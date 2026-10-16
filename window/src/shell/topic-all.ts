@@ -31,6 +31,8 @@ export type TopicTranscriptCache = Map<string, { signature: string; blocks: Bloc
 /**
  * Reads each thread's transcript for the All view. A thread whose row has not changed since its last read
  * reuses those blocks, so a live update reads only the threads that moved, not every thread again.
+ * If one read fails, the load stays pending until every other read has settled and then rethrows the
+ * first failure, so a follow-up load cannot start a second read of a thread that is still being read.
  */
 export async function loadAllTopicTranscripts(
   request: (method: string, params: unknown) => Promise<unknown>,
@@ -40,7 +42,7 @@ export async function loadAllTopicTranscripts(
   cache: TopicTranscriptCache = new Map(),
 ): Promise<Block[]> {
   const sources = [main, ...topics];
-  const transcripts = await Promise.all(sources.map(async (source) => {
+  const settled = await Promise.allSettled(sources.map(async (source) => {
     const signature = `${source.updatedAt}\u0000${source.preview}`;
     const cached = cache.get(source.key);
     if (cached?.signature === signature) return { ...source, blocks: cached.blocks };
@@ -49,6 +51,9 @@ export async function loadAllTopicTranscripts(
     cache.set(source.key, { signature, blocks });
     return { ...source, blocks };
   }));
+  const failed = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failed) throw failed.reason;
+  const transcripts = settled.map((result) => (result as PromiseFulfilledResult<TopicTranscript>).value);
   return mergeTopicTranscripts(transcripts, picks);
 }
 

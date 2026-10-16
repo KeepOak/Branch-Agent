@@ -41,4 +41,47 @@ describe("All topics transcript reads", () => {
     expect(runs).toBe(2);
     reloader.cancel();
   });
+
+  it("waits for every thread read before releasing the load when one read fails", async () => {
+    let releaseTopic!: () => void;
+    const held = new Promise<void>((resolve) => { releaseTopic = resolve; });
+    let failMain = true;
+    const calls: string[] = [];
+    const request = vi.fn(async (_method: string, params: unknown) => {
+      const key = (params as { sessionKey: string }).sessionKey;
+      calls.push(key);
+      if (key === main.key && failMain) throw new Error("main unavailable");
+      if (key === topics[0].key) await held;
+      return { messages: [] };
+    });
+    const cache: TopicTranscriptCache = new Map();
+    const errors: unknown[] = [];
+    let runs = 0;
+    const reloader = createSerialReloader(async () => {
+      runs += 1;
+      try {
+        await loadAllTopicTranscripts(request, main, [topics[0]], {}, cache);
+      } catch (error) {
+        errors.push(error);
+        throw error;
+      }
+    });
+    reloader.trigger();
+    reloader.trigger();
+    reloader.trigger();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(runs).toBe(1);
+    expect(calls.filter((key) => key === topics[0].key)).toHaveLength(1);
+
+    failMain = false;
+    releaseTopic();
+    await vi.waitFor(() => expect(calls.filter((key) => key === main.key)).toHaveLength(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runs).toBe(2);
+    expect(errors).toHaveLength(1);
+    expect((errors[0] as Error).message).toBe("main unavailable");
+    expect(calls.filter((key) => key === topics[0].key)).toHaveLength(1);
+    expect(cache.has(main.key)).toBe(true);
+    reloader.cancel();
+  });
 });
