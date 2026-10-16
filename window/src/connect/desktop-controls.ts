@@ -7,8 +7,15 @@ export type DesktopControlsState = {
   keepWorking: boolean; keepAwake: boolean; trayUsage: boolean; autoApplyUpdates: boolean; startWithWindows: boolean; branchOnPath: boolean;
   /** Older desktop apps leave it out. */
   agentControl?: boolean;
+  /** Keep awake while Trunks work on battery too (Private #454 D); older desktop apps leave it out. */
+  keepAwakeOnBattery?: boolean;
+  /** Linux with the engine service only: keep working when nobody is signed in (systemd linger). */
+  keepWorkingSignedOut?: boolean;
+  /** One-time lines the app has for a control, such as why the engine runs inside the app on this computer. */
+  notes?: Partial<Record<string, string>>;
 };
-export type DesktopControlName = keyof DesktopControlsState;
+/** The switches: every key whose value is on or off. */
+export type DesktopControlName = { [K in keyof DesktopControlsState]-?: DesktopControlsState[K] extends boolean | undefined ? K : never }[keyof DesktopControlsState];
 export type DesktopControlsBridge = {
   get(): Promise<DesktopControlsState>;
   set(name: DesktopControlName, on: boolean): Promise<DesktopControlsState>;
@@ -46,16 +53,19 @@ export function useDesktopControls() {
     window.addEventListener(CHANGED, follow);
     return () => { live = false; window.removeEventListener(CHANGED, follow); };
   }, [bridge]);
-  const set = useCallback(async (name: DesktopControlName, on: boolean) => {
-    if (!bridge) return;
+  /** Resolves true when the app saved the change. */
+  const set = useCallback(async (name: DesktopControlName, on: boolean): Promise<boolean> => {
+    if (!bridge) return false;
     setBusy(name);
     setError(null);
     try {
       const next = await bridge.set(name, on);
       setState(next);
       window.dispatchEvent(new CustomEvent(CHANGED, { detail: next }));
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setBusy(null);
     }

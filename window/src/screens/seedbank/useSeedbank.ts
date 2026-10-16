@@ -5,6 +5,8 @@ import { availability, noteUnknownMethod, useCapabilityVersion } from "../../con
 import type { WindowEngine } from "../../connect/engine";
 import { useResource } from "../../places/library/data";
 import { pluginEntries, skillEntries, templateEntries, themeEntries, type Entry, type Rec } from "./catalog";
+import { curatedEntries } from "./curated";
+import { trunkDisplayName } from "../../connect/trunk-name";
 
 const rec = (v: unknown): Rec => (v && typeof v === "object" && !Array.isArray(v) ? v as Rec : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -21,7 +23,7 @@ function useSettled(value: string, ms: number): string {
 export type Trunk = { id: string; name: string };
 export function readTrunks(result: unknown): Trunk[] {
   const agents = rec(result).agents;
-  return (Array.isArray(agents) ? agents.map(rec) : []).flatMap(a => (str(a.id) ? [{ id: str(a.id), name: str(rec(a.identity).name) || str(a.name) || str(a.id) }] : []));
+  return (Array.isArray(agents) ? agents.map(rec) : []).flatMap(a => (str(a.id) ? [{ id: str(a.id), name: trunkDisplayName(a) }] : []));
 }
 
 export function useSeedbank(engine: WindowEngine, query: string) {
@@ -39,10 +41,11 @@ export function useSeedbank(engine: WindowEngine, query: string) {
       if (error) noteUnknownMethod(engine, method, new Error(error));
     }
   }, [engine, templates.error, browse.error, skills.error, themes.error]);
+  // R1's Seedbank draws the preview's curated plugins and connectors only (curated.ts); the feed itself is unchanged.
   const entries = useMemo<Entry[]>(() => [
     ...templateEntries(templates.data, agents.data),
     ...skillEntries(skills.data, status.data),
-    ...pluginEntries(browse.data),
+    ...curatedEntries(pluginEntries(browse.data)),
     ...themeEntries(themes.data),
   ], [templates.data, agents.data, skills.data, status.data, browse.data, themes.data]);
   const remoteError = str(rec(browse.data).remoteError);

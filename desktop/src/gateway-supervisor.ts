@@ -105,6 +105,27 @@ export function createGatewayCrashSupervisor(options: {
 
   return {
     observe,
+    /**
+     * An engine that is not this app's child (the engine service) stopped answering: restart it through `restart`
+     * with the same backoff and budget as a crashed child. A restart already pending or running absorbs it.
+     */
+    down: (error: Error) => {
+      if (closed) return;
+      clearStableTimer();
+      schedule(error);
+    },
+    /** That engine answers again: like a ready child, the budget resets once it has stayed up for stableAfterMs. */
+    up: () => {
+      if (closed || attempts === 0 || stableTimer || restartTimer || recovering) return;
+      stableTimer = setTimeout(() => {
+        stableTimer = undefined;
+        if (!closed && !restartTimer && !recovering) {
+          attempts = 0;
+          options.log(`gateway restart budget reset after ${policy.stableAfterMs}ms stable`);
+        }
+      }, policy.stableAfterMs);
+      stableTimer.unref?.();
+    },
     /** Nothing serves after a failed update: restart the last good build with a fresh bounded budget. */
     recover: (error: Error) => {
       if (closed) return;
@@ -133,6 +154,63 @@ export function createGatewayCrashSupervisor(options: {
       if (restartTimer) clearTimeout(restartTimer);
       restartTimer = undefined;
       clearStableTimer();
+    },
+    /** True once quit closed the supervisor: no restart is scheduled or started after that. */
+    get closed() { return closed; },
+  };
+}
+
+/**
+ * The engine service is not this app's child, so its exit never reaches `observe`. This watch asks it on /readyz
+ * every `intervalMs`; after `misses` checks in a row without an answer it reports the engine down, once, until it
+ * answers again. While `paused` (an update restarting the service on purpose, or quit) nothing counts.
+ */
+export function createServiceEngineWatch(options: {
+  probe: () => Promise<boolean>;
+  paused: () => boolean;
+  down: (error: Error) => void;
+  up?: () => void;
+  log: (message: string) => void;
+  misses?: number;
+  intervalMs?: number;
+}) {
+  const limit = options.misses ?? 3;
+  let missed = 0;
+  let checking = false;
+  let stopped = false;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const tick = async (): Promise<void> => {
+    if (stopped || checking) return;
+    checking = true;
+    try {
+      if (options.paused()) { missed = 0; return; }
+      const answered = await options.probe().catch(() => false);
+      if (stopped || options.paused()) { missed = 0; return; }
+      if (answered) {
+        if (missed >= limit) options.log("engine service answers /readyz again");
+        missed = 0;
+        options.up?.();
+        return;
+      }
+      missed += 1;
+      if (missed === limit) {
+        const error = new Error(`the engine service stopped answering /readyz (${limit} checks in a row)`);
+        options.log(error.message);
+        options.down(error);
+      }
+    } finally { checking = false; }
+  };
+  return {
+    tick,
+    start: () => {
+      if (stopped || timer) return;
+      timer = setInterval(() => { void tick(); }, options.intervalMs ?? 10_000);
+      timer.unref?.();
+    },
+    stop: () => {
+      stopped = true;
+      if (timer) clearInterval(timer);
+      timer = undefined;
     },
   };
 }

@@ -55,8 +55,17 @@ export function createBoundedReadTextPage(params: {
 }): BoundedReadTextPage {
   const maxBytes = params.pageMaxBytes ?? Math.min(DEFAULT_MAX_BYTES, params.maxBytes);
   const remainingLines = params.totalLines - params.endLine;
+  // A carried continuation still names the file range. A line cursor that has
+  // not moved yet has no range to name.
+  const range = { startLine: params.startLine, totalLines: params.totalLines };
+  const continuationRange =
+    params.continuation &&
+    params.totalLines > 0 &&
+    !(params.continuation.kind === "line" && params.continuation.offset <= params.startLine)
+      ? range
+      : undefined;
   const limitNotice = params.continuation
-    ? formatReadContinuationNotice(params.continuation, params.maxBytes)
+    ? formatReadContinuationNotice(params.continuation, params.maxBytes, continuationRange)
     : params.limit !== undefined && remainingLines > 0
       ? `\n\n[${remainingLines} more line${remainingLines === 1 ? "" : "s"} in file. Use offset=${params.endLine + 1} to continue.]`
       : "";
@@ -102,7 +111,6 @@ export function createBoundedReadTextPage(params: {
   }
 
   // Always name the file range, so adaptive pages say "File truncated ... of N" too.
-  const range = { startLine: params.startLine, totalLines: params.totalLines };
   const boundedLimit = params.limit === undefined ? {} : { limit: params.limit };
   const firstLine = params.content.split("\n", 1)[0] ?? "";
   const cursorEstimate: ReadToolContinuation = {

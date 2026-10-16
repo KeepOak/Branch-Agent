@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url";
 import {
   CATCH_UP_MAX_WAIT_MS,
   CATCH_UP_WINDOW_BUFFER_MS,
-  FAILED_CHECK_RERUN_POLL_MS,
-  FAILED_CHECK_RERUN_WAIT_MS,
+  CHECK_RUN_PAGE_CAP,
+  CHECK_RUN_PAGE_SIZE,
+  CHECK_RUN_TOTAL_CAP,
   PUSH_BACKUP_MIN_AGE_MS,
   catchUpAfterFailedPublish,
   decideCatchUp,
@@ -71,6 +72,8 @@ test("component-release workflow keeps the schedule and uses push as a 25-minute
   const checksAt = readiness.indexOf("resolve-failed-checks");
   assert.ok(windowAt !== -1 && checksAt !== -1 && windowAt < checksAt);
   assert.match(readiness, /resolve-failed-checks --sha/);
+  assert.match(readiness, /\$decision_skip" == "true" && "\$failed_checks" == "0"/);
+  assert.match(readiness, /Could not confirm checks at \$main_commit/);
 });
 
 test("failed publish catches up only while that commit is still Latest", () => {
@@ -193,7 +196,7 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
   assert.match(catchUp, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
   assert.doesNotMatch(catchUp, /check-runs/);
   assert.doesNotMatch(catchUp, /contents: write/);
-  assert.equal(workflow.match(/actions: write/g).length, 2);
+  assert.equal(workflow.match(/actions: write/g).length, 3);
   const readinessJob = workflow.slice(workflow.indexOf("\n  readiness:"), workflow.indexOf("\n  readiness-rehearsal:"));
   const rehearsalJob = workflow.slice(workflow.indexOf("\n  readiness-rehearsal:"), workflow.indexOf("\n  identity:"));
   const identityJob = workflow.slice(workflow.indexOf("\n  identity:"), workflow.indexOf("\n  window:"));
@@ -214,7 +217,7 @@ test("catch-up job waits out the cooldown and dispatches one release", () => {
 test("downstream release jobs require their build dependencies after always()", () => {
   const windowJob = workflow.slice(workflow.indexOf("\n  window:"), workflow.indexOf("\n  native:"));
   const nativeJob = workflow.slice(workflow.indexOf("\n  native:"), workflow.indexOf("\n  report:"));
-  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  catch-up:"));
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
   const catchUp = workflow.slice(workflow.indexOf("\n  catch-up:"));
   const readinessJob = workflow.slice(workflow.indexOf("\n  readiness:"), workflow.indexOf("\n  readiness-rehearsal:"));
   const rehearsalJob = workflow.slice(workflow.indexOf("\n  readiness-rehearsal:"), workflow.indexOf("\n  identity:"));
@@ -226,10 +229,27 @@ test("downstream release jobs require their build dependencies after always()", 
   assert.match(readinessJob, /actions: write/);
   assert.match(readinessJob, /github\.event_name != 'pull_request'/);
   assert.doesNotMatch(rehearsalJob, /actions: write/);
-  assert.equal((workflow.match(/^\s+actions: write\s*$/mg) || []).length, 2);
+  assert.equal((workflow.match(/^\s+actions: write\s*$/mg) || []).length, 3);
   assert.doesNotMatch(windowJob, /actions: write/);
   assert.doesNotMatch(nativeJob, /actions: write/);
   assert.doesNotMatch(publishJob, /actions: write/);
+});
+
+test("a separate job dispatches the Android APK workflow with the release tag", () => {
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"), workflow.indexOf("\n  dispatch-android-apk:"));
+  const dispatchJob = workflow.slice(workflow.indexOf("\n  dispatch-android-apk:"), workflow.indexOf("\n  catch-up:"));
+  assert.doesNotMatch(publishJob, /actions: write/);
+  assert.match(publishJob, /contents: write/);
+  assert.doesNotMatch(publishJob, /gh workflow run mobile-android-release\.yml/);
+  assert.match(dispatchJob, /actions: write/);
+  assert.match(dispatchJob, /contents: read/);
+  assert.doesNotMatch(dispatchJob, /contents: write/);
+  assert.match(dispatchJob, /needs: \[identity, publish\]/);
+  assert.match(dispatchJob, /needs\.publish\.result == 'success'/);
+  assert.match(dispatchJob, /github\.event_name != 'pull_request'/);
+  assert.match(dispatchJob, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(dispatchJob, /gh workflow run mobile-android-release\.yml -f tag=v\$\{\{ needs\.identity\.outputs\.version \}\}/);
+  assert.match(dispatchJob, /timeout-minutes: 5/);
 });
 
 function failedCapabilityCheck({
@@ -252,36 +272,28 @@ function resolveFailedChecks(overrides) {
   const decision = resolveFailedReleaseChecks({
     sha: "34f90ad9",
     allowRerun: true,
-    sleep: () => {},
-    waitMs: 1_000,
-    pollMs: 1_000,
     log: message => logs.push(message),
     ...overrides,
   });
   return { decision, logs };
 }
 
-test("readiness reruns a first-attempt failed check and proceeds when the rerun passes", () => {
+test("readiness requests one rerun and skips this release; the next scheduled run decides", () => {
   const reran = [];
-  let checks = [failedCapabilityCheck()];
-  const runs = {
-    506: { id: 506, name: "Capability feature checks", run_attempt: 1, status: "completed", conclusion: "failure" },
-  };
+  let listings = 0;
   const { decision, logs } = resolveFailedChecks({
-    listCheckRuns: () => checks,
-    readWorkflowRun: id => runs[id],
-    rerunFailedJobs: id => {
-      reran.push(id);
-      runs[id] = { ...runs[id], run_attempt: 2, status: "completed", conclusion: "success" };
-      checks = [failedCapabilityCheck({ id: 12, startedAt: "2026-10-08T09:01:00Z", conclusion: "success" })];
+    listCheckRuns: () => {
+      listings += 1;
+      return [failedCapabilityCheck()];
     },
+    readWorkflowRun: () => ({ id: 506, name: "Capability feature checks", run_attempt: 1, status: "completed", conclusion: "failure" }),
+    rerunFailedJobs: id => reran.push(id),
   });
-  assert.equal(decision.skip, false);
-  assert.equal(decision.failedCount, 0);
-  assert.equal(decision.reason, "cleared-after-rerun");
+  assert.equal(decision.skip, true);
+  assert.equal(decision.reason, "rerun-requested");
   assert.deepEqual(reran, [506]);
-  assert.match(logs.join("\n"), /Rerunning failed jobs for Capability tests on ubuntu-latest \(run 506, attempt 1\)/);
-  assert.match(logs.join("\n"), /cleared after rerun/);
+  assert.equal(listings, 1);
+  assert.match(logs.join("\n"), /the next scheduled run decides/);
 });
 
 test("readiness skips when a failed check is still failing after one rerun", () => {
@@ -301,9 +313,9 @@ test("readiness skips when a failed check is still failing after one rerun", () 
   });
   assert.equal(decision.skip, true);
   assert.equal(decision.failedCount, 1);
-  assert.equal(decision.reason, "failed-checks");
+  assert.equal(decision.reason, "rerun-requested");
   assert.deepEqual(reran, [506]);
-  assert.match(logs.join("\n"), /still has 1 failed check/);
+  assert.match(logs.join("\n"), /the next scheduled run decides/);
 });
 
 test("readiness does not rerun an already-retried failed run and skips the release", () => {
@@ -336,52 +348,6 @@ test("pull-request rehearsal counts failed checks and does not rerun them", () =
   assert.equal(decision.failedCount, 1);
   assert.deepEqual(reran, []);
   assert.match(logs.join("\n"), /pull-request rehearsal only counts them/);
-});
-
-test("readiness waits for a rerun to finish before rechecking the SHA", () => {
-  let nowMs = 0;
-  let reads = 0;
-  let checks = [failedCapabilityCheck()];
-  const { decision } = resolveFailedChecks({
-    now: () => nowMs,
-    sleep: ms => { nowMs += ms; },
-    waitMs: 4_000,
-    pollMs: 1_000,
-    listCheckRuns: () => checks,
-    readWorkflowRun: () => {
-      reads += 1;
-      if (reads === 1) return { id: 506, run_attempt: 1, status: "completed", conclusion: "failure" };
-      if (reads < 4) return { id: 506, run_attempt: 2, status: "in_progress", conclusion: null };
-      checks = [failedCapabilityCheck({ id: 12, startedAt: "2026-10-08T09:01:00Z", conclusion: "success" })];
-      return { id: 506, run_attempt: 2, status: "completed", conclusion: "success" };
-    },
-    rerunFailedJobs: () => {},
-  });
-  assert.equal(decision.skip, false);
-  assert.equal(reads, 4);
-  assert.equal(nowMs, 2_000);
-});
-
-test("readiness skips when a rerun is still pending after the wait budget", () => {
-  let nowMs = 0;
-  const reran = [];
-  const { decision, logs } = resolveFailedChecks({
-    now: () => nowMs,
-    sleep: ms => { nowMs += ms; },
-    waitMs: 2_000,
-    pollMs: 1_000,
-    listCheckRuns: () => [failedCapabilityCheck()],
-    readWorkflowRun: () => {
-      if (reran.length === 0) return { id: 506, run_attempt: 1, status: "completed", conclusion: "failure" };
-      return { id: 506, run_attempt: 2, status: "in_progress", conclusion: null };
-    },
-    rerunFailedJobs: id => reran.push(id),
-  });
-  assert.equal(decision.skip, true);
-  assert.ok(decision.failedCount > 0);
-  assert.equal(decision.reason, "rerun-pending");
-  assert.deepEqual(reran, [506]);
-  assert.match(logs.join("\n"), /still running; skipping release/);
 });
 
 test("readiness skips a later call whose newest check is pending after an earlier same-name failure", () => {
@@ -456,7 +422,7 @@ test("readiness proceeds without rerunning when there are no failed checks", () 
   assert.deepEqual(reads, []);
 });
 
-test("failed-check rerun wait fits the readiness job timeout and uses the shared gh helper", () => {
+test("readiness check calls use one plain gh request, with no retry wrapper or wait loop", () => {
   const helperSource = readFileSync(helper, "utf8");
   const calls = [];
   const gh = args => {
@@ -464,18 +430,20 @@ test("failed-check rerun wait fits the readiness job timeout and uses the shared
     if (String(args[1] ?? "").includes("check-runs")) return JSON.stringify({ total_count: 0, check_runs: [] });
     return JSON.stringify({ id: 9, run_attempt: 1, status: "completed" });
   };
-  assert.equal(FAILED_CHECK_RERUN_WAIT_MS, 3 * 60 * 1000);
-  assert.equal(FAILED_CHECK_RERUN_POLL_MS, 15 * 1000);
-  assert.ok(FAILED_CHECK_RERUN_WAIT_MS < 5 * 60 * 1000);
-  assert.match(helperSource, /runGhWithRetry/);
+  assert.equal(CHECK_RUN_PAGE_SIZE, 100);
+  assert.equal(CHECK_RUN_PAGE_CAP, 3);
+  assert.equal(CHECK_RUN_TOTAL_CAP, 300);
+  assert.doesNotMatch(helperSource, /runGhWithRetry/);
+  assert.doesNotMatch(helperSource, /FAILED_CHECK_RERUN_WAIT_MS/);
   assert.match(helperSource, /rerun-failed-jobs/);
   assert.match(helperSource, /run_attempt/);
   assert.match(workflow, /MERGE_GATE_WAIT_SECONDS: '240'/);
+  assert.match(workflow, /node scripts\/merge-gate-rate-limit\.mjs gh -- api/);
   listCommitCheckRuns("KeepOak/Branch-Agent", "abc", { gh });
   getWorkflowRun("KeepOak/Branch-Agent", 9, { gh });
   rerunFailedWorkflowJobs("KeepOak/Branch-Agent", 9, { gh });
   assert.ok(calls.every(args => args[0] === "api"));
-  assert.ok(calls.some(args => String(args[1]).includes("check-runs")));
+  assert.equal(calls.filter(args => String(args[1]).includes("check-runs")).length, 1);
   assert.ok(calls.some(args => args.includes("-X") && args.some(part => String(part).includes("rerun-failed-jobs"))));
 });
 
@@ -504,4 +472,103 @@ test("desktop-checks runs readiness as its own node --test step after the deskto
     desktopChecks,
     /release-production-layout\.test\.mjs scripts\/component-release-readiness\.test\.mjs/,
   );
+});
+
+function checkRunPageGh(total, calls) {
+  return args => {
+    const request = String(args[1] ?? "");
+    calls.push(request);
+    assert.equal(args[0], "api");
+    assert.match(request, /\/check-runs\?per_page=100&page=\d+$/);
+    const page = Number(/[?&]page=(\d+)/.exec(request)[1]);
+    assert.ok(page >= 1 && page <= CHECK_RUN_PAGE_CAP);
+    const start = (page - 1) * CHECK_RUN_PAGE_SIZE;
+    const count = Math.max(0, Math.min(CHECK_RUN_PAGE_SIZE, total - start));
+    return JSON.stringify({
+      total_count: total,
+      check_runs: Array.from({ length: count }, (_, index) => ({
+        id: start + index + 1,
+        name: `Job ${start + index + 1}`,
+        conclusion: "success",
+        status: "completed",
+        started_at: "2026-10-15T00:00:00Z",
+      })),
+    });
+  };
+}
+
+function assertOneRequestPerPage(calls) {
+  const pages = calls.map(request => /[?&]page=(\d+)/.exec(request)[1]);
+  assert.equal(pages.length, new Set(pages).size);
+  assert.ok(pages.every(page => Number(page) <= CHECK_RUN_PAGE_CAP));
+  assert.deepEqual(pages, [...pages].sort((a, b) => Number(a) - Number(b)));
+}
+
+test("101 check runs are aggregated across two pages and the release proceeds", () => {
+  const calls = [];
+  const gh = checkRunPageGh(101, calls);
+  const runs = listCommitCheckRuns("KeepOak/Branch-Agent", "e1f28188", { gh });
+  assert.equal(runs.length, 101);
+  assert.equal(runs[0].id, 1);
+  assert.equal(runs[100].id, 101);
+  assert.equal(calls.length, 2);
+  assertOneRequestPerPage(calls);
+  assert.match(calls[0], /page=1$/);
+  assert.match(calls[1], /page=2$/);
+  const { decision } = resolveFailedChecks({ gh: checkRunPageGh(101, []) });
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+  assert.equal(decision.reason, "no-failed-checks");
+});
+
+test("250 check runs are aggregated across three pages and the release proceeds", () => {
+  const calls = [];
+  const gh = checkRunPageGh(250, calls);
+  const runs = listCommitCheckRuns("KeepOak/Branch-Agent", "abc250", { gh });
+  assert.equal(runs.length, 250);
+  assert.equal(runs[99].id, 100);
+  assert.equal(runs[100].id, 101);
+  assert.equal(runs[249].id, 250);
+  assert.equal(calls.length, 3);
+  assertOneRequestPerPage(calls);
+  assert.match(calls[0], /page=1$/);
+  assert.match(calls[1], /page=2$/);
+  assert.match(calls[2], /page=3$/);
+  const { decision } = resolveFailedChecks({ gh: checkRunPageGh(250, []) });
+  assert.equal(decision.skip, false);
+  assert.equal(decision.failedCount, 0);
+  assert.equal(decision.reason, "no-failed-checks");
+});
+
+test("more than 300 check runs skips the release and does not request another page", () => {
+  const calls = [];
+  const gh = checkRunPageGh(301, calls);
+  assert.throws(
+    () => listCommitCheckRuns("KeepOak/Branch-Agent", "abc301", { gh }),
+    /exceed 300/,
+  );
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /per_page=100&page=1$/);
+  assertOneRequestPerPage(calls);
+  const decisionCalls = [];
+  const { decision, logs } = resolveFailedChecks({ gh: checkRunPageGh(301, decisionCalls) });
+  assert.equal(decision.skip, true);
+  assert.equal(decision.failedCount, 0);
+  assert.equal(decision.reason, "checks-over-cap");
+  assert.equal(decisionCalls.length, 1);
+  assert.match(logs.join("\n"), /exceed 300/);
+});
+
+test("a failed check listing skips the release and is not retried", () => {
+  let calls = 0;
+  const gh = () => {
+    calls += 1;
+    throw new Error("API rate limit exceeded for installation");
+  };
+  const { decision, logs } = resolveFailedChecks({ gh });
+  assert.equal(calls, 1);
+  assert.equal(decision.skip, true);
+  assert.equal(decision.reason, "checks-unavailable");
+  assert.deepEqual(decision.reran, []);
+  assert.match(logs.join("\n"), /Could not list checks/);
 });

@@ -1,6 +1,6 @@
 // The roaming pet in the R1 window (QUEUE item 18: it walks on the composer's top edge). The Classic pet
 // (shell/SidebarPet.tsx) is re-hosted unchanged: it walks left and right, flips to face where it goes, naps, cheers when
-// work ends, and its menu has Show a tip and Stop roaming. Appearance › Pet › Let it roam turns it on (look key roam),
+// work ends, and its menu has Show a tip and Stop roaming. Picking a pet in Appearance › Pet turns it on (look key roam),
 // as in Classic. Here its lane has no height and sits on the pill's top rim, so its feet stand on the rim and nothing
 // covers the text field. With reduced motion it stands still on the rim.
 import { useSyncExternalStore } from "react";

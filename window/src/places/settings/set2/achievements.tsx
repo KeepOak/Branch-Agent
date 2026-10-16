@@ -196,7 +196,9 @@ function unlockedAt(level: Lv): Set<string> {
   return got;
 }
 
+/** Tier counters show only once something has unlocked; before that, one plain line instead of a row of 0/42. */
 function Summary({ got }: { got: Set<string> }) {
+  if (got.size === 0) return <Hint>Nothing unlocked yet. Badges come as you use Branch.</Hint>;
   return (
     <>
       <div className="ach-sum">
@@ -263,10 +265,16 @@ function PetsSec({ engine, openSettings }: Pick<SettingsPageProps, "engine" | "o
   );
 }
 
+/** The tier counts and the badges, for the R1 Updates & about page's Achievements card. */
+export function AchievementsBlock() {
+  const got = unlockedAt(useLevel());
+  return <><Summary got={got} /><BadgeGrid got={got} /></>;
+}
+
 export function AchievementsPage(props: SettingsPageProps) {
   const got = unlockedAt(useLevel());
   return (
-    <Page title={props.title} lede={`Private to you, never nagging. ${got.size} of ${BADGES.length} unlocked.`}>
+    <Page title={props.title} lede={got.size ? `Private to you, never nagging. ${got.size} of ${BADGES.length} unlocked.` : "Private to you, never nagging."}>
       <Summary got={got} />
       <BadgeGrid got={got} />
       <PetsSec engine={props.engine} openSettings={props.openSettings} />

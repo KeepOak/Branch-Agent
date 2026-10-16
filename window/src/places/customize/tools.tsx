@@ -46,10 +46,26 @@ export type ToolsCtx = {
 export type Res<T> = { data: T | null; loading: boolean; error: string | null; reload: () => void };
 export type ToolsVariant = "classic" | "r1";
 
-export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGetting, openConversation, variant = "classic", usePrompt, query = "", toCommunity }: {
+/** Settings › Customize draws this hub too, with the approved preview's kinds order, names and "For:" (czP17).
+ *  `summary` is that card: the For chips and the kinds, without the place's add buttons and filter panes. */
+type HubWords = { kinds?: Kind[]; names?: Partial<Record<Kind, string>>; whoseLabel?: string; everyLabel?: string; summary?: boolean };
+
+/** The settings hub's right pane: which kind is open, and whose tools, with no extra buttons. */
+function HubSummary({ kind, whose, trunks, everyLabel, names }: { kind: Kind; whose: string | null; trunks: Trunk[]; everyLabel: string; names?: Partial<Record<Kind, string>> }) {
+  const spec = KIND_LIST.find((k) => k.id === kind);
+  const title = names?.[kind] ?? spec?.label ?? kind;
+  const who = whose ? trunkName(trunks.find((t) => t.id === whose) ?? { id: whose }) : everyLabel;
+  return (
+    <div className="t9-list" data-testid="hub-summary">
+      <p className="cz-hint"><b>{title}</b> · {who}. {spec?.line}</p>
+    </div>
+  );
+}
+
+export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGetting, openConversation, variant = "classic", usePrompt, query = "", toCommunity, kinds, names, whoseLabel = "Whose tools", everyLabel = "Every Trunk", summary = false }: {
   engine: WindowEngine; level: Level; trunks: Trunk[]; kind: Kind; setKind: (k: Kind) => void; getting: boolean; setGetting: (getting: boolean) => void;
   openConversation: (key: string) => void; variant?: ToolsVariant; usePrompt?: PromptHandoff; query?: string; toCommunity?: (kind?: CommunityKind) => void;
-}) {
+} & HubWords) {
   const [whose, setWhose] = useState<string | null>(null);
   const [adding, setAdding] = useState<Kind | null>(null);
   const scope = whose ? { agentId: whose } : {};
@@ -67,34 +83,36 @@ export function ToolsTab({ engine, level, trunks, kind, setKind, getting, setGet
     "Command-line tools": cliCount(ctx), Agents: agentCount(ctx), Toolsets: toolsetCount(ctx), Prompts: promptCount(ctx),
   };
   const close = () => setAdding(null);
-  const body = kind === "Connectors" ? <Connectors ctx={ctx} /> : kind === "Skills" ? <Skills ctx={ctx} /> : kind === "Plugins" ? <Plugins ctx={ctx} />
+  const body = summary ? <HubSummary kind={kind} whose={whose} trunks={trunks} everyLabel={everyLabel} names={names} />
+    : kind === "Connectors" ? <Connectors ctx={ctx} /> : kind === "Skills" ? <Skills ctx={ctx} /> : kind === "Plugins" ? <Plugins ctx={ctx} />
     : kind === "Command-line tools" ? <Clis ctx={ctx} /> : kind === "Agents" ? <Agents ctx={ctx} /> : kind === "Prompts" ? <Prompts ctx={ctx} /> : <Toolsets ctx={ctx} />;
   const r1 = variant === "r1";
   return <div className="cz-tools" data-testid="tools-root">
-    {r1 ? <FacesRow trunks={trunks} whose={whose} change={setWhose} /> : <ClassicWhose trunks={trunks} whose={whose} change={setWhose} />}
+    {r1 ? <FacesRow trunks={trunks} whose={whose} change={setWhose} /> : <ClassicWhose trunks={trunks} whose={whose} change={setWhose} label={whoseLabel} every={everyLabel} />}
     <div className="t9" data-testid="tools">
       <nav className="t9-nav" aria-label="Kinds of tools">
-        {KIND_LIST.map(k => <button key={k.id} type="button" className="t9-kind" data-kind={k.id} aria-current={k.id === kind} onClick={() => setKind(k.id)}>
-          <span>{k.label}</span>{counts[k.id] !== null && <em>{counts[k.id]}</em>}
+        {(kinds ? kinds.flatMap(id => KIND_LIST.filter(k => k.id === id)) : KIND_LIST).map(k => <button key={k.id} type="button" className="t9-kind" data-kind={k.id} aria-current={k.id === kind} aria-pressed={k.id === kind} onClick={() => setKind(k.id)}>
+          <span>{summary ? <b>{names?.[k.id] ?? k.label}</b> : names?.[k.id] ?? k.label}</span>{counts[k.id] !== null && <em>{counts[k.id]}</em>}
         </button>)}
-        {!r1 && <button type="button" className="btn ghost t9-addbtn" onClick={() => setGetting(true)}>Get capabilities</button>}
+        {!r1 && !summary && <button type="button" className="btn ghost t9-addbtn" onClick={() => setGetting(true)}>Get capabilities</button>}
       </nav>
       {body}
     </div>
-    {r1 && level === "technical" && <div className="cz-defaults"><TrunkDefaults engine={engine} /></div>}
-    {adding === "Connectors" && <AddConnector ctx={ctx} close={close} />}
-    {adding === "Skills" && <AddSkill ctx={ctx} close={close} />}
-    {adding === "Plugins" && <AddPlugin ctx={ctx} close={close} />}
-    {adding === "Command-line tools" && <AddTool ctx={ctx} close={close} />}
-    {adding === "Agents" && <AddAgent ctx={ctx} close={close} />}
-    {!r1 && getting && <GetCapabilitiesDialog engine={engine} scope={scope} close={() => setGetting(false)} done={() => { ctx.plugins.reload(); ctx.skills.reload(); }} />}
+    {r1 && !summary && level === "technical" && <div className="cz-defaults"><TrunkDefaults engine={engine} /></div>}
+    {!summary && adding === "Connectors" && <AddConnector ctx={ctx} close={close} />}
+    {!summary && adding === "Skills" && <AddSkill ctx={ctx} close={close} />}
+    {!summary && adding === "Plugins" && <AddPlugin ctx={ctx} close={close} />}
+    {!summary && adding === "Command-line tools" && <AddTool ctx={ctx} close={close} />}
+    {!summary && adding === "Agents" && <AddAgent ctx={ctx} close={close} />}
+    {!r1 && !summary && getting && <GetCapabilitiesDialog engine={engine} scope={scope} close={() => setGetting(false)} done={() => { ctx.plugins.reload(); ctx.skills.reload(); }} />}
   </div>;
 }
 
-/** Classic's Whose tools chips (R1 draws the faces row instead). */
-function ClassicWhose({ trunks, whose, change }: { trunks: Trunk[]; whose: string | null; change: (id: string | null) => void }) {
-  return <div className="cz-whose"><span className="cz-lh">Whose tools</span>
-    <div className="cz-chips">{[{ id: null, name: "Every Trunk" }, ...trunks.map(t => ({ id: t.id as string | null, name: trunkName(t) }))].map(o =>
+/** Classic's Whose tools chips, and Settings › Customize's "For:" chips (R1's place draws the faces row instead).
+ *  One named choice group, so the chosen chip reads as already selected. */
+function ClassicWhose({ trunks, whose, change, label, every }: { trunks: Trunk[]; whose: string | null; change: (id: string | null) => void; label: string; every: string }) {
+  return <div className="cz-whose"><span className="cz-lh">{label}</span>
+    <div className="cz-chips" role="group" aria-label={label}>{[{ id: null, name: every }, ...trunks.map(t => ({ id: t.id as string | null, name: trunkName(t) }))].map(o =>
       <button key={o.id ?? "*"} type="button" className="cz-chip" aria-pressed={whose === o.id} onClick={() => change(o.id)}>{o.name}</button>)}</div>
   </div>;
 }

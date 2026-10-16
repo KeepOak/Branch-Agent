@@ -88,7 +88,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
   const close = () => setOpen(null);
   const removeRow = (gone: Conversation) => void actions.remove(gone).then(() => { if (p.mainKey && p.mainKey !== gone.key) p.onOpen(p.mainKey); });
   const items = conversationMenu({
-    row, isDefault: p.isDefault, now, hasReply: Boolean(lastReply), work: { global: p.work.global, override: p.work.override }, ownWindowOff: ownWindowUnavailable(),
+    row, hasMessages: p.history.length > 0, isDefault: p.isDefault, now, hasReply: Boolean(lastReply), work: { global: p.work.global, override: p.work.override }, ownWindowOff: ownWindowUnavailable(),
     room: p.room ? { ruleWords: p.room.ruleWords, rules: roomRuleEntries(p.room.rules()) } : null,
     run: {
       pin: () => { if (row) void actions.pin(row); },
@@ -112,7 +112,7 @@ export function ConversationMenu(p: ConversationMenuProps) {
       remove: () => { if (!row) return; if (askBeforeDelete()) setOpen({ kind: "delete" }); else removeRow(row); },
     },
   });
-  const rows = p.onChanges ? [...items, { label: "Changes and pull request", icon: <Icon name="pr" size={15} />, need: p.changesNeed, why: "This engine can’t show this conversation’s changes.", onSelect: p.onChanges }] : items;
+  const rows = p.onChanges ? [...items, { label: "Changes", icon: <Icon name="pr" size={15} />, need: p.changesNeed, why: "This engine can’t show this conversation’s changes.", onSelect: p.onChanges }] : items;
   const dialog = !open || !target ? null
     : open.kind === "rename" && row ? <RenameDialog name={p.name} onClose={close} onSave={(label) => { close(); void actions.rename(row, label); }} />
     : open.kind === "delete" && row ? <ConfirmDelete clear row={row} onCancel={close} onDelete={() => { close(); removeRow(row); }} />

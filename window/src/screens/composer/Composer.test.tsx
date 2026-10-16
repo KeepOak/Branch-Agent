@@ -8,6 +8,7 @@ import type { WindowEngine } from "../../composer/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import type { Limits } from "../../shell/status-data";
 import { Composer } from "./Composer";
+import { PlusMenu } from "./PlusMenu";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
@@ -60,6 +61,20 @@ describe("R1-04 composer", () => {
     expect(button("Talk live with voice")?.getAttribute("data-coming")).toBeTruthy();
   });
 
+  it("fills the open conversation when another place sends branch:compose, and keeps another conversation's words as a draft", async () => {
+    const { host } = await mount();
+    const box = host.querySelector<HTMLTextAreaElement>('[data-testid="composer"]')!;
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("branch:compose", { detail: { sessionKey: "agent:scout:main", text: "/weekly " } }));
+    });
+    expect(box.value).toBe("/weekly ");
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("branch:compose", { detail: { sessionKey: "agent:other:main", text: "/later " } }));
+    });
+    expect(box.value).toBe("/weekly ");
+    expect(localStorage.getItem("branch.composer.draft:agent:other:main")).toBe("/later ");
+  });
+
   it("morphs voice into send when there is text, and sends through onSend", async () => {
     const { host, send } = await mount();
     expect(host.querySelector(".r1c-send")).toBeNull();
@@ -108,15 +123,34 @@ describe("R1-04 composer", () => {
     expect(request).toHaveBeenCalledWith("chat.send", expect.objectContaining({ sessionKey: "agent:scout:t1", message: "Hello topic" }));
   });
 
-  it("opens the + menu with tiles and rows, and no unwired items: they wait in Seedbank › Coming to Branch (R1-15)", async () => {
+  it("opens the + menu in the preview's order, with its unwired items registered as hidden Coming items in place (#1049)", async () => {
     const { host } = await mount();
     await act(async () => host.querySelector<HTMLButtonElement>(".r1c-pill [aria-label^='Attach']")!.click());
+    // preview POPS.plusmenu: Files, Photo, Screenshot, Folder ›; Teach a task, Make a picture, Write a doc, sheet or slides,
+    // Set a goal, Skills & saved prompts; Add from, Call; Run as a background job, Branch from here, Temporary chat, Check with me.
+    // The preview's menu has "nothing greyed out" and shows Screenshot only when it can: the unwired items are hidden here
+    // and listed, in place and in order, in the Coming report.
     expect([...document.querySelectorAll(".r1c-tile")].map((t) => t.textContent)).toEqual(["Files", "Photo", "Folder ›"]);
     const rows = [...document.querySelectorAll(".r1c-plus .r1c-mi-t")].map((t) => t.textContent);
-    expect(rows).toEqual(expect.arrayContaining(["Make a picture", "Set a goal", "Skills & saved prompts", "Add from", "Run as a background job"]));
-    expect(rows).not.toContain("Teach a task");
+    expect(rows.filter((r) => r !== "Call")).toEqual(["Make a picture", "Set a goal", "Skills & saved prompts", "Add from", "Run as a background job"]);
     expect(document.querySelectorAll(".r1c-plus [aria-disabled='true']")).toHaveLength(0);
-    expect(comingControls().filter((c) => c.where.startsWith("+ menu ›")).map((c) => c.where)).toEqual([]);
+    expect(comingControls().filter((c) => c.where.startsWith("+ menu ›")).map((c) => [c.where, c.need[0], c.hidden])).toEqual([
+      ["+ menu › Screenshot", "desktop.observe", true], ["+ menu › Teach a task", "desktop.observe", true], ["+ menu › Write a doc, sheet or slides", "agents.documents.create", true],
+      ["+ menu › Branch from here", "sessions.fork", true], ["+ menu › Temporary chat", "sessions.patch", true], ["+ menu › Check with me", "sessions.patch", true],
+    ]);
+  });
+
+  it("lists Phone call and Join a meeting as hidden Coming items under + › Call (#1049)", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    const anchor = { current: host };
+    root = createRoot(host);
+    const noop = () => {};
+    await act(async () => root?.render(<PlusMenu anchor={anchor} onClose={noop} hasModel voiceLive onFiles={noop} onPhoto={noop} onFolder={noop} onPicture={noop} onInsert={noop} onBackground={noop} onOpen={noop} onCall={noop} />));
+    await act(async () => button("Call")!.click());
+    expect([...document.querySelectorAll(".r1c-plus .r1c-mi-t")].map((t) => t.textContent)).toEqual(["Call", "Voice call"]);
+    expect(comingControls().filter((c) => /Phone|meeting/.test(c.where)).map((c) => [c.where, c.need[0], c.hidden])).toEqual([
+      ["+ menu › Phone call…", "voicecall.initiate", true], ["+ menu › Join a meeting…", "voicecall.start", true],
+    ]);
   });
 
   it("opens the ring popover with This computer, Running, Context and Every account", async () => {
@@ -185,7 +219,10 @@ describe("R1-04 composer", () => {
     const needOf = (where: string) => coming.find((c) => c.where === where)?.need;
     expect(needOf("Improve my draft")).toEqual(["sessions.companion.ask"]);
     expect(needOf("Dictate into the box")).toEqual(["talk.catalog"]);
-    expect(coming.filter((c) => c.where.startsWith("+ menu ›")).map((c) => c.where)).toEqual([]);
+    expect(coming.filter((c) => c.where.startsWith("+ menu ›")).map((c) => [c.where, c.need[0]])).toEqual([
+      ["+ menu › Screenshot", "desktop.observe"], ["+ menu › Teach a task", "desktop.observe"], ["+ menu › Write a doc, sheet or slides", "agents.documents.create"],
+      ["+ menu › Branch from here", "sessions.fork"], ["+ menu › Temporary chat", "sessions.patch"], ["+ menu › Check with me", "sessions.patch"],
+    ]);
   });
 
   it("registers nothing as Coming that it draws as live", async () => {

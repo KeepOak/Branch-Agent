@@ -3,8 +3,9 @@
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { NoticesBell } from "./Bell";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
+import { RecBar } from "../../places-nav/RecBar";
 import type { WindowEngine } from "../../connect/engine";
-import { has, loadNeeds, loadNeedsCount, markRead, refreshesInbox, usePlaceData } from "./data";
+import { coalesceInboxReads, has, loadNeeds, loadNeedsCount, markRead, refreshesInbox, usePlaceData } from "./data";
 import { takeInboxHandoff, type InboxTab } from "./handoff";
 import { History, loadHistory, type HistoryData } from "./History";
 import { NeedsYou, needsCount } from "./NeedsYou";
@@ -34,14 +35,15 @@ export function useNeedsCount(engine: WindowEngine, ready = true): number {
   const [count, setCount] = useState(0);
   useEffect(() => {
     if (!ready) { setCount(0); return; }
-    let live = true, generation = 0;
+    let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const load = () => {
-      const id = ++generation;
-      loadNeedsCount(engine).then(n => { if (live && id === generation) setCount(n); }, e => { console.warn("Inbox count", e); if (live && id === generation) setCount(0); });
-    };
-    load();
-    const dispose = engine.onEvent(({ event }) => { if (refreshesInbox(event)) { clearTimeout(timer); timer = setTimeout(load, 150); } });
+    const load = coalesceInboxReads(async () => {
+      if (!live) return;
+      try { const n = await loadNeedsCount(engine); if (live) setCount(n); }
+      catch (e) { console.warn("Inbox count", e); if (live) setCount(0); }
+    });
+    void load();
+    const dispose = engine.onEvent(({ event }) => { if (refreshesInbox(event)) { clearTimeout(timer); timer = setTimeout(() => { void load(); }, 150); } });
     return () => { live = false; clearTimeout(timer); dispose(); };
   }, [engine, ready]);
   return count;
@@ -71,7 +73,7 @@ export function InboxPlace({ engine, level, openConversation, openPlace, openSet
   const unread = (data?.sessions ?? []).filter(s => s.unread && (tab === "needs" || finishedRows([s]).length));
   const canMark = (tab === "needs" || tab === "finished") && unread.length > 0 && has(engine, "operator.sessions.write");
   const markAll = () => void needs.act(() => markRead(engine, unread), "All marked read.");
-  return <PlaceFrame title="Inbox" lede="Everything a Trunk is waiting on you for, what finished, and a record of what ran.">
+  return <PlaceFrame title="Inbox" lede="Everything a Trunk is waiting on you for, what finished, and a record of what ran." before={<RecBar engine={engine} />}>
     <TabRow tab={tab} set={setTab} counts={{ needs: needsCount(data) }} markAll={canMark ? markAll : undefined} bell={<NoticesBell data={data} openConversation={openConversation} openSettings={openSettings} />} />
     {needs.loading && !data ? <p role="status" className="ib-hint">Reading the Inbox…</p> : null}
     {needs.error ? <p role="alert" className="ib-err">{needs.error}</p> : null}

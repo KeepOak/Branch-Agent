@@ -40,7 +40,7 @@ async function mount() {
   const engine = { request, features: { methods, events: [] }, scopes: ["operator.admin"] };
   const session = { request, onGatewayEvent: () => () => undefined, engine, gatewayUrl: "ws://127.0.0.1:1", open: vi.fn(async () => undefined), send: vi.fn() } as unknown as SaplingSession;
   const props: SidebarProps = {
-    session, ready: true, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
+    onNewTrunk: vi.fn(), session, ready: true, list: { refresh: vi.fn(async () => undefined), getSnapshot: () => ({ rows: [] }) } as unknown as ConversationList,
     sessions: [ledger] as unknown as SidebarProps["sessions"], mainKey: "main", currentKey: null, waiting: new Map(), searchRef: { current: null },
     onOpen: vi.fn(), onSettings: vi.fn(), onPlace: vi.fn(),
   };
@@ -83,7 +83,7 @@ describe("a conversation's dialogs follow the item 48 glass model", () => {
   it("draws Delete conversation… as a clear dialog with its words and the Don't ask again line on pills and Delete solid", async () => {
     await mount();
     await click(host.querySelector('[aria-label="More for Ledger"]'));
-    await click(row("Delete conversation"));
+    await click(row("Delete"));
     expectClearDialog("confirm-delete", "Delete");
     expect(document.querySelector('[data-testid="confirm-delete"] label.check')!.classList).toContain("g-label");
   });
@@ -91,8 +91,7 @@ describe("a conversation's dialogs follow the item 48 glass model", () => {
   it("draws Remove <Trunk>… as a clear dialog with its warning on a pill and Remove solid", async () => {
     await mount();
     await click(host.querySelector('[aria-label="More for Ledger"]'));
-    await click(row("Ledger"));
-    await click(row("Remove Ledger"));
+    await click(row("Remove"));
     expectClearDialog("trunk-remove", "Remove");
   });
 });

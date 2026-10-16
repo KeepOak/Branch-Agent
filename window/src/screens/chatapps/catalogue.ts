@@ -2,9 +2,9 @@
 export type ChatApp = { id: string; name: string; group: string; channel?: string; estimate?: string };
 export const GROUPS = ["Messaging", "Work", "Social", "Email & SMS", "Voice & phone", "Developer", "Regional", "Your own"];
 const APPS: ChatApp[] = [
-  {"id": "telegram", "name": "Telegram", "group": "Messaging", "channel": "telegram", "estimate": "About 2 minutes"},
-  {"id": "discord", "name": "Discord", "group": "Messaging", "channel": "discord", "estimate": "About 3 minutes"},
-  {"id": "slack", "name": "Slack", "group": "Work", "channel": "slack", "estimate": "About 5 minutes"},
+  {"id": "telegram", "name": "Telegram", "group": "Messaging", "channel": "telegram"},
+  {"id": "discord", "name": "Discord", "group": "Messaging", "channel": "discord"},
+  {"id": "slack", "name": "Slack", "group": "Work", "channel": "slack"},
   {"id": "whatsapp", "name": "WhatsApp Business", "group": "Messaging"},
   {"id": "email", "name": "Email", "group": "Email & SMS"},
   {"id": "messenger", "name": "Facebook Messenger", "group": "Messaging"},
@@ -71,12 +71,11 @@ const APPS: ChatApp[] = [
   {"id": "webhook", "name": "A webhook of your own", "group": "Your own"},
   {"id": "webchat", "name": "Chat bubble on your website", "group": "Your own"},
   {"id": "livestream", "name": "Live stream chat", "group": "Social"},
-  {"id": "whatsappweb", "name": "WhatsApp (your number)", "group": "Messaging", "channel": "whatsapp", "estimate": "About 1 minute · scan a code"},
+  {"id": "whatsappweb", "name": "WhatsApp (your number)", "group": "Messaging", "channel": "whatsapp"},
   {"id": "kakaotalk", "name": "KakaoTalk", "group": "Regional"},
   {"id": "voice-twilio", "name": "Phone calls (Twilio)", "group": "Voice & phone"},
   {"id": "voice-telnyx", "name": "Phone calls (Telnyx)", "group": "Voice & phone"},
   {"id": "voice-plivo", "name": "Phone calls (Plivo)", "group": "Voice & phone"},
 ];
 
-// The R1 four lead their groups when no apps are connected.
-export const CHAT_APPS = [...APPS.filter(a => a.channel), ...APPS.filter(a => !a.channel)];
+export const CHAT_APPS: ChatApp[] = [...APPS.filter(a => a.channel), ...APPS.filter(a => !a.channel)];

@@ -7,17 +7,15 @@ import { CapabilityProvider } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import { Onboarding } from "./Onboarding";
 
-/* README item 48 (owner, final): only the left sidebar is frosted. Onboarding's layer, card and Where sheet are clear, and the
-   Add an account dialog it opens from Your models is a clear dialog too. Every heading, line of text and control on them sits
-   on a small frosted pill with a 1px outline: onboarding.css's own frosted-pill rule, the shared .g-label / .g-frost, a control
-   inside .g-clear, or the one solid primary button. No earlier frosted fill (--gc, --gf, --gk) is left in onboarding.css. */
+/* Preview v17 (tinted liquid glass): setup is its own window. Its layer and card are tinted glass over the app, its text sits
+   straight on the card with no pill, and its controls keep their chips. A dialog it opens (Add an account, Where Branch runs)
+   is a tinted card over its scrim with the same rule for its text. The menus, toasts, walkthrough and side panels stay clear. */
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; document.body.innerHTML = ""; });
 
 const css = readFileSync("src/screens/onboarding/onboarding.css", "utf8");
-const FROST = css.match(/\/\* The frost[^*]*\*\/\s*([^{]+)\{/)![1].replace(/\s+/g, " ").trim().replace(/^:is\(/, "").replace(/\)\s*$/, "").split(/,(?![^(]*\))/).map((s) => s.trim());
-const PILL = [".g-label", ".g-frost", "[data-solid]", ".r1-ob-pri", ...FROST].join(", ");
+const glass = readFileSync("src/glass/glass.css", "utf8");
 const ALL = ["branch.setup.detect", "branch.setup.verify", "branch.setup.activate", "models.authStatus", "config.get", "config.patch", "trunks.template.list", "trunks.template.create", "agents.list", "chat.send"];
 const DETECT = { candidates: [{ kind: "claude-cli", modelRef: "anthropic/claude-opus", label: "Claude", detail: "Max", credentials: true }] };
 const ANSWERS: Record<string, unknown> = {
@@ -41,38 +39,27 @@ async function show(startAt: number) {
   await flush();
   return host;
 }
-/** Text that sits straight on a clear surface instead of on a pill. */
-function bareText(scope: Element) {
-  const bare: string[] = [];
-  for (const el of scope.querySelectorAll("*")) {
-    if (el.closest("svg, script, style, [aria-hidden=true]")) continue;
-    if (![...el.childNodes].some((n) => n.nodeType === 3 && /\S/.test(n.nodeValue ?? ""))) continue;
-    const pill = el.closest(PILL);
-    const control = el.closest("button, a[href], select, textarea, input");
-    if (!pill && !(control && control.closest(".g-clear"))) bare.push("<" + el.tagName.toLowerCase() + ' class="' + el.className + '"> ' + el.textContent!.trim().slice(0, 48));
-  }
-  return bare;
-}
+/** Text that sits on a pill (a .g-label or .g-frost). The setup window's text must not. */
+const pillsIn = (scope: Element) => [...scope.querySelectorAll(".g-label, .g-frost")].map((el) => el.tagName.toLowerCase() + "." + el.className);
 
-describe("onboarding follows the item 48 glass model", () => {
-  it("draws every step and the Where sheet from the shared pill only: every line on a pill, no earlier frosted fill", async () => {
-    // The dots and the model switches drew the earlier control glass (--gk-track, --gk-sh-thumb, --gf-edge).
+describe("onboarding window follows preview v17", () => {
+  it("draws every step and the Where sheet on the tinted window, with no pill on its text", async () => {
     expect(css).not.toMatch(/var\(--g[cfk]-/);
     for (const step of [0, 1, 2, 3]) {
       const host = await show(step);
       expect(host.querySelector(".r1-ob-card"), `step ${step}`).not.toBeNull();
-      expect(bareText(host), `step ${step}`).toEqual([]);
+      expect(pillsIn(host), `step ${step}`).toEqual([]);
       if (step === 0) {
         await act(async () => button(host, "Change").click());
         const sheet = host.querySelector(".r1-ob-sheet")!;
         expect(sheet).not.toBeNull();
-        expect(bareText(sheet)).toEqual([]);
+        expect(pillsIn(sheet)).toEqual([]);
       }
       await act(async () => root!.unmount()); root = undefined; host.remove();
     }
   });
 
-  it("opens Add an account from Your models as a clear dialog with its words on pills", async () => {
+  it("opens Add an account from Your models as a tinted dialog over its scrim, with its text off any pill", async () => {
     const host = await show(1);
     await act(async () => button(host, "Add another").click());
     await flush();
@@ -83,13 +70,18 @@ describe("onboarding follows the item 48 glass model", () => {
     expect(css.replace(/\s+/g, " ")).toContain("body:has(> .r1-ob-dlg) .r1-ob > .r1-ob-card { visibility: hidden; }");
     expect(dlg.querySelector(".dlg-h h2")!.classList).toContain("g-label");
     expect(dlg.textContent).toContain("Which service is the new account with?");
-    expect(bareText(dlg)).toEqual([]);
     const primaries = [...dlg.querySelectorAll("button.pri, button.primary")];
     expect(primaries.map((b) => b.textContent)).toContain("Test and use");
     for (const b of primaries) expect(b.hasAttribute("data-solid"), b.textContent!).toBe(true);
     await act(async () => [...dlg.querySelectorAll<HTMLButtonElement>("button.prov")].find((b) => b.textContent?.includes("ChatGPT") && !b.textContent.includes("key"))!.click());
     await flush();
     expect(dlg.textContent).toContain("own sign-in page");
-    expect(bareText(dlg)).toEqual([]);
+  });
+
+  it("tints a clear dialog's card like preview v17 and drops its text lines' pills, while controls keep theirs", () => {
+    const flat = glass.replace(/\s+/g, " ");
+    expect(flat).toContain(".scrim > .dlg.g-clear:not(#g48) { background: color-mix(in srgb, var(--bg) 74%, transparent);");
+    expect(flat).toContain(".scrim > .dlg.g-clear :is(.g-label, .g-label[data-lines]):not(#g48) { width: auto; max-width: none; padding: 0; border-radius: 0; background: none; box-shadow: none;");
+    expect(flat).toContain(":root[data-transparency=\"reduce\"] .scrim > .dlg.g-clear:not(#g48#g48)");
   });
 });
