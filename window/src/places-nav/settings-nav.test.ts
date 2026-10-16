@@ -5,7 +5,7 @@ describe("settings nav", () => {
   it("has plain group names and omits achievements at every level", () => {
     const count = (l: "regular" | "advanced" | "technical") => settingsGroups(l).reduce((n, g) => n + g.pages.length, 0);
     expect([count("regular"), count("advanced"), count("technical")]).toEqual([22, 23, 24]);
-    expect(settingsGroups("regular").map((g) => g.name)).toEqual(["General", "Trunks", "Safety", "Data", "About"]);
+    expect(settingsGroups("regular").map((g) => g.name)).toEqual(["This app", "Trunks", "Safety", "Data", "About"]);
   });
   it("uses plain page names in navigation and search", () => {
     for (const [id, name] of [["agents", "Connected agents"], ["seasons", "Memory cleanup"], ["self", "Version & self-check"], ["secrets", "Saved passwords"]]) {
