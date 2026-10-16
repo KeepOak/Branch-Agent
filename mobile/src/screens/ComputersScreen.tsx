@@ -40,16 +40,19 @@ function StatusDot({ online, warn }: { online: boolean; warn: boolean }) {
   return <View style={{ width: 10, height: 10, borderRadius: radius.pill, backgroundColor: online ? color.ok : warn ? color.warn : color.ink3 }} />;
 }
 
-function ComputerRowView({ row, now, last }: { row: ComputerRow; now: number; last: boolean }) {
+function ComputerRowView({ row, now, last, onOpen }: { row: ComputerRow; now: number; last: boolean; onOpen?: (row: ComputerRow) => void }) {
   const { color, space, layout } = useTheme();
   const line = computerLine(row, now);
   const online = row.status === 'online';
+  const label = onOpen ? `${row.name}, ${line}. Take control` : `${row.name}, ${line}`;
   return (
-    <View
+    <Pressable
       testID={`computer-${row.id}`}
-      accessibilityRole="text"
-      accessibilityLabel={`${row.name}, ${line}`}
-      style={{
+      accessibilityRole={onOpen ? 'button' : 'text'}
+      accessibilityLabel={label}
+      onPress={onOpen ? () => onOpen(row) : undefined}
+      disabled={!onOpen}
+      style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'center',
         minHeight: layout.rowMinHeight,
@@ -57,7 +60,8 @@ function ComputerRowView({ row, now, last }: { row: ComputerRow; now: number; la
         paddingVertical: space.sm,
         borderBottomWidth: last ? 0 : layout.hairline,
         borderBottomColor: color.line,
-      }}
+        opacity: pressed && onOpen ? 0.7 : 1,
+      })}
     >
       <StatusDot online={online} warn={row.status === 'starting' || row.status === 'stopping'} />
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -68,17 +72,23 @@ function ComputerRowView({ row, now, last }: { row: ComputerRow; now: number; la
           {line}
         </ThemedText>
       </View>
-    </View>
+      {onOpen ? (
+        <ThemedText variant="body" tone="ink3">
+          ›
+        </ThemedText>
+      ) : null}
+    </Pressable>
   );
 }
 
-/** Read-only list of the computers Branch knows, with online/offline status. No add, rename or manage. */
+/** List of the computers Branch knows, with online/offline status. A tap opens take-control. No add, rename or manage. */
 export function ComputersScreen({
   list,
   online,
   onRefresh,
   onBack,
   onThisPhone,
+  onOpenComputer,
   now: fixedNow,
 }: {
   list: ComputerListSnapshot;
@@ -87,6 +97,8 @@ export function ComputersScreen({
   onBack: () => void;
   /** Opens the pairing card for this phone (unpair lives there, not on this list). */
   onThisPhone?: () => void;
+  /** Opens take-control for that computer. */
+  onOpenComputer?: (row: ComputerRow) => void;
   now?: number;
 }) {
   const { color, space, radius, layout } = useTheme();
@@ -117,7 +129,7 @@ export function ComputersScreen({
     body = (
       <Card testID="computers-list">
         {list.rows.map((row, i) => (
-          <ComputerRowView key={row.id} row={row} now={now} last={i === list.rows.length - 1} />
+          <ComputerRowView key={row.id} row={row} now={now} last={i === list.rows.length - 1} onOpen={onOpenComputer} />
         ))}
       </Card>
     );
@@ -127,6 +139,8 @@ export function ComputersScreen({
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: insets.bottom + space.xl }}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={color.ink3} colors={[color.accent]} />}
       >
         <Pressable

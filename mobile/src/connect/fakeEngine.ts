@@ -97,7 +97,13 @@ export const FAKE_ENGINE_METHODS = [
   'plugin.approval.list',
   'exec.approval.resolve',
   'plugin.approval.resolve',
+  'computer.status',
+  'computer.invoke',
 ] as const;
+
+/** 1×1 PNG; tests and screenshots use the snapshot payload's width and height as the picture size. */
+export const FAKE_SCREEN_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 export type FakeEngineOptions = {
   version?: string;
@@ -223,6 +229,20 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         return { ok: true, payload: approvals.exec };
       case 'plugin.approval.list':
         return { ok: true, payload: approvals.plugin };
+      case 'computer.status':
+        return { ok: true, payload: { available: true, configured: true, computerUse: { provider: { generation: 'driver-one' } } } };
+      case 'computer.invoke': {
+        const command = String((params as { command?: unknown } | null)?.command ?? '');
+        if (command === 'screen.snapshot') {
+          return {
+            ok: true,
+            payload: {
+              payload: { format: 'png', base64: FAKE_SCREEN_PNG, displayFrameId: 'frame-1', width: 1280, height: 800 },
+            },
+          };
+        }
+        return { ok: true, payload: { payload: { ok: true } } };
+      }
       case 'exec.approval.resolve':
       case 'plugin.approval.resolve': {
         const { id, decision } = (params ?? {}) as { id?: string; decision?: string };
