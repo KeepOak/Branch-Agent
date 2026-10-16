@@ -92,7 +92,7 @@ export function useDetail(engine: WindowEngine, entry: Entry): Detail {
   return detail;
 }
 
-export const WHO_COMING = "Choosing Trunks for a connector or plugin comes in a later update.";
+export const WHO_COMING = "Who gets it comes in a later update.";
 export type AddResult = { notice: string };
 type Props = { entry: Entry; engine: WindowEngine; trunks: Trunk[]; onClose: () => void; onDone: (result: AddResult) => void };
 
