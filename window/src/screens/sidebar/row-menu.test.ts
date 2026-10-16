@@ -95,6 +95,23 @@ describe("row ••• menu", () => {
     expect(c.archiveRoom).toHaveBeenCalled();
     expect(rows.some(row => row.label.startsWith("New conversation with") || row.label === "Pause" || row.label === "Remove…")).toBe(false);
   });
+  it("archives and restores a conversation, and a grafted row, and greys only a Trunk", () => {
+    const c = ctx();
+    const chat = rowOf({ id: "chat:side", kind: "chatGroup", name: "Side", threadKey: "agent:quill:side" });
+    const archive = rowMenu(chat, c).rows.find(row => row.label === "Archive")!;
+    expect(archive.off).toBeUndefined();
+    archive.onSelect?.();
+    expect(c.actions.archive).toHaveBeenCalledWith(expect.objectContaining({ key: "agent:quill:side" }));
+    const restore = rowMenu(rowOf({ id: "chat:side", kind: "chatGroup", name: "Side", threadKey: "agent:quill:side", archivedAt: 9 }), c).rows.find(row => row.label === "Restore")!;
+    expect(restore.off).toBeUndefined();
+    restore.onSelect?.();
+    expect(c.actions.restore).toHaveBeenCalledWith(expect.objectContaining({ key: "agent:quill:side" }));
+    const grafted = rowMenu(rowOf({ id: "a2a:studio", kind: "outside", name: "Studio", threadKey: "a2a:studio" }), c).rows.find(row => row.label === "Archive")!;
+    expect(grafted.off).toBeUndefined();
+    grafted.onSelect?.();
+    expect(c.actions.archive).toHaveBeenCalledTimes(2);
+    expect(rowMenu(rowOf({ archivedAt: 4 }), ctx()).rows.find(row => row.label === "Restore")?.off).toBe("Restore comes in a later update.");
+  });
   it("shows the advanced-only rows greyed, in the preview's places", () => {
     const { rows } = rowMenu(rowOf({}), ctx({ advanced: true }));
     const labels = rows.map(row => row.label);

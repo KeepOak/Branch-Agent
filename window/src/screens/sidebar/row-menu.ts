@@ -101,9 +101,11 @@ function archiveRow(row: SideRow, thread: Conversation | null, c: RowMenuContext
     return { label: row.archived ? "Unarchive" : "Archive", letter: "a", icon: icon("box"), need: NEED.roomArchive, onSelect: () => (row.archived ? c.unarchiveRoom(contact) : c.archiveRoom(contact)) };
   }
   const label = row.archived ? "Restore" : "Archive";
-  if (!thread) return { label, letter: "a", icon: icon("box"), off: FIRST_MESSAGE };
-  // sessions.patch does not take a Trunk row off this list, so the click would only toast.
-  return { label, letter: "a", icon: icon("box"), off: later(label), need: NEED.patch };
+  // A Trunk stays on the list. A grafted row is an outside agent (kind "grafted"), not a Trunk, so it archives with the other conversations.
+  if (row.kind === "trunk") return { label, letter: "a", icon: icon("box"), off: later(label), need: NEED.patch };
+  if (!thread || !row.row) return { label, letter: "a", icon: icon("box"), off: FIRST_MESSAGE };
+  const target = row.row;
+  return { label, letter: "a", icon: icon("box"), need: NEED.patch, onSelect: () => void (row.archived ? c.actions.restore(target) : c.actions.archive(target)) };
 }
 
 /** The rows for one contact. People rows have no menu. Tiles stay empty. */
