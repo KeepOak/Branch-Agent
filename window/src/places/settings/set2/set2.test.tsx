@@ -207,6 +207,10 @@ describe("Settings › Seasons", () => {
     const { engine, request } = engineWith({ "doctor.memory.status": RINGS_STATUS, "skills.proposals.list": { proposals: [] }, "config.get": { hash: "h", valid: true, config: {} }, "config.patch": { ok: true, hash: "h2", config: {} } });
     await show("seasons", engine);
     expect(document.body.textContent).toContain("This season: 3 changes kept");
+    expect(document.body.textContent).toContain("Overnight memory cleanup hasn’t run yet");
+    expect(document.querySelector('[aria-label="Clean up memory overnight"]')).toBeTruthy();
+    expect(document.querySelector('[data-row="What it changed"]')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Rings diary|Tidy memory at night with Rings|Rings hasn’t/);
     await click("1 AM");
     const patch = request.mock.calls.find(([m]) => m === "config.patch");
     expect(JSON.parse(String((patch?.[1] as { raw: string }).raw))).toEqual({ plugins: { entries: { "memory-core": { config: { rings: { frequency: "0 1 * * *" } } } } } });
@@ -230,16 +234,15 @@ describe("Settings › Seasons", () => {
 
 describe("Settings › Gateway", () => {
   const H = { ok: true, ts: Date.now(), durationMs: 3, channels: { telegram: { connected: true } }, channelLabels: { telegram: "Telegram" } };
-  it("keeps the close-window control below Gateway mode and saves through the desktop setting", async () => {
+  it("keeps the close-window control and saves through the desktop setting", async () => {
     let state = { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: false, startWithWindows: false, branchOnPath: false };
     const set = vi.fn(async (name: keyof typeof state, on: boolean) => (state = { ...state, [name]: on }));
     (window as { branchDesktop?: unknown }).branchDesktop = { controls: { get: async () => state, set } };
     try {
       const { engine } = engineWith({ health: H });
       await show("gateway", engine);
-      const mode = document.querySelector('[data-row="Gateway"]');
       const row = document.querySelector('[data-row="Keep working when the window closes"]');
-      expect(mode?.nextElementSibling).toBe(row);
+      expect(document.querySelector('[data-row="Gateway"]')).toBeNull();
       const control = row?.querySelector<HTMLInputElement>('input[role="switch"]');
       expect(control?.checked).toBe(true);
       await act(async () => control?.click());
@@ -247,6 +250,13 @@ describe("Settings › Gateway", () => {
       expect(control?.checked).toBe(false);
     } finally {
       delete (window as { branchDesktop?: unknown }).branchDesktop;
+    }
+  });
+  it("shows no greyed stubs at the regular level: no Cloudflare, Previews, chat-app placeholders or Tailscale switch", async () => {
+    const { engine } = engineWith({ health: H });
+    await show("gateway", engine);
+    for (const title of ["Through Cloudflare", "App previews", "Pause a chat app from the chat", "Telegram, in depth", "Canary, journal and rollback", "Who can reach the Gateway", "Port"]) {
+      expect(document.body.textContent).not.toContain(title);
     }
   });
   it("says the gateway is on from health and system.info, and restarts it on gateway.restart.request", async () => {

@@ -5,8 +5,10 @@ import { CheckedAt, useCheckedAt } from "../checked-at";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SettingsPageProps } from "../index";
 import type { WindowEngine } from "../../../connect/engine";
-import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, type RowEntry } from "../kit";
+import { Acts, Btn, Ctl, Empty, Field, Hint, Num, Page, Pick, Pill, Plist, Prow, Sec, Seg, Switch, useConfig, useLevel, type RowEntry } from "../kit";
+import { showsInternals } from "../internals";
 import { errorText, list } from "../adapter";
+import { STALL_TEXT, stallAfter } from "../stall";
 import { Dialog } from "../../../shell/Dialog";
 import { Menu, type MenuAnchor } from "../../../shell/Menu";
 import { CallLine, CodeRow, CopyBtn, Kv, Tile, bytes, lvOf, openPlace, rec, span, str, useCall, useLive, useResource, when, type RecordValue } from "./common";
@@ -44,18 +46,21 @@ const short = (date: string) => dayOf(date).toLocaleDateString(undefined, { mont
 /** One engine read that can be switched off (params null) and keeps its last answer while it reloads. */
 function useQuery(engine: WindowEngine, method: string, params: unknown) {
   const key = params === null ? "" : JSON.stringify(params);
+  const [attempt, setAttempt] = useState(0);
   const [st, setSt] = useState<{ data?: RecordValue; error?: string; loading: boolean }>({ loading: key !== "" });
   useEffect(() => {
     if (!key) { setSt({ loading: false }); return; }
     let live = true;
     setSt((s) => ({ data: s.data, loading: true }));
+    // No answer by the stall deadline says so; a late answer still replaces that line.
+    const stop = stallAfter(() => { if (live) setSt((s) => (s.data === undefined ? { loading: false, error: STALL_TEXT } : s)); });
     engine.request(method, JSON.parse(key)).then(
-      (d) => { if (live) setSt({ data: rec(d), loading: false }); },
-      (e: unknown) => { if (live) setSt({ error: errorText(e), loading: false }); },
+      (d) => { stop(); if (live) setSt({ data: rec(d), loading: false }); },
+      (e: unknown) => { stop(); if (live) setSt({ error: errorText(e), loading: false }); },
     );
-    return () => { live = false; };
-  }, [engine, method, key]);
-  return st;
+    return () => { live = false; stop(); };
+  }, [engine, method, key, attempt]);
+  return { ...st, reload: () => setAttempt((n) => n + 1) };
 }
 
 /** Trunk names by id, from agents.list. */
@@ -222,6 +227,35 @@ function Allowances({ engine, openSettings }: { engine: WindowEngine; openSettin
   );
 }
 
+/** Settings › Accounts & usage (R1): what Branch spent in the chosen period, with 7 / 30 / 90 days and the report
+ *  window, drawn as Classic's spend card above. */
+export function AccountSpend({ engine, level }: { engine: WindowEngine; level: number }) {
+  const [days, setDays] = useState("30");
+  const [report, setReport] = useState(false);
+  const names = useNames(engine);
+  const spend = useResource<RecordValue>(engine, "sessions.usage", { range: `${days}d`, ...ALL, ...LOCAL, limit: 1 });
+  return <>
+    <SpendCard spend={spend} days={days} setDays={setDays} onOpen={() => setReport(true)} />
+    {report ? <ReportDialog engine={engine} lv={level} days={days} names={names} onClose={() => setReport(false)} /> : null}
+  </>;
+}
+
+/** Settings › Accounts & usage (R1): what each account has left, as Classic's allowance list, without its heading and
+ *  without the rows the R1 page draws as its own rows. */
+export function AccountAllowanceList({ engine, openSettings }: { engine: WindowEngine; openSettings?: (page: string) => void }) {
+  const res = useLive<RecordValue>(engine, "usage.status", {}, []);
+  const auth = useLive<RecordValue>(engine, "models.authStatus", {}, []);
+  const data = rec(res.data);
+  const providers = list(data.providers);
+  const limits = withAccountEmails(readLimits(res.data), accountEmails(auth.data));
+  return (
+    <div className="s2usage-lims" data-need="usage.status">
+      {res.error ? <p className="hint s2-err" role="alert">{res.error}</p> : null}
+      {providers.map((p, i) => <Provider key={`${str(p.provider)}-${i}`} p={p} limit={limits.rows[i]} updatedAt={data.updatedAt} openSettings={openSettings} />)}
+    </div>
+  );
+}
+
 /* ---------- spend per Trunk ---------- */
 function TrunkSpend({ spend, names, days }: { spend: SpendResult; names: Map<string, string>; days: string }) {
   const rows = list(rec(rec(spend.data).aggregates).byAgent).map((a) => ({ id: str(a.agentId), cost: num(rec(a.totals).totalCost) })).sort((a, b) => b.cost - a.cost);
@@ -320,14 +354,17 @@ function ReportDialog({ engine, lv, days, names, onClose }: { engine: WindowEngi
   const year = useQuery(engine, "usage.cost", lv >= 1 ? { days: 365, ...ALL, ...LOCAL } : null);
   const [menu, setMenu] = useState<MenuAnchor | null>(null);
   const error = period.error ?? picked.error;
+  // Export needs the counted numbers: it stays off while the report counts, and when no count ever arrived.
+  const counting = (period.loading && !period.data) || (sel !== null && !picked.data && !picked.error);
+  const exportOff = waiting || counting || !period.data;
   return (
-    <Dialog title={title(s)} wide onClose={onClose} footer={<><Btn ghost aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 120 }); }}>Export</Btn></>}>
+    <Dialog title={title(s)} wide onClose={onClose} footer={<><Btn ghost aria-haspopup="menu" disabled={exportOff} title={exportOff ? "Export is ready once the numbers are counted." : undefined} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.top - 120 }); }}>Export</Btn></>}>
       <ReportTop s={s} set={set} lv={lv} />
       {lv >= 1 ? <ReportFilters s={s} set={set} names={names} creators={list(rec(period.data).creatorOptions)} all={all} /> : null}
       {lv >= 2 ? <QueryBox s={s} set={set} /> : null}
-      {error ? <p className="s2usage-err" role="alert">{error}</p> : null}
+      {error ? <p className="s2usage-err" role="alert">{error} <Btn sm onClick={() => { period.reload(); picked.reload(); }}>Try again</Btn></p> : null}
       {waiting ? <p className="hint">Pick both dates.</p> : null}
-      {(period.loading && !period.data) || (sel && !picked.data && !picked.error) ? <p className="hint">Counting…</p> : null}
+      {counting ? <p className="hint">Counting…</p> : null}
       {period.data && !waiting && (!sel || picked.data) ? <ReportBody s={s} set={set} lv={lv} data={data} all={all} year={rec(year.data)} names={names} filtered={Boolean(sel || s.agent || s.creator)} engine={engine} /> : null}
       <p className="hint">Estimated from each model’s published price. Plans are billed by their own sites.</p>
       {menu ? <Menu label="Export" at={menu} onClose={() => setMenu(null)} items={exportItems(data, all, names)} /> : null}
@@ -837,6 +874,7 @@ function Keeping({ engine, lv }: { engine: WindowEngine; lv: number }) {
 
 /** Manage conversations: sessions.list (active or archived), several deleted with sessions.delete. */
 function ManageDialog({ engine, onClose }: { engine: WindowEngine; onClose: () => void }) {
+  const level = useLevel();
   const [arch, setArch] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [ask, setAsk] = useState<"" | "some" | "archived">("");
@@ -869,7 +907,7 @@ function ManageDialog({ engine, onClose }: { engine: WindowEngine; onClose: () =
           <div className="rows">{rows.map((r) => (
             <label className="prow" key={str(r.key)}>
               <input type="checkbox" checked={sel.has(str(r.key))} onChange={(e) => toggle(str(r.key), e.target.checked)} />
-              <span className="grow"><b>{str(r.label) || str(r.derivedTitle) || str(r.displayName) || str(r.key)}</b><small>{when(r.updatedAt)}{r.archived === true ? " · archived" : ""}</small></span>
+              <span className="grow"><b>{str(r.label) || str(r.derivedTitle) || str(r.displayName) || (showsInternals(level) ? str(r.key) : "Conversation")}</b><small>{when(r.updatedAt)}{r.archived === true ? " · archived" : ""}</small></span>
             </label>
           ))}</div>
         </>
@@ -891,8 +929,8 @@ const SUITES: [string, string][] = [
   ["Check a change by running it", "Builds, tests and the page itself, before and after · Per change · Evidence · passes at 90%"],
 ];
 const BENCH: [string, string][] = [
-  ["Terminal tasks", "Terminal-Bench style tasks, failures sorted"], ["Coding exercises", "Exercises in many languages, in throwaway folders"],
-  ["Desktop tasks", "OSWorld, in virtual machines"], ["Web tasks", "WebVoyager"], ["Research questions", "FRAMES, graded by a judge"], ["Public benchmarks", "Several suites, run head to head"],
+  ["Terminal tasks", "Shell tasks, with the failures sorted"], ["Coding exercises", "Exercises in many languages, in throwaway folders"],
+  ["Desktop tasks", "Whole-desktop tasks, run in virtual machines"], ["Web tasks", "Browsing tasks on real sites"], ["Research questions", "Questions with checked answers, graded by a judge"], ["Public benchmarks", "Several suites, run head to head"],
 ];
 const EVAL_ROWS: [string, string, string][] = [
   ["Test sets", "Make from conversations", "Inputs and expected answers, versioned."], ["Write tests for me", "Start", "Reads what a Trunk does, writes scenarios, and keeps only the ones proved to work."],

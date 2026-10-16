@@ -1,7 +1,7 @@
 import { createFakeEngine } from '../connect/fakeEngine';
 import { createFakeSession } from '../testing/fakeSession';
 import { FIXTURE_NOW, fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
-import { ChatList, chatRows, filterRows, LIST_PARAMS, matchesSearch, readAgents, unreadCount, type ChatListSnapshot } from './chatList';
+import { ChatList, chatRows, filterRows, LIST_PARAMS, matchesSearch, pinnedTrunks, readAgents, sortRows, unreadCount, type ChatListSnapshot } from './chatList';
 import { chatTime } from './chatTime';
 
 const { agents, mainKey } = readAgents(fixtureAgents);
@@ -53,6 +53,17 @@ describe('chat rows', () => {
     // A snooze that has run out brings the chat back to All by itself.
     expect(filterRows(rows, 'all', FIXTURE_NOW + 3 * 24 * 60 * 60_000).some((r) => r.key === 'agent:researcher:taxes')).toBe(true);
     expect(unreadCount(rows, FIXTURE_NOW)).toBe(2);
+  });
+
+  it('lets the Filter sheet keep automation runs in All, and narrows by Working or Waiting', () => {
+    const rows = chatRows({ sessions: fixtureSessions }, agents, mainKey);
+    expect(filterRows(rows, 'all', FIXTURE_NOW).some((r) => r.automation)).toBe(false);
+    expect(filterRows(rows, 'all', FIXTURE_NOW, { includeAutos: true }).map((r) => r.key)).toContain('agent:main:cron:daily');
+    expect(filterRows(rows, 'all', FIXTURE_NOW, { status: 'working' }).map((r) => r.key)).toEqual(['agent:oak:main']);
+    expect(filterRows(rows, 'all', FIXTURE_NOW, { status: 'waiting' }).map((r) => r.key)).toEqual(['agent:oak:chat-1']);
+    const newest = filterRows(rows, 'all', FIXTURE_NOW);
+    expect(sortRows(newest, 'old').map((r) => r.key)).toEqual([...newest].reverse().map((r) => r.key));
+    expect(pinnedTrunks(rows, FIXTURE_NOW).map((r) => r.key)).toEqual(['agent:researcher:main']);
   });
 
   it('calls a chat “New chat” when the engine knows no names for it', () => {

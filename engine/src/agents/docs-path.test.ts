@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveBranchReferencePaths } from "./docs-path.js";
+import { BRANCH_DOCS_URL, BRANCH_SOURCE_URL, resolveBranchReferencePaths } from "./docs-path.js";
 
 async function makePackageRoot(prefix: string): Promise<string> {
   // Tests create minimal package roots so path resolution is checked without
@@ -59,6 +59,15 @@ describe("resolveBranchSourcePath", () => {
     await expect(resolveBranchReferencePaths({ cwd: root })).resolves.toMatchObject({
       sourcePath: null,
     });
+  });
+});
+
+describe("Branch reference URLs", () => {
+  it("points docs and source at Branch Agent and contains no openclaw", () => {
+    expect(BRANCH_DOCS_URL).toBe("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs");
+    expect(BRANCH_SOURCE_URL).toBe("https://github.com/KeepOak/Branch-Agent");
+    expect(BRANCH_DOCS_URL.toLowerCase()).not.toContain("openclaw");
+    expect(BRANCH_SOURCE_URL.toLowerCase()).not.toContain("openclaw");
   });
 });
 

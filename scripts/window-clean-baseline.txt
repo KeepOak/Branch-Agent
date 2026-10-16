@@ -1431,7 +1431,6 @@ theme	window/src/stage/stage.css	(--ok);border-color:var(--ok);color:#fff;}
 theme	window/src/stage/stage.css	,0 0 0 1px var(--line-2);background:#0e1419;}
 theme	window/src/stage/stage.css	0 0;border-radius:9px 9px 0 0;color:#556666;max-width:220px;flex:0 1 auto;min-w
 theme	window/src/stage/stage.css	em {background:var(--accent);color:#fff;}
-theme	window/src/stage/stage.css	ex;flex-direction:column;background:#fff;}
 theme	window/src/stage/stage.css	hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.55),0 0 0 1px var(--line-2);b
 theme	window/src/stage/stage.css	ius:10px;overflow:hidden;background:#0e1419;cursor:pointer;}
 theme	window/src/stage/stage.css	lor:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);}
@@ -1441,7 +1440,6 @@ theme	window/src/stage/stage.css	ow:hidden;cursor:pointer;background:#0e1419;bor
 theme	window/src/stage/stage.css	r(--accent) inset,0 30px 80px -30px rgba(0,0,0,.55);}
 theme	window/src/stage/stage.css	splay:grid;place-items:center;color:#8899a6;font-size:12.5px;}
 theme	window/src/stage/stage.css	t:hover:not([disabled]) {background:rgba(0,0,0,.06);}
-theme	window/src/stage/stage.css	tive;flex:1;min-height:0;background:#fff;}
 theme	window/src/stage/stage.css	var(--accent);color:var(--on-accent,#fff);font-size:12px;font-weight:600;whi
 theme	window/src/thread/activity-strip.css	18px; border: 1px solid var(--line, #8883); border-radius: 16px; background:
 theme	window/src/thread/activity-strip.css	8px; border: 1px solid var(--line, #8883); border-radius: 10px; }

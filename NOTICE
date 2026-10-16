@@ -13,6 +13,11 @@ https://github.com/milind-soni/OpenMausBot, Copyright 2026 Milind Soni and
 OpenMausBot contributors, used under the Apache License, Version 2.0
 (third_party/openmausbot/LICENSE).
 
+The R1 browser pane was designed with reference to Hermes Agent,
+https://github.com/NousResearch/hermes-agent (pinned at 73b9f2af7b87a619f42396710c332be04353aef2),
+used under the MIT License (third_party/hermes-agent/LICENSE). No Hermes Agent code
+was copied; docs/harvest/R1-REAL-BROWSER.md records what was studied.
+
 Files adapted from the projects listed below were modified by KeepOak;
 docs/upstream/COPIED.csv lists each file, its source path and the pinned
 commit. Each project's license text is in third_party/<name>/LICENSE, copied
@@ -74,6 +79,7 @@ MIT and ISC sources
 - OpenHands/software-agent-sdk @ 0a9abc87641ad7ffe02e2dadf5e2cb3976b35217 (third_party/openhands-agent-sdk/LICENSE)
 - Kilo-Org/kilocode @ 6fd9b7b29ce63b5a38176e45b738e94ed6167cfb (third_party/kilocode/LICENSE)
 - NousResearch/hermes-agent @ 18d125cc1bd9d0e26188ab49bb325427d5945fa2 (third_party/hermes-agent/LICENSE)
+- NousResearch/hermes-official-plugins @ 3a102d9a387983e9c95bf84379d08fa2492b1de8 and morluto/rea (third_party/rea/LICENSE)
 - bytedance/deer-flow @ f840e843d3e2db1485cb65ceae73a5525aa80193 (third_party/deer-flow/LICENSE)
 - danny-avila/LibreChat @ f10b1d91f1eee3a2c82d5247bf620351486b7c1b (third_party/librechat/LICENSE)
 - zhayujie/CowAgent @ 986f44a19508b572d15d40dcb8bd5b2796559ec7 (third_party/cowagent/LICENSE)

@@ -9,6 +9,7 @@ import { Btn, Ctl, Field, Hint, Pick, Sec, Switch, useSaveRunner, type Opt } fro
 import { CATEGORY_KEYS, agentIdsOf, detailOf, normalizeQuiet, type CategoryKey, type Detail, type Quiet } from "./notifications-prefs";
 import { shownWhy } from "../../../shell/shown-why";
 import { noticesHereOn, setNoticesHere } from "../../../shell/notify";
+import { stalledRead } from "../stall";
 
 export type DevicePrefs = { enabled: boolean; label: string; categories?: Partial<Record<CategoryKey, boolean>>; detailLevel?: Detail; quietHours?: Quiet; agentIds?: string[] };
 type Perm = NotificationPermission | "unsupported";
@@ -75,7 +76,7 @@ export function useWebPush(engine: WindowEngine) {
     const base = facts();
     try {
       const { reg, sub } = await current();
-      const device = sub ? normalizeDevice(record(await engine.request("push.web.preferences.get", { endpoint: sub.endpoint })).device) : null;
+      const device = sub ? normalizeDevice(record(await stalledRead(engine.request("push.web.preferences.get", { endpoint: sub.endpoint }))).device) : null;
       latest.current = device;
       setState({ ...base, reg, sub, device, loading: false });
     } catch (error) {
