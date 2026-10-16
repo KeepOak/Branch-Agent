@@ -72,6 +72,7 @@
         }
       ],
       "./plugins/withApkInstaller.js",
+      "./plugins/withReleaseSigning.js",
       "expo-updates"
     ]
   }

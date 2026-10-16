@@ -43,6 +43,7 @@ describe('the installable Android build', () => {
     expect(app.expo.android.versionCode).toBe(1);
     expect(app.expo.android.permissions).toContain('android.permission.REQUEST_INSTALL_PACKAGES');
     expect(plugins).toContain('./plugins/withApkInstaller.js');
+    expect(plugins).toContain('./plugins/withReleaseSigning.js');
   });
 
   it('wires expo-updates without committing a project ID, and ties runtimeVersion to the native version', () => {
@@ -62,6 +63,8 @@ describe('the installable Android build', () => {
     expect(src).toContain('writeAppJsonReleaseMeta');
     expect(src).toContain('printableArgs');
     expect(src).toContain('=***');
+    expect(src).toContain('verifyReleaseApkSigner');
+    expect(src).toContain('requireReleaseSigning');
     expect(src).not.toMatch(/ANDROID_KEYSTORE_PASSWORD|ANDROID_KEY_PASSWORD/);
     expect(src).not.toMatch(/-Pandroid\.injected\.signing\.(store|key)\.password/);
   });
