@@ -1,0 +1,2 @@
+window:src/places/library/memory.test.tsx
+window:src/shell/menu-rerender.test.tsx

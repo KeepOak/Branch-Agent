@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { Dialog } from "../../../shell/Dialog";
-import { errorText, record, visible } from "../adapter";
+import { errorText, record } from "../adapter";
 import { Btn, Seg, useSaved } from "../kit";
 
 /** One editable document as the engine last gave it: its text, its revision (null while missing). */
@@ -25,10 +25,17 @@ export function isConflict(error: unknown): boolean {
   return type === "agent_file_conflict" || type === "personal_file_conflict" || /changed since it was read/i.test(errorText(error));
 }
 
+/** Branch's own starter text for a file that does not exist yet. A missing file never opens on the template the engine may
+ *  send for it, which carries another product's name and links. A file that exists is shown exactly as saved. */
+export const STARTERS: Readonly<Record<string, string>> = {
+  "SOUL.md": "# Soul\n\nHow this Trunk talks, what it will do, and what it will not. Keep it short and plain.\n",
+};
+
 export async function readFile(engine: WindowEngine, agentId: string, name: string): Promise<FileState> {
   const f = record(record(await engine.request("agents.files.get", { agentId, name })).file);
   const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-  return { name, path: str(f.path), content: str(f.content) ?? "", hash: str(f.hash) ?? null, missing: f.missing === true };
+  const missing = f.missing === true;
+  return { name, path: str(f.path), content: missing ? (STARTERS[name] ?? "") : (str(f.content) ?? ""), hash: str(f.hash) ?? null, missing };
 }
 
 export function writeFile(engine: WindowEngine, agentId: string, name: string, content: string, on: Doc) {
@@ -47,16 +54,20 @@ export function useDraft(initial: Doc, io: Io, onSaved: () => void) {
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const fail = (e: unknown) => { setError(visible(errorText(e))); report.failed(errorText(e)); };
+  const fail = (e: unknown, message: string) => {
+    console.warn("Instruction file action failed:", e);
+    setError(message);
+    report.failed(message);
+  };
   const write = async (on: Doc) => {
     setBusy(true); setError("");
     try { await io.save(text, on); report.saved(); onSaved(); }
-    catch (e) { if (isConflict(e)) setConflict(true); else fail(e); }
+    catch (e) { if (isConflict(e)) setConflict(true); else fail(e, "Could not save your instructions. Your edits are still here. Try again, or reopen the file before saving."); }
     finally { setBusy(false); }
   };
   const fresh = async () => { const d = await io.load(); setBase(d); setConflict(false); return d; };
-  const reload = async () => { try { const d = await fresh(); setText(d.content); } catch (e) { fail(e); } };
-  const overwrite = async () => { try { await write(await fresh()); } catch (e) { fail(e); } };
+  const reload = async () => { try { const d = await fresh(); setText(d.content); } catch (e) { fail(e, "Could not reload your instructions. Your edits are still here. Try again."); } };
+  const overwrite = async () => { try { await write(await fresh()); } catch (e) { fail(e, "Could not reload your instructions before saving. Your edits are still here. Try again."); } };
   return { base, text, setText, ask, setAsk, conflict, busy, error, dirty: text !== base.content, save: () => write(base), reload, overwrite };
 }
 export type Draft = ReturnType<typeof useDraft>;

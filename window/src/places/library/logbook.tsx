@@ -1,4 +1,4 @@
-// Library › Logbook (preview 42-placesbp libLogDrawPQ18) on logbook.*: off state with Turn on…, the capture status
+// Library › Activity › Your day, once the Logbook tab (preview 42-placesbp libLogDrawPQ18) on logbook.*: off state with Turn on…, the capture status
 // with Pause / Resume and Look now, the day picker, Day at a glance, the timeline, Daily standup and Ask your day.
 import { useState, type FormEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";

@@ -3,7 +3,10 @@
  *
  * Ages out stale unended runs while keeping recent/composed child links visible.
  */
-import { hasLiveAgentRunContext } from "../../../infra/agent-run-registry.js";
+import {
+  hasLiveAgentRunContext,
+  registerActiveSubagentRunCounter,
+} from "../../../infra/agent-run-registry.js";
 import { ownsSwarmRunReservation } from "../swarm/swarm-scheduler.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
@@ -55,6 +58,21 @@ export function isSubagentRunQueued(entry: SubagentRunIdentity | null | undefine
     ),
   );
 }
+
+/**
+ * Helper runs that are working now: live (an execution or a live session projection) or queued for a slot. The same
+ * test the session list uses to show a helper as working, so "idle" for an update means what the owner sees.
+ */
+export function countActiveSubagentRuns(): number {
+  let count = 0;
+  for (const entry of subagentRuns.values()) {
+    if (typeof entry.execution.endedAt === "number") continue;
+    if (isSubagentRunLive(entry) || isSubagentRunQueued(entry)) count += 1;
+  }
+  return count;
+}
+// Private #1038: the update idle check and the restart drain count working helpers.
+registerActiveSubagentRunCounter(countActiveSubagentRuns);
 
 const STALE_UNENDED_SUBAGENT_RUN_MS = 2 * 60 * 60 * 1_000;
 export const RECENT_ENDED_SUBAGENT_CHILD_SESSION_MS = 30 * 60 * 1_000;

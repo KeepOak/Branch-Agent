@@ -5,12 +5,14 @@ import type { Topic } from "@branch/gateway-protocol";
 import type { TopicUpdate } from "../thread/TopicCard";
 import type { SendExtras } from "../connect/engine";
 import { firstSendEcho } from "../composer/sending";
+import { availability } from "../connect/capabilities";
 import { roomIdOf, type SaplingSession } from "../connect/session";
 import { withOwner } from "../connect/agent-owner";
 import { isPreparationPending, isPreparationStalled, PreparationRetry, preparationTimeoutLabel } from "../connect/preparation-status";
 import { Composer, VOICE_OFF } from "../composer/Composer";
 import { hasUnsavedDraftFiles } from "../composer/drafts";
 import { componentDesktop } from "../connect/desktop-component-updates";
+import { pendingApprovalsWithin } from "../connect/update-probe";
 import { useBranchVersion } from "../connect/branch-version";
 import { LOCAL_ADDRESS, readTargetName, saveTargetName } from "../setup/pre-connect-state";
 import { Thread } from "../thread/Thread";
@@ -23,7 +25,7 @@ import { pageName } from "../places-nav/settings-nav";
 import { effectiveDark, readThemeChoice, setThemeChoice, toggleTheme, type ThemeChoice } from "../theme/theme";
 import { BannerView, raiseBanner } from "./Banner";
 import { bannerFor } from "./banner-news";
-import { useProblemBanners } from "./problem-banners";
+import { useDiskFullBanner, useProblemBanners } from "./problem-banners";
 import { askBeforeDelete, ConfirmCatalogDelete, ConfirmDelete } from "./ConfirmDelete";
 import { conversationActions } from "./conversation-actions";
 import { SessionUnreadPatchGuard } from "../connect/unread-guard";
@@ -49,7 +51,7 @@ import { historyToBlocks } from "../thread/history";
 import { lastSpeakerWho, topicSpeakerKeys } from "./topic-who";
 import { topicLayoutFor, readTopicSettings, setContactTopicLayout, type TopicLayout } from "./topic-layout";
 import { patchTopicSession } from "./topic-session";
-import { loadAllTopicTranscripts } from "./topic-all";
+import { createSerialReloader, loadAllTopicTranscripts, type TopicTranscriptCache } from "./topic-all";
 import { useContactSegments } from "./useContactSegments";
 import { contactAlert, contactAlertTarget, noticesHereOn, notify, readMutedContacts, saveMutedContacts } from "./notify";
 import { headerFace, stopRoaming } from "./pet-roam";
@@ -78,9 +80,10 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { QuickAsk } from "./QuickAsk";
 import { NewProjectDialog, useProjects } from "./Projects";
 import { Sidebar, type TalkEntry } from "./Sidebar";
+import { topBarTalk } from "./talk-entry";
 import { TalkBeside, useTalkLayout } from "./TalkBeside";
 import { StatusBar, type StatusItem } from "./StatusBar";
-import { KeepLastDialog, remindedToday, StatusPopover, statusAnchor, tidy } from "./StatusLayer";
+import { KeepLastDialog, pauseAll, remindedToday, StatusPopover, statusAnchor, tidy, type StatusContext } from "./StatusLayer";
 import { copyMarkdown, copyText } from "./row-actions";
 import { readLevel } from "../places-nav/SettingsFrame";
 import type { Above } from "./Popover";
@@ -89,13 +92,12 @@ import { desktopControls } from "../connect/desktop-controls";
 import { useGatewayFacts, useLimits, useUpdate } from "./use-status";
 import { useLockdown } from "./use-lockdown";
 import { LockdownBanner } from "./LockdownBanner";
-import { stageWindowUpdate } from "../connect/desktop-component-updates";
 import { Toasts } from "./Toasts";
 import { conversationNeedsYou } from "./conversation-more";
 import { ConversationMoreButton, HeaderRow, PlaceHead, TopBar } from "./TopBar";
 import { toggleListLayout, useLayout } from "./use-layout";
 import { usePinOrder } from "./use-pin-order";
-import { hideMenuItems, hideTarget, HIDEABLE, usePetLook, useShown } from "./shown";
+import { hideMenuItems, hideTarget, HIDEABLE, useCheerOn, usePetLook, useShown } from "./shown";
 import { StatusGfx, StatusLeftExtras } from "./StatusExtras";
 import { paneKeyFor, useShortcuts } from "./use-shortcuts";
 import { currentKeys, keyActions, readCustomKeys } from "./keymap";
@@ -121,6 +123,7 @@ import { TALK_EVENT, useVoiceCatalog } from "../composer/VoiceParts";
 import { DockQuestion } from "../thread/QuestionCard";
 import { CHECK_STATUS_EVENT } from "../thread/blocks";
 import { WhereChips } from "../thread/WhereChips";
+import { FIND_ANYTHING_EVENT } from "../screens/find/find-event";
 import { FIND_EVENT } from "../thread/FindBar";
 import { useQuestions } from "../thread/questions";
 import { Walkthrough } from "./Walkthrough";
@@ -130,6 +133,7 @@ import { useFirstRun } from "../setup/use-first-run";
 import { useNeedsCount } from "../places/inbox";
 import { TrunkStudio } from "../places/trunk";
 import "./preview.css";
+import { coalesce } from "./coalesce";
 
 /** The clock for row times; it also ticks just after a "Done" so the header goes back to ready (§4.2.5). */
 function useNow(doneAt: number | null): number {
@@ -251,13 +255,13 @@ function useThemeSync(setTheme: (t: ThemeChoice) => void): boolean {
   return systemDark;
 }
 
-/** Whether the character panel is shown; remembered across windows. */
+/** Whether the character panel is shown; off until turned on, and remembered across windows. */
 function useCharacterShown() {
   const [shown, setShown] = useState(() => {
     try {
-      return localStorage.getItem("branch.characterShown") !== "0";
+      return localStorage.getItem("branch.characterShown") === "1";
     } catch {
-      return true;
+      return false;
     }
   });
   useEffect(() => {
@@ -271,7 +275,7 @@ function useCharacterShown() {
     // Settings › Appearance changes the switch too ("branch:look-change"): follow it without a reload.
     const reread = () => {
       try {
-        setShown(localStorage.getItem("branch.characterShown") !== "0");
+        setShown(localStorage.getItem("branch.characterShown") === "1");
       } catch {
         // storage blocked: keep what this window shows
       }
@@ -323,18 +327,32 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     const stop = bridge.onChanged((keys) => { if (live) setPoppedKeys(keys); });
     return () => { live = false; stop(); };
   }, [dedicated]);
+  // The desktop tray's live line and Pause all work (Private #454 C) read the live sessions list through this.
+  const liveWork = useRef<{ list?: StatusContext["list"]; trunks: number; working: StatusContext["working"] }>({ trunks: 0, working: [] });
+  // The approvals this window shows, for the update probe to answer with when the gateway is slow (Private #1047).
+  const shownApprovals = useRef(0);
   useEffect(() => componentDesktop(session.gatewayUrl)?.onAutoApplyProbe?.(async () => {
-    const approvals = await Promise.all(["exec.approval.list", "plugin.approval.list", "branch.approval.list"].map(
-      method => session.request<unknown>(method, {}),
-    ));
-    const pendingApprovals = approvals.reduce<number>((count, result) => {
-      const items = Array.isArray(result) ? result : (result as { items?: unknown })?.items;
-      if (!Array.isArray(items)) throw new Error("Approval status is unavailable");
-      return count + items.length;
-    }, 0);
-    return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles() };
+    const pendingApprovals = await pendingApprovalsWithin(session, shownApprovals.current);
+    return { pendingApprovals, streaming: Boolean(session.getSnapshot().liveRunId), unsavedDraftFiles: hasUnsavedDraftFiles(),
+      workingTrunks: liveWork.current.trunks };
   }), [session]);
   const { s, ready, lists, list, gatewayContacts, refreshContacts, contactsLoaded, trunks, pending, machine, limits, gateway, person } = useEngineReads(session);
+  shownApprovals.current = pending.size;
+  const workingRows = lists.rows.filter((r) => r.working);
+  liveWork.current = { list, trunks: new Set(workingRows.map((r) => r.agentId)).size,
+    working: workingRows.map((r) => ({ key: r.key, title: r.title || "", line: "", runIds: r.activeRunIds })) };
+  useEffect(() => componentDesktop(session.gatewayUrl)?.onPauseAll?.(() => {
+    const live = liveWork.current;
+    if (live.list) void pauseAll({ session, list: live.list, working: live.working });
+  }), [session]);
+  // With the window closed, a Trunk's "done" also reaches a paired phone through the engine's push service (Private
+  // #454 D). Approvals already reach it from the engine itself. A computer without a paired phone sends nothing.
+  useEffect(() => componentDesktop(session.gatewayUrl)?.onPhonePush?.((notice) => {
+    void session.request<{ nodes?: { nodeId?: unknown; platform?: unknown }[] }>("node.list", {}).then(async (listed) => {
+      const phones = (listed?.nodes ?? []).filter((node) => typeof node.nodeId === "string" && /ios|iphone|ipad/i.test(String(node.platform ?? "")));
+      await Promise.all(phones.map((node) => session.request("push.test", { nodeId: node.nodeId, title: notice.title, body: notice.body }).catch(() => undefined)));
+    }, () => undefined);
+  }), [session]);
   const lockdown = useLockdown(session.engine, ready, session);
   const toggleLockdown = () => void lockdown.toggle().catch((error: unknown) => notify(`Couldn't change Lockdown: ${error instanceof Error ? error.message : String(error)}`, { tone: "bad" }));
   const groupRooms = useGroupRooms(session, ready);
@@ -414,6 +432,14 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     window.addEventListener("branch:whats-new", openNews);
     return () => window.removeEventListener("branch:whats-new", openNews);
   }, []);
+  useEffect(() => {
+    const open = () => {
+      if (availability(session.engine, "sessions.search") === "no") return;
+      setOverlay((current) => (current?.kind === "palette" ? current : { kind: "palette" }));
+    };
+    window.addEventListener(FIND_ANYTHING_EVENT, open);
+    return () => window.removeEventListener(FIND_ANYTHING_EVENT, open);
+  }, [session.engine]);
   const [characterShown, setCharacterShown] = useCharacterShown();
   // The card and Appearance › Agents › "Show the agent beside the conversation" are one switch: keep both in step.
   const setCharacterVisible = (on: boolean) => { setCharacterShown(on); void lookStore(session.engine).set("agentShown", on).catch(() => undefined); };
@@ -494,8 +520,9 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       } catch (error) { if (live) console.warn("contacts.topics failed", error); }
     };
     void load();
-    const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") void load(); });
-    return () => { live = false; off(); };
+    const loadSoon = coalesce(() => void load(), 3_000);
+    const off = session.onGatewayEvent((event) => { if (event === "contacts.changed") loadSoon(); });
+    return () => { live = false; off(); loadSoon.cancel(); };
   }, [session, ready, topicContact?.id]);
   useEffect(() => {
     if (!ready || !topicContact || !activeTopics.length) { setTopicWho({}); return; }
@@ -900,21 +927,40 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   });
   const topicMainRow = topicContact ? lists.rows.find((row) => row.key === topicContact.threadKey) : null;
   const showingAll = Boolean(allTopics && topicContact && allTopics.contactId === topicContact.id && openKey === topicContact.threadKey);
+  const allTopicLoader = useRef<{ contactId: string; transcripts: TopicTranscriptCache; reloader: ReturnType<typeof createSerialReloader> } | null>(null);
+  const allTopicInput = useRef<Parameters<typeof loadAllTopicTranscripts> | null>(null);
+  const allTopicSignature = useRef("");
+  useEffect(() => {
+    if (!showingAll || !topicContact) return;
+    const main = { key: topicContact.threadKey, title: "General", updatedAt: topicMainRow?.updatedAt ?? topicContact.lastActivityAt, preview: topicMainRow?.preview ?? "" };
+    const topics = topicItems.map(({ topic, updatedAt, preview }) => ({ key: topic.key, title: topic.title, labelled: topic.labelled, updatedAt, preview }));
+    allTopicInput.current = [request, main, topics];
+    // The contact and row objects are rebuilt on every render, so reload only when what the load reads has changed;
+    // otherwise each finished load would re-render, re-run this effect and start the next one.
+    const signature = JSON.stringify([topicContact.id, main, topics]);
+    if (signature === allTopicSignature.current) return;
+    allTopicSignature.current = signature;
+    if (allTopicLoader.current?.contactId === topicContact.id) allTopicLoader.current.reloader.trigger();
+  }, [showingAll, topicContact, activeTopics, lists.rows, request, ready]);
   useEffect(() => {
     if (!showingAll || !topicContact) return;
     const contactId = topicContact.id;
-    const main = { key: topicContact.threadKey, title: "General", updatedAt: topicMainRow?.updatedAt ?? topicContact.lastActivityAt, preview: topicMainRow?.preview ?? "" };
-    const topics = topicItems.map(({ topic, updatedAt, preview }) => ({ key: topic.key, title: topic.title, labelled: topic.labelled, updatedAt, preview }));
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const reload = () => {
+    // One load at a time: live events that arrive during a load collapse into one follow-up load, and
+    // threads whose rows have not moved reuse their blocks from this view's cache.
+    const transcripts: TopicTranscriptCache = new Map();
+    const reloader = createSerialReloader(() => new Promise<void>((settled) => {
       let picks: Record<string, string> = {};
       try { picks = JSON.parse(localStorage.getItem("branch-topic-emoji-t5") || "{}"); } catch { /* A damaged local preference does not hide All. */ }
-      void loadAllTopicTranscripts(request, main, topics, picks).then(
-        (history) => { if (live) setAllTopics((value) => value?.contactId === contactId ? { contactId, history, loading: false, error: "" } : value); },
-        (error: unknown) => { if (live) setAllTopics((value) => value && value.contactId === contactId ? { ...value, loading: false, error: error instanceof Error ? error.message : String(error) } : value); },
+      const [read, main, topics] = allTopicInput.current!;
+      void loadAllTopicTranscripts(read, main, topics, picks, transcripts).then(
+        (history) => { if (live) setAllTopics((value) => value?.contactId === contactId ? { contactId, history, loading: false, error: "" } : value); settled(); },
+        (error: unknown) => { if (live) setAllTopics((value) => value && value.contactId === contactId ? { ...value, loading: false, error: error instanceof Error ? error.message : String(error) } : value); settled(); },
       );
-    };
+    }));
+    allTopicLoader.current = { contactId, transcripts, reloader };
+    const reload = () => reloader.trigger();
     reload();
     const off = session.onGatewayEvent((event) => {
       if (event !== "contacts.changed" && event !== "chat") return;
@@ -923,8 +969,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     });
     const storage = (event: StorageEvent) => { if (event.key === "branch-topic-emoji-t5") reload(); };
     window.addEventListener("storage", storage);
-    return () => { live = false; if (timer) clearTimeout(timer); off(); window.removeEventListener("storage", storage); };
-  }, [showingAll, topicContact?.id, session, activeTopics, lists.rows, ready]);
+    return () => { live = false; reloader.cancel(); allTopicLoader.current = null; allTopicSignature.current = ""; if (timer) clearTimeout(timer); off(); window.removeEventListener("storage", storage); };
+  }, [showingAll, topicContact?.id, session]);
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);
   // The main conversation is still navigable while contacts.list is loading (or unavailable).
@@ -971,6 +1017,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   useMarkRead(request, openRow, route.kind === "chat" && ready, () => void list.refresh());
   const rowExtras = useRowExtras(openKey, level, useCallback((key: string) => lists.rows.find((r) => r.key === key)?.title || "a conversation", [lists.rows]));
   useBannerNews(session, route.kind === "chat" ? openKey : null, rowName, (key) => trunkName(lists.rows.find((r) => r.key === key)?.agentId));
+  useDiskFullBanner();
   useProblemBanners({
     session,
     phase: s.status.phase,
@@ -1169,7 +1216,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       : null;
   const voiceReady = useVoiceCatalog(ready ? session.engine : undefined);
   const pet = usePetLook(session.engine);
-  // Let it roam (Appearance › Pet) walks the pet along the chat instead of the card; one pet on screen at a time.
+  const cheerOn = useCheerOn(session.engine);
+  // A picked pet (Appearance › Pet) roams the chat instead of the card; one pet on screen at a time.
   const lanePet = pet.roam ? pet : { ...pet, id: "none" };
   // Stopping the roam brings the card back, with Undo; the pet's menu and the header face both use it (pet-roam.ts).
   const roamSetting = lookStore(session.engine);
@@ -1387,6 +1435,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           lockdown={lockdown.on}
           {...areaProps}
           engine={showingAll ? undefined : session.engine}
+          cheerOn={cheerOn}
           sessionKey={showingAll ? null : s.sessionKey}
           findRequest={searchFind?.key === openKey ? searchFind : null}
           onFindRequestHandled={(nonce) => setSearchFind((current) => current?.nonce === nonce ? null : current)}
@@ -1396,7 +1445,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           loadingEarlier={segments.loading}
           earlierError={segments.error}
           preparationError={s.error}
-          onStartupReady={() => session.retryOpen()}
           advancedDiagnostics={level !== "regular"}
           onLoadEarlier={segments.loadEarlier}
           onOpenSession={(key) => { if (showingAll) setAllTopics(null); openTopic(key); }}
@@ -1472,7 +1520,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
       </>
     );
   } else {
-    main = <SettingsFrame page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} askName={defaultName} />;
+    main = <SettingsFrame running={running} page={route.page} backName={name} engine={session.engine} onPage={openSettings} onBack={() => go({ kind: "chat", key: openKey })} onAsk={(text) => void askDefault(text)} askName={defaultName} />;
   }
   const talkEntry: TalkEntry | null =
     route.kind === "chat" ? null : { name: defaultName, keys: currentKeys(keyActions(defaultName), readCustomKeys()).talkBeside, open: talk.open, onToggle: () => setTalk({ open: !talk.open }) };
@@ -1532,7 +1580,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
         onCharacter={onCharacterButton}
         onGuide={(e) => showMenu(e, "guide", guideItems(), "Guide")}
         conversationTools={conversationTools}
-        ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : talkEntry}
+        ask={route.kind === "settings" ? { name: defaultName, open: false, help: true, onToggle: () => window.dispatchEvent(new Event("branch-settings-help")) } : topBarTalk(talkEntry, { dedicated, focus: layout.focus, narrow: isNarrow, slideOpen, hidden: layout.hidden })}
         onSettings={route.kind === "place" ? () => openSettings("general") : undefined}
       />
       <Sidebar
@@ -1559,7 +1607,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           ) : null
         }
         emptyLine={emptyLineFor(prefs, shownCount) ?? (contactsLoaded && trunks.loaded && contactRows.length === 0 ? "No contacts yet. Use + to create one." : null)}
-        search={<SearchBox query={search.query} onQuery={search.setQuery} />}
+        search={<SearchBox query={search.query} onQuery={search.setQuery} engine={session.engine} />}
         searchResults={
           search.query.trim() ? (
             <SearchResultsView
@@ -1601,7 +1649,8 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
             setGroupDrop({ kind, source: drop.source, target: drop.target, roomId: target?.roomId ?? source?.roomId, anchor });
           }
         }}
-        onRailSearch={focusSearch}
+        engine={session.engine}
+        onRailSearch={() => { if (availability(session.engine, "sessions.search") !== "no") setOverlay((current) => (current?.kind === "palette" ? current : { kind: "palette" })); }}
         onOpen={(key) => {
           selection.clear();
           setTopicReturnKey(null);
@@ -1884,7 +1933,6 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
           startOnReady={guide === "news-ready"}
           installed={installedRows({ setup: () => firstRun.open(0), shortcuts: () => setOverlay({ kind: "shortcuts" }), palette: () => setOverlay({ kind: "palette" }), settings: openSettings })}
           onOpenUpdates={() => openSettings("updates")}
-          onInstall={() => void stageWindowUpdate(session.engine).catch((e: unknown) => notify(`Couldn't install the update: ${e instanceof Error ? e.message : String(e)}`, { tone: "bad" }))}
           onClose={() => setGuide(null)}
         />
       ) : null}

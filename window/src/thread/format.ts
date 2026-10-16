@@ -66,6 +66,7 @@ const TOOL_WORDS: Record<string, Words> = {
   read: { now: "Reading a file", done: "Read a file" },
   sessions_spawn: { now: "Starting a helper", done: "Started a helper" },
   agents_wait: { now: "Waiting for its helpers", done: "Waited for its helpers" },
+  sessions_yield: { now: "Waiting for its helpers", done: "Waited for its helpers" },
   web_search: { now: "Searching the web", done: "Searched the web" },
   search: { now: "Searching the web", done: "Searched the web" },
   web_fetch: { now: "Reading a web page", done: "Read a web page" },
@@ -181,7 +182,7 @@ export function stepOutputFilename(title: string): string {
   return `${stem}-output.txt`;
 }
 
-export type DiffMark = "+" | "-" | " ";
+type DiffMark = "+" | "-" | " ";
 export type DiffLine = { mark: DiffMark; text: string };
 
 /** Unified-diff text → preview fileChangesPB18 rows (`[' ', t]`, `['+', t]`, `['-', t]`). */
@@ -211,13 +212,13 @@ function joinWords(parts: string[]): string {
 }
 
 /** The Steps fold's summary: the step at work while it runs, then what was done ("Ran 2 commands and read a file"). */
-export function stepsSummary(steps: readonly Step[], run?: { title: string; durationMs?: number }): string {
+export function stepsSummary(steps: readonly Step[], run?: { title: string }): string {
   const running = steps.find((s) => s.status === "running");
   if (running) {
     return stepLabel(running);
   }
   if (run?.title && run.title.toLowerCase() !== "text") {
-    return [run.title, steps.length > 1 ? `${steps.length} steps` : "1 step", run.durationMs ? formatDuration(run.durationMs) : ""].filter(Boolean).join(" · ");
+    return [run.title, steps.length > 1 ? `${steps.length} steps` : "1 step"].join(" · ");
   }
   const commands = steps.filter((s) => COMMAND_TOOLS.has(s.tool)).length;
   const reads = steps.filter((s) => s.tool === "read").length;
@@ -230,11 +231,73 @@ export function stepsSummary(steps: readonly Step[], run?: { title: string; dura
     ...(edited ? [counted(edited, "edited a file", "edited # files")] : []),
     ...others,
   ];
+  // A finished run shows no clock: its step times can span a long idle gap, so only a running step has an elapsed time.
   const text = joinWords(parts);
-  const times = steps.map((s) => s.at).filter((at): at is number => typeof at === "number");
-  const took = times.length >= 2 ? formatDuration(Math.max(...times) - Math.min(...times)) : "";
-  const tail = [steps.length > 1 ? `${steps.length} steps` : "", took].filter(Boolean).join(" · ");
+  const tail = steps.length > 1 ? `${steps.length} steps` : "";
   return text.charAt(0).toUpperCase() + text.slice(1) + (tail ? ` · ${tail}` : "");
+}
+
+/** Helper tools: the working line says the Trunk is waiting on them, not which tool did it. */
+const HELPER_TOOLS = new Set(["sessions_spawn", "agents_wait", "sessions_yield"]);
+const MEMORY_TOOLS = new Set(["memory_search", "memory_get", "sessions_search", "sessions_history"]);
+const SKILL_TOOLS = new Set(["skills_search", "skills_read"]);
+/** The apps a connected tool belongs to, matched on its server name (see serverName). */
+const APP_SERVERS: readonly (readonly [RegExp, string])[] = [
+  [/github/, "Working in GitHub"],
+  [/gmail/, "Working in Gmail"],
+  [/calendar/, "Working in Calendar"],
+];
+
+/** The server part of a tool id: "mcp__github__create_issue" → "github", "github.create-issue" → "github". */
+function serverName(tool: string): string {
+  const id = tool.toLowerCase();
+  const mcp = /^mcp__(.+?)__/.exec(id);
+  return mcp ? mcp[1] : id.split(".")[0];
+}
+
+/** The working line's words for one tool, or undefined when no rule names it. Never a tool id, path or command. */
+export function workingWords(tool: string): string | undefined {
+  const app = APP_SERVERS.find(([pattern]) => pattern.test(serverName(tool)));
+  if (app) return app[1];
+  const id = tool.toLowerCase();
+  if (HELPER_TOOLS.has(id)) return "Waiting for its helpers";
+  if (MEMORY_TOOLS.has(id)) return "Checking its memory";
+  if (SKILL_TOOLS.has(id)) return "Using a skill";
+  if (id === "browser" || SEARCH_TOOLS.has(id) || FETCH_TOOLS.has(id)) return "Working in the browser";
+  if (COMMAND_TOOLS.has(id) || id === "code_execution" || isComputerToolName(tool) || isScreenToolName(tool)) return "Working on your computer";
+  if (READ_TOOLS.has(id) || EDIT_TOOLS.has(id)) return "Working in your files";
+  return undefined;
+}
+
+/** The R1 working line under a run's latest message: the words for the step at work, else the last step's, else "Working". */
+export function workingLine(blocks: readonly Block[]): string {
+  const steps = blocks.filter((b): b is Step => b.kind === "step");
+  const current = steps.find((s) => s.status === "running") ?? steps.at(-1);
+  return (current && workingWords(current.tool)) || "Working";
+}
+
+/** Plain words for the step at work, else the last step. Undefined when the run has no steps. */
+export function currentStepWords(blocks: readonly Block[]): string | undefined {
+  const steps = blocks.filter((b): b is Step => b.kind === "step");
+  const current = steps.find((s) => s.status === "running") ?? steps.at(-1);
+  return current ? stepLabel(current) : undefined;
+}
+
+/** One quiet live line: "Working… Reading a file · 12s". The clock appears once a second has passed. */
+export function liveWorkingLine(step: string | undefined, elapsedMs: number): string {
+  const words = step?.trim() ?? "";
+  const clock = elapsedMs >= 1000 ? formatDuration(elapsedMs) : "";
+  if (words && clock) return `Working… ${words} · ${clock}`;
+  if (words) return `Working… ${words}`;
+  if (clock) return `Working… · ${clock}`;
+  return "Working…";
+}
+
+/** A finished turn, collapsed: "Worked for 42s · 6 steps". Without a duration, the count alone. */
+export function workedForLine(count: number, durationMs?: number): string {
+  const steps = count === 1 ? "1 step" : `${count} steps`;
+  const clock = durationMs && durationMs > 0 ? formatDuration(durationMs) : "";
+  return clock ? `Worked for ${clock} · ${steps}` : steps;
 }
 
 /** The thread's day stamp (§4.2.2 Stamp): "Today 10:05", "Yesterday 4:18 PM", else "Sep 30 4:18 PM". */
@@ -250,12 +313,19 @@ export function dayStamp(ms: number, now = Date.now()): string {
   return `${d.toLocaleDateString([], sameYear ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" })} ${time}`;
 }
 
+/** Local file paths (macOS, Linux, Windows, ~/) that a plain sentence must not show; the raw text stays at Technical.
+ *  A space continues the path only when the next word holds another slash ("/Volumes/512GB SSD/data"). */
+const LOCAL_PATH = /(?:[A-Za-z]:\\[^\s"'`,;()<>]+|~\/[^\s"'`,;()<>]*|\/(?:Users|Volumes|private|tmp|var|home|opt|etc|Library|Applications|usr|root|srv|mnt)(?:\/[^\s"'`,;()<>]*)?)(?: [^\s\/"'`,;()<>]+\/[^\s"'`,;()<>]*)*/g;
+export function scrubLocalPaths(text: string): string {
+  return text.replace(LOCAL_PATH, "a local file");
+}
+
 /** The first sentence of an engine error, without the engine's own lead-in and warning sign. */
 export function shortReason(message: string): string {
   if (/PLUGIN_STATE_READ_FAILED|Session maintenance protection changed|PluginInstanceUnavailableError|^\s*\{|\"telemetry\"/.test(message)) {
     return "Something went wrong. Try again, or open Diagnostics for details.";
   }
-  const plain = message
+  const plain = scrubLocalPaths(message)
     .replace(/^\s*[⚠️❗❌\s]+/u, "")
     .replace(/^Your request couldn['’]t be completed:\s*/i, "")
     .replace(/^[⚠️\s]+/u, "")

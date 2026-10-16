@@ -1,0 +1,57 @@
+/* Find anything in the R1 window: one centered glass sheet over the wallpaper. The window it covers steps aside
+   while it is open (R1Window), so the scrim does not dim. Words sit on that sheet. Rows, group names and key hints
+   are plain text, never a pill of their own. */
+.r1-find { display: contents; }
+/* Why the #g48 ids (glass/glass.css explains the ladder): glass.css's clear-surface rule (.g-clear:not(#g48)) and its pill
+   rule (:is(.g-frost, .g-label):not(#g48)) carry one #g48 id. These palette rules carry the same id so the clear dialog and
+   its frosted rows win by source order, not by !important. */
+.r1-find .palette-scrim:not(#g48) { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.r1-find .palette:not(#g48) {
+  background: color-mix(in srgb, var(--bg) 74%, transparent);
+  border: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  box-shadow: inset 0 0 0 .5px var(--gw-edge, var(--line)), inset 0 1px 0 var(--gw-hi, transparent), var(--pop);
+}
+/* Why the #g48 ids (glass/glass.css explains the ladder): glass.css's clear-surface rule (.g-clear:not(#g48)) and its pill
+   rule (:is(.g-frost, .g-label):not(#g48)) carry one #g48 id. These palette rules carry the same id so the clear dialog and
+   its frosted rows win by source order, not by !important. */
+.r1-find :is(.pal-field, .pal-row, .ph, .pal-note, .pal-none, .pal-foot, .pal-foot > span, .pal-detail, .pal-meta, .pal-label, .pal-hint, .pal-copy):not(#g48) {
+  background: none;
+  background-image: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+/* Why the #g48 ids (glass/glass.css explains the ladder): glass.css's clear-surface rule (.g-clear:not(#g48)) and its pill
+   rule (:is(.g-frost, .g-label):not(#g48)) carry one #g48 id. These palette rules carry the same id so the clear dialog and
+   its frosted rows win by source order, not by !important. */
+.r1-find .pal-field:not(#g48) { border: 0; border-bottom: 1px solid var(--hair17); }
+.r1-find .pal-list:not(#g48) { padding: 6px; }
+.r1-find .pal-row:not(#g48) { margin: 0; border-radius: 10px; }
+.r1-find .pal-row.sel:not(#g48), .r1-find .pal-row:hover:not(#g48) {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  box-shadow: none;
+}
+/* Why the #g48 ids (glass/glass.css explains the ladder): glass.css's clear-surface rule (.g-clear:not(#g48)) and its pill
+   rule (:is(.g-frost, .g-label):not(#g48)) carry one #g48 id. These palette rules carry the same id so the clear dialog and
+   its frosted rows win by source order, not by !important. */
+.r1-find .ph:not(#g48) {
+  width: auto;
+  margin: 8px 10px 2px;
+  padding: 0;
+  border-radius: 0;
+  font-family: var(--sans);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 12px;
+}
+/* Why the #g48 ids (glass/glass.css explains the ladder): glass.css's clear-surface rule (.g-clear:not(#g48)) and its pill
+   rule (:is(.g-frost, .g-label):not(#g48)) carry one #g48 id. These palette rules carry the same id so the clear dialog and
+   its frosted rows win by source order, not by !important. */
+.r1-find :is(.pal-note, .pal-none):not(#g48) { width: auto; margin: 8px 16px 0; padding: 0; border-radius: 0; }
+.r1-find .pal-foot:not(#g48) { border: 0; border-top: 1px solid var(--hair17); padding: 8px 16px; gap: 14px; }
+.r1-find .pal-foot > span:not(#g48) { padding: 0; border-radius: 0; background: none; }

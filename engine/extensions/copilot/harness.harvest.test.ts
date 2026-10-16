@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:extensions/copilot/harness.test.ts (atlas AGENT-LOOP-0023). Changed for Branch: apply scripts/rebrand-map.json.
+// Changed for Branch: apply scripts/rebrand-map.json.
 // Copilot tests cover harness plugin behavior.
 import type { CopilotClient, SessionEvent } from "@github/copilot-sdk";
 import { attachModelProviderRequestTransport } from "branch/plugin-sdk/agent-harness-runtime";

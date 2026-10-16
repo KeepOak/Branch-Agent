@@ -1,5 +1,5 @@
-// Customize › Specialists (preview 40-places.js, 94-g4p.js fleet15/pat15): defined specialists with Edit, the
-// fleet line (agents.list, node.list and the shell's running count), and how Trunks work together. The engine
+// Settings › Helpers (once Customize › Specialists; preview 40-places.js, 94-g4p.js fleet15/pat15): defined helpers
+// with Edit, the fleet line (agents.list, node.list and, when known, the shell's running count), and how Trunks work together. The engine
 // has no specialist definitions or teamwork setting yet, so those parts are drawn greyed with the reason.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { Face } from "../../face/Face";
@@ -26,12 +26,11 @@ const BUILT_IN: [string, string][] = [
   ["Do", "Carries out a plan step by step"], ["Commands", "Runs commands in a terminal"], ["Branch help", "Answers questions about Branch from its own guide"],
 ];
 
-export function SpecialistsTab({ engine, level, trunks, facts, openAgents }: { engine: PlaceProps["engine"]; level: Level; trunks: Trunk[]; facts: PlaceProps["facts"]; openAgents: () => void }) {
+export function SpecialistsTab({ engine, level, trunks, running, openAgents }: { engine: PlaceProps["engine"]; level: Level; trunks: Trunk[]; running?: number; openAgents: () => void }) {
   return <div className="cz-page" data-testid="specialists">
-    <p className="cz-lede">Helpers a Trunk calls in for one job, then lets go.</p>
-    <EmptyLine icon={<Glyph name="sparkle" size={22} />}>No specialists yet.</EmptyLine>
+    <EmptyLine icon={<Glyph name="sparkle" size={22} />}>No helpers yet.</EmptyLine>
     <p className="cz-hint cz-center" title={shownWhy(NO_DEFINITIONS)}>Helper conversations a Trunk starts stay in its conversation list.</p>
-    <Fleet engine={engine} trunks={trunks} running={facts.running} />
+    <Fleet engine={engine} trunks={trunks} running={running} />
     <section className="cz-block"><h2 className="cz-h2">How Trunks work together</h2><p className="cz-hint">The pattern a group or a big job uses. Branch picks one; you can choose.</p>
       <div className="cz-pats" role="radiogroup" aria-label="How Trunks work together">{PATTERNS.map(p => <button key={p.id} type="button" role="radio" aria-checked={false} className="cz-pat" disabled title={shownWhy(NO_PATTERN)}>
         <svg viewBox="0 0 52 52" width="52" height="52" aria-hidden="true">{p.lines.map((l, i) => <line key={i} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]} />)}{p.dots.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3.5" className={i === 0 ? "lead" : undefined} />)}</svg>
@@ -41,17 +40,18 @@ export function SpecialistsTab({ engine, level, trunks, facts, openAgents }: { e
     {shows(level, "advanced") && <section className="cz-block"><h2 className="cz-h2">Built in</h2><p className="cz-hint">Helpers every Trunk can call. Off: Trunks won't offer that one.</p>
       {BUILT_IN.map(([name, line]) => <div key={name} className="cz-prow"><span className="cz-tile"><Glyph name="sparkle" size={16} /></span><span className="grow"><b>{name}</b><small>{line} · comes with Branch, can't be edited</small></span>
         <button type="button" role="switch" aria-checked={true} aria-label={`Offer ${name}`} className="switch" disabled title={shownWhy("Needs the engine's built-in helper switches.")} /></div>)}</section>}
-    <section className="cz-block"><h2 className="cz-h2">Let specialists argue it out</h2>
-      <div className="cz-prow"><span className="cz-tile"><Glyph name="people" size={16} /></span><span className="grow"><b>Two or three specialists take sides on a question</b><small>Each answers the others in turn, then you get both sides and where they agree.</small></span><Grey reason="Needs the engine's debate method.">Start</Grey></div></section>
+    <section className="cz-block"><h2 className="cz-h2">Let helpers argue it out</h2>
+      <div className="cz-prow"><span className="cz-tile"><Glyph name="people" size={16} /></span><span className="grow"><b>Two or three helpers take sides on a question</b><small>Each answers the others in turn, then you get both sides and where they agree.</small></span><Grey reason="Running a debate between specialists comes in a later update.">Start</Grey></div></section>
   </div>;
 }
 
-/** "N Trunks on N computers · N working now", from the engine's Trunks and computers and the shell's running count. */
-function Fleet({ engine, trunks, running }: { engine: PlaceProps["engine"]; trunks: Trunk[]; running: number }) {
+/** "N Trunks on N computers · N working now", from the engine's Trunks and computers and the shell's running count
+ *  (the working line is left out where that count isn't known). */
+function Fleet({ engine, trunks, running }: { engine: PlaceProps["engine"]; trunks: Trunk[]; running?: number }) {
   const nodes = useResource<unknown>(engine, "node.list");
   const connected = list(rec(nodes.data).nodes).filter(n => n.connected !== false);
   const computers = Math.max(1, connected.length);
   if (!trunks.length) return null;
   return <div className="cz-fleet" data-testid="fleet"><span className="cz-faces">{trunks.slice(0, 6).map(t => <Face key={t.id} size={22} label={trunkName(t)} />)}</span>
-    <span className="grow"><b>{trunks.length} {trunks.length === 1 ? "Trunk" : "Trunks"} on {computers} {computers === 1 ? "computer" : "computers"}</b><small>{running} working now</small></span></div>;
+    <span className="grow"><b>{trunks.length} {trunks.length === 1 ? "Trunk" : "Trunks"} on {computers} {computers === 1 ? "computer" : "computers"}</b>{running !== undefined && <small>{running} working now</small>}</span></div>;
 }
