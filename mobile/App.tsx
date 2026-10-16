@@ -13,7 +13,7 @@ import { createExpoNotifier, noNotifier } from './src/approvals/expoNotifier';
 import { AgentList } from './src/agents/agentList';
 import { appIdentity, type AppIdentity } from './src/build/appIdentity';
 import { Conversation } from './src/chat/conversation';
-import { ChatList, type ChatRow } from './src/chats/chatList';
+import { ChatList, filterRows, type ChatRow } from './src/chats/chatList';
 import { ComputerList } from './src/computers/computerList';
 import { messageSearcher } from './src/chats/messageSearch';
 import { createDeviceSession } from './src/pairing/createDeviceSession';
@@ -31,6 +31,7 @@ import { PairedScreen } from './src/screens/PairedScreen';
 import { RefusedScreen } from './src/screens/RefusedScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { VoiceScreen } from './src/screens/VoiceScreen';
 import { WelcomeScreen } from './src/screens/WelcomeScreen';
 import { deviceStore, type KeyValueStore } from './src/storage/keyValueStore';
 import { PairingTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
@@ -49,6 +50,7 @@ type PairedRoute =
   | { name: 'computer'; from?: 'settings' }
   | { name: 'agents' }
   | { name: 'chat'; row: ChatRow }
+  | { name: 'voice'; row: ChatRow }
   | { name: 'approvals'; focus?: string }
   | { name: 'settings' };
 
@@ -63,7 +65,7 @@ const deviceAppState: AppStateSource = {
 };
 
 /** One open chat. Keyed by the chat, so opening another one starts fresh. */
-function OpenChat({ session, row, online, onBack }: { session: PairingSession; row: ChatRow; online: boolean; onBack: () => void }) {
+function OpenChat({ session, row, online, onBack, onTalk }: { session: PairingSession; row: ChatRow; online: boolean; onBack: () => void; onTalk: () => void }) {
   const [conversation] = useState(() => new Conversation(row.key, session, () => session.newId()));
   useEffect(() => {
     conversation.attach();
@@ -74,7 +76,7 @@ function OpenChat({ session, row, online, onBack }: { session: PairingSession; r
   useEffect(() => {
     void conversation.markRead(opened);
   }, [conversation, opened]);
-  return <ChatScreen row={row} conversation={conversation} online={online} onBack={onBack} hello={session.hello} />;
+  return <ChatScreen row={row} conversation={conversation} online={online} onBack={onBack} onTalk={onTalk} hello={session.hello} />;
 }
 
 function Shell({
@@ -183,11 +185,12 @@ function Shell({
     setRoute('welcome');
   }, [state.step, chats, agents, computers, inbox]);
 
-  // Android's back gesture leaves Computers, Agents, Your computer, Settings, a chat or Approvals for Chats, like the on-screen back button.
+  // Android's back gesture leaves Computers, Agents, Your computer, Settings, a chat, Voice or Approvals for Chats, like the on-screen back button.
   useEffect(() => {
     if (state.step !== 'paired' || pairedRoute.name === 'chats') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (pairedRoute.name === 'computer' && pairedRoute.from === 'settings') setPairedRoute({ name: 'settings' });
+      else if (pairedRoute.name === 'voice') setPairedRoute({ name: 'chat', row: pairedRoute.row });
       else setPairedRoute(CHATS);
       return true;
     });
@@ -273,12 +276,37 @@ function Shell({
             onOpenSettings={() => void Linking.openSettings().catch(() => undefined)}
             onTurnOnNotifications={turnOnNotifications}
             onBack={() => setPairedRoute(CHATS)}
+            updateCard={updateCard}
+          />
+        );
+      } else if (pairedRoute.name === 'voice') {
+        const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
+        const toChat = () => setPairedRoute({ name: 'chat', row });
+        screen = (
+          <VoiceScreen
+            row={row}
+            online={state.online}
+            link={session}
+            pending={approvals.pending}
+            onAnswer={(id, decision) => void inbox.answer(id, decision)}
+            onClose={toChat}
+            onEnd={toChat}
+            onKeyboard={toChat}
           />
         );
       } else if (pairedRoute.name === 'chat') {
         // The header follows the list live (a rename, the working dot); the row it was opened from fills in until then.
         const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
-        screen = <OpenChat key={row.key} session={session} row={row} online={state.online} onBack={() => setPairedRoute(CHATS)} />;
+        screen = (
+          <OpenChat
+            key={row.key}
+            session={session}
+            row={row}
+            online={state.online}
+            onBack={() => setPairedRoute(CHATS)}
+            onTalk={() => setPairedRoute({ name: 'voice', row })}
+          />
+        );
       } else if (pairedRoute.name === 'approvals') {
         const chatFor = (key: string) => chatList.rows.find((r) => r.key === key);
         screen = (
@@ -313,6 +341,11 @@ function Shell({
             onAgents={() => setPairedRoute({ name: 'agents' })}
             onSettings={() => setPairedRoute({ name: 'settings' })}
             onOpen={(row) => setPairedRoute({ name: 'chat', row })}
+            onNewChat={() => {
+              const shown = filterRows(chatList.rows, 'all', Date.now());
+              const main = shown.find((row) => !row.room && row.key.endsWith(':main')) ?? shown.find((row) => !row.room);
+              if (main) setPairedRoute({ name: 'chat', row: main });
+            }}
             needsYou={first ? { count: approvals.pending.length, line: `${trunkOf(first, approvals.trunks).name} · ${headline(first)}${more > 0 ? ` and ${more} more` : ''}` } : null}
             onNeedsYou={() => setPairedRoute({ name: 'approvals' })}
             updateBanner={updateBanner}

@@ -38,8 +38,9 @@ describe('theme tokens', () => {
   });
 
   it.each(schemes)('uses plain #rrggbb for every solid %s colour', scheme => {
-    const { scrim, ...solid } = palettes[scheme];
+    const { scrim, glass, ...solid } = palettes[scheme];
     expect(scrim).toMatch(/^rgba\(/);
+    expect(glass).toMatch(/^rgba\(/);
     for (const value of Object.values(solid)) expect(value).toMatch(hex);
   });
 });
