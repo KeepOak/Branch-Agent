@@ -6,6 +6,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Composer } from "./Composer";
 import type { WindowEngine } from "./engine";
+// A real window reaches the microphone and audio; jsdom does not, and the live entry needs both (windowCanCall).
+Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia: () => Promise.resolve({ getTracks: () => [] }) }, configurable: true });
+(globalThis as { AudioContext?: unknown }).AudioContext ??= class {};
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
