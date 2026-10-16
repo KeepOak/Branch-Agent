@@ -167,7 +167,7 @@ describe("R1 sidebar", () => {
     expect(props.onSettings).toHaveBeenCalledWith("updates");
     await click(host.querySelector('[aria-label="New, places and more"]'));
     expect(text(".g-menu-row .g-menu-label")).toEqual(["New conversation", "New Trunk", "New group", "Have Branch make a Trunk", "New automation", "Quick ask", "Collapse the list to faces"]);
-    expect(text(".g-menu-row .g-menu-end small")).toEqual(["random character", "Ctrl Shift Space", "Ctrl B"]);
+    expect(text(".g-menu-row .g-menu-end small")).toEqual(["name and face", "Ctrl Shift Space", "Ctrl B"]);
   });
 
   it("shows a downloaded update as a calm ready chip, never as installing", async () => {

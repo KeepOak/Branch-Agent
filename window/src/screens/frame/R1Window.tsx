@@ -14,7 +14,11 @@ import { safeStorage, saveDraft } from "../../composer/drafts";
 import { requestCustomize, type PromptHandoff } from "../../places/customize/r1-request";
 import { NewTrunkCard, type NewTrunk } from "../../shell/NewTrunkFlow";
 import { conversationActions } from "../../shell/conversation-actions";
-import { makeRandomTrunk } from "../../places/trunk/new-trunk-r1";
+import { NewTrunkSheet } from "../../places/trunk/NewTrunkSheet";
+import { createShapedTrunk, newTrunkReadyLine, OPEN_NEW_TRUNK_SHEET, type NewTrunkDraft } from "../../places/trunk/new-trunk-sheet";
+import { waitForTrunk } from "../../places/trunk/api";
+import { creationProblem } from "../../places/trunk/model";
+import { notify } from "../../shell/notify";
 import { useLimits } from "../../shell/use-status";
 import { useLockdown } from "../../shell/use-lockdown";
 import { Face } from "../../face/Face";
@@ -364,16 +368,34 @@ export function R1Window({ session }: { session: SaplingSession }) {
     if (isGraftedContactKey(key) && route.kind === "chat" && !graftedKey && graftedContactOf(snapshot.sessionKey) === key) return;
     navigate({ kind: "chat", key });
   };
-  // + › New Trunk and the Grove's Trunk button: a random Trunk, its conversation, then the two questions above the box.
+  // + › New Trunk and the Grove's Trunk button: the sheet (face, name, shape, colour), then the chat questions.
   const [newTrunkFlow, setNewTrunkFlow] = useState<NewTrunk | null>(null);
+  const [newTrunkOpen, setNewTrunkOpen] = useState(false);
+  const [newTrunkBusy, setNewTrunkBusy] = useState(false);
+  const [newTrunkError, setNewTrunkError] = useState<string | null>(null);
+  const makingTrunk = useRef(false);
   const trunkActions = useMemo(() => conversationActions((method, params) => session.request(method, params), list, () => session.getSnapshot().mainKey), [session, list]);
-  const newTrunk = async () => {
+  const newTrunk = useCallback(() => { setNewTrunkError(null); setNewTrunkOpen(true); }, []);
+  useEffect(() => {
+    window.addEventListener(OPEN_NEW_TRUNK_SHEET, newTrunk);
+    return () => window.removeEventListener(OPEN_NEW_TRUNK_SHEET, newTrunk);
+  }, [newTrunk]);
+  const confirmNewTrunk = async (draft: NewTrunkDraft) => {
+    if (makingTrunk.current) return;
+    makingTrunk.current = true;
+    setNewTrunkBusy(true);
+    setNewTrunkError(null);
     try {
-      const flow = await makeRandomTrunk(engine, agentId => trunkActions.create(agentId));
-      if (!flow) return;
-      setNewTrunkFlow(flow);
-      openConversation(flow.sessionKey);
-    } catch (e) { setNotice(e instanceof Error ? e.message : String(e)); }
+      const agentId = await createShapedTrunk(engine, draft);
+      await waitForTrunk(engine, agentId);
+      const sessionKey = await trunkActions.create(agentId);
+      setNewTrunkOpen(false);
+      if (!sessionKey) return;
+      const name = draft.name.trim();
+      setNewTrunkFlow({ agentId, sessionKey, name, avatar: "classic", colour: draft.colour, shape: draft.shape });
+      openConversation(sessionKey);
+    } catch (e) { setNewTrunkError(creationProblem(e)); }
+    finally { makingTrunk.current = false; setNewTrunkBusy(false); }
   };
   // Customize's Use: the command goes into the default Trunk's composer as a draft, and the conversation opens.
   const promptKey = session.getSnapshot().mainKey;
@@ -496,7 +518,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       ] : talk.item ? [talk.item, ...DEFAULT_TOOLS] : undefined,
       canBack: history.index > 0, canForward: history.index < history.count - 1, onBack: () => { if (history.index > 0) window.history.back(); }, onForward: () => { if (history.index < history.count - 1) window.history.forward(); },
     }} composer={chat ? <><ThreadExtras session={session} ready={ready} name={speaker} row={current ?? null} history={snapshot.history} ended={snapshot.ended}
-      empty={snapshot.historyReady !== false && !snapshot.history.length && !snapshot.pendingUser && !snapshot.liveRunId} onOpen={openConversation} />{newTrunkFlow && newTrunkFlow.sessionKey === snapshot.sessionKey ? <NewTrunkCard engine={engine} flow={newTrunkFlow} onDone={() => setNewTrunkFlow(null)} onChangeLook={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: newTrunkFlow.agentId, view: "edit" } })); }} /> : null}<Composer startupShown={Boolean(startup)} name={speaker} placeholder={room.placeholder} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}
+      empty={snapshot.historyReady !== false && !snapshot.history.length && !snapshot.pendingUser && !snapshot.liveRunId} onOpen={openConversation} />{newTrunkFlow && newTrunkFlow.sessionKey === snapshot.sessionKey ? <NewTrunkCard engine={engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(newTrunkReadyLine(name)); }} onChangeLook={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: newTrunkFlow.agentId, view: "edit" } })); }} /> : null}<Composer startupShown={Boolean(startup)} name={speaker} placeholder={room.placeholder} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}
       petWaiting={petWaiting} lockdown={lockdown.on} onToggleLockdown={lockdown.supported ? () => void lockdown.toggle() : undefined}
       onSend={(text, extras, id) => { setReplyTo(null); void session.send(text, extras, id); }} onStop={() => void session.stopRun()} onToast={setNotice} onOpenConversation={openConversation} onOpen={target => {
       if (target === "settings/accounts/add") { sessionStorage.setItem("branch.openAddAccount", "1"); navigate({ kind: "settings", page: "accounts" }); }
@@ -525,6 +547,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     <WhatsNewHost session={session} ready={ready} onSettings={page => navigate({ kind: "settings", page })} onSearch={() => search.current?.focus()} onSetup={() => firstRun.open(0)} onNotice={setNotice} />
     <QuickAskHost session={session} ready={ready} list={list} onOpen={openConversation} onNotice={setNotice} />
     {pip && chat && !stage ? <R1StagePip key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={name} computer={pip} blocks={[...snapshot.history, ...snapshot.live]} onOpen={() => { setStage(pip.kind === "browser" ? "Browser" : "Computer"); setPip(null); }} onClose={() => setPip(null)} /> : null}
+    {newTrunkOpen ? <NewTrunkSheet count={trunks.list.length} busy={newTrunkBusy} error={newTrunkError} onClose={() => { if (!newTrunkBusy) setNewTrunkOpen(false); }} onCreate={(draft) => void confirmNewTrunk(draft)} /> : null}
     <Toasts />
     <R1ExtraDialogs engine={engine} ready={ready} limits={limits} working={workingKeys} />
     <ApprovalsLayer engine={engine} ready={ready} approvals={approvals} more={problems} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />
