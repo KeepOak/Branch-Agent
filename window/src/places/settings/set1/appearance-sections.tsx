@@ -146,7 +146,7 @@ export function ReadingSec({ look }: { look: Look }) {
       <ReadingMoreRows look={look} />
       {level >= 1 ? <Ctl title="Interface font" keep="everywhere"><Pick value={font("fontUi")} options={FONTS} label="Interface font" onChange={set("fontUi")} /></Ctl> : null}
       {/* Regular too (Private #1100): the easier-reading fonts are an accessibility choice, not a technical one. */}
-      <Ctl title="Conversation font" sub="OpenDyslexic, Atkinson Hyperlegible and Lexend are easier to read. The theme’s own is what the theme was drawn with." keep="everywhere"><Pick value={font("fontChat")} options={FONTS} label="Conversation font" onChange={set("fontChat")} /></Ctl>
+      <Ctl title="Conversation font" sub="The first three are made for easier reading." keep="everywhere"><Pick value={font("fontChat")} options={FONTS} label="Conversation font" onChange={set("fontChat")} /></Ctl>
       <div className="fontprev-pe18" aria-label="Fonts in use">{level >= 1 ? <span style={{ fontFamily: "var(--sans)" }}>The interface reads like this.</span> : null}<span style={{ fontFamily: "var(--chat-font, var(--sans))" }}>A conversation reads like this.</span></div>
     </Sec>
   );
