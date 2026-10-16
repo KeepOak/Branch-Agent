@@ -6,6 +6,11 @@ export interface MemoryProbe {
   windowsAvailable?: string;
   /** Test double for the Windows available-memory read. */
   readWindowsAvailable?: () => string;
+  /**
+   * On Windows, read FreePhysicalMemory before falling back to os.freemem().
+   * Leave this unset for a fast poll: a PowerShell start must not block it.
+   */
+  readWindows?: boolean;
   freemem?: number;
   totalmem?: number;
   envMb?: string;

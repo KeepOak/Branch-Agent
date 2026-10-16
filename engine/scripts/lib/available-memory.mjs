@@ -30,9 +30,15 @@ function readWindowsAvailable(probe) {
   if (probe.platform !== undefined) return undefined;
   const now = Date.now();
   if (windowsAvailableCache && now - windowsAvailableCache.at < WINDOWS_AVAILABLE_CACHE_MS) {
-    if (windowsAvailableCache.error) throw windowsAvailableCache.error;
+    if (windowsAvailableCache.error) {
+      if (probe.readWindows) throw windowsAvailableCache.error;
+      return undefined;
+    }
     return windowsAvailableCache.text;
   }
+  // Health polls call this with no arguments. Starting PowerShell there blocks the
+  // activity probe and can land after an update event the window already showed.
+  if (!probe.readWindows) return undefined;
   try {
     const text = execFileSync(
       "powershell.exe",

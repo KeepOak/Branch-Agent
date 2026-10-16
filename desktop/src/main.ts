@@ -524,7 +524,7 @@ async function swapServiceEngineInPlace(label: string, explicit: boolean, held?:
       workRunning: serviceWork,
       warmStandby: async () => {
         // The machine-load rule: a second engine only when there is room for it; otherwise the restart with its rollback.
-        const { bytes, measure } = availableMemory();
+        const { bytes, measure } = availableMemory({ readWindows: true });
         if (bytes < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(bytes, measure)}`); return "slow"; }
         return checkCandidateBeside(cfg, selected, token, standbyReadyTimeoutMs());
       },
@@ -782,7 +782,7 @@ async function prepareUpdateStandby(label: string, explicit: boolean): Promise<v
   // A warmed child cannot be given a fresh Electron-owned driver lease on promotion.
   // Preserve computer control by using the guarded stop/start path for this case.
   if (macComputerDriver && screenControlEnabled()) return;
-  const { bytes, measure } = availableMemory();
+  const { bytes, measure } = availableMemory({ readWindows: true });
   if (bytes < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(bytes, measure)}`); return; }
   if (!standbyProfileReady()) return;
   const failures = standbyFailures.get(label) ?? 0;
@@ -851,7 +851,7 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
   const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   if (!version || candidateCheckedFor === version) return true;
   // The machine-load rule: a second engine only when there is room for it; otherwise the plain swap with its rollback.
-  const { bytes: available, measure } = availableMemory();
+  const { bytes: available, measure } = availableMemory({ readWindows: true });
   if (available < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(available, measure)}`); return true; }
   const candidate = resolveEngineDir(cfg);
   if (explicit) sendToBranchWindows("branch-desktop:engine-update", "preparing");

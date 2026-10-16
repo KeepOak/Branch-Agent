@@ -194,7 +194,9 @@ test("the skip log names the measure that produced the byte count", () => {
 test("the candidate and standby gates use reclaimable memory and name the measure", () => {
   const main = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/main.ts"), "utf8");
   assert.doesNotMatch(main, /\bfreemem\b/);
-  assert.match(main, /availableMemory\(\)/);
+  assert.match(main, /availableMemory\(\{ readWindows: true \}\)/);
+  assert.equal(main.match(/availableMemory\(\{ readWindows: true \}\)/g)?.length, 3);
+  assert.match(main, /readUpdateHealth\(cfg\.dataDir, availableMemory\(\)\.bytes, totalmem\(\)\)/);
   assert.match(main, /candidateMinFreeBytes\(\)/);
   assert.match(main, /candidateCheckSkippedLine\(available, measure\)/);
   assert.match(main, /candidateCheckSkippedLine\(bytes, measure\)/);
