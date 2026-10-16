@@ -10,7 +10,7 @@ import { useLockdown } from "../../../shell/use-lockdown";
 import { notify } from "../../../shell/notify";
 import { MODE_ROWS, blockedReason, isEngineMode, type EngineMode } from "../../../composer/mode";
 import { platformName } from "../../../setup/steps-later";
-import { useOsPermissions, type OsPermission, type OsPermissionStatus } from "../../../connect/os-permissions";
+import { useOsPermissions, useWindowMic, type MicNote, type OsPermission, type OsPermissionStatus } from "../../../connect/os-permissions";
 import { record, text, visible, type RecordValue } from "../adapter";
 import { Btn, Ctl, Empty, Hint, Pick, Pill, Plist, Prow, Sec, Seg } from "../kit";
 import { WHY, deadControl, type Cfg, type Ctx } from "./permissions-rows";
@@ -88,16 +88,38 @@ function WentWrong({ error }: { error: string }) {
   return <div className="hint" role="status"><p>Something went wrong while loading it.</p><details><summary>What went wrong</summary><p>{error}</p></details></div>;
 }
 
+/** The Microphone row's line when the window itself asks (Linux, a browser) and can't go on: plain words, what to do. */
+function micLine(status: OsPermissionStatus | null, note: MicNote | null, inApp: boolean): string | null {
+  if (note === "no-browser-mic" || status === null) return "This browser can’t use the microphone.";
+  if (note === "no-device") return "No microphone found. Plug one in, then try again.";
+  if (status === "denied") return inApp ? "Microphone access is off for Branch. Allow it in this computer’s sound settings, then try again." : "Microphone access is off for Branch. Allow it for this site in the browser’s settings, then reload.";
+  return null;
+}
+
 const OS_NAME: Record<string, OsPermission> = { Microphone: "microphone", Camera: "camera", Location: "location", Notifications: "notifications" };
 
 export function ThisPc() {
   const copy = thisPcCopy();
   const perms = useOsPermissions();
+  // Where the app can't read the microphone from the system (Linux, or no Branch app), the window asks for it itself.
+  const mic = useWindowMic(!perms.bridge || perms.state?.microphone === "unknown");
+  const micState = mic.active && (mic.status !== null || mic.note) ? mic.status : undefined;
+  const error = perms.error ?? mic.error;
   return (
     <Sec title="This computer" hint={copy.hint}>
       <Plist>
         {THIS_PC_ROWS.map(([t, icon, sub, open]) => {
           const name = OS_NAME[t];
+          if (name === "microphone" && micState !== undefined) {
+            const line = micLine(micState, mic.note, Boolean(perms.bridge));
+            const pill = micState && micState !== "unknown" ? STATUS_PILL[micState] : null;
+            return (
+              <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={line ?? sub}>
+                {pill ? <Pill tone={pill.tone}>{pill.label}</Pill> : null}
+                {micState === "not-asked" && mic.note !== "no-device" ? <Btn sm disabled={mic.busy} onClick={() => void mic.request()}>Allow…</Btn> : null}
+              </Prow>
+            );
+          }
           const status = name && perms.state ? perms.state[name] : undefined;
           return (
             <Prow key={t} icon={<span className="pm-tile">{icon}</span>} title={t} sub={t === "Installing tools" ? copy.install : t === "Location" ? copy.locationHelp : sub}>
@@ -108,7 +130,7 @@ export function ThisPc() {
           );
         })}
       </Plist>
-      {perms.error ? <WentWrong error={perms.error} /> : perms.state ? null : <Hint>{copy.why}</Hint>}
+      {error ? <WentWrong error={error} /> : perms.state ? null : <Hint>{copy.why}</Hint>}
     </Sec>
   );
 }

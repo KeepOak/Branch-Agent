@@ -25,7 +25,7 @@ import { bootSelectedEngineWithRollback } from "./boot-selected-engine";
 import { createComponentUpdateController, isOwnedComponentWindow, registerComponentUpdateIpc } from "./component-update-ipc";
 import { createDesktopControls, readSettings, registerDesktopControlsIpc } from "./desktop-controls";
 import { desktopOs, START_IN_TRAY } from "./desktop-os";
-import { createOsPermissions, registerOsPermissionsIpc } from "./os-permissions";
+import { createOsPermissions, registerOsPermissionsIpc, windowMayUseMicrophone } from "./os-permissions";
 import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
@@ -1176,7 +1176,11 @@ function lockDown(w: BrowserWindow): void {
     if (url.startsWith("https://")) void shell.openExternal(url);
     return { action: "deny" };
   });
-  session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+  // Everything is refused except the microphone for this page, so talking to Branch works where the system allows it.
+  session.defaultSession.setPermissionRequestHandler((_wc, perm, cb, details) =>
+    cb(windowMayUseMicrophone(perm, origin, details.requestingUrl, "mediaTypes" in details ? details.mediaTypes : undefined)));
+  session.defaultSession.setPermissionCheckHandler((_wc, perm, requestingOrigin, details) =>
+    perm === "media" ? windowMayUseMicrophone(perm, origin, requestingOrigin, "mediaType" in details && details.mediaType ? [details.mediaType] : undefined) : true);
 }
 
 const windowUrl = (): string => `http://127.0.0.1:${cfg.windowPort}/`;

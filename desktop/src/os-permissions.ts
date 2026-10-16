@@ -77,6 +77,16 @@ export function createOsPermissions(deps: OsPermissionDeps): OsPermissions {
   };
 }
 
+/**
+ * Whether the window may open the microphone: only Branch's own served page, and only sound. The camera, the screen
+ * and every other browser permission stay refused, as before. The system (macOS, Windows or the Linux desktop) still
+ * has the last word on the device itself.
+ */
+export function windowMayUseMicrophone(permission: string, servedUrl: string, requestingUrl: string | undefined, mediaTypes: readonly string[] | undefined): boolean {
+  if (permission !== "media" || !mediaTypes?.length || !mediaTypes.every((t) => t === "audio")) return false;
+  try { return new URL(requestingUrl ?? "").origin === new URL(servedUrl).origin; } catch { return false; }
+}
+
 type InvokeEvent = Parameters<typeof isOwnedComponentWindow>[0];
 type Sender = Parameters<typeof isOwnedComponentWindow>[1];
 interface Ipc { handle(channel: string, listener: (event: InvokeEvent, ...args: unknown[]) => unknown): void }

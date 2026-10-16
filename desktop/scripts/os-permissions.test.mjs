@@ -6,7 +6,7 @@ import test from "node:test";
 
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 if (!dist) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to current strict-compiled source");
-const { createOsPermissions, registerOsPermissionsIpc, mediaStatus, settingsUrl } = await import(pathToFileURL(join(dist, "os-permissions.js")));
+const { createOsPermissions, registerOsPermissionsIpc, mediaStatus, settingsUrl, windowMayUseMicrophone } = await import(pathToFileURL(join(dist, "os-permissions.js")));
 
 function fake(platform, start = {}) {
   const media = { microphone: "granted", camera: "not-determined", ...start };
@@ -76,4 +76,20 @@ test("only the owned served window may call, and only with a known permission", 
   await assert.rejects(handlers.get("branch-desktop:permissions:open")(owned, "contacts"), /microphone, camera, location or notifications/);
   await assert.rejects(handlers.get("branch-desktop:permissions:request")(owned, { name: "camera" }), /microphone, camera/);
   assert.deepEqual(calls, []);
+});
+
+test("the window may open the microphone, and nothing else, from Branch's own page only (B-032)", () => {
+  const served = "http://127.0.0.1:1234";
+  assert.equal(windowMayUseMicrophone("media", served, "http://127.0.0.1:1234/settings/permissions", ["audio"]), true);
+  assert.equal(windowMayUseMicrophone("media", served, "http://127.0.0.1:1234", ["audio"]), true);
+  assert.equal(windowMayUseMicrophone("media", served, "http://127.0.0.1:1234/", ["audio", "video"]), false);
+  assert.equal(windowMayUseMicrophone("media", served, "http://127.0.0.1:1234/", ["video"]), false);
+  assert.equal(windowMayUseMicrophone("media", served, "http://127.0.0.1:1234/", []), false);
+  assert.equal(windowMayUseMicrophone("media", served, "http://127.0.0.1:1234/", undefined), false);
+  assert.equal(windowMayUseMicrophone("media", served, "https://example.com/", ["audio"]), false);
+  assert.equal(windowMayUseMicrophone("media", served, "http://127.0.0.1:9999/", ["audio"]), false);
+  assert.equal(windowMayUseMicrophone("media", served, "not a url", ["audio"]), false);
+  for (const other of ["notifications", "geolocation", "display-capture", "clipboard-read", "openExternal"]) {
+    assert.equal(windowMayUseMicrophone(other, served, "http://127.0.0.1:1234/", ["audio"]), false, other);
+  }
 });

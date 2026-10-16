@@ -158,3 +158,82 @@ describe("Settings › Permissions › This computer status (PE1)", () => {
     expect(hint.querySelector("summary")?.textContent).toBe("What went wrong");
   });
 });
+
+describe("Settings › Permissions › Microphone where the system can't be read (B-032)", () => {
+  type Grant = "granted" | "denied" | "prompt";
+  const nav = navigator as unknown as { mediaDevices?: unknown; permissions?: unknown };
+  const prevMedia = Object.getOwnPropertyDescriptor(nav, "mediaDevices");
+  const prevPerms = Object.getOwnPropertyDescriptor(nav, "permissions");
+  function fakeMic(state: Grant, ask: () => Promise<unknown>) {
+    const stopped: string[] = [];
+    Object.defineProperty(nav, "permissions", { configurable: true, value: { query: async () => ({ state }) } });
+    Object.defineProperty(nav, "mediaDevices", { configurable: true, value: { getUserMedia: async () => { await ask(); return { getTracks: () => [{ stop: () => stopped.push("audio") }] }; } } });
+    return stopped;
+  }
+  const linuxApp = () => {
+    (window as unknown as { branchDesktop?: unknown }).branchDesktop = {
+      permissions: { get: async () => ({ microphone: "unknown", camera: "unknown", location: "unknown", notifications: "unknown" }), request: async () => ({}), open: async () => undefined },
+    };
+  };
+  const denied = (name: string) => () => Promise.reject(Object.assign(new Error("Permission denied"), { name }));
+  afterEach(() => {
+    delete (window as unknown as { branchDesktop?: unknown }).branchDesktop;
+    if (prevMedia) Object.defineProperty(nav, "mediaDevices", prevMedia); else delete nav.mediaDevices;
+    if (prevPerms) Object.defineProperty(nav, "permissions", prevPerms); else delete nav.permissions;
+  });
+  const settle = () => act(async () => { for (let i = 0; i < 4; i++) await Promise.resolve(); });
+  const row = () => host.querySelector<HTMLElement>('[data-row="Microphone"]')!;
+  const allow = () => [...row().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Allow…");
+
+  it("on Linux the Microphone row asks through the app and then reads Granted", async () => {
+    linuxApp();
+    const stopped = fakeMic("prompt", async () => undefined);
+    await show("Linux x86_64");
+    await settle();
+    expect(row().textContent).toContain("Not yet");
+    expect(allow()?.disabled).toBe(false);
+    await act(async () => allow()!.click());
+    await settle();
+    expect(row().textContent).toContain("Granted");
+    expect(allow()).toBeUndefined();
+    expect(stopped).toEqual(["audio"]);
+  });
+
+  it("in a browser a refusal says so in plain words and what to do", async () => {
+    fakeMic("prompt", denied("NotAllowedError"));
+    await show("MacIntel");
+    await settle();
+    await act(async () => allow()!.click());
+    await settle();
+    expect(row().textContent).toContain("Turned off");
+    expect(row().textContent).toContain("Microphone access is off for Branch. Allow it for this site in the browser’s settings, then reload.");
+    expect(row().querySelector("button")).toBeNull();
+  });
+
+  it("a refusal already on record on Linux says where to change it", async () => {
+    linuxApp();
+    fakeMic("denied", async () => undefined);
+    await show("Linux x86_64");
+    await settle();
+    expect(row().textContent).toContain("Microphone access is off for Branch. Allow it in this computer’s sound settings, then try again.");
+  });
+
+  it("no microphone plugged in reads plainly, not as an error", async () => {
+    linuxApp();
+    fakeMic("prompt", denied("NotFoundError"));
+    await show("Linux x86_64");
+    await settle();
+    await act(async () => allow()!.click());
+    await settle();
+    expect(row().textContent).toContain("No microphone found. Plug one in, then try again.");
+    expect(allow()).toBeUndefined();
+    expect(host.textContent).not.toContain("Something went wrong");
+  });
+
+  it("a browser with no microphone API says so on the row", async () => {
+    await show("MacIntel");
+    await settle();
+    expect(row().textContent).toContain("This browser can’t use the microphone.");
+    expect(allow()).toBeUndefined();
+  });
+});
