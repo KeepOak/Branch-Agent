@@ -60,6 +60,8 @@ describe("a new conversation's row in the Trunk's threads", () => {
     const labels = [...document.querySelectorAll("[role='menu'] [role='menuitem']")].map((node) => node.textContent?.trim());
     expect(labels).toEqual(expect.arrayContaining(["Rename…", "Pin", "Close", "Delete…"]));
     expect(document.querySelector("[role='menu'] [aria-disabled='true']")).toBeNull();
+    // Drawn over the whole window, so the glass rail can't push it off screen.
+    expect(document.querySelector("[role='menu']")!.closest("nav.topicsT5")).toBeNull();
   });
 
   it("renames the thread in place: a Rename thread box, the new title saved as its label, and no navigation", async () => {
