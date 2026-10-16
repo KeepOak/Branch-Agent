@@ -76,7 +76,7 @@ function looksLikeInventory(text: string): boolean {
 }
 
 /** True when the result is a running-process or window inventory (names, PIDs, titles). */
-export function isProcessOrWindowList(tool: string, text: string, parsed?: unknown): boolean {
+function isProcessOrWindowList(tool: string, text: string, parsed?: unknown): boolean {
   if (!isComputerOrBrowser(tool)) return false;
   const value = parsed ?? asJson(text);
   const obj = record(value);

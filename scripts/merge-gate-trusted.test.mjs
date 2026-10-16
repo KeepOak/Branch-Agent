@@ -39,6 +39,7 @@ import {
   loadProtectedGatePaths,
   listCoreWorkflows,
   missingCoreWorkflows,
+  MUST_RUN_WORKFLOWS,
   nameStatusFromPrFiles,
   parsePullRequestTrigger,
   parseTrustedWorkflowPolicy,
@@ -1946,6 +1947,13 @@ test('listCoreWorkflows reads main workflow path filters and skips the trusted g
     item.path === HANDOFF_WORKFLOW_PATH
     && item.pullRequestPaths?.includes('engine/test/gateway-desktop-handoff.e2e.test.ts')
     && item.pullRequestPaths?.includes('desktop/src/main.ts')));
+  assert.ok(workflows.some((item) =>
+    item.path === '.github/workflows/mobile-checks.yml'
+    && item.pullRequestPaths?.includes('mobile/**')
+    && item.pullRequestPaths?.includes('engine/packages/gateway-client/**')
+    && item.pullRequestPaths?.includes('engine/packages/gateway-protocol/**')
+    && item.pullRequestPaths?.includes('engine/packages/normalization-core/**')
+    && item.pullRequestPaths?.includes('engine/packages/retry/**')));
   assert.ok(!workflows.some((item) => item.path === TRUSTED_WORKFLOW_PATH));
 });
 
@@ -2015,6 +2023,7 @@ test('trusted gate re-runs the UI screenshot proof check from main', () => {
 test('trusted gate includes and runs the SELF-CHECK body check from main', () => {
   assert.ok(GATE_SCRIPTS.includes('scripts/check-self-check.mjs'));
   assert.ok(GATE_SCRIPTS.includes('scripts/check-self-check.test.mjs'));
+  assert.ok(GATE_SCRIPTS.includes('scripts/final-head-history.mjs'));
   const source = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
   assert.match(source, /from '\.\/check-self-check\.mjs'/);
   assert.match(source, /if \(!runSelfCheckFromPr\(process\.env\.HEAD_BRANCH, body\)\) process\.exit\(1\)/);
@@ -2741,6 +2750,89 @@ test('the PR file list waits out rate limits inside a 10-minute cap, and the pol
   assert.match(yaml, /merge-gate-trusted:\n[\s\S]*timeout-minutes: 35/);
 });
 
+test('a desktop-only change does not require mobile-checks, and a skipped mobile job is a pass', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/mobile-checks.yml', import.meta.url), 'utf8');
+  const trigger = parsePullRequestTrigger(yaml);
+  assert.equal(trigger.enabled, true);
+  const mobilePaths = trigger.paths;
+  assert.ok(mobilePaths.includes('mobile/**'));
+  assert.ok(mobilePaths.includes('engine/packages/gateway-client/**'));
+  assert.ok(mobilePaths.includes('engine/packages/gateway-protocol/**'));
+  assert.ok(mobilePaths.includes('engine/packages/normalization-core/**'));
+  assert.ok(mobilePaths.includes('engine/packages/retry/**'));
+  assert.equal(MUST_RUN_WORKFLOWS.has('.github/workflows/mobile-checks.yml'), false);
+
+  const desktopOnly = ['desktop/scripts/hidden-processes.test.mjs'];
+  const windowOnly = ['window/src/App.tsx'];
+  const engineSrcOnly = ['engine/src/gateway/contacts.ts'];
+  assert.equal(workflowAppliesToChanges(desktopOnly, mobilePaths), false);
+  assert.equal(workflowAppliesToChanges(windowOnly, mobilePaths), false);
+  assert.equal(workflowAppliesToChanges(engineSrcOnly, mobilePaths), false);
+  assert.equal(workflowAppliesToChanges(['mobile/App.tsx'], mobilePaths), true);
+  assert.equal(workflowAppliesToChanges(['engine/packages/gateway-client/src/index.ts'], mobilePaths), true);
+  assert.equal(workflowAppliesToChanges(['engine/packages/retry/src/index.ts'], mobilePaths), true);
+
+  const mobileCore = { path: '.github/workflows/mobile-checks.yml', pullRequestPaths: mobilePaths };
+  const cores = [...coreWorkflows, mobileCore];
+  const skippedMobile = {
+    id: 901,
+    name: 'Mobile',
+    status: 'completed',
+    conclusion: 'skipped',
+    check_suite: { id: 901 },
+    details_url: 'https://github.com/example/repo/actions/runs/901/job/901',
+  };
+  const neutralMobile = { ...skippedMobile, id: 902, conclusion: 'neutral', check_suite: { id: 902 } };
+  const mobileWorkflows = {
+    901: { path: '.github/workflows/mobile-checks.yml', event: 'pull_request', id: 901 },
+    902: { path: '.github/workflows/mobile-checks.yml', event: 'pull_request', id: 902 },
+  };
+
+  const noRunDesktop = evaluateTrustedGate({
+    checkRuns: passCheckRuns,
+    workflowsByCheckId: passWorkflows,
+    changedFiles: desktopOnly,
+    coreWorkflows: cores,
+    currentRunId: CURRENT_RUN_ID,
+  });
+  assert.equal(noRunDesktop.ok, true, noRunDesktop.errors.join('\n'));
+  assert.equal(noRunDesktop.missingCore.some((item) => item.includes('mobile-checks.yml')), false);
+
+  for (const conclusion of ['skipped', 'neutral']) {
+    const run = conclusion === 'skipped' ? skippedMobile : neutralMobile;
+    const result = evaluateTrustedGate({
+      checkRuns: [...passCheckRuns, run],
+      workflowsByCheckId: { ...passWorkflows, ...mobileWorkflows },
+      changedFiles: desktopOnly,
+      coreWorkflows: cores,
+      currentRunId: CURRENT_RUN_ID,
+    });
+    assert.equal(result.ok, true, result.errors.join('\n'));
+    assert.equal(result.failed.length, 0);
+    assert.equal(result.missingCore.some((item) => item.includes('mobile-checks.yml')), false);
+    assert.equal(PASS_CONCLUSIONS.has(conclusion), true);
+  }
+
+  const missingWhenMobileChanged = missingCoreWorkflows({
+    checkRuns: passCheckRuns,
+    workflowsByCheckId: passWorkflows,
+    changedFiles: ['mobile/App.tsx'],
+    coreWorkflows: cores,
+  });
+  assert.ok(
+    missingWhenMobileChanged.some((item) => item.includes('mobile-checks.yml') && item.includes(PATH_FILTER_NO_CHECK_RUN)),
+    missingWhenMobileChanged.join('\n'),
+  );
+
+  const presentWhenMobileChanged = missingCoreWorkflows({
+    checkRuns: [...passCheckRuns, { ...skippedMobile, conclusion: 'success' }],
+    workflowsByCheckId: { ...passWorkflows, ...mobileWorkflows },
+    changedFiles: ['mobile/App.tsx'],
+    coreWorkflows: cores,
+  });
+  assert.equal(presentWhenMobileChanged.filter((item) => item.includes('mobile-checks.yml')).length, 0);
+});
+
 test('a skipped feature-batch job is missing, not a pass, when its paths changed', () => {
   const featureBatch = {
     path: '.github/workflows/feature-batch-checks.yml',
@@ -2906,4 +2998,73 @@ test('the trusted preflight step reads the live body under one job budget and no
   assert.match(block, /PREFLIGHT_WAIT_SECONDS: '120'/);
   assert.match(block, /run: node scripts\/pr-preflight\.mjs --ci/);
   assert.doesNotMatch(block, /PR_BODY|github\.event\.pull_request\.body/);
+});
+
+test('the batch reads several files in one GraphQL request, with no REST read for clean answers', () => {
+  const requests = [];
+  const restReads = [];
+  const out = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['a.md', 'missing.md', 'b.yml'], {
+    graphql: (token, query, variables) => {
+      requests.push({ query, variables });
+      return { data: { repository: {
+        f0: { text: 'docs a', isBinary: false, isTruncated: false },
+        f1: null,
+        f2: { text: 'desk', isBinary: false, isTruncated: false },
+      } } };
+    },
+    fallback: (filePath) => { restReads.push(filePath); return 'rest'; },
+  });
+  assert.equal(requests.length, 1);
+  assert.deepEqual(restReads, []);
+  assert.deepEqual(out, { 'a.md': 'docs a', 'missing.md': null, 'b.yml': 'desk' });
+  assert.match(requests[0].query, /expression: "abc:a\.md"/);
+  assert.deepEqual(requests[0].variables, { owner: 'o', name: 'r' });
+});
+
+test('the batch reads over REST only the files GraphQL cannot answer cleanly', () => {
+  const restReads = [];
+  const out = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['a.md', 'big.bin', 'trunc.md'], {
+    graphql: () => ({ data: { repository: {
+      f0: { text: 'ok', isBinary: false, isTruncated: false },
+      f1: { text: null, isBinary: true, isTruncated: false },
+      f2: { text: 'cut', isBinary: false, isTruncated: true },
+    } } }),
+    fallback: (filePath) => { restReads.push(filePath); return `rest:${filePath}`; },
+  });
+  assert.deepEqual(restReads, ['big.bin', 'trunc.md']);
+  assert.deepEqual(out, { 'a.md': 'ok', 'big.bin': 'rest:big.bin', 'trunc.md': 'rest:trunc.md' });
+});
+
+test('a GraphQL error or outage reads every file over REST, never as empty', () => {
+  const restReads = [];
+  const fallback = (filePath) => { restReads.push(filePath); return `rest:${filePath}`; };
+  const partial = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['a.md', 'b.md'], {
+    graphql: () => ({ errors: [{ message: 'something' }], data: { repository: { f0: null, f1: null } } }),
+    fallback,
+  });
+  assert.deepEqual(partial, { 'a.md': 'rest:a.md', 'b.md': 'rest:b.md' });
+  const thrown = gate.fetchFileTextsBatch('o/r', 'abc', 'tok', ['c.md'], {
+    graphql: () => { throw new Error('gh: API rate limit exceeded (HTTP 403)'); },
+    fallback,
+  });
+  assert.deepEqual(thrown, { 'c.md': 'rest:c.md' });
+  assert.deepEqual(restReads, ['a.md', 'b.md', 'c.md']);
+});
+
+test('named test lists: a rate limit is an error, not an empty list; a missing directory is empty', () => {
+  assert.throws(() => gate.fetchNamedTestLists('o/r', 'abc', 'tok', () => {
+    throw new Error('gh: API rate limit exceeded (HTTP 403)');
+  }), /rate limit/);
+  assert.deepEqual(gate.fetchNamedTestLists('o/r', 'abc', 'tok', () => {
+    throw Object.assign(new Error('gh: Not Found (HTTP 404)'), { httpStatus: 404 });
+  }), []);
+});
+
+test('the trusted gate gives its API calls their own rate-limit budget, separate from the zero poll budget', () => {
+  const yaml = readFileSync(new URL('../.github/workflows/merge-gate-trusted.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /MERGE_GATE_WAIT_SECONDS: '0'/);
+  assert.match(yaml, /MERGE_GATE_API_WAIT_SECONDS: '600'/);
+  const main = readFileSync(new URL('./merge-gate-trusted.mjs', import.meta.url), 'utf8');
+  assert.match(main, /gateApiBudget\.budgetSeconds = Number\(process\.env\.MERGE_GATE_API_WAIT_SECONDS \?\? DEFAULT_API_WAIT_SECONDS\)/);
+  assert.equal(gate.DEFAULT_API_WAIT_SECONDS, 600);
 });

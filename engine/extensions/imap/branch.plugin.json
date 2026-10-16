@@ -24,6 +24,10 @@
       "label": "Allowed senders",
       "help": "Email addresses or @domain entries permitted to trigger the reader agent."
     },
+    "accounts.*.match": {
+      "label": "Sender or subject contains",
+      "help": "Optional. A Trunk starts only when the sender or the subject contains this text."
+    },
     "accounts.*.agentId": { "label": "Restricted reader agent" },
     "accounts.*.senderAuth.min": { "label": "Minimum sender authentication", "advanced": true }
   },
@@ -88,6 +92,7 @@
           "user": { "type": "string", "minLength": 1 },
           "password": { "$ref": "#/$defs/secretInput" },
           "mailbox": { "type": "string", "minLength": 1, "default": "INBOX" },
+          "match": { "type": "string", "maxLength": 200, "default": "" },
           "watch": { "$ref": "#/$defs/watch" },
           "allowedSenders": { "type": "array", "items": { "type": "string", "minLength": 1 } },
           "senderAuth": { "$ref": "#/$defs/senderAuth" },

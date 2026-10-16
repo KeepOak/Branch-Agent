@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CHAT_FILTERS, filterRows, matchesSearch, unreadCount, type ChatFilter, type ChatListSnapshot, type ChatRow } from '../chats/chatList';
@@ -7,6 +7,7 @@ import { chatTime } from '../chats/chatTime';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { OfflineBanner } from '../ui/OfflineBanner';
 import { useNow } from '../ui/useNow';
 
 const AVATAR = 52;
@@ -166,6 +167,7 @@ const EMPTY: Record<ChatFilter, [string, string]> = {
   all: ['No chats yet', 'Start a chat with a Trunk on your computer and it shows up here.'],
   trunks: ['No Trunk chats', 'Chats with a single Trunk show up here.'],
   rooms: ['No rooms yet', 'Rooms with several Trunks show up here.'],
+  unread: ['Nothing unread', 'Chats with something new, or waiting for you, show up here.'],
   needsYou: ['Nothing needs you', 'When a Trunk is waiting for a yes or an answer, its chat shows up here.'],
   snoozed: ['Nothing snoozed', 'Snoozed chats wait here until their time, then come back by themselves.'],
   archived: ['Nothing archived', 'Archived chats are kept here.'],
@@ -243,25 +245,36 @@ export function ChatsScreen({
   online,
   onRefresh,
   onComputer,
+  onAgents,
+  onSettings,
   onOpen,
   searchMessages,
   needsYou,
   onNeedsYou,
   now: fixedNow,
+  updateBanner,
 }: {
   list: ChatListSnapshot;
   online: boolean;
   onRefresh: () => Promise<void>;
+  /** Opens Computers. */
   onComputer: () => void;
+  /** Opens Agents. With it, the top bar has an Agents button next to Settings. */
+  onAgents?: () => void;
+  /** Opens Settings. */
+  onSettings?: () => void;
   /** Opens a chat. */
   onOpen?: (row: ChatRow) => void;
   /** Searches every chat's messages (sessions.search); without it, search matches names and last lines. */
   searchMessages?: (query: string) => Promise<unknown>;
   /** Approvals waiting for a yes: how many, and the oldest one in a line ("Oak · Run a command"). */
   needsYou?: { count: number; line: string } | null;
+  /** Opens Approvals. With it, the top bar always has an Approvals button, with the count when any wait. */
   onNeedsYou?: () => void;
   /** A fixed time for tests and screenshots; otherwise the phone's clock, read again every half minute. */
   now?: number;
+  /** Sideloaded Android APK update, when one is ready or in flight. */
+  updateBanner?: ReactNode;
 }) {
   const { color, space, radius, layout, type } = useTheme();
   // The list can stay open for hours: a render every half minute moves rows from "Now" to a time, and from
@@ -279,6 +292,13 @@ export function ChatsScreen({
   const byKey = new Map(list.rows.map((row) => [row.key, row]));
   const items = typing ? searchItems(list.rows, query, messages.hits) : browseItems(list.rows, filter, now);
 
+  const approvals = needsYou?.count ?? 0;
+  // The count beside the title opens what it counts: Approvals while any wait (their chats are in it), else Unread.
+  const openCount = () => {
+    if (approvals > 0 && onNeedsYou) onNeedsYou();
+    else setFilter('unread');
+  };
+
   const refresh = async () => {
     setRefreshing(true);
     try {
@@ -290,37 +310,92 @@ export function ChatsScreen({
 
   const header = (
     <View style={{ paddingTop: insets.top + space.xs, paddingHorizontal: layout.screenInset, paddingBottom: space.sm }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-        <Pressable
-          testID="computer-button"
-          accessibilityRole="button"
-          accessibilityLabel={online ? 'Your computer, connected' : 'Your computer, reconnecting'}
-          onPress={onComputer}
-          hitSlop={8}
-          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, gap: space.xs + 2, opacity: pressed ? 0.6 : 1 })}
-        >
-          <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: online ? color.ok : color.warn }} />
-          <ThemedText variant="body" tone="accentInk">
-            Computer
-          </ThemedText>
-        </Pressable>
+      <View style={{ flexDirection: 'row', justifyContent: onNeedsYou ? 'space-between' : 'flex-end', alignItems: 'center' }}>
+        {onNeedsYou ? (
+          <Pressable
+            testID="approvals-button"
+            accessibilityRole="button"
+            accessibilityLabel={approvals ? `Approvals, ${approvals} waiting` : 'Approvals, nothing waiting'}
+            onPress={onNeedsYou}
+            hitSlop={8}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, gap: space.xs + 2, opacity: pressed ? 0.6 : 1 })}
+          >
+            <ThemedText variant="body" tone="accentInk">
+              Approvals
+            </ThemedText>
+            {approvals ? (
+              <View testID="approvals-button-count" style={{ minWidth: 22, height: 22, paddingHorizontal: space.xs + 2, borderRadius: radius.pill, backgroundColor: color.accent, alignItems: 'center', justifyContent: 'center' }}>
+                <ThemedText variant="footnote" tone="onAccent" style={{ fontWeight: '700' }}>
+                  {approvals}
+                </ThemedText>
+              </View>
+            ) : null}
+          </Pressable>
+        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+          {onSettings ? (
+            <Pressable
+              testID="settings-button"
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              onPress={onSettings}
+              hitSlop={8}
+              style={({ pressed }) => ({ minHeight: layout.rowMinHeight, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+            >
+              <ThemedText variant="body" tone="accentInk">
+                Settings
+              </ThemedText>
+            </Pressable>
+          ) : null}
+          {onAgents ? (
+            <Pressable
+              testID="agents-button"
+              accessibilityRole="button"
+              accessibilityLabel="Agents"
+              onPress={onAgents}
+              hitSlop={8}
+              style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, opacity: pressed ? 0.6 : 1 })}
+            >
+              <ThemedText variant="body" tone="accentInk">
+                Agents
+              </ThemedText>
+            </Pressable>
+          ) : null}
+          <Pressable
+            testID="computer-button"
+            accessibilityRole="button"
+            accessibilityLabel={online ? 'Computers, connected' : 'Computers, reconnecting'}
+            onPress={onComputer}
+            hitSlop={8}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: layout.rowMinHeight, gap: space.xs + 2, opacity: pressed ? 0.6 : 1 })}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: online ? color.ok : color.warn }} />
+            <ThemedText variant="body" tone="accentInk">
+              Computers
+            </ThemedText>
+          </Pressable>
+        </View>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
         <ThemedText variant="largeTitle" accessibilityRole="header">
           Chats
         </ThemedText>
         {waiting ? (
-          <View
+          <Pressable
             testID="chats-count"
-            accessibilityLabel={`${waiting} ${waiting === 1 ? 'chat wants' : 'chats want'} a look`}
-            style={{ minWidth: 24, height: 24, paddingHorizontal: space.sm, borderRadius: radius.pill, backgroundColor: color.accent, alignItems: 'center', justifyContent: 'center' }}
+            accessibilityRole="button"
+            accessibilityLabel={`${waiting} ${waiting === 1 ? 'chat wants' : 'chats want'} a look. ${approvals > 0 && onNeedsYou ? 'Opens Approvals' : 'Shows them'}`}
+            onPress={openCount}
+            hitSlop={10}
+            style={({ pressed }) => ({ minWidth: 24, height: 24, paddingHorizontal: space.sm, borderRadius: radius.pill, backgroundColor: color.accent, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}
           >
             <ThemedText variant="footnote" tone="onAccent" style={{ fontWeight: '700' }}>
               {waiting}
             </ThemedText>
-          </View>
+          </Pressable>
         ) : null}
       </View>
+      {updateBanner}
       {needsYou && needsYou.count > 0 ? (
         <Pressable
           testID="needs-you-banner"
@@ -371,14 +446,7 @@ export function ChatsScreen({
           {messages.note}
         </ThemedText>
       ) : null}
-      {online ? null : (
-        <View testID="chats-offline" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, backgroundColor: color.warnTint, borderRadius: radius.md, padding: space.md }}>
-          <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: color.warn }} />
-          <ThemedText variant="footnote" tone="ink2" style={{ flex: 1 }}>
-            Reconnecting to your computer… These chats may be out of date.
-          </ThemedText>
-        </View>
-      )}
+      {online ? null : <OfflineBanner testID="chats-offline" message="Reconnecting to your computer… These chats may be out of date." />}
     </View>
   );
 

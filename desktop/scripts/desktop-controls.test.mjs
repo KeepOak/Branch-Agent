@@ -1,7 +1,7 @@
 // Desktop controls bridge: every OS call is a fake, so nothing on this computer changes.
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { spawnSync } from "node:child_process";
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -9,7 +9,8 @@ import test from "node:test";
 
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 if (!dist) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to current strict-compiled source");
-const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, DOWNLOAD_PAGES } =
+const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, DOWNLOAD_PAGES,
+  branchPosixShim, branchCommandOwner, posixBranchCommand, BRANCH_COMMAND_MARKER, LEGACY_BRANCH_COMMAND_MARKER } =
   await import(pathToFileURL(join(dist, "desktop-controls.js")));
 
 async function fixture(run) {
@@ -17,11 +18,10 @@ async function fixture(run) {
   await mkdir(parent, { recursive: true });
   const root = await mkdtemp(join(parent, "fixture-"));
   const calls = [];
-  const state = { login: false, onPath: false, nextBlocker: 7 };
+  const state = { login: false, onPath: false };
   const deps = {
     settingsFile: join(root, "desktop-settings.json"),
     login: { get: () => state.login, set: on => { calls.push(["login", on]); state.login = on; } },
-    awake: { start: () => { calls.push(["awake-start"]); return state.nextBlocker; }, stop: id => calls.push(["awake-stop", id]) },
     cli: { installed: async () => state.onPath, install: async () => { calls.push(["cli-install"]); state.onPath = true; },
       uninstall: async () => { calls.push(["cli-uninstall"]); state.onPath = false; } },
     tray: { usage: (left, on) => calls.push(["tray", left, on]) },
@@ -30,9 +30,9 @@ async function fixture(run) {
   try { await run({ root, deps, calls, state }); } finally { await rm(root, { recursive: true, force: true }); }
 }
 
-test("defaults keep working and auto-apply on, keep awake and tray ring off", async () => fixture(async ({ deps }) => {
+test("defaults keep working, keep awake (plugged in) and auto-apply on; awake on battery and tray ring off", async () => fixture(async ({ deps }) => {
   const controls = createDesktopControls(deps);
-  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: false, trayUsage: false, autoApplyUpdates: true, agentControl: false, startWithWindows: false, branchOnPath: false });
+  assert.deepEqual(await controls.get(), { keepWorking: true, keepAwake: true, keepAwakeOnBattery: false, trayUsage: false, autoApplyUpdates: true, agentControl: false, startWithWindows: false, branchOnPath: false });
 }));
 
 test("letting agents use the window is off by default, saved, and read at the next launch", async () => fixture(async ({ deps, calls }) => {
@@ -52,19 +52,21 @@ test("Start with Windows goes to the login item, not the settings file", async (
   assert.equal((await controls.get()).startWithWindows, false);
 }));
 
-test("keep awake holds one blocker, saves, and is reapplied at launch", async () => fixture(async ({ deps, calls }) => {
-  const controls = createDesktopControls(deps);
-  await controls.set("keepAwake", true);
-  await controls.set("keepAwake", true);
-  assert.deepEqual(calls, [["awake-start"]]);
-  assert.equal(JSON.parse(await readFile(deps.settingsFile, "utf8")).keepAwake, true);
+test("keep awake is saved and read back; the blocker itself follows runs (keep-awake.ts), never the switch", async () => fixture(async ({ deps, calls }) => {
+  const changes = [];
+  const controls = createDesktopControls({ ...deps, onChange: settings => changes.push(settings) });
+  await controls.set("keepAwake", false);
+  await controls.set("keepAwakeOnBattery", true);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(changes.map(s => [s.keepAwake, s.keepAwakeOnBattery]), [[false, false], [false, true]]);
+  const saved = JSON.parse(await readFile(deps.settingsFile, "utf8"));
+  assert.equal(saved.keepAwake, false);
+  assert.equal(saved.keepAwakeOnBattery, true);
   const relaunched = createDesktopControls(deps);
   relaunched.apply();
-  assert.deepEqual(calls.at(-1), ["awake-start"]);
+  assert.equal(relaunched.settings().keepAwake, false);
   relaunched.dispose();
-  assert.deepEqual(calls.at(-1), ["awake-stop", 7]);
-  await controls.set("keepAwake", false);
-  assert.deepEqual(calls.at(-1), ["awake-stop", 7]);
+  assert.deepEqual(calls, []);
 }));
 
 test("keep working when the window closes is saved and read back", async () => fixture(async ({ deps }) => {
@@ -228,6 +230,103 @@ for (const kind of process.platform === "win32" ? ["cmd", "sh"] : ["sh"]) {
     assert.equal(result.stdout, "");
   }));
 }
+
+/** A packaged install as it ships now: the app code is sealed in app.asar (no Resources/app/dist/cli.js), node sits
+ *  beside it, and the engine the app runs is the unpacked copy named in the data folder's engine-*.txt files. */
+async function packagedLayout(root) {
+  const app = join(root, "Applications", "Branch Agent.app");
+  const resources = join(app, "Contents", "Resources");
+  const data = join(root, "Library", "Application Support", "BranchAgent");
+  await mkdir(join(resources, "node"), { recursive: true });
+  await writeFile(join(resources, "app.asar"), "sealed archive: only Electron reads inside it");
+  // The bundled node: here a stand-in that hands over to the node running the tests.
+  const nodePath = join(resources, "node", "node");
+  await writeFile(nodePath, `#!/bin/sh\nexec '${process.execPath}' "$@"\n`);
+  await chmod(nodePath, 0o755);
+  const engine = async (name) => {
+    const dir = join(data, "updates", name, "engine");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "branch.mjs"), `const e = process.env;
+console.log(JSON.stringify({ engine: ${JSON.stringify(name)}, args: process.argv.slice(2), home: e.BRANCH_HOME, state: e.BRANCH_STATE_DIR,
+  config: e.BRANCH_CONFIG_PATH, profile: e.BRANCH_PROFILE, port: e.BRANCH_GATEWAY_PORT, token: e.BRANCH_GATEWAY_TOKEN, data: e.BRANCH_DATA }));\n`);
+    return dir;
+  };
+  const published = await engine("release-published"), running = await engine("release-running");
+  await writeFile(join(data, "engine-current.txt"), `${published}\n`);
+  await writeFile(join(data, "gateway-token"), "fixture-token\n");
+  await writeFile(join(data, "gateway-port"), "19045\n");
+  const command = join(root, "home", ".local", "bin", "branch");
+  // The earlier installer's command, exactly as it was written before the app moved into app.asar.
+  await mkdir(join(root, "home", ".local", "bin"), { recursive: true });
+  await writeFile(command, ["#!/bin/sh", LEGACY_BRANCH_COMMAND_MARKER, "# Removing Branch Agent removes this file too.",
+    "ELECTRON_RUN_AS_NODE=1", `exec '${nodePath}' '${join(resources, "app", "dist", "cli.js")}' "$@"`, ""].join("\n"));
+  await chmod(command, 0o755);
+  const cfg = { dataDir: data, engineDir: join(resources, "engine"), nodePath, gatewayPort: 19031 };
+  return { app, resources, data, published, running, command, cfg };
+}
+
+const posixOnly = { skip: process.platform === "win32" && "the macOS and Linux command is a sh script" };
+
+test("the macOS and Linux branch command runs the unpacked engine of a packaged (app.asar) install", posixOnly, async () => {
+  const root = await mkdtemp(join(tmpdir(), "branch command "));
+  try {
+    const { data, published, running, command, cfg } = await packagedLayout(root);
+    const stale = spawnSync(command, ["--version"], { encoding: "utf8" });
+    assert.notEqual(stale.status, 0, "the earlier command finds no dist/cli.js in a packaged app");
+    assert.match(stale.stderr, /dist\/cli\.js/);
+
+    const cli = posixBranchCommand(command, () => branchPosixShim(cfg));
+    assert.equal(branchCommandOwner(command), "installer");
+    assert.equal(await cli.installed(), false, "the broken command does not count as installed");
+    cli.refresh();
+    assert.equal(branchCommandOwner(command), "app", "launch takes the earlier installer's command over");
+    assert.equal(await cli.installed(), true);
+    const text = await readFile(command, "utf8");
+    assert.equal(text.split("\n")[1], BRANCH_COMMAND_MARKER);
+    assert.doesNotMatch(text, /dist\/cli\.js|app\.asar/);
+    assert.equal((await stat(command)).mode & 0o111, 0o111, "the command stays executable");
+
+    const run = (...args) => JSON.parse(execFileSync(command, args, { encoding: "utf8", env: { PATH: process.env.PATH } }));
+    const first = run("status", "--json", "it's a \"quoted\" arg");
+    assert.deepEqual(first, { engine: "release-published", args: ["status", "--json", "it's a \"quoted\" arg"],
+      home: join(data, "home"), state: join(data, "home", ".branch"), config: join(data, "home", ".branch", "branch.json"),
+      profile: "default", port: "19045", token: "fixture-token", data });
+    // The engine actually running wins over a published one that has not been applied yet.
+    await writeFile(join(data, "engine-running.txt"), `${running}\n`);
+    assert.equal(run().engine, "release-running");
+    // With no live port recorded, the configured one is used.
+    await rm(join(data, "gateway-port"));
+    assert.equal(run().port, "19031");
+    assert.ok(published);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("the macOS and Linux branch command installs, refreshes and removes only its own file", posixOnly, async () => {
+  const root = await mkdtemp(join(tmpdir(), "branch command "));
+  try {
+    const { command, cfg } = await packagedLayout(root);
+    const cli = posixBranchCommand(command, () => branchPosixShim(cfg));
+    await cli.uninstall();
+    assert.equal(branchCommandOwner(command), "none", "turning it off removes the earlier installer's command too");
+    cli.refresh();
+    assert.equal(branchCommandOwner(command), "none", "a launch never creates the command");
+    await cli.install();
+    assert.equal(await cli.installed(), true);
+    await cli.uninstall();
+    assert.equal(await cli.installed(), false);
+
+    await writeFile(command, "#!/bin/sh\necho someone else's branch\n");
+    await assert.rejects(cli.install(), /another program's branch command/);
+    cli.refresh();
+    await cli.uninstall();
+    assert.equal(await readFile(command, "utf8"), "#!/bin/sh\necho someone else's branch\n", "another program's file is left as it was");
+    await rm(command);
+    await symlink(join(root, "elsewhere"), command);
+    assert.equal(branchCommandOwner(command), "other", "a link is never followed or replaced");
+    await assert.rejects(cli.install(), /another program's branch command/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("user Path edits add once and remove case-insensitively", () => {
   assert.equal(editUserPath("C:\\A;;C:\\B", "C:\\Bin", true), "C:\\A;C:\\B;C:\\Bin");
   assert.equal(editUserPath("C:\\A;c:\\bin\\;C:\\B", "C:\\Bin", true), "C:\\A;C:\\B;C:\\Bin");
@@ -270,4 +369,33 @@ test("launch refreshes an existing branch command and never installs one", async
   deps.cli.refresh = () => { throw new Error("locked"); };
   assert.doesNotThrow(() => createDesktopControls(deps).apply());
   controls.dispose();
+}));
+
+test("a full disk keeps a changed setting in memory, shows the disk-full banner once, and saves on the next write", async () => fixture(async ({ deps }) => {
+  const { diskIsFull, onDiskFullChange } = await import(pathToFileURL(join(dist, "disk-full.js")));
+  const seen = [];
+  const stop = onDiskFullChange(full => seen.push(full));
+  let failing = true;
+  const writes = [];
+  // ENOSPC is injected into the settings write; the real disk is never filled.
+  const { writeFileSync } = await import("node:fs");
+  const writeFile = (file, text) => {
+    if (failing) throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC", errno: -28, syscall: "write" });
+    writes.push(file);
+    writeFileSync(file, text);
+  };
+  const controls = createDesktopControls({ ...deps, writeFile });
+  try {
+    assert.equal((await controls.set("keepWorking", false)).keepWorking, false, "the toggle never throws on a full disk");
+    assert.equal((await controls.set("trayUsage", true)).trayUsage, true);
+    assert.equal(controls.settings().keepWorking, false, "the new value stays in memory");
+    assert.equal(diskIsFull(), true);
+    assert.deepEqual(seen, [true], "one banner for both failed saves");
+    failing = false;
+    await controls.set("keepAwake", false);
+    assert.deepEqual(writes, [deps.settingsFile]);
+    assert.equal(readSettings(deps.settingsFile).keepWorking, false, "the next save writes the kept value");
+    assert.equal(diskIsFull(), false);
+    assert.deepEqual(seen, [true, false], "the banner goes away once a save lands");
+  } finally { stop(); }
 }));

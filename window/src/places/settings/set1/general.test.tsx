@@ -109,6 +109,42 @@ describe("Settings › General", () => {
     expect(projects.querySelector('[role="status"]')).toBeNull();
   });
 
+  it("puts added projects first and lets the Trunk folders unfold and fold again", async () => {
+    const { engine } = engineOf({ "projects.list": { projects: [
+      { id: "generated", displayName: "Trunk folder", source: "workspace" },
+      { id: "added", displayName: "Added project", source: "manual" },
+      { id: "legacy", displayName: "Older project" },
+    ] } });
+    await render(engine);
+    const projects = host.querySelector('[data-sec="Projects"]')!;
+    const fold = projects.querySelector("details")!;
+    expect(fold.open).toBe(false);
+    expect(fold.querySelector("summary")?.textContent).toBe("Folders Branch made for Trunks (1)");
+    expect([...projects.querySelectorAll(".prow b")].map((b) => b.textContent)).toEqual(["Added project", "Older project", "Trunk folder"]);
+    expect([...fold.querySelectorAll(".prow b")].map((b) => b.textContent)).toEqual(["Trunk folder"]);
+    await act(async () => fold.querySelector("summary")!.click());
+    expect(fold.open).toBe(true);
+    await act(async () => fold.querySelector("summary")!.click());
+    expect(fold.open).toBe(false);
+    expect(projects.textContent).not.toContain("Edit");
+  });
+
+  it("omits an empty Trunk fold and hides zero or unknown conversation counts", async () => {
+    const totals: Record<string, number | undefined> = { zero: 0, one: 1, many: 3, unknown: undefined };
+    const { engine, request } = engineOf({
+      "projects.list": { projects: Object.keys(totals).map((id) => ({ id, displayName: id })) },
+      "sessions.list": (params: unknown) => ({ totalCount: totals[(params as { projectId: string }).projectId] }),
+    });
+    await render(engine);
+    const projects = host.querySelector('[data-sec="Projects"]')!;
+    expect(projects.querySelector("details")).toBeNull();
+    const texts = [...projects.querySelectorAll(".prow")].map((p) => p.textContent);
+    expect(texts).toEqual(["zero", "one1 conversation", "many3 conversations", "unknown"]);
+    for (const projectId of Object.keys(totals)) {
+      expect(request).toHaveBeenCalledWith("sessions.list", { projectId, limit: 1, excludeSubagents: true, excludeCron: true });
+    }
+  });
+
   it("When you send while it works saves messages.queue.mode", async () => {
     const { engine, request } = engineOf();
     await render(engine, 1);
@@ -209,6 +245,37 @@ describe("Settings › General", () => {
       delete (window as { branchDesktop?: unknown }).branchDesktop;
       delete (navigator as { platform?: string }).platform;
       if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
+    }
+  });
+
+  it("writes the Keyboard shortcuts the way the Show all dialog does on this computer (DA-80)", async () => {
+    const { engine } = engineOf();
+    const prev = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+    const sub = () => row("Keyboard shortcuts").textContent ?? "";
+    try {
+      Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => "MacIntel" });
+      await render(engine, 1);
+      expect(sub()).toContain("⌘K to find anything, ⌘N for a new conversation.");
+      expect(sub()).not.toContain("Ctrl");
+      expect(row("Send with").textContent).toContain("⌘Enter");
+      localStorage.setItem("branch.keys", JSON.stringify({ palette: "Ctrl Shift P" }));
+      await render(engine, 0);
+      await act(async () => root.render(<></>));
+      await render(engine, 0);
+      expect(sub()).toContain("⌘⇧P to find anything, ⌘N for a new conversation.");
+      localStorage.setItem("branch.keys", JSON.stringify({ palette: "Ctrl Shift P", newConversation: "Ctrl Alt N" }));
+      Object.defineProperty(Navigator.prototype, "platform", { configurable: true, get: () => "Win32" });
+      await act(async () => root.render(<></>));
+      await render(engine, 0);
+      expect(sub()).toContain("Ctrl Shift P to find anything, Ctrl Alt N for a new conversation.");
+      localStorage.clear();
+      await act(async () => root.render(<></>));
+      await render(engine, 0);
+      expect(sub()).toContain("Ctrl K to find anything, Ctrl N for a new conversation.");
+      expect(sub()).not.toContain("⌘");
+    } finally {
+      if (prev) Object.defineProperty(Navigator.prototype, "platform", prev);
+      else delete (Navigator.prototype as { platform?: string }).platform;
     }
   });
 

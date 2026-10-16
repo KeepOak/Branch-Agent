@@ -28,10 +28,14 @@ export function SpecRow({ r, look, disabled }: { r: RowSpec; look: Look; disable
 export function AgentsSec({ look }: { look: Look }) {
   const save = useSaveRunner();
   const shown = look.val("agentShown", shellShown()) === true;
+  const cheer = look.val("cheer", false) === true;
   return (
     <Sec title="Agents">
       <Ctl title="Show the agent beside the conversation" sub="The Trunk’s character shows what it is doing." help="It acts out what the Trunk is doing: thinking, searching, reading, working, waiting for you, celebrating, resting.">
         <Switch checked={shown} label="Show the agent beside the conversation" onChange={(on) => void save(() => look.store.set("agentShown", on))} />
+      </Ctl>
+      <Ctl title="Celebrate when a task finishes" sub="A small card with the Trunk’s face shows when a task is done." help="Off until you turn it on. It never shows for a run you stopped or one that failed.">
+        <Switch checked={cheer} label="Celebrate when a task finishes" onChange={(on) => void save(() => look.store.set("cheer", on))} />
       </Ctl>
       <SpecRow r={rowOf("agentSize")} look={look} />
     </Sec>
@@ -39,9 +43,9 @@ export function AgentsSec({ look }: { look: Look }) {
 }
 function shellShown(): boolean {
   try {
-    return localStorage.getItem("branch.characterShown") !== "0";
+    return localStorage.getItem("branch.characterShown") === "1";
   } catch {
-    return true; // storage blocked: the shell shows it
+    return false; // storage blocked: the character stays hidden
   }
 }
 

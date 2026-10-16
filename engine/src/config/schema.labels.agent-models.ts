@@ -11,6 +11,7 @@ export const AGENT_MODEL_FIELD_LABELS: Record<string, string> = {
   "agents.defaults.modelSelectionScope": "Model Selection Scope",
   "agents.defaults.modelPolicy": "Model Policy",
   "agents.defaults.modelPolicy.allow": "Allowed Models",
+  "agents.defaults.subscriptionsOnly": "Subscription Sign-Ins Only",
   "agents.defaults.models.*.agentRuntime": "Default Agent Model Runtime",
   "agents.defaults.models.*.agentRuntime.id": "Default Agent Model Runtime ID",
   "agents.defaults.models.*.codeMode": "Code Mode",

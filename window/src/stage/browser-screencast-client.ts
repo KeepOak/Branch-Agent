@@ -4,7 +4,7 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
     : null;
 import { resolveGatewayWebSocketUrl } from "./gateway-websocket-url";
 
-export type BrowserScreencastMeta = { url: string; title: string };
+type BrowserScreencastMeta = { url: string; title: string };
 export type BrowserScreencastFrame = {
   blob: Blob;
   url: string;

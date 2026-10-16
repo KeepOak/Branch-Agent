@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { tokTypes } from "acorn";
+import { CODE_MODE_RESERVED_GLOBAL_NAMES } from "./code-mode-global-names.js";
 import type { CatalogSource } from "./tool-search-types.js";
 
 type CompactCatalogEntry = {
@@ -16,12 +17,6 @@ export type CodeModeCatalogBinding = Omit<CompactCatalogEntry, "id"> & {
   id: string;
   callableName: string;
 };
-
-const RESERVED_GLOBAL_NAMES = new Set(
-  "ALL_TOOLS API MCP agents catalog clearTimeout globalThis json load log namespaces nodes phase results setTimeout skills store text tools yield_control AggregateError Array ArrayBuffer Atomics BigInt BigInt64Array BigUint64Array Boolean DataView Date Error EvalError FinalizationRegistry Float32Array Float64Array Function Infinity Int16Array Int32Array Int8Array Intl JSON Map Math NaN Number Object Promise Proxy RangeError ReferenceError Reflect RegExp Set SharedArrayBuffer String Symbol SyntaxError TextDecoder TextEncoder TypeError URIError Uint16Array Uint32Array Uint8Array Uint8ClampedArray WeakMap WeakRef WeakSet WebAssembly console decodeURI decodeURIComponent encodeURI encodeURIComponent escape eval isFinite isNaN parseFloat parseInt undefined unescape".split(
-    " ",
-  ),
-);
 
 const RESERVED_WORDS = new Set([
   ...Object.values(tokTypes).flatMap((token) => (token.keyword ? [token.keyword] : [])),
@@ -74,7 +69,7 @@ export function createCodeModeCatalogBindings(
   entries: readonly CompactCatalogEntry[],
   options?: { reservedNames?: Iterable<string> },
 ): CodeModeCatalogBinding[] {
-  const used = new Set([...RESERVED_GLOBAL_NAMES, ...(options?.reservedNames ?? [])]);
+  const used = new Set([...CODE_MODE_RESERVED_GLOBAL_NAMES, ...(options?.reservedNames ?? [])]);
   const candidates = selectEffectiveEntries(entries)
     .map((entry) => {
       const base = normalizedCallableBase(entry.name);

@@ -6,7 +6,7 @@ import { Icon } from "./icons";
 import { syncTitleBar } from "../connect/title-bar";
 import { CONVERSATION_MORE_IDLE_LABEL, conversationMoreLabel } from "./conversation-more";
 
-export type FaceState = AgentState;
+type FaceState = AgentState;
 
 export type HeaderInfo = {
   name: string;
@@ -170,7 +170,7 @@ export function PlaceHead({ onList, onSettings, onBack, onForward }: { onList: (
 
 /** The tint line's colour (§4.2.1): the conversation's colour at 40%; the classic pebble's --ink-2 when the Trunk wears it;
  *  none for a character without a colour (the tint is "drawn only when the conversation has a colour"). */
-export function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | "room"> | null): string | null {
+function useHeaderTint(header: Pick<HeaderInfo, "colour" | "trunkName" | "room"> | null): string | null {
   const appearance = useTrunkAppearance(header?.trunkName);
   if (!header || header.room) return null;
   if (header.colour) return /^#[0-9a-f]{6}$/i.test(header.colour) ? `${header.colour}66` : `color-mix(in srgb, ${header.colour} 40%, transparent)`;

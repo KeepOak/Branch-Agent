@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import * as fsp from "node:fs/promises";
+import { lstat, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -86,14 +87,15 @@ test("Applications directory prefers a writable system folder, then the home fol
   } finally { await rm(home, { recursive: true, force: true }); }
 });
 
-test("stamp names the bundle Branch and keeps the stable id, package type, and minimum system version", async () => {
+test("stamp shows the bundle as Branch and keeps the stable id, package type, and minimum system version", async () => {
   const { root, source, done } = await tempTree();
   try {
     await bundle(source);
     await mac.stampMacBundle(source);
     await mac.stampMacBundle(source);
     const stamped = await readFile(join(source, "Contents/Info.plist"), "utf8");
-    assert.equal(value(stamped, "CFBundleName"), "Branch");
+    // Electron looks its helpers up as "<CFBundleName> Helper.app"; only the display name is Branch.
+    assert.equal(value(stamped, "CFBundleName"), "Branch Agent");
     assert.equal(value(stamped, "CFBundleDisplayName"), "Branch");
     assert.equal(stamped.split("<key>CFBundleDisplayName</key>").length, 2);
     assert.equal(value(stamped, "CFBundlePackageType"), "APPL");
@@ -106,6 +108,24 @@ test("stamp names the bundle Branch and keeps the stable id, package type, and m
       name: "Branch Agent", executableName: "Branch Agent", appBundleId: "com.electron.branch-agent", icon: "/icons/branch.icns",
     });
   } finally { await done(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("stamp refuses a packaged bundle whose helper does not match CFBundleName, and accepts the matching one", async () => {
+  const { source, done } = await tempTree();
+  try {
+    await bundle(source);
+    const helpers = join(source, "Contents/Frameworks");
+    await mkdir(join(helpers, "Branch Helper.app/Contents/MacOS"), { recursive: true });
+    await writeFile(join(helpers, "Branch Helper.app/Contents/MacOS/Branch Helper"), "wrong-helper");
+    const before = await readFile(join(source, "Contents/Info.plist"), "utf8");
+    await assert.rejects(mac.stampMacBundle(source), /Missing bundle file: Branch Agent Helper/);
+    assert.equal(await readFile(join(source, "Contents/Info.plist"), "utf8"), before);
+    await mkdir(join(helpers, "Branch Agent Helper.app/Contents/MacOS"), { recursive: true });
+    await writeFile(join(helpers, "Branch Agent Helper.app/Contents/MacOS/Branch Agent Helper"), "helper");
+    await mac.stampMacBundle(source);
+    const stamped = await readFile(join(source, "Contents/Info.plist"), "utf8");
+    assert.equal(value(stamped, "CFBundleName"), mac.MAC_HELPER_PREFIX);
+  } finally { await done(); }
 });
 
 test("stamp refuses a bundle that is missing its executable or icon and leaves the plist unchanged", async () => {
@@ -139,6 +159,39 @@ test("install publishes one Branch.app, replaces it in place, and registers it",
     assert.deepEqual((await readdir(apps)).filter(name => name.endsWith(".app") || name.startsWith(".")), ["Branch.app"]);
     await mac.installMacApp(first, { applicationsDirectory: apps, register: async args => { calls.push(args); } });
     assert.equal(calls.some(args => args[0] === "-u" && args[1] === first), false);
+  } finally { await done(); }
+});
+
+/**
+ * Electron's fs reads and writes any path ending in .asar as an archive, so the installer's copy of a bundle's app.asar
+ * fails with "Invalid package" (0.4.4-build-98a8dac57bb9 logged it on every launch). This fake fails the same way.
+ */
+function electronLikeFs(base) {
+  const archive = path => /\.asar(?:[\\/]|$)/.test(String(path));
+  const refuse = path => { if (archive(path)) throw new Error(`Invalid package ${path}`); };
+  return {
+    ...base,
+    async mkdir(path, options) { refuse(path); return base.mkdir(path, options); },
+    async rm(path, options) { refuse(path); return base.rm(path, options); },
+    async rename(from, to) { refuse(from); refuse(to); return base.rename(from, to); },
+    async cp(from, to, options) {
+      for (const entry of await base.readdir(from, { recursive: true })) refuse(join(to, entry));
+      return base.cp(from, to, options);
+    },
+  };
+}
+
+test("install copies a bundle that carries app.asar with a file API Electron does not read as an archive", async () => {
+  const { apps, source, done } = await tempTree();
+  const register = async () => {};
+  try {
+    await bundle(source);
+    await writeFile(join(source, "Contents/Resources/app.asar"), "asar-bytes");
+    await assert.rejects(mac.installMacApp(source, { applicationsDirectory: apps, register, stripQuarantine: async () => {}, fs: electronLikeFs(fsp) }), /Invalid package/);
+    assert.equal((await readdir(apps)).some(name => name.startsWith(".Branch")), false);
+    const installed = await mac.installMacApp(source, { applicationsDirectory: apps, register, stripQuarantine: async () => {} });
+    assert.equal(await readFile(join(installed, "Contents/Resources/app.asar"), "utf8"), "asar-bytes");
+    assert.equal((await lstat(join(installed, "Contents/Resources/app.asar"))).isFile(), true);
   } finally { await done(); }
 });
 
@@ -191,10 +244,56 @@ test("staged macOS payloads fall back from the installed name to Branch.app", ()
   assert.equal(mac.pathStaysInside("/Applications", "/Applications"), false);
 });
 
+const pinnedReport = `Identifier=${mac.MAC_BUNDLE_ID}\nTeamIdentifier=${mac.macReleaseSigning.teamId}\ndesignated => ${mac.macReleaseSigning.designatedRequirement}\n`;
+const adhocReport = `Identifier=${mac.MAC_BUNDLE_ID}\nCodeDirectory v=20400 size=500 flags=0x20002(adhoc,linker-signed) hashes=10+7 location=embedded\nSignature=adhoc\nTeamIdentifier=not set\ndesignated => cdhash H"0123456789abcdef0123456789abcdef01234567"\n`;
+
+test("release signature check accepts ad-hoc only when the release declares adhoc", () => {
+  assert.doesNotThrow(() => mac.assertMacReleaseSignature(adhocReport, "", "adhoc"));
+  assert.throws(() => mac.assertMacReleaseSignature(adhocReport, ""), /ad-hoc signed but declares the pinned release identity/);
+  assert.throws(() => mac.assertMacReleaseSignature(adhocReport, "", "identity"), /ad-hoc signed but declares/);
+  assert.throws(() => mac.assertMacReleaseSignature(adhocReport.replace(mac.MAC_BUNDLE_ID, "com.example.other"), "", "adhoc"), /identifier differs/);
+  assert.throws(() => mac.assertMacReleaseSignature(pinnedReport, mac.macReleaseSigning.identitySha1, "adhoc"), /declares ad-hoc signing but carries another signature/);
+  assert.throws(() => mac.assertMacReleaseSignature("TeamIdentifier=not set\n", "", "adhoc"), /unsigned/);
+  assert.throws(() => mac.assertMacReleaseSignature(pinnedReport, mac.macReleaseSigning.identitySha1, "self"), /Unknown declared macOS signing/);
+});
+
+test("an app signed with the pinned identity is never replaced by an ad-hoc or unsigned one", () => {
+  assert.throws(() => mac.assertNoMacSigningDowngrade(pinnedReport, adhocReport), /Refusing to replace a Branch app signed with the pinned release identity by an ad-hoc signed copy/);
+  assert.throws(() => mac.assertNoMacSigningDowngrade(pinnedReport, "code object is not signed at all"), /Refusing to replace/);
+  assert.throws(() => mac.assertNoMacSigningDowngrade(pinnedReport, undefined), /Refusing to replace/);
+  assert.doesNotThrow(() => mac.assertNoMacSigningDowngrade(pinnedReport, pinnedReport));
+  assert.doesNotThrow(() => mac.assertNoMacSigningDowngrade(adhocReport, adhocReport));
+  assert.doesNotThrow(() => mac.assertNoMacSigningDowngrade(adhocReport, pinnedReport));
+  assert.doesNotThrow(() => mac.assertNoMacSigningDowngrade(undefined, adhocReport));
+  assert.equal(mac.macSignatureIsPinnedIdentity(`${pinnedReport}Signature=adhoc\n`), false);
+});
+
+test("installMacApp refuses to swap a pinned-identity Branch.app for an ad-hoc bundle", async () => {
+  const root = await mkdtemp(join(tmpdir(), "branch-mac-downgrade-"));
+  try {
+    const apps = join(root, "Applications");
+    const source = join(root, "stage", "Branch Agent.app");
+    for (const [app, marker] of [[source, "adhoc"], [join(apps, "Branch.app"), "pinned"]]) {
+      await mkdir(join(app, "Contents"), { recursive: true });
+      await writeFile(join(app, "Contents", "Info.plist"), plist());
+      await writeFile(join(app, "Contents", "MARKER"), marker);
+    }
+    const reports = { adhoc: adhocReport, pinned: pinnedReport };
+    const readSignature = async app => reports[(await readFile(join(app, "Contents", "MARKER"), "utf8").catch(() => ""))];
+    await assert.rejects(mac.installMacApp(source, { applicationsDirectory: apps, register: async () => {}, stripQuarantine: async () => {}, readSignature }), /Refusing to replace/);
+    assert.equal(await readFile(join(apps, "Branch.app", "Contents", "MARKER"), "utf8"), "pinned");
+    assert.deepEqual((await readdir(apps)).sort(), ["Branch.app"]);
+    reports.adhoc = pinnedReport;
+    await mac.installMacApp(source, { applicationsDirectory: apps, register: async () => {}, stripQuarantine: async () => {}, readSignature });
+    assert.equal(await readFile(join(apps, "Branch.app", "Contents", "MARKER"), "utf8"), "adhoc");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("release signature check rejects ad-hoc, unsigned, and drifted identity", () => {
   const designated = `designated => ${mac.macReleaseSigning.designatedRequirement}`;
   const good = `Identifier=${mac.MAC_BUNDLE_ID}\nTeamIdentifier=${mac.macReleaseSigning.teamId}\n${designated}\n`;
   assert.doesNotThrow(() => mac.assertMacReleaseSignature(good, mac.macReleaseSigning.identitySha1.toLowerCase()));
+  assert.doesNotThrow(() => mac.assertMacReleaseSignature(good, mac.macReleaseSigning.identitySha1, "identity"));
   assert.throws(() => mac.assertMacReleaseSignature(`${good}Signature=adhoc\n`, mac.macReleaseSigning.identitySha1), /ad-hoc/);
   assert.throws(() => mac.assertMacReleaseSignature("TeamIdentifier=not set\n", mac.macReleaseSigning.identitySha1), /unsigned/);
   assert.throws(() => mac.assertMacReleaseSignature(good.replace(designated, "designated => identifier \"other\""), mac.macReleaseSigning.identitySha1), /designated requirement/);
@@ -212,10 +311,13 @@ test("packaging, updates, and CI keep the Applications install and the pinned si
   const bundleCheck = await text("scripts/check-mac-bundle.mjs");
   assert.match(release, /darwinPackagerOptions\(macIcon\)/);
   assert.match(release, /assets\/branch\.icns/);
-  assert.doesNotMatch(release, /adhoc/);
-  assert.match(release, /macOS releases require a stable code-signing identity/);
+  assert.match(release, /macSigningPlan\(\)/);
+  assert.match(release, /signing: macSigning\.signing/);
   const stampAt = release.indexOf("await stampMacBundle");
-  assert.ok(stampAt !== -1 && release.indexOf('["sign"', stampAt) > stampAt);
+  assert.ok(stampAt !== -1 && release.indexOf("macSignCommand(macSigning, join(app, MAC_ARCHIVE_BUNDLE_FOLDER))", stampAt) > stampAt);
+  // The workflow reads the declared signing from the release proof and allows ad-hoc only for an "adhoc" build.
+  assert.match(componentRelease, /signing="\$\(node -p 'JSON\.parse\(require\("node:fs"\)\.readFileSync\(process\.argv\[1\], "utf8"\)\)\.signing' "\$RELEASE_ASSETS\/release-proof-darwin-arm64\.json"\)"/);
+  assert.match(componentRelease, /mod\.assertMacReleaseSignature\(text, actual, process\.argv\[3\]\);' "\$GITHUB_WORKSPACE\/desktop\/dist\/mac-applications\.js" "\$report" "\$signing"/);
   assert.match(updater, /ensureMacApplicationsInstall/);
   assert.match(updater, /chooseStagedMacBundle/);
   assert.match(helper, /lsregister/);

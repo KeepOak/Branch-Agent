@@ -1,6 +1,6 @@
 // The window's connection to the engine's gateway. It drives Branch Agent's own wire client
 // (GatewayProtocolClient and GatewayBrowserDeviceAuthLifecycle from @branch/gateway-client/browser),
-// the way Branch Agent's Control UI does in ui/src/api/gateway.ts at openclaw/openclaw@57e0aaa1c190.
+// the way Branch Agent's Control UI does in ui/src/api/gateway.ts.
 import {
   ConnectErrorDetailCodes,
   GATEWAY_CLIENT_CAPS,
@@ -45,7 +45,7 @@ function errorCodeOf(error: unknown): string {
 }
 
 export const OPERATOR_ROLE = "operator";
-/** The same scopes OpenClaw's own browser UI asks for (ui/src/api/gateway-connect-plan.ts, CONTROL_UI_OPERATOR_SCOPES). */
+/** The same scopes 's own browser UI asks for (ui/src/api/gateway-connect-plan.ts, CONTROL_UI_OPERATOR_SCOPES). */
 export const OPERATOR_SCOPES = [
   "operator.admin",
   "operator.read",

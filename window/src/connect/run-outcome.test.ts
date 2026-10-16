@@ -14,6 +14,7 @@ const fake = vi.hoisted(() => ({
   sent: [] as string[],
   inFlight: null as string | null,
   ackStatus: "started",
+  historyGate: null as Promise<void> | null,
 }));
 
 vi.mock("./gateway", () => ({
@@ -26,6 +27,7 @@ vi.mock("./gateway", () => ({
     async request(method: string, params?: Record<string, unknown>): Promise<unknown> {
       switch (method) {
         case "chat.history":
+          await fake.historyGate;
           if (fake.historyError) throw new Error(fake.historyError);
           return { messages: fake.transcript.map((m) => ({ ...m })), ...(fake.inFlight ? { inFlightRun: { runId: fake.inFlight, text: "" } } : {}) };
         case "chat.send":
@@ -71,10 +73,115 @@ async function connected(): Promise<SaplingSession> {
 }
 
 afterEach(() => {
-  Object.assign(fake, { options: null, transcript: [], ledgerError: null, historyError: null, aborted: true, sent: [], inFlight: null, ackStatus: "started" });
+  Object.assign(fake, { options: null, transcript: [], ledgerError: null, historyError: null, aborted: true, sent: [], inFlight: null, ackStatus: "started", historyGate: null });
 });
 
 describe("how a run ends", () => {
+  it("removes working controls immediately while terminal history is still loading", async () => {
+    const session = await connected();
+    await session.send("Hello");
+    const runId = fake.sent[0]!;
+    await agent(runId, 1, "thinking", { delta: "Finished reasoning" });
+    await agent(runId, 2, "assistant", { delta: "Completed reply" });
+    let release!: () => void;
+    fake.historyGate = new Promise<void>((resolve) => { release = resolve; });
+    fake.options?.onEvent({ event: "chat", payload: { runId, sessionKey: KEY, state: "final" } });
+    expect(session.getSnapshot().liveRunId).toBeNull();
+    expect(session.getSnapshot().live).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "thinking", live: false }), expect.objectContaining({ kind: "text", streaming: false })]));
+    expect(session.getSnapshot().live).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "text", text: "Completed reply" })]));
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(session.getSnapshot().live).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "text", text: "Completed reply" })]));
+    release();
+    await settle();
+  });
+
+  it("retains completed output after a failed history read until a successful reload", async () => {
+    const session = await connected();
+    await session.send("Hello");
+    const runId = fake.sent[0]!;
+    await agent(runId, 1, "assistant", { delta: "Completed reply" });
+    fake.historyError = "History temporarily unavailable";
+    await emit("chat", { runId, sessionKey: KEY, state: "final" });
+    expect(session.getSnapshot().liveRunId).toBeNull();
+    expect(session.getSnapshot().live).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "text", text: "Completed reply" })]));
+    fake.historyError = null;
+    fake.transcript = [{ role: "assistant", content: "Completed reply", stopReason: "stop", timestamp: 2 }];
+    await session.reload();
+    expect(session.getSnapshot().live).toEqual([]);
+    expect(session.getSnapshot().history).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "text", text: "Completed reply" })]));
+    session.stop();
+  });
+
+  it("settles a completed send from authoritative idle history when its terminal event was missed", async () => {
+    const session = await connected();
+    await session.send("Hello");
+    const runId = fake.sent[0]!;
+    await agent(runId, 1, "lifecycle", { phase: "start" });
+    fake.transcript = [
+      { role: "user", content: "Hello", idempotencyKey: `${runId}:user`, timestamp: 1 },
+      { role: "assistant", content: "Hi", stopReason: "stop", timestamp: 2, __branch: { runId: "runtime-run" } },
+    ];
+    await emit("sessions.changed", { sessionKey: KEY, status: "done", hasActiveRun: false });
+    await settle();
+    await settle();
+    expect(session.getSnapshot().liveRunId).toBeNull();
+    expect(session.getSnapshot().ended).toMatchObject({ runId, outcome: "done" });
+  });
+
+  it("settles a terminal session event by clientRunId when the runtime uses another id", async () => {
+    const session = await connected();
+    await session.send("Hello");
+    const runId = fake.sent[0]!;
+    await emit("sessions.changed", { sessionKey: KEY, runId: "runtime-run", clientRunId: runId, phase: "end" });
+    expect(session.getSnapshot().liveRunId).toBeNull();
+  });
+
+  it("does not let an old history response settle events that arrived during the read", async () => {
+    const session = await connected();
+    await session.send("Hello");
+    const runId = fake.sent[0]!;
+    fake.transcript = [
+      { role: "user", content: "Hello", idempotencyKey: `${runId}:user`, timestamp: 1 },
+      { role: "assistant", content: "Hi", stopReason: "stop", timestamp: 2, __branch: { runId } },
+    ];
+    let release!: () => void;
+    fake.historyGate = new Promise<void>((resolve) => { release = resolve; });
+    const reading = session.reload();
+    await agent(runId, 1, "assistant", { delta: "Continuing" });
+    release();
+    await reading;
+    expect(session.getSnapshot().liveRunId).toBe(runId);
+  });
+
+  it("keeps a newer turn running when the previous turn's terminal history lands late", async () => {
+    const session = await connected();
+    await session.send("First");
+    const first = fake.sent[0]!;
+    let release!: () => void;
+    fake.historyGate = new Promise<void>((resolve) => { release = resolve; });
+    fake.options?.onEvent({ event: "chat", payload: { runId: first, sessionKey: KEY, state: "final" } });
+    await session.send("Second");
+    const second = fake.sent[1]!;
+    fake.inFlight = second;
+    await agent(second, 1, "lifecycle", { phase: "start" });
+    release();
+    await settle();
+    await settle();
+    expect(session.getSnapshot()).toMatchObject({ liveRunId: second, pendingUser: "Second", doneAt: null });
+  });
+
+  it("does not settle an active continuation just because its transcript contains a final reply", async () => {
+    const session = await connected();
+    await session.send("Hello");
+    const runId = fake.sent[0]!;
+    fake.inFlight = runId;
+    fake.transcript = [
+      { role: "user", content: "Hello", idempotencyKey: `${runId}:user`, timestamp: 1 },
+      { role: "assistant", content: "Hi", stopReason: "stop", timestamp: 2, __branch: { runId } },
+    ];
+    await session.reload();
+    expect(session.getSnapshot().liveRunId).toBe(runId);
+  });
   it("Stop ends the turn as Stopped: no Done face, no cheer, and the turn says so even with nothing written", async () => {
     const session = await connected();
     await session.send("Write an essay");

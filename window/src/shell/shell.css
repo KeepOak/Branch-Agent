@@ -332,11 +332,13 @@
   font-size: 12.5px;
 }
 
-/* Toasts (§4.10, §5.11): bottom centre, --btn background, pill, 6 s */
+/* Keep transient notices below the top bar, clear of the growing composer. */
 .toasts {
   position: fixed;
   left: 50%;
-  bottom: 108px;
+  top: calc(var(--bar-h) + 12px);
+  width: max-content;
+  max-width: calc(100vw - 32px);
   transform: translateX(-50%);
   z-index: var(--z-toast);
   display: flex;

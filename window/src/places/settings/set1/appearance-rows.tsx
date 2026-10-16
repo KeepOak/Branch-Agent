@@ -4,7 +4,7 @@
 // TODO(engine-lane): TODO(desktop-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { Keep, Lv, Opt, RowEntry } from "../kit";
 
-export type Kind = "sw" | "seg" | "pick";
+type Kind = "sw" | "seg" | "pick";
 export type RowSpec = { sec: string; group?: string; title: string; key: string; kind: Kind; def: string | boolean; sub?: string; help?: string; opts?: Opt[]; lv?: Lv; keep?: Keep; off?: string };
 
 /** Only on parts the window draws with a right-click Hide this (shell/shown.ts HIDEABLE). */
@@ -15,17 +15,17 @@ const o = (pairs: [string, string][], off: Record<string, string> = {}): Opt[] =
 /** The page has two "Reading" sections; the second one's rows are kept under this name. */
 export const READING_MORE = "Reading ";
 
-export const ROWS: RowSpec[] = [
+const ROWS: RowSpec[] = [
+  { sec: "Theme", title: "Reduce transparency", key: "reduceTransparency", kind: "sw", def: false, sub: "Swaps the glass for solid tinted surfaces. Easier to read, and lighter on older computers.", keep: "everywhere" },
   { sec: "Theme", title: "More contrast", key: "contrast", kind: "sw", def: false, sub: "Stronger lines and text, from each theme’s own high-contrast colours.", keep: "everywhere" },
   { sec: "Agents", title: "Size", key: "agentSize", kind: "seg", def: "m", sub: "Small keeps it out of the way.", opts: o([["s", "Small"], ["m", "Medium"], ["l", "Large"]]) },
   { sec: "Background", title: "Behind the glass", key: "bg", kind: "seg", def: "none", keep: "everywhere", sub: "The grove and the oak wear the theme’s colours. A scrim in the theme’s own colour keeps text readable.",
     opts: o([["none", "None"], ["painted", "Painted grove"], ["grove", "The grove"], ["oak3d", "The oak in 3D"], ["rings", "Growth rings"], ["own", "Your own"]], { own: "Branch can’t keep a file of your own as a background yet." }) },
   { sec: "Background", title: "Season", key: "season", kind: "seg", def: "auto", keep: "everywhere", sub: "Fireflies in summer, petals in spring, leaves in autumn, snow in winter.", opts: o([["auto", "By the date"], ["spring", "Spring"], ["summer", "Summer"], ["autumn", "Autumn"], ["winter", "Winter"]]) },
   { sec: "Reading", title: "Text size", key: "size", kind: "seg", def: "Regular", keep: "device", sub: "Changes every screen.", opts: o([["small", "Small"], ["Regular", "Regular"], ["large", "Large"], ["larger", "Larger"], ["largest", "Largest"]]) },
-  { sec: "The pet", title: "Let it roam", key: "roam", kind: "sw", def: false, keep: "everywhere", sub: "The pet walks along the chat, and the Trunk card steps aside. Off keeps the card as the one pet." },
   { sec: "The pet", title: "Pet sounds", key: "petSounds", kind: "sw", def: false, keep: "everywhere", sub: "A tiny sound when you pat it.", help: "Off until you turn it on." },
   { sec: "What’s shown", title: "The usage ring", key: "show.usage", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
-  { sec: "What’s shown", title: "The gateway in the status bar", key: "show.gateway", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
+  { sec: "What’s shown", title: "Whether Branch is running, in the status bar", key: "show.gateway", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
   { sec: "What’s shown", title: "Graphics and memory", key: "show.gfx", kind: "sw", def: false, keep: "everywhere", sub: "Shows this computer’s graphics card and memory.", help: "Off until you choose: it keeps checking this computer’s graphics card and memory." },
   { sec: "What’s shown", title: "Projects in the list", key: "show.projects", kind: "sw", def: true, keep: "everywhere", sub: SHOWN },
   { sec: "What’s shown", title: "What a working Trunk is doing, in the list", key: "show.live", kind: "sw", def: true, keep: "everywhere", sub: "The row’s preview shows its latest step while it works." },
@@ -35,7 +35,6 @@ export const ROWS: RowSpec[] = [
   { sec: READING_MORE, title: "Messages", key: "msgLook", kind: "seg", def: "bubbles", sub: "Full width reads like a document.", opts: o([["bubbles", "Chat bubbles"], ["full", "Full width"]]) },
   { sec: READING_MORE, title: "Text direction", key: "dir", kind: "seg", def: "auto", sub: "Arabic, Hebrew and Persian read right to left; the conversation follows.", opts: o([["auto", "Follow the language"], ["rtl", "Right to left"], ["ltr", "Left to right"]]) },
   { sec: READING_MORE, title: "Show maths as formulas", key: "math", kind: "sw", def: true, sub: "LaTeX in replies shows as typeset maths." },
-  { sec: READING_MORE, title: "Scroll bars", key: "scroll", kind: "seg", def: "scrolling", opts: o([["scrolling", "While scrolling"], ["always", "Always"]]) },
   { sec: READING_MORE, title: "Code colours", key: "codeCol", kind: "pick", def: "theme", sub: "For code blocks and the terminal view.", opts: o([["theme", "Follow the theme"], ["github", "GitHub"], ["monokai", "Monokai"], ["solarized", "Solarized"], ["tm", "Your .tmTheme file"]], { tm: "Branch can’t read a .tmTheme file yet." }) },
   { sec: READING_MORE, title: "Inside an editor, follow its theme", key: "edTheme", kind: "sw", def: true, off: "Only when Branch runs inside VS Code or JetBrains; this window runs on its own.", sub: "In VS Code or JetBrains, the Branch panel wears the editor’s colours." },
   { sec: "Window", title: "Conversations as tabs", key: "tabs", kind: "sw", def: false, sub: "A tab row above the conversation for the ones you opened; close the ones you’re done with." },
@@ -49,7 +48,6 @@ export const ROWS: RowSpec[] = [
 
 export const rowsOf = (sec: string) => ROWS.filter((r) => r.sec === sec);
 export const rowOf = (key: string): RowSpec => ROWS.find((r) => r.key === key) as RowSpec;
-export const DEFAULTS: Record<string, unknown> = Object.fromEntries(ROWS.map((r) => [r.key, r.def]));
 
 /** Rows the page draws by hand (galleries, buttons), for the search. */
 const OTHER: [string, string, Lv][] = [

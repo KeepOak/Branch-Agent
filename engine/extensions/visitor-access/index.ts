@@ -4,6 +4,7 @@ import { VisitorPolicyClient } from "./src/cloudflare.js";
 import { visitorConfigSchema, visitorPluginSchema } from "./src/config.js";
 import { visitorErrorText } from "./src/errors.js";
 import { profileUsesVisitorRole, resolveVisitorRole } from "./src/roles.js";
+import { registerVisitorGatewayMethods } from "./src/gateway.js";
 import { visitorRuntimeStore, type VisitorRuntime } from "./src/runtime.js";
 import { createVisitorTools } from "./src/tools.js";
 import { VisitorAccessService, type VisitorGrant } from "./src/visitors.js";
@@ -25,6 +26,7 @@ function registerVisitorPlugin(api: BranchPluginApi): void {
     return;
   }
   const config = visitorConfigSchema.parse(api.pluginConfig);
+  registerVisitorGatewayMethods(api, config);
   const lifetime = new AbortController();
   const store = api.runtime.state.openKeyedStore<VisitorGrant>({
     namespace: "visitor-grants",

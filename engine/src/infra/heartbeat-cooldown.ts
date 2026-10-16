@@ -23,6 +23,11 @@ type ShouldDeferInput = {
   recentRunStarts?: readonly number[];
   /** Work already retained by the wake queue after a prior guard deferral. */
   retainedWork?: boolean;
+  /**
+   * Polite on battery (Private #454 D): set only for a timed poll that can wait. It then runs no sooner than this
+   * long after the last run.
+   */
+  batteryBackoffMs?: number;
 };
 
 export function shouldDeferWake(input: ShouldDeferInput): DeferDecision {
@@ -37,6 +42,13 @@ export function shouldDeferWake(input: ShouldDeferInput): DeferDecision {
   }
   if (input.intent === "immediate") {
     return { defer: false };
+  }
+
+  if (input.batteryBackoffMs !== undefined && input.lastRunStartedAtMs !== undefined && input.intent !== "task") {
+    const batteryRetryAtMs = input.lastRunStartedAtMs + input.batteryBackoffMs;
+    if (input.now < batteryRetryAtMs) {
+      return { defer: true, reason: "not-due", retryAtMs: batteryRetryAtMs };
+    }
   }
 
   if (input.intent === "scheduled") {

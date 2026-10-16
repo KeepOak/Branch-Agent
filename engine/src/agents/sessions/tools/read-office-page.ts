@@ -184,7 +184,8 @@ export function createOfficeReadTextPage(params: OfficePageParams) {
     adaptive: params.adaptive,
   });
   if (page.details.kind === "truncated") {
-    page.details.truncation.totalBytes = scan.selectedBytes;
+    // Whole-file size, matching the plain reader's contract; the page slice is never the file size.
+    page.details.truncation.totalBytes = params.fileBytes;
   }
   if (!scan.selectedHasText) {
     const subject = scan.start === 0 && endLine === scan.line ? "File" : "Selected range";

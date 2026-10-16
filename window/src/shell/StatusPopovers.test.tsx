@@ -129,23 +129,21 @@ describe("status popovers", () => {
     expect(rule(".aLeftT5")).toContain("flex: none");
   });
   it("Version: up to date has no install item", async () => {
-    const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "1.0.0", latest: null, notes: [], installing: false, waiting: null }} version="1.0.0" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);
+    const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "1.0.0", latest: null, notes: [], installing: false, waiting: null }} version="1.0.0" onWhatsNew={() => {}} onRemind={() => {}} />);
     expect(host.textContent).toContain("Branch is up to date.");
     expect(button(host, "Install when idle")).toBeUndefined();
   });
   it("Version: ready label keeps the build id out of the popover", async () => {
-    const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "0.4.4-build-current", latest: "0.4.5-build-next", notes: [], installing: false, waiting: null }} version="0.4.4-build-current" onWhatsNew={() => {}} onInstall={() => {}} onRemind={() => {}} />);
+    const host = await show(<VersionPopover above={above} onClose={() => {}} update={{ current: "0.4.4-build-current", latest: "0.4.5-build-next", notes: [], installing: false, waiting: null }} version="0.4.4-build-current" onWhatsNew={() => {}} onRemind={() => {}} />);
     expect(host.textContent).toContain("Branch 0.4.5 is ready");
     expect(host.textContent).not.toContain("-build-next");
   });
-  it("Version: install when idle is only available in the desktop app", async () => {
+  it("Version: the desktop applies in place with no install control in the window", async () => {
     const update = { current: "1.0.0", latest: "1.1.0", notes: [], installing: false, waiting: null };
-    const install = vi.fn();
-    const host = await show(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" desktopInstall onWhatsNew={() => {}} onInstall={install} onRemind={() => {}} />);
-    expect(host.textContent).toContain("Installs by itself when nothing is running.");
-    await act(async () => button(host, "Install when idle").click());
-    expect(install).toHaveBeenCalledOnce();
-    await act(async () => root?.render(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" onWhatsNew={() => {}} onInstall={install} onRemind={() => {}} />));
+    const host = await show(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" desktopInstall onWhatsNew={() => {}} onRemind={() => {}} />);
+    expect(host.textContent).toContain("It applies by itself, in place, the next time no Trunk is working.");
+    expect(button(host, "Install when idle")).toBeUndefined();
+    await act(async () => root?.render(<VersionPopover above={above} onClose={() => {}} update={update} version="1.0.0" onWhatsNew={() => {}} onRemind={() => {}} />));
     expect(host.textContent).toContain("Ready to install on the computer running Branch: open Branch there to install it.");
     expect(button(host, "Install when idle")).toBeUndefined();
   });
@@ -169,3 +167,24 @@ describe("usage popover: sign in again", () => {
   });
 });
 
+
+// "Check every account now" stamps "Checked at" only when the check succeeds. A failed check shows its note and no time.
+describe("Usage popover: Check every account now stamps only on success", () => {
+  const claudeAccount = { provider: "anthropic", displayName: "Claude", authProfileId: "anthropic:one", plan: "Max (20x)", windows: [{ label: "5h", usedPercent: 20, resetsAt: Date.now() + 3_600_000 }] };
+  it("says when it last checked after a successful check", async () => {
+    const request = vi.fn(async () => ({ updatedAt: Date.now(), providers: [claudeAccount] }));
+    const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits({ updatedAt: Date.now(), providers: [claudeAccount] })} request={request as never} onOpenUsage={() => {}} />);
+    expect(host.textContent).not.toContain("Checked at");
+    await act(async () => button(host, "Check every account now").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(host.textContent).toContain("Checked at");
+  });
+  it("shows no time when the check fails", async () => {
+    const request = vi.fn(async () => { throw new Error("gateway unreachable"); });
+    const host = await show(<UsagePopover above={above} onClose={() => {}} limits={readLimits({ updatedAt: Date.now(), providers: [claudeAccount] })} request={request as never} onOpenUsage={() => {}} />);
+    await act(async () => button(host, "Check every account now").click());
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(host.textContent).toContain("Couldn’t check accounts right now.");
+    expect(host.textContent).not.toContain("Checked at");
+  });
+});

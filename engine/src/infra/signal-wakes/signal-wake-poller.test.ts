@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { formatBranchVerdictComment } from "./signal-wake-classify.js";
 import type { SignalDecision } from "./signal-wake-decide.js";
 import { createSignalWakeGitHub, type RepoRef } from "./signal-wake-github.js";
 import { SIGNAL_POLL_INTERVAL_MS, startSignalWakePoller } from "./signal-wake-poller.js";
@@ -218,6 +219,24 @@ describe("signal wake poller", () => {
     const { poller } = start({ gh, notify });
     await poller.tick();
     expect(notify).not.toHaveBeenCalled();
+    await poller.stop();
+  });
+
+  it("names the reviewing Trunk in the FIX wake", async () => {
+    const notify = vi.fn();
+    const gh = openPr(HEAD_A);
+    const body = formatBranchVerdictComment({
+      verdict: "FIX",
+      headSha: HEAD_A,
+      reviewer: "builder-2",
+      body: "- problem",
+    });
+    gh.comments[7] = [{ id: 601, login: "stabrea", body }];
+    const { poller } = start({ gh, notify });
+    await poller.tick();
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify.mock.calls[0]?.[0]).toMatchObject({ reason: "fix-verdict", pr: 7 });
+    expect(notify.mock.calls[0]?.[0]?.text).toContain("Verdict FIX from builder-2 on PR #7");
     await poller.stop();
   });
 

@@ -59,7 +59,12 @@ export async function withReactionState(consume: () => Promise<void>) {
 }
 
 export async function call(
-  method: "session.reactions.set" | "session.reactions.list" | "session.context.set",
+  method:
+    | "session.reactions.set"
+    | "session.reactions.list"
+    | "session.context.set"
+    | "sessions.messages.pin"
+    | "sessions.messages.delete",
   params: Record<string, unknown>,
   requestClient: GatewayClient | null = client("alice", "Alice"),
   requestContext = context(),
