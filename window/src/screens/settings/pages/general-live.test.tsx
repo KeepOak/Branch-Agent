@@ -92,6 +92,13 @@ it("keeps Classic General's working controls: projects, Keyboard shortcuts and t
   expect(JSON.parse(String((patch[1] as { raw: string }).raw))).toEqual({ agents: { defaults: { compaction: { model: "openai/gpt-mini" } } } });
 });
 
+it("greys Add my location to messages until a later update", async () => {
+  await mount(engineOf().engine, "advanced");
+  const location = host.querySelector<HTMLElement>('[data-row="general.writing.location"]')!;
+  expect(location.querySelector(".r1s-note")?.textContent).toBe("Add my location to messages comes in a later update.");
+  expect(location.querySelector("button")?.hasAttribute("disabled")).toBe(true);
+});
+
 it("opens a pinned row's page and unpins it", async () => {
   const onPage = vi.fn();
   const { engine } = engineOf({ pins: [["appearance", "Theme", 0]] });
