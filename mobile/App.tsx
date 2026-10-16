@@ -26,6 +26,8 @@ import { ApprovalsScreen } from './src/screens/ApprovalsScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { ChatsScreen } from './src/screens/ChatsScreen';
 import { ComputersScreen } from './src/screens/ComputersScreen';
+import { TakeControlScreen } from './src/screens/TakeControlScreen';
+import type { ComputerRow } from './src/computers/computerList';
 import { EnterCodeScreen } from './src/screens/EnterCodeScreen';
 import { PairedScreen } from './src/screens/PairedScreen';
 import { RefusedScreen } from './src/screens/RefusedScreen';
@@ -47,6 +49,7 @@ type Route = 'welcome' | 'scan' | 'code';
 type PairedRoute =
   | { name: 'chats' }
   | { name: 'computers' }
+  | { name: 'take-control'; computer: ComputerRow }
   | { name: 'computer'; from?: 'settings' }
   | { name: 'agents' }
   | { name: 'chat'; row: ChatRow }
@@ -84,11 +87,13 @@ function Shell({
   notifier,
   appState,
   identity,
+  store,
 }: {
   session: PairingSession;
   notifier: Notifier;
   appState: AppStateSource;
   identity: AppIdentity;
+  store?: KeyValueStore;
 }) {
   const theme = useTheme();
   const state = usePairingState(session);
@@ -185,11 +190,12 @@ function Shell({
     setRoute('welcome');
   }, [state.step, chats, agents, computers, inbox]);
 
-  // Android's back gesture leaves Computers, Agents, Your computer, Settings, a chat, Voice or Approvals for Chats, like the on-screen back button.
+  // Android's back gesture leaves take-control for Computers, Voice for its chat, and Computers, Agents, Your computer, Settings, a chat or Approvals for Chats, like the on-screen back button.
   useEffect(() => {
     if (state.step !== 'paired' || pairedRoute.name === 'chats') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (pairedRoute.name === 'computer' && pairedRoute.from === 'settings') setPairedRoute({ name: 'settings' });
+      if (pairedRoute.name === 'take-control') setPairedRoute({ name: 'computers' });
+      else if (pairedRoute.name === 'computer' && pairedRoute.from === 'settings') setPairedRoute({ name: 'settings' });
       else if (pairedRoute.name === 'voice') setPairedRoute({ name: 'chat', row: pairedRoute.row });
       else setPairedRoute(CHATS);
       return true;
@@ -251,6 +257,17 @@ function Shell({
             onRefresh={() => computers.refresh()}
             onBack={() => setPairedRoute(CHATS)}
             onThisPhone={() => setPairedRoute({ name: 'computer' })}
+            onOpenComputer={(computer) => setPairedRoute({ name: 'take-control', computer })}
+          />
+        );
+      } else if (pairedRoute.name === 'take-control') {
+        screen = (
+          <TakeControlScreen
+            computer={pairedRoute.computer}
+            link={session}
+            newId={() => session.newId()}
+            store={store}
+            onBack={() => setPairedRoute({ name: 'computers' })}
           />
         );
       } else if (pairedRoute.name === 'computer') {
@@ -398,7 +415,7 @@ export default function App({
     // Starting from the window's known insets draws the first frame at once instead of a blank one.
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <ThemeProvider scheme={scheme} store={themeStore ?? (given ? undefined : deviceStore())}>
-        <Shell session={session} notifier={notifier} appState={appState} identity={identity} />
+        <Shell session={session} notifier={notifier} appState={appState} identity={identity} store={themeStore ?? (given ? undefined : deviceStore())} />
       </ThemeProvider>
     </SafeAreaProvider>
   );

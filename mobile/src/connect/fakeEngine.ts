@@ -97,9 +97,18 @@ export const FAKE_ENGINE_METHODS = [
   'plugin.approval.list',
   'exec.approval.resolve',
   'plugin.approval.resolve',
+  'computer.status',
+  'computer.invoke',
+  'sessions.describe',
+  'sessions.goal.update',
+  'browser.request',
   'talk.session.create',
   'talk.session.close',
 ] as const;
+
+/** 1×1 PNG; tests and screenshots use the snapshot payload's width and height as the picture size. */
+export const FAKE_SCREEN_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 export type FakeEngineOptions = {
   version?: string;
@@ -130,6 +139,9 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   let refusal: { code: string; message: string } | null = null;
   let sessions = options.sessions ?? [];
   let environments = options.environments ?? [];
+  const goals = new Map<string, { id: string; status: string }>();
+  let browserTabs: Array<{ targetId: string; title: string; url: string; type: string }> = [];
+  let tabSeq = 0;
   const agents = options.agents ?? { defaultId: 'main', mainKey: 'main', scope: 'per-sender', agents: [{ id: 'main', name: 'Branch Agent' }] };
   const failures = new Map<string, { message: string; details?: unknown; code?: string }>();
   const histories = new Map<string, { messages: unknown[]; inFlightRun?: unknown }>();
@@ -225,6 +237,55 @@ export function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
         return { ok: true, payload: approvals.exec };
       case 'plugin.approval.list':
         return { ok: true, payload: approvals.plugin };
+      case 'sessions.describe': {
+        const key = String((params as { key?: unknown } | null)?.key ?? '');
+        const row = (sessions as Array<Record<string, unknown>>).find((s) => s.key === key) ?? { key };
+        const stored = goals.get(key);
+        const inferred = row.hasActiveRun === true && !stored ? { id: `goal-${key}`, status: 'active' } : stored;
+        return { ok: true, payload: { session: { ...row, ...(inferred ? { goal: inferred } : {}) } } };
+      }
+      case 'sessions.goal.update': {
+        const p = (params ?? {}) as { sessionKey?: string; goalId?: string; action?: string };
+        const key = String(p.sessionKey ?? '');
+        const id = String(p.goalId ?? '');
+        if (p.action === 'pause' || p.action === 'resume') goals.set(key, { id, status: p.action === 'pause' ? 'paused' : 'active' });
+        return { ok: true, payload: { ok: true } };
+      }
+      case 'browser.request': {
+        const p = (params ?? {}) as { path?: string; body?: Record<string, unknown> };
+        const path = String(p.path ?? '');
+        const body = p.body ?? {};
+        if (path === '/') return { ok: true, payload: { running: true } };
+        if (path === '/tabs') return { ok: true, payload: { tabs: browserTabs } };
+        if (path === '/tabs/open') {
+          const url = String(body.url ?? 'about:blank');
+          const id = `tab-${++tabSeq}`;
+          browserTabs = [...browserTabs, { targetId: id, title: url === 'about:blank' ? 'New tab' : url, url, type: 'page' }];
+          return { ok: true, payload: { targetId: id } };
+        }
+        if (path === '/navigate') {
+          const id = String(body.targetId ?? '');
+          const url = String(body.url ?? '');
+          browserTabs = browserTabs.map((t) => (t.targetId === id ? { ...t, url, title: url } : t));
+          return { ok: true, payload: { ok: true } };
+        }
+        if (path === '/act') return { ok: true, payload: { ok: true } };
+        return { ok: true, payload: {} };
+      }
+      case 'computer.status':
+        return { ok: true, payload: { available: true, configured: true, computerUse: { provider: { generation: 'driver-one' } } } };
+      case 'computer.invoke': {
+        const command = String((params as { command?: unknown } | null)?.command ?? '');
+        if (command === 'screen.snapshot') {
+          return {
+            ok: true,
+            payload: {
+              payload: { format: 'png', base64: FAKE_SCREEN_PNG, displayFrameId: 'frame-1', width: 1280, height: 800 },
+            },
+          };
+        }
+        return { ok: true, payload: { payload: { ok: true } } };
+      }
       case 'talk.session.create': {
         const sessionId = `talk-${++asked}`;
         return {
