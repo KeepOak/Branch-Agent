@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Branch",
+    "name": "Branch Agent",
     "slug": "branch",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -10,6 +10,7 @@
       "buildNumber": "1",
       "supportsTablet": false,
       "infoPlist": {
+        "CFBundleDisplayName": "Branch Agent",
         "NSLocalNetworkUsageDescription": "Branch connects to the Branch app on your computer over your home network.",
         "NSPhotoLibraryUsageDescription": "Branch uses your photos so you can send a picture in a chat.",
         "NSCameraUsageDescription": "Branch uses the camera to read the pairing code on your computer and to take a picture to send in a chat.",
@@ -20,14 +21,15 @@
     },
     "android": {
       "package": "com.keepoak.branch",
-      "versionCode": 1,
+      "versionCode": 4,
+      "label": "Branch Agent",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.REQUEST_INSTALL_PACKAGES"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#4f46e5"
+        "backgroundColor": "#153a28"
       },
       "predictiveBackGestureEnabled": false
     },
