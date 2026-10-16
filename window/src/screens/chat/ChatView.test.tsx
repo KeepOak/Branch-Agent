@@ -164,13 +164,17 @@ it("Regular: a live run is one line, the steps disclosure, with the current step
   expect(host.textContent).not.toContain("so far");
   expect(host.textContent).not.toContain("mcp__");
   expect(host.querySelectorAll('[data-testid="steps"]')).toHaveLength(1);
-  expect(host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!.open).toBe(false);
+  const fold = host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!;
+  expect(fold.open).toBe(false);
+  await act(async () => fold.querySelector("summary")!.click());
+  expect(host.querySelector(".r1c-step-sub")).toBeNull();
+  expect(host.querySelector(".r1c-step-title")!.textContent).toBe("Using list pull requests");
   await show({ history }, ["chat.send"]);
   expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
   expect(host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent).toBe("Worked for 48s · 2 steps");
 });
 
-it("Advanced: the full live row stays, and the working line sits aligned in the message column", async () => {
+it("Advanced and Technical: the live row keeps the step detail, and the working line sits in the message column", async () => {
   localStorage.setItem("branch.level", "advanced");
   const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: t0 + 40_000 }];
   await show({ history: history.slice(0, 1), live, running: true }, ["chat.send"]);
@@ -178,6 +182,12 @@ it("Advanced: the full live row stays, and the working line sits aligned in the 
   const line = host.querySelector('[data-testid="working-line"]')!;
   expect(line.textContent).toBe("Working in GitHub");
   expect(line.closest(".r1c-body")).not.toBeNull();
+  const fold = host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!;
+  if (!fold.open) await act(async () => fold.querySelector("summary")!.click());
+  expect(host.querySelector(".r1c-step-sub")!.textContent).toBe(" · KeepOak/Branch-Agent");
+  localStorage.setItem("branch.level", "technical");
+  await act(async () => { window.dispatchEvent(new StorageEvent("storage", { key: "branch.level" })); });
+  expect(host.querySelector(".r1c-step-sub")!.textContent).toBe(" · KeepOak/Branch-Agent");
   localStorage.removeItem("branch.level");
 });
 

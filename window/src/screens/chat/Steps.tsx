@@ -51,7 +51,7 @@ export function StepsList({ steps, thoughts = [], mode, working, durationMs }: {
     </summary>
     <ol className="r1c-steps-list">
       {shownThoughts.filter((t) => t.text.trim()).map((t) => <ThoughtRow key={t.key} thought={t} mode={mode} />)}
-      {steps.map((step) => <StepRow key={step.key} step={step} mode={mode} />)}
+      {steps.map((step) => <StepRow key={step.key} step={step} mode={mode} showDetail={full} />)}
     </ol>
   </details>;
 }
@@ -87,7 +87,7 @@ function save(name: string, text: string, toast: (t: string) => void) {
   toast("Saved " + name + ".");
 }
 
-function StepRow({ step, mode }: { step: Step; mode: WorkMode }) {
+function StepRow({ step, mode, showDetail }: { step: Step; mode: WorkMode; showDetail: boolean }) {
   const { toast } = useThread();
   const [open, setOpen] = useFold(step.key, mode === "verbose");
   const [full, setFull] = useState(false);
@@ -96,11 +96,13 @@ function StepRow({ step, mode }: { step: Step; mode: WorkMode }) {
   const whole = (fullOutput(step.outputKey ?? step.key) ?? step.output ?? "").replace(/\s+$/u, "");
   const input = step.input ? stepInputLines(step.input) : [];
   const title = stepLabel(step);
+  // Advanced and Technical keep the step's own detail beside the plain words. Regular leaves it out.
+  const sub = showDetail && step.title && step.title !== title ? step.title : "";
   return <li className="r1c-step" data-testid="step" data-status={step.status} data-kind={step.tool}>
     <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary data-local="">
         {step.status === "running" ? <span className="r1c-spin" aria-hidden="true" /> : <StepKindIcon kind={stepKind(step.tool)} size={14} />}
-        <span className="r1c-step-title">{title}</span>
+        <span className="r1c-step-title">{title}{sub ? <span className="r1c-step-sub"> · {sub}</span> : null}</span>
         {failed ? <span className="r1c-bad-dot" aria-label={step.status === "denied" ? "Not allowed" : "Failed"} /> : null}
         <span className="r1c-rt" aria-hidden="true"><Icon name="chev" size={13} /></span>
       </summary>
