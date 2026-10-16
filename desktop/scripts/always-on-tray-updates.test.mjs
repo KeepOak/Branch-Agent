@@ -203,6 +203,17 @@ test('Quit warns once while work runs, then stops the service through the engine
   });
 });
 
+test('Quit with nothing running asks nothing and still stops the service through the engine CLI', async t => {
+  await serviceApp(t, idle, async ({ app, tray, dialogs, cliCalls }) => {
+    await eventually(() => tray.tooltip === 'Branch Agent · Ready');
+    assert.equal(item(tray, 'Stop Branch completely'), undefined);
+    item(tray, 'Quit').click();
+    await eventually(() => (app.quitCalls ?? 0) === 1);
+    assert.deepEqual(dialogs.filter(d => d[0] === 'warn').map(d => d[1]), [], 'nothing runs, so Quit does not ask');
+    assert.deepEqual(cliCalls(), ['gateway stop --force --json @engine'], 'Quit keeps what Stop Branch completely did');
+  });
+});
+
 test('trayLabel and readEngineLiveState read the engine state plainly', async () => {
   assert.equal(trayLabel({ running: true, workingTrunks: 2, waitingOnYou: 0 }), '2 Trunks working');
   assert.equal(trayLabel({ running: true, workingTrunks: 1, waitingOnYou: 0 }), '1 Trunk working');
