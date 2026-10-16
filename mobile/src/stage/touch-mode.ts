@@ -2,7 +2,7 @@
 // (a finger moves a pointer). Chosen on the take-control screen and kept on this phone. Copied from
 // window/src/stage/touch-mode.ts, using an in-memory choice plus optional storage instead of localStorage.
 import { useEffect, useState } from "react";
-import type { TouchMode } from "./touch-gestures";
+import type { TouchMode } from "../../../window/src/stage/touch-gestures";
 import type { KeyValueStore } from "../storage/keyValueStore";
 
 export const TOUCH_MODE_KEY = "branch.drive.touchMode";

@@ -1,4 +1,4 @@
-import { GestureMachine, LONG_PRESS_MS, type GestureOut, type PointerIn, type TouchMode } from "./touch-gestures";
+import { GestureMachine, LONG_PRESS_MS, type GestureOut, type PointerIn, type TouchMode } from "../../../window/src/stage/touch-gestures";
 
 const bounds = { left: 0, top: 0, width: 1000, height: 600 };
 const make = (mode: TouchMode) => new GestureMachine({ mode, bounds });

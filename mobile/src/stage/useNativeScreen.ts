@@ -5,7 +5,7 @@ import type { EngineLink } from "../pairing/pairingSession";
 import { computerActions, type ComputerFrame } from "./computer-drive";
 import { computerStatusProblem, type ComputerStatus, type StatusProblem } from "./computer-status-problem";
 import type { RemoteAction } from "./remote-action";
-import type { Size } from "./remote-map";
+import type { Size } from "../../../window/src/stage/remote-map";
 
 type Status = ComputerStatus & { computerUse?: { provider: { generation: string } } };
 type Frame = { format: "png" | "jpeg"; base64: string; displayFrameId?: string; width?: number; height?: number };

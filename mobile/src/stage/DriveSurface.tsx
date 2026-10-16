@@ -1,10 +1,10 @@
 // The surface you drive the computer through while you have it (Take over). Copied from
 // window/src/stage/DriveSurface.tsx and wired to React Native touches instead of DOM pointer events.
-// Geometry lives in remote-map.ts, gestures in touch-gestures.ts; this file only wires them to the view.
+// Geometry and gestures are the window's DOM-free modules; this file only wires them to the view.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, TextInput, View, type GestureResponderEvent, type LayoutChangeEvent } from "react-native";
-import { contentRect, IDENTITY_VIEW, panBy, toRemote, zoomAt, type Point, type Rect, type Size, type View as ZoomView } from "./remote-map";
-import { GestureMachine, LONG_PRESS_MS, type GestureOut } from "./touch-gestures";
+import { contentRect, IDENTITY_VIEW, panBy, toRemote, zoomAt, type Point, type Rect, type Size, type View as ZoomView } from "../../../window/src/stage/remote-map";
+import { GestureMachine, LONG_PRESS_MS, type GestureOut } from "../../../window/src/stage/touch-gestures";
 import { keyPress } from "./drive-keys";
 import { useTouchMode } from "./touch-mode";
 import type { RemoteAction } from "./remote-action";

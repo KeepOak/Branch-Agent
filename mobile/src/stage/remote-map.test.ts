@@ -1,4 +1,4 @@
-import { clampView, contentRect, fittedRect, IDENTITY_VIEW, MAX_ZOOM, panBy, remoteSize, toClient, toRemote, zoomAt } from "./remote-map";
+import { clampView, contentRect, fittedRect, IDENTITY_VIEW, MAX_ZOOM, panBy, remoteSize, toClient, toRemote, zoomAt } from "../../../window/src/stage/remote-map";
 
 const box = { left: 100, top: 50, width: 800, height: 400 };
 

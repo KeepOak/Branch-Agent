@@ -11,7 +11,7 @@ import { browserCall, DEFAULT_BROWSER_ROUTE, profileLine, readTabs, type LiveTab
 import { bw } from "./bw";
 import { DriveSurface } from "./DriveSurface";
 import type { RemoteAction } from "./remote-action";
-import type { Size } from "./remote-map";
+import type { Size } from "../../../window/src/stage/remote-map";
 
 export type BrowserPhase = "loading" | "empty" | "connected" | "error";
 
