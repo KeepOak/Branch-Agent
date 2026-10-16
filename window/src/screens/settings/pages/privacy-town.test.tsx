@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// Settings › Privacy draws the town lookup on the re-hosted page: the list, its credit and its refresh read and write
-// the same settings, and adding a town to messages stays grey until a later update.
+// Settings › Privacy draws the town lookup at Technical only. The list, its credit and its refresh read and write
+// the same settings. Adding a town to messages stays grey, and only at Technical, until a later update.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -44,7 +44,7 @@ function engineOf(config: Record<string, unknown> = {}) {
   return { engine, request };
 }
 const settle = () => act(async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0)); });
-async function mount(level: "regular" | "advanced", config?: Record<string, unknown>) {
+async function mount(level: "regular" | "advanced" | "technical", config?: Record<string, unknown>) {
   localStorage.setItem("branch.level", level);
   const env = engineOf(config);
   await act(async () => root.render(<SettingsFrame engine={env.engine} page="privacy" pages={R1_PAGES} />));
@@ -53,6 +53,7 @@ async function mount(level: "regular" | "advanced", config?: Record<string, unkn
 }
 const row = (id: string) => host.querySelector<HTMLElement>(`[data-row="${id}"]`);
 const field = (id: string) => row(id)?.querySelector("input");
+const shownLevel = () => [...host.querySelectorAll(".r1s-level [role=radio]")].find((b) => b.getAttribute("aria-checked") === "true")?.textContent;
 async function typeIn(input: HTMLInputElement, value: string) {
   await act(async () => {
     input.focus();
@@ -63,32 +64,60 @@ async function typeIn(input: HTMLInputElement, value: string) {
   await settle();
 }
 
-it("shows the usual town list on Privacy and saves a change", async () => {
-  const { request } = await mount("regular");
+const LIST = "privacy.town-lookup.where-the-town-lookup-list-comes-from";
+const CREDIT = "privacy.town-lookup.the-credit-line-for-the-town-list";
+const PAGE = "privacy.town-lookup.the-page-for-that-credit";
+const REFRESH = "privacy.town-lookup.how-often-to-refresh-the-town-list";
+const LOCATION = "privacy.town-lookup.add-my-location-to-messages";
+const SAVED = { plugins: { entries: { geolocation: { config: { databaseUrl: "https://example.com/cities.mmdb.gz", attributionText: "Town list by Example", attributionUrl: "https://example.com/credit", refreshDays: 7 } } } } };
+
+it("hides the town list and adding a location below Technical", async () => {
+  await mount("regular");
+  expect(shownLevel()).toBe("Regular");
   expect(host.querySelector(".r1s-head h1")?.textContent).toBe("Privacy & data");
   expect(host.querySelector(".r1s-classic[data-classic='usage']")).not.toBeNull();
-  expect(field("privacy.town-lookup.where-the-town-lookup-list-comes-from")?.value).toBe("https://download.db-ip.com/free/dbip-city-lite-{yyyy}-{mm}.mmdb.gz");
-  expect(field("privacy.town-lookup.the-credit-line-for-the-town-list")?.value).toBe("IP Geolocation by DB-IP");
-  expect(field("privacy.town-lookup.the-page-for-that-credit")?.value).toBe("https://db-ip.com");
-  expect(field("privacy.town-lookup.how-often-to-refresh-the-town-list")?.value).toBe("30");
-  expect(row("privacy.town-lookup.add-my-location-to-messages")).toBeNull();
-  await typeIn(field("privacy.town-lookup.how-often-to-refresh-the-town-list")!, "14");
-  expect(field("privacy.town-lookup.how-often-to-refresh-the-town-list")?.value).toBe("14");
+  expect(host.querySelector('[aria-label="Town lookup"]')).toBeNull();
+  for (const id of [LIST, CREDIT, PAGE, REFRESH, LOCATION]) expect(row(id)).toBeNull();
+  expect(host.textContent).not.toContain("Where the town lookup list comes from");
+  expect(host.textContent).not.toContain("Add my location to messages");
+  await mount("advanced", SAVED);
+  expect(shownLevel()).toBe("Advanced");
+  expect(host.querySelector('[aria-label="Town lookup"]')).toBeNull();
+  for (const id of [LIST, CREDIT, PAGE, REFRESH, LOCATION]) expect(row(id)).toBeNull();
+  expect(host.textContent).not.toContain("Town list by Example");
+  expect(host.querySelector('[data-row="general.writing.location"]')).toBeNull();
+});
+
+it("shows the usual town list at Technical and saves a change", async () => {
+  const { request } = await mount("technical");
+  expect(shownLevel()).toBe("Technical");
+  expect(row(LIST)?.querySelector("b")?.textContent).toBe("Where the town lookup list comes from");
+  expect(row(CREDIT)?.querySelector("b")?.textContent).toBe("The credit line for the town list");
+  expect(row(PAGE)?.querySelector("b")?.textContent).toBe("The page for that credit");
+  expect(row(REFRESH)?.querySelector("b")?.textContent).toBe("How often to refresh the town list");
+  expect(field(LIST)?.value).toBe("https://download.db-ip.com/free/dbip-city-lite-{yyyy}-{mm}.mmdb.gz");
+  expect(field(CREDIT)?.value).toBe("IP Geolocation by DB-IP");
+  expect(field(PAGE)?.value).toBe("https://db-ip.com");
+  expect(field(REFRESH)?.value).toBe("30");
+  await typeIn(field(REFRESH)!, "14");
+  expect(field(REFRESH)?.value).toBe("14");
   const refresh = request.mock.calls.find(([method, params]) => method === "config.patch" && String((params as { raw?: string }).raw).includes("refreshDays"));
   expect(JSON.parse((refresh![1] as { raw: string }).raw)).toEqual({ plugins: { entries: { geolocation: { config: { refreshDays: 14 } } } } });
-  await typeIn(field("privacy.town-lookup.the-page-for-that-credit")!, "https://example.com/credit");
-  expect(field("privacy.town-lookup.the-page-for-that-credit")?.value).toBe("https://example.com/credit");
+  await typeIn(field(PAGE)!, "https://example.com/credit");
+  expect(field(PAGE)?.value).toBe("https://example.com/credit");
   const link = request.mock.calls.find(([method, params]) => method === "config.patch" && String((params as { raw?: string }).raw).includes("attributionUrl"));
   expect(JSON.parse((link![1] as { raw: string }).raw)).toEqual({ plugins: { entries: { geolocation: { config: { attributionUrl: "https://example.com/credit" } } } } });
 });
 
-it("shows a saved town list, and greys adding a location to messages", async () => {
-  await mount("advanced", { plugins: { entries: { geolocation: { config: { databaseUrl: "https://example.com/cities.mmdb.gz", attributionText: "Town list by Example", attributionUrl: "https://example.com/credit", refreshDays: 7 } } } } });
-  expect(field("privacy.town-lookup.where-the-town-lookup-list-comes-from")?.value).toBe("https://example.com/cities.mmdb.gz");
-  expect(field("privacy.town-lookup.the-credit-line-for-the-town-list")?.value).toBe("Town list by Example");
-  expect(field("privacy.town-lookup.the-page-for-that-credit")?.value).toBe("https://example.com/credit");
-  expect(field("privacy.town-lookup.how-often-to-refresh-the-town-list")?.value).toBe("7");
-  const location = row("privacy.town-lookup.add-my-location-to-messages");
+it("shows a saved town list at Technical, and greys adding a location to messages", async () => {
+  await mount("technical", SAVED);
+  expect(shownLevel()).toBe("Technical");
+  expect(field(LIST)?.value).toBe("https://example.com/cities.mmdb.gz");
+  expect(field(CREDIT)?.value).toBe("Town list by Example");
+  expect(field(PAGE)?.value).toBe("https://example.com/credit");
+  expect(field(REFRESH)?.value).toBe("7");
+  const location = row(LOCATION);
+  expect(location?.querySelector("b")?.textContent).toBe("Add my location to messages");
   expect(location?.querySelector(".r1s-note")?.textContent).toBe("Add my location to messages comes in a later update.");
   expect(location?.querySelector("button")?.hasAttribute("disabled")).toBe(true);
   expect(host.querySelector('[data-row="general.writing.location"]')).toBeNull();

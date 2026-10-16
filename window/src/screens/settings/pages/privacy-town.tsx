@@ -1,5 +1,5 @@
-// Town lookup on Settings › Privacy. The list, its credit and how often it refreshes read and write the same
-// settings the town lookup already uses. Adding your town to messages has no setting yet, so that row stays grey.
+// Town lookup on Settings › Privacy, at Technical only. The list, its credit and how often it refreshes read and write
+// the same settings the town lookup already uses. Adding your town to messages has no setting yet, so that row stays grey.
 import type { ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { RowView } from "../RowView";
@@ -14,19 +14,19 @@ const CITY = "plugins.entries.geolocation.config";
 
 export const TOWN_ROWS: Row[] = [
   { id: "privacy.town-lookup.where-the-town-lookup-list-comes-from", page: "privacy", card: CARD, label: "Where the town lookup list comes from",
-    help: "Leave this empty to use the usual monthly list.", level: 0, ownerLevel: true, control: "text",
+    help: "Leave this empty to use the usual monthly list.", level: 2, ownerLevel: true, control: "text",
     fallback: "https://download.db-ip.com/free/dbip-city-lite-{yyyy}-{mm}.mmdb.gz", source: { kind: "config", path: `${CITY}.databaseUrl` } },
   { id: "privacy.town-lookup.the-credit-line-for-the-town-list", page: "privacy", card: CARD, label: "The credit line for the town list",
-    help: "The line shown next to a town. Change it only when the list comes from somewhere else.", level: 0, ownerLevel: true, control: "text",
+    help: "The line shown next to a town. Change it only when the list comes from somewhere else.", level: 2, ownerLevel: true, control: "text",
     fallback: "IP Geolocation by DB-IP", source: { kind: "config", path: `${CITY}.attributionText` } },
   { id: "privacy.town-lookup.the-page-for-that-credit", page: "privacy", card: CARD, label: "The page for that credit",
-    help: "The page that line opens.", level: 0, ownerLevel: true, control: "text",
+    help: "The page that line opens.", level: 2, ownerLevel: true, control: "text",
     fallback: "https://db-ip.com", source: { kind: "config", path: `${CITY}.attributionUrl` } },
   { id: "privacy.town-lookup.how-often-to-refresh-the-town-list", page: "privacy", card: CARD, label: "How often to refresh the town list",
-    help: "How many days the saved town list is kept before a new copy is downloaded.", level: 0, ownerLevel: true, control: "number", unit: "days",
+    help: "How many days the saved town list is kept before a new copy is downloaded.", level: 2, ownerLevel: true, control: "number", unit: "days",
     fallback: 30, source: { kind: "config", path: `${CITY}.refreshDays` } },
   { id: "privacy.town-lookup.add-my-location-to-messages", page: "privacy", card: CARD, label: "Add my location to messages",
-    help: "Your town, so “near me” works. Off until you choose: it shares where you are.", level: 0, control: "toggle",
+    help: "Your town, so “near me” works. Off until you choose: it shares where you are.", level: 2, control: "toggle",
     source: { kind: "coming", need: "a location switch", reason: "Add my location to messages comes in a later update." } },
 ];
 
