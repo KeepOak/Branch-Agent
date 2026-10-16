@@ -5,7 +5,7 @@
 // tests use fakes and never change this computer's startup, power or PATH settings.
 import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { saveUnlessDiskFull } from "./disk-full";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { RELEASE_REPOSITORY } from "./component-update-manifest";
 import { isOwnedComponentWindow } from "./component-update-ipc";
 
@@ -81,8 +81,77 @@ async function publishedReleases(): Promise<readonly ReleaseListing[]> {
   return body as ReleaseListing[];
 }
 
+/** How this copy of Branch was installed, so "Remove the app" takes away only the app (Private #1102). */
+export type AppRemoval =
+  | { kind: "windows"; uninstaller: string }
+  | { kind: "mac"; bundles: string[] }
+  | { kind: "appimage"; files: string[] }
+  | { kind: "none"; reason: string };
+export interface AppRemovalTarget {
+  platform: string; execPath: string; packaged: boolean;
+  /** %LOCALAPPDATA% on Windows: the per-user install's uninstaller sits in Programs\Branch Agent Uninstall. */
+  localAppData?: string;
+  /** $APPIMAGE on Linux: the file the app runs from. */
+  appImage?: string;
+  exists(path: string): boolean;
+}
+/** What the confirm sheet says: exactly what goes and what stays. */
+export interface AppRemovalPlan { supported: boolean; reason?: string; removes: string[]; keeps: string[]; dataDir: string }
+
+/** Inno Setup names a per-user install's uninstaller unins000.exe, in UninstallFilesDir (release-installers.mjs). */
+export const WINDOWS_UNINSTALL_DIR = ["Programs", "Branch Agent Uninstall"];
+export const APP_REMOVAL_KEEPS = ["Your conversations", "Your Trunks and what they remember", "Your settings and connected accounts"];
+const FROM_SOURCE = "This copy of Branch runs from its source folder, so there is no installed app to remove.";
+
+export function appRemoval(t: AppRemovalTarget): AppRemoval {
+  if (!t.packaged) return { kind: "none", reason: FROM_SOURCE };
+  if (t.platform === "win32") {
+    const uninstaller = t.localAppData ? join(t.localAppData, ...WINDOWS_UNINSTALL_DIR, "unins000.exe") : "";
+    return uninstaller && t.exists(uninstaller) ? { kind: "windows", uninstaller }
+      : { kind: "none", reason: "Branch’s uninstaller isn’t on this computer. Remove Branch from Settings › Apps instead." };
+  }
+  if (t.platform === "darwin") {
+    const at = t.execPath.indexOf(".app/Contents/");
+    if (at < 0) return { kind: "none", reason: FROM_SOURCE };
+    const bundle = t.execPath.slice(0, at + 4);
+    // A whole-app update leaves the old copy aside as .Branch.previous beside it (mac-applications.ts).
+    const aside = join(dirname(bundle), ".Branch.previous");
+    return { kind: "mac", bundles: [bundle, ...(t.exists(aside) ? [aside] : [])] };
+  }
+  if (t.platform === "linux") {
+    if (!t.appImage) return { kind: "none", reason: "Branch was installed by your package manager here. Remove it there; your data stays." };
+    const previous = `${t.appImage}.previous`;
+    return { kind: "appimage", files: [t.appImage, ...(t.exists(previous) ? [previous] : [])] };
+  }
+  return { kind: "none", reason: FROM_SOURCE };
+}
+
+export function appRemovalPlan(removal: AppRemoval, o: { dataDir: string; startsAtLogin: boolean; branchOnPath: boolean; service: boolean }): AppRemovalPlan {
+  const keeps = [...APP_REMOVAL_KEEPS];
+  if (removal.kind === "none") return { supported: false, reason: removal.reason, removes: [], keeps, dataDir: o.dataDir };
+  const removes = [
+    removal.kind === "windows" ? "The Branch app, with its Start menu and desktop shortcuts"
+      : removal.kind === "mac" ? "The Branch app (it goes to the Trash)" : "The Branch app (its AppImage file)",
+    ...(o.service ? ["Branch’s background service, so nothing keeps running"] : []),
+    ...(o.startsAtLogin ? ["Starting Branch when you sign in"] : []),
+    ...(o.branchOnPath ? ["The branch command in your terminal"] : []),
+  ];
+  return { supported: true, removes, keeps, dataDir: o.dataDir };
+}
+
 export interface ControlDeps {
   settingsFile: string;
+  /** "Remove the app, keep my data": the install it came from, and the steps that remove it. Absent in tests of
+   *  other controls and in older wiring, where the window shows why it can't. */
+  removeApp?: {
+    dataDir: string;
+    removal(): AppRemoval;
+    /** Stops and removes the engine service (`branch gateway uninstall`); absent when there is none. */
+    service?: () => Promise<void>;
+    /** Removes the app itself, or starts its uninstaller to do so once the app has quit. */
+    launch(removal: Exclude<AppRemoval, { kind: "none" }>): Promise<void>;
+    quit(): void;
+  };
   login: { get(): boolean; set(on: boolean): void };
   /** Linux: the engine's systemd-linger path (`branch gateway linger`); absent elsewhere. */
   linger?: { get(): Promise<boolean>; set(on: boolean): Promise<void> };
@@ -108,6 +177,9 @@ export interface DesktopControls {
   set(name: ControlName, on: boolean): Promise<ControlsState>;
   openDownload(id: string): Promise<void>;
   trayUsage(left: number | null): void;
+  removalPlan(): Promise<AppRemovalPlan>;
+  /** Removes the app and quits; conversations, Trunks and settings in the data folder stay. */
+  removeApp(): Promise<void>;
   /** Applies saved settings at launch (refreshes the branch command). */
   apply(): void;
   dispose(): void;
@@ -171,6 +243,22 @@ export function createDesktopControls(deps: ControlDeps): DesktopControls {
       lastLeft = typeof left === "number" && Number.isFinite(left) ? Math.max(0, Math.min(100, left)) : null;
       deps.tray.usage(lastLeft, saved.trayUsage);
     },
+    removalPlan: async () => {
+      const remove = deps.removeApp;
+      if (!remove) return appRemovalPlan({ kind: "none", reason: "Removing the app needs a newer Branch app." }, { dataDir: "", startsAtLogin: false, branchOnPath: false, service: false });
+      return appRemovalPlan(remove.removal(), { dataDir: remove.dataDir, startsAtLogin: deps.login.get(), branchOnPath: await deps.cli.installed(), service: Boolean(remove.service) });
+    },
+    removeApp: async () => {
+      const remove = deps.removeApp;
+      const removal = remove?.removal();
+      if (!remove || !removal || removal.kind === "none") throw new Error(removal?.kind === "none" ? removal.reason : "Removing the app needs a newer Branch app.");
+      // Everything outside the data folder that points at the app goes first; the data folder is never touched.
+      await remove.service?.();
+      if (deps.login.get()) deps.login.set(false);
+      if (await deps.cli.installed()) await deps.cli.uninstall();
+      await remove.launch(removal);
+      remove.quit();
+    },
     apply: () => {
       // An update can move the bundled node; the branch command (and agents registered with it) must keep working.
       try { deps.cli.refresh?.(); } catch { /* a locked or read-only shim keeps its old copy */ }
@@ -202,6 +290,8 @@ export function registerDesktopControlsIpc(ipc: Ipc, owner: (event: InvokeEvent)
     if (typeof id !== "string") throw new Error("A download takes an app id");
     await controls.openDownload(id);
   });
+  ipc.handle("branch-desktop:controls:removal-plan", async (event) => { owned(event); return controls.removalPlan(); });
+  ipc.handle("branch-desktop:controls:remove-app", async (event) => { owned(event); await controls.removeApp(); });
   ipc.on("branch-desktop:controls:tray-usage", (event, left) => {
     if (!isOwnedComponentWindow(event, owner(event), servedUrl)) return;
     controls.trayUsage(typeof left === "number" ? left : null);

@@ -10,7 +10,7 @@ import test from "node:test";
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 if (!dist) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to current strict-compiled source");
 const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, releaseDownloadUrl,
-  branchPosixShim, branchCommandOwner, posixBranchCommand, BRANCH_COMMAND_MARKER, LEGACY_BRANCH_COMMAND_MARKER } =
+  branchPosixShim, branchCommandOwner, posixBranchCommand, BRANCH_COMMAND_MARKER, LEGACY_BRANCH_COMMAND_MARKER, appRemoval, appRemovalPlan, APP_REMOVAL_KEEPS } =
   await import(pathToFileURL(join(dist, "desktop-controls.js")));
 
 async function fixture(run) {
@@ -159,6 +159,74 @@ test("IPC answers only the owned served window", async () => fixture(async ({ de
   listeners.get("branch-desktop:controls:tray-usage")(stranger, 50);
   listeners.get("branch-desktop:controls:tray-usage")(ok, 50);
   assert.deepEqual(calls, [["login", true], ["tray", 50, false]]);
+}));
+
+// Private #1102: "Remove the app, keep my data" removes only what the installer put down, never the data folder.
+test("app removal finds the install each platform's installer made, and says why when there is none", () => {
+  const has = (...paths) => (path) => paths.includes(path);
+  const win = join("C:", "Users", "o", "AppData", "Local");
+  const uninstaller = join(win, "Programs", "Branch Agent Uninstall", "unins000.exe");
+  assert.deepEqual(appRemoval({ platform: "win32", execPath: "x", packaged: true, localAppData: win, exists: has(uninstaller) }), { kind: "windows", uninstaller });
+  assert.equal(appRemoval({ platform: "win32", execPath: "x", packaged: true, localAppData: win, exists: has() }).kind, "none");
+  const bundle = "/Users/o/Applications/Branch Agent.app";
+  assert.deepEqual(appRemoval({ platform: "darwin", execPath: `${bundle}/Contents/MacOS/Branch Agent`, packaged: true, exists: has() }), { kind: "mac", bundles: [bundle] });
+  const aside = join("/Users/o/Applications", ".Branch.previous");
+  assert.deepEqual(appRemoval({ platform: "darwin", execPath: `${bundle}/Contents/MacOS/Branch Agent`, packaged: true, exists: has(aside) }).bundles, [bundle, aside]);
+  assert.deepEqual(appRemoval({ platform: "linux", execPath: "/tmp/.mount/branch", packaged: true, appImage: "/home/o/.local/bin/branch-agent", exists: has("/home/o/.local/bin/branch-agent.previous") }),
+    { kind: "appimage", files: ["/home/o/.local/bin/branch-agent", "/home/o/.local/bin/branch-agent.previous"] });
+  assert.match(appRemoval({ platform: "linux", execPath: "/usr/lib/branch/branch", packaged: true, exists: has() }).reason, /package manager/);
+  assert.match(appRemoval({ platform: "win32", execPath: "x", packaged: false, localAppData: win, exists: has(uninstaller) }).reason, /source folder/);
+});
+
+test("the removal plan names what goes and keeps conversations, Trunks and settings", () => {
+  const plan = appRemovalPlan({ kind: "windows", uninstaller: "u" }, { dataDir: "D", startsAtLogin: true, branchOnPath: true, service: true });
+  assert.equal(plan.supported, true);
+  assert.deepEqual(plan.removes, ["The Branch app, with its Start menu and desktop shortcuts", "Branch’s background service, so nothing keeps running", "Starting Branch when you sign in", "The branch command in your terminal"]);
+  assert.deepEqual(plan.keeps, ["Your conversations", "Your Trunks and what they remember", "Your settings and connected accounts"]);
+  assert.deepEqual(plan.keeps, APP_REMOVAL_KEEPS);
+  assert.equal(plan.dataDir, "D");
+  assert.deepEqual(appRemovalPlan({ kind: "mac", bundles: ["b"] }, { dataDir: "D", startsAtLogin: false, branchOnPath: false, service: false }).removes, ["The Branch app (it goes to the Trash)"]);
+  const none = appRemovalPlan({ kind: "none", reason: "why" }, { dataDir: "D", startsAtLogin: true, branchOnPath: true, service: true });
+  assert.deepEqual([none.supported, none.reason, none.removes], [false, "why", []]);
+});
+
+test("Remove the app takes the service, login item and command first, then the app, then quits; the data folder stays", async () => fixture(async ({ root, deps, calls, state }) => {
+  const dataDir = join(root, "data");
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(join(dataDir, "conversation.jsonl"), "kept\n");
+  state.login = true; state.onPath = true;
+  const removal = { kind: "appimage", files: [join(root, "branch-agent")] };
+  const controls = createDesktopControls({ ...deps, removeApp: { dataDir, removal: () => removal,
+    service: async () => { calls.push(["service-uninstall"]); },
+    launch: async (r) => { calls.push(["launch", r.kind]); }, quit: () => calls.push(["quit"]) } });
+  const plan = await controls.removalPlan();
+  assert.equal(plan.supported, true);
+  assert.equal(plan.removes.length, 4);
+  await controls.removeApp();
+  assert.deepEqual(calls, [["service-uninstall"], ["login", false], ["cli-uninstall"], ["launch", "appimage"], ["quit"]]);
+  assert.equal(await readFile(join(dataDir, "conversation.jsonl"), "utf8"), "kept\n");
+  const none = createDesktopControls({ ...deps, removeApp: { dataDir, removal: () => ({ kind: "none", reason: "Not installed here." }), launch: async () => calls.push(["launch"]), quit: () => calls.push(["quit"]) } });
+  await assert.rejects(none.removeApp(), /Not installed here/);
+  assert.equal((await createDesktopControls(deps).removalPlan()).supported, false);
+  await assert.rejects(createDesktopControls(deps).removeApp(), /newer Branch app/);
+  assert.equal(calls.filter(([c]) => c === "quit").length, 1);
+}));
+
+test("removal IPC answers only the owned served window", async () => fixture(async ({ deps, calls }) => {
+  const handlers = new Map();
+  const ipc = { handle: (c, f) => handlers.set(c, f), on: () => undefined };
+  const frame = { url: "http://127.0.0.1:19032/" };
+  const owner = { getURL: () => frame.url, mainFrame: frame };
+  const removeApp = { dataDir: "D", removal: () => ({ kind: "mac", bundles: ["b"] }), launch: async () => calls.push(["launch"]), quit: () => calls.push(["quit"]) };
+  registerDesktopControlsIpc(ipc, () => owner, "http://127.0.0.1:19032/", createDesktopControls({ ...deps, removeApp }));
+  const strangerFrame = { url: "https://elsewhere.test/" };
+  const stranger = { sender: { getURL: () => strangerFrame.url, mainFrame: strangerFrame }, senderFrame: strangerFrame };
+  await assert.rejects(handlers.get("branch-desktop:controls:remove-app")(stranger), /owned served window/);
+  await assert.rejects(handlers.get("branch-desktop:controls:removal-plan")(stranger), /owned served window/);
+  assert.deepEqual(calls, []);
+  assert.equal((await handlers.get("branch-desktop:controls:removal-plan")({ sender: owner, senderFrame: frame })).supported, true);
+  await handlers.get("branch-desktop:controls:remove-app")({ sender: owner, senderFrame: frame });
+  assert.deepEqual(calls, [["launch"], ["quit"]]);
 }));
 
 test("ring bitmap draws the share left as an arc over a faint track", () => {
