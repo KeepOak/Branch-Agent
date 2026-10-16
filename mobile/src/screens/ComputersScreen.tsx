@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Pressable, RefreshControl, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ComputerListSnapshot, ComputerRow } from '../computers/computerList';
 import { chatTime } from '../chats/chatTime';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { Card } from '../ui/Screen';
 import { useNow } from '../ui/useNow';
 

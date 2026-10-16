@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
-import { FlatList, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   canSendAttachments,
@@ -19,6 +19,7 @@ import type { ChatRow } from '../chats/chatList';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { NoScrollbarFlatList as FlatList, NoScrollbarScrollView as ScrollView } from '../ui/NoScrollbar';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { Avatar } from './ChatsScreen';
 
@@ -375,7 +376,7 @@ export function ChatScreen({
       <View style={{ flex: 1 }}>{body}</View>
       <View style={{ paddingHorizontal: layout.screenInset - space.xs, paddingTop: space.sm, paddingBottom: insets.bottom + space.sm, borderTopWidth: layout.hairline, borderTopColor: color.line, backgroundColor: color.bg, gap: space.sm }}>
         {files.length || preparing ? (
-          <ScrollView horizontal testID="file-chips" showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.xs, alignItems: 'center' }}>
+          <ScrollView horizontal testID="file-chips" contentContainerStyle={{ gap: space.xs, alignItems: 'center' }}>
             {preparing ? (
               <ThemedText testID="preparing-attachments" variant="caption1" tone="ink3">
                 {preparingLine(preparing)}
