@@ -152,6 +152,7 @@ describe('voice screen', () => {
     await fireEvent.press(screen.getByTestId('chat-talk'));
     expect(screen.getByTestId('voice-screen')).toBeOnTheScreen();
     expect(screen.getByTestId('voice-title')).toHaveTextContent('Branch Agent · voice');
+    await eventually(() => expect(screen.getByTestId('voice-caption')).toHaveTextContent('Listening…'));
     await fireEvent.press(screen.getByTestId('voice-keyboard'));
     expect(screen.getByTestId('chat-screen')).toBeOnTheScreen();
     expect(screen.getByTestId('send')).toBeOnTheScreen();
