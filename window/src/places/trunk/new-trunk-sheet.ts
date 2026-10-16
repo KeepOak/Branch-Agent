@@ -1,6 +1,7 @@
 // The New Trunk sheet (preview editTrunk look controls, then newTrunkC18's chat questions).
 // Colour and shape are the preview's pebble sets. Create sends them with the name; the chat asks the rest.
 import type { WindowEngine } from "../../connect/engine";
+import { COLOURS } from "./LookTab";
 
 /** Find anything and Settings search open the same sheet the + menu opens. */
 export const OPEN_NEW_TRUNK_SHEET = "branch:open-new-trunk-sheet";
@@ -9,8 +10,8 @@ export function openNewTrunkSheet(): void {
   window.dispatchEvent(new CustomEvent(OPEN_NEW_TRUNK_SHEET));
 }
 
-/** Preview COLOURS (spec-v23 index.html). */
-export const TRUNK_COLOURS = ["#2F8C86", "#1785AF", "#8A5AA8", "#5E8C4A", "#4F6FA8", "#C9982E", "#B84A6B", "#56616B"] as const;
+/** Preview COLOURS, the same list the Trunk editor already uses (LookTab). */
+export const TRUNK_COLOURS = COLOURS;
 /** Preview shape names, in the same order as the radii. */
 export const TRUNK_SHAPES = ["Circle", "Stone", "Leaf", "Acorn", "Shield"] as const;
 export const SHAPE_RADII = [
