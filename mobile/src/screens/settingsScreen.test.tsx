@@ -9,7 +9,8 @@ import { memoryStore } from '../storage/keyValueStore';
 import { THEME_PREFERENCE_KEY } from '../theme/preference';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { themeFor } from '../theme/tokens';
-import { permissionLabel, SettingsScreen } from './SettingsScreen';
+import { permissionLabel, SettingsScreen, SETTINGS_EXTRAS } from './SettingsScreen';
+import { HELP_PAGES, TEXT_SIZE_DEFAULT } from './settingsExtras';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 4000 });
 jest.setTimeout(20_000);
@@ -88,7 +89,7 @@ describe('settings screen', () => {
 
   it('opens This phone (Your computer) and offers system Settings for notifications', async () => {
     const { mocks } = await renderSettings({ permission: 'denied' });
-    expect(screen.getByText('Off')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-notifications-status')).toHaveTextContent('Off');
     await fireEvent.press(screen.getByTestId('this-phone'));
     expect(mocks.onThisPhone).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByTestId('notifications-system-settings'));
@@ -117,7 +118,7 @@ describe('settings in the app', () => {
     expect(screen.getByTestId('settings-screen')).toBeOnTheScreen();
     expect(within(screen.getByTestId('app-card')).getByText('0.1.0')).toBeOnTheScreen();
     expect(within(screen.getByTestId('app-card')).getByText('14')).toBeOnTheScreen();
-    expect(screen.getByText('On')).toBeOnTheScreen();
+    expect(screen.getByTestId('settings-notifications-status')).toHaveTextContent('On');
 
     await fireEvent.press(screen.getByTestId('this-phone'));
     expect(screen.getByTestId('paired-screen')).toBeOnTheScreen();
@@ -136,7 +137,7 @@ describe('settings in the app', () => {
       const fake = createFakeNotifier('denied');
       const { session } = await pairedApp({ notifier: fake.notifier });
       await fireEvent.press(screen.getByTestId('settings-button'));
-      await eventually(() => expect(screen.getByText('Off')).toBeOnTheScreen());
+      await eventually(() => expect(screen.getByTestId('settings-notifications-status')).toHaveTextContent('Off'));
       await fireEvent.press(screen.getByTestId('notifications-system-settings'));
       expect(open).toHaveBeenCalled();
       session.dispose();
@@ -168,5 +169,56 @@ describe('settings in the app', () => {
     await fireEvent.press(screen.getByTestId('theme-system'));
     expect(store.dump()[THEME_PREFERENCE_KEY]).toBeUndefined();
     second.session.dispose();
+  });
+});
+
+describe('r50 settings parity', () => {
+  it('hides the Settings scrollbar', async () => {
+    await renderSettings();
+    expect(screen.getByTestId('settings-screen-scroll')).toHaveProp('showsVerticalScrollIndicator', false);
+    expect(screen.getByTestId('settings-screen-scroll')).toHaveProp('showsHorizontalScrollIndicator', false);
+  });
+
+  it('keeps preview extras Off and disabled, each with a reason', async () => {
+    await renderSettings();
+    expect(SETTINGS_EXTRAS.length).toBeGreaterThan(0);
+    for (const extra of SETTINGS_EXTRAS) {
+      const row = screen.getByTestId(extra.testID);
+      expect(row).toHaveProp('accessibilityState', { disabled: true });
+      expect(row).toHaveTextContent(/Off/);
+      expect(screen.getByTestId(`${extra.testID}-reason`)).toHaveTextContent(extra.reason);
+    }
+  });
+
+  it('opens Help and Language, with Same as this phone selected and other sizes left at 100%', async () => {
+    await renderSettings();
+    expect(screen.getByTestId(`text-size-${TEXT_SIZE_DEFAULT}`)).toHaveProp('accessibilityState', {
+      selected: true,
+      disabled: false,
+    });
+    expect(screen.getByTestId('text-size-90%')).toHaveProp('accessibilityState', { selected: false, disabled: true });
+
+    await fireEvent.press(screen.getByTestId('settings-language'));
+    expect(screen.getByRole('header')).toHaveTextContent('Language');
+    expect(screen.getByTestId('language-Same as this phone')).toHaveProp('accessibilityState', {
+      selected: true,
+      disabled: false,
+    });
+    expect(screen.getByTestId('language-Français')).toHaveProp('accessibilityState', { selected: false, disabled: true });
+    await fireEvent.press(screen.getByTestId('settings-language-back'));
+    expect(screen.getByRole('header')).toHaveTextContent('Settings');
+
+    await fireEvent.press(screen.getByTestId('settings-help'));
+    expect(screen.getByRole('header')).toHaveTextContent('Help');
+    await fireEvent.press(screen.getByTestId(`help-${HELP_PAGES[0].id}`));
+    expect(screen.getByRole('header')).toHaveTextContent(HELP_PAGES[0].title);
+    expect(screen.getByTestId(`help-page-${HELP_PAGES[0].id}`)).toHaveTextContent(HELP_PAGES[0].paragraphs[0]);
+  });
+
+  it('draws the theme picker in black and white', async () => {
+    await renderSettings();
+    const style = screen.getByTestId('theme-system').props.style;
+    const selected = StyleSheet.flatten(typeof style === 'function' ? style({ pressed: false }) : style);
+    expect(selected.backgroundColor).toBe(themeFor('light').color.ink);
   });
 });
