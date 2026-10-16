@@ -919,11 +919,17 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
   const showingAll = Boolean(allTopics && topicContact && allTopics.contactId === topicContact.id && openKey === topicContact.threadKey);
   const allTopicLoader = useRef<{ contactId: string; transcripts: TopicTranscriptCache; reloader: ReturnType<typeof createSerialReloader> } | null>(null);
   const allTopicInput = useRef<Parameters<typeof loadAllTopicTranscripts> | null>(null);
+  const allTopicSignature = useRef("");
   useEffect(() => {
     if (!showingAll || !topicContact) return;
     const main = { key: topicContact.threadKey, title: "General", updatedAt: topicMainRow?.updatedAt ?? topicContact.lastActivityAt, preview: topicMainRow?.preview ?? "" };
     const topics = topicItems.map(({ topic, updatedAt, preview }) => ({ key: topic.key, title: topic.title, labelled: topic.labelled, updatedAt, preview }));
     allTopicInput.current = [request, main, topics];
+    // The contact and row objects are rebuilt on every render, so reload only when what the load reads has changed;
+    // otherwise each finished load would re-render, re-run this effect and start the next one.
+    const signature = JSON.stringify([topicContact.id, main, topics]);
+    if (signature === allTopicSignature.current) return;
+    allTopicSignature.current = signature;
     if (allTopicLoader.current?.contactId === topicContact.id) allTopicLoader.current.reloader.trigger();
   }, [showingAll, topicContact, activeTopics, lists.rows, request, ready]);
   useEffect(() => {
@@ -953,7 +959,7 @@ export function WindowShell({ session, url }: { session: SaplingSession; url: st
     });
     const storage = (event: StorageEvent) => { if (event.key === "branch-topic-emoji-t5") reload(); };
     window.addEventListener("storage", storage);
-    return () => { live = false; reloader.cancel(); allTopicLoader.current = null; if (timer) clearTimeout(timer); off(); window.removeEventListener("storage", storage); };
+    return () => { live = false; reloader.cancel(); allTopicLoader.current = null; allTopicSignature.current = ""; if (timer) clearTimeout(timer); off(); window.removeEventListener("storage", storage); };
   }, [showingAll, topicContact?.id, session]);
   const home = contacts.find((c) => c.isDefault) ? contactRow(contacts.find((c) => c.isDefault)!) : homeRow(lists.rows, s.mainKey, defaultName);
   const sections = buildContactSections(contacts, prefs, now);

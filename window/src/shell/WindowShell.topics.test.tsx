@@ -150,6 +150,7 @@ describe("All topics across sessions.list refreshes", () => {
     const host = document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
     await act(async () => root!.render(<WindowShell session={client} url="ws://127.0.0.1:19661" />));
+    await vi.waitFor(() => expect(host.querySelector(".topicsT5")).toBeTruthy());
     const reads = () => vi.mocked(client.request).mock.calls.filter(([method]) => method === "chat.history");
     const refresh = async (changed = false) => {
       rows = rows.map((row) => ({ ...row, ...(changed && row.key === trip.key ? { updatedAt: row.updatedAt + 1 } : {}) }));
