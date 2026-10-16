@@ -2,10 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GatewayClientRequestError } from "../../packages/gateway-client/src/request-error.js";
 import { onTrunkRunLifecycle } from "../gateway/server-methods/trunk-queue.js";
 import { isTrunkQueueThreadKey } from "./trunk-queue-thread-key.js";
 import {
   addQueueItem,
+  BRIEF_SEND_ATTEMPTS,
   claimNextQueueItem,
   listQueueItems,
   markQueueItemDone,
@@ -302,4 +304,78 @@ describe("Trunk job queue pickup", () => {
     expect(calls.map((call) => call.method)).not.toContain("chat.send");
     expect(listQueueItems(env)[0]).toMatchObject({ status: "released", released_from: "ash" });
   });
+});
+
+/**
+ * A gateway whose worker queue is full for the first `refusals` sends: it refuses them before anything runs, marked
+ * retryable, as chat.send does. A send it takes stores the brief in its thread once per idempotency key.
+ */
+function overloadedGateway(refusals: number) {
+  const { gateway: idle } = fakeGateway();
+  const sends: Array<Record<string, unknown>> = [];
+  const history = new Map<string, string[]>();
+  const seen = new Set<string>();
+  const gateway: TrunkQueueGateway = {
+    async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
+      if (method === "chat.send") {
+        sends.push(params);
+        if (sends.length <= refusals) {
+          throw new GatewayClientRequestError({
+            code: "UNAVAILABLE",
+            message: "WorkerTaskError: worker task capacity reached: code=overloaded",
+            retryable: true,
+            retryAfterMs: 250,
+          });
+        }
+        if (!seen.has(String(params.idempotencyKey))) {
+          seen.add(String(params.idempotencyKey));
+          const key = String(params.sessionKey);
+          history.set(key, [...(history.get(key) ?? []), String(params.message)]);
+        }
+      }
+      return await idle.request<T>(method, params);
+    },
+  };
+  return { gateway, sends, history };
+}
+
+describe("Trunk job queue brief on an overloaded gateway", () => {
+  it("sends the brief again to the same thread, so the finished run's history holds it", async () => {
+    const job = addQueueItem({ title: "Busy host", brief_text: "Do the busy-host job." }, env);
+    const { gateway, sends, history } = overloadedGateway(1);
+
+    const picked = await pickUpQueuedWork({ agentId: "builder-birch", gateway, env });
+
+    expect(picked?.item.id).toBe(job.id);
+    const thread = picked!.threadKey;
+    expect(sends.map((send) => send.sessionKey)).toEqual([thread, thread]);
+    expect(sends[1]!.idempotencyKey).toBe(sends[0]!.idempotencyKey);
+    expect(listQueueItems(env)[0]).toMatchObject({
+      status: "claimed",
+      claimed_by: "builder-birch",
+    });
+
+    await onTrunkRunLifecycle({
+      agentId: "builder-birch",
+      terminal: true,
+      threadKey: thread,
+      outcome: "completed",
+      gateway,
+    });
+
+    expect(listQueueItems(env)[0]).toMatchObject({ status: "done", thread_key: thread });
+    expect([...history.entries()]).toEqual([[thread, ["Do the busy-host job."]]]);
+  });
+
+  it("stops after the last refusal and puts the job back", async () => {
+    addQueueItem({ title: "Still busy", brief_text: "never taken" }, env);
+    const { gateway, sends } = overloadedGateway(BRIEF_SEND_ATTEMPTS);
+
+    await expect(pickUpQueuedWork({ agentId: "builder-birch", gateway, env })).rejects.toThrow(
+      "worker task capacity reached",
+    );
+
+    expect(sends).toHaveLength(BRIEF_SEND_ATTEMPTS);
+    expect(listQueueItems(env)[0]!.claimed_by).toBeUndefined();
+  }, 20_000);
 });

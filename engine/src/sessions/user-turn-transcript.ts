@@ -18,6 +18,11 @@ import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import { registerUserTurnTranscriptAdmissionOwner } from "./user-turn-transcript-admission.js";
 import { createUserTurnProcessingCompletion } from "./user-turn-transcript-processing.js";
 import {
+  mayRetry,
+  resolveUserTurnTranscriptTarget,
+  retryWrite,
+} from "./user-turn-transcript-write.js";
+import {
   buildLateResolvedMediaMessage,
   isUserMessage,
   resolvePersistedUserTurnMessage,
@@ -37,7 +42,6 @@ import type {
   UserTurnOriginalInputCommit,
   UserTurnTranscriptPersistResult,
   UserTurnTranscriptRecorder,
-  UserTurnTranscriptTarget,
   UserTurnTranscriptTargetResolver,
   UserTurnTranscriptUpdateMode,
 } from "./user-turn-transcript.types.js";
@@ -170,12 +174,6 @@ async function persistUserTurnTranscript(
   };
 }
 
-async function resolveUserTurnTranscriptTarget(
-  target: UserTurnTranscriptTargetResolver,
-): Promise<UserTurnTranscriptTarget | undefined> {
-  return typeof target === "function" ? await target() : target;
-}
-
 async function confirmPersistedSteerTargetRunId(params: {
   admission: UserTurnTranscriptAdmissionReceipt;
   targetRunId: string;
@@ -190,9 +188,7 @@ async function confirmPersistedSteerTargetRunId(params: {
     if (!isUserMessage(message)) {
       return undefined;
     }
-    const currentTarget = normalizePersistedSteerTargetRunId(
-      message["__branch"]?.steerTargetRunId,
-    );
+    const currentTarget = normalizePersistedSteerTargetRunId(message["__branch"]?.steerTargetRunId);
     return currentTarget === params.targetRunId
       ? undefined
       : rewritePersistedSteerTargetRunId(message, params.targetRunId);
@@ -473,7 +469,7 @@ export function createUserTurnTranscriptRecorder(
         candidateUpdateMode: UserTurnTranscriptUpdateMode,
       ) => {
         const persist = () =>
-          persistUserTurnTranscript({
+          retryWrite(persistUserTurnTranscript, {
             ...resolvedTarget,
             logicalTurnId,
             message: candidate,
@@ -545,8 +541,8 @@ export function createUserTurnTranscriptRecorder(
       return result;
     } catch (error) {
       // Approved custody retries only its idempotent write under the same live
-      // owner. A cached rejection must not poison a later definitive fallback.
-      if (pendingInput && selfPersistencePromise === persistencePromise) {
+      // owner. A cached rejection must not poison a later definitive fallback, nor may a refused write.
+      if (mayRetry(pendingInput, error) && selfPersistencePromise === persistencePromise) {
         selfPersistencePromise = undefined;
       }
       handlePersistenceError(error);
