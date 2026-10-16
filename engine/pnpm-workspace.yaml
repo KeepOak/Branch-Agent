@@ -42,6 +42,8 @@ overrides:
   "@lancedb/lancedb>@huggingface/transformers": "-"
   "baileys>sharp": "-"
   "baileys>audio-decode": 3.12.0
+  # music-metadata before 11.16.0 has a high advisory; baileys allows ^11.12.3 but its lock entry stayed on 11.15.0.
+  "baileys>music-metadata": 11.16.1
   "chevrotain>lodash-es": 4.18.1
   "@chevrotain/cst-dts-gen>lodash-es": 4.18.1
   "@chevrotain/gast>lodash-es": 4.18.1

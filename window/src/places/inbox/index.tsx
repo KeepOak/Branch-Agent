@@ -3,6 +3,7 @@
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { NoticesBell } from "./Bell";
 import { PlaceFrame, type PlaceProps } from "../../places-nav/PlaceFrame";
+import { RecBar } from "../../places-nav/RecBar";
 import type { WindowEngine } from "../../connect/engine";
 import { coalesceInboxReads, has, loadNeeds, loadNeedsCount, markRead, refreshesInbox, usePlaceData } from "./data";
 import { takeInboxHandoff, type InboxTab } from "./handoff";
@@ -72,7 +73,7 @@ export function InboxPlace({ engine, level, openConversation, openPlace, openSet
   const unread = (data?.sessions ?? []).filter(s => s.unread && (tab === "needs" || finishedRows([s]).length));
   const canMark = (tab === "needs" || tab === "finished") && unread.length > 0 && has(engine, "operator.sessions.write");
   const markAll = () => void needs.act(() => markRead(engine, unread), "All marked read.");
-  return <PlaceFrame title="Inbox" lede="Everything a Trunk is waiting on you for, what finished, and a record of what ran.">
+  return <PlaceFrame title="Inbox" lede="Everything a Trunk is waiting on you for, what finished, and a record of what ran." before={<RecBar engine={engine} />}>
     <TabRow tab={tab} set={setTab} counts={{ needs: needsCount(data) }} markAll={canMark ? markAll : undefined} bell={<NoticesBell data={data} openConversation={openConversation} openSettings={openSettings} />} />
     {needs.loading && !data ? <p role="status" className="ib-hint">Reading the Inbox…</p> : null}
     {needs.error ? <p role="alert" className="ib-err">{needs.error}</p> : null}

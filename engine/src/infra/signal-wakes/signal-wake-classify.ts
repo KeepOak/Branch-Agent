@@ -1,12 +1,23 @@
 const TRUNK_HEAD_PREFIX = "trunk/";
-// The verdict line is the first line of the comment: `branch-verdict: MERGE|FIX head=<40-hex sha>`.
-const VERDICT_LINE = /^branch-verdict:\s*(MERGE|FIX)\s+head=([0-9a-f]{40})(?:\s.*)?$/;
+// The verdict line is the first line of the comment:
+// `branch-verdict: MERGE|FIX head=<40-hex sha> reviewer=<reviewing Trunk id>`.
+// Every Trunk posts under one shared GitHub login, so `reviewer=` is what names the reviewing Trunk.
+// Older verdicts without it still parse; they just carry no reviewer.
+const VERDICT_LINE =
+  /^branch-verdict:\s*(MERGE|FIX)\s+head=([0-9a-f]{40})(?:\s+reviewer=([a-z0-9][a-z0-9_-]{0,63}))?(?:\s.*)?$/;
+const HEAD_SHA = /^[0-9a-f]{40}$/;
+const REVIEWER_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const FAILING_CONCLUSIONS = new Set(["failure", "timed_out", "startup_failure"]);
 /** Only these associations may post verdicts. Every Trunk posts under one shared login, so the association is the gate. */
 const TRUSTED_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
 const CHECK_NAME_MAX_CHARS = 80;
 
-export type BranchVerdict = { verdict: "MERGE" | "FIX"; headSha: string };
+export type BranchVerdict = {
+  verdict: "MERGE" | "FIX";
+  headSha: string;
+  /** Id of the Trunk that reviewed the PR, when the verdict line names one. */
+  reviewer?: string;
+};
 export type LatestVerdict = BranchVerdict & { id: number };
 
 /** Maps a PR head branch `trunk/<trunkId>-...` to the longest matching configured Trunk id. */
@@ -32,7 +43,38 @@ export function parseBranchVerdict(body: string): BranchVerdict | undefined {
   if (!match) {
     return undefined;
   }
-  return { verdict: match[1] === "FIX" ? "FIX" : "MERGE", headSha: match[2] ?? "" };
+  const verdict: BranchVerdict = {
+    verdict: match[1] === "FIX" ? "FIX" : "MERGE",
+    headSha: match[2] ?? "",
+  };
+  return match[3] === undefined ? verdict : { ...verdict, reviewer: match[3] };
+}
+
+export type BranchVerdictCommentInput = {
+  verdict: "MERGE" | "FIX";
+  headSha: string;
+  /** The reviewing Trunk's own id, e.g. `builder-birch`. */
+  reviewer: string;
+  /** Review text placed after the verdict line. */
+  body: string;
+};
+
+/**
+ * Builds a verdict comment whose first line names the reviewing Trunk. Throws on a short or
+ * non-hex sha, or a reviewer id the parser would not read back.
+ */
+export function formatBranchVerdictComment(input: BranchVerdictCommentInput): string {
+  if (!HEAD_SHA.test(input.headSha)) {
+    throw new Error(
+      `branch-verdict head must be a full 40-character lowercase sha: ${input.headSha}`,
+    );
+  }
+  if (!REVIEWER_ID.test(input.reviewer)) {
+    throw new Error(`branch-verdict reviewer must be a Trunk id: ${input.reviewer}`);
+  }
+  const line = `branch-verdict: ${input.verdict} head=${input.headSha} reviewer=${input.reviewer}`;
+  const body = input.body.trim();
+  return body ? `${line}\n\n${body}\n` : `${line}\n`;
 }
 
 export type VerdictCandidate = { id: number; body: string; authorAssociation?: string };

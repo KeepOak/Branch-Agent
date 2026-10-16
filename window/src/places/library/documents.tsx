@@ -14,7 +14,7 @@ import { EmptyIcon, Grey, IcoTile, LibIcon, mapLimited, Row, Section, TypeBadge,
 import { FileDialog } from "./reader";
 import { useCreateDocument } from "./create-document";
 
-export const DOC_REASONS = {
+const DOC_REASONS = {
   sheet: "Needs the engine’s spreadsheet question method.",
   compare: "Needs the engine’s compare-and-exact-edit method for documents.",
   map: "Needs an engine method that returns the documents’ topics and the links between them.",

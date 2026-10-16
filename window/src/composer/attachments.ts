@@ -23,7 +23,7 @@ export type AttachmentPolicy = { maxBytes?: number; maxImageBytes?: number };
 /** Pasting more than this many characters makes a chip instead (§4.3.7 "Pasted text" chip). */
 export const PASTED_TEXT_CHIP_CHARS = 1000;
 
-export function isImage(mimeType: string): boolean {
+function isImage(mimeType: string): boolean {
   return mimeType.startsWith("image/");
 }
 
@@ -69,7 +69,7 @@ export function pastedTextFile(id: string, text: string): DraftFile {
   };
 }
 
-export function toBase64(bytes: Uint8Array): string {
+function toBase64(bytes: Uint8Array): string {
   let binary = "";
   const step = 0x8000;
   for (let i = 0; i < bytes.length; i += step) {

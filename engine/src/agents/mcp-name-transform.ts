@@ -1,6 +1,5 @@
-/** Harvested from cline/cline@0809928ab28783c0d2b41c1e56edaf0951dadcab, sdk/packages/core/src/extensions/mcp/name-transform.ts. */
 import { createHash } from "node:crypto";
-// Source callable contract, kept local to avoid importing Cline's SDK/runtime.
+// Source callable contract, kept local to avoid importing 's SDK/runtime.
 type McpToolNameTransform = (input: { serverName: string; toolName: string }) => string;
 
 // 64 is OpenAI's function-name limit; Anthropic allows 128. Cap at the lower

@@ -1,4 +1,4 @@
-// From openclaw/openclaw@c656ee5227cdfc8930c6eff095937e53e0516886:src/agents/embedded-agent-runner/compact.hooks.test.ts (atlas AGENT-LOOP-0099). Upstream-main cases added per task addendum; imports and product names adapted without replacing Branch code or existing assertions.
+// Upstream-main cases added per task addendum; imports and product names adapted without replacing Branch code or existing assertions.
 
 // Hook integration coverage for direct and queued embedded compaction.
 

@@ -1,0 +1,4 @@
+window:scripts/frame-harness-actions.test.ts
+window:src/places/settings/set1/appearance.test.tsx
+window:src/places/settings/set1/instructions.test.tsx
+window:src/rooms/new-group-chat.test.tsx

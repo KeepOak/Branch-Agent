@@ -1,4 +1,4 @@
-// From openclaw/openclaw@57e0aaa1c190f1abe16e597008fbcc14f5e609e3:src/gateway/openresponses-session-store.test.ts (atlas INTEGRATIONS-0148). Changed for Branch: keep newer authority and Incognito assertions and restore pinned capacity eviction coverage.
+// Changed for Branch: keep newer authority and Incognito assertions and restore pinned capacity eviction coverage.
 import { existsSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as workerAdmission from "../infra/sqlite-worker-operation-admission.js";

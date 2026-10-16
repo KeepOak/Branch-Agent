@@ -36,7 +36,14 @@ import {
   readGatewayToolOperatorScopes,
 } from "./browser-tool.runtime.js";
 import type { BrowserScreenshotOptions } from "./browser-tool.screenshot.js";
+import { resolveBrowserNavigationProxyMode } from "./browser/browser-proxy-mode.js";
 import { withBrowserRequestScope } from "./browser/request-scope.js";
+import { withBrowserNavigationPolicy } from "./browser/navigation-guard.js";
+import {
+  isGuestEligible,
+  routeBrowserActionToGuest,
+  withFallbackNotice,
+} from "./guest/guest-route.js";
 
 type BrowserTabIdentity = { targetId: string; profile: string } & (
   | { target: "host" }
@@ -486,6 +493,33 @@ export function createBrowserTool(
         const { assertBrowserDashboardTargetCurrent } = await import("./browser-dashboard.js");
         await assertBrowserDashboardTargetCurrent(browserDashboard, opts?.agentId, { signal });
       }
+      // A managed host browser of this conversation runs on the window's guest pane when one is open.
+      const actRequest = action === "act" ? readActRequestParam(params) : undefined;
+      const guestRoute = await routeBrowserActionToGuest({
+        action,
+        sessionKey: opts?.agentSessionKey ?? "",
+        eligible: isGuestEligible({
+          sessionKey: opts?.agentSessionKey,
+          requestedProfile,
+          defaultProfile: resolvedBrowser.defaultProfile,
+          usesUserBrowser: isUserBrowserProfile,
+          routed: Boolean(nodeTarget || baseUrl || proxyRequest),
+          bound: Boolean(binding || browserDashboard),
+          actAllowed:
+            action !== "act" || capabilities.actKinds.some((kind) => kind === actRequest?.kind),
+        }),
+        url: readStringParam(params, "targetUrl") ?? readStringParam(params, "url"),
+        act: actRequest,
+        navigationPolicy: withBrowserNavigationPolicy(resolvedBrowser.ssrfPolicy, {
+          browserProxyMode: resolvedProfile
+            ? resolveBrowserNavigationProxyMode({ resolved: resolvedBrowser, profile: resolvedProfile })
+            : "direct",
+        }),
+        signal,
+      });
+      if (guestRoute.kind === "guest") {
+        return guestRoute.result;
+      }
       const dispatchTabAction = () =>
         executeBrowserTabAction({
           action,
@@ -545,7 +579,7 @@ export function createBrowserTool(
         // Dashboard presentation owns this tab; ordinary preview metadata would steal its panel.
         return { ...result, details: { ...asNullableRecord(result.details), browserDashboard } };
       }
-      return [
+      const finalResult = [
         "open",
         "focus",
         "navigate",
@@ -560,6 +594,7 @@ export function createBrowserTool(
       ].includes(action)
         ? withBrowserTabDetails(result, tabIdentity)
         : result;
+      return withFallbackNotice(finalResult, guestRoute.notice);
     },
   };
 }

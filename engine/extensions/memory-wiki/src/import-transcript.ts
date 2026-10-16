@@ -1,4 +1,4 @@
-// Active-branch insight parsing adapted from the pinned OpenClaw importer.
+// Active-branch insight parsing.
 export type TranscriptTurn = {
   role: "user" | "assistant";
   text: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountEmails, comingUp, dueWords, planWords, readLimits, readRoom, readRounds, resetWords, ringReading, SIGN_IN_AGAIN_WORDS, sizeWords, uptimeWords, usagePollResult, windowName, withAccountEmails } from "./status-data";
+import { accountEmails, comingUp, dueWords, plainJobName, planWords, readLimits, readRoom, readRounds, resetWords, ringReading, SIGN_IN_AGAIN_WORDS, sizeWords, uptimeWords, usagePollResult, windowName, withAccountEmails } from "./status-data";
 import { usageWords } from "./StatusBar";
 
 const NOW = new Date(2026, 9, 2, 12, 0).getTime();
@@ -148,14 +148,16 @@ describe("Running and version", () => {
     expect(comingUp(jobs, NOW)).toEqual([{ name: "soon", when: "in 12 min" }, { name: "late", when: "in 3 days" }]);
     expect(dueWords(NOW - 5, NOW)).toBe("due");
   });
-  it("Coming up names a check-in by its Trunk and the memory job in plain words (DA-25)", () => {
+  it("Coming up leaves out the engine's own check-in and memory cleanup, and keeps the person's jobs (DA-25)", () => {
     const jobs = [
       { name: "heartbeat-dev", displayName: "Heartbeat (dev)", agentId: "dev", enabled: true, payload: { kind: "heartbeat" }, state: { nextRunAtMs: NOW + 12 * 60_000 } },
       { name: "Memory Light Rings", description: "[managed-by=memory-core.rings.light]", enabled: true, state: { nextRunAtMs: NOW + 3 * 86_400_000 } },
+      { name: "Morning brief", payload: { kind: "agentTurn" }, enabled: true, state: { nextRunAtMs: NOW + 60 * 60_000 } },
     ];
     const names = (id?: string) => (id === "dev" ? "Trunk" : "Sapling");
-    expect(comingUp(jobs, NOW, names)).toEqual([{ name: "Check-in · Trunk", when: "in 12 min" }, { name: "Overnight memory cleanup", when: "in 3 days" }]);
-    expect(comingUp(jobs, NOW).map((j) => j.name)).toEqual(["Check-in", "Overnight memory cleanup"]);
+    expect(comingUp(jobs, NOW, names).map((j) => j.name)).toEqual(["Morning brief"]);
+    expect(plainJobName(jobs[0]!, names)).toBe("Check-in · Trunk");
+    expect(plainJobName(jobs[1]!)).toBe("Overnight memory cleanup");
   });
   it("uptime words", () => {
     expect(uptimeWords((3 * 24 + 4) * 3_600_000)).toBe("3 days, 4 hours");

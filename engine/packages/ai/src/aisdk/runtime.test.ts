@@ -1,4 +1,4 @@
-// From mastra-ai/mastra@486d3b7f35edfeaeab47b1230b56880e672cc421:packages/core/src/llm/model/model.loop.ts (atlas AGENT-LOOP-0026). Branch contract tests for the adapted versioned invocation; these do not replace upstream worker E2E tests.
+// Branch contract tests for the adapted versioned invocation; these do not replace worker E2E tests.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { configureAiTransportHost } from "../host.js";
 import type { Context, Model } from "../types.js";

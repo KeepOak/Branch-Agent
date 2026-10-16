@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Conversation } from "../connect/conversations";
 import { agentIdOf } from "../connect/session";
 import { Pebble } from "../face/Pebble";
+import type { WindowEngine } from "../connect/engine";
+import { Coming } from "../glass/coming";
+import { FIND_ANYTHING_EVENT } from "../screens/find/find-event";
 import { Icon } from "./icons";
 import { rowTime } from "./list-model";
 import {
@@ -60,15 +63,19 @@ export function useSearch(request: Request, rows: Conversation[], trunkName: (id
   return { query, setQuery: change, chip, setChip, results };
 }
 
-type BoxProps = { query: string; onQuery: (q: string) => void; rail?: boolean };
+type BoxProps = { query: string; onQuery: (q: string) => void; rail?: boolean; engine?: Pick<WindowEngine, "features"> | null };
 
 /** The search field (§4.1.2 Field, Shortcut hint, Clear). Escape empties it and brings the list back. */
-export function SearchBox({ query, onQuery }: BoxProps) {
+export function SearchBox({ query, onQuery, engine }: BoxProps) {
   const ref = useRef<HTMLInputElement>(null);
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   return (
     <label className="search" data-testid="search" title="Search chats, Trunks, messages and past sessions">
-      <Icon name="search" small />
+      <Coming engine={engine} need="sessions.search" where="Find anything">
+        <button type="button" className="search-mag" aria-label="Find anything" title="Find anything" onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); }}>
+          <Icon name="search" small />
+        </button>
+      </Coming>
       <input
         ref={ref}
         placeholder="Search"
@@ -123,6 +130,8 @@ type ResultsProps = {
   onOpen: (key: string) => void;
   onOpenMessage: (key: string, query: string) => void;
   onLibrary: () => void;
+  /** Rows the host matched itself (the R1 sidebar's contacts), drawn first under Chats and Trunks and counted with them. */
+  lead?: { count: number; rows: ReactNode };
 };
 
 function ChatResult({ row, p }: { row: Conversation; p: ResultsProps }) {
@@ -142,13 +151,14 @@ function ChatResult({ row, p }: { row: Conversation; p: ResultsProps }) {
 /** The results that replace the list while searching (§4.1.2): chips, sections, highlighted matches. */
 export function SearchResultsView(p: ResultsProps) {
   const { results, chip, query } = p;
-  const total = countOf(results, "all");
-  const show = (s: SearchChip) => (chip === "all" || chip === s) && countOf(results, s) > 0;
+  const count = (s: SearchChip) => countOf(results, s) + (s === "all" || s === "chats" ? p.lead?.count ?? 0 : 0);
+  const total = count("all");
+  const show = (s: SearchChip) => (chip === "all" || chip === s) && count(s) > 0;
   return (
     <div className="side-scroll search-results" data-testid="search-results">
       <div className="chips" role="tablist" aria-label="Search filters">
         {CHIPS.map((c) => {
-          const n = countOf(results, c.id);
+          const n = count(c.id);
           return (
             <button key={c.id} type="button" role="tab" aria-selected={chip === c.id} className="chip" data-chip={c.id} onClick={() => p.onChip(c.id)}>
               {c.name}
@@ -158,6 +168,7 @@ export function SearchResultsView(p: ResultsProps) {
         })}
       </div>
       {show("chats") ? <div className="lh">Chats and Trunks</div> : null}
+      {show("chats") ? p.lead?.rows : null}
       {show("chats") ? results.chats.map((r) => <ChatResult key={r.key} row={r} p={p} />) : null}
       {show("messages") ? <div className="lh">Messages</div> : null}
       {show("messages")

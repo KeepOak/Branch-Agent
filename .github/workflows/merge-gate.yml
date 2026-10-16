@@ -28,7 +28,10 @@ jobs:
       - name: Check out the PR merge commit and its base
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          fetch-depth: 2
+          # Final head walks every commit after the named sha. Depth 2 stops at the
+          # pull request head, so a merge of main has no parents in the clone.
+          # 2000 reaches those parents and recent main history.
+          fetch-depth: 2000
           persist-credentials: false
       - name: Set up reviewed Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -45,6 +48,8 @@ jobs:
         run: node --test scripts/pr-preflight.test.mjs
       - name: Test the rate-limit wait helper
         run: node --test scripts/merge-gate-rate-limit.test.mjs scripts/check-gate-files-fresh.test.mjs
+      - name: Test the core API budget logger
+        run: node --test scripts/github-api-budget.test.mjs
       - name: Require every changed test to run in CI
         run: node scripts/changed-test-coverage.mjs
       - name: Check merge command patterns in documentation
@@ -55,12 +60,21 @@ jobs:
           node scripts/check-copied-csv.mjs
       - name: Test UI screenshot proof check
         run: node --test scripts/check-ui-proof.test.mjs
+      - name: Read the pull request once for the body checks
+        # One live read for both checks below (each used to read the body itself). Fails closed on error.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SNAPSHOT_FILE: ${{ runner.temp }}/pr-snapshot.json
+        run: node scripts/live-pull-request.mjs "$PR_SNAPSHOT_FILE"
       - name: Require screenshots for window UI changes
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SNAPSHOT_FILE: ${{ runner.temp }}/pr-snapshot.json
         run: node scripts/check-ui-proof.mjs
       - name: Test the SELF-CHECK block check
         run: node --test scripts/check-self-check.test.mjs
@@ -69,6 +83,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SNAPSHOT_FILE: ${{ runner.temp }}/pr-snapshot.json
         run: node scripts/check-self-check.mjs
       - name: Test the window cleanliness check
         run: node --test scripts/check-window-clean.test.mjs

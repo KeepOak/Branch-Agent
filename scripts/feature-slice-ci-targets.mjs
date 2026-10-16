@@ -111,6 +111,15 @@ export const slices = [
       'src/coding/stream-diff.ts', 'src/coding/stream-diff.node-test.ts', 'src/coding/continue-levenshtein.ts',
       'src/agents/sessions/tools/edit-diff.ts', 'src/agents/sessions/tools/edit-diff.continue.test.ts', 'src/agents/file-mutation-args.ts'],
     gap: 'Private donor differential fixture is not shipped and is not counted by this public gate. SDK emission and installed acceptance are separate.' },
+  { id: 'license-clean-rewrites', pr: 1382, anchor: 'src/sessions/resume-message-tree.ts', profile: 'core',
+    productionAnchors: ['src/sessions/resume-message-tree.ts', 'src/sessions/resume-tree-types.ts',
+      'src/agents/tools/sequential-thinking-tool.ts', 'extensions/discord/src/monitor/discord-context-provider.ts'],
+    native: ['src/sessions/resume-message-tree.native-tests.ts'],
+    vitest: ['src/agents/tools/sequential-thinking-tool.test.ts', 'src/agents/tools/harvested-tools-construction.test.ts',
+      'extensions/discord/src/monitor/discord-context-provider.test.ts', 'extensions/discord/src/monitor/message-handler.context.test.ts'],
+    strict: ['src/sessions/resume-tree-types.ts', 'src/sessions/resume-message-tree.ts', 'src/sessions/resume-message-tree.native-tests.ts',
+      'src/agents/tools/sequential-thinking-tool.ts', 'extensions/discord/src/monitor/discord-context-provider.ts'],
+    gap: 'Clean-room rewrites checked against golden corpora. The Discord caller test runs in CI because the local cap cannot build its worker. The export caller test needs BRANCH_NATIVE_COMMANDER_PATH and is not selected here.' },
 ];
 
 export const windowSlices = [

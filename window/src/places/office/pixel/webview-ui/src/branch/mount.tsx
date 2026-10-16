@@ -223,5 +223,5 @@ export function mountPixelOffice(el: HTMLElement, options: MountOptions): PixelO
   return handle;
 }
 
-export type { BranchAgent, BranchLink, Customization, MountOptions, PixelOfficeHandle } from './types.js';
+export type { MountOptions, PixelOfficeHandle } from './types.js';
 export { Storage } from './storage.js';

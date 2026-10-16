@@ -29,6 +29,7 @@ import {
   fetchGitHubRateLimit,
   ghApiArgs,
   isRateLimitError as rateLimitIsRateLimitError,
+  isTransientGitHubError,
   pollIntervalSeconds,
   withRateLimitRetry,
 } from './merge-gate-rate-limit.mjs';
@@ -60,6 +61,7 @@ export const GATE_SCRIPTS = [
   'scripts/check-ui-proof.test.mjs',
   'scripts/check-self-check.mjs',
   'scripts/check-self-check.test.mjs',
+  'scripts/final-head-history.mjs',
   'scripts/feature-batch-ci-targets.mjs',
   'scripts/feature-batch-ci-matrix.mjs',
   'scripts/feature-batch-ci.mjs',
@@ -864,6 +866,10 @@ export function formatTimeoutMessage(pending, { missingAnalyze = false, unregist
 // The job keeps its 35-minute limit: the poll budget below counts from job start, so this wait is not extra time.
 export const PR_FILES_WAIT_SECONDS = 600;
 
+// Rate-limit waits for every API call in the job. The poll below is one evaluation (MERGE_GATE_WAIT_SECONDS=0),
+// so without this budget the first rate limit failed the whole gate at once. Stays inside the 35-minute job.
+export const DEFAULT_API_WAIT_SECONDS = 600;
+
 export function fetchPrFiles(repo, prNumber, token, {
   request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options),
   budgetSeconds = PR_FILES_WAIT_SECONDS,
@@ -1024,18 +1030,61 @@ function writeSummary(text) {
   console.log(text);
 }
 
-export function fetchNamedTestLists(repo, sha, token) {
+const DESKTOP_WORKFLOW_PATH = '.github/workflows/desktop-checks.yml';
+
+function graphqlRequest(token, query, variables) {
+  const args = ['api', 'graphql', '-H', 'Accept: application/vnd.github+json', '-f', `query=${query}`];
+  for (const [key, value] of Object.entries(variables)) args.push('-F', `${key}=${value}`);
+  return withRateLimitRetry(() => execGhApi(args, { token, includeHeaders: false }).json, {
+    sleep: sleepSeconds,
+    fetchRateLimit: () => fetchGitHubRateLimit(token),
+    startedAt: gateApiBudget.startedAt,
+    budgetSeconds: gateApiBudget.budgetSeconds ?? Number(process.env.MERGE_GATE_WAIT_SECONDS ?? DEFAULT_WAIT_BUDGET_SECONDS),
+  });
+}
+
+// Several files at one commit in one GraphQL request. Anything it cannot answer cleanly (an error, a binary or
+// truncated blob) is read again over REST, so the result is never a guess: a missing file is null, as before.
+export function fetchFileTextsBatch(repo, sha, token, paths, {
+  graphql = graphqlRequest,
+  fallback = (filePath) => fetchFileText(repo, sha, token, filePath),
+} = {}) {
+  const [owner, name] = repo.split('/');
+  const fields = paths.map((filePath, index) => (
+    `f${index}: object(expression: ${JSON.stringify(`${sha}:${filePath}`)}) { ... on Blob { text isBinary isTruncated } }`
+  ));
+  const query = `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${fields.join(' ')} } }`;
+  let repository = null;
+  try {
+    const payload = graphql(token, query, { owner, name });
+    repository = payload?.errors?.length ? null : (payload?.data?.repository ?? null);
+  } catch {
+    repository = null;
+  }
+  return Object.fromEntries(paths.map((filePath, index) => {
+    const node = repository?.[`f${index}`];
+    if (repository && node === null) return [filePath, null];
+    if (node && typeof node.text === 'string' && node.isBinary === false && node.isTruncated === false) {
+      return [filePath, node.text];
+    }
+    return [filePath, fallback(filePath)];
+  }));
+}
+
+export function fetchNamedTestLists(repo, sha, token, api = ghApi) {
   let entries;
   try {
-    entries = ghApi(repo, token, `contents/scripts/feature-batch-ci-named?ref=${sha}`);
-  } catch {
-    return [];
+    entries = api(repo, token, `contents/scripts/feature-batch-ci-named?ref=${sha}`);
+  } catch (error) {
+    // Only "no directory" is empty. A rate limit or outage must not read as "no named lists" (fail closed).
+    if (isNotFoundError(error)) return [];
+    throw error;
   }
   if (!Array.isArray(entries)) return [];
   const extra = [];
   for (const entry of entries) {
     if (entry.type !== 'file' || !entry.name?.endsWith('.txt') || entry.name === 'README.txt') continue;
-    const text = fetchFileText(repo, sha, token, entry.path);
+    const text = fetchFileText(repo, sha, token, entry.path, api);
     if (text == null) continue;
     extra.push(...parseNamedTestList(text, entry.path));
   }
@@ -1066,11 +1115,11 @@ export function trustedDesktopWorkflow(fetched, mainFallback = '') {
   return serializeAllowlistedDesktopWorkflow(allowlistedDesktopRunTargets(workflow), mainFallback);
 }
 
-function runCoverage(files, extraNamed, repo, sha, token) {
-  const mainWorkflow = readFileSync(path.join(root, '.github/workflows/desktop-checks.yml'), 'utf8');
-  const fetched = repo && sha && token
-    ? fetchFileText(repo, sha, token, '.github/workflows/desktop-checks.yml')
-    : null;
+function runCoverage(files, extraNamed, repo, sha, token, headFiles = null) {
+  const mainWorkflow = readFileSync(path.join(root, DESKTOP_WORKFLOW_PATH), 'utf8');
+  const fetched = headFiles
+    ? headFiles[DESKTOP_WORKFLOW_PATH]
+    : fetchFileText(repo, sha, token, DESKTOP_WORKFLOW_PATH);
   const workflow = trustedDesktopWorkflow(fetched, mainWorkflow);
   if (workflow == null) {
     console.error('Could not read pull request .github/workflows/desktop-checks.yml; failing closed.');
@@ -1107,26 +1156,27 @@ function readLocalDoc(doc) {
   }
 }
 
-function fetchMergeBaseSha(repo, token, baseRef, headSha) {
+function fetchMergeBaseSha(repo, token, baseRef, headSha, request = (requestPath, options) => ghApiWithRetry(repo, token, requestPath, options)) {
   if (!baseRef || !headSha) return null;
   try {
-    const payload = ghApiWithRetry(repo, token, `compare/${baseRef}...${headSha}`, {
+    const payload = request(`compare/${baseRef}...${headSha}`, {
       jq: '{sha:.merge_base_commit.sha}',
       retries: 6,
     });
     const sha = payload?.sha;
     return typeof sha === 'string' && /^[0-9a-f]{40}$/i.test(sha) ? sha : null;
-  } catch {
+  } catch (error) {
+    if (isRateLimitError(error) || isTransientGitHubError(error)) throw error;
     return null;
   }
 }
 
-function runMergeCommandCheck(repo, sha, token, prFiles = null, baseRef = null) {
+function runMergeCommandCheck(repo, sha, token, prFiles = null, baseRef = null, headFiles = null) {
   const dir = mkdtempSync(path.join(tmpdir(), 'merge-gate-trusted-docs-'));
   try {
     const headContents = {};
     for (const doc of docsToCheck) {
-      const text = fetchFileText(repo, sha, token, doc);
+      const text = headFiles ? headFiles[doc] : fetchFileText(repo, sha, token, doc);
       headContents[doc] = text;
       if (text == null) continue;
       const dest = path.join(dir, doc);
@@ -1313,6 +1363,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
 
   const jobStartedAt = Date.now();
+  gateApiBudget.budgetSeconds = Number(process.env.MERGE_GATE_API_WAIT_SECONDS ?? DEFAULT_API_WAIT_SECONDS);
+  gateApiBudget.startedAt = jobStartedAt;
   const files = fetchPrFiles(repo, prNumber, token);
   const changedFiles = changedFilesFromPrFiles(files);
   const body = fetchPrBody(repo, prNumber, token);
@@ -1334,8 +1386,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   }
 
   const extraNamed = fetchNamedTestLists(repo, sha, token);
-  if (!runCoverage(files, extraNamed, repo, sha, token)) process.exit(1);
-  if (!runMergeCommandCheck(repo, sha, token, files, baseRef)) {
+  const headFiles = fetchFileTextsBatch(repo, sha, token, [DESKTOP_WORKFLOW_PATH, ...docsToCheck]);
+  if (!runCoverage(files, extraNamed, repo, sha, token, headFiles)) process.exit(1);
+  if (!runMergeCommandCheck(repo, sha, token, files, baseRef, headFiles)) {
     console.error('Merge-command check failed on the pull request documentation.');
     process.exit(1);
   }

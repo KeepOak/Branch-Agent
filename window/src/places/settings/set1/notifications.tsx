@@ -14,11 +14,14 @@ type Tell = TellRow & { sub: string; key: CategoryKey };
 
 export const TELL: Tell[] = [
   { title: "A Trunk needs a yes", sub: "Shows on this computer and your phone.", key: "approvalRequested" },
-  { title: "A Trunk asks you something", sub: "A question it can’t go on without. Off until you turn it on.", key: "agentQuestion" },
+  { title: "A Trunk asks you something", sub: "A question it can’t go on without.", key: "agentQuestion" },
   { title: "A long task finishes", sub: "When a Trunk finishes its work.", key: "agentFinished" },
-  { title: "An automation fails", sub: "When a scheduled job can’t finish. Off until you turn it on.", key: "scheduledTaskFailed" },
-  { title: "Someone mentions you", sub: "When someone picks you with @ in a conversation you share. Off until you turn it on.", key: "humanMentioned" },
+  { title: "An automation fails", sub: "When a scheduled job can’t finish.", key: "scheduledTaskFailed" },
+  { title: "Someone mentions you", sub: "When someone picks you with @ in a conversation you share.", key: "humanMentioned" },
 ];
+
+/** The desktop app shows no approval notices of its own yet: the category switch reaches the phone and other devices only. */
+const DESKTOP_APPROVAL_SUB = "Shows on your phone and other devices.";
 
 const HOURS = ["6 PM", "7 PM", "8 PM", "9 PM", "10 PM", "11 PM", "12 AM", "1 AM", "5 AM", "6 AM", "7 AM", "8 AM", "9 AM"];
 const toMinute = (h: string) => { const [n, ap] = h.split(" "); return ((Number(n) % 12) + (ap === "PM" ? 12 : 0)) * 60; };
@@ -81,7 +84,7 @@ function TellMe({ engine, prefs, push, trunks, desktop }: TellProps) {
         </Ctl>
       )}
       {TELL.map((row) => (
-        <Ctl key={row.title} title={row.title} sub={row.sub} off={off}>
+        <Ctl key={row.title} title={row.title} sub={desktop && row.key === "approvalRequested" ? DESKTOP_APPROVAL_SUB : row.sub} off={off}>
           <Switch checked={p.categories[row.key]} disabled={Boolean(off)} label={row.title} onChange={(v) => setCat(row.key, v)} />
         </Ctl>
       ))}

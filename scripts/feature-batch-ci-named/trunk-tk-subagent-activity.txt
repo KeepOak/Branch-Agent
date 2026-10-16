@@ -1,0 +1,3 @@
+window:src/stage/pane/ActivityTab.helper-facts.test.tsx
+window:src/thread/Thread.helpers.test.tsx
+window:src/thread/native-helpers.test.ts

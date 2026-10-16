@@ -25,7 +25,58 @@ async function open(page: string, onPage = vi.fn()) {
   return onPage;
 }
 
+describe("settings frame heading", () => {
+  // QA 1014 item 8: a page the R1 window hands to this frame keeps the heading R1 names for it ("Remote access", not "Gateway").
+  it("draws the heading the host names", async () => {
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="gateway" heading="Remote access" backName="Sapling" engine={engine} onPage={() => {}} onBack={() => {}} />));
+    expect(document.querySelector("h1")?.textContent).toBe("Remote access");
+  });
+
+  it("keeps Classic's own heading when the host names none", async () => {
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="gateway" backName="Sapling" engine={engine} onPage={() => {}} onBack={() => {}} />));
+    expect(document.querySelector("h1")?.textContent).toBe("Gateway");
+  });
+});
+
 describe("settings frame level", () => {
+  it("follows the originating Trunk at every detail level", async () => {
+    const request = vi.fn(async (method: string) => method === "agents.list" ? { defaultId: "main", agents: [{ id: "main", name: "Default" }, { id: "writer", name: "Writer" }] } : {});
+    const scoped = { ...engine, agentId: "writer", request } as WindowEngine;
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="instructions" backName="Writer" engine={scoped} onPage={() => {}} onBack={() => {}} />));
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click());
+    // Regular: no "Settings for" picker, and the page reads the Trunk Settings was opened from.
+    expect(document.querySelector('[aria-label="Settings for"]')).toBeNull();
+    expect(request).toHaveBeenCalledWith("agents.files.list", { agentId: "writer" });
+    expect(request).not.toHaveBeenCalledWith("agents.files.list", { agentId: "main" });
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="advanced"]')!.click());
+    expect(document.querySelector<HTMLSelectElement>('[aria-label="Settings for"]')?.value).toBe("writer");
+    request.mockClear();
+    await act(async () => document.querySelector<HTMLButtonElement>('[data-level="regular"]')!.click());
+    expect(document.querySelector('[aria-label="Settings for"]')).toBeNull();
+    expect(request).not.toHaveBeenCalledWith("agents.files.list", { agentId: "main" });
+  });
+
+  it("keeps the Helpers working count live across Settings and detail levels", async () => {
+    const connection: WindowEngine = {
+      ...engine,
+      request: vi.fn(async (method: string) => method === "agents.list"
+        ? { agents: [{ id: "main", name: "Sapling" }] }
+        : method === "node.list" ? { nodes: [] } : {}) as WindowEngine["request"],
+    };
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    for (const running of [3, 1, 0]) {
+      await act(async () => root?.render(<SettingsFrame page="helpers" backName="Sapling" engine={connection} running={running} onPage={() => {}} onBack={() => {}} />));
+      for (const level of ["regular", "advanced", "technical"]) {
+        await act(async () => document.querySelector<HTMLButtonElement>(`[data-level="${level}"]`)!.click());
+        expect(document.querySelector('[data-testid="fleet"] small')?.textContent).toBe(`${running} working now`);
+      }
+    }
+    expect(connection.request).not.toHaveBeenCalledWith("sessions.list", expect.anything());
+  });
+
   it("keeps Settings headings and labels in sentence case", () => {
     const root = join(process.cwd(), "src/places/settings");
     const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((item) => {
@@ -46,6 +97,34 @@ describe("settings frame level", () => {
     expect(document.querySelector('.set-item[data-page="advanced"]')?.getAttribute("aria-current")).toBe("true");
     expect(localStorage.getItem("branch.level")).toBe("advanced");
     expect(onPage).not.toHaveBeenCalledWith("general");
+  });
+
+  it("in a host that keeps the level (R1), opening an Advanced page at Regular never changes or saves the level", async () => {
+    localStorage.setItem("branch.level", "regular");
+    const onPage = vi.fn();
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame keepLevel page="advanced" backName="Sapling" engine={engine} onPage={onPage} onBack={() => {}} />));
+    expect(document.querySelector('[data-level="regular"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(localStorage.getItem("branch.level")).toBe("regular");
+    // What Regular shows, and one line that offers Advanced: choosing it is the person's own change.
+    const more = document.querySelector<HTMLElement>(".set-more");
+    expect(more?.textContent).toContain("More in Advanced.");
+    await act(async () => more!.querySelector("button")!.click());
+    expect(document.querySelector('[data-level="advanced"]')?.getAttribute("aria-checked")).toBe("true");
+    expect(localStorage.getItem("branch.level")).toBe("advanced");
+    expect(document.querySelector(".set-more")).toBeNull();
+    expect(onPage).not.toHaveBeenCalled();
+  });
+
+  it("choosing Technical raises the level, saves it, and marks Technical as the one chosen", async () => {
+    localStorage.setItem("branch.level", "regular");
+    await open("general");
+    const technical = document.querySelector('[data-level="technical"]') as HTMLButtonElement;
+    expect(technical.getAttribute("aria-checked")).toBe("false");
+    await act(async () => technical.click());
+    expect(localStorage.getItem("branch.level")).toBe("technical");
+    expect((document.querySelector('[data-level="technical"]') as HTMLButtonElement).getAttribute("aria-checked")).toBe("true");
+    expect((document.querySelector('[data-level="regular"]') as HTMLButtonElement).getAttribute("aria-checked")).toBe("false");
   });
 
   it("lowering the level by hand still moves a hidden page to General", async () => {
@@ -237,5 +316,39 @@ describe("settings page help", () => {
     await act(async () => document.querySelector<HTMLButtonElement>(".kit-help-ask")!.click());
     expect(ask).toHaveBeenCalledWith("Tell me about Settings › General.");
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+});
+
+
+describe("DA-73 settings destinations", () => {
+  it("keeps exactly five main destinations at every detail level", async () => {
+    await open("general");
+    const names = () => [...document.querySelectorAll(".set-nav .set-item")].map((item) => item.textContent);
+    expect(names()).toEqual(["This app", "Trunks", "Safety", "Data", "About"]);
+    for (const level of ["advanced", "technical"]) {
+      await act(async () => document.querySelector<HTMLButtonElement>(`[data-level="${level}"]`)!.click());
+      expect(names()).toEqual(["This app", "Trunks", "Safety", "Data", "About"]);
+    }
+  });
+
+  it.each(["models", "accounts", "local"])("keeps the %s deep link inside one Models & accounts section", async (page) => {
+    await open(page);
+    expect(document.querySelector(".set-nav [aria-current=true]")?.textContent).toBe("Trunks");
+    const sections = [...document.querySelectorAll(".set-sections .set-item")].map((item) => item.textContent);
+    expect(sections).toEqual(["Instructions & personality", "Models & accounts", "Voice", "Chat apps", "Helpers"]);
+    expect(document.querySelector(".set-sections [aria-current=true]")?.textContent).toBe("Models & accounts");
+    expect(document.querySelector("[role=tablist][aria-label=\"Models & accounts\"] [aria-selected=true]")?.textContent).toBe(page === "models" ? "Default" : page === "local" ? "Local" : "Accounts");
+    expect(document.querySelectorAll(".set-col h1")).toHaveLength(1);
+  });
+
+  it("keeps restricted About sections out of both navigation and search", async () => {
+    const plain = { ...engine, scopes: ["operator.read"] } as WindowEngine;
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root?.render(<SettingsFrame page="updates" backName="Sapling" engine={plain} onPage={vi.fn()} onBack={() => {}} />));
+    expect(document.querySelector(".set-sections [data-page=gateway]")).toBeNull();
+    expect(document.querySelector(".set-sections [data-page=self]")).toBeNull();
+    const input = document.querySelector<HTMLInputElement>("input[aria-label=\"Search settings\"]")!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "gateway"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(document.querySelector(".set-hit [data-page=gateway]")).toBeNull();
   });
 });
