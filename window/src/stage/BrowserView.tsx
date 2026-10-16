@@ -468,7 +468,7 @@ export function BrowserView({ engine, gatewayUrl, blocks, name = "It", running =
   else if (!engine.sessionKey) page = <Blank title="Choose a conversation first" text="Open a conversation to browse pages with its Trunk." />;
   else if (browser.phase === "loading" && !browser.tabs.length) page = <Blank title="Connecting to the browser…" text="Reading this conversation's tabs." />;
   else if (browser.phase === "error") page = <Blank title="Couldn't connect to the browser" text={browser.error ?? ""}><button type="button" className="btn sm" onClick={refresh}>Try again</button></Blank>;
-  else if (!tab || tab.url === "about:blank") page = <Blank title="Browse with your Trunk" text="See the pages your Trunk opens, or open a page yourself in this conversation.">
+  else if (!tab || tab.url === "about:blank") page = <Blank title={`${name}’s browser`} text="See the pages your Trunk opens, or open a page yourself in this conversation.">
     <small>Type a website or a search above and press Enter. Then ask {name} to read, compare or work on the page, or click and type yourself.</small>
     <small>Branch's browser is separate from your personal browser.</small>
   </Blank>;

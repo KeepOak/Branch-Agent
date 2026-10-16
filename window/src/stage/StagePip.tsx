@@ -13,7 +13,7 @@ type Props = { engine: WindowEngine; gatewayUrl: string; name: string; computer:
  *  picture, open full size, close. */
 export function StagePip({ engine, gatewayUrl, name, computer, blocks, onOpen, onClose }: Props) {
   return (
-    <div className="pip7" role="region" aria-label={computer.kind === "browser" ? `${name}'s browser, small` : `${name}'s computer, small`}>
+    <div className="pip7" role="region" aria-label={computer.kind === "browser" ? `${name}’s browser, small` : `${name}’s computer, small`}>
       <button type="button" className="pip7-screen" aria-label="Open full size" onClick={onOpen}>
         {computer.kind === "browser" ? <span className="stage-screen"><BrowserMini engine={engine} gatewayUrl={gatewayUrl} blocks={blocks} /></span> : <DesktopMini engine={engine} gatewayUrl={gatewayUrl} id={computer.id} />}
       </button>
