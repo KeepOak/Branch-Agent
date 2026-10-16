@@ -10,6 +10,8 @@ export type ChatItem =
   | { kind: 'assistant'; key: string; text: string; at: number }
   /** A turn's tool calls, folded into one quiet line. */
   | { kind: 'work'; key: string; steps: string[]; durationMs: number }
+  /** A turn's computer or browser steps, as their own message. */
+  | { kind: 'computer'; key: string; steps: string[]; title: string; durationMs: number }
   | { kind: 'notice'; key: string; text: string }
   | { kind: 'error'; key: string; text: string };
 
@@ -77,6 +79,12 @@ export function stepTitle(tool: string): string {
   return STEP_TITLES[tool] ?? (tool ? `Used ${tool.replace(/[_.-]+/g, ' ')}` : 'Did a step');
 }
 
+/** Computer and browser tools become their own message, not the quiet work line. */
+export function isComputerTool(tool: string): boolean {
+  const name = tool.trim().toLowerCase();
+  return name === 'computer' || name === 'browser' || name.startsWith('computer_') || name.startsWith('browser_');
+}
+
 /** When a message was written: the engine's record time, else the message's own time. */
 const writtenAt = (m: Record<string, unknown>) => num(rec(m.__branch).recordTimestampMs) || num(m.timestamp);
 
@@ -88,17 +96,29 @@ function runKeyOf(m: Record<string, unknown>): string {
 
 const MEDIA_PARTS = new Set(['image', 'audio', 'video', 'file']);
 
-/** The chat as the phone shows it: your messages, the replies, one work line per turn, notices and errors. */
+/** The chat as the phone shows it: your messages, the replies, one work line per turn, computer messages, notices and errors. */
 export function historyItems(messages: readonly unknown[]): { items: ChatItem[]; runKeys: Set<string> } {
   const items: ChatItem[] = [];
   const runKeys = new Set<string>();
   let work: { at: number; steps: string[]; start: number } | null = null;
+  let computer: { at: number; steps: string[]; title: string; start: number } | null = null;
   let turnStart = 0;
   let lastTs = 0;
   const closeWork = () => {
-    if (!work) return;
-    items[work.at] = { kind: 'work', key: items[work.at].key, steps: work.steps, durationMs: Math.max(0, lastTs - work.start) };
-    work = null;
+    if (work) {
+      items[work.at] = { kind: 'work', key: items[work.at].key, steps: work.steps, durationMs: Math.max(0, lastTs - work.start) };
+      work = null;
+    }
+    if (computer) {
+      items[computer.at] = {
+        kind: 'computer',
+        key: items[computer.at].key,
+        steps: computer.steps,
+        title: computer.title,
+        durationMs: Math.max(0, lastTs - computer.start),
+      };
+      computer = null;
+    }
   };
   for (const [index, raw] of messages.entries()) {
     const m = rec(raw);
@@ -129,11 +149,22 @@ export function historyItems(messages: readonly unknown[]): { items: ChatItem[];
         const p = rec(part);
         if (p.type === 'toolCall') {
           flush(`${key}:${i}`);
-          if (!work) {
-            work = { at: items.length, steps: [], start: turnStart || at };
-            items.push({ kind: 'work', key: `${key}:work`, steps: [], durationMs: 0 });
+          const name = str(p.name);
+          const title = stepTitle(name);
+          if (isComputerTool(name)) {
+            if (!computer) {
+              computer = { at: items.length, steps: [], title, start: turnStart || at };
+              items.push({ kind: 'computer', key: `${key}:computer`, steps: [], title, durationMs: 0 });
+            }
+            computer.steps.push(title);
+            computer.title = title;
+          } else {
+            if (!work) {
+              work = { at: items.length, steps: [], start: turnStart || at };
+              items.push({ kind: 'work', key: `${key}:work`, steps: [], durationMs: 0 });
+            }
+            work.steps.push(title);
           }
-          work.steps.push(stepTitle(str(p.name)));
         } else if (p.type === 'text' && str(p.text).trim()) {
           texts.push(str(p.text).trim());
         } else if (typeof part === 'string' && part.trim()) {

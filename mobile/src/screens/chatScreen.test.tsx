@@ -1,14 +1,17 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import App from '../../App';
+import { readApproval, type Approval, type ApprovalDecision } from '../approvals/approvals';
 import { NO_ATTACH_METHOD_NOTE, type PickedFile } from '../chat/attachments';
 import { Conversation } from '../chat/conversation';
 import type { AttachmentPickers } from '../chat/pickAttachment';
-import { chatRows, readAgents } from '../chats/chatList';
+import { chatRows, readAgents, type ChatRow } from '../chats/chatList';
 import { createFakeEngine } from '../connect/fakeEngine';
+import { fixtureApprovals } from '../testing/approvalFixtures';
 import { fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
+import { fixtureEnvironments } from '../testing/computerFixtures';
 import { createFakeSession } from '../testing/fakeSession';
 import { ThemeProvider } from '../theme/ThemeProvider';
-import { ChatScreen, workedFor } from './ChatScreen';
+import { ChatScreen, takeControlCopy, takeControlDetail, threadApprovals, workedFor } from './ChatScreen';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 3000 });
 // pairedApp compiles the full App (welcome through chats). Jest's 5s default is too tight
@@ -49,7 +52,17 @@ async function renderChat(
   online: boolean,
   setup: (engine: ReturnType<typeof createFakeEngine>) => void = () => undefined,
   attach = true,
-  extras: { pickers?: AttachmentPickers; engine?: ReturnType<typeof createFakeEngine> } = {},
+  extras: {
+    pickers?: AttachmentPickers;
+    engine?: ReturnType<typeof createFakeEngine>;
+    row?: ChatRow;
+    computerName?: string;
+    pending?: Approval[];
+    sending?: Record<string, ApprovalDecision>;
+    failed?: Record<string, string>;
+    onAnswer?: (id: string, decision: ApprovalDecision) => void;
+    now?: number;
+  } = {},
 ) {
   const engine = extras.engine ?? createFakeEngine();
   setup(engine);
@@ -59,12 +72,28 @@ async function renderChat(
   await eventually(() => expect(session.hello).not.toBeNull());
   const conversation = new Conversation(KEY, session, () => 'run-1');
   if (attach) conversation.attach();
+  const onTakeControl = jest.fn();
+  const onAnswer = extras.onAnswer ?? jest.fn();
   await render(
     <ThemeProvider scheme="dark">
-      <ChatScreen row={mainRow} conversation={conversation} online={online} onBack={() => undefined} hello={session.hello} pickers={extras.pickers} />
+      <ChatScreen
+        row={extras.row ?? mainRow}
+        conversation={conversation}
+        online={online}
+        onBack={() => undefined}
+        hello={session.hello}
+        pickers={extras.pickers}
+        onTakeControl={onTakeControl}
+        computerName={extras.computerName ?? 'This computer'}
+        pending={extras.pending}
+        sending={extras.sending}
+        failed={extras.failed}
+        onAnswer={onAnswer}
+        now={extras.now}
+      />
     </ThemeProvider>,
   );
-  return { engine, session, conversation };
+  return { engine, session, conversation, onTakeControl, onAnswer };
 }
 
 describe('chat screen', () => {
@@ -261,6 +290,106 @@ describe('chat attachments', () => {
     await eventually(() => expect(screen.getByText('Your expenses for September are filed.')).toBeOnTheScreen());
     expect(screen.getByTestId('attach')).toBeDisabled();
     expect(screen.getByTestId('attach-unavailable')).toHaveTextContent(NO_ATTACH_METHOD_NOTE);
+    conversation.dispose();
+    session.dispose();
+  });
+});
+
+const computerHistory = [
+  { role: 'user', content: [{ type: 'text', text: 'Find the invoice in Outlook' }], timestamp: 1_000 },
+  {
+    role: 'assistant',
+    content: [
+      { type: 'toolCall', id: 't1', name: 'read', arguments: {} },
+      { type: 'toolCall', id: 't2', name: 'computer', arguments: {} },
+      { type: 'toolCall', id: 't3', name: 'browser', arguments: {} },
+    ],
+    timestamp: 2_000,
+    stopReason: 'toolUse',
+  },
+  { role: 'assistant', content: [{ type: 'text', text: 'Signing in to Outlook so I can search your mail' }], timestamp: 13_000, stopReason: 'stop' },
+];
+
+describe('thread parity', () => {
+  it('names the Take control strip from the preview, and hides it on a room', () => {
+    expect(takeControlCopy({ room: true, working: true, live: false, online: true })).toBeNull();
+    expect(takeControlCopy({ room: false, working: true, live: false, online: true })).toEqual({ state: 'Working on its computer', liveOn: true });
+    expect(takeControlCopy({ room: false, working: false, live: false, online: true })).toEqual({ state: 'Computer ready', liveOn: false });
+    expect(takeControlCopy({ room: false, working: false, live: false, online: false })).toEqual({ state: 'Computer idle', liveOn: false });
+    expect(takeControlCopy({ room: false, working: false, live: false, online: true, yours: true })).toEqual({ state: 'You have the computer', liveOn: false });
+    expect(takeControlDetail([{ kind: 'work', key: 'w', steps: ['Read a file', 'Ran a command'], durationMs: 12_000 }], true)).toBe(' · step 2 of 2');
+    expect(threadApprovals([readApproval(fixtureApprovals.plugin[0], 'plugin')!], KEY, 1)).toHaveLength(1);
+    expect(threadApprovals([readApproval(fixtureApprovals.plugin[0], 'plugin')!], 'agent:oak:chat-1', 1)).toHaveLength(0);
+  });
+
+  it('shows the Take control strip and opens Computers, the existing route', async () => {
+    const engine = createFakeEngine({ sessions: fixtureSessions, agents: fixtureAgents, environments: fixtureEnvironments });
+    engine.setHistory(KEY, history);
+    const { session } = createFakeSession(engine);
+    await render(<App scheme="light" session={session} />);
+    await act(() => session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' }));
+    engine.approve();
+    await eventually(() => expect(screen.getByTestId('chat-' + KEY)).toBeOnTheScreen());
+    await fireEvent.press(screen.getByTestId('chat-' + KEY));
+    expect(screen.getByTestId('take-control-strip')).toBeOnTheScreen();
+    expect(screen.getByText('Computer ready')).toBeOnTheScreen();
+    expect(screen.getByText('This computer')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('take-control'));
+    expect(screen.getByTestId('computers-screen')).toBeOnTheScreen();
+    session.dispose();
+  });
+
+  it('keeps the strip off a room', async () => {
+    const roomRow = rows.find((r) => r.room)!;
+    const { conversation, session } = await renderChat(true, (engine) => engine.setHistory(KEY, history), true, { row: roomRow });
+    await eventually(() => expect(screen.getByText('Your expenses for September are filed.')).toBeOnTheScreen());
+    expect(screen.queryByTestId('take-control-strip')).toBeNull();
+    conversation.dispose();
+    session.dispose();
+  });
+
+  it('says Working on its computer while a Trunk works', async () => {
+    const { conversation, session, onTakeControl } = await renderChat(true, (engine) => engine.setHistory(KEY, history), true, {
+      row: { ...mainRow, working: true },
+    });
+    await eventually(() => expect(screen.getByText('Working on its computer')).toBeOnTheScreen());
+    expect(screen.getByTestId('take-control-live')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('take-control'));
+    expect(onTakeControl).toHaveBeenCalledTimes(1);
+    conversation.dispose();
+    session.dispose();
+  });
+
+  it('shows a computer message with its steps and Watch, and keeps the quiet work line', async () => {
+    const { conversation, session, onTakeControl } = await renderChat(true, (engine) => engine.setHistory(KEY, computerHistory), true, {
+      row: { ...mainRow, working: true },
+    });
+    await eventually(() => expect(screen.getByText('Used computer')).toBeOnTheScreen());
+    expect(screen.getByText('2 actions')).toBeOnTheScreen();
+    expect(screen.getByText('This computer · Used the browser')).toBeOnTheScreen();
+    expect(screen.getByText('Used the computer')).toBeOnTheScreen();
+    expect(screen.getByText('Used the browser')).toBeOnTheScreen();
+    expect(screen.getByText('Worked for 12s · 1 step ›')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('computer-open-h:1:computer'));
+    expect(onTakeControl).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Watch')).toBeOnTheScreen();
+    conversation.dispose();
+    session.dispose();
+  });
+
+  it('shows an approval card in the thread and answers it here', async () => {
+    const plugin = readApproval(fixtureApprovals.plugin[0], 'plugin')!;
+    const { conversation, session, onAnswer } = await renderChat(true, (engine) => engine.setHistory(KEY, history), true, {
+      pending: [plugin],
+      now: 1,
+    });
+    await eventually(() => expect(screen.getByTestId('approval-plugin:mail-1')).toBeOnTheScreen());
+    expect(screen.getByText('Send an email to Dana?')).toBeOnTheScreen();
+    expect(screen.getByText('Dana Whitfield')).toBeOnTheScreen();
+    expect(screen.getByText('Send it')).toBeOnTheScreen();
+    expect(screen.getByText('Don’t send')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('allow-plugin:mail-1'));
+    expect(onAnswer).toHaveBeenCalledWith('plugin:mail-1', 'allow-once');
     conversation.dispose();
     session.dispose();
   });

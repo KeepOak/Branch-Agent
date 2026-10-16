@@ -5,7 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, Linking, Platform } from 'react-native';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
 import { ApprovalAlerts, type AppStateSource, type Notifier, type NotificationPermission } from './src/approvals/approvalAlerts';
-import { ApprovalInbox, trunkOf } from './src/approvals/approvals';
+import { ApprovalInbox, trunkOf, type Approval, type ApprovalDecision } from './src/approvals/approvals';
 import { headline } from './src/approvals/approvalWords';
 import { testApprovalsOn } from './src/approvals/testApproval';
 import { useTestApproval } from './src/approvals/useTestApproval';
@@ -63,7 +63,29 @@ const deviceAppState: AppStateSource = {
 };
 
 /** One open chat. Keyed by the chat, so opening another one starts fresh. */
-function OpenChat({ session, row, online, onBack }: { session: PairingSession; row: ChatRow; online: boolean; onBack: () => void }) {
+function OpenChat({
+  session,
+  row,
+  online,
+  onBack,
+  onTakeControl,
+  computerName,
+  pending,
+  sending,
+  failed,
+  onAnswer,
+}: {
+  session: PairingSession;
+  row: ChatRow;
+  online: boolean;
+  onBack: () => void;
+  onTakeControl: () => void;
+  computerName: string;
+  pending: readonly Approval[];
+  sending: Record<string, ApprovalDecision>;
+  failed: Record<string, string>;
+  onAnswer: (id: string, decision: ApprovalDecision) => void;
+}) {
   const [conversation] = useState(() => new Conversation(row.key, session, () => session.newId()));
   useEffect(() => {
     conversation.attach();
@@ -74,7 +96,21 @@ function OpenChat({ session, row, online, onBack }: { session: PairingSession; r
   useEffect(() => {
     void conversation.markRead(opened);
   }, [conversation, opened]);
-  return <ChatScreen row={row} conversation={conversation} online={online} onBack={onBack} hello={session.hello} />;
+  return (
+    <ChatScreen
+      row={row}
+      conversation={conversation}
+      online={online}
+      onBack={onBack}
+      hello={session.hello}
+      onTakeControl={onTakeControl}
+      computerName={computerName}
+      pending={pending}
+      sending={sending}
+      failed={failed}
+      onAnswer={onAnswer}
+    />
+  );
 }
 
 function Shell({
@@ -268,7 +304,22 @@ function Shell({
       } else if (pairedRoute.name === 'chat') {
         // The header follows the list live (a rename, the working dot); the row it was opened from fills in until then.
         const row = chatList.rows.find((r) => r.key === pairedRoute.row.key) ?? pairedRoute.row;
-        screen = <OpenChat key={row.key} session={session} row={row} online={state.online} onBack={() => setPairedRoute(CHATS)} />;
+        const host = computerList.rows.find((computer) => computer.id === 'gateway') ?? computerList.rows[0];
+        screen = (
+          <OpenChat
+            key={row.key}
+            session={session}
+            row={row}
+            online={state.online}
+            onBack={() => setPairedRoute(CHATS)}
+            onTakeControl={() => setPairedRoute({ name: 'computers' })}
+            computerName={host?.name ?? 'This computer'}
+            pending={approvals.pending}
+            sending={approvals.sending}
+            failed={approvals.failed}
+            onAnswer={(id, decision) => void inbox.answer(id, decision)}
+          />
+        );
       } else if (pairedRoute.name === 'approvals') {
         const chatFor = (key: string) => chatList.rows.find((r) => r.key === key);
         screen = (
