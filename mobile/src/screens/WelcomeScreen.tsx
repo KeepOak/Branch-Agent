@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
@@ -11,7 +12,7 @@ const STEPS = [
 ];
 
 /** First launch: what Branch on the phone is, how pairing works, and one way forward. */
-export function WelcomeScreen({ onPair }: { onPair: () => void }) {
+export function WelcomeScreen({ onPair, updateBanner }: { onPair: () => void; updateBanner?: ReactNode }) {
   const { color, space, radius } = useTheme();
   return (
     <Screen
@@ -31,6 +32,7 @@ export function WelcomeScreen({ onPair }: { onPair: () => void }) {
       <ThemedText variant="body" tone="ink2" style={{ marginTop: space.xs }}>
         Your Trunks and Branch Agent, in your pocket.
       </ThemedText>
+      {updateBanner}
       <Card testID="pairing-steps">
         <ThemedText variant="headline">How pairing works</ThemedText>
         {STEPS.map((step, index) => (

@@ -1,9 +1,12 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { liveContext, readLivePullRequest } from './live-pull-request.mjs';
+import { explainFinalHeadDrift } from './final-head-history.mjs';
+import { liveContext, readLivePullRequest, snapshotFromEnv } from './live-pull-request.mjs';
 
 export const SELF_CHECK_DOC = 'docs/SELF-CHECK.md';
+
+const defaultRepoDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export function isTrunkBranch(ref) {
   return typeof ref === 'string' && ref.startsWith('trunk/');
@@ -62,17 +65,26 @@ function placeholder(text) {
   return text.match(/<[^>\n]*>|yes\/no|pass\/fail|\b(?:TBD|TODO)\b/)?.[0];
 }
 
-export function checkSelfCheck({ headRef, body, headSha }) {
+export function checkSelfCheck({ headRef, body, headSha, repoDir = defaultRepoDir }) {
   if (!isTrunkBranch(headRef)) return { ok: true, skipped: true, problems: [] };
   const problems = [];
   const problem = (sentence) => problems.push(`${sentence} (${SELF_CHECK_DOC}).`);
   const block = findSelfCheckBlock(body);
   // With a known head, the block must name it. A body without a Final head line cannot be checked, so it fails.
+  // A later merge of main does not make the line stale: the named sha stays an ancestor, and each commit
+  // after it only brings main in.
   const finalHead = /Final head:\s*([0-9a-f]{40})/i.exec(body ?? '');
   if (headSha && !finalHead) {
     problem(`The SELF-CHECK block has no Final head line, so it cannot be checked against the current head ${headSha.slice(0, 9)}. Edit the description and add "Final head: ${headSha}"`);
   } else if (headSha && finalHead[1].toLowerCase() !== headSha.toLowerCase()) {
-    problem(`The SELF-CHECK Final head ${finalHead[1].slice(0, 9)} is not the current head ${headSha.slice(0, 9)}. Edit the description and set Final head to the current head`);
+    const drift = explainFinalHeadDrift({ repoDir, namedSha: finalHead[1], headSha });
+    if (!drift.ok) {
+      if (!drift.known) {
+        problem(`The SELF-CHECK Final head ${finalHead[1].slice(0, 9)} is not the current head ${headSha.slice(0, 9)}. Edit the description and set Final head to the current head`);
+      } else {
+        problem(`The SELF-CHECK ${drift.message}`);
+      }
+    }
   }
   if (block === null) {
     return { ok: false, skipped: false, problems: [`The pull request description has no SELF-CHECK block. Edit the description and paste the Trunk's SELF-CHECK block (format: ${SELF_CHECK_DOC}).`] };
@@ -119,6 +131,8 @@ export function formatSelfCheckSummary(result) {
 // The input to check: the live pull request when CI configures it (the payload can be stale), else the event file.
 // In CI (GITHUB_ACTIONS=true) the live context is required: a missing one fails closed instead of reading the payload.
 export function resolveSelfCheckInput({ env = process.env, read = readLivePullRequest } = {}) {
+  const snapshot = snapshotFromEnv(env);
+  if (snapshot) return { headRef: snapshot.headRef, body: snapshot.body, headSha: snapshot.headSha };
   const ctx = liveContext(env);
   if (ctx) {
     const pr = read(ctx);

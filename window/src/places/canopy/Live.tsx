@@ -58,13 +58,10 @@ export function EveryStep({ ctx }: { ctx: Ctx }) {
         <button className="btn sm" type="button" aria-haspopup="menu" onClick={e => setMenu(menu ? null : anchorOf(e.currentTarget))}>{tool ? said({ key: tool, tool, changes: [], st: "Done" }) : "All tools"}<Icon name="down" /></button>
         {(["Running", "Done", "Error"] as const).map(s => <button key={s} className="btn sm cn-chipb" type="button" aria-pressed={st.includes(s)} onClick={() => setSt(st.includes(s) ? st.filter(x => x !== s) : [...st, s])}>{s}</button>)}
         <label className="cn-sw"><button type="button" role="switch" className="switch" aria-checked={follow} aria-label="Follow" onClick={() => setFollow(!follow)} /><b>Follow</b></label>
-        {steps.length ? (
-          <>
-            <button className="btn ghost sm" type="button" onClick={() => setOpen(Object.fromEntries(steps.map(s => [s.key, true])))}>Open all</button>
-            <button className="btn ghost sm" type="button" onClick={() => setOpen({})}>Fold all</button>
-            <button className="btn ghost sm" type="button" title="Clears this list only; nothing stops." onClick={() => setSteps([])}>Clear</button>
-          </>
-        ) : null}
+        {/* With no steps there is nothing to open, fold or clear: the buttons are off, not silent. */}
+        <button className="btn ghost sm" type="button" disabled={steps.length === 0} onClick={() => setOpen(Object.fromEntries(steps.map(s => [s.key, true])))}>Open all</button>
+        <button className="btn ghost sm" type="button" disabled={!steps.some(s => open[s.key])} onClick={() => setOpen({})}>Fold all</button>
+        <button className="btn ghost sm" type="button" title="Clears this list only; nothing stops." disabled={steps.length === 0} onClick={() => setSteps([])}>Clear</button>
       </div>
       {menu ? <ChoiceMenu at={menu} label="Tool" head="Tool" radio onClose={() => setMenu(null)} onPick={id => { setTool(id); setMenu(null); }}
         options={[{ id: "", label: "All tools", checked: !tool }, ...tools.map(t => ({ id: t, label: said({ key: t, tool: t, changes: [], st: "Done" }), checked: tool === t }))]} /> : null}

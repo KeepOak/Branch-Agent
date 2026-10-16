@@ -17,6 +17,10 @@ jest.mock('expo-camera', () => ({
 const code = (value: unknown) => bytesToBase64Url(utf8ToBytes(JSON.stringify(value)));
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 3000 });
+// The first test pays for compiling the app and the engine's client, then walks
+// welcome → code → approval → chats → unpair. Jest's 5s default is too tight on
+// a cold CI worker (same budget as testApproval.test.tsx).
+jest.setTimeout(20_000);
 
 describe('pairing screens', () => {
   it('walks from welcome through approval to paired, and back out with unpair', async () => {
@@ -45,6 +49,8 @@ describe('pairing screens', () => {
     engine.approve();
     await eventually(() => expect(screen.getByTestId('chats-screen')).toBeOnTheScreen());
     await fireEvent.press(screen.getByTestId('computer-button'));
+    expect(screen.getByTestId('computers-screen')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('this-phone'));
     expect(screen.getByText('Connected to your computer')).toBeOnTheScreen();
     expect(screen.getByText('computer.local:19031')).toBeOnTheScreen();
     expect(screen.getByText('2026.10.8')).toBeOnTheScreen();

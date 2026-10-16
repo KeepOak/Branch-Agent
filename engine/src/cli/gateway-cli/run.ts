@@ -608,6 +608,19 @@ async function runGatewayCommandOnce(
   }
   if (process.env.BRANCH_SERVICE_MARKER?.trim()) {
     process.env[GATEWAY_SERVICE_RUNTIME_PID_ENV] = String(process.pid);
+    const { GATEWAY_CRASH_STORM_EXIT_CODE, guardGatewayCrashStorm } =
+      await import("../../daemon/restart-storm.js");
+    const storm = await guardGatewayCrashStorm(process.env, {
+      stopService: async () => {
+        const { resolveGatewayService } = await import("../../daemon/service.js");
+        await resolveGatewayService().stop({ env: process.env, stdout: process.stdout });
+      },
+    });
+    if (storm) {
+      gatewayLog.error(storm.message);
+      defaultRuntime.exit(GATEWAY_CRASH_STORM_EXIT_CODE);
+      return;
+    }
     if (process.platform === "darwin") {
       const { warnAboutGatewayRestartStorm } = await import("../../daemon/restart-storm.js");
       await warnAboutGatewayRestartStorm(process.env, (message) => gatewayLog.warn(message));
@@ -662,6 +675,19 @@ async function runGatewayCommandOnce(
           gatewayLog.warn(`service-mode: ${warning}`);
         }
       }
+    }
+  }
+  if (!opts.force) {
+    // A stray second gateway must not bind beside the verified listener already on this port.
+    const holders = findVerifiedGatewayListenerPidsOnPortSync(port).filter(
+      (pid) => pid !== process.pid,
+    );
+    if (holders.length > 0) {
+      defaultRuntime.error(
+        `Port ${port} is already served by a running gateway (pid ${formatGatewayPidList(holders)}). Stop it first, or start with --force to replace it.`,
+      );
+      defaultRuntime.exit(1);
+      return;
     }
   }
   if (opts.force) {

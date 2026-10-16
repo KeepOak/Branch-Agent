@@ -25,7 +25,7 @@ afterEach(async () => {
   }
 });
 
-function createFixture() {
+function createFixture(env?: NodeJS.ProcessEnv) {
   const config: BranchConfig = {
     desktop: { host: { enabled: true, managed: true } },
     plugins: { entries: { fixture: { enabled: true } } },
@@ -145,6 +145,7 @@ function createFixture() {
     getConfig: () => config,
     getPluginRegistry: () => registry,
     hostDesktopService: desktop,
+    ...(env ? { env } : {}),
   });
   cleanups.push(async () => {
     physicalClose.mockResolvedValue();
@@ -176,6 +177,60 @@ function createFixture() {
 }
 
 describe("Gateway computer service", () => {
+  it("passes the desktop's driver address to the computer host even though the Gateway's environment lacks it", async () => {
+    const lease = JSON.stringify({ v: 2, port: 1, secret: "a".repeat(64) });
+    const key = Symbol.for("branch.macComputerEndpoint");
+    (globalThis as Record<symbol, unknown>)[key] = lease;
+    try {
+      const f = createFixture({});
+      delete f.config.desktop;
+      expect(await f.service.status()).toMatchObject({ available: true });
+      const hostEnv = vi.mocked(startComputerHostProcess).mock.calls[0]![0].env;
+      expect(hostEnv.BRANCH_CUA_DRIVER_ENDPOINT).toBe(lease);
+      expect(process.env.BRANCH_CUA_DRIVER_ENDPOINT).toBeUndefined();
+    } finally {
+      delete (globalThis as Record<symbol, unknown>)[key];
+    }
+  });
+
+  it("names the desktop app's reason when this machine's own driver is not ready", async () => {
+    const unavailable = () => {
+      const ready = Promise.reject(
+        new Error("COMPUTER_DRIVER_UNAVAILABLE: the Gateway desktop provider is unavailable"),
+      );
+      ready.catch(() => {});
+      return { ready, isCurrent: () => true, invoke: vi.fn(), close: vi.fn(async () => {}) };
+    };
+    const reason = "macOS asks you to allow this once, in System Settings.";
+    const f = createFixture({ BRANCH_COMPUTER_DRIVER_REASON: reason });
+    delete f.config.desktop;
+    vi.mocked(startComputerHostProcess).mockImplementation(unavailable);
+    expect(await f.service.status()).toEqual({
+      configured: true,
+      available: false,
+      error: "COMPUTER_DRIVER_UNAVAILABLE: the Gateway desktop provider is unavailable",
+      reason,
+    });
+
+    const bare = createFixture({ BRANCH_COMPUTER_DRIVER_REASON: "" });
+    delete bare.config.desktop;
+    vi.mocked(startComputerHostProcess).mockImplementation(unavailable);
+    expect(await bare.service.status()).toMatchObject({ available: false, reason: "" });
+
+    // No desktop reason and no driver address at all: say the address is missing, in plain words.
+    const plain = createFixture({});
+    delete plain.config.desktop;
+    vi.mocked(startComputerHostProcess).mockImplementation(unavailable);
+    expect(await plain.service.status()).toMatchObject({
+      reason: "Branch can't see this computer's screen right now. Quit Branch Agent and open it again.",
+    });
+
+    // A managed desktop is not this machine's own driver: its errors keep no app reason.
+    const managed = createFixture({ BRANCH_COMPUTER_DRIVER_REASON: reason });
+    vi.mocked(startComputerHostProcess).mockImplementation(unavailable);
+    expect(await managed.service.status()).not.toHaveProperty("reason");
+  });
+
   it.each(["native target", "managed target", "desktop", "helper"] as const)(
     "fences stale %s input and joins cleanup before concurrent discovery",
     async (source) => {

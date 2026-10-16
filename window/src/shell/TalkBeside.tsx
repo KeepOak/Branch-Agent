@@ -8,7 +8,7 @@ import { Icon } from "./icons";
 import { talkRows, workContextFor, type TalkRow, type WorkContext } from "./talk-beside";
 import "./talk-beside.css";
 
-export type TalkDock = "right" | "bottom";
+type TalkDock = "right" | "bottom";
 type Layout = { open: boolean; dock: TalkDock; w: number; h: number };
 const KEY = "branch.talkBeside";
 const START: Layout = { open: false, dock: "right", w: 380, h: 320 };
@@ -144,10 +144,12 @@ export function TalkThread({ rows, name, running, pending }: { rows: TalkRow[]; 
   );
 }
 
-type Props = { request: Request; onEvent: OnEvent; sessionKey: string | null; name: string; page: string; layout: Layout; onLayout: (patch: Partial<Layout>) => void; onFull: () => void };
+type Props = { request: Request; onEvent: OnEvent; sessionKey: string | null; name: string; page: string; layout: Layout; onLayout: (patch: Partial<Layout>) => void; onFull: () => void;
+  /** The item 48 clear glass pane (README 48), for the R1 window. */
+  clear?: boolean };
 
 /** The pane. Closing it hands focus back to the footer button when that is on screen. */
-export function TalkBeside({ request, onEvent, sessionKey, name, page, layout, onLayout, onFull }: Props) {
+export function TalkBeside({ request, onEvent, sessionKey, name, page, layout, onLayout, onFull, clear }: Props) {
   const pane = useRef<HTMLElement>(null);
   const thread = useTalkThread(request, onEvent, sessionKey);
   const [draft, setDraft] = useState("");
@@ -177,11 +179,11 @@ export function TalkBeside({ request, onEvent, sessionKey, name, page, layout, o
     }
   };
   return (
-    <aside ref={pane} className={right ? "talk" : "talk at-bottom"} aria-label={`Talk to ${name}`} data-testid="talk-beside" style={right ? { ["--talk-w" as string]: `${layout.w}px` } : { ["--talk-h" as string]: `${layout.h}px` }}>
+    <aside ref={pane} className={[right ? "talk" : "talk at-bottom", clear && "g-clear"].filter(Boolean).join(" ")} aria-label={`Talk to ${name}`} data-testid="talk-beside" style={right ? { ["--talk-w" as string]: `${layout.w}px` } : { ["--talk-h" as string]: `${layout.h}px` }}>
       <Resizer layout={layout} onLayout={onLayout} />
       <div className="talk-head">
         <Pebble size={24} label={name} />
-        <b>{name}</b>
+        <b className={clear ? "g-label" : undefined}>{name}</b>
         <span className="grow" />
         <button type="button" className="ib sm" aria-label="Open it full size" title="Open it full size" onClick={onFull}><Icon name="external" small /></button>
         <button type="button" className="ib sm" aria-label={right ? "Dock at the bottom" : "Dock at the right"} title={right ? "Dock at the bottom" : "Dock at the right"} onClick={() => onLayout({ dock: right ? "bottom" : "right" })}><Icon name="panel" small /></button>

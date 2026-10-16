@@ -374,8 +374,8 @@ mark {
 
 /* §4.1.7 Find anything */
 .palette-scrim {
-  place-items: start center;
-  padding-top: 12vh;
+  place-items: center;
+  padding: 16px;
 }
 .palette {
   width: min(620px, 100%);
@@ -427,9 +427,27 @@ mark {
 .pal-row.sel {
   background: var(--fill-2);
 }
-.pal-label {
+.pal-copy {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pal-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pal-label strong {
+  font-weight: 700;
+}
+.pal-detail,
+.pal-meta {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -1,4 +1,4 @@
-// From NousResearch/hermes-agent@18d125cc1bd9d0e26188ab49bb325427d5945fa2:tests/agent/test_proactive_tool_result_pruning.py (atlas AGENT-LOOP-0102). Six source cases ported to canonical Branch messages; persistence and owner-tail assertions added.
+// Six source cases ported to canonical Branch messages; persistence and owner-tail assertions added.
 import { expect, it, vi } from "vitest";
 import { estimateMessagesTokens } from "./compaction-planning.js";
 import {

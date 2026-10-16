@@ -408,20 +408,15 @@ describe("Canopy data", () => {
   });
 });
 
-describe("Every step, live with nothing yet", () => {
-  it("shows Open all, Fold all and Clear only once a step has arrived (C6-108, C6-111)", async () => {
-    await mount(fx(), "technical");
-    const section = () => document.querySelector("section[aria-label='Every step, live']");
-    const buttons = () => [...(section()?.querySelectorAll("button") ?? [])].map(b => b.textContent);
-    await vi.waitFor(() => expect(section()).toBeTruthy());
-    expect(buttons()).not.toContain("Open all");
-    expect(buttons()).not.toContain("Fold all");
-    expect(buttons()).not.toContain("Clear");
-    await act(async () => emit("session.tool", { stream: "tool", sessionKey: "agent:a:main", runId: "r1", seq: 1, data: { phase: "start", name: "read", toolCallId: "t1", args: { path: "notes.md" } } }));
-    expect(buttons()).toEqual(expect.arrayContaining(["Open all", "Fold all", "Clear"]));
-    const clear = [...section()!.querySelectorAll("button")].find(b => b.textContent === "Clear")!;
-    await act(async () => clear.click());
-    expect(section()?.textContent).toContain("Nothing yet.");
-    expect(buttons()).not.toContain("Clear");
+// Every step, live: with no steps, Open all, Fold all and Clear have nothing to act on, so they are off rather than silent.
+// Fails on main, where the three buttons stayed on and did nothing (the button crawl read them as dead).
+describe("Canopy Every step bulk controls with no steps", () => {
+  it("disables Open all, Fold all and Clear", async () => {
+    // The [A] sections show from Advanced (see the test above).
+    await mount(fx({ "sessions.list": { sessions: [], hasMore: false }, "cron.list": { jobs: [], hasMore: false }, "exec.approval.list": [] }), "advanced");
+    const live = host.querySelector<HTMLElement>('[aria-label="Every step, live"]');
+    expect(live).not.toBeNull();
+    const bulk = ["Open all", "Fold all", "Clear"].map((text) => [...live!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === text));
+    expect(bulk.map((b) => b?.disabled)).toEqual([true, true, true]);
   });
 });

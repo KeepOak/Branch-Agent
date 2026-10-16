@@ -21,7 +21,7 @@ export type MdBlock =
   | { type: "math"; tex: string; raw: string };
 
 /** The longest reply drawn whole (Formatting in replies: "… cut short (<total> characters, …)"). */
-export const MAX_REPLY_CHARS = 140_000;
+const MAX_REPLY_CHARS = 140_000;
 
 const LIST = /^\s*([-*+]|\d+[.)])\s+(.*)$/;
 const TASK = /^\[( |x|X)\]\s+(.*)$/;
@@ -181,7 +181,8 @@ export function parseMarkdown(text: string): MdBlock[] {
   return out;
 }
 
-const INLINE_BASE = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|_[^_\n]+_|!\[[^\]\n]*\]\([^)\s]+\)|\[[^\]\n]+\]\((?:https?:\/\/|mailto:|\/|~[\\/]|[A-Za-z]:[\\/]|file:)[^)\s]*\)|https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/g;
+// `_` marks emphasis only at a word's edge, so names like BRANCH_HOME or snake_case stay as written.
+const INLINE_BASE = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|(?<!\w)_[^_\n]+_(?!\w)|!\[[^\]\n]*\]\([^)\s]+\)|\[[^\]\n]+\]\((?:https?:\/\/|mailto:|\/|~[\\/]|[A-Za-z]:[\\/]|file:)[^)\s]*\)|https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/g;
 const INLINE = new RegExp(`${INLINE_BASE.source.slice(0, -1)}|${INLINE_MATH.source.slice(1, -1)})`, "g");
 
 function link(href: string, label: ReactNode, key: number): ReactNode {
@@ -199,8 +200,9 @@ export function inline(text: string, math = false): ReactNode[] {
     const tex = math ? readInlineMath(part) : null;
     if (tex !== null) return <MathTex key={i} tex={tex} display={false} raw={part} />;
     if (part.startsWith("`")) return <code key={i}>{part.slice(1, -1)}</code>;
-    if (part.startsWith("**")) return <strong key={i}>{part.slice(2, -2)}</strong>;
-    if (part.startsWith("*") || part.startsWith("_")) return <em key={i}>{part.slice(1, -1)}</em>;
+    // Bold and italic text is formatted inside too: a link or inline code in bold shows as one, not as its Markdown.
+    if (part.startsWith("**")) return <strong key={i}>{inline(part.slice(2, -2), math)}</strong>;
+    if (part.startsWith("*") || part.startsWith("_")) return <em key={i}>{inline(part.slice(1, -1), math)}</em>;
     const md = /^(!?)\[([^\]]*)\]\(([^)]+)\)$/.exec(part);
     if (!md) return link(part, part, i);
     // A picture inside a sentence shows small and inline; one on the web stays a link (MdImage: never fetched by itself).
