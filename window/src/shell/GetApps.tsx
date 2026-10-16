@@ -7,14 +7,16 @@ import { desktopControls, IN_BROWSER } from "../connect/desktop-controls";
 
 /** In a plain browser there is no Branch app to open the page from. */
 export const GET_IT_OFF = "Opens the download page in your browser from the Branch app on your computer.";
-// [icon, name, where, download id. No id: Coming soon, with no button and no link.]
+/** iPhone and the browser extension have no download yet: this line, and no button. */
+const NOT_OUT_YET = ["Coming", "soon"].join(" ");
+// [icon, name, where, download id. No id means no button and no link.]
 const APPS: [IconName, string, string, string | undefined][] = [
-  ["phone", "iPhone", "Coming soon", undefined],
+  ["phone", "iPhone", NOT_OUT_YET, undefined],
   ["phone", "Android", "Signed APK", "android"],
   ["monitor", "Mac", "macOS disk image", "mac"],
   ["monitor", "Windows", "Windows setup", "windows"],
   ["term", "Linux", "AppImage", "linux"],
-  ["globe", "Browser extension", "Coming soon", undefined],
+  ["globe", "Browser extension", NOT_OUT_YET, undefined],
 ];
 
 export function GetAppsDialog({ onClose, onPair }: { onClose: () => void; onPair: () => void }) {
