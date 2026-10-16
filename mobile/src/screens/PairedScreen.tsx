@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import type { PairingState } from '../pairing/pairingSession';
 import { gatewayHost } from '../pairing/setupCode';
@@ -34,10 +34,15 @@ export function PairedScreen({
   state,
   onUnpair,
   onBack,
+  updateCard,
+  backTo = 'Chats',
 }: {
   state: Extract<PairingState, { step: 'paired' }>;
   onUnpair: () => void;
   onBack: () => void;
+  /** Settings: this phone’s version and a manual check for a sideloaded Android APK. */
+  updateCard?: ReactNode;
+  backTo?: 'Chats' | 'Settings';
 }) {
   const { color, space, radius, layout } = useTheme();
   const [confirming, setConfirming] = useState(false);
@@ -60,15 +65,15 @@ export function PairedScreen({
       }
     >
       <Pressable
-        testID="back-to-chats"
+        testID={backTo === 'Settings' ? 'back-to-settings' : 'back-to-chats'}
         accessibilityRole="button"
-        accessibilityLabel="Back to Chats"
+        accessibilityLabel={`Back to ${backTo}`}
         onPress={onBack}
         hitSlop={8}
         style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: layout.rowMinHeight, justifyContent: 'center', marginTop: -space.xl, opacity: pressed ? 0.6 : 1 })}
       >
         <ThemedText variant="body" tone="accentInk">
-          ‹ Chats
+          {`‹ ${backTo}`}
         </ThemedText>
       </Pressable>
       <ThemedText variant="largeTitle" accessibilityRole="header">
@@ -89,6 +94,15 @@ export function PairedScreen({
         <Row label="Computer" value={gatewayHost(state.url)} />
         <Row label="Branch" value={state.serverVersion ?? 'Checking…'} last />
       </Card>
+      {updateCard ? (
+        <Card testID="this-phone-card">
+          <ThemedText variant="headline">This phone</ThemedText>
+          <ThemedText variant="footnote" tone="ink2" style={{ marginTop: space.xs, marginBottom: space.sm }}>
+            Pairing, chats and settings stay on this phone when an update installs over this app.
+          </ThemedText>
+          {updateCard}
+        </Card>
+      ) : null}
     </Screen>
   );
 }

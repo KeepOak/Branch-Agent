@@ -51,6 +51,20 @@ export function SecretsPage(props: SettingsPageProps) {
 
 type Config = ReturnType<typeof useConfig>;
 
+/** One block of the page, for the R1 Sign-ins & keys page's cards: where passwords come from, or the keys Branch holds
+ *  (with the technical rows at Technical). */
+export function SecretsBlock(props: SettingsPageProps & { part: "where" | "keys" }) {
+  const lv = lvOf(props.level);
+  const config = useConfig(props.engine);
+  const store = useLive<RecordValue>(props.engine, "secrets.store.list", {}, ["secrets"]);
+  const onePassword = rec(rec(config.get("secrets.providers")).onepassword).source === "exec";
+  if (props.part === "where") return <Where engine={props.engine} onePassword={onePassword} config={config} />;
+  return <>
+    <Keys engine={props.engine} lv={lv} store={store} />
+    {lv >= 2 ? <KeysTechnical engine={props.engine} store={store} config={config} /> : null}
+  </>;
+}
+
 /** Where passwords come from: 1Password through its plugin's secret provider; the others have no engine plugin. */
 function Where({ onePassword, config }: Pick<SettingsPageProps, "engine"> & { onePassword: boolean; config: Config }) {
   const choose = async (id: string) => {
@@ -65,7 +79,7 @@ function Where({ onePassword, config }: Pick<SettingsPageProps, "engine"> & { on
           options={[{ id: "bitwarden", label: "Bitwarden", off: "Bitwarden needs its engine plugin." }, { id: "onepassword", label: "1Password" }, { id: "windows", label: "Windows", off: "Windows Credential Manager needs its engine plugin." }]} />
       </Ctl>
       <Ctl title="Keys kept apart from settings" sub="Keys stay in a locker only the engine can read." help="Keys live in a locker only the engine reads, so sharing your settings never shares a key.">
-        <Btn sm onClick={() => document.getElementById("s2-keys")?.scrollIntoView({ block: "start" })}>Show where</Btn>
+        <Btn sm data-jump-to="#s2-keys" onClick={() => (document.getElementById("s2-keys") ?? document.getElementById("sec-signins-Keys Branch holds"))?.scrollIntoView({ block: "start" })}>Show where</Btn>
       </Ctl>
       <Ctl title="Sign-in tokens" sub="Sign-in tokens are encrypted, refreshed and revoked." help="Tokens from “sign in with…” are encrypted, refreshed before they expire, and revoked when removed." off="Checking them needs the engine’s token report."><Btn sm>Check them</Btn></Ctl>
     </Sec>

@@ -4,9 +4,13 @@ import "./theme/base.css";
 import { applySavedTheme } from "./theme/theme";
 import { applySavedLook } from "./places/settings/set1/appearance-store";
 import { App } from "./App";
+import { GuestPopout } from "./guest/GuestPopout";
+import { popoutAddress } from "./guest/guest-bridge";
 import { startDesktopTitleBar } from "./connect/title-bar";
+import "./glass/menu-contrast.css";
 
 applySavedTheme();
 applySavedLook(); // the person's theme, accent, fonts and text size before the first draw
 startDesktopTitleBar(); // inside the Branch app on Windows: the header is the title bar
-createRoot(document.getElementById("root")!).render(<App />);
+// A pop-out window of the owner's browser shows that page alone; every other window is the app.
+createRoot(document.getElementById("root")!).render(popoutAddress() !== null ? <GuestPopout /> : <App />);

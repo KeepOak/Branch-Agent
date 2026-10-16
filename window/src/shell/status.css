@@ -240,7 +240,8 @@
 .statusbar .useT5.collapsedT5 .useTxtT5 { max-width: 0; opacity: 0; }
 .status-ring-label { display: inline-block; max-width: 340px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; transition: max-width .35s ease, opacity .25s; }
 .status-ring-label.collapsed { max-width: 0; opacity: 0; }
-.pop.usePopT5 { width: min(360px, calc(100vw - 24px)); }
+/* A solid surface: the panel opens over the chat, the pet card and the composer, which must not show through its account rows (DA-99). */
+.pop.usePopT5 { width: min(360px, calc(100vw - 24px)); background: var(--raise); backdrop-filter: none; -webkit-backdrop-filter: none; }
 /* Name, badge and reading wrap onto the next line instead of squeezing each other; a label longer than the row breaks, never hides. */
 .usePopT5 .lims { grid-template-columns: minmax(0, 1fr); }
 .acctT5 { box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; padding: 6px; margin: 0 -6px; width: calc(100% + 12px); min-width: 0; border-radius: 8px; font-size: 12.5px; }
@@ -293,6 +294,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Reconnecting: the word gives room to its neighbours, and below 760 px the glyph stands alone (its title and name still say it) */
+.statusbar [data-testid="sb-connection"][data-state="connecting"] { min-width: 0; max-width: 100%; }
+.statusbar [data-testid="sb-connection"][data-state="connecting"] .status-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 6px; }
+@media (max-width: 760px) {
+  .statusbar [data-testid="sb-connection"][data-state="connecting"] .status-label { display: none; }
 }
 /* ≤520 px: the meter keeps its figure and drops its words; the computer's name shortens (preview at 520) */
 @media (max-width: 520px) {

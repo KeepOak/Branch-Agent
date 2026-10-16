@@ -8,7 +8,6 @@ import { notify } from "../../shell/notify";
 import type { Level } from "../../places-nav/level";
 import { saveTrunk, type Draft } from "./api";
 import { ComputersTab } from "./ComputersTab";
-import { AccountsTab } from "./AccountsTab";
 import { canWrite, loadTrunkData, useLoad, WRITE_WHY, type TrunkData } from "./data";
 import { COLOURS, EYES, LookTab, SHAPES } from "./LookTab";
 import { readMay } from "./may";
@@ -18,8 +17,8 @@ import { TrunkFace } from "./TrunkFace";
 import { Layer } from "./layer";
 import "./trunk.css";
 
-export type EditorTab = "look" | "may" | "computers" | "accounts";
-const TABS: [EditorTab, string][] = [["look", "Look"], ["may", "What it may do"], ["computers", "Its computers"], ["accounts", "Accounts"]];
+export type EditorTab = "look" | "may" | "computers";
+const TABS: [EditorTab, string][] = [["look", "Look"], ["may", "What it may do"], ["computers", "Its computers"]];
 
 export type TrunkEditorProps = {
   engine: WindowEngine;
@@ -58,7 +57,8 @@ export function TrunkEditor(props: TrunkEditorProps) {
   const { engine, agentId, onClose } = props;
   const data = useLoad(() => loadTrunkData(engine), agentId);
   const initial = useMemo(() => (data.data ? draftOf(data.data, agentId) : null), [data.data, agentId]);
-  const name = initial?.name || agentId;
+  // Until the Trunk is read, the title names it plainly: never the engine id (research-desk).
+  const name = initial?.name || "this Trunk";
   if (!data.data || !initial) {
     const line = data.error || (data.loading ? "Reading this Trunk…" : "This Trunk is no longer in the engine’s list.");
     return <Layer><Dialog title={`Edit ${name}`} wide onClose={onClose} testid="trunk-editor" footer={<button type="button" className="btn ghost" onClick={onClose}>Cancel</button>}><p className={data.error ? "tk-error" : "tk-hint"} role={data.error ? "alert" : "status"}>{line}</p></Dialog></Layer>;
@@ -83,16 +83,22 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
     if (body) body.scrollTop = 0;
   }, []);
   const set = (d: Partial<Draft>) => setDraft((x) => ({ ...x, ...d }));
+  // What Shuffle chose, said in words beside the face it redraws (the face is a picture only, so a screen reader hears it here).
+  const [shuffled, setShuffled] = useState("");
   const shuffle = () => {
     if (draft.look === "classic") {
       const combinations = COLOURS.flatMap((colour) => SHAPES.flatMap((shape) => EYES.map((eyes) => ({ colour, shape, eyes }))));
       const alternatives = combinations.filter((look) => look.colour !== draft.colour || look.shape !== draft.shape || look.eyes !== draft.eyes);
-      set(alternatives[Math.floor(Math.random() * alternatives.length)]);
+      const next = alternatives[Math.floor(Math.random() * alternatives.length)];
+      set(next);
+      setShuffled(`Shuffled: ${next.shape}, ${next.eyes.toLowerCase()} eyes, colour ${next.colour}.`);
     } else {
       const worn = new Set(data.roster.agents.filter((a) => a.id !== agentId).map((a) => lookOf(a.avatar, a.name)));
       const free = LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look && !worn.has(l.id));
       const pool = free.length ? free : LOOKS.filter((l) => l.id !== "classic" && l.id !== "branch" && l.id !== draft.look);
-      set({ look: pool[Math.floor(Math.random() * pool.length)].id, emoji: "" });
+      const next = pool[Math.floor(Math.random() * pool.length)];
+      set({ look: next.id, emoji: "" });
+      setShuffled(`Shuffled: ${next.name}.`);
     }
   };
   const changed = JSON.stringify(draft) !== JSON.stringify(initial);
@@ -113,6 +119,7 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
         <div className="tk-big">
           <TrunkFace name={draft.name || initial.name} look={draft.look} emoji={draft.emoji} pebbleLook={draft} size={84} draft />
           <button type="button" className="btn sm" onClick={shuffle}>Shuffle</button>
+          <span className="vh" role="status" data-testid="trunk-shuffled">{shuffled}</span>
         </div>
         <div className="tk-col">
           <TabRow tab={tab} setTab={setTab} />
@@ -120,7 +127,6 @@ function EditorBody({ engine, agentId, level, onClose, onSaved, openSettings, ta
             {tab === "look" && <LookTab draft={draft} set={set} />}
             {tab === "may" && <MayTab engine={engine} agentId={agentId} name={initial.name} draft={draft} models={data.models} level={level} set={set} openSettings={openSettings} />}
             {tab === "computers" && <ComputersTab name={initial.name} draft={draft} computers={data.computers} set={set} openSettings={openSettings} />}
-            {tab === "accounts" && <AccountsTab engine={engine} agentId={agentId} />}
           </div>
           {data.partial.map((p) => <p key={p} className="tk-hint" role="status">{p}</p>)}
           {error && <p className="tk-error" role="alert">{error}</p>}

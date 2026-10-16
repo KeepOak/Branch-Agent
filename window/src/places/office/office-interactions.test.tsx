@@ -35,8 +35,9 @@ it("opens the real Trunk chat when its office character is clicked", async () =>
     onEvent: () => () => undefined,
   } as unknown as WindowEngine;
   await act(async () => { root.render(<OfficePlace engine={engine} facts={{ running: 0, waiting: 0 }} level="regular" openConversation={openConversation} openPlace={() => undefined} />); });
-  await act(async () => { await vi.waitFor(() => expect(host.querySelector("button")?.textContent).toBe("Oak character")); });
-  await act(async () => host.querySelector("button")!.click());
+  const character = () => [...host.querySelectorAll("button")].find(b => b.textContent === "Oak character");
+  await act(async () => { await vi.waitFor(() => expect(character()).toBeTruthy()); });
+  await act(async () => character()!.click());
   expect(openConversation).toHaveBeenCalledWith("agent:oak:main");
   await act(async () => root.unmount());
 });

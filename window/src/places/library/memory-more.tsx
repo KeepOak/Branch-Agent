@@ -29,7 +29,7 @@ export function statusOf(raw: unknown): MemoryStatus {
   };
 }
 
-export const REASONS = {
+const REASONS = {
   whatsapp: "Needs the engine’s chat-export import method.",
   rules: "Needs the engine’s what-to-remember rules.",
   pin: "Needs the engine’s pinned-memory method.",

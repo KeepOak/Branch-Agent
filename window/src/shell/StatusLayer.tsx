@@ -11,9 +11,7 @@ import type { StatusItem } from "./StatusBar";
 import { GatewayPopover, RoomPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
 import type { Limits, UpdateInfo } from "./status-data";
 import type { GatewayFacts } from "./use-status";
-import { componentDesktop, stageWindowUpdate } from "../connect/desktop-component-updates";
-import { useDesktopComponentStatus } from "../connect/desktop-component-updates";
-import { useDesktopControls } from "../connect/desktop-controls";
+import { componentDesktop } from "../connect/desktop-component-updates";
 import { COMPOSE_EVENT } from "../composer/Composer";
 import { safeStorage, saveDraft } from "../composer/drafts";
 
@@ -73,6 +71,8 @@ export type StatusContext = {
   working: { key: string; title: string; line: string; runIds?: string[] }[];
   openSettings: (page: string) => void;
   openAutomations: () => void;
+  /** Trunk names for Coming up's check-ins. */
+  trunkName?: (id?: string) => string;
   openConversation: (key: string) => void;
   onWhatsNew: () => void;
   onReminded: () => void;
@@ -112,17 +112,6 @@ export async function tidy(ctx: Pick<StatusContext, "session" | "list">, row: Co
     notify(free === null ? "Older parts summarised." : `Older parts summarised. ${free}% free.`);
   } catch (e) {
     notify(`Couldn't tidy up: ${message(e)}`, { tone: "bad" });
-  }
-}
-
-async function install(ctx: StatusContext): Promise<void> {
-  try {
-    const result = rec(await stageWindowUpdate(ctx.session.engine));
-    if (result.ok === false) {
-      notify(`Couldn't install the update: ${String(rec(result.result).reason ?? result.reason ?? "the engine refused")}`, { tone: "bad" });
-    }
-  } catch (e) {
-    notify(`Couldn't install the update: ${message(e)}`, { tone: "bad" });
   }
 }
 
@@ -183,8 +172,6 @@ export function KeepLastDialog({ onCancel, onKeep }: { onCancel: () => void; onK
 
 /** The open status-bar popover, and the confirm for "Keep only the last 400 lines…". */
 export function StatusPopover({ item, above, onClose, ctx }: Props) {
-  const desktopUpdate = useDesktopComponentStatus(ctx.session.gatewayUrl);
-  const desktopControls = useDesktopControls();
   const [confirm, setConfirm] = useState<Conversation | null>(null);
   const level = readLevel();
   const request = useMemo(() => ctx.session.request.bind(ctx.session) as <T = unknown>(m: string, p?: unknown) => Promise<T>, [ctx.session]);
@@ -200,21 +187,26 @@ export function StatusPopover({ item, above, onClose, ctx }: Props) {
     return <GatewayPopover {...base} facts={ctx.gateway} level={level} onRestart={close(() => void restart(ctx))} onSettings={close(() => ctx.openSettings("gateway"))} />;
   }
   if (item === "usage") {
-    return <UsagePopover {...base} limits={ctx.limits} request={request} onOpenUsage={close(() => ctx.openSettings("usage"))} />;
+    // Keep the intent for a fresh page, and notify Accounts when it is already mounted.
+    const signIn = (provider: string) => close(() => {
+      sessionStorage.setItem("branch.openAddAccount", provider);
+      window.dispatchEvent(new Event("branch:open-add-account"));
+      ctx.openSettings("accounts");
+    })();
+    return <UsagePopover {...base} limits={ctx.limits} request={request} onOpenUsage={close(() => ctx.openSettings("usage"))} onSignIn={signIn} />;
   }
   if (item === "room" && ctx.openRow) {
     const row = ctx.openRow;
     return <RoomPopover {...base} request={request} row={row} level={level} onTidy={(keepLast) => (keepLast ? setConfirm(row) : (onClose(), void tidy(ctx, row, false)))} />;
   }
   if (item === "running") {
-    return <RunningPopover {...base} request={request} working={ctx.working} onOpen={(key) => (onClose(), ctx.openConversation(key))} onAutomations={close(ctx.openAutomations)}
+    return <RunningPopover {...base} request={request} trunkName={ctx.trunkName} working={ctx.working} onOpen={(key) => (onClose(), ctx.openConversation(key))} onAutomations={close(ctx.openAutomations)}
       onBackground={close(() => prepareBackground(ctx))} onPauseAll={close(() => void pauseAll(ctx))} />;
   }
   if (item === "version") {
     return <VersionPopover {...base} update={ctx.update} version={ctx.version}
-      desktopPending={desktopUpdate.status?.pendingVersion ?? null} autoApply={desktopControls.state?.autoApplyUpdates !== false}
       desktopInstall={Boolean(componentDesktop(ctx.session.gatewayUrl)?.componentUpdates)} computerName={ctx.computerName}
-      onWhatsNew={close(ctx.onWhatsNew)} onInstall={close(() => void install(ctx))} onRemind={close(() => (remindTomorrow(ctx.update?.latest ?? ctx.version), ctx.onReminded()))} />;
+      onWhatsNew={close(ctx.onWhatsNew)} onRemind={close(() => (remindTomorrow(ctx.update?.latest ?? ctx.version), ctx.onReminded()))} />;
   }
   return null;
 }

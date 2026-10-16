@@ -79,7 +79,12 @@ describe("CodexAppServerEventProjector command output projection", () => {
       itemId: "cmd-1",
       name: "bash",
     }).data;
-    expect(toolResult.result).toEqual({ status: "completed", exitCode: 0, durationMs: 42 });
+    expect(toolResult.result).toEqual({
+      status: "completed",
+      exitCode: 0,
+      durationMs: 42,
+      output: "status passed\njson /tmp/scenario.json",
+    });
   });
 
   it.each([
@@ -209,7 +214,7 @@ describe("CodexAppServerEventProjector command output projection", () => {
     expect(output).toContain("Branch Agent truncated Codex native tool output");
     expect(output).toContain("original 13023 chars");
     expect(output).toContain("showing 10000");
-    expect(output?.match(/Branch truncated Codex native tool output/g)).toHaveLength(1);
+    expect(output?.match(/Branch Agent truncated Codex native tool output/g)).toHaveLength(1);
 
     const result = projector.buildResult(buildEmptyToolTelemetry());
     const toolResultMessage = result.messagesSnapshot.find(
@@ -250,7 +255,8 @@ describe("CodexAppServerEventProjector command output projection", () => {
     expect(projector.buildResult(buildEmptyToolTelemetry()).lastToolError).toEqual({
       toolName: "bash",
       meta: "run tests (workspace)",
-      error: "fatal: missing fixture",
+      // The stored error keeps the streamed diagnostic and the known exit code.
+      error: "Command execution failed (exit code 1):\nfatal: missing fixture",
       mutatingAction: true,
     });
   });

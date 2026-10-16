@@ -6,6 +6,7 @@ import {
   installActiveGitHubOAuthLifecycle,
 } from "./github-oauth-lifecycle.js";
 import { createModelAccountConnectService } from "./model-account-connect.js";
+import type { FetchMergedPullRequests } from "./rooms/merge-watch.js";
 import {
   broadcastChatMetadataChanged,
   type createGatewayChatMetadataLifecycle,
@@ -14,6 +15,49 @@ import { attachSessionChangeEventLifetime } from "./server-methods/session-chang
 import type { GatewayRequestContext } from "./server-methods/types.js";
 import type { GatewaySidecarStopOwner } from "./server-sidecar-owners.js";
 import { startIncognitoSessionLifetime } from "./session-incognito-lifetime.js";
+
+/**
+ * Keeps room merge feeds live: every two minutes it records new merges for each room
+ * that follows a repository (rooms.merge.follow). It does no network work while nothing is followed.
+ */
+export function startRoomMergeWatcher(params: {
+  scheduler: GatewayScheduler;
+  context: Pick<GatewayRequestContext, "broadcast">;
+  logWarning: (message: string) => void;
+  fetchMerged?: FetchMergedPullRequests;
+}) {
+  let running = false;
+  return params.scheduler.schedule({
+    id: "rooms:merge-feed",
+    atMs: params.scheduler.now(),
+    everyMs: 120_000,
+    run: async () => {
+      if (running) {
+        return;
+      }
+      running = true;
+      try {
+        const watch = await import("./rooms/merge-watch.js");
+        if (watch.listMergeFollows().length === 0) {
+          return;
+        }
+        const fetchMerged =
+          params.fetchMerged ??
+          (await import("./rooms/merge-watch-github.js")).fetchMergedPullRequests;
+        await watch.pollRoomMergeFollows({
+          fetchMerged: (repo) => fetchMerged(repo),
+          broadcast: (event) =>
+            params.context.broadcast("rooms.event", event, { dropIfSlow: true }),
+          warn: params.logWarning,
+        });
+      } catch {
+        params.logWarning("Room merge feed check failed; will retry.");
+      } finally {
+        running = false;
+      }
+    },
+  });
+}
 
 type GatewayChatMetadataLifecycle = Awaited<ReturnType<typeof createGatewayChatMetadataLifecycle>>;
 
@@ -90,6 +134,15 @@ export async function attachInitialGatewayLifetimeSidecars(params: {
                 warned = true;
               }
             }),
+      }),
+    );
+  }
+  if (!params.minimalTestGateway) {
+    params.publishSidecars(
+      startRoomMergeWatcher({
+        scheduler: params.scheduler,
+        context: params.gatewayRequestContext,
+        logWarning: params.logWarning,
       }),
     );
   }

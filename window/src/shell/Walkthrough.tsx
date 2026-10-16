@@ -2,11 +2,11 @@
 // preview, a card first opens what it shows (the side panel, a Settings page, a place and its tab) and, at phone width,
 // slides the list in for the list's own parts. A card whose part isn't on screen shows centred without a spotlight, so
 // the count stays the same (owner Q93). Toasts and banners are held while it runs and show when it ends (rule 2). No
-// mascot on the card (rule 5).
+// mascot on the card (rule 5). R1 re-hosts it with its own cards and clear glass (screens/onboarding/R1Tour.tsx).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "./walkthrough.css";
 
-type Card = { title: string; text: string; target: string | null; prep?: () => void; side?: boolean };
+export type Card = { title: string; text: string; target: string | null; prep?: () => void; side?: boolean };
 
 /** Shows the side panel (or hides it) through its top-bar button. */
 function sidePanel(open: boolean) {
@@ -36,7 +36,7 @@ export function tourCards(defaultName: string): Card[] {
     { title: "Search everything", target: "[data-testid=search]", side: true, text: "Chats, Trunk names, words inside messages and past sessions, as you type. Ctrl F finds words in a conversation; Ctrl K opens every command." },
     { title: "Settings, your way", target: "[data-testid=gear]", side: true, text: "Regular, Advanced or Technical: just the essentials, or every file, port and raw key." },
     { title: "Models on this computer", target: ".lm-grid-k", prep: settings("local"), text: "Branch looks at your memory and graphics card and only offers what fits. One click installs it; it runs free and private." },
-    { title: "Every chat app", target: ".cz-chgrid", prep: place("customize", "Chat apps"), text: "Each has its own setup: paste the code it gives you, let Branch check it, then allow the connection." },
+    { title: "Every chat app", target: ".r1-ca-list", prep: settings("chatapps"), text: "Each has its own setup: paste the code it gives you, let Branch check it, then allow the connection." },
     { title: "Pets and painted scenes", target: ".pets12", prep: settings("appearance"), text: "Pick one of dozens of pets to walk along the list, and a painted scene to sit behind the glass. They nap, cheer and follow what your Trunks are doing." },
     { title: "Your team", target: '.side [data-place="people"]', side: true, text: "Who’s here and what their Trunks are running right now, shared Trunks, teams of Trunks, usage and rules. It comes from your keepoak.com workspace." },
     { title: "People", target: ".ppl", prep: place("people"), text: "On this computer with a PIN, on their own devices with a passkey or a one-time code, or from your keepoak.com team. Seven kinds of action each; groups only take away." },
@@ -89,8 +89,18 @@ function slideList(open: boolean): boolean {
   return true;
 }
 
-export function Walkthrough({ defaultName, onClose }: { defaultName: string; onClose: () => void }) {
-  const cards = useMemo(() => tourCards(defaultName), [defaultName]);
+type WalkthroughProps = {
+  defaultName: string;
+  onClose: () => void;
+  /** Another card set (R1: the 3-card walkthrough, or the tour's cards that can show there); the tour's own by default. */
+  cards?: Card[];
+  /** README item 48: a clear card whose words sit on frosted pills. */
+  clear?: boolean;
+};
+
+export function Walkthrough({ defaultName, onClose, cards: given, clear }: WalkthroughProps) {
+  const cards = useMemo(() => given ?? tourCards(defaultName), [given, defaultName]);
+  const pill = (base?: string) => (clear ? [base, "g-label"].filter(Boolean).join(" ") : base);
   const [i, setI] = useState(0);
   const [box, setBox] = useState<Box>(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -145,12 +155,12 @@ export function Walkthrough({ defaultName, onClose }: { defaultName: string; onC
       }}
     >
       <div className={box ? "tour-spot" : "tour-spot none"} style={box ?? undefined} />
-      <div ref={card} className="tour-card" role="dialog" aria-live="polite" aria-label="Walkthrough" style={pos}>
-        <span className="n">
+      <div ref={card} className={clear ? "tour-card g-clear" : "tour-card"} role="dialog" aria-live="polite" aria-label="Walkthrough" style={pos}>
+        <span className={pill("n")}>
           {i + 1} of {cards.length}
         </span>
-        <b>{cards[i].title}</b>
-        <p>{cards[i].text}</p>
+        <b className={pill()}>{cards[i].title}</b>
+        <p className={pill()} data-lines={clear ? "" : undefined}>{cards[i].text}</p>
         <div className="tour-dots" aria-hidden="true">
           {cards.map((c, j) => (
             <i key={c.title} className={j === i ? "on" : ""} />

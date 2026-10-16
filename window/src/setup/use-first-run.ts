@@ -6,7 +6,7 @@ import type { SaplingSession } from "../connect/session";
 import { needsFirstContact, RUN_SETUP_AGAIN, setupDone } from "./setup-model";
 
 /** The step setup is open at, or null; `open(step)` reopens it by hand (Guide › Set up Branch, Replay the first run). */
-export function useFirstRun(session: SaplingSession, ready: boolean, busy: () => boolean, usableTrunks: number | null = null, inSettings = false) {
+export function useFirstRun(session: Pick<SaplingSession, "request">, ready: boolean, busy: () => boolean, usableTrunks: number | null = null, inSettings = false) {
   const [step, setStep] = useState<number | null>(null);
   const [requiresContact, setRequiresContact] = useState(true);
   const [isFirstRun, setIsFirstRun] = useState(false);

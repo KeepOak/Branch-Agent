@@ -33,9 +33,9 @@ const sessions = [
   { key: "agent:oak:trip", agentId: "oak", parentSessionKey: "agent:oak:main", sessionId: "s-trip", updatedAt: 20, lastMessagePreview: "Child last line" },
 ];
 
-function stubChrome() {
+function stubChrome(narrow = true) {
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: query.includes("max-width: 760px"),
+    matches: narrow && query.includes("max-width: 760px"),
     media: query,
     addEventListener: () => {},
     removeEventListener: () => {},
@@ -86,8 +86,8 @@ function session(openKey: string, topics: typeof trip[], history: HistoryLine[])
   } as unknown as SaplingSession;
 }
 
-async function show(openKey: string, topics: typeof trip[], history: HistoryLine[]) {
-  stubChrome();
+async function show(openKey: string, topics: typeof trip[], history: HistoryLine[], narrow = true) {
+  stubChrome(narrow);
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
   await act(async () => root!.render(<WindowShell session={session(openKey, topics, history)} url="ws://127.0.0.1:19661" />));
@@ -127,5 +127,54 @@ describe("preview topic row in the shell", () => {
     await vi.waitFor(() => expect(host.querySelector(".topicsT5")).toBeTruthy());
     await vi.waitFor(() => expect(host.querySelector('[aria-label="General"] .tpWhoT5')?.textContent).toBe("Oak:"));
     expect(host.querySelector('[aria-label="General"] .tpWhoT5')?.textContent).not.toBe("You:");
+  });
+});
+
+
+describe("Settings sidebar rail", () => {
+  it("uses the icon rail on desktop and restores the saved full width after leaving Settings", async () => {
+    localStorage.setItem("branch.layout", JSON.stringify({ sideW: 340, rail: false, hidden: false }));
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
+    const host = await show("agent:oak:main", [], [], false);
+    const frame = host.querySelector<HTMLElement>(".frame")!;
+    expect(frame.classList.contains("rail")).toBe(true);
+    expect(frame.style.getPropertyValue("--side-w")).toBe("68px");
+    expect(host.querySelector("[data-testid=side-resizer]")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("branch.layout")!)).toEqual({ sideW: 340, rail: false, hidden: false });
+    await act(async () => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "overview" } })));
+    expect(frame.classList.contains("rail")).toBe(false);
+    expect(frame.style.getPropertyValue("--side-w")).toBe("340px");
+  });
+
+  it("allows Search to expand the list, then collapses it on the next Settings visit", async () => {
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
+    const host = await show("agent:oak:main", [], [], false);
+    const frame = host.querySelector<HTMLElement>(".frame")!;
+    await act(async () => host.querySelector<HTMLButtonElement>(".rail-search")!.click());
+    expect(host.querySelector("[data-testid=palette]")).not.toBeNull();
+    await act(async () => host.querySelector<HTMLInputElement>("[data-testid=palette] input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector("[data-testid=palette]")).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=list-toggle]")!.click());
+    expect(frame.classList.contains("rail")).toBe(false);
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=list-toggle]")!.click());
+    expect(frame.classList.contains("rail")).toBe(true);
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=list-toggle]")!.click());
+    expect(frame.classList.contains("rail")).toBe(false);
+    await act(async () => window.dispatchEvent(new CustomEvent("branch:navigate-place", { detail: { place: "overview" } })));
+    await act(async () => host.querySelector<HTMLButtonElement>("[data-testid=gear]")!.click());
+    expect(frame.classList.contains("rail")).toBe(true);
+  });
+
+  it("keeps the full slide-out list on a narrow Settings window", async () => {
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
+    const host = await show("agent:oak:main", [], []);
+    expect(host.querySelector(".frame")?.classList.contains("rail")).toBe(false);
+  });
+
+  it("keeps an explicitly hidden sidebar hidden in Settings", async () => {
+    localStorage.setItem("branch.layout", JSON.stringify({ sideW: 340, rail: false, hidden: true }));
+    localStorage.setItem("branch.route", JSON.stringify({ kind: "settings", page: "general" }));
+    const host = await show("agent:oak:main", [], [], false);
+    expect(host.querySelector<HTMLElement>(".frame")!.style.getPropertyValue("--side-w")).toBe("0px");
   });
 });

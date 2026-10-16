@@ -8,8 +8,10 @@ import { list, record, visible, type RecordValue } from "../adapter";
 import { useResource } from "../hooks";
 import { Icon } from "../../../shell/icons";
 import { ShortcutsDialog } from "../../../shell/ShortcutsDialog";
+import { currentKeys, keyActions, onMac, readCustomKeys, shownInline } from "../../../shell/keymap";
 import { Btn, Ctl, Empty, Page, Plist, Prow, Sec, Status, Switch, useLevel, usePinsKit, type Lv, type RowEntry } from "../kit";
 import { PinnedSection } from "../pins";
+import { showsInternals } from "../internals";
 import { NEEDS_NEWER_APP, useDesktopControls } from "../../../connect/desktop-controls";
 import { OS, Writing } from "./general-more";
 import { Conversation } from "./general-conversation";
@@ -42,11 +44,18 @@ function StartingUp() {
   const desk = useDesktopControls();
   const why = desk.off === NEEDS_NEWER_APP ? START_NEEDS_UPDATE : desk.off;
   const start = `Start with ${OS()}`;
+  const signedOut = "Keep working when nobody is signed in";
   return (
     <Sec title="Starting up">
       <Ctl title={start} sub="Opens quietly in the tray." off={why}>
         <Switch checked={desk.state?.startWithWindows ?? false} disabled={desk.busy !== null} label={start} onChange={(on) => void desk.set("startWithWindows", on)} />
       </Ctl>
+      {/* Always on (Private #454 F), Linux with the engine service only: the app says so by sending the switch. */}
+      {desk.state?.keepWorkingSignedOut !== undefined ? (
+        <Ctl title={signedOut} sub="Your Trunks start after a restart, before anyone signs in." off={why}>
+          <Switch checked={desk.state.keepWorkingSignedOut} disabled={desk.busy !== null} label={signedOut} onChange={(on) => void desk.set("keepWorkingSignedOut", on)} />
+        </Ctl>
+      ) : null}
       {desk.state && desk.error ? <small className="why-k" role="alert">{visible(desk.error)}</small> : null}
     </Sec>
   );
@@ -66,15 +75,30 @@ function Projects({ engine }: { engine: SettingsPageProps["engine"] }) {
   );
 }
 
+/** A project's folder name as a person reads it: "sample-project" is "Sample project". Technical keeps the folder name. */
+export function plainProjectName(name: string, technical: boolean): string {
+  if (technical || !/^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(name)) return name;
+  const words = name.replace(/-/g, " ");
+  return words[0].toUpperCase() + words.slice(1);
+}
+
 function ProjectRow({ engine, project }: { engine: SettingsPageProps["engine"]; project: Project }) {
+  const technical = showsInternals(useLevel());
   const res = useResource<RecordValue>(engine, "sessions.list", { projectId: project.id, limit: 1, excludeSubagents: true, excludeCron: true });
   const total = record(res.data).totalCount;
-  const sub = typeof total === "number" ? `${total} ${total === 1 ? "conversation" : "conversations"}` : res.loading ? "Counting conversations…" : "";
+  // A count of zero is not shown: the project's conversations are not always the ones this count reads.
+  const sub = typeof total === "number" ? (total > 0 ? `${total} ${total === 1 ? "conversation" : "conversations"}` : "") : res.loading ? "Counting conversations…" : "";
   return (
-    <Prow icon={<span className="ico-tile gen-k"><Icon name="folder" small /></span>} title={visible(project.displayName)} sub={sub || undefined}>
+    <Prow icon={<span className="ico-tile gen-k"><Icon name="folder" small /></span>} title={plainProjectName(visible(project.displayName), technical)} sub={sub || undefined}>
       <Btn sm disabled title="Branch can’t open a project’s own instructions from here yet.">Edit</Btn>
     </Prow>
   );
+}
+
+/** The two most-used shortcuts in a sentence, written the way the Show all dialog writes them on this computer. */
+function keyboardSub(mac: boolean): string {
+  const keys = currentKeys(keyActions(""), readCustomKeys());
+  return `${shownInline(keys.palette, mac)} to find anything, ${shownInline(keys.newConversation, mac)} for a new conversation.`;
 }
 
 function Keyboard() {
@@ -82,7 +106,7 @@ function Keyboard() {
   return (
     <>
       <Sec title="Keyboard">
-        <Ctl title="Keyboard shortcuts" sub="Ctrl K to find anything, Ctrl N for a new conversation.">
+        <Ctl title="Keyboard shortcuts" sub={keyboardSub(onMac())}>
           <Btn sm onClick={() => setOpen(true)}>Show all</Btn>
         </Ctl>
       </Sec>

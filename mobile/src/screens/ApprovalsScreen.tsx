@@ -15,10 +15,13 @@ import {
   outcomeWords,
   shortFolder,
 } from '../approvals/approvalWords';
+import { TEST_APPROVAL_DELAY_MS, TEST_APPROVAL_PLUGIN } from '../approvals/testApproval';
+import type { TestApprovalState } from '../approvals/useTestApproval';
 import { LIST_FAILED_MESSAGE, RECONNECT_WAIT_MS, trunkOf, type Answered, type Approval, type ApprovalDecision, type ApprovalsSnapshot, type Trunk } from '../approvals/approvals';
 import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { Button } from '../ui/Button';
+import { OfflineBanner } from '../ui/OfflineBanner';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const LONG_COMMAND = 160;
@@ -298,7 +301,62 @@ function Note({ title, body, testID, action }: { title: string; body: string; te
   );
 }
 
-/** Needs you: every approval waiting on the computer, answered right here, and what was answered lately. */
+/**
+ * For testing (a development build, or one built with EXPO_PUBLIC_BRANCH_TEST_APPROVALS=1): asks the computer for a
+ * test approval that runs nothing, now or in ten seconds so the phone can be locked to see the notification.
+ */
+function TestApprovalCard({ state, waiting, onSend, onCancel }: { state: TestApprovalState; waiting: boolean; onSend: (delayMs: number) => void; onCancel: () => void }) {
+  const { color, space, radius, layout } = useTheme();
+  const counting = state.phase === 'counting';
+  // Redraws four times a second while counting; the seconds are read from the clock each time.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!counting) return;
+    const tick = setInterval(() => setTick((n) => n + 1), 250);
+    return () => clearInterval(tick);
+  }, [counting]);
+  const secs = counting ? Math.max(1, Math.ceil((state.at - Date.now()) / 1000)) : 0;
+  return (
+    <View testID="test-approval-card" style={{ marginTop: space.xxl }}>
+      <ThemedText variant="footnote" tone="ink3" accessibilityRole="header" style={{ fontWeight: '600', textTransform: 'uppercase', marginBottom: space.xs }}>
+        For testing
+      </ThemedText>
+      <View style={{ backgroundColor: color.raise, borderRadius: radius.lg, padding: layout.cardInset, gap: space.sm }}>
+        <ThemedText variant="headline">Check that approvals work</ThemedText>
+        <ThemedText variant="subhead" tone="ink2">
+          Sends a test approval from this phone. Nothing runs, whatever you choose. It shows up here and in Branch on your computer, and either can answer it.
+        </ThemedText>
+        {counting ? (
+          <>
+            <ThemedText testID="test-approval-countdown" variant="subhead" tone="ink">
+              {`Sending in ${secs} s. Lock the phone now: the notification should arrive with Allow and Deny.`}
+            </ThemedText>
+            <Button title="Cancel" kind="plain" onPress={onCancel} testID="test-approval-cancel" />
+          </>
+        ) : (
+          <>
+            <Button title="Send a test approval" kind="secondary" busy={state.phase === 'sending'} disabled={state.phase === 'sending'} onPress={() => onSend(0)} testID="test-approval-send" />
+            <Button
+              title={`Send one in ${Math.round(TEST_APPROVAL_DELAY_MS / 1000)} seconds`}
+              kind="plain"
+              disabled={state.phase === 'sending'}
+              onPress={() => onSend(TEST_APPROVAL_DELAY_MS)}
+              testID="test-approval-later"
+            />
+          </>
+        )}
+        {state.phase === 'sent' && waiting ? (
+          <ThemedText testID="test-approval-sent" variant="footnote" tone="ink2">
+            Sent. Answer it above, or on your computer.
+          </ThemedText>
+        ) : null}
+        {state.phase === 'failed' ? <Notice testID="test-approval-failed" tone="bad" text={state.message} /> : null}
+      </View>
+    </View>
+  );
+}
+
+/** Approvals: every approval waiting on the computer, answered right here, and what was answered lately. */
 export function ApprovalsScreen({
   snapshot,
   online,
@@ -311,6 +369,7 @@ export function ApprovalsScreen({
   onOpenChat,
   canOpenChat = () => false,
   focusId,
+  test,
   now: fixedNow,
 }: {
   snapshot: ApprovalsSnapshot;
@@ -326,6 +385,8 @@ export function ApprovalsScreen({
   canOpenChat?: (sessionKey: string) => boolean;
   /** The approval a notification was tapped for: it comes first and is outlined. */
   focusId?: string;
+  /** The test approval tools, in builds that have them (testApproval.ts testApprovalsOn). */
+  test?: { state: TestApprovalState; onSend: (delayMs: number) => void; onCancel: () => void };
   now?: number;
 }) {
   const { color, space, radius, layout } = useTheme();
@@ -376,7 +437,7 @@ export function ApprovalsScreen({
         </Pressable>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
           <ThemedText variant="largeTitle" accessibilityRole="header">
-            Needs you
+            Approvals
           </ThemedText>
           {waiting ? (
             <View
@@ -391,13 +452,11 @@ export function ApprovalsScreen({
           ) : null}
         </View>
         {online ? null : (
-          <View testID="approvals-offline" style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md, backgroundColor: color.warnTint, borderRadius: radius.md, padding: space.md }}>
-            <View style={{ width: 8, height: 8, borderRadius: radius.pill, backgroundColor: color.warn }} />
-            <ThemedText variant="footnote" tone="ink2" style={{ flex: 1 }}>
-              {/* answer() waits RECONNECT_WAIT_MS for the computer, then gives up with "Try again when it’s back". */}
-              {`Reconnecting to your computer… An answer sent now waits up to ${Math.round(RECONNECT_WAIT_MS / 1000)} seconds for it, then asks you to try again.`}
-            </ThemedText>
-          </View>
+          // answer() waits RECONNECT_WAIT_MS for the computer, then gives up with "Try again when it’s back".
+          <OfflineBanner
+            testID="approvals-offline"
+            message={`Reconnecting to your computer… An answer sent now waits up to ${Math.round(RECONNECT_WAIT_MS / 1000)} seconds for it, then asks you to try again.`}
+          />
         )}
         <PermissionCard permission={permission} onTurnOn={onTurnOnNotifications} onSettings={onOpenSettings} />
         {body}
@@ -412,6 +471,9 @@ export function ApprovalsScreen({
               ))}
             </View>
           </View>
+        ) : null}
+        {test ? (
+          <TestApprovalCard state={test.state} waiting={snapshot.pending.some((a) => a.pluginId === TEST_APPROVAL_PLUGIN)} onSend={test.onSend} onCancel={test.onCancel} />
         ) : null}
       </ScrollView>
     </View>

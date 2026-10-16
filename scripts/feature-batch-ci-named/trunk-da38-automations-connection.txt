@@ -1,0 +1,2 @@
+window:src/connect/connection-bootstrap.test.ts
+window:src/places/automations/scheduled-connection.test.tsx
