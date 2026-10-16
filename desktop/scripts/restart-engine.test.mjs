@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import nodeTest from "node:test";
+import { runInNewContext } from "node:vm";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw Error("Compile the exact desktop source before testing");
 const require = createRequire(import.meta.url), Module = require("node:module");
@@ -1722,3 +1723,166 @@ test("quitting after gateway readiness does not arm startup watchers afterward",
   await pause(50);
   assert.equal(existsSync(join(root, "component-watch-started")), false);
 }, false, false, false, "never", false, async root => writeFile(join(root, "hold-start-continuation"), "1")));
+
+// Private #1094: cold start must show a usable window before first-launch install finishes, and within 10 s.
+const { USABLE_WINDOW_LIMIT_MS, firstWindowDocument, firstWindowLabel, firstWindowUrl } = require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "first-window.js"));
+const decodePage = url => {
+  const comma = String(url).indexOf(",");
+  return comma === -1 ? String(url) : decodeURIComponent(String(url).slice(comma + 1));
+};
+test("the first window names the step still in progress (Private #1094)", () => {
+  assert.equal(USABLE_WINDOW_LIMIT_MS, 10_000);
+  const page = firstWindowDocument("opening");
+  assert.match(page, /data-usable-window="1"/);
+  assert.match(page, /role="status"/);
+  assert.match(page, /role="progressbar"/);
+  assert.match(page, new RegExp(firstWindowLabel("opening").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(decodePage(firstWindowUrl("installing")), new RegExp(firstWindowLabel("installing").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(page, /Installing Branch/);
+});
+test("startup progress updates the usable window status line (Private #1094)", async () => {
+  const handlers = new Map();
+  const status = { textContent: "Opening Branch…" };
+  const document = {
+    readyState: "complete",
+    querySelector: selector => selector === "[data-usable-window] [role=status]" ? status : null,
+    addEventListener() { assert.fail("the status line is already in the document"); },
+  };
+  runInNewContext(await readFile(join(process.env.BRANCH_DESKTOP_TEST_DIST, "preload.js"), "utf8"), {
+    exports: {},
+    document,
+    window: { addEventListener() {} },
+    require: name => {
+      assert.equal(name, "electron");
+      return {
+        contextBridge: { exposeInMainWorld() { assert.fail("the first window has no gateway info"); } },
+        ipcRenderer: { sendSync: () => null, on: (channel, fn) => handlers.set(channel, fn), invoke: async () => ({}), send() {} },
+      };
+    },
+  });
+  const apply = handlers.get("branch-desktop:startup-progress");
+  assert.equal(typeof apply, "function");
+  apply({}, firstWindowLabel("installing"));
+  assert.equal(status.textContent, firstWindowLabel("installing"));
+  apply({}, 12);
+  assert.equal(status.textContent, firstWindowLabel("installing"));
+});
+test("cold start reaches a usable window within 10 s while first-launch install is still running (Private #1094)", async () => {
+  const scratch = join(tmpdir(), "Codex-session-files"); await mkdir(scratch, { recursive: true });
+  const root = await mkdtemp(join(scratch, "branch-cold-start-"));
+  const engine = join(root, "engine"), windowDir = join(root, "window");
+  await mkdir(join(engine, "dist"), { recursive: true });
+  await mkdir(windowDir);
+  await writeFile(join(engine, "dist/build-info.json"), "{\"version\":\"fixture\"}\n");
+  await writeFile(join(engine, "branch.mjs"), "import http from \"node:http\";http.createServer((q,r)=>r.writeHead(200).end(\"ok\")).listen(Number(process.argv.at(-1)),\"127.0.0.1\");\n");
+  await writeFile(join(root, "desktop.json"), JSON.stringify({
+    dataDir: root, engineDir: engine, windowDir, nodePath: process.execPath,
+    gatewayPort: await freePort(), windowPort: await freePort(), alwaysOn: false, seamlessHandoff: false,
+  }));
+  await writeFile(join(root, "gateway-token"), "cold-start-fixture-token");
+  const previousData = process.env.BRANCH_DESKTOP_DATA, previousTest = process.env.BRANCH_DESKTOP_TEST;
+  process.env.BRANCH_DESKTOP_DATA = root;
+  process.env.BRANCH_DESKTOP_TEST = "1";
+  const app = new EventEmitter();
+  let window;
+  Object.assign(app, {
+    getVersion: () => "fixture", isReady: () => true, setPath() {}, setAppUserModelId() {},
+    requestSingleInstanceLock: () => true, whenReady: async () => {},
+    quit() { app.emit("before-quit"); app.emit("will-quit"); },
+  });
+  class BrowserWindow extends EventEmitter {
+    constructor() {
+      super();
+      window = this;
+      this.url = "";
+      this.loads = [];
+      this.webContents = new EventEmitter();
+      Object.assign(this.webContents, {
+        mainFrame: { url: "" }, getURL: () => this.url, setWindowOpenHandler() {}, send() {}, isDestroyed: () => false, reload() {},
+      });
+    }
+    async loadURL(url) {
+      this.url = url;
+      this.loads.push(url);
+      this.webContents.mainFrame.url = url;
+      this.webContents.emit("did-finish-load");
+    }
+    setMenuBarVisibility() {} show() {} focus() {} hide() {} maximize() {}
+    isMaximized() { return false; } isMinimized() { return false; } isDestroyed() { return false; }
+    getNormalBounds() { return { x: 0, y: 0, width: 1280, height: 840 }; }
+    getBounds() { return this.getNormalBounds(); }
+    close() { this.emit("closed"); }
+  }
+  const electron = {
+    app, BrowserWindow,
+    Tray: class extends EventEmitter { setToolTip() {} setContextMenu() {} destroy() {} },
+    Menu: { buildFromTemplate: value => value },
+    screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) },
+    ipcMain: Object.assign(new EventEmitter(), { handle() {} }),
+    dialog: { showErrorBox(title, message) { throw new Error(`${title}: ${message}`); } },
+    shell: { openExternal() {} }, clipboard: { writeText() {} },
+    session: {
+      fromPartition() { return { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} }; },
+      defaultSession: { setPermissionRequestHandler() {} },
+    },
+  };
+  Module._load = function (name, ...args) {
+    if (name === "electron") return electron;
+    const loaded = originalLoad.call(this, name, ...args);
+    if (name !== "./component-update") return loaded;
+    return { ...loaded, refreshComponentUpdate: async () => {
+      await writeFile(join(root, "install-entered"), "1");
+      while (existsSync(root) && !existsSync(join(root, "release-install"))) await pause(20);
+      await writeFile(join(windowDir, "index.html"), "<!doctype html><title>Branch</title>\n");
+      return false;
+    } };
+  };
+  globalThis.fetch = (url, options) => String(url).startsWith("https://github.com/") ? Promise.resolve(new Response("", { status: 404 })) : originalFetch(url, options);
+  const dist = resolve(process.env.BRANCH_DESKTOP_TEST_DIST).replaceAll("\\", "/").toLowerCase();
+  for (const file of Object.keys(require.cache)) if (file.replaceAll("\\", "/").toLowerCase().startsWith(dist)) delete require.cache[file];
+  const readLog = async () => { try { return await readFile(join(root, "desktop.log"), "utf8"); } catch { return ""; } };
+  const waitLog = async (pattern, ms) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      const text = await readLog();
+      const match = text.match(pattern);
+      if (match) return { text, match };
+      await pause(20);
+    }
+    return { text: await readLog(), match: null };
+  };
+  try {
+    require(join(process.env.BRANCH_DESKTOP_TEST_DIST, "main.js"));
+    const usable = await waitLog(/usable window after (\d+) ms/, USABLE_WINDOW_LIMIT_MS);
+    assert.ok(usable.match, `usable window was not shown within ${USABLE_WINDOW_LIMIT_MS} ms\n${usable.text}`);
+    const usableMs = Number(usable.match[1]);
+    assert.ok(usableMs < USABLE_WINDOW_LIMIT_MS, `usable window took ${usableMs} ms`);
+    const pages = () => window.loads.map(decodePage);
+    const end = Date.now() + USABLE_WINDOW_LIMIT_MS;
+    while (Date.now() < end && !(pages().some(page => page.includes(firstWindowLabel("installing"))) && existsSync(join(root, "install-entered")))) await pause(20);
+    assert.ok(pages().some(page => page.includes("data-usable-window=\"1\"")), "the first page is not a usable window");
+    assert.ok(pages().some(page => page.includes(firstWindowLabel("installing"))), "install progress was not shown");
+    assert.equal(existsSync(join(root, "install-entered")), true, "first-launch install did not start");
+    assert.doesNotMatch(await readLog(), /window loaded after/, "the real window waited out the install");
+    console.log(`cold-start usable window: ${usableMs} ms (limit ${USABLE_WINDOW_LIMIT_MS})`);
+    await writeFile(join(root, "release-install"), "1");
+    const loaded = await waitLog(/window loaded after (\d+) ms/, 15_000);
+    const ready = await waitLog(/gateway ready after (\d+) ms; launch elapsed (\d+) ms/, 15_000);
+    assert.ok(loaded.match, `window did not load after install\n${loaded.text}`);
+    assert.ok(ready.match, `gateway did not become ready after install\n${ready.text}`);
+    assert.ok(Number(loaded.match[1]) < Number(ready.match[2]), "the window must load before the gateway is ready");
+    console.log(`cold-start window loaded: ${loaded.match[1]} ms`);
+    console.log(`cold-start gateway ready: ${ready.match[2]} ms from launch, ${ready.match[1]} ms from engine spawn`);
+  } finally {
+    try { await writeFile(join(root, "release-install"), "1"); } catch { /* root already gone */ }
+    await pause(200);
+    try { app.quit(); } catch { /* already quitting */ }
+    await pause(400);
+    try { killTree(Number(await readFile(join(root, "gateway.pid"), "utf8"))); } catch { /* no engine pid */ }
+    Module._load = originalLoad;
+    globalThis.fetch = originalFetch;
+    if (previousData === undefined) delete process.env.BRANCH_DESKTOP_DATA; else process.env.BRANCH_DESKTOP_DATA = previousData;
+    if (previousTest === undefined) delete process.env.BRANCH_DESKTOP_TEST; else process.env.BRANCH_DESKTOP_TEST = previousTest;
+    await rm(root, { recursive: true, force: true });
+  }
+});
