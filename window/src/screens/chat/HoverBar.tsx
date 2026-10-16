@@ -1,12 +1,14 @@
 // The message hover bar (owner item 40, HANDOFF §2 #17): exactly three buttons, React, Reply and •••, in control
-// glass. ••• opens the message menu: its time and model, then Copy ›, Pin or Unpin, Edit or Try again, Read aloud,
-// Branch from here, Leave out of context, Look inside, Share as a picture…, Continue in a coding app… and Delete. The
-// last two are greyed with their reason until the window makes their calls (preview R1 message menu). Each row runs its
-// engine call (thread/useMessageActions) through <Coming need=…>, or shows Coming with its reason; nothing pretends.
-// Only Copy, its submenu and Look inside are local (data-local): they make no engine call.
+// glass. ••• opens the message menu. Copy, Reply and Retry are on every message that can use them. Edit is only
+// passed for your own last message. "Show what it did" replaces Look inside at the Technical level. The preview's
+// other rows stay: Pin, Read aloud, Branch from here, context, Share as a picture…, Continue in a coding app… and
+// Delete. Share and Continue stay greyed with their reason. Each row runs its engine call (thread/useMessageActions)
+// through <Coming need=…>, or shows Coming with its reason. Copy, its submenu, Look inside and Show what it did
+// are local (data-local): they make no engine call.
 import { useRef, useState, type ReactNode } from "react";
 import { Coming } from "../../glass/coming";
 import { Popover } from "../../glass/Popover";
+import { useLevel } from "../../places-nav/level";
 import { Icon, type IconName } from "../../shell/icons";
 import { copyText, useThread } from "../../thread/context";
 import { fullTime, messageTime, modelName } from "../../thread/format";
@@ -14,6 +16,7 @@ import type { Act, HoverActions } from "../../thread/HoverBar";
 import { Icon as PathIcon, ICONS } from "../../thread/icons";
 import type { MessageMeta } from "../../thread/model";
 import { plainText } from "./chat-logic";
+import "./message-menu.css";
 
 const QUICK = ["👍", "❤️", "🎉", "👀", "🚀", "😂"];
 
@@ -60,28 +63,33 @@ function Row({ icon, label, act, onDone, danger, hint, need }: { icon: IconName;
 
 export function MessageMenu({ text, isReply, actions, meta, onClose }: { text: string; isReply: boolean; actions: HoverActions; meta?: MessageMeta; onClose: () => void }) {
   const { toast } = useThread();
+  const technical = useLevel() === "technical";
   const [copyOpen, setCopyOpen] = useState(false);
   const at = meta?.timestamp;
   const model = isReply ? modelName(meta?.model) : "";
   const head = [at ? messageTime(at) : "", model].filter(Boolean).join(" · ");
   if (copyOpen) {
-    return <div className="r1c-menu" role="menu" aria-label="Copy">
+    return <div className="r1c-menu r1c-msgmenu" role="menu" aria-label="Copy">
       <button type="button" role="menuitem" className="r1c-mi r1c-back" data-local="" onClick={() => setCopyOpen(false)}><Icon name="back" size={15} /><span className="r1c-mi-t">Copy</span></button>
       <button type="button" role="menuitem" className="r1c-mi" data-local="" onClick={() => { void copyText(plainText(text), toast); onClose(); }}><Icon name="copy" size={15} /><span className="r1c-mi-t">Text</span></button>
       <button type="button" role="menuitem" className="r1c-mi" data-local="" onClick={() => { void copyText(text, toast); onClose(); }}><Icon name="code" size={15} /><span className="r1c-mi-t">Markdown</span></button>
     </div>;
   }
   const read = actions.read;
-  return <div className="r1c-menu" role="menu" aria-label="Message">
+  const showWork = technical && Boolean(actions.inspect);
+  return <div className="r1c-menu r1c-msgmenu" role="menu" aria-label="Message">
     {head ? <div className="r1c-menu-meta" title={at ? fullTime(at) : undefined}>{head}</div> : null}
     <button type="button" role="menuitem" className="r1c-mi" data-local="" aria-haspopup="menu" onClick={() => setCopyOpen(true)}><Icon name="copy" size={15} /><span className="r1c-mi-t">Copy</span><span className="r1c-mi-hint" aria-hidden="true">›</span></button>
+    <Row icon="reply" label="Reply" act={actions.reply} onDone={onClose} need={REPLY_NEED} />
+    {actions.retry ? <Row icon="retry" label="Retry" act={actions.retry} onDone={onClose} need={NEEDS.again} /> : null}
+    {actions.edit ? <Row icon="edit" label="Edit" act={actions.edit} onDone={onClose} need={NEEDS.edit} /> : null}
+    {showWork ? <Row icon="eye" label="Show what it did" act={actions.inspect} onDone={onClose} /> : null}
     {actions.pin ? <Row icon="pin" label={actions.pin.pinned ? "Unpin" : "Pin"} act={actions.pin} onDone={onClose} need={NEEDS.pin} /> : null}
     <div className="r1c-gap" />
-    {isReply ? <Row icon="retry" label="Try again" act={actions.retry} onDone={onClose} need={NEEDS.again} /> : <Row icon="edit" label="Edit" act={actions.edit} onDone={onClose} need={NEEDS.edit} />}
     {read ? <Row icon={read.reading ? "pause" : "play"} label={read.reading ? "Stop reading" : "Read aloud"} act={read} onDone={onClose} need={NEEDS.read} /> : null}
     <Row icon="branch" label="Branch from here" act={actions.branch} onDone={onClose} need={NEEDS.branch} />
     {actions.context ? <Row icon={actions.context.excluded ? "eye" : "eyeOff"} label={actions.context.excluded ? "Put back in context" : "Leave out of context"} act={actions.context} onDone={onClose} need={NEEDS.context} /> : null}
-    <Row icon="eye" label="Look inside" act={actions.inspect} onDone={onClose} />
+    {actions.inspect && !showWork ? <Row icon="eye" label="Look inside" act={actions.inspect} onDone={onClose} /> : null}
     <SoonRow icon="camera" label="Share as a picture…" soon={SOON.picture} />
     <SoonRow icon="code" label="Continue in a coding app…" soon={SOON.coding} />
     {actions.remove ? <><div className="r1c-gap" /><Row icon="trash" label="Delete" act={actions.remove} onDone={onClose} danger need={NEEDS.remove} /></> : null}

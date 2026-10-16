@@ -188,7 +188,7 @@ export function ChatView(props: ChatViewProps) {
   const loose = here.filter((s) => !blockIds.has(s.ask.id) && !grouped.has(s.ask.id));
   const waitingHere = here.length > 0 || all.some((b) => b.kind === "approval" && b.approval.state === "pending");
   const answerAsk = (id: string, reply: Reply) => props.onAsk?.(id, reply);
-  const { actionsFor, dialog, changes } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, applyReaction: apply });
+  const { actionsFor, dialog, changes } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, applyReaction: apply, selfId: props.room ? props.room.selfId : null });
   const root = useRef<HTMLDivElement>(null);
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
   const signature = history.length + ":" + live.length + ":" + liveText + ":" + (running ? 1 : 0) + ":" + here.length + ":" + (props.queued?.length ?? 0);
