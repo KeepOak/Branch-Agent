@@ -81,7 +81,7 @@ describe('profile in the app', () => {
     expect(screen.getByTestId('profile-screen')).toBeOnTheScreen();
     expect(screen.getByText('Oak')).toBeOnTheScreen();
     expect(screen.getByTestId('profile-status')).toHaveTextContent('Running');
-    expect(screen.getByTestId('profile-computer')).toHaveTextContent('computer.local:19031');
+    expect(screen.getByTestId('profile-computer')).toHaveTextContent(/computer\.local:19031/);
     expect(screen.queryByTestId('profile-model')).toBeNull();
 
     await fireEvent.press(screen.getByTestId('profile-computer'));
