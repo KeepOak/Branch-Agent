@@ -204,7 +204,7 @@ export function Sidebar(p: SidebarProps) {
       await p.list.refresh();
       p.onOpen(key);
       notify(`New conversation with ${trunkName(agentId)}.`);
-    }, (error: unknown) => notify(`Couldn't start a conversation: ${reason(error)}`, { tone: "bad" }));
+    }, () => notify(`Couldn’t start a conversation with ${trunkName(agentId)}. Try again.`, { tone: "bad" }));
   };
   // Replace with a different Trunk (a pinned face's menu): pin the picked Trunk, give it this pin's place in the saved
   // order, then unpin this one, through the same calls Pin and Unpin make.
@@ -366,7 +366,7 @@ export function Sidebar(p: SidebarProps) {
       const agentId = dialog.trunkId, name = label.trim();
       setDialog(null);
       if (agentId) {
-        if (name && name !== dialog.row.name) void request("agents.update", { agentId, name }).then(refreshContacts, (error: unknown) => notify(`Couldn't rename ${dialog.row.name}: ${reason(error)}`, { tone: "bad" }));
+        if (name && name !== dialog.row.name) void request("agents.update", { agentId, name }).then(refreshContacts, () => notify("Couldn’t save it. Try again.", { tone: "bad" }));
         return;
       }
       if (dialog.row.row) void actions.rename(dialog.row.row, label).then(refreshContacts);

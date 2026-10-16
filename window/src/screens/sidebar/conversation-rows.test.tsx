@@ -32,7 +32,7 @@ describe("New conversation with a Trunk", () => {
   });
 
   it("says so in plain words when the engine makes nothing", async () => {
-    await expect(createEmptyThread(vi.fn(async () => ({})) as never, "oak", "agent:oak:main")).rejects.toThrow("Branch didn't make the conversation. Try again.");
+    await expect(createEmptyThread(vi.fn(async () => ({})) as never, "oak", "agent:oak:main")).rejects.toThrow("Couldn’t start it. Try again.");
   });
 });
 

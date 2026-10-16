@@ -16,7 +16,7 @@ export async function createEmptyThread(request: Request, agentId: string, paren
   while (true) {
     try {
       const result = await request<{ key?: unknown }>("sessions.create", { agentId, parentSessionKey: parentKey });
-      if (typeof result?.key !== "string" || !result.key) throw new Error("Branch didn't make the conversation. Try again.");
+      if (typeof result?.key !== "string" || !result.key) throw new Error("Couldn’t start it. Try again.");
       return result.key;
     } catch (error) {
       if (!isPreparationPending(error)) throw error;
