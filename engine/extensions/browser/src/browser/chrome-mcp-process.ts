@@ -3,10 +3,12 @@ import fs from "node:fs/promises";
 import { setTimeout as sleepTimeout } from "node:timers/promises";
 import type { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { toErrorObject } from "branch/plugin-sdk/error-runtime";
+import { createSubsystemLogger } from "branch/plugin-sdk/logging-core";
 import { runExec } from "branch/plugin-sdk/process-runtime";
 import { normalizeOptionalString } from "branch/plugin-sdk/string-coerce-runtime";
 import {
   CHROME_MCP_PROCESS_EXIT_GRACE_MS,
+  CHROME_MCP_PROCESS_SNAPSHOT_TIMEOUT_ENV,
   CHROME_MCP_UNIX_PROCESS_SNAPSHOT_TIMEOUT_MS,
   CHROME_MCP_WINDOWS_PROCESS_SNAPSHOT_TIMEOUT_MS,
   ChromeMcpProcessSnapshotError,
@@ -83,9 +85,28 @@ export function parseChromeMcpUnixProcessListForTest(
   return parseChromeMcpDelimitedProcessList(delimited, platform);
 }
 
+const log = createSubsystemLogger("browser").child("chrome-mcp");
+
+/** The census bound: short in production; the test harness may raise it (option or env). */
+export function chromeMcpProcessSnapshotTimeoutMs(
+  windows: boolean,
+  deps: ChromeMcpProcessCleanupDeps | null,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  if (deps?.processSnapshotTimeoutMs && deps.processSnapshotTimeoutMs > 0) {
+    return deps.processSnapshotTimeoutMs;
+  }
+  const fromEnv = Number(env[CHROME_MCP_PROCESS_SNAPSHOT_TIMEOUT_ENV]);
+  if (Number.isInteger(fromEnv) && fromEnv > 0) {
+    return fromEnv;
+  }
+  return windows ? CHROME_MCP_WINDOWS_PROCESS_SNAPSHOT_TIMEOUT_MS : CHROME_MCP_UNIX_PROCESS_SNAPSHOT_TIMEOUT_MS;
+}
+
 async function listChromeMcpPlatformProcesses(
   deps: ChromeMcpProcessCleanupDeps | null,
 ): Promise<ChromeMcpProcessSnapshot[]> {
+  let timeoutMs: number | undefined;
   try {
     if (deps?.listProcesses) {
       return await deps.listProcesses();
@@ -95,6 +116,7 @@ async function listChromeMcpPlatformProcesses(
       return await listChromeMcpLinuxProcesses();
     }
     const windows = platform === "win32";
+    timeoutMs = chromeMcpProcessSnapshotTimeoutMs(windows, deps);
     const { stdout } = await runExec(
       windows ? "powershell.exe" : "ps",
       windows
@@ -109,10 +131,8 @@ async function listChromeMcpPlatformProcesses(
         env: windows ? undefined : { ...process.env, LC_ALL: "C", TZ: "UTC" },
         logOutput: false,
         maxBuffer: 4 * 1024 * 1024,
-        // A timed-out census leaves cleanup uncertain for good once the SDK drops its PID.
-        timeoutMs: windows
-          ? CHROME_MCP_WINDOWS_PROCESS_SNAPSHOT_TIMEOUT_MS
-          : CHROME_MCP_UNIX_PROCESS_SNAPSHOT_TIMEOUT_MS,
+        // A timed-out census is logged and leaves cleanup unverified; it never holds stop longer.
+        timeoutMs,
       },
     );
     if (windows) {
@@ -122,6 +142,9 @@ async function listChromeMcpPlatformProcesses(
     // PID reuse within its one-second resolution cannot match another executable.
     return parseChromeMcpUnixProcessListForTest(stdout, platform);
   } catch (err) {
+    if (timeoutMs !== undefined && err instanceof Error && /timed out/i.test(err.message)) {
+      log.warn(`Chrome MCP process census timed out after ${timeoutMs} ms; cleanup is unverified.`);
+    }
     throw new ChromeMcpProcessSnapshotError(
       err instanceof Error ? err.message : "Unable to inspect the Chrome MCP process tree.",
       { cause: err },

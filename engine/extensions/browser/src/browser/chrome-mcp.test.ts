@@ -32,6 +32,7 @@ import {
   uploadChromeMcpFile,
 } from "./chrome-mcp.js";
 import type { ChromeMcpSnapshotNode } from "./chrome-mcp.snapshot.js";
+import { CHROME_MCP_PROCESS_SNAPSHOT_TIMEOUT_ENV } from "./chrome-mcp-contracts.js";
 import {
   createFakeSession,
   createPageSession,
@@ -41,6 +42,9 @@ import {
   type SessionPage,
   type ToolCall,
 } from "./chrome-mcp.test-support.js";
+
+// Real Windows runners can take over 10 s for a cold PowerShell CIM census; production stays short.
+process.env[CHROME_MCP_PROCESS_SNAPSHOT_TIMEOUT_ENV] ??= "60000";
 
 type ToolCallMock = {
   mock: {

@@ -135,6 +135,8 @@ export type ChromeMcpProcessCleanupDeps = {
   sleep?: (ms: number) => Promise<void>;
   platform?: NodeJS.Platform;
   taskkillProcessTree?: (pid: number) => Promise<void>;
+  /** Test harness only: the process census bound. */
+  processSnapshotTimeoutMs?: number;
 };
 
 export type ChromeMcpOwnedProcess = Pick<ChromeMcpProcessSnapshot, "pid" | "identity">;
@@ -156,10 +158,12 @@ export const CHROME_MCP_HANDSHAKE_TIMEOUT_MS = 30_000;
 export const CHROME_MCP_STDERR_MAX_BYTES = 8 * 1024;
 export const CHROME_MCP_PROCESS_EXIT_GRACE_MS = 250;
 export const CHROME_MCP_UNIX_PROCESS_SNAPSHOT_TIMEOUT_MS = 2_000;
-// Windows PowerShell one-shots pay cold first-use costs (module analysis, NGEN) that exceeded
-// 10 seconds on loaded CI runners. Cleanup proof fails closed, so the CIM snapshot must out-wait
-// a cold start; this bound, like WINDOWS_POWERSHELL_COLD_SPAWN_TIMEOUT_MS, only stops true hangs.
-export const CHROME_MCP_WINDOWS_PROCESS_SNAPSHOT_TIMEOUT_MS = 60_000;
+// Stopping the browser runtime awaits this census, so the production bound stays short. A cold
+// Windows PowerShell CIM query can take longer on a loaded machine; then the census times out,
+// is logged, and cleanup is reported as unverified instead of holding stop.
+export const CHROME_MCP_WINDOWS_PROCESS_SNAPSHOT_TIMEOUT_MS = 5_000;
+// Test harness only: loaded CI runners need longer for a cold CIM query (over 10 s seen).
+export const CHROME_MCP_PROCESS_SNAPSHOT_TIMEOUT_ENV = "BRANCH_TEST_CHROME_MCP_PROCESS_SNAPSHOT_TIMEOUT_MS";
 export const DEVTOOLS_ACTIVE_PORT_RE = /\bDevToolsActivePort\b/i;
 export const CHROME_CONNECTION_TOOL_ERROR_RE =
   /(?:Could not connect to Chrome|DevToolsActivePort|ECONNREFUSED|ECONNRESET|websocket|timed out)/i;

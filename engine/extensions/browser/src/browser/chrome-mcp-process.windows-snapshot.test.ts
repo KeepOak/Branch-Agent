@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChromeMcpSession } from "./chrome-mcp-contracts.js";
 import {
+  chromeMcpProcessSnapshotTimeoutMs,
   closeChromeMcpSessionHandle,
   refreshChromeMcpCleanupProcess,
   setChromeMcpProcessCleanupDepsForTest,
@@ -30,7 +31,35 @@ afterEach(() => {
 });
 
 describe("Chrome MCP Windows process census", () => {
-  it("out-waits a cold PowerShell CIM census and proves the whole tree is gone", async () => {
+  it("keeps the production census bound short so stopping the browser is never held", () => {
+    expect(chromeMcpProcessSnapshotTimeoutMs(true, null, {})).toBeLessThanOrEqual(5_000);
+    expect(chromeMcpProcessSnapshotTimeoutMs(false, null, {})).toBeLessThanOrEqual(5_000);
+  });
+
+  it("reports cleanup as unverified, without waiting longer, when a cold census times out", async () => {
+    const timeouts: number[] = [];
+    runExec.mockImplementation(async (_c: string, _a: string[], options?: { timeoutMs?: number }) => {
+      timeouts.push(options?.timeoutMs ?? 0);
+      throw new Error("Command timed out");
+    });
+    setChromeMcpProcessCleanupDepsForTest({ platform: "win32", sleep: async () => {}, taskkillProcessTree: vi.fn() });
+    const closeTransport = vi.fn(async () => {});
+    const session = {
+      client: { close: vi.fn() },
+      transport: { pid: 4242 },
+      closeTransport,
+      ready: Promise.resolve(),
+      processCleanup: { status: "open" },
+    } as unknown as ChromeMcpSession;
+
+    await expect(closeChromeMcpSessionHandle(session)).rejects.toThrow();
+    expect(closeTransport).toHaveBeenCalledOnce();
+    expect(session.processCleanup?.status).toBe("uncertain");
+    expect(timeouts.length).toBeGreaterThan(0);
+    for (const ms of timeouts) expect(ms).toBeLessThanOrEqual(5_000);
+  });
+
+  it("lets the test harness out-wait a cold PowerShell CIM census and proves the whole tree is gone", async () => {
     const alive: Row[] = [
       { pid: 4242, ppid: 900, started: "2026-10-16T10:00:00.0000000-04:00", path: NODE_EXE },
       { pid: 4243, ppid: 4242, started: "2026-10-16T10:00:01.0000000-04:00", path: CHROME_EXE },
@@ -61,6 +90,7 @@ describe("Chrome MCP Windows process census", () => {
       platform: "win32",
       sleep: async () => {},
       taskkillProcessTree,
+      processSnapshotTimeoutMs: 60_000,
     });
     const transport: { pid: number | null } = { pid: 4242 };
     const closeTransport = vi.fn(async () => {
