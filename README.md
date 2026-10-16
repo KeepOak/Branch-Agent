@@ -1,0 +1,1 @@
+Proof for feat/1100-reading-fonts (Private #1100, readable fonts). Conversation font set to the bundled OpenDyslexic: the settings preview and a sample conversation and composer. 1440 and 390, light and dark.
