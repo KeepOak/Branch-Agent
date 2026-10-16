@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const mobileRoot = path.join(__dirname, '../..');
 const helper = path.join(mobileRoot, 'scripts/android-release.mjs');
@@ -233,13 +234,20 @@ describe('Android release version and signing plan', () => {
   });
 });
 
+async function loadHelper() {
+  return import(pathToFileURL(helper).href);
+}
+
 describe('the mobile Android release workflow', () => {
-  it('builds on a published release or a manual run, and never touches the merge gate', () => {
+  it('builds on a published release, a manual run, or a main push, and never touches the merge gate', () => {
     expect(workflow).toMatch(/release:\s*\n\s*types:\s*\[[^\]]*published/);
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toMatch(/workflow_dispatch:[\s\S]*?inputs:[\s\S]*?\btag:/);
+    expect(workflow).toMatch(/push:\s*\n\s*branches:\s*\[main\]/);
     expect(workflow).toContain('npm run build:android');
     expect(workflow).not.toMatch(/merge-gate/);
+    expect(workflow).not.toMatch(/^\s+pull_request:/m);
+    expect(workflow).not.toMatch(/pull_request_target/);
   });
 
   it('decodes the PKCS12 keystore and fails when the secret is missing or empty', () => {
@@ -340,6 +348,95 @@ describe('the mobile Android release workflow', () => {
     expect(workflow).toMatch(/if \[\[ -z "\$\{EXPECTED_CERT_SHA256\}" \]\]; then/);
     expect(workflow).toMatch(/if \[\[ -z "\$\{actual_sha256\}" \]\]; then/);
     expect(workflow).toMatch(/if \[\[ "\$\{actual_normalized\}" != "\$\{expected_normalized\}" \]\]; then/);
+  });
+
+  it('uses one shared concurrency key for push, release, and workflow_dispatch', async () => {
+    const m = await loadHelper();
+    const push = m.releaseConcurrencyGroup({ eventName: 'push', tag: '' });
+    const release = m.releaseConcurrencyGroup({
+      eventName: 'release',
+      tag: 'v0.4.4-build-9a15209115dc',
+    });
+    const dispatch = m.releaseConcurrencyGroup({
+      eventName: 'workflow_dispatch',
+      tag: 'v0.4.4-build-9a15209115dc',
+    });
+    expect(push).toBe(release);
+    expect(dispatch).toBe(release);
+    expect(push).toBe('mobile-android-release');
+    expect(workflow).toMatch(/concurrency:\s*\n(?:\s*#[^\n]*\n)*\s*group: mobile-android-release\s*\n\s*cancel-in-progress: false/);
+    expect(workflow).not.toMatch(/group: mobile-android-release-\$/);
+    expect(workflow).not.toMatch(/concurrency:[\s\S]*?group:[^\n]*(github\.sha|github\.run_id|inputs\.tag|tag_name)/);
+  });
+
+  it('matches the desktop vX.Y.Z-build-<12-hex sha> tag for the pushed commit', async () => {
+    const m = await loadHelper();
+    const sha = '9a15209115dcf73df922980ae50f762c4fa8d986';
+    const tag = 'v0.4.4-build-9a15209115dc';
+    expect(m.commitBuildId(sha)).toBe('9a15209115dc');
+    expect(m.isBuildReleaseTag(tag)).toBe(true);
+    expect(m.isBuildReleaseTagForCommit(tag, sha)).toBe(true);
+    expect(m.isBuildReleaseTagForCommit('v0.4.4', sha)).toBe(false);
+    expect(m.isBuildReleaseTagForCommit('v0.4.4-build-9a15209115', sha)).toBe(false);
+    expect(m.isBuildReleaseTagForCommit(tag, 'aaaaaaaaaaaa0000000000000000000000000000')).toBe(false);
+    expect(m.pickReleaseTagForCommit([
+      { tag_name: 'v0.4.3-build-aaaaaaaaaaaa' },
+      { tag_name: 'v0.4.4' },
+      { tag_name: tag },
+    ], sha)).toBe(tag);
+    expect(workflow).toContain('--resolve-tag');
+    expect(workflow).toContain('needs.resolve-tag.outputs.should_attach');
+  });
+
+  it('polls several minutes for the matching release tag and fails clearly if it never appears', async () => {
+    const m = await loadHelper();
+    const sha = '9a15209115dcf73df922980ae50f762c4fa8d986';
+    const tag = 'v0.4.4-build-9a15209115dc';
+    const waits: number[] = [];
+    const listed: number[] = [];
+    const found = await m.resolveReleaseTag({
+      eventName: 'push',
+      commitSha: sha,
+      wait: { intervalMs: 20_000, maxAttempts: 24 },
+      listReleases: async () => {
+        listed.push(listed.length + 1);
+        if (listed.length < 3) return [{ tag_name: 'v0.4.3-build-aaaaaaaaaaaa' }];
+        return [{ tag_name: tag }];
+      },
+      sleep: async (ms: number) => {
+        waits.push(ms);
+      },
+    });
+    expect(found).toEqual({ tag, shouldAttach: true });
+    expect(listed).toEqual([1, 2, 3]);
+    expect(waits).toEqual([20_000, 20_000]);
+    expect(m.pushReleaseWaitMs()).toBeGreaterThanOrEqual(5 * 60 * 1000);
+    expect(m.pushReleaseWaitMs()).toBeLessThanOrEqual(15 * 60 * 1000);
+    expect(workflow).toMatch(/resolve-tag:[\s\S]*timeout-minutes: 12/);
+
+    const missing = await m.resolveReleaseTag({
+      eventName: 'push',
+      commitSha: sha,
+      wait: { intervalMs: 15_000, maxAttempts: 3 },
+      listReleases: async () => [{ tag_name: 'v0.4.4' }],
+      sleep: async () => {},
+    }).then(() => null, (error: Error) => error.message);
+    expect(missing).toBe(m.missingPushReleaseError(sha, { intervalMs: 15_000, maxAttempts: 3 }));
+    expect(missing).toMatch(/vX\.Y\.Z-build-9a15209115dc/);
+    expect(missing).toMatch(/after 45s/);
+
+    await expect(m.resolveReleaseTag({
+      eventName: 'release',
+      releaseTag: tag,
+    })).resolves.toEqual({ tag, shouldAttach: true });
+    await expect(m.resolveReleaseTag({
+      eventName: 'workflow_dispatch',
+      releaseTag: tag,
+    })).resolves.toEqual({ tag, shouldAttach: true });
+    await expect(m.resolveReleaseTag({
+      eventName: 'workflow_dispatch',
+      releaseTag: '',
+    })).resolves.toEqual({ tag: '', shouldAttach: false });
   });
 });
 

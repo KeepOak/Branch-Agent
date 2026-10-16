@@ -18,15 +18,18 @@ on:
 permissions:
   contents: read
 
+# One shared key for push, release, and workflow_dispatch. GitHub evaluates this
+# before jobs run, so a per-tag key cannot include the push-path resolved tag.
+# cancel-in-progress: false so a second trigger queues instead of cancelling an upload.
 concurrency:
-  group: mobile-android-release-${{ github.event.release.tag_name || inputs.tag || github.sha }}
+  group: mobile-android-release
   cancel-in-progress: false
 
 jobs:
   resolve-tag:
     if: github.repository == 'KeepOak/Branch-Agent'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     permissions:
       contents: read
     outputs:
@@ -45,35 +48,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           RELEASE_TAG_INPUT: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag || '' }}
           COMMIT_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          tag=""
-          should_attach="false"
-          
-          if [[ "$EVENT_NAME" == "release" ]]; then
-            tag="${{ github.event.release.tag_name }}"
-            should_attach="true"
-          elif [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$RELEASE_TAG_INPUT" ]]; then
-            tag="$RELEASE_TAG_INPUT"
-            should_attach="true"
-          elif [[ "$EVENT_NAME" == "push" ]]; then
-            max_attempts=6
-            for attempt in $(seq 1 $max_attempts); do
-              tag=$(gh api "repos/$GITHUB_REPOSITORY/commits/$COMMIT_SHA" --jq '.commit.message' | grep -oP '^v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
-              if [[ -z "$tag" ]]; then
-                tag=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.target_commitish == "'"$COMMIT_SHA"'") | .tag_name' | head -1 || echo "")
-              fi
-              if [[ -n "$tag" ]]; then
-                should_attach="true"
-                break
-              fi
-              if [[ $attempt -lt $max_attempts ]]; then
-                sleep 5
-              fi
-            done
-          fi
-          
-          printf 'tag=%s\nshould_attach=%s\n' "$tag" "$should_attach" >> "$GITHUB_OUTPUT"
+        run: node mobile/scripts/android-release.mjs --resolve-tag >> "$GITHUB_OUTPUT"
 
   apk:
     needs: [resolve-tag]
@@ -266,7 +241,7 @@ jobs:
           retention-days: 14
 
       - name: Attach the signed APK to the GitHub release
-        if: steps.plan.outputs.attach_release == 'true'
+        if: steps.plan.outputs.attach_release == 'true' && needs.resolve-tag.outputs.should_attach == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.plan.outputs.release_tag }}

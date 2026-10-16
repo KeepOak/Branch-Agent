@@ -1,6 +1,7 @@
 // Release-plan helper for the sideloadable Android APK.
 // Used by scripts/build-android.mjs and .github/workflows/mobile-android-release.yml.
 // Secrets stay in the environment; this file never writes a keystore or password.
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -62,6 +63,109 @@ export function assertNotDebugSigner(certText) {
 /** GitHub vars, apksigner, and keytool all print SHA-256 fingerprints; formats differ by colon and case. */
 export function normalizeCertSha256(value) {
   return String(value ?? '').toLowerCase().replace(/[:\s]/g, '');
+}
+
+// Desktop publishes vX.Y.Z-build-<first 12 hex of the commit>, e.g. v0.4.4-build-9a15209115dc.
+export const BUILD_RELEASE_TAG_RE = /^v\d+\.\d+\.\d+-build-[a-f0-9]{12}$/i;
+export const ANDROID_RELEASE_CONCURRENCY_GROUP = 'mobile-android-release';
+export const PUSH_RELEASE_WAIT = {
+  intervalMs: 20_000,
+  maxAttempts: 24,
+};
+
+export function commitBuildId(sha) {
+  return String(sha ?? '').trim().toLowerCase().slice(0, 12);
+}
+
+export function isBuildReleaseTag(tag) {
+  return BUILD_RELEASE_TAG_RE.test(String(tag ?? '').trim());
+}
+
+export function isBuildReleaseTagForCommit(tag, sha) {
+  const t = String(tag ?? '').trim();
+  const id = commitBuildId(sha);
+  if (!isBuildReleaseTag(t) || !/^[a-f0-9]{12}$/.test(id)) return false;
+  return t.toLowerCase().endsWith(`-build-${id}`);
+}
+
+export function pickReleaseTagForCommit(releases, sha) {
+  for (const item of releases ?? []) {
+    const tag = typeof item === 'string' ? item : item?.tag_name;
+    if (isBuildReleaseTagForCommit(tag, sha)) return tag;
+  }
+  return '';
+}
+
+// Same group for push, release, and workflow_dispatch. Tag and event are ignored
+// on purpose so two triggers that attach the same assets share one lock.
+export function releaseConcurrencyGroup(_context = {}) {
+  return ANDROID_RELEASE_CONCURRENCY_GROUP;
+}
+
+export function pushReleaseWaitMs(wait = PUSH_RELEASE_WAIT) {
+  return Number(wait.intervalMs) * Number(wait.maxAttempts);
+}
+
+export function missingPushReleaseError(sha, wait = PUSH_RELEASE_WAIT) {
+  const id = commitBuildId(sha);
+  const seconds = Math.round(pushReleaseWaitMs(wait) / 1000);
+  return `No GitHub release with tag vX.Y.Z-build-${id} for commit ${String(sha ?? '').trim()} after ${seconds}s`;
+}
+
+export function listGithubReleases({
+  repository = process.env.GITHUB_REPOSITORY,
+  run = (file, args) => execFileSync(file, args, { encoding: 'utf8' }),
+} = {}) {
+  if (!String(repository ?? '').trim()) {
+    throw new Error('GITHUB_REPOSITORY is required to list releases');
+  }
+  const raw = run('gh', ['api', `repos/${repository}/releases?per_page=100`]);
+  const releases = JSON.parse(raw);
+  if (!Array.isArray(releases)) {
+    throw new Error('GitHub releases response was not a list');
+  }
+  return releases;
+}
+
+export async function resolveReleaseTag({
+  eventName,
+  releaseTag = '',
+  commitSha = '',
+  listReleases,
+  sleep,
+  wait = PUSH_RELEASE_WAIT,
+} = {}) {
+  const immediate = String(releaseTag ?? '').trim();
+  if (eventName === 'release' || (eventName === 'workflow_dispatch' && immediate)) {
+    return { tag: immediate, shouldAttach: true };
+  }
+  if (eventName !== 'push') {
+    return { tag: '', shouldAttach: false };
+  }
+  if (typeof listReleases !== 'function') {
+    throw new Error('listReleases is required to resolve a push-path release tag');
+  }
+  const nap = typeof sleep === 'function' ? sleep : (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  for (let attempt = 1; attempt <= wait.maxAttempts; attempt += 1) {
+    try {
+      const tag = pickReleaseTagForCommit(await listReleases(), commitSha);
+      if (tag) return { tag, shouldAttach: true };
+    } catch {
+      // Keep polling: a just-published desktop release can trail the mobile push.
+    }
+    if (attempt < wait.maxAttempts) await nap(wait.intervalMs);
+  }
+  throw new Error(missingPushReleaseError(commitSha, wait));
+}
+
+async function resolveTagMain() {
+  const result = await resolveReleaseTag({
+    eventName: process.env.EVENT_NAME,
+    releaseTag: process.env.RELEASE_TAG_INPUT,
+    commitSha: process.env.COMMIT_SHA,
+    listReleases: () => listGithubReleases(),
+  });
+  process.stdout.write(`tag=${result.tag}\nshould_attach=${result.shouldAttach ? 'true' : 'false'}\n`);
 }
 
 export function releaseVersion({ tag, runNumber, fallbackVersion } = {}) {
@@ -271,6 +375,10 @@ function printSha256Output(sidecar) {
 }
 
 function main() {
+  if (process.argv.includes('--resolve-tag')) {
+    return resolveTagMain();
+  }
+
   const normalizeIndex = process.argv.indexOf('--normalize-cert-sha256');
   if (normalizeIndex !== -1) {
     process.stdout.write(`${normalizeCertSha256(process.argv[normalizeIndex + 1] ?? '')}\n`);
@@ -314,10 +422,10 @@ function main() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try {
-    main();
-  } catch (error) {
-    console.error(error.message);
-    process.exitCode = 1;
-  }
+  Promise.resolve()
+    .then(() => main())
+    .catch((error) => {
+      console.error(error.message);
+      process.exitCode = 1;
+    });
 }
