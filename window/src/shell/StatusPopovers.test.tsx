@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { IN_BROWSER, type GatewayRunMode } from "../connect/desktop-controls";
 import { GatewayPopover, RunningPopover, UsagePopover, VersionPopover } from "./StatusPopovers";
+import { GATEWAY_APP_CANT } from "./gateway-mode";
+import { isDevNote } from "./shown-why";
 import { readLimits, resetWords } from "./status-data";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -14,7 +17,15 @@ afterEach(async () => {
   if (root) await act(async () => root?.unmount());
   root = undefined;
   document.body.innerHTML = "";
+  delete (window as { branchDesktop?: unknown }).branchDesktop;
 });
+const modeButton = (host: HTMLElement, name: string) => [...host.querySelectorAll(".sp-seg button")].find((b) => b.textContent === name) as HTMLButtonElement;
+type Controls = { keepWorking: boolean; keepAwake: boolean; trayUsage: boolean; autoApplyUpdates: boolean; startWithWindows: boolean; branchOnPath: boolean; gatewayMode?: GatewayRunMode; notes?: { keepWorking?: string } };
+function installControls(state: Controls, setGatewayMode?: (mode: GatewayRunMode) => Promise<Controls>) {
+  (window as { branchDesktop?: unknown }).branchDesktop = {
+    controls: { get: async () => state, set: async () => state, ...(setGatewayMode ? { setGatewayMode } : {}) },
+  };
+}
 async function show(node: React.ReactNode) {
   const host = document.body.appendChild(document.createElement("div"));
   root = createRoot(host);
@@ -43,15 +54,57 @@ describe("status popovers", () => {
     await act(async () => button(host, "Sapling").click());
     expect(opened).toHaveBeenCalledWith("k");
   });
-  it("Gateway: the mode control is greyed with its reason; Restart runs", async () => {
+  it("Gateway: in a browser the mode control is disabled and says to open the app; Restart runs", async () => {
     const restart = vi.fn();
     const host = await show(<GatewayPopover above={above} onClose={() => {}} level="regular" facts={{ health: { ok: true, durationMs: 4, checkedAt: 1 }, error: null, uptimeMs: 3_600_000, connectedAt: Date.now() }} onRestart={restart} onSettings={() => {}} />);
     expect(host.textContent).toContain("On · up 1 hour");
     expect(host.textContent).toContain("answered in 4 ms");
     expect([...host.querySelectorAll(".sp-seg button")].every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
-    expect(host.textContent).toContain("can't change it yet");
+    expect(host.textContent).toContain(IN_BROWSER);
+    expect(isDevNote(IN_BROWSER)).toBe(false);
     await act(async () => button(host, "Restart the engine").click());
     expect(restart).toHaveBeenCalled();
+  });
+  it("Gateway: an older app shows a plain reason instead of a silent grey", async () => {
+    (window as { branchDesktop?: unknown }).branchDesktop = {};
+    const host = await show(<GatewayPopover above={above} onClose={() => {}} level="regular" facts={{ health: { ok: true, durationMs: 4, checkedAt: 1 }, error: null, uptimeMs: null, connectedAt: Date.now() }} onRestart={() => {}} onSettings={() => {}} />);
+    expect([...host.querySelectorAll(".sp-seg button")].every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    expect(host.textContent).toContain(GATEWAY_APP_CANT);
+    expect(isDevNote(GATEWAY_APP_CANT)).toBe(false);
+  });
+  it("Gateway: Keep Branch running shows the saved mode and calls setGatewayMode", async () => {
+    let state: Controls = { keepWorking: true, keepAwake: true, trayUsage: false, autoApplyUpdates: true, startWithWindows: false, branchOnPath: false, gatewayMode: "when-needed" };
+    const setGatewayMode = vi.fn(async (mode: GatewayRunMode) => (state = { ...state, gatewayMode: mode, keepWorking: mode !== "off" }));
+    installControls(state, setGatewayMode);
+    const facts = { health: { ok: true, durationMs: 4, checkedAt: 1 }, error: null, uptimeMs: 3_600_000, connectedAt: Date.now() };
+    const host = await show(<GatewayPopover above={above} onClose={() => {}} level="regular" facts={facts} onRestart={() => {}} onSettings={() => {}} />);
+    const seg = host.querySelector<HTMLElement>(".sp-seg")!;
+    expect(seg.getAttribute("aria-disabled")).toBeNull();
+    expect(modeButton(host, "When needed").disabled).toBe(false);
+    expect(modeButton(host, "When needed").getAttribute("aria-checked")).toBe("true");
+    expect(modeButton(host, "On").getAttribute("aria-checked")).toBe("false");
+    expect(seg.style.getPropertyValue("--i")).toBe("1");
+    await act(async () => modeButton(host, "On").click());
+    expect(setGatewayMode).toHaveBeenCalledWith("on");
+    expect(modeButton(host, "On").getAttribute("aria-checked")).toBe("true");
+    expect(seg.style.getPropertyValue("--i")).toBe("2");
+    await act(async () => modeButton(host, "Off").click());
+    expect(setGatewayMode).toHaveBeenLastCalledWith("off");
+    expect(modeButton(host, "Off").getAttribute("aria-checked")).toBe("true");
+  });
+  it("Gateway: a service that could not be installed stays clickable and says why", async () => {
+    const note = "Branch runs inside the app on this computer because its background service couldn't be installed (denied). Quitting Branch stops your Trunks.";
+    const state: Controls = { keepWorking: true, keepAwake: true, trayUsage: false, autoApplyUpdates: true, startWithWindows: false, branchOnPath: false, gatewayMode: "when-needed", notes: { keepWorking: note } };
+    const setGatewayMode = vi.fn(async (_mode: GatewayRunMode): Promise<Controls> => { throw new Error("Access is denied."); });
+    installControls(state, setGatewayMode);
+    const host = await show(<GatewayPopover above={above} onClose={() => {}} level="regular" facts={{ health: { ok: true, durationMs: 4, checkedAt: 1 }, error: null, uptimeMs: null, connectedAt: Date.now() }} onRestart={() => {}} onSettings={() => {}} />);
+    expect(host.textContent).toContain("couldn't be installed");
+    expect(modeButton(host, "On").disabled).toBe(false);
+    await act(async () => modeButton(host, "On").click());
+    expect(setGatewayMode).toHaveBeenCalledWith("on");
+    expect(host.textContent).toContain("Access is denied.");
+    expect(modeButton(host, "When needed").getAttribute("aria-checked")).toBe("true");
+    expect(modeButton(host, "On").disabled).toBe(false);
   });
   it("Usage: a flat Every account row with left · reset and this week used", async () => {
     const request = vi.fn(async (method: string) => method === "usage.status"

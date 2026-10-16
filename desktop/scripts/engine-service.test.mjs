@@ -128,6 +128,10 @@ test('the fallback path, when the service cannot be installed, spawns exactly on
   // A later launch that falls back again keeps the notice said.
   recordEngineMode(dir, 'child', 'Access is denied.');
   assert.equal(takeChildModeNotice(dir), undefined);
+  // When needed and Off choose the child on purpose, so the next launch does not say the service failed.
+  recordEngineMode(dir, 'service');
+  recordEngineMode(dir, 'child', undefined, { noticeShown: true });
+  assert.equal(takeChildModeNotice(dir), undefined);
 });
 
 test('an installed service that never answers is an error, never a second engine', async t => {

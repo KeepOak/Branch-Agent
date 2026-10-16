@@ -328,3 +328,131 @@ test("a full disk keeps a changed setting in memory, shows the disk-full banner 
     assert.deepEqual(seen, [true, false], "the banner goes away once a save lands");
   } finally { stop(); }
 }));
+
+/** Fakes for the service steps the mode control already calls: install, start, uninstall, and the one child. */
+function gatewayDouble(initial = "child") {
+  const calls = [];
+  let engine = initial;
+  const fail = { install: "", uninstall: "", startChild: "" };
+  const steps = {
+    engine: () => engine,
+    stopChild: async () => { calls.push("stopChild"); },
+    installService: async () => { calls.push("install"); if (fail.install) throw new Error(fail.install); },
+    startService: async () => { calls.push("start"); },
+    uninstallService: async () => { calls.push("uninstall"); if (fail.uninstall) throw new Error(fail.uninstall); },
+    startChild: async () => { calls.push("startChild"); if (fail.startChild) throw new Error(fail.startChild); engine = "child"; },
+    markService: () => { calls.push("markService"); engine = "service"; },
+    markChild: () => { calls.push("markChild"); engine = "child"; },
+  };
+  return { steps, calls, fail };
+}
+
+test("an existing settings file with no gateway choice stays On when the service is running", async () => fixture(async ({ deps }) => {
+  await writeFile(deps.settingsFile, JSON.stringify({ keepWorking: true }));
+  assert.equal(readSettings(deps.settingsFile).gatewayService, true);
+  const gw = gatewayDouble("service");
+  const controls = createDesktopControls({ ...deps, gateway: gw.steps });
+  assert.equal((await controls.get()).gatewayMode, "on");
+  assert.equal("gatewayService" in await controls.get(), false);
+}));
+
+test("Keep working off reads as Off even while the service is still installed", async () => fixture(async ({ deps }) => {
+  await writeFile(deps.settingsFile, JSON.stringify({ keepWorking: false }));
+  const controls = createDesktopControls({ ...deps, gateway: gatewayDouble("service").steps });
+  assert.equal((await controls.get()).gatewayMode, "off");
+}));
+
+test("On installs and starts the service; When needed and Off remove it and start the child", async () => fixture(async ({ deps }) => {
+  const gw = gatewayDouble("child");
+  const controls = createDesktopControls({ ...deps, gateway: gw.steps });
+  assert.equal((await controls.get()).gatewayMode, "when-needed");
+  assert.equal((await controls.setGatewayMode("on")).gatewayMode, "on");
+  assert.deepEqual(gw.calls, ["stopChild", "install", "start", "markService"]);
+  assert.equal(controls.settings().gatewayService, true);
+  assert.equal(controls.settings().keepWorking, true);
+  gw.calls.length = 0;
+  assert.equal((await controls.setGatewayMode("off")).gatewayMode, "off");
+  assert.deepEqual(gw.calls, ["markChild", "uninstall", "startChild"]);
+  assert.equal(controls.settings().keepWorking, false);
+  assert.equal(controls.settings().gatewayService, false);
+  gw.calls.length = 0;
+  await controls.setGatewayMode("on");
+  gw.calls.length = 0;
+  assert.equal((await controls.setGatewayMode("when-needed")).gatewayMode, "when-needed");
+  assert.deepEqual(gw.calls, ["markChild", "uninstall", "startChild"]);
+  assert.equal(controls.settings().gatewayService, false);
+  assert.equal(controls.settings().keepWorking, true);
+  assert.equal(readSettings(deps.settingsFile).gatewayService, false);
+  gw.calls.length = 0;
+  // Off from the child does not touch the service; it only saves Keep working off.
+  assert.equal((await controls.setGatewayMode("off")).gatewayMode, "off");
+  assert.deepEqual(gw.calls, []);
+  assert.equal(controls.settings().keepWorking, false);
+}));
+
+test("On while the service is already running only saves Keep working", async () => fixture(async ({ deps }) => {
+  await writeFile(deps.settingsFile, JSON.stringify({ keepWorking: false, gatewayService: true }));
+  const gw = gatewayDouble("service");
+  const controls = createDesktopControls({ ...deps, gateway: gw.steps });
+  assert.equal((await controls.setGatewayMode("on")).gatewayMode, "on");
+  assert.deepEqual(gw.calls, []);
+  assert.equal(controls.settings().keepWorking, true);
+}));
+
+test("a failed install puts the child back and restores the previous choice", async () => fixture(async ({ deps }) => {
+  const gw = gatewayDouble("service");
+  const controls = createDesktopControls({ ...deps, gateway: gw.steps });
+  await controls.setGatewayMode("when-needed");
+  gw.calls.length = 0;
+  gw.fail.install = "Access is denied.";
+  await assert.rejects(controls.setGatewayMode("on"), /Access is denied/);
+  assert.deepEqual(gw.calls, ["stopChild", "install", "uninstall", "startChild"]);
+  assert.equal(controls.settings().gatewayService, false);
+  assert.equal(controls.settings().keepWorking, true);
+  assert.equal((await controls.get()).gatewayMode, "when-needed");
+}));
+
+test("a failed uninstall leaves the service in place and restores On", async () => fixture(async ({ deps }) => {
+  const gw = gatewayDouble("service");
+  const controls = createDesktopControls({ ...deps, gateway: gw.steps });
+  gw.fail.uninstall = "The background service is still loaded.";
+  await assert.rejects(controls.setGatewayMode("off"), /still loaded/);
+  assert.deepEqual(gw.calls, ["markChild", "uninstall", "markService"]);
+  assert.equal(controls.settings().gatewayService, true);
+  assert.equal(controls.settings().keepWorking, true);
+  assert.equal((await controls.get()).gatewayMode, "on");
+}));
+
+test("a child that will not start after uninstall brings the service back", async () => fixture(async ({ deps }) => {
+  const gw = gatewayDouble("service");
+  const controls = createDesktopControls({ ...deps, gateway: gw.steps });
+  gw.fail.startChild = "The gateway port is still in use.";
+  await assert.rejects(controls.setGatewayMode("when-needed"), /still in use/);
+  assert.deepEqual(gw.calls, ["markChild", "uninstall", "startChild", "install", "start", "markService"]);
+  assert.equal(controls.settings().gatewayService, true);
+  assert.equal((await controls.get()).gatewayMode, "on");
+}));
+
+test("gateway mode without a service control is refused, and the window is not told a mode", async () => fixture(async ({ deps }) => {
+  const controls = createDesktopControls(deps);
+  await assert.rejects(controls.setGatewayMode("on"), /can't change the background service/);
+  await assert.rejects(controls.setGatewayMode("later"), /off, when needed or on/);
+  assert.equal((await controls.get()).gatewayMode, undefined);
+}));
+
+test("gateway mode IPC answers only the owned served window", async () => fixture(async ({ deps }) => {
+  const handlers = new Map();
+  const ipc = { handle: (c, f) => handlers.set(c, f), on: () => {} };
+  const frame = { url: "http://127.0.0.1:19032/" };
+  const owner = { getURL: () => frame.url, mainFrame: frame };
+  const gw = gatewayDouble("service");
+  registerDesktopControlsIpc(ipc, () => owner, "http://127.0.0.1:19032/", createDesktopControls({ ...deps, gateway: gw.steps }));
+  const ok = { sender: owner, senderFrame: frame };
+  const strangerFrame = { url: "https://elsewhere.test/" };
+  const stranger = { sender: { getURL: () => strangerFrame.url, mainFrame: strangerFrame }, senderFrame: strangerFrame };
+  assert.equal((await handlers.get("branch-desktop:controls:gateway-mode")(ok, "off")).gatewayMode, "off");
+  assert.deepEqual(gw.calls, ["markChild", "uninstall", "startChild"]);
+  await assert.rejects(handlers.get("branch-desktop:controls:gateway-mode")(stranger, "on"), /owned served window/);
+  await assert.rejects(handlers.get("branch-desktop:controls:gateway-mode")(ok, "later"), /off, when needed or on/);
+  assert.deepEqual(gw.calls, ["markChild", "uninstall", "startChild"]);
+}));

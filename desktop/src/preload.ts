@@ -137,6 +137,7 @@ if (info) {
     controls: {
       get: () => ipcRenderer.invoke("branch-desktop:controls:get"),
       set: (name: string, on: boolean) => ipcRenderer.invoke("branch-desktop:controls:set", name, on),
+      setGatewayMode: (mode: "off" | "when-needed" | "on") => ipcRenderer.invoke("branch-desktop:controls:gateway-mode", mode),
       openDownload: (id: string) => ipcRenderer.invoke("branch-desktop:controls:open-download", id),
       setTrayUsage: (left: number | null) => ipcRenderer.send("branch-desktop:controls:tray-usage", left),
       onOpenUsage: (listener: () => void) => {
