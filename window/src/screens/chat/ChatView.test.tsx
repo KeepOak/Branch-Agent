@@ -182,3 +182,13 @@ it("opens find in this conversation with the words a search result asked for", a
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
   expect(host.querySelector<HTMLInputElement>(".find-bar input")?.value).toBe("Hartwell");
 });
+
+it("leaves the Trunk-getting-ready line to the window: no Opening line and no start screen while it waits", async () => {
+  await show({ historyReady: false });
+  expect(host.querySelector('[data-testid="opening"]')).not.toBeNull();
+  await show({ historyReady: false, startupWaiting: true });
+  expect(host.querySelector('[data-testid="opening"]')).toBeNull();
+  expect(host.querySelector('[data-testid="empty-chat"]')).toBeNull();
+  await show({ historyReady: true, startupWaiting: true });
+  expect(host.querySelector('[data-testid="empty-chat"]')).toBeNull();
+});

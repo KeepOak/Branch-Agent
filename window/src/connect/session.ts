@@ -11,7 +11,7 @@ import { withSafeVisibility } from "./safe-visibility";
 import { projectRun, settleRunBlocks, type Approval, type Block } from "../thread/model";
 import { historyToBlocks, markStopped, readApprovalRecords } from "../thread/history";
 import { sanitizeBlocks } from "../thread/tool-output-display";
-import { isPreparationPending, isPreparationStalled, PreparationRetry, preparationTimeoutLabel } from "./preparation-status";
+import { isPreparationPending, isPreparationStalled, isStartupUnavailable, PreparationRetry, preparationTimeoutLabel, type StartupWait } from "./preparation-status";
 import { readStartupPreparation } from "./startup-preparation";
 import { addNotSent, healNotSent } from "../composer/queue";
 import { droppedFiles, engineKeyOf, FirstSendEcho, heldRuns, UnconfirmedSends } from "./unconfirmed";
@@ -40,6 +40,9 @@ export type SessionSnapshot = {
   doneAt: number | null;
   lastActivityAt: number | null;
   error: string | null;
+  /** Set while `error` is the engine's structured startup refusal (preparation-status isStartupUnavailable): the
+   *  window shows one calm line for it, with the engine's words kept for the Technical level. Null for any other error. */
+  startup?: StartupWait | null;
   /** How the last run in this conversation ended, so the done cheer speaks for that run only (§4.2.5). */
   ended: RunEnd | null;
   /** What you told the Trunk while it worked (sent with queueMode "steer"), until the turn ends (§4.2.2 Steered note). */
@@ -98,6 +101,11 @@ const STARTUP_POLL_MS = 3_000;
  *  given up after this long and read again, so a hung request cannot leave the window connecting. */
 const BOOTSTRAP_REQUEST: GatewayProtocolRequestOptions = { timeoutMs: 15_000 };
 const BOOTSTRAP_RETRY_MAX_MS = 10_000;
+/** A failed read as the snapshot keeps it: the engine's words, and whether they are its startup refusal (by code). */
+const failure = (error: unknown): Pick<SessionSnapshot, "error" | "startup"> => {
+  const message = error instanceof Error ? error.message : String(error);
+  return { error: message, startup: isStartupUnavailable(error) ? { detail: message, stalled: false } : null };
+};
 /** The code the gateway client gives a request it gave up on (GatewayProtocolRequestTimeoutError). */
 const isRequestTimeout = (error: unknown): boolean => (error as { code?: unknown } | null)?.code === "CLIENT_TIMEOUT";
 
@@ -207,6 +215,7 @@ export class SaplingSession {
       doneAt: null,
       lastActivityAt: null,
       error: null,
+      startup: null,
       steered: [],
       ended: null,
       historyReady: false,
@@ -388,7 +397,7 @@ export class SaplingSession {
     try {
       await Promise.all([this.backfillApprovals().catch(() => undefined), this.loadHistory()]);
     } catch (error) {
-      this.set({ error: error instanceof Error ? error.message : String(error) });
+      this.set(failure(error));
     }
   }
 
@@ -439,9 +448,12 @@ export class SaplingSession {
   }
 
   private set(patch: Partial<SessionSnapshot>): void {
-    const preparationDelay = patch.error && isPreparationPending(patch.error) ? this.preparationBackoff.nextDelay() : null;
-    if (patch.error && isPreparationPending(patch.error) && preparationDelay === null) {
-      patch = { ...patch, error: preparationTimeoutLabel(trunkNameForKey(this.agentList, patch.sessionKey ?? this.snapshot.sessionKey, this.snapshot.name)) };
+    // Any other error words replace the startup wait.
+    if (patch.error !== undefined && patch.startup === undefined) patch = { ...patch, startup: null };
+    const pending = Boolean(patch.error) && (Boolean(patch.startup) || isPreparationPending(patch.error));
+    const preparationDelay = pending ? this.preparationBackoff.nextDelay() : null;
+    if (pending && preparationDelay === null) {
+      patch = { ...patch, error: preparationTimeoutLabel(trunkNameForKey(this.agentList, patch.sessionKey ?? this.snapshot.sessionKey, this.snapshot.name)), startup: patch.startup ? { ...patch.startup, stalled: true } : null };
     }
     this.snapshot = { ...this.snapshot, ...patch };
     this.syncStartupWatch(patch);
@@ -449,7 +461,7 @@ export class SaplingSession {
       if (this.preparationRetry) clearTimeout(this.preparationRetry);
       this.preparationRetry = null;
       this.preparationBackoff.reset();
-    } else if (!this.stopped && patch.error && isPreparationPending(patch.error) && !this.preparationRetry) {
+    } else if (!this.stopped && pending && preparationDelay !== null && !this.preparationRetry) {
       this.preparationRetry = setTimeout(() => {
         this.preparationRetry = null;
         const { status, sessionKey } = this.snapshot;
@@ -528,7 +540,7 @@ export class SaplingSession {
         return;
       }
       if (!current()) return;
-      this.set({ status, error: error instanceof Error ? error.message : String(error) });
+      this.set({ status, ...failure(error) });
     }
   }
 
@@ -877,7 +889,7 @@ export class SaplingSession {
     const settled = liveRunId ? this.finished.has(liveRunId) : pendingUser === null;
     const waitingEcho = Boolean(sessionKey && this.firstEcho.peek(sessionKey) && !liveRunId);
     if (settled || waitingEcho) {
-      this.loadHistory().catch((error: unknown) => this.set({ error: error instanceof Error ? error.message : String(error) }));
+      this.loadHistory().catch((error: unknown) => this.set(failure(error)));
     } else {
       // A turn is running: the history waits for it to end, but what is waiting for a turn shows now.
       void this.loadQueued();
