@@ -30,7 +30,7 @@ import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
 import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
-import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
+import { candidateCheckSkippedLine, candidateMinFreeBytes, HEALTH_MEMORY_MAX_AGE_MS, measureAvailableMemory } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
 import { appendCappedLog, BRANCH_LOG_LIMITS } from "./log-rotation";
 import { readTail, recentLines, reportReadme } from "./diagnostics-report";
@@ -524,7 +524,7 @@ async function swapServiceEngineInPlace(label: string, explicit: boolean, held?:
       workRunning: serviceWork,
       warmStandby: async () => {
         // The machine-load rule: a second engine only when there is room for it; otherwise the restart with its rollback.
-        const { bytes, measure } = availableMemory();
+        const { bytes, measure } = await measureAvailableMemory();
         if (bytes < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(bytes, measure)}`); return "slow"; }
         return checkCandidateBeside(cfg, selected, token, standbyReadyTimeoutMs());
       },
@@ -782,7 +782,7 @@ async function prepareUpdateStandby(label: string, explicit: boolean): Promise<v
   // A warmed child cannot be given a fresh Electron-owned driver lease on promotion.
   // Preserve computer control by using the guarded stop/start path for this case.
   if (macComputerDriver && screenControlEnabled()) return;
-  if (availableMemory().bytes < candidateMinFreeBytes() || !standbyProfileReady()) return;
+  if ((await measureAvailableMemory()).bytes < candidateMinFreeBytes() || !standbyProfileReady()) return;
   const failures = standbyFailures.get(label) ?? 0;
   // Automatic updates never wait for a click that may not be offered: one failed standby is enough to fall back.
   if (failures >= STANDBY_ATTEMPTS || (!explicit && failures > 0)) {
@@ -849,7 +849,7 @@ async function candidatePassed(label: string, explicit: boolean, signal?: AbortS
   const version = (await readComponentUpdateStatus(cfg)).componentsPendingVersion;
   if (!version || candidateCheckedFor === version) return true;
   // The machine-load rule: a second engine only when there is room for it; otherwise the plain swap with its rollback.
-  const { bytes: available, measure } = availableMemory();
+  const { bytes: available, measure } = await measureAvailableMemory();
   if (available < candidateMinFreeBytes()) { log(`update ${label}: ${candidateCheckSkippedLine(available, measure)}`); return true; }
   const candidate = resolveEngineDir(cfg);
   if (explicit) sendToBranchWindows("branch-desktop:engine-update", "preparing");
@@ -877,7 +877,7 @@ const autoApply = createAutoApplyUpdate({
   enabled: () => controls.settings().autoApplyUpdates && !updateLock.held,
   seamlessHandoff,
   // Private #951: no automatic update starts under 10% free disk or 20% free RAM.
-  health: () => readUpdateHealth(cfg.dataDir, availableMemory().bytes, totalmem()),
+  health: async () => readUpdateHealth(cfg.dataDir, (await measureAvailableMemory({ maxAgeMs: HEALTH_MEMORY_MAX_AGE_MS })).bytes, totalmem()),
   // Runs in flight mark a machine running Trunk work, whose updates are batched (hourly at most, only when idle).
   activeRuns: async () => {
     // The service engine has no app channel: its runs come from the same read as `activity` (Private #454 E).
