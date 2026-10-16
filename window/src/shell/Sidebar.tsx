@@ -3,6 +3,8 @@ import { Pebble } from "../face/Pebble";
 import { RoomAvatar } from "../rooms/RoomMessage";
 import { RoomFaces } from "../rooms/RoomFaces";
 import type { Conversation } from "../connect/conversations";
+import type { WindowEngine } from "../connect/engine";
+import { Coming } from "../glass/coming";
 import type { PlaceId } from "../places-nav/routes";
 import { ConversationRow, type RowExtras, type RowState } from "./ConversationRow";
 import { Icon } from "./icons";
@@ -38,6 +40,8 @@ export type SidebarProps = {
   dropHint?: (drop: SidebarDrop) => string;
   onMoveToGroup?: (key: string, anchor: DOMRect) => void;
   onRailSearch: () => void;
+  /** The engine Find anything checks. Without search, the magnifier is Coming. */
+  engine?: Pick<WindowEngine, "features"> | null;
   onOpen: (key: string) => void;
   onNew: (event: MouseEvent<HTMLElement>) => void;
   onMenu: (row: Conversation, event: MouseEvent<HTMLElement>) => void;
@@ -248,7 +252,9 @@ export function Sidebar(p: SidebarProps) {
       <div className="side-top">
         {p.rail ? (
           <>
-            <button type="button" className="ib rail-search" aria-label="Find anything" title="Find anything" onClick={p.onRailSearch}><Icon name="search" /></button>
+            <Coming engine={p.engine} need="sessions.search" where="Find anything">
+              <button type="button" className="ib rail-search" aria-label="Find anything" title="Find anything" onClick={p.onRailSearch}><Icon name="search" /></button>
+            </Coming>
             <button type="button" className="ib rail-new" aria-label="New, places and more" title="New, places and more" data-testid="new" onClick={p.onNew}><Icon name="plus" /></button>
           </>
         ) : (

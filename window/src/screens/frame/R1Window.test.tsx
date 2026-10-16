@@ -261,18 +261,28 @@ it("the conversation menu's View › \"Show agents' work as\" rows turn Coming w
   expect(setOverride).not.toHaveBeenCalled();
 });
 
-// Settings' "Find anything" row dispatches FIND_ANYTHING_EVENT; the window opens the palette the same way Ctrl K does.
-// Before the fix nothing listened for the event, so the row read as dead in the button crawl.
-it("opens Find anything when Settings asks for it", async () => {
+// Settings' "Find anything" row dispatches FIND_ANYTHING_EVENT. The window opens the palette when the engine can
+// search, and leaves it closed when search is missing. The sidebar stub has no magnifier; coming.test covers that button.
+function findSession(methods: string[]) {
   const snapshot = { status: { phase: "connected" }, name: "Scout", sessionKey: "agent:scout:main", mainKey: "agent:scout:main", history: [], live: [], queued: [] };
   const request = vi.fn(async () => ({}));
-  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", features: { methods: ["users.prefs.get"], events: [] } } } as unknown as SaplingSession;
-  // jsdom has no scrollIntoView; the palette scrolls its active row into view.
+  return { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", features: { methods, events: [] } } } as unknown as SaplingSession;
+}
+it("opens Find anything when Settings asks for it and the engine can search", async () => {
   Element.prototype.scrollIntoView = () => {};
-  await act(async () => root.render(<R1Window session={session as never} />));
+  await act(async () => root.render(<R1Window session={findSession(["users.prefs.get", "sessions.search"]) as never} />));
   expect(document.querySelector(".r1-find")).toBeNull();
   await act(async () => { window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); });
   expect(document.querySelector(".r1-find")).not.toBeNull();
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+});
+it("does not open Find anything when the engine has no search", async () => {
+  Element.prototype.scrollIntoView = () => {};
+  await act(async () => root.render(<R1Window session={findSession(["users.prefs.get"]) as never} />));
+  expect(comingControls().flatMap((entry) => entry.need)).toContain("sessions.search");
+  await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })); });
+  await act(async () => { window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); });
+  expect(document.querySelector(".r1-find")).toBeNull();
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
 });
 

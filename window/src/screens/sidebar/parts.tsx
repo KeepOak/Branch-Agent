@@ -4,6 +4,7 @@
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { Avatar, InitialsFace } from "../../glass/Avatar";
 import { GroupCluster } from "../../glass/GroupCluster";
+import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { Face } from "../../face/Face";
 import { useSidebarPointerDrag, type DropZone, type SidebarDrop } from "../../shell/sidebar-drag";
@@ -169,7 +170,7 @@ export function FolderChip({ rows, folder, onFolder, open, onOpen }: { rows: Sid
   </div>;
 }
 
-export type Capsules = { query: string; onQuery: (q: string) => void; searchRef: RefObject<HTMLInputElement | null>; onSettings: () => void; onGrove: () => void; plusRef: RefObject<HTMLButtonElement | null>; onPlus: () => void; plusDot: boolean };
+export type Capsules = { query: string; onQuery: (q: string) => void; searchRef: RefObject<HTMLInputElement | null>; onSettings: () => void; onGrove: () => void; plusRef: RefObject<HTMLButtonElement | null>; onPlus: () => void; plusDot: boolean; engine?: Pick<WindowEngine, "features"> | null };
 
 /** Search, Settings, Grove and + (owner item 7). Search grows leftward on hover, focus or while it has a query. */
 export function TopCapsules({ searchRef, plusRef, ...p }: Capsules) {
@@ -179,7 +180,9 @@ export function TopCapsules({ searchRef, plusRef, ...p }: Capsules) {
   const rail = () => Boolean(document.querySelector(".r1-frame[data-wide='false']")) && !matchMedia("(max-width: 760px)").matches;
   return <div className="r1sb-caps" data-tap={tapOpen || undefined} onPointerLeave={() => setTapOpen(false)}>
     <label className="r1sb-cap r1sb-search" data-keep={p.query ? "" : undefined} title="Search · Ctrl K">
-      <button type="button" className="r1sb-mag" aria-label="Find anything" title="Find anything" onMouseDown={event => event.preventDefault()} onClick={event => { event.preventDefault(); event.stopPropagation(); window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); }}>{icons.search}</button>
+      <Coming engine={p.engine} need="sessions.search" where="Find anything">
+        <button type="button" className="r1sb-mag" aria-label="Find anything" title="Find anything" onMouseDown={event => event.preventDefault()} onClick={event => { event.preventDefault(); event.stopPropagation(); window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); }}>{icons.search}</button>
+      </Coming>
       <input ref={searchRef} type="search" data-local="" aria-label="Search chats, Trunks, messages and past sessions" placeholder="Search" value={p.query}
         onChange={event => p.onQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape" && p.query) { event.stopPropagation(); p.onQuery(""); } }} />
       <kbd>Ctrl K</kbd>

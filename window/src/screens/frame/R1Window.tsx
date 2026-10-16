@@ -37,7 +37,6 @@ import { Toasts } from "../../shell/Toasts";
 import { R1ExtraDialogs } from "./R1ExtraDialogs";
 import { ApprovalsLayer, useAsks } from "../approvals";
 import { useProblemBannerRows } from "../approvals/ProblemBanners";
-import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
 import { displayTrunkTitle } from "../../connect/trunk-name";
 import { Onboarding } from "../onboarding";
@@ -63,14 +62,13 @@ import { DEFAULT_PANE_TAB, type PaneTab } from "../../stage/SidePane";
 import { paneKeyFor, shortcutFor } from "../../shell/use-shortcuts";
 import { currentKeys, keyActions, readCustomKeys } from "../../shell/keymap";
 import { availability } from "../../connect/capabilities";
+import { Coming } from "../../glass/coming";
 import { CHANGES_NEED, R1Changes } from "../changes/R1Changes";
 import { R1Character, useR1CharacterShown } from "../character/R1Character";
 import { graftedContactOf, isGraftedContactKey, newestGraftedTopic, openConversationName } from "./open-name";
 import { GraftedEmpty, GraftedFace } from "./GraftedEmpty";
 import { agentIdOf, roomIdOf } from "../../connect/session";
 import { R1DetailsPanel } from "../details/R1DetailsPanel";
-
-const FIND_ANYTHING_NAMES_ONLY = "Message search needs a newer Branch engine. Find anything lists names only.";
 
 /** Places R1 Settings search can open (its Go to group). */
 const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }));
@@ -283,12 +281,12 @@ export function R1Window({ session }: { session: SaplingSession }) {
   // Re-hosted Classic Settings pages open a place with branch:navigate-place (Classic WindowShell's event): R1 opens it here.
   const navigateTo = useRef(navigate);
   useEffect(() => { navigateTo.current = navigate; });
-  // Settings' "Find anything" row opens the same palette as Ctrl K.
+  // Settings' "Find anything" row opens the same palette as Ctrl K, once the engine offers search.
   useEffect(() => {
-    const open = () => setFinding(true);
+    const open = () => { if (availability(engine, "sessions.search") !== "no") setFinding(true); };
     window.addEventListener(FIND_ANYTHING_EVENT, open);
     return () => window.removeEventListener(FIND_ANYTHING_EVENT, open);
-  }, []);
+  }, [engine]);
   useEffect(() => {
     // Ctrl/Cmd+Shift+T opens the Inbox, as in the preview (preview.html:40670, 42502).
     const key = (event: KeyboardEvent) => {
@@ -501,16 +499,16 @@ export function R1Window({ session }: { session: SaplingSession }) {
     }} /></> : undefined} onShortcut={action => {
       if (action === "settings") navigate({ kind: "settings", page: "appearance" });
       else if (action === "nextConversation" && rows.length) { const index = rows.findIndex(row => row.key === snapshot.sessionKey); openConversation(rows[(index + 1) % rows.length].key); }
-      // Ctrl K or Cmd K opens Find anything. Focusing the sidebar field stays on its own shortcut.
-      else if (action === "palette") setFinding(true);
+      // Ctrl K or Cmd K opens Find anything when this engine can search. Focusing the sidebar field stays on its own shortcut.
+      else if (action === "palette") { if (availability(engine, "sessions.search") !== "no") setFinding(true); }
       else search.current?.focus();
     }} />
     {chat && !stage && characterShown ? <R1Character name={current ? mainTitle(conversations.rows, current.agentId) || name : name} snapshot={snapshot} waiting={snapshot.sessionKey ? waiting.get(snapshot.sessionKey) ?? 0 : 0}
       onHide={() => setCharacterShown(false)} onShow={() => setCharacterShown(true)} onChangePet={() => navigate({ kind: "settings", page: "appearance" })}
       onOpenTrunk={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: current?.agentId ?? engine.agentId, view: "profile" } })); }} /> : null}
     </div>
-    {/* Find anything is a shortcut, not a control: it registers hidden with the call its message rows need. */}
-    <Coming engine={engine} need="sessions.search" hidden reason={FIND_ANYTHING_NAMES_ONLY} where="Find anything"><span /></Coming>
+    {/* The shortcut is not a button. It still names sessions.search, so an engine without search does not open the sheet. */}
+    <Coming engine={engine} need="sessions.search" hidden where="Find anything"><span /></Coming>
     {finding && <FindAnything session={session} ready={ready} list={list} conversations={conversations.rows.filter(row => !row.system && !row.archived && !row.helper)} current={current}
       lockdownOn={lockdown.on} onToggleLockdown={lockdown.supported ? () => void lockdown.toggle() : undefined} onOpenConversation={openConversation}
       onPlace={place => navigate({ kind: "place", place })} onSettings={page => navigate({ kind: "settings", page })} onSetup={() => firstRun.open(0)}
