@@ -126,6 +126,22 @@ export type Entry =
   | { type: "steps"; key: string; steps: Step[]; thoughts: Thought[]; face: boolean; run?: { title: string; durationMs?: number } }
   | { type: "thought"; key: string; thought: Thought };
 
+/** While a reply is being written, an answer that arrived before the steps stays below the working line. */
+export function answerBelowWorkingLine(entries: readonly Entry[]): Entry[] {
+  const firstSteps = entries.findIndex((e) => e.type === "steps");
+  if (firstSteps < 0) return [...entries];
+  const early: Entry[] = [];
+  const rest: Entry[] = [];
+  entries.forEach((entry, i) => {
+    if (i < firstSteps && entry.type === "item" && entry.item.block.kind === "text") early.push(entry);
+    else rest.push(entry);
+  });
+  if (!early.length) return [...entries];
+  let last = -1;
+  rest.forEach((entry, i) => { if (entry.type === "steps") last = i; });
+  return [...rest.slice(0, last + 1), ...early, ...rest.slice(last + 1)];
+}
+
 /** Thoughts become quiet rows inside the steps they sit beside (owner item 26), never blocks of their own. */
 export function entriesOf(items: readonly Item[]): Entry[] {
   const out: Entry[] = [];
