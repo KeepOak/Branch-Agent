@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
-      contents: read
+      contents: write
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
       should_attach: ${{ steps.resolve.outputs.should_attach }}
@@ -257,7 +257,17 @@ jobs:
             "${APK_PATH}#${APK_NAME}" \
             "${SHA256_PATH}#${SHA256_NAME}" \
             "${VERSIONCODE_PATH}#${VERSIONCODE_NAME}" \
+            --clobber \
             --repo "${GITHUB_REPOSITORY}"
+          stale="$(
+            gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name' \
+              | node mobile/scripts/android-release.mjs --stale-versioncode-assets "$APK_NAME" "$VERSIONCODE_NAME" \
+              || true
+          )"
+          while IFS= read -r name; do
+            [[ -z "$name" ]] && continue
+            gh release delete-asset "$TAG" "$name" --repo "${GITHUB_REPOSITORY}" --yes
+          done <<< "$stale"
 
       - name: Remove the keystore
         if: always()
