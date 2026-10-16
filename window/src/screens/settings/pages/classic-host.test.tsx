@@ -16,6 +16,7 @@ import { mergeRows } from "../slots";
 import { SECTION_COMING, SettingsFrame } from "../SettingsFrame";
 import { classicList } from "./classic-host";
 import { COMING, R1_PAGES, REHOSTED } from "./plugged";
+import { TOWN_ROWS } from "./privacy-town";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root, host: HTMLDivElement;
@@ -38,7 +39,7 @@ const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 50
 
 it("re-hosts exactly these Classic pages", () => {
   expect(REHOSTED).toEqual({
-    who: "people", notifications: "notifications",
+    notifications: "notifications",
     browser: "computer-browser",
     coding: "computer-coding",
     models: "models",
@@ -123,7 +124,7 @@ it("keeps Models' Local tab on the R1 Models page and sends its Accounts tab to 
   await settle();
   const hosted = host.querySelector<HTMLElement>('.r1s-custom[data-slot="models"] .r1s-classic[data-classic="models"]')!;
   const tab = (name: string) => [...hosted.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => b.textContent === name)!;
-  expect([...hosted.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(["Accounts", "Default", "Local", "Second opinion (a second model checks answers)", "Media"]);
+  expect([...hosted.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(["Accounts", "Default", "Local", "Double-check", "Media"]);
   await act(async () => tab("Local").click());
   await settle();
   expect(onPage).not.toHaveBeenCalled();
@@ -147,7 +148,8 @@ it("adds each re-hosted page's Classic rows to the R1 table, so R1 search finds 
   for (const [page, classic] of Object.entries(REHOSTED)) {
     const titles = new Set(SETTINGS_ROWS.filter((r) => classicList(classic).includes(r.page)).map((r) => r.title));
     expect(titles.size, classicList(classic).join(" ")).toBeGreaterThan(0);
-    expect(new Set(merged.filter((r) => r.page === page).map((r) => r.label))).toEqual(titles);
+    const extra = page === "privacy" ? TOWN_ROWS.map((row) => row.label) : [];
+    expect(new Set(merged.filter((r) => r.page === page).map((r) => r.label))).toEqual(new Set([...titles, ...extra]));
     const first = [...titles][0]!;
     const hits = searchSettings(first, { level: 2, hints: {}, rows: merged }).settings;
     expect(hits.some((hit) => hit.kind === "row" && hit.page === page), `${page}: ${first}`).toBe(true);

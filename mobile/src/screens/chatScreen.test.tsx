@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import App from '../../App';
+import { NO_ATTACH_METHOD_NOTE, type PickedFile } from '../chat/attachments';
 import { Conversation } from '../chat/conversation';
+import type { AttachmentPickers } from '../chat/pickAttachment';
 import { chatRows, readAgents } from '../chats/chatList';
 import { createFakeEngine } from '../connect/fakeEngine';
 import { fixtureAgents, fixtureSessions } from '../testing/chatFixtures';
@@ -9,6 +11,9 @@ import { ThemeProvider } from '../theme/ThemeProvider';
 import { ChatScreen, workedFor } from './ChatScreen';
 
 const eventually = (check: () => void) => waitFor(check, { timeout: 3000 });
+// pairedApp compiles the full App (welcome through chats). Jest's 5s default is too tight
+// on a cold CI worker — same budget as pairingScreens.test.tsx and settingsScreen.test.tsx.
+jest.setTimeout(20_000);
 const KEY = 'agent:main:main';
 const { agents, mainKey } = readAgents(fixtureAgents);
 const rows = chatRows({ sessions: fixtureSessions }, agents, mainKey);
@@ -32,8 +37,21 @@ async function pairedApp() {
   return { session, engine };
 }
 
-async function renderChat(online: boolean, setup: (engine: ReturnType<typeof createFakeEngine>) => void = () => undefined, attach = true) {
-  const engine = createFakeEngine();
+function pickersOf(next: () => Promise<PickedFile | null> | PickedFile | null): AttachmentPickers {
+  const run = async () => {
+    const value = await next();
+    return value;
+  };
+  return { takePhoto: run, pickPhoto: run, pickFile: run };
+}
+
+async function renderChat(
+  online: boolean,
+  setup: (engine: ReturnType<typeof createFakeEngine>) => void = () => undefined,
+  attach = true,
+  extras: { pickers?: AttachmentPickers; engine?: ReturnType<typeof createFakeEngine> } = {},
+) {
+  const engine = extras.engine ?? createFakeEngine();
   setup(engine);
   const { session } = createFakeSession(engine);
   session.begin({ url: 'ws://computer.local:19031', bootstrapToken: 'boot-1' });
@@ -43,7 +61,7 @@ async function renderChat(online: boolean, setup: (engine: ReturnType<typeof cre
   if (attach) conversation.attach();
   await render(
     <ThemeProvider scheme="dark">
-      <ChatScreen row={mainRow} conversation={conversation} online={online} onBack={() => undefined} />
+      <ChatScreen row={mainRow} conversation={conversation} online={online} onBack={() => undefined} hello={session.hello} pickers={extras.pickers} />
     </ThemeProvider>,
   );
   return { engine, session, conversation };
@@ -145,10 +163,104 @@ describe('chat screen', () => {
   it('waits for the computer before sending, and keeps what you typed', async () => {
     const { conversation, session } = await renderChat(false, (e) => e.setHistory(KEY, history));
     expect(screen.getByTestId('chat-status')).toHaveTextContent('Reconnecting…');
+    expect(screen.getByTestId('chat-offline')).toHaveTextContent('Reconnecting to your computer… This chat may be out of date.');
     expect(screen.getByTestId('composer')).toHaveProp('placeholder', 'Waiting for your computer…');
     await fireEvent.changeText(screen.getByTestId('composer'), 'Later please');
     expect(screen.getByTestId('send')).toBeDisabled();
     expect(screen.getByTestId('composer')).toHaveProp('value', 'Later please');
+    conversation.dispose();
+    session.dispose();
+  });
+});
+
+describe('chat attachments', () => {
+  const photo: PickedFile = { fileName: 'shot.png', mimeType: 'image/png', sizeBytes: 3, content: 'AAA' };
+  const notes: PickedFile = { fileName: 'notes.txt', mimeType: 'text/plain', sizeBytes: 4, content: 'BBBB' };
+
+  it('picks a photo from the library, shows a preview chip, and sends it on chat.send', async () => {
+    const { conversation, session, engine } = await renderChat(true, (e) => e.setHistory(KEY, history), true, {
+      pickers: pickersOf(() => photo),
+    });
+    await eventually(() => expect(screen.getByText('Your expenses for September are filed.')).toBeOnTheScreen());
+    expect(screen.getByTestId('attach')).toBeEnabled();
+    await fireEvent.press(screen.getByTestId('attach'));
+    await fireEvent.press(screen.getByTestId('attach-library'));
+    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent(/shot\.png/));
+    expect(screen.getByTestId('file-chip')).toHaveTextContent(/3 B/);
+    await fireEvent.changeText(screen.getByTestId('composer'), 'Look at this');
+    await fireEvent.press(screen.getByTestId('send'));
+    expect(screen.queryByTestId('file-chip')).toBeNull();
+    await eventually(() => expect(screen.getByText('Look at this')).toBeOnTheScreen());
+    expect(engine.requests.find((r) => r.method === 'chat.send')?.params).toEqual({
+      sessionKey: KEY,
+      message: 'Look at this',
+      idempotencyKey: 'run-1',
+      attachments: [{ type: 'image', mimeType: 'image/png', fileName: 'shot.png', origin: 'file', content: 'AAA' }],
+    });
+    conversation.dispose();
+    session.dispose();
+  });
+
+  it('picks a photo from the camera or a file, and sends a file with no words', async () => {
+    let next: PickedFile = photo;
+    const { conversation, session, engine } = await renderChat(true, (e) => e.setHistory(KEY, history), true, {
+      pickers: pickersOf(() => next),
+    });
+    await eventually(() => expect(screen.getByText('Your expenses for September are filed.')).toBeOnTheScreen());
+    await fireEvent.press(screen.getByTestId('attach'));
+    await fireEvent.press(screen.getByTestId('attach-photo'));
+    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent(/shot\.png/));
+    await fireEvent.press(screen.getByTestId('remove-file-f1'));
+    expect(screen.queryByTestId('file-chip')).toBeNull();
+    next = notes;
+    await fireEvent.press(screen.getByTestId('attach'));
+    await fireEvent.press(screen.getByTestId('attach-file'));
+    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent(/notes\.txt/));
+    expect(screen.getByTestId('send')).toBeEnabled();
+    await fireEvent.press(screen.getByTestId('send'));
+    await eventually(() => expect(screen.getByText('notes.txt')).toBeOnTheScreen());
+    expect(engine.requests.find((r) => r.method === 'chat.send')?.params).toMatchObject({
+      message: '',
+      attachments: [{ type: 'file', mimeType: 'text/plain', fileName: 'notes.txt', content: 'BBBB' }],
+    });
+    conversation.dispose();
+    session.dispose();
+  });
+
+  it('keeps a chip that is too large, and shows why a pick failed', async () => {
+    let fail = false;
+    const { conversation, session } = await renderChat(
+      true,
+      (e) => e.setHistory(KEY, history),
+      true,
+      {
+        engine: createFakeEngine({ attachmentPolicy: { maxBytes: 100, maxImageBytes: 2 } }),
+        pickers: pickersOf(() => {
+          if (fail) throw new Error('Turn on the camera for Branch in Settings to take a photo.');
+          return photo;
+        }),
+      },
+    );
+    await eventually(() => expect(screen.getByText('Your expenses for September are filed.')).toBeOnTheScreen());
+    await fireEvent.press(screen.getByTestId('attach'));
+    await fireEvent.press(screen.getByTestId('attach-library'));
+    await eventually(() => expect(screen.getByTestId('file-chip')).toHaveTextContent(/Too large to send: shot\.png/));
+    expect(screen.getByTestId('send')).toBeDisabled();
+    fail = true;
+    await fireEvent.press(screen.getByTestId('attach'));
+    await fireEvent.press(screen.getByTestId('attach-photo'));
+    await eventually(() => expect(screen.getByTestId('attach-error')).toHaveTextContent('Turn on the camera for Branch in Settings to take a photo.'));
+    conversation.dispose();
+    session.dispose();
+  });
+
+  it('disables attach when the hello does not offer chat.send', async () => {
+    const { conversation, session } = await renderChat(true, (e) => e.setHistory(KEY, history), true, {
+      engine: createFakeEngine({ methods: ['chat.history'] }),
+    });
+    await eventually(() => expect(screen.getByText('Your expenses for September are filed.')).toBeOnTheScreen());
+    expect(screen.getByTestId('attach')).toBeDisabled();
+    expect(screen.getByTestId('attach-unavailable')).toHaveTextContent(NO_ATTACH_METHOD_NOTE);
     conversation.dispose();
     session.dispose();
   });

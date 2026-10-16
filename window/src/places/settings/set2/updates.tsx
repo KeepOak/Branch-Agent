@@ -16,6 +16,7 @@ import { useBranchVersion, versionParts } from "../../../connect/branch-version"
 import { KeeperMark } from "../../../brand/KeeperMark";
 import { WhatsNewRow } from "./whats-new-row";
 import { showsInternals, versionLabel } from "../internals";
+import { LaterRows } from "../../../glass/LaterRows";
 import "./updates.css";
 
 const UPDATE_EVENTS = ["update"];
@@ -330,12 +331,15 @@ function Editors({ gatewayUrl, technical }: { gatewayUrl?: string; technical?: b
     ["Emacs", "MELPA", "branch.el starts a local server; search, chat and find similar."],
     ["Obsidian", "Community plugins", "Chat beside a note; search by meaning; similar notes."],
   ];
+  // Every add-on here waits for a later update, so the card is one quiet line that opens them.
   return (
     <Sec title="In your editors and notes" group="Branch on your other devices">
+      <LaterRows count={rows.length + 3}>
       {rows.map(([title, store, sub]) => <Ctl key={title} title={title} sub={sub} off={NOT_PUBLISHED}><Btn sm disabled>{store}</Btn></Ctl>)}
       <Ctl title="Folders to keep in sync" sub="Obsidian folders the Trunks read, refreshed as they change." off="Needs the Obsidian add-on."><input className="inp" aria-label="Folders to keep in sync" disabled /></Ctl>
       <Ctl title="Search with Branch from your browser" sub="Add it as a search engine; what you type opens a new conversation." off="Opening a conversation from a browser search needs the Branch app.">{technical ? <code className="s2-code">{`${origin}/?q=%s`}</code> : null}</Ctl>
       <Ctl title="Install from a terminal" off="The Branch installer isn’t published yet." />
+      </LaterRows>
     </Sec>
   );
 }

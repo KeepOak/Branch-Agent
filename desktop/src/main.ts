@@ -8,7 +8,8 @@ import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
 import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
-import { createRunKeepAwake, POWER_STATE_REFRESH_MS, writePowerState } from "./keep-awake";
+import { appHoldsSleepBlock, claimServiceKeepAwake, createRunKeepAwake, handOffKeepAwake, POWER_STATE_REFRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, writePowerState } from "./keep-awake";
+import { applyGuestWebPreferences, BRANCH_BROWSER_PARTITION, guestAttachDecision, guestPermissionDecision, guestUrlDecision, popupDecision, r1WebPreferences } from "./browser-guest-policy";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
 import { admissionRollbackBudgetMs, measuredBudgetMs, readColdStarts, recordColdStart, rollbackReadyBudgetMs, standbyReadyBudgetMs } from "./readiness-budget";
@@ -27,7 +28,7 @@ import { desktopOs, START_IN_TRAY } from "./desktop-os";
 import { parseTitleBarOverlay, registerTitleBarIpc, titleBarOptions } from "./title-bar";
 import { registerClipboardIpc } from "./clipboard-ipc";
 import { placeWindow, readWindowState, trackWindowState } from "./window-state";
-import { confirmDesktopUpdate, handOffDesktopUpdate, runsFromAppImage, type DesktopInstall } from "./desktop-update";
+import { confirmDesktopUpdate, ensureWindowsLauncher, handOffDesktopUpdate, pruneWindowsInstall, runsFromAppImage, windowsRelaunchDetails, type DesktopInstall } from "./desktop-update";
 import { createAutoApplyUpdate, readUpdateHealth } from "./auto-apply-update";
 import { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes } from "./available-memory";
 import { RotatingLog, uiEventLine } from "./diagnostics-log";
@@ -988,6 +989,75 @@ const STARTING = `data:text/html;charset=utf-8,${encodeURIComponent(
   "<!doctype html><title>Branch Agent</title><body style=\"-webkit-app-region:drag;font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;background:#f6f7f8;color:#333\">Starting Branch…</body>",
 )}`;
 
+// The R1 browser guest. Only R1 windows may host the webview tag. A guest may attach only on the Branch partition,
+// with no preload, no Node and the sandbox on. Guests get no permissions and no downloads, and popups become tabs.
+let browserGuestSessionReady = false
+
+function installBrowserGuestHost(host: Electron.WebContents): void {
+  installBrowserGuestSession()
+  host.on("will-attach-webview", (event, webPreferences, params) => {
+    if (!guestAttachDecision(params)) {
+      event.preventDefault()
+      return
+    }
+    applyGuestWebPreferences(webPreferences as Record<string, unknown>)
+  })
+}
+
+function installBrowserGuestSession(): void {
+  if (browserGuestSessionReady) return
+  browserGuestSessionReady = true
+  const guests = session.fromPartition(BRANCH_BROWSER_PARTITION)
+  guests.setPermissionRequestHandler((_contents, _permission, callback) => callback(guestPermissionDecision()))
+  guests.setPermissionCheckHandler(() => guestPermissionDecision())
+  guests.on("will-download", (event) => event.preventDefault())
+  app.on("web-contents-created", (_event, contents) => {
+    if (contents.getType() !== "webview" || contents.session !== guests) return
+    contents.setWindowOpenHandler(({ url }) => {
+      if (popupDecision(url) === "open-tab") contents.hostWebContents?.send("branch-desktop:browser-open-tab", url)
+      return { action: "deny" }
+    })
+    const refuseBlocked = (event: Electron.Event, url: string) => {
+      if (guestUrlDecision(url) === "block") event.preventDefault()
+    }
+    contents.on("will-navigate", refuseBlocked)
+    contents.on("will-redirect", refuseBlocked)
+  })
+}
+
+/** A second R1 window that shows one page from the browser pane, sharing the guest partition (cookies and logins). */
+function openBrowserPopout(url: string): void {
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 760,
+    title: TEST_COPY ? "Test — Branch Agent" : "Branch Agent",
+    show: false,
+    icon: ICON,
+    ...titleBarOptions(),
+    webPreferences: {
+      ...r1WebPreferences(join(__dirname, "preload.js")),
+      backgroundThrottling: !HIDDEN,
+    },
+  });
+  installBrowserGuestHost(win.webContents);
+  win.once("ready-to-show", () => win.show());
+  const target = new URL(windowUrl());
+  target.searchParams.set("browser", "popout");
+  target.searchParams.set("url", url);
+  void win.loadURL(target.toString());
+}
+
+ipcMain.handle("branch-desktop:browser-popout", (event, url: unknown) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || !isOwnedComponentWindow(event, owner.webContents, windowUrl())) {
+    throw new Error("Only a Branch window can open a browser window");
+  }
+  if (typeof url !== "string" || popupDecision(url) !== "open-tab") {
+    throw new Error("That address isn't allowed in the browser.");
+  }
+  openBrowserPopout(url);
+});
+
 function createWindow(): BrowserWindow {
   // First launch opens maximized; later launches restore the last state, size, position and display.
   const place = placeWindow(readWindowState(cfg.dataDir), screen.getAllDisplays());
@@ -1001,16 +1071,17 @@ function createWindow(): BrowserWindow {
     // Windows: no native title bar; the window's header carries the minimise, maximise and close buttons.
     ...titleBarOptions(),
     webPreferences: {
-      preload: join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
+      ...r1WebPreferences(join(__dirname, "preload.js")),
       // Idle CPU: keep Chromium's throttling, except in the hidden test run where the page counts as hidden.
       backgroundThrottling: !HIDDEN,
     },
   });
   w.setMenuBarVisibility(false);
+  // Windows: pinning this window to the taskbar pins the stable launcher, not this version folder's exe.
+  const relaunch = install && !TEST_COPY && process.platform === "win32" ? windowsRelaunchDetails(install) : undefined;
+  if (relaunch) w.setAppDetails(relaunch);
   if (place.maximized) w.once("show", () => w.maximize());
+  installBrowserGuestHost(w.webContents)
   if (TEST_COPY) w.on("page-title-updated", (event, title) => { event.preventDefault(); w.setTitle(`Test — ${title}`); });
   if (!HIDDEN && !QUIET && !TEST_COPY) w.once("ready-to-show", () => (place.maximized ? w.maximize() : w.show()));
   trackWindowState(w, cfg.dataDir, (bounds) => screen.getDisplayMatching(bounds).bounds);
@@ -1061,11 +1132,12 @@ function openConversationWindow(key: string): void {
     icon: ICON,
     ...titleBarOptions(),
     webPreferences: {
-      preload: join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true,
+      ...r1WebPreferences(join(__dirname, "preload.js")),
       backgroundThrottling: !HIDDEN,
     },
   });
   pendingSavedConversationKeys = pendingSavedConversationKeys.filter((saved) => saved !== key);
+  installBrowserGuestHost(child.webContents);
   conversationWindows.set(key, child);
   saveConversationWindows();
   child.on("closed", () => {
@@ -1281,6 +1353,9 @@ async function start(): Promise<void> {
   log(`starting page shown after ${Date.now() - launchStarted} ms`);
   const desktopVersion = await confirmDesktopUpdate(cfg);
   if (desktopVersion) log(`desktop update ${desktopVersion} started; confirmed`);
+  if (install) await pruneWindowsInstall(install, log).catch((error: unknown) => log(`desktop version prune: ${String(error)}`));
+  // Shortcuts open the stable launcher at the install root, never a version folder that a prune can remove.
+  if (install && !TEST_COPY) void ensureWindowsLauncher(cfg, install, log).catch((error: unknown) => log(`windows launcher: ${String(error)}`));
   // Engines the last session started and left running (a crash mid-update): retire them before starting our own.
   await retireRecordedEngines(cfg.dataDir, log);
   // Always on: an engine service already serving the gateway port is attached to, never replaced.
@@ -1433,6 +1508,9 @@ async function attachServiceEngine(): Promise<boolean> {
   });
   if (result.mode === "child") return rolledBack;
   serviceEngine = true;
+  // The service holds the sleep blocker. Drop any hold taken before attach, and claim power for this app at once.
+  keepAwake.update(false);
+  claimServiceKeepAwake(stateDir);
   // publish-engine.sh never removes the folder named here, and the service runs from it. An engine that was already
   // running keeps its record: after a window-only update the service still runs the folder it started from.
   const running = result.via === "attached" ? serviceEngineDir() : engineDir;
@@ -1732,7 +1810,7 @@ function watchTrayStatus(): void {
     void liveEngineState().then(state => {
       working = state.running && state.workingTrunks > 0;
       showTrayStatus(tray, state);
-      keepAwake.update(working);
+      keepAwake.update(appHoldsSleepBlock(serviceEngine) && working);
       notifier.observe(state);
     }).finally(() => { reading = false; schedule(working); });
   };
@@ -1745,6 +1823,7 @@ function watchTrayStatus(): void {
 function watchPowerSource(): void {
   const stateDir = join(cfg.dataDir, "home", ".branch");
   const tell = () => {
+    if (serviceEngine) claimServiceKeepAwake(stateDir);
     writePowerState(stateDir, onBatteryPower());
     keepAwake.refresh();
   };
@@ -1755,7 +1834,11 @@ function watchPowerSource(): void {
   }
   const timer = setInterval(tell, POWER_STATE_REFRESH_MS);
   timer.unref();
-  app.once("will-quit", () => clearInterval(timer));
+  // serviceEngine is still false here; it becomes true only after the service attaches. The interval checks the
+  // live flag so the claim stays inside the engine's 20 second window for the whole time this app is open.
+  const claim = setInterval(() => { if (serviceEngine) claimServiceKeepAwake(stateDir); }, SERVICE_KEEP_AWAKE_CLAIM_MS);
+  claim.unref();
+  app.once("will-quit", () => { clearInterval(timer); clearInterval(claim); });
 }
 
 /** Tray "Pause all work": the window stops every live run through the same calls as its own Pause all. */
@@ -1817,7 +1900,8 @@ function shutdown(): void {
   autoApply.stop();
   stopWindowWatch?.();
   controls.dispose();
-  keepAwake.dispose();
+  if (serviceEngine) handOffKeepAwake(join(cfg.dataDir, "home", ".branch"), keepAwake);
+  else keepAwake.dispose();
   stopCandidate();
   stopWarmingStandby();
   // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.

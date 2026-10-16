@@ -579,6 +579,36 @@ describe("IMAP watcher protocol boundary", () => {
     expect(server.commands.some((command) => command.includes(" IDLE"))).toBe(false);
   });
 
+  it("starts one Trunk conversation for a matching email and skips the rest", async () => {
+    const { server, state, dispatchHookAgentTurn, waitForCursor } = await startWatcher({
+      account: { match: "invoice", agentId: "sapling" },
+    });
+    server.append(
+      "From: trusted@example.com\r\nSubject: Hello\r\nMessage-ID: <hello@example.com>\r\n\r\nJust saying hello\r\n",
+    );
+    server.append(
+      "From: trusted@example.com\r\nSubject: Invoice 9\r\nMessage-ID: <invoice-9@example.com>\r\n\r\nPlease pay\r\n",
+    );
+    server.append(
+      "From: trusted@example.com\r\nSubject: Invoice 9\r\nMessage-ID: <invoice-9@example.com>\r\n\r\nPlease pay\r\n",
+    );
+    await waitForCursor(4);
+    expect(dispatchHookAgentTurn).toHaveBeenCalledTimes(1);
+    expect(dispatchHookAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "sapling",
+        name: "IMAP inbox",
+        message: expect.stringContaining("Subject: Invoice 9"),
+      }),
+    );
+    const message = dispatchHookAgentTurn.mock.calls[0]?.[0]?.message ?? "";
+    expect(message).toContain("From: trusted@example.com");
+    expect(message).toContain("Please pay");
+    expect(message).not.toContain("Just saying hello");
+    expect(await state.skips.lookup("inbox:filter")).toEqual({ count: 1 });
+    expect(await state.skips.lookup("inbox:duplicate-message-id")).toEqual({ count: 1 });
+  });
+
   it("stops an account after three authentication failures", async () => {
     const { server, context } = await startWatcher({ rejectAuthentication: true });
     await vi.waitFor(

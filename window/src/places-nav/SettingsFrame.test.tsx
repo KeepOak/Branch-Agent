@@ -324,10 +324,10 @@ describe("DA-73 settings destinations", () => {
   it("keeps exactly five main destinations at every detail level", async () => {
     await open("general");
     const names = () => [...document.querySelectorAll(".set-nav .set-item")].map((item) => item.textContent);
-    expect(names()).toEqual(["General", "Trunks", "Safety", "Data", "About"]);
+    expect(names()).toEqual(["This app", "Trunks", "Safety", "Data", "About"]);
     for (const level of ["advanced", "technical"]) {
       await act(async () => document.querySelector<HTMLButtonElement>(`[data-level="${level}"]`)!.click());
-      expect(names()).toEqual(["General", "Trunks", "Safety", "Data", "About"]);
+      expect(names()).toEqual(["This app", "Trunks", "Safety", "Data", "About"]);
     }
   });
 

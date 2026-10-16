@@ -103,8 +103,9 @@ describe("R1 Settings › Learning & self-updates is a native R1 page with the p
     await setLevel("Advanced");
     expect(sections().map((s) => s.getAttribute("aria-label"))).toEqual(PREVIEW_CARDS);
     for (const [title, extra] of Object.entries(EXTRA)) for (const label of extra) expect(labels(card(title)), title).toContain(label);
-    expect(labels(card("Gardener"))).toEqual(["Look after skills", "Look at skills now", "Rest a skill after", "Set it aside after", "What each night costs", "Clear replayed notes",
-      "What Rings is weighing", "Time zone for the night window", "Model that writes the diary", "Where Rings writes what it keeps", "Keep reports out of memory"]);
+    // The live rows come first; the Gardener later-update rows fold under their own line at the end of the card.
+    expect(labels(card("Gardener"))).toEqual(["Clear replayed notes", "What Rings is weighing", "Time zone for the night window", "Model that writes the diary", "Where Rings writes what it keeps", "Keep reports out of memory",
+      "Look after skills", "Look at skills now", "Rest a skill after", "Set it aside after", "What each night costs"]);
   });
 
   it("says why each Coming row waits in one plain sentence, never naming how Branch works inside", async () => {

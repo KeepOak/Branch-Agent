@@ -1449,6 +1449,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
 
+  extensions/harvest: {}
+
   extensions/huggingface:
     devDependencies:
       '@branch/plugin-sdk':

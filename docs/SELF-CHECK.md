@@ -40,6 +40,7 @@ Trailer and emails: ok
 ## What the check requires
 
 - A line that reads `SELF-CHECK` on its own (a `##` heading or a code fence is fine). The block runs to the next blank line, closing fence or heading.
+- `Final head:` is the current head, or an ancestor of it when every commit after that sha is a merge of main that adds nothing of its own. A later ordinary commit, or a merge of any other branch, still fails.
 - `Files:` gives a number.
 - `Tests:` gives at least one `<n> passed` and one `<n> failed`, with at least one test passed.
 - Neither line keeps a template placeholder: `<...>`, `yes/no`, `pass/fail`, `TBD` or `TODO`.

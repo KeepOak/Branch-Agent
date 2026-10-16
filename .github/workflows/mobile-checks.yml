@@ -1,0 +1,67 @@
+name: Mobile checks
+
+# tsc, Jest and an expo export smoke for the phone app. Path-filtered so desktop and
+# window PRs do not start it. merge-gate treats a skipped or missing run as a pass
+# when these paths did not change (MUST_RUN_WORKFLOWS does not include this file).
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'engine/packages/gateway-client/**'
+      - 'engine/packages/gateway-protocol/**'
+      - 'engine/packages/normalization-core/**'
+      - 'engine/packages/retry/**'
+      - '.github/workflows/mobile-checks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - 'engine/packages/gateway-client/**'
+      - 'engine/packages/gateway-protocol/**'
+      - 'engine/packages/normalization-core/**'
+      - 'engine/packages/retry/**'
+      - '.github/workflows/mobile-checks.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  mobile:
+    name: Mobile
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Install pnpm
+        run: npm install --global pnpm@12.5.1
+        working-directory: ${{ github.workspace }}
+      - name: Install mobile dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Test
+        run: npx jest --ci --watchAll=false
+      - name: Expo export smoke
+        env:
+          CI: '1'
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          out="${RUNNER_TEMP}/mobile-export"
+          npx expo export --platform web --output-dir "$out"
+          test -f "$out/metadata.json"

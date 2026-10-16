@@ -4,11 +4,12 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { copyText, useThread } from "../../thread/context";
 import { Dialog } from "../../thread/Dialog";
-import { stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename } from "../../thread/format";
+import { shortReason, stepExitCode, stepInputLines, stepKind, stepLabel, stepOutputFilename, workedForLine, workingLine } from "../../thread/format";
 import { StepKindIcon } from "../../thread/icons";
 import { Icon } from "../../shell/icons";
 import { fullOutput, type Block } from "../../thread/model";
-import { stepsLine, type WorkMode } from "./chat-logic";
+import { shows, useLevel } from "../../places-nav/level";
+import { stepCount, stepsLine, type WorkMode } from "./chat-logic";
 
 type Step = Extract<Block, { kind: "step" }>;
 type Thought = Extract<Block, { kind: "thinking" }>;
@@ -21,24 +22,36 @@ function useFold(id: string, initial: boolean): [boolean, (open: boolean) => voi
   return [open, (next) => { opened.set(id, next); setOpen(next); }];
 }
 
-/** "Read a file, ran 2 commands… ● 1 failed · 1m 48s ⌄" */
-export function StepsList({ steps, thoughts = [], mode }: { steps: Step[]; thoughts?: Thought[]; live: boolean; mode: WorkMode }) {
+/** Regular shows one quiet line; Advanced and Technical keep the full sentence. Either opens the same list. */
+export function StepsList({ steps, thoughts = [], mode, working, durationMs }: { steps: Step[]; thoughts?: Thought[]; live: boolean; mode: WorkMode; working?: string; durationMs?: number }) {
   const id = steps[0]?.key ?? thoughts[0]?.key ?? "steps";
   const [open, setOpen] = useFold(id, mode === "verbose");
+  const level = useLevel();
+  const full = shows(level, "advanced");
   const line = stepsLine(steps);
+  const count = stepCount(steps.length, line.live);
+  const failed = line.failed ? line.failed + " failed" : "";
+  // Regular, live: this line is the working line. It stays closed until the person opens the steps.
+  const inline = working !== undefined && !full;
+  // Advanced, live: the app in plain words, never the tool's name. Technical keeps the step words as they are.
+  const liveWords = full && line.live && level !== "technical" ? workingLine(steps) + " · " + stepCount(steps.length, true) : undefined;
+  // Regular, finished: "Worked for 42s · 6 steps" when the run recorded a length, else the count.
+  const finished = !line.live && !full ? workedForLine(steps.length, durationMs) : undefined;
+  const text = inline ? working : liveWords ?? finished ?? (full ? line.text : count);
+  const label = inline || !full
+    ? [text, failed].filter(Boolean).join(", ")
+    : [liveWords ?? (line.live ? "Working: " : "") + line.text, failed, liveWords ? "" : line.meta].filter(Boolean).join(", ");
   const shownThoughts = mode === "normal" ? [] : thoughts;
-  const label = (line.live ? "Working: " : "") + line.text + (line.failed ? ", " + line.failed + " failed" : "") + (line.meta ? ", " + line.meta : "");
-  return <details className="r1c-steps" open={open || mode === "verbose"} onToggle={(e) => setOpen(e.currentTarget.open)} data-testid="steps" data-live={line.live || undefined}>
+  return <details className={full ? "r1c-steps" : "r1c-steps r1c-steps-quiet"} open={open || mode === "verbose"} onToggle={(e) => setOpen(e.currentTarget.open)} data-testid="steps" data-live={line.live || undefined}>
     <summary aria-label={label} data-local="">
-      {line.live ? <span className="r1c-spin" aria-hidden="true" /> : null}
-      <span className="r1c-steps-text">{line.text}</span>
-      {line.failed ? <><span className="r1c-bad-dot" aria-hidden="true" /><span className="r1c-steps-meta">{line.failed} failed</span></> : null}
-      {line.meta ? <span className="r1c-steps-meta">{line.failed ? "· " : ""}{line.meta}</span> : null}
+      <span className={inline ? "r1c-steps-text r1c-shimmer" : "r1c-steps-text"}>{text}</span>
+      {line.failed ? <><span className="r1c-bad-dot" aria-hidden="true" /><span className="r1c-steps-meta">{failed}</span></> : null}
+      {full && line.meta && !liveWords ? <span className="r1c-steps-meta">{line.failed ? "· " : ""}{line.meta}</span> : null}
       <span className="r1c-chev" aria-hidden="true"><Icon name="down" size={13} /></span>
     </summary>
     <ol className="r1c-steps-list">
       {shownThoughts.filter((t) => t.text.trim()).map((t) => <ThoughtRow key={t.key} thought={t} mode={mode} />)}
-      {steps.map((step) => <StepRow key={step.key} step={step} mode={mode} />)}
+      {steps.map((step) => <StepRow key={step.key} step={step} mode={mode} showDetail={full} />)}
     </ol>
   </details>;
 }
@@ -74,7 +87,7 @@ function save(name: string, text: string, toast: (t: string) => void) {
   toast("Saved " + name + ".");
 }
 
-function StepRow({ step, mode }: { step: Step; mode: WorkMode }) {
+function StepRow({ step, mode, showDetail }: { step: Step; mode: WorkMode; showDetail: boolean }) {
   const { toast } = useThread();
   const [open, setOpen] = useFold(step.key, mode === "verbose");
   const [full, setFull] = useState(false);
@@ -83,7 +96,8 @@ function StepRow({ step, mode }: { step: Step; mode: WorkMode }) {
   const whole = (fullOutput(step.outputKey ?? step.key) ?? step.output ?? "").replace(/\s+$/u, "");
   const input = step.input ? stepInputLines(step.input) : [];
   const title = stepLabel(step);
-  const sub = step.title && step.title !== title ? step.title : "";
+  // Advanced and Technical keep the step's own detail beside the plain words. Regular leaves it out.
+  const sub = showDetail && step.title && step.title !== title ? step.title : "";
   return <li className="r1c-step" data-testid="step" data-status={step.status} data-kind={step.tool}>
     <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary data-local="">
@@ -103,7 +117,7 @@ function StepRow({ step, mode }: { step: Step; mode: WorkMode }) {
             <button type="button" aria-label="Show full output" title="Show full output" data-local="" onClick={() => setFull(true)}><Icon name="maximize" size={13} /></button>
           </span>
         </div> : step.status !== "running" && !input.length && !step.changes?.length ? <p className="r1c-step-none">{failed ? "No output · it failed." : "No output · it finished."}</p> : null}
-        {exit != null ? <p className="r1c-step-err">Exit code {exit}</p> : failed && step.detail && !/^Exit /.test(step.detail) ? <p className="r1c-step-err">{step.detail}</p> : null}
+        {exit != null ? <p className="r1c-step-err">Exit code {exit}</p> : failed && step.detail && !/^Exit /.test(step.detail) ? <p className="r1c-step-err">{shortReason(step.detail)}</p> : null}
       </div>
     </details>
     {/* Over the whole window: inside the steps list, its glass would hold the fixed scrim to the list's own box. */}

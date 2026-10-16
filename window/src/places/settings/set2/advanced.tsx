@@ -122,6 +122,17 @@ function slotOpts(c: Ctx, kind: string, base: Opt[]): Opt[] {
   const found = c.plugins.filter((p) => Array.isArray(p.kind) && p.kind.map(String).includes(kind) && !base.some((b) => b.id === p.id));
   return [...base, ...found.map((p) => ({ id: str(p.id), label: str(p.name) || str(p.id) }))];
 }
+/** LanceDB memory applies only while that plugin is on. The rows stay visible either way. */
+function lanceNote(c: Ctx): string | undefined {
+  if (c.config.loading) return undefined;
+  const saved = c.config.get(["plugins", "entries", "memory-lancedb", "enabled"]);
+  const entry = c.plugins.find((p) => str(p.id) === "memory-lancedb");
+  const enabled = typeof saved === "boolean" ? saved : entry?.enabled === true;
+  return enabled ? undefined : "Turn on LanceDB memory for this to apply.";
+}
+const LANCE = "plugins.entries.memory-lancedb.config";
+const whole = (v: unknown) => Math.round(Number(v));
+
 function MemoryEngine({ c, same }: { c: Ctx; same?: boolean }) {
   const value = str(c.config.get("plugins.slots.memory")) || "memory-core";
   const sub = same ? "The same row as in Memory." : value === "none" ? "Memory is off. Trunks remember nothing new between conversations." : "One engine stores and searches memory. Choosing one turns the others off.";
@@ -153,7 +164,17 @@ const MEMORY: SecSpec = { title: "Memory", lv: 1, rows: [
   no("Keep a history in Git", "Every change to memory as a commit, on this computer."),
   { t: "Recall before replying", s: "Searches memory more deeply when quick recall finds nothing strong.", help: "Before a reply about the past, a Trunk searches memory more deeply. Off until you choose: it can add a model call before a reply.", plug: "active-memory" },
   { t: "Memory wiki", s: "Keeps what Trunks know as linked Markdown pages.", help: "Each fact has its source. Off until you choose: it adds a second, page-shaped copy of what Trunks know.", plug: "memory-wiki" },
-], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "plugins")}>Open Plugins</LinkBtn></p> };
+  { t: "Meaning service for LanceDB", s: "The service that turns facts into something searchable by meaning. Changing it rebuilds the index.", k: `${LANCE}.embedding.provider`, kind: "text", ph: "openai", note: lanceNote },
+  { t: "Meaning model", s: "The model that turns text into something searchable. Changing it rebuilds the index.", k: `${LANCE}.embedding.model`, kind: "text", ph: "text-embedding-3-small", note: lanceNote },
+  { t: "Key for the meaning service", s: "Optional. Leave empty to use the account already connected.", k: `${LANCE}.embedding.apiKey`, kind: "text", secret: true, note: lanceNote },
+  { t: "Address of the meaning service", s: "Only when the service lives at its own address.", k: `${LANCE}.embedding.baseUrl`, kind: "text", mono: true, ph: "https://api.openai.com/v1", note: lanceNote },
+  { t: "How many numbers describe each memory", s: "Needed when Branch doesn’t already know this model. Changing it rebuilds the index.", k: `${LANCE}.embedding.dimensions`, kind: "num", min: 1, ph: "The model’s own", write: whole, note: lanceNote },
+  { t: "Save memories from the conversation", s: "Writes down what is worth keeping as you talk.", help: "Off until you choose: a Trunk saves what is worth keeping as the conversation goes.", k: `${LANCE}.autoCapture`, kind: "sw", def: false, note: lanceNote },
+  { t: "How long a saved memory may be", s: "A note longer than this is not stored.", k: `${LANCE}.captureMaxChars`, kind: "num", unit: "characters", def: 500, min: 100, max: 10_000, write: whole, note: lanceNote },
+  { t: "Phrases that mean remember this", s: "A message that contains one of these is considered worth keeping.", k: `${LANCE}.customTriggers`, kind: "list", ph: "a phrase, like remember this", itemMax: 100, maxItems: 50, note: lanceNote },
+  { t: "Recall memories before a reply", s: "Looks up memories that fit this message and includes them before the Trunk replies.", k: `${LANCE}.autoRecall`, kind: "sw", def: true, note: lanceNote },
+  { t: "How long a recalled memory may be", s: "Each memory brought back, and the search for it, stay within this many characters.", k: `${LANCE}.recallMaxChars`, kind: "num", unit: "characters", def: 1000, min: 100, max: 10_000, write: whole, note: lanceNote },
+], after: () => <p className="hint s2advanced-addons">Add-ons work beside the memory engine, so any mix can run. <LinkBtn onClick={() => openPlace("customize", "Plugins")}>Open Plugins</LinkBtn></p> };
 
 /* ---------- Automations ---------- */
 const FA = "cron.failureAlert";
@@ -272,11 +293,79 @@ const TRUNKS_MORE: SecSpec = { title: "Trunks, more", group: "Trunks", lv: 1, ro
 const LIBRARY_MORE: SecSpec = { title: "Library, more", group: "Library", lv: 1, rows: [
   no("Search documents by meaning", "Finds the lease clause about repairs when you ask “who fixes the boiler”."),
   no("A local index of mail, calendar and messages", "Built and kept on this computer, for faster answers."),
-  no("Keep versions of what Trunks make", "Every file in Made for you keeps its versions and a checksum."),
+  no("Keep versions of what Trunks make", "Every file in Library › Activity keeps its versions and a checksum."),
   { t: "Rewrite short notes", draw: () => <Ctl title="Rewrite short notes" sub="Clearer, shorter, fixed or more formal."><Btn sm onClick={() => openPlace("library")}>Try it</Btn></Ctl> },
 ] };
 const PINNED: SecSpec = { title: "Pinned skills", lv: 1, rows: [{ t: "Always read in full", s: "A pinned skill’s whole instructions go with every message, not only when it seems to fit.", kind: "seg", off: "The engine can’t pin a skill.", opts: [{ id: "none", label: "None" }] }] };
+
+// The bundled llm-task tool: one JSON model call, with its own model and limits. It ships off
+// (not enabled by default, and the tool is optional). Turning it on writes plugins.entries.llm-task.enabled
+// and adds the tool to tools.alsoAllow, or to tools.allow when that list is already in use — the engine
+// rejects both lists at once. Automations is work that runs on its own; this is a model tool, so it sits here.
+const TASK = "plugins.entries.llm-task";
+const TASK_TOOL = "llm-task";
+function nameList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+function structuredOn(c: Ctx): boolean {
+  if (c.config.get(`${TASK}.enabled`) !== true) return false;
+  const allow = nameList(c.config.get("tools.allow"));
+  if (allow.length > 0) return allow.includes(TASK_TOOL);
+  return nameList(c.config.get("tools.alsoAllow")).includes(TASK_TOOL);
+}
+function setToolList(c: Ctx, path: "tools.allow" | "tools.alsoAllow", on: boolean) {
+  const current = nameList(c.config.get(path));
+  const next = on ? (current.includes(TASK_TOOL) ? current : [...current, TASK_TOOL]) : current.filter((name) => name !== TASK_TOOL);
+  if (next.join("\0") !== current.join("\0")) void c.config.set(path, next.length ? next : null);
+}
+function setStructured(c: Ctx, on: boolean) {
+  if (c.config.get(`${TASK}.enabled`) !== on) void c.config.set(`${TASK}.enabled`, on);
+  const allow = nameList(c.config.get("tools.allow"));
+  if (allow.length > 0) { setToolList(c, "tools.allow", on); return; }
+  setToolList(c, "tools.alsoAllow", on);
+}
+function StructuredAnswers({ c }: { c: Ctx }) {
+  return (
+    <Ctl title="Structured answers" sub="Asks a model for one answer in a fixed shape (JSON), so a workflow can use the result. Off until you choose: it spends a model call outside the conversation.">
+      <Switch label="Structured answers" checked={structuredOn(c)} disabled={c.config.loading} onChange={(on) => setStructured(c, on)} />
+    </Ctl>
+  );
+}
+function taskModelValue(c: Ctx): string {
+  const provider = str(c.config.get(`${TASK}.config.defaultProvider`));
+  const model = str(c.config.get(`${TASK}.config.defaultModel`));
+  if (provider && model) return `${provider}/${model}`;
+  return model || provider;
+}
+function TaskModel({ c }: { c: Ctx }) {
+  const models = useLive<RecordValue>(c.engine, "models.list", {}, []);
+  const pick = (id: string) => {
+    if (!id) {
+      void c.config.set(`${TASK}.config.defaultProvider`, null);
+      void c.config.set(`${TASK}.config.defaultModel`, null);
+      return;
+    }
+    const slash = id.indexOf("/");
+    const provider = slash > 0 ? id.slice(0, slash) : "";
+    const model = slash > 0 ? id.slice(slash + 1) : id;
+    void c.config.set(`${TASK}.config.defaultProvider`, provider || null);
+    void c.config.set(`${TASK}.config.defaultModel`, model || null);
+    // A chosen model is sent as an override, which the engine refuses until this is on.
+    void c.config.set(`${TASK}.llm.allowModelOverride`, true);
+  };
+  return (
+    <Ctl title="Model for structured answers" sub="Empty uses the Trunk’s own model. Choosing one lets this tool use that model.">
+      <Pick label="Model for structured answers" value={taskModelValue(c)} disabled={c.config.loading} onChange={pick} options={[{ id: "", label: "The Trunk’s own model" }, ...modelOpts(models.data)]} />
+    </Ctl>
+  );
+}
+
 const WHAT: SecSpec = { title: "What it can do", lv: 1, hint: "Model tools. Each one is used only when a task needs it.", rows: [
+  { t: "Structured answers", draw: (c) => <StructuredAnswers c={c} /> },
+  { t: "Model for structured answers", draw: (c) => <TaskModel c={c} /> },
+  { t: "Longest structured answer", s: "How long the answer may be. Empty sets no limit here.", k: `${TASK}.config.maxTokens`, kind: "num", unit: "tokens", min: 1, ph: "No limit", write: whole },
+  { t: "Answer time limit", s: "How long to wait for the answer. Empty waits 30 seconds.", k: `${TASK}.config.timeoutMs`, kind: "num", unit: "milliseconds", def: 30000, min: 1, write: whole },
+  { t: "Models it may use", s: "Empty allows any model. A list limits every structured answer, including the Trunk’s own model.", k: `${TASK}.llm.allowedCompletionModels`, kind: "list", ph: "openai/gpt-5" },
   { t: "Read links you paste", s: "Opens the page and reads it, including PDFs and videos with captions.", k: "tools.links", w: "tools.links.enabled", kind: "sw", read: (v) => typeof v === "object" && v !== null && rec(v).enabled !== false },
   no("Deep research reports", "Many searches, then a brief with numbered sources."),
   no("Edit documents exactly", "Word, Excel and PowerPoint changes that leave everything else as it was."),
