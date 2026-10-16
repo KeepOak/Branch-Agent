@@ -3,11 +3,12 @@
 # app's window folder, then swaps it in by rename. The open app sees the new build within seconds and reloads the
 # window (the conversation lives in the engine, so it stays). No repackaging.
 #   bash desktop/scripts/publish-window.sh [worktree] [dataDir] [gatewayPort]
-# Defaults: the foundation worktree, C:/Users/you/BranchApp, 19031.
+# Defaults: the foundation worktree, C:/Users/you/BranchApp, and the engine's live port from <dataDir>/gateway-port
+# (an update moves the engine off the configured port; live-gateway-port.mjs falls back to it only without that file).
 set -euo pipefail
 SRC="${1:-C:/Users/you/Code/branch-wt/foundation}"
 DATA="${2:-${BRANCH_DESKTOP_DATA:-C:/Users/you/BranchApp}}"
-PORT="${3:-19031}"
+PORT="${3:-$(node "$(dirname "$0")/live-gateway-port.mjs" "$DATA")}"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 NEXT="$DATA/window-next-$STAMP"
 OLD="$DATA/window-old-$STAMP"
