@@ -332,9 +332,7 @@ test("a full disk keeps a changed setting in memory, shows the disk-full banner 
 test("tools find the engine on its live port from gateway-port, not the configured 19031 (Private #1054)", async () => {
   const helper = fileURLToPath(new URL("./live-gateway-port.mjs", import.meta.url));
   const { liveGatewayPort, CONFIGURED_GATEWAY_PORT } = await import(pathToFileURL(helper));
-  const parent = join(tmpdir(), "claude-session-files", "desktop-controls");
-  await mkdir(parent, { recursive: true });
-  const data = await mkdtemp(join(parent, "port-"));
+  const data = await mkdtemp(join(tmpdir(), "branch-gateway-port-"));
   try {
     assert.equal(CONFIGURED_GATEWAY_PORT, 19031);
     assert.equal(liveGatewayPort(data), 19031, "an app that never wrote gateway-port keeps the configured port");
