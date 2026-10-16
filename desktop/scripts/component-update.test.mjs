@@ -154,14 +154,41 @@ test("a staged update is not replaced while the swap guard is held, or once its 
   const staged = (await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim();
   const newer = await newerRelease(context);
   await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
-  // An update or recovery holds the guard: the newer download is discarded, the staged pair stays.
+  // An update or recovery holds the guard: the newer download stays, and the staged pair stays.
   assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: busyGuard }), false);
   assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
-  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")), [], "the discarded download was left on disk");
+  assert.equal((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")).length, 1, "the download was deleted while the lock was held");
   // The staged engine already runs: it is never replaced underneath itself.
   await writeFile(join(cfg.dataDir, "engine-running.txt"), staged + "\n");
   assert.equal(await source.refreshComponentUpdate(cfg, newer.request, { underSwapGuard: freeGuard }), false);
   assert.equal((await readFile(join(cfg.dataDir, "engine-current.txt"), "utf8")).trim(), staged);
+}));
+
+test("a release downloaded while the update lock is held is staged once the lock is free", async () => fixture(async (context) => {
+  const { cfg, request } = context;
+  await source.refreshComponentUpdate(cfg, request);
+  await writeFile(join(cfg.dataDir, "engine-running.txt"), cfg.engineDir + "\n");
+  const newer = await newerRelease(context);
+  let fetches = 0;
+  const counting = async (url) => { fetches += 1; return newer.request(url); };
+  const logs = [];
+  const log = line => logs.push(line);
+  assert.equal(await source.refreshComponentUpdate(cfg, counting, { underSwapGuard: busyGuard, log }), false);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.3");
+  const kept = (await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-"));
+  assert.equal(kept.length, 1);
+  assert.equal(existsSync(join(cfg.dataDir, "updates", kept[0], ".update-kept")), true);
+  assert.match(logs.join("\n"), /Skipped staging 0\.4\.4 because the update lock is held\. The download stays and staging will retry\./);
+  const downloaded = fetches;
+  assert.equal(await source.refreshComponentUpdate(cfg, counting, { underSwapGuard: freeGuard, log }), true);
+  assert.equal(fetches, downloaded + 1, "the kept download was fetched again");
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.4");
+  assert.equal(await readFile(join(cfg.windowDir, "index.html"), "utf8"), "<title>0.4.4 window</title>");
+  assert.deepEqual((await readdir(join(cfg.dataDir, "updates"))).filter(name => name.startsWith("release-0.4.4-")), kept);
+  // The next manifest is older: it must not replace the newer staged build.
+  assert.equal(await source.refreshComponentUpdate(cfg, request, { underSwapGuard: freeGuard, log }), false);
+  assert.equal((await source.readComponentUpdateStatus(cfg)).componentsPendingVersion, "0.4.4");
+  assert.match(logs.join("\n"), /Skipped staging 0\.4\.3 because 0\.4\.4 is newer\./);
 }));
 
 /** Fails the replacement's folder moves chosen by `fails(from, to)`; every other move runs for real. */

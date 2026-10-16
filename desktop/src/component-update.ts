@@ -593,15 +593,98 @@ async function replaceStagedInPlace(cfg: DesktopConfig, held: Publication, relea
   return [held.engineNext, supersededWindow];
 }
 
+/** Negative when `left` is older than `right`. Undefined when the two versions cannot be ordered. */
+function versionOrder(left: string, right: string): number | undefined {
+  const parts = (version: string): number[] | undefined => /^\d+(?:\.\d+)*$/.test(version)
+    ? version.split(".").map(part => Number(part)) : undefined;
+  const leftParts = parts(left);
+  const rightParts = parts(right);
+  if (!leftParts || !rightParts) return undefined;
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const diff = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function olderVersion(candidate: string, current: string): boolean {
+  const order = versionOrder(candidate, current);
+  return order !== undefined && order < 0;
+}
+
+interface KeptDownload { release: ComponentRelease; engine: string; window: string }
+const keptMarker = ".update-kept";
+
+/** A finished download still waiting to be staged. The staging marker keeps cleanup from removing it. */
+async function listKeptDownloads(cfg: DesktopConfig): Promise<KeptDownload[]> {
+  const updates = join(cfg.dataDir, "updates");
+  if (!existsSync(updates)) return [];
+  const kept: KeptDownload[] = [];
+  for (const name of await readdir(updates)) {
+    const folder = join(updates, name);
+    const engine = join(folder, "engine");
+    const windowDir = join(folder, "window");
+    if (!existsSync(join(folder, ".update-staging")) || !existsSync(join(folder, keptMarker))) continue;
+    if (!existsSync(join(engine, "branch.mjs")) || !existsSync(join(windowDir, "index.html"))) continue;
+    try {
+      kept.push({ release: parseComponentRelease(JSON.parse(await readFile(join(folder, keptMarker), "utf8"))), engine, window: windowDir });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code && code !== "ENOENT") throw error;
+    }
+  }
+  return kept;
+}
+
+function newestKept(kept: KeptDownload[]): KeptDownload | undefined {
+  let best: KeptDownload | undefined;
+  for (const item of kept) {
+    if (!best || (versionOrder(item.release.version, best.release.version) ?? 0) > 0) best = item;
+  }
+  return best;
+}
+
+/** Use a kept download when it is this release, or a newer one than the manifest now offers. */
+function keptForRelease(kept: KeptDownload | undefined, release: ComponentRelease): KeptDownload | undefined {
+  if (!kept) return undefined;
+  if (kept.release.version === release.version) return kept;
+  const order = versionOrder(kept.release.version, release.version);
+  return order !== undefined && order > 0 ? kept : undefined;
+}
+
+async function selectRelease(cfg: DesktopConfig, release: ComponentRelease): Promise<{ release: ComponentRelease; kept?: KeptDownload }> {
+  const kept = keptForRelease(newestKept(await listKeptDownloads(cfg)), release);
+  return kept ? { release: kept.release, kept } : { release };
+}
+
+async function dropOlderKept(cfg: DesktopConfig, version: string, except: string | undefined, log?: (line: string) => void): Promise<void> {
+  for (const kept of await listKeptDownloads(cfg)) {
+    const folder = dirname(kept.engine);
+    if (except && folder === except) continue;
+    if (kept.release.version === version || olderVersion(kept.release.version, version)) await removeStagedFolder(cfg, folder, log);
+  }
+}
+
+function logSkippedOlder(log: ((line: string) => void) | undefined, candidate: string, newer: string): void {
+  log?.(`Skipped staging ${candidate} because ${newer} is newer.`);
+}
+
 /**
  * A newer release replaces a staged, never-started pair. It is downloaded first, with nothing touched; the
  * replacement itself runs under the desktop's swap guard, so no update or window swap can start against it.
+ * When the guard is busy the download stays on disk and the next check stages it. An older release never
+ * replaces a newer staged build or a newer download.
  */
-async function replaceStaged(cfg: DesktopConfig, held: Publication, release: ComponentRelease, request: typeof fetch, options: RefreshOptions): Promise<"replaced" | "withdrawn" | false> {
-  if (!options.underSwapGuard || held.version === release.version) return false;
+async function replaceStaged(cfg: DesktopConfig, held: Publication, release: ComponentRelease, request: typeof fetch, options: RefreshOptions): Promise<{ ok: "replaced" | "withdrawn"; release: ComponentRelease } | { ok: false }> {
+  if (!options.underSwapGuard) return { ok: false };
+  const selected = await selectRelease(cfg, release);
+  const chosen = selected.release;
+  const kept = selected.kept;
   // The manifest went back to the version that runs: the staged release was withdrawn. Never stage a copy of the
   // running build as an "update"; put the running build's pair back instead (under the guard, as any replacement).
-  if (release.version === await readOrEmpty(versionFile(cfg))) {
+  // A newer download already on disk is not withdrawn with it.
+  if (!kept && held.version !== release.version && release.version === await readOrEmpty(versionFile(cfg))) {
     const withdrawn = await options.underSwapGuard(async () => {
       const current = await publication(cfg);
       if (current?.engineNext !== held.engineNext || !await replaceable(cfg, current)) return false;
@@ -609,23 +692,46 @@ async function replaceStaged(cfg: DesktopConfig, held: Publication, release: Com
       options.onWithdrawal?.(current.version);
       return rollbackComponentUpdate(cfg, true);
     });
-    return withdrawn === true ? "withdrawn" : false;
+    return withdrawn === true ? { ok: "withdrawn", release } : { ok: false };
   }
-  if (!options.retryRejected && await componentReleaseRejected(cfg, release)) return false;
-  const next = await stage(cfg, release, request);
+  if (chosen.version === held.version || olderVersion(chosen.version, held.version)) {
+    if (olderVersion(chosen.version, held.version)) logSkippedOlder(options.log, chosen.version, held.version);
+    await dropOlderKept(cfg, held.version, undefined, options.log);
+    return { ok: false };
+  }
+  if (!options.retryRejected && await componentReleaseRejected(cfg, chosen)) {
+    if (kept) await removeStagedFolder(cfg, dirname(kept.engine), options.log);
+    return { ok: false };
+  }
+  const next = kept ? { engine: kept.engine, window: kept.window } : await stage(cfg, chosen, request);
   let superseded: string[] = [];
+  let retainDownload = false;
   try {
     const replaced = await options.underSwapGuard(async () => {
       // Re-checked under the guard: the staged pair may have been applied or changed while downloading.
       const current = await publication(cfg);
       if (current?.engineNext !== held.engineNext || current.phase !== "pending" || !await replaceable(cfg, current)) return false;
-      superseded = await replaceStagedInPlace(cfg, current, release, next, options.log);
+      if (current.version === chosen.version || olderVersion(chosen.version, current.version)) return false;
+      superseded = await replaceStagedInPlace(cfg, current, chosen, next, options.log);
       return true;
     });
-    if (replaced !== true) superseded = [dirname(next.engine)];
-    return replaced === true ? "replaced" : false;
-  } catch (error) {
+    if (replaced === undefined) {
+      // The update lock is held. Keep the download and stage it on the next check.
+      await writeFile(join(dirname(next.engine), keptMarker), JSON.stringify(chosen));
+      retainDownload = true;
+      await dropOlderKept(cfg, chosen.version, dirname(next.engine), options.log);
+      options.log?.(`Skipped staging ${chosen.version} because the update lock is held. The download stays and staging will retry.`);
+      return { ok: false };
+    }
+    if (replaced === true) {
+      await rm(join(dirname(next.engine), keptMarker), { force: true });
+      await dropOlderKept(cfg, chosen.version, dirname(next.engine), options.log);
+      return { ok: "replaced", release: chosen };
+    }
     superseded = [dirname(next.engine)];
+    return { ok: false };
+  } catch (error) {
+    if (!retainDownload) superseded = [dirname(next.engine)];
     throw error;
   } finally {
     // Outside the guard: removing an engine folder can take seconds on Windows, and crash recovery waits on the guard.
@@ -644,16 +750,23 @@ async function refresh(cfg: DesktopConfig, request: typeof fetch, options: Refre
   const release = await readComponentManifest(request);
   if (held) {
     const result = await replaceStaged(cfg, held, release, request, options);
-    if (!result) return false;
-    return await stageDesktopUpdate(cfg, release, request, options.desktop) || result === "replaced";
+    if (!result.ok) return false;
+    return await stageDesktopUpdate(cfg, result.release, request, options.desktop) || result.ok === "replaced";
   }
+  const selected = await selectRelease(cfg, release);
+  const chosen = selected.release;
+  const installed = await readOrEmpty(versionFile(cfg));
   let staged = false;
-  if (await readOrEmpty(versionFile(cfg)) !== release.version && (options.retryRejected || !await componentReleaseRejected(cfg, release))) {
-    const next = await stage(cfg, release, request);
-    await publish(cfg, release, next);
+  if (olderVersion(chosen.version, installed)) logSkippedOlder(options.log, chosen.version, installed);
+  if (installed !== chosen.version && !olderVersion(chosen.version, installed)
+      && (options.retryRejected || !await componentReleaseRejected(cfg, chosen))) {
+    const next = selected.kept ? { engine: selected.kept.engine, window: selected.kept.window } : await stage(cfg, chosen, request);
+    await publish(cfg, chosen, next);
+    await rm(join(dirname(next.engine), keptMarker), { force: true });
+    await dropOlderKept(cfg, chosen.version, dirname(next.engine), options.log);
     staged = true;
-  }
-  return await stageDesktopUpdate(cfg, release, request, options.desktop) || staged;
+  } else if (selected.kept) await dropOlderKept(cfg, installed, undefined, options.log);
+  return await stageDesktopUpdate(cfg, chosen, request, options.desktop) || staged;
 }
 
 const refreshes = new WeakMap<DesktopConfig, Promise<boolean>>();
@@ -698,6 +811,7 @@ export function watchComponentUpdates(cfg: DesktopConfig, log: (line: string) =>
     if (busy || stopped) return;
     busy = true;
     try {
+      // A download kept while the update lock was held is staged on this check, including the next tick.
       if (await refreshComponentUpdate(cfg, fetch, options)) {
         log("Verified GitHub component update staged");
         options.onStaged?.();
