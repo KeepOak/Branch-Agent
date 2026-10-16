@@ -220,3 +220,11 @@
 :root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpRowT5:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
 :root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpRowT5.curT5 { background: color-mix(in srgb, var(--ink) 12%, transparent); }
 :root:not(#sg#sg#sg#sg) .r1-topic-host .lay-column .tpRowT5 :is(button, .tpGoT5) { background: transparent; box-shadow: none; border: 0; }
+/* Find anything is one glass sheet in the middle of the window. Its words sit on that sheet, not on a pill per row. */
+:root:not(#sg#sg#sg#sg) .palette { background: var(--sg-glass); backdrop-filter: var(--sg-blur); -webkit-backdrop-filter: var(--sg-blur);
+  border-radius: 18px; box-shadow: inset 0 0 0 .5px var(--sg-edge), inset 0 1px 0 var(--sg-hi), var(--sg-shadow); }
+:root:not(#sg#sg#sg#sg) .palette :is(.pal-field, .pal-row, .ph, .pal-note, .pal-none, .pal-foot, .pal-foot > span, .pal-detail, .pal-meta, .pal-label, .pal-hint, .pal-copy, strong) {
+  background: none; background-image: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: 0; }
+:root:not(#sg#sg#sg#sg) .palette .pal-row:is(:hover, .sel, [aria-selected="true"]) { background: color-mix(in srgb, var(--ink) 8%, transparent); border-radius: 10px; box-shadow: none; }
+:root[data-transparency="reduce"]:not(#sg#sg#sg#sg) .palette { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) { :root:not([data-transparency]):not(#sg#sg#sg#sg) .palette { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; } }

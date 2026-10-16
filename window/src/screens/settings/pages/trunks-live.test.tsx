@@ -92,6 +92,13 @@ it("draws Defaults for every Trunk and Trunks’ own databases at Advanced, and 
   const defaults = host.querySelector<HTMLElement>('.r1s-sec[aria-label="Defaults for every Trunk"]')!;
   expect([...defaults.querySelectorAll(".r1s-row > b")].map((b) => b.textContent)).toEqual(TRUNK_DEFAULTS.map((d) => d.label));
   expect(TRUNK_DEFAULTS.map((d) => d.label)).toEqual(["Projects pick up matching work", "Follow-up tasks", "Standing orders", "“From now on” for a specialist", "Share a Trunk", "Custom modes", "Agent marketplace", "Trunk packages"]);
+  for (const label of ["Projects pick up matching work", "Follow-up tasks", "Custom modes", "Trunk packages"]) {
+    const row = [...defaults.querySelectorAll<HTMLElement>(".r1s-row")].find((r) => r.querySelector(":scope > b")?.textContent === label)!;
+    const sw = row.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    expect(sw.disabled).toBe(true);
+    expect(sw.getAttribute("aria-disabled")).toBe("true");
+    expect(row.querySelector(".r1s-note")?.textContent).toBe(`${label} comes in a later update.`);
+  }
   expect(host.textContent).not.toContain("Groups and Grafted agents");
   expect(host.textContent).not.toContain("Working folder");
   await act(async () => root.unmount()); root = createRoot(host);
