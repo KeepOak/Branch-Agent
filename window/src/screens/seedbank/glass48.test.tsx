@@ -128,4 +128,20 @@ describe("Seedbank follows the item 48 glass model", () => {
     const glass = readFileSync("src/glass/glass.css", "utf8").replace(/\s+/g, " ");
     expect(glass).toContain(':is(.g-frost, .g-label) :is(button, a[href]):is([aria-selected="true"], [aria-pressed="true"]):not(#g48#g48#g48) { box-shadow: inset 0 0 0 1px var(--gp-edge), inset 0 0 0 100vmax var(--gp-on); }');
   });
+
+  it("#1095: an Add sheet sits on the same window glass as every R1 dialog, so the page never shows through its words", async () => {
+    const glass = readFileSync("src/glass/glass.css", "utf8").replace(/\s+/g, " ");
+    const backing = (sel: string) => new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " \\{ background: color-mix\\(in srgb, var\\(--bg\\) 74%, transparent\\);[^}]*backdrop-filter: blur\\(30px\\)");
+    expect(glass).toMatch(backing(".scrim > .dlg.g-clear:not(#g48)"));
+    expect(glass).toMatch(backing(".sb-sheet-wrap > .sb-sheet.g-clear:not(#g48)"));
+    expect(glass).toContain(':root[data-transparency="reduce"] .sb-sheet-wrap > .sb-sheet.g-clear:not(#g48#g48) { background: var(--bg);');
+    // The sheet itself is drawn as that clear dialog: inside the wrap, with its scrim behind it.
+    const engine = engineOf(["trunks.template.list", "trunks.template.create", "agents.list"], method => method === "trunks.template.list" ? { templates: [{ id: "trunk-doctor", name: "Trunk Doctor" }] } : {});
+    const host = await render(engine);
+    await click(buttons(host.querySelector("[data-id='agents:trunk-doctor']") ?? host, "Add")[0]);
+    const sheet = document.querySelector(".sb-sheet-wrap > .sb-sheet.g-clear")!;
+    expect(sheet.getAttribute("aria-label")).toBe("Add Trunk Doctor?");
+    expect(sheet.previousElementSibling?.classList.contains("sb-scrim")).toBe(true);
+    expect(bareText(sheet)).toEqual([]);
+  });
 });
