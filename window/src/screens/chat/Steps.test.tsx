@@ -21,7 +21,7 @@ beforeEach(() => { localStorage.clear(); n += 1; host = document.body.appendChil
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
 it("Private #1103: a very long changed path ends in an ellipsis with Copy path, and a long step keeps its whole title", async () => {
-  const path = "/Users/someone/Library/Application-Support/" + "a".repeat(300) + ".tsx";
+  const path = "workspace/example-app/" + "a".repeat(300) + ".tsx";
   const writeText = vi.fn(async (_text: string) => undefined);
   Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
   const long: Step[] = [{ kind: "step", key: "long", tool: "edit", title: "Edited " + path, detail: "", status: "ok", changes: [{ path, added: 2, removed: 1 }] }];
