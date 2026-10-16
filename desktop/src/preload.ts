@@ -2,7 +2,7 @@
 // `window.branchDesktop` is for window code that reads it; until the window does, this also fills the window's
 // token form (test ids gateway-token / connect, as in window/scripts/step2-flow.mjs). On loopback the engine
 // pairs the window silently, so nothing needs approving.
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 
 interface DesktopInfo {
   gatewayUrl: string;
@@ -92,6 +92,8 @@ if (info) {
       return () => ipcRenderer.removeListener("branch-desktop:open-main-route", handler);
     },
     clipboard: { writeText: (text: string) => ipcRenderer.invoke("branch-desktop:clipboard:write-text", text) },
+    /** Settings › Appearance › Interface scale (Private #1100): the page's own zoom, so menus stay where they belong. */
+    zoom: { set: (factor: number) => { if (Number.isFinite(factor) && factor >= 0.5 && factor <= 2) webFrame.setZoomFactor(factor); } },
     componentUpdates: {
       status: () => ipcRenderer.invoke("branch-desktop:component-update:status"),
       check: () => ipcRenderer.invoke("branch-desktop:component-update:check"),
