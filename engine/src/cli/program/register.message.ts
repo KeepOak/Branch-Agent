@@ -42,7 +42,7 @@ ${formatHelpExamples([
   ],
 ])}
 
-${theme.muted("Docs:")} ${formatDocsLink("/cli/message", "docs.openclaw.ai/cli/message")}`,
+${theme.muted("Docs:")} ${formatDocsLink("/cli/message")}`,
     );
 
   const helpers = createMessageCliHelpers(ctx.messageChannelOptions);

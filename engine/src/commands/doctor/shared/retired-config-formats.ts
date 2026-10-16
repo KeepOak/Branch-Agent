@@ -179,6 +179,6 @@ export function findRetiredConfigUpgradeRequirement(
     message: `Config contains retired pre-July-2026 settings: ${retired.join(", ")}. Doctor cannot remove these settings safely.`,
     nextAction:
       `Install Branch Agent ${bridgeVersion}, run "${formatCliCommand("branch doctor --fix")}", then upgrade to latest. ` +
-      "See https://docs.openclaw.ai/install/updating#upgrading-very-old-versions.",
+      "See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/updating#upgrading-very-old-versions.",
   };
 }

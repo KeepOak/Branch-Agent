@@ -324,7 +324,7 @@ vi.mock("../config/config.js", () => ({
           "Config is managed by Nix (`BRANCH_NIX_MODE=1`), so Branch Agent treats branch.json as immutable.",
           "Do not run setup, onboarding, branch update, plugin install/update/uninstall/enable, doctor repair/token-generation, or config set against this file.",
           "Agent-first Nix setup: https://github.com/openclaw/nix-openclaw#quick-start",
-          "Branch Agent Nix overview: https://docs.openclaw.ai/install/nix",
+          "Branch Agent Nix overview: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/install/nix",
         ].join("\n"),
       );
     }

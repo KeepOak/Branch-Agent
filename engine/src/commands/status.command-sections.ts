@@ -345,7 +345,7 @@ export function buildStatusModelSelectionLines(params: {
       `  Session selected: ${selected}`,
       reasonLine,
       clearLine,
-      "  Docs: https://docs.openclaw.ai/concepts/models#selection-source-and-fallback-strictness",
+      "  Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/concepts/models#selection-source-and-fallback-strictness",
     );
   }
   if (mismatches.length > limit) {
@@ -361,8 +361,8 @@ export function buildStatusFooterLines(params: {
   gatewayStartupPhase?: string;
 }) {
   return [
-    "FAQ: https://docs.openclaw.ai/faq",
-    "Troubleshooting: https://docs.openclaw.ai/troubleshooting",
+    "FAQ: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/faq",
+    "Troubleshooting: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/troubleshooting",
     ...(params.updateHint ? ["", theme.warn(params.updateHint)] : []),
     "Next steps:",
     `  Need to share?      ${formatCliCommand("branch status --all")}`,

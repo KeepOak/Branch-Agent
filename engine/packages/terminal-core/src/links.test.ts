@@ -4,7 +4,7 @@ import { formatDocsLink } from "./links.js";
 describe("formatDocsLink", () => {
   it("prepends the docs root when given a relative path", () => {
     const out = formatDocsLink("/channels/quietchat", "quietchat");
-    expect(out).toBe("https://docs.openclaw.ai/channels/quietchat");
+    expect(out).toBe("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/channels/quietchat");
   });
 
   it("preserves uppercase absolute HTTPS urls", () => {
@@ -14,17 +14,17 @@ describe("formatDocsLink", () => {
 
   it("does not treat http-prefixed relative paths as absolute urls", () => {
     const out = formatDocsLink("http-status", "HTTP status");
-    expect(out).toBe("https://docs.openclaw.ai/http-status");
+    expect(out).toBe("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/http-status");
   });
 
   it("treats whitespace-only path like an empty path and falls back to docs root", () => {
     const out = formatDocsLink("   ", "root");
-    expect(out).toBe("https://docs.openclaw.ai");
+    expect(out).toBe("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs");
   });
 
   it("falls back to docs root when path is undefined (regression: #67076, #67074)", () => {
     const out = formatDocsLink(undefined);
-    expect(out).toBe("https://docs.openclaw.ai");
+    expect(out).toBe("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs");
   });
 
   it("strips terminal controls from non-OSC docs fallback text", () => {

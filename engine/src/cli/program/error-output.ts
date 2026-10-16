@@ -31,11 +31,11 @@ function formatHelpHint(argv: string[] | undefined, options?: { commandPath?: st
 }
 
 function formatDocsHint(): string {
-  return `${theme.muted("Docs:")} ${formatDocsLink("/cli", "docs.openclaw.ai/cli")}`;
+  return `${theme.muted("Docs:")} ${formatDocsLink("/cli")}`;
 }
 
 function formatCliMachineOutput(humanOutput: string): string {
-  const docs = `Docs: ${formatDocsLink("/cli", "docs.openclaw.ai/cli", { force: false })}`;
+  const docs = `Docs: ${formatDocsLink("/cli", undefined, { force: false })}`;
   return stripAnsi(humanOutput).replace(/^Docs:.*$/mu, docs);
 }
 

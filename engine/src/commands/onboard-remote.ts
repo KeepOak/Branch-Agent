@@ -63,7 +63,7 @@ export async function promptRemoteGatewayConfig(
     await prompter.note(
       [
         "Bonjour discovery requires dns-sd (macOS) or avahi-browse (Linux).",
-        "Docs: https://docs.openclaw.ai/gateway/discovery",
+        "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/discovery",
       ].join("\n"),
       "Discovery",
     );
@@ -151,7 +151,7 @@ export async function promptRemoteGatewayConfig(
           [
             "Start a tunnel before using the CLI:",
             `ssh -N -L 18789:127.0.0.1:${port} <user>@${host}${target.sshPort ? ` -p ${target.sshPort}` : ""}`,
-            "Docs: https://docs.openclaw.ai/gateway/remote",
+            "Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/remote",
           ].join("\n"),
           t("wizard.remote.sshTunnelTitle"),
         );

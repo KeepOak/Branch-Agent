@@ -61,7 +61,7 @@ describe("runGuidedOnboarding quick start", () => {
       const securityNotes = vi
         .mocked(prompter.note)
         .mock.calls.filter(([message]) =>
-          message.includes("https://docs.openclaw.ai/gateway/security"),
+          message.includes("https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/security"),
         );
       expect(securityNotes).toHaveLength(acknowledgedAt ? 0 : 1);
       expect(prompter.note).not.toHaveBeenCalledWith(

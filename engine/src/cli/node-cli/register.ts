@@ -34,7 +34,7 @@ export function registerNodeCli(program: Command) {
         ["branch node install", "Install the node host service."],
         ["branch node start", "Start the installed node host service."],
         ["branch node restart", "Restart the installed node host service."],
-      ])}\n\n${theme.muted("Docs:")} ${formatDocsLink("/cli/node", "docs.openclaw.ai/cli/node")}\n`,
+      ])}\n\n${theme.muted("Docs:")} ${formatDocsLink("/cli/node")}\n`,
   );
 
   node.addCommand(

@@ -189,8 +189,8 @@ export function formatControlUiSshHint(params: {
     "BYOH note: lan, tailnet, and custom bind are currently IPv4-only.",
     "If your host is IPv6-only, use an IPv4 sidecar or proxy in front of the Gateway.",
     "Docs:",
-    "https://docs.openclaw.ai/gateway/remote",
-    "https://docs.openclaw.ai/web/control-ui",
+    "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/remote",
+    "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/web/control-ui",
   ].join("\n");
 }
 

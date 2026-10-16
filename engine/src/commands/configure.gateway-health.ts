@@ -95,8 +95,8 @@ export async function runGatewayHealthCheck(params: {
     note(
       [
         "Docs:",
-        "https://docs.openclaw.ai/gateway/health",
-        "https://docs.openclaw.ai/gateway/troubleshooting",
+        "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/health",
+        "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/troubleshooting",
       ].join("\n"),
       "Health check help",
     );

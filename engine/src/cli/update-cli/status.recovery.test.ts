@@ -377,7 +377,7 @@ it("reports one failed set as unresolved and multiple failed sets as ambiguous",
   expect(unresolved.nextAction).toContain(c.manifestPath);
   expect(unresolved.nextAction).toMatch(/preserve current state/i);
   expect(unresolved.nextAction).toContain(
-    "https://docs.openclaw.ai/cli/update/repair-and-recovery#original-state-captures",
+    "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/update/repair-and-recovery#original-state-captures",
   );
   expect(unresolved.message).toMatch(/retained original.*manual inspection/i);
   for (const guidance of [unresolved.nextAction, unresolved.message]) {

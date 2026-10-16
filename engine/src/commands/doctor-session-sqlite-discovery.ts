@@ -197,7 +197,7 @@ export function readArchivedSessionOwnership(
           "This archive warning does not indicate SQLite corruption. " +
           "No action is needed if all expected conversations are present. " +
           "If history is missing, preserve the archive and migration manifests and follow " +
-          "https://docs.openclaw.ai/cli/doctor/sqlite-maintenance#changed-archived-registry",
+          "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/cli/doctor/sqlite-maintenance#changed-archived-registry",
       });
     }
   }

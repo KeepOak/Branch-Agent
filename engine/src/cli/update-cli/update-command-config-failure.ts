@@ -45,7 +45,7 @@ export function createUpdateConfigFailure(
   const nextAction =
     retired?.nextAction ??
     (includeOwnedLegacyRoster
-      ? "Doctor cannot safely rewrite this include-owned legacy roster. Back up the root config, included files, and persisted state, then temporarily consolidate the original legacy config into one branch.json. Preserve roster order, legacy markers, environment and secret references, and configured path meanings. Run `branch doctor --fix` or retry the update; after repair and `branch config validate` succeed, split the canonical config back into includes and validate again. See https://docs.openclaw.ai/gateway/doctor/config-migrations#agent-roster-migration."
+      ? "Doctor cannot safely rewrite this include-owned legacy roster. Back up the root config, included files, and persisted state, then temporarily consolidate the original legacy config into one branch.json. Preserve roster order, legacy markers, environment and secret references, and configured path meanings. Run `branch doctor --fix` or retry the update; after repair and `branch config validate` succeed, split the canonical config back into includes and validate again. See https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/doctor/config-migrations#agent-roster-migration."
       : "Run `branch doctor --fix` to repair retired or unrecognized configuration fields, then correct any remaining errors before retrying.");
   return new UpdatePreMutationError(
     "invalid-config",

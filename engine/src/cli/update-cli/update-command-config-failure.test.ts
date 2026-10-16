@@ -60,7 +60,7 @@ describe("update config failure guidance", () => {
           "split the canonical config back into includes and validate again",
         );
         expect(failure.nextAction).toContain(
-          "https://docs.openclaw.ai/gateway/doctor/config-migrations#agent-roster-migration",
+          "https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/gateway/doctor/config-migrations#agent-roster-migration",
         );
       } else {
         expect(failure.nextAction).toMatch(/^Run `branch doctor --fix`/);

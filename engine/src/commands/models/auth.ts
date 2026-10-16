@@ -959,7 +959,7 @@ function maybeLogOpenAICodexNativeSearchTip(runtime: RuntimeEnv, providerId: str
     return;
   }
   runtime.log(
-    `Tip: Codex-capable models can use native Codex web search. Configure the \`web_search\` tool with \`${formatCliCommand("branch configure --section web")}\`. Docs: https://docs.openclaw.ai/tools/web`,
+    `Tip: Codex-capable models can use native Codex web search. Configure the \`web_search\` tool with \`${formatCliCommand("branch configure --section web")}\`. Docs: https://github.com/KeepOak/Branch-Agent/tree/main/engine/docs/tools/web`,
   );
 }
 

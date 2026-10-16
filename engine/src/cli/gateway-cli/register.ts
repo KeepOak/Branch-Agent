@@ -398,7 +398,7 @@ export function registerGatewayCli(program: Command) {
             ["branch gateway discover", "Find local and wide-area gateway beacons."],
             ["branch gateway stability", "Show recent stability diagnostics."],
             ["branch gateway call health", "Call a gateway RPC method directly."],
-          ])}\n\n${theme.muted("Docs:")} ${formatDocsLink("/cli/gateway", "docs.openclaw.ai/cli/gateway")}\n`,
+          ])}\n\n${theme.muted("Docs:")} ${formatDocsLink("/cli/gateway")}\n`,
       ),
   );
 
