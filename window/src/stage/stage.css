@@ -168,8 +168,18 @@
 .br-nav-st[disabled] {opacity:.35;}
 .br-addr-st {flex:1;min-width:0;border:0;background:transparent;font:inherit;color:inherit;outline:none;}
 .br-addr-st:focus {box-shadow:none;}
-.br-url-st:focus-within {box-shadow:0 0 0 2px var(--accent);background:var(--bg);}
-@media (max-width:640px) {.br-chrome-st {gap:2px;padding:8px 6px;} .br-nav-st, .br-new-st {width:32px;} .br-tabs-st {max-width:30%;} .br-chrome-st .tb-br > span {display:none;} .br-url-st > .btn {display:none;}}
+/* The address bar is one rounded field: the input inside draws no box of its own, and the tabs are pills, not boxes. */
+/* Item 48 puts every control in clear glass on its own outlined pill; here the address bar and each tab are that pill,
+   and what sits inside them (the input, a tab's title and its ×) draws none of its own. */
+.br-chrome-st .br-url-st:not(#g48#g48) {background:var(--gp-fill, var(--fill));box-shadow:inset 0 0 0 1px var(--gp-edge, var(--line));}
+.br-chrome-st .br-url-st > input.br-addr-st:not(#g48#g48) {height:100%;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;outline:none;}
+.br-chrome-st .br-tab-st:not(#g48#g48) {background:var(--gp-fill, var(--fill));box-shadow:inset 0 0 0 1px var(--gp-edge, var(--line));}
+.br-chrome-st .br-tab-st.on:not(#g48#g48) {box-shadow:inset 0 0 0 1px var(--gp-edge, var(--line)), inset 0 0 0 100vmax var(--gp-on, var(--fill-2));}
+.br-chrome-st .br-tab-st > button:not(#g48#g48#g48#g48) {border:0;background:none;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;}
+.br-chrome-st .br-url-st:focus-within:not(#g48#g48) {box-shadow:inset 0 0 0 1px var(--gp-edge, var(--line)), 0 0 0 2px var(--accent);}
+/* A phone-width window: the tabs, Page and Tools wrap under the address bar, so nothing is cut off. */
+@media (max-width:640px) {.br-chrome-st {flex-wrap:wrap;height:auto;row-gap:6px;padding:8px;} .br-url-st {flex-basis:180px;} .br-tabs-st {flex:1 1 200px;max-width:none;} .br-chrome-st .tb-br > span {display:none;}
+  .st7-hslot > .guest-switch button {padding:0 8px;font-size:12px;}}
 .br-page-st {position:relative;flex:1;min-height:0;background:var(--bg);overflow:hidden;}
 /* The keyboard proxy for the live page: focused on a click, invisible, and never shown. */
 .br-input-st {position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;border:0;padding:0;margin:0;resize:none;overflow:hidden;pointer-events:none;}
