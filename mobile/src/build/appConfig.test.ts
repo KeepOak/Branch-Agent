@@ -7,7 +7,7 @@ type Plugin = string | [string, Record<string, unknown>];
 const plugins = app.expo.plugins as Plugin[];
 const pluginOptions = (name: string) => plugins.find((p): p is [string, Record<string, unknown>] => Array.isArray(p) && p[0] === name)?.[1];
 
-const CAMERA_REASON = 'Branch uses the camera to scan the pairing code on your computer.';
+const CAMERA_REASON = 'Branch uses the camera to read the pairing code on your computer and to take a picture to send in a chat.';
 const NOTIFICATION_REASON = 'Branch sends notifications when something on your computer needs your approval.';
 
 describe('the Expo app config', () => {
