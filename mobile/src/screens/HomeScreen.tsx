@@ -21,7 +21,6 @@ import { ThemedText } from '../theme/ThemedText';
 import { useTheme } from '../theme/ThemeProvider';
 import { OfflineBanner } from '../ui/OfflineBanner';
 import { PlacesBar, type Place } from '../ui/PlacesBar';
-import { useNow } from '../ui/useNow';
 import { Avatar } from './ChatsScreen';
 
 const QUICK_WORKING = [
@@ -75,7 +74,7 @@ function Calm({ text, testID }: { text: string; testID: string }) {
 }
 
 function Chip({ title, onPress, kind = 'quiet', testID, disabled }: { title: string; onPress: () => void; kind?: 'ink' | 'quiet'; testID: string; disabled?: boolean }) {
-  const { color, space, radius, layout } = useTheme();
+  const { color, space, radius } = useTheme();
   const ink = kind === 'ink';
   return (
     <Pressable
@@ -86,7 +85,7 @@ function Chip({ title, onPress, kind = 'quiet', testID, disabled }: { title: str
       onPress={onPress}
       style={({ pressed }) => ({
         minHeight: 36,
-        paddingHorizontal: space.md,
+        paddingHorizontal: space.sm + 2,
         borderRadius: radius.pill,
         backgroundColor: ink ? color.ink : color.raise,
         justifyContent: 'center',
@@ -135,7 +134,6 @@ export function HomeScreen({
 }) {
   const { color, space, layout } = useTheme();
   const insets = useSafeAreaInsets();
-  useNow(30_000);
   const now = fixedNow ?? Date.now();
   const advanced = isAdvanced(accessLevel);
   const needs = homeNeeds(approvals.pending, approvals.trunks);
@@ -158,6 +156,7 @@ export function HomeScreen({
     <View testID="home-screen" style={{ flex: 1, backgroundColor: color.bg }}>
       <ScrollView
         testID="home-scroll"
+        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: insets.top + space.sm, paddingHorizontal: layout.screenInset, paddingBottom: space.xl }}
@@ -171,9 +170,9 @@ export function HomeScreen({
             testID="home-you"
             accessibilityRole="image"
             accessibilityLabel="You"
-            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: color.ink, alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: color.fill, alignItems: 'center', justifyContent: 'center' }}
           >
-            <ThemedText variant="footnote" style={{ color: color.bg, fontWeight: '600' }}>
+            <ThemedText variant="footnote" style={{ color: color.ink, fontWeight: '600' }}>
               You
             </ThemedText>
           </View>
@@ -203,7 +202,7 @@ export function HomeScreen({
                       {`${k}: ${v}`}
                     </ThemedText>
                   ))}
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, marginTop: space.sm }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'nowrap', gap: space.sm, marginTop: space.sm }}>
                     <Chip title={need.yes} kind="ink" testID={`home-allow-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'allow-once')} />
                     <Chip title={need.no} testID={`home-deny-${need.id}`} disabled={Boolean(approvals.sending[need.id])} onPress={() => onAnswer(need.id, 'deny')} />
                     <Chip title="Look first" testID={`home-look-${need.id}`} onPress={() => onLookFirst(need.id, need.sessionKey)} />
@@ -241,10 +240,10 @@ export function HomeScreen({
                 <View
                   testID={`home-still-${row.key}`}
                   accessibilityLabel={`${row.title}: Live`}
-                  style={{ marginTop: space.sm, height: 120, borderRadius: 12, backgroundColor: color.ink, justifyContent: 'flex-end', padding: space.sm }}
+                  style={{ marginTop: space.sm, height: 120, borderRadius: 12, backgroundColor: color.fill, justifyContent: 'flex-end', padding: space.sm }}
                 >
-                  <View style={{ alignSelf: 'flex-start', backgroundColor: color.bg, borderRadius: 999, paddingHorizontal: space.sm, paddingVertical: 2 }}>
-                    <ThemedText variant="caption2" style={{ fontWeight: '600' }}>
+                  <View style={{ alignSelf: 'flex-start', backgroundColor: color.ink, borderRadius: 999, paddingHorizontal: space.sm, paddingVertical: 2 }}>
+                    <ThemedText variant="caption2" style={{ color: color.bg, fontWeight: '600' }}>
                       Live
                     </ThemedText>
                   </View>

@@ -37,6 +37,7 @@ export function PlacesBar({
         alignItems: 'center',
         height: BAR + insets.bottom,
         paddingBottom: insets.bottom,
+        flexShrink: 0,
         backgroundColor: color.fill,
         borderTopWidth: layout.hairline,
         borderTopColor: color.line,
