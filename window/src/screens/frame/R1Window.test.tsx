@@ -18,7 +18,7 @@ vi.mock("../../places-nav/SettingsFrame", () => ({ readLevel: () => "regular" as
 // page's own rows, and Chat apps.
 vi.mock("../settings/pages/plugged", async () => {
   const { REHOSTED, R1_PAGES } = await vi.importActual<typeof import("../settings/pages/plugged")>("../settings/pages/plugged");
-  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, instructions: R1_PAGES.instructions, learning: R1_PAGES.learning, remote: R1_PAGES.remote, signins: R1_PAGES.signins, updates: R1_PAGES.updates, voice: R1_PAGES.voice, developer: R1_PAGES.developer, chatapps: { component: () => null } } };
+  return { R1_PAGES: { ...Object.fromEntries(Object.keys(REHOSTED).map((page) => [page, { component: () => null }])), history: R1_PAGES.history, devices: R1_PAGES.devices, who: R1_PAGES.who, instructions: R1_PAGES.instructions, learning: R1_PAGES.learning, remote: R1_PAGES.remote, signins: R1_PAGES.signins, updates: R1_PAGES.updates, voice: R1_PAGES.voice, developer: R1_PAGES.developer, chatapps: { component: () => null } } };
 });
 vi.mock("../settings", () => ({
   SettingsFrame: ({ engine, page, pages, onPage }: { engine: { id?: string }; page?: string; pages?: Record<string, unknown>; onPage?: (page: string) => void }) => (
@@ -98,7 +98,7 @@ it("mounts R1 Settings with the live engine and its slots, and opens Chat apps i
   const settings = host.querySelector<HTMLElement>('[data-testid="r1-settings"]')!;
   expect(settings.dataset.page).toBe("appearance");
   expect(settings.dataset.engine).toBe("live-engine");
-  expect(settings.dataset.pages).toBe("who,notifications,models,permissions,privacy,browser,coding,history,devices,instructions,learning,remote,signins,updates,voice,developer,chatapps,goto,seedbank,features");
+  expect(settings.dataset.pages).toBe("notifications,models,permissions,privacy,browser,coding,history,devices,who,instructions,learning,remote,signins,updates,voice,developer,chatapps,goto,seedbank,features");
   expect(host.querySelector('[data-testid="classic-settings"]')).toBeNull();
   await act(async () => [...settings.querySelectorAll("button")].find(b => b.textContent === "Chat apps")!.click());
   expect(window.history.state.r1Route).toEqual({ kind: "settings", page: "chatapps" });
@@ -162,14 +162,14 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
   }
   // An R1 page must be the page asked for; a Classic page must be one Classic draws as itself, and General only for General.
   const ownPage = (id: string, kind: string, page: string) => kind === "r1" ? page === id
-    : kind === "place" ? ["customize", "autos", "memory"].includes(id)
+    : kind === "place" ? ["autos", "memory"].includes(id)
     : classic.has(page) && pageAtLevel(page, levelFor(page, "regular")) === page && (page !== "general" || id === "general");
   const wrong = ids.filter((id) => !ownPage(id, ...(opened[id].split(":") as [string, string])));
   expect(wrong.map((id) => `${id} → ${opened[id]}`)).toEqual([]);
   expect(opened).toEqual({
     card: "classic:people", goto: "r1:goto",
     general: "r1:general", appearance: "r1:appearance", notifications: "r1:notifications", who: "r1:who",
-    trunks: "classic:advanced", instructions: "r1:instructions", customize: "place:customize", seedbank: "r1:seedbank", memory: "place:library", autos: "place:automations",
+    trunks: "classic:advanced", instructions: "r1:instructions", customize: "r1:customize", seedbank: "r1:seedbank", memory: "place:library", autos: "place:automations",
     voice: "r1:voice", chatapps: "r1:chatapps",
     accounts: "r1:accounts", models: "r1:models",
     permissions: "r1:permissions", signins: "r1:signins", privacy: "r1:privacy",
@@ -177,14 +177,14 @@ it("opens every R1 Settings nav page as its own page: its R1 page or the Classic
     history: "r1:history", learning: "r1:learning", updates: "r1:updates", features: "r1:features", developer: "r1:developer",
   });
 });
-it("opens Settings › Customize, Automations and Memory & documents as their places, never the Classic engine page", async () => {
+it("opens Settings › Automations and Memory & documents as their places, and Customize as its R1 page", async () => {
   const snapshot = { status: { phase: "disconnected" }, name: "", sessionKey: null, mainKey: null, history: [], live: [], queued: [] };
   const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { id: "live-engine", request: vi.fn() } } as unknown as SaplingSession;
-  expect(resolveRoute({ kind: "settings", page: "customize" })).toEqual({ kind: "place", place: "customize" });
+  expect(resolveRoute({ kind: "settings", page: "customize" })).toEqual({ kind: "settings", page: "customize" });
   expect(resolveRoute({ kind: "settings", page: "autos" })).toEqual({ kind: "place", place: "automations" });
   expect(resolveRoute({ kind: "settings", page: "memory" })).toEqual({ kind: "place", place: "library" });
-  // Old ids for Customize still land on it; every other page stays a Settings page.
-  for (const old of ["graftsT5", "czP17"]) expect(resolveRoute({ kind: "settings", page: old })).toEqual({ kind: "place", place: "customize" });
+  // Old ids for Customize still land on the R1 page; every other page stays a Settings page.
+  for (const old of ["graftsT5", "czP17"]) expect(resolveRoute({ kind: "settings", page: old })).toEqual({ kind: "settings", page: "customize" });
   expect(resolveRoute({ kind: "settings", page: "voice" })).toEqual({ kind: "settings", page: "voice" });
   for (const page of ["customize", "memory", "autos"]) expect(CLASSIC_PAGE[page], page).toBeUndefined();
   // From the Settings nav: the frame asks for the page, the window opens the place, and Library is told its Memory tab.
@@ -261,18 +261,28 @@ it("the conversation menu's View › \"Show agents' work as\" rows turn Coming w
   expect(setOverride).not.toHaveBeenCalled();
 });
 
-// Settings' "Find anything" row dispatches FIND_ANYTHING_EVENT; the window opens the palette the same way Ctrl K does.
-// Before the fix nothing listened for the event, so the row read as dead in the button crawl.
-it("opens Find anything when Settings asks for it", async () => {
+// Settings' "Find anything" row dispatches FIND_ANYTHING_EVENT. The window opens the palette when the engine can
+// search, and leaves it closed when search is missing. The sidebar stub has no magnifier; coming.test covers that button.
+function findSession(methods: string[]) {
   const snapshot = { status: { phase: "connected" }, name: "Scout", sessionKey: "agent:scout:main", mainKey: "agent:scout:main", history: [], live: [], queued: [] };
   const request = vi.fn(async () => ({}));
-  const session = { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", features: { methods: ["users.prefs.get"], events: [] } } } as unknown as SaplingSession;
-  // jsdom has no scrollIntoView; the palette scrolls its active row into view.
+  return { subscribe: () => () => undefined, getSnapshot: () => snapshot, engine: { request, onEvent: () => () => undefined, sessionKey: "agent:scout:main", agentId: "scout", features: { methods, events: [] } } } as unknown as SaplingSession;
+}
+it("opens Find anything when Settings asks for it and the engine can search", async () => {
   Element.prototype.scrollIntoView = () => {};
-  await act(async () => root.render(<R1Window session={session as never} />));
+  await act(async () => root.render(<R1Window session={findSession(["users.prefs.get", "sessions.search"]) as never} />));
   expect(document.querySelector(".r1-find")).toBeNull();
   await act(async () => { window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); });
   expect(document.querySelector(".r1-find")).not.toBeNull();
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+});
+it("does not open Find anything when the engine has no search", async () => {
+  Element.prototype.scrollIntoView = () => {};
+  await act(async () => root.render(<R1Window session={findSession(["users.prefs.get"]) as never} />));
+  expect(comingControls().flatMap((entry) => entry.need)).toContain("sessions.search");
+  await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })); });
+  await act(async () => { window.dispatchEvent(new CustomEvent(FIND_ANYTHING_EVENT)); });
+  expect(document.querySelector(".r1-find")).toBeNull();
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
 });
 

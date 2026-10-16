@@ -14,7 +14,11 @@ import { safeStorage, saveDraft } from "../../composer/drafts";
 import { requestCustomize, type PromptHandoff } from "../../places/customize/r1-request";
 import { NewTrunkCard, type NewTrunk } from "../../shell/NewTrunkFlow";
 import { conversationActions } from "../../shell/conversation-actions";
-import { makeRandomTrunk } from "../../places/trunk/new-trunk-r1";
+import { NewTrunkSheet } from "../../places/trunk/NewTrunkSheet";
+import { createShapedTrunk, newTrunkReadyLine, OPEN_NEW_TRUNK_SHEET, type NewTrunkDraft } from "../../places/trunk/new-trunk-sheet";
+import { waitForTrunk } from "../../places/trunk/api";
+import { creationProblem } from "../../places/trunk/model";
+import { notify } from "../../shell/notify";
 import { useLimits } from "../../shell/use-status";
 import { useLockdown } from "../../shell/use-lockdown";
 import { Face } from "../../face/Face";
@@ -37,7 +41,6 @@ import { Toasts } from "../../shell/Toasts";
 import { R1ExtraDialogs } from "./R1ExtraDialogs";
 import { ApprovalsLayer, useAsks } from "../approvals";
 import { useProblemBannerRows } from "../approvals/ProblemBanners";
-import { Coming } from "../../glass/coming";
 import { useFirstRun } from "../../setup/use-first-run";
 import { displayTrunkTitle } from "../../connect/trunk-name";
 import { Onboarding } from "../onboarding";
@@ -63,14 +66,14 @@ import { DEFAULT_PANE_TAB, type PaneTab } from "../../stage/SidePane";
 import { paneKeyFor, shortcutFor } from "../../shell/use-shortcuts";
 import { currentKeys, keyActions, readCustomKeys } from "../../shell/keymap";
 import { availability } from "../../connect/capabilities";
+import { Coming } from "../../glass/coming";
 import { CHANGES_NEED, R1Changes } from "../changes/R1Changes";
 import { R1Character, useR1CharacterShown } from "../character/R1Character";
 import { graftedContactOf, isGraftedContactKey, newestGraftedTopic, openConversationName } from "./open-name";
 import { GraftedEmpty, GraftedFace } from "./GraftedEmpty";
+import { StartupLine } from "./StartupLine";
 import { agentIdOf, roomIdOf } from "../../connect/session";
 import { R1DetailsPanel } from "../details/R1DetailsPanel";
-
-const FIND_ANYTHING_NAMES_ONLY = "Message search needs a newer Branch engine. Find anything lists names only.";
 
 /** Places R1 Settings search can open (its Go to group). */
 const SETTINGS_PLACES = PLACES.map(place => ({ id: place.id, label: place.name }));
@@ -97,21 +100,23 @@ export const CLASSIC_PAGE: Readonly<Record<string, string>> = {
 };
 
 /**
- * Settings pages that are a place: Settings › Customize, Automations and Memory & documents open the place that has
- * their controls (Memory & documents opens Library on its Memory tab), never a Settings page of their own.
+ * Settings pages that are a place: Automations and Memory & documents open the place that has their controls
+ * (Memory & documents opens Library on its Memory tab). Customize is an R1 Settings page of its own.
  */
 export const SETTINGS_PLACE: Readonly<Record<string, { place: PlaceId; tab?: string }>> = {
-  customize: { place: "customize" },
   autos: { place: "automations" },
   memory: { place: "library", tab: "memory" },
 };
 
 /** The route a link, a saved route or a nav item really opens: a Settings page that is a place (by its id or an old id
- *  for it) opens that place; every other route is itself. */
+ *  for it) opens that place. An old id for Customize opens the R1 Customize page. Every other route is itself. */
 export function resolveRoute(route: Route): Route {
   if (route.kind !== "settings") return route;
-  const target = SETTINGS_PLACE[r1PageFor(route.page)];
-  return target ? { kind: "place", place: target.place } : route;
+  const page = r1PageFor(route.page);
+  const target = SETTINGS_PLACE[page];
+  if (target) return { kind: "place", place: target.place };
+  if (page === "customize" && route.page !== "customize") return { kind: "settings", page: "customize" };
+  return route;
 }
 
 /** Seedbank is Customize's Community now: the Seedbank pill and a saved seedbank route both open Customize in Community. */
@@ -283,12 +288,12 @@ export function R1Window({ session }: { session: SaplingSession }) {
   // Re-hosted Classic Settings pages open a place with branch:navigate-place (Classic WindowShell's event): R1 opens it here.
   const navigateTo = useRef(navigate);
   useEffect(() => { navigateTo.current = navigate; });
-  // Settings' "Find anything" row opens the same palette as Ctrl K.
+  // Settings' "Find anything" row opens the same palette as Ctrl K, once the engine offers search.
   useEffect(() => {
-    const open = () => setFinding(true);
+    const open = () => { if (availability(engine, "sessions.search") !== "no") setFinding(true); };
     window.addEventListener(FIND_ANYTHING_EVENT, open);
     return () => window.removeEventListener(FIND_ANYTHING_EVENT, open);
-  }, []);
+  }, [engine]);
   useEffect(() => {
     // Ctrl/Cmd+Shift+T opens the Inbox, as in the preview (preview.html:40670, 42502).
     const key = (event: KeyboardEvent) => {
@@ -363,16 +368,34 @@ export function R1Window({ session }: { session: SaplingSession }) {
     if (isGraftedContactKey(key) && route.kind === "chat" && !graftedKey && graftedContactOf(snapshot.sessionKey) === key) return;
     navigate({ kind: "chat", key });
   };
-  // + › New Trunk and the Grove's Trunk button: a random Trunk, its conversation, then the two questions above the box.
+  // + › New Trunk and the Grove's Trunk button: the sheet (face, name, shape, colour), then the chat questions.
   const [newTrunkFlow, setNewTrunkFlow] = useState<NewTrunk | null>(null);
+  const [newTrunkOpen, setNewTrunkOpen] = useState(false);
+  const [newTrunkBusy, setNewTrunkBusy] = useState(false);
+  const [newTrunkError, setNewTrunkError] = useState<string | null>(null);
+  const makingTrunk = useRef(false);
   const trunkActions = useMemo(() => conversationActions((method, params) => session.request(method, params), list, () => session.getSnapshot().mainKey), [session, list]);
-  const newTrunk = async () => {
+  const newTrunk = useCallback(() => { setNewTrunkError(null); setNewTrunkOpen(true); }, []);
+  useEffect(() => {
+    window.addEventListener(OPEN_NEW_TRUNK_SHEET, newTrunk);
+    return () => window.removeEventListener(OPEN_NEW_TRUNK_SHEET, newTrunk);
+  }, [newTrunk]);
+  const confirmNewTrunk = async (draft: NewTrunkDraft) => {
+    if (makingTrunk.current) return;
+    makingTrunk.current = true;
+    setNewTrunkBusy(true);
+    setNewTrunkError(null);
     try {
-      const flow = await makeRandomTrunk(engine, agentId => trunkActions.create(agentId));
-      if (!flow) return;
-      setNewTrunkFlow(flow);
-      openConversation(flow.sessionKey);
-    } catch (e) { setNotice(e instanceof Error ? e.message : String(e)); }
+      const agentId = await createShapedTrunk(engine, draft);
+      await waitForTrunk(engine, agentId);
+      const sessionKey = await trunkActions.create(agentId);
+      setNewTrunkOpen(false);
+      if (!sessionKey) return;
+      const name = draft.name.trim();
+      setNewTrunkFlow({ agentId, sessionKey, name, avatar: "classic", colour: draft.colour, shape: draft.shape });
+      openConversation(sessionKey);
+    } catch (e) { setNewTrunkError(creationProblem(e)); }
+    finally { makingTrunk.current = false; setNewTrunkBusy(false); }
   };
   // Customize's Use: the command goes into the default Trunk's composer as a draft, and the conversation opens.
   const promptKey = session.getSnapshot().mainKey;
@@ -420,10 +443,14 @@ export function R1Window({ session }: { session: SaplingSession }) {
   const petWaiting = waitingRow ? mainTitle(conversations.rows, waitingRow.agentId) || waitingRow.title : null;
   const sidebar = <Sidebar onNewTrunk={() => void newTrunk()} session={session} ready={ready} list={list} sessions={conversations.rows} mainKey={snapshot.mainKey}
     currentKey={route.kind === "chat" ? graftedKey ?? graftedContactOf(snapshot.sessionKey) ?? snapshot.sessionKey : null} waiting={waiting} contacts={contactsState} searchRef={search} onOpen={openConversation}
-    onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} onTour={() => setTour("full")} error={conversations.error} />;
+    onSettings={page => navigate({ kind: "settings", page })} onPlace={place => navigate({ kind: "place", place })} onTour={() => setTour("full")} error={conversations.startup ? null : conversations.error} />;
+  // The open Trunk is still getting ready (the engine's startup refusal, by code): one calm line above the chat, in the
+  // composer's words, instead of the engine's text in red here, in the sidebar and in the composer (StartupLine.tsx).
+  const startup = ready && snapshot.error ? snapshot.startup ?? null : null;
+  const startupName = trunks.list.find(trunk => trunk.id === agentIdOf(snapshot.sessionKey ?? ""))?.name || speaker;
   const main = route.kind === "settings" && !r1SettingsPage(route.page, settingsPages) ? <ClassicSettingsFrame keepLevel page={CLASSIC_PAGE[route.page] ?? route.page} heading={(R1_PAGE_SPECS as Record<string, { title: string } | undefined>)[r1PageFor(route.page)]?.title} backName={name || "Conversation"} engine={engine} onPage={page => navigate({ kind: "settings", page })} onBack={() => navigate({ kind: "chat", key: snapshot.sessionKey })} /> : route.kind === "settings" ? <SettingsFrame engine={engine} page={route.page} pages={settingsPages} places={SETTINGS_PLACES} {...settingsSearch} onAsk={ready ? askTrunk : undefined} onPage={page => navigate({ kind: "settings", page })} onOpenPlace={id => { const place = PLACES.find(p => p.id === id); if (place) navigate({ kind: "place", place: place.id }); }} /> : graftedKey ? <GraftedEmpty name={name} state={graftedNone?.key === graftedKey ? (graftedNone.error ? "error" : "none") : "looking"} /> : route.kind === "place" ? <PlaceView place={route.place} r1 usePrompt={usePromptText} engine={engine} createTrunk={() => void newTrunk()} facts={{ running: conversations.rows.filter(row => row.working).length, waiting: waiting.size }} openConversation={openConversation} openPlace={place => navigate({ kind: "place", place })} openSettings={page => navigate({ kind: "settings", page })} /> : changes ? <R1Changes key={snapshot.sessionKey ?? "none"} engine={engine} name={name} onClose={closeChanges} /> : stage ? <R1Stage key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={name} mode={stage} blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)}
     onMode={setStage} onClose={closeStage} onChooseComputer={() => navigate({ kind: "settings", page: "devices" })} onPip={small => { setPip(small); setStage(null); }} /> : <>{threads.above}<ChatView
-    name={speaker} history={threads.history ?? snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
+    startupWaiting={Boolean(startup)} name={speaker} history={threads.history ?? snapshot.history} historyReady={snapshot.historyReady} live={snapshot.live} pendingUser={snapshot.pendingUser} queued={snapshot.queued} steered={snapshot.steered} running={Boolean(snapshot.liveRunId)} ended={snapshot.ended}
     engine={engine} sessionKey={snapshot.sessionKey} examplesWhy={examples?.key === snapshot.sessionKey ? examples.why : undefined} onAnswer={(id, answer) => void session.answer(id, answer)} asks={approvals.asks} onAsk={(id, reply) => void approvals.answer(id, reply)} lockdown={lockdown.on} onReload={() => void session.reload()} onOpenSession={openConversation} onToast={setNotice}
     onStart={ready ? (text) => void session.send(text) : undefined} onReply={setReplyTo} onOpenHelpers={() => setHelpersView(open => ({ key: snapshot.sessionKey, focus: (open?.focus ?? 0) + 1 }))} room={room.thread}
   /></>;
@@ -479,7 +506,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     {/* While the card is open, the window it covers steps aside: hidden and out of the Tab order (README item 48). */}
     <div className="r1-ob-behind" inert={behind} aria-hidden={behind || undefined} style={{ display: "contents", visibility: behind ? "hidden" : undefined }}>
     <Frame sidebar={sidebar} main={shown} freeLayout={threads.layout === "free"} topics={chat ? threads.column ?? undefined : undefined} beside={talk.beside} pane={details ?? (pane && ready && chat ? <R1SidePane key={snapshot.sessionKey ?? "none"} engine={engine} name={name} title={name || "Conversation"}
-      blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={setNotice} onReload={() => void session.reload()} /> : undefined)} navigationKey={JSON.stringify(route)} notice={ready ? snapshot.error ?? notice : "Reconnecting…"} header={{
+      blocks={[...snapshot.history, ...snapshot.live]} running={Boolean(snapshot.liveRunId)} tab={pane} onTab={setPane} onClose={() => setPane(null)} toast={setNotice} onReload={() => void session.reload()} /> : undefined)} navigationKey={JSON.stringify(route)} notice={!ready ? "Reconnecting…" : startup ? <StartupLine engine={engine} name={startupName} startup={startup} /> : snapshot.error ?? notice} header={{
       title: route.kind === "chat" ? name || "Conversation" : route.kind === "settings" ? "Settings" : placeTitle(route.place),
       face: room.header && chat ? room.header.faces(24) : graftedKey || graftedContactOf(snapshot.sessionKey) ? <GraftedFace name={name} size={24} /> : <Face size={24} label={name} />, pillRef: pill, engine, onOpen: ready && route.kind === "chat" ? () => { setPane(null); setAgentOpen(open => !open); } : undefined,
       right: route.kind === "chat" ? [
@@ -491,7 +518,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
       ] : talk.item ? [talk.item, ...DEFAULT_TOOLS] : undefined,
       canBack: history.index > 0, canForward: history.index < history.count - 1, onBack: () => { if (history.index > 0) window.history.back(); }, onForward: () => { if (history.index < history.count - 1) window.history.forward(); },
     }} composer={chat ? <><ThreadExtras session={session} ready={ready} name={speaker} row={current ?? null} history={snapshot.history} ended={snapshot.ended}
-      empty={snapshot.historyReady !== false && !snapshot.history.length && !snapshot.pendingUser && !snapshot.liveRunId} onOpen={openConversation} />{newTrunkFlow && newTrunkFlow.sessionKey === snapshot.sessionKey ? <NewTrunkCard engine={engine} flow={newTrunkFlow} onDone={() => setNewTrunkFlow(null)} onChangeLook={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: newTrunkFlow.agentId, view: "edit" } })); }} /> : null}<Composer name={speaker} placeholder={room.placeholder} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}
+      empty={snapshot.historyReady !== false && !snapshot.history.length && !snapshot.pendingUser && !snapshot.liveRunId} onOpen={openConversation} />{newTrunkFlow && newTrunkFlow.sessionKey === snapshot.sessionKey ? <NewTrunkCard engine={engine} flow={newTrunkFlow} onDone={(name) => { setNewTrunkFlow(null); notify(newTrunkReadyLine(name)); }} onChangeLook={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: newTrunkFlow.agentId, view: "edit" } })); }} /> : null}<Composer startupShown={Boolean(startup)} name={speaker} placeholder={room.placeholder} replyTo={replyTo} onClearReply={() => setReplyTo(null)} engine={engine} working={Boolean(snapshot.liveRunId)} offline={!ready} limits={limits} row={current} topics={topics} running={running} mainKey={snapshot.mainKey?.split(":").slice(2).join(":") || "main"}
       petWaiting={petWaiting} lockdown={lockdown.on} onToggleLockdown={lockdown.supported ? () => void lockdown.toggle() : undefined}
       onSend={(text, extras, id) => { setReplyTo(null); void session.send(text, extras, id); }} onStop={() => void session.stopRun()} onToast={setNotice} onOpenConversation={openConversation} onOpen={target => {
       if (target === "settings/accounts/add") { sessionStorage.setItem("branch.openAddAccount", "1"); navigate({ kind: "settings", page: "accounts" }); }
@@ -501,16 +528,16 @@ export function R1Window({ session }: { session: SaplingSession }) {
     }} /></> : undefined} onShortcut={action => {
       if (action === "settings") navigate({ kind: "settings", page: "appearance" });
       else if (action === "nextConversation" && rows.length) { const index = rows.findIndex(row => row.key === snapshot.sessionKey); openConversation(rows[(index + 1) % rows.length].key); }
-      // Ctrl K focuses the sidebar search; a second Ctrl K, from the search, opens Find anything (CHANGELOG-PASS17 line 156).
-      else if (action === "palette" && document.activeElement === search.current) setFinding(true);
-      else { search.current?.focus(); }
+      // Ctrl K or Cmd K opens Find anything when this engine can search. Focusing the sidebar field stays on its own shortcut.
+      else if (action === "palette") { if (availability(engine, "sessions.search") !== "no") setFinding(true); }
+      else search.current?.focus();
     }} />
     {chat && !stage && characterShown ? <R1Character name={current ? mainTitle(conversations.rows, current.agentId) || name : name} snapshot={snapshot} waiting={snapshot.sessionKey ? waiting.get(snapshot.sessionKey) ?? 0 : 0}
       onHide={() => setCharacterShown(false)} onShow={() => setCharacterShown(true)} onChangePet={() => navigate({ kind: "settings", page: "appearance" })}
       onOpenTrunk={() => { navigate({ kind: "place", place: "people" }); window.dispatchEvent(new CustomEvent("branch:open-trunk", { detail: { agentId: current?.agentId ?? engine.agentId, view: "profile" } })); }} /> : null}
     </div>
-    {/* Find anything is a shortcut, not a control: it registers hidden with the call its message rows need. */}
-    <Coming engine={engine} need="sessions.search" hidden reason={FIND_ANYTHING_NAMES_ONLY} where="Find anything"><span /></Coming>
+    {/* The shortcut is not a button. It still names sessions.search, so an engine without search does not open the sheet. */}
+    <Coming engine={engine} need="sessions.search" hidden where="Find anything"><span /></Coming>
     {finding && <FindAnything session={session} ready={ready} list={list} conversations={conversations.rows.filter(row => !row.system && !row.archived && !row.helper)} current={current}
       lockdownOn={lockdown.on} onToggleLockdown={lockdown.supported ? () => void lockdown.toggle() : undefined} onOpenConversation={openConversation}
       onPlace={place => navigate({ kind: "place", place })} onSettings={page => navigate({ kind: "settings", page })} onSetup={() => firstRun.open(0)}
@@ -520,6 +547,7 @@ export function R1Window({ session }: { session: SaplingSession }) {
     <WhatsNewHost session={session} ready={ready} onSettings={page => navigate({ kind: "settings", page })} onSearch={() => search.current?.focus()} onSetup={() => firstRun.open(0)} onNotice={setNotice} />
     <QuickAskHost session={session} ready={ready} list={list} onOpen={openConversation} onNotice={setNotice} />
     {pip && chat && !stage ? <R1StagePip key={snapshot.sessionKey ?? "none"} engine={engine} gatewayUrl={session.gatewayUrl} name={name} computer={pip} blocks={[...snapshot.history, ...snapshot.live]} onOpen={() => { setStage(pip.kind === "browser" ? "Browser" : "Computer"); setPip(null); }} onClose={() => setPip(null)} /> : null}
+    {newTrunkOpen ? <NewTrunkSheet count={trunks.list.length} busy={newTrunkBusy} error={newTrunkError} onClose={() => { if (!newTrunkBusy) setNewTrunkOpen(false); }} onCreate={(draft) => void confirmNewTrunk(draft)} /> : null}
     <Toasts />
     <R1ExtraDialogs engine={engine} ready={ready} limits={limits} working={workingKeys} />
     <ApprovalsLayer engine={engine} ready={ready} approvals={approvals} more={problems} sessionKey={route.kind === "chat" ? snapshot.sessionKey : null} view={route.kind === "chat" ? "chat" : "other"} onOpen={openConversation} />

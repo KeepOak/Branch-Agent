@@ -16,6 +16,7 @@ import { isTrigger, jobName } from "./model";
 import { Field, SwitchRow, type Trunk } from "./Proposal";
 import { JobRow, rowMenuItems, trunkNameOf } from "./Rows";
 import { canAdmin, saveDraft } from "./Scheduled";
+import { EmailTrigger } from "./EmailTrigger";
 import { Section, ToolRow } from "./Sections";
 import { Sheet } from "./Sheet";
 import { RemoveDialog } from "./Dialogs";
@@ -112,6 +113,7 @@ export function TriggersTab({ engine, level, openConversation }: { engine: Windo
   }).filter(i => !("label" in i) || !["Duplicate", "Change where it sends…", "When it fails…"].includes(i.label)) : [];
   return <div className="au-tab">
     <p className="au-hint">Work that starts when something happens.</p>
+    <EmailTrigger engine={engine} trunks={data?.trunks ?? []} canWrite={write} />
     <form className="au-describe" onSubmit={e => { e.preventDefault(); if (words.trim()) { setError(""); setCard({ task: words.trim(), agentId: data?.defaultId || "", every: "30", script: "", once: false }); setWords(""); } }}>
       <input className="inp" aria-label="Describe a new trigger" placeholder={"Describe it: “when a PDF lands in Downloads, summarise it”"} value={words} disabled={!write} title={write ? undefined : "Needs an owner"} onChange={e => setWords(e.target.value)} />
       <button type="submit" className="btn pri" disabled={!write || !words.trim()}>Add</button>

@@ -16,7 +16,12 @@ function pendingAskChips(history: readonly Block[]): string[] | undefined {
 }
 
 /** Words a yes/no question opens with: a helping verb ("Is it…", "Should I…", "Don’t you…") or "okay/ready to…". */
-const YES_NO_OPENER = /^(?:(?:am|is|are|was|were|do|does|did|can|could|will|would|shall|should|may|might|must|have|has|had|need|want)(?:n['\u2019]t)?|won['\u2019]t|ok|okay|ready|happy)\b/i;
+const YES_NO_OPENER = /^(?:(?:am|is|are|was|were|do|does|did|can|could|will|would|shall|should|may|might|must|have|has|had|need|want)(?:n['\u2019]t)?|won['\u2019]t)\b|^(?:ok|okay|ready|happy)\s+(?:to|with|for)\b/i;
+/**
+ * A modal addressed to the reader ("Can you…", "Could you…", "Would you…", "Will you…", "Should you…") asks for
+ * something rather than whether a statement holds, so it never gets Yes and No.
+ */
+const MODAL_REQUEST = /^(?:(?:can|could|will|would|shall|should)(?:n['\u2019]t)?|won['\u2019]t)\s+you\b/i;
 /** A tag that asks for a yes: "…, right?", "…, okay?", "Sound good?". */
 const YES_NO_TAG = /(?:^|,\s*)(?:right|ok|okay|yes|correct|sound good|sounds good|good to go|all good)\?$/i;
 /** Lead-in words before the question itself: "So, is it…", "And should I…". */
@@ -24,11 +29,13 @@ const LEAD_IN = /^(?:(?:so|and|but|also|ok|okay|alright|then|now|great|cool)\s*,
 
 /**
  * Only a question that can be answered yes or no gets Yes and No: never a greeting like "What's up?", a question
- * that asks what, how or which, or one that offers a choice ("A or B?").
+ * that asks what, how or which, one that offers a choice ("A or B?"), or a request ("Could you elaborate?").
+ * Prefer no chip to guessing: a question mark alone does not imply a binary choice.
  */
 export function isYesNoQuestion(question: string): boolean {
   const q = question.trim().replace(LEAD_IN, "");
   if (/\bor\b/i.test(q) && !/\bor not\?$/i.test(q)) return false;
+  if (MODAL_REQUEST.test(q)) return false;
   return YES_NO_OPENER.test(q) || YES_NO_TAG.test(q);
 }
 
@@ -46,7 +53,7 @@ export function suggestionsFor(history: readonly Block[], running: boolean, pend
   const lower = words.toLowerCase();
   const answer: string[] = [];
   const question = words.match(/[^.!?]*\?\s*$/)?.[0]?.trim();
-  if (question) {
+  if (question && !/\bor\b/i.test(question)) {
     const offer = question.match(/^(?:want me to|shall i|should i|do you want me to)\s+(.+?)\?$/i);
     if (offer && / and /i.test(offer[1])) {
       const [a] = offer[1].split(/ and /i);

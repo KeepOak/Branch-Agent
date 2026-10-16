@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { readScreens, loadScreens } from './manifest.mjs';
 import { previewScreenPatch, previewState } from './preview.mjs';
 
@@ -11,6 +12,11 @@ test('screens loader accepts the committed tour and rejects unasserted clicks', 
     assert.ok(screens.some((screen) => screen.id === id), `missing ${id}`);
   }
   assert.equal(screens.at(-1).id, 'browser-stage');
+  // The tour matches text exactly, so the blank-browser assertion must be copy the view still renders.
+  const browserCopy = await readFile(new URL('../../window/src/stage/BrowserView.tsx', import.meta.url), 'utf8');
+  const browserAssert = screens.at(-1).steps.at(-1);
+  assert.equal(browserAssert.action, 'assert');
+  assert.ok(browserCopy.includes(`"${browserAssert.target}"`), `BrowserView.tsx does not render "${browserAssert.target}"`);
   const rowMenu = screens.find((screen) => screen.id === 'row-menu');
   assert.ok(rowMenu.steps.some((step) => step.action === 'contextmenu'));
   assert.match(rowMenu.steps[0].target, /Research notes/);

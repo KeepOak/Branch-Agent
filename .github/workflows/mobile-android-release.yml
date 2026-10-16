@@ -207,16 +207,55 @@ jobs:
             node mobile/scripts/android-release.mjs --sha256 "$apk_path" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Reject a debug-signed APK
+      - name: Verify APK signature
         env:
           APK_PATH: ${{ steps.stage.outputs.apk_path }}
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_RELEASE_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          certs="$(apksigner verify --print-certs "$APK_PATH")"
+          
+          # Run apksigner verify and capture the full output
+          if ! certs="$(apksigner verify --print-certs "$APK_PATH" 2>&1)"; then
+            echo "APK signature verification failed or APK is unsigned" >&2
+            echo "$certs" >&2
+            exit 1
+          fi
+          
+          # Reject debug-signed APKs
           if printf '%s\n' "$certs" | grep -F -q 'CN=Android Debug'; then
             echo "Release APK is signed with the Android Debug certificate" >&2
             exit 1
           fi
+          
+          # Verify the certificate fingerprint matches the expected release key
+          if [[ -z "${EXPECTED_CERT_SHA256}" ]]; then
+            echo "ANDROID_RELEASE_CERT_SHA256 is not set; cannot verify certificate fingerprint" >&2
+            exit 1
+          fi
+          
+          # Extract SHA-256 digest from apksigner output
+          actual_sha256="$(printf '%s\n' "$certs" | grep -oP 'Signer #1 certificate SHA-256 digest: \K[a-fA-F0-9:]+' | head -1)"
+          
+          if [[ -z "${actual_sha256}" ]]; then
+            echo "Could not extract SHA-256 certificate fingerprint from apksigner output" >&2
+            echo "apksigner output:" >&2
+            echo "$certs" >&2
+            exit 1
+          fi
+          
+          # Lowercase and strip colons/whitespace on BOTH sides (GitHub var vs apksigner/keytool).
+          actual_normalized="$(node mobile/scripts/android-release.mjs --normalize-cert-sha256 "$actual_sha256")"
+          expected_normalized="$(node mobile/scripts/android-release.mjs --normalize-cert-sha256 "$EXPECTED_CERT_SHA256")"
+          
+          if [[ "${actual_normalized}" != "${expected_normalized}" ]]; then
+            echo "Certificate fingerprint mismatch" >&2
+            echo "Expected: ${EXPECTED_CERT_SHA256}" >&2
+            echo "Actual:   ${actual_sha256}" >&2
+            exit 1
+          fi
+          
+          echo "✓ APK signature verified"
+          echo "✓ Certificate fingerprint matches release key: ${actual_sha256}"
 
       - name: Upload the APK as a workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

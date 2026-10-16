@@ -6,9 +6,9 @@ import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 
 import { homedir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { engineSignature, loadConfig, resolveEngineDir, type DesktopConfig } from "./config";
-import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
+import { deactivateGateway, drainStopGateway, gatewayActivity, GatewayReadinessTimeoutError, killGatewayAndWait, portIsFree, prepareStandbyGateway, readToken, rollbackGateway, runEngineLinger, runEngineServiceAction, sendStandbyTakeOver, setEnginePriority, startGateway, stopEnginePid, stopFailedEngine, stopGateway, stopGatewayCleanly, stopWarmingStandby, takeOverStandby, waitForReady, type PreparedGateway } from "./gateway";
 import { attachOrStartEngine, childModeSettingsLine, engineAnswers, launchdJob, nodeVolumeReader, readEngineHealth, readServiceLogsSince, restartStoppedServiceEngine, serviceCannotRunReason, serviceLogPaths, serviceLogSizes, serviceVolumeBlock, takeChildModeNotice, takeCrashStormNotice, waitForEngineAnswer } from "./engine-service";
-import { createRunKeepAwake, POWER_STATE_REFRESH_MS, writePowerState } from "./keep-awake";
+import { appHoldsSleepBlock, claimServiceKeepAwake, createRunKeepAwake, handOffKeepAwake, POWER_STATE_REFRESH_MS, SERVICE_KEEP_AWAKE_CLAIM_MS, writePowerState } from "./keep-awake";
 import { applyGuestWebPreferences, BRANCH_BROWSER_PARTITION, guestAttachDecision, guestPermissionDecision, guestUrlDecision, popupDecision, r1WebPreferences } from "./browser-guest-policy";
 import { ADMISSION_POLL_MS, readAgentAdmission, superviseUpdateAdmission, waitForAgentAdmission } from "./agent-admission";
 import { HANDOFF_RETIRE_HARD_CAP_MS, HANDOFF_RETIRE_KILL_AFTER_MS, HANDOFF_ROLLBACK_TIMEOUT_MS, HANDOFF_STEP_DOWN_TIMEOUT_MS, HANDOFF_TAKE_OVER_TIMEOUT_MS } from "./handoff-timeouts";
@@ -40,7 +40,8 @@ import { DISK_FULL_MESSAGE, diskIsFull, installDiskFullGuard, onDiskFullChange, 
 /** How much of each log the report reads from the end. The time window then keeps only recent lines. */
 const REPORT_TAIL_BYTES = 4 * 1024 * 1024;
 import { checkCandidateBeside, stopCandidate } from "./candidate-check";
-import { clearEngineRecords, retireRecordedEngines } from "./engine-records";
+import { clearEngineRecords, findSurvivingEngine, retireRecordedEngines } from "./engine-records";
+import { fallbackEngineSurvivesQuit, quitLeavesFallbackEngine } from "./fallback-engine";
 import { createUpdateLock, type UpdateLockHandle } from "./update-lock";
 import { createHash } from "node:crypto";
 import type { Tray } from "electron";
@@ -280,6 +281,13 @@ const componentUpdates = createComponentUpdateController(cfg, { stage: stageComp
 let tray: Tray | undefined;
 /** Said once in Settings when this computer runs the engine inside the app (engine-service takeChildModeNotice). */
 let childModeNotice: string | undefined;
+/**
+ * The service fallback was started detached, or this launch attached to one the last session left running.
+ * Quit leaves it only while Keep working stays on (quitLeavesFallbackEngine).
+ */
+let fallbackDetached = false;
+/** Pid of a fallback this launch attached to and does not own as a child. Quit kills it when Keep working is off. */
+let attachedFallbackPid: number | undefined;
 const controls = createDesktopControls({ ...desktopOs(app, cfg, () => tray, TRAY_ICON), onChange: settings => {
   if (engineUpdateReady) sendToBranchWindows("branch-desktop:engine-update", settings.autoApplyUpdates ? "auto-wait" : "ready");
   keepAwake.refresh();
@@ -290,7 +298,7 @@ linger: process.platform === "linux" && cfg.alwaysOn ? {
   get: () => runEngineLinger(cfg, serviceEngineDir(), token, "status"),
   set: async on => { await runEngineLinger(cfg, serviceEngineDir(), token, on ? "on" : "off"); },
 } : undefined,
-notes: () => childModeNotice ? { keepWorking: childModeSettingsLine(childModeNotice) } : {},
+notes: () => childModeNotice ? { keepWorking: childModeSettingsLine(childModeNotice, fallbackDetached && controls.settings().keepWorking) } : {},
 });
 /** True on battery power (false before the app is ready, or where Electron can't say). */
 function onBatteryPower(): boolean {
@@ -782,7 +790,7 @@ async function prepareUpdateStandby(label: string, explicit: boolean): Promise<v
     return;
   }
   try {
-    standby = await prepareStandbyGateway(cfg, resolveEngineDir(cfg), token, standbyWarmTimeoutMs());
+    standby = await prepareStandbyGateway(cfg, resolveEngineDir(cfg), token, standbyWarmTimeoutMs(), fallbackDetached);
     standbyFailures.delete(label);
     log(`update ${label}: standby engine ${standby.child.pid} prepared on port ${standby.port} while the current engine kept serving`);
   } catch (error) {
@@ -1356,8 +1364,16 @@ async function start(): Promise<void> {
   if (install) await pruneWindowsInstall(install, log).catch((error: unknown) => log(`desktop version prune: ${String(error)}`));
   // Shortcuts open the stable launcher at the install root, never a version folder that a prune can remove.
   if (install && !TEST_COPY) void ensureWindowsLauncher(cfg, install, log).catch((error: unknown) => log(`windows launcher: ${String(error)}`));
-  // Engines the last session started and left running (a crash mid-update): retire them before starting our own.
-  await retireRecordedEngines(cfg.dataDir, log);
+  // A fallback the last session left running (Keep working on) is attached to. Every other recorded engine is retired.
+  // Keep working off, and Always on off, retire them all, as before.
+  const survivor = fallbackEngineSurvivesQuit(cfg.alwaysOn === true, controls.settings().keepWorking)
+    ? await findSurvivingEngine(cfg.dataDir, cfg.gatewayPort) : undefined;
+  // Set before the window loads, so a quit during startup leaves this engine and its record.
+  if (survivor) {
+    fallbackDetached = true;
+    attachedFallbackPid = survivor.pid;
+  }
+  await retireRecordedEngines(cfg.dataDir, log, survivor?.pid);
   // Always on: an engine service already serving the gateway port is attached to, never replaced.
   for (const port of cfg.alwaysOn ? [cfg.windowPort] : [cfg.gatewayPort, cfg.windowPort]) {
     if (!(await portIsFree(port))) throw new Error(`port ${port} is already in use; is Branch Agent already running?`);
@@ -1373,7 +1389,9 @@ async function start(): Promise<void> {
   server = await serveWindow(() => servedWindowDir, cfg.windowPort);
   await win.loadURL(windowUrl());
   log(`window loaded after ${Date.now() - launchStarted} ms`);
-  if (await (cfg.alwaysOn ? attachServiceEngine() : bootSelectedEngine())) {
+  if (survivor) {
+    log(`attached to the engine left running when Branch was closed (pid ${survivor.pid}, port ${survivor.port})`);
+  } else if (await (cfg.alwaysOn ? attachServiceEngine() : bootSelectedEngine())) {
     await win.loadURL(windowUrl());
     log("Reloaded retained window after component rollback");
   }
@@ -1498,7 +1516,11 @@ async function attachServiceEngine(): Promise<boolean> {
     installService: () => runEngineServiceAction(cfg, engineDir, token, "install", log),
     startService: () => runEngineServiceAction(cfg, engineDir, token, "start", log),
     waitForService: () => waitForEngineAnswer(probe, READY_TIMEOUT_MS),
-    spawnChild: async () => { rolledBack = await bootSelectedEngine(); },
+    spawnChild: async () => {
+      // Keep working on: this child is detached and quit leaves it. Off: today's child, which quit stops.
+      fallbackDetached = fallbackEngineSurvivesQuit(true, controls.settings().keepWorking);
+      rolledBack = await bootSelectedEngine();
+    },
     volumeBlock: () => serviceVolumeBlock([cfg.dataDir, stateDir, engineDir], home, nodeVolumeReader),
     logMark: () => serviceLogSizes(logPaths),
     cannotRunReason: async mark => serviceCannotRunReason(await readServiceLogsSince(logPaths, mark), [join(stateDir, "service-env"), cfg.nodePath],
@@ -1508,6 +1530,9 @@ async function attachServiceEngine(): Promise<boolean> {
   });
   if (result.mode === "child") return rolledBack;
   serviceEngine = true;
+  // The service holds the sleep blocker. Drop any hold taken before attach, and claim power for this app at once.
+  keepAwake.update(false);
+  claimServiceKeepAwake(stateDir);
   // publish-engine.sh never removes the folder named here, and the service runs from it. An engine that was already
   // running keeps its record: after a window-only update the service still runs the folder it started from.
   const running = result.via === "attached" ? serviceEngineDir() : engineDir;
@@ -1551,7 +1576,7 @@ async function bootEngine(engineDir = resolveEngineDir(cfg), confirmUpdate = tru
   if (quitting && !prepared) throw new Error("Branch Agent is quitting");
   const spawned = Date.now();
   const macComputerReason = !prepared && screenControlEnabled() && !macComputerEndpoint ? macComputerDriver?.reason : undefined;
-  const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint, macComputerReason);
+  const child = prepared?.child ?? startGateway(cfg, engineDir, token, false, port, macComputerEndpoint, macComputerReason, fallbackDetached);
   const preparedPid = prepared?.child.pid;
   if (preparedPid !== undefined) saveUnlessDiskFull(() => writeFileSync(join(cfg.dataDir, "gateway.pid"), String(preparedPid)));
   if (prepared) {
@@ -1761,9 +1786,9 @@ async function serviceWork(): Promise<ServiceWork> {
 /** The engine's live state for the tray, from the engine calls the app already makes. */
 function liveEngineState(): Promise<EngineLiveState> {
   return readEngineLiveState({
-    engineUp: async () => serviceEngine ? engineAnswers(cfg.gatewayPort) : engineServing(),
+    engineUp: async () => serviceEngine || (fallbackDetached && !engineRunning()) ? engineAnswers(cfg.gatewayPort) : engineServing(),
     // Honest health: an engine whose agent can't answer says so instead of looking Ready (or Stopped).
-    health: () => readEngineHealth(serviceEngine ? cfg.gatewayPort : gatewayPort),
+    health: () => readEngineHealth(serviceEngine || (fallbackDetached && !engineRunning()) ? cfg.gatewayPort : gatewayPort),
     window: () => probeWindowState(),
     engineRuns: serviceEngine || !gateway ? undefined : async () => {
       const activity = await gatewayActivity(gateway!);
@@ -1807,7 +1832,7 @@ function watchTrayStatus(): void {
     void liveEngineState().then(state => {
       working = state.running && state.workingTrunks > 0;
       showTrayStatus(tray, state);
-      keepAwake.update(working);
+      keepAwake.update(appHoldsSleepBlock(serviceEngine) && working);
       notifier.observe(state);
     }).finally(() => { reading = false; schedule(working); });
   };
@@ -1820,6 +1845,7 @@ function watchTrayStatus(): void {
 function watchPowerSource(): void {
   const stateDir = join(cfg.dataDir, "home", ".branch");
   const tell = () => {
+    if (serviceEngine) claimServiceKeepAwake(stateDir);
     writePowerState(stateDir, onBatteryPower());
     keepAwake.refresh();
   };
@@ -1830,7 +1856,11 @@ function watchPowerSource(): void {
   }
   const timer = setInterval(tell, POWER_STATE_REFRESH_MS);
   timer.unref();
-  app.once("will-quit", () => clearInterval(timer));
+  // serviceEngine is still false here; it becomes true only after the service attaches. The interval checks the
+  // live flag so the claim stays inside the engine's 20 second window for the whole time this app is open.
+  const claim = setInterval(() => { if (serviceEngine) claimServiceKeepAwake(stateDir); }, SERVICE_KEEP_AWAKE_CLAIM_MS);
+  claim.unref();
+  app.once("will-quit", () => { clearInterval(timer); clearInterval(claim); });
 }
 
 /** Tray "Pause all work": the window stops every live run through the same calls as its own Pause all. */
@@ -1868,8 +1898,13 @@ async function stopCompletely(): Promise<void> {
 
 /** Quitting stops an idle engine cleanly, so the next launch skips the stale-lease integrity pass. */
 let quitAfterCleanStop = false;
+/** The detached fallback stays up. Keep working off, Always on off, and a handoff in flight still stop it. */
+function fallbackKept(): boolean {
+  return quitLeavesFallbackEngine(fallbackDetached, controls.settings().keepWorking, retiring.size > 0);
+}
 function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
-  if (quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
+  // A detached fallback is left running on purpose: quit must not wait on its drain.
+  if (fallbackKept() || quitAfterCleanStop || !gateway || !engineRunning() || typeof event?.preventDefault !== "function") return false;
   event.preventDefault();
   quitting = true;
   quitAfterCleanStop = true;
@@ -1883,8 +1918,11 @@ function deferQuitForCleanStop(event: Electron.Event | undefined): boolean {
 function shutdown(): void {
   quitting = true;
   admissionWatch?.abort();
-  // Quit is instant with the engine service: it keeps working and drains on its own timeline.
-  log(serviceEngine ? "quit; the engine service keeps running" : `quit; stopping gateway pid ${gateway?.pid}`);
+  const keep = fallbackKept();
+  const keptPid = gateway?.pid ?? attachedFallbackPid;
+  // Quit is instant with the engine service, and with a detached fallback: each keeps working on its own.
+  log(keep ? `quit; the fallback engine keeps running${keptPid ? ` (pid ${keptPid})` : ""}`
+    : serviceEngine ? "quit; the engine service keeps running" : `quit; stopping gateway pid ${gateway?.pid}`);
   gatewaySupervisor.close();
   serviceWatch.stop();
   stopEngineWatch?.();
@@ -1892,15 +1930,23 @@ function shutdown(): void {
   autoApply.stop();
   stopWindowWatch?.();
   controls.dispose();
-  keepAwake.dispose();
+  if (serviceEngine) handOffKeepAwake(join(cfg.dataDir, "home", ".branch"), keepAwake);
+  else keepAwake.dispose();
   stopCandidate();
   stopWarmingStandby();
-  // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.
-  for (const child of retiring.keys()) stopGateway(child);
+  // A standby is not the fallback engine. Quit always stops it.
   if (standby) stopGateway(standby.child);
   standby = undefined;
-  if (gateway) stopGateway(gateway);
-  clearEngineRecords(cfg.dataDir);
+  if (keep) {
+    // Leave the fallback and its record so the next launch can attach. A handoff in flight never reaches here.
+    gateway?.unref();
+  } else {
+    // A quit mid-handoff stops the stepped-down engine too; a crash leaves its record for the next launch.
+    for (const child of retiring.keys()) stopGateway(child);
+    if (gateway) stopGateway(gateway);
+    else if (attachedFallbackPid !== undefined) stopEnginePid(attachedFallbackPid);
+    clearEngineRecords(cfg.dataDir);
+  }
   void macComputerDriver?.stop();
   server?.close();
   // The next launch starts on the configured port; never leave a moved, dead port for the branch command to dial.

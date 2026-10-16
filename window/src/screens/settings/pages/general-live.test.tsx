@@ -63,7 +63,7 @@ it("uses the preview's rows and words in Writing, The conversation, Summaries, H
   await remount();
   await mount(engineOf().engine, "advanced");
   // The live row comes first; the later-update rows fold under their own line after it, in the table order.
-  expect(labels("Writing").slice(0, 8)).toEqual(["Show “Finish setting up”", "Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Add my location to messages", "Replies in", "After a plan", "Open Branch on"]);
+  expect(labels("Writing").slice(0, 8)).toEqual(["Show “Finish setting up”", "Message box grows with the text", "Check spelling in the message box", "Suggest the rest as I type", "Replies in", "After a plan", "Open Branch on", "Write long messages in your own editor"]);
   await remount();
   await mount(engineOf().engine, "regular");
   expect(labels("Show agents’ work")).toEqual(["Show agents’ work as"]);

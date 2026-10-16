@@ -10,11 +10,12 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { skipReason } from './denylist.mjs';
 import { chooseRegion, chooseScreenClicks } from './targets.mjs';
 import { isPlusMoreRow } from './plus-more.mjs';
+import { addConsoleEvidence, MAX_CONSOLE_PER_KEY } from './console-evidence.mjs';
 import { classifyClick, elementKey, isNoise } from './observe.mjs';
 import { inconsistentOpens, internalNameProblems, rowActionProblems } from './list-checks.mjs';
 import { compareBaseline, formatGate, normalizeBaseline } from './baseline.mjs';
@@ -82,6 +83,95 @@ function signature(surface) {
 function add(found, key, problems) {
   if (!problems.length) return;
   found[key] = [...new Set([...(found[key] || []), ...problems])].sort();
+}
+
+function consoleShotFile(key) {
+  const slug = String(key).replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'console-error';
+  return `${slug}.jpg`;
+}
+
+function locationText(message) {
+  try {
+    const location = message.location();
+    if (!location?.url) return '';
+    const line = location.lineNumber ?? 0;
+    const column = location.columnNumber ?? 0;
+    return `${location.url}:${line}:${column}`;
+  } catch {
+    return '';
+  }
+}
+
+async function readConsoleStack(message) {
+  let args = [];
+  try { args = message.args(); } catch { return ''; }
+  const parts = [];
+  try {
+    for (const arg of args) {
+      try {
+        const stack = await arg.evaluate((value) => (value instanceof Error ? value.stack || '' : ''));
+        if (stack) parts.push(stack);
+      } catch { /* the page moved on; the text is already kept */ }
+    }
+  } finally {
+    await Promise.all(args.map((arg) => arg.dispose().catch(() => undefined)));
+  }
+  return parts.join('\n');
+}
+
+async function releaseConsoleSource(entry) {
+  const source = entry?.source;
+  if (!source || typeof source.args !== 'function') return;
+  delete entry.source;
+  let args = [];
+  try { args = source.args(); } catch { return; }
+  await Promise.all(args.map((arg) => arg.dispose().catch(() => undefined)));
+}
+
+function pushThrown(errors, error) {
+  if (error instanceof Error) {
+    errors.push({
+      text: error.message ? `${error.name}: ${error.message}` : String(error),
+      stack: error.stack || '',
+    });
+    return;
+  }
+  errors.push({ text: String(error ?? ''), stack: '' });
+}
+
+// The listener only keeps the text. Stacks are read here, and only for the first messages
+// the report will keep, so a noisy page cannot spend the crawl on handles it will drop.
+async function drainErrors(errors, from) {
+  const slice = errors.slice(from).filter((entry) => entry && !isNoise(entry.text));
+  const enrich = slice.slice(0, MAX_CONSOLE_PER_KEY);
+  await Promise.all(enrich.map(async (entry) => {
+    if (!entry.source) return;
+    const stack = await readConsoleStack(entry.source);
+    delete entry.source;
+    if (stack) entry.stack = stack;
+  }));
+  await Promise.all(errors.slice(from).map((entry) => releaseConsoleSource(entry)));
+  return slice.map(({ text, stack }) => ({ text, stack: stack || '' }));
+}
+
+async function saveErrorShot(page, key) {
+  const absolute = resolve(outDir, consoleShotFile(key));
+  try {
+    await page.screenshot({ path: absolute, type: 'jpeg', quality: 40 });
+  } catch {
+    return '';
+  }
+  const rel = relative(root, absolute).replaceAll('\\', '/');
+  if (!rel || rel.startsWith('..') || rel.startsWith('/')) return '';
+  return rel;
+}
+
+async function keepConsoleError(page, found, evidence, key, records) {
+  const useful = (records || []).filter((record) => record?.text && !isNoise(record.text));
+  if (!useful.length) return;
+  add(found, key, ['console-error']);
+  const screenshot = page ? await saveErrorShot(page, key) : '';
+  addConsoleEvidence(evidence, key, useful, { root, screenshot });
 }
 
 async function waitForUrl(url) {
@@ -186,10 +276,14 @@ async function clickOne(page, errors, target) {
   }
   // The wait for a permission prompt is not UI latency, so it is left out of the elapsed time.
   const elapsedMs = Date.now() - started - requestWaitMs;
+  // Read stacks before a recovery navigation replaces the page that logged them.
+  const drained = await drainErrors(errors, errorFrom);
   if (leftThePage && harnessUrl) await page.goto(harnessUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => undefined);
-  const consoleErrors = leftThePage ? [] : errors.slice(errorFrom).filter((line) => !isNoise(line));
+  // A navigation drops the page that logged the error, so those lines are not this click's.
+  const consoleRecords = leftThePage ? [] : drained;
+  const consoleErrors = consoleRecords.map((entry) => entry.text);
   const failedCalls = (after.requests || []).slice(before.requestCount || 0).filter((call) => call && call.ok === false);
-  return { before, after, elapsedMs, consoleErrors, failedCalls, requestTimedOut: requestWait.timedOut, ...classifyClick({ before, after, elapsedMs, consoleErrors, failedCalls }) };
+  return { before, after, elapsedMs, consoleErrors, consoleRecords, failedCalls, requestTimedOut: requestWait.timedOut, ...classifyClick({ before, after, elapsedMs, consoleErrors, failedCalls }) };
 }
 
 async function main() {
@@ -214,8 +308,13 @@ async function main() {
     if (ownServer) await waitForUrl(`${base}/scripts/button-crawl-harness.html`);
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
-    page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
-    page.on('pageerror', (error) => errors.push(String(error)));
+    page.on('console', (message) => {
+      if (message.type() !== 'error') return;
+      let text = '';
+      try { text = message.text(); } catch { text = ''; }
+      errors.push({ text, stack: locationText(message), source: message });
+    });
+    page.on('pageerror', (error) => pushThrown(errors, error));
     await page.goto(harnessUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.locator('[data-connection="ready"]').waitFor({ timeout: 30000 });
     const catalog = await page.evaluate(() => window.__crawl.catalog());
@@ -224,6 +323,7 @@ async function main() {
     for (const place of catalog.places) queue.push({ id: `place:${place}`, route: { kind: 'place', place }, depth: 0, path: [] });
     for (const entry of catalog.settings) queue.push({ id: settingsId(entry.page, entry.level), route: { kind: 'settings', page: entry.page }, level: entry.level, depth: 0, path: [] });
     const found = {};
+    const consoleEvidence = {};
     const checks = [];
     const clicks = [];
     const skipped = [];
@@ -240,19 +340,20 @@ async function main() {
       const screen = queue.shift();
       screenCount += 1;
       const errorFrom = errors.length;
-      await loadScreen(page).catch((error) => errors.push(String(error)));
+      await loadScreen(page).catch((error) => pushThrown(errors, error));
       const opened = await show(page, screen).catch((error) => {
-        errors.push(String(error));
+        pushThrown(errors, error);
         return false;
       });
       if (!opened) {
-        const openErrors = errors.slice(errorFrom).filter((line) => !isNoise(line));
-        if (openErrors.length) add(found, elementKey(screen.id, '(open)'), ['console-error']);
-        checks.push({ screenId: screen.id, complete: true, keys: openErrors.length ? [elementKey(screen.id, '(open)')] : [] });
+        const openErrors = await drainErrors(errors, errorFrom);
+        const openKey = elementKey(screen.id, '(open)');
+        await keepConsoleError(page, found, consoleEvidence, openKey, openErrors);
+        checks.push({ screenId: screen.id, complete: true, keys: openErrors.length ? [openKey] : [] });
         continue;
       }
-      const openErrors = errors.slice(errorFrom).filter((line) => !isNoise(line));
-      if (openErrors.length) add(found, elementKey(screen.id, '(open)'), ['console-error']);
+      const openErrors = await drainErrors(errors, errorFrom);
+      if (openErrors.length) await keepConsoleError(page, found, consoleEvidence, elementKey(screen.id, '(open)'), openErrors);
       const shot = resolve(outDir, `${screen.id.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 80) || 'screen'}.jpg`);
       await page.screenshot({ path: shot, type: 'jpeg', quality: 40 }).catch(() => undefined);
       const keys = [];
@@ -354,6 +455,7 @@ async function main() {
         const key = elementKey(screen.id, el.name);
         screenKeys.push(key);
         add(found, key, result.problems);
+        if (result.problems.includes('console-error')) await keepConsoleError(page, found, consoleEvidence, key, result.consoleRecords);
         clicks.push({ screen: screen.id, label: el.name, region: el.region, problems: result.problems, elapsedMs: result.elapsedMs, ledTo: result.ledTo, requests: result.requests });
         const labelKey = el.name.trim().toLowerCase().replace(/\s+/g, ' ');
         for (const entry of byLabel.get(labelKey) || []) {
@@ -412,6 +514,7 @@ async function main() {
       skipped,
       truncated,
       gated: normalizeBaseline(found),
+      consoleEvidence,
       gate,
       clicks,
       previewMap: {
@@ -430,7 +533,7 @@ async function main() {
       writeFileSync(baselinePath, `${JSON.stringify({ version: 1, problems: normalizeBaseline(found) }, null, 2)}\n`);
       console.log(`wrote ${baselinePath}`);
     }
-    const lines = formatGate(gate);
+    const lines = formatGate(gate, consoleEvidence);
     for (const id of gate.unvisited || []) lines.push(`Screen not crawled (screen cap reached): ${id}`);
     console.log(markdownReport(report));
     if (!gate.ok && process.env.BUTTON_CRAWL_WRITE_BASELINE !== '1') {

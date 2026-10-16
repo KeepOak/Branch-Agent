@@ -65,7 +65,7 @@ export function Frame({ sidebar, main, composer, topics, notice, pane, header, n
       else if (action === "settings" || action === "nextConversation" || action === "palette" || action === "focusSearch") {
         if (onShortcut) {
           event.preventDefault();
-          if (action === "palette" || action === "focusSearch") {
+          if (action === "focusSearch") {
             if (narrow) setDrawer(true); else setWide(true);
             requestAnimationFrame(() => onShortcut(action));
           } else onShortcut(action);

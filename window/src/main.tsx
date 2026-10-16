@@ -7,6 +7,7 @@ import { App } from "./App";
 import { GuestPopout } from "./guest/GuestPopout";
 import { popoutAddress } from "./guest/guest-bridge";
 import { startDesktopTitleBar } from "./connect/title-bar";
+import "./glass/menu-contrast.css";
 
 applySavedTheme();
 applySavedLook(); // the person's theme, accent, fonts and text size before the first draw

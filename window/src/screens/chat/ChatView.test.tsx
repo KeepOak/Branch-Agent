@@ -72,11 +72,14 @@ it("adds a divider after 15 quiet minutes and keeps thoughts inside the steps", 
   expect(steps && steps.type === "steps" ? steps.thoughts.map((t) => t.key) : []).toEqual(["th1"]);
 });
 
-it("keeps the working line under the latest message while the reply streams in word by word", async () => {
+it("keeps one working line above the reply while it streams in word by word", async () => {
   await show({ history: history.slice(0, 1), running: true, live: [] });
-  expect(host.querySelector('[data-testid="working-line"]')!.textContent).toBe("Working");
+  expect(host.querySelector('[data-testid="working-line"]')!.textContent).toMatch(/^Working…/);
   await show({ history: history.slice(0, 1), running: true, live: [{ kind: "text", key: "r2:text:1", text: "Looking in Outlook now", streaming: true }] });
-  expect(host.querySelector('[data-testid="working-line"]')!.textContent).toBe("Working");
+  const line = host.querySelector('[data-testid="working-line"]')!;
+  expect(line.textContent).toMatch(/^Working…/);
+  const reply = host.querySelector('[data-role="assistant"]')!;
+  expect(line.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   const words = [...host.querySelectorAll('[data-testid="streaming"] .r1c-tok')];
   expect(words.map((w) => w.textContent).join("")).toBe("Looking in Outlook now");
   const first = words[0];
@@ -128,14 +131,14 @@ it("every control is wired to the engine or shows Coming, even with no methods a
   await act(async () => bars[bars.length - 1].querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const rows = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')];
   const row = (label: string) => rows.find((b) => b.textContent === label);
-  for (const label of ["Try again", "Read aloud", "Leave out of context"]) expect(coming(row(label)), label).toEqual(["true", true, false]);
+  for (const label of ["Reply", "Retry", "Read aloud", "Leave out of context"]) expect(coming(row(label)), label).toEqual(["true", true, false]);
   expect(rows.filter((b) => !b.dataset.coming).map((b) => b.textContent)).toEqual(["Copy›", "Look inside"]);
   expect(undeclared()).toEqual([]);
   // Your own message: Edit, Branch from here and Put back in context are Coming too.
   await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await act(async () => bars[0].querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
   const mine = [...document.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Message"] [role="menuitem"]')];
-  for (const label of ["Edit", "Branch from here", "Put back in context"]) expect(coming(mine.find((b) => b.textContent === label)), label).toEqual(["true", true, false]);
+  for (const label of ["Reply", "Edit", "Branch from here", "Put back in context"]) expect(coming(mine.find((b) => b.textContent === label)), label).toEqual(["true", true, false]);
   expect(undeclared()).toEqual([]);
 });
 
@@ -151,20 +154,27 @@ it("follows the item 48 glass model: clear conversation and menus, text and cont
   expect(css).toContain(".g-popover:has(> .r1c-menu, > .r1c-react) { background: transparent; backdrop-filter: none;");
 });
 
-it("Regular: a live run is one line, the steps disclosure that says what it works in", async () => {
-  const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: t0 + 40_000 }];
+it("Regular: a live run is one line, the steps disclosure, with the current step in plain words", async () => {
+  const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: Date.now() - 12_000 }];
   await show({ history: history.slice(0, 1), live, running: true }, ["chat.send"]);
   expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
   const disclosure = host.querySelector('[data-testid="steps"] .r1c-steps-text')!;
-  expect(disclosure.textContent).toBe("Working in GitHub");
+  expect(disclosure.textContent).toMatch(/^Working… Using list pull requests · \d+s$/);
   expect(disclosure.classList.contains("r1c-shimmer")).toBe(true);
   expect(host.textContent).not.toContain("so far");
   expect(host.textContent).not.toContain("mcp__");
+  expect(host.querySelectorAll('[data-testid="steps"]')).toHaveLength(1);
+  const fold = host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!;
+  expect(fold.open).toBe(false);
+  await act(async () => fold.querySelector("summary")!.click());
+  expect(host.querySelector(".r1c-step-sub")).toBeNull();
+  expect(host.querySelector(".r1c-step-title")!.textContent).toBe("Using list pull requests");
   await show({ history }, ["chat.send"]);
   expect(host.querySelector('[data-testid="working-line"]')).toBeNull();
+  expect(host.querySelector('[data-testid="steps"] .r1c-steps-text')!.textContent).toBe("Worked for 48s · 2 steps");
 });
 
-it("Advanced: the full live row stays, and the working line sits aligned in the message column", async () => {
+it("Advanced and Technical: the live row keeps the step detail, and the working line sits in the message column", async () => {
   localStorage.setItem("branch.level", "advanced");
   const live: Block[] = [{ kind: "step", key: "l1", outputKey: "r2:l1", tool: "mcp__plugin_github_github__list_pull_requests", title: "KeepOak/Branch-Agent", detail: "", status: "running", at: t0 + 40_000 }];
   await show({ history: history.slice(0, 1), live, running: true }, ["chat.send"]);
@@ -172,6 +182,12 @@ it("Advanced: the full live row stays, and the working line sits aligned in the 
   const line = host.querySelector('[data-testid="working-line"]')!;
   expect(line.textContent).toBe("Working in GitHub");
   expect(line.closest(".r1c-body")).not.toBeNull();
+  const fold = host.querySelector<HTMLDetailsElement>('[data-testid="steps"]')!;
+  if (!fold.open) await act(async () => fold.querySelector("summary")!.click());
+  expect(host.querySelector(".r1c-step-sub")!.textContent).toBe(" · KeepOak/Branch-Agent");
+  localStorage.setItem("branch.level", "technical");
+  await act(async () => { window.dispatchEvent(new StorageEvent("storage", { key: "branch.level" })); });
+  expect(host.querySelector(".r1c-step-sub")!.textContent).toBe(" · KeepOak/Branch-Agent");
   localStorage.removeItem("branch.level");
 });
 
@@ -181,4 +197,57 @@ it("opens find in this conversation with the words a search result asked for", a
   await act(async () => { window.dispatchEvent(new CustomEvent(FIND_EVENT, { detail: { query: "Hartwell" } })); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
   expect(host.querySelector<HTMLInputElement>(".find-bar input")?.value).toBe("Hartwell");
+});
+
+it("offers Edit only on your own last message, Retry on a reply, and Show what it did only at Technical", async () => {
+  const methods = ["chat.send", "sessions.rewind", "session.reactions.set"];
+  const two: Block[] = [
+    { kind: "user", key: "u1", text: "First note.", meta: { entryId: "e1", timestamp: t0 } },
+    { kind: "text", key: "a1", text: "Noted.", streaming: false, meta: { entryId: "e2", timestamp: t0 + 1_000 } },
+    { kind: "user", key: "u2", text: "Second note.", meta: { entryId: "e3", timestamp: t0 + 2_000 } },
+  ];
+  await show({ history: two, onReply: () => undefined }, methods);
+  const open = async (n: number) => {
+    const bars = host.querySelectorAll('[data-testid="hover-bar"]');
+    await act(async () => bars[n].querySelector<HTMLButtonElement>('[aria-label="More for this message"]')!.click());
+    return [...document.querySelectorAll<HTMLElement>('[role="menu"][aria-label="Message"] [role="menuitem"]')].map((b) => b.textContent);
+  };
+  expect(await open(0)).not.toContain("Edit");
+  expect(await open(0)).not.toContain("Retry");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  const reply = await open(1);
+  expect(reply).toContain("Retry");
+  expect(reply).not.toContain("Edit");
+  expect(reply).toContain("Look inside");
+  expect(reply).not.toContain("Show what it did");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(await open(2)).toContain("Edit");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+
+  const room = { isRoom: true, selfId: "me", trunkName: () => "Scout", whereRuns: () => null };
+  const shared: Block[] = [
+    { kind: "user", key: "u1", text: "Mine.", meta: { entryId: "e1", timestamp: t0 } },
+    { kind: "user", key: "u2", text: "Dana wrote this.", meta: { entryId: "e2", timestamp: t0 + 1_000, sender: { kind: "person", id: "dana", name: "Dana" } } },
+  ];
+  await show({ history: shared, room, onReply: () => undefined }, methods);
+  expect(await open(0)).toContain("Edit");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(await open(1)).not.toContain("Edit");
+  await act(async () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+
+  localStorage.setItem("branch.level", "technical");
+  await show({ history: two, onReply: () => undefined }, methods);
+  const technical = await open(1);
+  expect(technical).toContain("Show what it did");
+  expect(technical).not.toContain("Look inside");
+});
+
+it("leaves the Trunk-getting-ready line to the window: no Opening line and no start screen while it waits", async () => {
+  await show({ historyReady: false });
+  expect(host.querySelector('[data-testid="opening"]')).not.toBeNull();
+  await show({ historyReady: false, startupWaiting: true });
+  expect(host.querySelector('[data-testid="opening"]')).toBeNull();
+  expect(host.querySelector('[data-testid="empty-chat"]')).toBeNull();
+  await show({ historyReady: true, startupWaiting: true });
+  expect(host.querySelector('[data-testid="empty-chat"]')).toBeNull();
 });

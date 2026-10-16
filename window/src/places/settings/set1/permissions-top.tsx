@@ -1,6 +1,6 @@
 // Permissions, the custom rows: This PC (the computer's own permissions, which only the desktop app can read), the
 // mode box and "Mode everywhere" (tools.exec.mode, the same engine key behind the composer's modes), Work style,
-// Lockdown, Pinned settings, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
+// Lockdown, who may run commands outside the sandbox (tools.elevated.allowFrom) and connectors.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useState, type ReactNode } from "react";
 import type { WindowEngine } from "../../../connect/engine";
@@ -96,7 +96,7 @@ async function saveMode(cfg: Cfg, mode: string, after: () => Promise<unknown>) {
   if (await cfg.set("tools.exec", { mode, security: null, ask: null })) await after();
 }
 
-const MODE_OPTS = MODE_ROWS.map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
+const MODE_OPTS = MODE_ROWS.filter((r) => !r.gap).map((r) => ({ id: r.engine ? EXEC_OF[r.engine] : "plan", label: r.name, off: blockedReason(r, true) ?? undefined }));
 export function ModeEverywhere({ cfg, agents, reload }: { cfg: Cfg; agents?: RecordValue; reload: () => Promise<unknown> }) {
   const selected = execMode(cfg, agents);
   const lockdown = cfg.get("security.lockdown") === true;
@@ -131,15 +131,6 @@ export function Lockdown({ engine }: { engine: WindowEngine }) {
       <Btn className={lockdown.on ? undefined : "bad"} disabled={!lockdown.loaded || !lockdown.supported} title={lockdown.supported ? undefined : "This engine has no Lockdown switch yet."} onClick={toggleLockdown}>{lockdown.on ? "Turn Lockdown off" : "Turn Lockdown on"}</Btn>
       {lockdown.confirmation}
     </div>
-  );
-}
-
-export function Pinned() {
-  return (
-    <>
-      <Empty>Nothing is pinned.</Empty>
-      <div className="acts" data-row="Pin a setting"><Btn sm disabled><Icon name="plus" small />Pin a setting</Btn><Hint>The engine can’t pin a setting yet.</Hint></div>
-    </>
   );
 }
 

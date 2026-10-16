@@ -9,8 +9,12 @@ import {
   GitHubPermissions, GitHubRow, HubCommand, OwnAccountList, OwnFolder, RestingNow, SelectAccounts, SignInSources, SignOut, TestIt, WhichNext,
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
+import { CUSTOMIZE_PAGE } from "./customize-live";
 import { permissionsSlot } from "./permissions-approvals";
+import { privacySlot } from "./privacy-town";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
+import { WHO_ROWS } from "./who";
+import { Everyone, PeopleButtons, SignedRecords } from "./who-live";
 import { INSTRUCTIONS_ROWS } from "./instructions";
 import { AboutYou, Files } from "./instructions-live";
 import { VOICE_ROWS } from "./voice";
@@ -37,7 +41,7 @@ import { AccentColour, BackgroundPreview, EachTrunk, LightOrDark, PetPick, PetsH
 
 /** Pages re-hosted from Classic (classic-host.tsx), by R1 page id: the Classic page each draws, with all its controls. */
 export const REHOSTED = {
-  who: "people", notifications: "notifications",
+  notifications: "notifications",
   models: "models",
   permissions: "permissions",
   privacy: "usage",
@@ -55,8 +59,13 @@ export const COMING: Partial<Record<keyof typeof REHOSTED, readonly string[]>> =
 export const R1_PAGES: PageSlots = {
   ...Object.fromEntries(Object.entries(REHOSTED).map(([page, classic]) => [page, classicSlot(page as keyof typeof REHOSTED, classic, COMING[page as keyof typeof REHOSTED])])),
   permissions: permissionsSlot,
+  privacy: privacySlot,
   chatapps: { component: ChatAppsPage, rows: CHAT_APP_ROWS },
   trunks: { component: TrunksPage, rows: TRUNK_ROWS },
+  // Who uses Branch: the preview's three cards, with Classic's list of everyone at the top of People.
+  who: { rows: WHO_ROWS, controls: { "who.people.everyone": Everyone, "who.people.open": PeopleButtons, "who.records.signed": SignedRecords } },
+  // Customize is a row page: the kinds hub, Saved prompts and Connected agents are its own cards (customize-live.tsx).
+  customize: CUSTOMIZE_PAGE,
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
   instructions: { rows: INSTRUCTIONS_ROWS, controls: { "instructions.you.file": AboutYou, "instructions.project.files": Files } },
   // Voice & calls: native R1 cards in the preview's order; Classic Voice draws behind its rows (voice-controls.tsx).

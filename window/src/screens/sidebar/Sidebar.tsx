@@ -51,7 +51,7 @@ import { QUICK_ASK_EVENT, QUICK_ASK_NEED } from "../quickask/QuickAskHost";
 import "./sidebar.css";
 
 export type SidebarProps = {
-  /** + › New Trunk: a random character and name, its conversation, and the two questions (R1Window). */
+  /** + › New Trunk: the sheet for a name and a face, then the chat questions (R1Window). */
   onNewTrunk: () => void;
   session: SaplingSession;
   ready: boolean;
@@ -238,7 +238,7 @@ export function Sidebar(p: SidebarProps) {
     { label: "New conversation", icon: menuIcon("chat"), submenu: ordered.length
       ? ordered.map(trunk => ({ label: `with ${trunk.name}${trunk.isDefault ? " (default)" : ""}`, need: NEED.create, onSelect: () => newConversation(trunk.id) }))
       : [{ label: "with a Trunk", off: "Make a Trunk first." }] },
-    { label: "New Trunk", icon: menuIcon("plus"), hint: "random character", need: ["agents.create", NEED.create], onSelect: () => void newTrunk() },
+    { label: "New Trunk", icon: menuIcon("plus"), hint: "name and face", need: ["agents.create", NEED.create], onSelect: () => void newTrunk() },
     { label: "New group", icon: menuIcon("users"), need: "rooms.create", onSelect: () => openNewGroupChat() },
     // Branch's own assistant proposes the Trunk (branch.chat, "new-agent") and makes it only once you say yes.
     { label: "Have Branch make a Trunk", icon: menuIcon("spark"), need: "branch.chat", onSelect: () => setDialog({ kind: "studio" }) },
@@ -290,7 +290,7 @@ export function Sidebar(p: SidebarProps) {
     <div className="r1sb-top">
       {query ? null : <FolderChip rows={rows} folder={folder} onFolder={setFolder} open={foldOpen} onOpen={setFoldOpen} />}
       <TopCapsules query={query} onQuery={setQuery} searchRef={p.searchRef} onSettings={() => p.onSettings("general")} onGrove={() => p.onPlace("office")}
-        plusRef={plusRef} onPlus={() => setPlusOpen(open => !open)} plusDot={anyWaiting} />
+        plusRef={plusRef} onPlus={() => setPlusOpen(open => !open)} plusDot={anyWaiting} engine={engine} />
       {query ? null : <R1FilterSort prefs={prefs} facts={filterFacts(rows, trunks.list, listPeople, readLevel(), prefs, now)} onChange={changePrefs} onSettings={p.onSettings} />}
     </div>
     <nav className="r1sb-list" aria-label="Conversations">

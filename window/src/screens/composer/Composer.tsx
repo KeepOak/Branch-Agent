@@ -3,7 +3,7 @@
 // rewritten); this file only draws it the approved way and joins the parts. Every control is wired or shows Coming.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactElement } from "react";
 import type { Conversation as ListRow } from "../../connect/conversations";
-import { isPreparationPending, preparationLabel } from "../../connect/preparation-status";
+import { isPreparationPending, isPreparationStalled, preparationLabel } from "../../connect/preparation-status";
 import { PASTED_TEXT_CHIP_CHARS } from "../../composer/attachments";
 import { COMPOSE_EVENT } from "../../composer/Composer";
 import { folderContext } from "../../composer/context";
@@ -85,6 +85,8 @@ type Props = {
   placeholder?: string;
   /** The first Trunk waiting on a yes, for the roaming pet's tip (QUEUE item 18). */
   petWaiting?: string | null;
+  /** The window already shows the Trunk getting ready (frame/StartupLine.tsx), so the composer adds no second line for it. */
+  startupShown?: boolean;
 };
 
 type Menu = RowMenu | "plus" | "ring" | null;
@@ -370,7 +372,7 @@ export function Composer(props: Props) {
   const summary = ringSummary(usage, runningCount, context);
   const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : noModel ? "Connect a model to start." : working && hasDraft ? sendTooltip(queueMode) : undefined;
   const placeholder = noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`;
-  const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n));
+  const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n) && !(props.startupShown && (isPreparationPending(n) || isPreparationStalled(n))));
 
   return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
     {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}

@@ -1,5 +1,6 @@
 // JSON and Markdown reports. Preview-map notes are included and are not gated.
 
+import { consoleEvidenceBody } from './console-evidence.mjs';
 import { GATED_PROBLEMS } from './observe.mjs';
 
 export function countProblems(found) {
@@ -55,6 +56,10 @@ export function markdownReport(report) {
     '## Worst 20',
     '',
     worst.length ? worst.join('\n') : 'None.',
+    '',
+    '## Console errors',
+    '',
+    consoleEvidenceBody(report.consoleEvidence),
     '',
     '## Preview reference (does not fail the job)',
     '',

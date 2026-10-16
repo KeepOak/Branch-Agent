@@ -4,7 +4,7 @@
 // thread/useMessageActions (engine calls) or shows Coming. Classic pieces this card doesn't restyle (approval cards,
 // the plan card, helpers, the waiting line, find and the turn rail) are imported, not copied, so nothing that works
 // today is lost.
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { CapabilityProvider, useCapabilityEngine } from "../../connect/capabilities";
 import type { WindowEngine } from "../../connect/engine";
 import type { QueuedMessage, RunEnd, SteeredNote } from "../../connect/session";
@@ -21,7 +21,7 @@ import { copyText, ThreadContext, type ThreadContextValue } from "../../thread/c
 import { ReactionChips } from "../../thread/dialogs";
 import { startersFor } from "../../thread/EmptyState";
 import { FindBar, useFindKey } from "../../thread/FindBar";
-import { shortReason, workingLine } from "../../thread/format";
+import { currentStepWords, liveWorkingLine, shortReason, workingLine } from "../../thread/format";
 import { HelpersChip } from "../../thread/Helpers";
 import { isComputerStep, layout } from "../../thread/layout";
 import type { ApprovalDecision, Block } from "../../thread/model";
@@ -34,7 +34,7 @@ import { useApprovalDetails, useHelpers, useReactions } from "../../thread/useEn
 import { useMessageActions, type MessageChanges, type ReplyTarget } from "../../thread/useMessageActions";
 import { Icon } from "../../shell/icons";
 import { shows, useLevel } from "../../places-nav/level";
-import { blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
+import { answerBelowWorkingLine, blockTime, dividerPositions, entriesOf, useWorkMode, type Entry, type WorkMode } from "./chat-logic";
 import { HoverBar } from "./HoverBar";
 import { NoticeLine, TimeDivider, WorkingLine } from "./lines";
 import { AgentReply, TimeLine, UserBubble } from "./Message";
@@ -62,6 +62,8 @@ export type ChatViewProps = {
   sessionKey?: string | null;
   /** The conversation couldn't be read (chat.history failed). */
   loadError?: string | null;
+  /** Its Trunk is still getting ready: the window's startup line says so above, so no "Opening…" line or start screen here. */
+  startupWaiting?: boolean;
   ended?: RunEnd | null;
   onAnswer: (id: string, decision: "allow-once" | "deny") => void;
   onReload?: () => void;
@@ -135,6 +137,48 @@ function useFollow(root: React.RefObject<HTMLDivElement | null>, signature: stri
   return scroller;
 }
 
+/** A one-second clock for a live reply. The time is read outside render, so the line can show how long the work has taken. */
+const clockListeners = new Set<() => void>();
+let clockNow = 0;
+let clockTimer: ReturnType<typeof setInterval> | undefined;
+function subscribeClock(onChange: () => void): () => void {
+  clockListeners.add(onChange);
+  if (!clockTimer) {
+    clockNow = Date.now();
+    clockTimer = setInterval(() => {
+      clockNow = Date.now();
+      clockListeners.forEach((listener) => listener());
+    }, 1000);
+    queueMicrotask(onChange);
+  }
+  return () => {
+    clockListeners.delete(onChange);
+    if (!clockListeners.size && clockTimer) {
+      clearInterval(clockTimer);
+      clockTimer = undefined;
+    }
+  };
+}
+const readClock = () => clockNow;
+const idleClock = () => 0;
+const noClock = () => () => undefined;
+
+/** How long this live reply has been going, from its first step. */
+function useWorkingElapsed(running: boolean, startedAt: number | undefined): number {
+  const now = useSyncExternalStore(running ? subscribeClock : noClock, running ? readClock : idleClock, idleClock);
+  if (!running || startedAt === undefined || !now) return 0;
+  return Math.max(0, now - startedAt);
+}
+
+function earliestStepAt(blocks: readonly Block[]): number | undefined {
+  let min: number | undefined;
+  for (const block of blocks) {
+    if (block.kind !== "step" || typeof block.at !== "number" || !(block.at > 0)) continue;
+    if (min === undefined || block.at < min) min = block.at;
+  }
+  return min;
+}
+
 function EmptyChat({ name, engine, onStart }: { name: string; engine?: WindowEngine; onStart?: (text: string) => void }) {
   return <div className="r1c-empty" data-testid="empty-chat">
     <Face size={72} label={name} state="idle" reactive />
@@ -186,7 +230,7 @@ export function ChatView(props: ChatViewProps) {
   const loose = here.filter((s) => !blockIds.has(s.ask.id) && !grouped.has(s.ask.id));
   const waitingHere = here.length > 0 || all.some((b) => b.kind === "approval" && b.approval.state === "pending");
   const answerAsk = (id: string, reply: Reply) => props.onAsk?.(id, reply);
-  const { actionsFor, dialog, changes } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, applyReaction: apply });
+  const { actionsFor, dialog, changes } = useMessageActions(ctx, { onReload: props.onReload, onOpenSession: props.onOpenSession, onReply: props.onReply, applyReaction: apply, selfId: props.room ? props.room.selfId : null });
   const root = useRef<HTMLDivElement>(null);
   const liveText = live.reduce((n, b) => n + (b.kind === "text" || b.kind === "thinking" ? b.text.length : 1), 0);
   const signature = history.length + ":" + live.length + ":" + liveText + ":" + (running ? 1 : 0) + ":" + here.length + ":" + (props.queued?.length ?? 0);
@@ -198,7 +242,7 @@ export function ChatView(props: ChatViewProps) {
 
   const historyReady = props.historyReady !== false;
   const waitingCount = (props.queued?.length ?? 0) + ownLine.length;
-  const empty = historyReady && !history.length && !pendingUser && !running && !waitingCount && !props.loadError;
+  const empty = historyReady && !history.length && !pendingUser && !running && !waitingCount && !props.loadError && !props.startupWaiting;
   // As in the Classic thread: with a room, exchanges between Trunks fold (rooms/fold.ts), here into one centred line.
   const inRoom = Boolean(props.room), ownAgentId = props.room?.ownAgentId;
   const entries = useMemo<RoomEntry[]>(() => (inRoom ? roomEntries(foldTalks(layout(history), ownAgentId)) : entriesOf(layout(history))), [history, inRoom, ownAgentId]);
@@ -223,17 +267,21 @@ export function ChatView(props: ChatViewProps) {
   const liveEntries = running ? entriesOf(layout(live.filter((b) => b.kind !== "status"), history.length)) : [];
   // The run's token count (the engine's usage block), as Classic's live-run header shows it; once something visible arrives.
   const usage = running ? live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage") : undefined;
-  // Regular, live: a steps row that ends the run carries the working line in its own summary (one line, a disclosure).
+  // Regular: one quiet working line. It is the steps disclosure when the run has steps, and it stays above the answer.
   const full = shows(useLevel(), "advanced");
-  const workText = workingLine(live);
-  const inlineSteps = running && !full && liveEntries.at(-1)?.type === "steps";
+  const quiet = !full;
+  const elapsed = useWorkingElapsed(running, earliestStepAt(live));
+  const workText = quiet ? liveWorkingLine(currentStepWords(live), elapsed) : workingLine(live);
+  const shownLive = running ? (quiet ? answerBelowWorkingLine(liveEntries) : liveEntries) : [];
+  const lastSteps = shownLive.findLastIndex((entry) => entry.type === "steps");
+  const inlineSteps = quiet && lastSteps >= 0;
   const liveShows = live.some((b) => b.kind === "text" || b.kind === "step" || b.kind === "plan" || b.kind === "preamble" || (b.kind === "approval") || (b.kind === "thinking" && work.mode !== "normal"));
   return <CapabilityProvider engine={capabilities}><ThreadContext.Provider value={ctx}>
     <div className="r1c" ref={root} data-mode={work.mode} data-times={prefs.messageTimes} dir={prefs.dir}>
       {finding ? <FindBar key={finding.nonce} root={root} name={name} signature={signature} initialQuery={finding.query} onClose={() => setFinding(null)} /> : null}
       <div className="r1c-thread">
         {props.loadError ? <NoticeLine tone="bad" text="Couldn’t load this conversation" details={props.loadError} links={props.onReload ? [{ label: "Try again", onClick: props.onReload, need: "chat.history", reason: "This engine can’t read conversations." }] : []} testid="load-error" /> : null}
-        {empty ? <EmptyChat name={name} engine={engine} onStart={props.onStart} /> : !historyReady && !history.length && !props.loadError ? <NoticeLine text="Opening this conversation…" testid="opening" /> : null}
+        {empty ? <EmptyChat name={name} engine={engine} onStart={props.onStart} /> : !historyReady && !history.length && !props.loadError && !props.startupWaiting ? <NoticeLine text="Opening this conversation…" testid="opening" /> : null}
         {entries.map((entry, i) => <Fragment key={entry.type === "item" ? entry.item.block.key : entry.key}>
           {dividers.has(i) && times[i] ? <TimeDivider at={times[i]!} /> : null}
           {entry.type === "talk" ? <ExchangeLine talk={entry.talk} names={exchangeNames} onOpen={setExchange} /> : <EntryView entry={entry} view={view} live={false} />}
@@ -241,8 +289,9 @@ export function ChatView(props: ChatViewProps) {
         {props.room ? <RoomLine history={history} room={props.room} ownName={name} /> : null}
         {pendingUser ? <UserBubble block={{ kind: "user", key: "pending", text: pendingUser }} /> : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="delivered" />
-        {running ? liveEntries.map((entry, i) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live working={inlineSteps && i === liveEntries.length - 1 ? workText : undefined} />) : null}
-        {running && !waitingHere && !inlineSteps ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
+        {running && quiet && !waitingHere && !inlineSteps ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
+        {running ? shownLive.map((entry, i) => <EntryView key={entry.type === "item" ? entry.item.block.key : entry.key} entry={entry} view={view} live working={inlineSteps && i === lastSteps ? workText : undefined} />) : null}
+        {running && !quiet && !waitingHere ? <div className="r1c-row r1c-b"><div className="r1c-gut" /><div className="r1c-body"><WorkingLine label={workText} /></div></div> : null}
         {running && liveShows && usage?.total ? <NoticeLine text={usage.total.toLocaleString() + " tokens so far"} testid="live-usage" /> : null}
         {running ? (props.steered ?? []).map((note) => <NoticeLine key={note.runId} text={"You steered " + name + ": “" + note.text + "”. It takes this at its next step."} testid="steered-note" />) : null}
         <QueuedMessages queued={props.queued ?? []} own={ownLine} part="waiting" sessionKey={props.sessionKey ?? engine?.sessionKey ?? undefined} />
@@ -312,7 +361,7 @@ function EntryView({ entry, view, live, working }: { entry: Entry; view: View; l
     return <div className="r1c-row r1c-b" data-block-key={entry.steps[0]?.key} data-block-keys={entry.steps.map((s) => s.key).join(" ")}>
       <div className="r1c-gut" data-working={(live && view.running) || undefined}>{entry.face ? faceFor(view, live) : null}</div>
       <div className="r1c-body">
-        <StepsList steps={entry.steps} thoughts={entry.thoughts} live={live} mode={view.mode} working={working} />
+        <StepsList steps={entry.steps} thoughts={entry.thoughts} live={live} mode={view.mode} working={working} durationMs={live ? undefined : entry.run?.durationMs} />
         {computer ? <ComputerActivityCard blocks={[...entry.steps, ...turnDoneLines(entry.steps, view.all)]} running={view.running} name={view.name} engine={view.engine} gatewayUrl={view.engine?.gatewayUrl} onWatch={() => undefined} /> : null}
       </div>
     </div>;
