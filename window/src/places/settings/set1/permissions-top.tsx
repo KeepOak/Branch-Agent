@@ -58,13 +58,13 @@ export const THIS_PC_ROWS: [string, ReactNode, string, boolean][] = [
   ["Installing tools", TOOL, "Windows asks for an administrator yes each time. Branch asks you first.", false],
 ];
 
-/** What each system answer reads as on its row. "unknown" shows no pill: the app can't read it, so it doesn't guess. */
+/** What each system answer reads as on its row (preview pill16: Granted / Turned off / Not yet). "unknown" shows no
+ *  pill: the app can't read it, so it doesn't guess. */
 export const STATUS_PILL: Record<Exclude<OsPermissionStatus, "unknown">, { label: string; tone: "ok" | "bad" | "idle" }> = {
-  allowed: { label: "Allowed", tone: "ok" },
-  denied: { label: "Not allowed", tone: "bad" },
-  "not-asked": { label: "Not asked yet", tone: "idle" },
+  allowed: { label: "Granted", tone: "ok" },
+  denied: { label: "Turned off", tone: "bad" },
+  "not-asked": { label: "Not yet", tone: "idle" },
 };
-const CANT_READ = "Branch can’t read this one; System Settings shows whether it’s allowed.";
 
 /** The right side of one permission row: its status, then one action (Allow when the system can still ask, else open settings). */
 function PermissionState({ name, status, openLabel, busy, onAllow, onOpen }: {
@@ -76,11 +76,16 @@ function PermissionState({ name, status, openLabel, busy, onAllow, onOpen }: {
   return (
     <>
       {pill ? <Pill tone={pill.tone}>{pill.label}</Pill> : null}
-      {canAsk ? <Btn sm pri disabled={busy} onClick={onAllow}>Allow</Btn>
-        : status !== "allowed" && openLabel ? <Btn sm title={status === "unknown" ? CANT_READ : undefined} onClick={onOpen}>{openLabel}</Btn>
+      {canAsk ? <Btn sm disabled={busy} onClick={onAllow}>Allow…</Btn>
+        : status !== "allowed" && openLabel ? <Btn sm onClick={onOpen}>{openLabel}</Btn>
         : null}
     </>
   );
+}
+
+/** A failed read, Allow or open: one plain line, the system's own words folded away (preview "What went wrong"). */
+function WentWrong({ error }: { error: string }) {
+  return <div className="hint" role="status"><p>Something went wrong while loading it.</p><details><summary>What went wrong</summary><p>{error}</p></details></div>;
 }
 
 const OS_NAME: Record<string, OsPermission> = { Microphone: "microphone", Camera: "camera", Location: "location", Notifications: "notifications" };
@@ -103,7 +108,7 @@ export function ThisPc() {
           );
         })}
       </Plist>
-      {perms.error ? <Hint>{perms.error}</Hint> : perms.state ? null : <Hint>{copy.why}</Hint>}
+      {perms.error ? <WentWrong error={perms.error} /> : perms.state ? null : <Hint>{copy.why}</Hint>}
     </Sec>
   );
 }
