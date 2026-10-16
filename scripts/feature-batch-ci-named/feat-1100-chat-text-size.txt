@@ -1,3 +1,4 @@
 window:src/places/settings/set1/appearance-chat-size.test.tsx
 window:src/places/settings/set1/appearance-scale.test.tsx
 window:src/places/settings/set1/appearance.test.tsx
+window:src/screens/settings/rows.test.ts

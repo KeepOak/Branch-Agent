@@ -9,6 +9,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
 import { AppearancePage, APPEARANCE_ROWS } from "./appearance";
 import { applySavedLook, forgetLookStore } from "./appearance-store";
+import { APPEARANCE_ROWS as R1_ROWS } from "../../../screens/settings/pages/appearance";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const THEMES = [{ id: "grove", name: "Grove", description: "Grove.", source: "builtin", modes: ["light", "dark"] }];
@@ -89,7 +90,10 @@ describe("Settings › Appearance › Conversation text size", () => {
     expect(composer).toContain("font-size: calc(15px * var(--chat-text, 1));");
   });
 
-  it("is in the settings search", () => {
+  it("is in the settings search and on the R1 Appearance page, on its own key", () => {
     expect(APPEARANCE_ROWS.some((r) => r.title === "Conversation text size" && r.sec === "Reading")).toBe(true);
+    const r1 = R1_ROWS.find((r) => r.id === "appearance.reading.chat-size");
+    expect(r1?.label).toBe("Conversation text size");
+    expect(r1?.source).toEqual({ kind: "look", key: "chatSize" });
   });
 });
