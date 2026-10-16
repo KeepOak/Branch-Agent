@@ -8,6 +8,7 @@ import type { WindowEngine } from "../../../connect/engine";
 import { KitProvider, type SaveReport } from "../kit";
 import { AppearancePage, APPEARANCE_ROWS } from "./appearance";
 import { applySavedLook, forgetLookStore, installScaleKeys, stepScale } from "./appearance-store";
+import { APPEARANCE_ROWS as R1_ROWS } from "../../../screens/settings/pages/appearance";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const THEMES = [{ id: "grove", name: "Grove", description: "Grove.", source: "builtin", modes: ["light", "dark"] }];
@@ -107,7 +108,11 @@ describe("Settings › Appearance › Interface scale", () => {
     expect(stepScale(90, -1)).toBe(90);
   });
 
-  it("is in the settings search", () => {
+  it("is in the settings search and on the R1 Appearance page, on the same key", () => {
     expect(APPEARANCE_ROWS.some((r) => r.title === "Interface scale" && r.sec === "Reading")).toBe(true);
+    const r1 = R1_ROWS.find((r) => r.id === "appearance.reading.scale");
+    expect(r1?.label).toBe("Interface scale");
+    expect(r1?.source).toEqual({ kind: "look", key: "scale" });
+    expect(r1?.options?.map((o) => o.v)).toEqual(["90", "100", "110", "125", "150", "175"]);
   });
 });
