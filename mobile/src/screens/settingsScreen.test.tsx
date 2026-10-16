@@ -189,14 +189,11 @@ describe('r50 settings parity', () => {
   it('uses the desktop Regular groups plus Appearance', async () => {
     await renderSettings();
     expect([...SETTINGS_GROUPS]).toEqual(['General', 'Computer', 'Usage', 'Updates', 'Appearance']);
-    for (const name of SETTINGS_GROUPS) {
-      expect(screen.getByText(name)).toBeOnTheScreen();
-    }
-    expect(screen.getByTestId('general-card')).toBeOnTheScreen();
-    expect(screen.getByTestId('computer-card')).toBeOnTheScreen();
-    expect(screen.getByTestId('usage-card')).toBeOnTheScreen();
-    expect(screen.getByTestId('updates-card')).toBeOnTheScreen();
-    expect(screen.getByTestId('appearance-card')).toBeOnTheScreen();
+    expect(screen.getByTestId('general-card')).toHaveTextContent(/^General/);
+    expect(screen.getByTestId('computer-card')).toHaveTextContent(/^Computer/);
+    expect(screen.getByTestId('usage-card')).toHaveTextContent(/^Usage/);
+    expect(screen.getByTestId('updates-card')).toHaveTextContent(/^Updates/);
+    expect(screen.getByTestId('appearance-card')).toHaveTextContent(/^Appearance/);
   });
 
   it('hides unfinished rows at Regular, and never draws them as Off', async () => {
