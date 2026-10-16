@@ -65,3 +65,36 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Reading fonts (Branch window)
+
+Three fonts ship with the Branch window in `window/public/fonts/reading/` for
+Settings > Appearance > Reading. Each is used unchanged under the SIL Open Font
+License, Version 1.1. The original copyright notices and the full licence text
+ship beside the fonts, verbatim, in `window/public/fonts/reading/OFL.txt`, and
+each font file also carries its notice and licence in its own metadata.
+
+### OpenDyslexic
+
+- Files: `OpenDyslexic-Regular.woff2`, `OpenDyslexic-Bold.woff2`
+- Upstream: https://github.com/antijingoist/opendyslexic (`compiled/`, unmodified)
+- License: SIL Open Font License 1.1
+- Copyright: Copyright (c) 2019-07-29, Abbie Gonzalez (https://abbiecod.es),
+  with Reserved Font Name OpenDyslexic. Copyright (c) 12/2012 - 2019
+
+### Atkinson Hyperlegible
+
+- Files: `AtkinsonHyperlegible-Regular.woff2`, `AtkinsonHyperlegible-Bold.woff2`
+- Upstream: https://www.brailleinstitute.org/freefont (Latin web files from
+  Fontsource, `@fontsource/atkinson-hyperlegible` 5.3.0)
+- License: SIL Open Font License 1.1
+- Copyright: Copyright 2020 Braille Institute of America, Inc.
+
+### Lexend
+
+- Files: `Lexend-Regular.woff2`, `Lexend-Bold.woff2`
+- Upstream: https://github.com/googlefonts/lexend (Latin web files from
+  Fontsource, `@fontsource/lexend` 5.2.11)
+- License: SIL Open Font License 1.1
+- Copyright: Copyright 2019 The Lexend Project Authors
+  (https://github.com/googlefonts/lexend)
