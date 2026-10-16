@@ -22,13 +22,14 @@ function signalExit(pid) {
 }
 const servingOn = async (port) => (await originalFetch(`http://127.0.0.1:${port}/readyz`).then(response => response.status, () => 0)) === 200;
 const EVENTUALLY_DEFAULT_MS = 8000;
-// windows-latest keeps a killed engine's exclusive loopback socket. A short bind burst
-// makes that engine exit, crash recovery spends its attempts, and the fixture then waits
-// out a 30–41s deadline for a process that will never start. Linux and macOS free the
-// socket at once. On EADDRINUSE the engine connects and sends a request. Bytes back mean
-// a live holder and the process exits. No bytes is the closing socket, which can still
-// accept once: the engine closes and binds again for 75s. This deadline stays past that
-// plus waitForGatewayPort (40 × 250ms).
+// windows-latest keeps a killed engine's exclusive loopback socket. A connection to that
+// socket can accept once and send nothing, and the connection keeps the port reserved, so
+// the engine never binds and the fixture waits out this deadline for a process that will
+// never be ready. On Windows the engine binds with exclusive:false (a reserved port, not a
+// listener) and retries that bind without connecting. One later probe: bytes mean a live
+// holder (the test squatter, or an engine that still serves) and the process exits. No
+// bytes means keep binding. Linux and macOS free the socket at once. This deadline stays
+// past a slow Windows bind plus waitForGatewayPort (40 × 250ms).
 const WINDOWS_FIXTURE_DEADLINE_MS = 75_000 + 10_000 + 5_000;
 function fixtureDeadline(timeout = EVENTUALLY_DEFAULT_MS) {
   return process.platform === "win32" ? Math.max(timeout, WINDOWS_FIXTURE_DEADLINE_MS) : timeout;
@@ -176,10 +177,12 @@ if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
   const announce=()=>process.send?.({type:"branch-desktop:standby-ready",pid:process.pid});
   if(fs.existsSync(root+"/hold-standby")){const timer=setInterval(()=>{if(!fs.existsSync(root+"/hold-standby")){clearInterval(timer);announce();}},10);}else announce();
 }
-// Bytes back mean a live holder (the test squatter, or an engine that still serves), so the
-// process exits. A handshake with no bytes is a socket that is still closing: Windows can
-// accept once on it. Close and bind again for 75s, inside the Windows deadline above.
-const listen=()=>{const port=Number(process.argv.at(-1));const bind=()=>listener.listen(port,"127.0.0.1");const again=()=>{if((globalThis.rebinds=(globalThis.rebinds||0)+1)>=1500)process.exit(1);else listener.close(()=>setTimeout(bind,50));};listener.on("error",error=>{if(!error||error.code!=="EADDRINUSE"){process.exit(1);return;}const probe=new net.Socket();let settled=false;let timer;const finish=taken=>{if(settled)return;settled=true;clearTimeout(timer);probe.destroy();if(taken)process.exit(1);else again();};probe.once("error",()=>finish(false));probe.once("data",()=>finish(true));timer=setTimeout(()=>finish(false),400);probe.connect(port,"127.0.0.1",()=>{try{probe.write("GET / HTTP/1.0"+String.fromCharCode(13,10,13,10));}catch{finish(false);}});});bind();};
+// Windows: exclusive:false rebinds a port that is reserved but not listening. A live holder
+// still refuses the bind. Retry the bind without connecting; a connection to a closing
+// socket keeps that reservation. One probe after the first misses: bytes mean a live holder
+// and the process exits. Silence means keep binding, up to 60s on Windows and 5s elsewhere
+// (a squatter must still fail inside the non-Windows "kept" wait).
+const listen=()=>{const port=Number(process.argv.at(-1));const started=Date.now();const limit=process.platform==="win32"?60000:5000;const bind=()=>{if(process.platform==="win32")listener.listen({port,host:"127.0.0.1",exclusive:false});else listener.listen(port,"127.0.0.1");};let probing=false;let probed=false;const retry=()=>{if(Date.now()-started>limit)process.exit(1);else setTimeout(bind,50);};listener.on("error",error=>{if(!error||error.code!=="EADDRINUSE"){process.exit(1);return;}if(probing)return;if(!probed&&Date.now()-started>=500){probed=true;probing=true;const probe=new net.Socket();let settled=false;let timer;const finish=taken=>{if(settled)return;settled=true;clearTimeout(timer);probe.destroy();probing=false;if(taken)process.exit(1);else retry();};probe.once("error",()=>finish(false));probe.once("data",()=>finish(true));timer=setTimeout(()=>finish(false),300);probe.connect(port,"127.0.0.1",()=>{try{probe.write("GET / HTTP/1.0"+String.fromCharCode(13,10,13,10));}catch{finish(false);}});return;}retry();});bind();};
 // As the real engine: a standby binds only after the old engine released state (stepped down, or drained).
 const released=()=>fs.existsSync(root+"/released-"+starts[0])||fs.existsSync(root+"/drained-"+starts[0]);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);process.exit(1);}},10);}
