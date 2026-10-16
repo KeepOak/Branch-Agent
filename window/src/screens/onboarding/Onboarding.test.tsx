@@ -277,7 +277,8 @@ describe("Your first Trunk (step 4)", () => {
     await act(async () => button(host, "Get started").click());
     await flush();
     expect(host.querySelector("h1")?.textContent).toBe("Hi, I’m Branch.");
-    expect(host.querySelector("[role=alert]")?.textContent).toContain("name rejected");
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t save your name. Try again in a moment.");
+    expect(host.textContent).not.toContain("name rejected");
     expect(onLater).not.toHaveBeenCalled();
   });
 

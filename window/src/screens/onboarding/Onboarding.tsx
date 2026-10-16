@@ -59,8 +59,8 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
     try {
       await saveDisplayName(engine, s.name);
       return true;
-    } catch (e) {
-      setNameError(`Couldn’t save your name. ${errorText(e)}`);
+    } catch {
+      setNameError("Couldn’t save your name. Try again in a moment.");
       return false;
     } finally {
       setSaving(false);
