@@ -3,6 +3,7 @@
 // memory.search, doctor.memory.*, config.get for the start-of-conversation limit.
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import { useCallback, useEffect, useState, type FormEvent, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
@@ -30,7 +31,9 @@ export function useMenu() {
     const r = event.currentTarget.getBoundingClientRect();
     setMenu(m => (m ? null : { at: { x: r.left, y: r.bottom + 4 }, items, label }));
   };
-  return { open, element: menu && <Menu at={menu.at} items={menu.items} label={menu.label} onClose={close} /> };
+  // Draw on the body, outside Library's overflow scroller. In-tree menus focused the first
+  // row and the scroller (and its ResizeObserver) jumped; Chrome then logged an occasional error.
+  return { open, element: menu && createPortal(<Menu at={menu.at} items={menu.items} label={menu.label} onClose={close} />, document.body) };
 }
 
 export function MemoryTab(props: MemoryProps) {
