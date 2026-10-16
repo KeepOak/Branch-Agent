@@ -1,12 +1,26 @@
 // Memory the OS can actually hand out for a second engine (candidate check / standby).
 // os.freemem() is only unused pages: on macOS that leaves out inactive and purgeable
-// memory, and on Linux it is MemFree rather than MemAvailable (#459). Windows
-// ullAvailPhys is already the right figure, so it stays on os.freemem().
-import { defaultMemoryNeedBytes, type MemoryMeasure, type MemoryProbe } from "./available-memory-core.mjs";
+// memory, and on Linux it is MemFree rather than MemAvailable (#459). On Windows the gates
+// read the Available Bytes counter (free, zeroed and standby pages), so a host whose RAM
+// sits in standby cache is not read as nearly full (Private #1054).
+import {
+  availableMemory, defaultMemoryNeedBytes, refreshWindowsAvailableMemory,
+  type AvailableMemory, type MemoryMeasure, type MemoryProbe, type WindowsAvailableRefresh,
+} from "./available-memory-core.mjs";
 export { availableMemory, availableMemoryBytes, type AvailableMemory, type MemoryMeasure, type MemoryProbe } from "./available-memory-core.mjs";
 
 /** 6 GB, the shared load rule. Tests replace it with BRANCH_DESKTOP_CANDIDATE_MIN_FREE_MB as an absolute MB floor. */
 export const CANDIDATE_MIN_FREE_MB_DEFAULT = 6144;
+
+/**
+ * Available memory for an update gate. On Windows it first refreshes the Available Bytes
+ * reading (without blocking the main process); elsewhere, and when that read fails, it is
+ * availableMemory() as before.
+ */
+export async function measureAvailableMemory(probe: MemoryProbe = {}, refresh: WindowsAvailableRefresh = {}): Promise<AvailableMemory> {
+  await refreshWindowsAvailableMemory({ platform: probe.platform, ...refresh });
+  return availableMemory(probe);
+}
 
 /** Skip line written to desktop.log when there is not enough room for a second engine. */
 export function candidateCheckSkippedLine(bytes: number, measure: MemoryMeasure): string {
