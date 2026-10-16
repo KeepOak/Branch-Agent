@@ -25,9 +25,10 @@ const EVENTUALLY_DEFAULT_MS = 8000;
 // windows-latest keeps a killed engine's exclusive loopback socket. A short bind burst
 // makes that engine exit, crash recovery spends its attempts, and the fixture then waits
 // out a 30–41s deadline for a process that will never start. Linux and macOS free the
-// socket at once. On EADDRINUSE the engine connects: a connection that stays up is a live
-// holder and the process exits, a refusal is the closing socket and it binds again for 75s.
-// This deadline stays past that plus waitForGatewayPort (40 × 250ms).
+// socket at once. On EADDRINUSE the engine connects and sends a request. Bytes back mean
+// a live holder and the process exits. No bytes is the closing socket, which can still
+// accept once: the engine closes and binds again for 75s. This deadline stays past that
+// plus waitForGatewayPort (40 × 250ms).
 const WINDOWS_FIXTURE_DEADLINE_MS = 75_000 + 10_000 + 5_000;
 function fixtureDeadline(timeout = EVENTUALLY_DEFAULT_MS) {
   return process.platform === "win32" ? Math.max(timeout, WINDOWS_FIXTURE_DEADLINE_MS) : timeout;
@@ -175,10 +176,10 @@ if(process.env.BRANCH_GATEWAY_STANDBY==="1"){
   const announce=()=>process.send?.({type:"branch-desktop:standby-ready",pid:process.pid});
   if(fs.existsSync(root+"/hold-standby")){const timer=setInterval(()=>{if(!fs.existsSync(root+"/hold-standby")){clearInterval(timer);announce();}},10);}else announce();
 }
-// EADDRINUSE while a connect is refused is a socket that is still closing: close and bind again
-// for 75s, inside the Windows deadline above. A connect that is still open after 250ms is a live
-// holder (the test squatter, or the engine that still serves), so the process gives up at once.
-const listen=()=>{const port=Number(process.argv.at(-1));const bind=()=>listener.listen(port,"127.0.0.1");const again=()=>{if((globalThis.rebinds=(globalThis.rebinds||0)+1)>=1500)process.exit(1);else listener.close(()=>setTimeout(bind,50));};listener.on("error",error=>{if(!error||error.code!=="EADDRINUSE"){process.exit(1);return;}const probe=new net.Socket();let settled=false;let timer;const finish=taken=>{if(settled)return;settled=true;clearTimeout(timer);probe.destroy();if(taken)process.exit(1);else again();};probe.once("error",()=>finish(false));timer=setTimeout(()=>finish(probe.readyState==="open"),250);probe.connect(port,"127.0.0.1");});bind();};
+// Bytes back mean a live holder (the test squatter, or an engine that still serves), so the
+// process exits. A handshake with no bytes is a socket that is still closing: Windows can
+// accept once on it. Close and bind again for 75s, inside the Windows deadline above.
+const listen=()=>{const port=Number(process.argv.at(-1));const bind=()=>listener.listen(port,"127.0.0.1");const again=()=>{if((globalThis.rebinds=(globalThis.rebinds||0)+1)>=1500)process.exit(1);else listener.close(()=>setTimeout(bind,50));};listener.on("error",error=>{if(!error||error.code!=="EADDRINUSE"){process.exit(1);return;}const probe=new net.Socket();let settled=false;let timer;const finish=taken=>{if(settled)return;settled=true;clearTimeout(timer);probe.destroy();if(taken)process.exit(1);else again();};probe.once("error",()=>finish(false));probe.once("data",()=>finish(true));timer=setTimeout(()=>finish(false),400);probe.connect(port,"127.0.0.1",()=>{try{probe.write("GET / HTTP/1.0"+String.fromCharCode(13,10,13,10));}catch{finish(false);}});});bind();};
 // As the real engine: a standby binds only after the old engine released state (stepped down, or drained).
 const released=()=>fs.existsSync(root+"/released-"+starts[0])||fs.existsSync(root+"/drained-"+starts[0]);
 if(process.env.BRANCH_GATEWAY_STANDBY==="1"&&fs.existsSync(root+"/standby-exits-after-release")){const timer=setInterval(()=>{if(released()){clearInterval(timer);process.exit(1);}},10);}
@@ -756,7 +757,7 @@ test("a handoff whose standby port was taken gives control back without rejectin
   };
   await eventually(async () => Boolean(await standbyLaunch()), 30_000);
   const { port } = await standbyLaunch();
-  const squatter = createServer(socket => { setTimeout(() => socket.destroy(), 500); }); await listenLoopback(squatter, port);
+  const squatter = createServer(socket => { socket.write("1"); setTimeout(() => socket.destroy(), 1000); }); await listenLoopback(squatter, port);
   try {
     await unlink(join(root, "hold-standby"));
     await eventually(() => sent.some(([channel, state]) => channel === "branch-desktop:engine-update" && state === "kept"), 40_000);
@@ -1029,9 +1030,9 @@ test("a standby port taken before the engine binds it falls back to the live por
   const standby = (await starts())[1];
   await eventually(() => existsSync(join(root, `launch-${standby}.json`)));
   const { port } = JSON.parse(await readFile(join(root, `launch-${standby}.json`), "utf8"));
-  // The bind probe treats a connection that stays up for 250ms as a live holder. Drop the socket after that,
+  // The bind probe treats bytes on the connection as a live holder. Answer, then drop the socket
   // so closing the squatter never waits on a readiness probe.
-  const squatter = createServer(socket => { setTimeout(() => socket.destroy(), 500); }); await listenLoopback(squatter, port);
+  const squatter = createServer(socket => { socket.write("1"); setTimeout(() => socket.destroy(), 1000); }); await listenLoopback(squatter, port);
   try {
     await unlink(join(root, "hold-standby"));
     await eventually(() => swapped(root), 70_000);
