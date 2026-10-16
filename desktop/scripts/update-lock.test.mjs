@@ -76,16 +76,35 @@ async function retentionFixture(run) {
 }
 
 test("the previous engine is kept during the healthy probation", async () => retentionFixture(async ({ cfg, previous, current }) => {
-  assert.equal(retention.PREVIOUS_ENGINE_HEALTHY_MS, 24 * 60 * 60 * 1000);
+  assert.equal(retention.PREVIOUS_ENGINE_HEALTHY_MS, 3 * 24 * 60 * 60 * 1000);
   const logs = [];
   const now = Date.now();
   await retention.recordHealthyEngineLaunch(cfg, join(current, "engine"), now);
-  for (const age of [0, 60_000, retention.PREVIOUS_ENGINE_HEALTHY_MS - 1]) {
+  // Day 1 and day 2 stay on disk so Settings Undo still works through day 3.
+  for (const age of [0, 60_000, 24 * 60 * 60 * 1000, 2 * 24 * 60 * 60 * 1000, retention.PREVIOUS_ENGINE_HEALTHY_MS - 1]) {
     assert.equal(await retention.prunePreviousEngineAfterHealth(cfg, line => logs.push(line), now + age), false);
     assert.equal(await exists(previous), true, `kept ${age} ms after the first healthy launch`);
   }
   assert.equal(await exists(current), true);
   assert.equal(logs.length, 0);
+}));
+
+test("the previous engine is kept through day 3 of Undo probation", async () => retentionFixture(async ({ cfg, previous, current }) => {
+  const logs = [];
+  const now = Date.now();
+  const prior = join(previous, "engine");
+  // /readyz was recorded more than 3 days ago, but Undo's confirmation is only one day old.
+  await retention.recordHealthyEngineLaunch(cfg, join(current, "engine"), now - retention.PREVIOUS_ENGINE_HEALTHY_MS - 1);
+  await writeFile(join(cfg.dataDir, "component-update-probation.json"), JSON.stringify({
+    previous: prior, confirmedAt: now - 24 * 60 * 60 * 1000,
+  }));
+  assert.equal(await retention.prunePreviousEngineAfterHealth(cfg, line => logs.push(line), now), false);
+  assert.equal(await exists(previous), true, "kept while Undo probation still has two days left");
+  assert.equal(await retention.prunePreviousEngineAfterHealth(cfg, line => logs.push(line), now + 2 * 24 * 60 * 60 * 1000 - 1), false);
+  assert.equal(await exists(previous), true, "kept until Undo's own day-3 deadline");
+  assert.equal(await retention.prunePreviousEngineAfterHealth(cfg, line => logs.push(line), now + 2 * 24 * 60 * 60 * 1000), true);
+  assert.equal(await exists(previous), false, "removed once Undo probation ends");
+  assert.ok(logs.includes("Update cleanup: the new engine has run healthy; removing the previous rollback copy"));
 }));
 
 test("the previous engine is removed after the new engine has run healthy for the window", async () => retentionFixture(async ({ cfg, previous, current }) => {

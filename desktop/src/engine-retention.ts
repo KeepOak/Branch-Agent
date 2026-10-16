@@ -1,17 +1,22 @@
-// After an update the previous engine stays only while the new one is on probation. Once the new engine has
-// answered /readyz and stayed the running engine for PREVIOUS_ENGINE_HEALTHY_MS, the rollback copy is removed.
-// A failed new engine during that window keeps the previous copy, so rollback still works.
+// After an update the previous engine stays for the full 3-day Undo probation. Once the new engine has
+// answered /readyz and stayed the running engine for PREVIOUS_ENGINE_HEALTHY_MS, and Undo's own
+// confirmation window has also ended, the rollback copy is removed. A failed new engine during that
+// window keeps the previous copy, so rollback and Undo still work through day 3.
 import { existsSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { DesktopConfig } from "./config";
 
-/** How long a newly confirmed engine must run healthy before its predecessor is removed. One named window. */
-export const PREVIOUS_ENGINE_HEALTHY_MS = 24 * 60 * 60 * 1000;
+/**
+ * How long the previous rollback engine stays after the new one first answers /readyz.
+ * Same 3-day span as Undo's probation in component-update.ts, so Settings Undo still works through day 3.
+ */
+export const PREVIOUS_ENGINE_HEALTHY_MS = 3 * 24 * 60 * 60 * 1000;
 
 const healthyFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "engine-retention-healthy.json");
 const previousFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-previous.txt");
 const journalFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-pending.json");
+const probationFile = (cfg: DesktopConfig): string => join(cfg.dataDir, "component-update-probation.json");
 
 interface HealthyEngine { engine: string; healthyAt: number }
 
@@ -59,9 +64,23 @@ export async function recordHealthyEngineLaunch(cfg: DesktopConfig, engine: stri
   await replaceJson(healthyFile(cfg), { engine, healthyAt: now } satisfies HealthyEngine);
 }
 
+/** Undo's confirmation window for this predecessor: keep it through day 3 even if /readyz was recorded earlier. */
+async function undoProbationStillOpen(cfg: DesktopConfig, previous: string, now: number): Promise<boolean> {
+  const raw = await readOrEmpty(probationFile(cfg));
+  if (!raw) return false;
+  try {
+    const value = JSON.parse(raw) as { previous?: string; confirmedAt?: number };
+    const confirmedAt = value.confirmedAt;
+    if (typeof value.previous !== "string" || typeof confirmedAt !== "number" || !Number.isFinite(confirmedAt)) return false;
+    if (!await samePath(value.previous, previous)) return false;
+    return confirmedAt > now || now - confirmedAt < PREVIOUS_ENGINE_HEALTHY_MS;
+  } catch { return false; }
+}
+
 /**
- * Removes the previous (rollback) engine after the current one has run healthy for the probation window.
- * Does nothing during the window, while an update is in flight, or when that folder is the running engine.
+ * Removes the previous (rollback) engine after the current one has run healthy for the 3-day probation
+ * and Undo's confirmation window has also ended. Does nothing during either window, while an update is
+ * in flight, or when that folder is the running engine.
  */
 export async function prunePreviousEngineAfterHealth(cfg: DesktopConfig, log: (line: string) => void, now = Date.now()): Promise<boolean> {
   try {
@@ -79,6 +98,8 @@ export async function prunePreviousEngineAfterHealth(cfg: DesktopConfig, log: (l
     try { healthy = JSON.parse(raw) as HealthyEngine; } catch { return false; }
     if (typeof healthy.engine !== "string" || !Number.isFinite(healthy.healthyAt)) return false;
     if (healthy.healthyAt > now || now - healthy.healthyAt < PREVIOUS_ENGINE_HEALTHY_MS) return false;
+    // Undo stays available through day 3 of its own confirmation clock. Never delete before that ends.
+    if (await undoProbationStillOpen(cfg, previous, now)) return false;
     if (!await samePath(healthy.engine, current)) return false;
     // Still the engine that serves: a failure during probation keeps the rollback copy.
     if (running && !await samePath(running, current)) return false;
