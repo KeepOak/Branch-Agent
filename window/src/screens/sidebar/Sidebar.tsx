@@ -290,7 +290,7 @@ export function Sidebar(p: SidebarProps) {
     <div className="r1sb-top">
       {query ? null : <FolderChip rows={rows} folder={folder} onFolder={setFolder} open={foldOpen} onOpen={setFoldOpen} />}
       <TopCapsules query={query} onQuery={setQuery} searchRef={p.searchRef} onSettings={() => p.onSettings("general")} onGrove={() => p.onPlace("office")}
-        plusRef={plusRef} onPlus={() => setPlusOpen(open => !open)} plusDot={anyWaiting} />
+        plusRef={plusRef} onPlus={() => setPlusOpen(open => !open)} plusDot={anyWaiting} engine={engine} />
       {query ? null : <R1FilterSort prefs={prefs} facts={filterFacts(rows, trunks.list, listPeople, readLevel(), prefs, now)} onChange={changePrefs} onSettings={p.onSettings} />}
     </div>
     <nav className="r1sb-list" aria-label="Conversations">

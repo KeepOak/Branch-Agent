@@ -8,6 +8,7 @@ import { CapabilityProvider } from "../../connect/capabilities";
 import type { ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
+import { FIND_ANYTHING_EVENT } from "../find/find-event";
 import { Sidebar, type SidebarProps } from "./Sidebar";
 
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span data-face={label} /> }));
@@ -129,5 +130,27 @@ describe("R1 sidebar, the Coming contract", () => {
     expect(row("Take the full tour").getAttribute("aria-disabled")).toBeNull();
     await click(row("Take the full tour"));
     expect(onTour).toHaveBeenCalledTimes(1);
+  });
+
+  it("Find anything opens when the engine can search, and stays Coming when it cannot", async () => {
+    const opened = vi.fn();
+    window.addEventListener(FIND_ANYTHING_EVENT, opened);
+    try {
+      await render([]);
+      const off = host.querySelector<HTMLButtonElement>('button[aria-label="Find anything"]')!;
+      expect(off.getAttribute("aria-disabled")).toBe("true");
+      expect(off.getAttribute("data-coming")).toBe("Coming in a later update.");
+      await click(off);
+      expect(opened).not.toHaveBeenCalled();
+
+      await render(["sessions.search"]);
+      const on = host.querySelector<HTMLButtonElement>('button[aria-label="Find anything"]')!;
+      expect(on.getAttribute("aria-disabled")).toBeNull();
+      expect(on.dataset.need).toBe("sessions.search");
+      await click(on);
+      expect(opened).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(FIND_ANYTHING_EVENT, opened);
+    }
   });
 });
