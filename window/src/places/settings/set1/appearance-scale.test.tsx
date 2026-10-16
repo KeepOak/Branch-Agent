@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 function engineOf() {
-  const request = vi.fn(async (method: string) => {
+  const request = vi.fn(async (method: string, _params?: unknown) => {
     if (method === "users.prefs.get") return { status: "ok", entries: {} };
     if (method === "themes.list") return { current: { id: "grove", mode: "system", scope: "profile", overrides: {} }, theme: THEMES[0], themes: THEMES };
     if (method === "agents.list") return { defaultId: "main", agents: [{ id: "main", name: "Birch" }] };
