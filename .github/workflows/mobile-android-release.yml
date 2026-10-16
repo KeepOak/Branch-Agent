@@ -17,9 +17,6 @@ concurrency:
   group: mobile-android-release-${{ github.event.release.tag_name || inputs.tag || github.run_id }}
   cancel-in-progress: false
 
-env:
-  ANDROID_RELEASE_CERT_SHA256: '85:B3:4C:E5:18:D8:74:9C:E0:06:4B:75:68:DE:75:0C:27:94:CB:17:0D:BB:E1:ED:4C:A0:62:29:E4:EB:46:C9'
-
 jobs:
   apk:
     if: github.repository == 'KeepOak/Branch-Agent'
@@ -155,7 +152,7 @@ jobs:
       - name: Verify APK signature
         env:
           APK_PATH: ${{ steps.stage.outputs.apk_path }}
-          EXPECTED_CERT_SHA256: ${{ env.ANDROID_RELEASE_CERT_SHA256 }}
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_RELEASE_CERT_SHA256 }}
         run: |
           set -euo pipefail
           
