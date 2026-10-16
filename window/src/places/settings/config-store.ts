@@ -4,6 +4,7 @@
 // TODO(engine-lane): the greyed reasons in this file say what is still missing; shownWhy (shell/shown-why.ts) keeps them out of sight.
 import type { WindowEngine } from "../../connect/engine";
 import { errorText, record, type ConfigSnapshot, type RecordValue } from "./adapter";
+import { STALL_TEXT, stallAfter } from "./stall";
 
 type Listener = () => void;
 const CHANGED = /config changed since last load|base hash/i;
@@ -43,7 +44,7 @@ export class ConfigStore {
   error: string | undefined;
   private chain: Promise<unknown> = Promise.resolve();
   private listeners = new Set<Listener>();
-  private loading: Promise<void> | null = null;
+  private loading: Promise<boolean> | null = null;
   private revision = 0;
   private engine: WindowEngine;
   constructor(engine: WindowEngine) {
@@ -58,11 +59,15 @@ export class ConfigStore {
     this.listeners.forEach((fn) => fn());
   }
 
-  load(): Promise<void> {
+  /** Resolves true when the settings were read; a failure is kept in `error` and resolves false. */
+  load(): Promise<boolean> {
+    if (this.loading) return this.loading;
     const revision = this.revision;
-    this.loading ??= this.engine.request<ConfigSnapshot>("config.get", {}).then(
-      (snap) => { if (revision === this.revision) { this.snap = snap; this.error = undefined; } },
-      (e: unknown) => { if (revision === this.revision) this.error = errorText(e); },
+    // A config.get that never answers says so after STALL_MS; a late answer still replaces that line.
+    const stop = stallAfter(() => { if (revision === this.revision && !this.snap) { this.error = STALL_TEXT; this.emit(); } });
+    this.loading = this.engine.request<ConfigSnapshot>("config.get", {}).then(
+      (snap) => { stop(); if (revision === this.revision) { this.snap = snap; this.error = undefined; } return true; },
+      (e: unknown) => { stop(); if (revision === this.revision) this.error = errorText(e); return false; },
     ).finally(() => { this.loading = null; this.emit(); });
     return this.loading;
   }

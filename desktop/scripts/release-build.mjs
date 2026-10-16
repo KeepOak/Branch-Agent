@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
@@ -8,8 +9,11 @@ import { smokeProductionEngine } from "./production-engine-smoke.mjs";
 import { assertTrackedSourceClean } from "./release-source-freeze.mjs";
 import { assertHoistedDeployment, extractProductionArchive, productionDeployArguments, productionDeployEnvironment } from "./release-production-layout.mjs";
 import { makeComponentRelease } from "./make-component-release.mjs";
+import { formatPayload, measurePayload, payloadBudgetProblems, pruneCodexPlatformPackages, pruneProductionDependencies } from "./release-payload.mjs";
 import { installLinuxLauncher } from "./linux-launcher.mjs";
+import { WINDOWS_LAUNCHER_RESOURCE, windowsLauncherCompileArgs, windowsLauncherCompiler, windowsLauncherSource } from "./windows-launcher.mjs";
 import { fileDigest, writeReleaseInventory, validateReleaseIdentity } from "./release-inventory.mjs";
+import { MAC_ADHOC_NOTICE, macSignCommand, macSigningPlan } from "./mac-release-signing.mjs";
 import { engineRoot, windowRoot, toolingRoot, repoRoot, gitHead, run, preparePnpm,
   scratchRoot, verifiedExceptionFlags, publishWindowDependencies } from "../../scripts/feature-batch-ci-runtime.mjs";
 
@@ -49,7 +53,7 @@ async function prepareWindow(pnpm) {
   await run(process.execPath, [join(windowRoot, "node_modules/vite/bin/vite.js"), "build"], windowRoot);
 }
 
-async function deployEngine(pnpm, scratch, identity) {
+async function deployEngine(pnpm, scratch, identity, macSigning) {
   // Runtime-only package build: the engine component never loads declarations, which were ~75% of build time.
   await run(pnpm, ["build:package"], engineRoot, { ...process.env, BRANCH_RUN_NODE_SKIP_DTS_BUILD: "1" });
   const metadata = JSON.parse(await readFile(join(engineRoot, "dist/build-info.json"), "utf8"));
@@ -58,25 +62,47 @@ async function deployEngine(pnpm, scratch, identity) {
   const flags = await verifiedExceptionFlags("engine");
   await run(pnpm, productionDeployArguments(deployment, flags), engineRoot, productionDeployEnvironment(process.env));
   await assertHoistedDeployment(deployment);
+  // Dependency source maps and declarations: no packaged runtime loads them (~83 MB per installed engine).
+  const pruned = await pruneProductionDependencies(deployment);
+  console.log(`Removed ${pruned.files} dependency source maps and declarations (${(pruned.bytes / 1048576).toFixed(1)} MiB)`);
+  // Codex's platform package (~318 MiB) never ships: Codex turns use the Codex the person installs.
+  const codex = await pruneCodexPlatformPackages(deployment);
+  console.log(`Removed the Codex platform package (${codex.packages.join(", ") || "none"}; ${(codex.bytes / 1048576).toFixed(1)} MiB); Codex runs from the person's own install`);
   if (identity.platform === "darwin") {
     const binary = join(deployment, "cua-driver");
     await run("bash", [join(engineRoot, "scripts/stage-cua-driver-macos.sh"), binary]);
-    const signingP12 = process.env.BRANCH_MACOS_SIGNING_P12_FILE;
-    const signingPassword = process.env.BRANCH_MACOS_SIGNING_PASSWORD_FILE;
-    const rcodesign = process.env.BRANCH_MACOS_RCODESIGN;
-    assert(signingP12 && signingPassword && rcodesign, "macOS computer driver requires the release signing identity");
-    await run(rcodesign, ["sign", "--p12-file", signingP12, "--p12-password-file", signingPassword, binary]);
+    await run(...macSignCommand(macSigning, binary));
   }
   assert.equal(JSON.parse(await readFile(join(deployment, "dist/build-info.json"), "utf8")).commit, identity.commit);
   assert(!(await readdir(deployment)).includes("src"), "Production deployment must not be an unbuilt source checkout");
-  // The Codex harness ships in every release: its plugin build and its runtime packages.
-  for (const file of ["dist/extensions/codex/branch.plugin.json", "node_modules/@openai/codex/package.json", "node_modules/smol-toml/package.json"]) {
+  // The Codex harness ships in every release: its plugin build, its launcher and runtime packages.
+  // Its platform package does not (the payload budget fails the build if it comes back).
+  for (const file of ["dist/extensions/codex/branch.plugin.json", "node_modules/@openai/codex/package.json", "node_modules/@openai/codex/bin/codex.js", "node_modules/smol-toml/package.json"]) {
     assert((await stat(join(deployment, file))).isFile(), `Production deployment is missing ${file}`);
   }
+  const payload = await measurePayload(deployment);
+  console.log(formatPayload(payload));
+  assert.deepEqual(payloadBudgetProblems(payload), [], "Engine payload is over its size budget");
   return deployment;
 }
 
-async function packageDesktop(scratch, output, identity) {
+/**
+ * The stable Windows launcher (windows-launcher.mjs), compiled with the C# compiler that ships with Windows into the
+ * package's resources/. The installer and the desktop app copy it to the install root, where every shortcut points.
+ * Compiled without an icon (csc rejects the PNG-compressed branch.ico and fails the Windows build), then stamped.
+ */
+async function buildWindowsLauncher(resources, scratch) {
+  const source = join(scratch, "branch-launcher.cs");
+  await writeFile(source, windowsLauncherSource());
+  const out = join(resources, WINDOWS_LAUNCHER_RESOURCE);
+  await run(windowsLauncherCompiler(process.env, existsSync), windowsLauncherCompileArgs({ source, out }), scratch);
+  assert.ok(existsSync(out), `The Windows launcher was not built: ${out}`);
+  // Loaded only here, on the Windows release build: resedit is a build-only dev dependency that tests never import.
+  const { stampWindowsLauncherIcon } = await import("./windows-launcher-icon.mjs");
+  await stampWindowsLauncherIcon(out, join(desktopRoot, "assets/branch.ico"));
+}
+
+async function packageDesktop(scratch, output, identity, macSigning) {
   const npmDirectory = process.platform === "win32" ? dirname(process.execPath) : join(dirname(process.execPath), "../lib");
   await run(process.execPath, [join(npmDirectory, "node_modules/npm/bin/npm-cli.js"), "ci", "--no-audit", "--no-fund"], desktopRoot);
   await run(process.execPath, [join(desktopRoot, "scripts/build.mjs")], desktopRoot);
@@ -103,6 +129,7 @@ async function packageDesktop(scratch, output, identity) {
   if (identity.platform === "linux") await installLinuxLauncher(app);
   const resources = identity.platform === "darwin" ? join(app, `${MAC_ARCHIVE_BUNDLE_FOLDER}/Contents/Resources`) : join(app, "resources");
   let node = await bundleNode(resources, undefined, identity);
+  if (identity.platform === "win32") await buildWindowsLauncher(resources, scratch);
   // Outside app.asar so a fresh package can prove its executable already has the Keeper icon.
   await writeFile(join(resources, "keeper-icon-revision"), "keeper-v1\n");
   // The desktop update component: app.asar alone, plus the whole app (the bootstrap package) for Electron changes.
@@ -110,16 +137,12 @@ async function packageDesktop(scratch, output, identity) {
   await copyFile(join(resources, "app.asar"), join(asar, "app.asar"));
   const desktop = { app: asar, electronVersion: identity.electronVersion };
   if (identity.platform === "darwin") {
-    const signingP12 = process.env.BRANCH_MACOS_SIGNING_P12_FILE;
-    const signingPassword = process.env.BRANCH_MACOS_SIGNING_PASSWORD_FILE;
-    const rcodesign = process.env.BRANCH_MACOS_RCODESIGN;
-    assert(signingP12 && signingPassword && rcodesign, "macOS releases require a stable code-signing identity");
     // A receipt inside the sealed bundle cannot be rewritten after nested-code signing.
     // The release proof records the final shipped Node hash instead.
     await rm(join(resources, "node/node-runtime.json"));
     // Packager signs before the bundled Node and icon revision are added. Sign the finished bundle,
-    // including its nested code, before hashing the Node binary or archiving the app.
-    await run(rcodesign, ["sign", "--p12-file", signingP12, "--p12-password-file", signingPassword, join(app, MAC_ARCHIVE_BUNDLE_FOLDER)]);
+    // including its nested code, before hashing the Node binary or archiving the app. A failed signature fails the build.
+    await run(...macSignCommand(macSigning, join(app, MAC_ARCHIVE_BUNDLE_FOLDER)));
     node = { ...node, sha256: (await fileDigest(join(resources, "node/node"))).sha256 };
   }
   desktop.runtime = app;
@@ -140,6 +163,9 @@ async function waitForSharedWindow() {
 export async function buildRelease(mode, output, windowDirectory) {
   assert(["window", "components"].includes(mode), "Usage: release-build.mjs window|components output [built-window]");
   const identity = await releaseIdentity();
+  // Read before the long build: a partial signing identity fails here, naming what is missing.
+  const macSigning = mode === "components" && identity.platform === "darwin" ? macSigningPlan() : undefined;
+  if (macSigning?.signing === "adhoc") console.log(MAC_ADHOC_NOTICE);
   const scratch = await scratchRoot();
   const pnpm = await preparePnpm(scratch);
   await mkdir(output, { recursive: true });
@@ -151,9 +177,9 @@ export async function buildRelease(mode, output, windowDirectory) {
     assert(windowDirectory, "Components require the shared tested renderer build");
     // The named feature suites already gate every pull request and main push (feature-batch-checks.yml).
     await prepareEngine(pnpm);
-    const engine = await deployEngine(pnpm, scratch, identity);
+    const engine = await deployEngine(pnpm, scratch, identity, macSigning);
     // Packaged first, so the manifest's desktop component is the same app.asar as the bootstrap package.
-    const { nodePath, desktop, ...runtime } = await packageDesktop(scratch, output, identity);
+    const { nodePath, desktop, ...runtime } = await packageDesktop(scratch, output, identity, macSigning);
     await waitForSharedWindow();
     const manifest = await makeComponentRelease({ ...identity, sourceCommit: identity.commit, tag: `v${identity.version}`, engine, window: windowDirectory, desktop, output });
     const source = await readFile(join(engineRoot, "packages/gateway-protocol/src/version.ts"), "utf8");
@@ -164,7 +190,8 @@ export async function buildRelease(mode, output, windowDirectory) {
     const extracted = await extractProductionArchive(archive, manifest.components.engine, identity.commit, join(scratch, "archive-smoke-engine"), extractComponentArchive);
     const smoke = { ...await smokeProductionEngine(extracted, nodePath, identity.commit, protocol), source: "verified-component-archive",
       archiveSha256: manifest.components.engine.sha256, archiveBytes: manifest.components.engine.bytes, expandedBytes: manifest.components.engine.expandedBytes };
-    await writeReleaseInventory(output, { ...identity, runtime, smoke });
+    // macOS proofs declare how the app was signed; install checks accept ad-hoc only when the release says so.
+    await writeReleaseInventory(output, { ...identity, runtime, smoke, ...(macSigning ? { signing: macSigning.signing } : {}) });
   }
   assert.deepEqual(await releaseIdentity(), identity, "Source or release identity changed during the build");
 }

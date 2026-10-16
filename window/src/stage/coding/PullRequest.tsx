@@ -20,7 +20,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const done = (r: Result | null) => r?.status === "published" || r?.status === "failed";
 
 /** The pull request a conversation opened: repository, branch and a link to it on GitHub. */
-export function PullRequestCard({ result }: { result: Extract<Result, { status: "published" }> }) {
+function PullRequestCard({ result }: { result: Extract<Result, { status: "published" }> }) {
   return (
     <div className="pr-card-cd">
       <SIcon name="branch" small />

@@ -51,6 +51,8 @@ export interface CreateAgentSessionOptions extends Omit<
   tools: string[];
   /** Hydrate an authorized tool deferred out of the current provider-visible tool set. */
   resolveDeferredTool?: AgentOptions["resolveDeferredTool"];
+  /** Add guidance to the result for a tool missing from the current toolset. */
+  describeMissingTool?: AgentOptions["describeMissingTool"];
 }
 
 function createSessionPrepareNextTurnWithContext(
@@ -282,6 +284,7 @@ export async function createAgentSession(
       return runner.emitContext(messages);
     },
     resolveDeferredTool: options.resolveDeferredTool,
+    describeMissingTool: options.describeMissingTool,
     prepareNextTurnWithContext: createSessionPrepareNextTurnWithContext(() => agent),
     steeringMode: settingsManager.getSteeringMode(),
     followUpMode: settingsManager.getFollowUpMode(),

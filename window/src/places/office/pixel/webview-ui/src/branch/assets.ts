@@ -33,7 +33,7 @@ export interface DecodedPng {
   data: Uint8ClampedArray;
 }
 
-export interface PetFramesRaw {
+interface PetFramesRaw {
   walkDown: string[][][];
   idleDown: string[][][];
   walkUp: string[][][];
@@ -70,7 +70,7 @@ async function decodeB64(b64: string): Promise<DecodedPng> {
 }
 
 /** Same as upstream browserMock.readSprite: a w×h window of the PNG as hex SpriteData. */
-export function readSprite(png: DecodedPng, w: number, h: number, ox = 0, oy = 0): string[][] {
+function readSprite(png: DecodedPng, w: number, h: number, ox = 0, oy = 0): string[][] {
   const sprite: string[][] = [];
   for (let y = 0; y < h; y++) {
     const row: string[] = [];
@@ -162,7 +162,7 @@ export function loadAssets(): Promise<DecodedAssets> {
 
 let fontReady: Promise<void> | null = null;
 
-/** Upstream ships FS Pixel Sans via @font-face; inside a shadow root that is ignored, so register it
+/** Micro 5 (SIL OFL 1.1, see third_party/micro-5/OFL.txt) is registered via FontFace; inside a shadow root that is ignored, so register it
  *  document-wide with the FontFace API (subset to Latin-1 + punctuation by scripts/build-assets). */
 export function loadPixelFont(): Promise<void> {
   fontReady ??= (async () => {
@@ -170,7 +170,7 @@ export function loadPixelFont(): Promise<void> {
       const bin = atob(ASSETS.font);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const face = new FontFace('FS Pixel Sans', bytes.buffer, { style: 'normal', weight: '400' });
+      const face = new FontFace('Micro 5', bytes.buffer, { style: 'normal', weight: '400' });
       await face.load();
       document.fonts.add(face);
     } catch (err) {

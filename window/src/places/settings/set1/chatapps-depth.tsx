@@ -5,11 +5,22 @@ import { Btn, Ctl, Field, Pick, Switch, Val } from "../kit";
 import { ChatLogo as Logo } from "./chatapps-logo";
 import type { CatalogueApp } from "./chatapps-data";
 import { KeyRow, NO_KEY, type Cfg, type Row } from "./chatapps-kit";
+import { JOIN_HUDDLES_HELP, JOIN_HUDDLES_LABEL, joinHuddlesOn, setJoinHuddles } from "./slack-huddles";
 
 const off = (t: string, sub: string | undefined, kind: Row["kind"], def?: unknown, opts?: string[]): Row => ({ t, sub, kind, def, off: NO_KEY, ...(opts ? { opts: opts.map((l, i) => [l, i] as [string, unknown]) } : {}) });
 const SCAN = "Instead of copying IDs and secrets.";
-/** Each app's own rows, keyed by the engine's channel id; a row with `key` saves channels.<id>.<key>. */
-const DEPTH: Record<string, (Row & { key?: string })[]> = {
+/** Personal Zalo is its own engine channel (`zalouser`), not a key under official `zalo`. */
+const ZALO_CONNECT_AS: Row & { key?: string } = {
+  t: "Connect as",
+  sub: "A bot is the official Zalo app. Your personal account is the Zalo Personal channel.",
+  kind: "seg",
+  path: "channels.zalouser.enabled",
+  opts: [["A bot", false], ["My personal account", true]],
+  def: false,
+};
+
+/** Each app's own rows, keyed by the engine's channel id; a row with `key` saves channels.<id>.<key>. A row may set `path` to a real engine key on another channel. */
+export const DEPTH: Record<string, (Row & { key?: string })[]> = {
   telegram: [
     { t: "Live typing", sub: "The reply appears as it is written, in one message that only notifies when done.", kind: "seg", key: "streaming.mode", opts: [["Off", "off"], ["One message", "partial"], ["Steps too", "progress"]] },
     off("Search commands with @bot", "Type @ and the bot’s name in any chat to find a command or skill.", "sw", true),
@@ -31,6 +42,7 @@ const DEPTH: Record<string, (Row & { key?: string })[]> = {
     { t: "Use the Discord app on this computer", sub: "Without a bot: reads and answers through the Discord window.", kind: "custom", id: "btn:Set up" },
   ],
   slack: [
+    { t: JOIN_HUDDLES_LABEL, sub: JOIN_HUDDLES_HELP, kind: "custom", id: "join-huddles" },
     off("Charts and tables as Slack blocks", "Tables and charts show as Slack’s own.", "sw", true),
     off("Read the thread first", "Pulled into a thread, it reads what was said before.", "sw", true),
     off("Reactions that start a task", "One emoji name per line, such as robot_face.", "lines"),
@@ -66,10 +78,11 @@ const DEPTH: Record<string, (Row & { key?: string })[]> = {
     off("Unsending a message stops its task", undefined, "sw", true),
   ],
   line: [off("Use free replies first", "A slow answer waits behind a button, so it doesn’t cost a paid message.", "sw", true)],
-  zalo: [off("Connect as", undefined, "seg", 0, ["A bot", "My personal account"])],
+  zalo: [ZALO_CONNECT_AS],
+  zalouser: [ZALO_CONNECT_AS],
   sms: [off("Send texts through", undefined, "seg", 0, ["Twilio", "An Android phone"])],
 };
-export const DEPTH_TITLES = Object.values(DEPTH).flat().map((r) => r.t);
+export const DEPTH_TITLES = [...new Set(Object.values(DEPTH).flat().map((r) => r.t))];
 
 export function Depth({ catalogue, connected, cfg }: { catalogue: CatalogueApp[]; connected: Set<string>; cfg: Cfg }) {
   const apps = catalogue.filter((c) => DEPTH[c.id]);
@@ -79,14 +92,16 @@ export function Depth({ catalogue, connected, cfg }: { catalogue: CatalogueApp[]
     return (
       <details key={c.id} className="fold-ca" open={connected.has(c.id)}>
         <summary><Logo id={c.id} name={c.name} size={26} /><span className="grow"><b>{c.name}</b><small>{`${rows.length} setting${rows.length > 1 ? "s" : ""}${connected.has(c.id) ? " · connected" : ""}`}</small></span></summary>
-        {rows.map((r) => r.kind === "custom" ? <Ctl key={r.t} title={r.t} sub={r.sub} off={NO_KEY}><Btn sm disabled>{(r.id ?? "").slice(4)}</Btn></Ctl> : <KeyRow key={r.t} row={r} cfg={cfg} />)}
+        {rows.map((r) => r.id === "join-huddles"
+          ? <Ctl key={r.t} title={r.t} sub={r.sub}><Switch checked={joinHuddlesOn(cfg.get)} label={r.t} disabled={cfg.loading} onChange={(on) => void setJoinHuddles(cfg.set, on)} /></Ctl>
+          : r.kind === "custom" ? <Ctl key={r.t} title={r.t} sub={r.sub} off={NO_KEY}><Btn sm disabled>{(r.id ?? "").slice(4)}</Btn></Ctl> : <KeyRow key={r.t} row={r} cfg={cfg} />)}
       </details>
     );
   })}</>;
 }
 
 /** messages.* by key: [key, what it does, the section above that sets it, the default, how to edit it here]. */
-const MSG_KEYS: [string, string, string | null, string, ("text" | "number" | "select" | "json" | "bool")?, string[]?][] = [
+export const MSG_KEYS: [string, string, string | null, string, ("text" | "number" | "select" | "json" | "bool")?, string[]?][] = [
   ["messages.visibleReplies", "Whether each answer posts by itself.", null, "\"automatic\"", "select", ["automatic", "message_tool"]],
   ["messages.responsePrefix", "Text put before every reply.", "How replies are sent", "not set"],
   ["messages.usageTemplate", "The wording of the usage line under a reply.", null, "not set", "text"],
