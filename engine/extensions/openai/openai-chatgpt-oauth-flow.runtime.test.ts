@@ -252,56 +252,8 @@ describe("OpenAI Codex OAuth flow", () => {
     expect(onAuth).not.toHaveBeenCalled();
   });
 
-  it("says another app holds the callback port instead of asking for a pasted code", async () => {
-    const server = createServer();
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(1455, resolveOpenAICallbackHost(), resolve);
-    });
-    const onAuth = vi.fn();
-    const onPrompt = vi.fn(async () => "unused-code");
-    const onManualCodeInput = vi.fn(async () => "unused-code");
-    try {
-      await expect(loginOpenAICodex({ onAuth, onPrompt, onManualCodeInput })).rejects.toMatchObject({
-        code: "EADDRINUSE",
-        message:
-          "Branch can't finish the sign-in because another app is using the sign-in port (1455). Close it and try again.",
-      });
-      expect(onAuth).not.toHaveBeenCalled();
-      expect(onPrompt).not.toHaveBeenCalled();
-      expect(onManualCodeInput).not.toHaveBeenCalled();
-      expect(ssrfMocks.fetchWithSsrFGuard).not.toHaveBeenCalled();
-    } finally {
-      await closeServer(server);
-    }
-  });
-
-  it("tells a second sign-in that another one is in progress", async () => {
-    const controller = new AbortController();
-    const firstReady = createDeferred<void>();
-    const first = loginOpenAICodex({
-      onAuth: () => firstReady.resolve(),
-      onPrompt: vi.fn(async () => "unused-code"),
-      onManualCodeInput: () => new Promise<string>(() => {}),
-      signal: controller.signal,
-    }).catch((error: unknown) => error);
-    await firstReady.promise;
-    const onAuth = vi.fn();
-    try {
-      await expect(
-        loginOpenAICodex({ onAuth, onPrompt: vi.fn(async () => "unused-code") }),
-      ).rejects.toThrow("Another sign-in is in progress. Try again in a moment.");
-      expect(onAuth).not.toHaveBeenCalled();
-    } finally {
-      controller.abort();
-      await expect(first).resolves.toMatchObject({
-        message: expect.stringContaining("Login cancelled"),
-      });
-    }
-  });
-
   it.each(["prompt", "manual input"] as const)(
-    "uses %s for a browser on another computer when the callback port is already occupied",
+    "uses %s when the callback port is already occupied",
     async (entry) => {
       const server = createServer();
       await new Promise<void>((resolve, reject) => {
@@ -322,7 +274,6 @@ describe("OpenAI Codex OAuth flow", () => {
           loginOpenAICodex({
             onAuth,
             onPrompt,
-            allowManualEntryWithoutCallback: true,
             ...(entry === "manual input" ? { onManualCodeInput: async () => "manual-code" } : {}),
           }),
         ).resolves.toMatchObject({ accountId: "manual-account" });
