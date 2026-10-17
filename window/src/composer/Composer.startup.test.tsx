@@ -14,7 +14,11 @@ afterEach(() => {
 
 describe("Composer startup preparation", () => {
   it("offers one account action when no model is connected", async () => {
-    const request = vi.fn(async (method: string) => method === "agents.list" ? { agents: [{ id: "main", name: "Oak" }], defaultId: "main" } : {});
+    const request = vi.fn(async (method: string) => {
+      if (method === "agents.list") return { agents: [{ id: "main", name: "Oak" }], defaultId: "main" };
+      if (method === "branch.setup.activate") return new Promise(() => {});
+      return {};
+    });
     const engine = { request: request as WindowEngine["request"], onEvent: () => () => undefined, sessionKey: "agent:main:empty", agentId: "main", scopes: [] } as WindowEngine;
     const onOpen = vi.fn();
     const host = document.body.appendChild(document.createElement("div"));
@@ -27,6 +31,29 @@ describe("Composer startup preparation", () => {
       expect(buttons[0].textContent).toBe("Add an account");
       await act(async () => buttons[0].click());
       expect(onOpen).toHaveBeenCalledExactlyOnceWith("settings/accounts/add");
+    } finally { await act(async () => root.unmount()); }
+  });
+  it("shows the failure and Try again when a free model is not ready", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "agents.list") return { agents: [{ id: "main", name: "Oak" }], defaultId: "main" };
+      if (method === "models.list") return { models: [] };
+      if (method === "branch.setup.activate") return { ok: false, error: "A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster." };
+      return {};
+    });
+    const engine = { request: request as WindowEngine["request"], onEvent: () => () => undefined, sessionKey: "agent:main:empty", agentId: "main", scopes: [] } as WindowEngine;
+    const onOpen = vi.fn();
+    const host = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(host);
+    try {
+      await act(async () => root.render(<Composer name="Oak" working={false} disabled={false} onSend={vi.fn()} onStop={vi.fn()} engine={engine} onOpen={onOpen} />));
+      await vi.waitFor(() => expect(host.querySelector('[data-testid="no-model"]')?.getAttribute("role")).toBe("alert"));
+      const line = host.querySelector('[data-testid="no-model"]')!;
+      expect(line.textContent).toContain("A free local model isn’t ready");
+      expect(host.querySelector("textarea")?.getAttribute("placeholder")).not.toBe("Getting a free model ready…");
+      const buttons = [...line.querySelectorAll<HTMLButtonElement>("button")].map((b) => b.textContent);
+      expect(buttons).toEqual(["Try again", "Add an account"]);
+      await act(async () => line.querySelector<HTMLButtonElement>("button")!.click());
+      expect(request.mock.calls.filter((c) => c[0] === "branch.setup.activate").length).toBe(2);
     } finally { await act(async () => root.unmount()); }
   });
   it("keeps the draft and sends nothing when Enter is pressed during preparation", async () => {

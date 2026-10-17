@@ -86,7 +86,7 @@ export const helloOk = (hello: Hello): boolean => typeof hello === "object" && h
 /** The primary button: its words, and whether it may be pressed (preview `primary()`). */
 export function primary(s: OnboardingState, defaultName = ""): { label: string; ok: boolean; why?: string } {
   if (s.step === 0) return { label: "Get started", ok: true };
-  if (s.step === 1) return helloOk(s.hello) || s.examples ? { label: "Continue", ok: true } : { label: "Continue", ok: false, why: "Say hello first." };
+  if (s.step === 1) return { label: "Continue", ok: true };
   if (s.step === LAST_STEP) return picked(s).length ? { label: "Meet them", ok: true } : { label: `Start with ${defaultName || "your default Trunk"}`, ok: true };
   return { label: "Continue", ok: true };
 }

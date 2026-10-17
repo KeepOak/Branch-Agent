@@ -162,6 +162,8 @@ describe("Branch Agent setup detection protocol", () => {
   it.each([
     ["saved-auth:openai%3Adefault", true],
     ["saved-auth:", false],
+    ["no-key-default", true],
+    ["api-key", true],
   ])("validates saved sign-in choice %s", (kind, valid) => {
     expect(validateSystemAgentSetupActivateParams({ kind })).toBe(valid);
   });
