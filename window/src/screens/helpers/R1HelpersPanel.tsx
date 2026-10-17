@@ -13,8 +13,10 @@ import { useHelpers, type Helper } from "../../thread/useEngineData";
 import "../../stage/stage.css";
 import "../../stage/pane/pane.css";
 import "./r1-helpers.css";
+import { plainError } from "../../shell/plain-error";
 
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const errorText = (e: unknown): string => plainError(e);
 
 /** A helper that is still going: the Classic card's Working / waiting / stalled states, not Done or Stopped. */
 export const isLive = (h: Helper): boolean => h.status === "running" || h.status === "queued" || !h.status;

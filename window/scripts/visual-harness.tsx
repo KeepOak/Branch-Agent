@@ -4,6 +4,8 @@ import {createRoot} from 'react-dom/client';
 import {WindowShell} from '../src/shell/WindowShell';
 import {TeamApprovalCard} from '../src/places/trunk/TeamApprovalCard';
 import {ComputerStage} from '../src/stage/ComputerStage';
+import {SettingsFrame} from '../src/screens/settings/SettingsFrame';
+import {R1_PAGES} from '../src/screens/settings/pages/plugged';
 import {OverflowPreview} from './overflow-fixture';
 import '../src/theme/tokens.css';
 import '../src/theme/base.css';
@@ -68,7 +70,12 @@ function computerEngine(state:string){
   return {request,sessionKey:'agent:scout:one',scopes:['operator.admin'],onEvent:()=>()=>{}} as any;
 }
 function ComputerPreview({state}:{state:string}){const [engine]=React.useState(()=>computerEngine(state));return <div data-testid="computer-preview" style={{position:'fixed',inset:0,display:'flex',background:'var(--bg,#f6f6f4)'}}><ComputerStage engine={engine} gatewayUrl="ws://gateway.invalid" name="Scout" mode="Computer" onMode={()=>{}} onClose={()=>{}} onChooseComputer={()=>{}}/></div>;}
-const computerState=new URLSearchParams(window.location.search).get('computer');
-const teamState=new URLSearchParams(window.location.search).get('team');
-const overflow=new URLSearchParams(window.location.search).get('overflow');
-createRoot(document.getElementById('root')!).render(overflow!==null ? <OverflowPreview kind={overflow}/> : computerState!==null ? <ComputerPreview state={computerState}/> : teamState!==null ? <TeamPreview state={teamState}/> : <WindowShell session={fixture as any} url="ws://isolated-fixture"/>);
+// ?settings=<level>: R1 Settings at that level in a frame like the window's: a 48px bar above a frame that fills the
+// rest and clips what runs past it (height: 100%, overflow: hidden), so a nav taller than the frame shows.
+function SettingsInFrame({level}:{level:string}){localStorage.setItem('branch.level',level);return <div style={{height:'100vh',display:'flex',flexDirection:'column',background:'var(--bg,#f6f6f4)'}}><div style={{height:48,flex:'none',background:'rgba(0,0,0,.08)'}}/><div data-testid="settings-frame" style={{flex:1,minHeight:0,overflow:'hidden'}}><SettingsFrame engine={fixture.engine as any} page="general" pages={R1_PAGES}/></div></div>;}
+const query=new URLSearchParams(window.location.search);
+const computerState=query.get('computer');
+const teamState=query.get('team');
+const settingsLevel=query.get('settings');
+const overflow=query.get('overflow');
+createRoot(document.getElementById('root')!).render(overflow!==null ? <OverflowPreview kind={overflow}/> : computerState!==null ? <ComputerPreview state={computerState}/> : teamState!==null ? <TeamPreview state={teamState}/> : settingsLevel!==null ? <SettingsInFrame level={settingsLevel}/> : <WindowShell session={fixture as any} url="ws://isolated-fixture"/>);

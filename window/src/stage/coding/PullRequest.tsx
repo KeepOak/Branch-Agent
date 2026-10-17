@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { SIcon } from "../stage-icons";
+import { plainError } from "../../shell/plain-error";
 
 type Account = { accountId: number; login: string };
 type Publisher = { source: string } & Account;
@@ -16,7 +17,8 @@ type Options = {
   latestShared: { result: Result; confirmation: Confirmation } | null;
 };
 
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// No engine sentence, code, stack or path at Regular (Private #1089); Advanced keeps the exact words.
+const errorText = (e: unknown): string => plainError(e);
 const done = (r: Result | null) => r?.status === "published" || r?.status === "failed";
 
 /** The pull request a conversation opened: repository, branch and a link to it on GitHub. */

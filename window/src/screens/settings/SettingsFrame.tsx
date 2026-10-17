@@ -13,6 +13,7 @@ import { profileOf } from "../../places/settings/set1/people-data";
 import { TrunkHost } from "../../places-nav/TrunkHost";
 import { lookStore } from "../../places/settings/set1/appearance-store";
 import { pinsOf } from "../../places/settings/pins";
+import { t, useLanguage } from "../../i18n/language";
 import { GOTO_SUB, LEVELS, PAGES, REGULAR_GROUPS, navAt, pageFor, pageShown, regularHub, sectionNeed, type Level, type NavPage, type PageId } from "./nav";
 import { COMING_FROM, ROWS, cardRows, comingRow, pageFirstLevel, rowHelp, rowLabel, rowLevel, type Row, type UiHints } from "./rows";
 import { LaterRows } from "../../glass/LaterRows";
@@ -104,7 +105,7 @@ function useNarrowNav(): boolean {
 function NavButton({ page, current, onOpen, sub, hub }: { page: NavPage; current: boolean; onOpen: () => void; sub?: string; hub?: string }) {
   return (
     <button type="button" className="r1s-nav" data-local="" aria-current={current ? "page" : undefined} data-page={page.id} data-hub={hub} onClick={onOpen}>
-      <span>{page.title}</span>{sub ? <small>{sub}</small> : null}
+      <span>{t(page.title)}</span>{sub ? <small>{sub}</small> : null}
     </button>
   );
 }
@@ -149,7 +150,7 @@ function NavList({ engine, level, narrow, shownPage, onOpen }: { engine: WindowE
         const open = level > 0 || narrow;
         return (
           <div key={g.title} className="r1s-fold" role="group" aria-label={g.title} data-open={open ? "true" : "false"} style={{ display: "contents" }}>
-            <div className="r1s-grp g-label">{g.title}</div>
+            <div className="r1s-grp g-label">{t(g.title)}</div>
             {open ? pages.map((p) => <NavButton key={p.id} page={p} current={shownPage === p.id} sub={sub(p.id)} onOpen={() => onOpen(p.id)} />) : null}
           </div>
         );
@@ -158,19 +159,20 @@ function NavList({ engine, level, narrow, shownPage, onOpen }: { engine: WindowE
   );
 }
 
-/** The other settings pages that belong to the open Regular page, under Advanced on that page. */
+/** The other settings pages that belong to the open Regular page, under "Also in <page>" on that page. Not "Advanced":
+ *  at Regular that word names a level the person hasn't chosen, so it read as a stray heading (#1093 item 6). */
 function HubAdvanced({ shownPage, onOpen }: { shownPage: PageId; onOpen: (id: PageId) => void }) {
   const hub = regularHub(shownPage);
   if (!hub) return null;
   const rest = hub.pages.slice(1);
   if (!rest.length) return null;
   return (
-    <nav className="r1s-advanced" aria-label="Advanced">
-      <h2 className="g-label">Advanced</h2>
+    <nav className="r1s-advanced" aria-label={`Also in ${hub.title}`}>
+      <h2 className="g-label">Also in {hub.title}</h2>
       <div className="r1s-jumps">
         {rest.map((p) => (
           <button key={p.id} type="button" className="r1s-jump" data-page={p.id} aria-current={shownPage === p.id ? "true" : undefined} onClick={() => onOpen(p.id)}>
-            <span>{p.title}</span>{p.id === "goto" ? <small>{GOTO_SUB}</small> : null}
+            <span>{t(p.title)}</span>{p.id === "goto" ? <small>{GOTO_SUB}</small> : null}
           </button>
         ))}
       </div>
@@ -257,6 +259,7 @@ function CardRows({ rows, ...host }: RowHost & { rows: Row[] }) {
 
 export function SettingsFrame(props: SettingsFrameProps) {
   const { engine } = props;
+  useLanguage(); // Settings › Appearance › Language: the titles below follow it (Private #1100)
   const narrow = useNarrowNav();
   const slots = props.pages ?? NO_SLOTS;
   const rows = useMemo(() => mergeRows(props.rows ?? ROWS, slots), [props.rows, slots]);
@@ -352,7 +355,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
         {/* Every page, row page or slot page, has the frame's title, lede and Learn more (preview s36Head, HANDOFF R1-06);
             slot pages draw no title of their own (#1049). */}
         <header className="r1s-head">
-          <h1 className="g-label">{spec.title}</h1>
+          <h1 className="g-label">{t(spec.title)}</h1>
           <p className="r1s-lede g-label" data-lines>{spec.lede} <button type="button" className="r1s-learn" data-local="" aria-expanded={help} onClick={() => {
             // A slot page's "On this page" is its section headings, read when the sheet opens (preview s36Help reads .s36Sec).
             if (Custom) setSlotSecs([...(scroller.current?.querySelectorAll<HTMLElement>(".r1s-custom h2") ?? [])].map((h) => h.textContent?.trim() ?? "").filter(Boolean));
@@ -392,7 +395,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
             // A card the page draws itself (Customize's kinds hub) is the section, even with no table rows.
             visible.length || Own ? (
             <section key={card} id={`sec-${shownPage}-${card}`} className="r1s-sec g-clear" aria-label={card || spec.title} data-card={card || undefined}>
-              {card ? <h2 className="g-label">{card}</h2> : null}
+              {card ? <h2 className="g-label">{t(card)}</h2> : null}
               {Own ? <div className="r1s-card-own"><Own engine={engine} onPage={(id) => go(id)} onAsk={props.onAsk} /></div> : null}
               {live.length ? <CardRows engine={engine} rows={live} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} onAsk={props.onAsk} /> : null}
               {later.length ? <LaterRows count={later.length}><CardRows engine={engine} rows={later} hints={hints} controls={slots[shownPage]?.controls} onPage={(id) => go(id)} onAsk={props.onAsk} /></LaterRows> : null}

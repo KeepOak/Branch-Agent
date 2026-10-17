@@ -1,8 +1,9 @@
 // Library › Documents: a document you can type in (card #1095, walkthrough B-073). "Write a new document" opens the new
-// blank document here, and Open on a text document in a Trunk's Documents folder does too. It loads the text through
-// agents.workspace.get and saves through agents.documents.set, which only replaces the text it opened, so a Trunk's
-// edit made meanwhile is never lost. At Regular the title is the document's name without its extension.
-import { useEffect, useState } from "react";
+// blank document ready to type (the create result seeds the editor so it does not wait to load). Open on a text
+// document in a Trunk's Documents folder does too. It loads the text through agents.workspace.get and saves through
+// agents.documents.set, which only replaces the text it opened, so a Trunk's edit made meanwhile is never lost. At
+// Regular the title is the document's name without its extension.
+import { useEffect, useRef, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
 import { shows, type Level } from "../../places-nav/level";
 import { Dialog } from "../../shell/Dialog";
@@ -27,14 +28,19 @@ async function sha256(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export function DocumentEditor({ engine, agentId, path, level, onClose, onSaved }: { engine: WindowEngine; agentId: string; path: string; level: Level; onClose: () => void; onSaved?: () => void }) {
+/** The text and hash we already have (a new blank document from agents.documents.create), so typing starts at once. */
+export type DocumentSeed = { content: string; hash: string };
+
+export function DocumentEditor({ engine, agentId, path, level, onClose, onSaved, seed }: { engine: WindowEngine; agentId: string; path: string; level: Level; onClose: () => void; onSaved?: () => void; seed?: DocumentSeed }) {
   const file = useResource<unknown>(engine, "agents.workspace.get", { agentId, path });
   const loaded = file.data ? fileOf(file.data) : null;
   const name = path.split("/").pop() || path;
-  const [text, setText] = useState<string | null>(null);
+  const typed = useRef(false);
+  const seededHash = useRef(seed?.hash ?? null);
+  const [text, setText] = useState<string | null>(seed ? seed.content : null);
   // The text as last loaded or saved, and its hash: Save replaces only that text.
-  const [saved, setSaved] = useState<string | null>(null);
-  const [base, setBase] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(seed ? seed.content : null);
+  const [base, setBase] = useState<string | null>(seed ? seed.hash : null);
   const [state, setState] = useState<{ busy: boolean; note?: string; error?: string }>({ busy: false });
   const [asking, setAsking] = useState(false);
   // A remote workspace has no atomic compare-and-set, so agents.workspace.get marks its files read only.
@@ -44,10 +50,19 @@ export function DocumentEditor({ engine, agentId, path, level, onClose, onSaved 
     if (!first || first.encoding === "base64") return;
     const content = first.content ?? "";
     let live = true;
-    setText(content); setSaved(content); setBase(null);
-    void sha256(content).then(hash => { if (live) setBase(hash); });
+    // A person already typing in a new document keeps their words; a late fetch must not wipe them.
+    if (!typed.current) {
+      setText(content);
+      setSaved(content);
+      if (seededHash.current && content === (seed?.content ?? "")) setBase(seededHash.current);
+      else {
+        seededHash.current = null;
+        setBase(null);
+        void sha256(content).then(hash => { if (live) setBase(hash); });
+      }
+    }
     return () => { live = false; };
-  }, [file.data]);
+  }, [file.data, seed?.content]);
   const dirty = text !== null && text !== saved;
   /** Every way out (Close, the ×, Escape, the scrim) asks first when there is unsaved text. */
   const close = () => { if (dirty && !readOnly) setAsking(true); else onClose(); };
@@ -72,12 +87,12 @@ export function DocumentEditor({ engine, agentId, path, level, onClose, onSaved 
       {!readOnly && <button type="button" className="btn pri" disabled={text === null || base === null || state.busy || (!dirty && !state.error)} onClick={() => void save()}>Save</button>}</>;
   return <Dialog title={documentTitle(name, level)} wide onClose={close} testid="document-editor" footer={footer}>
     {shows(level, "advanced") && <p className="lib-hint">{path}</p>}
-    {file.loading && <p className="lib-hint" role="status">Loading…</p>}
+    {file.loading && text === null && <p className="lib-hint" role="status">Loading…</p>}
     {file.error && <p className="lib-bad" role="alert">{file.error}</p>}
     {loaded?.encoding === "base64" && <p className="lib-hint">This file isn’t text, so it can’t be shown here.</p>}
     {readOnly && <p className="lib-hint">{documentTitle(name, level)} · read only</p>}
     {text !== null && <textarea className="inp lib-editor" aria-label={documentTitle(name, level)} autoFocus rows={16} value={text} readOnly={readOnly}
-      onChange={event => { setText(event.target.value); setState(s => (s.busy ? s : { busy: false })); }}
+      onChange={event => { typed.current = true; setText(event.target.value); setState(s => (s.busy ? s : { busy: false })); }}
       onKeyDown={event => { if (!readOnly && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); } }} />}
     {state.note && <p className="lib-hint" role="status">{state.note}</p>}
     {state.error && <p className="lib-bad" role="alert">{state.error}</p>}

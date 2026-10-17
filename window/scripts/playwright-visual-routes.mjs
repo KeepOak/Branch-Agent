@@ -11,6 +11,7 @@
 //   team-approval  the team proposal card, asking state
 //   computer-screen-before  the computer pane when its capture fails (main's JSON-RPC error)
 //   computer-permission  the computer pane when the capture is all black (the Screen Recording ask)
+//   settings-nav-end  R1 Settings (Technical) under a 48 px bar, the nav scrolled to its end; fails if the last row is cut off
 // The fixture (visual-harness.tsx) supplies the group "Design group" and the portal "Ledger app".
 // Writes <outDir>/<route>-<label>.png (label defaults to "current"); pass "before" or "after" for a PR.
 // Add a route by adding a name in visual-routes.mjs and a step below.
@@ -68,6 +69,16 @@ const steps = {
     await page.getByRole("region", { name: "Ledger app preview" }).waitFor();
     return page.getByRole("complementary", { name: "Side panel" });
   },
+  "settings-nav-end": async (page) => {
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await page.goto(`${base}/scripts/visual-harness.html?settings=technical`);
+    const side = page.locator(".r1s-side");
+    await side.locator(".r1s-nav").last().waitFor();
+    await page.waitForTimeout(500);
+    await side.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    await page.waitForTimeout(200);
+    return page.locator("#root");
+  },
   "steps-overflow": async (page) => {
     await page.goto(`${base}/scripts/visual-harness.html?overflow=steps`);
     return page.getByTestId("overflow-panel");
@@ -110,6 +121,20 @@ const staysInside = (page, selector) => page.evaluate((selector) => {
 
 // Checks run after the screenshot, so a failing capture still leaves its picture. Each returns a list of problems.
 const checks = {
+  "settings-nav-end": (page) => page.evaluate(() => {
+    const frame = document.querySelector('[data-testid="settings-frame"]').getBoundingClientRect();
+    const side = document.querySelector(".r1s-side");
+    const rows = side.querySelectorAll(".r1s-nav");
+    const last = rows[rows.length - 1];
+    const problems = [];
+    if (rows.length < 20) problems.push(`only ${rows.length} nav rows; the check needs a nav longer than the frame`);
+    if (side.scrollHeight <= side.clientHeight) problems.push(`the nav does not scroll: ${side.scrollHeight}px of rows in ${side.clientHeight}px`);
+    const sideBottom = side.getBoundingClientRect().bottom;
+    if (sideBottom > frame.bottom + 1) problems.push(`the nav column ends at ${Math.round(sideBottom)}px, past the frame's ${Math.round(frame.bottom)}px bottom`);
+    const lastBottom = last.getBoundingClientRect().bottom;
+    if (lastBottom > frame.bottom + 1) problems.push(`the last nav row "${last.textContent.trim()}" ends at ${Math.round(lastBottom)}px, past the frame's ${Math.round(frame.bottom)}px bottom`);
+    return problems;
+  }),
   "steps-overflow": (page) => staysInside(page, '[data-testid="overflow-panel"]'),
   "pair-overflow": (page) => staysInside(page, '[role=dialog][aria-label="Pair a phone"]'),
   "side-panel-tabs": (page) => page.evaluate(() => {

@@ -16,12 +16,25 @@ function regular(): boolean {
 }
 
 const hostnames = new Set<string>();
+const listeners = new Set<() => void>();
+
 /** The computer's own hostnames, as the engine reports them, so a toast never shows them at Regular. */
 export function rememberHostnames(...names: (string | null | undefined)[]): void {
+  let added = false;
   for (const name of names) {
     const value = name?.trim();
-    if (value && value.length > 1) hostnames.add(value);
+    if (value && value.length > 1 && !hostnames.has(value)) {
+      hostnames.add(value);
+      added = true;
+    }
   }
+  if (added) for (const listener of listeners) listener();
+}
+
+/** Runs when a new hostname is remembered, so a toast already showing can drop it. */
+export function onHostnames(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
