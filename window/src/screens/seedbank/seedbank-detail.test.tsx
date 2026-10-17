@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CapabilityProvider } from "../../connect/capabilities";
+import type { PluginsCatalogGetResult } from "@branch/gateway-protocol";
 import type { WindowEngine } from "../../connect/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { Seedbank } from "./index";
@@ -172,17 +173,38 @@ describe("#1049 Seedbank item dialog and seeds", () => {
     expect(parseSeed(JSON.stringify({ format: "branch.seed", version: 1, kind: "looks", name: "Grove", by: "", ref: "grove" }))).toMatchObject({ reason: SEED_KIND_COMING });
   });
 
-  it("reads Version and What changed from the gateway's { plugin, detail } answer", async () => {
-    const nested: Handler = (method, params) => method === "plugins.catalog.get"
-      ? { plugin: { id: "github", name: "GitHub", latestVersion: "2.1.0", official: false, categories: [] },
-          detail: { origin: "clawhub", topics: [], configuration: [], mcpServers: [], skills: [], versions: [{ version: "2.1.0", createdAt: 1, changelog: "Reads draft pull requests.", tags: [] }, { version: "2.0.0", createdAt: 0, changelog: "Older.", tags: [] }] } }
-      : handler(method, params);
-    const { engine } = engineOf(METHODS, nested);
+  // plugins.catalog.get answers PluginsCatalogGetResult: plugin is a PluginDiscoveryEntry (facts under plugin.catalog),
+  // detail.selectedRelease is a ClawHubSelectedRelease, and local detail has selectedRelease null and versions [].
+  const entry = (latestVersion: string): PluginsCatalogGetResult["plugin"] => ({
+    id: "github",
+    catalog: { name: "GitHub", official: false, categories: [], latestVersion },
+    local: { present: false, installed: false, enabled: false, state: "not-installed", action: "install" },
+  });
+  const factsOf = async (answer: PluginsCatalogGetResult) => {
+    const { engine } = engineOf(METHODS, (method, params) => method === "plugins.catalog.get" ? answer : handler(method, params));
     const host = await render(engine);
     await click(host.querySelector<HTMLElement>("[data-id='mcp:github'] .sb-name")!);
     const sheet = document.querySelector(".sb-sheet")!;
-    const facts = Object.fromEntries([...sheet.querySelectorAll("dt")].map(d => [d.textContent, d.nextElementSibling?.textContent]));
+    return Object.fromEntries([...sheet.querySelectorAll("dt")].map(d => [d.textContent, d.nextElementSibling?.textContent]));
+  };
+
+  it("reads Version and What changed from detail.selectedRelease in the gateway's { plugin, detail } answer", async () => {
+    const facts = await factsOf({
+      plugin: entry("2.2.0-beta.1"),
+      detail: { origin: "clawhub", topics: [], configuration: [], mcpServers: [], skills: [],
+        selectedRelease: { version: "2.1.0", createdAt: 2, changelog: "Reads draft pull requests.", tags: ["latest"] },
+        versions: [{ version: "2.0.0", createdAt: 1, changelog: "Older.", tags: [] }] },
+    });
     expect(facts["Version"]).toBe("2.1.0");
     expect(facts["What changed"]).toBe("Reads draft pull requests.");
+  });
+
+  it("falls back to plugin.catalog.latestVersion for local detail, with selectedRelease null and versions []", async () => {
+    const facts = await factsOf({
+      plugin: entry("1.4.0"),
+      detail: { origin: "local", topics: [], configuration: [], mcpServers: [], skills: [], versions: [], selectedRelease: null },
+    });
+    expect(facts["Version"]).toBe("1.4.0");
+    expect(facts).not.toHaveProperty("What changed");
   });
 });

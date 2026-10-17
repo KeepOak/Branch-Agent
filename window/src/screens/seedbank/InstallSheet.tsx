@@ -42,13 +42,17 @@ export type Detail = { text: string; summary: string; tools: string[]; safety: S
 /** Version, What changed and Works on, from skills.detail or plugins.catalog.get, when they are there. */
 export function readFacts(raw: unknown): Pick<Detail, "version" | "changed" | "os"> {
   const d = rec(raw), latest = rec(d.latestVersion), skill = rec(d.skill);
-  // plugins.catalog.get answers { plugin, detail }: the release it picked, else the newest listed version.
-  const plugin = rec(d.plugin), more = rec(d.detail), release = rec(more.selectedRelease);
+  // plugins.catalog.get answers { plugin: { catalog }, detail }. Version is the release the registry picked
+  // (detail.selectedRelease), else plugin.catalog.latestVersion, else the newest listed version by createdAt.
+  // Local detail has selectedRelease null and versions [], so it falls through to plugin.catalog.latestVersion.
+  const catalog = rec(rec(d.plugin).catalog), more = rec(d.detail), release = rec(more.selectedRelease);
   const versions = Array.isArray(more.versions) ? more.versions.map(rec) : [];
-  const pick = str(release.version) || str(plugin.latestVersion);
-  const listed = versions.find(v => pick && str(v.version) === pick) ?? versions[0] ?? {};
-  const version = str(d.version) || str(latest.version) || str(skill.version) || (typeof d.latestVersion === "string" ? d.latestVersion : "") || pick || str(listed.version);
-  const changed = str(d.changelog) || str(latest.changelog) || str(skill.changelog) || str(listed.changelog).trim();
+  const newest = versions.reduce<Rec | undefined>((a, v) => (!a || Number(v.createdAt) > Number(a.createdAt) ? v : a), undefined) ?? {};
+  const pick = str(release.version) || str(catalog.latestVersion) || str(newest.version);
+  // What changed: the picked release's changelog, else that version's entry in the listed versions.
+  const listed = versions.find(v => pick && str(v.version) === pick) ?? {};
+  const version = str(d.version) || str(latest.version) || str(skill.version) || (typeof d.latestVersion === "string" ? d.latestVersion : "") || pick;
+  const changed = str(d.changelog) || str(latest.changelog) || str(skill.changelog) || str(release.changelog).trim() || str(listed.changelog).trim();
   const raw2 = d.platforms ?? d.os ?? skill.platforms;
   const os = Array.isArray(raw2) ? raw2.filter((p): p is string => typeof p === "string").join(", ") : str(raw2);
   return { ...(version ? { version } : {}), ...(changed ? { changed } : {}), ...(os ? { os } : {}) };
