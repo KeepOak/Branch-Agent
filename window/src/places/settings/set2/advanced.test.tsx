@@ -220,6 +220,23 @@ describe("Settings › Advanced", () => {
     expect(row("Meaning search").textContent).toContain("Working");
   });
 
+  it("Get the model starts llama.cpp setup for the memory embedding model", async () => {
+    const off = { provider: "local", embedding: { ok: false, checked: true, error: "Search by meaning is off until this computer has the small model that powers it. Branch still finds memories by matching words." } };
+    const { engine, request } = engineWith({ ...CONFIG, "doctor.memory.status": off, "branch.setup.prepare.start": {}, "wizard.next": { done: false, step: { id: "ask", type: "confirm", message: "Download the local embedding model (about 0.3 GB)?" } } });
+    await show(engine, "advanced");
+    const meaning = row("Meaning search");
+    expect(meaning.textContent).toContain("About 0.3 GB");
+    expect(meaning.textContent).toContain("Get the model");
+    await click(button("Get the model", meaning));
+    const start = request.mock.calls.find(([m]) => m === "branch.setup.prepare.start") as unknown as [string, Record<string, unknown>];
+    expect(start[1]).toMatchObject({ authChoice: "llama-cpp", agentId: "main" });
+    expect(typeof start[1].sessionId).toBe("string");
+    const dlg = document.querySelector('[data-testid="local-setup"]') as HTMLElement;
+    expect(dlg).not.toBeNull();
+    expect(dlg.textContent).toContain("about 0.3 GB");
+    expect(dlg.textContent).toContain("asks before it starts");
+  });
+
   it("reads and writes each LanceDB memory setting through config.patch", async () => {
     const entry = (config: Record<string, unknown>) => ({ plugins: { entries: { "memory-lancedb": { config } } } });
     const fill = async (title: string, value: string) => {

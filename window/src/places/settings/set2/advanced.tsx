@@ -14,7 +14,11 @@ import {
   type Ctx, type SecSpec, type Spec,
 } from "./advanced-more";
 import { ConvDialog, EverythingElse, HealthDialog, HooksSec, LogsDialog, MigrateDialog, SectionDialog, WebSearchDialog } from "./advanced-tech";
+import { SetupDialog } from "../set1/local-setup";
 import "./advanced.css";
+
+const MEMORY_MODEL_LEDE = "This downloads the small meaning-search model (about 0.3 GB) onto this computer. Branch asks before it starts.";
+const MEMORY_MODEL_OPTION = { id: "llama-cpp", label: "the meaning-search model" };
 
 const LEDE = "What’s running under the hood, for when something needs a look.";
 const { sw, no } = SPEC;
@@ -104,16 +108,31 @@ function MeaningSearch({ c }: { c: Ctx }) {
   const st = useLive<RecordValue>(c.engine, "doctor.memory.status", params, ["memory", "agents.changed", "config.changed"]);
   const test = useCall();
   const [probe, setProbe] = useState<RecordValue | null>(null);
+  const [setup, setSetup] = useState(false);
   const emb = rec((probe ?? rec(st.data)).embedding);
   const provider = str(rec(probe ?? st.data).provider) || str(c.config.get("memory.search.provider")) || "local";
   const name = PROVIDERS.find((p) => p.id === provider)?.label ?? provider;
   const checked = emb.checked !== false && (emb.ok === true || Boolean(emb.error));
   const word = !checked ? "Not checked yet" : emb.ok === true ? "Working" : "Not working";
   const line = !checked ? "Branch hasn’t checked meaning search yet." : emb.ok === true ? "Meaning search answered." : str(emb.error);
+  const needModel = provider === "local" && checked && emb.ok !== true;
+  const retest = () => void test.run(async () => {
+    const next = rec(await c.engine.request("doctor.memory.status", { ...params, probe: true }));
+    setProbe(next);
+    return next;
+  }, (next) => rec(next.embedding).ok === true ? "Meaning search is working." : (str(rec(next.embedding).error) || "Meaning search is not working yet."));
+  const getModel = () => {
+    const saved = str(c.config.get("memory.search.provider"));
+    const open = () => setSetup(true);
+    if (saved === "local") open();
+    else void c.config.set("memory.search.provider", "local").then(() => open(), () => open());
+  };
   return (
-    <Ctl title="Meaning search" sub={`${st.error ?? line} ${name} · ${LOCAL.has(provider) ? "on this computer" : "in the cloud"}`} after={<CallLine call={test} />}>
+    <Ctl title="Meaning search" sub={`${st.error ?? line} ${name} · ${LOCAL.has(provider) ? "on this computer" : "in the cloud"}`} after={<>{needModel && !test.note && !test.error ? <p className="hint">About 0.3 GB. Branch asks before it downloads.</p> : null}<CallLine call={test} /></>}>
       <span className="s2advanced-v">{word}</span>
-      <Btn sm disabled={test.busy} onClick={() => void test.run(async () => setProbe(rec(await c.engine.request("doctor.memory.status", { ...params, probe: true }))))}>Test</Btn>
+      <Btn sm disabled={test.busy} onClick={() => retest()}>Test</Btn>
+      {needModel ? <Btn sm disabled={test.busy || setup} onClick={getModel}>Get the model</Btn> : null}
+      {setup ? <SetupDialog engine={c.engine} option={MEMORY_MODEL_OPTION} agent={c.agent ? { agentId: c.agent } : {}} lede={MEMORY_MODEL_LEDE} doneText="The meaning-search model is on this computer." onClose={() => { setSetup(false); retest(); }} /> : null}
     </Ctl>
   );
 }
