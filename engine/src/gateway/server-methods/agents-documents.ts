@@ -85,23 +85,18 @@ export const agentsDocumentsHandlers: GatewayRequestHandlers = {
     const filePath = `Documents/${name}`;
     const expected = params.expectedHash.toLowerCase();
     const access = getAgentWorkspaceAccess(workspaceDir);
+    // A remote workspace's bridge has no atomic compare-and-set, so a Trunk's write between the read and the write
+    // would be lost. Its documents stay read only, as agents.workspace.get already marks them.
+    if (access) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "Documents in a remote workspace are read only", { details: { type: "document_read_only", path: filePath } }));
+      return;
+    }
     const assertCurrent = () => {
       if (getAgentWorkspaceAccess(workspaceDir) !== access) throw new Error("Workspace access changed while saving a Library document");
     };
     try {
       const outcome = await enqueueWorkspaceFileUpdate(async (): Promise<"saved" | "missing" | "changed"> => {
         assertCurrent();
-        if (access) {
-          const stat = await access.bridge.stat({ filePath });
-          assertCurrent();
-          if (!stat) return "missing";
-          const data = await access.bridge.readFile({ filePath, maxBytes: MAX_DOCUMENT_BYTES + 1 });
-          assertCurrent();
-          if (data.length > MAX_DOCUMENT_BYTES || sha256Hex(data) !== expected) return "changed";
-          await access.bridge.writeFile({ filePath, data: params.content, mkdir: false });
-          assertCurrent();
-          return "saved";
-        }
         const workspaceRoot = await root(workspaceDir);
         assertCurrent();
         const relative = path.posix.join("Documents", name);

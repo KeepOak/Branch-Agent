@@ -34,6 +34,9 @@ export function DocumentEditor({ engine, agentId, path, level, onClose, onSaved 
   const [saved, setSaved] = useState<string | null>(null);
   const [base, setBase] = useState<string | null>(null);
   const [state, setState] = useState<{ busy: boolean; note?: string; error?: string }>({ busy: false });
+  const [asking, setAsking] = useState(false);
+  // A remote workspace has no atomic compare-and-set, so agents.workspace.get marks its files read only.
+  const readOnly = rec(rec(file.data).file).readOnly === true;
   useEffect(() => {
     const first = file.data ? fileOf(file.data) : null;
     if (!first || first.encoding === "base64") return;
@@ -44,6 +47,8 @@ export function DocumentEditor({ engine, agentId, path, level, onClose, onSaved 
     return () => { live = false; };
   }, [file.data]);
   const dirty = text !== null && text !== saved;
+  /** Every way out (Close, the ×, Escape, the scrim) asks first when there is unsaved text. */
+  const close = () => { if (dirty && !readOnly) setAsking(true); else onClose(); };
   async function save() {
     if (text === null || base === null || state.busy) return;
     setState({ busy: true });
@@ -59,17 +64,19 @@ export function DocumentEditor({ engine, agentId, path, level, onClose, onSaved 
       setState({ busy: false, error: type === "document_changed" ? "Something changed since you looked. Look again." : "Couldn’t save it. Try again." });
     }
   }
-  return <Dialog title={documentTitle(name, level)} wide onClose={onClose} testid="document-editor" footer={<>
-    <button type="button" className="btn ghost" onClick={onClose}>Close</button>
-    <button type="button" className="btn pri" disabled={text === null || base === null || state.busy || (!dirty && !state.error)} onClick={() => void save()}>Save</button>
-  </>}>
+  const footer = asking
+    ? <><span className="lib-hint">Discard your changes?</span><button type="button" className="btn ghost" onClick={() => setAsking(false)}>Keep editing</button><button type="button" className="btn bad" onClick={onClose}>Discard</button></>
+    : <><button type="button" className="btn ghost" onClick={close}>Close</button>
+      {!readOnly && <button type="button" className="btn pri" disabled={text === null || base === null || state.busy || (!dirty && !state.error)} onClick={() => void save()}>Save</button>}</>;
+  return <Dialog title={documentTitle(name, level)} wide onClose={close} testid="document-editor" footer={footer}>
     {shows(level, "advanced") && <p className="lib-hint">{path}</p>}
     {file.loading && <p className="lib-hint" role="status">Loading…</p>}
     {file.error && <p className="lib-bad" role="alert">{file.error}</p>}
     {loaded?.encoding === "base64" && <p className="lib-hint">This file isn’t text, so it can’t be shown here.</p>}
-    {text !== null && <textarea className="inp lib-editor" aria-label={documentTitle(name, level)} autoFocus rows={16} value={text}
+    {readOnly && <p className="lib-hint">{documentTitle(name, level)} · read only</p>}
+    {text !== null && <textarea className="inp lib-editor" aria-label={documentTitle(name, level)} autoFocus rows={16} value={text} readOnly={readOnly}
       onChange={event => { setText(event.target.value); setState(s => (s.busy ? s : { busy: false })); }}
-      onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); } }} />}
+      onKeyDown={event => { if (!readOnly && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); } }} />}
     {state.note && <p className="lib-hint" role="status">{state.note}</p>}
     {state.error && <p className="lib-bad" role="alert">{state.error}</p>}
   </Dialog>;

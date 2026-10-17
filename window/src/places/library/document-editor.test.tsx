@@ -15,12 +15,12 @@ let host: HTMLDivElement;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = null; document.body.innerHTML = ""; localStorage.clear(); });
 const settle = () => act(async () => { await new Promise(r => setTimeout(r, 0)); });
 
-function engineOf(onSave: (params: Record<string, unknown>) => unknown) {
+function engineOf(onSave: (params: Record<string, unknown>) => unknown, readOnly = false) {
   let made = false;
   const request = vi.fn(async (method: string, params: Record<string, unknown> = {}) => {
     if (method === "agents.documents.create") { made = true; return { agentId: "a", file: { name: "Untitled document.md", path: "Documents/Untitled document.md", size: 0, hash: EMPTY } }; }
     if (method === "agents.workspace.list") return { entries: made && params.path === "Documents" ? [{ name: "Untitled document.md", path: "Documents/Untitled document.md", kind: "file" }] : [], totalEntries: made ? 1 : 0, offset: 0 };
-    if (method === "agents.workspace.get") return { agentId: "a", file: { name: "Untitled document.md", path: "Documents/Untitled document.md", content: "", encoding: "utf8" } };
+    if (method === "agents.workspace.get") return { agentId: "a", file: { name: "Untitled document.md", path: "Documents/Untitled document.md", content: "", encoding: "utf8", ...(readOnly ? { readOnly: true } : {}) } };
     if (method === "agents.documents.set") { const v = onSave(params); if (v instanceof Error) throw v; return v; }
     return {};
   });
@@ -79,5 +79,29 @@ describe("Write a new document", () => {
     await save();
     expect(editor()!.textContent).toContain("Something changed since you looked. Look again.");
     expect(editor()!.textContent).not.toContain("since it was opened");
+  });
+
+  it("asks before closing over unsaved text, and keeps it on Keep editing", async () => {
+    const { engine } = engineOf(() => ({}));
+    await writeNew(engine);
+    await type("not saved yet");
+    const button = (label: string) => [...editor()!.querySelectorAll("button")].find(b => b.textContent === label)!;
+    await act(async () => button("Close").click());
+    expect(editor()!.textContent).toContain("Discard your changes?");
+    await act(async () => button("Keep editing").click());
+    expect(editor()!.querySelector("textarea")!.value).toBe("not saved yet");
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(editor()).toBeTruthy();
+    await act(async () => button("Close").click());
+    await act(async () => button("Discard").click());
+    expect(editor()).toBeNull();
+  });
+
+  it("keeps a remote workspace's document read only, with no Save", async () => {
+    const { engine, request } = engineOf(() => ({}), true);
+    await writeNew(engine);
+    expect(editor()!.querySelector("textarea")!.readOnly).toBe(true);
+    expect([...editor()!.querySelectorAll("button")].some(b => b.textContent === "Save")).toBe(false);
+    expect(request).not.toHaveBeenCalledWith("agents.documents.set", expect.anything());
   });
 });

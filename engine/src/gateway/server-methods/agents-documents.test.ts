@@ -118,12 +118,14 @@ it("never overwrites a document that changed since it was opened, and never crea
   expect(missing[2].details.type).toBe("document_missing");
   await expect(fs.stat(path.join(workspace, "Documents/Gone.md"))).rejects.toThrow();
 });
-it("saves only a portable name in Documents, through a remote workspace when there is one", async () => {
+it("saves only a portable name in Documents, and never through a remote workspace, which has no atomic compare-and-set", async () => {
   expect((await save({ name: "../escape.md" }))[0]).toBe(false);
   expect((await save({ destination: "elsewhere" }))[0]).toBe(false);
   const bridge = remote();
   bridge.stat.mockResolvedValue({ size: 0 });
   bridge.readFile.mockResolvedValue(Buffer.alloc(0));
-  expect((await save())[0]).toBe(true);
-  expect(bridge.writeFile).toHaveBeenCalledWith({ filePath: "Documents/Conversation.md", data: "Shopping: eggs", mkdir: false });
+  const refused = await save();
+  expect(refused[0]).toBe(false);
+  expect(refused[2].details.type).toBe("document_read_only");
+  expect(bridge.writeFile).not.toHaveBeenCalled();
 });
