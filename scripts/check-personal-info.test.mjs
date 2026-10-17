@@ -66,6 +66,52 @@ test('flags macOS /Users and Linux /home personal paths', () => {
   assert.deepEqual(types('logs in /home/exampleuser/.branch'), ['linux-user-path']);
 });
 
+test('relative and module paths through home/ are not Linux home directories', () => {
+  // The #1671 Android Home import, and the usual relative/module forms.
+  assert.deepEqual(types("} from '../home/homeModel';"), []);
+  assert.deepEqual(types("import HomeScreen from './home/HomeScreen'"), []);
+  assert.deepEqual(types('from "../home/homeModel"'), []);
+  assert.deepEqual(types("from '@/home/HomeScreen'"), []);
+  assert.deepEqual(types("from '~/home/HomeScreen'"), []);
+  assert.deepEqual(types('src/screens/home/HomeScreen'), []);
+  assert.deepEqual(types('.../screens/home/HomeScreen'), []);
+  assert.deepEqual(types('../Users/example/Code'), []);
+  assert.deepEqual(types('./Users/example/Code'), []);
+});
+
+test('absolute user home directories still fail on each OS path style', () => {
+  assert.deepEqual(types('/home/example/.branch'), ['linux-user-path']);
+  assert.deepEqual(types('logs in /home/example/.branch'), ['linux-user-path']);
+  assert.deepEqual(types('file:///home/example/spec.html'), ['linux-user-path']);
+  assert.deepEqual(types('open /Users/example/Code/Branch'), ['macos-user-path']);
+  assert.deepEqual(types('file:///Users/example/spec.html'), ['macos-user-path']);
+  assert.deepEqual(types('See C:/Users/example/Code/Branch'), ['windows-user-profile']);
+  assert.deepEqual(types('See C:\\Users\\example\\Code\\Branch'), ['windows-user-profile']);
+  assert.deepEqual(types('file:///D:/Users/example/spec.html'), ['windows-user-profile']);
+});
+
+test('a source diff with a relative home/ import is clean; an absolute home path is not', () => {
+  const relative = [
+    '@@ -1,0 +1,2 @@',
+    "+} from '../home/homeModel';",
+    "+import HomeScreen from './home/HomeScreen';",
+  ].join('\n');
+  assert.deepEqual(collectFindings({
+    files: [{ filename: 'mobile/src/screens/HomeScreen.tsx', patch: relative }],
+  }), []);
+
+  const leaked = collectFindings({
+    files: [{
+      filename: 'docs/notes.md',
+      patch: '@@ -1,0 +1,1 @@\n+logs in /home/example/.branch\n',
+    }],
+  });
+  assert.equal(leaked.length, 1);
+  assert.equal(leaked[0].source, 'diff');
+  assert.equal(leaked[0].type, 'linux-user-path');
+  assert.equal(leaked[0].snippet.includes('example'), false);
+});
+
 test('flags personal email addresses', () => {
   assert.deepEqual(types('contact exampleuser@gmail.com'), ['email']);
 });

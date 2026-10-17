@@ -73,12 +73,16 @@ const WINDOWS_USER = new RegExp(
   String.raw`(?:^|[^A-Za-z0-9])([A-Za-z]:[/\\]+Users[/\\]+)(${PATH_USER})`,
   'gi',
 );
+// `.@~` are relative/module prefixes (`../Users/<name>`, `@/Users/<name>`),
+// not an absolute /Users/<user> root. `:` stays excluded so drive paths stay Windows.
 const MAC_USER = new RegExp(
-  String.raw`(?:^|[^A-Za-z0-9_:])(\/Users\/)(${PATH_USER})`,
+  String.raw`(?:^|[^A-Za-z0-9_:.@~])(\/Users\/)(${PATH_USER})`,
   'g',
 );
+// Same prefix rule for Linux: `../home/<name>` and `./home/<name>` are source
+// imports, not `/home/<user>` directories.
 const LINUX_USER = new RegExp(
-  String.raw`(?:^|[^A-Za-z0-9_])(\/home\/)(${PATH_USER})`,
+  String.raw`(?:^|[^A-Za-z0-9_.@~])(\/home\/)(${PATH_USER})`,
   'g',
 );
 const EMAIL = /\b([A-Za-z0-9._%+-]+)@([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,})\b/g;
