@@ -2,6 +2,7 @@
 // with Pause / Resume and Look now, the day picker, Day at a glance, the timeline, Daily standup and Ask your day.
 import { useState, type FormEvent } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { availability, isUnknownMethod } from "../../connect/capabilities";
 import { EmptyLine } from "../../places-nav/PlaceFrame";
 import { num, optStr, rec, recs, str, useOperation, useResource } from "./data";
 import { EmptyIcon, IcoTile, Section, type LibIconName } from "./parts";
@@ -35,14 +36,16 @@ const ICONS: Record<string, LibIconName> = { code: "code", coding: "code", mail:
 type Props = { engine: WindowEngine; openSettings?: (page: string) => void };
 
 export function LogbookTab({ engine, openSettings }: Props) {
-  const raw = useResource<unknown>(engine, "logbook.status");
+  // Logbook is a plugin that is off on a fresh install: an engine without logbook.status reads as off, never as its error.
+  const offered = availability(engine, "logbook.status") !== "no";
+  const raw = useResource<unknown>(engine, offered ? "logbook.status" : null);
   const status = { ...raw, data: raw.data === null ? null : statusOf(raw.data) };
   const hint = <p className="lib-hint lib-mhint">Your day, built from pictures of your screen.</p>;
   if (status.loading) return <>{hint}<p className="lib-hint" role="status">Loading…</p></>;
   if (!status.data || !status.data.captureEnabled) return <>{hint}
     <EmptyLine icon={<EmptyIcon name="camera" />}><b>Logbook is off</b><br />It builds a timeline of your day from pictures of your screen. The model that reads them sees them.<br />
       <button type="button" className="btn sm" disabled={!openSettings} title={openSettings ? undefined : "Needs the window’s Settings to turn Logbook on."} onClick={() => openSettings?.("computer")}>Turn on…</button></EmptyLine>
-    {status.error && <p className="lib-hint" data-testid="logbook-engine">{status.error}</p>}
+    {status.error && !isUnknownMethod(status.error) ? <div className="lib-hint" data-testid="logbook-engine"><p>Branch couldn’t check Logbook. Try again in a moment.</p><details><summary>Details</summary><code>{status.error}</code></details></div> : null}
   </>;
   return <>{hint}<On engine={engine} status={status.data} reload={status.reload} openSettings={openSettings} /></>;
 }
