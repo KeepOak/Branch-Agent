@@ -56,15 +56,73 @@ describe("pairing relay", () => {
     const host = await startPairingRelayHost({
       relayWsUrl: session.wsUrl,
       localGatewayUrl: `ws://127.0.0.1:${gatewayPort}`,
+      hostToken: session.hostToken,
+      key: session.key,
     });
     opened.push(host);
 
-    const phone = new WebSocket(`${session.wsUrl}?role=peer`);
+    const phone = new WebSocket(session.peerUrl);
     await once(phone, "open");
-    phone.send("pair-hello");
-    const replied = once(phone, "message").then(([data]) => String(data));
+    phone.send(encryptPairingFrame(session.key, Buffer.from("pair-hello")));
+    const replied = once(phone, "message").then(([data]) =>
+      decryptPairingFrame(
+        session.key,
+        Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer),
+      ).toString("utf8"),
+    );
     await expect(fromPhone).resolves.toBe("pair-hello");
     await expect(replied).resolves.toBe("ack:pair-hello");
+    phone.close();
+  });
+
+  it("rejects an unauthenticated join that only knows the session id", async () => {
+    const relay = await listenPairingRelay();
+    opened.push(relay);
+    const session = await createPairingRelaySession({ relayUrl: relay.baseUrl });
+    const bare = new WebSocket(session.wsUrl);
+    const roleOnly = new WebSocket(`${session.wsUrl}?role=peer`);
+    await once(bare, "close");
+    await once(roleOnly, "close");
+    expect(bare.readyState).toBe(WebSocket.CLOSED);
+    expect(roleOnly.readyState).toBe(WebSocket.CLOSED);
+  });
+
+  it("does not put the bootstrap token on the relay hop", async () => {
+    const relay = await listenPairingRelay();
+    opened.push(relay);
+
+    const gatewayHttp = createServer();
+    const gatewayWss = new WebSocketServer({ server: gatewayHttp });
+    gatewayWss.on("connection", (socket) => {
+      socket.send(JSON.stringify({ bootstrapToken: "bootstrap-secret-token" }));
+    });
+    gatewayHttp.listen(0, "127.0.0.1");
+    await once(gatewayHttp, "listening");
+    const gatewayPort = (gatewayHttp.address() as { port: number }).port;
+    opened.push({
+      close: async () => {
+        gatewayWss.close();
+        gatewayHttp.close();
+        await once(gatewayHttp, "close").catch(() => undefined);
+      },
+    });
+
+    const session = await createPairingRelaySession({ relayUrl: relay.baseUrl });
+    const host = await startPairingRelayHost({
+      relayWsUrl: session.wsUrl,
+      localGatewayUrl: `ws://127.0.0.1:${gatewayPort}`,
+      hostToken: session.hostToken,
+      key: session.key,
+    });
+    opened.push(host);
+
+    const phone = new WebSocket(session.peerUrl);
+    const gotMessage = once(phone, "message");
+    await once(phone, "open");
+    const [data] = await gotMessage;
+    const raw = Buffer.isBuffer(data) ? data.toString("utf8") : String(data);
+    expect(raw).not.toContain("bootstrap-secret-token");
+    expect(() => JSON.parse(raw)).toThrow();
     phone.close();
   });
 });

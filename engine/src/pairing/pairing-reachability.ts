@@ -51,8 +51,11 @@ async function listenLanPairingProxy(localGatewayUrl: string): Promise<{
 }> {
   const httpServer = createServer();
   const wss = new WebSocketServer({ server: httpServer });
-  wss.on("connection", (client) => {
-    const local = new WebSocket(localGatewayUrl);
+  wss.on("connection", (client, req) => {
+    const remote = req.socket.remoteAddress?.trim() || "0.0.0.0";
+    const local = new WebSocket(localGatewayUrl, {
+      headers: { "x-branch-pairing-remote": remote },
+    });
     const start = () => pipeSockets(client, local);
     if (local.readyState === WebSocket.OPEN) {
       start();
@@ -106,9 +109,11 @@ export async function openPairingReachability(params: {
       const host = await startPairingRelayHost({
         relayWsUrl: session.wsUrl,
         localGatewayUrl: params.localGatewayUrl,
+        hostToken: session.hostToken,
+        key: session.key,
       });
       return {
-        url: session.wsUrl,
+        url: session.peerUrl,
         source: "pairing.relay",
         relayKey: session.key.toString("base64url"),
         close: host.close,

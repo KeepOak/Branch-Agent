@@ -1,3 +1,4 @@
+engine:src/gateway/ingress-attribution.test.ts
 engine:src/gateway/server-methods/device-pair-setup.test.ts
 engine:src/pairing/confirm-code.test.ts
 engine:src/pairing/pairing-reachability.test.ts

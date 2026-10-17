@@ -268,7 +268,8 @@ function parseNormalizedGatewayUrl(raw: string, pathMode: PairingUrlPathMode): s
     const port = parsed.port ? `:${parsed.port}` : "";
     const contextPath =
       pathMode === "origin-only" || parsed.pathname === "/" ? "" : parsed.pathname;
-    return `${resolvedScheme}://${host}${port}${contextPath}`;
+    const search = pathMode === "origin-only" ? "" : parsed.search;
+    return `${resolvedScheme}://${host}${port}${contextPath}${search}`;
   } catch {
     return null;
   }
@@ -562,8 +563,13 @@ export async function resolvePairingSetupFromConfig(
     reachability = reached;
   }
 
+  const failAfterReachability = async (error: string): Promise<PairingSetupResolution> => {
+    await reachability?.close().catch(() => undefined);
+    return { ok: false, error };
+  };
+
   if (!urlResult.url) {
-    return { ok: false, error: urlResult.error ?? "Gateway URL unavailable." };
+    return await failAfterReachability(urlResult.error ?? "Gateway URL unavailable.");
   }
   // Mobile dashboards use the paired endpoint path as their Control UI mount.
   // Explicit overrides, remote endpoints, and configured proxy paths stay authoritative.
@@ -577,7 +583,7 @@ export async function resolvePairingSetupFromConfig(
   }
   const mobilePairingUrlError = validateMobilePairingUrl(urlResult.url, urlResult.source);
   if (mobilePairingUrlError) {
-    return { ok: false, error: mobilePairingUrlError };
+    return await failAfterReachability(mobilePairingUrlError);
   }
 
   const requestedBootstrapProfile =
@@ -602,7 +608,7 @@ export async function resolvePairingSetupFromConfig(
     ? normalizeTlsFingerprint(directGatewayTlsFingerprintRaw)
     : undefined;
   if (directGatewayTlsFingerprintRaw !== undefined && !directGatewayTlsFingerprint) {
-    return { ok: false, error: "Gateway TLS fingerprint is invalid." };
+    return await failAfterReachability("Gateway TLS fingerprint is invalid.");
   }
   const issued =
     options.issuedBootstrap ??

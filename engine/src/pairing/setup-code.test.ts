@@ -61,6 +61,14 @@ describe("pairing setup code", () => {
     expect(decodePairingSetupCode(encodePairingSetupCode(payload))).toEqual(payload);
   });
 
+  it("round-trips a setup URL that includes a peer role query", () => {
+    const payload = {
+      url: "wss://relay.example/v1/pair/abc?role=peer&token=peer-token",
+      bootstrapToken: "bootstrap-123",
+    };
+    expect(decodePairingSetupCode(encodePairingSetupCode(payload))).toEqual(payload);
+  });
+
   it("round-trips a confirm code and relay key", () => {
     const payload = {
       url: "wss://gateway.example",
@@ -450,6 +458,22 @@ describe("pairing setup code", () => {
     }
     expect(resolved.payload.relayKey).toBe("dGVzdC1rZXk");
     expect(resolved.reachability?.source).toBe("pairing.relay");
+  });
+
+  it("closes reachability when the pairing URL is later rejected", async () => {
+    const close = vi.fn(async () => undefined);
+    const resolved = await resolvePairingSetupFromConfig(
+      gatewayConfig({ bind: "loopback", auth: { mode: "token", token: "tok" } }),
+      {
+        openReachability: async () => ({
+          url: "ws://gateway.example",
+          source: "pairing.relay",
+          close,
+        }),
+      },
+    );
+    expectResolvedSetupError(resolved, "secure gateway URL");
+    expect(close).toHaveBeenCalled();
   });
 
   it("does not mention loopback or restart when the relay cannot open", async () => {
