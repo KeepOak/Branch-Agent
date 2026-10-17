@@ -24,7 +24,9 @@ import { PlusMenu } from "./PlusMenu";
 import { buildExtras, planSend, sendTooltip, type Reply } from "./sending";
 import { Drawer } from "./SlashDrawer";
 import { useBackground } from "./useBackground";
-import { ACCOUNT_FASTER, FREE_MODEL_READY } from "./no-key-default";
+import { ConnectModelNotice } from "./ConnectModelNotice";
+import { CONNECT_MODEL_ANSWERS } from "./connect-model";
+import { FREE_MODEL_READY } from "./no-key-default";
 import { hasNoModel, useConversation } from "./useConversation";
 import { safeStorage, saveDraft } from "./drafts";
 import { useConversationPrefs } from "../thread/prefs";
@@ -231,7 +233,10 @@ export function Composer(props: Props) {
       draft.clear();
       return;
     }
-    if (freeModelBlocked && plan.kind !== "command") return;
+    if (freeModelBlocked && plan.kind !== "command") {
+      setProblem(waitingForFreeModel ? FREE_MODEL_READY : CONNECT_MODEL_ANSWERS);
+      return;
+    }
     if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") {
       void runBackground(plan.text);
@@ -448,7 +453,7 @@ export function Composer(props: Props) {
       onDrop={onDrop}
     >
       {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
-      {noModel ? <NoModelLine onOpen={onOpen} error={conv.noKeyError} onRetry={() => void conv.retryNoKey()} /> : null}
+      {noModel ? <ConnectModelNotice onOpen={onOpen} className="c-nomodel" onRetry={conv.noKeyError ? () => void conv.retryNoKey() : undefined} /> : null}
       {conversationProblem ? <p className={isPreparationPending(conversationProblem) ? "c-note" : "c-note bad"} role={isPreparationPending(conversationProblem) ? "status" : "alert"}>{isPreparationPending(conversationProblem) ? preparationLabel(trunkName) : shortReason(conversationProblem)}</p> : null}
       {problem ? <p className="c-note bad" role="alert">{isPreparationPending(problem) ? preparationLabel(trunkName) : shortReason(problem)}</p> : null}
       {line.error ? <p className="c-note bad" role="alert">{isPreparationPending(line.error) ? preparationLabel(trunkName) : shortReason(line.error)}</p> : null}
@@ -590,8 +595,10 @@ export function Composer(props: Props) {
           type="submit"
           className={stopMode ? "send stop" : ready ? "send ready" : "send"}
           aria-label={stopMode ? "Stop" : "Send"}
-          title={working && hasDraft ? sendTooltip(queueMode) : undefined}
+          title={stopMode ? undefined : waitingForFreeModel ? FREE_MODEL_READY : freeModelBlocked ? CONNECT_MODEL_ANSWERS : working && hasDraft ? sendTooltip(queueMode) : undefined}
           disabled={!stopMode && !ready}
+          aria-disabled={!stopMode && !ready || undefined}
+          data-blocked={freeModelBlocked ? "true" : undefined}
         >
           {stopMode ? <StopMark /> : <Icon name="up" stroke={2.2} />}
         </button>
@@ -729,14 +736,3 @@ function ToolButton({ refEl, icon, label, tip, open, onClick, disabled, testId }
   );
 }
 
-/** Suggestion while a free local model is getting ready; after a failure, the reason plus Try again. */
-function NoModelLine({ onOpen, error, onRetry }: { onOpen?: (target: OpenTarget) => void; error?: string | null; onRetry?: () => void }) {
-  return (
-    <p className="c-nomodel" data-testid="no-model" role={error ? "alert" : undefined}>
-      {error ?? ACCOUNT_FASTER}{" "}
-      {error ? <button type="button" className="c-link" onClick={onRetry}>Try again</button> : null}
-      {error ? " · " : null}
-      <button type="button" className="c-link" disabled={!onOpen} title={onOpen ? undefined : NO_ROUTE} onClick={() => onOpen?.("settings/accounts/add")}>Add an account</button>
-    </p>
-  );
-}

@@ -12,7 +12,7 @@ import { DockRow, type Goal } from "../../composer/DockRow";
 import { isAdmin, num, rec, str, type SendExtras, type WindowEngine } from "../../composer/engine";
 import { Icon, StopMark } from "../../composer/icons";
 import { ConnectModelNotice } from "../../composer/ConnectModelNotice";
-import { friendlyModelError, isNoUsableModelError } from "../../composer/connect-model";
+import { CONNECT_MODEL_ANSWERS, friendlyModelError, isNoUsableModelError } from "../../composer/connect-model";
 import { HistorySearch } from "../../composer/HistorySearch";
 import { replaceToken } from "../../composer/mention";
 import { isEngineMode, modeName, nextMode, type EngineMode } from "../../composer/mode";
@@ -235,7 +235,10 @@ export function Composer(props: Props) {
     }
     if (plan.kind === "stop") { onStop(); draft.clear(); return; }
     if (offline) return;
-    if (freeModelBlocked && plan.kind !== "command") return;
+    if (freeModelBlocked && plan.kind !== "command") {
+      setProblem(waitingForFreeModel ? FREE_MODEL_READY : CONNECT_MODEL_ANSWERS);
+      return;
+    }
     if (isPreparationPending(conversationProblem) && plan.kind !== "background") return;
     if (plan.kind === "background") { void runBackground(plan.text); return; }
     if (topic && plan.kind === "send") { void sendToTopic(topic.key, topic.title); return; }
@@ -379,16 +382,15 @@ export function Composer(props: Props) {
   const context = contextUse(props.row?.totalTokens, props.row?.contextTokens);
   const runningCount = props.running.length;
   const summary = ringSummary(usage, runningCount, context);
-  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : conv.noKeyError ? conv.noKeyError : waitingForFreeModel ? FREE_MODEL_READY : working && hasDraft ? sendTooltip(queueMode) : undefined;
+  const sendWhy = offline ? "Offline: Branch is reconnecting." : props.lockdown ? "Lockdown is on." : waitingForFreeModel ? FREE_MODEL_READY : freeModelBlocked ? CONNECT_MODEL_ANSWERS : working && hasDraft ? sendTooltip(queueMode) : undefined;
   const placeholder = waitingForFreeModel ? FREE_MODEL_READY : noModel ? "Connect a model to start" : props.placeholder ?? `Message ${name}`;
   const notes = [conversationProblem, problem, line.error].filter((n): n is string => Boolean(n) && !(props.startupShown && (isPreparationPending(n) || isPreparationStalled(n))));
 
   return <div ref={dock} className="r1c" data-tight={tight || undefined} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragging(true); } }} onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)} onDrop={onDrop}>
     {dragging ? <div className="c-droplayer">Drop files to add them</div> : null}
-    {notes.map((n, i) => isNoUsableModelError(n)
-      ? <ConnectModelNotice key={i} onOpen={onOpen} className="r1c-connect" />
-      : <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : shortReason(n)}</p>)}
-    {conv.noKeyError ? <p className="r1c-note bad" role="alert" data-testid="no-key-failed">{conv.noKeyError} <button type="button" className="r1c-undo" data-local="" onClick={() => void conv.retryNoKey()}>Try again</button></p> : null}
+    {notes.filter((n) => !isNoUsableModelError(n)).map((n, i) =>
+      <p key={i} className={isPreparationPending(n) ? "r1c-note" : "r1c-note bad"} role={isPreparationPending(n) ? "status" : "alert"}>{isPreparationPending(n) ? preparationLabel(trunkName) : n === FREE_MODEL_READY ? n : shortReason(n)}</p>)}
+    {conv.noKeyError || notes.some(isNoUsableModelError) ? <ConnectModelNotice onOpen={onOpen} className="r1c-connect" onRetry={conv.noKeyError ? () => void conv.retryNoKey() : undefined} /> : null}
     {draft.note ? <p className="r1c-note">{draft.note}</p> : null}
     {improved && draft.text === improved.after ? <p className="r1c-note" role="status">Improved your draft · <button type="button" className="r1c-undo" data-local="" onClick={() => { draft.setText(improved.before); setImproved(null); box.current?.focus(); }}>Undo</button></p> : null}
     {drawer.peopleError && view?.kind === "mention" ? <p className="r1c-note bad">{drawer.peopleError}</p> : null}
@@ -423,7 +425,7 @@ export function Composer(props: Props) {
       {stopMode
         ? <button type="submit" className="r1c-send stop" data-need="chat.abort" aria-label="Stop" title="Stop"><StopMark /></button>
         : hasDraft
-          ? <button type="submit" key="send" className="r1c-send" data-need="chat.send" aria-label="Send" title={sendWhy} disabled={!ready}><Icon name="up" stroke={2.2} /></button>
+          ? <button type="submit" key="send" className="r1c-send" data-need="chat.send" aria-label="Send" title={sendWhy} disabled={!ready} aria-disabled={!ready || undefined} data-blocked={freeModelBlocked ? "true" : undefined}><Icon name="up" stroke={2.2} /></button>
           : voice.live
             ? <button type="button" key="voice" className="r1c-btn" data-need="talk.catalog" aria-label="Talk live with voice" title="Talk live with voice" onClick={() => setTalking(true)}><Icon name="wave" /></button>
             : <Later need="talk.session.create" reason={VOICE_OFF} where="Talk live with voice"><button type="button" key="voice" className="r1c-btn" aria-label="Talk live with voice"><Icon name="wave" /></button></Later>}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONNECT_MODEL_ANSWERS, friendlyModelError, inferenceProblem, isNoUsableModelError, NO_MODEL_SETUP } from "./connect-model";
+import { CONNECT_MODEL_ANSWERS, friendlyModelError, inferenceProblem, isNoUsableModelError, NO_MODEL_SETUP, NO_MODELS_ONBOARDING } from "./connect-model";
 
 describe("no usable model copy", () => {
   it("maps engine failures to the same words, never the raw error", () => {
@@ -16,5 +16,9 @@ describe("no usable model copy", () => {
     expect(inferenceProblem(new Error("could not verify a usable inference route"))).toBe(CONNECT_MODEL_ANSWERS);
     expect(inferenceProblem(new Error("timed out"))).toBeNull();
     expect(NO_MODEL_SETUP).toBe("No model is set up");
+    expect(isNoUsableModelError("A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster.")).toBe(true);
+    expect(friendlyModelError("A free local model isn’t ready on this computer yet. Connecting an account makes answers smarter and faster.")).toBe(CONNECT_MODEL_ANSWERS);
+    expect(NO_MODELS_ONBOARDING).toBe("No models on this computer yet. Connect a model to get answers.");
+    expect(NO_MODELS_ONBOARDING).not.toMatch(/will be set up/i);
   });
 });

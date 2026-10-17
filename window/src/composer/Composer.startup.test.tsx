@@ -25,10 +25,11 @@ describe("Composer startup preparation", () => {
     const root = createRoot(host);
     try {
       await act(async () => root.render(<Composer name="Oak" working={false} disabled={false} onSend={vi.fn()} onStop={vi.fn()} engine={engine} onOpen={onOpen} />));
-      await vi.waitFor(() => expect(host.querySelector('[data-testid="no-model"]')).not.toBeNull());
-      const buttons = host.querySelectorAll<HTMLButtonElement>('[data-testid="no-model"] button');
+      await vi.waitFor(() => expect(host.querySelector('[data-testid="connect-model"]')).not.toBeNull());
+      const buttons = host.querySelectorAll<HTMLButtonElement>('[data-testid="connect-model"] button');
       expect(buttons).toHaveLength(1);
-      expect(buttons[0].textContent).toBe("Add an account");
+      expect(buttons[0].textContent).toBe("Connect a model");
+      expect(host.textContent).toContain("Connect a model to get answers");
       await act(async () => buttons[0].click());
       expect(onOpen).toHaveBeenCalledExactlyOnceWith("settings/accounts/add");
     } finally { await act(async () => root.unmount()); }
@@ -46,13 +47,13 @@ describe("Composer startup preparation", () => {
     const root = createRoot(host);
     try {
       await act(async () => root.render(<Composer name="Oak" working={false} disabled={false} onSend={vi.fn()} onStop={vi.fn()} engine={engine} onOpen={onOpen} />));
-      await vi.waitFor(() => expect(host.querySelector('[data-testid="no-model"]')?.getAttribute("role")).toBe("alert"));
-      const line = host.querySelector('[data-testid="no-model"]')!;
-      expect(line.textContent).toContain("A free local model isn’t ready");
+      await vi.waitFor(() => expect(host.querySelector('[data-testid="connect-model"]')).not.toBeNull());
+      const line = host.querySelector('[data-testid="connect-model"]')!;
+      expect(line.textContent).toContain("Connect a model to get answers");
       expect(host.querySelector("textarea")?.getAttribute("placeholder")).not.toBe("Getting a free model ready…");
       const buttons = [...line.querySelectorAll<HTMLButtonElement>("button")].map((b) => b.textContent);
-      expect(buttons).toEqual(["Try again", "Add an account"]);
-      await act(async () => line.querySelector<HTMLButtonElement>("button")!.click());
+      expect(buttons).toEqual(["Connect a model", "Try again"]);
+      await act(async () => line.querySelectorAll<HTMLButtonElement>("button")[1]!.click());
       expect(request.mock.calls.filter((c) => c[0] === "branch.setup.activate").length).toBe(2);
     } finally { await act(async () => root.unmount()); }
   });

@@ -1,0 +1,7 @@
+window:src/composer/Composer.startup.test.tsx
+window:src/composer/composer-no-model-chip.test.tsx
+window:src/composer/connect-model.test.ts
+window:src/composer/send-blocked.test.tsx
+window:src/screens/composer/Composer.test.tsx
+window:src/screens/composer/send-blocked.test.tsx
+window:src/screens/onboarding/Onboarding.test.tsx

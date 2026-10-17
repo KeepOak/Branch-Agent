@@ -184,14 +184,14 @@ describe("R1-04 composer", () => {
   it("with no model connected keeps chat open and suggests an account", async () => {
     const { host, opened } = await mount({ models: false, activate: "hang" });
     expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Getting a free model ready…");
-    await act(async () => button("Smarter with an account")!.click());
+    await act(async () => button("Connect a model to get answers")!.click());
     expect(opened).toHaveBeenCalledWith("settings/accounts/add");
   });
 
   it("with no model connected says so in the field and the row", async () => {
     const { host, opened } = await mount({ models: false });
     await vi.waitFor(() => expect(host.querySelector("textarea")?.getAttribute("placeholder")).toBe("Connect a model to start"));
-    await act(async () => button("Connect a model")!.click());
+    await act(async () => button("Connect a model to get answers")!.click());
     expect(opened).toHaveBeenCalledWith("settings/accounts/add");
   });
 
@@ -206,15 +206,15 @@ describe("R1-04 composer", () => {
 
   it("shows the failure and Try again when a free model is not ready", async () => {
     const { host, request } = await mount({ models: false, activate: "fail" });
-    await vi.waitFor(() => expect(host.querySelector('[data-testid="no-key-failed"]')).not.toBeNull());
-    const failed = host.querySelector('[data-testid="no-key-failed"]')!;
-    expect(failed.textContent).toContain("A free local model isn’t ready");
-    expect(failed.querySelector("button")?.textContent).toBe("Try again");
+    await vi.waitFor(() => expect(host.querySelector('[data-testid="connect-model"]')).not.toBeNull());
+    const failed = host.querySelector('[data-testid="connect-model"]')!;
+    expect(failed.textContent).toContain("Connect a model to get answers");
+    expect([...failed.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Connect a model", "Try again"]);
     expect(host.querySelector("textarea")?.getAttribute("placeholder")).not.toBe("Getting a free model ready…");
     await type(host, "Hello");
     expect(button("Send")?.disabled).toBe(true);
-    expect(button("Send")?.title).toContain("A free local model isn’t ready");
-    await act(async () => failed.querySelector("button")!.click());
+    expect(button("Send")?.title).toBe("Connect a model to get answers");
+    await act(async () => [...failed.querySelectorAll("button")].find((b) => b.textContent === "Try again")!.click());
     expect(request.mock.calls.filter((c) => c[0] === "branch.setup.activate").length).toBe(2);
   });
 
