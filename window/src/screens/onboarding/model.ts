@@ -1,6 +1,6 @@
 // R1 onboarding (HANDOFF R1-07, preview item 37): four questions, then the first conversation. This file holds the
 // step list, the four modes and the rules the card follows; the engine calls live in the step components.
-import { MODE_ROWS } from "../../composer/mode";
+import { MODE_ROWS, PLAN_FIRST_REASON } from "../../composer/mode";
 import type { Detected, TestResult } from "../../setup/setup-model";
 import { errorWords, plainError, PLAIN_FAILURE } from "../../shell/plain-error";
 import { DAY_ONE_TEMPLATES, listedTemplate, type DayOneTemplate, type ListedTemplate } from "../seedbank/templates";
@@ -32,8 +32,8 @@ export const MODES: readonly Mode[] = (["ask", "auto", "plan", "read"] as const)
   const row = MODE_ROWS.find((r) => r.name === ROW_OF[id]);
   return { id, name: ROW_OF[id], line: row?.line ?? "", icon: (row?.icon ?? "shield") as Mode["icon"], recommended: id === "ask", exec: EXEC_OF[id] };
 });
-/** Shown on the disabled Plan first row: the one thing that turns it on. */
-export const PLAN_FIRST_REASON = "Update Branch to use Plan first.";
+/** Shown on the disabled Plan first row: the same words as the composer mode menu. */
+export { PLAN_FIRST_REASON };
 
 /** Where Branch runs (preview obWhereP37): three choices. Picking Another computer or A KeepOak computer records the
  *  choice and says where to finish it, as the preview does: pairing (device.pair.setupCode) and a cloud computer
