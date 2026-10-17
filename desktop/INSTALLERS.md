@@ -26,7 +26,7 @@ Both scripts:
 
 | Platform | Asset | Installs to |
 |---|---|---|
-| macOS arm64 | `branch-desktop-<version>-darwin-arm64.tar.gz` | `~/Applications/Branch Agent.app`. The script reports whether the app carries a code signature (Apple silicon needs at least an ad-hoc one). It refuses to replace an app signed with the release identity by an ad-hoc one. |
+| macOS arm64 | `branch-desktop-<version>-darwin-arm64.tar.gz` | `/Applications/Branch.app` when that folder is writable, otherwise `~/Applications/Branch.app`. The script reports whether the app carries a code signature (Apple silicon needs at least an ad-hoc one). It refuses to replace an app signed with the release identity by an ad-hoc one. |
 | Linux x64 | `Branch-Agent-<version>-linux-x64.AppImage` (never a tar.gz) | The AppImage itself at `~/.local/bin/branch-agent` (made executable) and `~/.local/share/applications/branch-agent.desktop`. A `~/.local/share/branch-agent` folder left by this script's earlier tar.gz design is removed; app data in `~/.local/share/BranchAgent` is never touched. |
 | Windows x64 | `Branch-Agent-Setup-<version>-win32-x64.exe` | `%LOCALAPPDATA%\Programs\Branch Agent`, through Inno Setup's per-user silent install (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER`). |
 
@@ -53,7 +53,7 @@ Signing goes through `desktop/scripts/release-signing.mjs`. Until the owner adds
 | Target | Installer | Signed? |
 |---|---|---|
 | win32-x64 | `Branch-Agent-Setup-<version>-win32-x64.exe` (Inno Setup 6, per user, no admin prompt) | Not until the Azure names below are set. Then `Branch Agent.exe` is signed before packaging and the setup .exe after. |
-| darwin-arm64 | `Branch-Agent-<version>-darwin-arm64.dmg` (the app plus an Applications link) | Until the Apple names below are set, the app inside carries the release's stable self-signed identity and the image isn't notarized. Then the app is re-signed with Developer ID and the hardened runtime, and the image is signed, notarized and stapled. |
+| darwin-arm64 | `Branch-Agent-<version>-darwin-arm64.dmg` (`Branch.app` plus an Applications link at the usual drag-to-Applications positions) | Until the Apple names below are set, the app inside carries the release's stable self-signed identity and the image isn't notarized. Then the app is re-signed with Developer ID and the hardened runtime, and the image is signed, notarized and stapled. |
 | linux-x64 | `Branch-Agent-<version>-linux-x64.AppImage` (per user; `install.sh` puts it at `~/.local/bin/branch-agent`) | No. Built with appimagetool 1.9.1 and the type2 runtime 20251108, both pinned by size and SHA-256 in `APPIMAGE_TOOLS` (`release-installers.mjs`) and checked before either runs. |
 
 ## Why per-user and where
@@ -61,7 +61,7 @@ Signing goes through `desktop/scripts/release-signing.mjs`. Until the owner adds
 The desktop updates itself: a whole-app update renames the install folder to `<folder>.previous` and moves the new copy in (desktop/README.md, "GitHub component updates"). So the app must live in a folder the person owns:
 
 - **Windows:** `%LOCALAPPDATA%\Programs\Branch Agent`, with `PrivilegesRequired=lowest`. The uninstaller sits in `Branch Agent Uninstall` beside it, so a whole-app swap doesn't strand it. Uninstall removes the folder and its `.previous`. The AppId never changes, so a newer installer upgrades the same install.
-- **macOS:** the person drags the app to Applications. The launcher's existing `ensureMacApplicationsInstall` takes it from there.
+- **macOS:** the person drags `Branch.app` to Applications. Opening it from Downloads or the disk image asks "Move Branch to Applications so it is easy to find?" (`offerMacApplicationsMove`, the same question as Electron's `app.moveToApplicationsFolder` / LetsMove). Move copies the bundle to `/Applications/Branch.app` (or `~/Applications` if `/Applications` is not writable), relaunches from there so the updater follows, and forgets a leftover Downloads copy. Not now is remembered. `ensureMacApplicationsInstall` still registers a copy that is already in Applications.
 - **Linux:** the AppImage file lives in `~/.local/bin`, which the person owns, but it runs from a read-only mount, so the desktop's own app.asar or whole-app swap can't apply. Under an AppImage (`APPIMAGE` set) the desktop updates the AppImage file itself instead (see "How updates arrive" below). Engine and window components still update in the data folder. Its `AppRun` (`scripts/branch-agent-appimage.sh`) uses unprivileged user namespaces for the Chromium sandbox when the kernel allows them. Otherwise it sets up a hash-checked copy of `chrome-sandbox` in `~/.local/share/branch-agent-sandbox` once (pkexec or sudo) and points Chromium at it with `CHROME_DEVEL_SANDBOX`. It never falls back to `--no-sandbox`.
 
 ## How updates arrive
@@ -72,7 +72,7 @@ Every file is checked before staging: the component's size and SHA-256 from the 
 
 | Platform | What's fetched | How it's swapped |
 |---|---|---|
-| macOS | The whole `.app` (the `branch-desktop-<version>-darwin-arm64.tar.gz` runtime component), because app.asar is sealed in the code signature | The bundle in `~/Applications` is renamed aside and the new one renamed in. Before staging, both signatures are read with codesign: an app signed with the pinned release identity is never replaced by an ad-hoc or unsigned one (`assertNoMacSigningDowngrade`), and that release is then not downloaded again. An ad-hoc install (a release that declares `signing: "adhoc"`) takes an ad-hoc or identity-signed update. |
+| macOS | The whole `.app` (the `branch-desktop-<version>-darwin-arm64.tar.gz` runtime component), because app.asar is sealed in the code signature | The running bundle (after a first-launch move, `/Applications/Branch.app` or `~/Applications/Branch.app`) is renamed aside and the new one renamed in. Before staging, both signatures are read with codesign: an app signed with the pinned release identity is never replaced by an ad-hoc or unsigned one (`assertNoMacSigningDowngrade`), and that release is then not downloaded again. An ad-hoc install (a release that declares `signing: "adhoc"`) takes an ad-hoc or identity-signed update. |
 | Linux (AppImage) | `Branch-Agent-<version>-linux-x64.AppImage`, checked against `SHA256SUMS` | Downloaded beside the running file as `<file>.update-<version>` (same folder, so the rename is atomic), made executable, then renamed over `$APPIMAGE` (normally `~/.local/bin/branch-agent`) and relaunched. The old file stays as `<file>.previous` for rollback. |
 | Windows | `branch-desktop-app-<version>-win32-x64.tar.gz` (app.asar alone), or `branch-desktop-<version>-win32-x64.tar.gz` (the whole app folder) when Electron changes | The folder in `%LOCALAPPDATA%\Programs\Branch Agent` is swapped as above. Inno Setup's per-user install puts the uninstaller beside it, so the swap doesn't strand it, and a later setup .exe still upgrades the same AppId. |
 

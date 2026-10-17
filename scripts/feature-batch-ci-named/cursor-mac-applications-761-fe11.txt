@@ -1,0 +1,4 @@
+# Desktop tests run from desktop-checks.yml:
+# desktop/scripts/mac-applications.test.mjs
+# desktop/scripts/install-scripts.test.mjs
+# desktop/scripts/release-installers.test.mjs

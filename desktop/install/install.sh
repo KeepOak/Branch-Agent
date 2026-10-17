@@ -151,16 +151,31 @@ signed_with_release_identity() {
   codesign -dr - "$1" 2>/dev/null | grep -Fxq "$release_designated"
 }
 
+# /Applications when this user can write it, otherwise ~/Applications. Tests that set BRANCH_INSTALL_BASE_URL stay
+# in $HOME so they never touch the host's Applications folder.
+choose_darwin_apps() {
+  if [ -n "${BRANCH_INSTALL_BASE_URL:-}" ]; then
+    printf '%s\n' "$HOME/Applications"
+    return
+  fi
+  if [ -d /Applications ] && [ -w /Applications ]; then
+    printf '%s\n' /Applications
+    return
+  fi
+  printf '%s\n' "$HOME/Applications"
+}
+
 install_darwin() {
   mkdir "$work/unpacked"
   tar -xzf "$work/$asset" -C "$work/unpacked" || fail "could not unpack $asset; nothing was installed"
   app="$work/unpacked/Branch Agent.app"
   [ -d "$app" ] || fail "$asset has no Branch Agent.app; nothing was installed"
-  apps=$HOME/Applications
+  apps=$(choose_darwin_apps)
+  dest="$apps/Branch.app"
   # Never trade an app signed with the release identity for an ad-hoc or unsigned one: macOS would treat it as
   # another app, and its Keychain items and privacy grants would stop applying.
   if ! signed_with_release_identity "$app"; then
-    for installed in "$apps/Branch Agent.app" "$apps/Branch.app" "/Applications/Branch.app"; do
+    for installed in "$dest" "$apps/Branch Agent.app" "/Applications/Branch.app" "$HOME/Applications/Branch.app" "$HOME/Applications/Branch Agent.app"; do
       if [ -d "$installed" ] && signed_with_release_identity "$installed"; then
         fail "$installed is signed with the Branch release identity and this release is ad-hoc signed. Refusing to replace it with a weaker signature; nothing was installed."
       fi
@@ -169,18 +184,26 @@ install_darwin() {
   mkdir -p "$apps"
   # Stage on the same volume so the final move is a rename.
   staging=$(mktemp -d "$apps/.branch-agent-install.XXXXXX")
-  mv "$app" "$staging/Branch Agent.app"
-  replace "$staging/Branch Agent.app" "$apps/Branch Agent.app"
+  mv "$app" "$staging/Branch.app"
+  replace "$staging/Branch.app" "$dest"
   rmdir "$staging" 2>/dev/null || true
-  say "Installed $apps/Branch Agent.app"
+  legacy="$apps/Branch Agent.app"
+  if [ -d "$legacy" ] && [ "$legacy" != "$dest" ]; then
+    rm -rf "$legacy"
+  fi
+  say "Installed $dest"
+  lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+  if [ -x "$lsregister" ]; then
+    "$lsregister" -f "$dest" >/dev/null 2>&1 || true
+  fi
   # Apple silicon runs only signed code; an ad-hoc signature is the minimum.
-  if command -v codesign >/dev/null 2>&1 && codesign -dv "$apps/Branch Agent.app" >/dev/null 2>&1; then
+  if command -v codesign >/dev/null 2>&1 && codesign -dv "$dest" >/dev/null 2>&1; then
     say "Code signature present."
   else
-    say "Warning: Branch Agent.app carries no code signature, so macOS may refuse to open it." >&2
+    say "Warning: Branch.app carries no code signature, so macOS may refuse to open it." >&2
   fi
   say ""
-  say "Next: open Branch Agent from ~/Applications, or run: open \"$apps/Branch Agent.app\""
+  say "Next: open Branch from Applications, or run: open \"$dest\""
 }
 
 install_linux() {
