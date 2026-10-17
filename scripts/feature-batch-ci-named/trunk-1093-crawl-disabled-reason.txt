@@ -1,0 +1,6 @@
+window:scripts/button-crawl-reason.test.ts
+window:src/places/people/people.test.tsx
+window:src/screens/chatapps/ChatApps.test.tsx
+window:src/screens/seedbank/Seedbank.test.tsx
+window:src/screens/settings/SettingsFrame.test.tsx
+window:src/screens/settings/ask-trunk.test.tsx
