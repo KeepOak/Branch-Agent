@@ -9,7 +9,7 @@ import test from "node:test";
 
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
 if (!dist) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to current strict-compiled source");
-const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, DOWNLOAD_PAGES,
+const { createDesktopControls, readSettings, registerDesktopControlsIpc, ringBitmap, branchShim, branchShShim, editUserPath, pathHas, releaseDownloadUrl, RELEASE_DOWNLOADS, RELEASE_PAGES,
   branchPosixShim, branchCommandOwner, posixBranchCommand, BRANCH_COMMAND_MARKER, LEGACY_BRANCH_COMMAND_MARKER, appRemoval, appRemovalPlan, APP_REMOVAL_KEEPS } =
   await import(pathToFileURL(join(dist, "desktop-controls.js")));
 
@@ -90,14 +90,79 @@ test("tray ring follows the usage only while the setting is on", async () => fix
   assert.deepEqual(calls, [["tray", 42, false], ["tray", 42, true], ["tray", 100, true]]);
 }));
 
-test("Get it opens only the known download pages", async () => fixture(async ({ deps, calls }) => {
-  const controls = createDesktopControls(deps);
+test("Get it opens the four Branch release assets; iPhone and the extension are not listed", async () => fixture(async ({ deps, calls }) => {
+  const version = "0.4.4-build-2d76db0056f8";
+  const file = (name) => ({ name, browser_download_url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${name}` });
+  const releases = async () => [
+    { assets: [
+      file(`Branch-Agent-${version}-darwin-arm64.dmg`),
+      file(`Branch-Agent-Setup-${version}-win32-x64.exe`),
+      file(`Branch-Agent-${version}-linux-x64.AppImage`),
+      { name: "Branch-macOS.dmg", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-macOS.dmg" },
+      { name: "Branch-Setup-Windows.exe", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-Setup-Windows.exe" },
+      { name: "Branch-Linux.deb", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v0/Branch-Linux.deb" },
+      { name: "Branch-Agent-1-darwin-arm64.dmg", browser_download_url: "https://evil.example/Branch-Agent-1-darwin-arm64.dmg" },
+    ]},
+    { assets: [
+      file(`branch-android-${version}-unsigned.apk`),
+      { name: `branch-android-${version}.apk.sha256`, browser_download_url: file(`branch-android-${version}.apk.sha256`).browser_download_url },
+      file(`branch-android-${version}.apk`),
+    ]},
+  ];
+  const controls = createDesktopControls({ ...deps, releases });
   await controls.openDownload("windows");
-  await controls.openDownload("iphone");
+  await controls.openDownload("mac");
+  await controls.openDownload("linux");
+  await controls.openDownload("android");
+  assert.deepEqual(Object.keys(RELEASE_DOWNLOADS), ["mac", "windows", "linux", "android"]);
+  await assert.rejects(controls.openDownload("iphone"), /No download page/);
+  await assert.rejects(controls.openDownload("extension"), /No download page/);
   await assert.rejects(controls.openDownload("https://example.com"), /No download page/);
   await assert.rejects(controls.openDownload("__proto__"), /No download page/);
-  assert.deepEqual(calls, [["open", "https://github.com/KeepOak/Branch-Agent/releases/latest"], ["open", DOWNLOAD_PAGES.iphone]]);
-  for (const url of Object.values(DOWNLOAD_PAGES)) assert.match(url, /^https:\/\//);
+  const download = (name) => `https://github.com/KeepOak/Branch-Agent/releases/download/v${version}/${name}`;
+  assert.deepEqual(calls, [
+    ["open", download(`Branch-Agent-Setup-${version}-win32-x64.exe`)],
+    ["open", download(`Branch-Agent-${version}-darwin-arm64.dmg`)],
+    ["open", download(`Branch-Agent-${version}-linux-x64.AppImage`)],
+    ["open", download(`branch-android-${version}.apk`)],
+  ]);
+}));
+
+test("a release asset on another host is not a Branch download", () => {
+  const trusted = "https://github.com/KeepOak/Branch-Agent/releases/download/v1/Branch-Agent-1-darwin-arm64.dmg";
+  assert.equal(releaseDownloadUrl("mac", [{ assets: [
+    { name: "Branch-Agent-1-darwin-arm64.dmg", browser_download_url: "https://evil.example/Branch-Agent-1-darwin-arm64.dmg" },
+    { name: "Branch-Agent-1-darwin-arm64.dmg", browser_download_url: trusted },
+  ]}]), trusted);
+  assert.equal(releaseDownloadUrl("android", [{ assets: [
+    { name: "branch-android-1-unsigned.apk", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v1/branch-android-1-unsigned.apk" },
+  ]}]), undefined);
+});
+
+test("Get it picks the newest published release and skips drafts and prereleases", () => {
+  const dmg = (v) => ({ name: `Branch-Agent-${v}-darwin-arm64.dmg`, browser_download_url: `https://github.com/KeepOak/Branch-Agent/releases/download/v${v}/Branch-Agent-${v}-darwin-arm64.dmg` });
+  const listings = [
+    { published_at: "2026-10-17T12:00:00Z", assets: [dmg("1")] },
+    { published_at: "2026-10-17T18:00:00Z", assets: [dmg("2")] },
+    { published_at: "2026-10-17T19:00:00Z", prerelease: true, assets: [dmg("3")] },
+    { published_at: "2026-10-17T20:00:00Z", draft: true, assets: [dmg("4")] },
+  ];
+  assert.equal(releaseDownloadUrl("mac", listings), dmg("2").browser_download_url);
+});
+
+test("Get it falls back to Branch's own release page, never a store, when no asset can be read", async () => fixture(async ({ deps, calls }) => {
+  assert.deepEqual(RELEASE_PAGES, {
+    mac: "https://github.com/KeepOak/Branch-Agent/releases/latest",
+    windows: "https://github.com/KeepOak/Branch-Agent/releases/latest",
+    linux: "https://github.com/KeepOak/Branch-Agent/releases/latest",
+    android: "https://github.com/KeepOak/Branch-Agent/releases",
+  });
+  const offline = createDesktopControls({ ...deps, releases: async () => { throw new Error("rate limited"); } });
+  await offline.openDownload("mac");
+  const noApk = createDesktopControls({ ...deps, releases: async () => [{ assets: [{ name: "Branch-Agent-1-linux-x64.AppImage", browser_download_url: "https://github.com/KeepOak/Branch-Agent/releases/download/v1/Branch-Agent-1-linux-x64.AppImage" }] }] });
+  await noApk.openDownload("android");
+  assert.deepEqual(calls, [["open", RELEASE_PAGES.mac], ["open", RELEASE_PAGES.android]]);
+  for (const [, url] of calls) assert.match(url, /^https:\/\/github\.com\/KeepOak\/Branch-Agent\/releases(\/latest)?$/);
 }));
 
 test("unknown controls and non-boolean values are refused", async () => fixture(async ({ deps }) => {
