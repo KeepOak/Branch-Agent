@@ -1,5 +1,6 @@
 window:scripts/button-crawl-reason.test.ts
 window:src/places/people/people.test.tsx
+window:src/places/settings/disabled-reasons.test.tsx
 window:src/places/settings/kit.coming.test.tsx
 window:src/places/settings/set2/usage.test.tsx
 window:src/places/trunk/TrunkProfile.cando.test.tsx
