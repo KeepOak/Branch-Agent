@@ -77,7 +77,7 @@ export function Lately({ engine, row }: SlotControlProps) {
   return (
     <Needs engine={engine} need={["health", "system.info"]} where={row.label ?? ""}>
       <div className="r1s-own-ctl">
-        {health.error ? <Line bad>{`The gateway isn’t answering. ${health.error}`}</Line>
+        {health.error ? <><Line bad>The gateway isn’t answering. Try again in a moment.</Line><details className="r1s-raw"><summary className="g-label">Details</summary><code>{health.error}</code></details></>
           : h.ok || h.ts ? <Line>{`On.${up ? ` Up ${up}.` : ""}${chats.length ? ` ${chats.join(", ")} keep${chats.length === 1 ? "s" : ""} working when the window is closed.` : ""}`}</Line> : null}
         <ul className="r1s-items">
           {started ? <li className="r1s-item"><span className="r1s-item-t g-label">Started</span><small className="g-label">{when(started)}</small></li> : null}
