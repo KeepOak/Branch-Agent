@@ -2,10 +2,12 @@
 export const CONNECT_MODEL_ANSWERS = "Connect a model to get answers";
 export const CONNECT_MODEL_ACTION = "Connect a model";
 export const NO_MODEL_SETUP = "No model is set up";
+/** Your models, when this computer has none. Never promises a free local model that may not exist. */
+export const NO_MODELS_ONBOARDING = "No models on this computer yet. Connect a model to get answers.";
 
 /** Engine failures that mean no usable model, never shown as raw errors. */
 const NO_USABLE_MODEL =
-  /No API key (?:found|resolved) for provider|Missing bearer or basic authentication|no usable model account|CodexNotInstalled|Install and sign in to Codex|could not verify a usable inference route|requires working inference|No model is set up/i;
+  /No API key (?:found|resolved) for provider|Missing bearer or basic authentication|no usable model account|CodexNotInstalled|Install and sign in to Codex|could not verify a usable inference route|requires working inference|No model is set up|isn['’]t ready on this computer yet/i;
 
 export function isNoUsableModelError(message: string): boolean {
   return message.includes(CONNECT_MODEL_ANSWERS) || NO_USABLE_MODEL.test(message);

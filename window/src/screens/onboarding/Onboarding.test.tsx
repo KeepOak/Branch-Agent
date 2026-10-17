@@ -148,7 +148,8 @@ describe("Onboarding", () => {
     const { engine, request } = fakeEngine({ "branch.setup.detect": { candidates: [] } });
     const { host } = await show(engine, { startAt: 1 });
     await flush();
-    expect(host.textContent).toContain("No models on this computer yet. A free local model will be set up so you can chat without an account.");
+    expect(host.textContent).toContain("No models on this computer yet. Connect a model to get answers.");
+    expect(host.textContent).not.toMatch(/will be set up/i);
     expect(button(host, "Add one")).toBeTruthy();
     expect(button(host, "Say hello")).toBeUndefined();
     expect(button(host, "Try it with examples").getAttribute("aria-disabled")).toBe("true");
