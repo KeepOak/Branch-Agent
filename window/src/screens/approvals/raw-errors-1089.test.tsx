@@ -115,6 +115,7 @@ describe("R1 panels never show a raw engine error at Regular (Private #1089)", (
     const line = await untakenAsk(raw);
     expect(line).toContain("That didn’t go through");
     expect(line).not.toMatch(RAW);
+    expect(line.match(/try again/gi)?.length ?? 0).toBeLessThanOrEqual(1);
   });
   it.each(FAILURES)("the Lockdown line: %j", async (raw) => {
     const line = await lockLine(raw);
