@@ -3,7 +3,7 @@ import { formatSize, pastedTitle, preparingLine, sizeProblem, toChatAttachments,
 import { caretOnEdge, step, userTexts } from "./drafts";
 import { replaceToken, skillTokenAt, tokenAt } from "./mention";
 import { blockedReason, FULL_ACCESS_BLOCKED, MODE_ROWS, nextMode } from "./mode";
-import { chipLabel, composerChipLabel, currentModelRef, currentThinking, groupModels, readModels } from "./model";
+import { chipLabel, composerChipLabel, currentModelRef, currentThinking, groupModels, readModels, usableModelName } from "./model";
 import { chipWords, enqueue, moveUp, nextToSend, mark, remove, reword, type QueueItem } from "./queue";
 import { buildExtras, firstSendEcho, planSend, sendTooltip, shouldKeepFirstSendEcho } from "./sending";
 import { argQuery, filterCommands, readCommands, slashQuery } from "./slash";
@@ -52,6 +52,9 @@ describe("model chip", () => {
     expect(composerChipLabel(undefined, "medium", true)).toBe("No model");
     expect(composerChipLabel(undefined, "medium", false)).toBe("");
     expect(composerChipLabel({ ...connected, available: false }, "medium", true)).toBe("No model");
+    expect(usableModelName("openai/gpt-6-astra", [])).toBe("No model is set up");
+    expect(usableModelName("openai/gpt-6-astra", [{ ref: "openai/gpt-6-astra", name: "GPT-6 Astra", available: false }])).toBe("No model is set up");
+    expect(usableModelName("openai/gpt-6-astra", [connected])).toBe("GPT-6 Astra");
   });
   it("uses the session's model, else the engine's default; never an invented one", () => {
     expect(currentModelRef({ model: "m", modelProvider: "p" }, {})).toBe("p/m");

@@ -2,6 +2,7 @@
 // is open, device.pair.setupStatus says when a device used it.
 import { useEffect, useState } from "react";
 import type { WindowEngine } from "../../connect/engine";
+import { CopyToken } from "../../shell/CopyToken";
 import { Dialog } from "../../shell/Dialog";
 import { errorText } from "../library/data";
 import { rec, str } from "./common";
@@ -39,8 +40,8 @@ export function PairDialog({ engine, close }: { engine: WindowEngine; close: () 
     {!code ? <div className="cz-radios" role="radiogroup" aria-label="What it may do"><b>What it may do</b>{ACCESS.map(a => <label key={a.id} className="cz-radio"><input type="radio" name="pair-access" checked={access === a.id} onChange={() => setAccess(a.id)} /><span><b>{a.name}</b><small>{a.line}</small></span></label>)}</div>
       : <div className="cz-pair">
         {code.qr && <img src={code.qr} alt="Pairing code" width={180} height={180} />}
-        <ol><li>Open the Branch app on your phone.</li><li>Tap <b>Pair with a computer</b>.</li><li>Point the camera at this code.</li><li>Check that both screens show <b>{code.setupCode}</b>.</li></ol>
-        {code.joinUrl && <p className="cz-hint">Or open this link on that computer: <code>{code.joinUrl}</code></p>}
+        <ol><li>Open the Branch app on your phone.</li><li>Tap <b>Pair with a computer</b>.</li><li>Point the camera at this code.</li><li>Check that both screens show this code:<CopyToken value={code.setupCode} label="Copy code" strong testid="pair-code" /></li></ol>
+        {code.joinUrl && <div className="cz-hint">Or open this link on that computer:<CopyToken value={code.joinUrl} label="Copy link" testid="pair-link" /></div>}
         <p className="cz-hint">The Branch app connects by itself once it scans the code.{code.expiresAtMs ? ` The code works once and expires at ${new Date(code.expiresAtMs).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.` : ""}</p>
         {code.downgraded && <p className="cz-hint">Limited for safety: this address isn't private, so the code gives chat and approvals only.</p>}
         {paired && <p role="status" className="cz-ok">Paired with {paired}.</p>}

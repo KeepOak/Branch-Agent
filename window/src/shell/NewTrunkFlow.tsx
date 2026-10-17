@@ -11,6 +11,7 @@ import { trunkAppearance } from "../face/appearance";
 import { CharacterFace } from "../face/CharacterFace";
 import { Face } from "../face/Face";
 import "../thread/questions.css";
+import { plainError } from "../shell/plain-error";
 
 export type NewTrunk = { agentId: string; sessionKey: string; name: string; avatar?: string; colour?: string; shape?: string };
 type Opt = { label: string; line?: string };
@@ -141,7 +142,7 @@ export function NewTrunkCard({ engine, flow, onDone, onChangeLook }: { engine: W
             <button className="btn sm" type="submit" disabled={busy || !typed.trim()}>Reply</button>
           </form>
         ) : null}
-        {error ? <p className="field-error" role="alert">{error}</p> : null}
+        {error ? <p className="field-error" role="alert">{plainError(error)}</p> : null}
       </div>
     </div>
   );

@@ -23,6 +23,8 @@ export type Conversation = {
   error: string | null;
   /** Plain words when a free local model could not be set up. Null while it is still being tried. */
   noKeyError: string | null;
+  /** True after the first free-model try finished (ok or fail). False while it is still being tried. */
+  noKeySettled: boolean;
 };
 
 const EMPTY: Conversation = {
@@ -37,6 +39,7 @@ const EMPTY: Conversation = {
   modelsError: null,
   error: null,
   noKeyError: null,
+  noKeySettled: false,
 };
 
 /** No model set up: the engine names no default model, or none it names is connected (models.list has none usable). */
@@ -144,24 +147,24 @@ export function useConversation(engine: WindowEngine | undefined, draftAgentId?:
     void ensureNoKeyDefault(engine).then((result) => {
       if (live.current !== key) return;
       if (result.ok) {
-        setState((s) => ({ ...s, noKeyError: null }));
+        setState((s) => ({ ...s, noKeyError: null, noKeySettled: true }));
         void readModelList();
       } else {
-        setState((s) => ({ ...s, noKeyError: result.error }));
+        setState((s) => ({ ...s, noKeyError: result.error, noKeySettled: true }));
       }
     });
   }, [engine, key, state.loaded, state.modelsLoaded, state.modelsError, state.error, hasAvailableModel, readModelList]);
 
   const retryNoKey = useCallback(async () => {
     if (!engine || !key) return;
-    setState((s) => ({ ...s, noKeyError: null }));
+    setState((s) => ({ ...s, noKeyError: null, noKeySettled: false }));
     const result = await retryNoKeyDefault(engine);
     if (live.current !== key) return;
     if (result.ok) {
-      setState((s) => ({ ...s, noKeyError: null }));
+      setState((s) => ({ ...s, noKeyError: null, noKeySettled: true }));
       await readModelList();
     } else {
-      setState((s) => ({ ...s, noKeyError: result.error }));
+      setState((s) => ({ ...s, noKeyError: result.error, noKeySettled: true }));
     }
   }, [engine, key, readModelList]);
 
