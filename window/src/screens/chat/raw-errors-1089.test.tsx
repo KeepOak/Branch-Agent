@@ -19,7 +19,6 @@ const FAILURES: [string, string][] = [
   ["connect ECONNREFUSED 127.0.0.1:18789", "Branch can’t reach its engine right now. It keeps trying, so try again in a moment."],
   ["TypeError: Cannot read properties of undefined (reading 'path')\n    at runTool (/app/engine/dist/tools/run.js:41:12)", "That didn’t work. Try again."],
   ["ENOENT: no such file or directory, open '/home/alex/notes/plan.md'", "That file or folder isn’t there. Check that it still exists, then try again."],
-  ["CodexNotInstalledError: Codex is not installed.", "That isn’t installed on this computer. Install it, then try again."],
 ];
 
 let root: Root, host: HTMLDivElement;
@@ -37,6 +36,12 @@ describe("a failed run never shows the engine's raw words at Regular (Private #1
     expect(line).toBe(`Researcher couldn’t finish: ${plain}`);
   });
 
+  it("a run that failed for want of Codex shows main's Connect a model notice, not the error name", async () => {
+    await runError("CodexNotInstalledError: Codex is not installed.");
+    expect(host.querySelector('[data-testid="connect-model"]')).not.toBeNull();
+    expect(host.textContent ?? "").not.toMatch(RAW);
+  });
+
   it("offers the engine's words (Details, Copy error) only at Technical", async () => {
     await runError("connect ECONNREFUSED 127.0.0.1:18789");
     const buttons = () => [...host.querySelectorAll('[data-testid="run-error"] button')].map((b) => b.textContent);
@@ -47,6 +52,24 @@ describe("a failed run never shows the engine's raw words at Regular (Private #1
     await runError("connect ECONNREFUSED 127.0.0.1:18789");
     expect(buttons()).toContain("Details");
     expect(buttons()).toContain("Copy error");
+  });
+
+  it("a failed history load offers Details only at Technical", async () => {
+    const raw = "TypeError: Cannot read properties of undefined (reading 'path')\n    at runTool (/app/engine/dist/tools/run.js:41:12)";
+    const render = () => act(async () => root.render(<ChatView name="Researcher" history={[]} live={[]} pendingUser={null} running={false} onAnswer={() => undefined} loadError={raw} onReload={() => undefined} />));
+    const notice = () => host.querySelector('[data-testid="load-error"]');
+    const buttons = () => [...(notice()?.querySelectorAll("button") ?? [])].map((b) => b.textContent);
+    await render();
+    expect(notice()?.querySelector(".r1c-notice-text")?.textContent).toBe("Couldn’t load this conversation");
+    expect(buttons()).not.toContain("Details");
+    expect(notice()?.querySelector("pre")).toBeNull();
+    expect(notice()?.textContent ?? "").not.toMatch(RAW);
+    localStorage.setItem("branch.level", "technical");
+    await act(async () => root.unmount()); root = createRoot(host);
+    await render();
+    expect(buttons()).toContain("Details");
+    await act(async () => (notice()?.querySelector('button[aria-expanded]') as HTMLButtonElement).click());
+    expect(notice()?.querySelector("pre")?.textContent).toBe(raw);
   });
 
   it("keeps a plain engine sentence as it was", () => {

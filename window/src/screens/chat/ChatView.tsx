@@ -284,8 +284,11 @@ export function ChatView(props: ChatViewProps) {
   // The run's token count (the engine's usage block), as Classic's live-run header shows it; once something visible arrives.
   const usage = running ? live.find((b): b is Extract<Block, { kind: "usage" }> => b.kind === "usage") : undefined;
   // Regular: one quiet working line. It is the steps disclosure when the run has steps, and it stays above the answer.
-  const full = shows(useLevel(), "advanced");
+  const level = useLevel();
+  const full = shows(level, "advanced");
   const quiet = !full;
+  // A failed history load: the plain line at every level; the engine's words (Details) only at Technical, as RunError.
+  const technical = shows(level, "technical");
   const elapsed = useWorkingElapsed(running, earliestStepAt(live));
   const workText = quiet ? liveWorkingLine(currentStepWords(live), elapsed) : workingLine(live);
   const shownLive = running ? (quiet ? answerBelowWorkingLine(liveEntries) : liveEntries) : [];
@@ -296,7 +299,7 @@ export function ChatView(props: ChatViewProps) {
     <div className="r1c" ref={root} data-mode={work.mode} data-times={prefs.messageTimes} dir={prefs.dir}>
       {finding ? <FindBar key={finding.nonce} root={root} name={name} signature={signature} initialQuery={finding.query} onClose={() => setFinding(null)} /> : null}
       <div className="r1c-thread">
-        {props.loadError ? <NoticeLine tone="bad" text="Couldn’t load this conversation" details={props.loadError} links={props.onReload ? [{ label: "Try again", onClick: props.onReload, need: "chat.history", reason: "This engine can’t read conversations." }] : []} testid="load-error" /> : null}
+        {props.loadError ? <NoticeLine tone="bad" text="Couldn’t load this conversation" details={technical ? props.loadError : undefined} links={props.onReload ? [{ label: "Try again", onClick: props.onReload, need: "chat.history", reason: "This engine can’t read conversations." }] : []} testid="load-error" /> : null}
         {empty ? <EmptyChat name={name} engine={engine} onStart={props.onStart} /> : !historyReady && !history.length && !props.loadError && !props.startupWaiting ? <NoticeLine text="Opening this conversation…" testid="opening" /> : null}
         {entries.map((entry, i) => <Fragment key={entry.type === "item" ? entry.item.block.key : entry.key}>
           {dividers.has(i) && times[i] ? <TimeDivider at={times[i]!} /> : null}
