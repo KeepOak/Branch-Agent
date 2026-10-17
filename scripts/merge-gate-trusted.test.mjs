@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import * as gate from './merge-gate-trusted.mjs';
+import { commitTreeMatchesCleanMerge } from './final-head-history.mjs';
 import { fileURLToPath } from 'node:url';
 import {
   COLLAPSIBLE_CHECK_EVENTS,
@@ -2833,16 +2834,174 @@ test('a clean merge still carries when the process has no git identity', () => {
   delete env.GIT_AUTHOR_EMAIL;
   delete env.GIT_COMMITTER_NAME;
   delete env.GIT_COMMITTER_EMAIL;
+  delete env.NODE_TEST_CONTEXT;
   const file = fileURLToPath(new URL('./merge-gate-trusted.test.mjs', import.meta.url));
   try {
-    execFileSync(process.execPath, [
+    const output = execFileSync(process.execPath, [
       '--test',
       '--test-name-pattern',
       '^a gate-change-reviewed marker carries across one merge of main$',
       file,
     ], { env, encoding: 'utf8', stdio: 'pipe', windowsHide: true });
+    assert.match(output, /^ok \d+ - a gate-change-reviewed marker carries across one merge of main$/m);
   } finally {
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+function mergeGateHomes(dir) {
+  return readdirSync(dir).filter((name) => name.startsWith('merge-gate-home-'));
+}
+
+function envWithoutGitIdentity(scratch) {
+  const env = {
+    ...process.env,
+    TMPDIR: scratch,
+    TMP: scratch,
+    TEMP: scratch,
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: '/dev/null',
+  };
+  delete env.GIT_AUTHOR_NAME;
+  delete env.GIT_AUTHOR_EMAIL;
+  delete env.GIT_COMMITTER_NAME;
+  delete env.GIT_COMMITTER_EMAIL;
+  delete env.XDG_CONFIG_HOME;
+  delete env.NODE_TEST_CONTEXT;
+  return env;
+}
+
+test('importing the gate modules creates no merge-gate home', () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'gate-import-home-'));
+  const trusted = new URL('./merge-gate-trusted.mjs', import.meta.url).href;
+  const history = new URL('./final-head-history.mjs', import.meta.url).href;
+  const script = `
+    import { readdirSync } from 'node:fs';
+    import { tmpdir } from 'node:os';
+    const homes = () => readdirSync(tmpdir()).filter((name) => name.startsWith('merge-gate-home-'));
+    if (homes().length !== 0) process.exit(2);
+    await import(${JSON.stringify(history)});
+    if (homes().length !== 0) process.exit(3);
+    await import(${JSON.stringify(trusted)});
+    if (homes().length !== 0) process.exit(4);
+  `;
+  try {
+    execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      env: envWithoutGitIdentity(scratch),
+      encoding: 'utf8',
+      stdio: 'pipe',
+      windowsHide: true,
+    });
+    assert.deepEqual(mergeGateHomes(scratch), []);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('git children leave no merge-gate home after success or failure', () => {
+  if (process.env.GATE_HOME_PROBE === '1') {
+    assert.deepEqual(mergeGateHomes(tmpdir()), []);
+    const commits = [
+      apiCommit(MARKER_M, [REVIEW_HEAD]),
+      apiCommit(MERGE_ONE, [MARKER_M, MAIN_P1]),
+    ];
+    const carried = carryReview({ commits });
+    assert.equal(carried.ok, true, carried.message);
+    assert.deepEqual(mergeGateHomes(tmpdir()), []);
+
+    const missing = commitTreeMatchesCleanMerge(
+      path.join(tmpdir(), 'no-such-gate-repo'),
+      MERGE_ONE,
+      [MARKER_M, MAIN_P1],
+    );
+    assert.equal(missing, null);
+    assert.deepEqual(mergeGateHomes(tmpdir()), []);
+
+    assert.throws(() => {
+      commitTreeMatchesCleanMerge(
+        path.join(tmpdir(), 'no-such-gate-repo-2'),
+        MERGE_ONE,
+        [MARKER_M, MAIN_P1],
+      );
+      throw new Error('probe-throw');
+    }, /probe-throw/);
+    assert.deepEqual(mergeGateHomes(tmpdir()), []);
+
+    const blown = carryReview({
+      commits,
+      request: (requestPath) => {
+        if (requestPath.split('?')[0].startsWith('git/')) throw new Error('git api down');
+        return compareRequest()(requestPath);
+      },
+    });
+    assert.equal(blown.ok, false);
+    assert.match(blown.message, /not a proven clean merge/);
+    assert.deepEqual(mergeGateHomes(tmpdir()), []);
+
+    const poisonHome = mkdtempSync(path.join(tmpdir(), 'poison-home-'));
+    const poisonXdg = mkdtempSync(path.join(tmpdir(), 'poison-xdg-'));
+    const conflict = mkdtempSync(path.join(tmpdir(), 'poison-repo-'));
+    try {
+      mkdirSync(path.join(poisonHome, '.config', 'git'), { recursive: true });
+      mkdirSync(path.join(poisonXdg, 'git'), { recursive: true });
+      const attributes = '* merge=union\n';
+      writeFileSync(path.join(poisonHome, '.config', 'git', 'attributes'), attributes);
+      writeFileSync(path.join(poisonXdg, 'git', 'attributes'), attributes);
+      gitIn(conflict, ['init', '-q', '-b', 'main']);
+      writeFileSync(path.join(conflict, 'file.txt'), 'base\n');
+      gitIn(conflict, ['add', 'file.txt']);
+      gitIn(conflict, ['commit', '-m', 'base']);
+      gitIn(conflict, ['checkout', '-q', '-b', 'left']);
+      writeFileSync(path.join(conflict, 'file.txt'), 'left\n');
+      gitIn(conflict, ['commit', '-am', 'left']);
+      const left = gitIn(conflict, ['rev-parse', 'HEAD']);
+      gitIn(conflict, ['checkout', '-q', 'main']);
+      writeFileSync(path.join(conflict, 'file.txt'), 'right\n');
+      gitIn(conflict, ['commit', '-am', 'right']);
+      const right = gitIn(conflict, ['rev-parse', 'HEAD']);
+      const union = execFileSync('git', ['-C', conflict, 'merge-tree', '--write-tree', left, right], {
+        encoding: 'utf8',
+        windowsHide: true,
+        env: {
+          ...process.env,
+          HOME: poisonHome,
+          XDG_CONFIG_HOME: poisonXdg,
+          GIT_CONFIG_NOSYSTEM: '1',
+        },
+      });
+      const unionTree = union.trim().split('\n')[0];
+      const unionCommit = gitIn(conflict, ['commit-tree', unionTree, '-p', left, '-p', right, '-m', 'union']);
+      process.env.HOME = poisonHome;
+      process.env.XDG_CONFIG_HOME = poisonXdg;
+      const leaked = commitTreeMatchesCleanMerge(conflict, unionCommit, [left, right]);
+      assert.notEqual(leaked, true);
+      assert.deepEqual(mergeGateHomes(tmpdir()), []);
+    } finally {
+      rmSync(poisonHome, { recursive: true, force: true });
+      rmSync(poisonXdg, { recursive: true, force: true });
+      rmSync(conflict, { recursive: true, force: true });
+    }
+    return;
+  }
+
+  const scratch = mkdtempSync(path.join(tmpdir(), 'gate-home-left-'));
+  const file = fileURLToPath(new URL('./merge-gate-trusted.test.mjs', import.meta.url));
+  try {
+    const output = execFileSync(process.execPath, [
+      '--test',
+      '--test-name-pattern',
+      '^git children leave no merge-gate home after success or failure$',
+      file,
+    ], {
+      env: { ...envWithoutGitIdentity(scratch), GATE_HOME_PROBE: '1' },
+      encoding: 'utf8',
+      stdio: 'pipe',
+      windowsHide: true,
+    });
+    assert.match(output, /^ok \d+ - git children leave no merge-gate home after success or failure$/m);
+    assert.deepEqual(mergeGateHomes(scratch), []);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
   }
 });
 

@@ -764,24 +764,38 @@ function carryFailure(message, brokenAt = null) {
 const MERGE_BLOB_FETCHES = 40;
 
 // commit-tree exits when the runner has no user.email. This identity is not a person.
-// GIT_CONFIG_* keeps a developer or runner gitconfig from changing the synthetic commits.
-const GATE_GIT_ENV = {
+// The empty HOME and XDG dir exist only while git runs, so a runner gitconfig or
+// attributes file cannot change the synthetic commits or the merge-tree result.
+const GATE_GIT_IDENTITY = {
   GIT_AUTHOR_NAME: 'merge-gate',
   GIT_AUTHOR_EMAIL: 'merge-gate@invalid',
   GIT_COMMITTER_NAME: 'merge-gate',
   GIT_COMMITTER_EMAIL: 'merge-gate@invalid',
   GIT_CONFIG_NOSYSTEM: '1',
   GIT_CONFIG_GLOBAL: '/dev/null',
-  HOME: mkdtempSync(path.join(tmpdir(), 'merge-gate-home-')),
 };
+
+function gateGitChild() {
+  const home = mkdtempSync(path.join(tmpdir(), 'merge-gate-home-'));
+  return {
+    home,
+    env: {
+      ...process.env,
+      ...GATE_GIT_IDENTITY,
+      HOME: home,
+      XDG_CONFIG_HOME: home,
+    },
+  };
+}
 
 function gitResult(repoDir, args, input) {
   const binary = Buffer.isBuffer(input);
+  const child = gateGitChild();
   try {
     const stdout = execFileSync('git', ['-C', repoDir, '-c', 'commit.gpgsign=false', ...args], {
       encoding: binary ? 'buffer' : 'utf8',
       input,
-      env: { ...process.env, ...GATE_GIT_ENV },
+      env: child.env,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
       maxBuffer: 16 * 1024 * 1024,
@@ -796,6 +810,8 @@ function gitResult(repoDir, args, input) {
       stdout,
       stderr,
     };
+  } finally {
+    rmSync(child.home, { recursive: true, force: true });
   }
 }
 

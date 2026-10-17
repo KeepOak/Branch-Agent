@@ -4,7 +4,7 @@
 // whose other parents are on the current base (origin/main, or the pull request base
 // when this checkout is GitHub's merge commit), and its tree must be that merge alone.
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -19,22 +19,36 @@ export function isFullSha(value) {
 }
 
 // commit-tree (the extra-parent fold) exits when the runner has no user.email.
-// This identity is not a person, and the empty config ignores the runner's gitconfig.
-const GATE_GIT_ENV = {
+// This identity is not a person. The empty HOME and XDG dir exist only while git runs,
+// so a runner gitconfig or attributes file cannot change the merge result.
+const GATE_GIT_IDENTITY = {
   GIT_AUTHOR_NAME: 'merge-gate',
   GIT_AUTHOR_EMAIL: 'merge-gate@invalid',
   GIT_COMMITTER_NAME: 'merge-gate',
   GIT_COMMITTER_EMAIL: 'merge-gate@invalid',
   GIT_CONFIG_NOSYSTEM: '1',
   GIT_CONFIG_GLOBAL: '/dev/null',
-  HOME: mkdtempSync(path.join(tmpdir(), 'merge-gate-home-')),
 };
 
+function gateGitChild() {
+  const home = mkdtempSync(path.join(tmpdir(), 'merge-gate-home-'));
+  return {
+    home,
+    env: {
+      ...process.env,
+      ...GATE_GIT_IDENTITY,
+      HOME: home,
+      XDG_CONFIG_HOME: home,
+    },
+  };
+}
+
 function tryGit(repoDir, args) {
+  const child = gateGitChild();
   try {
     const stdout = execFileSync('git', ['-C', repoDir, '-c', 'commit.gpgsign=false', ...args], {
       encoding: 'utf8',
-      env: { ...process.env, ...GATE_GIT_ENV },
+      env: child.env,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -46,6 +60,8 @@ function tryGit(repoDir, args) {
       stdout: String(error?.stdout ?? ''),
       stderr: String(error?.stderr ?? ''),
     };
+  } finally {
+    rmSync(child.home, { recursive: true, force: true });
   }
 }
 
