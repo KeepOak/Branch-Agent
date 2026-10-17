@@ -4,6 +4,7 @@ import { asNullableObjectRecord } from "@branch/normalization-core/record-coerce
 import { normalizeOptionalString } from "@branch/normalization-core/string-coerce";
 import { truncateUtf16Safe } from "@branch/normalization-core/utf16-slice";
 import { listAgentEntries } from "../../agents/agent-roster.js";
+import { tryResolveDisplayedDefaultAgentId } from "../../agents/agent-scope-config.js";
 import { redactChannelStatusSummaryBaseUrl } from "../../channels/account-snapshot-fields.js";
 import {
   buildChannelAccountSnapshotFromInspection,
@@ -15,7 +16,6 @@ import { buildChannelAccountSnapshotFromAccount } from "../../channels/plugins/s
 import type { AnyChannelPlugin as ChannelPlugin } from "../../channels/plugins/types.plugin.js";
 import type { ChannelAccountSnapshot } from "../../channels/plugins/types.public.js";
 import { resolveUnavailableChannelAccountSnapshot } from "../../channels/status/account-state.js";
-import { tryResolveLegacyCompatibilityAgentId } from "../../config/legacy.default-agent-owner.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import type { SessionEntrySummary } from "../../config/sessions/session-accessor.js";
 import type { BranchConfig } from "../../config/types.branch.js";
@@ -79,7 +79,7 @@ const debugHealth = (
 };
 
 export function resolveHealthAgentOrder(cfg: BranchConfig) {
-  const defaultAgentId = tryResolveLegacyCompatibilityAgentId(cfg);
+  const defaultAgentId = tryResolveDisplayedDefaultAgentId(cfg);
   const entries = listAgentEntries(cfg);
   const seen = new Set<string>();
   const ordered: Array<{ id: string; name?: string }> = [];
