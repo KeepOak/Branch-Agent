@@ -55,7 +55,8 @@ const REGULAR: Record<string, PageId[]> = {
   General: ["general", "card", "goto", "appearance", "notifications", "who", "trunks", "instructions", "customize", "seedbank", "memory", "autos", "voice", "chatapps"],
   Computer: ["devices", "browser", "coding", "remote", "permissions"],
   Usage: ["accounts", "models", "privacy", "signins"],
-  Updates: ["updates", "history", "learning", "features"],
+  // All features (the feature atlas, mostly Coming) shows only at Technical (Private #1093 item 4), so Updates doesn't link it.
+  Updates: ["updates", "history", "learning"],
 };
 
 describe("Regular settings pages", () => {
@@ -80,7 +81,7 @@ describe("Regular settings pages", () => {
     }
   });
 
-  it("reaches every settings registry page at Regular or Advanced", async () => {
+  it("reaches every settings registry page at Regular or Advanced, and Developer and All features at Technical", async () => {
     expect(Object.keys(PAGES).sort()).toEqual([...REGISTRY]);
     await mount();
     const regular = new Set<string>();
@@ -92,12 +93,13 @@ describe("Regular settings pages", () => {
     await click(level("Advanced"));
     const advanced = new Set($$(".r1s-nav[data-page]").map((b) => b.dataset.page).filter((id): id is string => Boolean(id)));
     const missing = REGISTRY.filter((id) => !regular.has(id) && !advanced.has(id));
-    // Developer is the Technical page inside the Advanced nav's Branch group, the same as before this change.
-    expect(missing).toEqual(["developer"]);
+    // Developer and All features are the Technical pages inside the nav's Branch group.
+    expect(missing).toEqual(["developer", "features"]);
     expect(advanced.has("developer")).toBe(false);
+    expect(advanced.has("features")).toBe(false);
     await click(level("Technical"));
-    expect($$(".r1s-nav[data-page]").map((b) => b.dataset.page)).toContain("developer");
-    const covered = new Set<string>([...regular, ...advanced, "developer"]);
+    expect($$(".r1s-nav[data-page]").map((b) => b.dataset.page)).toEqual(expect.arrayContaining(["developer", "features"]));
+    const covered = new Set<string>([...regular, ...advanced, "developer", "features"]);
     expect([...covered].sort()).toEqual([...REGISTRY]);
   });
 

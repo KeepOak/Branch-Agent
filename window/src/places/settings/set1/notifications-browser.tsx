@@ -123,6 +123,12 @@ export function useTestSend(engine: WindowEngine) {
   return { ...line, send };
 }
 
+/** A test send's answer ("Sent."), in a line the row keeps from its first frame: the answer fills it in place, so the
+ *  row never grows under the pointer (#1093 item 1), and the live region is there before it speaks. */
+export function TestLine({ text }: { text?: string }) {
+  return <span className="test-line" role="status" aria-live="polite">{text || "\u00a0"}</span>;
+}
+
 /** The desktop app has no push subscription: its own windows show this computer's notices directly. */
 export function isDesktopApp(): boolean {
   return typeof window !== "undefined" && (window as unknown as { branchDesktop?: unknown }).branchDesktop !== undefined;
@@ -131,6 +137,34 @@ export function isDesktopApp(): boolean {
 function systemSettings(): string {
   const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent;
   return /Windows/.test(userAgent) ? "Windows Settings" : /Macintosh|Mac OS X/.test(userAgent) ? "System Settings" : "your system settings";
+}
+
+/** How long a test notice gets to say it showed before Branch says it can't tell (B-058). */
+export const TEST_WAIT_MS = 4000;
+export const TEST_SENDING = "Sending a test notification…";
+export type TestResult = "shown" | "error" | "silent";
+
+/** Shows the test notice and waits for this computer to say it showed it, refused it, or nothing. */
+export function showTestNotice(make: (title: string, opts: NotificationOptions) => Notification = (title, opts) => new Notification(title, opts)): Promise<TestResult> {
+  return new Promise((resolve) => {
+    let notice: Notification;
+    try {
+      notice = make("Branch", { body: "Notifications are working on this computer.", tag: "branch-test" });
+    } catch {
+      resolve("error");
+      return;
+    }
+    const timer = setTimeout(() => resolve("silent"), TEST_WAIT_MS);
+    notice.onshow = () => { clearTimeout(timer); resolve("shown"); };
+    notice.onerror = () => { clearTimeout(timer); resolve("error"); };
+  });
+}
+
+/** What the row says after a test: what happened, in plain words, and what to do when nothing showed. */
+export function testLine(result: TestResult, settings: string): string {
+  if (result === "shown") return "Sent. It shows in the corner of your screen, or in your notification list.";
+  if (result === "error") return `This computer didn’t show it. Open ${settings} and allow notifications for Branch.`;
+  return `Sent, but this computer didn’t say it showed it. If you didn’t see it, open ${settings} and allow notifications for Branch, and check Do Not Disturb is off.`;
 }
 
 /** Desktop app: this computer's own notices, through the window's Notification API (no service worker needed). */
@@ -149,12 +183,8 @@ export function DesktopNotices() {
     setOn(next);
   };
   const test = () => {
-    try {
-      new Notification("Branch", { body: "Notifications are working on this computer." });
-      setLine("Sent.");
-    } catch {
-      setLine("Branch couldn’t show a notification here.");
-    }
+    setLine(TEST_SENDING);
+    void showTestNotice().then((result) => setLine(testLine(result, systemSettings())));
   };
   const live = on && perm === "granted";
   return (
@@ -162,7 +192,7 @@ export function DesktopNotices() {
       <Ctl title="Notifications on this computer" sub="Off keeps this computer quiet." off={off}>
         <Switch checked={live} disabled={Boolean(off)} label="Notifications on this computer" onChange={(v) => void flip(v)} />
       </Ctl>
-      <Ctl title="Send a test notification" sub={line || undefined} off={live ? undefined : "Turn on notifications here first."}>
+      <Ctl title="Send a test notification" sub={live ? <TestLine text={line} /> : undefined} off={live ? undefined : "Turn on notifications here first."}>
         <Btn sm disabled={!live} onClick={test}>Send test</Btn>
       </Ctl>
     </>

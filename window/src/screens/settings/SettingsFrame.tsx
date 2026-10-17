@@ -301,7 +301,7 @@ export function SettingsFrame(props: SettingsFrameProps) {
     const Own = drawn && (drawn.level ?? 0) <= level ? drawn.component : undefined;
     if (drawn && !Own && !visible.length) return [];
     if (!Own && all.length && !visible.length) return [];
-    // A section with no rows yet is all Coming: Regular shows only what works today.
+    // A section with no rows yet is all Coming: Regular and Advanced show only what works today.
     if (!Own && !all.length && level < COMING_FROM) return [];
     return [{ card, visible, Own }];
   });
