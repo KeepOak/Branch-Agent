@@ -9,7 +9,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { Composer } from "../composer/Composer";
 import { KitProvider, type SaveReport } from "../../places/settings/kit";
 import { PermissionsPage } from "../../places/settings/set1/permissions";
-import { execOf, FIRST_RUN_ACCESS, saveOnboardingAccess } from "./access";
+import { execModeOf, execOf, existingExecMode, FIRST_RUN_ACCESS, saveOnboardingAccess } from "./access";
 import { Onboarding } from "./Onboarding";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -165,6 +165,23 @@ describe("first-run access", () => {
     expect(JSON.parse(patch[1].raw)).toEqual({ tools: { exec: { mode: "ask", security: null, ask: null } } });
   });
 
+  it("reads tools.exec.mode and skips a write when onlyIfUnset and a mode is already set", async () => {
+    expect(execModeOf({})).toBeUndefined();
+    expect(execModeOf({ tools: { exec: { mode: "full" } } })).toBe("full");
+    expect(execModeOf({ tools: { exec: { mode: "deny" } } })).toBe("deny");
+    const unset = freshProfile();
+    await expect(existingExecMode(unset.engine)).resolves.toBeUndefined();
+    await saveOnboardingAccess(unset.engine, "ask", { onlyIfUnset: true });
+    expect(unset.execMode()).toBe("ask");
+    const kept = freshProfile({ tools: { exec: { mode: "full" } } });
+    await expect(existingExecMode(kept.engine)).resolves.toBe("full");
+    await saveOnboardingAccess(kept.engine, "ask", { onlyIfUnset: true });
+    expect(kept.execMode()).toBe("full");
+    expect(kept.request.mock.calls.some(([method]) => method === "config.patch")).toBe(false);
+    await saveOnboardingAccess(kept.engine, "ask");
+    expect(kept.execMode()).toBe("ask");
+  });
+
   it("Set up later on a fresh profile leaves Ask first in the composer and Settings, including after a reload", async () => {
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
     const first = freshProfile();
@@ -246,6 +263,58 @@ describe("first-run access", () => {
     const composer = await showComposer(first.engine);
     expect(accessChip(composer)?.textContent).toBe("Read only");
     expect(accessChip(composer)?.getAttribute("data-tone")).not.toBe("bad");
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    { mode: "full", chip: "Full access", via: "later" as const },
+    { mode: "deny", chip: "Read only", via: "later" as const },
+    { mode: "full", chip: "Full access", via: "finish" as const },
+    { mode: "deny", chip: "Read only", via: "finish" as const },
+  ])("existing $mode survives $via and a reload", async ({ mode, chip, via }) => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    const first = freshProfile({ tools: { exec: { mode } } });
+    expect(first.execMode()).toBe(mode);
+    const run = async () => {
+      const shown = await showOnboarding(first.engine, via === "finish" ? 3 : 0);
+      await act(async () => button(shown.host, via === "finish" ? "Start with Oak" : "Set up later").click());
+      await flush();
+      if (via === "later") expect(shown.onLater).toHaveBeenCalledOnce();
+      else expect(shown.onDone).toHaveBeenCalledOnce();
+      expect(first.execMode()).toBe(mode);
+      await act(async () => root?.unmount());
+      root = undefined;
+    };
+    await run();
+    await run();
+    const composer = await showComposer(first.engine);
+    expect(accessChip(composer)?.textContent).toBe(chip);
+    await act(async () => root?.unmount());
+    root = undefined;
+    const settings = await showSettings(first.engine);
+    expect(settings.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain(chip);
+    await act(async () => root?.unmount());
+    root = undefined;
+    const reloaded = freshProfile(first.snapshot());
+    expect(reloaded.execMode()).toBe(mode);
+    const composerAgain = await showComposer(reloaded.engine);
+    expect(accessChip(composerAgain)?.textContent).toBe(chip);
+    await act(async () => root?.unmount());
+    root = undefined;
+    const settingsAgain = await showSettings(reloaded.engine);
+    expect(settingsAgain.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain(chip);
+    vi.unstubAllGlobals();
+  });
+
+  it("a pick this run writes even when tools.exec.mode is already set", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    const first = freshProfile({ tools: { exec: { mode: "full" } } });
+    const { host, onLater } = await showOnboarding(first.engine, 2);
+    await act(async () => button(host, "Read only").click());
+    await act(async () => button(host, "Set up later").click());
+    await flush();
+    expect(onLater).toHaveBeenCalledOnce();
+    expect(first.execMode()).toBe("deny");
     vi.unstubAllGlobals();
   });
 });

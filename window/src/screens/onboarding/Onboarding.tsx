@@ -51,6 +51,8 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   const [made, setMade] = useState<Made[]>([]);
   const [talking, setTalking] = useState(false), [talkError, setTalkError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
+  /** True once a mode radio is pressed this run. Skip / finish / talk then write that pick; otherwise they write only when unset. */
+  const [pickedMode, setPickedMode] = useState(false);
   /** Writes the welcome name onto the profile. An empty name, or a connection with no profile, saves nothing. */
   const keepName = async () => {
     if (s.step !== 0 || !s.name.trim()) return true;
@@ -71,9 +73,8 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
     try {
       const key = await startSetupTalk(engine);
       // As Set up later does, so the card doesn't open again; the conversation asks the rest. A failed save only means
-      // the card comes back at the next launch. Keep the recommended (or picked) access so the composer never starts on
-      // Full access just because setup was deferred.
-      await saveOnboardingAccess(engine, s.mode).catch(() => undefined);
+      // the card comes back at the next launch. Write Ask first only on a fresh profile, or the pick made this run.
+      await saveOnboardingAccess(engine, s.mode, { onlyIfUnset: !pickedMode }).catch(() => undefined);
       await recordOnboarding(engine, s).catch(() => undefined);
       onTalk(key);
     }
@@ -95,7 +96,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       const first = created.made[0];
       const target = first ? { agentId: first.agentId, mainKey: four.def?.mainKey ?? "main" } : four.def ? { agentId: four.def.id, mainKey: four.def.mainKey } : null;
       if (!target) { setTrunkError("Couldn’t find your default Trunk. Try again in a moment."); return; }
-      await saveOnboardingAccess(engine, s.mode);
+      await saveOnboardingAccess(engine, s.mode, { onlyIfUnset: !pickedMode });
       await recordOnboarding(engine, s);
       // The greeting is a real model reply, so it waits for a hello that worked. With examples or no model the
       // conversation opens empty: no chat.send that would fail with "Couldn't sign in" (ONBOARDING-PROPOSAL ⑤).
@@ -129,9 +130,9 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
   };
   const leave = async () => {
     if (!(await keepName())) return;
-    // Set up later still accepts the recommended Ask first (or the pick already made) so the composer never starts on
-    // Full access. A failed write must not block leaving: the card's job is to get out of the way.
-    await saveOnboardingAccess(engine, s.mode).catch(() => undefined);
+    // Fresh profile: accept recommended Ask first (or the pick already made) so the composer never starts on Full
+    // access. An access already in the profile stays put. A failed write must not block leaving.
+    await saveOnboardingAccess(engine, s.mode, { onlyIfUnset: !pickedMode }).catch(() => undefined);
     onLater(s);
   };
   const onKey = (e: KeyboardEvent) => {
@@ -144,7 +145,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
     : s.step === 1
       ? <Models engine={engine} off={s.off} onOff={(off) => set({ off })} hello={s.hello} onHello={(hello) => set({ hello })} onExamples={(examples) => set({ examples })} />
       : s.step === 2
-        ? <ModeStep mode={s.mode} onMode={(mode) => { set({ mode }); setModeError(null); }} error={modeError} />
+        ? <ModeStep mode={s.mode} onMode={(mode) => { set({ mode }); setPickedMode(true); setModeError(null); }} error={modeError} />
         : <FirstTrunk s={s} listed={four.listed} defaultName={four.def?.name ?? ""} error={trunkError} onText={(text) => set({ text })} onPick={(id) => { setS((cur) => ({ ...cur, ...togglePick(cur, id) })); setTrunkError(null); }} />;
   // Meet them creates Trunks from templates; Start with <default> only records setup and sends the first message.
   const need = s.step === LAST_STEP ? [...(picked(s).length ? ["trunks.template.create"] : []), "config.get", "config.patch", "chat.send"] : "config.patch";
