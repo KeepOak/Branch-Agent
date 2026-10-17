@@ -3,7 +3,9 @@ engine:extensions/memory-core/src/memory/generic-embedding-provider.integration.
 engine:extensions/memory-core/src/memory/manager-local-unavailable-keyword.test.ts
 engine:src/agents/memory-search.test.ts
 engine:src/cli/capability-cli.test.ts
+engine:src/commands/doctor-config-flow.legacy-composition.test.ts
 engine:src/commands/doctor-config-flow.workspace-persistence.test.ts
+engine:src/commands/doctor-config-preflight.process.test.ts
 engine:src/commands/doctor-config-preflight.state-migration-input.test.ts
 engine:src/commands/doctor-memory-search.test.ts
 engine:src/commands/doctor/shared/legacy-config-migrate.test.ts

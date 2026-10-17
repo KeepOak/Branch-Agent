@@ -36,6 +36,7 @@ const STARTUP_REFUSAL =
   "Branch Agent startup migrations did not complete cleanly; refusing to report the gateway ready.";
 const STARTUP_RECOVERY =
   'Run "branch doctor --fix" against the same state/config, then restart the gateway.';
+const HAS_BUILT_CLI = fs.existsSync(path.resolve("dist/entry.js"));
 const tempDirs = createFixtureLifetime();
 afterAll(() => tempDirs.cleanup());
 const DOCTOR_CHILD_TIMEOUT_MS = 60_000;
@@ -76,7 +77,7 @@ function seedOwnerlessSchemaOnlyAgentDatabase(stateDir: string): string {
 }
 
 describe("doctor invalid config process exit", () => {
-  it(
+  it.skipIf(!HAS_BUILT_CLI)(
     "repairs the v17 additive schema through doctor --fix",
     async () => {
       const root = fs.realpathSync(tempDirs.createTempDir("branch-doctor-v17-additive-"));
@@ -174,7 +175,7 @@ describe("doctor invalid config process exit", () => {
     ]);
   });
 
-  it(
+  it.skipIf(!HAS_BUILT_CLI)(
     "migrates legacy exec approvals before repairing a partially valid config",
     async () => {
       const root = fs.realpathSync(tempDirs.createTempDir("branch-doctor-legacy-approvals-"));
@@ -290,7 +291,9 @@ describe("doctor invalid config process exit", () => {
     getCliProcessTestTimeout(LEGACY_APPROVAL_CHILD_TIMEOUT_MS),
   );
 
-  it("exits after a complete best-effort report for an unparseable config", async () => {
+  it.skipIf(!HAS_BUILT_CLI)(
+    "exits after a complete best-effort report for an unparseable config",
+    async () => {
     const root = fs.realpathSync(tempDirs.createTempDir("branch-doctor-invalid-config-exit-"));
     const stateDir = path.join(root, "state");
     const configPath = path.join(stateDir, "branch.json");
@@ -340,7 +343,9 @@ describe("doctor invalid config process exit", () => {
 
 // Synchronous CLI probes must not consume neighboring cases' timeout budgets.
 describe("Doctor repair followed by gateway readiness", () => {
-  it("serves canonical state after Doctor repairs cron and preserves retired plugin sidecars", async () => {
+  it.skipIf(!HAS_BUILT_CLI)(
+    "serves canonical state after Doctor repairs cron and preserves retired plugin sidecars",
+    async () => {
     const nodeExecutable = resolveTestNodeExecPath();
     const runtimeRoot = createBuiltRuntime(
       tempDirs.createTempDir("branch-cron-upgrade-runtime-"),
@@ -794,7 +799,9 @@ describe("Doctor repair followed by gateway readiness", () => {
     expect(hasActiveStartupMigrationLease({ env })).toBe(false);
   }, 75_000);
 
-  it("preserves legacy state and orphan sidecars when a live gateway owns the state directory", async () => {
+  it.skipIf(!HAS_BUILT_CLI)(
+    "preserves legacy state and orphan sidecars when a live gateway owns the state directory",
+    async () => {
     const root = fs.realpathSync(tempDirs.createTempDir("branch-live-owner-ready-"));
     // Live owner fixture with gateway-shaped argv: on Windows no file-lock start
     // time exists, so the lock reader validates the owner through process argv

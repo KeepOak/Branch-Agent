@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -18,6 +19,7 @@ import {
 import { useDoctorConfigPreflightHome } from "./doctor-config-preflight.test-support.js";
 
 const CLI_CHILD_TIMEOUT_MS = 60_000;
+const HAS_BUILT_CLI = existsSync(path.resolve("dist/entry.js"));
 const runtimeDirs = useAutoCleanupTempDirTracker(afterAll);
 const withDoctorConfigPreflightHome = useDoctorConfigPreflightHome();
 
@@ -53,7 +55,7 @@ describe("Doctor legacy config composition", () => {
     });
   });
 
-  it(
+  it.skipIf(!HAS_BUILT_CLI)(
     "converges the July upgrade fixture with an explicit local model",
     async () => {
       await withDoctorConfigPreflightHome(async (home) => {
