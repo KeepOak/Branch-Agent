@@ -111,7 +111,8 @@ function GatewayUpdatesPage(props: SettingsPageProps) {
       <RemoveBranch />
       <Reports />
       <BeforeInstall />
-      {lvOf(props.level) >= 1 ? <Editors gatewayUrl={props.engine.gatewayUrl} technical={showsInternals(props.level)} /> : null}
+      {/* Every add-on here waits for a later update: like every Coming row, Technical only (Private #1093 item 4). */}
+      {lvOf(props.level) >= 2 ? <Editors gatewayUrl={props.engine.gatewayUrl} technical={showsInternals(props.level)} /> : null}
       <Privacy openSettings={props.openSettings} />
       {lvOf(props.level) >= 1 ? <HelpMore {...props} data={data} version={version} /> : null}
       {lvOf(props.level) >= 2 ? <Technical data={data} version={version} /> : null}
