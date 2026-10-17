@@ -1,0 +1,4 @@
+window:src/stage/BrowserView.test.tsx
+window:src/stage/browser-half-screen.test.tsx
+window:src/stage/browser-toolbar.test.tsx
+window:src/stage/stage-fit.test.ts
