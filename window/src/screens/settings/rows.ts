@@ -6,6 +6,7 @@ import type { DesktopControlName } from "../../connect/desktop-controls";
 import type { Level, PageId } from "./nav";
 import { ACCOUNTS_ROWS } from "./pages/accounts";
 import { APPEARANCE_ROWS } from "./pages/appearance";
+import { AUTOS_ROWS } from "./pages/autos";
 import { CUSTOMIZE_ROWS } from "./pages/customize";
 import { GENERAL_ROWS } from "./pages/general";
 
@@ -112,7 +113,7 @@ export function shownLevel(row: Row, hints: UiHints, controls?: Readonly<Record<
 }
 
 /** Every row of the R1 Settings pages. Pages add their list here. */
-export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS];
+export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS, ...AUTOS_ROWS];
 
 /** The rows of one card at this level, in table order. A row above the level is hidden, and so is a Coming row at
  *  Regular. */
