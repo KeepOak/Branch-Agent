@@ -582,6 +582,20 @@ describe("isNonProviderRuntimeCoordinationError", () => {
     }
   });
 
+  it.each([
+    "Branch Agent state at /state/branch.sqlite is undergoing offline maintenance; retry when it finishes.",
+    "Branch Agent state ownership at /state/branch.sqlite could not be verified; retry after maintenance finishes.",
+  ])("treats a lost shared-state owner as coordination, not a model failure: %s", (message) => {
+    const error = new Error(message);
+    for (const candidate of [error, new Error("lane task error", { cause: error })]) {
+      expect(isNonProviderRuntimeCoordinationError(candidate)).toBe(true);
+      expect(resolveModelFallbackError(candidate)).toEqual({
+        kind: "coordination",
+        error: candidate,
+      });
+    }
+  });
+
   it("returns true for Codex missing tool-result local execution failures", () => {
     expect(isNonProviderRuntimeCoordinationError({ reason: "missing_tool_result" })).toBe(true);
     expect(
