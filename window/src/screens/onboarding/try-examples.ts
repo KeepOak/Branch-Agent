@@ -3,7 +3,7 @@
 // startTryExamples, which is that same call, and the Trunks page draws the offer. Opening the conversation
 // hands the default Trunk's main session to the window, which shows the examples greeting.
 import { useSyncExternalStore } from "react";
-import { EXAMPLES_REASON, mainSessionOf, readExamples, WAITS_FOR, type Example } from "./model";
+import { EXAMPLES_REASON, failedStep, mainSessionOf, readExamples, WAITS_FOR, type Example } from "./model";
 
 export { EXAMPLES_REASON };
 export const TRY_EXAMPLES_METHOD = WAITS_FOR.examples;
@@ -16,8 +16,7 @@ export async function loadExampleTrunks(request: ExampleRequester): Promise<Exam
 }
 
 export function examplesErrorText(error: unknown): string {
-  const detail = error instanceof Error ? error.message : String(error);
-  return `Couldn’t load the examples. ${detail}`;
+  return failedStep("Couldn’t load the examples", error);
 }
 
 /** The line under the offer, the same words onboarding uses once the list has loaded. */

@@ -9,10 +9,9 @@ import { FirstTrunk } from "./FirstTrunk";
 import type { WindowEngine } from "../../connect/engine";
 import { Coming } from "../../glass/coming";
 import { configStore } from "../../places/settings/config-store";
-import { errorText } from "../../places/settings/adapter";
 import { Models } from "./Models";
 import { ModeStep } from "./ModeStep";
-import { clampStep, freshState, helloOk, LAST_STEP, MODES, mainSessionOf, picked, primary, STEPS, togglePick, WAITS_FOR, type OnboardingState } from "./model";
+import { clampStep, failedStep, freshState, helloOk, LAST_STEP, MODES, mainSessionOf, picked, primary, STEPS, togglePick, WAITS_FOR, type OnboardingState } from "./model";
 import { Welcome, WhereSheet } from "./Welcome";
 import "./onboarding.css";
 
@@ -76,7 +75,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       await recordOnboarding(engine, s).catch(() => undefined);
       onTalk(key);
     }
-    catch (e) { setTalkError(`Couldn’t start that conversation. ${errorText(e)}`); }
+    catch (e) { setTalkError(failedStep("Couldn’t start that conversation", e)); }
     finally { setTalking(false); }
   };
   const go = useRef<HTMLButtonElement>(null);
@@ -100,7 +99,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       const sessionKey = helloOk(s.hello) ? await greet(engine, target.agentId, target.mainKey, s.name) : mainSessionOf(target.agentId, target.mainKey);
       onDone?.({ sessionKey, made: created.made, state: s });
     } catch (e) {
-      setTrunkError(`Couldn’t start your first conversation. ${errorText(e)}`);
+      setTrunkError(failedStep("Couldn’t start your first conversation", e));
     } finally {
       setSaving(false);
     }
@@ -122,7 +121,7 @@ export function Onboarding({ engine, startAt = 0, onLater, onTalk, onAnswered, o
       onAnswered?.(s);
       set({ step: LAST_STEP });
     } catch (e) {
-      setModeError(`Couldn’t save that. ${errorText(e)}`);
+      setModeError(failedStep("Couldn’t save that", e));
     } finally {
       setSaving(false);
     }
