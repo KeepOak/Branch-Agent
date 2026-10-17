@@ -1,0 +1,2 @@
+engine:extensions/memory-core/src/memory/manager-embedding-account-backoff.test.ts
+engine:extensions/memory-core/src/tools.real-manager.test.ts
