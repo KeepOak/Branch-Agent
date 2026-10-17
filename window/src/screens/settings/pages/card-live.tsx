@@ -3,7 +3,7 @@
 // Open). It reuses Classic People's own card logic on the same calls (places/settings/set1/people-mine.tsx and
 // people-data.tsx): users.self for who you are, users.setDisplayName for your name and users.setAvatar for your picture
 // (read on this computer, cropped square, at most 512 px). View and Open show your card in People, as teammates see it.
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { WindowEngine } from "../../../connect/engine";
 import { record, visible, type RecordValue } from "../../../places/settings/adapter";
 import { useResource } from "../../../places/settings/hooks";
@@ -21,7 +21,10 @@ export function useSelf(engine: WindowEngine): { me: Profile | null; loading: bo
   const self = useResource<RecordValue>(engine, "users.self", {});
   const profile = record(self.data).profile;
   const me = profile ? profilesOf({ profiles: [profile] })[0] ?? null : null;
-  return { me, loading: self.loading, error: self.error, reload: self.reload };
+  // useResource's reload resolves to whether the read landed; the card only waits for it.
+  const { reload: read } = self;
+  const reload = useCallback(async () => { await read(); }, [read]);
+  return { me, loading: self.loading, error: self.error, reload };
 }
 
 function MyCard({ engine }: SlotPageProps) {

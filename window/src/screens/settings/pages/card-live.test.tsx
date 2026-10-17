@@ -67,10 +67,22 @@ it("saves your name with users.setDisplayName, as Classic People does", async ()
   expect(request).toHaveBeenCalledWith("users.setDisplayName", { profileId: "gateway-owner", displayName: "Taofik B" });
 });
 
-it("shows your initial and name over Your card in the nav, as the preview's s36Me", async () => {
+it("shows your initial and name over Your card in the nav at Advanced and Technical, as the preview's s36Me", async () => {
+  const { engine } = engineOf();
+  for (const level of ["advanced", "technical"]) {
+    localStorage.setItem("branch.level", level);
+    await mount(engine);
+    const me = host.querySelector<HTMLElement>(".r1s-nav[data-page=card]")!;
+    expect(me.querySelector(".r1s-me-av")?.textContent).toBe("T");
+    expect(me.querySelector("b")?.textContent).toBe("Taofik");
+    expect(me.querySelector("small")?.textContent).toBe("Your card");
+    await act(async () => root.unmount()); root = createRoot(host); forgetLookStore();
+  }
+});
+
+it("at Regular, Your card sits in the General page: General is the current nav row and Your card is under its Advanced", async () => {
+  localStorage.setItem("branch.level", "regular");
   await mount(engineOf().engine);
-  const me = host.querySelector<HTMLElement>(".r1s-nav[data-page=card]")!;
-  expect(me.querySelector(".r1s-me-av")?.textContent).toBe("T");
-  expect(me.querySelector("b")?.textContent).toBe("Taofik");
-  expect(me.querySelector("small")?.textContent).toBe("Your card");
+  expect(host.querySelector<HTMLElement>(".r1s-nav[aria-current=page]")?.dataset.hub).toBe("General");
+  expect(host.querySelector(".r1s-advanced [data-page=card]")?.getAttribute("aria-current")).toBe("true");
 });
