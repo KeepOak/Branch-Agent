@@ -16,8 +16,8 @@ import { accentVars, BUILTIN, DEFAULT_THEME, isHex, pairOfDefinition, varsOf, ty
 export const LOOK_PREF = "ui.window.look";
 const ENGINE_PREFS = { accent: "ui.accent", fontUi: "ui.fontUi", fontChat: "ui.fontChat", themeExtra: "ui.window.themeExtra" } as const;
 type EngineKey = keyof typeof ENGINE_PREFS;
-const DEVICE_KEYS = ["size", "scale"] as const;
-/** A look key kept on this device only (text size, interface scale), never sent to the engine. */
+const DEVICE_KEYS = ["size", "scale", "chatSize"] as const;
+/** A look key kept on this device only (text size, interface scale, conversation text size), never sent to the engine. */
 export const isDeviceKey = (key: string): boolean => (DEVICE_KEYS as readonly string[]).includes(key);
 /** Where a look key's value is kept in the snapshot: this device, its own engine pref (accent, fonts), or the look. */
 export function lookHolder(snap: Pick<LookSnap, "look" | "device" | "prefs">, key: string): RecordValue {
@@ -28,8 +28,8 @@ const LOCAL = "branch.look";
 /** Interface scale steps (Private #1100; Hermes Appearance › Typography, UI Scale 90-175%). */
 export const SCALES = [90, 100, 110, 125, 150, 175] as const;
 /** The interface scale kept on this device, as a percentage from SCALES (100 when unset or unreadable). */
-export function scaleOf(device: RecordValue): number {
-  const n = Number(device.scale ?? 100);
+export function scaleOf(device: RecordValue, key: "scale" | "chatSize" = "scale"): number {
+  const n = Number(device[key] ?? 100);
   return (SCALES as readonly number[]).includes(n) ? n : 100;
 }
 /** The next scale step from `current`: 1 bigger, -1 smaller, 0 back to 100%. */
@@ -130,6 +130,9 @@ function lookCss(s: Saved): string {
   out.push(':root[data-size="larger"] body{font-size:17.5px}', ':root[data-size="largest"] body{font-size:19.6px}');
   const scale = scaleOf(s.device);
   if (scale !== 100 && !zoomBridge()) out.push(`:root:root{zoom:${scale / 100}}`);
+  // Conversation text size (Private #1100): messages and the composer, on top of the interface scale (thread.css, composer.css).
+  const chatPct = scaleOf(s.device, "chatSize");
+  if (chatPct !== 100) out.push(`:root:root{--chat-text:${chatPct / 100}}`);
   out.push(":root.still-k *,:root.still-k *::before,:root.still-k *::after{animation-play-state:paused!important}");
   return out.join("\n");
 }
