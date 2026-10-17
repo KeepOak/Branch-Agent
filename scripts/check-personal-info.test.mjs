@@ -79,6 +79,22 @@ test('relative and module paths through home/ are not Linux home directories', (
   assert.deepEqual(types('./Users/example/Code'), ['macos-user-path']);
 });
 
+test('mixed-case names on a filesystem root are still personal paths', () => {
+  assert.deepEqual(types('/Users/JaneDoe/Code'), ['macos-user-path']);
+  assert.deepEqual(types('/home/JohnSmith/.branch'), ['linux-user-path']);
+  assert.deepEqual(types('file:///Users/JaneDoe/spec.html'), ['macos-user-path']);
+  assert.deepEqual(types('/var/../home/JohnSmith/x'), ['linux-user-path']);
+  assert.deepEqual(types('/./home/JohnSmith/.branch'), ['linux-user-path']);
+  assert.deepEqual(types('/../home/JohnSmith/.branch'), ['linux-user-path']);
+  assert.deepEqual(types('/tmp/foo/../../home/JohnSmith/x'), ['linux-user-path']);
+  assert.deepEqual(types('/./Users/JaneDoe/Code'), ['macos-user-path']);
+  assert.deepEqual(types('/../Users/JaneDoe/Code'), ['macos-user-path']);
+  assert.deepEqual(types('/var/../Users/JaneDoe/Code'), ['macos-user-path']);
+  assert.deepEqual(types('file:///./home/JohnSmith/spec.html'), ['linux-user-path']);
+  assert.deepEqual(types('file:///var/../home/JohnSmith/spec.html'), ['linux-user-path']);
+  assert.deepEqual(types('open /Users/JaneDoe/Code and import ./home/HomeScreen'), ['macos-user-path']);
+});
+
 test('absolute user home directories still fail on each OS path style', () => {
   assert.deepEqual(types('/home/example/.branch'), ['linux-user-path']);
   assert.deepEqual(types('logs in /home/example/.branch'), ['linux-user-path']);
