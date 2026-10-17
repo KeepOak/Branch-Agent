@@ -5,27 +5,24 @@ import { Icon } from "./icons";
 import type { MenuAnchor } from "./Menu";
 import { Popover, Segmented, type Above } from "./Popover";
 import { versionParts } from "../connect/branch-version";
+import { PERSON_FALLBACK, personName } from "./person-name";
 
 /** Who is using Branch: users.self's display name, else its first email, else "Owner" (OpenClaw's
  *  ui/src/components/app-sidebar-identity-menu.ts falls back the same way). */
 export function readPersonName(result: unknown): string {
-  const profile = (result as { profile?: { displayName?: unknown; emails?: unknown } } | null)?.profile;
-  const name = typeof profile?.displayName === "string" ? profile.displayName.trim() : "";
-  const emails = Array.isArray(profile?.emails) ? profile.emails : [];
-  const email = typeof emails[0] === "string" ? emails[0] : "";
-  return name || email || "Owner";
+  return personName((result as { profile?: Parameters<typeof personName>[0] } | null)?.profile, "gateway-owner");
 }
 
 export function usePersonName(session: SaplingSession, ready: boolean): string {
-  const [name, setName] = useState("Owner");
+  const [name, setName] = useState(PERSON_FALLBACK);
   useEffect(() => {
     if (!ready) {
       return;
     }
-    // A local owner connection has no user profile; OpenClaw then shows "Owner" too.
+    // A local owner connection has no user profile; it reads "You".
     session.request("users.self", {}).then(
       (r) => setName(readPersonName(r)),
-      () => setName("Owner"),
+      () => setName(PERSON_FALLBACK),
     );
   }, [session, ready]);
   return name;

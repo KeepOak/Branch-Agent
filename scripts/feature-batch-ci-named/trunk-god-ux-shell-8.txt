@@ -1,0 +1,2 @@
+window:src/shell/person-name.test.ts
+window:src/shell/readers.test.ts
