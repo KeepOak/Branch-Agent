@@ -9,6 +9,8 @@
 //   stage-preview  the side panel's Preview tab with the Ledger app portal
 //   team-approval-before  the group room, no team card (the before shot for the team card)
 //   team-approval  the team proposal card, asking state
+//   computer-screen-before  the computer pane when its capture fails (main's JSON-RPC error)
+//   computer-permission  the computer pane when the capture is all black (the Screen Recording ask)
 // The fixture (visual-harness.tsx) supplies the group "Design group" and the portal "Ledger app".
 // Writes <outDir>/<route>-<label>.png (label defaults to "current"); pass "before" or "after" for a PR.
 // Add a route by adding a name in visual-routes.mjs and a step below.
@@ -29,7 +31,22 @@ async function openGroup(page) {
   await page.getByRole("button", { name: /^Design group/ }).first().click();
 }
 
+// The computer pane: turn on screen access with a real click, then wait for the pane's note.
+async function openComputer(page, state) {
+  await page.goto(`${base}/scripts/visual-harness.html?computer=${state}`);
+  await page.getByRole("button", { name: "See the screen and use the mouse" }).click();
+  await page.locator(".pane-note[data-pane-state]").filter({ hasText: /screen/ }).first().waitFor();
+  await page.waitForTimeout(300);
+  return page.getByTestId("computer-preview");
+}
+
 const steps = {
+  "computer-screen-before": async (page) => openComputer(page, "snapshot-error"),
+  "computer-permission": async (page) => {
+    const pane = await openComputer(page, "blank");
+    await page.getByRole("button", { name: "Open System Settings" }).waitFor();
+    return pane;
+  },
   "team-approval-before": async (page) => {
     await openGroup(page);
     return page.locator("#root");

@@ -3,6 +3,7 @@ import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {WindowShell} from '../src/shell/WindowShell';
 import {TeamApprovalCard} from '../src/places/trunk/TeamApprovalCard';
+import {ComputerStage} from '../src/stage/ComputerStage';
 import {OverflowPreview} from './overflow-fixture';
 import '../src/theme/tokens.css';
 import '../src/theme/base.css';
@@ -45,6 +46,29 @@ const fixture={
 const TEAM_MEMBERS=[{name:'Builder Scout',role:'Scout',job:'Find the sources and facts the goal needs.',machine:'This computer',model:'anthropic/claude-sonnet'},{name:'Builder Writer',role:'Writer',job:"Draft the work from the Scout's findings.",machine:'This computer',model:'anthropic/claude-sonnet'},{name:'Builder Checker',role:'Checker',job:'Review each draft before it is final.',machine:'Mac mini',model:'anthropic/claude-sonnet'}];
 const TEAM_STATES=['asking','applied','declined','unavailable'] as const;
 function TeamPreview({state}:{state:string}){const shown=(TEAM_STATES as readonly string[]).includes(state)?state as typeof TEAM_STATES[number]:'asking';return <div style={{padding:24,background:'var(--bg,#f6f6f4)'}}><TeamApprovalCard goal="Ship the Q3 newsletter" members={TEAM_MEMBERS} state={shown}/></div>;}
+// The computer pane on this Mac (Private #1103 item 5). ?computer=snapshot-error: the capture fails the way main's desktop
+// pipe did; ?computer=blank: the capture comes back all black, as the driver's MCP proxy returns while Screen Recording is off.
+const SNAPSHOT_ERROR='UNAVAILABLE: COMPUTER_DRIVER_ERROR: CUA MCP proxy returned an invalid JSON-RPC version';
+function blackFrame(){const canvas=document.createElement('canvas');canvas.width=160;canvas.height=90;const context=canvas.getContext('2d')!;context.fillStyle='#000';context.fillRect(0,0,160,90);return canvas.toDataURL('image/png').split(',')[1];}
+function computerEngine(state:string){
+  let enabled=false;
+  const request=async(method:string,params:any)=>{
+    if(method==='sessions.describe')return {session:{key:'agent:scout:one'}};
+    if(method==='environments.list')return {environments:[{id:'gateway',type:'local',status:'available'}]};
+    if(method==='config.get')return {hash:enabled?'on':'off',valid:true,config:{plugins:{entries:{'cua-computer':{enabled}}}}};
+    if(method==='config.patch'){enabled=true;return {ok:true};}
+    if(method==='computer.status')return {available:enabled,computerUse:{provider:{generation:'driver-one'}}};
+    if(method==='computer.invoke'){
+      if(params?.command!=='screen.snapshot')return {payload:{ok:true}};
+      if(state==='blank')return {payload:{format:'png',base64:blackFrame(),width:160,height:90}};
+      throw new Error(SNAPSHOT_ERROR);
+    }
+    return {};
+  };
+  return {request,sessionKey:'agent:scout:one',scopes:['operator.admin'],onEvent:()=>()=>{}} as any;
+}
+function ComputerPreview({state}:{state:string}){const [engine]=React.useState(()=>computerEngine(state));return <div data-testid="computer-preview" style={{position:'fixed',inset:0,display:'flex',background:'var(--bg,#f6f6f4)'}}><ComputerStage engine={engine} gatewayUrl="ws://gateway.invalid" name="Scout" mode="Computer" onMode={()=>{}} onClose={()=>{}} onChooseComputer={()=>{}}/></div>;}
+const computerState=new URLSearchParams(window.location.search).get('computer');
 const teamState=new URLSearchParams(window.location.search).get('team');
 const overflow=new URLSearchParams(window.location.search).get('overflow');
-createRoot(document.getElementById('root')!).render(overflow!==null ? <OverflowPreview kind={overflow}/> : teamState!==null ? <TeamPreview state={teamState}/> : <WindowShell session={fixture as any} url="ws://isolated-fixture"/>);
+createRoot(document.getElementById('root')!).render(overflow!==null ? <OverflowPreview kind={overflow}/> : computerState!==null ? <ComputerPreview state={computerState}/> : teamState!==null ? <TeamPreview state={teamState}/> : <WindowShell session={fixture as any} url="ws://isolated-fixture"/>);

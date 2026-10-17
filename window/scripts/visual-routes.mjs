@@ -8,4 +8,6 @@ export const ROUTES = {
   "pair-overflow": "The Pair a phone dialog at a 420 px window with a very long setup code and link (Private #1103). The capture fails if anything runs past the dialog.",
   "team-approval-before": "The group room as it is on main, with no team proposal card (fixture: Design group).",
   "team-approval": "The team proposal card in its asking state, with Approve team and Not now (fixture: Ship the Q3 newsletter).",
+  "computer-screen-before": "The computer pane on this Mac when its capture fails with the driver's JSON-RPC error, as it did on main (Private #1103 item 5).",
+  "computer-permission": "The computer pane on this Mac when the capture comes back all black: the Screen Recording ask with Open System Settings (Private #1103 item 5).",
 };
