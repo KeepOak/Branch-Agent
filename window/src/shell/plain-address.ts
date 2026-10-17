@@ -6,8 +6,7 @@
 
 /** The "How much to show" level's saved choice (places-nav/SettingsFrame readLevel); read here so toasts stay light. */
 const LEVEL_KEY = "branch.level";
-/** True at Regular, the level a failure or an address is made plain at. */
-export function atRegular(): boolean {
+function regular(): boolean {
   try {
     const level = localStorage.getItem(LEVEL_KEY);
     return level !== "advanced" && level !== "technical";
@@ -35,7 +34,7 @@ const HOST_RE = /\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z
 
 /** The words with every address made plain; `always` skips the level check (tests, and callers that know). */
 export function plainAddresses(text: string, always = false): string {
-  if (!text || (!always && !atRegular())) return text;
+  if (!text || (!always && !regular())) return text;
   let out = text.replace(URL_RE, "the link").replace(IPV6_RE, "that computer").replace(IPV4_RE, "that computer").replace(HOST_RE, "that computer");
   for (const name of [...hostnames].sort((a, b) => b.length - a.length)) {
     out = out.replace(new RegExp(`(^|[^\\p{L}\\p{N}_.-])${escape(name)}(?=$|[^\\p{L}\\p{N}_-])`, "giu"), "$1this computer");

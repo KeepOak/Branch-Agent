@@ -4,7 +4,17 @@
 // step, and any web or computer address reads as plainAddresses() (#1706) says. Words that are already plain pass
 // through unchanged, with the lead a screen put before the raw part (`Couldn't change Lockdown: …`). Advanced and
 // Technical keep the exact words.
-import { atRegular, plainAddresses } from "./plain-address";
+import { plainAddresses } from "./plain-address";
+
+/** The "How much to show" level's saved choice (places-nav/SettingsFrame readLevel), read as plainAddresses() reads it. */
+function atRegular(): boolean {
+  try {
+    const level = localStorage.getItem("branch.level");
+    return level !== "advanced" && level !== "technical";
+  } catch {
+    return true;
+  }
+}
 
 /** The sentence for a failure nothing more specific matches. */
 export const PLAIN_FAILURE = "That didn’t work. Try again.";
