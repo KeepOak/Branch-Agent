@@ -95,10 +95,12 @@ describe("Settings four pages", () => {
       }
       if (group.title === "General") expect(host.querySelector(".r1s-advanced [data-page=goto] small")?.textContent).toBe(GOTO_SUB);
     }
-    expect([...reached].sort()).toEqual(REGISTRY.filter((id) => id !== "developer"));
+    // Developer and All features (the feature atlas, mostly Coming) show only at Technical (Private #1093 item 4).
+    expect([...reached].sort()).toEqual(REGISTRY.filter((id) => id !== "developer" && id !== "features"));
     expect($$(".r1s-advanced [data-page]").map((b) => b.dataset.page)).not.toContain("developer");
+    expect($$(".r1s-advanced [data-page]").map((b) => b.dataset.page)).not.toContain("features");
     await click(level("Technical"));
-    expect($$(".r1s-nav[data-page]").map((b) => b.dataset.page)).toContain("developer");
+    expect($$(".r1s-nav[data-page]").map((b) => b.dataset.page)).toEqual(expect.arrayContaining(["developer", "features"]));
     expect(host.querySelector(".r1s-advanced")).toBeNull();
   }, 20_000);
 
