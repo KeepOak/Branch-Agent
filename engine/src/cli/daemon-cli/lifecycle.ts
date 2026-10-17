@@ -45,6 +45,7 @@ import {
   appendGatewayLifecycleAudit,
   createGatewayLifecycleMutationAudit,
 } from "./lifecycle-audit.js";
+import { installMissingGatewayService } from "./missing-service-install.js";
 import { resolveGatewayConfigPorts, resolveGatewayLifecycleContext } from "./lifecycle-context.js";
 import {
   runServiceRestart,
@@ -268,20 +269,20 @@ export async function runDaemonStart(opts: DaemonLifecycleOptions = {}) {
     serviceNoun: "Gateway",
     service,
     renderStartHints: renderGatewayServiceStartHints,
-    onNotLoaded:
-      process.platform === "darwin"
-        ? async () => {
-            const recovered = await recoverInstalledLaunchAgent({ result: "started" });
-            if (recovered) {
-              appendGatewayLifecycleAudit({
-                action: "start",
-                source: "cli",
-                mode: "launchd-bootstrap",
-              });
-            }
-            return recovered;
-          }
-        : undefined,
+    onNotLoaded: async () => {
+      if (process.platform === "darwin") {
+        const recovered = await recoverInstalledLaunchAgent({ result: "started" });
+        if (recovered) {
+          appendGatewayLifecycleAudit({
+            action: "start",
+            source: "cli",
+            mode: "launchd-bootstrap",
+          });
+          return recovered;
+        }
+      }
+      return await installMissingGatewayService({ result: "started", opts });
+    },
     repairLoadedService: async ({ json, stdout, warn, state, issues }) =>
       await repairLoadedGatewayServiceForStart({
         service,
@@ -509,7 +510,7 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
       if (mutationError) {
         throw mutationError;
       }
-      return null;
+      return await installMissingGatewayService({ result: "restarted", opts });
     },
     postRestartCheck: async ({
       warnings,
