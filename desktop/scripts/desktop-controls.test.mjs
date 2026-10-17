@@ -4,7 +4,7 @@ import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "n
 import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
@@ -396,3 +396,23 @@ test("a full disk keeps a changed setting in memory, shows the disk-full banner 
     assert.deepEqual(seen, [true, false], "the banner goes away once a save lands");
   } finally { stop(); }
 }));
+
+test("tools find the engine on its live port from gateway-port, not the configured 19031 (Private #1054)", async () => {
+  const helper = fileURLToPath(new URL("./live-gateway-port.mjs", import.meta.url));
+  const { liveGatewayPort, CONFIGURED_GATEWAY_PORT } = await import(pathToFileURL(helper));
+  const data = await mkdtemp(join(tmpdir(), "branch-gateway-port-"));
+  try {
+    assert.equal(CONFIGURED_GATEWAY_PORT, 19031);
+    assert.equal(liveGatewayPort(data), 19031, "an app that never wrote gateway-port keeps the configured port");
+    await writeFile(join(data, "gateway-port"), "57072\r\n");
+    assert.equal(liveGatewayPort(data), 57072);
+    assert.equal(execFileSync(process.execPath, [helper, data], { encoding: "utf8", windowsHide: true }).trim(), "57072");
+    await writeFile(join(data, "gateway-port"), "not a port\n");
+    assert.equal(liveGatewayPort(data), 19031);
+    const script = await readFile(new URL("./publish-window.sh", import.meta.url), "utf8");
+    assert.doesNotMatch(script, /19031/u, "publish-window.sh hard-codes the configured port");
+    assert.match(script, /PORT="\$\{3:-\$\(node "\$\(dirname "\$0"\)\/live-gateway-port\.mjs" "\$DATA"\)\}"/u);
+  } finally {
+    await rm(data, { recursive: true, force: true });
+  }
+});
