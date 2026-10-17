@@ -8,6 +8,7 @@ import { Jobs } from "./jobs";
 import { Icon } from "../../shell/icons";
 import { openNewGroupChat } from "../../rooms/NewGroupChat";
 import { Menu, type MenuAnchor, type MenuItem } from "../../shell/Menu";
+import { menuAtLevel } from "../../shell/menu-level";
 import { notify } from "../../shell/notify";
 import { whoItKnowsItems } from "../../shell/who-it-knows-menu";
 import { Coming } from "../../glass/coming";
@@ -158,7 +159,7 @@ export function TrunksTab(props: Props) {
       </div>
     ) : <Jobs engine={engine} reload={trunks.reload} />}
     {shows(level, "technical") && <TrunkDefaults engine={engine} heading={!props.settings} />}
-    {menu && roster && <Menu at={menu.at} label={`${menu.row.name} menu`} onClose={() => setMenu(null)} items={props.settings ? settingsMenu(props, roster, menu.row, setOpen, setError, () => void knownAt(menu.at, menu.row)) : rowMenu(props, roster, menu.row, setOpen, setError)} />}
+    {menu && roster && <Menu at={menu.at} label={`${menu.row.name} menu`} onClose={() => setMenu(null)} items={menuAtLevel(props.settings ? settingsMenu(props, roster, menu.row, setOpen, setError, () => void knownAt(menu.at, menu.row)) : rowMenu(props, roster, menu.row, setOpen, setError), shows(level, "technical"), Object.values(TRUNK_MENU_COMING))} />}
     {known && <Menu at={known.at} label="Who it knows" testid="who-it-knows" onClose={() => setKnown(null)} items={known.items} />}
     {open?.kind === "profile" && <TrunkProfile engine={engine} agentId={open.id} level={level} openSettings={openSettings} openPlace={props.openPlace} openConversation={props.openConversation} onClose={() => { setOpen(null); trunks.reload(); }} />}
     {open?.kind === "edit" && <TrunkEditor engine={engine} agentId={open.id} level={level} openSettings={openSettings} onClose={() => setOpen(null)} onSaved={trunks.reload} />}

@@ -3,8 +3,9 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WindowEngine } from "../../../connect/engine";
-import { UsagePage, daysFrom, gbFrom, matches, parseQuery, resetWords, tidyNote } from "./usage";
+import { ROWS, UsagePage, daysFrom, gbFrom, matches, parseQuery, resetWords, tidyNote } from "./usage";
 import { SaveProgressOffer } from "../../../shell/SaveProgress";
+import { KitProvider } from "../kit";
 import type { Limits } from "../../../shell/status-data";
 
 type Answers = Record<string, unknown | ((params: Record<string, unknown>) => unknown)>;
@@ -24,7 +25,9 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); do
 
 const flush = async () => { for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); }); };
 async function show(engine: WindowEngine, level: "regular" | "advanced" | "technical" = "regular") {
-  await act(async () => root.render(<UsagePage page="usage" title="Data & usage" level={level} engine={engine} />));
+  // As Settings draws it: the frame's kit carries the same level (a Coming row reads it there).
+  const lv = ({ regular: 0, advanced: 1, technical: 2 } as const)[level];
+  await act(async () => root.render(<KitProvider level={lv} report={{ saving: () => undefined, saved: () => undefined, failed: () => undefined }} scope={null}><UsagePage page="usage" title="Data & usage" level={level} engine={engine} /></KitProvider>));
   await flush();
 }
 function button(text: string, scope: ParentNode = document): HTMLButtonElement {
@@ -145,11 +148,38 @@ describe("Settings › Data & usage", () => {
   });
   it("greys what the engine can't do, with the reason", async () => {
     const { engine } = engineWith(BASE);
-    await show(engine, "advanced");
+    await show(engine, "technical");
     expect(row("Spend caps per service")?.getAttribute("aria-disabled")).toBe("true"); expect(row("Spend caps per service")?.textContent).not.toContain("Spend caps need the engine");
     expect(row("Keep conversations")?.getAttribute("aria-disabled")).toBeNull();
     expect(row("Reset Branch")?.textContent).not.toContain("no reset method");
     expect(button("Run the test").disabled).toBe(true);
+  });
+
+  // Private #1093 item 4: a Coming control (one that waits for a later update) shows only at Technical.
+  const COMING = ["Checkpoints", "Reset Branch", "Export everything", "Take everything with you", "Asking a service what is left", "Move to another computer", "Back up to GitHub", "Delete everything"];
+  const COMING_CARDS = ["Test the model you use", "Evals", "Flagged replies"];
+  it("shows Test the model, Evals, Checkpoints, Reset Branch, Export everything and the other Coming rows at Technical only", async () => {
+    for (const level of ["regular", "advanced"] as const) {
+      await show(engineWith(BASE).engine, level);
+      for (const title of COMING) expect(row(title), `${title} at ${level}`).toBeNull();
+      for (const card of COMING_CARDS) expect(document.querySelector(`[data-sec="${card}"]`), `${card} at ${level}`).toBeNull();
+      expect(document.body.textContent).not.toContain("Run the test");
+      expect(row("Keep conversations")).not.toBeNull();
+      expect(row("What’s kept on this computer")).not.toBeNull();
+      await act(async () => root.unmount()); root = createRoot(host);
+    }
+    await show(engineWith(BASE).engine, "technical");
+    for (const title of COMING) expect(row(title)?.getAttribute("aria-disabled"), title).toBe("true");
+    for (const card of COMING_CARDS) expect(document.querySelector(`[data-sec="${card}"]`), card).not.toBeNull();
+    await click("Open the report");
+    expect(document.querySelector<HTMLButtonElement>('.dlg button[title^="Splitting usage"]')?.disabled).toBe(true);
+  });
+  it("indexes the Coming rows and cards at Technical, so search finds them only there", () => {
+    const lv = (title: string) => ROWS.find((r) => r.title === title)?.lv;
+    for (const title of [...COMING, "Test set", "Right actions", "Run each suite", "Coverage report", "Let me send a flagged reply to the Branch team"]) expect(lv(title), title).toBe(2);
+    expect(lv("Keep conversations")).toBe(0);
+    expect(lv("What’s kept on this computer")).toBe(0);
+    expect(lv("Conversations")).toBe(1);
   });
 });
 
@@ -181,7 +211,9 @@ describe("the usage report", () => {
     const who = dlg.querySelector<HTMLSelectElement>('select[aria-label="Started by"]')!;
     await act(async () => { who.value = "k-owner"; who.dispatchEvent(new Event("change", { bubbles: true })); }); await flush();
     expect(last()).toMatchObject({ creatorKey: "k-owner" });
-    expect(dlg.querySelector<HTMLButtonElement>('button[title^="Splitting usage"]')?.disabled).toBe(true);
+    // Splitting by chat app, provider, model or tool is Coming: not drawn below Technical (Private #1093).
+    expect(dlg.querySelector('button[title^="Splitting usage"]')).toBeNull();
+    expect(dlg.querySelector('select[aria-label="Chat app"]')).toBeNull();
   });
   it("picks a day from the chart and asks for just that day", async () => {
     const { engine, request } = engineWith(BASE);
