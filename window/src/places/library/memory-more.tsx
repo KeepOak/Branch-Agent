@@ -92,7 +92,7 @@ function LearnDialog({ engine, trunks, scope, onClose }: { engine: WindowEngine;
       <label className="lib-fld"><span>To</span><input className="inp" type="date" value={to} onChange={e => { setTo(e.target.value); setFound(null); }} /></label></div>
     {found && !kept && <p role="status">{plural(num(found.candidates) ?? 0, "thing", "things")} worth keeping from {plural(num(found.days) ?? 0, "day", "days")}.{found.truncated ? " There are more after these; preview again to continue." : ""}</p>}
     {kept && <p role="status">{plural(num(kept.staged) ?? num(kept.candidates) ?? 0, "thing", "things")} handed to Rings to sort tonight.</p>}
-    {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
+    {op.error && <p className="lib-bad" role="alert">{plainError(op.error)}</p>}
   </Dialog>;
 }
 
@@ -105,14 +105,14 @@ export function MemoryHealth({ engine, agentId, status, check }: { engine: Windo
   const e = status.data?.embedding;
   const checked = e?.checked !== false && e?.checkedAtMs;
   const title = checked ? `Search index: checked ${when(e!.checkedAtMs)}` : "Search index: not checked yet";
-  const line = !e ? "" : !checked ? "It checks itself in the background and rebuilds a damaged index." : e.ok ? "Nothing to repair. It checks itself in the background and rebuilds a damaged index." : e.error ?? "";
+  const line = !e ? "" : !checked ? "It checks itself in the background and rebuilds a damaged index." : e.ok ? "Nothing to repair. It checks itself in the background and rebuilds a damaged index." : plainError(e.error ?? "");
   return <Section title="Memory health" testid="memory-health">
     {status.error && <p className="lib-bad" role="alert">{plainError(status.error)}</p>}
     <div className="lib-plain">
       {e && <Row icon="search" title={title} line={line}><button type="button" className="btn sm" disabled={status.loading} onClick={check}>Check now</button></Row>}
       <Row icon="clock" title="Loads when a conversation starts" line="What a Trunk learns now shows from its next conversation, so each one starts the same." />
     </div>
-    {op.error && <p className="lib-bad" role="alert">{op.error}</p>}
+    {op.error && <p className="lib-bad" role="alert">{plainError(op.error)}</p>}
     <div className="lib-acts"><button type="button" className="btn" disabled={op.busy || !agentId} onClick={exportAll}>Export everything</button><Grey ghost label="Bring in a WhatsApp export" reason={REASONS.whatsapp} /></div>
   </Section>;
 }

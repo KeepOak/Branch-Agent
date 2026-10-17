@@ -64,6 +64,22 @@ describe("places never show a raw engine error at Regular (Private #1089)", () =
     expect(alerts().join(" ")).not.toMatch(RAW);
   });
 
+  it.each(FAILURES)("Canopy › Cards: %j", async (raw) => {
+    await act(async () => root.render(<CanopyPlace engine={failing(raw)} facts={{ running: 0, waiting: 0 }} openConversation={vi.fn()} openPlace={vi.fn()} level="regular" />));
+    await settle();
+    const cards = [...host.querySelectorAll('[role="tab"]')].find((tab) => /Cards/.test(tab.textContent ?? "")) as HTMLElement | undefined;
+    expect(cards).toBeTruthy();
+    await act(async () => cards!.click());
+    await settle();
+    expect(host.textContent).not.toMatch(RAW);
+  });
+
+  it.each(FAILURES)("Library › Memory health's search-index row: %j", async (raw) => {
+    const status = { data: { embedding: { ok: false, error: raw, checked: true, checkedAtMs: Date.now() } }, loading: false, error: null };
+    await act(async () => root.render(<MemoryHealth engine={failing(raw)} agentId="a" status={status} check={() => {}} />));
+    expect(host.textContent).not.toMatch(RAW);
+  });
+
   it("Advanced keeps the engine's exact words", async () => {
     localStorage.setItem("branch.level", "advanced");
     await act(async () => root.render(<MemoryHealth engine={failing(FAILURES[0])} agentId="a" status={{ data: null, loading: false, error: FAILURES[0] }} check={() => {}} />));
