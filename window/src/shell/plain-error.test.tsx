@@ -86,6 +86,31 @@ describe("no raw error at Regular (Private #1089)", () => {
     }
   });
 
+  // PR Closer's FIX on #1735: ids that #1700's friendlyError() catches never show either.
+  const IDS = ["cedar:trunk:birch", "3f2c9a1e-8b4d-4c1a-9e2f-7a6b5c4d3e2f", "runId deadbeefdeadbeef", "Run 0123456789abcdef0123 failed"];
+  it.each(IDS)("a plain toast, a banner and the notice line never show %j", async (raw) => {
+    notify(raw);
+    expect(getToasts()[0].text).not.toContain(raw.split(" ").pop());
+    raiseBanner({ icon: "alert", title: raw, text: raw });
+    expect(currentBanner()?.title).not.toContain(raw.split(" ").pop());
+    host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+    await act(async () => root!.render(<Frame navigationKey="one" sidebar={<button>Conversation</button>} main={<p>Empty</p>} header={{ title: "Conversation" }} notice={raw} />));
+    expect(host.querySelector(".r1-notice")?.textContent).not.toContain(raw.split(" ").pop());
+  });
+
+  it("a failure toast is checked by #1700's friendlyError() too", () => {
+    notify("Couldn't send: Request failed 502 Bad Gateway", { tone: "bad" });
+    expect(getToasts()[0].text).toBe("Couldn't send. That didn’t work. Try again.");
+  });
+
+  it("other toasts keep plain words, even one word or a number", () => {
+    for (const words of ["Copied.", "Saved 250 files.", "Restarting…"]) {
+      notify(words);
+      expect(getToasts().at(-1)?.text).toBe(words);
+    }
+  });
+
   it.each(["advanced", "technical"])("keeps the exact words at %s", (level) => {
     localStorage.setItem("branch.level", level);
     notify("Couldn't change Lockdown: unknown method: logbook.status");

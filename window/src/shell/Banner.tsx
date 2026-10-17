@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { Pebble } from "../face/Pebble";
 import { Icon } from "./icons";
 import { dismiss, getToasts } from "./notify";
-import { plainError } from "./plain-error";
+import { plainText } from "./plain-error";
 
 // The notification banner (DESIGN-SPEC §4.10.1): one at a time, top right, 9 s, × and "Open". It says that a
 // Trunk finished something or needs the person, about a conversation that is not the one on screen.
@@ -31,7 +31,7 @@ const emit = () => listeners.forEach((l) => l());
 
 export function raiseBanner(raw: BannerNews): void {
   // No hostname, IP address or URL (walkthrough B-026: "Can’t reach <hostname>") and no raw error (Private #1089) at Regular.
-  const news = { ...raw, title: plainError(raw.title), text: plainError(raw.text) };
+  const news = { ...raw, title: plainText(raw.title), text: plainText(raw.text) };
   for (const toast of getToasts()) dismiss(toast.id);
   if (current && news.sameAs && current.sameAs === news.sameAs) {
     current = { ...current, count: current.count + 1, at: Date.now() };
