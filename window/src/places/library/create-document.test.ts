@@ -50,7 +50,7 @@ describe("Library unsent help", () => {
   it("uses the configured contact key and does not send or change the current conversation", () => {
     const engine = engineOf(() => { throw new Error("No engine work for a draft"); });
     engine.sessionKey = "agent:birch:existing-conversation";
-    expect(stageDocumentHelp(engine, "birch", "desk", "Untitled document.md")).toContain("help draft is ready");
+    expect(stageDocumentHelp(engine, "birch", "desk", "Untitled document.md")).toContain("can help write it: the message is ready in its conversation.");
     expect(loadDraft(safeStorage(), "agent:birch:desk")).toBe('Help me write “Untitled document.md”: ');
     expect(engine.sessionKey).toBe("agent:birch:existing-conversation");
   });

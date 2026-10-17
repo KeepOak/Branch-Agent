@@ -10,6 +10,7 @@ import {
 } from "./accounts-live";
 import { classicSlot } from "./classic-host";
 import { CUSTOMIZE_PAGE } from "./customize-live";
+import { AUTOS_PAGE } from "./autos-live";
 import { permissionsSlot } from "./permissions-approvals";
 import { privacySlot } from "./privacy-town";
 import { TRUNK_ROWS, TrunksPage } from "./trunks-live";
@@ -66,6 +67,8 @@ export const R1_PAGES: PageSlots = {
   who: { rows: WHO_ROWS, controls: { "who.people.everyone": Everyone, "who.people.open": PeopleButtons, "who.records.signed": SignedRecords } },
   // Customize is a row page: the kinds hub, Saved prompts and Connected agents are its own cards (customize-live.tsx).
   customize: CUSTOMIZE_PAGE,
+  // Automations is a row page; where alerts go and the Edit windows are its own (autos-live.tsx).
+  autos: AUTOS_PAGE,
   // Instructions & personality: the preview's seven cards; Classic's file list and Just about you inside them.
   instructions: { rows: INSTRUCTIONS_ROWS, controls: { "instructions.you.file": AboutYou, "instructions.project.files": Files } },
   // Voice & calls: native R1 cards in the preview's order; Classic Voice draws behind its rows (voice-controls.tsx).

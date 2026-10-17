@@ -7,7 +7,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { comingControls, undeclaredControls } from "../../glass/coming-registry";
 import { readDetected } from "../../setup/setup-model";
 import { readFileSync } from "node:fs";
-import { answeredBy, canSayHello, freshState, MODES, picked, primary, STEPS, suggest, togglePick } from "./model";
+import { answeredBy, canSayHello, freshState, greeting, MODES, picked, PLAN_FIRST_REASON, primary, STEPS, suggest, togglePick } from "./model";
 import { Onboarding } from "./Onboarding";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -64,6 +64,12 @@ describe("onboarding model", () => {
     expect(primary({ ...freshState(1), hello: { ok: true, seconds: "1.4", modelRef: "m" } }).ok).toBe(true);
     expect(primary(freshState(0)).label).toBe("Get started");
   });
+  it("uses the saved name in the first greeting, and still asks what to call you when there is none", () => {
+    expect(greeting("")).toContain("ask what to call me");
+    expect(greeting("  ")).toContain("ask what to call me");
+    expect(greeting("Ada")).toBe("Hi Ada! I just set you up. Say hello in a sentence, then ask what you’re working on right now.");
+    expect(greeting("Ada")).not.toContain("what to call");
+  });
   it("names the model that answered from the detected rows", () => {
     const d = readDetected(DETECT);
     expect(answeredBy(d, "anthropic/claude-opus")).toBe("Claude");
@@ -79,6 +85,7 @@ describe("Onboarding", () => {
     const { engine } = fakeEngine({});
     const { host, onLater } = await show(engine);
     expect(host.querySelector("h1")?.textContent).toBe("Hi, I’m Branch.");
+    expect(host.querySelector('input[aria-label="Your name"]')).not.toBeNull();
     expect(host.textContent).toContain("It asks before it sends, deletes, spends or installs anything.");
     expect(host.querySelector("input[type=checkbox]")).toBeNull();
     expect(host.querySelector("[role=progressbar]")?.getAttribute("aria-valuenow")).toBe("1");
@@ -149,7 +156,9 @@ describe("Onboarding", () => {
     const { engine, request } = fakeEngine({ "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true } });
     const { host, onAnswered } = await show(engine, { startAt: 2 });
     const radios = [...host.querySelectorAll("[role=radio]")] as HTMLButtonElement[];
-    expect(radios.map((r) => r.textContent)).toEqual(["Ask firstRecommended" + MODES[0].line, "Auto" + MODES[1].line, "Plan first" + MODES[2].line, "Read only" + MODES[3].line]);
+    expect(radios.map((r) => r.textContent)).toEqual(["Ask firstRecommended" + MODES[0].line, "Auto" + MODES[1].line, "Plan first" + MODES[2].line + PLAN_FIRST_REASON, "Read only" + MODES[3].line]);
+    expect(radios[2].getAttribute("title")).toBe(PLAN_FIRST_REASON);
+    expect(radios[2].querySelector(".r1-ob-why")?.textContent).toBe(PLAN_FIRST_REASON);
     expect(radios[0].getAttribute("aria-checked")).toBe("true");
     expect(host.querySelector(".r1-ob-hint")?.textContent).toBe("Change it any time in Settings › Permissions. Full access lives there too, one click away.");
     expect(radios.some((r) => r.textContent?.startsWith("Full access"))).toBe(false);
@@ -190,6 +199,25 @@ const LISTED = { templates: [{ id: "trunk-doctor", name: "Trunk Doctor", descrip
 const AGENTS = { defaultId: "sapling", mainKey: "main", agents: [{ id: "sapling", identity: { name: "Sapling" } }] };
 /** Answers for a hello that works: detection and a model call that answers. */
 const HELLO = { "branch.setup.detect": DETECT, "branch.setup.activate": { ok: true, modelRef: "anthropic/claude-opus", latencyMs: 1400 } };
+async function typeName(host: HTMLElement, value: string) {
+  const box = host.querySelector('input[aria-label="Your name"]') as HTMLInputElement;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  await act(async () => { setter.call(box, value); box.dispatchEvent(new Event("input", { bubbles: true })); });
+}
+/** Onboarding from Welcome, with a name when one is given, through a hello that worked. */
+async function toLastStepNamed(engine: WindowEngine, name: string) {
+  const shown = await show(engine);
+  await typeName(shown.host, name);
+  await act(async () => button(shown.host, "Get started").click());
+  await flush();
+  await act(async () => button(shown.host, "Continue").click());
+  await act(async () => button(shown.host, "Say hello").click());
+  await flush();
+  await act(async () => button(shown.host, "Continue").click());
+  await act(async () => button(shown.host, "Continue").click());
+  await flush();
+  return shown;
+}
 const textarea = (host: HTMLElement) => host.querySelector("textarea.r1-ob-text") as HTMLTextAreaElement;
 async function type(host: HTMLElement, value: string) {
   const box = textarea(host);
@@ -226,6 +254,30 @@ describe("Your first Trunk (step 4)", () => {
     expect(host.querySelector(".r1-ob-sap")?.textContent).toBe("Sapling stays your default Trunk, with the leaf.");
     expect(button(host, "Start with Sapling")).toBeTruthy();
     expect(host.querySelector(".r1-ob-sug")?.textContent).toBe("Type a sentence and Branch suggests 1–3 Trunks.");
+  });
+
+  it("saves the name on the profile and uses it in the first greeting", async () => {
+    const { engine, request } = fakeEngine({
+      ...HELLO, "users.self": { profile: { id: "owner-1" } }, "users.setDisplayName": { profile: { id: "owner-1", displayName: "Ada" } },
+      "trunks.template.list": LISTED, "agents.list": AGENTS, "config.get": { hash: "h1", valid: true, config: {} }, "config.patch": { ok: true }, "chat.send": { runId: "r1" },
+    });
+    const { host } = await toLastStepNamed(engine, "Ada");
+    expect(calls(request, "users.setDisplayName")).toEqual([{ profileId: "owner-1", displayName: "Ada" }]);
+    await act(async () => button(host, "Start with Sapling").click());
+    await flush();
+    expect(calls(request, "chat.send")).toEqual([expect.objectContaining({ sessionKey: "agent:sapling:main", message: greeting("Ada") })]);
+  });
+
+  it("stays on Welcome when the profile refuses the name", async () => {
+    const { engine } = fakeEngine({ "users.self": { profile: { id: "owner-1" } }, "users.setDisplayName": new Error("name rejected") });
+    const { host, onLater } = await show(engine);
+    await typeName(host, "Ada");
+    await act(async () => button(host, "Get started").click());
+    await flush();
+    expect(host.querySelector("h1")?.textContent).toBe("Hi, I’m Branch.");
+    expect(host.querySelector("[role=alert]")?.textContent).toBe("Couldn’t save your name. Try again in a moment.");
+    expect(host.textContent).not.toContain("name rejected");
+    expect(onLater).not.toHaveBeenCalled();
   });
 
   it("Meet them creates the picked Trunks with the first-run contract, records setup and greets in the first one", async () => {

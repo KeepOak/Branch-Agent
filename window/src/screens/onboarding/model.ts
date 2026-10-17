@@ -22,7 +22,8 @@ export const MODES: readonly Mode[] = (["ask", "auto", "plan", "read"] as const)
   const row = MODE_ROWS.find((r) => r.name === ROW_OF[id]);
   return { id, name: ROW_OF[id], line: row?.line ?? "", icon: (row?.icon ?? "shield") as Mode["icon"], recommended: id === "ask", exec: EXEC_OF[id] };
 });
-export const PLAN_FIRST_REASON = "Plan first comes in a later update.";
+/** Shown on the disabled Plan first row: the one thing that turns it on. */
+export const PLAN_FIRST_REASON = "Update Branch to use Plan first.";
 
 /** Where Branch runs (preview obWhereP37): three choices. Picking Another computer or A KeepOak computer records the
  *  choice and says where to finish it, as the preview does: pairing (device.pair.setupCode) and a cloud computer
@@ -70,13 +71,15 @@ export type Hello = TestResult | "busy" | null;
 /** The card's own state; nothing here is saved until the step that owns it calls the engine. */
 export type OnboardingState = {
   step: number; where: Where; off: string[]; hello: Hello; mode: ModeId;
+  /** Welcome: the name Branch should use, saved on the profile with users.setDisplayName. */
+  name: string;
   /** Step 4: what the person typed, the suggested Trunks they picked, and the template chips they picked (template ids). */
   text: string; pick: string[]; tpl: string[];
   /** Step 2: the person chose Try it with examples, which lets Continue go on without a hello. */
   examples: boolean;
 };
 export const clampStep = (step: number) => Math.max(0, Math.min(LAST_STEP, Math.trunc(step) || 0));
-export const freshState = (step = 0): OnboardingState => ({ step: clampStep(step), where: "here", off: [], hello: null, mode: "ask", text: "", pick: [], tpl: [], examples: false });
+export const freshState = (step = 0): OnboardingState => ({ step: clampStep(step), where: "here", off: [], hello: null, mode: "ask", name: "", text: "", pick: [], tpl: [], examples: false });
 
 export const helloOk = (hello: Hello): boolean => typeof hello === "object" && hello !== null && hello.ok;
 
@@ -155,5 +158,12 @@ export function ownerTimeZone(): string | undefined {
 /** A Trunk's main conversation key, as agents.list names it (`agent:<id>:<mainKey>`). */
 export const mainSessionOf = (agentId: string, mainKey = "main") => `agent:${agentId}:${mainKey || "main"}`;
 
-/** The first message in the new Trunk's main conversation (HANDOFF R1-07 First greeting: chat.send). */
+/** The first message when setup has no name yet (HANDOFF R1-07 First greeting: chat.send). */
 export const GREETING = "Hi! I just set you up. Say hello in a sentence, then ask what to call me and what I’m working on right now.";
+
+/** The first message. A name from setup is used; without one, the Trunk still asks what to call you. */
+export function greeting(name: string): string {
+  const who = name.trim();
+  if (!who) return GREETING;
+  return `Hi ${who}! I just set you up. Say hello in a sentence, then ask what you’re working on right now.`;
+}
