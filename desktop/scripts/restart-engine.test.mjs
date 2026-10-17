@@ -49,15 +49,34 @@ async function eventually(predicate, timeout = EVENTUALLY_DEFAULT_MS) {
   const end = Date.now() + fixtureDeadline(timeout);
   while (!await predicate()) { if (Date.now() > end) throw Error("Fixture deadline"); await pause(20); }
 }
+function resetAccepted(socket) {
+  socket.on("error", () => {});
+  try { socket.resetAndDestroy(); } catch { socket.destroy(); }
+}
+// Server.close() never emits while an accepted socket is still open. A client that
+// landed on the probe (a readiness fetch, another test) would pin freePort until the
+// fixture deadline, so the next engine never starts. Reset those sockets, and skip a
+// close that still does not finish.
 function closeServer(server) {
-  return new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+  return new Promise(resolve => {
+    let settled = false;
+    let timer;
+    const finish = (closed) => { if (settled) return; settled = true; clearTimeout(timer); resolve(closed); };
+    timer = setTimeout(() => { try { server.unref(); } catch { /* already closed */ } finish(false); }, 1000);
+    try { server.close(() => finish(true)); } catch { finish(false); }
+  });
+}
+function probeServer() {
+  const server = createServer();
+  server.on("connection", resetAccepted);
+  return server;
 }
 // bind(0) can return a port Windows will not take on an explicit listen, or whose
 // close keeps it reserved. Skip those. Two explicit binds must succeed, so the
 // close between them released the port. This is not a retry of one port.
 async function freePort() {
   for (let attempt = 0; attempt < 32; attempt++) {
-    const server = createServer();
+    const server = probeServer();
     const picked = await new Promise(resolve => {
       server.once("error", () => resolve(undefined));
       server.listen(0, "127.0.0.1", () => {
@@ -66,15 +85,14 @@ async function freePort() {
       });
     });
     if (picked === undefined) continue;
-    await closeServer(server);
+    if (!await closeServer(server)) continue;
     const once = async () => {
-      const check = createServer();
+      const check = probeServer();
       const ok = await new Promise(resolve => {
         check.once("error", () => resolve(false));
         check.listen(picked, "127.0.0.1", () => resolve(true));
       });
-      if (ok) await closeServer(check);
-      return ok;
+      return ok && await closeServer(check);
     };
     if (!await once() || !await once()) continue;
     return picked;

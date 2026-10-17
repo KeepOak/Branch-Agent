@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
-import { createServer as createNetServer } from "node:net";
+import { connect as connectNet, createServer as createNetServer } from "node:net";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -53,6 +53,46 @@ test("a held loopback port stays taken until it is released for the engine", asy
   } finally {
     try { server.closeAllConnections?.(); } catch { /* none */ }
     await new Promise(resolve => { try { server.close(() => resolve()); } catch { resolve(); } });
+  }
+});
+
+test("a client connected to a held loopback port does not keep it after release", async () => {
+  const { freeLoopbackPort, holdLoopbackServer, releaseHeldLoopbackPort } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "gateway.js")));
+  const port = await freeLoopbackPort();
+  const holder = createNetServer();
+  const rebound = createNetServer();
+  let client;
+  try {
+    await new Promise((resolve, reject) => {
+      holder.once("error", reject);
+      holder.listen(port, "127.0.0.1", resolve);
+    });
+    holdLoopbackServer(port, holder);
+    client = connectNet({ host: "127.0.0.1", port });
+    client.on("error", () => {});
+    const outcome = await new Promise((resolve) => {
+      client.once("connect", () => resolve("connect"));
+      client.once("error", (error) => resolve(error.code ?? "error"));
+    });
+    assert.notEqual(outcome, "ECONNREFUSED");
+    releaseHeldLoopbackPort(port);
+    const end = Date.now() + 2000;
+    let bound = false;
+    while (Date.now() < end && !bound) {
+      bound = await new Promise((resolve) => {
+        rebound.once("error", () => resolve(false));
+        rebound.listen(port, "127.0.0.1", () => resolve(true));
+      });
+      if (!bound) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(bound, true);
+  } finally {
+    client?.destroy();
+    releaseHeldLoopbackPort(port);
+    try { rebound.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise((resolve) => { try { rebound.close(() => resolve()); } catch { resolve(); } });
+    try { holder.closeAllConnections?.(); } catch { /* none */ }
+    await new Promise((resolve) => { try { holder.close(() => resolve()); } catch { resolve(); } });
   }
 });
 

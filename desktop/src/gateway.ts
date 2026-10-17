@@ -2,7 +2,7 @@
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync, closeSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { createServer } from "node:net";
+import { createServer, type Server, type Socket } from "node:net";
 import { constants as osConstants, setPriority } from "node:os";
 import { join } from "node:path";
 import type { DesktopConfig } from "./config";
@@ -37,9 +37,74 @@ function heldLoopback(): Map<number, ReturnType<typeof createServer>> {
   return scope[heldLoopbackKey] ??= new Map();
 }
 
+/** Server.close() never emits while an accepted socket is still open. A client that does not finish would pin the caller. */
+const CLOSE_BACKSTOP_MS = 1000;
+
+function resetAccepted(socket: Socket): void {
+  socket.on("error", () => undefined);
+  try { socket.resetAndDestroy(); }
+  catch { socket.destroy(); }
+}
+
+/** Resets any accepted connection so close() is not pinned, and swallows the bind error the caller handles. */
+function loopbackProbe(): Server {
+  const probe = createServer();
+  probe.on("error", () => undefined);
+  probe.on("connection", resetAccepted);
+  return probe;
+}
+
+function closeServer(probe: Server): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (closed: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(closed);
+    };
+    // The callback is next tick when nothing is connected. If it still does not run,
+    // skip this port instead of waiting out the fixture deadline.
+    timer = setTimeout(() => {
+      try { probe.unref(); } catch { /* already closed */ }
+      finish(false);
+    }, CLOSE_BACKSTOP_MS);
+    try { probe.close(() => finish(true)); }
+    catch { finish(false); }
+  });
+}
+
+/** Binds `port` (0 picks one). Undefined when the bind fails or does not settle. */
+function bindProbe(probe: Server, port: number): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: number | undefined) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      finish(undefined);
+      void closeServer(probe);
+    }, CLOSE_BACKSTOP_MS);
+    probe.once("error", () => finish(undefined));
+    probe.listen(port, "127.0.0.1", () => {
+      try {
+        const address = probe.address();
+        finish(address && typeof address === "object" ? address.port : undefined);
+      } catch { finish(undefined); }
+    });
+  });
+}
+
 /** Keeps `server` listening on `port` until `releaseHeldLoopbackPort`. */
-export function holdLoopbackServer(port: number, server: ReturnType<typeof createServer>): void {
+export function holdLoopbackServer(port: number, server: Server): void {
   releaseHeldLoopbackPort(port);
+  // An accepted client that never finishes pins Server.close() (`_connections` stays set).
+  // Reset it so releasing the hold does not leave the port reserved.
+  server.on("connection", resetAccepted);
   server.unref();
   heldLoopback().set(port, server);
 }
@@ -49,7 +114,7 @@ export function releaseHeldLoopbackPort(port: number): void {
   const holder = heldLoopback().get(port);
   if (!holder) return;
   heldLoopback().delete(port);
-  holder.close(() => undefined);
+  void closeServer(holder);
 }
 
 /**
@@ -74,31 +139,21 @@ export function releaseHeldPortWhenBinding(child: ChildProcess, port: number): v
   const onExit = () => release();
   child.on("message", onMessage);
   child.once("exit", onExit);
-  // The child can send branch-desktop:binding before this listener exists. Release once it has
-  // had time to reach its listen retry, so a missed message cannot hold the port until it gives up.
+  // The child repeats branch-desktop:binding until it is listening. One send can still
+  // arrive before this listener exists; release once it has had time to send again,
+  // so a missed message cannot hold the port until the child gives up on the bind.
   timer = setTimeout(release, 1000);
-}
-
-function closeServer(probe: ReturnType<typeof createServer>): Promise<void> {
-  return new Promise((resolve) => { probe.close(() => resolve()); });
 }
 
 /** Resolves true when nothing listens on 127.0.0.1:port. */
 export function portIsFree(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const probe = createServer();
-    probe.once("error", () => resolve(false));
-    probe.listen(port, "127.0.0.1", () => { void closeServer(probe).then(() => resolve(true)); });
-  });
+  const probe = loopbackProbe();
+  return bindProbe(probe, port).then(async (bound) => bound !== undefined && await closeServer(probe));
 }
 
 /** True when this process can listen on 127.0.0.1:port and then release it. */
 function explicitBind(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const probe = createServer();
-    probe.once("error", () => resolve(false));
-    probe.listen(port, "127.0.0.1", () => { void closeServer(probe).then(() => resolve(true)); });
-  });
+  return portIsFree(port);
 }
 
 /**
@@ -110,16 +165,10 @@ function explicitBind(port: number): Promise<boolean> {
  */
 export async function freeLoopbackPort(): Promise<number> {
   for (let attempt = 0; attempt < REBINDABLE_PORT_ATTEMPTS; attempt++) {
-    const probe = createServer();
-    const picked = await new Promise<number | undefined>((resolve) => {
-      probe.once("error", () => resolve(undefined));
-      probe.listen(0, "127.0.0.1", () => {
-        const address = probe.address();
-        resolve(address && typeof address === "object" ? address.port : undefined);
-      });
-    });
+    const probe = loopbackProbe();
+    const picked = await bindProbe(probe, 0);
     if (picked === undefined) continue;
-    await closeServer(probe);
+    if (!await closeServer(probe)) continue;
     if (!await explicitBind(picked)) continue;
     if (!await explicitBind(picked)) continue;
     return picked;
@@ -137,12 +186,9 @@ export async function reserveLoopbackPort(): Promise<number> {
   if (process.env.BRANCH_DESKTOP_HOLD_LOOPBACK !== "1") return freeLoopbackPort();
   for (let attempt = 0; attempt < REBINDABLE_PORT_ATTEMPTS; attempt++) {
     const port = await freeLoopbackPort();
-    const holder = createServer();
-    const held = await new Promise<boolean>((resolve) => {
-      holder.on("error", () => resolve(false));
-      holder.listen(port, "127.0.0.1", () => resolve(true));
-    });
-    if (!held) continue;
+    const holder = loopbackProbe();
+    const held = await bindProbe(holder, port);
+    if (held === undefined) continue;
     holdLoopbackServer(port, holder);
     return port;
   }
