@@ -5,3 +5,4 @@ window:src/composer/composer-no-model-chip.test.tsx
 window:src/composer/useConversation.test.tsx
 window:src/screens/composer/Composer.test.tsx
 window:src/screens/onboarding/Onboarding.test.tsx
+window:src/shell/plain-error.test.tsx
