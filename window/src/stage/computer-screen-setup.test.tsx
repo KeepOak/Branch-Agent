@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { WindowEngine } from "../connect/engine";
 import { ComputerStage } from "./ComputerStage";
 import { PERMISSION_POLL_MS } from "./screen-permission";
@@ -18,6 +18,15 @@ afterEach(async () => {
   document.body.innerHTML = "";
   vi.useRealTimers();
 });
+/** Makes navigator.platform say Mac for one test; returns the undo. */
+function asMac() {
+  const platform = Object.getOwnPropertyDescriptor(Navigator.prototype, "platform");
+  Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
+  return () => {
+    delete (navigator as { platform?: string }).platform;
+    if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
+  };
+}
 const screenButton = () => [...document.querySelectorAll("button")].find((button) => button.textContent === "See the screen and use the mouse");
 const frame = { format: "png", base64: "iVBORw0KGgo=" };
 function fixture(snapshot: () => Promise<unknown> = async () => ({ payload: frame }), patchError = false, driver: { reason?: string } = {}) {
@@ -151,9 +160,20 @@ describe("computer screen setup", () => {
     expect(document.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
     open.mockRestore();
   });
+  it("Private #1103: off a Mac, a capture error naming Screen Recording gets the plain line with Try again, not System Settings", async () => {
+    const raw = "COMPUTER_DRIVER_ERROR: Screen Recording permission is not granted";
+    const { engine } = fixture(async () => { throw new Error(raw); });
+    await render(engine);
+    await act(async () => screenButton()!.click());
+    expect(document.querySelector(".pane-note[data-permission]")).toBeNull();
+    expect(document.querySelector(".pane-note p")?.textContent).toBe("Couldn't show this computer's screen. Check that screen access is on, then try again.");
+    expect([...document.querySelectorAll(".pane-note button")].map((b) => b.textContent)).toEqual(["Try again"]);
+  });
   it("Private #1103: a capture refused for Screen Recording asks for it, with the raw error only at Technical", async () => {
     const raw = "COMPUTER_DRIVER_ERROR: Screen Recording permission is not granted";
     const { engine } = fixture(async () => { throw new Error(raw); });
+    const restore = asMac();
+    onTestFinished(restore);
     await render(engine);
     await act(async () => screenButton()!.click());
     const note = document.querySelector(".pane-note[data-permission]")!;
@@ -193,6 +213,34 @@ describe("computer screen setup", () => {
       blank.frames.clear();
       delete (navigator as { platform?: string }).platform;
       if (platform) Object.defineProperty(Navigator.prototype, "platform", platform);
+    }
+  });
+  it("Private #1103: an all-black capture while you have the computer still releases the shared execution when you hand back", async () => {
+    vi.useFakeTimers();
+    const restore = asMac();
+    blank.frames.add("blackframe");
+    let shots = 0;
+    const { engine, request } = fixture(async () => ({ payload: { ...frame, base64: ++shots === 1 ? frame.base64 : "blackframe" } }));
+    const calls = () => request.mock.calls as [string, any][];
+    const closes = (executionId: string) => calls().filter(([m, p]) => m === "computer.invoke" && p.params.action === "__close_execution" && p.params.executionId === executionId);
+    try {
+      await render(engine);
+      await act(async () => screenButton()!.click());
+      expect(document.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${frame.base64}`);
+      await act(async () => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Take over")!.click());
+      await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+      expect(shots).toBe(2);
+      const held = calls().filter(([m, p]) => m === "computer.invoke" && p.command === "screen.snapshot").at(-1)![1].params.executionId as string;
+      // The black frame keeps the permission line and the shared execution stays open while you drive.
+      expect(document.querySelector(".pane-note[data-permission] p")?.textContent).toBe(PERMISSION_LINE);
+      expect(closes(held)).toEqual([]);
+      await act(async () => [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Hand back to Scout")!.click());
+      await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+      expect(closes(held)).toHaveLength(1);
+      expect(closes(held)[0][1]).toMatchObject({ command: "computer.act", generation: "driver-one", params: { action: "__close_execution", executionId: held, reason: "completion" } });
+    } finally {
+      blank.frames.clear();
+      restore();
     }
   });
   it("says Branch can't see this computer's screen in plain words when the driver isn't running, with no Try again", async () => {

@@ -17,7 +17,8 @@ const SNAPSHOT_FAILED: StatusProblem = {
 /** A failed capture in plain words; the raw error goes behind Technical details. */
 function snapshotProblem(error: unknown): StatusProblem {
   const technical = (error instanceof Error ? error.message : String(error)).trim() || undefined;
-  if (isScreenPermissionError(technical)) return screenPermissionProblem(technical);
+  // Screen Recording is a Mac permission: elsewhere the same words get the plain failure line, never a System Settings button.
+  if (onMac() && isScreenPermissionError(technical)) return screenPermissionProblem(technical);
   return technical ? { ...SNAPSHOT_FAILED, technical } : SNAPSHOT_FAILED;
 }
 
@@ -101,6 +102,9 @@ export function NativeScreen({ engine, retry, onLive, onRetry, control = false, 
         generation = status.computerUse?.provider.generation;
         if (!status.available || !generation) throw new Error("Screen unavailable");
         const snap = generation;
+        // The shared execution's generation is kept before the capture returns anything, so handing back always releases
+        // it, whether the frame is real, all black or the capture fails.
+        if (held && shared.current === held) held.generation = generation;
         const result = await enqueue(() => engine.request<{ payload: Frame }>("computer.invoke", {
           command: "screen.snapshot", generation: snap, idempotencyKey: crypto.randomUUID(),
           params: { executionId },
@@ -109,12 +113,13 @@ export function NativeScreen({ engine, retry, onLive, onRetry, control = false, 
         if (!frame.base64 || (frame.format !== "jpeg" && frame.format !== "png")) throw new Error("No screen image");
         // An all-black capture on a Mac is macOS refusing it: say so, and keep trying until a real frame comes.
         if (onMac() && await frameIsBlank(frame.format, frame.base64)) {
+          // Input never aims at a black frame.
+          if (held && shared.current === held) held.frame = undefined;
           if (live) { setImage(""); setProblem(screenPermissionProblem(BLANK_CAPTURE)); onLive(false); }
           waitMs = PERMISSION_POLL_MS;
           return;
         }
         if (held && shared.current === held) {
-          held.generation = generation;
           held.frame = frame.displayFrameId && frame.width && frame.height ? { id: frame.displayFrameId, width: frame.width, height: frame.height } : undefined;
         }
         if (live) {
