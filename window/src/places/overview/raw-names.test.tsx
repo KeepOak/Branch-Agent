@@ -4,7 +4,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PersonRow, shownName, type PersonLine } from "./People";
+import { PersonRow, type PersonLine } from "./People";
+import { shownName } from "./person-name";
 import { personFrom } from "./engine";
 
 vi.mock("../../face/Face", () => ({ Face: () => null }));
