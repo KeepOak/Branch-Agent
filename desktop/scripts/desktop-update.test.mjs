@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, truncate, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -9,6 +9,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { makeComponentRelease } from "./make-component-release.mjs";
+import * as launcher from "./windows-launcher.mjs";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
 const dist = process.env.BRANCH_DESKTOP_TEST_DIST;
@@ -212,6 +213,7 @@ test("a new app that never confirms is stopped, the previous app.asar returns an
 
 test("a new Electron swaps the whole app folder and keeps the previous folder beside it", () => fixture(async ({ root, cfg, request, install }) => {
   await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const journal = await desktopUpdate.readDesktopJournal(cfg);
   const exited = spawn(process.execPath, ["-e", ""]); await new Promise(resolve => exited.on("exit", resolve));
   const confirm = join(root, "confirm.cjs");
   await writeFile(confirm, `require(${JSON.stringify(join(dist, "desktop-update.js"))}).confirmDesktopUpdate(${JSON.stringify(cfg)});`);
@@ -219,9 +221,16 @@ test("a new Electron swaps the whole app folder and keeps the previous folder be
     rejectedFile: join(cfg.dataDir, "desktop-update-rejected.json"), log: join(cfg.dataDir, "desktop.log"), waitPid: exited.pid,
     relaunch: { command: process.execPath, args: [confirm] }, confirmTimeoutMs: 15_000 };
   assert.equal(await runHelper(plan), "applied");
-  assert.equal(await readFile(join(install.appDir, "Branch Agent.exe"), "utf8"), "new runtime");
-  assert.equal(await readFile(join(install.appDir, "resources/app.asar"), "utf8"), "new desktop asar");
-  assert.equal(await readFile(join(`${install.appDir}.previous`, "Branch Agent.exe"), "utf8"), "old runtime");
+  if (journal.installRoot) {
+    assert.equal(await readFile(join(install.appDir, "Branch Agent.exe"), "utf8"), "old runtime", "the live folder stays");
+    assert.equal((await readFile(join(journal.installRoot, desktopUpdate.WINDOWS_POINTER), "utf8")).trim(), journal.versionFolder);
+    assert.equal(await readFile(join(journal.installRoot, journal.versionFolder, "Branch Agent.exe"), "utf8"), "new runtime");
+    assert.equal(await readFile(join(journal.installRoot, journal.versionFolder, "resources/app.asar"), "utf8"), "new desktop asar");
+  } else {
+    assert.equal(await readFile(join(install.appDir, "Branch Agent.exe"), "utf8"), "new runtime");
+    assert.equal(await readFile(join(install.appDir, "resources/app.asar"), "utf8"), "new desktop asar");
+    assert.equal(await readFile(join(`${install.appDir}.previous`, "Branch Agent.exe"), "utf8"), "old runtime");
+  }
   assert.equal((await readFile(plan.versionFile, "utf8")).trim(), "0.4.5");
 }, { runtime: true }));
 
@@ -487,3 +496,179 @@ test("a staged desktop app of the same release does not stop the engine and wind
   const status = await updater.readComponentUpdateStatus(cfg);
   assert.equal(status.componentsPendingVersion, release.version, "the newest engine and window are staged beside the waiting desktop app");
 }));
+
+/** Old app folder is locked: renaming or deleting it (or its original files) fails with Access denied. */
+function lockedFs(forbidden) {
+  const original = new Set(["Branch Agent.exe", "resources"]);
+  const locked = path => {
+    if (path === forbidden) return true;
+    const rel = path.startsWith(forbidden) ? path.slice(forbidden.length).replace(/^[\\/]/, "").split(/[\\/]/)[0] : "";
+    return original.has(rel);
+  };
+  const err = (op, path) => Object.assign(new Error(`EPERM: Access is denied, ${op} '${path}'`), { code: "EPERM" });
+  return {
+    rename: async (source, to) => {
+      if (locked(source) || locked(to)) throw err("rename", source);
+      await rename(source, to);
+    },
+    copy: async (source, to) => {
+      if (locked(to)) throw err("copy", to);
+      await cp(source, to, { recursive: true, verbatimSymlinks: true });
+    },
+    remove: async path => {
+      if (locked(path)) throw err("rm", path);
+      await rm(path, { recursive: true, force: true });
+    },
+  };
+}
+
+test("Windows: a locked old folder is left in place and the pointer switches to a new version folder", () => fixture(async ({ root, cfg, request, install, release }) => {
+  install.platform = "win32";
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), true);
+  const journal = await desktopUpdate.readDesktopJournal(cfg);
+  assert.equal(journal.kind, "runtime");
+  assert.equal(journal.installRoot, install.appDir);
+  assert.match(journal.versionFolder, /^app-/);
+  const exited = spawn(process.execPath, ["-e", ""]); await new Promise(resolve => exited.on("exit", resolve));
+  const confirm = join(root, "confirm.cjs");
+  await writeFile(confirm, `require(${JSON.stringify(join(dist, "desktop-update.js"))}).confirmDesktopUpdate(${JSON.stringify(cfg)});`);
+  const plan = { journal: join(cfg.dataDir, "desktop-update-pending.json"), versionFile: join(cfg.dataDir, "desktop-update-version.txt"),
+    rejectedFile: join(cfg.dataDir, "desktop-update-rejected.json"), log: join(cfg.dataDir, "desktop.log"), waitPid: exited.pid,
+    relaunch: { command: process.execPath, args: [confirm] }, confirmTimeoutMs: 15_000 };
+  assert.equal(await runHelper(plan, lockedFs(install.appDir)), "applied");
+  assert.equal(await readFile(join(install.appDir, "Branch Agent.exe"), "utf8"), "old runtime", "the locked folder is never renamed");
+  assert.equal(await readFile(join(install.appDir, "resources/app.asar"), "utf8"), "old desktop asar");
+  assert.equal((await readFile(join(install.appDir, desktopUpdate.WINDOWS_POINTER), "utf8")).trim(), journal.versionFolder);
+  assert.equal(await readFile(join(install.appDir, journal.versionFolder, "Branch Agent.exe"), "utf8"), "new runtime");
+  assert.equal(await readFile(join(install.appDir, journal.versionFolder, "resources/app.asar"), "utf8"), "new desktop asar");
+  // The helper writes the one shared launcher source: the module the installer imports, copied unchanged into dist.
+  assert.equal(await readFile(join(install.appDir, desktopUpdate.WINDOWS_LAUNCHER), "utf8"), launcher.windowsLauncherScript());
+  assert.equal(await readFile(join(dist, "windows-launcher.mjs"), "utf8"), await readFile(new URL("./windows-launcher.mjs", import.meta.url), "utf8"));
+  assert.equal(await exists(`${install.appDir}.previous`), false);
+  assert.match(await readFile(plan.log, "utf8"), /left the live folder in place/);
+}, { runtime: true }));
+
+test("Windows: prune skips a locked old version folder and removes an unlocked one", async () => {
+  const parent = join(tmpdir(), "Codex-session-files"); await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(join(parent, "win-prune-"));
+  try {
+    for (const name of ["app-old-aaaaaa", "app-locked-bbbbbb", "app-now-cccccc"]) {
+      await mkdir(join(root, name), { recursive: true });
+      await writeFile(join(root, name, "Branch Agent.exe"), name);
+    }
+    await writeFile(join(root, "current.txt"), "app-now-cccccc\n");
+    await writeFile(join(root, "scratch.txt"), "not a version folder");
+    const result = await desktopUpdate.pruneWindowsVersionFolders(root, ["app-now-cccccc"], {
+      remove: async path => {
+        if (path.endsWith("app-locked-bbbbbb")) throw Object.assign(new Error("EPERM: Access is denied"), { code: "EPERM" });
+        await rm(path, { recursive: true, force: true });
+      },
+    });
+    assert.equal(result.removed, 1);
+    assert.equal(result.skipped, 1);
+    assert.equal(await exists(join(root, "app-old-aaaaaa", "Branch Agent.exe")), false);
+    assert.equal(await exists(join(root, "app-locked-bbbbbb", "Branch Agent.exe")), true);
+    assert.equal(await exists(join(root, "app-now-cccccc", "Branch Agent.exe")), true);
+    assert.equal(await exists(join(root, "scratch.txt")), true);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("Windows: a new app that never confirms switches the pointer back and leaves the old folder", () => fixture(async ({ cfg, request, install, release }) => {
+  install.platform = "win32";
+  assert.equal(await desktopUpdate.stageDesktopUpdate(cfg, release, request, install), true);
+  const exited = spawn(process.execPath, ["-e", ""]); await new Promise(resolve => exited.on("exit", resolve));
+  const plan = { journal: join(cfg.dataDir, "desktop-update-pending.json"), versionFile: join(cfg.dataDir, "desktop-update-version.txt"),
+    rejectedFile: join(cfg.dataDir, "desktop-update-rejected.json"), log: join(cfg.dataDir, "desktop.log"), waitPid: exited.pid,
+    relaunch: { command: process.execPath, args: ["-e", "setTimeout(() => {}, 4000)"] }, confirmTimeoutMs: 1500 };
+  assert.equal(await runHelper(plan, lockedFs(install.appDir)), "rolled-back");
+  assert.equal(await readFile(join(install.appDir, "Branch Agent.exe"), "utf8"), "old runtime");
+  assert.equal(await exists(join(install.appDir, desktopUpdate.WINDOWS_POINTER)), false);
+  assert.equal(await exists(plan.journal), false);
+}, { runtime: true }));
+
+test("Windows asar-only updates stay in place when the release has no whole-app package", () => fixture(async ({ cfg, request, install }) => {
+  install.platform = "win32";
+  await updater.refreshComponentUpdate(cfg, request, { desktop: install });
+  const journal = await desktopUpdate.readDesktopJournal(cfg);
+  assert.equal(journal.kind, "asar");
+  assert.equal(journal.installRoot, undefined);
+}));
+
+/** An install root after an update from an older build: shortcuts still name the old version folder. */
+async function upgradedRoot(run) {
+  const parent = join(tmpdir(), "Codex-session-files"); await mkdir(parent, { recursive: true });
+  const base = await mkdtemp(join(parent, "win-launcher-"));
+  const root = join(base, "Branch Agent"), dataDir = join(base, "data");
+  try {
+    for (const name of ["app-0.4.4-aaaaaa", "app-0.4.5-bbbbbb"]) {
+      await mkdir(join(root, name, "resources"), { recursive: true });
+      await writeFile(join(root, name, "Branch Agent.exe"), name);
+      await writeFile(join(root, name, "resources", launcher.WINDOWS_LAUNCHER_RESOURCE), `launcher from ${name}`);
+    }
+    await mkdir(dataDir);
+    await writeFile(join(root, "current.txt"), "app-0.4.5-bbbbbb\n");
+    await writeFile(join(root, "previous.txt"), "\n");
+    const appDir = join(root, "app-0.4.5-bbbbbb");
+    const install = { appDir, resourcesDir: join(appDir, "resources"), executable: join(appDir, "Branch Agent.exe"),
+      electronVersion: ELECTRON, nodePath: process.execPath, platform: "win32" };
+    const links = new Map([
+      ["Programs/Branch Agent.lnk", join(root, "app-0.4.4-aaaaaa", "Branch Agent.exe")],
+      ["Desktop/Branch Agent.lnk", join(root, "app-0.4.4-aaaaaa", "Branch Agent.exe")],
+      ["TaskBar/Branch Agent.lnk", join(root, "app-0.4.4-aaaaaa", "Branch Agent.exe")],
+      ["Desktop/Other.lnk", join(base, "Other", "Other.exe")],
+    ]);
+    const calls = { list: 0, retarget: [] };
+    const shortcuts = {
+      list: async () => { calls.list++; return [...links].map(([path, target]) => ({ path, target })); },
+      retarget: async (paths, to) => { calls.retarget.push([...paths]); for (const path of paths) links.set(path, to); },
+    };
+    await run({ root, cfg: { dataDir }, install, links, calls, shortcuts });
+  } finally { await rm(base, { recursive: true, force: true }); }
+}
+
+test("Windows: an upgrade from shortcuts into a version folder retargets them to the stable launcher exactly once", () => upgradedRoot(async ({ root, cfg, install, links, calls, shortcuts }) => {
+  const stable = join(root, launcher.WINDOWS_LAUNCHER_EXE);
+  const changed = await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts);
+  assert.deepEqual(changed.sort(), ["Desktop/Branch Agent.lnk", "Programs/Branch Agent.lnk", "TaskBar/Branch Agent.lnk"]);
+  assert.equal(calls.retarget.length, 1, "one rewrite for all of them");
+  assert.equal(await readFile(stable, "utf8"), "launcher from app-0.4.5-bbbbbb", "placed from the running package");
+  assert.equal(links.get("Programs/Branch Agent.lnk"), stable);
+  assert.equal(links.get("Desktop/Other.lnk"), join(root, "..", "Other", "Other.exe"), "another app's shortcut is left alone");
+  assert.equal(await readFile(join(root, launcher.WINDOWS_LAUNCHER), "utf8"), launcher.windowsLauncherScript());
+  // Second launch: nothing to do, not even a look at the shortcuts.
+  assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts), []);
+  assert.equal(calls.list, 1);
+  assert.equal(calls.retarget.length, 1);
+  // Even with the record gone, links that already open the launcher are not rewritten.
+  await rm(join(cfg.dataDir, "desktop-shortcut-launcher.txt"));
+  assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts), []);
+  assert.equal(calls.list, 2);
+  assert.equal(calls.retarget.length, 1);
+  // A launcher already at this revision (the installer's signed copy) is never replaced by the package's.
+  await writeFile(stable, "signed by the installer");
+  await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts);
+  assert.equal(await readFile(stable, "utf8"), "signed by the installer");
+}));
+
+test("Windows: shortcut targets survive a prune of old version folders, and the launcher starts the current one", () => upgradedRoot(async ({ root, cfg, install, links, shortcuts }) => {
+  await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts);
+  await desktopUpdate.pruneWindowsInstall(install);
+  assert.equal(await exists(join(root, "app-0.4.4-aaaaaa")), false, "the old version folder is pruned");
+  for (const [path, target] of links) if (path.endsWith("Branch Agent.lnk")) assert.equal(await exists(target), true, `${path} still opens a file`);
+  const fs = { readText: path => { try { return readFileSync(path, "utf8"); } catch { return undefined; } }, exists: path => existsSync(path) };
+  assert.equal(launcher.windowsLaunchTarget(root, fs), join(root, "app-0.4.5-bbbbbb", "Branch Agent.exe"));
+}));
+
+test("Windows: a failed shortcut rewrite is tried again at the next launch", () => upgradedRoot(async ({ cfg, install, calls, shortcuts }) => {
+  const failing = { ...shortcuts, retarget: async () => { throw new Error("powershell timed out"); } };
+  await assert.rejects(desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, failing), /timed out/);
+  assert.equal((await desktopUpdate.ensureWindowsLauncher(cfg, install, () => undefined, shortcuts)).length, 3);
+  assert.equal(calls.retarget.length, 1);
+}));
+
+test("off Windows there is no launcher to place and no shortcut is read", () => upgradedRoot(async ({ cfg, install }) => {
+  const never = { list: async () => assert.fail("no shortcuts off Windows"), retarget: async () => assert.fail("no shortcuts off Windows") };
+  assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, { ...install, platform: "linux" }, () => undefined, never), []);
+  assert.deepEqual(await desktopUpdate.ensureWindowsLauncher(cfg, { ...install, platform: "win32", appImage: "/x" }, () => undefined, never), []);
+}));
+

@@ -5,8 +5,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 if (!process.env.BRANCH_DESKTOP_TEST_DIST) throw new Error("Set BRANCH_DESKTOP_TEST_DIST to the strict-compiled current source output");
-const { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes, CANDIDATE_MIN_FREE_MB_DEFAULT } =
+const { availableMemory, candidateCheckSkippedLine, candidateMinFreeBytes, measureAvailableMemory, CANDIDATE_MIN_FREE_MB_DEFAULT, HEALTH_MEMORY_MAX_AGE_MS } =
   await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "available-memory.js")));
+const { readUpdateHealth, updateHealthRefusal } = await import(pathToFileURL(join(process.env.BRANCH_DESKTOP_TEST_DIST, "auto-apply-update.js")));
 
 const GIB = 2 ** 30, MIB = 2 ** 20, PAGE = 16384;
 const macReport = [
@@ -65,10 +66,89 @@ test("macOS without a purgeable line still counts free and inactive pages", () =
   assert.equal(memory.measure, "vm_stat");
 });
 
-test("Windows stays on os.freemem()", () => {
-  const memory = availableMemory({ platform: "win32", meminfo: linuxMeminfo, vmStat: macReport, freemem: 7 * GIB });
+test("Windows with no Available Bytes reading yet stays on os.freemem()", () => {
+  const memory = availableMemory({ platform: "win32", meminfo: linuxMeminfo, vmStat: macReport, freemem: 7 * GIB, now: 0 });
   assert.equal(memory.bytes, 7 * GIB);
   assert.equal(memory.measure, "os.freemem");
+});
+
+test("Windows counts standby: the Legion's 389 MB free with 15 GB available passes both gates (Private #1054)", () => {
+  const strictlyFree = 389 * MIB, total = 32 * GIB;
+  const memory = availableMemory({ platform: "win32", windowsAvailable: `${15 * GIB}\r\n`, freemem: strictlyFree, totalmem: total });
+  assert.equal(memory.bytes, 15 * GIB);
+  assert.equal(memory.measure, "AvailableBytes");
+  assert.ok(memory.bytes >= candidateMinFreeBytes({ envMb: undefined, totalmem: total }), "the candidate check runs");
+  assert.ok(strictlyFree < candidateMinFreeBytes({ envMb: undefined, totalmem: total }), "old os.freemem() gate would skip");
+  // The 20% health rule (#1428) still applies, now to available memory.
+  assert.equal(updateHealthRefusal(readUpdateHealth(process.cwd(), memory.bytes, total, { BRANCH_DESKTOP_UPDATE_FREE_DISK: "0.5" })), undefined);
+  assert.equal(updateHealthRefusal(readUpdateHealth(process.cwd(), strictlyFree, total, { BRANCH_DESKTOP_UPDATE_FREE_DISK: "0.5" })), "low memory: 1% free, under 20%");
+  assert.equal(updateHealthRefusal(readUpdateHealth(process.cwd(), 6 * GIB, total, { BRANCH_DESKTOP_UPDATE_FREE_DISK: "0.5" })), "low memory: 19% free, under 20%");
+  assert.equal(candidateCheckSkippedLine(400 * MIB, "AvailableBytes"), "candidate check skipped; 400 MB free (AvailableBytes)");
+});
+
+test("an unreadable Windows reading falls back to os.freemem()", () => {
+  for (const windowsAvailable of ["", "\r\n", "Get-CimInstance : Invalid class", "-5", "12.5"]) {
+    const memory = availableMemory({ platform: "win32", windowsAvailable, freemem: 2 * GIB, now: 0 });
+    assert.equal(memory.bytes, 2 * GIB, JSON.stringify(windowsAvailable));
+    assert.equal(memory.measure, "os.freemem");
+  }
+});
+
+test("the Windows gate refreshes Available Bytes once, reuses it for a minute, and drops a stale or failed reading", async () => {
+  let clock = 5_000_000, queries = 0;
+  const now = () => clock;
+  const answer = () => { queries += 1; return `${15 * GIB}\r\n`; };
+  const probe = () => ({ platform: "win32", freemem: 389 * MIB, now: clock });
+  const [first, second] = await Promise.all([
+    measureAvailableMemory(probe(), { query: answer, now }),
+    measureAvailableMemory(probe(), { query: answer, now }),
+  ]);
+  assert.equal(queries, 1, "concurrent gates share one PowerShell query");
+  assert.deepEqual(first, { bytes: 15 * GIB, measure: "AvailableBytes" });
+  assert.deepEqual(second, { bytes: 15 * GIB, measure: "AvailableBytes" });
+  clock += 59_000;
+  assert.deepEqual(await measureAvailableMemory(probe(), { query: answer, now }), { bytes: 15 * GIB, measure: "AvailableBytes" });
+  assert.equal(queries, 1, "a reading under a minute old is reused");
+  assert.deepEqual(availableMemory({ ...probe(), now: clock + 2_000 }), { bytes: 389 * MIB, measure: "os.freemem" }, "a gate never trusts a reading over a minute old");
+  clock += 2_000;
+  let failures = 0;
+  const fail = () => { queries += 1; failures += 1; throw Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }); };
+  assert.deepEqual(await measureAvailableMemory(probe(), { query: fail, now }), { bytes: 389 * MIB, measure: "os.freemem" });
+  clock += 30_000;
+  assert.deepEqual(await measureAvailableMemory(probe(), { query: fail, now }), { bytes: 389 * MIB, measure: "os.freemem" });
+  assert.equal(failures, 1, "a failed read is not retried within the minute either");
+  assert.equal(queries, 2);
+});
+
+test("a pending update's 30-second health poll starts PowerShell at most once every 5 minutes", async () => {
+  assert.equal(HEALTH_MEMORY_MAX_AGE_MS, 5 * 60_000);
+  let clock = 90_000_000, queries = 0;
+  const now = () => clock;
+  const query = () => { queries += 1; return `${15 * GIB}`; };
+  const seen = [];
+  for (let tick = 0; tick < 40; tick += 1) { // 20 minutes of auto-apply ticks
+    const memory = await measureAvailableMemory({ platform: "win32", freemem: 389 * MIB, now: clock, maxAgeMs: HEALTH_MEMORY_MAX_AGE_MS }, { query, now });
+    seen.push(memory.measure);
+    clock += 30_000;
+  }
+  assert.equal(queries, 4, "one query per 5 minutes over 20 minutes");
+  assert.deepEqual([...new Set(seen)], ["AvailableBytes"], "every tick still sees the available reading");
+});
+
+test("Linux and macOS never run the Windows query and keep their own measures", async () => {
+  const query = () => { throw new Error("the Windows query must not run"); };
+  const linux = await measureAvailableMemory({ platform: "linux", meminfo: linuxMeminfo, freemem: 1, windowsAvailable: "1" }, { query });
+  assert.deepEqual(linux, { bytes: 8388608 * 1024, measure: "MemAvailable" });
+  const darwin = await measureAvailableMemory({ platform: "darwin", vmStat: macReport, freemem: 1, windowsAvailable: "1" }, { query });
+  assert.deepEqual(darwin, { bytes: (5120 + 371200 + 32768) * PAGE, measure: "vm_stat" });
+});
+
+test("the Windows query is a hidden, time-limited PowerShell run that never blocks the main process", () => {
+  const source = readFileSync(new URL("../../engine/scripts/lib/available-memory.mjs", import.meta.url), "utf8");
+  assert.match(source, /execFile\(\s*"powershell\.exe"/u);
+  assert.doesNotMatch(source, /execFileSync\(\s*"powershell/u);
+  assert.match(source, /Win32_PerfRawData_PerfOS_Memory\)\.AvailableBytes/u);
+  assert.match(source, /windowsHide: true, timeout: WINDOWS_AVAILABLE_TIMEOUT_MS/u);
 });
 
 test("a failed or unreadable probe falls back to os.freemem()", () => {
@@ -119,7 +199,9 @@ test("the skip log names the measure that produced the byte count", () => {
 test("the candidate and standby gates use reclaimable memory and name the measure", () => {
   const main = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/main.ts"), "utf8");
   assert.doesNotMatch(main, /\bfreemem\b/);
-  assert.match(main, /availableMemory\(\)/);
+  assert.doesNotMatch(main, /[^.\w]availableMemory\(/u, "every gate refreshes the Windows reading first");
+  assert.equal(main.match(/await measureAvailableMemory\(\)/gu)?.length, 3, "candidate and standby gates use the 1-minute age");
+  assert.match(main, /health: async \(\) => readUpdateHealth\(cfg\.dataDir, \(await measureAvailableMemory\(\{ maxAgeMs: HEALTH_MEMORY_MAX_AGE_MS \}\)\)\.bytes, totalmem\(\)\)/u);
   assert.match(main, /candidateMinFreeBytes\(\)/);
   assert.match(main, /candidateCheckSkippedLine\(available, measure\)/);
 });

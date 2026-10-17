@@ -4,6 +4,14 @@
 // Classic's chat-app sections belong to Chat apps (preview PG chatapps) and are not drawn here.
 import type { Level } from "../nav";
 import type { Codec, Control, Row, RowOption } from "../rows";
+import { clientOs, type ClientOs } from "../../../connect/client-os";
+
+/** Where the terminal opens, in this computer's words: WSL is a Windows part, so only Windows names it (B-053). */
+export function terminalHelp(os: ClientOs): string {
+  return os === "windows"
+    ? "Opens a terminal on the Gateway’s computer: in WSL on this PC, or over SSH on another computer."
+    : "Opens a terminal on the Gateway’s computer: this one, or another one over SSH.";
+}
 
 type Extra = { help?: string; level?: Level; control?: Control; options?: RowOption[]; unit?: string; codec?: Codec; bare?: true };
 /** A Coming row says only that it comes later, in the row's own words (R1-10); the call it waits for stays in `need`. */
@@ -48,7 +56,7 @@ export const SCRIPT_CODE: Record<string, string> = {
 
 export const REMOTE_ROWS: Row[] = [
   // Keep Branch running
-  coming("remote.keep.gateway", KEEP, "Gateway", APP, { control: "segmented", options: [{ v: "off", label: "Off" }, { v: "when-needed", label: "When needed" }, { v: "on", label: "On" }],
+  coming("remote.keep.gateway", KEEP, "Running in the background", APP, { control: "segmented", options: [{ v: "off", label: "Off" }, { v: "when-needed", label: "When needed" }, { v: "on", label: "On" }],
     help: "Recommended: On. Telegram, your phone and automations keep working when the window is closed." }),
   { id: "remote.keep.working", page: "remote", card: KEEP, label: "Keep working when the window closes", level: 0, ownerLevel: true, control: "toggle", help: "Trunks finish what they started.", source: { kind: "desktop", name: "keepWorking" } },
   coming("remote.keep.carry-on", KEEP, "Carry on interrupted work by itself", "engine: a switch for carrying work on",
@@ -57,7 +65,8 @@ export const REMOTE_ROWS: Row[] = [
   coming("remote.keep.quit", KEEP, "Ask before quitting while work runs", APP, { control: "toggle", help: "Quit asks first while a Trunk is working. Off until you choose: Branch quits at once." }),
 
   // Reach (Advanced; port, sign-in and the browser page are Technical)
-  config("remote.reach.bind", REACH, "Who can reach the Gateway", "gateway.bind", "segmented", { level: 1, codec: str("loopback"),
+  config("remote.reach.bind", REACH, "Who can reach Branch", "gateway.bind", "segmented", { level: 1, codec: str("loopback"),
+    help: "Which computers and phones can reach Branch. This computer is the safe choice; the others open it to more places.",
     options: [{ v: "loopback", label: "This computer" }, { v: "lan", label: "My network" }, { v: "tailnet", label: "Tailscale" }, { v: "custom", label: "One address" }, { v: "auto", label: "Automatic" }] }),
   config("remote.reach.address", REACH, "The address", "gateway.customBindHost", "text", { level: 1, codec: text, help: "Listens on one address you type." }),
   config("remote.reach.port", REACH, "Port", "gateway.port", "number", { level: 2, help: "One port for the window, phones and chat apps." }),
@@ -84,15 +93,15 @@ export const REMOTE_ROWS: Row[] = [
   // What it has been doing
   slot("remote.doing.lately", DOING, DOING, ["health", "system.info", "presence.query"], { bare: true }),
   slot("remote.doing.restart", DOING, "Restart the engine", ["gateway.restart.request"]),
-  coming("remote.doing.terminal", DOING, "A terminal where the Gateway runs", "desktop: opening a terminal on the Gateway’s computer",
-    { level: 1, help: "Opens a terminal on the Gateway’s computer: in WSL on this PC, or over SSH on another computer." }),
+  coming("remote.doing.terminal", DOING, "A terminal where Branch runs", "desktop: opening a terminal on the Gateway’s computer",
+    { level: 1, help: terminalHelp(clientOs()) }),
 
   // Another computer (Advanced; fingerprint, host key and proxy are Technical)
   config("remote.another.how", ANOTHER, "How to reach it", "gateway.remote.transport", "segmented", { level: 1,
     codec: { read: (v) => (v === "ssh" ? "ssh" : "direct"), write: (v) => v }, options: [{ v: "direct", label: "Tailscale or my network" }, { v: "ssh", label: "Over SSH" }] }),
   config("remote.another.url", ANOTHER, "Its address", "gateway.remote.url", "text", { level: 1, codec: text, help: "For Tailscale or my network. Use wss:// when it sits behind HTTPS or Tailscale Serve." }),
   config("remote.another.ssh", ANOTHER, "SSH address", "gateway.remote.sshTarget", "text", { level: 1, codec: text, help: "you@desk-pc or you@desk-pc:2222" }),
-  config("remote.another.key", ANOTHER, "Its gateway key", "gateway.remote.token", "secret", { level: 1, help: "A password works too. It is kept in Branch’s settings and never shown here again." }),
+  config("remote.another.key", ANOTHER, "Its sign-in key", "gateway.remote.token", "secret", { level: 1, help: "A password works too. It is kept in Branch’s settings and never shown here again." }),
   config("remote.another.fingerprint", ANOTHER, "Certificate fingerprint", "gateway.remote.tlsFingerprint", "text", { level: 2, codec: text,
     help: "Pins a wss:// address. Left empty, Branch pins it on first use, once the system trusts the certificate." }),
   config("remote.another.host-key", ANOTHER, "Check the SSH host key", "gateway.remote.sshHostKeyPolicy", "segmented", { level: 2, codec: str("strict"),
@@ -102,11 +111,11 @@ export const REMOTE_ROWS: Row[] = [
   coming("remote.another.connect", ANOTHER, "Connect", "desktop: connecting to another computer", { level: 1 }),
 
   // Connection (Technical)
-  slot("remote.connection.address", CONNECTION, "Gateway address", ["config.get"], { level: 2, help: "Use wss:// behind HTTPS or Tailscale, and for any computer that isn’t this one." }),
+  slot("remote.connection.address", CONNECTION, "Address Branch is on", ["config.get"], { level: 2, help: "Use wss:// behind HTTPS or Tailscale, and for any computer that isn’t this one." }),
   coming("remote.connection.key", CONNECTION, "Session key or password", "desktop: this window’s connection", { level: 2, control: "secret",
     help: "The session key is kept for this window. Passwords are never stored. A phone setup code works here too." }),
-  slot("remote.connection.ping", CONNECTION, "Gateway ping", ["health"], { level: 2, help: "Every 5 s while this page is open." }),
-  slot("remote.connection.activity", CONNECTION, "Gateway activity", ["system.info"], { level: 2, help: "The Gateway’s own processor, memory and event-loop delay · every 5 s while this page is open" }),
+  slot("remote.connection.ping", CONNECTION, "Response time", ["health"], { level: 2, help: "Every 5 s while this page is open." }),
+  slot("remote.connection.activity", CONNECTION, "Branch’s activity", ["system.info"], { level: 2, help: "Branch’s own processor, memory and event-loop delay · every 5 s while this page is open" }),
   config("remote.connection.reload", CONNECTION, "Apply settings changes", "gateway.reload.mode", "segmented", { level: 2, codec: str("hybrid"),
     options: [{ v: "hybrid", label: "Live" }, { v: "off", label: "Only on restart" }], help: "Live applies safe changes at once and restarts the Gateway when one needs it." }),
   coming("remote.connection.join-only", CONNECTION, "Only join a running Gateway", APP, { level: 2, control: "toggle",
@@ -118,7 +127,7 @@ export const REMOTE_ROWS: Row[] = [
   config("remote.exposure.uploads", EXPOSURE, "Accept files and pictures", "gateway.uploads.enabled", "toggle", { level: 2, codec: onUnlessOff,
     help: "Off refuses every upload, even from old windows; downloads still work." }),
   config("remote.exposure.hsts", EXPOSURE, "HSTS header", "gateway.http.securityHeaders.strictTransportSecurity", "text", { level: 2, codec: text, help: "Only for an https address you control." }),
-  slot("remote.exposure.https", EXPOSURE, "HTTPS for the Gateway", ["config.get", "config.patch"], { level: 2,
+  slot("remote.exposure.https", EXPOSURE, "HTTPS for Branch", ["config.get", "config.patch"], { level: 2,
     help: "Off until you choose: it needs a certificate; Branch can make a self-signed one." }),
   slot("remote.exposure.origins", EXPOSURE, "Allowed browser addresses", ["config.get", "config.patch"], { level: 2, help: "Default: the public address, if set." }),
   config("remote.exposure.host-header", EXPOSURE, "Trust the Host header for origins", "gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback", "toggle", { level: 2, codec: onIfOn,
@@ -144,6 +153,6 @@ export const REMOTE_ROWS: Row[] = [
   slot("remote.scripts.several", SCRIPTS, "Send to several chats", [], { level: 2, control: "text", help: "Each target gets it; any that fails is named." }),
 
   // Never break (Advanced)
-  coming("remote.never.canary", NEVER, "Canary, journal and rollback", "engine: a canary and change journal", { level: 1,
+  coming("remote.never.canary", NEVER, "Safe updates you can undo", "engine: a canary and change journal", { level: 1,
     help: "Every change to how Branch runs is tried on a copy first; a bad one is rolled back by itself." }),
 ];

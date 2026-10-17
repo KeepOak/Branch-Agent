@@ -6,6 +6,7 @@ import type { DesktopControlName } from "../../connect/desktop-controls";
 import type { Level, PageId } from "./nav";
 import { ACCOUNTS_ROWS } from "./pages/accounts";
 import { APPEARANCE_ROWS } from "./pages/appearance";
+import { CUSTOMIZE_ROWS } from "./pages/customize";
 import { GENERAL_ROWS } from "./pages/general";
 
 export type RowSource =
@@ -25,7 +26,8 @@ export type RowSource =
    *  one; a frame without that control draws the row as Coming with this reason. */
   | { kind: "slot"; calls: string[]; reason: string };
 
-export type Control = "toggle" | "segmented" | "select" | "number" | "text" | "secret" | "custom";
+/** "button": a Coming row whose control is one button (its words in Row.button), as the preview draws it. */
+export type Control = "toggle" | "segmented" | "select" | "number" | "text" | "secret" | "button" | "custom";
 export type RowOption = { v: string | number | boolean; label: string };
 /** Converts between what is stored and what the control shows (for example "on"/"off" and a toggle). */
 export type Codec = { read: (stored: unknown) => unknown; write: (shown: unknown) => unknown };
@@ -48,6 +50,8 @@ export type Row = {
   /** Segmented only for 2 to 4 options; longer lists are a select. */
   options?: RowOption[];
   unit?: string;
+  /** The words on a "button" row's button. */
+  button?: string;
   source: RowSource;
   codec?: Codec;
   /** The value shown when nothing is stored and the schema has no default. */
@@ -107,7 +111,7 @@ export function shownLevel(row: Row, hints: UiHints, controls?: Readonly<Record<
 }
 
 /** Every row of the R1 Settings pages. Pages add their list here. */
-export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS];
+export const ROWS: Row[] = [...GENERAL_ROWS, ...ACCOUNTS_ROWS, ...APPEARANCE_ROWS, ...CUSTOMIZE_ROWS];
 
 /** The rows of one card at this level, in table order. A row above the level is hidden, and so is a Coming row at
  *  Regular. */

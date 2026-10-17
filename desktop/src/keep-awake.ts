@@ -3,6 +3,8 @@
 // one child process that also waits on the app's process, so it can never outlive the app. It is taken when a run
 // starts and released the moment the last run ends. By default it is not taken on battery. Nothing here imports
 // Electron: main.ts gives it the run state, the power state and the spawn call, so the tests use fakes.
+// With the per-user engine service, the engine holds that blocker itself (engine/src/infra/service-keep-awake.ts).
+// This app then does not hold a second one. It keeps writing the power source until quit, then hands that to the engine.
 import type { SpawnOptions } from "node:child_process";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -113,4 +115,43 @@ export function writePowerState(stateDir: string, onBattery: boolean, now = Date
     writeFileSync(`${file}.tmp`, JSON.stringify({ onBattery, at: now }));
     renameSync(`${file}.tmp`, file);
   } catch { /* best effort: without the file the engine runs as plugged in */ }
+}
+
+/**
+ * Who holds sleep, and who refreshes power-state.json. The engine service reads this same file
+ * (engine/src/infra/service-keep-awake.ts). Keep the name and the 20 second freshness together.
+ */
+export const KEEP_AWAKE_OWNER_FILE = "keep-awake-owner.json";
+export const DESKTOP_KEEP_AWAKE_FRESH_MS = 20_000;
+/** How often the open app rewrites the file, well inside the freshness window. */
+export const SERVICE_KEEP_AWAKE_CLAIM_MS = 5_000;
+
+export interface KeepAwakeOwnership { sleep: "desktop" | "engine"; power: "desktop" | "engine" }
+
+/** The service engine holds the blocker. This app holds it only while it is running a child engine. */
+export function appHoldsSleepBlock(serviceEngine: boolean): boolean {
+  return !serviceEngine;
+}
+
+function writeKeepAwakeOwnership(stateDir: string, ownership: KeepAwakeOwnership, now: number): void {
+  try {
+    mkdirSync(stateDir, { recursive: true });
+    const file = join(stateDir, KEEP_AWAKE_OWNER_FILE);
+    writeFileSync(`${file}.tmp`, JSON.stringify({ sleep: ownership.sleep, power: ownership.power, at: now }));
+    renameSync(`${file}.tmp`, file);
+  } catch { /* best effort: a missing file means the engine owns both */ }
+}
+
+/** While this app is open on the service: the engine holds sleep, and this app keeps the power file current. */
+export function claimServiceKeepAwake(stateDir: string, now = Date.now()): void {
+  writeKeepAwakeOwnership(stateDir, { sleep: "engine", power: "desktop" }, now);
+}
+
+/**
+ * Quit on the service path. Release any blocker this process held, then tell the engine it owns sleep and power.
+ * Releasing first means the two never hold the blocker at the same time.
+ */
+export function handOffKeepAwake(stateDir: string, keepAwake: { dispose(): void }, now = Date.now()): void {
+  keepAwake.dispose();
+  writeKeepAwakeOwnership(stateDir, { sleep: "engine", power: "engine" }, now);
 }

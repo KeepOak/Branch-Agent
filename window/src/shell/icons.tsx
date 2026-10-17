@@ -57,6 +57,7 @@ const PATHS = {
   key: <><circle cx="8" cy="15" r="4" /><path d="M11 12.5l8-8M16 7.5l2.5 2.5" /></>,
   phone: <><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18.5h2" /></>,
   chat: <path d="M4 5.5h16v10H9l-5 4z" />,
+  reply: <path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 6 6v4" />,
   ask: <><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.4M12 16.8h.01" /></>,
   external: <path d="M13.5 5.5H18.5v5M18.5 5.5 11 13M16 14v4.5a1 1 0 0 1-1 1H6.5a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1H11" />,
   mail: (

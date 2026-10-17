@@ -1,0 +1,19 @@
+/* Enabled menu rows read as available: the words and the icon are full-contrast ink.
+   Muted opacity belongs only to a row that cannot run (disabled or aria-disabled, or a tile marked off).
+   Hints, shortcuts and the reason line keep their quieter ink. A danger row keeps its warning colour. */
+:root:not(#sg#sg#sg#sg) :is(.g-popover, .g-float, .pop, [role="menu"]) :is(.g-menu-row, .g-menu-tile, .mi, .c-mi, .r1c-mi, .r1c-tile):not(:disabled, [aria-disabled="true"], [data-off], [data-danger], .bad) {
+  color: var(--ink);
+  opacity: 1;
+}
+:root:not(#sg#sg#sg#sg) :is(.g-popover, .g-float, .pop, [role="menu"]) :is(.g-menu-row, .g-menu-tile, .mi, .c-mi, .r1c-mi, .r1c-tile):not(:disabled, [aria-disabled="true"], [data-off], [data-danger], .bad) :is(.g-menu-ico, .g-menu-label, .mi-ico, .icon, .c-mi-ic, .c-mi-t, .r1c-ico, .r1c-mi-t, svg) {
+  color: var(--ink);
+}
+:root:not(#sg#sg#sg#sg) :is(.g-popover, .g-float, .pop, [role="menu"]) :is(.g-menu-row, .mi, .c-mi, .r1c-mi):is([data-danger], .bad):not(:disabled, [aria-disabled="true"]),
+:root:not(#sg#sg#sg#sg) :is(.g-popover, .g-float, .pop, [role="menu"]) :is(.g-menu-row, .mi, .c-mi, .r1c-mi):is([data-danger], .bad):not(:disabled, [aria-disabled="true"]) :is(.g-menu-ico, .mi-ico, .icon, .c-mi-ic, svg) {
+  color: var(--bad);
+  opacity: 1;
+}
+:root:not(#sg#sg#sg#sg) :is(.g-popover, .g-float, .pop, [role="menu"]) :is(.g-menu-row, .g-menu-tile, .mi, .c-mi, .r1c-mi, .r1c-tile):is(:disabled, [aria-disabled="true"]),
+:root:not(#sg#sg#sg#sg) :is(.g-popover, .g-float, .pop, [role="menu"]) .g-menu-tile[data-off] {
+  opacity: .55;
+}

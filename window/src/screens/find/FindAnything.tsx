@@ -5,10 +5,9 @@ import { useMemo } from "react";
 import type { Conversation, ConversationList } from "../../connect/conversations";
 import type { SaplingSession } from "../../connect/session";
 import type { PlaceId } from "../../places-nav/routes";
-import { createReadyTrunk } from "../../places/trunk/api";
+import { openNewTrunkSheet } from "../../places/trunk/new-trunk-sheet";
 import { conversationActions } from "../../shell/conversation-actions";
 import { useTrunks } from "../../shell/engine-data";
-import { nextTrunkName } from "../../shell/NewTrunkFlow";
 import { notify } from "../../shell/notify";
 import { Palette } from "../../shell/Palette";
 import type { PaletteRow } from "../../shell/palette-model";
@@ -69,7 +68,7 @@ export function FindAnything(p: FindAnythingProps) {
     trunkName,
     openRow: p.current,
     newConversation: () => { const id = trunks.defaultId ?? trunks.list[0]?.id; if (id) start(id); else notify("Make a Trunk first.", { tone: "bad" }); },
-    newTrunk: () => void createReadyTrunk(session.engine, nextTrunkName(trunks.list.map(trunk => trunk.name))).then(start, (error: unknown) => notify(`Couldn't make the Trunk: ${reason(error)}`, { tone: "bad" })),
+    newTrunk: () => { p.onClose(); openNewTrunkSheet(); },
     toggleTheme: () => void setThemeChoice(toggleTheme(readThemeChoice())),
     focusMode: () => undefined,
     shortcuts: p.onShortcuts,

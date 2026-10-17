@@ -76,7 +76,7 @@ function electronFixture(work) {
     screen: { getAllDisplays: () => [], getDisplayMatching: () => ({ bounds: { x: 0, y: 0, width: 1280, height: 840 } }) },
     dialog: { showErrorBox: (...args) => dialogs.push(['error', ...args]),
       showMessageBox: async options => { dialogs.push(['warn', options.message]); return { response: 0 }; } },
-    session: { defaultSession: { setPermissionRequestHandler() {} } }, shell: { openExternal() {} } } };
+    session: { fromPartition() { return { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} }; }, defaultSession: { setPermissionRequestHandler() {} } }, shell: { openExternal() {} } } };
 }
 
 /**

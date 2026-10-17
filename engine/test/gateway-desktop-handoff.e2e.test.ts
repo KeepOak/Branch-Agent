@@ -41,6 +41,7 @@ import {
   type HandoffModelProvider,
   startHandoffModelProvider,
 } from "./helpers/handoff-model-provider.js";
+import { prepareHeldDrainTaskScheduler } from "./helpers/task-scheduler-preflight.js";
 
 // The desktop's own bounds for each step (desktop/src/main.ts): a request answers within 20 s.
 const DESKTOP_REQUEST_MS = 20_000;
@@ -418,7 +419,12 @@ describe("in-place engine handoff between real engines", () => {
   it(
     "keeps A alive on drain-stop while it holds S, then stops after its reply",
     { timeout: 420_000 },
-    async ({ signal }) => {
+    async (ctx) => {
+      const { signal } = ctx;
+      // Hosted runners can leave Task Scheduler unable to answer. On Windows this
+      // detects that quickly and skips. When it is usable, a timed out probe is
+      // retried once. The case timeout stays 420 s, inside the 15 minute job.
+      prepareHeldDrainTaskScheduler((reason) => ctx.skip(reason), step);
       const current = await startScenario(signal);
       const { a, b, portA, portB, clientB } = await handOverWithRunInFlight(current, signal);
       await sendDesktopRequest(a, DESKTOP_DRAIN_STOP, DESKTOP_REQUEST_MS);

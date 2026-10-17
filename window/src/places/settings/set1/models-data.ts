@@ -10,6 +10,12 @@ import { providersOf, type Provider } from "./accounts";
 import { serviceName } from "./service";
 import { displayModelName } from "../../../composer/model-display";
 
+/** Plain words for the engine's thinking levels. The stored id never changes; Technical shows the id after the word. */
+const PLAIN_THINKING: Readonly<Record<string, string>> = { low: "Quick", medium: "Balanced", high: "Thorough", xhigh: "Very thorough", max: "Maximum", ultra: "Ultra" };
+export function plainThinking(options: Opt[], technical: boolean): Opt[] {
+  return options.map((o) => (PLAIN_THINKING[o.id] ? { ...o, label: technical ? `${PLAIN_THINKING[o.id]} (${o.id})` : PLAIN_THINKING[o.id] } : o));
+}
+
 export type Model = { ref: string; id: string; provider: string; name: string; local: boolean; available: boolean; images: boolean; thinking: Opt[]; thinkingDefault?: string };
 
 export function modelsOf(data: RecordValue | undefined): Model[] {
