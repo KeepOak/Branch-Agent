@@ -144,11 +144,13 @@ vi.mock("./launchd-recovery.js", () => ({
   recoverInstalledLaunchAgent: (args: { result: "started" | "restarted" }) =>
     recoverInstalledLaunchAgent(args),
 }));
-vi.mock("./service-start-fallback.js", () => ({
-  GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE:
-    "Gateway could not start through the service or as this app's child.",
-  recoverGatewayAsAppChild: vi.fn(async () => null),
-}));
+vi.mock("./service-start-fallback.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./service-start-fallback.js")>();
+  return {
+    ...actual,
+    recoverGatewayAsAppChild: vi.fn(async () => null),
+  };
+});
 
 vi.mock("./start-repair.js", () => ({
   repairLoadedGatewayServiceForStart: (args: unknown) => repairLoadedGatewayServiceForStart(args),
@@ -503,7 +505,7 @@ describe("runDaemonRestart health checks", () => {
       outcome: "timeout",
       elapsedMs: 360_000,
       runtime: "running",
-      message: "Gateway restart timed out after 360s waiting for health checks.",
+      message: "Gateway could not start through the service or as this app's child.",
     },
     {
       outcome: "stopped-free",
@@ -1004,7 +1006,7 @@ describe("runDaemonRestart health checks", () => {
         mode: "rpc",
         pid: 4200,
       });
-      expectListenerHealth(720, lockIdentity);
+      expectListenerHealth(process.platform === "win32" ? 960 : 720, lockIdentity);
     });
 
     it("keeps safe restarts on the exact local lock owner", async () => {

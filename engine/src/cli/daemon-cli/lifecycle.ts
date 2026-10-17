@@ -49,6 +49,7 @@ import {
   GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE,
   MISSING_GATEWAY_SERVICE_REASON,
   recoverGatewayAsAppChild,
+  shouldRecoverGatewayAsAppChild,
 } from "./service-start-fallback.js";
 import { resolveGatewayConfigPorts, resolveGatewayLifecycleContext } from "./lifecycle-context.js";
 import {
@@ -92,12 +93,7 @@ async function recoverFromFailedService<TResult extends "started" | "restarted">
   service: ReturnType<typeof resolveGatewayService>;
   port: number;
 }) {
-  return await recoverGatewayAsAppChild({
-    result: params.result,
-    reason: params.reason,
-    service: params.service,
-    port: params.port,
-  });
+  return await recoverGatewayAsAppChild(params);
 }
 
 async function handleSystemScopeSystemdGateway(
@@ -339,7 +335,7 @@ export async function runDaemonStart(opts: DaemonLifecycleOptions = {}) {
         warnings.push(recovered.message);
         return;
       }
-      fail(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE);
+      fail(shouldRecoverGatewayAsAppChild(failed) ? GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE : failed);
     },
     onStartFailed: async ({ error }) =>
       await recoverFromFailedService({
@@ -574,8 +570,12 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
       preserveDefinition: preserved,
     }) => {
       let failed: string | undefined;
-      const fail = (message: string, _hints?: string[], _code?: string) => {
+      let failedHints: string[] | undefined;
+      let failedCode: string | undefined;
+      const fail = (message: string, hints?: string[], code?: string) => {
         failed = message;
+        failedHints = hints;
+        failedCode = code;
         throw new Error(message);
       };
       try {
@@ -722,7 +722,13 @@ export async function runDaemonRestart(opts: DaemonLifecycleOptions = {}): Promi
           warnings.push(recovered.message);
           return;
         }
-        reportFail(GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE);
+        reportFail(
+          shouldRecoverGatewayAsAppChild(failed)
+            ? GATEWAY_SERVICE_BOTH_PATHS_FAILED_MESSAGE
+            : failed,
+          failedHints,
+          failedCode,
+        );
         throw new Error("unreachable after gateway restart failure", { cause: err });
       }
     },
