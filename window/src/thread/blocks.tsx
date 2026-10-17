@@ -30,6 +30,7 @@ import { readTextToolCall, stepFromTextToolCall } from "./text-tool-call";
 import { withMentions } from "../rooms/RoomMessage";
 import { ConnectModelNotice } from "../composer/ConnectModelNotice";
 import { isNoUsableModelError } from "../composer/connect-model";
+import { friendlyError } from "../connect/friendly-error";
 
 type Of<K extends Block["kind"]> = Extract<Block, { kind: K }>;
 
@@ -81,13 +82,14 @@ export function SteeredNote({ name, text, attachments }: { name: string; text: s
 /** Your message that didn't go (§4.2.2 Parity adds "Not sent"): it stays, with a red pill, the reason, Try again
  *  and Discard. */
 export function NotSent({ text, reason, onRetry, onDiscard }: { text: string; reason: string; onRetry: () => void; onDiscard: () => void }) {
-  const why = shortReason(reason.replace(/^\s*Error:\s*/i, ""));
+  // Visible copy goes through the issue 1700 helper so a stranger never sees a stack, Error: prefix, JSON, status, id or method name.
+  const why = friendlyError(reason);
   return (
     <div className="queued-msg not-sent" data-testid="not-sent">
       <UserMessage block={{ kind: "user", key: "not-sent", text }} />
       <div className="send-status mine">
         <span className="pill bad"><i />Not sent</span>
-        {why ? <span className="send-why" title={reason}>{why}</span> : null}
+        {why ? <span className="send-why" title={why}>{why}</span> : null}
         <button type="button" className="btn ghost sm" onClick={onRetry}>Try again</button>
         <button type="button" className="btn ghost sm" title="Removes this copy." onClick={onDiscard}>Discard</button>
       </div>
@@ -217,7 +219,7 @@ function FileChangeRow({ change }: { change: FileChange }) {
     }
     void engine.request<{ file?: { content?: string } }>("sessions.files.get", { sessionKey, path: change.path }).then(
       (result) => setOpened(typeof result.file?.content === "string" ? result.file.content : change.diff ?? ""),
-      (error: unknown) => toast(error instanceof Error ? error.message : String(error)),
+      (error: unknown) => toast(friendlyError(error)),
     );
   };
   return (

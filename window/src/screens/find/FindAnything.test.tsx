@@ -121,6 +121,20 @@ describe("FindAnything (the Classic palette re-hosted)", () => {
     expect(getToasts().map(toast => toast.text)).toContain("Coming · Focus mode comes in a later update.");
   });
 
+  it("Take the walkthrough starts the window's tour", async () => {
+    const { render } = setupFind();
+    await render();
+    await type("walkthrough");
+    const hit = row("Take the walkthrough");
+    expect(hit.querySelector(".pal-hint")?.textContent).not.toBe("Coming");
+    const seen: string[] = [];
+    const listen = (event: Event) => seen.push(event.type);
+    window.addEventListener("branch:welcome-tour", listen);
+    await act(async () => hit.click());
+    window.removeEventListener("branch:welcome-tour", listen);
+    expect(seen).toEqual(["branch:welcome-tour"]);
+  });
+
   it("opens places, Settings pages and conversations through the R1 routes", async () => {
     const { render, props } = setupFind();
     await render();

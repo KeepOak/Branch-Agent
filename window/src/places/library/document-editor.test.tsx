@@ -105,6 +105,28 @@ describe("Write a new document", () => {
     expect(editor()).toBeNull();
   });
 
+  it("opens ready to type before the file is fetched, and keeps what you typed", async () => {
+    let release!: (value: unknown) => void;
+    const delayed = new Promise(resolve => { release = resolve; });
+    const request = vi.fn(async (method: string) => {
+      if (method === "agents.documents.create") return { agentId: "a", file: { name: "Untitled document.md", path: "Documents/Untitled document.md", size: 0, hash: EMPTY } };
+      if (method === "agents.workspace.list") return { entries: [], totalEntries: 0, offset: 0 };
+      if (method === "agents.workspace.get") return delayed;
+      return {};
+    });
+    const engine = { request: request as unknown as WindowEngine["request"], onEvent: () => () => {}, sessionKey: null, scopes: ["operator.admin"] } as unknown as WindowEngine;
+    await writeNew(engine);
+    const box = editor()!.querySelector("textarea")!;
+    expect(box).toBeTruthy();
+    expect(box.readOnly).toBe(false);
+    expect(editor()!.textContent).not.toContain("Loading…");
+    await type("hello first");
+    expect(box.value).toBe("hello first");
+    await act(async () => { release({ agentId: "a", file: { name: "Untitled document.md", path: "Documents/Untitled document.md", content: "", encoding: "utf8" } }); });
+    await settle();
+    expect(editor()!.querySelector("textarea")!.value).toBe("hello first");
+  });
+
   it("keeps a remote workspace's document read only, with no Save", async () => {
     const { engine, request } = engineOf(() => ({}), true);
     await writeNew(engine);
