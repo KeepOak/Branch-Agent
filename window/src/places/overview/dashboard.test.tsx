@@ -6,6 +6,7 @@ import type { WindowEngine } from "../../connect/engine";
 import { OverviewPlace } from "./index";
 import { githubLink, connectorLinked } from "./links";
 import { readLayout } from "./Dashboard";
+import { clearWidgetCache } from "./connector-data";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 vi.mock("../../face/Face", () => ({ Face: ({ label }: { label?: string }) => <span role="img" aria-label={label} /> }));
@@ -28,11 +29,15 @@ const FX: Record<string, unknown> = {
 };
 
 let root: Root | undefined;
-beforeEach(() => { localStorage.clear(); });
+beforeEach(() => { localStorage.clear(); clearWidgetCache(); });
 afterEach(async () => { if (root) await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = ""; localStorage.clear(); });
 
 async function render(overrides: Record<string, unknown> = {}, sessionKey: string | null = null) {
-  const request = vi.fn(async (method: string) => (method in overrides ? overrides[method] : FX[method] ?? {}));
+  const request = vi.fn(async (method: string, params?: unknown) => {
+    if (!(method in overrides)) return FX[method] ?? {};
+    const value = overrides[method];
+    return typeof value === "function" ? (value as (p: unknown) => unknown)(params) : value;
+  });
   const engine = { request, sessionKey, scopes: ["operator.admin"], onEvent: () => () => undefined } as unknown as WindowEngine;
   const openConversation = vi.fn(), openSettings = vi.fn(), openPlace = vi.fn();
   const host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
@@ -52,7 +57,7 @@ describe("Overview as approved (P34)", () => {
     expect(host.querySelector(".p34-head h1")!.textContent).toBe("Overview");
     expect([...host.querySelectorAll<HTMLButtonElement>(".p34-seg button")].map(b => b.textContent)).toEqual(["Today", "This week", "This month", "This year"]);
     expect(host.querySelector<HTMLButtonElement>('.p34-seg button[aria-pressed="true"]')!.textContent).toBe("This week");
-    expect([...host.querySelectorAll<HTMLButtonElement>(".p34-chips button")].map(b => b.textContent)).toEqual(["All accounts", "GitHub", "Gmail", "Branch"]);
+    expect([...host.querySelectorAll<HTMLButtonElement>(".p34-src .p34-chips button")].map(b => b.textContent)).toEqual(["All accounts", "GitHub", "Gmail", "Branch"]);
     expect(cards(host)).toEqual(["github", "gmail", "branch", "calendar", "drive"]);
     expect(button(host, "Add a widget")).toBeTruthy();
   });
@@ -70,7 +75,8 @@ describe("Overview as approved (P34)", () => {
     const { host } = await render();
     const github = host.querySelector<HTMLElement>('[data-w="github"]')!;
     expect(github.textContent).toContain("@taofik");
-    expect(github.textContent).toContain("Linked. A card like the others is coming: what changed, and what needs you.");
+    expect(github.textContent).toContain("Pull requests opened");
+    expect(github.textContent).toContain("Needs your attention");
     const gmail = host.querySelector<HTMLElement>('[data-w="gmail"]')!;
     expect(gmail.textContent).toContain("Gmail isn’t linked yet.");
     expect(gmail.textContent).toContain("Link Gmail");
@@ -83,7 +89,7 @@ describe("Overview as approved (P34)", () => {
 
   it("lists the Gmail card as linked when the engine has a Gmail connector", async () => {
     const { host } = await render({ "config.get": { hash: "h1", valid: true, config: { mcp: { servers: { gmail: { command: "gmail-mcp" } } } } } });
-    expect(host.querySelector<HTMLElement>('[data-w="gmail"]')!.textContent).toContain("Linked. A card like the others is coming");
+    expect(host.querySelector<HTMLElement>('[data-w="gmail"]')!.textContent).toContain("Unread");
   });
 
   it("keeps the old tiles inside the Branch card", async () => {
@@ -174,5 +180,92 @@ describe("Overview links and layout", () => {
     expect(readLayout(null)).toEqual({ order: ["github", "gmail", "branch", "calendar", "drive"], hidden: [] });
     expect(readLayout(JSON.stringify({ order: ["branch", "github"], hidden: ["drive", "nonsense"] }))).toEqual({ order: ["branch", "github", "gmail", "calendar", "drive"], hidden: ["drive"] });
     expect(readLayout("not json")).toEqual({ order: ["github", "gmail", "branch", "calendar", "drive"], hidden: [] });
+  });
+});
+
+const EFFECTIVE_BOTH = {
+  groups: [{ id: "mcp", tools: [
+    { id: "github__search", mcpServer: "github", mcpToolName: "search_pull_requests" },
+    { id: "gmail__search", mcpServer: "gmail", mcpToolName: "search_messages" },
+    { id: "gmail__get", mcpServer: "gmail", mcpToolName: "get_message" },
+  ] }],
+};
+const EFFECTIVE_NO_GET = { groups: [{ id: "mcp", tools: EFFECTIVE_BOTH.groups[0].tools.filter(t => t.id !== "gmail__get") }] };
+function live(query: string): unknown {
+  if (query.includes("review-requested")) return { items: [{ title: "Billing page copy", number: 212, repository: { full_name: "keepoak/site" } }] };
+  if (query.includes("mentions")) return { items: [] };
+  if (query.includes("merged")) return { total_count: 3 };
+  if (query.includes("is:pr author")) return { total_count: 5 };
+  if (query.includes("reviewed-by")) return { total_count: 9 };
+  if (query === "is:unread") return { resultSizeEstimate: 23 };
+  if (query.startsWith("is:unread in:inbox")) return { messages: [{ id: "m1", threadId: "t1" }] };
+  if (query.startsWith("in:inbox")) return { messages: [{ id: "m1" }] };
+  return { resultSizeEstimate: 4 };
+}
+/** A message's metadata read (format=metadata), by message id. */
+function metadata(id: string): unknown {
+  return { id, payload: { headers: [{ name: "From", value: "Dana Okafor" }, { name: "Subject", value: "August numbers" }] } };
+}
+function invoke(params: unknown): unknown {
+  const args = (params as { args: { query?: string; id?: string } }).args;
+  return { ok: true, output: args.id ? metadata(args.id) : live(String(args.query)) };
+}
+
+describe("Overview live connector data", () => {
+  it("shows the GitHub numbers and attention rows the connector returns, and Ask Sapling sends to the default Trunk", async () => {
+    const { host, request } = await render({
+      "tools.effective": EFFECTIVE_BOTH,
+      "tools.invoke": invoke,
+    }, "agent:main:main");
+    for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
+    const github = host.querySelector<HTMLElement>('[data-w="github"]')!;
+    expect(github.textContent).toContain("Pull requests opened");
+    const stat = (label: string) => [...github.querySelectorAll<HTMLElement>(".p34-stat")].find(el => el.querySelector("small")?.textContent === label)!;
+    expect(stat("Pull requests opened").querySelector("b")?.textContent).toBe("5");
+    expect(stat("Pull requests merged").querySelector("b")?.textContent).toBe("3");
+    expect(stat("Reviews").querySelector("b")?.textContent).toBe("9");
+    expect(stat("Contributions").textContent).toContain("Coming");
+    expect([...github.querySelectorAll(".p34-chips button")].map(b => b.textContent)).toEqual(["All repositories", "keepoak/site"]);
+    const ask = [...github.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Ask Sapling")!;
+    await act(async () => ask.click());
+    for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
+    expect(request).toHaveBeenCalledWith("chat.send", expect.objectContaining({ sessionKey: "agent:main:main", message: "Review requested: Billing page copy" }));
+  });
+
+  it("shows the Gmail numbers, the mail that needs a reply, and Draft a reply sends to the default Trunk", async () => {
+    const { host, request } = await render({
+      "config.get": { hash: "h1", valid: true, config: { mcp: { servers: { gmail: { command: "gmail-mcp" } } } } },
+      "tools.effective": EFFECTIVE_BOTH,
+      "tools.invoke": invoke,
+    }, "agent:main:main");
+    for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
+    const gmail = host.querySelector<HTMLElement>('[data-w="gmail"]')!;
+    const stat = (label: string) => [...gmail.querySelectorAll<HTMLElement>(".p34-stat")].find(el => el.querySelector("small")?.textContent === label)!;
+    expect(stat("Unread").querySelector("b")?.textContent).toBe("23");
+    expect(stat("Important").querySelector("b")?.textContent).toBe("4");
+    expect(gmail.textContent).toContain("Dana Okafor");
+    const draft = [...gmail.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Draft a reply")!;
+    await act(async () => draft.click());
+    for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
+    expect(request).toHaveBeenCalledWith("chat.send", expect.objectContaining({ message: "Draft a reply to Dana Okafor about “August numbers”" }));
+  });
+
+  it("says Coming on the Gmail rows and senders when the connector has no get tool", async () => {
+    const { host } = await render({
+      "config.get": { hash: "h1", valid: true, config: { mcp: { servers: { gmail: { command: "gmail-mcp" } } } } },
+      "tools.effective": EFFECTIVE_NO_GET,
+      "tools.invoke": invoke,
+    }, "agent:main:main");
+    for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
+    const gmail = host.querySelector<HTMLElement>('[data-w="gmail"]')!;
+    expect(gmail.textContent).not.toContain("Dana Okafor");
+    expect(gmail.querySelectorAll(".pill.idle").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("says Coming only on the tiles it cannot read, when the connector offers no search tool", async () => {
+    const { host } = await render({ "tools.effective": { groups: [] } }, "agent:main:main");
+    const github = host.querySelector<HTMLElement>('[data-w="github"]')!;
+    expect(github.querySelectorAll(".p34-stat .pill").length).toBeGreaterThanOrEqual(4);
+    expect(github.textContent).not.toContain("Linked. A card like the others");
   });
 });

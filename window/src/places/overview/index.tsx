@@ -14,6 +14,8 @@ import { PersonRow, type PersonLine } from "./People";
 import { FinishSetup } from "./Setup";
 import { ComingBody, OverviewBar, OverviewHero, UnlinkedBody, WIDGET_NAMES, WidgetCard, WidgetMark, useWidgetLayout, type WidgetId } from "./Dashboard";
 import { useConnectorLinks } from "./links";
+import { useWidgetData, type Range } from "./connector-data";
+import { GitHubBody, GmailBody } from "./WidgetBodies";
 import { useFirstName } from "../../screens/chat/examples-greeting";
 import { useConversation } from "../../composer/useConversation";
 import { RecBar } from "../../places-nav/RecBar";
@@ -117,7 +119,9 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
   const effort = currentThinking(conv.row, conv.defaults);
   const chip = currentModel?.available ? `${currentModel.name}${effort ? ` · ${capitalize(effort)}` : ""}` : composerChipLabel(undefined, "", conv.modelsLoaded);
   const layout = useWidgetLayout();
-  const [range, setRange] = useState("week");
+  const [range, setRange] = useState<Range>("week");
+  const [repo, setRepo] = useState("");
+  const widgetData = useWidgetData(engine, trunks.defaultId ? `agent:${trunks.defaultId}:${trunks.mainKey}` : null, range, repo);
   const [source, setSource] = useState("all");
   const linked: Record<WidgetId, boolean> = { github: links.github?.linked === true, gmail: links.gmail === true, branch: true, calendar: links.calendar === true, drive: links.drive === true };
   const visible = layout.order.filter(id => !layout.hidden.includes(id) && (source === "all" || source === id));
@@ -182,13 +186,13 @@ export function OverviewPlace({ engine, facts, openConversation, openPlace, open
       <RecBar engine={engine} />
       <OverviewHero name={defaultName} me={me} chip={chip} onSend={sendToDefault} />
       <FinishSetup engine={engine} openSettings={openSettings} />
-      <OverviewBar range={range} onRange={setRange} source={source} onSource={setSource} layout={layout} linked={linked} onAdd={toggleWidget} onLink={linkAccounts} />
+      <OverviewBar range={range} onRange={r => setRange(r as Range)} source={source} onSource={setSource} layout={layout} linked={linked} onAdd={toggleWidget} onLink={linkAccounts} />
       <div className="p34-grid">
         {visible.map((id, index) => {
           if (id === "github") return card(id, index, <><WidgetMark id="github" /><b>GitHub</b>{linked.github && links.github?.login ? <small>@{links.github.login}</small> : null}</>,
-            linked.github ? <ComingBody linked /> : <UnlinkedBody id="github" onLink={linkAccounts} />);
+            linked.github ? <GitHubBody data={widgetData.github} repo={repo} onRepo={setRepo} defaultName={defaultName} onAsk={text => void sendToDefault(text)} /> : <UnlinkedBody id="github" onLink={linkAccounts} />);
           if (id === "gmail") return card(id, index, <><WidgetMark id="gmail" /><b>Gmail</b></>,
-            gmailLinked ? <ComingBody linked /> : <UnlinkedBody id="gmail" onLink={linkAccounts} />);
+            gmailLinked ? <GmailBody data={widgetData.gmail} onAsk={text => void sendToDefault(text)} lockdown={lockdown.on} /> : <UnlinkedBody id="gmail" onLink={linkAccounts} />);
           if (id === "branch") return card(id, index, <><WidgetMark id="branch" leaf={<Face size={26} label={defaultName} />} /><b>Branch</b><small>Your Trunks</small><button type="button" className="link p34-link" onClick={linkAccounts}>Accounts &amp; usage</button></>,
             <div className="p34-old">{oldTiles}</div>);
           return card(id, index, <><WidgetMark id={id} /><b>{WIDGET_NAMES[id]}</b></>, <ComingBody linked={linked[id]} />);

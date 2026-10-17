@@ -131,3 +131,24 @@
 .p34-chip { flex: none; padding: 4px 10px; border-radius: 999px; background: var(--fill); color: var(--ink-2); font: 500 12.5px var(--sans); white-space: nowrap; }
 .p34-bg-row { display: flex; justify-content: flex-end; }
 .p34-bg { padding: 4px 10px; border: 0; background: none; color: var(--ink-3); font: 500 12.5px var(--sans); cursor: default; }
+
+/* GitHub and Gmail card bodies (connector data; Coming where a number is not available). */
+.p34-body { display: flex; flex-direction: column; gap: 10px; }
+.p34-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.p34-stat { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 14px; background: var(--fill); min-width: 0; }
+.p34-stat small { font-size: 12px; color: var(--ink-3); }
+.p34-stat b { font-size: 20px; font-weight: 600; color: var(--ink); }
+.p34-stat .pill { align-self: flex-start; }
+.p34-sub { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 13px; }
+.p34-count { font-size: 12px; color: var(--ink-3); }
+.p34-list { display: flex; flex-direction: column; gap: 6px; }
+.p34-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
+.p34-row small { display: block; font-size: 12px; color: var(--ink-3); }
+.p34-grow { flex: 1; min-width: 0; }
+.p34-block { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 14px; background: var(--fill); }
+.p34-oneline { font-size: 13.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.p34-two { display: grid; grid-template-columns: 1fr; gap: 10px; }
+@media (min-width: 640px) { .p34-two { grid-template-columns: 1fr 1fr; } }
+.p34-bars { display: flex; flex-direction: column; gap: 6px; }
+.p34-bar { display: grid; grid-template-columns: minmax(0, 1fr) 2fr auto; align-items: center; gap: 8px; font-size: 12.5px; }
+.p34-bar i { display: block; height: 6px; border-radius: 3px; background: var(--accent); }
