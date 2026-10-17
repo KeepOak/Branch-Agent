@@ -139,10 +139,10 @@ describe("done cheer", () => {
 
 describe("Couldn't finish", () => {
   it("has Details, Copy error, Check status (opens the Gateway popover) and Dismiss", async () => {
-    const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message: "No API key found for provider \"llama-cpp\"." }];
+    const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message: "the provider timed out" }];
     const container = await mount(<Thread name="Juniper" history={history} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} />);
     const strip = container.querySelector('[data-testid="run-error"]')!;
-    expect([...strip.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["Dismiss", "Copy error", "Sign in an account", "Check status"]);
+    expect([...strip.querySelectorAll("button")].map((b) => b.textContent || b.getAttribute("aria-label"))).toEqual(["Dismiss", "Copy error", "Check status"]);
     let opened = 0;
     window.addEventListener(CHECK_STATUS_EVENT, () => opened++);
     await act(async () => [...strip.querySelectorAll("button")].find((b) => b.textContent === "Check status")!.click());
@@ -153,17 +153,19 @@ describe("Couldn't finish", () => {
     const message = "401 Missing bearer or basic authentication in header";
     expect(isModelAccountMissingError(message)).toBe(true);
     expect(isModelAccountMissingError("No API key resolved for provider \"openai\" (auth mode: api-key, checked: env).")).toBe(true);
+    expect(isModelAccountMissingError("Install and sign in to Codex on this computer, then check again.")).toBe(true);
     expect(isModelAccountMissingError("socket hang up")).toBe(false);
     const history: Block[] = [{ kind: "user", key: "u", text: "x" }, { kind: "error", key: "e", message }];
     const container = await mount(<Thread name="Juniper" history={history} live={[]} pendingUser={null} running={false} engine={engine} onAnswer={() => {}} />);
-    const strip = container.querySelector('[data-testid="run-error"]')!;
-    expect(strip.textContent).toContain("Juniper couldn’t finish: no model account is signed in for this Trunk.");
+    const notice = container.querySelector('[data-testid="connect-model"]')!;
+    expect(notice.textContent).toContain("Connect a model to get answers");
+    expect([...notice.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Connect a model"]);
     let page = "";
     const listen = (event: Event) => {
       page = (event as CustomEvent<{ page?: string }>).detail?.page ?? "";
     };
     window.addEventListener("branch:navigate-settings", listen);
-    await act(async () => strip.querySelector<HTMLButtonElement>("[data-testid=open-accounts]")!.click());
+    await act(async () => notice.querySelector("button")!.click());
     window.removeEventListener("branch:navigate-settings", listen);
     expect(page).toBe("accounts");
   });

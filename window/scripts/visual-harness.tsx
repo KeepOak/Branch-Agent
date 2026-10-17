@@ -3,6 +3,7 @@ import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {WindowShell} from '../src/shell/WindowShell';
 import {TeamApprovalCard} from '../src/places/trunk/TeamApprovalCard';
+import {OverflowPreview} from './overflow-fixture';
 import '../src/theme/tokens.css';
 import '../src/theme/base.css';
 import '../src/shell/shell.css';
@@ -45,4 +46,5 @@ const TEAM_MEMBERS=[{name:'Builder Scout',role:'Scout',job:'Find the sources and
 const TEAM_STATES=['asking','applied','declined','unavailable'] as const;
 function TeamPreview({state}:{state:string}){const shown=(TEAM_STATES as readonly string[]).includes(state)?state as typeof TEAM_STATES[number]:'asking';return <div style={{padding:24,background:'var(--bg,#f6f6f4)'}}><TeamApprovalCard goal="Ship the Q3 newsletter" members={TEAM_MEMBERS} state={shown}/></div>;}
 const teamState=new URLSearchParams(window.location.search).get('team');
-createRoot(document.getElementById('root')!).render(teamState!==null ? <TeamPreview state={teamState}/> : <WindowShell session={fixture as any} url="ws://isolated-fixture"/>);
+const overflow=new URLSearchParams(window.location.search).get('overflow');
+createRoot(document.getElementById('root')!).render(overflow!==null ? <OverflowPreview kind={overflow}/> : teamState!==null ? <TeamPreview state={teamState}/> : <WindowShell session={fixture as any} url="ws://isolated-fixture"/>);
