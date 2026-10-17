@@ -71,7 +71,8 @@ SOFTWARE.
 Three fonts ship with the Branch window in `window/public/fonts/reading/` for
 Settings > Appearance > Reading. Each is used unchanged under the SIL Open Font
 License, Version 1.1. The original copyright notices and the full licence text
-ship beside the fonts, verbatim, in `window/public/fonts/reading/OFL.txt`, and
+ship beside the fonts, verbatim, as each upstream ships them: `OFL-OpenDyslexic.txt`,
+`OFL-AtkinsonHyperlegible.txt` and `OFL-Lexend.txt` in the same folder, and
 each font file also carries its notice and licence in its own metadata.
 
 ### OpenDyslexic

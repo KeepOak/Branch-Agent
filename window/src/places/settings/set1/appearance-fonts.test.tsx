@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // Settings › Appearance › Reading fonts (Private #1100): OpenDyslexic, Atkinson Hyperlegible and Lexend ship with the
 // window (SIL OFL 1.1), work offline, and the conversation font can be picked at Regular.
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -72,9 +73,17 @@ describe("Settings › Appearance › Reading fonts", () => {
 
   it("ships each font file with its licence", () => {
     for (const f of FILES) expect(readFileSync(`public/fonts/reading/${f}.woff2`).subarray(0, 4).toString("latin1"), f).toBe("wOF2");
-    const ofl = readFileSync("public/fonts/reading/OFL.txt", "utf8");
-    expect(ofl).toContain("SIL Open Font License, Version 1.1");
-    for (const name of ["OpenDyslexic", "Atkinson Hyperlegible", "Lexend"]) expect(ofl).toContain(name);
+    // Each licence file is the upstream file byte for byte (OFL 1.1 requires the notice and licence unchanged).
+    const UPSTREAM_SHA256 = {
+      "OFL-OpenDyslexic.txt": "caafcccfb70fc72458fcbda812ec8f0a06cb300cbabb87eabbb30b946124394b",
+      "OFL-AtkinsonHyperlegible.txt": "e137caeef2ff7c04fbf87078ad09cf3dcba8a3a58a4aa4e2f399d42c50bc4b18",
+      "OFL-Lexend.txt": "cdfed8f91b0660b004befb744757918b7c7d40dc2201b6c6d0a86b2fab9408f8",
+    };
+    for (const [file, sha] of Object.entries(UPSTREAM_SHA256)) {
+      const bytes = readFileSync(`public/fonts/reading/${file}`);
+      expect(bytes.toString("utf8"), file).toContain("SIL Open Font License, Version 1.1");
+      expect(createHash("sha256").update(bytes).digest("hex"), file).toBe(sha);
+    }
   });
 
   it("the R1 Appearance page offers them at Regular too", () => {
