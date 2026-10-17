@@ -1,1 +1,3 @@
 window:src/screens/chat/raw-errors-1089.test.tsx
+window:src/shell/plain-error.test.tsx
+window:src/thread/format.test.ts
