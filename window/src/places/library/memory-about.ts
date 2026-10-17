@@ -1,5 +1,5 @@
 // Library › Memory › About you: USER.md starts as a developer template. Show a
-// short plain summary of real facts; hide template boilerplate, fences, HTML
+// short summary of real facts, preserving inline markdown; hide template boilerplate, fences, HTML
 // comments and docs links. Superseded directives stay out of the summary.
 
 const TEMPLATE_LINES = new Set([
@@ -38,8 +38,10 @@ function isTemplateLine(line: string): boolean {
   return TEMPLATE_LINES.has(normalize(line));
 }
 
-/** Plain facts from USER.md, or "" when the file is empty or still the template. */
+/** Real facts with inline markdown, or "" for an empty file or a bundled template. */
 export function aboutYouSummary(content: string): string {
+  // The fixed development persona is not a profile of the person using Library.
+  if (/^This is the fixed profile that `branch gateway --dev` seeds\b/m.test(content)) return "";
   const raw = stripFrontMatter(content.replace(/\r\n/g, "\n"))
     .replace(OBSERVED, (_all, status: string) => `\n\0status:${status.toLowerCase()}\n`)
     .replace(/<!--[\s\S]*?-->/g, "")
@@ -55,7 +57,7 @@ export function aboutYouSummary(content: string): string {
     if (DOCS_LINK.test(item) || isTemplateLine(item)) continue;
     const text = item.replace(/`([^`]+)`/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").trim();
     if (!text || PLACEHOLDER.test(text) || EMPTY_FIELD.test(text)) continue;
-    kept.push(text);
+    kept.push(item);
   }
   return kept.join("\n");
 }

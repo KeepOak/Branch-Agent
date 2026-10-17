@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import DEV_USER from "../../../../engine/docs/reference/templates/USER.dev.md?raw";
 import { visibleDevNotes } from "../../shell/shown-why.testing";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -70,6 +71,34 @@ describe("memory file handling", () => {
 });
 
 describe("Library › Memory", () => {
+  it("renders profile bold, inline code and links instead of markdown markers", async () => {
+    const content = "- **Name:** Sam\n- Uses `focus mode` for writing.\n- Reads the [USER template](https://example.org/guide).";
+    const { engine } = engineOf(base((m, p) => m === "agents.files.get" && p.name === "USER.md"
+      ? { file: { name: "USER.md", content } } : undefined));
+    await mount(engine);
+    const about = host.querySelector('[data-testid="about-you"]')!;
+    expect(about.querySelector("strong")?.textContent).toBe("Name:");
+    expect(about.querySelector("code")?.textContent).toBe("focus mode");
+    expect(about.querySelector("a")?.getAttribute("href")).toBe("https://example.org/guide");
+    expect(about.textContent).not.toMatch(/\*\*|`|\[USER template\]/);
+  });
+  it.each(["", MEMORY])("omits the unusable pin picker with memories %j", async (content) => {
+    const { engine } = engineOf(base((m, p) => m === "agents.files.get" && p.name === "MEMORY.md"
+      ? { file: { name: "MEMORY.md", content } } : undefined));
+    await mount(engine);
+    expect(host.querySelector('select[aria-label="A memory to pin"]')).toBeNull();
+    expect(host.querySelector('[data-testid="pinned"]')).toBeNull();
+    expect(button("Pin")).toBeUndefined();
+  });
+  it("does not present the bundled dev profile as the owner's real profile", async () => {
+    const content = DEV_USER;
+    const { engine } = engineOf(base((m, p) => m === "agents.files.get" && p.name === "USER.md"
+      ? { file: { name: "USER.md", content } } : undefined));
+    await mount(engine);
+    const about = host.querySelector('[data-testid="about-you"]')!;
+    expect(about.textContent).toContain("Nothing written about you yet.");
+    expect(about.querySelector(".lib-about")).toBeNull();
+  });
   it("exports the selected Trunk's memory as a Markdown download with each file heading", async () => {
     const make = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:memory");
     const drop = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
