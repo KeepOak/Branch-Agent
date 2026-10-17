@@ -2,6 +2,7 @@
 import type { Block } from "./model";
 import { displayModelName } from "../composer/model-display";
 import { computerStepWords, isComputerToolName, isScreenToolName, screenStepWords } from "./computer-action-label";
+import { looksRaw, plainError } from "../shell/plain-error";
 
 export function formatDuration(ms?: number): string {
   if (!ms || ms < 0) {
@@ -331,6 +332,12 @@ export function shortReason(message: string): string {
     .replace(/^[⚠️\s]+/u, "")
     .trim();
   const first = /^(.+?[.!?])(\s|$)/.exec(plain)?.[1] ?? plain;
+  // No error class, code, stack, method name or path at Regular (Private #1089): the whole message decides, since the
+  // raw part can sit past the first sentence.
+  if (looksRaw(message)) {
+    const said = plainError(message);
+    if (said !== message) return said;
+  }
   return first.length > 160 ? `${first.slice(0, 157)}…` : first;
 }
 
